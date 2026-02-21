@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-20)
 ## Current Position
 
 Phase: 17 of 18 (site-editor-plugin)
-Plan: 5 of 6 complete
-Status: In Progress
-Last activity: 2026-02-21 — Plan 17-05 complete: visual composer (page-composer, section-list-sidebar, prop-editor, preview-panel, block-picker, loader-drawer, rjsf widgets/templates)
+Plan: 6 of 6 complete
+Status: Complete
+Last activity: 2026-02-21 — Plan 17-06 complete: git UX footer (footer-bar, commit-dialog, revert-dialog), server commit-message route, plugin registered in apps/mesh
 
 Progress: [████░░░░░░] 40%
 
@@ -39,6 +39,7 @@ Progress: [████░░░░░░] 40%
 | Phase 17-site-editor-plugin P03 | 2 | 2 tasks | 3 files |
 | Phase 17-site-editor-plugin P04 | 3 | 2 tasks | 5 files |
 | Phase 17-site-editor-plugin P05 | 3 | 2 tasks | 8 files |
+| Phase 17-site-editor-plugin P06 | 3 | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -77,6 +78,8 @@ Recent decisions affecting current work:
 - [Phase 17-site-editor-plugin]: Module-level keyboard store (_undoFn/_redoFn + kbStore singleton) with useSyncExternalStore — avoids useEffect ban for Cmd+Z/Cmd+Shift+Z keyboard shortcuts
 - [Phase 17-site-editor-plugin]: typedCaller cast pattern — toolCaller cast to TypedToolCaller<DecoBlocksBinding> for block/loader tools and GenericToolCaller for filesystem tools
 - [Phase 17-site-editor-plugin]: resetTrackerRef inline ref pattern — { current: '' } created in render body to detect pageId changes and call useUndoRedo.reset() without useEffect
+- [Phase 17-site-editor-plugin]: FooterBar returns null when hasBashTool() is false — entire git UX absent for non-bash connections
+- [Phase 17-site-editor-plugin]: Server /commit-message returns { message: "" } (not error) when ANTHROPIC_API_KEY is absent — graceful degradation to manual entry
 
 ### Pending Todos
 
@@ -91,5 +94,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-21
-Stopped at: Completed 17-05-PLAN.md — visual composer (page-composer, section-list-sidebar, prop-editor, preview-panel, block-picker, loader-drawer, rjsf widgets/templates)
+Stopped at: Completed 17-06-PLAN.md — git UX footer (footer-bar, commit-dialog, revert-dialog), server commit-message route, plugin registered in apps/mesh
 Resume file: None
