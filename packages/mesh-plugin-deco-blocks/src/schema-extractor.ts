@@ -37,7 +37,10 @@ function createTsProgram(filePath: string, tsConfigPath: string): ts.Program {
     ts.sys,
     tsConfigPath.replace(/\/tsconfig\.json$/, ""),
   );
-  return ts.createProgram([filePath, ...parsedConfig.fileNames], parsedConfig.options);
+  return ts.createProgram(
+    [filePath, ...parsedConfig.fileNames],
+    parsedConfig.options,
+  );
 }
 
 /**
@@ -156,7 +159,10 @@ function getReturnTypeAnnotation(
         if (decl) {
           if (ts.isVariableDeclaration(decl) && decl.initializer) {
             const init = decl.initializer;
-            if ((ts.isArrowFunction(init) || ts.isFunctionExpression(init)) && init.type) {
+            if (
+              (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) &&
+              init.type
+            ) {
               result = init.type.getText(sourceFile);
               return;
             }
@@ -205,7 +211,10 @@ function unwrapPromise(typeText: string): string {
  * @param tsConfigPath - Absolute path to the tsconfig.json for the project
  * @returns JSON Schema object (may be {} if no props are defined)
  */
-export function extractPropsSchema(filePath: string, tsConfigPath: string): Schema {
+export function extractPropsSchema(
+  filePath: string,
+  tsConfigPath: string,
+): Schema {
   // Pitfall 3: Validate tsconfig exists before calling createGenerator
   if (!existsSync(tsConfigPath)) {
     throw new Error(`tsconfig.json not found at: ${tsConfigPath}`);
@@ -276,7 +285,10 @@ export function extractPropsSchema(filePath: string, tsConfigPath: string): Sche
  * @param tsConfigPath - Absolute path to the tsconfig.json for the project
  * @returns JSON Schema object for the loader's return type (may be {} if unannotated)
  */
-export function extractReturnTypeSchema(filePath: string, tsConfigPath: string): Schema {
+export function extractReturnTypeSchema(
+  filePath: string,
+  tsConfigPath: string,
+): Schema {
   // Pitfall 3: Validate tsconfig exists before calling createGenerator
   if (!existsSync(tsConfigPath)) {
     throw new Error(`tsconfig.json not found at: ${tsConfigPath}`);
@@ -305,7 +317,34 @@ export function extractReturnTypeSchema(filePath: string, tsConfigPath: string):
     return {};
   }
 
-  // Step 3: Generate JSON Schema for the inner type
+  // Step 3: Generate JSON Schema for the inner type.
+  // Handle array types (e.g. "Product[]") by extracting the element type,
+  // generating its schema, then wrapping it in an array schema.
+  // ts-json-schema-generator does not support "T[]" as a root type name.
+  const arrayMatch = innerTypeName.match(/^(.+)\[\]$/);
+  if (arrayMatch) {
+    const elementTypeName = arrayMatch[1].trim();
+    if (!elementTypeName) {
+      return {};
+    }
+    const generator = createGenerator({
+      path: filePath,
+      tsconfig: tsConfigPath,
+      type: elementTypeName,
+      skipTypeCheck: false,
+      jsDoc: "extended",
+      extraTags: ["@title", "@description", "@format"],
+    });
+    const elementSchema = generator.createSchema(elementTypeName);
+    // Wrap in array schema
+    return {
+      $schema: elementSchema.$schema,
+      type: "array",
+      items: elementSchema.$ref ? { $ref: elementSchema.$ref } : elementSchema,
+      definitions: elementSchema.definitions,
+    } as Schema;
+  }
+
   // If this fails, re-throw per "must be complete or throw" policy
   const generator = createGenerator({
     path: filePath,
