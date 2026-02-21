@@ -116,6 +116,7 @@
     "mesh-plugin-user-sandbox": "workspace:*",
     "mesh-plugin-reports": "workspace:*",
     "mesh-plugin-workflows": "workspace:*",
+    "mesh-plugin-site-editor": "workspace:*",
     "nanoid": "^5.1.6",
     "pg": "^8.16.3",
     "prettier": "^3.4.2",

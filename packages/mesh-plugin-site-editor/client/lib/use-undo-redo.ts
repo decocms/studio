@@ -30,7 +30,8 @@ export function undoRedoReducer<T>(
     }
     case "UNDO": {
       if (state.past.length === 0) return state;
-      const previous = state.past[state.past.length - 1];
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const previous = state.past[state.past.length - 1]!;
       return {
         past: state.past.slice(0, -1),
         present: previous,
@@ -39,7 +40,8 @@ export function undoRedoReducer<T>(
     }
     case "REDO": {
       if (state.future.length === 0) return state;
-      const next = state.future[0];
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const next = state.future[0]!;
       return {
         past: [...state.past, state.present],
         present: next,

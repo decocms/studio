@@ -29,6 +29,7 @@ import { PropEditor } from "./prop-editor";
 import { PreviewPanel } from "./preview-panel";
 import { BlockPicker } from "./block-picker";
 import { LoaderDrawer } from "./loader-drawer";
+import { FooterBar } from "./footer-bar";
 
 // Module-level keyboard store to avoid recreating on every render
 let _undoFn: (() => void) | null = null;
@@ -336,6 +337,19 @@ export default function PageComposer() {
           />
         </div>
       </div>
+
+      {/* Git footer — hidden if no bash tool */}
+      <FooterBar
+        pageId={pageId}
+        projectId={projectId}
+        toolCaller={genericCaller}
+        connectionTools={connection?.tools}
+        onPageReverted={() => {
+          queryClient.invalidateQueries({
+            queryKey: QUERY_KEYS.page(projectId, pageId),
+          });
+        }}
+      />
 
       {/* Block picker modal */}
       {typedCaller && (
