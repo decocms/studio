@@ -128,3 +128,23 @@ export {
   ReportSummarySchema,
   ReportSchema,
 } from "./well-known/reports";
+
+// Re-export deco blocks binding types
+export {
+  DECO_BLOCKS_BINDING,
+  type DecoBlocksBinding,
+  BlockKindSchema,
+  type BlockKind,
+  BlockDefinitionSchema,
+  type BlockDefinition,
+  LoaderDefinitionSchema,
+  type LoaderDefinition,
+  BlocksListInputSchema,
+  type BlocksListInput,
+  BlocksListOutputSchema,
+  type BlocksListOutput,
+  LoadersListInputSchema,
+  type LoadersListInput,
+  LoadersListOutputSchema,
+  type LoadersListOutput,
+} from "./well-known/deco-blocks";
