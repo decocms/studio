@@ -110,5 +110,5 @@ Plans:
 |-------|-----------|----------------|--------|-----------|
 | 15. local-dev daemon | v1.3 | 5/5 | Complete | 2026-02-20 |
 | 16. plugin-deco-blocks | 4/4 | Complete    | 2026-02-21 | - |
-| 17. site-editor plugin | 3/6 | In Progress|  | - |
+| 17. site-editor plugin | 4/6 | In Progress|  | - |
 | 18. deco link command | v1.3 | 0/? | Not started | - |

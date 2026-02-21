@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-20)
 ## Current Position
 
 Phase: 17 of 18 (site-editor-plugin)
-Plan: 3 of 6 complete
+Plan: 4 of 6 complete
 Status: In Progress
-Last activity: 2026-02-21 — Plan 17-03 complete: useUndoRedo and useIframeBridge hooks (TDD)
+Last activity: 2026-02-21 — Plan 17-04 complete: pages list UI and routing layer (router + pages-list + page-modal)
 
-Progress: [██░░░░░░░░] 24%
+Progress: [███░░░░░░░] 30%
 
 ## Performance Metrics
 
@@ -37,6 +37,7 @@ Progress: [██░░░░░░░░] 24%
 | Phase 17-site-editor-plugin P01 | 2 | 2 tasks | 7 files |
 | Phase 17-site-editor-plugin P02 | 3 | 2 tasks | 4 files |
 | Phase 17-site-editor-plugin P03 | 2 | 2 tasks | 3 files |
+| Phase 17-site-editor-plugin P04 | 3 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -69,6 +70,9 @@ Recent decisions affecting current work:
 - [Phase 17-site-editor-plugin]: hasBashTool gates git UI at runtime by checking connection.tools array for bash
 - [Phase 17-site-editor-plugin]: Page/BlockInstance types defined inline in use-iframe-bridge.ts pending plan 17-02 page-api.ts completion
 - [Phase 17-site-editor-plugin]: undoRedoReducer exported as named export to enable direct (non-renderHook) testing
+- [Phase 17-site-editor-plugin]: @deco/ui imports require .tsx extension — bundler moduleResolution doesn't auto-resolve for workspace packages
+- [Phase 17-site-editor-plugin]: usePluginContext uses typeof DECO_BLOCKS_BINDING (runtime value) as generic, not DecoBlocksBinding type alias
+- [Phase 17-site-editor-plugin]: page-composer.tsx stub created in plan 17-04 to satisfy TS lazy import resolution in router.ts
 
 ### Pending Todos
 
@@ -83,5 +87,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-21
-Stopped at: Completed 17-03-PLAN.md — useUndoRedo and useIframeBridge hooks (TDD)
+Stopped at: Completed 17-04-PLAN.md — pages list UI, plugin router, page-modal
 Resume file: None

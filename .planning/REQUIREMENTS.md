@@ -33,7 +33,7 @@
 - [x] **EDT-02**: User can create, rename, and delete pages
 - [x] **EDT-03**: User can view all available blocks and their prop schemas
 - [x] **EDT-04**: User can view all available loaders and their prop schemas
-- [ ] **EDT-05**: User can open the visual composer for any page
+- [x] **EDT-05**: User can open the visual composer for any page
 - [ ] **EDT-06**: User can add, remove, and reorder sections on a page via drag-and-drop
 - [ ] **EDT-07**: User can edit section props via auto-generated form (RJSF)
 - [ ] **EDT-08**: User can bind a loader to a section prop
@@ -107,7 +107,7 @@
 | EDT-02 | Phase 17 | Complete |
 | EDT-03 | Phase 17 | Complete |
 | EDT-04 | Phase 17 | Complete |
-| EDT-05 | Phase 17 | Pending |
+| EDT-05 | Phase 17 | Complete |
 | EDT-06 | Phase 17 | Pending |
 | EDT-07 | Phase 17 | Pending |
 | EDT-08 | Phase 17 | Pending |
