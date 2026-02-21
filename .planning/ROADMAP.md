@@ -37,7 +37,7 @@ Git site binding tools, pending changes UI, commit dialog with Claude-generated 
 ## Phases
 
 - [ ] **Phase 15: local-dev daemon** - MCP server for local filesystem, object storage, git, and dev server management
-- [ ] **Phase 16: plugin-deco-blocks** - Standalone deco blocks framework: scanners, DECO_BLOCKS_BINDING, Claude skill
+- [x] **Phase 16: plugin-deco-blocks** - Standalone deco blocks framework: scanners, DECO_BLOCKS_BINDING, Claude skill (completed 2026-02-21)
 - [ ] **Phase 17: site-editor plugin** - Full site editor UI with visual composer and git UX
 - [ ] **Phase 18: deco link command** - `deco link ./folder` in packages/cli connects local project to Mesh
 
@@ -101,6 +101,6 @@ Git site binding tools, pending changes UI, commit dialog with Claude-generated 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 15. local-dev daemon | v1.3 | 0/? | Not started | - |
-| 16. plugin-deco-blocks | 3/4 | In Progress|  | - |
+| 16. plugin-deco-blocks | 4/4 | Complete   | 2026-02-21 | - |
 | 17. site-editor plugin | v1.3 | 0/? | Not started | - |
 | 18. deco link command | v1.3 | 0/? | Not started | - |

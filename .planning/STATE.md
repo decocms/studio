@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-20)
 ## Current Position
 
 Phase: 16 of 18 (plugin-deco-blocks)
-Plan: 3 of 4 complete
-Status: Executing
-Last activity: 2026-02-21 — Plan 16-03 complete: scanner.ts and schema-extractor.ts implementing block/loader discovery with JSON Schema extraction
+Plan: 4 of 4 complete
+Status: Complete
+Last activity: 2026-02-21 — Plan 16-04 complete: isDecoSite(), public API index.ts, and 18 passing scanner unit tests
 
-Progress: [██░░░░░░░░] 20%
+Progress: [██░░░░░░░░] 22%
 
 ## Performance Metrics
 
@@ -33,6 +33,7 @@ Progress: [██░░░░░░░░] 20%
 
 *Updated after each plan completion*
 | Phase 16 P03 | 2 | 2 tasks | 3 files |
+| Phase 16-plugin-deco-blocks P04 | 4 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -55,6 +56,8 @@ Recent decisions affecting current work:
 - DECO_BLOCKS_BINDING lives in packages/bindings/ not in the plugin — enables site-editor import without plugin dependency
 - [Phase 16-plugin-deco-blocks]: Skills placed at packages/mesh-plugin-deco-blocks/.claude/commands/deco/ satisfying BLK-06 in-package requirement
 - [Phase 16-plugin-deco-blocks]: RootlessError (not NoRootTypeError) is the actual error class in ts-json-schema-generator — caught for Props-not-named-Props fallback
+- [Phase 16-plugin-deco-blocks]: index.ts re-exports DECO_BLOCKS_BINDING for consumers who don't want to import @decocms/bindings directly
+- [Phase 16-plugin-deco-blocks]: extractReturnTypeSchema handles T[] return types by stripping suffix, generating element schema, wrapping in array schema
 
 ### Pending Todos
 
@@ -69,5 +72,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-21
-Stopped at: Completed 16-03-PLAN.md — scanner.ts and schema-extractor.ts implementing block/loader discovery with JSON Schema extraction
+Stopped at: Completed 16-04-PLAN.md — isDecoSite(), public API index.ts, and 18 passing scanner unit tests
 Resume file: None

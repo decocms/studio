@@ -23,7 +23,7 @@
 - [x] **BLK-01**: plugin-deco-blocks scans a folder and returns all block definitions (name, props schema, file path)
 - [x] **BLK-02**: plugin-deco-blocks scans a folder and returns all loader definitions (name, props schema, return type)
 - [x] **BLK-03**: plugin-deco-blocks defines DECO_BLOCKS_BINDING — the binding a connection must implement to be treated as a deco site
-- [ ] **BLK-04**: plugin-deco-blocks provides `isDecoSite(connection)` binding checker usable by other plugins and flows
+- [x] **BLK-04**: plugin-deco-blocks provides `isDecoSite(connection)` binding checker usable by other plugins and flows
 - [x] **BLK-05**: plugin-deco-blocks ships with the canonical BLOCKS_FRAMEWORK.md spec as a package asset
 - [x] **BLK-06**: plugin-deco-blocks includes the Claude skill for implementing deco blocks (`.claude/commands/deco/blocks-framework.md`)
 
@@ -100,7 +100,7 @@
 | BLK-01 | Phase 16 | Complete |
 | BLK-02 | Phase 16 | Complete |
 | BLK-03 | Phase 16 | Complete |
-| BLK-04 | Phase 16 | Pending |
+| BLK-04 | Phase 16 | Complete |
 | BLK-05 | Phase 16 | Complete |
 | BLK-06 | Phase 16 | Complete |
 | EDT-01 | Phase 17 | Pending |
