@@ -39,6 +39,7 @@ process.on("warning", (warning) => {
 });
 
 import { Command } from "commander";
+import chalk from "chalk";
 import { writeFile } from "fs/promises";
 import { spawn } from "child_process";
 import { deleteSession, readSession, setToken } from "./lib/session.js";
@@ -60,6 +61,7 @@ import { promoteApp } from "./commands/hosting/promote.js";
 import { createCommand } from "./commands/create/create.js";
 import { devCommand } from "./commands/dev/dev.js";
 import { link } from "./commands/dev/link.js";
+import { meshLinkCommand } from "./commands/mesh/link.js";
 import { genEnv } from "./commands/gen/gen.js";
 import { upgradeCommand } from "./commands/update/upgrade.js";
 import { updateCommand } from "./commands/update/update.js";
@@ -271,11 +273,31 @@ const hostingPromote = new Command("promote")
 
 // Link command implementation
 const linkCmd = new Command("link")
-  .description("Link the project to be accessed through a remote domain.")
-  .option("-p, --port <port>", "Port to link", parseInt)
-  .option("-e, --env <env>", "Environment variable to set")
+  .description("Link a local folder to Mesh, or link to a remote domain.")
+  .argument("[folder]", "Local folder to link to Mesh (omit for tunnel mode)")
+  .option("-p, --port <port>", "Port to link (tunnel mode)", parseInt)
+  .option("-e, --env <env>", "Environment variable to set (tunnel mode)")
+  .option(
+    "--mesh-url <url>",
+    "Mesh instance URL (auto-detected if not provided)",
+  )
   .allowUnknownOption()
-  .action(async (options, cmd) => {
+  .action(async (folder, options, cmd) => {
+    // New behavior: folder argument means Mesh link mode
+    if (folder) {
+      try {
+        await meshLinkCommand(folder, options.meshUrl);
+      } catch (error) {
+        console.error(
+          chalk.red("✗") + " Link failed:",
+          error instanceof Error ? error.message : String(error),
+        );
+        process.exit(1);
+      }
+      return;
+    }
+
+    // Legacy behavior: tunnel mode (no folder = old link)
     try {
       const runCommand = cmd.args;
 
