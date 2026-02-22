@@ -1,18 +1,5 @@
 import { useRef, useCallback, useSyncExternalStore } from "react";
-
-// Minimal type definitions — full types live in page-api.ts (plan 17-02)
-export interface Page {
-  id: string;
-  title: string;
-  path: string;
-  [key: string]: unknown;
-}
-
-export interface BlockInstance {
-  id: string;
-  type: string;
-  props: Record<string, unknown>;
-}
+import type { Page } from "./page-api";
 
 export type IframeMode = "edit" | "interact";
 

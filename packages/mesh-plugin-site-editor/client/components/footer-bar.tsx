@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronUp, ChevronDown, GitCommit as GitCommitIcon } from "lucide-react";
+import {
+  ChevronUp,
+  ChevronDown,
+  GitCommit as GitCommitIcon,
+} from "lucide-react";
 import { Button } from "@deco/ui/components/button.tsx";
 import { toast } from "sonner";
 import type { GenericToolCaller } from "../lib/page-api";
@@ -73,14 +77,11 @@ export function FooterBar({
       const diff = diffResult.stdout;
 
       // Call server route for Claude-generated message
-      const response = await fetch(
-        "/api/plugins/site-editor/commit-message",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ diff }),
-        },
-      );
+      const response = await fetch("/api/plugins/site-editor/commit-message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ diff }),
+      });
       const data = (await response.json()) as { message?: string };
       setGeneratedMessage(data.message ?? "");
     } catch {
@@ -190,7 +191,8 @@ export function FooterBar({
                         {commit.message}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {commit.author} · {new Date(commit.date).toLocaleDateString()} ·{" "}
+                        {commit.author} ·{" "}
+                        {new Date(commit.date).toLocaleDateString()} ·{" "}
                         <code className="bg-muted px-0.5 rounded">
                           {commit.hash.slice(0, 7)}
                         </code>

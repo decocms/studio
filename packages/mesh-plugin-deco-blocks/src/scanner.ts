@@ -16,7 +16,10 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import type { Schema } from "ts-json-schema-generator";
-import { extractPropsSchema, extractReturnTypeSchema } from "./schema-extractor.ts";
+import {
+  extractPropsSchema,
+  extractReturnTypeSchema,
+} from "./schema-extractor.ts";
 
 // ============================================================================
 // Public types
@@ -129,7 +132,9 @@ async function hasExportDefault(filePath: string): Promise<boolean> {
  * @throws If tsconfig.json is not found at or above the project root
  * @throws If a file's props type cannot be fully resolved (must-be-complete-or-throw policy)
  */
-export async function scanBlocks(projectRoot: string): Promise<BlockDefinition[]> {
+export async function scanBlocks(
+  projectRoot: string,
+): Promise<BlockDefinition[]> {
   // Step 1: Locate tsconfig.json (walk up from projectRoot)
   const tsConfigPath = findTsConfig(projectRoot);
 
@@ -186,7 +191,9 @@ export async function scanBlocks(projectRoot: string): Promise<BlockDefinition[]
  * @throws If tsconfig.json is not found at or above the project root
  * @throws If a loader's types cannot be fully resolved
  */
-export async function scanLoaders(projectRoot: string): Promise<LoaderDefinition[]> {
+export async function scanLoaders(
+  projectRoot: string,
+): Promise<LoaderDefinition[]> {
   // Step 1: Get all block definitions (includes loaders)
   const all = await scanBlocks(projectRoot);
 
@@ -209,7 +216,9 @@ export async function scanLoaders(projectRoot: string): Promise<LoaderDefinition
       returnType = extractReturnTypeSchema(block.filePath, tsConfigPath);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      throw new Error(`Failed to extract return type from ${block.filePath}: ${message}`);
+      throw new Error(
+        `Failed to extract return type from ${block.filePath}: ${message}`,
+      );
     }
 
     loaders.push({

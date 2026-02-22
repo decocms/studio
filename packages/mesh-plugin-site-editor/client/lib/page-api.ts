@@ -48,7 +48,7 @@ export async function listPages(
   toolCaller: GenericToolCaller,
 ): Promise<Page[]> {
   try {
-    const result = await toolCaller("list", { path: ".deco/pages/" });
+    const result = await toolCaller("list_directory", { path: ".deco/pages/" });
 
     // Handle both response shapes defensively
     let entries: Array<{ name: string }> = [];
@@ -97,7 +97,7 @@ export async function getPage(
   id: string,
 ): Promise<Page | null> {
   try {
-    const result = await toolCaller("read", {
+    const result = await toolCaller("read_file", {
       path: `.deco/pages/${id}.json`,
     });
 
@@ -137,7 +137,7 @@ export async function createPage(
     },
   };
 
-  await toolCaller("write", {
+  await toolCaller("write_file", {
     path: `.deco/pages/${id}.json`,
     content: JSON.stringify(page, null, 2),
   });
@@ -161,7 +161,7 @@ export async function updatePage(
     },
   };
 
-  await toolCaller("write", {
+  await toolCaller("write_file", {
     path: `.deco/pages/${page.id}.json`,
     content: JSON.stringify(updated, null, 2),
   });
@@ -182,7 +182,7 @@ export async function deletePage(
     title,
   };
 
-  await toolCaller("write", {
+  await toolCaller("write_file", {
     path: `.deco/pages/${id}.json`,
     content: JSON.stringify(tombstone, null, 2),
   });
