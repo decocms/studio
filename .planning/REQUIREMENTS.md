@@ -50,13 +50,13 @@
 ### `deco link` command (`packages/cli/`)
 
 - [ ] **LNK-01**: Developer can run `deco link ./my-folder` to register a local project folder with a running Mesh instance
-- [ ] **LNK-02**: `deco link` starts a local-dev daemon for the given folder (or connects to an already-running one)
+- [x] **LNK-02**: `deco link` starts a local-dev daemon for the given folder (or connects to an already-running one)
 - [ ] **LNK-03**: `deco link` creates (or reuses) a Connection in Mesh pointing at the local-dev daemon
 - [ ] **LNK-04**: `deco link` creates (or reuses) a Project in Mesh wired to that Connection
 - [ ] **LNK-05**: If the folder is a deco site (`.deco/` present), `deco link` auto-enables the site-editor plugin on the project
 - [ ] **LNK-06**: `deco link` opens the browser to the project URL in Mesh, already logged in
 - [ ] **LNK-07**: `deco link` keeps running as a daemon — when Ctrl+C is pressed, local-dev shuts down cleanly
-- [ ] **LNK-08**: `deco link` is designed for both local Mesh (v1.3) and remote Mesh via tunnel (v1.4) — the Mesh URL is configurable
+- [x] **LNK-08**: `deco link` is designed for both local Mesh (v1.3) and remote Mesh via tunnel (v1.4) — the Mesh URL is configurable
 
 > **Note:** deco-cli (`packages/cli`) already exists with login support. `deco link` is a new command added to it. The CLI is the portable piece; Mesh can be local or remote.
 
@@ -119,13 +119,13 @@
 | EDT-14 | Phase 17 | Pending |
 | EDT-15 | Phase 17 | Pending |
 | LNK-01 | Phase 18 | Pending |
-| LNK-02 | Phase 18 | Pending |
+| LNK-02 | Phase 18 | Complete |
 | LNK-03 | Phase 18 | Pending |
 | LNK-04 | Phase 18 | Pending |
 | LNK-05 | Phase 18 | Pending |
 | LNK-06 | Phase 18 | Pending |
 | LNK-07 | Phase 18 | Pending |
-| LNK-08 | Phase 18 | Pending |
+| LNK-08 | Phase 18 | Complete |
 
 **Coverage:**
 - v1.3 requirements: 36 total (7 LDV + 6 BLK + 15 EDT + 8 LNK)
