@@ -63,9 +63,12 @@ deploy/test*
 # Data Test files
 apps/benchmark/data
 
-# AI planning files
-plans
+# AI planning files (root-level only, not docs/plans/)
+/plans
 .cursor/plans
+
+# Local demo/prototype directories
+studio-demo/
 
 # Git worktrees
 .worktrees
