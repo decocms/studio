@@ -29,12 +29,12 @@ export function SidebarSettingsFooter() {
       <SidebarMenu>
         <SidebarMenuItem>
           <SidebarMenuButton
-            className="group/nav-item cursor-pointer text-foreground/90 hover:text-foreground"
+            className="group/nav-item cursor-pointer text-sidebar-foreground/80 hover:text-sidebar-foreground"
             onClick={handleClick}
             isActive={isActive}
             tooltip="Settings"
           >
-            <span className="text-muted-foreground group-hover/nav-item:text-foreground transition-colors [&>svg]:size-4">
+            <span className="text-sidebar-foreground/50 group-hover/nav-item:text-sidebar-foreground transition-colors [&>svg]:size-4">
               <Settings02 />
             </span>
             <span className="truncate">Settings</span>
