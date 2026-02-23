@@ -49,6 +49,12 @@ export const KEYS = {
   isMCPAuthenticated: (url: string, token: string | null) =>
     ["is-mcp-authenticated", url, token] as const,
 
+  registryItem: (registryId: string, itemId: string) =>
+    ["registry-item", registryId, itemId] as const,
+
+  connectionPoll: (connectionId: string) =>
+    ["connection-poll", connectionId] as const,
+
   // MCP tools (scoped by URL and optional token)
   mcpTools: (url: string, token?: string | null) =>
     ["mcp", "tools", url, token] as const,
