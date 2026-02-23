@@ -119,6 +119,19 @@
   --sidebar-ring: oklch(0.5 0.008 60);
 }
 
+/* Inside the dark sidebar, override generic tokens so text-foreground,
+   text-muted-foreground, bg-accent etc. all resolve to dark-mode values
+   without needing per-component overrides. */
+[data-studio] [data-sidebar="sidebar"] {
+  --foreground: oklch(0.96 0.005 60);
+  --muted-foreground: oklch(0.62 0.008 60);
+  --muted: oklch(0.235 0.01 60);
+  --accent: oklch(0.235 0.01 60);
+  --accent-foreground: oklch(0.96 0.005 60);
+  --border: oklch(0.255 0.008 60);
+  --background: oklch(0.18 0.008 60);
+}
+
 .dark [data-studio],
 [data-studio].dark {
   --sidebar: oklch(0.12 0.006 60);

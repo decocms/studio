@@ -60,7 +60,7 @@ function ProjectListItem({
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
-        className="group/item cursor-pointer text-sidebar-foreground/80 hover:text-sidebar-foreground"
+        className="group/item cursor-pointer text-foreground/90 hover:text-foreground"
         onClick={() => {
           navigate({
             to: "/$org/$project",
@@ -73,7 +73,7 @@ function ProjectListItem({
         <span className="truncate flex-1">{project.name}</span>
         <ChevronRight
           size={12}
-          className="text-sidebar-foreground/40 opacity-0 group-hover/item:opacity-100 transition-opacity"
+          className="text-muted-foreground opacity-0 group-hover/item:opacity-100 transition-opacity"
         />
       </SidebarMenuButton>
     </SidebarMenuItem>
@@ -126,7 +126,7 @@ function ProjectsSectionContent() {
                   <CollapsibleTrigger asChild>
                     <button
                       type="button"
-                      className="flex items-center gap-1 text-xs font-medium text-sidebar-foreground/50 hover:text-sidebar-foreground transition-colors"
+                      className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
                     >
                       <span>Projects</span>
                       <ChevronDown
@@ -141,7 +141,7 @@ function ProjectsSectionContent() {
                   <button
                     type="button"
                     onClick={() => setCreateDialogOpen(true)}
-                    className="text-sidebar-foreground/50 hover:text-sidebar-foreground transition-colors p-0.5 rounded hover:bg-sidebar-accent"
+                    className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-accent"
                     title="Create new project"
                   >
                     <Plus size={16} />
@@ -153,7 +153,7 @@ function ProjectsSectionContent() {
               <CollapsibleContent>
                 {userProjects.length === 0 ? (
                   <SidebarMenuItem>
-                    <div className="px-2 py-2 text-xs text-sidebar-foreground/50">
+                    <div className="px-2 py-2 text-xs text-muted-foreground">
                       No projects yet
                     </div>
                   </SidebarMenuItem>
