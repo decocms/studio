@@ -21,26 +21,24 @@ export function ProjectTopbar() {
   if (isOrgAdmin) return null;
 
   return (
-    <div className="dark">
-      <header className="sticky top-0 z-50 h-12 bg-background flex items-center px-4 shrink-0">
-        {/* Left Section - portal target */}
-        <div
-          ref={portalTargets?.leftRef}
-          className="flex items-center gap-2 flex-1 min-w-0"
-        />
+    <header className="sticky top-0 z-50 h-12 bg-background border-b border-border/50 flex items-center px-4 shrink-0">
+      {/* Left Section - portal target */}
+      <div
+        ref={portalTargets?.leftRef}
+        className="flex items-center gap-2 flex-1 min-w-0"
+      />
 
-        {/* Center Section - portal target, hidden when empty */}
-        <div
-          ref={portalTargets?.centerRef}
-          className="flex flex-1 h-full items-center justify-center px-4 min-w-0 [&:empty]:hidden"
-        />
+      {/* Center Section - portal target, hidden when empty */}
+      <div
+        ref={portalTargets?.centerRef}
+        className="flex flex-1 h-full items-center justify-center px-4 min-w-0 [&:empty]:hidden"
+      />
 
-        {/* Right Section - portal target, hidden when empty */}
-        <div
-          ref={portalTargets?.rightRef}
-          className="flex flex-1 gap-2 h-full items-center justify-end min-w-0 [&:empty]:hidden"
-        />
-      </header>
-    </div>
+      {/* Right Section - portal target, hidden when empty */}
+      <div
+        ref={portalTargets?.rightRef}
+        className="flex flex-1 gap-2 h-full items-center justify-end min-w-0 [&:empty]:hidden"
+      />
+    </header>
   );
 }

@@ -3,24 +3,19 @@ import { Chat } from "@/web/components/chat/index";
 import { ChatPanel } from "@/web/components/chat/side-panel-chat";
 import { CreateProjectDialog } from "@/web/components/create-project-dialog";
 import { MeshSidebar } from "@/web/components/sidebar";
-import { MeshOrgSwitcher } from "@/web/components/org-switcher";
 import { SplashScreen } from "@/web/components/splash-screen";
 import { ProjectTopbar } from "@/web/components/topbar/project-topbar";
 import { TopbarPortalProvider } from "@decocms/mesh-sdk/plugins";
-import { MeshUserMenu } from "@/web/components/user-menu";
 import { useDecoChatOpen } from "@/web/hooks/use-deco-chat-open";
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
 import RequiredAuthLayout from "@/web/layouts/required-auth-layout";
 import { authClient } from "@/web/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
-import { AppTopbar } from "@deco/ui/components/app-topbar.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "@deco/ui/components/resizable.tsx";
-import { SidebarToggleButton } from "@deco/ui/components/sidebar-toggle-button.tsx";
 import {
   SidebarInset,
   SidebarLayout,
@@ -34,67 +29,8 @@ import {
 } from "@decocms/mesh-sdk";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Outlet, useParams, useRouterState } from "@tanstack/react-router";
-import { MessageChatSquare } from "@untitledui/icons";
-import { PropsWithChildren, Suspense, useRef, useTransition } from "react";
+import { PropsWithChildren, Suspense, useTransition } from "react";
 import { KEYS } from "../lib/query-keys";
-
-function Topbar({
-  showSidebarToggle = false,
-  showOrgSwitcher = false,
-  showDecoChat = false,
-  disableDecoChat = false,
-}: {
-  showSidebarToggle?: boolean;
-  showOrgSwitcher?: boolean;
-  showDecoChat?: boolean;
-  disableDecoChat?: boolean;
-}) {
-  const [isOpen, setChatOpen] = useDecoChatOpen();
-  const prevDisableRef = useRef(disableDecoChat);
-
-  // Close chat panel if disabled (synchronous check)
-  if (disableDecoChat && isOpen && prevDisableRef.current !== disableDecoChat) {
-    setChatOpen(false);
-  }
-  prevDisableRef.current = disableDecoChat;
-
-  const toggleChat = () => {
-    if (!disableDecoChat) {
-      setChatOpen((prev) => !prev);
-    }
-  };
-
-  return (
-    <AppTopbar>
-      {showSidebarToggle && (
-        <AppTopbar.Sidebar>
-          <SidebarToggleButton />
-        </AppTopbar.Sidebar>
-      )}
-      <AppTopbar.Left>
-        {showOrgSwitcher && (
-          <Suspense fallback={<MeshOrgSwitcher.Skeleton />}>
-            <MeshOrgSwitcher />
-          </Suspense>
-        )}
-      </AppTopbar.Left>
-      <AppTopbar.Right className="gap-2">
-        {showDecoChat && !disableDecoChat && (
-          <Button
-            size="sm"
-            variant="default"
-            onClick={toggleChat}
-            className="h-7 gap-2"
-          >
-            <MessageChatSquare size={16} />
-            Chat
-          </Button>
-        )}
-        <MeshUserMenu />
-      </AppTopbar.Right>
-    </AppTopbar>
-  );
-}
 
 /**
  * This component persists the width of the chat panel across reloads.
@@ -210,10 +146,7 @@ function ShellLayoutContent() {
   if (!projectContext) {
     return (
       <div className="min-h-screen bg-background">
-        <Topbar />
-        <div className="pt-12">
-          <Outlet />
-        </div>
+        <Outlet />
       </div>
     );
   }
@@ -237,18 +170,12 @@ function ShellLayoutContent() {
     },
   };
 
+  const isStudio = projectSlug === ORG_ADMIN_PROJECT_SLUG;
+
   return (
     <ProjectContextProvider {...contextWithCurrentProject}>
       <PersistentSidebarProvider>
-        <div
-          className="flex flex-col h-screen"
-          style={
-            {
-              "--project-topbar-height":
-                projectSlug === ORG_ADMIN_PROJECT_SLUG ? "0px" : "48px",
-            } as React.CSSProperties
-          }
-        >
+        <div className="flex flex-col h-screen">
           <style>{`
             [data-slot="sidebar-container"] {
               top: 0 !important;
@@ -260,6 +187,7 @@ function ShellLayoutContent() {
           <Chat.Provider>
             <SidebarLayout
               className="flex-1 bg-sidebar"
+              data-studio={isStudio ? "" : undefined}
               style={
                 {
                   "--sidebar-width": "13rem",

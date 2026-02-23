@@ -8,7 +8,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
-import { ChevronDown, ChevronSelectorVertical } from "@untitledui/icons";
+import { ChevronSelectorVertical } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { ORG_ADMIN_PROJECT_SLUG, useProjectContext } from "@decocms/mesh-sdk";
@@ -21,15 +21,12 @@ import { UserSettingsDialog } from "@/web/components/user-settings-dialog";
 
 interface MeshAccountSwitcherProps {
   isCollapsed?: boolean;
-  /** Visual variant - "light" (default) for org sidebar, "dark" for project sidebar */
-  variant?: "light" | "dark";
   /** Callback when creating a new project */
   onCreateProject?: () => void;
 }
 
 export function MeshAccountSwitcher({
   isCollapsed = false,
-  variant = "light",
   onCreateProject,
 }: MeshAccountSwitcherProps) {
   const [preferences] = usePreferences();
@@ -37,9 +34,8 @@ export function MeshAccountSwitcher({
   const { data: organizations } = authClient.useListOrganizations();
   const { data: session } = authClient.useSession();
   const navigate = useNavigate();
-  const isDark = variant === "dark";
 
-  // Get project context for showing current project name in dark variant
+  // Get project context for showing current project name
   const projectContext = useProjectContext();
   const currentProject = projectContext?.project;
 
@@ -123,10 +119,7 @@ export function MeshAccountSwitcher({
             size="sm"
             onClick={handlePopoverOpen}
             className={cn(
-              "h-7 min-w-0 max-w-full",
-              isDark
-                ? "hover:bg-zinc-800 text-white"
-                : "hover:bg-sidebar-accent",
+              "h-7 min-w-0 max-w-full hover:bg-sidebar-accent text-sidebar-foreground",
               isCollapsed ? "justify-center" : "justify-start",
               isCollapsed ? "" : "pl-0.5! px-1.5 gap-1.5",
             )}
@@ -135,32 +128,20 @@ export function MeshAccountSwitcher({
               url={currentOrg?.logo ?? ""}
               fallback={currentOrg?.name ?? ""}
               size="xs"
-              className={cn("shrink-0 rounded-[5px]", isDark && "border-none")}
+              className="shrink-0 rounded-[5px]"
               objectFit="cover"
             />
             {!isCollapsed && (
               <>
                 <div className="min-w-0 flex-1 text-left">
-                  {isDark && currentProject ? (
-                    <>
-                      <p className="text-[10px] text-zinc-500 leading-none truncate">
-                        {currentOrg?.name ?? "Select org"}
-                      </p>
-                      <p className="text-sm text-white font-normal leading-tight mt-0.5 truncate">
-                        {currentProject.name ?? currentProject.slug}
-                      </p>
-                    </>
-                  ) : (
-                    <span className="block truncate text-[14px] tracking-[-0.00625rem] font-medium text-foreground">
-                      {currentOrg?.name ?? "Select org"}
-                    </span>
-                  )}
+                  <p className="text-[10px] text-sidebar-foreground/50 leading-none truncate">
+                    {currentOrg?.name ?? "Select org"}
+                  </p>
+                  <p className="text-sm font-normal leading-tight mt-0.5 truncate text-sidebar-foreground">
+                    {currentProject?.name ?? currentProject?.slug ?? ""}
+                  </p>
                 </div>
-                {isDark ? (
-                  <ChevronSelectorVertical className="size-3 text-zinc-500 shrink-0" />
-                ) : (
-                  <ChevronDown className="size-3.5 text-muted-foreground shrink-0" />
-                )}
+                <ChevronSelectorVertical className="size-3 text-sidebar-foreground/50 shrink-0" />
               </>
             )}
           </Button>
@@ -228,23 +209,11 @@ export function MeshAccountSwitcher({
   );
 }
 
-MeshAccountSwitcher.Skeleton = function MeshAccountSwitcherSkeleton({
-  variant = "light",
-}: {
-  variant?: "light" | "dark";
-}) {
-  const isDark = variant === "dark";
+MeshAccountSwitcher.Skeleton = function MeshAccountSwitcherSkeleton() {
   return (
-    <div
-      className={cn(
-        "flex items-center gap-1.5 h-7 px-1.5 w-full",
-        isDark && "text-white",
-      )}
-    >
-      <Skeleton
-        className={cn("size-5 rounded-[5px] shrink-0", isDark && "bg-zinc-800")}
-      />
-      <Skeleton className={cn("h-3.5 flex-1", isDark && "bg-zinc-800")} />
+    <div className="flex items-center gap-1.5 h-7 px-1.5 w-full">
+      <Skeleton className="size-5 rounded-[5px] shrink-0 bg-sidebar-accent" />
+      <Skeleton className="h-3.5 flex-1 bg-sidebar-accent" />
     </div>
   );
 };
