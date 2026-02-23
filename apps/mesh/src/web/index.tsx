@@ -358,7 +358,7 @@ const workflowsRoute = createRoute({
 // ============================================
 
 const pluginLayoutRoute = createRoute({
-  getParentRoute: () => projectLayout, // Changed from shellLayout
+  getParentRoute: () => projectLayout,
   path: "/$pluginId",
   component: lazyRouteComponent(
     () => import("./layouts/dynamic-plugin-layout.tsx"),
@@ -386,8 +386,17 @@ sourcePlugins.forEach((plugin: AnyClientPlugin) => {
   // Only invoke setup if the plugin provides it
   if (!plugin.setup) return;
 
+  // Create a pathless layout route per plugin so child routes (e.g. path: "/")
+  // get unique IDs derived from their distinct parent, avoiding collisions.
+  const pluginWrapperRoute = createRoute({
+    id: `plugin:${plugin.id}`,
+    getParentRoute: () => pluginLayoutRoute,
+  });
+
+  const childRoutes: AnyRoute[] = [];
+
   const context: PluginSetupContext = {
-    parentRoute: pluginLayoutRoute as AnyRoute,
+    parentRoute: pluginWrapperRoute as AnyRoute,
     routing: {
       createRoute: createRoute,
       lazyRouteComponent: lazyRouteComponent,
@@ -397,14 +406,16 @@ sourcePlugins.forEach((plugin: AnyClientPlugin) => {
     registerSidebarGroup: (group) =>
       pluginSidebarGroups.push({ pluginId: plugin.id, ...group }),
     registerPluginRoutes: (routes) => {
-      pluginRoutes.push(...routes);
+      childRoutes.push(...routes);
     },
   };
 
   plugin.setup(context);
+
+  pluginRoutes.push(pluginWrapperRoute.addChildren(childRoutes));
 });
 
-// Add all plugin routes as children of the plugin layout
+// Add all plugin wrapper routes as children of the plugin layout
 const pluginLayoutWithChildren = pluginLayoutRoute.addChildren(pluginRoutes);
 
 // ============================================
