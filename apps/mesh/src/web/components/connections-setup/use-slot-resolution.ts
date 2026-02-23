@@ -61,15 +61,7 @@ export function useSlotResolution(slot: ConnectionSlot): SlotResolution {
     staleTime: 60 * 60 * 1000,
   });
 
-  const connections = allConnections ?? [];
-  const matchingConnections = findMatchingConnections(
-    connections,
-    slot.item_id,
-  );
-  const satisfiedConnection =
-    matchingConnections.find((c) => c.status === "active") ?? null;
-
-  if (!allConnections || isLoadingItem) {
+  if (isLoadingItem) {
     return {
       initialPhase: "loading",
       registryItem: null,
@@ -80,10 +72,20 @@ export function useSlotResolution(slot: ConnectionSlot): SlotResolution {
     };
   }
 
-  const registryError =
-    !isLoadingItem && !registryItem ? "Registry item not found." : null;
+  const matchingConnections = findMatchingConnections(
+    allConnections,
+    slot.item_id,
+  );
+  const satisfiedConnection =
+    matchingConnections.find((c) => c.status === "active") ?? null;
 
-  const initialPhase = resolveInitialPhase(connections, slot.item_id);
+  const registryError = !registryConn
+    ? "Registry connection not found."
+    : !registryItem
+      ? "Registry item not found."
+      : null;
+
+  const initialPhase = resolveInitialPhase(allConnections, slot.item_id);
 
   return {
     initialPhase,
