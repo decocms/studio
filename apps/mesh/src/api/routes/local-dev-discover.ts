@@ -131,13 +131,13 @@ app.post("/add-project", async (c) => {
     tools: tools?.length ? tools : null,
   });
 
-  // 3. Create project with object-storage enabled
+  // 3. Create project with object-storage and preview enabled
   const project = await ctx.storage.projects.create({
     organizationId,
     slug,
     name,
     description: `Local development project (${root})`,
-    enabledPlugins: ["object-storage"],
+    enabledPlugins: ["object-storage", "preview"],
     ui: {
       banner: null,
       bannerColor: "#10B981",
@@ -146,8 +146,11 @@ app.post("/add-project", async (c) => {
     },
   });
 
-  // 4. Bind object-storage plugin to the connection
+  // 4. Bind object-storage and preview plugins to the connection
   await ctx.storage.projectPluginConfigs.upsert(project.id, "object-storage", {
+    connectionId: connection.id,
+  });
+  await ctx.storage.projectPluginConfigs.upsert(project.id, "preview", {
     connectionId: connection.id,
   });
 
