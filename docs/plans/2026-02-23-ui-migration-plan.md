@@ -504,12 +504,12 @@ The CSS `[data-studio]` block added in Phase 1 gives the dark sidebar to any ele
 
 **Step 1: Add the attribute to SidebarLayout**
 
-In `shell-layout.tsx`, find `<SidebarLayout` (around line 261). Add a `data-studio` attribute conditionally:
+In `shell-layout.tsx`, find `<SidebarLayout` (around line 261). Add a `data-studio` attribute conditionally using `projectSlug` (always derived from live URL params — do NOT use `projectContext.project.isOrgAdmin` which can be stale due to `staleTime: Infinity` on the query):
 
 ```tsx
 <SidebarLayout
   className="flex-1 bg-sidebar"
-  data-studio={projectContext.project.isOrgAdmin ? "" : undefined}
+  data-studio={projectSlug === ORG_ADMIN_PROJECT_SLUG ? "" : undefined}
   style={{
     "--sidebar-width": "13rem",
     "--sidebar-width-mobile": "11rem",
@@ -517,7 +517,7 @@ In `shell-layout.tsx`, find `<SidebarLayout` (around line 261). Add a `data-stud
 >
 ```
 
-Note: `data-studio=""` sets the attribute (which CSS `[data-studio]` matches), `undefined` omits it.
+Note: `data-studio=""` sets the attribute (which CSS `[data-studio]` matches), `undefined` omits it. `ORG_ADMIN_PROJECT_SLUG` is already imported at the top of the file.
 
 **Step 2: Run check**
 
