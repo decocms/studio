@@ -6,7 +6,7 @@
  * Starts the server if not already running.
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -26,7 +26,9 @@ interface PreviewFrameProps {
   connectionId: string;
 }
 
-type ServerState = "checking" | "starting" | "polling" | "running" | "error";
+type ServerResult =
+  | { status: "running" }
+  | { status: "error"; message: string };
 
 /**
  * Extract text from an MCP tool result.
@@ -95,56 +97,47 @@ export default function PreviewFrame({
   connectionId,
 }: PreviewFrameProps) {
   const [iframeKey, setIframeKey] = useState(0);
-  const [serverState, setServerState] = useState<ServerState>("checking");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const startedRef = useRef(false);
 
   const iframeUrl = `http://localhost:${config.port}`;
 
-  // Start the dev server in background
-  const startServer = useMutation({
-    mutationFn: async () => {
-      setServerState("starting");
-      await client.callTool({
-        name: "bash",
-        arguments: {
-          cmd: `nohup ${config.command} > .deco/preview.log 2>&1 &`,
-          timeout: 0,
-        },
-      });
-    },
-  });
-
-  // Check if server is running on mount, start if needed, then poll until ready
-  useQuery({
+  // Check if server is running, start if needed, poll until ready.
+  // Returns a ServerResult so the UI can be derived from query state alone.
+  const serverQuery = useQuery({
     queryKey: KEYS.serverCheck(connectionId, config.port),
-    queryFn: async () => {
+    queryFn: async (): Promise<ServerResult> => {
       // First check if already running
       const isRunning = await checkServerRunning(client, config.port);
       if (isRunning) {
-        setServerState("running");
-        return true;
+        return { status: "running" };
       }
 
-      // Not running — start the server
-      if (serverState === "checking") {
-        startServer.mutate();
+      // Not running — start the server (only once per mount cycle)
+      if (!startedRef.current) {
+        startedRef.current = true;
+        await client.callTool({
+          name: "bash",
+          arguments: {
+            cmd: `nohup ${config.command} > .deco/preview.log 2>&1 &`,
+            timeout: 0,
+          },
+        });
       }
 
       // Poll until ready
-      setServerState("polling");
       for (let i = 0; i < 30; i++) {
         await new Promise((r) => setTimeout(r, 2_000));
         const ready = await checkServerRunning(client, config.port);
         if (ready) {
-          setServerState("running");
-          return true;
+          return { status: "running" };
         }
       }
 
-      setServerState("error");
-      setErrorMessage(`Server didn't respond on port ${config.port} after 60s`);
-      return false;
+      return {
+        status: "error",
+        message: `Server didn't respond on port ${config.port} after 60s`,
+      };
     },
     staleTime: Infinity,
     retry: false,
@@ -161,7 +154,7 @@ export default function PreviewFrame({
       });
     },
     onSuccess: () => {
-      setServerState("checking");
+      startedRef.current = false;
       queryClient.invalidateQueries({
         queryKey: KEYS.serverCheck(connectionId, config.port),
       });
@@ -174,42 +167,43 @@ export default function PreviewFrame({
     window.open(iframeUrl, "_blank");
   };
 
-  // Loading / starting state
-  if (serverState !== "running" && serverState !== "error") {
-    const label =
-      serverState === "checking"
-        ? "Checking server..."
-        : serverState === "starting"
-          ? "Starting dev server..."
-          : "Waiting for server to be ready...";
+  const handleRetry = () => {
+    startedRef.current = false;
+    queryClient.invalidateQueries({
+      queryKey: KEYS.serverCheck(connectionId, config.port),
+    });
+  };
 
+  // Derive UI state from query
+  const result = serverQuery.data;
+  const isLoading = serverQuery.isLoading || serverQuery.isFetching;
+  const isError = result?.status === "error";
+  const isRunning = result?.status === "running" && !isLoading;
+
+  // Loading / starting state
+  if (!isRunning && !isError) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3">
         <Loading01 size={32} className="animate-spin text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">{label}</p>
+        <p className="text-sm text-muted-foreground">
+          {isLoading
+            ? "Checking server..."
+            : "Waiting for server to be ready..."}
+        </p>
       </div>
     );
   }
 
   // Error state
-  if (serverState === "error") {
+  if (isError) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3 p-8">
         <AlertCircle size={48} className="text-destructive" />
         <h3 className="text-lg font-medium">Failed to start server</h3>
         <p className="text-sm text-muted-foreground text-center">
-          {errorMessage}
+          {result.message}
         </p>
-        <Button
-          variant="outline"
-          onClick={() => {
-            setServerState("checking");
-            setErrorMessage(null);
-            queryClient.invalidateQueries({
-              queryKey: KEYS.serverCheck(connectionId, config.port),
-            });
-          }}
-        >
+        <Button variant="outline" onClick={handleRetry}>
           Retry
         </Button>
       </div>
