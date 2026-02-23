@@ -27,7 +27,9 @@ import {
 import {
   createContext,
   type PropsWithChildren,
+  Suspense,
   useContext,
+  useEffect,
   useReducer,
 } from "react";
 import { toast } from "sonner";
@@ -36,6 +38,7 @@ import { useAllowedModels } from "../../hooks/use-allowed-models";
 import { useContext as useContextHook } from "../../hooks/use-context";
 import { useInvalidateCollectionsOnToolCall } from "../../hooks/use-invalidate-collections-on-tool-call";
 import { useLocalStorage } from "../../hooks/use-local-storage";
+import { ErrorBoundary } from "../error-boundary";
 import { useNotification } from "../../hooks/use-notification";
 import { usePreferences } from "../../hooks/use-preferences";
 import { authClient } from "../../lib/auth-client";
@@ -79,6 +82,20 @@ export type ChatStateAction =
   | { type: "SET_FINISH_REASON"; payload: string | null }
   | { type: "CLEAR_FINISH_REASON" }
   | { type: "RESET" };
+
+/**
+ * Shape persisted in localStorage for the selected model.
+ * Capabilities are stored so modelSupportsFiles works on reload
+ * without a live fetch. Limits are stored so the API route gets
+ * the correct maxOutputTokens on reload without a fresh model fetch.
+ */
+interface StoredModelState {
+  id: string;
+  connectionId: string;
+  provider?: string;
+  capabilities?: string[];
+  limits?: { contextWindow?: number; maxOutputTokens?: number };
+}
 
 /** Fields from useChat we pass through directly (typed via UseChatHelpers) */
 type ChatFromUseChat = Pick<
@@ -192,91 +209,53 @@ const findOrFirst = <T extends { id: string }>(array?: T[], id?: string) =>
   array?.find((item) => item.id === id) ?? array?.[0] ?? null;
 
 /**
- * Hook to manage model selection state with connection validation
+ * Hook to manage model selection state.
+ * Builds ChatModelsConfig from localStorage only — no model fetching here.
+ * Auto-selection is handled by ModelAutoSelector rendered in ChatProvider.
  */
 const useModelState = (
   locator: ProjectLocator,
   modelsConnections: ReturnType<typeof useModelConnections>,
 ) => {
-  const [modelState, setModelState] = useLocalStorage<{
-    id: string;
-    connectionId: string;
-  } | null>(LOCALSTORAGE_KEYS.chatSelectedModel(locator), null);
+  const [modelState, setModelState] = useLocalStorage<StoredModelState | null>(
+    LOCALSTORAGE_KEYS.chatSelectedModel(locator),
+    null,
+  );
 
-  // Fetch allowed models for current user's role
-  const { isModelAllowed, allowAll } = useAllowedModels();
-
-  // Determine connectionId to use (from stored selection or first available)
+  // Validate stored connectionId is still in the available connections list.
+  // Falls back to first connection when stored one is gone.
   const modelsConnection = findOrFirst(
     modelsConnections,
     modelState?.connectionId,
   );
 
-  // Fetch models for the selected connection
-  const allModels = useModels(modelsConnection?.id);
-
-  // Filter models by permissions so defaults are always allowed
-  const models =
-    allowAll || !modelsConnection?.id
-      ? allModels
-      : allModels.filter((m) => isModelAllowed(modelsConnection.id, m.id));
-
-  const cheapestModel = models
-    .filter((m) => (m.costs?.input ?? 0) + (m.costs?.output ?? 0) > 0)
-    .reduce<(typeof models)[number] | undefined>((min, model) => {
-      const inputCost = model.costs?.input ?? 0;
-      const outputCost = model.costs?.output ?? 0;
-      const minCost = (min?.costs?.input ?? 0) + (min?.costs?.output ?? 0);
-      return !min || minCost === 0 || inputCost + outputCost < minCost
-        ? model
-        : min;
-    }, undefined);
-
-  // Find the selected model from the filtered models using stored state
-  const selectedModel = findOrFirst(models, modelState?.id);
-
+  // Reconstruct ChatModelsConfig from stored state — no fetch needed.
+  // Note: `fast` (cheapest model) is intentionally not computed here since we no
+  // longer fetch the full model list in this hook. It remains undefined until the
+  // user explicitly picks a model. The fast field is advisory; it falls back to
+  // `thinking` when absent.
   const selectedModelsConfig: ChatModelsConfig | null =
-    selectedModel && modelsConnection?.id
+    modelState && modelsConnection
       ? {
           connectionId: modelsConnection.id,
           thinking: {
-            id: selectedModel.id,
-            provider: selectedModel.provider ?? undefined,
-            limits: selectedModel.limits ?? undefined,
-            capabilities: selectedModel.capabilities
+            id: modelState.id,
+            provider: modelState.provider,
+            capabilities: modelState.capabilities
               ? {
-                  vision: selectedModel.capabilities.includes("vision")
+                  vision: modelState.capabilities.includes("vision")
                     ? true
                     : undefined,
-                  text: selectedModel.capabilities.includes("text")
+                  text: modelState.capabilities.includes("text")
                     ? true
                     : undefined,
-                  tools: selectedModel.capabilities.includes("tools")
+                  tools: modelState.capabilities.includes("tools")
                     ? true
                     : undefined,
                 }
               : undefined,
+            limits: modelState.limits,
           },
-          fast: cheapestModel
-            ? {
-                id: cheapestModel.id,
-                provider: cheapestModel.provider ?? undefined,
-                limits: cheapestModel.limits ?? undefined,
-                capabilities: cheapestModel.capabilities
-                  ? {
-                      vision: cheapestModel.capabilities.includes("vision")
-                        ? true
-                        : undefined,
-                      text: cheapestModel.capabilities.includes("text")
-                        ? true
-                        : undefined,
-                      tools: cheapestModel.capabilities.includes("tools")
-                        ? true
-                        : undefined,
-                    }
-                  : undefined,
-              }
-            : undefined,
         }
       : null;
 
@@ -547,6 +526,67 @@ function derivePartsFromTiptapDoc(
 const ChatContext = createContext<ChatContextValue | null>(null);
 
 /**
+ * Silent child component that auto-selects the first available model when
+ * none is stored. Wrapped in ErrorBoundary + Suspense inside ChatProvider so
+ * any MCP error (e.g. 401 from Gemini) is contained here and never propagates
+ * to the parent provider or the page.
+ *
+ * Renders null — purely a behavior component.
+ */
+function ModelAutoSelector({
+  modelsConnections,
+  currentConfig,
+  onAutoSelect,
+  allowAll,
+  isModelAllowed,
+}: {
+  modelsConnections: ReturnType<typeof useModelConnections>;
+  currentConfig: ChatModelsConfig | null;
+  onAutoSelect: (state: StoredModelState) => void;
+  allowAll: boolean;
+  isModelAllowed: (connectionId: string, modelId: string) => boolean;
+}) {
+  const firstConnection = modelsConnections[0];
+  // This call may suspend (loading) or throw (MCP error).
+  // Both are handled by the ErrorBoundary + Suspense wrapping this component.
+  const models = useModels(firstConnection?.id);
+
+  // useEffect is required here: writing localStorage during render would violate
+  // React's render-purity requirement. We need a side effect that fires after
+  // the component confirms models are available, then calls onAutoSelect once.
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    // Only auto-select when there is no stored model config yet.
+    if (currentConfig || !firstConnection || models.length === 0) return;
+
+    // Filter models through the same permission check used in the manual
+    // selector so auto-selection always picks a model the user can actually use.
+    const allowedModels = allowAll
+      ? models
+      : models.filter((m) => isModelAllowed(firstConnection.id, m.id));
+
+    const first = allowedModels[0];
+    if (!first) return;
+    onAutoSelect({
+      id: first.id,
+      connectionId: firstConnection.id,
+      provider: first.provider ?? undefined,
+      capabilities: first.capabilities ?? undefined,
+      limits: first.limits ?? undefined,
+    });
+  }, [
+    models,
+    currentConfig,
+    firstConnection,
+    onAutoSelect,
+    allowAll,
+    isModelAllowed,
+  ]);
+
+  return null;
+}
+
+/**
  * Provider component for chat context
  * Consolidates all chat-related state: interaction, threads, virtual MCP, model, and chat session
  */
@@ -580,7 +620,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
 
   // Model state — filter out connections where the user's role allows no models
   const allModelsConnections = useModelConnections();
-  const { hasConnectionModels } = useAllowedModels();
+  const { hasConnectionModels, isModelAllowed, allowAll } = useAllowedModels();
   const modelsConnections = allModelsConnections.filter((conn) =>
     hasConnectionModels(conn.id),
   );
@@ -738,7 +778,13 @@ export function ChatProvider({ children }: PropsWithChildren) {
 
   // Model functions
   const setSelectedModel = (model: ModelChangePayload) => {
-    setModel({ id: model.id, connectionId: model.connectionId });
+    setModel({
+      id: model.id,
+      connectionId: model.connectionId,
+      provider: model.provider,
+      capabilities: model.capabilities,
+      limits: model.limits,
+    });
   };
 
   // Chat functions
@@ -844,7 +890,24 @@ export function ChatProvider({ children }: PropsWithChildren) {
     clearFinishReason,
   };
 
-  return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
+  return (
+    <ChatContext.Provider value={value}>
+      {/* Auto-selects first model when none is stored.
+          ErrorBoundary ensures MCP errors (e.g. auth failures) never crash the provider. */}
+      <ErrorBoundary fallback={null}>
+        <Suspense fallback={null}>
+          <ModelAutoSelector
+            modelsConnections={modelsConnections}
+            currentConfig={selectedModel}
+            onAutoSelect={setModel}
+            allowAll={allowAll}
+            isModelAllowed={isModelAllowed}
+          />
+        </Suspense>
+      </ErrorBoundary>
+      {children}
+    </ChatContext.Provider>
+  );
 }
 
 /**

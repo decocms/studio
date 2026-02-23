@@ -20,6 +20,7 @@ const mockParams: BuiltinToolParams = {
     connectionId: "conn_test",
     thinking: { id: "model_test", limits: {} },
   } as never,
+  toolOutputMap: new Map(),
 };
 
 const mockCtx = {

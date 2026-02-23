@@ -136,7 +136,13 @@ export function createSubtaskTool(
       );
 
       // ── 3. Load tools, excluding ones that shouldn't nest ──────────
-      const mcpTools = await toolsFromMCP(mcpClient, writer, "yolo");
+      const mcpTools = await toolsFromMCP(
+        mcpClient,
+        new Map(),
+        writer,
+        "yolo",
+        { disableOutputTruncation: true },
+      );
       const subagentTools = Object.fromEntries(
         Object.entries(mcpTools).filter(
           ([name]) => !SUBAGENT_EXCLUDED_TOOLS.includes(name),

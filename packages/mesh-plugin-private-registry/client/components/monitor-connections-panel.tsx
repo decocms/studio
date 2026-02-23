@@ -502,7 +502,7 @@ export function MonitorConnectionsPanel() {
     <Card className="p-4 space-y-3">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold">Monitor Connections</h3>
+          <h3 className="text-sm font-semibold">QA Connections</h3>
           <p className="text-[10px] text-muted-foreground">
             We auto-detect auth type. Use OAuth when available, or always paste
             a Token/API key for manual auth MCPs.
@@ -570,8 +570,8 @@ export function MonitorConnectionsPanel() {
       <div className="space-y-2">
         {filteredItems.length === 0 && (
           <p className="text-xs text-muted-foreground text-center py-3">
-            No monitor connections for this filter. Click &quot;Sync&quot; to
-            create mappings from store items and pending requests.
+            No QA connections for this filter. Click &quot;Sync&quot; to create
+            mappings from store items and pending requests.
           </p>
         )}
         {filteredItems.length > 0 && (

@@ -276,8 +276,14 @@ function extractCardDisplayData(
   item: RegistryItem,
 ): Omit<MCPServerCardStoreProps, "onClick" | "variant"> {
   const server = item.server;
-  const rawTitle = item.title || server?.title || item.id || "Unnamed Item";
   const meshMeta = item._meta?.["mcp.mesh"];
+  const rawTitle =
+    meshMeta?.friendly_name ||
+    item.name ||
+    server?.title ||
+    item.title ||
+    item.id ||
+    "Unnamed Item";
 
   // Description priority: short_description > mesh_description > server.description > item.description
   const description =

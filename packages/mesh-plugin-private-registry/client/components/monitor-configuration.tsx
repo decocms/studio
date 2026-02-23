@@ -144,9 +144,9 @@ export function MonitorConfiguration() {
     <Card className="p-4 space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold">Monitor Configuration</h3>
+          <h3 className="text-sm font-semibold">QA Configuration</h3>
           <p className="text-xs text-muted-foreground">
-            Configure how the MCP monitor agent validates registry entries.
+            Configure how the MCP QA agent validates registry entries.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -182,7 +182,7 @@ export function MonitorConfiguration() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="space-y-1">
           <FieldLabel
-            label="Monitor mode"
+            label="QA mode"
             hint="Defines HOW each MCP is validated: connectivity only, direct tool calls, or multi-step agent execution."
           />
           <select
@@ -264,7 +264,7 @@ export function MonitorConfiguration() {
         <div className="space-y-1">
           <FieldLabel
             label="Publish requests"
-            hint="Include pending publish requests in monitor runs to validate them before publishing to the store."
+            hint="Include pending publish requests in QA runs to validate them before publishing to the store."
           />
           <div className="flex items-center gap-4 rounded-md border border-input px-3 py-2">
             <label className="inline-flex items-center gap-2 text-sm">
@@ -283,17 +283,17 @@ export function MonitorConfiguration() {
         <div className="space-y-1">
           <FieldLabel
             label="What is tested?"
-            hint="Clarifies the difference between Monitor mode and test execution output."
+            hint="Clarifies the difference between QA mode and test execution output."
           />
           <div className="rounded-md border border-input bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
             <p>
-              <strong>Monitor mode</strong> defines the execution strategy.
+              <strong>QA mode</strong> defines the execution strategy.
             </p>
             <p>
-              <strong>Run history</strong> stores past runs.
+              <strong>QA run history</strong> stores past runs.
             </p>
             <p>
-              <strong>Results log</strong> shows per-MCP outcomes inside one
+              <strong>QA results log</strong> shows per-MCP outcomes inside one
               run.
             </p>
           </div>
@@ -363,7 +363,7 @@ export function MonitorConfiguration() {
         <div className="space-y-1 md:col-span-2">
           <FieldLabel
             label="Schedule"
-            hint="Set automatic test runs. Manual mode runs only when you click Start test run."
+            hint="Set automatic test runs. Manual mode runs only when you click Start QA run."
           />
           <select
             className="h-9 rounded-md border border-input bg-background px-3 text-sm"

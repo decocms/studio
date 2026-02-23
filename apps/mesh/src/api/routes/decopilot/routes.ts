@@ -28,7 +28,11 @@ import {
   generateMessageId,
   PARENT_STEP_LIMIT,
 } from "./constants";
-import { processConversation, splitRequestMessages } from "./conversation";
+import {
+  loadAndMergeMessages,
+  processConversation,
+  splitRequestMessages,
+} from "./conversation";
 import { ensureOrganization, toolsFromMCP } from "./helpers";
 import { createMemory, Memory } from "./memory";
 import { ensureModelCompatibility } from "./model-compat";
@@ -223,6 +227,14 @@ app.post("/:org/decopilot/stream", async (c) => {
 
     let streamFinished = false;
 
+    const allMessages = await loadAndMergeMessages(
+      mem,
+      requestMessage,
+      allSystemMessages,
+      windowSize,
+    );
+
+    const toolOutputMap = new Map<string, string>();
     // 4. Create stream with writer access for data parts
     // IMPORTANT: Do NOT pass onFinish/onStepFinish to createUIMessageStream when
     // using writer.merge with toUIMessageStream that has originalMessages.
@@ -235,13 +247,20 @@ app.post("/:org/decopilot/stream", async (c) => {
         // Create tools inside execute so they have access to writer
         const mcpTools = await toolsFromMCP(
           mcpClient,
+          toolOutputMap,
           writer,
           toolApprovalLevel,
         );
 
-        const builtInTools = getBuiltInTools(
+        const builtInTools = await getBuiltInTools(
           writer,
-          { modelProvider, organization, models, toolApprovalLevel },
+          {
+            modelProvider,
+            organization,
+            models,
+            toolApprovalLevel,
+            toolOutputMap,
+          },
           ctx,
         );
 
@@ -252,7 +271,7 @@ app.post("/:org/decopilot/stream", async (c) => {
           systemMessages: processedSystemMessages,
           messages: processedMessages,
           originalMessages,
-        } = await processConversation(mem, requestMessage, allSystemMessages, {
+        } = await processConversation(allMessages, {
           windowSize,
           models,
           tools,
@@ -290,7 +309,6 @@ app.post("/:org/decopilot/stream", async (c) => {
 
         let reasoningStartAt: Date | null = null;
         let lastProviderMetadata: Record<string, unknown> | undefined;
-
         const result = streamText({
           model: modelProvider.thinkingModel,
           system: processedSystemMessages,

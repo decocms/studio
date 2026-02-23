@@ -139,6 +139,8 @@ export interface RegistryItem {
   cdn?: unknown;
   /** Metadata with various provider-specific information */
   _meta?: MCPRegistryServerMeta;
+  /** Visibility flag used by private-registry based stores */
+  is_public?: boolean;
   /** Alternative metadata field */
   meta?: {
     verified?: boolean;

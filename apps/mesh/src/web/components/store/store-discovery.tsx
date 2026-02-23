@@ -29,6 +29,7 @@ import type { RegistryItem } from "./types";
 
 interface StoreDiscoveryProps {
   registryId: string;
+  storePrivateOnly?: boolean;
 }
 
 /**
@@ -64,10 +65,12 @@ function StoreDiscoveryContent({
   registryId,
   listToolName,
   filtersToolName,
+  storePrivateOnly,
 }: {
   registryId: string;
   listToolName: string;
   filtersToolName?: string;
+  storePrivateOnly?: boolean;
 }) {
   const [search, setSearch] = useState("");
   // Debounce search for server-side query (300ms delay to rate-limit API calls)
@@ -107,6 +110,9 @@ function StoreDiscoveryContent({
   // Always apply local filter when search is active
   // This ensures instant feedback and handles keepPreviousData showing unfiltered cached data
   const filteredItems = search ? filterItemsBySearch(items, search) : items;
+  const visibleItems = storePrivateOnly
+    ? filteredItems.filter((item) => item.is_public !== true)
+    : filteredItems;
 
   // Show searching indicator when server-side search is pending or fetching
   const isSearching =
@@ -115,8 +121,8 @@ function StoreDiscoveryContent({
     Boolean(search);
 
   // Separate verified and non-verified items
-  const verifiedItems = filteredItems.filter(isItemVerified);
-  const allItems = filteredItems.filter(
+  const verifiedItems = visibleItems.filter(isItemVerified);
+  const allItems = visibleItems.filter(
     (item) => !verifiedItems.find((v) => v.id === item.id),
   );
 
@@ -127,7 +133,16 @@ function StoreDiscoveryContent({
     const serverSlug = slugify(
       item.name || item.title || item.server?.title || "",
     );
-    const serverName = item.server?.name || item.id;
+    // Keep compatibility across registries:
+    // - Prefer scoped item IDs (e.g. "deco/google-drive") when server.name is not scoped.
+    // - Otherwise keep server.name-first behavior used by most stores.
+    const idIsScoped = typeof item.id === "string" && item.id.includes("/");
+    const serverNameIsScoped =
+      typeof item.server?.name === "string" && item.server.name.includes("/");
+    const serverName =
+      idIsScoped && !serverNameIsScoped
+        ? item.id
+        : item.server?.name || item.id || "";
 
     navigate({
       to: "/$org/$project/store/$appName",
@@ -225,7 +240,7 @@ function StoreDiscoveryContent({
                   Loading items...
                 </p>
               </div>
-            ) : items.length === 0 && !hasActiveFilters ? (
+            ) : visibleItems.length === 0 && !hasActiveFilters ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <Inbox01 size={48} className="text-muted-foreground mb-4" />
                 <h3 className="text-lg font-medium mb-2">No items available</h3>
@@ -233,7 +248,7 @@ function StoreDiscoveryContent({
                   This store doesn't have any available items yet.
                 </p>
               </div>
-            ) : items.length === 0 && hasActiveFilters && !search ? (
+            ) : visibleItems.length === 0 && hasActiveFilters && !search ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <FilterLines size={48} className="text-muted-foreground mb-4" />
                 <h3 className="text-lg font-medium mb-2">No matching items</h3>
@@ -241,7 +256,7 @@ function StoreDiscoveryContent({
                   Try adjusting your filters to find more results.
                 </p>
               </div>
-            ) : search && filteredItems.length === 0 && !isSearching ? (
+            ) : search && visibleItems.length === 0 && !isSearching ? (
               // Only show "No results" when search is complete (not while searching)
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <SearchMd size={48} className="text-muted-foreground mb-4" />
@@ -253,7 +268,7 @@ function StoreDiscoveryContent({
             ) : (
               <div className="flex flex-col gap-8">
                 {/* Searching indicator when no local results yet */}
-                {isSearching && filteredItems.length === 0 && (
+                {isSearching && visibleItems.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-12 text-center">
                     <Loading01
                       size={32}
@@ -303,7 +318,10 @@ function StoreDiscoveryContent({
  * Store Discovery - main entry point
  * Discovers available tools and renders the discovery UI
  */
-export function StoreDiscovery({ registryId }: StoreDiscoveryProps) {
+export function StoreDiscovery({
+  registryId,
+  storePrivateOnly,
+}: StoreDiscoveryProps) {
   const registryConnection = useConnection(registryId);
 
   // Find the LIST tool from the registry connection
@@ -333,6 +351,7 @@ export function StoreDiscovery({ registryId }: StoreDiscoveryProps) {
       registryId={registryId}
       listToolName={listToolName}
       filtersToolName={filtersToolName || undefined}
+      storePrivateOnly={storePrivateOnly}
     />
   );
 }

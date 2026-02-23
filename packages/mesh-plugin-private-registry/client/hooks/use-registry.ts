@@ -223,6 +223,7 @@ interface RegistryConfigSettings {
   llmModelId?: string;
   acceptPublishRequests?: boolean;
   requireApiToken?: boolean;
+  storePrivateOnly?: boolean;
 }
 
 export function useRegistryConfig(pluginId: string) {
@@ -301,6 +302,11 @@ export function useRegistryConfig(pluginId: string) {
       | boolean
       | undefined) ?? false;
 
+  const storePrivateOnly =
+    (configQuery.data?.config?.settings?.storePrivateOnly as
+      | boolean
+      | undefined) ?? false;
+
   return {
     registryName,
     registryIcon,
@@ -308,6 +314,7 @@ export function useRegistryConfig(pluginId: string) {
     registryLLMModelId,
     acceptPublishRequests,
     requireApiToken,
+    storePrivateOnly,
     isLoadingConfig: configQuery.isLoading,
     saveRegistryConfigMutation,
   };

@@ -25,9 +25,12 @@ import {
   LogOut04,
   RefreshCcw01,
   SearchMd,
+  Settings01,
   Stars01,
 } from "@untitledui/icons";
 import { Suspense, useEffect, useRef, useState, type ReactNode } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { ORG_ADMIN_PROJECT_SLUG, useProjectContext } from "@decocms/mesh-sdk";
 import type { ChatModelsConfig } from "./types";
 import {
   useLLMsFromConnection,
@@ -338,15 +341,33 @@ function ModelItemContent({
 
 /**
  * Error fallback shown when fetching models from a connection fails.
- * Allows the user to retry or switch to another provider via the connection dropdown.
+ * Allows the user to retry or navigate to connection configuration.
  */
 function ModelListErrorFallback({
   error,
   onRetry,
+  connectionId,
+  orgSlug,
 }: {
   error: Error | null;
   onRetry: () => void;
+  connectionId: string | null;
+  orgSlug?: string;
 }) {
+  const navigate = useNavigate();
+
+  const handleConfigure = () => {
+    if (!connectionId || !orgSlug) return;
+    navigate({
+      to: "/$org/$project/mcps/$connectionId",
+      params: {
+        org: orgSlug,
+        project: ORG_ADMIN_PROJECT_SLUG,
+        connectionId,
+      },
+    });
+  };
+
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-3 px-4 py-8 text-center">
       <div className="bg-destructive/10 p-2 rounded-full">
@@ -361,10 +382,28 @@ function ModelListErrorFallback({
           {" Try another provider or retry."}
         </p>
       </div>
-      <Button variant="outline" size="sm" onClick={onRetry} className="gap-1.5">
-        <RefreshCcw01 className="size-3.5" />
-        Retry
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onRetry}
+          className="gap-1.5"
+        >
+          <RefreshCcw01 className="size-3.5" />
+          Retry
+        </Button>
+        {connectionId && orgSlug && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleConfigure}
+            className="gap-1.5"
+          >
+            <Settings01 className="size-3.5" />
+            Configure
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
@@ -521,6 +560,8 @@ export interface ModelChangePayload {
   id: string;
   connectionId: string;
   provider?: string;
+  capabilities?: string[];
+  limits?: { contextWindow?: number; maxOutputTokens?: number };
 }
 
 /**
@@ -604,9 +645,8 @@ function ModelSelectorContent({
   const [hoveredModel, setHoveredModel] = useState<LLM | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const [selectedConnectionId, setSelectedConnectionId] = useState<
-    string | null
-  >(selectedModel?.connectionId ?? null);
+
+  const { org } = useProjectContext();
 
   // Use provided modelsConnections or fetch from hook
   const modelsConnectionsFromHook = useModelConnections();
@@ -622,6 +662,12 @@ function ModelSelectorContent({
   const modelsConnections = allowAll
     ? allModelsConnections
     : allModelsConnections.filter((conn) => hasConnectionModels(conn.id));
+
+  // Default to the stored connection, or the first available connection so the
+  // list (and any error fallback) renders immediately without a manual selection.
+  const [selectedConnectionId, setSelectedConnectionId] = useState<
+    string | null
+  >(selectedModel?.connectionId ?? modelsConnections[0]?.id ?? null);
 
   // Focus search input when mounted
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
@@ -644,6 +690,8 @@ function ModelSelectorContent({
       id: model.id,
       connectionId: selectedConnectionId,
       provider: model.provider ?? undefined,
+      capabilities: model.capabilities,
+      limits: model.limits ?? undefined,
     });
     setSearchTerm("");
     onClose();
@@ -709,7 +757,12 @@ function ModelSelectorContent({
         <ErrorBoundary
           key={selectedConnectionId}
           fallback={({ error, resetError }) => (
-            <ModelListErrorFallback error={error} onRetry={resetError} />
+            <ModelListErrorFallback
+              error={error}
+              onRetry={resetError}
+              connectionId={selectedConnectionId}
+              orgSlug={org.slug}
+            />
           )}
         >
           <Suspense fallback={<ModelListSkeleton />}>

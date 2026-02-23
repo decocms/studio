@@ -62,6 +62,7 @@ interface RegistrySettingsPageProps {
   initialLLMModelId: string;
   initialAcceptPublishRequests: boolean;
   initialRequireApiToken: boolean;
+  initialStorePrivateOnly: boolean;
   revealedKey: string | null;
   onRevealedKeyChange: (key: string | null) => void;
 }
@@ -73,6 +74,7 @@ export default function RegistrySettingsPage({
   initialLLMModelId,
   initialAcceptPublishRequests,
   initialRequireApiToken,
+  initialStorePrivateOnly,
   revealedKey,
   onRevealedKeyChange,
 }: RegistrySettingsPageProps) {
@@ -92,6 +94,9 @@ export default function RegistrySettingsPage({
   );
   const [requireApiTokenDraft, setRequireApiTokenDraft] = useState(
     initialRequireApiToken,
+  );
+  const [storePrivateOnlyDraft, setStorePrivateOnlyDraft] = useState(
+    initialStorePrivateOnly,
   );
 
   // ── API key management ──
@@ -156,7 +161,8 @@ export default function RegistrySettingsPage({
     llmConnectionDraft.trim() !== initialLLMConnectionId.trim() ||
     llmModelDraft.trim() !== initialLLMModelId.trim() ||
     acceptPublishRequestsDraft !== initialAcceptPublishRequests ||
-    requireApiTokenDraft !== initialRequireApiToken;
+    requireApiTokenDraft !== initialRequireApiToken ||
+    storePrivateOnlyDraft !== initialStorePrivateOnly;
 
   const isSaving = saveRegistryConfigMutation.isPending;
 
@@ -190,6 +196,7 @@ export default function RegistrySettingsPage({
         llmModelId: nextModelId,
         acceptPublishRequests: acceptPublishRequestsDraft,
         requireApiToken: requireApiTokenDraft,
+        storePrivateOnly: storePrivateOnlyDraft,
       });
       toast.success("Registry settings updated");
     } catch (error) {
@@ -208,6 +215,7 @@ export default function RegistrySettingsPage({
     setLLMModelDraft(initialLLMModelId);
     setAcceptPublishRequestsDraft(initialAcceptPublishRequests);
     setRequireApiTokenDraft(initialRequireApiToken);
+    setStorePrivateOnlyDraft(initialStorePrivateOnly);
   };
 
   const handleGenerateKey = async () => {
@@ -358,6 +366,31 @@ export default function RegistrySettingsPage({
                 {copiedPublicUrl ? <Check size={14} /> : <Copy01 size={14} />}
               </Button>
             </div>
+          </Card>
+
+          <Card className="min-w-0 p-4 grid gap-3 content-start">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <h3 className="text-base font-semibold">Store Visibility</h3>
+                <p className="text-sm text-muted-foreground">
+                  Choose what appears when users browse this registry in Store.
+                </p>
+              </div>
+              <Switch
+                id="store-private-only"
+                checked={storePrivateOnlyDraft}
+                onCheckedChange={setStorePrivateOnlyDraft}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Enabled: show only private apps. Disabled: show public and private
+              apps together.
+            </p>
+            {storePrivateOnlyDraft !== initialStorePrivateOnly && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                Unsaved changes — click Save to apply.
+              </p>
+            )}
           </Card>
 
           <Card className="min-w-0 p-4 grid gap-3 content-start">

@@ -37,8 +37,9 @@ export const REGISTRY_MONITOR_CONNECTION_SYNC: ServerPluginToolDefinition = {
     RegistryMonitorConnectionSyncInputSchema,
     async (_input, ctx) => {
       const storage = getPluginStorage();
-      const storeItems = (await storage.items.list(ctx.organization.id, {}))
-        .items;
+      const storeItems = (
+        await storage.items.list(ctx.organization.id, { includeUnlisted: true })
+      ).items;
       const pendingRequests = (
         await storage.publishRequests.list(ctx.organization.id, {
           status: "pending",

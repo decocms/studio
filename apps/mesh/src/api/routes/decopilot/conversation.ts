@@ -15,6 +15,7 @@ import {
 } from "ai";
 import type { ChatMessage } from "./types";
 import type { Memory } from "./memory";
+import { ThreadMessage } from "@/storage/types";
 
 /**
  * Split request messages into system and the single request message.
@@ -56,19 +57,15 @@ function splitMessages(messages: ModelMessage[]): {
   };
 }
 
-/**
- * Process messages for the conversation (memory is created externally)
- */
-export async function processConversation(
-  memory: Memory,
-  requestMessage: ChatMessage,
-  systemMessages: ChatMessage[],
-  config: { windowSize: number; models: ModelsConfig; tools?: ToolSet },
-): Promise<ProcessedConversation> {
-  // Load thread history
-  const threadMessages = await memory.loadHistory(config.windowSize);
+async function loadMemory(memory: Memory, windowSize: number) {
+  const threadMessages = await memory.loadHistory(windowSize);
+  return threadMessages;
+}
 
-  // ID-based merge: if incoming message matches a thread message, replace it and drop the rest; else append
+function mergeMessages(
+  threadMessages: ThreadMessage[],
+  requestMessage: ChatMessage,
+): ChatMessage[] {
   const matchIndex = threadMessages.findIndex(
     (m) => m.id === requestMessage.id,
   );
@@ -76,9 +73,27 @@ export async function processConversation(
     matchIndex >= 0
       ? [...threadMessages.slice(0, matchIndex), requestMessage]
       : [...threadMessages, requestMessage];
+  return conversation;
+}
 
+export async function loadAndMergeMessages(
+  memory: Memory,
+  requestMessage: ChatMessage,
+  systemMessages: ChatMessage[],
+  windowSize: number,
+): Promise<ChatMessage[]> {
+  const threadMessages = await loadMemory(memory, windowSize);
+  const conversation = mergeMessages(threadMessages, requestMessage);
   const allMessages: ChatMessage[] = [...systemMessages, ...conversation];
-
+  return allMessages;
+}
+/**
+ * Process messages for the conversation (memory is created externally)
+ */
+export async function processConversation(
+  allMessages: ChatMessage[],
+  config: { windowSize: number; models: ModelsConfig; tools?: ToolSet },
+): Promise<ProcessedConversation> {
   const validUIMessages = await validateUIMessages<ChatMessage>({
     messages: allMessages,
   });

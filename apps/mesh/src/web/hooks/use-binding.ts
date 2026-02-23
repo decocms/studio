@@ -232,6 +232,17 @@ function extractCollectionNames(
   return names;
 }
 
+function hasRegistryListTool(
+  tools: Array<{ name: string }> | null | undefined,
+): boolean {
+  if (!tools || tools.length === 0) return false;
+  return tools.some((tool) => {
+    if (tool.name === "REGISTRY_ITEM_LIST") return true;
+    if (tool.name === "COLLECTION_REGISTRY_APP_LIST") return true;
+    return tool.name.startsWith("COLLECTION_REGISTRY_APP_");
+  });
+}
+
 /**
  * Extracts collection schema from tools
  */
@@ -410,6 +421,9 @@ export function useRegistryConnections(
     : connections.filter((conn) => {
         // Any connection exposing REGISTRY_APP collection tools can act as a store registry.
         // This includes the org self MCP when private-registry tools are enabled.
-        return extractCollectionNames(conn.tools).includes("REGISTRY_APP");
+        return (
+          extractCollectionNames(conn.tools).includes("REGISTRY_APP") ||
+          hasRegistryListTool(conn.tools)
+        );
       });
 }

@@ -28,9 +28,9 @@ export function MonitorRunHistory({
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-2">
           <div>
-            <h3 className="text-sm font-semibold">Run history</h3>
+            <h3 className="text-sm font-semibold">QA run history</h3>
             <p className="text-[11px] text-muted-foreground">
-              Browse previous monitor executions and reopen their logs.
+              Browse previous QA executions and reopen their logs.
             </p>
           </div>
           <Button size="sm" variant="outline" onClick={() => query.refetch()}>
@@ -40,7 +40,7 @@ export function MonitorRunHistory({
         <div className="space-y-2 max-h-[520px] overflow-auto">
           {runs.length === 0 && (
             <p className="text-xs text-muted-foreground text-center py-4">
-              No runs yet. Start monitoring from the Dashboard tab.
+              No runs yet. Start QA from the Dashboard tab.
             </p>
           )}
           {runs.map((run) => {

@@ -53,6 +53,12 @@ export interface RunCodeOptions {
   timeoutMs: number;
 }
 
+export interface RunTransformOptions {
+  input: unknown;
+  code: string;
+  timeoutMs: number;
+}
+
 export interface RunCodeResult {
   returnValue?: unknown;
   error?: string;
@@ -131,6 +137,92 @@ export async function runCode({
     const awaited = ctx.unwrapResult(awaitedRes);
 
     // Drain any final microtasks (best-effort)
+    if (ctx.runtime.hasPendingJob()) {
+      executePendingJobs(ctx);
+    }
+
+    const value = ctx.dump(awaited);
+    awaited.dispose();
+
+    return { returnValue: value, consoleLogs: consoleBuiltin.logs };
+  } catch (err) {
+    console.log(err);
+    return { error: inspect(err), consoleLogs: consoleBuiltin.logs };
+  }
+}
+
+/**
+ * Run sandboxed JS that transforms an input value.
+ *
+ * The code must `export default (input) => ...` where `input` is the
+ * injected value. No tools are available — this is a pure transformation.
+ */
+export async function runTransform({
+  input,
+  code,
+  timeoutMs,
+}: RunTransformOptions): Promise<RunCodeResult> {
+  using runtime = await createSandboxRuntime({
+    memoryLimitBytes: 32 * 1024 * 1024,
+    stackSizeBytes: 512 * 1024,
+  });
+
+  using ctx = runtime.newContext({ interruptAfterMs: timeoutMs });
+  using consoleBuiltin = installConsole(ctx);
+
+  try {
+    const moduleRes = ctx.evalCode(code, "index.mjs", {
+      strip: true,
+      strict: true,
+      type: "module",
+    });
+    const exportsOrPromiseHandle = ctx.unwrapResult(moduleRes);
+
+    const inputHandle = toQuickJS(ctx, input);
+    ctx.setProp(ctx.global, "input", inputHandle);
+
+    const exportsHandle = ctx.runtime.hasPendingJob()
+      ? ctx.unwrapResult(
+          await resolvePromiseWithJobPump(
+            ctx,
+            exportsOrPromiseHandle,
+            timeoutMs,
+          ),
+        )
+      : exportsOrPromiseHandle;
+
+    if (exportsHandle !== exportsOrPromiseHandle) {
+      exportsOrPromiseHandle.dispose();
+    }
+
+    const userFnHandle = ctx.getProp(exportsHandle, "default");
+    const userFnType = ctx.typeof(userFnHandle);
+
+    if (userFnType !== "function") {
+      userFnHandle.dispose();
+      exportsHandle.dispose();
+      inputHandle.dispose();
+      return {
+        error: `Code must export default a function (input). Got ${userFnType}. Example: export default (input) => { return input.items.map(i => i.name); }`,
+        consoleLogs: consoleBuiltin.logs,
+      };
+    }
+
+    const callRes = ctx.callFunction(userFnHandle, ctx.undefined, inputHandle);
+    inputHandle.dispose();
+    userFnHandle.dispose();
+    exportsHandle.dispose();
+
+    const callHandle = ctx.unwrapResult(callRes);
+
+    const awaitedRes = await resolvePromiseWithJobPump(
+      ctx,
+      callHandle,
+      timeoutMs,
+    );
+    callHandle.dispose();
+    const awaited = ctx.unwrapResult(awaitedRes);
+
     if (ctx.runtime.hasPendingJob()) {
       executePendingJobs(ctx);
     }

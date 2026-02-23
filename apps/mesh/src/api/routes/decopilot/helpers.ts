@@ -19,6 +19,7 @@ import type { Context } from "hono";
 
 import type { MeshContext, OrganizationScope } from "@/core/mesh-context";
 import { MCP_TOOL_CALL_TIMEOUT_MS } from "../proxy";
+import { estimateJsonTokens } from "./built-in-tools/read-tool-output";
 
 /**
  * Tool approval levels determine which tools require user approval before executing
@@ -63,14 +64,16 @@ export function ensureOrganization(
  */
 export async function toolsFromMCP(
   client: Client,
+  toolOutputMap: Map<string, string>,
   writer?: UIMessageStreamWriter,
   toolApprovalLevel: ToolApprovalLevel = "none",
+  options?: { disableOutputTruncation?: boolean },
 ): Promise<ToolSet> {
+  const truncate = !options?.disableOutputTruncation;
   const list = await client.listTools();
 
   const toolEntries = list.tools.map((t) => {
-    const { name, title, description, inputSchema, outputSchema, annotations } =
-      t;
+    const { name, title, description, inputSchema, annotations } = t;
 
     return [
       name,
@@ -78,9 +81,7 @@ export async function toolsFromMCP(
         title: title ?? name,
         description,
         inputSchema: jsonSchema(inputSchema as JSONSchema7),
-        outputSchema: outputSchema
-          ? jsonSchema(outputSchema as JSONSchema7)
-          : undefined,
+        outputSchema: undefined,
         needsApproval: toolNeedsApproval(
           toolApprovalLevel,
           annotations?.readOnlyHint,
@@ -114,7 +115,23 @@ export async function toolsFromMCP(
             }
           }
         },
-        toModelOutput: ({ output }) => {
+        toModelOutput: async ({ output, toolCallId }) => {
+          if (truncate) {
+            const tokens = estimateJsonTokens(
+              output.structuredContent ?? output.content,
+            );
+            if (tokens > 4000) {
+              toolOutputMap.set(
+                toolCallId,
+                JSON.stringify(output.structuredContent ?? output.content),
+              );
+
+              return {
+                type: "text",
+                value: `Tool call ${toolCallId} output is too long to display (${tokens} tokens), use the read_tool_output tool`,
+              };
+            }
+          }
           if (output.isError) {
             const textContent = output.content
               .map((c) => (c.type === "text" ? c.text : null))

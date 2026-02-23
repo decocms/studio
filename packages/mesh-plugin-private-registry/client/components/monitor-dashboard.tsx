@@ -406,9 +406,9 @@ export function MonitorDashboard({
         <Card className="p-4 space-y-3">
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
-              <h3 className="text-sm font-semibold">Current Run</h3>
+              <h3 className="text-sm font-semibold">Current QA Run</h3>
               <p className="text-xs text-muted-foreground">
-                Start a full validation run and track results in real time.
+                Start a full QA validation run and track results in real time.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -428,7 +428,7 @@ export function MonitorDashboard({
                   ? "Starting..."
                   : runningRun && runningRun.id !== activeRunId
                     ? "Start another run"
-                    : "Start test run"}
+                    : "Start QA run"}
               </Button>
               <Button
                 size="sm"
@@ -445,9 +445,7 @@ export function MonitorDashboard({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <label className="space-y-1">
-              <span className="text-[11px] text-muted-foreground">
-                Monitor mode
-              </span>
+              <span className="text-[11px] text-muted-foreground">QA mode</span>
               <select
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                 value={selectedMode}
@@ -462,7 +460,7 @@ export function MonitorDashboard({
 
             <label className="space-y-1">
               <span className="text-[11px] text-muted-foreground">
-                Run history (pick a previous run)
+                QA run history (pick a previous run)
               </span>
               <select
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
@@ -510,7 +508,7 @@ export function MonitorDashboard({
                 )}
                 {isRunning && run.current_item_id && (
                   <span className="text-xs text-muted-foreground truncate max-w-64">
-                    Monitoring:{" "}
+                    QA on:{" "}
                     <span className="font-mono">{run.current_item_id}</span>
                   </span>
                 )}
@@ -561,7 +559,7 @@ export function MonitorDashboard({
           <div className="flex items-center justify-between gap-2">
             <div>
               <h3 className="text-sm font-semibold">
-                Results log ({resultItems.length})
+                QA results log ({resultItems.length})
               </h3>
               <p className="text-[11px] text-muted-foreground">
                 Live per-MCP test output for the selected run.

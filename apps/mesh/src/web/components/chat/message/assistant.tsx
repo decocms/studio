@@ -11,10 +11,10 @@ import {
   Target04,
 } from "@untitledui/icons";
 import type { ToolUIPart } from "ai";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { MemoizedMarkdown } from "../markdown.tsx";
 import type { ChatMessage } from "../types.ts";
-import { UsageStats } from "../usage-stats.tsx";
+import { MessageUsageStats } from "../usage-stats.tsx";
 import { MessageTextPart } from "./parts/text-part.tsx";
 import {
   GenericToolCallPart,
@@ -22,7 +22,7 @@ import {
   UserAskPart,
 } from "./parts/tool-call-part/index.ts";
 import { SmartAutoScroll } from "./smart-auto-scroll.tsx";
-import { useFilterParts, type DataParts } from "./use-filter-parts.ts";
+import { type DataParts, useFilterParts } from "./use-filter-parts.ts";
 import { addUsage, emptyUsageStats } from "@decocms/mesh-sdk";
 
 type ThinkingStage = "planning" | "thinking";
@@ -83,14 +83,62 @@ function TypingIndicator() {
   );
 }
 
+function ThoughtSummaryHeader({
+  isStreaming,
+  thoughtMessage,
+  isExpanded,
+  reasoningTokens,
+}: {
+  isStreaming: boolean;
+  thoughtMessage: string;
+  isExpanded: boolean;
+  reasoningTokens: number;
+}) {
+  return (
+    <span className="flex items-center gap-1.5">
+      {isStreaming ? (
+        <Stars01 className="text-muted-foreground shrink-0 shimmer" size={14} />
+      ) : (
+        <span className="relative w-[14px] h-[14px] shrink-0">
+          <ChevronRight
+            className={cn(
+              "absolute inset-0 text-muted-foreground transition-transform",
+              isExpanded && "rotate-90",
+              "opacity-0 group-hover/thought-summary:opacity-100",
+            )}
+            size={14}
+          />
+          <Lightbulb01
+            className="absolute inset-0 text-muted-foreground shrink-0 opacity-100 group-hover/thought-summary:opacity-0 transition-opacity"
+            size={14}
+          />
+        </span>
+      )}
+      <span
+        className={cn(
+          "text-[15px] text-muted-foreground",
+          isStreaming && "shimmer",
+        )}
+      >
+        {isStreaming ? "Thinking..." : thoughtMessage}
+      </span>
+      <span className="text-[10px] font-mono tabular-nums text-muted-foreground/50 ml-2 mt-px">
+        {reasoningTokens.toLocaleString()} tokens
+      </span>
+    </span>
+  );
+}
+
 function ThoughtSummary({
   duration,
   parts,
+  reasoningTokens,
   id,
   isStreaming,
 }: {
   duration: number | null;
   parts: ReasoningPart[];
+  reasoningTokens: number;
   id: string;
   isStreaming: boolean;
 }) {
@@ -108,6 +156,29 @@ function ThoughtSummary({
     }
   }, [parts, isStreaming]);
 
+  const thoughtMessage = duration
+    ? duration / 1000 > 1
+      ? `Thought for ${(duration / 1000).toFixed(1)}s`
+      : "Thought"
+    : "Thought";
+
+  const allPartsRedacted = parts.every((part) =>
+    part.text?.includes("REDACTED"),
+  );
+
+  if (allPartsRedacted) {
+    return (
+      <div className="mb-2">
+        <ThoughtSummaryHeader
+          isStreaming={isStreaming}
+          thoughtMessage={thoughtMessage}
+          isExpanded={isExpanded}
+          reasoningTokens={reasoningTokens}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col mb-2">
       <Collapsible
@@ -123,41 +194,12 @@ function ThoughtSummary({
               isStreaming && "cursor-default",
             )}
           >
-            <span className="flex items-center gap-1.5">
-              {isStreaming ? (
-                <Stars01
-                  className="text-muted-foreground shrink-0 shimmer"
-                  size={14}
-                />
-              ) : (
-                <span className="relative w-[14px] h-[14px] shrink-0">
-                  <ChevronRight
-                    className={cn(
-                      "absolute inset-0 text-muted-foreground transition-transform",
-                      isExpanded && "rotate-90",
-                      "opacity-0 group-hover/thought-summary:opacity-100",
-                    )}
-                    size={14}
-                  />
-                  <Lightbulb01
-                    className="absolute inset-0 text-muted-foreground shrink-0 opacity-100 group-hover/thought-summary:opacity-0 transition-opacity"
-                    size={14}
-                  />
-                </span>
-              )}
-              <span
-                className={cn(
-                  "text-[15px] text-muted-foreground",
-                  isStreaming && "shimmer",
-                )}
-              >
-                {isStreaming
-                  ? "Thinking..."
-                  : duration !== null
-                    ? `Thought for ${(duration / 1000).toFixed(1)}s`
-                    : "Thought"}
-              </span>
-            </span>
+            <ThoughtSummaryHeader
+              isStreaming={isStreaming}
+              thoughtMessage={thoughtMessage}
+              isExpanded={isExpanded}
+              reasoningTokens={reasoningTokens}
+            />
           </button>
         </CollapsibleTrigger>
 
@@ -351,6 +393,7 @@ export function MessageAssistant({
               parts={reasoningParts}
               id={message.id}
               isStreaming={isStreaming}
+              reasoningTokens={message.metadata?.usage?.reasoningTokens ?? 0}
             />
           )}
           {message.parts.map((part, index) => {
@@ -364,7 +407,7 @@ export function MessageAssistant({
                 key={`${message.id}-${index}`}
                 part={part}
                 id={message.id}
-                usageStats={isLastPart && <UsageStats usage={usage} />}
+                usageStats={isLastPart && <MessageUsageStats usage={usage} />}
                 dataParts={dataParts}
               />
             );

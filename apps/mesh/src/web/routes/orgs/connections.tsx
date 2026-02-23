@@ -585,13 +585,11 @@ function OrgMcpsContent() {
     queryClient.invalidateQueries({
       predicate: (query) => {
         const key = query.queryKey;
-        if (key[0] !== "mcp" || key[1] !== "client" || key[3] !== "tool-call") {
-          return false;
-        }
-        const toolName = key[4];
+        // Match collectionList/collectionItem keys: [client, scopeKey, "", "collection", collectionName, ...]
         return (
-          typeof toolName === "string" &&
-          toolName.startsWith("COLLECTION_CONNECTIONS_")
+          key[1] === org.id &&
+          key[3] === "collection" &&
+          key[4] === "CONNECTIONS"
         );
       },
     });

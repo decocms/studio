@@ -71,11 +71,12 @@ export interface UseCollectionListOptions<T extends CollectionEntity> {
  * Query key type for collection list queries
  */
 export type CollectionQueryKey = readonly [
-  "mcp",
-  "client",
   unknown,
-  "tool-call",
   string,
+  string,
+  "collection",
+  string,
+  "list",
   string,
 ];
 
@@ -193,12 +194,17 @@ export function useCollectionItem<T extends CollectionEntity>(
   itemId: string | undefined,
   client: Client,
 ) {
-  void scopeKey; // Reserved for future use (e.g., cache scoping)
   const upperName = collectionName.toUpperCase();
   const getToolName = `COLLECTION_${upperName}_GET`;
 
   const { data } = useSuspenseQuery({
-    queryKey: KEYS.mcpToolCall(client, getToolName, itemId ?? ""),
+    queryKey: KEYS.collectionItem(
+      client,
+      scopeKey,
+      "",
+      upperName,
+      itemId ?? "",
+    ),
     queryFn: async () => {
       if (!itemId) {
         return { item: null } satisfies CollectionGetOutput<T>;
@@ -240,7 +246,6 @@ export function useCollectionList<T extends CollectionEntity>(
   client: Client | null | undefined,
   options: UseCollectionListOptions<T> = {},
 ) {
-  void scopeKey; // Reserved for future use (e.g., cache scoping)
   const {
     searchTerm,
     filters,
@@ -269,7 +274,13 @@ export function useCollectionList<T extends CollectionEntity>(
   };
 
   const argsKey = JSON.stringify(toolArguments);
-  const queryKey = KEYS.mcpToolCall(client, listToolName, argsKey);
+  const queryKey = KEYS.collectionList(
+    client,
+    scopeKey,
+    "",
+    upperName,
+    argsKey,
+  );
 
   const { data } = useSuspenseQuery({
     queryKey,
@@ -307,7 +318,7 @@ export function useCollectionList<T extends CollectionEntity>(
 export function buildCollectionQueryKey<T extends CollectionEntity>(
   client: Client | null | undefined,
   collectionName: string,
-  _scopeKey: string,
+  scopeKey: string,
   options: UseCollectionListOptions<T> = {},
 ): CollectionQueryKey {
   const {
@@ -321,7 +332,6 @@ export function buildCollectionQueryKey<T extends CollectionEntity>(
   } = options;
 
   const upperName = collectionName.toUpperCase();
-  const listToolName = `COLLECTION_${upperName}_LIST`;
 
   const where = buildWhereExpression(searchTerm, filters, searchFields);
   const orderBy = buildOrderByExpression(
@@ -338,7 +348,7 @@ export function buildCollectionQueryKey<T extends CollectionEntity>(
   };
 
   const argsKey = JSON.stringify(toolArguments);
-  return KEYS.mcpToolCall(client, listToolName, argsKey);
+  return KEYS.collectionList(client, scopeKey, "", upperName, argsKey);
 }
 
 /**
@@ -354,26 +364,20 @@ export function useCollectionActions<T extends CollectionEntity>(
   collectionName: string,
   client: Client,
 ) {
-  void scopeKey; // Reserved for future use (e.g., cache scoping)
   const queryClient = useQueryClient();
   const upperName = collectionName.toUpperCase();
   const createToolName = `COLLECTION_${upperName}_CREATE`;
   const updateToolName = `COLLECTION_${upperName}_UPDATE`;
   const deleteToolName = `COLLECTION_${upperName}_DELETE`;
 
-  // Invalidate all tool call queries for this collection
+  // Invalidate all collection queries for this scope and collection
   const invalidateCollection = () => {
     queryClient.invalidateQueries({
       predicate: (query) => {
         const key = query.queryKey;
-        // Match mcpToolCall keys: ["mcp", "client", client, "tool-call", toolName, argsKey]
-        if (key[0] !== "mcp" || key[1] !== "client" || key[3] !== "tool-call") {
-          return false;
-        }
-        const toolName = key[4];
+        // Match collectionList/collectionItem keys: [client, scopeKey, "", "collection", collectionName, ...]
         return (
-          typeof toolName === "string" &&
-          toolName.startsWith(`COLLECTION_${upperName}_`)
+          key[1] === scopeKey && key[3] === "collection" && key[4] === upperName
         );
       },
     });

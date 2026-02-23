@@ -11,7 +11,7 @@ import {
 } from "@deco/ui/components/collapsible.tsx";
 import { useAutoScroll } from "@deco/ui/hooks/use-auto-scroll.ts";
 import { useCopy } from "@deco/ui/hooks/use-copy.ts";
-import { UsageStats } from "../../../usage-stats.tsx";
+import { MessageUsageStats } from "../../../usage-stats.tsx";
 import type { UsageStats as UsageStatsType } from "@/web/lib/usage-utils.ts";
 import { ToolAnnotationBadges } from "@/web/components/tools";
 import type { ToolDefinition } from "@decocms/mesh-sdk";
@@ -98,7 +98,7 @@ export function ToolCallShell({
                   {latency.toFixed(2)}s
                 </span>
               )}
-              <UsageStats usage={usage} />
+              <MessageUsageStats usage={usage} />
               {annotations && (
                 <ToolAnnotationBadges annotations={annotations} />
               )}

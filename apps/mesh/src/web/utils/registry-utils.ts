@@ -18,15 +18,18 @@ export function findListToolName(
   );
   if (preferred) return preferred.name;
 
+  const privateRegistryList = tools.find(
+    (tool) => tool.name === "REGISTRY_ITEM_LIST",
+  );
+  if (privateRegistryList) return privateRegistryList.name;
+
   const registryList = tools.find(
     (tool) =>
       tool.name.startsWith("COLLECTION_REGISTRY_APP_") &&
       tool.name.endsWith("_LIST"),
   );
   if (registryList) return registryList.name;
-
-  const listTool = tools.find((tool) => tool.name.endsWith("_LIST"));
-  return listTool?.name ?? "";
+  return "";
 }
 
 /**
@@ -43,15 +46,18 @@ export function findFiltersToolName(
   );
   if (preferred) return preferred.name;
 
+  const privateRegistryFilters = tools.find(
+    (tool) => tool.name === "REGISTRY_ITEM_FILTERS",
+  );
+  if (privateRegistryFilters) return privateRegistryFilters.name;
+
   const filtersTool = tools.find(
     (tool) =>
       tool.name.startsWith("COLLECTION_REGISTRY_APP_") &&
       tool.name.endsWith("_FILTERS"),
   );
   if (filtersTool) return filtersTool.name;
-
-  const genericFilters = tools.find((tool) => tool.name.endsWith("_FILTERS"));
-  return genericFilters?.name ?? "";
+  return "";
 }
 
 /**
@@ -68,15 +74,26 @@ export function findRegistryToolBySuffix(
   );
   if (preferred) return preferred.name;
 
+  const privateRegistryToolNameBySuffix: Record<
+    "_GET" | "_VERSIONS" | "_SEARCH",
+    string
+  > = {
+    _GET: "REGISTRY_ITEM_GET",
+    _VERSIONS: "REGISTRY_ITEM_VERSIONS",
+    _SEARCH: "REGISTRY_ITEM_SEARCH",
+  };
+  const privateRegistryTool = tools.find(
+    (tool) => tool.name === privateRegistryToolNameBySuffix[suffix],
+  );
+  if (privateRegistryTool) return privateRegistryTool.name;
+
   const registryTool = tools.find(
     (tool) =>
       tool.name.startsWith("COLLECTION_REGISTRY_APP_") &&
       tool.name.endsWith(suffix),
   );
   if (registryTool) return registryTool.name;
-
-  const genericTool = tools.find((tool) => tool.name.endsWith(suffix));
-  return genericTool?.name ?? "";
+  return "";
 }
 
 /**

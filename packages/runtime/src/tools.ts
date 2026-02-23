@@ -7,7 +7,10 @@ import {
 } from "@decocms/bindings";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport as HttpServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import type { GetPromptResult } from "@modelcontextprotocol/sdk/types.js";
+import type {
+  GetPromptResult,
+  ToolAnnotations,
+} from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import type { ZodRawShape, ZodSchema, ZodTypeAny } from "zod";
 import { BindingRegistry } from "./bindings.ts";
@@ -47,6 +50,7 @@ export interface Tool<
   _meta?: Record<string, unknown>;
   id: string;
   description?: string;
+  annotations?: ToolAnnotations;
   inputSchema: TSchemaIn;
   outputSchema?: TSchemaOut;
   execute(
@@ -76,6 +80,7 @@ export type CreatedTool = {
   _meta?: Record<string, unknown>;
   id: string;
   description?: string;
+  annotations?: ToolAnnotations;
   inputSchema: ZodTypeAny;
   outputSchema?: ZodTypeAny;
   streamable?: true;
@@ -86,8 +91,11 @@ export type CreatedTool = {
   }): Promise<unknown>;
 };
 
-// Re-export GetPromptResult for external use
-export type { GetPromptResult } from "@modelcontextprotocol/sdk/types.js";
+// Re-export types for external use
+export type {
+  GetPromptResult,
+  ToolAnnotations,
+} from "@modelcontextprotocol/sdk/types.js";
 
 /**
  * Prompt argument schema shape - must be string types per MCP specification.
@@ -713,6 +721,7 @@ export const createMCPServer = <
             ...(tool._meta ?? {}),
           },
           description: tool.description,
+          annotations: tool.annotations,
           inputSchema:
             tool.inputSchema && "shape" in tool.inputSchema
               ? (tool.inputSchema.shape as ZodRawShape)

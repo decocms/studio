@@ -12,12 +12,14 @@ import { createAgentSearchTool } from "./agent-search";
 import { createSubtaskTool } from "./subtask";
 import { userAskTool } from "./user-ask";
 import type { ModelProvider, ModelsConfig } from "../types";
+import { createReadToolOutputTool } from "./read-tool-output";
 
 export interface BuiltinToolParams {
   modelProvider: ModelProvider;
   organization: OrganizationScope;
   models: ModelsConfig;
   toolApprovalLevel?: ToolApprovalLevel;
+  toolOutputMap: Map<string, string>;
 }
 
 /**
@@ -35,6 +37,7 @@ export function getBuiltInTools(
     organization,
     models,
     toolApprovalLevel = "none",
+    toolOutputMap,
   } = params;
   return {
     user_ask: userAskTool,
@@ -56,5 +59,8 @@ export function getBuiltInTools(
       },
       ctx,
     ),
+    read_tool_output: createReadToolOutputTool({
+      toolOutputMap,
+    }),
   } as const;
 }

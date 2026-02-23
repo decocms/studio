@@ -123,7 +123,11 @@ export default function StorePage() {
       })) as { structuredContent?: Record<string, unknown> };
       return (result.structuredContent ?? result) as {
         config?: {
-          settings?: { registryName?: string; registryIcon?: string };
+          settings?: {
+            registryName?: string;
+            registryIcon?: string;
+            storePrivateOnly?: boolean;
+          };
         };
       };
     },
@@ -163,6 +167,9 @@ export default function StorePage() {
   // If not found, that's fine: the connection may have been deleted/changed.
   const effectiveRegistry =
     selectedRegistry?.id || registryConnections[0]?.id || "";
+  const storePrivateOnlyForSelf =
+    effectiveRegistry === selfMcpId &&
+    registryBranding?.storePrivateOnly === true;
 
   // Well-known registries to show in select (hidden/less prominent)
   const wellKnownRegistriesForSelect = [getWellKnownRegistryConnection(org.id)];
@@ -244,7 +251,10 @@ export default function StorePage() {
             }
           >
             {effectiveRegistry ? (
-              <StoreDiscovery registryId={effectiveRegistry} />
+              <StoreDiscovery
+                registryId={effectiveRegistry}
+                storePrivateOnly={storePrivateOnlyForSelf}
+              />
             ) : (
               <div className="flex flex-col items-center justify-center h-full">
                 <StoreRegistryEmptyState

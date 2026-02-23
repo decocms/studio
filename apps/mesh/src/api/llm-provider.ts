@@ -141,7 +141,35 @@ function convertCallOptionsForBinding(
       return {
         ...msgRest,
         content: (msg.content as unknown as Record<string, unknown>[]).map(
-          ({ providerOptions: _partOpts, ...part }) => part,
+          ({ providerOptions: _partOpts, ...part }) => {
+            // Convert execution-denied tool results to error-text so upstream
+            // LLM providers (Anthropic, OpenRouter, etc.) don't reject them.
+            // The AI SDK uses execution-denied internally but providers only
+            // understand standard output types like error-text.
+            if (
+              part.type === "tool-result" &&
+              (part as Record<string, unknown>).output &&
+              (
+                (part as Record<string, unknown>).output as Record<
+                  string,
+                  unknown
+                >
+              )?.type === "execution-denied"
+            ) {
+              const output = (part as Record<string, unknown>).output as Record<
+                string,
+                unknown
+              >;
+              return {
+                ...part,
+                output: {
+                  type: "error-text",
+                  value: (output.reason as string) ?? "Tool execution denied.",
+                },
+              };
+            }
+            return part;
+          },
         ),
       };
     }

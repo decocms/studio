@@ -17,7 +17,7 @@ type NavItem = {
   label: string;
   count?: number;
   icon: ComponentType<{ size?: number; className?: string }>;
-  tab: "items" | "requests" | "monitor" | "settings";
+  tab: "items" | "requests" | "qa" | "settings";
 };
 
 function HeaderTabs({
@@ -70,13 +70,14 @@ export default function RegistryLayout() {
     registryLLMModelId,
     acceptPublishRequests,
     requireApiToken,
+    storePrivateOnly,
   } = useRegistryConfig(PLUGIN_ID);
   const pendingQuery = usePublishRequestCount();
   const brokenMonitors = useBrokenMonitorsCount();
 
   // Build a stable key from server config so SettingsPage re-mounts when
   // the persisted values change (e.g. after save).
-  const settingsKey = `${registryName}|${registryIcon}|${registryLLMConnectionId}|${registryLLMModelId}|${acceptPublishRequests}|${requireApiToken}`;
+  const settingsKey = `${registryName}|${registryIcon}|${registryLLMConnectionId}|${registryLLMModelId}|${acceptPublishRequests}|${requireApiToken}|${storePrivateOnly}`;
 
   // If publish requests were disabled while viewing requests tab, redirect
   if (!acceptPublishRequests && activeTab === "requests") {
@@ -104,7 +105,7 @@ export default function RegistryLayout() {
           },
         ]
       : []),
-    { id: "monitor", label: "Monitor", icon: Tool02, tab: "monitor" },
+    { id: "qa", label: "QA", icon: Tool02, tab: "qa" },
     { id: "settings", label: "Settings", icon: Settings01, tab: "settings" },
   ];
 
@@ -148,7 +149,7 @@ export default function RegistryLayout() {
         {activeTab === "requests" && acceptPublishRequests && (
           <RegistryRequestsPage />
         )}
-        {activeTab === "monitor" && <RegistryMonitorPage />}
+        {activeTab === "qa" && <RegistryMonitorPage />}
         {activeTab === "settings" && (
           <RegistrySettingsPage
             key={settingsKey}
@@ -158,6 +159,7 @@ export default function RegistryLayout() {
             initialLLMModelId={registryLLMModelId}
             initialAcceptPublishRequests={acceptPublishRequests}
             initialRequireApiToken={requireApiToken}
+            initialStorePrivateOnly={storePrivateOnly}
             revealedKey={revealedKey}
             onRevealedKeyChange={setRevealedKey}
           />

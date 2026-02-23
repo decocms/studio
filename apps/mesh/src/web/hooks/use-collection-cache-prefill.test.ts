@@ -34,10 +34,9 @@ describe("Collection Cache Prefill Logic", () => {
 
     expect(queryKey).not.toBeNull();
     if (queryKey) {
-      expect(queryKey[0]).toBe("mcp");
-      expect(queryKey[1]).toBe("client");
-      expect(queryKey[3]).toBe("tool-call");
-      expect(queryKey[4]).toBe("COLLECTION_THREAD_MESSAGES_LIST");
+      expect(queryKey[1]).toBe("org-123");
+      expect(queryKey[3]).toBe("collection");
+      expect(queryKey[4]).toBe("THREAD_MESSAGES");
     }
   });
 
@@ -50,11 +49,12 @@ describe("Collection Cache Prefill Logic", () => {
     );
 
     expect(queryKey).toEqual([
-      "mcp",
-      "client",
       null,
-      "tool-call",
-      "COLLECTION_THREAD_MESSAGES_LIST",
+      "org-123",
+      "",
+      "collection",
+      "THREAD_MESSAGES",
+      "list",
       JSON.stringify({
         orderBy: [{ field: ["updated_at"], direction: "asc" }],
         limit: 100,
@@ -72,11 +72,12 @@ describe("Collection Cache Prefill Logic", () => {
     );
 
     expect(queryKey).toEqual([
-      "mcp",
-      "client",
       undefined,
-      "tool-call",
-      "COLLECTION_THREAD_MESSAGES_LIST",
+      "org-123",
+      "",
+      "collection",
+      "THREAD_MESSAGES",
+      "list",
       JSON.stringify({
         orderBy: [{ field: ["updated_at"], direction: "asc" }],
         limit: 100,
@@ -173,8 +174,8 @@ describe("Collection Cache Prefill Logic", () => {
     expect(messagesKey).not.toBeNull();
 
     if (threadsKey && messagesKey) {
-      expect(threadsKey[4]).toBe("COLLECTION_THREADS_LIST");
-      expect(messagesKey[4]).toBe("COLLECTION_THREAD_MESSAGES_LIST");
+      expect(threadsKey[4]).toBe("THREADS");
+      expect(messagesKey[4]).toBe("THREAD_MESSAGES");
     }
   });
 });
