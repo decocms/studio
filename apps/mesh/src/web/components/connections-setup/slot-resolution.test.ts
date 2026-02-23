@@ -64,7 +64,7 @@ describe("resolveInitialPhase", () => {
     expect(resolveInitialPhase(connections, "my-item")).toBe("picker");
   });
 
-  it("returns 'done' for first active match when multiple exist", () => {
+  it("returns 'done' when at least one active match exists among multiple", () => {
     const connections: ConnectionEntity[] = [
       makeConn({
         status: "inactive",
