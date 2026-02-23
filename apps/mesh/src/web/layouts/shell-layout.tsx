@@ -78,36 +78,6 @@ function PersistentSidebarProvider({ children }: PropsWithChildren) {
   );
 }
 
-/**
- * This component renders the chat panel and the main content.
- * It's important to keep it like this to avoid unnecessary re-renders.
- */
-function ChatPanels({ disableChat = false }: { disableChat?: boolean }) {
-  const [chatOpen] = useDecoChatOpen();
-
-  return (
-    <ResizablePanelGroup direction="horizontal">
-      <ResizablePanel className="bg-background">
-        <Outlet />
-      </ResizablePanel>
-      {!disableChat && (
-        <>
-          <ResizableHandle withHandle={chatOpen} />
-          <PersistentResizablePanel
-            className={cn(chatOpen ? "max-w-none bg-sidebar" : "max-w-0")}
-          >
-            <div className="h-full pl-1.5 pr-[5px] pb-[5px]">
-              <div className="h-full bg-card rounded-xl overflow-hidden border border-sidebar-border shadow-sm">
-                <ChatPanel />
-              </div>
-            </div>
-          </PersistentResizablePanel>
-        </>
-      )}
-    </ResizablePanelGroup>
-  );
-}
-
 function ShellLayoutInner({
   isStudio,
   isHomeRoute,
@@ -131,18 +101,43 @@ function ShellLayoutInner({
       }
     >
       <MeshSidebar onCreateProject={onCreateProject} />
-      <SidebarInset
-        className={cn(
-          "flex flex-col rounded-tl-xl overflow-hidden border-t border-l border-sidebar-border transition-[border-radius] duration-300",
-          chatOpen && "rounded-tr-xl border-r",
-        )}
-      >
-        <TopbarPortalProvider>
-          <ProjectTopbar />
-          <div className="flex-1 overflow-hidden">
-            <ChatPanels disableChat={isHomeRoute} />
-          </div>
-        </TopbarPortalProvider>
+      {/* SidebarInset is just a flex container — card styling lives on the inner panels */}
+      <SidebarInset className="overflow-hidden">
+        <ResizablePanelGroup direction="horizontal" className="h-full">
+          {/* Main content card — border + rounding scoped to this panel only */}
+          <ResizablePanel
+            className={cn(
+              "flex flex-col min-w-0 bg-card overflow-hidden",
+              "border-t border-l border-sidebar-border",
+              "rounded-tl-xl rounded-tr-xl",
+              "transition-[border-radius] duration-300",
+              chatOpen && "border-r",
+            )}
+          >
+            <TopbarPortalProvider>
+              <ProjectTopbar />
+              <div className="flex-1 overflow-hidden">
+                <Outlet />
+              </div>
+            </TopbarPortalProvider>
+          </ResizablePanel>
+
+          {/* Chat card — separate floating card, no shared border with main content */}
+          {!isHomeRoute && (
+            <>
+              <ResizableHandle withHandle={chatOpen} />
+              <PersistentResizablePanel
+                className={cn(chatOpen ? "max-w-none bg-sidebar" : "max-w-0")}
+              >
+                <div className="h-full pl-1.5 pr-[5px] pb-[5px]">
+                  <div className="h-full bg-card rounded-xl overflow-hidden border border-sidebar-border shadow-sm">
+                    <ChatPanel />
+                  </div>
+                </div>
+              </PersistentResizablePanel>
+            </>
+          )}
+        </ResizablePanelGroup>
       </SidebarInset>
     </SidebarLayout>
   );
