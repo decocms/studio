@@ -1,6 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import type { ConnectionEntity } from "@decocms/mesh-sdk";
-import { resolveInitialPhase } from "./slot-resolution";
+import {
+  findMatchingConnections,
+  resolveInitialPhase,
+} from "./slot-resolution";
 
 function makeConn(
   overrides: Partial<ConnectionEntity> & { metadata?: Record<string, unknown> },
@@ -78,13 +81,12 @@ describe("resolveInitialPhase", () => {
 });
 
 describe("findMatchingConnections", () => {
-  it("filters connections by registry_item_id", async () => {
+  it("filters connections by registry_item_id", () => {
     const connections: ConnectionEntity[] = [
       makeConn({ id: "conn_a", metadata: { registry_item_id: "item-1" } }),
       makeConn({ id: "conn_b", metadata: { registry_item_id: "item-2" } }),
       makeConn({ id: "conn_c", metadata: { registry_item_id: "item-1" } }),
     ];
-    const { findMatchingConnections } = await import("./slot-resolution");
     const result = findMatchingConnections(connections, "item-1");
     expect(result).toHaveLength(2);
     expect(result.map((c) => c.id)).toEqual(["conn_a", "conn_c"]);
