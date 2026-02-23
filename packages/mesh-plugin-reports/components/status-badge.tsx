@@ -47,7 +47,7 @@ export function StatusBadge({
   status: ReportStatus;
   size?: "sm" | "default";
 }) {
-  const cfg = STATUS_CONFIG[status];
+  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG["info"];
   const Icon = cfg.icon;
   const isSmall = size === "sm";
   return (

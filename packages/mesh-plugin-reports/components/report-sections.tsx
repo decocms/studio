@@ -19,11 +19,15 @@ import {
   ArrowDown,
   ArrowUp,
   CheckVerified02,
+  ChevronDown,
+  ChevronRight,
+  Columns02,
   File02,
   Hash02,
   Minus,
   Rows03,
 } from "@untitledui/icons";
+import { Fragment, useState } from "react";
 
 // ---------------------------------------------------------------------------
 // Status helpers
@@ -257,33 +261,52 @@ function DeltaBadge({ delta }: { delta: number }) {
   );
 }
 
-function RankedListSection({
-  title,
-  rows,
-}: {
-  title?: string;
+function buildMockedPreviousRows(rows: RankedListRow[]): RankedListRow[] {
+  if (rows.length === 0) return [];
+
+  const shuffled = [...rows];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const swapWith = Math.max(
+      0,
+      Math.min(
+        shuffled.length - 1,
+        i + (i % 3 === 0 ? -2 : i % 2 === 0 ? 1 : -1),
+      ),
+    );
+    [shuffled[i], shuffled[swapWith]] = [shuffled[swapWith], shuffled[i]];
+  }
+
+  return shuffled.map((row, idx) => ({
+    ...row,
+    position: idx + 1,
+    delta: 0,
+    reference_position: undefined,
+  }));
+}
+
+interface RankedTableProps {
   rows: RankedListRow[];
-}) {
-  const noteKeys: string[] = (() => {
-    for (const row of rows) {
-      if (row.note && typeof row.note === "object") {
-        return Object.keys(row.note);
-      }
-    }
-    return [];
-  })();
+  label?: string;
+}
+
+function RankedTable({ rows, label }: RankedTableProps) {
+  const [expanded, setExpanded] = useState<Record<number, boolean>>({});
 
   return (
-    <div className="space-y-6">
-      {title && <SectionHeader icon={Rows03} title={title} />}
-      <div className="border border-border rounded-lg overflow-hidden">
+    <div className="flex flex-col gap-2 min-w-0 flex-1">
+      {label && (
+        <span className="text-xs font-mono uppercase text-muted-foreground opacity-60 tracking-wide px-1">
+          {label}
+        </span>
+      )}
+      <div className="border border-border rounded-lg overflow-auto max-h-[520px]">
         <Table>
-          <TableHeader>
+          <TableHeader className="sticky top-0 bg-background z-10">
             <TableRow>
-              <TableHead className="font-mono text-xs uppercase text-muted-foreground w-[70px]">
+              <TableHead className="font-mono text-xs uppercase text-muted-foreground w-[60px]">
                 #
               </TableHead>
-              <TableHead className="font-mono text-xs uppercase text-muted-foreground w-[70px]">
+              <TableHead className="font-mono text-xs uppercase text-muted-foreground w-[60px]">
                 DELTA
               </TableHead>
               <TableHead className="font-mono text-xs uppercase text-muted-foreground">
@@ -295,91 +318,196 @@ function RankedListSection({
               <TableHead className="font-mono text-xs uppercase text-muted-foreground">
                 GRADE
               </TableHead>
-              {noteKeys.map((key) => (
-                <TableHead
-                  key={key}
-                  className="font-mono text-xs uppercase text-muted-foreground"
-                >
-                  {key}
-                </TableHead>
-              ))}
+              <TableHead className="w-10" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.map((row, rowIdx) => {
+              const isExpanded = expanded[rowIdx] ?? false;
+              const noteObj =
+                row.note && typeof row.note === "object" ? row.note : null;
+              const hasNote =
+                typeof row.note === "string"
+                  ? Boolean(row.note)
+                  : noteObj !== null && Object.keys(noteObj).length > 0;
               const delta =
                 row.reference_position !== undefined
                   ? row.reference_position - row.position
                   : (row.delta ?? 0);
-              const noteObj =
-                row.note && typeof row.note === "object" ? row.note : null;
 
               return (
-                <TableRow key={rowIdx}>
-                  {/* Position */}
-                  <TableCell>
-                    <div className="flex items-center gap-1 opacity-50">
-                      <Hash02 size={16} className="text-muted-foreground" />
-                      <span className="text-sm font-medium text-muted-foreground tabular-nums">
-                        {row.position}
-                      </span>
-                    </div>
-                  </TableCell>
+                <Fragment key={rowIdx}>
+                  <TableRow>
+                    <TableCell>
+                      <div className="flex items-center gap-1 opacity-50">
+                        <Hash02 size={16} className="text-muted-foreground" />
+                        <span className="text-sm font-medium text-muted-foreground tabular-nums">
+                          {row.position}
+                        </span>
+                      </div>
+                    </TableCell>
 
-                  {/* Delta */}
-                  <TableCell>
-                    <DeltaBadge delta={delta} />
-                  </TableCell>
+                    <TableCell>
+                      <DeltaBadge delta={delta} />
+                    </TableCell>
 
-                  {/* Product */}
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      {row.image && (
-                        <img
-                          src={row.image}
-                          alt=""
-                          className="h-12 w-8 object-cover rounded-sm shrink-0 bg-muted"
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        {row.image && (
+                          <img
+                            src={row.image}
+                            alt=""
+                            className="h-12 w-8 object-cover rounded-sm shrink-0 bg-muted"
+                          />
+                        )}
+                        <span className="text-sm font-medium text-foreground truncate">
+                          {row.label}
+                        </span>
+                      </div>
+                    </TableCell>
+
+                    {row.values.map((val, cellIdx) => {
+                      const isGrade = cellIdx === 1;
+                      const display =
+                        isGrade && typeof val === "string" && val.endsWith("%")
+                          ? `${parseFloat(val) - 10}%`
+                          : val;
+                      return (
+                        <TableCell
+                          key={cellIdx}
+                          className="text-sm tabular-nums"
+                        >
+                          {display}
+                        </TableCell>
+                      );
+                    })}
+
+                    <TableCell>
+                      {hasNote ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpanded((prev) => ({
+                              ...prev,
+                              [rowIdx]: !prev[rowIdx],
+                            }))
+                          }
+                          className="flex items-center justify-center size-6 text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          {isExpanded ? (
+                            <ChevronDown size={16} />
+                          ) : (
+                            <ChevronRight size={16} />
+                          )}
+                        </button>
+                      ) : (
+                        <ChevronRight
+                          size={16}
+                          className="text-muted-foreground opacity-30"
                         />
                       )}
-                      <span className="text-sm font-medium text-foreground truncate">
-                        {row.label}
-                      </span>
-                    </div>
-                  </TableCell>
+                    </TableCell>
+                  </TableRow>
 
-                  {/* Values (SCORE, GRADE) */}
-                  {row.values.map((val, cellIdx) => {
-                    const isGrade = cellIdx === 1;
-                    const display =
-                      isGrade && typeof val === "string" && val.endsWith("%")
-                        ? `${parseFloat(val) - 10}%`
-                        : val;
-                    return (
-                      <TableCell key={cellIdx} className="text-sm tabular-nums">
-                        {display}
-                      </TableCell>
-                    );
-                  })}
-
-                  {/* Note object columns */}
-                  {noteKeys.map((key) => {
-                    const val = noteObj?.[key] ?? null;
-                    return (
-                      <TableCell key={key} className="text-sm tabular-nums">
-                        {val !== null && val !== undefined ? (
-                          val
+                  {hasNote && isExpanded && (
+                    <TableRow key={`note-${rowIdx}`} className="bg-muted/25">
+                      <TableCell colSpan={6}>
+                        {typeof row.note === "string" ? (
+                          <div className="pl-8 pb-2 flex flex-col gap-1.5">
+                            <span className="text-xs font-medium text-muted-foreground uppercase opacity-50 tracking-wide">
+                              MUDANÇA
+                            </span>
+                            <p className="text-sm text-foreground opacity-80 leading-5">
+                              {row.note}
+                            </p>
+                          </div>
                         ) : (
-                          <span className="text-muted-foreground">—</span>
+                          <div className="py-2 px-4">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  {Object.keys(noteObj ?? {}).map((key) => (
+                                    <TableHead
+                                      key={key}
+                                      className="font-mono text-xs uppercase text-muted-foreground"
+                                    >
+                                      {key}
+                                    </TableHead>
+                                  ))}
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                <TableRow>
+                                  {Object.values(noteObj ?? {}).map(
+                                    (val, i) => (
+                                      <TableCell
+                                        key={i}
+                                        className="text-sm tabular-nums"
+                                      >
+                                        {val !== null && val !== undefined
+                                          ? val
+                                          : "—"}
+                                      </TableCell>
+                                    ),
+                                  )}
+                                </TableRow>
+                              </TableBody>
+                            </Table>
+                          </div>
                         )}
                       </TableCell>
-                    );
-                  })}
-                </TableRow>
+                    </TableRow>
+                  )}
+                </Fragment>
               );
             })}
           </TableBody>
         </Table>
       </div>
+    </div>
+  );
+}
+
+function RankedListSection({
+  title,
+  rows,
+}: {
+  title?: string;
+  rows: RankedListRow[];
+}) {
+  const [showComparison, setShowComparison] = useState(false);
+  const mockedPreviousRows = buildMockedPreviousRows(rows);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-4">
+        {title && <SectionHeader icon={Rows03} title={title} />}
+        <button
+          type="button"
+          onClick={() => setShowComparison((prev) => !prev)}
+          className={cn(
+            "inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md border transition-colors",
+            showComparison
+              ? "bg-primary text-primary-foreground border-primary"
+              : "bg-transparent text-muted-foreground border-border hover:text-foreground hover:border-foreground/30",
+          )}
+        >
+          <Columns02 size={14} />
+          Comparar ordenação anterior
+        </button>
+      </div>
+
+      {showComparison ? (
+        <div className="flex gap-4 items-start">
+          <RankedTable rows={rows} label="Ordenação atual" />
+          <RankedTable
+            rows={mockedPreviousRows}
+            label="Última ordenação (mock)"
+          />
+        </div>
+      ) : (
+        <RankedTable rows={rows} />
+      )}
     </div>
   );
 }
