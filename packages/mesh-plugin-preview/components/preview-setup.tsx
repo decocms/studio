@@ -11,7 +11,8 @@ import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
-import { Loading01, Monitor01 } from "@untitledui/icons";
+import { Loading01, Monitor01, Stars01 } from "@untitledui/icons";
+import { useChatBridge } from "@decocms/mesh-sdk";
 import {
   useWritePreviewConfig,
   type PreviewConfig,
@@ -87,6 +88,17 @@ export default function PreviewSetup({
   const [port, setPort] = useState("");
 
   const writeConfig = useWritePreviewConfig(client, connectionId);
+  const chatBridge = useChatBridge();
+
+  const handleAskAI = () => {
+    if (!chatBridge) return;
+    chatBridge.sendMessage(
+      "Analyze this project and configure the dev server preview. " +
+        "Check package.json, config files (vite.config.ts, next.config.js, etc.), " +
+        "and lock files to determine the correct dev command and port. " +
+        "Then write the config to .deco/preview.json.",
+    );
+  };
 
   // Auto-detect from package.json
   const { isLoading: isDetecting } = useQuery({
@@ -172,24 +184,32 @@ export default function PreviewSetup({
               />
             </div>
 
-            <Button
-              onClick={handleSave}
-              disabled={
-                writeConfig.isPending ||
-                !command.trim() ||
-                !port ||
-                Number.isNaN(parseInt(port, 10))
-              }
-            >
-              {writeConfig.isPending ? (
-                <>
-                  <Loading01 size={14} className="mr-1 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                "Save & Start"
+            <div className="flex flex-col gap-2">
+              <Button
+                onClick={handleSave}
+                disabled={
+                  writeConfig.isPending ||
+                  !command.trim() ||
+                  !port ||
+                  Number.isNaN(parseInt(port, 10))
+                }
+              >
+                {writeConfig.isPending ? (
+                  <>
+                    <Loading01 size={14} className="mr-1 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save & Start"
+                )}
+              </Button>
+              {chatBridge && (
+                <Button variant="outline" onClick={handleAskAI}>
+                  <Stars01 size={14} className="mr-1" />
+                  Ask AI to detect
+                </Button>
               )}
-            </Button>
+            </div>
           </div>
         )}
       </div>

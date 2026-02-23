@@ -42,6 +42,10 @@ export function usePreviewConfig(
     },
     enabled: !!client && !!connectionId,
     staleTime: 30_000,
+    refetchInterval: (query) => {
+      // Poll while no config exists (AI might be writing it)
+      return query.state.data === null ? 5_000 : false;
+    },
   });
 }
 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Chat } from "@/web/components/chat/index";
+import { Chat, useChat } from "@/web/components/chat/index";
 import { ChatPanel } from "@/web/components/chat/side-panel-chat";
 import { CreateProjectDialog } from "@/web/components/create-project-dialog";
 import { MeshSidebar } from "@/web/components/sidebar";
@@ -28,6 +28,7 @@ import {
 } from "@deco/ui/components/sidebar.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
 import {
+  ChatBridgeProvider,
   ORG_ADMIN_PROJECT_SLUG,
   ProjectContextProvider,
   ProjectContextProviderProps,
@@ -168,6 +169,33 @@ function ChatPanels({ disableChat = false }: { disableChat?: boolean }) {
   );
 }
 
+/**
+ * Bridges the chat context to packages via ChatBridgeProvider.
+ * Must be rendered inside Chat.Provider.
+ */
+function ChatBridgeWrapper({ children }: PropsWithChildren) {
+  const { sendMessage } = useChat();
+  const [, setChatOpen] = useDecoChatOpen();
+
+  const handleSend = (text: string) => {
+    const doc = {
+      type: "doc" as const,
+      content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+    };
+    setChatOpen(true);
+    void sendMessage(doc);
+  };
+
+  return (
+    <ChatBridgeProvider
+      sendMessage={handleSend}
+      openChat={() => setChatOpen(true)}
+    >
+      {children}
+    </ChatBridgeProvider>
+  );
+}
+
 function ShellLayoutContent() {
   const { org, project } = useParams({ strict: false });
   const routerState = useRouterState();
@@ -258,27 +286,29 @@ function ShellLayoutContent() {
             }
           `}</style>
           <Chat.Provider>
-            <SidebarLayout
-              className="flex-1 bg-sidebar"
-              style={
-                {
-                  "--sidebar-width": "13rem",
-                  "--sidebar-width-mobile": "11rem",
-                } as Record<string, string>
-              }
-            >
-              <MeshSidebar
-                onCreateProject={() => setCreateProjectDialogOpen(true)}
-              />
-              <SidebarInset className="flex flex-col">
-                <TopbarPortalProvider>
-                  <ProjectTopbar />
-                  <div className="flex-1 overflow-hidden">
-                    <ChatPanels disableChat={isHomeRoute} />
-                  </div>
-                </TopbarPortalProvider>
-              </SidebarInset>
-            </SidebarLayout>
+            <ChatBridgeWrapper>
+              <SidebarLayout
+                className="flex-1 bg-sidebar"
+                style={
+                  {
+                    "--sidebar-width": "13rem",
+                    "--sidebar-width-mobile": "11rem",
+                  } as Record<string, string>
+                }
+              >
+                <MeshSidebar
+                  onCreateProject={() => setCreateProjectDialogOpen(true)}
+                />
+                <SidebarInset className="flex flex-col">
+                  <TopbarPortalProvider>
+                    <ProjectTopbar />
+                    <div className="flex-1 overflow-hidden">
+                      <ChatPanels disableChat={isHomeRoute} />
+                    </div>
+                  </TopbarPortalProvider>
+                </SidebarInset>
+              </SidebarLayout>
+            </ChatBridgeWrapper>
           </Chat.Provider>
         </div>
       </PersistentSidebarProvider>

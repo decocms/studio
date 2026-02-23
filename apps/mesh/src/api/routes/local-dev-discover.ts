@@ -164,6 +164,19 @@ app.post("/add-project", async (c) => {
       icon: pickRandomCapybaraIcon(),
       status: "active",
       connections: [{ connection_id: connection.id }],
+      metadata: {
+        instructions: [
+          "## Dev Server Preview",
+          "This project has a preview plugin that shows the dev server in an iframe.",
+          "The preview config is stored at `.deco/preview.json` with this format:",
+          '```json\n{ "command": "bun run dev", "port": 3000 }\n```',
+          "When the user asks to set up or configure the dev server preview:",
+          "1. Analyze package.json scripts and config files (vite.config.ts, next.config.js, etc.) to determine the correct command and port",
+          "2. Write the config to `.deco/preview.json` using the write_file tool",
+          "3. Tell the user to refresh the Preview panel in the sidebar",
+          "The command should use the project's package manager (check for bun.lockb, yarn.lock, pnpm-lock.yaml, or package-lock.json).",
+        ].join("\n"),
+      },
     },
   );
 
