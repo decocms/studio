@@ -21,7 +21,7 @@ export function ProjectTopbar() {
   if (isOrgAdmin) return null;
 
   return (
-    <header className="sticky top-0 z-50 h-12 bg-background border-b border-border/50 flex items-center px-4 shrink-0">
+    <header className="sticky top-0 z-50 h-11 bg-background flex items-center px-4 shrink-0 border-b border-border/40 [&:not(:has(>div:not(:empty)))]:hidden">
       {/* Left Section - portal target */}
       <div
         ref={portalTargets?.leftRef}

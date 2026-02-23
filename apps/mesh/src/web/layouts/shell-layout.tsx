@@ -186,7 +186,7 @@ function ShellLayoutContent() {
           `}</style>
           <Chat.Provider>
             <SidebarLayout
-              className="flex-1 bg-sidebar"
+              className="flex-1 bg-sidebar pt-1.5"
               data-studio={isStudio ? "" : undefined}
               style={
                 {
@@ -198,7 +198,7 @@ function ShellLayoutContent() {
               <MeshSidebar
                 onCreateProject={() => setCreateProjectDialogOpen(true)}
               />
-              <SidebarInset className="flex flex-col">
+              <SidebarInset className="flex flex-col rounded-tl-xl overflow-hidden border-t border-l border-sidebar-border">
                 <TopbarPortalProvider>
                   <ProjectTopbar />
                   <div className="flex-1 overflow-hidden">
