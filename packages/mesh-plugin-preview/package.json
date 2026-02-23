@@ -1,0 +1,21 @@
+{
+  "name": "mesh-plugin-preview",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./index.tsx",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@decocms/bindings": "workspace:*",
+    "@decocms/mesh-sdk": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.26.0",
+    "@deco/ui": "workspace:*",
+    "@tanstack/react-query": "5.90.11",
+    "@untitledui/icons": "^0.0.19",
+    "react": "^19.2.0",
+    "zod": "^4.0.0"
+  }
+}

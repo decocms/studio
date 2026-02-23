@@ -47,6 +47,29 @@ export const PROJECT_DELETE = defineTool({
       return { success: false, message: "Cannot delete the org-admin project" };
     }
 
+    // Before deleting, clean up localhost connections and their Virtual MCPs
+    const pluginConfigs =
+      await ctx.storage.projectPluginConfigs.list(projectId);
+    for (const config of pluginConfigs) {
+      if (!config.connectionId) continue;
+      const conn = await ctx.storage.connections.findById(config.connectionId);
+      if (
+        conn?.connection_url &&
+        /^https?:\/\/(?:localhost|127\.0\.0\.1):/.test(conn.connection_url)
+      ) {
+        // Delete Virtual MCPs that use this connection
+        const virtualMcps = await ctx.storage.virtualMcps.listByConnectionId(
+          project.organizationId,
+          conn.id,
+        );
+        for (const vmcp of virtualMcps) {
+          await ctx.storage.virtualMcps.delete(vmcp.id);
+        }
+        // Delete the connection itself
+        await ctx.storage.connections.delete(conn.id);
+      }
+    }
+
     const success = await ctx.storage.projects.delete(projectId);
     return { success };
   },

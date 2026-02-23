@@ -66,6 +66,8 @@ apps/benchmark/data
 # AI planning files
 plans
 .cursor/plans
+.claude/
+.planning/
 
 # Git worktrees
 .worktrees

@@ -40,6 +40,7 @@ import oauthProxyRoutes, {
 } from "./routes/oauth-proxy";
 import openaiCompatRoutes from "./routes/openai-compat";
 import proxyRoutes from "./routes/proxy";
+import localDevDiscoverRoutes from "./routes/local-dev-discover";
 import publicConfigRoutes from "./routes/public-config";
 import selfRoutes from "./routes/self";
 import { shouldSkipMeshContext, SYSTEM_PATHS } from "./utils/paths";
@@ -557,6 +558,11 @@ export async function createApp(options: CreateAppOptions = {}) {
       grouped: getToolsByCategory(),
     });
   });
+
+  // Local-dev auto-discovery (dev only, requires auth via MeshContext)
+  if (process.env.NODE_ENV !== "production") {
+    app.route("/api/local-dev", localDevDiscoverRoutes);
+  }
 
   // ============================================================================
   // API Routes
