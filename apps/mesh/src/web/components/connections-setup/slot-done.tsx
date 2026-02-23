@@ -1,4 +1,4 @@
-import { CheckCircle, ChevronDown } from "lucide-react";
+import { CheckCircle, ChevronDown } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
 import type { ConnectionEntity } from "@decocms/mesh-sdk";
 

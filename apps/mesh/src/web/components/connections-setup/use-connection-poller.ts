@@ -43,11 +43,8 @@ export function useConnectionPoller(
         const result = (await client.callTool({
           name: "COLLECTION_CONNECTIONS_GET",
           arguments: { id: connectionId },
-        })) as { structuredContent?: ConnectionEntity } | ConnectionEntity;
-        return (
-          (result as { structuredContent?: ConnectionEntity })
-            .structuredContent ?? (result as ConnectionEntity)
-        );
+        })) as { structuredContent?: { item: ConnectionEntity | null } };
+        return result.structuredContent?.item ?? null;
       } finally {
         await client.close().catch(console.error);
       }

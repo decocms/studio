@@ -34,31 +34,39 @@ export function SlotAuthOAuth({
       }
 
       if (tokenInfo) {
-        const response = await fetch(
-          `/api/connections/${connectionId}/oauth-token`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({
-              accessToken: tokenInfo.accessToken,
-              refreshToken: tokenInfo.refreshToken,
-              expiresIn: tokenInfo.expiresIn,
-              scope: tokenInfo.scope,
-              clientId: tokenInfo.clientId,
-              clientSecret: tokenInfo.clientSecret,
-              tokenEndpoint: tokenInfo.tokenEndpoint,
-            }),
-          },
-        );
-        if (!response.ok) {
+        try {
+          const response = await fetch(
+            `/api/connections/${connectionId}/oauth-token`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({
+                accessToken: tokenInfo.accessToken,
+                refreshToken: tokenInfo.refreshToken,
+                expiresIn: tokenInfo.expiresIn,
+                scope: tokenInfo.scope,
+                clientId: tokenInfo.clientId,
+                clientSecret: tokenInfo.clientSecret,
+                tokenEndpoint: tokenInfo.tokenEndpoint,
+              }),
+            },
+          );
+          if (!response.ok) {
+            await actions.update.mutateAsync({
+              id: connectionId,
+              data: { connection_token: token },
+            });
+          } else {
+            // Trigger tool re-discovery
+            await actions.update.mutateAsync({ id: connectionId, data: {} });
+          }
+        } catch (err) {
+          console.error("Error saving OAuth token:", err);
           await actions.update.mutateAsync({
             id: connectionId,
             data: { connection_token: token },
           });
-        } else {
-          // Trigger tool re-discovery
-          await actions.update.mutateAsync({ id: connectionId, data: {} });
         }
       } else {
         await actions.update.mutateAsync({
@@ -71,6 +79,7 @@ export function SlotAuthOAuth({
         queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
       });
 
+      toast.success("Authorization successful");
       onAuthed();
     } finally {
       setIsPending(false);

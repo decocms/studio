@@ -55,8 +55,8 @@ export function SlotInstallForm({
       ...(connectionData as ConnectionEntity),
       title: data.title,
     };
-    await actions.create.mutateAsync(payload);
-    onInstalled(connectionData.id);
+    const created = await actions.create.mutateAsync(payload);
+    onInstalled(created.id);
   };
 
   return (
