@@ -221,7 +221,8 @@ export function MCPServerHeroSection({
             {itemVersions.length > 1 ? (
               <div className="flex">
                 <Button
-                  variant="brand"
+                  variant="default"
+                  size="sm"
                   onClick={handleInstall}
                   disabled={isInstalling}
                   className="shrink-0 rounded-r-none cursor-pointer"
@@ -235,12 +236,13 @@ export function MCPServerHeroSection({
                   selectedIndex={selectedVersionIndex}
                   onSelect={handleInstallVersion}
                   isInstalling={isInstalling}
-                  variant="brand"
+                  variant="outline"
                 />
               </div>
             ) : (
               <Button
-                variant="brand"
+                variant="default"
+                size="sm"
                 onClick={handleInstall}
                 disabled={itemVersions.length === 0 || isInstalling}
                 className="shrink-0 cursor-pointer"
