@@ -5,6 +5,7 @@ import { CreateProjectDialog } from "@/web/components/create-project-dialog";
 import { MeshSidebar } from "@/web/components/sidebar";
 import { SplashScreen } from "@/web/components/splash-screen";
 import { ProjectTopbar } from "@/web/components/topbar/project-topbar";
+import { MeshUserMenu } from "@/web/components/user-menu.tsx";
 import { TopbarPortalProvider } from "@decocms/mesh-sdk/plugins";
 import { useDecoChatOpen } from "@/web/hooks/use-deco-chat-open";
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
@@ -191,6 +192,9 @@ function ShellLayoutContent() {
   if (!projectContext) {
     return (
       <div className="min-h-screen bg-background">
+        <header className="h-12 flex items-center justify-end px-4 border-b border-border">
+          <MeshUserMenu />
+        </header>
         <Outlet />
       </div>
     );
