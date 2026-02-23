@@ -37,7 +37,7 @@ export function SidebarItemListItem({ item }: SidebarItemListItemProps) {
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
-        className="w-full pr-2 group/item relative cursor-pointer text-foreground/90 hover:text-foreground"
+        className="w-full pr-2 group/item relative cursor-pointer text-sidebar-foreground/80 hover:text-sidebar-foreground"
         onClick={() => {
           navigate({ to: item.url });
         }}
@@ -53,7 +53,7 @@ export function SidebarItemListItem({ item }: SidebarItemListItemProps) {
           ) : (
             <File06
               size={16}
-              className="text-muted-foreground group-hover/item:text-foreground transition-colors"
+              className="text-sidebar-foreground/50 group-hover/item:text-sidebar-foreground transition-colors"
             />
           )}
         </div>
@@ -64,7 +64,7 @@ export function SidebarItemListItem({ item }: SidebarItemListItemProps) {
         </div>
         <X
           size={16}
-          className="text-muted-foreground opacity-0 group-hover/item:opacity-50 hover:opacity-100 cursor-pointer"
+          className="text-sidebar-foreground/40 opacity-0 group-hover/item:opacity-50 hover:opacity-100 cursor-pointer"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
