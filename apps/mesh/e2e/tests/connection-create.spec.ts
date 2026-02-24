@@ -8,20 +8,15 @@ test.describe("Connection creation flow", () => {
     // 1. Sign up — org is auto-created, lands on home page
     await signUp(page);
 
-    // 2. Home page shows the auto-created org. Click it to enter.
+    // 2. Wait for home page and extract the org slug from the card (@slug text)
     await page.waitForURL("/");
-    const orgCard = page
-      .getByRole("button")
-      .filter({ hasText: /open/i })
-      .first();
-    await orgCard.waitFor({ state: "visible" });
-    await orgCard.click();
+    const slugText = page.locator("text=/@[a-z0-9-]+/").first();
+    await slugText.waitFor({ state: "visible" });
+    const rawSlug = await slugText.textContent();
+    const orgSlug = rawSlug?.replace("@", "").trim() ?? "";
 
-    // 3. Lands on /$org or /$org/org-admin — navigate to connections
-    await page.waitForURL(/\/[^/]+\/[^/]+/);
-    const currentUrl = new URL(page.url());
-    const [, orgSlug, projectSlug] = currentUrl.pathname.split("/");
-    await page.goto(`/${orgSlug}/${projectSlug}/mcps`);
+    // 3. Navigate directly to the connections page (org-admin is the default project)
+    await page.goto(`/${orgSlug}/org-admin/mcps`);
 
     // 4. Open the create connection dialog
     await page.getByRole("button", { name: "Custom Connection" }).click();
