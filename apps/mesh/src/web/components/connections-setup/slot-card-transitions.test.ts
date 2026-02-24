@@ -50,9 +50,15 @@ describe("onInstalled", () => {
 });
 
 describe("onPollerActive", () => {
-  it("transitions to done", () => {
+  it("does NOT immediately go to done — queues an auth check instead", () => {
     const conn = makeConn({ id: "conn_abc", status: "active" });
-    expect(onPollerActive(conn).phase).toBe("done");
+    // phase must not be set here; the auth check will decide done vs auth-oauth
+    expect(onPollerActive(conn).phase).toBeUndefined();
+  });
+
+  it("sets authCheckId so the auth query fires", () => {
+    const conn = makeConn({ id: "conn_abc", status: "active" });
+    expect(onPollerActive(conn).authCheckId).toBe("conn_abc");
   });
 
   it("clears pollingConnectionId", () => {
@@ -88,12 +94,24 @@ describe("onPollerTimeout", () => {
 });
 
 describe("onAuthStatus", () => {
-  it("routes to auth-oauth when the endpoint supports OAuth", () => {
-    expect(onAuthStatus(true).phase).toBe("auth-oauth");
+  describe("source: active (poller confirmed connection is up)", () => {
+    it("routes to auth-oauth when OAuth is required", () => {
+      expect(onAuthStatus(true, "active").phase).toBe("auth-oauth");
+    });
+
+    it("routes to done when no OAuth required — connection is working", () => {
+      expect(onAuthStatus(false, "active").phase).toBe("done");
+    });
   });
 
-  it("routes to auth-token when the endpoint does not support OAuth", () => {
-    expect(onAuthStatus(false).phase).toBe("auth-token");
+  describe("source: timeout (connection never became active)", () => {
+    it("routes to auth-oauth when OAuth is required", () => {
+      expect(onAuthStatus(true, "timeout").phase).toBe("auth-oauth");
+    });
+
+    it("routes to auth-token when no OAuth — needs a bearer/API token", () => {
+      expect(onAuthStatus(false, "timeout").phase).toBe("auth-token");
+    });
   });
 });
 

@@ -1,2 +1,0 @@
-[test]
-preload = ["./apps/mesh/test-setup.ts", "./apps/mesh/test-setup-rtl.ts"]

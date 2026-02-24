@@ -16,14 +16,19 @@ export function onInstalled(connectionId: string): Partial<SlotCardState> {
   };
 }
 
-/** Poller observed the connection is active — mark slot as done. */
+/**
+ * Poller observed the connection is active at the transport level.
+ * We don't go to "done" yet — we always check auth first, because some
+ * connections (e.g. Gmail) respond 200 before OAuth is configured.
+ * onAuthStatus("active") then decides: no-OAuth → done, OAuth → auth-oauth.
+ */
 export function onPollerActive(
   connection: ConnectionEntity,
 ): Partial<SlotCardState> {
   return {
     pollingConnectionId: null,
     selectedConnection: connection,
-    phase: "done",
+    authCheckId: connection.id,
   };
 }
 
@@ -42,11 +47,23 @@ export function onPollerTimeout(
   };
 }
 
-/** Auth check completed — transition to the appropriate auth phase. */
-export function onAuthStatus(supportsOAuth: boolean): Partial<SlotCardState> {
-  return {
-    phase: supportsOAuth ? "auth-oauth" : "auth-token",
-  };
+/**
+ * Auth check completed.
+ *
+ * source "active"  → poller confirmed the connection is up
+ *   supportsOAuth: false → connection is working and needs no extra auth → done
+ *   supportsOAuth: true  → connection is up but OAuth token is required → auth-oauth
+ *
+ * source "timeout" → connection never became active on its own
+ *   supportsOAuth: false → needs a bearer/API token → auth-token
+ *   supportsOAuth: true  → needs OAuth → auth-oauth
+ */
+export function onAuthStatus(
+  supportsOAuth: boolean,
+  source: "active" | "timeout",
+): Partial<SlotCardState> {
+  if (supportsOAuth) return { phase: "auth-oauth" };
+  return { phase: source === "active" ? "done" : "auth-token" };
 }
 
 /** User completed auth — restart polling to verify the connection activates. */

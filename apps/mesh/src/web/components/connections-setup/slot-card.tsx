@@ -11,6 +11,7 @@ import { useSlotResolution, type ConnectionSlot } from "./use-slot-resolution";
 import { useConnectionPoller } from "./use-connection-poller";
 import { type SlotPhase } from "./slot-resolution";
 import {
+  onAuthStatus,
   onAuthed,
   onInstallFresh,
   onInstalled,
@@ -18,7 +19,6 @@ import {
   onPickInactive,
   onPollerActive,
   onPollerTimeout,
-  onAuthStatus,
   onReset,
   type SlotCardState,
 } from "./slot-card-transitions";
@@ -58,8 +58,12 @@ export function SlotCard({ slot, onComplete }: SlotCardProps) {
   );
   const [selectedConnection, setSelectedConnection] =
     useState<ConnectionEntity | null>(null);
-  // Tracks which connection needs an auth check after polling times out/errors
+  // ID of the connection whose auth status is being checked
   const [authCheckId, setAuthCheckId] = useState<string | null>(null);
+
+  // Tracks whether the auth check was triggered by an active poller ("active")
+  // or a timeout/error ("timeout"). Determines the done-vs-auth-token outcome.
+  const authCheckSourceRef = useRef<"active" | "timeout">("timeout");
   // Prevents onComplete from firing more than once per unique connection
   const completedIdRef = useRef<string | null>(null);
 
@@ -86,34 +90,50 @@ export function SlotCard({ slot, onComplete }: SlotCardProps) {
   // Derive effective phase: explicit override takes priority, else from resolution
   const effectivePhase: SlotPhase = phase ?? resolution.initialPhase;
 
-  // React to poller becoming active
+  // React to poller becoming active — always check auth before marking done.
+  // Some connections (e.g. Gmail) respond 200 at the transport level even
+  // without OAuth, so we can't trust "active" to mean "authenticated".
   if (pollingConnectionId && poller.isActive && poller.connection) {
-    if (completedIdRef.current !== poller.connection.id) {
-      completedIdRef.current = poller.connection.id;
-      applyTransition(onPollerActive(poller.connection), setters);
-      onComplete(poller.connection.id);
-    }
+    authCheckSourceRef.current = "active";
+    applyTransition(onPollerActive(poller.connection), setters);
   }
 
-  // React to poller timeout/error — queue an auth check instead of firing async in render
+  // React to poller timeout/error — check auth to determine token vs OAuth
   if (
     pollingConnectionId &&
     (poller.isTimedOut || poller.connection?.status === "error")
   ) {
+    authCheckSourceRef.current = "timeout";
     applyTransition(
       onPollerTimeout(pollingConnectionId, poller.connection ?? null),
       setters,
     );
   }
 
-  // React to auth check result — set the appropriate auth phase
+  // React to auth check result
   if (
     authCheckId &&
     authStatus &&
     phase !== "auth-oauth" &&
-    phase !== "auth-token"
+    phase !== "auth-token" &&
+    phase !== "done"
   ) {
-    applyTransition(onAuthStatus(authStatus.supportsOAuth), setters);
+    const source = authCheckSourceRef.current;
+    const connId = selectedConnection?.id ?? authCheckId;
+
+    if (authStatus.supportsOAuth) {
+      applyTransition(onAuthStatus(true, source), setters);
+    } else if (source === "active") {
+      // Connection is up and needs no OAuth — it's truly ready
+      if (completedIdRef.current !== connId) {
+        completedIdRef.current = connId;
+        applyTransition(onAuthStatus(false, "active"), setters);
+        onComplete(connId);
+      }
+    } else {
+      // Timed out and no OAuth — needs a bearer/API token
+      applyTransition(onAuthStatus(false, "timeout"), setters);
+    }
   }
 
   const handleInstalled = (connectionId: string) => {
