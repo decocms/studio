@@ -732,7 +732,7 @@ export const createMCPServer = <
                 typeof tool.outputSchema === "object" &&
                 "shape" in tool.outputSchema
               ? (tool.outputSchema.shape as ZodRawShape)
-              : z.object({}).shape,
+              : undefined,
         },
         async (args) => {
           const result = await tool.execute({

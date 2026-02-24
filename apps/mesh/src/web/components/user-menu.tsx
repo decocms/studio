@@ -1,15 +1,24 @@
-import { UserMenu } from "@deco/ui/components/user-menu.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@deco/ui/components/dropdown-menu.tsx";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import {
   Settings01,
-  Globe01,
   LogOut01,
   LinkExternal01,
   Copy01,
   Check,
+  File06,
+  Shield01,
+  Users03,
+  Globe01,
 } from "@untitledui/icons";
-import { authClient } from "@/web/lib/auth-client";
 import { GitHubIcon } from "@daveyplate/better-auth-ui";
+import { authClient } from "@/web/lib/auth-client";
 import { useState } from "react";
 import { UserSettingsDialog } from "@/web/components/user-settings-dialog.tsx";
 import { toast } from "sonner";
@@ -34,28 +43,43 @@ function MeshUserMenuBase({
 
   return (
     <>
-      <UserMenu
-        user={user}
-        trigger={() => (
-          <Avatar
-            url={userImage}
-            fallback={user.name || user.email || "U"}
-            shape="circle"
-            size="sm"
-            className="cursor-pointer hover:ring-2 ring-muted-foreground transition-all h-7 w-7"
-          />
-        )}
-        align="end"
-      >
-        <UserMenu.Item onClick={handleCopyUserInfo}>
-          <div className="group flex items-center gap-3 w-full py-1">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button className="flex w-full h-8 items-center gap-2 rounded-md px-1 hover:bg-sidebar-accent transition-colors text-left min-w-0">
+            <Avatar
+              url={userImage}
+              fallback={user.name || user.email || "U"}
+              shape="circle"
+              size="2xs"
+              className="shrink-0 size-5"
+            />
+            <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
+              <div className="text-sm font-medium truncate text-sidebar-foreground leading-none">
+                {user.name || "User"}
+              </div>
+            </div>
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          side="top"
+          align="end"
+          collisionPadding={8}
+          className="w-64 flex flex-col gap-0.5"
+          onCloseAutoFocus={(e) => e.preventDefault()}
+        >
+          {/* User info */}
+          <DropdownMenuItem
+            onClick={handleCopyUserInfo}
+            className="gap-2.5 group"
+          >
             <Avatar
               url={userImage}
               fallback={user.name || user.email || "U"}
               shape="circle"
               size="sm"
+              className="shrink-0"
             />
-            <div className="flex-1 min-w-0 text-left">
+            <div className="flex-1 min-w-0">
               <div className="text-sm font-medium truncate">
                 {user.name || "User"}
               </div>
@@ -65,67 +89,116 @@ function MeshUserMenuBase({
             </div>
             <div className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
               {copied ? (
-                <Check size={16} className="text-green-600" />
+                <Check size={14} className="text-green-600" />
               ) : (
-                <Copy01 size={16} className="text-muted-foreground" />
+                <Copy01 size={14} className="text-muted-foreground" />
               )}
             </div>
-          </div>
-        </UserMenu.Item>
+          </DropdownMenuItem>
 
-        <UserMenu.Separator />
+          <DropdownMenuSeparator />
 
-        <UserMenu.Item onClick={() => setSettingsOpen(true)}>
-          <Settings01 className="text-muted-foreground" size={18} />
-          Profile Settings
-        </UserMenu.Item>
-
-        <UserMenu.Separator />
-
-        <UserMenu.Item asChild>
-          <a
-            href="https://github.com/decocms/admin"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex w-full items-center gap-2 text-sm cursor-pointer"
+          {/* Main actions */}
+          <DropdownMenuItem
+            className="gap-2.5"
+            onClick={() => setSettingsOpen(true)}
           >
-            <GitHubIcon className="w-4 h-4 text-muted-foreground" />
-            decocms/admin
-            <LinkExternal01
-              size={18}
-              className="text-muted-foreground ml-auto"
-            />
-          </a>
-        </UserMenu.Item>
-        <UserMenu.Item asChild>
-          <a
-            href="https://decocms.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex w-full items-center gap-2 text-sm cursor-pointer"
+            <Settings01 size={14} className="shrink-0 text-muted-foreground" />
+            <span>Settings</span>
+          </DropdownMenuItem>
+
+          <DropdownMenuItem asChild>
+            <a
+              href="https://www.decocms.com/terms-of-use"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2.5 group"
+            >
+              <File06 size={14} className="shrink-0 text-muted-foreground" />
+              <span className="flex-1">Terms of Use</span>
+              <LinkExternal01
+                size={14}
+                className="shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+              />
+            </a>
+          </DropdownMenuItem>
+
+          <DropdownMenuItem asChild>
+            <a
+              href="https://www.decocms.com/privacy-policy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2.5 group"
+            >
+              <Shield01 size={14} className="shrink-0 text-muted-foreground" />
+              <span className="flex-1">Privacy Policy</span>
+              <LinkExternal01
+                size={14}
+                className="shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+              />
+            </a>
+          </DropdownMenuItem>
+
+          <DropdownMenuItem asChild>
+            <a
+              href="https://github.com/decocms/mesh"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2.5 group"
+            >
+              <GitHubIcon className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+              <span className="flex-1">decocms/mesh</span>
+              <LinkExternal01
+                size={14}
+                className="shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+              />
+            </a>
+          </DropdownMenuItem>
+
+          <DropdownMenuItem asChild>
+            <a
+              href="https://decocms.com/discord"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2.5 group"
+            >
+              <Users03 size={14} className="shrink-0 text-muted-foreground" />
+              <span className="flex-1">Community</span>
+              <LinkExternal01
+                size={14}
+                className="shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+              />
+            </a>
+          </DropdownMenuItem>
+
+          <DropdownMenuItem asChild>
+            <a
+              href="https://decocms.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2.5 group"
+            >
+              <Globe01 size={14} className="shrink-0 text-muted-foreground" />
+              <span className="flex-1">Homepage</span>
+              <LinkExternal01
+                size={14}
+                className="shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+              />
+            </a>
+          </DropdownMenuItem>
+
+          <DropdownMenuSeparator />
+
+          {/* Sign out */}
+          <DropdownMenuItem
+            className="gap-2.5"
+            onClick={() => authClient.signOut()}
           >
-            <Globe01 className="text-muted-foreground" size={18} />
-            Homepage
-            <LinkExternal01
-              size={18}
-              className="ml-auto text-muted-foreground"
-            />
-          </a>
-        </UserMenu.Item>
-
-        <UserMenu.Separator />
-
-        <UserMenu.Item onClick={() => authClient.signOut()}>
-          <LogOut01 size={18} className="text-muted-foreground" />
-          Log out
-        </UserMenu.Item>
-
-        <UserMenu.Separator />
-
-        <div className="px-2 py-1.5 text-[11px] text-muted-foreground/75">
-          v{__MESH_VERSION__}
-        </div>
-      </UserMenu>
+            <LogOut01 size={14} className="shrink-0 text-muted-foreground" />
+            <span>Sign out</span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       {settingsOpen && (
         <UserSettingsDialog
@@ -142,7 +215,6 @@ function MeshUserMenuBase({
 export function MeshUserMenu() {
   const { data: session } = authClient.useSession();
 
-  // Return skeleton/placeholder if no session yet
   if (!session?.user) {
     return (
       <Avatar

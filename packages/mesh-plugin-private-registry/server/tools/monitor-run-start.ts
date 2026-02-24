@@ -26,7 +26,7 @@ import type {
   PrivateRegistryItemEntity,
 } from "../storage";
 import {
-  RegistryMonitorConfigSchema,
+  parseMonitorConfig,
   RegistryMonitorRunStartInputSchema,
   RegistryMonitorRunStartOutputSchema,
   type RegistryMonitorConfig,
@@ -1334,9 +1334,7 @@ export const REGISTRY_MONITOR_RUN_START: ServerPluginToolDefinition = {
     const typedInput = input as z.infer<
       typeof RegistryMonitorRunStartInputSchema
     >;
-    const monitorConfig = RegistryMonitorConfigSchema.parse(
-      typedInput.config ?? {},
-    );
+    const monitorConfig = parseMonitorConfig(typedInput.config ?? {});
     const { run } = await startMonitorRun(ctx, monitorConfig);
     const storage = getPluginStorage();
     const fullRun = await storage.monitorRuns.findById(

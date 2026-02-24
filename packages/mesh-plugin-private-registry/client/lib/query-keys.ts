@@ -15,13 +15,34 @@ export const KEYS = {
   publishRequests: () => [...KEYS.all, "publish-requests"] as const,
   publishRequestsByOrg: (orgId: string) =>
     [...KEYS.publishRequests(), "org", orgId] as const,
-  publishRequestsList: (status?: string) =>
-    [...KEYS.publishRequests(), "list", { status: status ?? "all" }] as const,
-  publishRequestsListByOrg: (orgId: string, status?: string) =>
+  publishRequestsList: (
+    status?: string,
+    sortBy?: "created_at" | "title",
+    sortDirection?: "asc" | "desc",
+  ) =>
+    [
+      ...KEYS.publishRequests(),
+      "list",
+      {
+        status: status ?? "all",
+        sortBy: sortBy ?? "created_at",
+        sortDirection: sortDirection ?? "desc",
+      },
+    ] as const,
+  publishRequestsListByOrg: (
+    orgId: string,
+    status?: string,
+    sortBy?: "created_at" | "title",
+    sortDirection?: "asc" | "desc",
+  ) =>
     [
       ...KEYS.publishRequestsByOrg(orgId),
       "list",
-      { status: status ?? "all" },
+      {
+        status: status ?? "all",
+        sortBy: sortBy ?? "created_at",
+        sortDirection: sortDirection ?? "desc",
+      },
     ] as const,
   publishRequestsCount: () => [...KEYS.publishRequests(), "count"] as const,
   publishRequestsCountByOrg: (orgId: string) =>

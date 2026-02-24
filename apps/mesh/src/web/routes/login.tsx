@@ -111,11 +111,11 @@ export default function LoginRoute() {
     socialProviders.enabled
   ) {
     return (
-      <main className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-primary to-primary/75 p-4">
+      <main className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-brand to-brand/75 p-4">
         <div
           className="absolute inset-0"
           style={{
-            backgroundImage: `radial-gradient(circle, var(--primary-foreground) 1px, transparent 1px)`,
+            backgroundImage: `radial-gradient(circle, var(--brand-foreground) 1px, transparent 1px)`,
             backgroundSize: "16px 16px",
             opacity: 0.15,
           }}
@@ -123,10 +123,10 @@ export default function LoginRoute() {
 
         <div className="relative z-10">
           {/* Blueprint lines - glued to card edges, extending full screen */}
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-screen h-px bg-primary-foreground/15" />
-          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-screen h-px bg-primary-foreground/15" />
-          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-px h-screen bg-primary-foreground/15" />
-          <div className="absolute right-0 top-1/2 -translate-y-1/2 w-px h-screen bg-primary-foreground/15" />
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-screen h-px bg-brand-foreground/15" />
+          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-screen h-px bg-brand-foreground/15" />
+          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-px h-screen bg-brand-foreground/15" />
+          <div className="absolute right-0 top-1/2 -translate-y-1/2 w-px h-screen bg-brand-foreground/15" />
 
           <UnifiedAuthForm redirectUrl={oauthAuthorizeUrl} />
         </div>

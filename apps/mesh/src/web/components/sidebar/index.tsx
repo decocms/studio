@@ -5,7 +5,7 @@ import { Locator, useProjectContext } from "@decocms/mesh-sdk";
 import { Suspense } from "react";
 import { NavigationSidebar } from "./navigation";
 import { MeshSidebarHeader } from "./header";
-import { SidebarSettingsFooter } from "./footer/settings";
+import { SidebarInboxFooter } from "./footer/inbox";
 import { SidebarItemsSection } from "./items";
 import { SidebarProjectsSection } from "./projects-section";
 
@@ -35,7 +35,7 @@ export function MeshSidebar({ onCreateProject }: MeshSidebarProps) {
           <MeshSidebarHeader onCreateProject={onCreateProject} />
         </Suspense>
       }
-      footer={<SidebarSettingsFooter />}
+      footer={<SidebarInboxFooter />}
       additionalContent={
         <ErrorBoundary>
           <Suspense fallback={null}>
@@ -49,7 +49,6 @@ export function MeshSidebar({ onCreateProject }: MeshSidebarProps) {
           </Suspense>
         </ErrorBoundary>
       }
-      contentClassName={!isOrgAdmin ? "pt-3" : undefined}
     />
   );
 }

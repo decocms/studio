@@ -13,6 +13,7 @@ import { Badge } from "@deco/ui/components/badge.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Card } from "@deco/ui/components/card.tsx";
+import { Checkbox } from "@deco/ui/components/checkbox.tsx";
 import {
   Dialog,
   DialogContent,
@@ -37,6 +38,7 @@ import {
   useRegistryMutations,
 } from "../hooks/use-registry";
 import type { PublishRequest, PublishRequestStatus } from "../lib/types";
+import { useInfiniteScroll } from "../hooks/use-infinite-scroll";
 
 const STATUS_OPTIONS: Array<{ value: PublishRequestStatus; label: string }> = [
   { value: "pending", label: "Pending" },
@@ -83,6 +85,14 @@ function getReadmeMeta(request: PublishRequest): {
 
 export default function RegistryRequestsPage() {
   const [status, setStatus] = useState<PublishRequestStatus>("pending");
+  const [sortBy, setSortBy] = useState<"created_at" | "title">("created_at");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkApproveOpen, setBulkApproveOpen] = useState(false);
+  const [bulkVisibility, setBulkVisibility] = useState<"private" | "public">(
+    "private",
+  );
+  const [isBulkApproving, setIsBulkApproving] = useState(false);
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [confirmApproveRequest, setConfirmApproveRequest] =
     useState<PublishRequest | null>(null);
@@ -93,18 +103,75 @@ export default function RegistryRequestsPage() {
   );
   const [rejectNotes, setRejectNotes] = useState("");
 
-  const listQuery = usePublishRequests(status);
+  const listQuery = usePublishRequests({ status, sortBy, sortDirection });
   const { reviewMutation, deleteMutation } = usePublishRequestMutations();
   const { createMutation } = useRegistryMutations();
 
-  const requests = listQuery.data?.items ?? [];
-  const totalCount = listQuery.data?.totalCount ?? 0;
+  const requests = listQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const totalCount = listQuery.data?.pages[0]?.totalCount ?? 0;
+  const isFetchingMore = listQuery.isFetchingNextPage;
+  const hasMore = Boolean(listQuery.hasNextPage);
+  const loadMoreRef = useInfiniteScroll(
+    () => {
+      if (!listQuery.isFetchingNextPage) {
+        void listQuery.fetchNextPage();
+      }
+    },
+    hasMore,
+    isFetchingMore,
+  );
 
   const pendingById = new Set(
     requests
       .filter((request) => request.status === "pending")
       .map((request) => request.id),
   );
+  const pendingRequests = requests.filter((request) =>
+    pendingById.has(request.id),
+  );
+  const selectedCount = selectedIds.size;
+  const selectedRequests = pendingRequests.filter((request) =>
+    selectedIds.has(request.id),
+  );
+  const selectedVisibleCount = requests.filter((request) =>
+    selectedIds.has(request.id),
+  ).length;
+  const allVisiblePendingSelected =
+    pendingRequests.length > 0 &&
+    pendingRequests.every((request) => selectedIds.has(request.id));
+
+  const clearSelection = () => setSelectedIds(new Set());
+  const toggleSelected = (id: string, checked: boolean) => {
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      if (checked) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  };
+  const toggleRequestSelection = (id: string) => {
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+  const selectVisiblePending = () => {
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      for (const request of pendingRequests) {
+        next.add(request.id);
+      }
+      return next;
+    });
+  };
 
   const handleApproveConfirmed = async () => {
     const request = confirmApproveRequest;
@@ -173,6 +240,55 @@ export default function RegistryRequestsPage() {
     }
   };
 
+  const handleBulkApproveConfirmed = async () => {
+    if (selectedRequests.length === 0 || isBulkApproving) return;
+    setIsBulkApproving(true);
+    setBulkApproveOpen(false);
+
+    let approvedCount = 0;
+    const failedIds = new Set<string>();
+
+    for (const request of selectedRequests) {
+      try {
+        await reviewMutation.mutateAsync({
+          id: request.id,
+          status: "approved",
+          reviewerNotes: undefined,
+        });
+
+        const draft = requestToDraft(request);
+        await createMutation.mutateAsync({
+          id: draft.id,
+          title: draft.title,
+          description: draft.description,
+          _meta: draft._meta,
+          server: draft.server,
+          is_public: bulkVisibility === "public",
+        });
+
+        approvedCount++;
+      } catch {
+        failedIds.add(request.id);
+      }
+    }
+
+    const failedCount = failedIds.size;
+    if (approvedCount > 0 && failedCount === 0) {
+      toast.success(
+        `${approvedCount} request${approvedCount > 1 ? "s" : ""} approved as ${bulkVisibility}.`,
+      );
+    } else if (approvedCount > 0 && failedCount > 0) {
+      toast.warning(
+        `Approved ${approvedCount}. Failed ${failedCount}. Failed items remain selected for retry.`,
+      );
+    } else {
+      toast.error("Bulk approve failed. Selected items were kept for retry.");
+    }
+
+    setSelectedIds(failedIds);
+    setIsBulkApproving(false);
+  };
+
   return (
     <div className="h-full flex flex-col">
       <div className="shrink-0 border-b border-border">
@@ -183,22 +299,40 @@ export default function RegistryRequestsPage() {
               {totalCount}
             </Badge>
           </div>
-          <div className="inline-flex rounded-lg border border-border p-0.5">
-            {STATUS_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                className={cn(
-                  "px-2.5 py-1 text-xs rounded-md transition-colors",
-                  status === option.value
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-                onClick={() => setStatus(option.value)}
-              >
-                {option.label}
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <div className="inline-flex rounded-lg border border-border p-0.5">
+              {STATUS_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={cn(
+                    "px-2.5 py-1 text-xs rounded-md transition-colors",
+                    status === option.value
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                  onClick={() => setStatus(option.value)}
+                  onClickCapture={() => clearSelection()}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <select
+              className="h-7 rounded-md border border-input bg-background px-2 text-xs"
+              value={`${sortBy}:${sortDirection}`}
+              onChange={(event) => {
+                const [nextSortBy, nextDirection] =
+                  event.target.value.split(":");
+                setSortBy(nextSortBy as "created_at" | "title");
+                setSortDirection(nextDirection as "asc" | "desc");
+              }}
+            >
+              <option value="created_at:asc">Created at (oldest first)</option>
+              <option value="created_at:desc">Created at (newest first)</option>
+              <option value="title:asc">Alphabetical (A-Z)</option>
+              <option value="title:desc">Alphabetical (Z-A)</option>
+            </select>
           </div>
         </div>
       </div>
@@ -222,7 +356,11 @@ export default function RegistryRequestsPage() {
         ) : requests.length === 0 ? (
           <Card className="p-8 text-center">
             <p className="text-sm text-muted-foreground">
-              No publish requests yet.
+              {status === "pending"
+                ? "No pending publish requests."
+                : status === "approved"
+                  ? "No approved publish requests."
+                  : "No rejected publish requests."}
             </p>
           </Card>
         ) : (
@@ -245,10 +383,32 @@ export default function RegistryRequestsPage() {
                 .join(" · ");
 
               return (
-                <Card key={request.id} className="p-3 grid gap-1.5">
+                <Card
+                  key={request.id}
+                  className={cn(
+                    "p-3 grid gap-1.5",
+                    pendingById.has(request.id) &&
+                      "cursor-pointer hover:bg-muted/30",
+                    selectedIds.has(request.id) && "bg-accent/20",
+                  )}
+                  onClick={() => {
+                    if (!pendingById.has(request.id)) return;
+                    toggleRequestSelection(request.id);
+                  }}
+                >
                   {/* Header: icon + title + status */}
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0 flex items-center gap-2">
+                      {pendingById.has(request.id) && (
+                        <Checkbox
+                          checked={selectedIds.has(request.id)}
+                          className="mt-0.5"
+                          onCheckedChange={(checked) =>
+                            toggleSelected(request.id, checked === true)
+                          }
+                          onClick={(event) => event.stopPropagation()}
+                        />
+                      )}
                       <div className="size-7 rounded-md border border-border bg-muted/30 overflow-hidden shrink-0 flex items-center justify-center">
                         {iconUrl ? (
                           <img
@@ -335,7 +495,10 @@ export default function RegistryRequestsPage() {
                       size="sm"
                       variant="ghost"
                       className="h-7 text-xs px-2"
-                      onClick={() => setViewingRequest(request)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setViewingRequest(request);
+                      }}
                     >
                       <Eye size={13} />
                       View
@@ -345,19 +508,29 @@ export default function RegistryRequestsPage() {
                         <Button
                           size="sm"
                           className="h-7 text-xs px-2"
-                          onClick={() => setConfirmApproveRequest(request)}
-                          disabled={approvingId !== null}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setConfirmApproveRequest(request);
+                          }}
+                          disabled={
+                            approvingId !== null ||
+                            isBulkApproving ||
+                            selectedIds.has(request.id)
+                          }
                         >
                           <CheckCircle size={13} />
                           {approvingId === request.id
                             ? "Approving..."
-                            : "Approve"}
+                            : selectedIds.has(request.id)
+                              ? "Selected"
+                              : "Approve"}
                         </Button>
                         <Button
                           size="sm"
                           variant="outline"
                           className="h-7 text-xs px-2"
-                          onClick={() => {
+                          onClick={(event) => {
+                            event.stopPropagation();
                             setRejectingRequest(request);
                             setRejectNotes("");
                           }}
@@ -372,7 +545,10 @@ export default function RegistryRequestsPage() {
                         size="sm"
                         variant="outline"
                         className="h-7 text-xs px-2"
-                        onClick={() => handleDelete(request)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleDelete(request);
+                        }}
                         disabled={deleteMutation.isPending}
                       >
                         <Trash01 size={13} />
@@ -385,7 +561,51 @@ export default function RegistryRequestsPage() {
             })}
           </div>
         )}
+        {requests.length > 0 && hasMore ? (
+          <div ref={loadMoreRef} className="h-1 w-full" />
+        ) : null}
+        {isFetchingMore && requests.length > 0 ? (
+          <div className="pt-3 text-xs text-muted-foreground">
+            Loading more requests...
+          </div>
+        ) : null}
       </div>
+
+      {selectedCount > 0 ? (
+        <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2">
+          <div className="rounded-xl border border-border bg-background/95 shadow-lg backdrop-blur px-3 py-2 flex items-center gap-2">
+            <div className="text-xs text-muted-foreground pr-1">
+              {selectedCount} selected
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs px-2"
+              onClick={selectVisiblePending}
+              disabled={allVisiblePendingSelected}
+            >
+              Select all
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs px-2"
+              onClick={clearSelection}
+            >
+              Clear selection
+            </Button>
+            <Button
+              size="sm"
+              className="h-7 text-xs px-2"
+              onClick={() => setBulkApproveOpen(true)}
+              disabled={isBulkApproving}
+            >
+              <CheckCircle size={13} />
+              Approve selected
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       <Dialog
         open={Boolean(viewingRequest)}
@@ -564,6 +784,44 @@ export default function RegistryRequestsPage() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleApproveConfirmed}>
               Approve
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={bulkApproveOpen} onOpenChange={setBulkApproveOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Approve selected requests?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will approve {selectedRequests.length} request
+              {selectedRequests.length > 1 ? "s" : ""} and create all resulting
+              apps with the same visibility setting.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="grid gap-1.5">
+            <Label htmlFor="bulk-visibility">Visibility for all selected</Label>
+            <select
+              id="bulk-visibility"
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+              value={bulkVisibility}
+              onChange={(event) =>
+                setBulkVisibility(event.target.value as "private" | "public")
+              }
+            >
+              <option value="private">Private</option>
+              <option value="public">Public</option>
+            </select>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isBulkApproving}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkApproveConfirmed}
+              disabled={isBulkApproving || selectedVisibleCount === 0}
+            >
+              {isBulkApproving ? "Approving..." : "Approve selected"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

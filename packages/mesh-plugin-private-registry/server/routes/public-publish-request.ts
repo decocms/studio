@@ -11,8 +11,11 @@ import { PublishApiKeyStorage } from "../storage/publish-api-key";
 import { PublicPublishRequestInputSchema } from "../tools/schema";
 import type { PrivateRegistryDatabase } from "../storage/types";
 
-/** Rate limit: max requests per org per hour */
-const RATE_LIMIT_PER_HOUR = 30;
+type RateLimitWindow = "minute" | "hour";
+
+const DEFAULT_RATE_LIMIT_ENABLED = true;
+const DEFAULT_RATE_LIMIT_WINDOW: RateLimitWindow = "hour";
+const DEFAULT_RATE_LIMIT_MAX = 100;
 
 type CoreDb = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -148,6 +151,9 @@ async function resolveOrganizationId(
 interface PluginSettings {
   acceptPublishRequests?: boolean;
   requireApiToken?: boolean;
+  rateLimitEnabled: boolean;
+  rateLimitWindow: RateLimitWindow;
+  rateLimitMax: number;
 }
 
 async function getPluginSettings(
@@ -176,30 +182,54 @@ async function getPluginSettings(
         : ((rawSettings as Record<string, unknown> | null) ?? {});
 
     if (settings.acceptPublishRequests === true) {
+      const rateLimitWindow: RateLimitWindow =
+        settings.rateLimitWindow === "minute" ? "minute" : "hour";
+      const rawRateLimitMax = settings.rateLimitMax;
+      const rateLimitMax =
+        typeof rawRateLimitMax === "number" &&
+        Number.isFinite(rawRateLimitMax) &&
+        rawRateLimitMax >= 1
+          ? Math.floor(rawRateLimitMax)
+          : DEFAULT_RATE_LIMIT_MAX;
+
       return {
         acceptPublishRequests: true,
         requireApiToken: settings.requireApiToken === true,
+        rateLimitEnabled:
+          settings.rateLimitEnabled === undefined
+            ? DEFAULT_RATE_LIMIT_ENABLED
+            : settings.rateLimitEnabled === true,
+        rateLimitWindow,
+        rateLimitMax,
       };
     }
   }
 
-  return { acceptPublishRequests: false };
+  return {
+    acceptPublishRequests: false,
+    requireApiToken: false,
+    rateLimitEnabled: DEFAULT_RATE_LIMIT_ENABLED,
+    rateLimitWindow: DEFAULT_RATE_LIMIT_WINDOW,
+    rateLimitMax: DEFAULT_RATE_LIMIT_MAX,
+  };
 }
 
 /**
- * Check how many publish requests were created for this org in the last hour.
+ * Check how many publish requests were created for this org in the configured window.
  */
 async function countRecentRequests(
   db: Kysely<PrivateRegistryDatabase>,
   orgId: string,
+  window: RateLimitWindow,
 ): Promise<number> {
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const windowMs = window === "minute" ? 60 * 1000 : 60 * 60 * 1000;
+  const windowStart = new Date(Date.now() - windowMs).toISOString();
 
   const row = await db
     .selectFrom("private_registry_publish_request")
     .select((eb) => eb.fn.countAll<string>().as("count"))
     .where("organization_id", "=", orgId)
-    .where("created_at", ">=", oneHourAgo)
+    .where("created_at", ">=", windowStart)
     .executeTakeFirst();
 
   return Number(row?.count ?? 0);
@@ -277,15 +307,22 @@ export function publicPublishRequestRoutes(
     }
 
     // ── Rate limit ──
-    const recentCount = await countRecentRequests(typedDb, organizationId);
-    if (recentCount >= RATE_LIMIT_PER_HOUR) {
-      return c.json(
-        {
-          error: "Too many publish requests. Please try again later.",
-          retryAfterSeconds: 3600,
-        },
-        429,
+    if (settings.rateLimitEnabled) {
+      const recentCount = await countRecentRequests(
+        typedDb,
+        organizationId,
+        settings.rateLimitWindow,
       );
+      if (recentCount >= settings.rateLimitMax) {
+        return c.json(
+          {
+            error: "Too many publish requests. Please try again later.",
+            retryAfterSeconds:
+              settings.rateLimitWindow === "minute" ? 60 : 3600,
+          },
+          429,
+        );
+      }
     }
 
     // ── Parse and create ──

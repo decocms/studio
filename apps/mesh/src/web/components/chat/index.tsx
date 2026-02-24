@@ -18,17 +18,12 @@ function ChatRoot({
   className,
   children,
 }: PropsWithChildren<{ className?: string }>) {
-  // Detect if className contains bg-background
-  const hasBackgroundClass = className?.includes("bg-background");
-  const surfaceBg = hasBackgroundClass ? "var(--background)" : "var(--muted)";
-
   return (
     <div
       className={cn(
-        "flex flex-col h-full w-full bg-muted transform-[translateZ(0)]",
+        "flex flex-col h-full w-full bg-background transform-[translateZ(0)]",
         className,
       )}
-      style={{ "--chat-surface": surfaceBg } as React.CSSProperties}
     >
       {children}
     </div>

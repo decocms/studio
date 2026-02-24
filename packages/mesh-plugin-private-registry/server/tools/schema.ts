@@ -277,6 +277,8 @@ export const PublishRequestListInputSchema = z.object({
   status: PublishRequestStatusSchema.optional(),
   limit: z.number().int().min(1).max(200).optional(),
   offset: z.number().int().min(0).optional(),
+  sortBy: z.enum(["created_at", "title"]).optional(),
+  sortDirection: z.enum(["asc", "desc"]).optional(),
 });
 
 export const PublishRequestListOutputSchema = z.object({

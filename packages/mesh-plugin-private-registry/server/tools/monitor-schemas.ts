@@ -29,32 +29,40 @@ const MonitorConnectionAuthStatusSchema = z.enum([
   "authenticated",
 ]);
 
-export const RegistryMonitorConfigSchema = z
-  .object({
-    monitorMode: MonitorModeSchema.optional(),
-    // Backward compatibility for previously persisted settings/runs.
-    testMode: MonitorModeSchema.optional(),
-    onFailure: MonitorFailureActionSchema.default("none"),
-    schedule: z.enum(["manual", "cron"]).default("manual"),
-    cronExpression: z.string().optional(),
-    scheduleEventId: z.string().optional(),
-    perMcpTimeoutMs: z.number().int().min(1000).max(600_000).default(30_000),
-    perToolTimeoutMs: z.number().int().min(500).max(120_000).default(10_000),
-    maxAgentSteps: z.number().int().min(1).max(30).default(15),
-    testPublicOnly: z.boolean().default(false),
-    testPrivateOnly: z.boolean().default(false),
-    includePendingRequests: z.boolean().default(false),
-    agentContext: z.string().max(2000).optional(),
-    llmConnectionId: z.string().optional(),
-    llmModelId: z.string().optional(),
-  })
-  .transform((value) => {
-    const { testMode, ...rest } = value;
-    return {
-      ...rest,
-      monitorMode: value.monitorMode ?? testMode ?? "health_check",
-    };
-  });
+export const RegistryMonitorConfigSchema = z.object({
+  monitorMode: MonitorModeSchema.default("health_check"),
+  // Backward compat: persisted data may still use "testMode".
+  testMode: MonitorModeSchema.optional(),
+  onFailure: MonitorFailureActionSchema.default("none"),
+  schedule: z.enum(["manual", "cron"]).default("manual"),
+  cronExpression: z.string().optional(),
+  scheduleEventId: z.string().optional(),
+  perMcpTimeoutMs: z.number().int().min(1000).max(600_000).default(30_000),
+  perToolTimeoutMs: z.number().int().min(500).max(120_000).default(10_000),
+  maxAgentSteps: z.number().int().min(1).max(30).default(15),
+  testPublicOnly: z.boolean().default(false),
+  testPrivateOnly: z.boolean().default(false),
+  includePendingRequests: z.boolean().default(false),
+  agentContext: z.string().max(2000).optional(),
+  llmConnectionId: z.string().optional(),
+  llmModelId: z.string().optional(),
+});
+
+/**
+ * Parse config with backward compat: migrate legacy "testMode" → "monitorMode".
+ */
+export function parseMonitorConfig(
+  raw: unknown,
+): z.infer<typeof RegistryMonitorConfigSchema> {
+  const input =
+    typeof raw === "object" && raw
+      ? ({ ...raw } as Record<string, unknown>)
+      : {};
+  if (!input.monitorMode && input.testMode) {
+    input.monitorMode = input.testMode;
+  }
+  return RegistryMonitorConfigSchema.parse(input);
+}
 
 const MonitorToolResultSchema = z.object({
   toolName: z.string(),

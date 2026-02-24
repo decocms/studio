@@ -21,7 +21,7 @@ interface VersionDropdownProps {
   selectedIndex: number;
   onSelect: (index: number) => void;
   isInstalling?: boolean;
-  variant?: "brand" | "outline";
+  variant?: "default" | "outline";
   showLabel?: boolean;
 }
 
@@ -30,7 +30,7 @@ function VersionDropdown({
   selectedIndex,
   onSelect,
   isInstalling = false,
-  variant = "brand",
+  variant = "default",
   showLabel = false,
 }: VersionDropdownProps) {
   const selectedVersion = versions[selectedIndex];
@@ -44,7 +44,7 @@ function VersionDropdown({
           size={showLabel ? "sm" : "default"}
           className={cn(
             "shrink-0 cursor-pointer",
-            variant === "brand" &&
+            variant === "default" &&
               "rounded-l-none px-2 border-l-2 border-l-white/50",
           )}
         >

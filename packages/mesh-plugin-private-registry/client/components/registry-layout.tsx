@@ -71,13 +71,16 @@ export default function RegistryLayout() {
     acceptPublishRequests,
     requireApiToken,
     storePrivateOnly,
+    rateLimitEnabled,
+    rateLimitWindow,
+    rateLimitMax,
   } = useRegistryConfig(PLUGIN_ID);
   const pendingQuery = usePublishRequestCount();
   const brokenMonitors = useBrokenMonitorsCount();
 
   // Build a stable key from server config so SettingsPage re-mounts when
   // the persisted values change (e.g. after save).
-  const settingsKey = `${registryName}|${registryIcon}|${registryLLMConnectionId}|${registryLLMModelId}|${acceptPublishRequests}|${requireApiToken}|${storePrivateOnly}`;
+  const settingsKey = `${registryName}|${registryIcon}|${registryLLMConnectionId}|${registryLLMModelId}|${acceptPublishRequests}|${requireApiToken}|${storePrivateOnly}|${rateLimitEnabled}|${rateLimitWindow}|${rateLimitMax}`;
 
   // If publish requests were disabled while viewing requests tab, redirect
   if (!acceptPublishRequests && activeTab === "requests") {
@@ -160,6 +163,9 @@ export default function RegistryLayout() {
             initialAcceptPublishRequests={acceptPublishRequests}
             initialRequireApiToken={requireApiToken}
             initialStorePrivateOnly={storePrivateOnly}
+            initialRateLimitEnabled={rateLimitEnabled}
+            initialRateLimitWindow={rateLimitWindow}
+            initialRateLimitMax={rateLimitMax}
             revealedKey={revealedKey}
             onRevealedKeyChange={setRevealedKey}
           />

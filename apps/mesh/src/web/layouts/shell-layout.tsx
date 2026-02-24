@@ -3,24 +3,19 @@ import { Chat } from "@/web/components/chat/index";
 import { ChatPanel } from "@/web/components/chat/side-panel-chat";
 import { CreateProjectDialog } from "@/web/components/create-project-dialog";
 import { MeshSidebar } from "@/web/components/sidebar";
-import { MeshOrgSwitcher } from "@/web/components/org-switcher";
 import { SplashScreen } from "@/web/components/splash-screen";
-import { ProjectTopbar } from "@/web/components/topbar/project-topbar";
-import { TopbarPortalProvider } from "@decocms/mesh-sdk/plugins";
-import { MeshUserMenu } from "@/web/components/user-menu";
+import { MeshUserMenu } from "@/web/components/user-menu.tsx";
 import { useDecoChatOpen } from "@/web/hooks/use-deco-chat-open";
+import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
 import RequiredAuthLayout from "@/web/layouts/required-auth-layout";
 import { authClient } from "@/web/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
-import { AppTopbar } from "@deco/ui/components/app-topbar.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "@deco/ui/components/resizable.tsx";
-import { SidebarToggleButton } from "@deco/ui/components/sidebar-toggle-button.tsx";
 import {
   SidebarInset,
   SidebarLayout,
@@ -34,67 +29,8 @@ import {
 } from "@decocms/mesh-sdk";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Outlet, useParams, useRouterState } from "@tanstack/react-router";
-import { MessageChatSquare } from "@untitledui/icons";
-import { PropsWithChildren, Suspense, useRef, useTransition } from "react";
+import { PropsWithChildren, Suspense, useTransition } from "react";
 import { KEYS } from "../lib/query-keys";
-
-function Topbar({
-  showSidebarToggle = false,
-  showOrgSwitcher = false,
-  showDecoChat = false,
-  disableDecoChat = false,
-}: {
-  showSidebarToggle?: boolean;
-  showOrgSwitcher?: boolean;
-  showDecoChat?: boolean;
-  disableDecoChat?: boolean;
-}) {
-  const [isOpen, setChatOpen] = useDecoChatOpen();
-  const prevDisableRef = useRef(disableDecoChat);
-
-  // Close chat panel if disabled (synchronous check)
-  if (disableDecoChat && isOpen && prevDisableRef.current !== disableDecoChat) {
-    setChatOpen(false);
-  }
-  prevDisableRef.current = disableDecoChat;
-
-  const toggleChat = () => {
-    if (!disableDecoChat) {
-      setChatOpen((prev) => !prev);
-    }
-  };
-
-  return (
-    <AppTopbar>
-      {showSidebarToggle && (
-        <AppTopbar.Sidebar>
-          <SidebarToggleButton />
-        </AppTopbar.Sidebar>
-      )}
-      <AppTopbar.Left>
-        {showOrgSwitcher && (
-          <Suspense fallback={<MeshOrgSwitcher.Skeleton />}>
-            <MeshOrgSwitcher />
-          </Suspense>
-        )}
-      </AppTopbar.Left>
-      <AppTopbar.Right className="gap-2">
-        {showDecoChat && !disableDecoChat && (
-          <Button
-            size="sm"
-            variant="default"
-            onClick={toggleChat}
-            className="h-7 gap-2"
-          >
-            <MessageChatSquare size={16} />
-            Chat
-          </Button>
-        )}
-        <MeshUserMenu />
-      </AppTopbar.Right>
-    </AppTopbar>
-  );
-}
 
 /**
  * This component persists the width of the chat panel across reloads.
@@ -142,29 +78,92 @@ function PersistentSidebarProvider({ children }: PropsWithChildren) {
   );
 }
 
-/**
- * This component renders the chat panel and the main content.
- * It's important to keep it like this to avoid unnecessary re-renders.
- */
-function ChatPanels({ disableChat = false }: { disableChat?: boolean }) {
+function ShellLayoutInner({
+  isStudio,
+  isHomeRoute,
+  onCreateProject,
+}: {
+  isStudio: boolean;
+  isHomeRoute: boolean;
+  onCreateProject: () => void;
+}) {
   const [chatOpen] = useDecoChatOpen();
+  const [chatPanelWidth] = useLocalStorage(
+    LOCALSTORAGE_KEYS.decoChatPanelWidth(),
+    30,
+  );
+  const [preferences] = usePreferences();
 
   return (
-    <ResizablePanelGroup direction="horizontal">
-      <ResizablePanel className="bg-background">
-        <Outlet />
-      </ResizablePanel>
-      {!disableChat && (
-        <>
-          <ResizableHandle withHandle={chatOpen} />
-          <PersistentResizablePanel
-            className={cn(chatOpen ? "max-w-none" : "max-w-0")}
+    <SidebarLayout
+      className="flex-1 bg-sidebar"
+      data-studio={
+        isStudio && preferences.experimental_projects ? "" : undefined
+      }
+      style={
+        {
+          "--sidebar-width": "13.5rem",
+          "--sidebar-width-mobile": "11rem",
+          "--chat-panel-w": `${chatPanelWidth}cqi`,
+        } as Record<string, string>
+      }
+    >
+      <MeshSidebar onCreateProject={onCreateProject} />
+      {/* SidebarInset: transparent so bg-sidebar from SidebarLayout shows
+          through the rounded corners of the inner card */}
+      <SidebarInset
+        className="pt-1.5"
+        style={{ background: "transparent", containerType: "inline-size" }}
+      >
+        <ResizablePanelGroup
+          direction="horizontal"
+          className="h-full"
+          style={{ overflow: "visible" }}
+        >
+          {/* overflow:visible overrides the library's inline overflow:hidden
+              so the card's thin border-l at x=0 isn't clipped at the boundary */}
+          <ResizablePanel
+            className="min-w-0 flex flex-col"
+            style={{ overflow: "visible" }}
           >
-            <ChatPanel />
-          </PersistentResizablePanel>
-        </>
-      )}
-    </ResizablePanelGroup>
+            <div
+              className={cn(
+                "flex flex-col flex-1 min-h-0 bg-card overflow-hidden",
+                "border-t border-l border-sidebar-border",
+                "rounded-tl-[0.75rem]",
+                "transition-[border-radius] duration-200 ease-[var(--ease-out-quart)]",
+                chatOpen && "rounded-tr-[0.75rem] border-r",
+              )}
+            >
+              <div className="flex-1 overflow-hidden">
+                <Outlet />
+              </div>
+            </div>
+          </ResizablePanel>
+
+          {/* Chat card — separate floating card, no shared border with main content */}
+          {!isHomeRoute && (
+            <>
+              <ResizableHandle className="bg-sidebar" />
+              <PersistentResizablePanel
+                className={cn(
+                  "transition-[max-width] duration-200 ease-[var(--ease-out-quart)] overflow-hidden",
+                  chatOpen
+                    ? "max-w-[var(--chat-panel-w)] bg-sidebar"
+                    : "max-w-0",
+                )}
+              >
+                <div className="h-full min-w-[var(--chat-panel-w)] pl-1.5 pr-1.5 pb-1.5">
+                  <div className="h-full bg-background rounded-[0.75rem] overflow-hidden border border-sidebar-border shadow-sm">
+                    <ChatPanel />
+                  </div>
+                </div>
+              </PersistentResizablePanel>
+            </>
+          )}
+        </ResizablePanelGroup>
+      </SidebarInset>
+    </SidebarLayout>
   );
 }
 
@@ -210,10 +209,10 @@ function ShellLayoutContent() {
   if (!projectContext) {
     return (
       <div className="min-h-screen bg-background">
-        <Topbar />
-        <div className="pt-12">
-          <Outlet />
-        </div>
+        <header className="h-12 flex items-center justify-end px-4 border-b border-border">
+          <MeshUserMenu />
+        </header>
+        <Outlet />
       </div>
     );
   }
@@ -237,48 +236,18 @@ function ShellLayoutContent() {
     },
   };
 
+  const isStudio = projectSlug === ORG_ADMIN_PROJECT_SLUG;
+
   return (
     <ProjectContextProvider {...contextWithCurrentProject}>
       <PersistentSidebarProvider>
-        <div
-          className="flex flex-col h-screen"
-          style={
-            {
-              "--project-topbar-height":
-                projectSlug === ORG_ADMIN_PROJECT_SLUG ? "0px" : "48px",
-            } as React.CSSProperties
-          }
-        >
-          <style>{`
-            [data-slot="sidebar-container"] {
-              top: 0 !important;
-            }
-            [data-slot="sidebar-inner"] {
-              padding-top: 0 !important;
-            }
-          `}</style>
+        <div className="flex flex-col h-screen overflow-hidden">
           <Chat.Provider>
-            <SidebarLayout
-              className="flex-1 bg-sidebar"
-              style={
-                {
-                  "--sidebar-width": "13rem",
-                  "--sidebar-width-mobile": "11rem",
-                } as Record<string, string>
-              }
-            >
-              <MeshSidebar
-                onCreateProject={() => setCreateProjectDialogOpen(true)}
-              />
-              <SidebarInset className="flex flex-col">
-                <TopbarPortalProvider>
-                  <ProjectTopbar />
-                  <div className="flex-1 overflow-hidden">
-                    <ChatPanels disableChat={isHomeRoute} />
-                  </div>
-                </TopbarPortalProvider>
-              </SidebarInset>
-            </SidebarLayout>
+            <ShellLayoutInner
+              isStudio={isStudio}
+              isHomeRoute={isHomeRoute}
+              onCreateProject={() => setCreateProjectDialogOpen(true)}
+            />
           </Chat.Provider>
         </div>
       </PersistentSidebarProvider>

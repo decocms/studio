@@ -45,8 +45,8 @@ function ChatPanelContent() {
       "Connect to a model provider to unlock AI-powered features.";
 
     return (
-      <Chat>
-        <Page.Header className="flex-none">
+      <Chat className="animate-in fade-in-0 duration-200">
+        <Page.Header className="flex-none" hideSidebarTrigger>
           <Page.Header.Left className="gap-2" />
           <Page.Header.Right className="gap-1">
             <button
@@ -77,19 +77,19 @@ function ChatPanelContent() {
   }
 
   return (
-    <Chat className="relative overflow-hidden">
+    <Chat className="relative overflow-hidden animate-in fade-in-0 duration-200">
       {/* Chat view */}
       <div
         className={cn(
-          "absolute inset-0 flex flex-col transition-all ease-in-out",
+          "absolute inset-0 flex flex-col transition-[opacity,transform] ease-[var(--ease-out-quart)]",
           showThreadsOverlay
             ? "duration-300 opacity-0 -translate-x-4 pointer-events-none"
             : isPending
-              ? "duration-200 opacity-0 pointer-events-none"
+              ? "duration-150 opacity-0 pointer-events-none"
               : "duration-300 opacity-100 translate-x-0",
         )}
       >
-        <Page.Header className="flex-none">
+        <Page.Header className="flex-none" hideSidebarTrigger>
           <Page.Header.Left className="gap-2">
             {!isChatEmpty && activeThread?.title && (
               <TypewriterTitle
@@ -172,7 +172,7 @@ function ChatPanelContent() {
       {/* Threads view */}
       <div
         className={cn(
-          "absolute inset-0 flex flex-col transition-all duration-300 ease-in-out",
+          "absolute inset-0 flex flex-col transition-[opacity,transform] duration-300 ease-[var(--ease-out-quart)]",
           showThreadsOverlay
             ? "opacity-100 translate-x-0"
             : "opacity-0 translate-x-4 pointer-events-none",

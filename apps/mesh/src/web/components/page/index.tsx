@@ -1,3 +1,4 @@
+import { SidebarTrigger } from "@deco/ui/components/sidebar.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import type { PropsWithChildren, ReactElement, ReactNode } from "react";
 import { Children, isValidElement } from "react";
@@ -37,19 +38,26 @@ function PageRoot({
 function PageHeader({
   children,
   className,
-}: PropsWithChildren<{ className?: string }>) {
+  hideSidebarTrigger,
+}: PropsWithChildren<{ className?: string; hideSidebarTrigger?: boolean }>) {
   const left = findChild(children, PageHeaderLeft);
   const right = findChild(children, PageHeaderRight);
 
   return (
     <div
       className={cn(
-        "shrink-0 w-full border-b border-border h-12 overflow-x-auto",
-        "flex items-center justify-between gap-3 px-4 min-w-max",
+        "shrink-0 w-full border-b border-border/50 h-11 overflow-x-auto",
+        "flex items-center justify-between gap-3 pr-4 min-w-max",
+        hideSidebarTrigger ? "pl-4" : "pl-2",
         className,
       )}
     >
-      {left}
+      <div className="flex items-center gap-1">
+        {!hideSidebarTrigger && (
+          <SidebarTrigger className="text-muted-foreground" />
+        )}
+        {left}
+      </div>
       {right}
     </div>
   );

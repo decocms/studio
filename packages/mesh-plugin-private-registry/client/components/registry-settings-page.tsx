@@ -63,6 +63,9 @@ interface RegistrySettingsPageProps {
   initialAcceptPublishRequests: boolean;
   initialRequireApiToken: boolean;
   initialStorePrivateOnly: boolean;
+  initialRateLimitEnabled: boolean;
+  initialRateLimitWindow: "minute" | "hour";
+  initialRateLimitMax: number;
   revealedKey: string | null;
   onRevealedKeyChange: (key: string | null) => void;
 }
@@ -75,6 +78,9 @@ export default function RegistrySettingsPage({
   initialAcceptPublishRequests,
   initialRequireApiToken,
   initialStorePrivateOnly,
+  initialRateLimitEnabled,
+  initialRateLimitWindow,
+  initialRateLimitMax,
   revealedKey,
   onRevealedKeyChange,
 }: RegistrySettingsPageProps) {
@@ -97,6 +103,15 @@ export default function RegistrySettingsPage({
   );
   const [storePrivateOnlyDraft, setStorePrivateOnlyDraft] = useState(
     initialStorePrivateOnly,
+  );
+  const [rateLimitEnabledDraft, setRateLimitEnabledDraft] = useState(
+    initialRateLimitEnabled,
+  );
+  const [rateLimitWindowDraft, setRateLimitWindowDraft] = useState<
+    "minute" | "hour"
+  >(initialRateLimitWindow);
+  const [rateLimitMaxDraft, setRateLimitMaxDraft] = useState(
+    String(initialRateLimitMax),
   );
 
   // ── API key management ──
@@ -162,7 +177,10 @@ export default function RegistrySettingsPage({
     llmModelDraft.trim() !== initialLLMModelId.trim() ||
     acceptPublishRequestsDraft !== initialAcceptPublishRequests ||
     requireApiTokenDraft !== initialRequireApiToken ||
-    storePrivateOnlyDraft !== initialStorePrivateOnly;
+    storePrivateOnlyDraft !== initialStorePrivateOnly ||
+    rateLimitEnabledDraft !== initialRateLimitEnabled ||
+    rateLimitWindowDraft !== initialRateLimitWindow ||
+    (Number.parseInt(rateLimitMaxDraft, 10) || 100) !== initialRateLimitMax;
 
   const isSaving = saveRegistryConfigMutation.isPending;
 
@@ -187,6 +205,11 @@ export default function RegistrySettingsPage({
     const nextConnectionId = nextModelId
       ? llmConnectionDraft.trim() || effectiveLLMConnectionId || ""
       : llmConnectionDraft.trim();
+    const parsedRateLimitMax = Number.parseInt(rateLimitMaxDraft, 10);
+    const nextRateLimitMax =
+      Number.isFinite(parsedRateLimitMax) && parsedRateLimitMax >= 1
+        ? parsedRateLimitMax
+        : 100;
 
     try {
       await saveRegistryConfigMutation.mutateAsync({
@@ -197,6 +220,9 @@ export default function RegistrySettingsPage({
         acceptPublishRequests: acceptPublishRequestsDraft,
         requireApiToken: requireApiTokenDraft,
         storePrivateOnly: storePrivateOnlyDraft,
+        rateLimitEnabled: rateLimitEnabledDraft,
+        rateLimitWindow: rateLimitWindowDraft,
+        rateLimitMax: nextRateLimitMax,
       });
       toast.success("Registry settings updated");
     } catch (error) {
@@ -216,6 +242,9 @@ export default function RegistrySettingsPage({
     setAcceptPublishRequestsDraft(initialAcceptPublishRequests);
     setRequireApiTokenDraft(initialRequireApiToken);
     setStorePrivateOnlyDraft(initialStorePrivateOnly);
+    setRateLimitEnabledDraft(initialRateLimitEnabled);
+    setRateLimitWindowDraft(initialRateLimitWindow);
+    setRateLimitMaxDraft(String(initialRateLimitMax));
   };
 
   const handleGenerateKey = async () => {
@@ -436,9 +465,71 @@ export default function RegistrySettingsPage({
               />
             </div>
 
+            <div className="flex items-center justify-between gap-2 pt-2 border-t border-border">
+              <div>
+                <Label className="text-sm font-medium">Rate Limit</Label>
+                <p className="text-xs text-muted-foreground">
+                  Limit publish requests per organization by time window.
+                </p>
+              </div>
+              <Switch
+                id="publish-rate-limit"
+                checked={rateLimitEnabledDraft}
+                onCheckedChange={setRateLimitEnabledDraft}
+              />
+            </div>
+            {rateLimitEnabledDraft && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label
+                    htmlFor="rate-limit-max"
+                    className="text-sm font-medium"
+                  >
+                    Max requests
+                  </Label>
+                  <Input
+                    id="rate-limit-max"
+                    inputMode="numeric"
+                    min={1}
+                    type="number"
+                    value={rateLimitMaxDraft}
+                    onChange={(event) =>
+                      setRateLimitMaxDraft(event.target.value)
+                    }
+                    placeholder="100"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label
+                    htmlFor="rate-limit-window"
+                    className="text-sm font-medium"
+                  >
+                    Window
+                  </Label>
+                  <select
+                    id="rate-limit-window"
+                    className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                    value={rateLimitWindowDraft}
+                    onChange={(event) =>
+                      setRateLimitWindowDraft(
+                        event.target.value as "minute" | "hour",
+                      )
+                    }
+                  >
+                    <option value="minute">Per minute</option>
+                    <option value="hour">Per hour</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
             {/* ── Unsaved hint for toggles ── */}
             {(acceptPublishRequestsDraft !== initialAcceptPublishRequests ||
-              requireApiTokenDraft !== initialRequireApiToken) && (
+              requireApiTokenDraft !== initialRequireApiToken ||
+              rateLimitEnabledDraft !== initialRateLimitEnabled ||
+              rateLimitWindowDraft !== initialRateLimitWindow ||
+              (Number.parseInt(rateLimitMaxDraft, 10) || 100) !==
+                initialRateLimitMax) && (
               <p className="text-xs text-amber-600 dark:text-amber-400">
                 Unsaved changes — click Save to apply.
               </p>

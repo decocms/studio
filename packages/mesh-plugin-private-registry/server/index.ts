@@ -4,7 +4,7 @@ import { migrations } from "./migrations";
 import { publicMCPServerRoutes, publicPublishRequestRoutes } from "./routes";
 import { createStorage } from "./storage";
 import { tools } from "./tools";
-import { RegistryMonitorConfigSchema } from "./tools/monitor-schemas";
+import { parseMonitorConfig } from "./tools/monitor-schemas";
 
 export const serverPlugin: ServerPlugin = {
   id: PLUGIN_ID,
@@ -32,7 +32,7 @@ export const serverPlugin: ServerPlugin = {
             eventData.config && typeof eventData.config === "object"
               ? eventData.config
               : {};
-          const config = RegistryMonitorConfigSchema.parse(rawConfig);
+          const config = parseMonitorConfig(rawConfig);
           await proxy.callTool({
             name: "REGISTRY_MONITOR_RUN_START",
             arguments: { config },

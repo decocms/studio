@@ -99,8 +99,8 @@ const avatarVariants = cva("border border-border", {
       square: "",
     },
     size: {
-      "3xs": "w-3 h-3 text-xs font-semibold",
-      "2xs": "w-4 h-4 text-xs font-semibold",
+      "3xs": "w-3 h-3 text-[7px] font-semibold",
+      "2xs": "w-4 h-4 text-[9px] font-semibold",
       xs: "w-6 h-6 text-sm font-semibold",
       sm: "w-8 h-8 text-lg font-semibold",
       base: "w-10 h-10 text-2xl font-semibold",

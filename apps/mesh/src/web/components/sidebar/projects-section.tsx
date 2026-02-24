@@ -6,7 +6,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarSeparator,
 } from "@deco/ui/components/sidebar.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import {
@@ -60,7 +59,6 @@ function ProjectListItem({
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
-        className="group/item cursor-pointer text-foreground/90 hover:text-foreground"
         onClick={() => {
           navigate({
             to: "/$org/$project",
@@ -70,10 +68,12 @@ function ProjectListItem({
         tooltip={project.name}
       >
         <ProjectIcon project={project} />
-        <span className="truncate flex-1">{project.name}</span>
+        <span className="truncate flex-1 group-data-[collapsible=icon]:hidden">
+          {project.name}
+        </span>
         <ChevronRight
           size={12}
-          className="text-muted-foreground opacity-0 group-hover/item:opacity-100 transition-opacity"
+          className="text-muted-foreground opacity-0 group-hover/item:opacity-100 transition-opacity group-data-[collapsible=icon]:hidden"
         />
       </SidebarMenuButton>
     </SidebarMenuItem>
@@ -92,7 +92,7 @@ function ProjectsSectionContent() {
 
   if (isLoading) {
     return (
-      <SidebarGroup className="py-0">
+      <SidebarGroup className="py-0 px-0">
         <SidebarGroupContent>
           <SidebarMenu className="gap-0.5">
             <SidebarMenuItem>
@@ -115,58 +115,61 @@ function ProjectsSectionContent() {
 
   return (
     <>
-      <SidebarSeparator className="my-2" />
-      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-        <SidebarGroup className="py-0">
-          <SidebarGroupContent>
-            <SidebarMenu className="gap-0.5">
-              {/* Section Header */}
-              <SidebarMenuItem>
-                <div className="flex items-center justify-between px-2 h-6">
-                  <CollapsibleTrigger asChild>
+      <div className="group/projects-section mt-2">
+        <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+          <SidebarGroup className="py-0 px-0">
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-0.5">
+                {/* Section Header */}
+                <SidebarMenuItem className="group-data-[collapsible=icon]:hidden">
+                  <div className="flex h-6 w-full items-center gap-1 rounded-md pl-1.5 pr-0.5 hover:bg-sidebar-accent transition-colors">
+                    <CollapsibleTrigger asChild>
+                      <button
+                        type="button"
+                        className="flex flex-1 items-center gap-1 cursor-pointer min-w-0"
+                      >
+                        <span className="text-xs font-medium text-muted-foreground">
+                          Projects
+                        </span>
+                        <ChevronDown
+                          size={12}
+                          className={cn(
+                            "text-muted-foreground shrink-0 transition-transform duration-200",
+                            !isOpen && "-rotate-90",
+                          )}
+                        />
+                      </button>
+                    </CollapsibleTrigger>
                     <button
                       type="button"
-                      className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                      onClick={() => setCreateDialogOpen(true)}
+                      title="Create new project"
+                      className="opacity-0 group-hover/projects-section:opacity-100 transition-opacity text-muted-foreground hover:text-foreground flex items-center justify-center h-4 rounded shrink-0"
                     >
-                      <span>Projects</span>
-                      <ChevronDown
-                        size={12}
-                        className={cn(
-                          "transition-transform",
-                          !isOpen && "-rotate-90",
-                        )}
-                      />
+                      <Plus size={16} />
                     </button>
-                  </CollapsibleTrigger>
-                  <button
-                    type="button"
-                    onClick={() => setCreateDialogOpen(true)}
-                    className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-accent"
-                    title="Create new project"
-                  >
-                    <Plus size={16} />
-                  </button>
-                </div>
-              </SidebarMenuItem>
+                  </div>
+                </SidebarMenuItem>
 
-              {/* Project List */}
-              <CollapsibleContent>
-                {userProjects.length === 0 ? (
-                  <SidebarMenuItem>
-                    <div className="px-2 py-2 text-xs text-muted-foreground">
-                      No projects yet
-                    </div>
-                  </SidebarMenuItem>
-                ) : (
-                  userProjects.map((project) => (
-                    <ProjectListItem key={project.id} project={project} />
-                  ))
-                )}
-              </CollapsibleContent>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </Collapsible>
+                {/* Project List */}
+                <CollapsibleContent>
+                  {userProjects.length === 0 ? (
+                    <SidebarMenuItem>
+                      <div className="px-2 py-2 text-xs text-muted-foreground">
+                        No projects yet
+                      </div>
+                    </SidebarMenuItem>
+                  ) : (
+                    userProjects.map((project) => (
+                      <ProjectListItem key={project.id} project={project} />
+                    ))
+                  )}
+                </CollapsibleContent>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </Collapsible>
+      </div>
 
       <CreateProjectDialog
         open={createDialogOpen}
@@ -180,7 +183,7 @@ export function SidebarProjectsSection() {
   return (
     <Suspense
       fallback={
-        <SidebarGroup className="py-0">
+        <SidebarGroup className="py-0 px-0">
           <SidebarGroupContent>
             <SidebarMenu className="gap-0.5">
               <SidebarMenuItem>

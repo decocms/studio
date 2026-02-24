@@ -2,7 +2,7 @@ import { cn } from "@deco/ui/lib/utils.ts";
 
 export function DecoChatSkeleton({ className }: { className?: string }) {
   return (
-    <div className={cn("flex h-full w-full flex-col bg-muted", className)}>
+    <div className={cn("flex h-full w-full flex-col bg-background", className)}>
       {/* Header skeleton */}
       <div className="flex items-center h-12 flex-none border-b border-border/80 px-4">
         <div className="flex items-center justify-between gap-3 w-full">

@@ -40,15 +40,20 @@ export function useProjectSidebarItems(): SidebarSection[] {
     enabledPlugins.includes(item.pluginId),
   );
 
-  const isOnHome =
-    routerState.location.pathname === `/${org}/${project}` ||
-    routerState.location.pathname === `/${org}/${project}/`;
+  const pathname = routerState.location.pathname;
+  const basePath = `/${org}/${project}`;
+
+  const isOnHome = pathname === basePath || pathname === `${basePath}/`;
+
+  const isActiveRoute = (path: string) =>
+    pathname.startsWith(`${basePath}/${path}`);
 
   // Common items for all projects
   const homeItem: NavigationSidebarItem = {
     key: "home",
     label: "Home",
     icon: <Home02 />,
+    isActive: isOnHome,
     onClick: () => {
       if (isOnHome) {
         window.dispatchEvent(new CustomEvent("reset-home-view"));
@@ -66,6 +71,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
     key: "tasks",
     label: "Tasks",
     icon: <CheckDone01 />,
+    isActive: isActiveRoute("tasks"),
     onClick: () =>
       navigate({
         to: "/$org/$project/tasks",
@@ -77,6 +83,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
     key: "mcps",
     label: "Connections",
     icon: <Container />,
+    isActive: isActiveRoute("mcps"),
     onClick: () =>
       navigate({
         to: "/$org/$project/mcps",
@@ -88,6 +95,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
     key: "projects",
     label: "Projects",
     icon: <Folder />,
+    isActive: isActiveRoute("projects"),
     onClick: () =>
       navigate({
         to: "/$org/$project/projects",
@@ -99,6 +107,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
     key: "store",
     label: "Store",
     icon: <Building02 />,
+    isActive: isActiveRoute("store"),
     onClick: () =>
       navigate({
         to: "/$org/$project/store",
@@ -110,6 +119,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
     key: "agents",
     label: "Agents",
     icon: <Users03 />,
+    isActive: isActiveRoute("agents"),
     onClick: () =>
       navigate({
         to: "/$org/$project/agents",
@@ -121,6 +131,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
     key: "monitoring",
     label: "Monitor",
     icon: <BarChart10 />,
+    isActive: isActiveRoute("monitoring"),
     onClick: () =>
       navigate({
         to: "/$org/$project/monitoring",
@@ -132,6 +143,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
     key: "members",
     label: "Members",
     icon: <FaceSmile />,
+    isActive: isActiveRoute("members"),
     onClick: () =>
       navigate({
         to: "/$org/$project/members",
@@ -139,24 +151,13 @@ export function useProjectSidebarItems(): SidebarSection[] {
       }),
   };
 
-  // Org admin items in order matching Figma design
-  // Note: "Projects" section is also shown via SidebarProjectsSection
-  const orgAdminItems: NavigationSidebarItem[] = [
-    ...(preferences.experimental_tasks ? [tasksItem] : []),
-    connectionsItem,
-    ...(preferences.experimental_projects ? [projectsItem] : []),
-    storeItem,
-    agentsItem,
-    monitorItem,
-    membersItem,
-  ];
-
   // Plugin items mapped to navigation items (flat items)
   const pluginItems: NavigationSidebarItem[] = enabledPluginItems.map(
     (item) => ({
       key: item.pluginId,
       label: item.label,
       icon: item.icon,
+      isActive: isActiveRoute(item.pluginId),
       onClick: () =>
         navigate({
           to: "/$org/$project/$pluginId",
@@ -185,6 +186,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
           key: `${group.pluginId}-${group.id}-${index}`,
           label: item.label,
           icon: item.icon,
+          isActive: isActiveRoute(group.pluginId),
           onClick: () =>
             navigate({
               to: "/$org/$project/$pluginId",
@@ -201,17 +203,42 @@ export function useProjectSidebarItems(): SidebarSection[] {
   );
 
   if (isOrgAdminProject) {
-    // Org-admin sidebar layout (flat, matching Figma):
-    // - Home, Tasks, Connections, Projects, Store, Agents, Monitor, Members
-    // - [Divider] (if plugins exist)
-    // - Plugin items (flat)
-    // - Plugin groups
-    // - "Projects" section (shown via SidebarProjectsSection)
+    // Org-admin sidebar layout:
+    // - Home, Projects (top-level)
+    // - Build group: Agents, Connections, Monitor, Tasks (if enabled)
+    // - Manage group: Members, Store
+    // - Plugin items / groups
     // (Settings is in the footer)
     const sections: SidebarSection[] = [
       {
         type: "items",
-        items: [homeItem, ...orgAdminItems],
+        items: [
+          homeItem,
+          ...(preferences.experimental_projects ? [projectsItem] : []),
+        ],
+      },
+      {
+        type: "group",
+        group: {
+          id: "build",
+          label: "Build",
+          items: [
+            agentsItem,
+            connectionsItem,
+            monitorItem,
+            ...(preferences.experimental_tasks ? [tasksItem] : []),
+          ],
+          defaultExpanded: true,
+        },
+      },
+      {
+        type: "group",
+        group: {
+          id: "manage",
+          label: "Manage",
+          items: [membersItem, storeItem],
+          defaultExpanded: true,
+        },
       },
     ];
 
@@ -237,6 +264,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
     key: "tasks",
     label: "Tasks",
     icon: <Target04 />,
+    isActive: isActiveRoute("tasks"),
     onClick: () =>
       navigate({
         to: "/$org/$project/tasks",
@@ -248,6 +276,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
     key: "workflows",
     label: "Workflows",
     icon: <Dataflow03 />,
+    isActive: isActiveRoute("workflows"),
     onClick: () =>
       navigate({
         to: "/$org/$project/workflows",
@@ -277,9 +306,6 @@ export function useProjectSidebarItems(): SidebarSection[] {
 
   // Add plugin groups
   if (pluginGroupSections.length > 0) {
-    if (pluginItems.length === 0) {
-      sections.push({ type: "divider" });
-    }
     sections.push(...pluginGroupSections);
   }
 

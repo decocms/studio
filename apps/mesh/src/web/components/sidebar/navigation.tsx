@@ -29,15 +29,14 @@ function SidebarNavigationItem({ item }: { item: NavigationSidebarItem }) {
   return (
     <SidebarMenuItem key={item.key}>
       <SidebarMenuButton
-        className="group/nav-item cursor-pointer text-foreground/90 hover:text-foreground"
         onClick={item.onClick}
         isActive={item.isActive}
         tooltip={item.label}
       >
-        <span className="text-muted-foreground group-hover/nav-item:text-foreground transition-colors [&>svg]:size-4">
-          {item.icon}
+        <span className="[&>svg]:size-4">{item.icon}</span>
+        <span className="truncate group-data-[collapsible=icon]:hidden">
+          {item.label}
         </span>
-        <span className="truncate">{item.label}</span>
       </SidebarMenuButton>
     </SidebarMenuItem>
   );
@@ -62,7 +61,7 @@ function SidebarSectionRenderer({ section }: { section: SidebarSection }) {
       );
     case "items":
       return (
-        <SidebarGroup className="py-0">
+        <SidebarGroup className="pt-0 pr-0 pb-0 pl-0">
           <SidebarGroupContent>
             <SidebarMenu className="gap-0.5">
               {section.items.map((item) => (
@@ -93,7 +92,7 @@ export function NavigationSidebar({
       {header}
       <SidebarContent
         className={cn(
-          "flex flex-col flex-1 overflow-x-hidden font-medium border-r pb-2",
+          "flex flex-col flex-1 overflow-x-hidden mt-1 px-3.5 pb-2 group-data-[collapsible=icon]:px-2",
           contentClassName,
         )}
       >
