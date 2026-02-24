@@ -158,7 +158,7 @@ export class PublishRequestStorage {
     const totalCount = Number(totalCountRow?.count ?? 0);
 
     const sortBy = query.sortBy ?? "created_at";
-    const sortDirection = query.sortDirection ?? "asc";
+    const sortDirection = query.sortDirection ?? "desc";
     if (sortBy === "title") {
       listQuery = listQuery.orderBy("title", sortDirection);
     } else {

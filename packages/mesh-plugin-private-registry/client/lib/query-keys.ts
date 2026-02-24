@@ -26,7 +26,7 @@ export const KEYS = {
       {
         status: status ?? "all",
         sortBy: sortBy ?? "created_at",
-        sortDirection: sortDirection ?? "asc",
+        sortDirection: sortDirection ?? "desc",
       },
     ] as const,
   publishRequestsListByOrg: (
@@ -41,7 +41,7 @@ export const KEYS = {
       {
         status: status ?? "all",
         sortBy: sortBy ?? "created_at",
-        sortDirection: sortDirection ?? "asc",
+        sortDirection: sortDirection ?? "desc",
       },
     ] as const,
   publishRequestsCount: () => [...KEYS.publishRequests(), "count"] as const,
