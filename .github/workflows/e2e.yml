@@ -1,0 +1,40 @@
+name: E2E Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mesh
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+        working-directory: .
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Write CI auth config
+        run: |
+          echo '{"emailAndPassword":{"enabled":true},"socialProviders":{},"saml":{"enabled":false,"providers":[]},"emailProviders":[],"magicLinkConfig":{"enabled":false}}' > auth-config.json
+
+      - name: Create SQLite data directory
+        run: mkdir -p data
+
+      - name: Run e2e tests
+        run: bun run test:e2e
