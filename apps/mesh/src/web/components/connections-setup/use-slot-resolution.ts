@@ -52,7 +52,7 @@ export function useSlotResolution(slot: ConnectionSlot): SlotResolution {
         registryConn.id,
         org.id,
         listTool,
-        { where: { id: slot.item_id } },
+        { where: { appName: slot.item_id } },
       );
       const items = extractItemsFromResponse<RegistryItem>(result);
       return items[0] ?? null;

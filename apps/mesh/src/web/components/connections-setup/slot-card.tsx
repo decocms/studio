@@ -10,6 +10,18 @@ import { KEYS } from "@/web/lib/query-keys";
 import { useSlotResolution, type ConnectionSlot } from "./use-slot-resolution";
 import { useConnectionPoller } from "./use-connection-poller";
 import { type SlotPhase } from "./slot-resolution";
+import {
+  onAuthed,
+  onInstallFresh,
+  onInstalled,
+  onPickActive,
+  onPickInactive,
+  onPollerActive,
+  onPollerTimeout,
+  onAuthStatus,
+  onReset,
+  type SlotCardState,
+} from "./slot-card-transitions";
 import { SlotDone } from "./slot-done";
 import { SlotInstallForm } from "./slot-install-form";
 import { SlotAuthOAuth } from "./slot-auth-oauth";
@@ -18,6 +30,24 @@ import { SlotAuthToken } from "./slot-auth-token";
 interface SlotCardProps {
   slot: ConnectionSlot;
   onComplete: (connectionId: string) => void;
+}
+
+/** Apply a partial state transition to the individual React state setters. */
+function applyTransition(
+  t: Partial<SlotCardState>,
+  setters: {
+    setPhase: (v: SlotPhase | null) => void;
+    setPollingConnectionId: (v: string | null) => void;
+    setSelectedConnection: (v: ConnectionEntity | null) => void;
+    setAuthCheckId: (v: string | null) => void;
+  },
+) {
+  if ("phase" in t) setters.setPhase(t.phase ?? null);
+  if ("pollingConnectionId" in t)
+    setters.setPollingConnectionId(t.pollingConnectionId ?? null);
+  if ("selectedConnection" in t)
+    setters.setSelectedConnection(t.selectedConnection ?? null);
+  if ("authCheckId" in t) setters.setAuthCheckId(t.authCheckId ?? null);
 }
 
 export function SlotCard({ slot, onComplete }: SlotCardProps) {
@@ -32,6 +62,13 @@ export function SlotCard({ slot, onComplete }: SlotCardProps) {
   const [authCheckId, setAuthCheckId] = useState<string | null>(null);
   // Prevents onComplete from firing more than once per unique connection
   const completedIdRef = useRef<string | null>(null);
+
+  const setters = {
+    setPhase,
+    setPollingConnectionId,
+    setSelectedConnection,
+    setAuthCheckId,
+  };
 
   const poller = useConnectionPoller(pollingConnectionId);
 
@@ -53,9 +90,7 @@ export function SlotCard({ slot, onComplete }: SlotCardProps) {
   if (pollingConnectionId && poller.isActive && poller.connection) {
     if (completedIdRef.current !== poller.connection.id) {
       completedIdRef.current = poller.connection.id;
-      setPollingConnectionId(null);
-      setSelectedConnection(poller.connection);
-      setPhase("done");
+      applyTransition(onPollerActive(poller.connection), setters);
       onComplete(poller.connection.id);
     }
   }
@@ -65,9 +100,10 @@ export function SlotCard({ slot, onComplete }: SlotCardProps) {
     pollingConnectionId &&
     (poller.isTimedOut || poller.connection?.status === "error")
   ) {
-    if (poller.connection) setSelectedConnection(poller.connection);
-    setAuthCheckId(pollingConnectionId);
-    setPollingConnectionId(null);
+    applyTransition(
+      onPollerTimeout(pollingConnectionId, poller.connection ?? null),
+      setters,
+    );
   }
 
   // React to auth check result — set the appropriate auth phase
@@ -77,30 +113,23 @@ export function SlotCard({ slot, onComplete }: SlotCardProps) {
     phase !== "auth-oauth" &&
     phase !== "auth-token"
   ) {
-    setPhase(authStatus.supportsOAuth ? "auth-oauth" : "auth-token");
+    applyTransition(onAuthStatus(authStatus.supportsOAuth), setters);
   }
 
   const handleInstalled = (connectionId: string) => {
-    setPollingConnectionId(connectionId);
-    setPhase("polling");
+    applyTransition(onInstalled(connectionId), setters);
   };
 
   const handleAuthed = () => {
-    const id =
-      pollingConnectionId ?? selectedConnection?.id ?? authCheckId ?? null;
-    if (id) {
-      setAuthCheckId(null);
-      setPollingConnectionId(id);
-      setPhase("polling");
-    }
+    applyTransition(
+      onAuthed({ pollingConnectionId, selectedConnection, authCheckId }),
+      setters,
+    );
   };
 
   const handleReset = () => {
     const hasExisting = resolution.matchingConnections.length > 0;
-    setPhase(hasExisting ? "picker" : "install");
-    setSelectedConnection(null);
-    setPollingConnectionId(null);
-    setAuthCheckId(null);
+    applyTransition(onReset(hasExisting), setters);
     completedIdRef.current = null;
     onComplete("");
   };
@@ -158,13 +187,10 @@ export function SlotCard({ slot, onComplete }: SlotCardProps) {
                 type="button"
                 onClick={() => {
                   if (conn.status === "active") {
-                    setSelectedConnection(conn);
-                    setPhase("done");
+                    applyTransition(onPickActive(conn), setters);
                     onComplete(conn.id);
                   } else {
-                    setSelectedConnection(conn);
-                    setPollingConnectionId(conn.id);
-                    setPhase("polling");
+                    applyTransition(onPickInactive(conn), setters);
                   }
                 }}
                 className="w-full flex items-center justify-between rounded border px-3 py-2 text-sm hover:bg-accent transition-colors"
@@ -180,7 +206,7 @@ export function SlotCard({ slot, onComplete }: SlotCardProps) {
             variant="outline"
             size="sm"
             className="w-full"
-            onClick={() => setPhase("install")}
+            onClick={() => applyTransition(onInstallFresh(), setters)}
           >
             Install fresh
           </Button>
