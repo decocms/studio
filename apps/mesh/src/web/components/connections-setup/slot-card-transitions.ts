@@ -1,4 +1,4 @@
-import type { ConnectionEntity } from "@decocms/mesh-sdk";
+import type { ConnectionEntity, McpAuthStatus } from "@decocms/mesh-sdk";
 import type { SlotPhase } from "./slot-resolution";
 
 export type SlotCardState = {
@@ -48,22 +48,35 @@ export function onPollerTimeout(
 }
 
 /**
- * Auth check completed.
+ * Determine which auth phase to enter after the auth check completes.
  *
- * source "active"  → poller confirmed the connection is up
- *   supportsOAuth: false → connection is working and needs no extra auth → done
- *   supportsOAuth: true  → connection is up but OAuth token is required → auth-oauth
+ * source "active"  — poller confirmed the connection responds to initialize.
+ *   OAuth needed?   → "auth-oauth"  (connection has oauth_config but no token yet,
+ *                                    OR server returned 401 + WWW-Authenticate)
+ *   No auth needed  → "done"        (working without auth, or OAuth already done)
  *
- * source "timeout" → connection never became active on its own
- *   supportsOAuth: false → needs a bearer/API token → auth-token
- *   supportsOAuth: true  → needs OAuth → auth-oauth
+ * source "timeout" — connection never became active before the poll timeout.
+ *   OAuth needed?   → "auth-oauth"
+ *   No OAuth cue    → "auth-token"  (not working; probably needs an API token)
+ *
+ * NOTE: supportsOAuth is only reliable when the server returns 401 + WWW-Authenticate.
+ * Many services (e.g. Gmail) accept initialize without auth, so we also check
+ * connection.oauth_config + hasOAuthToken to catch the "active but needs OAuth" case.
  */
-export function onAuthStatus(
-  supportsOAuth: boolean,
+export function resolveAuthPhase(
+  authStatus: McpAuthStatus,
+  selectedConnection: ConnectionEntity | null,
   source: "active" | "timeout",
-): Partial<SlotCardState> {
-  if (supportsOAuth) return { phase: "auth-oauth" };
-  return { phase: source === "active" ? "done" : "auth-token" };
+): "auth-oauth" | "auth-token" | "done" {
+  const needsOAuth =
+    // Connection was created with OAuth config and the token hasn't been obtained yet
+    (!!selectedConnection?.oauth_config && !authStatus.hasOAuthToken) ||
+    // Server returned 401 + WWW-Authenticate (the reliable OAuth detection path)
+    (!authStatus.isAuthenticated && authStatus.supportsOAuth);
+
+  if (needsOAuth) return "auth-oauth";
+  if (source === "active" && authStatus.isAuthenticated) return "done";
+  return "auth-token";
 }
 
 /** User completed auth — restart polling to verify the connection activates. */

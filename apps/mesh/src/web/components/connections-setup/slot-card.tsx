@@ -11,7 +11,7 @@ import { useSlotResolution, type ConnectionSlot } from "./use-slot-resolution";
 import { useConnectionPoller } from "./use-connection-poller";
 import { type SlotPhase } from "./slot-resolution";
 import {
-  onAuthStatus,
+  resolveAuthPhase,
   onAuthed,
   onInstallFresh,
   onInstalled,
@@ -120,19 +120,17 @@ export function SlotCard({ slot, onComplete }: SlotCardProps) {
   ) {
     const source = authCheckSourceRef.current;
     const connId = selectedConnection?.id ?? authCheckId;
+    const nextPhase = resolveAuthPhase(authStatus, selectedConnection, source);
 
-    if (authStatus.supportsOAuth) {
-      applyTransition(onAuthStatus(true, source), setters);
-    } else if (source === "active") {
-      // Connection is up and needs no OAuth — it's truly ready
+    if (nextPhase === "done") {
+      // Only call onComplete once per connection
       if (completedIdRef.current !== connId) {
         completedIdRef.current = connId;
-        applyTransition(onAuthStatus(false, "active"), setters);
+        setPhase("done");
         onComplete(connId);
       }
     } else {
-      // Timed out and no OAuth — needs a bearer/API token
-      applyTransition(onAuthStatus(false, "timeout"), setters);
+      setPhase(nextPhase);
     }
   }
 

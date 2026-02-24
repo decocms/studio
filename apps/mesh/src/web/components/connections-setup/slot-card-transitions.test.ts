@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { ConnectionEntity } from "@decocms/mesh-sdk";
+import type { McpAuthStatus } from "@decocms/mesh-sdk";
 import {
   onAuthed,
   onInstallFresh,
@@ -8,7 +9,7 @@ import {
   onPickInactive,
   onPollerActive,
   onPollerTimeout,
-  onAuthStatus,
+  resolveAuthPhase,
   onReset,
 } from "./slot-card-transitions";
 
@@ -93,24 +94,100 @@ describe("onPollerTimeout", () => {
   });
 });
 
-describe("onAuthStatus", () => {
-  describe("source: active (poller confirmed connection is up)", () => {
-    it("routes to auth-oauth when OAuth is required", () => {
-      expect(onAuthStatus(true, "active").phase).toBe("auth-oauth");
+// Helper to build a McpAuthStatus quickly
+function makeAuthStatus(overrides: Partial<McpAuthStatus> = {}): McpAuthStatus {
+  return {
+    isAuthenticated: true,
+    supportsOAuth: false,
+    hasOAuthToken: false,
+    ...overrides,
+  };
+}
+
+describe("resolveAuthPhase", () => {
+  describe("connections with oauth_config (e.g. Gmail)", () => {
+    // Cast because OAuthConfig shape is complex — we just need it to be non-null
+    const oauthConn = {
+      ...makeConn(),
+      oauth_config: {},
+    } as unknown as ConnectionEntity;
+
+    it("returns auth-oauth when connection has oauth_config but no token yet — even if server returned 200", () => {
+      // Gmail initialize returns 200 without a token, so supportsOAuth is false,
+      // but we detect the need via oauth_config + !hasOAuthToken.
+      const status = makeAuthStatus({
+        isAuthenticated: true,
+        supportsOAuth: false,
+        hasOAuthToken: false,
+      });
+      expect(resolveAuthPhase(status, oauthConn, "active")).toBe("auth-oauth");
     });
 
-    it("routes to done when no OAuth required — connection is working", () => {
-      expect(onAuthStatus(false, "active").phase).toBe("done");
+    it("returns done once OAuth token has been obtained", () => {
+      const status = makeAuthStatus({
+        isAuthenticated: true,
+        supportsOAuth: false,
+        hasOAuthToken: true,
+      });
+      expect(resolveAuthPhase(status, oauthConn, "active")).toBe("done");
     });
   });
 
-  describe("source: timeout (connection never became active)", () => {
-    it("routes to auth-oauth when OAuth is required", () => {
-      expect(onAuthStatus(true, "timeout").phase).toBe("auth-oauth");
+  describe("connections without oauth_config (e.g. simple HTTP MCPs)", () => {
+    const simpleConn = makeConn();
+
+    it("returns done when active and no auth needed", () => {
+      const status = makeAuthStatus({
+        isAuthenticated: true,
+        supportsOAuth: false,
+        hasOAuthToken: false,
+      });
+      expect(resolveAuthPhase(status, simpleConn, "active")).toBe("done");
     });
 
-    it("routes to auth-token when no OAuth — needs a bearer/API token", () => {
-      expect(onAuthStatus(false, "timeout").phase).toBe("auth-token");
+    it("returns auth-token when timed out with no OAuth cues", () => {
+      const status = makeAuthStatus({
+        isAuthenticated: false,
+        supportsOAuth: false,
+        hasOAuthToken: false,
+      });
+      expect(resolveAuthPhase(status, simpleConn, "timeout")).toBe(
+        "auth-token",
+      );
+    });
+  });
+
+  describe("connections that return 401 + WWW-Authenticate (explicit OAuth challenge)", () => {
+    it("returns auth-oauth regardless of oauth_config when server returns OAuth challenge", () => {
+      const status = makeAuthStatus({
+        isAuthenticated: false,
+        supportsOAuth: true,
+        hasOAuthToken: false,
+      });
+      expect(
+        resolveAuthPhase(status, makeConn({ oauth_config: null }), "active"),
+      ).toBe("auth-oauth");
+      expect(
+        resolveAuthPhase(status, makeConn({ oauth_config: null }), "timeout"),
+      ).toBe("auth-oauth");
+    });
+  });
+
+  describe("null selectedConnection (entity not fetched before timeout)", () => {
+    it("returns auth-token when timed out with no info", () => {
+      const status = makeAuthStatus({
+        isAuthenticated: false,
+        supportsOAuth: false,
+      });
+      expect(resolveAuthPhase(status, null, "timeout")).toBe("auth-token");
+    });
+
+    it("returns auth-oauth when server signals OAuth on timeout", () => {
+      const status = makeAuthStatus({
+        isAuthenticated: false,
+        supportsOAuth: true,
+      });
+      expect(resolveAuthPhase(status, null, "timeout")).toBe("auth-oauth");
     });
   });
 });
