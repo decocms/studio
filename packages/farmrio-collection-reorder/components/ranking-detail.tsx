@@ -5,12 +5,7 @@
  * header, metrics, criteria, and ranked-list sections.
  */
 
-import {
-  type Report,
-  type ReportSection,
-  type SectionGroup,
-  groupSections,
-} from "@decocms/bindings";
+import { groupSections } from "@decocms/bindings";
 import { Button } from "@deco/ui/components/button.tsx";
 import { AlertCircle, ArrowLeft, Clock, Loading01 } from "@untitledui/icons";
 import { StatusBadge } from "./status-badge";

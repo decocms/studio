@@ -275,7 +275,7 @@ function RankedTable({
           {label}
         </span>
       )}
-      <div className="border border-border rounded-lg overflow-auto max-h-[520px]">
+      <div className="border border-border rounded-lg overflow-auto max-h-[820px]">
         <Table>
           <TableHeader className="sticky top-0 bg-background z-10">
             <TableRow>
@@ -346,7 +346,7 @@ function RankedTable({
                     const allValues: (string | number | null)[] = Array.from(
                       { length: valueColCount },
                       (_, i) =>
-                        noteObj?.[columnNoteKeys[i]] ?? row.values[i] ?? null,
+                        noteObj?.[columnNoteKeys[i] ?? ""] ?? row.values[i] ?? null,
                     );
                     return allValues.map((val, cellIdx) => (
                       <TableCell key={cellIdx} className="text-sm tabular-nums">
@@ -389,14 +389,14 @@ function RankedListSection({
           )}
         >
           <Columns02 size={14} />
-          Comparar ordenação anterior
+          Comparar com Ordenação Atual
         </button>
       </div>
 
       {showComparison ? (
         <div className="flex gap-4 items-start">
-          <RankedTable rows={rows} label="Ordenação atual" />
-          <RankedTable rows={mockedPreviousRows} label="Última ordenação" />
+          <RankedTable rows={rows} label="Ordenação Proposta" />
+          <RankedTable rows={mockedPreviousRows} label="Ordenação Atual" />
         </div>
       ) : (
         <RankedTable rows={rows} />
