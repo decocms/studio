@@ -47,6 +47,13 @@ export const ORGANIZATION_MEMBER_ADD = defineTool({
       );
     }
 
+    // Validate organization ID matches context
+    if (organizationId !== ctx.organization?.id) {
+      throw new Error(
+        "Organization ID does not match authenticated organization",
+      );
+    }
+
     // Add member via Better Auth
     const result = await ctx.boundAuth.organization.addMember({
       organizationId,
