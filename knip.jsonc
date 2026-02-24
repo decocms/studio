@@ -7,11 +7,11 @@
       "project": [],
       "ignoreDependencies": []
     },
-    "packages/runtime": {
-      "entry": ["scripts/generate-json-schema.ts"]
-    },
     "packages/ui": {
       "ignore": ["src/styles/global.css"]
+    },
+    "packages/runtime": {
+      "entry": ["scripts/generate-json-schema.ts"]
     },
     "apps/mesh": {
       "entry": [

@@ -9,11 +9,7 @@
  * Provides a "Mark as done" button that dismisses the report.
  */
 
-import {
-  REPORTS_BINDING,
-  type Report,
-  type ReportSection,
-} from "@decocms/bindings";
+import { REPORTS_BINDING, type Report, groupSections } from "@decocms/bindings";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   AlertCircle,
@@ -175,52 +171,6 @@ function reportToMarkdown(report: Report): string {
   }
 
   return lines.join("\n").trim();
-}
-
-// ---------------------------------------------------------------------------
-// Section grouping (criteria + metrics side-by-side)
-// ---------------------------------------------------------------------------
-
-type SingleGroup = { type: "single"; section: ReportSection; idx: number };
-type SideBySideGroup = {
-  type: "side-by-side";
-  left: Extract<ReportSection, { type: "criteria" }>;
-  right: Extract<ReportSection, { type: "metrics" }>;
-  leftIdx: number;
-  rightIdx: number;
-};
-type SectionGroup = SingleGroup | SideBySideGroup;
-
-function groupSections(sections: ReportSection[]): SectionGroup[] {
-  const groups: SectionGroup[] = [];
-  let i = 0;
-  while (i < sections.length) {
-    const current = sections[i]!;
-    const next = sections[i + 1];
-    if (current.type === "criteria" && next?.type === "metrics") {
-      groups.push({
-        type: "side-by-side",
-        left: current as Extract<ReportSection, { type: "criteria" }>,
-        right: next as Extract<ReportSection, { type: "metrics" }>,
-        leftIdx: i,
-        rightIdx: i + 1,
-      });
-      i += 2;
-    } else if (current.type === "metrics" && next?.type === "criteria") {
-      groups.push({
-        type: "side-by-side",
-        left: next as Extract<ReportSection, { type: "criteria" }>,
-        right: current as Extract<ReportSection, { type: "metrics" }>,
-        leftIdx: i + 1,
-        rightIdx: i,
-      });
-      i += 2;
-    } else {
-      groups.push({ type: "single", section: current, idx: i });
-      i += 1;
-    }
-  }
-  return groups;
 }
 
 // ---------------------------------------------------------------------------

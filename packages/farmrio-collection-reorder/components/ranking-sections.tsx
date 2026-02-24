@@ -1,3 +1,8 @@
+/**
+ * Section renderers for ranking reports.
+ * Renders metrics, criteria, and ranked-list sections with specialized UI.
+ */
+
 import type {
   CriterionItem,
   MetricItem,
@@ -19,19 +24,13 @@ import {
   ArrowDown,
   ArrowUp,
   CheckVerified02,
-  ChevronDown,
-  ChevronRight,
   Columns02,
   File02,
   Hash02,
   Minus,
   Rows03,
 } from "@untitledui/icons";
-import { Fragment, useState } from "react";
-
-// ---------------------------------------------------------------------------
-// Status helpers
-// ---------------------------------------------------------------------------
+import { useState } from "react";
 
 const STATUS_DOT: Record<ReportStatus, string> = {
   passing: "bg-emerald-500",
@@ -41,10 +40,6 @@ const STATUS_DOT: Record<ReportStatus, string> = {
 };
 
 const CRITERIA_COLORS = ["#A595FF", "#FFC116", "#DE3A6E"];
-
-// ---------------------------------------------------------------------------
-// Section Header
-// ---------------------------------------------------------------------------
 
 function SectionHeader({
   icon: Icon,
@@ -61,17 +56,9 @@ function SectionHeader({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Markdown Section
-// ---------------------------------------------------------------------------
-
 function MarkdownSection({ content }: { content: string }) {
   return <Markdown>{content}</Markdown>;
 }
-
-// ---------------------------------------------------------------------------
-// Metrics Section
-// ---------------------------------------------------------------------------
 
 function MetricCard({ metric }: { metric: MetricItem }) {
   return (
@@ -125,10 +112,6 @@ export function MetricsSection({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Table Section
-// ---------------------------------------------------------------------------
-
 function TableSection({
   title,
   columns,
@@ -171,10 +154,6 @@ function TableSection({
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Criteria Section
-// ---------------------------------------------------------------------------
 
 export function CriteriaSection({
   title,
@@ -221,10 +200,6 @@ export function CriteriaSection({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Note Section
-// ---------------------------------------------------------------------------
-
 function NoteSection({ content }: { content: string }) {
   return (
     <div className="space-y-4">
@@ -234,10 +209,6 @@ function NoteSection({ content }: { content: string }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Ranked List Section
-// ---------------------------------------------------------------------------
-
 function DeltaBadge({ delta }: { delta: number }) {
   if (delta === 0) {
     return (
@@ -246,7 +217,6 @@ function DeltaBadge({ delta }: { delta: number }) {
       </span>
     );
   }
-
   const isUp = delta > 0;
   return (
     <span
@@ -263,34 +233,40 @@ function DeltaBadge({ delta }: { delta: number }) {
 
 function buildMockedPreviousRows(rows: RankedListRow[]): RankedListRow[] {
   if (rows.length === 0) return [];
-
-  const shuffled = [...rows];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const swapWith = Math.max(
-      0,
-      Math.min(
-        shuffled.length - 1,
-        i + (i % 3 === 0 ? -2 : i % 2 === 0 ? 1 : -1),
-      ),
-    );
-    [shuffled[i], shuffled[swapWith]] = [shuffled[swapWith]!, shuffled[i]!];
-  }
-
-  return shuffled.map((row, idx) => ({
-    ...row,
-    position: idx + 1,
-    delta: 0,
-    reference_position: undefined,
-  }));
+  return rows
+    .map((row) => {
+      const previousPosition =
+        row.reference_position !== undefined
+          ? row.reference_position
+          : row.position + (row.delta ?? 0);
+      return {
+        ...row,
+        position: previousPosition,
+        delta: 0,
+        reference_position: undefined,
+      };
+    })
+    .sort((a, b) => a.position - b.position);
 }
 
-interface RankedTableProps {
+function RankedTable({
+  rows,
+  label,
+}: {
   rows: RankedListRow[];
   label?: string;
-}
-
-function RankedTable({ rows, label }: RankedTableProps) {
-  const [expanded, setExpanded] = useState<Record<number, boolean>>({});
+}) {
+  const valueColCount = Math.max(4, ...rows.map((r) => r.values.length));
+  const valueHeaders = [
+    "IMPRESSIONS",
+    "SELECT RATE",
+    "ATC",
+    "PURCHASE RATE",
+    ...Array.from(
+      { length: Math.max(0, valueColCount - 4) },
+      (_, i) => `Val ${i + 5}`,
+    ),
+  ];
 
   return (
     <div className="flex flex-col gap-2 min-w-0 flex-1">
@@ -299,7 +275,7 @@ function RankedTable({ rows, label }: RankedTableProps) {
           {label}
         </span>
       )}
-      <div className="border border-border rounded-lg overflow-auto max-h-[520px]">
+      <div className="border border-border rounded-lg overflow-auto max-h-[820px]">
         <Table>
           <TableHeader className="sticky top-0 bg-background z-10">
             <TableRow>
@@ -312,153 +288,75 @@ function RankedTable({ rows, label }: RankedTableProps) {
               <TableHead className="font-mono text-xs uppercase text-muted-foreground">
                 PRODUTO
               </TableHead>
-              <TableHead className="font-mono text-xs uppercase text-muted-foreground">
-                SCORE
-              </TableHead>
-              <TableHead className="font-mono text-xs uppercase text-muted-foreground">
-                GRADE
-              </TableHead>
-              <TableHead className="w-10" />
+              {valueHeaders.slice(0, valueColCount).map((h) => (
+                <TableHead
+                  key={h}
+                  className="font-mono text-xs uppercase text-muted-foreground"
+                >
+                  {h}
+                </TableHead>
+              ))}
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.map((row, rowIdx) => {
-              const isExpanded = expanded[rowIdx] ?? false;
-              const noteObj =
-                row.note && typeof row.note === "object" ? row.note : null;
-              const hasNote =
-                typeof row.note === "string"
-                  ? Boolean(row.note)
-                  : noteObj !== null && Object.keys(noteObj).length > 0;
               const delta =
                 row.reference_position !== undefined
                   ? row.reference_position - row.position
                   : (row.delta ?? 0);
 
               return (
-                <Fragment key={rowIdx}>
-                  <TableRow>
-                    <TableCell>
-                      <div className="flex items-center gap-1 opacity-50">
-                        <Hash02 size={16} className="text-muted-foreground" />
-                        <span className="text-sm font-medium text-muted-foreground tabular-nums">
-                          {row.position}
-                        </span>
-                      </div>
-                    </TableCell>
-
-                    <TableCell>
-                      <DeltaBadge delta={delta} />
-                    </TableCell>
-
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        {row.image && (
-                          <img
-                            src={row.image}
-                            alt=""
-                            className="h-12 w-8 object-cover rounded-sm shrink-0 bg-muted"
-                          />
-                        )}
-                        <span className="text-sm font-medium text-foreground truncate">
-                          {row.label}
-                        </span>
-                      </div>
-                    </TableCell>
-
-                    {row.values.map((val, cellIdx) => {
-                      const isGrade = cellIdx === 1;
-                      const display =
-                        isGrade && typeof val === "string" && val.endsWith("%")
-                          ? `${parseFloat(val) - 10}%`
-                          : val;
-                      return (
-                        <TableCell
-                          key={cellIdx}
-                          className="text-sm tabular-nums"
-                        >
-                          {display}
-                        </TableCell>
-                      );
-                    })}
-
-                    <TableCell>
-                      {hasNote ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setExpanded((prev) => ({
-                              ...prev,
-                              [rowIdx]: !prev[rowIdx],
-                            }))
-                          }
-                          className="flex items-center justify-center size-6 text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                          {isExpanded ? (
-                            <ChevronDown size={16} />
-                          ) : (
-                            <ChevronRight size={16} />
-                          )}
-                        </button>
-                      ) : (
-                        <ChevronRight
-                          size={16}
-                          className="text-muted-foreground opacity-30"
+                <TableRow key={rowIdx}>
+                  <TableCell>
+                    <div className="flex items-center gap-1 opacity-50">
+                      <Hash02 size={16} className="text-muted-foreground" />
+                      <span className="text-sm font-medium text-muted-foreground tabular-nums">
+                        {row.position}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <DeltaBadge delta={delta} />
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1">
+                      {row.image && (
+                        <img
+                          src={row.image}
+                          alt=""
+                          className="h-12 w-8 object-cover rounded-sm shrink-0 bg-muted"
                         />
                       )}
-                    </TableCell>
-                  </TableRow>
-
-                  {hasNote && isExpanded && (
-                    <TableRow key={`note-${rowIdx}`} className="bg-muted/25">
-                      <TableCell colSpan={6}>
-                        {typeof row.note === "string" ? (
-                          <div className="pl-8 pb-2 flex flex-col gap-1.5">
-                            <span className="text-xs font-medium text-muted-foreground uppercase opacity-50 tracking-wide">
-                              MUDANÇA
-                            </span>
-                            <p className="text-sm text-foreground opacity-80 leading-5">
-                              {row.note}
-                            </p>
-                          </div>
-                        ) : (
-                          <div className="py-2 px-4">
-                            <Table>
-                              <TableHeader>
-                                <TableRow>
-                                  {Object.keys(noteObj ?? {}).map((key) => (
-                                    <TableHead
-                                      key={key}
-                                      className="font-mono text-xs uppercase text-muted-foreground"
-                                    >
-                                      {key}
-                                    </TableHead>
-                                  ))}
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                <TableRow>
-                                  {Object.values(noteObj ?? {}).map(
-                                    (val, i) => (
-                                      <TableCell
-                                        key={i}
-                                        className="text-sm tabular-nums"
-                                      >
-                                        {val !== null && val !== undefined
-                                          ? val
-                                          : "—"}
-                                      </TableCell>
-                                    ),
-                                  )}
-                                </TableRow>
-                              </TableBody>
-                            </Table>
-                          </div>
-                        )}
+                      <span className="text-sm font-medium text-foreground truncate">
+                        {row.label}
+                      </span>
+                    </div>
+                  </TableCell>
+                  {(() => {
+                    const columnNoteKeys = [
+                      "sessions",
+                      "select_rate",
+                      "add_to_cart_rate",
+                      "purchase_rate",
+                    ];
+                    const noteObj =
+                      typeof row.note === "object" && row.note !== null
+                        ? (row.note as Record<string, string | number | null>)
+                        : null;
+                    const allValues: (string | number | null)[] = Array.from(
+                      { length: valueColCount },
+                      (_, i) =>
+                        noteObj?.[columnNoteKeys[i] ?? ""] ??
+                        row.values[i] ??
+                        null,
+                    );
+                    return allValues.map((val, cellIdx) => (
+                      <TableCell key={cellIdx} className="text-sm tabular-nums">
+                        {val ?? "—"}
                       </TableCell>
-                    </TableRow>
-                  )}
-                </Fragment>
+                    ));
+                  })()}
+                </TableRow>
               );
             })}
           </TableBody>
@@ -493,7 +391,7 @@ function RankedListSection({
           )}
         >
           <Columns02 size={14} />
-          Comparar ordenação anterior
+          Comparar com Ordenação Atual
         </button>
       </div>
 
@@ -509,11 +407,12 @@ function RankedListSection({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Section Renderer (dispatch by type)
-// ---------------------------------------------------------------------------
-
-export function ReportSectionRenderer({ section }: { section: ReportSection }) {
+export function RankingSectionRenderer({
+  section,
+}: {
+  section: ReportSection;
+}) {
+  console.log("RankingSectionRenderer section:", section);
   switch (section.type) {
     case "markdown":
       return <MarkdownSection content={section.content} />;

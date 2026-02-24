@@ -180,6 +180,58 @@ export const ReportSchema = ReportSummarySchema.extend({
 export type Report = z.infer<typeof ReportSchema>;
 
 // ============================================================================
+// UI Helpers
+// ============================================================================
+
+/**
+ * Groups adjacent criteria+metrics sections into side-by-side pairs for display.
+ * In a pair, criteria always goes left and metrics always goes right,
+ * regardless of their original order.
+ */
+
+type SingleGroup = { type: "single"; section: ReportSection; idx: number };
+type SideBySideGroup = {
+  type: "side-by-side";
+  left: Extract<ReportSection, { type: "criteria" }>;
+  right: Extract<ReportSection, { type: "metrics" }>;
+  leftIdx: number;
+  rightIdx: number;
+};
+export type SectionGroup = SingleGroup | SideBySideGroup;
+
+export function groupSections(sections: ReportSection[]): SectionGroup[] {
+  const groups: SectionGroup[] = [];
+  let i = 0;
+  while (i < sections.length) {
+    const current = sections[i]!;
+    const next = sections[i + 1];
+    const isPair =
+      (current.type === "criteria" && next?.type === "metrics") ||
+      (current.type === "metrics" && next?.type === "criteria");
+
+    if (isPair) {
+      const isCriteriaFirst = current.type === "criteria";
+      const criteria = isCriteriaFirst ? current : next!;
+      const metrics = isCriteriaFirst ? next! : current;
+      const criteriaIdx = isCriteriaFirst ? i : i + 1;
+      const metricsIdx = isCriteriaFirst ? i + 1 : i;
+      groups.push({
+        type: "side-by-side",
+        left: criteria as Extract<ReportSection, { type: "criteria" }>,
+        right: metrics as Extract<ReportSection, { type: "metrics" }>,
+        leftIdx: criteriaIdx,
+        rightIdx: metricsIdx,
+      });
+      i += 2;
+    } else {
+      groups.push({ type: "single", section: current, idx: i });
+      i += 1;
+    }
+  }
+  return groups;
+}
+
+// ============================================================================
 // Tool Schemas
 // ============================================================================
 

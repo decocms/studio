@@ -35,6 +35,7 @@
 @source "../../../mesh-plugin-object-storage/**/*.tsx";
 @source "../../../mesh-plugin-private-registry/**/*.tsx";
 @source "../../../mesh-plugin-reports/**/*.tsx";
+@source "../../../farmrio-collection-reorder/**/*.tsx";
 
 @custom-variant dark (&:is(.dark *));
 

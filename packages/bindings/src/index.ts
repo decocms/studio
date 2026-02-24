@@ -129,4 +129,6 @@ export {
   ReportSectionSchema,
   ReportSummarySchema,
   ReportSchema,
+  type SectionGroup,
+  groupSections,
 } from "./well-known/reports";
