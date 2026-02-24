@@ -47,7 +47,6 @@ export const PROJECT_GET = defineTool({
 
     let project = null;
 
-    
     if (input.projectId) {
       project = await ctx.storage.projects.get(input.projectId);
     } else if (input.slug) {
