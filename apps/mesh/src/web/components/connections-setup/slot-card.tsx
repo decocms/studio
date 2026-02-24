@@ -84,7 +84,6 @@ export function SlotCard({ slot, onComplete }: SlotCardProps) {
     queryKey: KEYS.isMCPAuthenticated(authUrl, null),
     queryFn: () => isConnectionAuthenticated({ url: authUrl, token: null }),
     enabled: Boolean(authCheckId),
-    staleTime: Infinity,
   });
 
   // Derive effective phase: explicit override takes priority, else from resolution
