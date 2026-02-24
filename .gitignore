@@ -72,3 +72,7 @@ studio-demo/
 
 # Git worktrees
 .worktrees
+
+# Playwright
+apps/mesh/test-results/
+apps/mesh/playwright-report/
