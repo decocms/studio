@@ -37,6 +37,7 @@ import {
   useRegistryMutations,
 } from "../hooks/use-registry";
 import type { PublishRequest, PublishRequestStatus } from "../lib/types";
+import { useInfiniteScroll } from "../hooks/use-infinite-scroll";
 
 const STATUS_OPTIONS: Array<{ value: PublishRequestStatus; label: string }> = [
   { value: "pending", label: "Pending" },
@@ -83,6 +84,8 @@ function getReadmeMeta(request: PublishRequest): {
 
 export default function RegistryRequestsPage() {
   const [status, setStatus] = useState<PublishRequestStatus>("pending");
+  const [sortBy, setSortBy] = useState<"created_at" | "title">("created_at");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [confirmApproveRequest, setConfirmApproveRequest] =
     useState<PublishRequest | null>(null);
@@ -93,12 +96,23 @@ export default function RegistryRequestsPage() {
   );
   const [rejectNotes, setRejectNotes] = useState("");
 
-  const listQuery = usePublishRequests(status);
+  const listQuery = usePublishRequests({ status, sortBy, sortDirection });
   const { reviewMutation, deleteMutation } = usePublishRequestMutations();
   const { createMutation } = useRegistryMutations();
 
-  const requests = listQuery.data?.items ?? [];
-  const totalCount = listQuery.data?.totalCount ?? 0;
+  const requests = listQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const totalCount = listQuery.data?.pages[0]?.totalCount ?? 0;
+  const isFetchingMore = listQuery.isFetchingNextPage;
+  const hasMore = Boolean(listQuery.hasNextPage);
+  const loadMoreRef = useInfiniteScroll(
+    () => {
+      if (!listQuery.isFetchingNextPage) {
+        void listQuery.fetchNextPage();
+      }
+    },
+    hasMore,
+    isFetchingMore,
+  );
 
   const pendingById = new Set(
     requests
@@ -183,22 +197,39 @@ export default function RegistryRequestsPage() {
               {totalCount}
             </Badge>
           </div>
-          <div className="inline-flex rounded-lg border border-border p-0.5">
-            {STATUS_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                className={cn(
-                  "px-2.5 py-1 text-xs rounded-md transition-colors",
-                  status === option.value
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-                onClick={() => setStatus(option.value)}
-              >
-                {option.label}
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <div className="inline-flex rounded-lg border border-border p-0.5">
+              {STATUS_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={cn(
+                    "px-2.5 py-1 text-xs rounded-md transition-colors",
+                    status === option.value
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                  onClick={() => setStatus(option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <select
+              className="h-7 rounded-md border border-input bg-background px-2 text-xs"
+              value={`${sortBy}:${sortDirection}`}
+              onChange={(event) => {
+                const [nextSortBy, nextDirection] =
+                  event.target.value.split(":");
+                setSortBy(nextSortBy as "created_at" | "title");
+                setSortDirection(nextDirection as "asc" | "desc");
+              }}
+            >
+              <option value="created_at:asc">Created at (oldest first)</option>
+              <option value="created_at:desc">Created at (newest first)</option>
+              <option value="title:asc">Alphabetical (A-Z)</option>
+              <option value="title:desc">Alphabetical (Z-A)</option>
+            </select>
           </div>
         </div>
       </div>
@@ -385,6 +416,14 @@ export default function RegistryRequestsPage() {
             })}
           </div>
         )}
+        {requests.length > 0 && hasMore ? (
+          <div ref={loadMoreRef} className="h-1 w-full" />
+        ) : null}
+        {isFetchingMore && requests.length > 0 ? (
+          <div className="pt-3 text-xs text-muted-foreground">
+            Loading more requests...
+          </div>
+        ) : null}
       </div>
 
       <Dialog

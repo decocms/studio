@@ -224,6 +224,9 @@ interface RegistryConfigSettings {
   acceptPublishRequests?: boolean;
   requireApiToken?: boolean;
   storePrivateOnly?: boolean;
+  rateLimitEnabled?: boolean;
+  rateLimitWindow?: "minute" | "hour";
+  rateLimitMax?: number;
 }
 
 export function useRegistryConfig(pluginId: string) {
@@ -307,6 +310,22 @@ export function useRegistryConfig(pluginId: string) {
       | boolean
       | undefined) ?? false;
 
+  const rateLimitEnabled =
+    (configQuery.data?.config?.settings?.rateLimitEnabled as
+      | boolean
+      | undefined) ?? true;
+  const rawRateLimitWindow = configQuery.data?.config?.settings
+    ?.rateLimitWindow as string | undefined;
+  const rateLimitWindow: "minute" | "hour" =
+    rawRateLimitWindow === "minute" ? "minute" : "hour";
+  const rawRateLimitMax = configQuery.data?.config?.settings?.rateLimitMax as
+    | number
+    | undefined;
+  const rateLimitMax =
+    typeof rawRateLimitMax === "number" && rawRateLimitMax >= 1
+      ? Math.floor(rawRateLimitMax)
+      : 100;
+
   return {
     registryName,
     registryIcon,
@@ -315,28 +334,53 @@ export function useRegistryConfig(pluginId: string) {
     acceptPublishRequests,
     requireApiToken,
     storePrivateOnly,
+    rateLimitEnabled,
+    rateLimitWindow,
+    rateLimitMax,
     isLoadingConfig: configQuery.isLoading,
     saveRegistryConfigMutation,
   };
 }
 
-export function usePublishRequests(status?: PublishRequestStatus) {
+export function usePublishRequests(params: {
+  status?: PublishRequestStatus;
+  sortBy: "created_at" | "title";
+  sortDirection: "asc" | "desc";
+}) {
   const { org } = useProjectContext();
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
   });
+  const limit = DEFAULT_LIMIT;
 
-  return useQuery({
-    queryKey: KEYS.publishRequestsListByOrg(org.id, status),
-    queryFn: async () =>
+  return useInfiniteQuery({
+    queryKey: KEYS.publishRequestsListByOrg(
+      org.id,
+      params.status,
+      params.sortBy,
+      params.sortDirection,
+    ),
+    queryFn: async ({ pageParam }) =>
       callTool<PublishRequestListResponse>(
         client,
         "REGISTRY_PUBLISH_REQUEST_LIST",
         {
-          status,
+          status: params.status,
+          sortBy: params.sortBy,
+          sortDirection: params.sortDirection,
+          limit,
+          offset: pageParam as number,
         },
       ),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      const loadedCount = allPages.reduce(
+        (total, page) => total + page.items.length,
+        0,
+      );
+      return loadedCount < lastPage.totalCount ? loadedCount : undefined;
+    },
     staleTime: 30_000,
     refetchOnMount: true,
   });

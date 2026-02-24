@@ -135,6 +135,8 @@ export class PublishRequestStorage {
       status?: PublishRequestStatus;
       limit?: number;
       offset?: number;
+      sortBy?: "created_at" | "title";
+      sortDirection?: "asc" | "desc";
     } = {},
   ): Promise<{ items: PublishRequestEntity[]; totalCount: number }> {
     let listQuery = this.db
@@ -155,8 +157,15 @@ export class PublishRequestStorage {
     const totalCountRow = await countQuery.executeTakeFirst();
     const totalCount = Number(totalCountRow?.count ?? 0);
 
+    const sortBy = query.sortBy ?? "created_at";
+    const sortDirection = query.sortDirection ?? "asc";
+    if (sortBy === "title") {
+      listQuery = listQuery.orderBy("title", sortDirection);
+    } else {
+      listQuery = listQuery.orderBy("created_at", sortDirection);
+    }
+
     const rows = await listQuery
-      .orderBy("created_at", "desc")
       .limit(query.limit ?? 24)
       .offset(query.offset ?? 0)
       .execute();
