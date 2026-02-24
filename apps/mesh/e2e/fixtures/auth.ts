@@ -22,14 +22,16 @@ export async function signUp(page: Page) {
 
   await page.goto("/login");
 
-  // The form defaults to sign-up for new sessions (no localStorage.hasLoggedIn).
-  // If it shows sign-in mode, click the toggle.
+  // Always switch to sign-up mode explicitly — the form may default to sign-in.
+  // Wait for the toggle link to be ready before clicking.
   const toggleLink = page.getByText("Don't have an account? Sign up");
-  if (await toggleLink.isVisible()) {
-    await toggleLink.click();
-  }
+  await toggleLink.waitFor({ state: "visible" });
+  await toggleLink.click();
 
-  await page.getByPlaceholder("Your name").fill(user.name);
+  // The name field animates in (CSS transition) — wait until it's actually editable.
+  const nameInput = page.getByPlaceholder("Your name");
+  await nameInput.waitFor({ state: "visible" });
+  await nameInput.fill(user.name);
   await page.getByPlaceholder("you@example.com").fill(user.email);
   await page.getByPlaceholder("••••••••").fill(user.password);
   await page.getByRole("button", { name: "Continue" }).click();
