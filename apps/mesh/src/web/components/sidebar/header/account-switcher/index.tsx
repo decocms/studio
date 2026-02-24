@@ -16,7 +16,7 @@ import {
   ChevronSelectorVertical,
   Check,
   Plus,
-  Settings04,
+  Settings01,
   Building02,
 } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
@@ -321,7 +321,7 @@ export function MeshAccountSwitcher({
               </DropdownMenuSub>
 
               <DropdownMenuItem className="gap-2.5" onClick={handleSettings}>
-                <Settings04
+                <Settings01
                   size={14}
                   className="shrink-0 text-muted-foreground"
                 />
@@ -371,7 +371,7 @@ export function MeshAccountSwitcher({
               <DropdownMenuSeparator />
 
               <DropdownMenuItem className="gap-2.5" onClick={handleSettings}>
-                <Settings04
+                <Settings01
                   size={14}
                   className="shrink-0 text-muted-foreground"
                 />
