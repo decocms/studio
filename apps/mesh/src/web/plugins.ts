@@ -1,5 +1,5 @@
 import type { AnyClientPlugin } from "@decocms/bindings/plugins";
-import { collectionReorderRankingPlugin } from "mesh-plugin-collection-reorder-ranking";
+import { collectionReorderRankingPlugin } from "farmrio-collection-reorder";
 import { objectStoragePlugin } from "mesh-plugin-object-storage";
 import { clientPlugin as privateRegistryPlugin } from "mesh-plugin-private-registry/client";
 import { reportsPlugin } from "mesh-plugin-reports";

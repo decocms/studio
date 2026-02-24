@@ -114,7 +114,7 @@
     "mesh-plugin-object-storage": "workspace:*",
     "mesh-plugin-private-registry": "workspace:*",
     "mesh-plugin-user-sandbox": "workspace:*",
-    "mesh-plugin-collection-reorder-ranking": "workspace:*",
+    "farmrio-collection-reorder": "workspace:*",
     "mesh-plugin-reports": "workspace:*",
     "mesh-plugin-workflows": "workspace:*",
     "nanoid": "^5.1.6",
