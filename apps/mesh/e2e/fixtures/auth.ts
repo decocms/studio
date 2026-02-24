@@ -20,7 +20,18 @@ export function generateTestUser() {
 export async function signUp(page: Page) {
   const user = generateTestUser();
 
+  // Log all requests and their status to diagnose hangs
+  page.on("requestfailed", (req) =>
+    console.error("FAILED:", req.url(), req.failure()?.errorText),
+  );
+  page.on("response", (res) => {
+    if (res.url().includes("/api/auth") || res.url().includes("/api/")) {
+      console.log("RESPONSE:", res.status(), res.url());
+    }
+  });
+
   await page.goto("/login");
+  await page.waitForLoadState("domcontentloaded");
   await page.screenshot({ path: "test-results/debug-login.png" });
 
   // Wait for the form to be ready before doing anything else.
