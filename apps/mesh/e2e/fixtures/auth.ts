@@ -31,7 +31,10 @@ export async function signUp(page: Page) {
   });
 
   await page.goto("/login");
-  await page.waitForLoadState("domcontentloaded");
+  // Wait a few seconds for React + all data fetches to settle, then snapshot
+  await page.waitForTimeout(5000);
+  console.log("URL after 5s:", page.url());
+  console.log("Page text:", await page.locator("body").innerText());
   await page.screenshot({ path: "test-results/debug-login.png" });
 
   // Wait for the form to be ready before doing anything else.
