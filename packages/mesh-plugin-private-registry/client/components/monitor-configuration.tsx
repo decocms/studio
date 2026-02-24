@@ -24,11 +24,7 @@ import {
   useMonitorScheduleSet,
   useRegistryMonitorConfig,
 } from "../hooks/use-monitor";
-import type {
-  MonitorFailureAction,
-  MonitorMode,
-  RegistryMonitorConfig,
-} from "../lib/types";
+import type { MonitorFailureAction, RegistryMonitorConfig } from "../lib/types";
 import { MONITOR_AGENT_DEFAULT_SYSTEM_PROMPT, PLUGIN_ID } from "../../shared";
 import { CronScheduleSelector } from "./cron-schedule-selector";
 
@@ -37,7 +33,6 @@ function hasChanges(
   b: RegistryMonitorConfig,
 ): boolean {
   return (
-    a.monitorMode !== b.monitorMode ||
     a.onFailure !== b.onFailure ||
     a.llmConnectionId !== b.llmConnectionId ||
     a.llmModelId !== b.llmModelId ||
@@ -182,24 +177,6 @@ export function MonitorConfiguration() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="space-y-1">
           <FieldLabel
-            label="QA mode"
-            hint="Defines HOW each MCP is validated: connectivity only, direct tool calls, or multi-step agent execution."
-          />
-          <select
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-            value={draft.monitorMode}
-            onChange={(e) =>
-              setPartial({ monitorMode: e.target.value as MonitorMode })
-            }
-          >
-            <option value="health_check">Health check</option>
-            <option value="tool_call">Tool call</option>
-            <option value="full_agent">Agentic (LLM model)</option>
-          </select>
-        </div>
-
-        <div className="space-y-1">
-          <FieldLabel
             label="On failure"
             hint="Automatic action to apply when an MCP fails tests in a run."
           />
@@ -277,25 +254,6 @@ export function MonitorConfiguration() {
               />
               Include pending requests in tests
             </label>
-          </div>
-        </div>
-
-        <div className="space-y-1">
-          <FieldLabel
-            label="What is tested?"
-            hint="Clarifies the difference between QA mode and test execution output."
-          />
-          <div className="rounded-md border border-input bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-            <p>
-              <strong>QA mode</strong> defines the execution strategy.
-            </p>
-            <p>
-              <strong>QA run history</strong> stores past runs.
-            </p>
-            <p>
-              <strong>QA results log</strong> shows per-MCP outcomes inside one
-              run.
-            </p>
           </div>
         </div>
 
