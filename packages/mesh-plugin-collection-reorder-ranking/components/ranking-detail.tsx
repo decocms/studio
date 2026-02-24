@@ -7,14 +7,7 @@
 
 import type { Report, ReportSection } from "@decocms/bindings";
 import { Button } from "@deco/ui/components/button.tsx";
-import { toast } from "sonner";
-import {
-  AlertCircle,
-  ArrowLeft,
-  Clock,
-  Copy01,
-  Loading01,
-} from "@untitledui/icons";
+import { AlertCircle, ArrowLeft, Clock, Loading01 } from "@untitledui/icons";
 import { StatusBadge } from "./status-badge";
 import { useRankingReport } from "../hooks/use-ranking-reports";
 import {
@@ -72,72 +65,6 @@ function groupSections(sections: ReportSection[]): SectionGroup[] {
   return groups;
 }
 
-function reportToMarkdown(report: Report): string {
-  const lines: string[] = [];
-  lines.push(`# ${report.title}`);
-  lines.push("");
-  lines.push(`> ${report.summary}`);
-  lines.push("");
-  const meta: string[] = [
-    `**Status:** ${report.status}`,
-    `**Category:** ${report.category}`,
-  ];
-  if (report.source) meta.push(`**Source:** ${report.source}`);
-  meta.push(`**Updated:** ${report.updatedAt}`);
-  if (report.tags?.length) meta.push(`**Tags:** ${report.tags.join(", ")}`);
-  lines.push(meta.join("  \n"));
-  lines.push("");
-
-  for (const section of report.sections) {
-    switch (section.type) {
-      case "markdown":
-        lines.push(section.content);
-        lines.push("");
-        break;
-      case "metrics": {
-        if (section.title) lines.push(`## ${section.title}`);
-        lines.push("");
-        for (const m of section.items) {
-          const val = m.unit ? `${m.value} ${m.unit}` : `${m.value}`;
-          lines.push(`- **${m.label}:** ${val}`);
-        }
-        lines.push("");
-        break;
-      }
-      case "criteria": {
-        if (section.title) lines.push(`## ${section.title}`);
-        lines.push("");
-        for (const item of section.items) {
-          const desc = item.description ? `: ${item.description}` : "";
-          lines.push(`- **${item.label}**${desc}`);
-        }
-        lines.push("");
-        break;
-      }
-      case "ranked-list": {
-        if (section.title) lines.push(`## ${section.title}`);
-        lines.push("");
-        for (const row of section.rows) {
-          const delta =
-            row.reference_position !== undefined
-              ? row.reference_position - row.position
-              : (row.delta ?? 0);
-          const deltaStr =
-            delta !== 0 ? ` (${delta > 0 ? "+" : ""}${delta})` : "";
-          lines.push(
-            `${row.position}${deltaStr}. ${row.label} | ${row.values.map((v) => String(v)).join(" | ")}`,
-          );
-        }
-        lines.push("");
-        break;
-      }
-      default:
-        break;
-    }
-  }
-
-  return lines.join("\n").trim();
-}
 
 export default function RankingDetail({
   reportId,
@@ -179,32 +106,8 @@ export default function RankingDetail({
   }
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto pb-6">
-      <div className="border-b border-border px-6 py-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <button
-            type="button"
-            onClick={onBack}
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ArrowLeft size={14} />
-            Collection Ranking
-          </button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-            onClick={() => {
-              const md = reportToMarkdown(report);
-              void navigator.clipboard.writeText(md).then(() => {
-                toast.success("Copied report as Markdown");
-              });
-            }}
-          >
-            <Copy01 size={14} />
-            Copy as Markdown
-          </Button>
-        </div>
+    <div className="flex flex-col h-full overflow-y-auto py-6 px-64">
+      <div className="border-b border-border py-4 space-y-3">
 
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1 min-w-0">
@@ -232,7 +135,7 @@ export default function RankingDetail({
         </div>
       </div>
 
-      <div className="flex-1 px-6 py-6 space-y-8">
+      <div className="flex-1 py-6 space-y-8">
         {groupSections(report.sections ?? []).map((group) => {
           if (group.type === "side-by-side") {
             return (

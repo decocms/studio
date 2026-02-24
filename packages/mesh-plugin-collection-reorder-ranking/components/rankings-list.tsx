@@ -2,9 +2,16 @@
  * Rankings List Component
  *
  * Lists all reports from the Reports MCP. Click a report to view its detail.
+ * Follows the same header + search + content pattern as Agents, Connections, Monitor.
  */
 
-import type { ReportSummary } from "@decocms/bindings";
+import type { ReportStatus, ReportSummary } from "@decocms/bindings";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbList,
+  BreadcrumbPage,
+} from "@deco/ui/components/breadcrumb.tsx";
 import {
   Card,
   CardContent,
@@ -12,21 +19,28 @@ import {
   CardHeader,
   CardTitle,
 } from "@deco/ui/components/card.tsx";
+import { CollectionSearch } from "@deco/ui/components/collection-search.tsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@deco/ui/components/select.tsx";
 import { Clock } from "@untitledui/icons";
 import { AlertCircle, BarChart01, Loading01 } from "@untitledui/icons";
+import { useState } from "react";
 import { useRankingReportsList } from "../hooks/use-ranking-reports";
-import { StatusBadge } from "./status-badge";
+import { STATUS_CONFIG, StatusBadge } from "./status-badge";
 
-function formatTimeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString();
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function ReportCard({
@@ -66,11 +80,48 @@ function ReportCard({
           </div>
           <span className="inline-flex items-center gap-1">
             <Clock size={12} />
-            {formatTimeAgo(report.updatedAt)}
+            {formatDate(report.updatedAt)}
           </span>
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+type PeriodKey = "today" | "thisWeek" | "older";
+
+const PERIOD_LABELS: Record<PeriodKey, string> = {
+  today: "Hoje",
+  thisWeek: "Esta semana",
+  older: "Mais antigos",
+};
+
+function getPeriodKey(iso: string): PeriodKey {
+  const date = new Date(iso);
+  const now = new Date();
+  const startOfToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  );
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const diffDays = Math.floor(
+    (startOfToday.getTime() - date.getTime()) / msPerDay,
+  );
+  if (diffDays <= 0) return "today";
+  if (diffDays <= 6) return "thisWeek";
+  return "older";
+}
+
+function matchesSearch(report: ReportSummary, q: string): boolean {
+  if (!q.trim()) return true;
+  const lower = q.toLowerCase().trim();
+  return (
+    report.title.toLowerCase().includes(lower) ||
+    report.summary.toLowerCase().includes(lower) ||
+    report.category.toLowerCase().includes(lower) ||
+    (report.source?.toLowerCase().includes(lower) ?? false) ||
+    (report.tags?.some((t) => t.toLowerCase().includes(lower)) ?? false)
   );
 }
 
@@ -81,6 +132,30 @@ export default function RankingsList({
 }) {
   const { data, isLoading, error } = useRankingReportsList();
   const reports = data?.reports ?? [];
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<ReportStatus | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+
+  const filtered = reports.filter((r) => {
+    if (!matchesSearch(r, search)) return false;
+    if (statusFilter && r.status !== statusFilter) return false;
+    if (categoryFilter && r.category !== categoryFilter) return false;
+    return true;
+  });
+
+  const categories = [...new Set(reports.map((r) => r.category))].sort();
+
+  const grouped = filtered.reduce<Record<PeriodKey, ReportSummary[]>>(
+    (acc, r) => {
+      const key = getPeriodKey(r.updatedAt);
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(r);
+      return acc;
+    },
+    { today: [], thisWeek: [], older: [] },
+  );
+
+  const periodOrder: PeriodKey[] = ["today", "thisWeek", "older"];
 
   if (error) {
     return (
@@ -94,11 +169,73 @@ export default function RankingsList({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-6 py-3 border-b border-border">
-        <h2 className="text-sm font-medium text-foreground">All Reports</h2>
+      {/* Page Header - same pattern as Agents, Connections, Monitor */}
+      <div className="shrink-0 w-full border-b border-border h-12 overflow-x-auto flex items-center justify-between gap-3 px-4 min-w-max">
+        <div className="flex items-center gap-2 shrink-0 overflow-hidden">
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbPage>Collection Ranking</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+        </div>
+        {reports.length > 0 && (
+          <div className="flex items-center gap-2 shrink-0 overflow-hidden border-l border-border pl-3">
+            <Select
+              value={categoryFilter ?? "__all__"}
+              onValueChange={(v) =>
+                setCategoryFilter(v === "__all__" ? null : v)
+              }
+            >
+              <SelectTrigger size="sm">
+                <SelectValue placeholder="Todas as categorias" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Todas as categorias</SelectItem>
+                {categories.map((cat) => (
+                  <SelectItem key={cat} value={cat}>
+                    <span className="capitalize">{cat}</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={statusFilter ?? "__all__"}
+              onValueChange={(v) =>
+                setStatusFilter(v === "__all__" ? null : (v as ReportStatus))
+              }
+            >
+              <SelectTrigger size="sm">
+                <SelectValue placeholder="Todos os status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Todos os status</SelectItem>
+                {(Object.keys(STATUS_CONFIG) as ReportStatus[]).map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {STATUS_CONFIG[s].label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6">
+      {/* Search Bar - same as Agents, Connections */}
+      <CollectionSearch
+        value={search}
+        onChange={setSearch}
+        placeholder="Search reports..."
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            setSearch("");
+            (event.target as HTMLInputElement).blur();
+          }
+        }}
+      />
+
+      <div className="flex-1 overflow-auto p-6">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center h-full">
             <Loading01
@@ -116,15 +253,38 @@ export default function RankingsList({
               them.
             </p>
           </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-center">
+            <BarChart01 size={48} className="text-muted-foreground mb-4" />
+            <h3 className="text-lg font-medium mb-2">
+              No reports match filters
+            </h3>
+            <p className="text-muted-foreground max-w-sm">
+              Try adjusting your search or filters.
+            </p>
+          </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {reports.map((report) => (
-              <ReportCard
-                key={report.id}
-                report={report}
-                onSelect={onSelectReport}
-              />
-            ))}
+          <div className="space-y-6">
+            {periodOrder.map((key) => {
+              const items = grouped[key];
+              if (!items || items.length === 0) return null;
+              return (
+                <div key={key} className="space-y-3">
+                  <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    {PERIOD_LABELS[key]}
+                  </h3>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {items.map((report) => (
+                      <ReportCard
+                        key={report.id}
+                        report={report}
+                        onSelect={onSelectReport}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
