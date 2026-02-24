@@ -40,6 +40,7 @@ export const PROJECT_PLUGIN_CONFIG_GET = defineTool({
     const config = await ctx.storage.projectPluginConfigs.get(
       projectId,
       pluginId,
+      ctx.organization!.id,
     );
 
     if (!config) {

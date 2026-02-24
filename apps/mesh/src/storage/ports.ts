@@ -74,7 +74,11 @@ export interface ProjectStoragePort {
 
 export interface ProjectPluginConfigStoragePort {
   list(projectId: string): Promise<ProjectPluginConfig[]>;
-  get(projectId: string, pluginId: string): Promise<ProjectPluginConfig | null>;
+  get(
+    projectId: string,
+    pluginId: string,
+    organizationId: string,
+  ): Promise<ProjectPluginConfig | null>;
   upsert(
     projectId: string,
     pluginId: string,
@@ -82,6 +86,7 @@ export interface ProjectPluginConfigStoragePort {
       connectionId?: string | null;
       settings?: Record<string, unknown> | null;
     },
+    organizationId: string,
   ): Promise<ProjectPluginConfig>;
   delete(projectId: string, pluginId: string): Promise<boolean>;
 }

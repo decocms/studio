@@ -92,6 +92,7 @@ export const PROJECT_PLUGIN_CONFIG_UPDATE = defineTool({
         connectionId,
         settings,
       },
+      ctx.organization!.id,
     );
 
     return {

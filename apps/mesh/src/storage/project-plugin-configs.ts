@@ -60,13 +60,25 @@ export class ProjectPluginConfigsStorage
   async get(
     projectId: string,
     pluginId: string,
+    organizationId: string,
   ): Promise<ProjectPluginConfig | null> {
-    const row = await this.db
+    let query = this.db
       .selectFrom("project_plugin_configs")
-      .selectAll()
-      .where("project_id", "=", projectId)
-      .where("plugin_id", "=", pluginId)
-      .executeTakeFirst();
+      .selectAll("project_plugin_configs")
+      .where("project_plugin_configs.project_id", "=", projectId)
+      .where("project_plugin_configs.plugin_id", "=", pluginId);
+
+    if (organizationId) {
+      query = query
+        .innerJoin(
+          "projects",
+          "projects.id",
+          "project_plugin_configs.project_id",
+        )
+        .where("projects.organization_id", "=", organizationId);
+    }
+
+    const row = await query.executeTakeFirst();
     return row ? this.parseRow(row) : null;
   }
 
@@ -77,9 +89,10 @@ export class ProjectPluginConfigsStorage
       connectionId?: string | null;
       settings?: Record<string, unknown> | null;
     },
+    organizationId: string,
   ): Promise<ProjectPluginConfig> {
     const now = new Date().toISOString();
-    const existing = await this.get(projectId, pluginId);
+    const existing = await this.get(projectId, pluginId, organizationId);
 
     if (existing) {
       const updateData: Record<string, unknown> = { updated_at: now };
@@ -98,7 +111,7 @@ export class ProjectPluginConfigsStorage
         .where("plugin_id", "=", pluginId)
         .execute();
 
-      const updated = await this.get(projectId, pluginId);
+      const updated = await this.get(projectId, pluginId, organizationId);
       if (!updated) {
         throw new Error("Failed to update project plugin config");
       }
@@ -119,7 +132,7 @@ export class ProjectPluginConfigsStorage
       })
       .execute();
 
-    const created = await this.get(projectId, pluginId);
+    const created = await this.get(projectId, pluginId, organizationId);
     if (!created) {
       throw new Error("Failed to create project plugin config");
     }
