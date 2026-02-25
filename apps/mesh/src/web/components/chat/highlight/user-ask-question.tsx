@@ -72,6 +72,32 @@ function TextInput({
 }
 
 // ============================================================================
+// useNumberKeyShortcut - press 1-9 to trigger a callback by index
+// ============================================================================
+
+function useNumberKeyShortcut(
+  count: number,
+  onSelect: (index: number) => void,
+) {
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    const handler = (e: globalThis.KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      // Skip if any modifier key is held (allow browser shortcuts like Cmd+1)
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const num = Number.parseInt(e.key, 10);
+      if (num >= 1 && num <= count) {
+        e.preventDefault();
+        onSelect(num - 1);
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [count, onSelect]);
+}
+
+// ============================================================================
 // ChoiceInput - numbered options with inline "Something else..." input
 // ============================================================================
 
@@ -84,23 +110,10 @@ function ChoiceInput({
   const customInputRef = useRef<HTMLInputElement>(null);
   const fieldRef = useRef<{ onChange: (v: string) => void } | null>(null);
 
-  // Global keyboard shortcut: press 1-9 to select option
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect
-  useEffect(() => {
-    const handler = (e: globalThis.KeyboardEvent) => {
-      // Skip if user is typing in any input/textarea
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
-      const num = Number.parseInt(e.key, 10);
-      if (num >= 1 && num <= options.length && fieldRef.current) {
-        e.preventDefault();
-        fieldRef.current.onChange(options[num - 1] ?? "");
-        setIsCustom(false);
-      }
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [options]);
+  useNumberKeyShortcut(options.length, (index) => {
+    fieldRef.current?.onChange(options[index] ?? "");
+    setIsCustom(false);
+  });
 
   if (options.length === 0) return null;
 
@@ -210,23 +223,9 @@ function ConfirmInput({ control, name }: FieldInputProps) {
   const confirmOptions = ["yes", "no"] as const;
   const fieldRef = useRef<{ onChange: (v: string) => void } | null>(null);
 
-  // Global keyboard shortcut: 1=yes, 2=no
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect
-  useEffect(() => {
-    const handler = (e: globalThis.KeyboardEvent) => {
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
-      if (e.key === "1" && fieldRef.current) {
-        e.preventDefault();
-        fieldRef.current.onChange("yes");
-      } else if (e.key === "2" && fieldRef.current) {
-        e.preventDefault();
-        fieldRef.current.onChange("no");
-      }
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, []);
+  useNumberKeyShortcut(confirmOptions.length, (index) => {
+    fieldRef.current?.onChange(confirmOptions[index] ?? "");
+  });
 
   return (
     <FormField
