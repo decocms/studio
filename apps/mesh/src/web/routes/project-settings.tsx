@@ -41,9 +41,6 @@ export default function ProjectSettingsPage() {
                       <h2 className="text-lg font-semibold text-foreground">
                         Organization
                       </h2>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Update your organization's name, slug, and logo.
-                      </p>
                     </div>
                     <OrganizationForm />
                   </section>
@@ -56,9 +53,6 @@ export default function ProjectSettingsPage() {
                       <h2 className="text-lg font-semibold text-foreground">
                         General
                       </h2>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Basic project information.
-                      </p>
                     </div>
                     <ProjectGeneralForm />
                   </section>

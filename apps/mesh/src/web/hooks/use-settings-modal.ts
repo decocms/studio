@@ -5,9 +5,27 @@ export type SettingsSection =
   | "account.preferences"
   | "account.experimental"
   | "org.general"
-  | "project.general"
-  | "project.plugins"
-  | "project.danger";
+  | "org.plugins"
+  | `project:${string}:general`
+  | `project:${string}:plugins`
+  | `project:${string}:danger`;
+
+export function projectSection(
+  slug: string,
+  sub: "general" | "plugins" | "danger",
+): SettingsSection {
+  return `project:${slug}:${sub}` as SettingsSection;
+}
+
+export function parseProjectSection(section: SettingsSection): {
+  slug: string;
+  sub: "general" | "plugins" | "danger";
+} | null {
+  if (!section.startsWith("project:")) return null;
+  const [, slug, sub] = section.split(":");
+  if (!slug || !sub) return null;
+  return { slug, sub: sub as "general" | "plugins" | "danger" };
+}
 
 export function useSettingsModal() {
   const navigate = useNavigate();

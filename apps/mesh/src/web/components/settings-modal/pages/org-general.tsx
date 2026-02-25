@@ -7,9 +7,6 @@ export function OrgGeneralPage() {
         <h2 className="text-base font-semibold text-foreground">
           Organization
         </h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          Update your organization's name, slug, and logo.
-        </p>
       </div>
       <OrganizationForm />
     </div>

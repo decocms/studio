@@ -4,9 +4,8 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@deco/ui/components/select.tsx";
-import { Bell01, Code01 } from "@untitledui/icons";
+import { Bell01, Code01, Shield01 } from "@untitledui/icons";
 import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import { toast } from "@deco/ui/components/sonner.js";
 
@@ -69,9 +68,6 @@ export function AccountPreferencesPage() {
     <div className="flex flex-col gap-6">
       <div>
         <h2 className="text-base font-semibold text-foreground">Preferences</h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          Customize how the app works for you.
-        </p>
       </div>
 
       <div className="flex flex-col">
@@ -107,54 +103,58 @@ export function AccountPreferencesPage() {
             />
           }
         />
-      </div>
-
-      <div className="flex flex-col gap-2 pt-2 border-t border-border">
-        <div>
-          <p className="text-sm font-medium text-foreground">Tool Approval</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Choose when to require approval before tools execute.
-          </p>
-        </div>
-        <Select
-          value={preferences.toolApprovalLevel}
-          onValueChange={(value) =>
-            setPreferences((prev) => ({
-              ...prev,
-              toolApprovalLevel: value as "none" | "readonly" | "yolo",
-            }))
+        <SettingRow
+          icon={<Shield01 size={16} />}
+          label="Tool Approval"
+          description="Choose when to require approval before tools execute."
+          control={
+            <Select
+              value={preferences.toolApprovalLevel}
+              onValueChange={(value) =>
+                setPreferences((prev) => ({
+                  ...prev,
+                  toolApprovalLevel: value as "none" | "readonly" | "yolo",
+                }))
+              }
+            >
+              <SelectTrigger className="w-36">
+                <span>
+                  {
+                    { none: "None", readonly: "Read-only", yolo: "YOLO" }[
+                      preferences.toolApprovalLevel
+                    ]
+                  }
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none" textValue="None">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-medium">None</span>
+                    <span className="text-xs text-muted-foreground">
+                      Require approval for all tool calls
+                    </span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="readonly" textValue="Read-only">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-medium">Read-only</span>
+                    <span className="text-xs text-muted-foreground">
+                      Auto-approve read-only tools
+                    </span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="yolo" textValue="YOLO">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-medium">YOLO</span>
+                    <span className="text-xs text-muted-foreground">
+                      Execute all tools without approval
+                    </span>
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
           }
-        >
-          <SelectTrigger className="w-56">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">
-              <div className="flex flex-col gap-0.5">
-                <span className="font-medium">None</span>
-                <span className="text-xs text-muted-foreground">
-                  Require approval for all tool calls
-                </span>
-              </div>
-            </SelectItem>
-            <SelectItem value="readonly">
-              <div className="flex flex-col gap-0.5">
-                <span className="font-medium">Read-only</span>
-                <span className="text-xs text-muted-foreground">
-                  Auto-approve read-only tools
-                </span>
-              </div>
-            </SelectItem>
-            <SelectItem value="yolo">
-              <div className="flex flex-col gap-0.5">
-                <span className="font-medium">YOLO</span>
-                <span className="text-xs text-muted-foreground">
-                  Execute all tools without approval
-                </span>
-              </div>
-            </SelectItem>
-          </SelectContent>
-        </Select>
+        />
       </div>
     </div>
   );

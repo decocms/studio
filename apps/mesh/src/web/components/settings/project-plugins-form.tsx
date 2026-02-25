@@ -10,8 +10,9 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { Switch } from "@deco/ui/components/switch.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
 import { toast } from "sonner";
+import { Container } from "@untitledui/icons";
 import { sourcePlugins } from "@/web/plugins";
-import { pluginRootSidebarItems } from "@/web/index";
+import { pluginSidebarGroups } from "@/web/index";
 import type { AnyClientPlugin } from "@decocms/bindings/plugins";
 import { BindingSelector } from "@/web/components/binding-selector";
 
@@ -142,30 +143,41 @@ function PluginRow({
     pendingBinding !== undefined ? pendingBinding : serverConnectionId;
 
   return (
-    <div className="py-3">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3 min-w-0">
+    <div
+      className="flex flex-col border-b border-border last:border-0"
+      onClick={() => !isSaving && onToggle(plugin.id, !isEnabled)}
+      style={{ cursor: isSaving ? undefined : "pointer" }}
+    >
+      <div className="flex items-center justify-between gap-6 py-4">
+        <div className="flex items-start gap-3 min-w-0 flex-1">
           {icon && (
-            <div className="flex-shrink-0 text-muted-foreground [&>svg]:size-4">
+            <span className="text-muted-foreground mt-0.5 shrink-0 [&>svg]:size-4">
               {icon}
-            </div>
+            </span>
           )}
           <div className="min-w-0">
-            <div className="text-sm font-medium text-foreground">{label}</div>
+            <p className="text-sm font-medium text-foreground">{label}</p>
             {description && (
-              <p className="text-xs text-muted-foreground">{description}</p>
+              <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                {description}
+              </p>
             )}
           </div>
         </div>
-        <Switch
-          checked={isEnabled}
-          onCheckedChange={(checked) => onToggle(plugin.id, checked)}
-          disabled={isSaving}
-        />
+        <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+          <Switch
+            checked={isEnabled}
+            onCheckedChange={(checked) => onToggle(plugin.id, checked)}
+            disabled={isSaving}
+          />
+        </div>
       </div>
 
       {isEnabled && needsBinding && (
-        <div className="mt-3 pl-7 flex items-center gap-3">
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="pb-4 pl-7 flex items-center gap-3"
+        >
           <Label className="text-xs text-muted-foreground w-24">
             Connection
           </Label>
@@ -349,9 +361,11 @@ export function ProjectPluginsForm() {
     setPendingBindings({});
   };
 
-  // Get plugin metadata from sidebar items
+  // Get plugin metadata from sidebar groups
   const getPluginMeta = (pluginId: string) => {
-    return pluginRootSidebarItems.find((item) => item.pluginId === pluginId);
+    const group = pluginSidebarGroups.find((g) => g.pluginId === pluginId);
+    if (!group) return null;
+    return { label: group.label, icon: group.items[0]?.icon };
   };
 
   // Get plugin description from the source plugin
@@ -368,12 +382,7 @@ export function ProjectPluginsForm() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Enable or disable plugins for this project. Enabled plugins will appear
-        in the sidebar.
-      </p>
-
-      <div className="divide-y divide-border border-y border-border">
+      <div className="flex flex-col">
         {sourcePlugins.map((plugin) => {
           const meta = getPluginMeta(plugin.id);
           const description = getPluginDescription(plugin.id);
@@ -388,7 +397,7 @@ export function ProjectPluginsForm() {
               pendingBinding={pendingBindings[plugin.id]}
               description={description}
               label={meta?.label ?? plugin.id}
-              icon={meta?.icon}
+              icon={meta?.icon ?? <Container size={14} />}
               projectId={project.id}
               client={client}
               onBindingChange={handleBindingChange}

@@ -92,50 +92,62 @@ export function DangerZone() {
   };
 
   return (
-    <div className="border border-destructive/50 rounded-lg p-4 space-y-4">
-      <div>
-        <h3 className="font-semibold text-destructive">Danger Zone</h3>
-        <p className="text-sm text-muted-foreground mt-1">
-          Irreversible and destructive actions.
-        </p>
-      </div>
+    <div className="flex flex-col">
+      <p className="py-4 text-base font-semibold text-foreground border-b border-border">
+        Danger Zone
+      </p>
 
-      <AlertDialog open={isOpen} onOpenChange={handleOpenChange}>
-        <AlertDialogTrigger asChild>
-          <Button variant="destructive">Delete Project</Button>
-        </AlertDialogTrigger>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete "{project.name}"?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. All project data will be permanently
-              deleted.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
+      <div className="flex items-center justify-between gap-6 py-4">
+        <div className="flex flex-col gap-1 min-w-0">
+          <p className="text-sm font-medium text-foreground">Delete Project</p>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Permanently delete this project and all its data. This action cannot
+            be undone.
+          </p>
+        </div>
 
-          <div className="py-4">
-            <p className="text-sm mb-2">
-              Type <strong>{project.name}</strong> to confirm:
-            </p>
-            <Input
-              value={confirmName}
-              onChange={(e) => setConfirmName(e.target.value)}
-              placeholder={project.name}
-            />
-          </div>
-
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              disabled={!canDelete || mutation.isPending}
-              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+        <AlertDialog open={isOpen} onOpenChange={handleOpenChange}>
+          <AlertDialogTrigger asChild>
+            <Button
+              variant="outline"
+              className="shrink-0 bg-destructive/10 text-destructive border-0 hover:bg-destructive/15 hover:text-destructive"
             >
-              {mutation.isPending ? "Deleting..." : "Delete Project"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+              Delete Project
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete "{project.name}"?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action cannot be undone. All project data will be
+                permanently deleted.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+
+            <div className="py-4">
+              <p className="text-sm mb-2">
+                Type <strong>{project.name}</strong> to confirm:
+              </p>
+              <Input
+                value={confirmName}
+                onChange={(e) => setConfirmName(e.target.value)}
+                placeholder={project.name}
+              />
+            </div>
+
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDelete}
+                disabled={!canDelete || mutation.isPending}
+                className="bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive border-0"
+              >
+                {mutation.isPending ? "Deleting..." : "Delete Project"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
     </div>
   );
 }

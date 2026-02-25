@@ -9,7 +9,6 @@ import {
   ORG_ADMIN_PROJECT_SLUG,
 } from "@decocms/mesh-sdk";
 import { KEYS } from "@/web/lib/query-keys";
-import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
 import {
@@ -26,6 +25,7 @@ import { toast } from "sonner";
 const formSchema = z.object({
   name: z.string().min(1, "Name is required").max(200, "Name is too long"),
   description: z.string().max(1000, "Description is too long").nullable(),
+  themeColor: z.string().nullable(),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -56,6 +56,7 @@ export function ProjectGeneralForm() {
     values: {
       name: project.name ?? "",
       description: project.description ?? "",
+      themeColor: project.ui?.themeColor ?? "#60a5fa",
     },
   });
 
@@ -67,6 +68,12 @@ export function ProjectGeneralForm() {
           projectId: project.id,
           name: data.name,
           description: data.description || null,
+          ui: {
+            themeColor: data.themeColor || null,
+            banner: project.ui?.banner ?? null,
+            bannerColor: project.ui?.bannerColor ?? null,
+            icon: project.ui?.icon ?? null,
+          },
         },
       })) as { structuredContent?: unknown };
       return (result.structuredContent ?? result) as ProjectUpdateOutput;
@@ -78,7 +85,6 @@ export function ProjectGeneralForm() {
       queryClient.invalidateQueries({
         queryKey: KEYS.projects(org.id),
       });
-      toast.success("Project updated successfully");
       form.reset(form.getValues());
     },
     onError: (error) => {
@@ -93,84 +99,102 @@ export function ProjectGeneralForm() {
     await mutation.mutateAsync(data);
   };
 
-  const hasChanges = form.formState.isDirty;
+  const saveOnBlur = (fieldOnBlur: () => void) => {
+    fieldOnBlur();
+    void form.handleSubmit(onSubmit)();
+  };
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <FormField
-          control={form.control}
-          name="name"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Project Name</FormLabel>
-              <FormControl>
-                <Input
-                  placeholder="My Project"
-                  {...field}
-                  disabled={isOrgAdmin || mutation.isPending}
-                />
-              </FormControl>
-              {isOrgAdmin && (
-                <FormDescription>
-                  The organization admin project name cannot be changed.
-                </FormDescription>
-              )}
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+    <div className="flex flex-col">
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <FormField
+            control={form.control}
+            name="name"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Project Name</FormLabel>
+                <FormControl>
+                  <Input
+                    placeholder="My Project"
+                    {...field}
+                    onBlur={() => saveOnBlur(field.onBlur)}
+                    disabled={isOrgAdmin || mutation.isPending}
+                  />
+                </FormControl>
+                {isOrgAdmin && (
+                  <FormDescription>
+                    The organization admin project name cannot be changed.
+                  </FormDescription>
+                )}
+                <FormMessage />
+              </FormItem>
+            )}
+          />
 
-        <FormItem>
-          <FormLabel>Slug</FormLabel>
-          <FormControl>
-            <Input value={project.slug} disabled className="bg-muted" />
-          </FormControl>
-          <FormDescription>
-            The project slug cannot be changed after creation.
-          </FormDescription>
-        </FormItem>
+          <FormItem>
+            <FormLabel>Slug</FormLabel>
+            <FormControl>
+              <Input value={project.slug} disabled className="bg-muted" />
+            </FormControl>
+            <FormDescription>
+              The project slug cannot be changed after creation.
+            </FormDescription>
+          </FormItem>
 
-        <FormField
-          control={form.control}
-          name="description"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Description</FormLabel>
-              <FormControl>
-                <Textarea
-                  placeholder="Optional project description..."
-                  rows={3}
-                  {...field}
-                  value={field.value ?? ""}
-                  disabled={mutation.isPending}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+          <FormField
+            control={form.control}
+            name="description"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Description</FormLabel>
+                <FormControl>
+                  <Textarea
+                    placeholder="Optional project description..."
+                    rows={3}
+                    {...field}
+                    value={field.value ?? ""}
+                    onBlur={() => saveOnBlur(field.onBlur)}
+                    disabled={mutation.isPending}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
 
-        <div className="flex items-center gap-3 pt-4">
-          <Button
-            type="submit"
-            disabled={!hasChanges || mutation.isPending}
-            className="min-w-24"
-          >
-            {mutation.isPending ? "Saving..." : "Save Changes"}
-          </Button>
-          {hasChanges && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => form.reset()}
-              disabled={mutation.isPending}
-            >
-              Cancel
-            </Button>
-          )}
-        </div>
-      </form>
-    </Form>
+          <FormField
+            control={form.control}
+            name="themeColor"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Color</FormLabel>
+                <FormControl>
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="size-9 rounded-md border border-input overflow-hidden cursor-pointer shrink-0"
+                      style={{ backgroundColor: field.value ?? "#60a5fa" }}
+                    >
+                      <input
+                        type="color"
+                        value={field.value ?? "#60a5fa"}
+                        onChange={(e) => field.onChange(e.target.value)}
+                        onBlur={() => saveOnBlur(field.onBlur)}
+                        disabled={mutation.isPending}
+                        className="opacity-0 w-full h-full cursor-pointer"
+                      />
+                    </div>
+                    <span className="font-mono text-sm text-muted-foreground">
+                      {field.value ?? "#60a5fa"}
+                    </span>
+                  </div>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </form>
+      </Form>
+    </div>
   );
 }
