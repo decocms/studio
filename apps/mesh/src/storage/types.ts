@@ -788,6 +788,31 @@ export interface MemberTag {
 }
 
 // ============================================================================
+// Diagnostic Session Table Definitions
+// ============================================================================
+
+/**
+ * Diagnostic Session table definition
+ * Stores pre-auth storefront diagnostic scan results with progressive
+ * per-agent status updates. organization_id and project_id are nullable
+ * and are associated retroactively post-login.
+ */
+export interface DiagnosticSessionTable {
+  id: string;
+  token: string; // Unique session token for polling
+  url: string; // Original URL submitted
+  normalized_url: string; // Normalized for caching (lowercase host, stripped trailing slash)
+  status: string; // 'pending' | 'running' | 'completed' | 'failed'
+  agents: JsonObject<Record<string, unknown>>; // JSON: Record<DiagnosticAgentId, AgentStatus>
+  results: JsonObject<Record<string, unknown>>; // JSON: DiagnosticResult
+  organization_id: string | null; // Nullable FK — filled post-login
+  project_id: string | null; // Nullable FK — filled post-login
+  created_at: ColumnType<Date, Date | string, never>;
+  updated_at: ColumnType<Date, Date | string, Date | string>;
+  expires_at: string; // ISO 8601 — 7 days from creation
+}
+
+// ============================================================================
 // Projects Table Definitions
 // ============================================================================
 
@@ -905,4 +930,7 @@ export interface Database {
   // Projects tables
   projects: ProjectTable;
   project_plugin_configs: ProjectPluginConfigTable;
+
+  // Diagnostic tables (pre-auth storefront scanning)
+  diagnostic_sessions: DiagnosticSessionTable;
 }
