@@ -1,4 +1,4 @@
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 
 export type SettingsSection =
   | "account.profile"
@@ -12,26 +12,35 @@ export type SettingsSection =
 export function useSettingsModal() {
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { settings?: string };
+  const { org, project } = useParams({ strict: false }) as {
+    org?: string;
+    project?: string;
+  };
 
   const activeSection = search.settings as SettingsSection | undefined;
   const isOpen = !!activeSection;
 
   const open = (section: SettingsSection) => {
-    navigate({ search: (prev) => ({ ...prev, settings: section }) });
+    if (!org || !project) return;
+    navigate({
+      to: "/$org/$project",
+      params: { org, project },
+      search: { settings: section },
+    });
   };
 
   const close = () => {
+    if (!org || !project) return;
     navigate({
-      search: (prev) => {
-        const { settings: _s, ...rest } = prev as Record<string, unknown>;
-        return rest as Record<string, string>;
-      },
+      to: "/$org/$project",
+      params: { org, project },
+      search: {},
     });
   };
 
   return {
     isOpen,
-    activeSection: activeSection ?? "account.preferences",
+    activeSection: activeSection ?? ("account.preferences" as SettingsSection),
     open,
     close,
   };

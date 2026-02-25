@@ -19,6 +19,7 @@ import {
   useProjectContext,
 } from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
+import { SettingsModal } from "@/web/components/settings-modal/index";
 
 /**
  * Error display for when a project request fails
@@ -141,6 +142,7 @@ function ProjectLayoutContent() {
       <Suspense fallback={<SplashScreen />}>
         <Outlet />
       </Suspense>
+      <SettingsModal />
     </ProjectContextProvider>
   );
 }
