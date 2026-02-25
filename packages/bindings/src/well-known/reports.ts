@@ -287,6 +287,54 @@ export type ReportsUpdateStatusOutput = z.infer<
   typeof ReportsUpdateStatusOutputSchema
 >;
 
+/**
+ * REPORTS_UPSERT - Create or update a report (optional tool)
+ * Only Mesh MCP implements this; external MCPs (e.g. GitHub Repo Reports) do not.
+ */
+const ReportsUpsertInputSchema = z.object({
+  id: z
+    .string()
+    .optional()
+    .describe("Report ID (optional, generated if omitted)"),
+  title: z.string().describe("Report title"),
+  category: z
+    .string()
+    .describe(
+      "Report category (e.g. 'performance', 'security', 'collection-ranking')",
+    ),
+  status: ReportStatusSchema.describe("Overall report status"),
+  summary: z.string().describe("One-line summary of findings"),
+  source: z
+    .string()
+    .optional()
+    .describe(
+      "Agent or service that generated the report (e.g. 'collection-reorder', 'security-auditor')",
+    ),
+  tags: z.array(z.string()).optional().describe("Free-form tags for filtering"),
+  lifecycleStatus: ReportLifecycleStatusSchema.optional().describe(
+    "Inbox lifecycle status (default: unread)",
+  ),
+  sections: z
+    .array(ReportSectionSchema)
+    .describe("Ordered content sections (markdown, metrics, table, etc.)"),
+});
+
+const ReportsUpsertOutputSchema = z.object({
+  id: z.string().describe("Report identifier"),
+  title: z.string(),
+  category: z.string(),
+  status: ReportStatusSchema,
+  summary: z.string(),
+  updatedAt: z.string(),
+  source: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  lifecycleStatus: z.string().optional(),
+  sections: z.array(ReportSectionSchema),
+});
+
+export type ReportsUpsertInput = z.infer<typeof ReportsUpsertInputSchema>;
+export type ReportsUpsertOutput = z.infer<typeof ReportsUpsertOutputSchema>;
+
 // ============================================================================
 // Binding Definition
 // ============================================================================
@@ -294,7 +342,7 @@ export type ReportsUpdateStatusOutput = z.infer<
 /**
  * Reports Binding
  *
- * Defines the interface for viewing automated reports.
+ * Defines the interface for viewing and publishing automated reports.
  * Any MCP that implements this binding can be used with the Reports plugin.
  *
  * Required tools:
@@ -303,6 +351,7 @@ export type ReportsUpdateStatusOutput = z.infer<
  *
  * Optional tools:
  * - REPORTS_UPDATE_STATUS: Update the lifecycle status of a report (unread → read → dismissed)
+ * - REPORTS_UPSERT: Create or update a report (Mesh MCP only; used by agents/plugins to publish)
  */
 export const REPORTS_BINDING = [
   {
@@ -324,6 +373,16 @@ export const REPORTS_BINDING = [
     "REPORTS_UPDATE_STATUS",
     ReportsUpdateStatusInput,
     ReportsUpdateStatusOutput
+  >,
+  {
+    name: "REPORTS_UPSERT" as const,
+    inputSchema: ReportsUpsertInputSchema,
+    outputSchema: ReportsUpsertOutputSchema,
+    opt: true,
+  } satisfies ToolBinder<
+    "REPORTS_UPSERT",
+    ReportsUpsertInput,
+    ReportsUpsertOutput
   >,
 ] as const satisfies Binder;
 

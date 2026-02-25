@@ -30,7 +30,8 @@ export type ToolCategory =
   | "Event Bus"
   | "Code Execution"
   | "Tags"
-  | "Projects";
+  | "Projects"
+  | "Reports";
 
 /**
  * All tool names - keep in sync with ALL_TOOLS in index.ts
@@ -120,6 +121,11 @@ const ALL_TOOL_NAMES = [
   "PROJECT_DELETE",
   "PROJECT_PLUGIN_CONFIG_GET",
   "PROJECT_PLUGIN_CONFIG_UPDATE",
+  // Reports tools
+  "REPORTS_LIST",
+  "REPORTS_GET",
+  "REPORTS_UPDATE_STATUS",
+  "REPORTS_UPSERT",
 ] as const;
 
 /**
@@ -535,6 +541,27 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Update project plugin configuration",
     category: "Projects",
   },
+  // Reports tools
+  {
+    name: "REPORTS_LIST",
+    description: "List reports with optional filters",
+    category: "Reports",
+  },
+  {
+    name: "REPORTS_GET",
+    description: "Get report by ID with full content",
+    category: "Reports",
+  },
+  {
+    name: "REPORTS_UPDATE_STATUS",
+    description: "Update report lifecycle status",
+    category: "Reports",
+  },
+  {
+    name: "REPORTS_UPSERT",
+    description: "Create or update a report",
+    category: "Reports",
+  },
 ];
 
 /**
@@ -612,6 +639,10 @@ const TOOL_LABELS: Record<ToolName, string> = {
   PROJECT_DELETE: "Delete project",
   PROJECT_PLUGIN_CONFIG_GET: "View plugin config",
   PROJECT_PLUGIN_CONFIG_UPDATE: "Update plugin config",
+  REPORTS_LIST: "List reports",
+  REPORTS_GET: "Get report",
+  REPORTS_UPDATE_STATUS: "Update report status",
+  REPORTS_UPSERT: "Create or update report",
 };
 
 // ============================================================================
@@ -635,6 +666,7 @@ export function getToolsByCategory() {
     "Code Execution": [],
     Tags: [],
     Projects: [],
+    Reports: [],
   };
 
   for (const tool of MANAGEMENT_TOOLS) {

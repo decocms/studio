@@ -123,6 +123,8 @@ export {
   type ReportsGetOutput,
   type ReportsUpdateStatusInput,
   type ReportsUpdateStatusOutput,
+  type ReportsUpsertInput,
+  type ReportsUpsertOutput,
   ReportStatusSchema,
   ReportLifecycleStatusSchema,
   MetricItemSchema,

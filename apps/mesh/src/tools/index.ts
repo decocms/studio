@@ -26,6 +26,7 @@ import * as MonitoringTools from "./monitoring";
 import * as MonitoringDashboardTools from "./monitoring-dashboard";
 import * as OrganizationTools from "./organization";
 import * as ProjectTools from "./projects";
+import * as ReportTools from "./reports";
 import * as TagTools from "./tags";
 import * as ThreadTools from "./thread";
 import * as UserTools from "./user";
@@ -128,6 +129,12 @@ const CORE_TOOLS = [
   ProjectTools.PROJECT_DELETE,
   ProjectTools.PROJECT_PLUGIN_CONFIG_GET,
   ProjectTools.PROJECT_PLUGIN_CONFIG_UPDATE,
+
+  // Reports tools
+  ReportTools.REPORTS_LIST,
+  ReportTools.REPORTS_GET,
+  ReportTools.REPORTS_UPDATE_STATUS,
+  ReportTools.REPORTS_UPSERT,
 ] as const satisfies { name: ToolName }[];
 
 // Plugin tools - collected at startup, gated by org settings at runtime

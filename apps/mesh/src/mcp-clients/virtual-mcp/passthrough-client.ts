@@ -62,11 +62,16 @@ interface PromptCache extends Cache<Prompt> {}
  * actually needs it (e.g. `callTool`).
  *
  * This avoids the ~80-120ms MCP handshake per connection when tools are cached.
+ *
+ * @param requiredTools - Tool names that must be present in the cache for it to
+ *   be considered valid. If any are missing the client fetches live to handle
+ *   stale caches (e.g. after new management tools are deployed).
  */
 function createLazyClient(
   connection: ConnectionEntity,
   ctx: MeshContext,
   superUser: boolean,
+  requiredTools?: string[],
 ): Client {
   // Placeholder client — never connects to anything
   const placeholder = new Client(
@@ -105,15 +110,27 @@ function createLazyClient(
     return realClientPromise;
   }
 
-  const hasCachedTools =
+  const cachedTools =
     connection.connection_type !== "VIRTUAL" &&
     Array.isArray(connection.tools) &&
-    connection.tools.length > 0;
+    connection.tools.length > 0
+      ? connection.tools
+      : null;
+
+  // Cache is valid only if it contains every tool that will be needed.
+  // If `requiredTools` are specified and any are absent, the DB cache is stale
+  // (e.g. new management tools were deployed since the cache was written).
+  // In that case fall back to a live fetch so callers never get an empty list.
+  const cacheHasAllRequired =
+    !requiredTools?.length ||
+    requiredTools.every((name) => cachedTools?.some((t) => t.name === name));
+
+  const hasCachedTools = cachedTools !== null && cacheHasAllRequired;
 
   // If cached tools exist, listTools returns them without connecting
   if (hasCachedTools) {
     placeholder.listTools = async () => ({
-      tools: connection.tools!.map((tool) => ({
+      tools: cachedTools.map((tool) => ({
         name: tool.name,
         description: tool.description,
         inputSchema: tool.inputSchema as Tool["inputSchema"],
@@ -123,7 +140,7 @@ function createLazyClient(
       })),
     });
   } else {
-    // No cached tools — must connect to get tool list
+    // No cached tools (or stale cache) — must connect to get tool list
     placeholder.listTools = async () => {
       const real = await getRealClient();
       return real.listTools();
@@ -198,16 +215,26 @@ function createLazyClient(
  * Creates lazy-connecting clients for all connections. Clients with cached
  * tools in the database will skip the MCP handshake entirely during tool
  * listing, only connecting when a tool is actually called.
+ *
+ * @param selectionMap - Optional map of connection ID to selected tool names.
+ *   Used to validate that the DB cache contains every required tool; if not,
+ *   the client will fetch live instead.
  */
 function createClientMap(
   connections: ConnectionEntity[],
   ctx: MeshContext,
   superUser = false,
+  selectionMap?: Map<string, VirtualMCPConnection>,
 ): Map<string, Client> {
   const clientMap = new Map<string, Client>();
 
   for (const connection of connections) {
-    clientMap.set(connection.id, createLazyClient(connection, ctx, superUser));
+    const requiredTools =
+      selectionMap?.get(connection.id)?.selected_tools ?? undefined;
+    clientMap.set(
+      connection.id,
+      createLazyClient(connection, ctx, superUser, requiredTools),
+    );
   }
 
   return clientMap;
@@ -272,11 +299,14 @@ export class PassthroughClient extends Client {
       this._connections.set(connection.id, connection);
     }
 
-    // Create lazy-connecting client map (synchronous — no connections established yet)
+    // Create lazy-connecting client map (synchronous — no connections established yet).
+    // Pass the selection map so each client can detect a stale DB cache (e.g. when
+    // new management tools were deployed and the _self cache hasn't been refreshed yet).
     this._clients = createClientMap(
       this.options.connections,
       this.ctx,
       this.options.superUser,
+      this._selectionMap,
     );
 
     // Initialize lazy caches - all share the same ProxyCollection

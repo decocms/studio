@@ -523,6 +523,60 @@ export interface MonitoringDashboard {
 }
 
 // ============================================================================
+// Reports Table Definitions
+// ============================================================================
+
+/**
+ * Report status (passing, warning, failing, info)
+ */
+export type ReportStatus = "passing" | "warning" | "failing" | "info";
+
+/**
+ * Report lifecycle status (unread, read, dismissed)
+ */
+export type ReportLifecycleStatus = "unread" | "read" | "dismissed";
+
+/**
+ * Report section - polymorphic by type (markdown, metrics, table, criteria, note, ranked-list)
+ */
+export type ReportSection = Record<string, unknown>;
+
+/**
+ * Report table definition
+ * Stores automated reports served via REPORTS_BINDING
+ */
+export interface ReportTable {
+  id: string;
+  organization_id: string;
+  title: string;
+  category: string;
+  status: string;
+  summary: string;
+  source: string | null;
+  tags: JsonArray<string[]> | null;
+  lifecycle_status: string | null;
+  sections: JsonObject<ReportSection[]>;
+  created_at: ColumnType<Date, Date | string, never>;
+  updated_at: ColumnType<Date, Date | string, Date | string>;
+}
+
+/**
+ * Report runtime type (matches ReportSchema from bindings)
+ */
+export interface Report {
+  id: string;
+  title: string;
+  category: string;
+  status: ReportStatus;
+  summary: string;
+  updatedAt: string;
+  source?: string;
+  tags?: string[];
+  lifecycleStatus?: ReportLifecycleStatus;
+  sections: ReportSection[];
+}
+
+// ============================================================================
 // Event Bus Table Definitions
 // ============================================================================
 
@@ -875,6 +929,7 @@ export interface Database {
   api_keys: ApiKeyTable; // Better Auth API keys
   monitoring_logs: MonitoringLogTable; // Tool call monitoring logs
   monitoring_dashboards: MonitoringDashboardTable; // Custom monitoring dashboards
+  reports: ReportTable; // Automated reports (REPORTS_BINDING)
 
   // OAuth tables (for MCP OAuth server)
   oauth_clients: OAuthClientTable;

@@ -5,7 +5,7 @@
  * Shows connection icons and supports inline installation from registry.
  */
 
-import { useConnections } from "@decocms/mesh-sdk";
+import { useConnections, WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import { useBindingConnections } from "@/web/hooks/use-binding";
 import { useInstallFromRegistry } from "@/web/hooks/use-install-from-registry";
 import { Loading01, Plus } from "@untitledui/icons";
@@ -46,6 +46,8 @@ export interface BindingSelectorProps {
   className?: string;
   /** Whether the selector is disabled */
   disabled?: boolean;
+  /** Organization ID - when provided with REPORTS_BINDING, ensures Mesh MCP (Mesh database) is included */
+  orgId?: string;
 }
 
 export function BindingSelector({
@@ -57,6 +59,7 @@ export function BindingSelector({
   onAddNew,
   className,
   disabled = false,
+  orgId,
 }: BindingSelectorProps) {
   const [isLocalInstalling, setIsLocalInstalling] = useState(false);
   const { installByBinding, isInstalling: isGlobalInstalling } =
@@ -98,9 +101,23 @@ export function BindingSelector({
     return scope && appName ? { scope, appName } : null;
   })();
 
+  // For REPORTS_BINDING, include Mesh MCP (Mesh database) if not already in filtered list
+  const isReportsBinding =
+    Array.isArray(binding) &&
+    binding.length > 0 &&
+    (binding as { name?: string }[]).some((b) => b.name === "REPORTS_LIST");
+  const meshMcp =
+    isReportsBinding && orgId
+      ? allConnections?.find((c) => c.id === WellKnownOrgMCPId.SELF(orgId))
+      : null;
+  const meshMcpPrepended =
+    meshMcp && !filteredConnections.some((c) => c.id === meshMcp.id)
+      ? [meshMcp]
+      : [];
+
   // Further filter by app name if bindingType is provided
   const connections = (() => {
-    let result = filteredConnections;
+    let result = [...meshMcpPrepended, ...filteredConnections];
 
     // If we have a Binder, we've already filtered by tools - don't further filter by app name
     const hasBinderFilter = Array.isArray(binding) && binding.length > 0;

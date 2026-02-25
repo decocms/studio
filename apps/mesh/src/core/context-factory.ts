@@ -21,6 +21,7 @@ import { SqlMonitoringDashboardStorage } from "../storage/monitoring-dashboards"
 import { OrganizationSettingsStorage } from "../storage/organization-settings";
 import { ProjectsStorage } from "../storage/projects";
 import { ProjectPluginConfigsStorage } from "../storage/project-plugin-configs";
+import { KyselyReportsStorage } from "../storage/reports";
 import { TagStorage } from "../storage/tags";
 import type { Database, Permission } from "../storage/types";
 import { UserStorage } from "../storage/user";
@@ -747,6 +748,7 @@ export async function createMeshContextFactory(
     tags: new TagStorage(config.db),
     projects: new ProjectsStorage(config.db),
     projectPluginConfigs: new ProjectPluginConfigsStorage(config.db),
+    reports: new KyselyReportsStorage(config.db),
     // Note: Organizations, teams, members, roles managed by Better Auth organization plugin
     // Note: Policies handled by Better Auth permissions directly
     // Note: API keys (tokens) managed by Better Auth API Key plugin

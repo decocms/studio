@@ -95,6 +95,7 @@ type PluginRowProps = {
   label: string;
   icon?: ReactNode;
   projectId: string | undefined;
+  orgId: string | undefined;
   client: ReturnType<typeof useMCPClient>;
   onBindingChange: (
     pluginId: string,
@@ -113,6 +114,7 @@ function PluginRow({
   label,
   icon,
   projectId,
+  orgId,
   client,
   onBindingChange,
   onToggle,
@@ -178,6 +180,7 @@ function PluginRow({
             placeholder="Select connection..."
             className="w-56"
             disabled={isSaving || isConfigLoading}
+            orgId={orgId}
           />
         </div>
       )}
@@ -390,6 +393,7 @@ export function ProjectPluginsForm() {
               label={meta?.label ?? plugin.id}
               icon={meta?.icon}
               projectId={project.id}
+              orgId={org.id}
               client={client}
               onBindingChange={handleBindingChange}
               onToggle={handleTogglePlugin}

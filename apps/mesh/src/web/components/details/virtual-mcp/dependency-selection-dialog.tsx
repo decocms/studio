@@ -32,7 +32,7 @@ import {
   Tool01,
 } from "@untitledui/icons";
 import type { ReactNode } from "react";
-import { Suspense, useReducer } from "react";
+import { Suspense, useReducer, useState } from "react";
 import type { VirtualMCPConnection } from "@decocms/mesh-sdk/types";
 import {
   ALL_ITEMS_SELECTED,
@@ -153,6 +153,7 @@ function SelectionTab({
   onToggleAll,
   emptyMessage,
   disabled,
+  searchPlaceholder,
 }: {
   items: SelectableItem[];
   selections: SelectionValue;
@@ -160,8 +161,19 @@ function SelectionTab({
   onToggleAll: () => void;
   emptyMessage: string;
   disabled?: boolean;
+  searchPlaceholder?: string;
 }) {
+  const [searchTerm, setSearchTerm] = useState("");
   const allItemIds = items.map((item) => item.id);
+  const displayedItems = searchPlaceholder
+    ? items.filter(
+        (item) =>
+          item.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (item.description &&
+            item.description.toLowerCase().includes(searchTerm.toLowerCase())),
+      )
+    : items;
 
   // Early return for empty state
   if (items.length === 0) {
@@ -176,6 +188,17 @@ function SelectionTab({
 
   return (
     <div className="flex flex-col h-full">
+      {/* Search (optional) */}
+      {searchPlaceholder && (
+        <div className="shrink-0 border-b border-border">
+          <CollectionSearch
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder={searchPlaceholder}
+          />
+        </div>
+      )}
+
       {/* Select All checkbox */}
       <div className="px-4 border-b border-border shrink-0">
         <label
@@ -187,6 +210,14 @@ function SelectionTab({
           <div className="flex-1 min-w-0">
             <span className="text-sm font-medium">
               Select All ({items.length})
+              {searchPlaceholder &&
+                searchTerm &&
+                displayedItems.length !== items.length && (
+                  <span className="text-muted-foreground font-normal">
+                    {" "}
+                    — showing {displayedItems.length}
+                  </span>
+                )}
             </span>
           </div>
           <Checkbox
@@ -200,15 +231,21 @@ function SelectionTab({
 
       {/* Items list */}
       <div className="flex-1 overflow-auto px-4 py-3 space-y-1">
-        {items.map((item) => (
-          <SelectionItem
-            key={item.id}
-            item={item}
-            isSelected={selections === null || selections?.includes(item.id)}
-            onToggle={() => onToggle(item.id, allItemIds)}
-            disabled={disabled}
-          />
-        ))}
+        {displayedItems.length === 0 ? (
+          <div className="flex items-center justify-center h-24 text-sm text-muted-foreground">
+            No matches for &quot;{searchTerm}&quot;
+          </div>
+        ) : (
+          displayedItems.map((item) => (
+            <SelectionItem
+              key={item.id}
+              item={item}
+              isSelected={selections === null || selections?.includes(item.id)}
+              onToggle={() => onToggle(item.id, allItemIds)}
+              disabled={disabled}
+            />
+          ))
+        )}
       </div>
     </div>
   );
@@ -249,6 +286,7 @@ function ToolsTab({
       onToggleAll={onToggleAll}
       emptyMessage={EMPTY_MESSAGE}
       disabled={disabled}
+      searchPlaceholder="Search tools..."
     />
   );
 }

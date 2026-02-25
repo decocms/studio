@@ -18,7 +18,7 @@ import {
   useMCPClient,
   useMCPClientOptional,
   useProjectContext,
-  type ConnectionEntity,
+  WellKnownOrgMCPId,
 } from "@decocms/mesh-sdk";
 import { PluginContextProvider } from "@decocms/mesh-sdk/plugins";
 import { useNavigate, useSearch } from "@decocms/bindings/plugin-router";
@@ -81,7 +81,15 @@ export default function RankingLayout() {
     enabled: !!project.id,
   });
 
-  const validConnections = filterConnectionsByBinding(allConnections);
+  const bindingConnections = filterConnectionsByBinding(allConnections);
+  const meshMcpId = WellKnownOrgMCPId.SELF(org.id);
+  const meshMcp = allConnections?.find((c) => c.id === meshMcpId);
+  const validConnections = [
+    ...(meshMcp && !bindingConnections.some((c) => c.id === meshMcpId)
+      ? [meshMcp]
+      : []),
+    ...bindingConnections,
+  ];
   const configuredConnectionId = pluginConfig?.config?.connectionId;
   const configuredConnection = configuredConnectionId
     ? validConnections.find((c) => c.id === configuredConnectionId)

@@ -20,7 +20,7 @@ import {
   useMCPClient,
   useMCPClientOptional,
   useProjectContext,
-  type ConnectionEntity,
+  WellKnownOrgMCPId,
 } from "@decocms/mesh-sdk";
 import { PluginContextProvider } from "@decocms/mesh-sdk/plugins";
 import { useNavigate, useSearch } from "@decocms/bindings/plugin-router";
@@ -93,8 +93,16 @@ export default function ReportsLayout() {
     enabled: !!project.id,
   });
 
-  // Filter connections by binding
-  const validConnections = filterConnectionsByBinding(allConnections);
+  // Filter connections by binding. Include Mesh MCP (Mesh database) - it has REPORTS_* tools.
+  const bindingConnections = filterConnectionsByBinding(allConnections);
+  const meshMcpId = WellKnownOrgMCPId.SELF(org.id);
+  const meshMcp = allConnections?.find((c) => c.id === meshMcpId);
+  const validConnections = [
+    ...(meshMcp && !bindingConnections.some((c) => c.id === meshMcpId)
+      ? [meshMcp]
+      : []),
+    ...bindingConnections,
+  ];
   const configuredConnectionId = pluginConfig?.config?.connectionId;
   const configuredConnection = configuredConnectionId
     ? validConnections.find((c) => c.id === configuredConnectionId)
