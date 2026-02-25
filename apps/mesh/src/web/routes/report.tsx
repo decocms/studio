@@ -22,6 +22,8 @@ import { TrafficSection } from "@/web/components/report/traffic-section";
 import { SeoRankingsSection } from "@/web/components/report/seo-rankings-section";
 import { BrandSection } from "@/web/components/report/brand-section";
 import { PercentileSection } from "@/web/components/report/percentile-section";
+import { authClient } from "@/web/lib/auth-client";
+import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 
 // ============================================================================
 // Loading skeleton
@@ -90,6 +92,46 @@ function formatDate(isoString: string): string {
   } catch {
     return isoString;
   }
+}
+
+// ============================================================================
+// Login/signup CTA
+// ============================================================================
+
+function SignupCTA({ token }: { token: string }) {
+  const session = authClient.useSession();
+
+  // Store token in sessionStorage as fallback for OAuth redirects
+  // that may strip query params during multi-step redirect chains.
+  // This runs on every render — sessionStorage is synchronous and fast.
+  if (typeof window !== "undefined") {
+    sessionStorage.setItem(LOCALSTORAGE_KEYS.onboardingToken(), token);
+  }
+
+  // Don't show CTA if user is already logged in
+  if (session.data) {
+    return null;
+  }
+
+  const loginUrl = `/login?next=${encodeURIComponent(`/onboard-setup?token=${token}`)}`;
+
+  return (
+    <div className="rounded-xl border-2 border-brand/30 bg-brand/5 p-6 text-center">
+      <h3 className="text-lg font-semibold text-foreground">
+        Save this report to your team
+      </h3>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Sign up to keep this diagnostic, track improvements over time, and
+        unlock AI-powered recommendations for your store.
+      </p>
+      <a
+        href={loginUrl}
+        className="mt-4 inline-flex items-center rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-brand-foreground transition-opacity hover:opacity-90"
+      >
+        Sign up free
+      </a>
+    </div>
+  );
 }
 
 // ============================================================================
@@ -171,6 +213,9 @@ export default function ReportPage() {
           <SeoRankingsSection />
           <BrandSection />
           <PercentileSection />
+
+          {/* Login CTA */}
+          <SignupCTA token={token} />
         </div>
 
         {/* Footer */}

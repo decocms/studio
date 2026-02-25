@@ -25,4 +25,5 @@ export const LOCALSTORAGE_KEYS = {
   preferences: () => `mesh:user:preferences`,
   pluginConnection: (org: string, pluginId: string) =>
     `mesh:plugin:connection:${org}:${pluginId}`,
+  onboardingToken: () => `mesh:onboarding:token`,
 } as const;
