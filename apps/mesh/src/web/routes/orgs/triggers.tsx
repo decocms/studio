@@ -1,4 +1,5 @@
 import { Page } from "@/web/components/page";
+import type { TriggerEntity } from "@/web/components/triggers/trigger-form";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -12,6 +13,7 @@ import { ErrorBoundary } from "@/web/components/error-boundary";
 import { KEYS } from "@/web/lib/query-keys";
 import {
   SELF_MCP_ALIAS_ID,
+  ORG_ADMIN_PROJECT_SLUG,
   useProjectContext,
   useMCPClient,
 } from "@decocms/mesh-sdk";
@@ -20,7 +22,7 @@ import {
   useQueryClient,
   useSuspenseQuery,
 } from "@tanstack/react-query";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import {
   Clock,
   Lightning01,
@@ -32,30 +34,6 @@ import { Suspense } from "react";
 import { Cron } from "croner";
 import { formatTimeAgo } from "@/web/lib/format-time";
 import { toast } from "sonner";
-import { CreateTriggerDialog } from "@/web/components/triggers/create-trigger-dialog";
-
-interface TriggerEntity {
-  id: string;
-  organizationId: string;
-  title: string | null;
-  enabled: boolean;
-  triggerType: "cron" | "event";
-  cronExpression: string | null;
-  eventType: string | null;
-  eventFilter: string | null;
-  actionType: "tool_call" | "agent_prompt";
-  connectionId: string | null;
-  toolName: string | null;
-  toolArguments: string | null;
-  agentId: string | null;
-  agentPrompt: string | null;
-  lastRunAt: string | null;
-  lastRunStatus: string | null;
-  lastRunError: string | null;
-  createdAt: string;
-  updatedAt: string;
-  createdBy: string;
-}
 
 function cronToHuman(expr: string): string {
   try {
@@ -85,7 +63,6 @@ function cronToHuman(expr: string): string {
       "Dec",
     ];
 
-    // Every minute
     if (
       min === "*" &&
       hour === "*" &&
@@ -96,17 +73,14 @@ function cronToHuman(expr: string): string {
       return "Every minute";
     }
 
-    // Every N minutes
     if (min?.startsWith("*/") && hour === "*") {
       return `Every ${min.slice(2)} minutes`;
     }
 
-    // Every hour
     if (min !== "*" && hour === "*" && dayOfMonth === "*") {
       return `Every hour at :${min?.padStart(2, "0")}`;
     }
 
-    // Every N hours
     if (hour?.startsWith("*/")) {
       return `Every ${hour.slice(2)} hours`;
     }
@@ -116,28 +90,23 @@ function cronToHuman(expr: string): string {
         ? `${hour?.padStart(2, "0")}:${min?.padStart(2, "0")}`
         : null;
 
-    // Weekday pattern
     if (dayOfWeek === "1-5" && timeStr) {
       return `Weekdays at ${timeStr}`;
     }
 
-    // Specific days of week
     if (dayOfWeek !== "*" && timeStr) {
       const days = dayOfWeek.split(",").map((d) => dayNames[Number(d)] ?? d);
       return `${days.join(", ")} at ${timeStr}`;
     }
 
-    // Specific day of month
     if (dayOfMonth !== "*" && month === "*" && timeStr) {
       return `Day ${dayOfMonth} of every month at ${timeStr}`;
     }
 
-    // Specific month and day
     if (dayOfMonth !== "*" && month !== "*" && timeStr) {
       return `${monthNames[Number(month)] ?? month} ${dayOfMonth} at ${timeStr}`;
     }
 
-    // Daily at specific time
     if (timeStr && dayOfMonth === "*" && month === "*" && dayOfWeek === "*") {
       return `Daily at ${timeStr}`;
     }
@@ -171,9 +140,9 @@ function getNextRun(expr: string): string | null {
 
 function describeAction(trigger: TriggerEntity): string {
   if (trigger.actionType === "tool_call") {
-    return `Call ${trigger.toolName ?? "tool"}${trigger.connectionId ? ` on connection` : ""}`;
+    return `Call ${trigger.toolName ?? "tool"}${trigger.connectionId ? " on connection" : ""}`;
   }
-  return `Run agent with prompt`;
+  return "Run agent with prompt";
 }
 
 function TriggerCard({
@@ -198,7 +167,6 @@ function TriggerCard({
       onClick={onClick}
       className="w-full text-left rounded-xl border border-border bg-card p-4 transition-colors duration-150 hover:bg-accent/50 cursor-pointer"
     >
-      {/* Line 1: Trigger condition + toggle */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2.5 min-w-0">
           {trigger.triggerType === "cron" ? (
@@ -231,7 +199,6 @@ function TriggerCard({
         </div>
       </div>
 
-      {/* Line 2: Action */}
       <div className="flex items-center gap-2 mt-1.5 ml-[26px]">
         <ArrowRight size={14} className="shrink-0 text-muted-foreground" />
         <span className="text-sm text-muted-foreground truncate">
@@ -239,7 +206,6 @@ function TriggerCard({
         </span>
       </div>
 
-      {/* Line 3: Last run + next run */}
       <div className="flex items-center gap-3 mt-1.5 ml-[26px] text-xs text-muted-foreground">
         {trigger.lastRunAt && (
           <span className="flex items-center gap-1">
@@ -263,9 +229,6 @@ function TriggersContent() {
   const { org, locator } = useProjectContext();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const search = useSearch({ strict: false }) as {
-    action?: string;
-  };
 
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -305,33 +268,40 @@ function TriggersContent() {
     },
   });
 
-  const isCreateOpen = search.action === "create";
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const result = await client.callTool({
+        name: "TRIGGER_CREATE",
+        arguments: {
+          triggerType: "cron",
+          cronExpression: "0 9 * * *",
+          actionType: "tool_call",
+        },
+      });
+      return result;
+    },
+    onSuccess: (result) => {
+      const data = (result as { structuredContent?: TriggerEntity })
+        .structuredContent;
+      if (data?.id) {
+        queryClient.invalidateQueries({ queryKey: KEYS.triggers(locator) });
+        navigate({
+          to: "/$org/$project/triggers/$triggerId",
+          params: {
+            org: org.slug,
+            project: ORG_ADMIN_PROJECT_SLUG,
+            triggerId: data.id,
+          },
+        });
+      }
+    },
+    onError: (err) => {
+      toast.error(`Failed to create trigger: ${err.message}`);
+    },
+  });
 
   return (
     <Page>
-      {/* Create Dialog */}
-      <CreateTriggerDialog
-        open={isCreateOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            navigate({
-              to: "/$org/$project/triggers",
-              params: { org: org.slug, project: "org-admin" },
-              search: {},
-            });
-          }
-        }}
-        onCreated={() => {
-          queryClient.invalidateQueries({ queryKey: KEYS.triggers(locator) });
-          navigate({
-            to: "/$org/$project/triggers",
-            params: { org: org.slug, project: "org-admin" },
-            search: {},
-          });
-        }}
-      />
-
-      {/* Page Header */}
       <Page.Header>
         <Page.Header.Left>
           <Breadcrumb>
@@ -344,23 +314,21 @@ function TriggersContent() {
         </Page.Header.Left>
         <Page.Header.Right>
           <Button
-            onClick={() =>
-              navigate({
-                to: "/$org/$project/triggers",
-                params: { org: org.slug, project: "org-admin" },
-                search: { action: "create" },
-              })
-            }
+            onClick={() => createMutation.mutate()}
             size="sm"
             className="h-7 px-3 rounded-lg text-sm font-medium"
+            disabled={createMutation.isPending}
           >
-            <Plus size={16} />
-            New Trigger
+            {createMutation.isPending ? (
+              <Loading01 size={14} className="animate-spin" />
+            ) : (
+              <Plus size={16} />
+            )}
+            {createMutation.isPending ? "Creating..." : "New Trigger"}
           </Button>
         </Page.Header.Right>
       </Page.Header>
 
-      {/* Content */}
       <Page.Content>
         <div className="flex-1 overflow-auto p-5">
           {triggers.length === 0 ? (
@@ -389,7 +357,7 @@ function TriggersContent() {
                       to: "/$org/$project/triggers/$triggerId",
                       params: {
                         org: org.slug,
-                        project: "org-admin",
+                        project: ORG_ADMIN_PROJECT_SLUG,
                         triggerId: trigger.id,
                       },
                     })

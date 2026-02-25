@@ -1,5 +1,10 @@
 import { Page } from "@/web/components/page";
 import {
+  TriggerFormFields,
+  type FormValues,
+  type TriggerEntity,
+} from "@/web/components/triggers/trigger-form";
+import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbLink,
@@ -9,10 +14,14 @@ import {
 } from "@deco/ui/components/breadcrumb.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
-import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
 import { Switch } from "@deco/ui/components/switch.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { Badge } from "@deco/ui/components/badge.tsx";
+import {
+  ResizablePanelGroup,
+  ResizablePanel,
+  ResizableHandle,
+} from "@deco/ui/components/resizable.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,109 +46,97 @@ import {
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { Loading01, Trash01 } from "@untitledui/icons";
+import {
+  Clock,
+  FlipBackward,
+  Loading01,
+  Save01,
+  Trash01,
+} from "@untitledui/icons";
 import { Suspense, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { Cron } from "croner";
 import { formatTimeAgo } from "@/web/lib/format-time";
 
-interface TriggerEntity {
-  id: string;
-  organizationId: string;
-  title: string | null;
-  enabled: boolean;
-  triggerType: "cron" | "event";
-  cronExpression: string | null;
-  eventType: string | null;
-  eventFilter: string | null;
-  actionType: "tool_call" | "agent_prompt";
-  connectionId: string | null;
-  toolName: string | null;
-  toolArguments: string | null;
-  agentId: string | null;
-  agentPrompt: string | null;
-  lastRunAt: string | null;
-  lastRunStatus: string | null;
-  lastRunError: string | null;
-  createdAt: string;
-  updatedAt: string;
-  createdBy: string;
-}
+// ---- Activity Panel ----
 
-type TriggerType = "cron" | "event";
-type ActionType = "tool_call" | "agent_prompt";
+function TriggerActivityPanel({ trigger }: { trigger: TriggerEntity }) {
+  const nextRun = (() => {
+    if (trigger.triggerType !== "cron" || !trigger.cronExpression) return null;
+    try {
+      const cron = new Cron(trigger.cronExpression);
+      return cron.nextRun();
+    } catch {
+      return null;
+    }
+  })();
 
-interface FormValues {
-  title: string;
-  triggerType: TriggerType;
-  cronExpression: string;
-  eventType: string;
-  eventFilter: string;
-  actionType: ActionType;
-  connectionId: string;
-  toolName: string;
-  toolArguments: string;
-  agentId: string;
-  agentPrompt: string;
-}
-
-function PillToggle<T extends string>({
-  value,
-  onChange,
-  options,
-}: {
-  value: T;
-  onChange: (v: T) => void;
-  options: { value: T; label: string }[];
-}) {
   return (
-    <div className="relative inline-flex rounded-lg bg-muted p-0.5">
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          onClick={() => onChange(option.value)}
-          className={cn(
-            "relative z-10 rounded-md px-3 py-1.5 text-sm font-medium transition-colors duration-150",
-            value === option.value
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground",
+    <div className="flex flex-col gap-4 h-full p-5 max-w-md mx-auto">
+      <h3 className="text-sm font-semibold text-foreground">Activity</h3>
+
+      {/* Last run */}
+      {trigger.lastRunAt ? (
+        <div className="rounded-xl border border-border p-4 flex flex-col gap-2.5 bg-card">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Last run
+            </span>
+            <Badge
+              variant={
+                trigger.lastRunStatus === "success" ? "success" : "destructive"
+              }
+            >
+              {trigger.lastRunStatus === "success" ? "Success" : "Failed"}
+            </Badge>
+          </div>
+          <p className="text-sm text-foreground">
+            {formatTimeAgo(new Date(trigger.lastRunAt))}
+          </p>
+          {trigger.lastRunError && (
+            <div className="rounded-lg bg-destructive/10 px-3 py-2">
+              <p className="text-xs text-destructive">{trigger.lastRunError}</p>
+            </div>
           )}
-        >
-          {option.label}
-        </button>
-      ))}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-dashed border-border p-6 flex flex-col items-center gap-3 text-muted-foreground bg-muted/20">
+          <Clock size={28} className="opacity-40" />
+          <div className="text-center">
+            <p className="text-sm font-medium">No runs yet</p>
+            <p className="text-xs mt-0.5">This trigger hasn't fired yet</p>
+          </div>
+        </div>
+      )}
+
+      {/* Next run (cron only) */}
+      {nextRun && (
+        <div className="rounded-xl border border-border p-4 flex flex-col gap-1.5 bg-card">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            Next run
+          </span>
+          <p className="text-sm text-foreground">
+            {nextRun.toLocaleDateString(undefined, {
+              weekday: "long",
+              month: "short",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </p>
+        </div>
+      )}
+
+      {/* Placeholder */}
+      <div className="rounded-xl border border-dashed border-border p-4 flex items-center justify-center text-xs text-muted-foreground mt-auto bg-muted/10">
+        Run history coming soon
+      </div>
     </div>
   );
 }
 
-function CronPreview({ expression }: { expression: string }) {
-  if (!expression.trim()) return null;
-
-  try {
-    const cron = new Cron(expression);
-    const next = cron.nextRun();
-    if (!next) return null;
-
-    return (
-      <p className="text-xs text-muted-foreground mt-1">
-        Next run:{" "}
-        {next.toLocaleDateString(undefined, {
-          weekday: "short",
-          month: "short",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        })}
-      </p>
-    );
-  } catch {
-    return (
-      <p className="text-xs text-destructive mt-1">Invalid cron expression</p>
-    );
-  }
-}
+// ---- Detail Content ----
 
 function TriggerDetailContent() {
   const { org, locator } = useProjectContext();
@@ -182,9 +179,7 @@ function TriggerDetailContent() {
     },
   });
 
-  const triggerType = form.watch("triggerType");
-  const actionType = form.watch("actionType");
-  const cronExpression = form.watch("cronExpression");
+  const isDirty = form.formState.isDirty;
 
   const updateMutation = useMutation({
     mutationFn: async (values: FormValues) => {
@@ -217,6 +212,7 @@ function TriggerDetailContent() {
     },
     onSuccess: () => {
       toast.success("Trigger updated");
+      form.reset(form.getValues());
       queryClient.invalidateQueries({
         queryKey: KEYS.trigger(locator, triggerId),
       });
@@ -331,174 +327,71 @@ function TriggerDetailContent() {
             size="sm"
             onClick={() => setDeleteOpen(true)}
           >
-            <Trash01 size={16} />
+            <Trash01 size={14} />
             Delete
           </Button>
-          <Button
-            size="sm"
-            onClick={onSubmit}
-            disabled={updateMutation.isPending}
-          >
-            {updateMutation.isPending ? "Saving..." : "Save"}
-          </Button>
+          {isDirty && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => form.reset()}
+                disabled={updateMutation.isPending}
+              >
+                <FlipBackward size={14} />
+                Undo
+              </Button>
+              <Button
+                size="sm"
+                onClick={onSubmit}
+                disabled={updateMutation.isPending}
+              >
+                {updateMutation.isPending ? (
+                  <Loading01 size={14} className="animate-spin" />
+                ) : (
+                  <Save01 size={14} />
+                )}
+                Save
+              </Button>
+            </>
+          )}
         </Page.Header.Right>
       </Page.Header>
 
-      {/* Content */}
+      {/* Content — split layout */}
       <Page.Content>
-        <div className="flex-1 overflow-auto p-5">
-          <div className="max-w-2xl flex flex-col gap-6">
-            {/* Name */}
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="title">Name</Label>
-              <Input
-                id="title"
-                placeholder="e.g., Daily email summary"
-                {...form.register("title")}
-              />
-            </div>
-
-            {/* When section */}
-            <div className="flex flex-col gap-3">
-              <Label className="text-base font-semibold">When</Label>
-              <PillToggle
-                value={triggerType}
-                onChange={(v) => form.setValue("triggerType", v)}
-                options={[
-                  { value: "cron", label: "Schedule" },
-                  { value: "event", label: "Event" },
-                ]}
-              />
-
-              {triggerType === "cron" && (
+        <ResizablePanelGroup direction="horizontal" className="h-full">
+          {/* Left panel: form */}
+          <ResizablePanel defaultSize={55} minSize={35}>
+            <div className="h-full overflow-auto p-5">
+              <form
+                onSubmit={onSubmit}
+                className="max-w-2xl flex flex-col gap-5"
+              >
+                {/* Name */}
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="cronExpression">Cron expression</Label>
+                  <Label htmlFor="title">Name</Label>
                   <Input
-                    id="cronExpression"
-                    placeholder="0 9 * * 1-5"
-                    {...form.register("cronExpression")}
+                    id="title"
+                    placeholder="e.g., Daily email summary"
+                    {...form.register("title")}
                   />
-                  <CronPreview expression={cronExpression} />
                 </div>
-              )}
 
-              {triggerType === "event" && (
-                <div className="flex flex-col gap-3">
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="eventType">Event type</Label>
-                    <Input
-                      id="eventType"
-                      placeholder="e.g., order.created"
-                      {...form.register("eventType")}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="eventFilter">Filter (optional)</Label>
-                    <Input
-                      id="eventFilter"
-                      placeholder="JSONPath filter on event data"
-                      {...form.register("eventFilter")}
-                    />
-                  </div>
-                </div>
-              )}
+                <TriggerFormFields form={form} />
+              </form>
             </div>
+          </ResizablePanel>
 
-            {/* Then section */}
-            <div className="flex flex-col gap-3">
-              <Label className="text-base font-semibold">Then</Label>
-              <PillToggle
-                value={actionType}
-                onChange={(v) => form.setValue("actionType", v)}
-                options={[
-                  { value: "tool_call", label: "Call a Tool" },
-                  { value: "agent_prompt", label: "Run an Agent" },
-                ]}
-              />
+          <ResizableHandle />
 
-              {actionType === "tool_call" && (
-                <div className="flex flex-col gap-3">
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="connectionId">Connection ID</Label>
-                    <Input
-                      id="connectionId"
-                      placeholder="Connection ID"
-                      {...form.register("connectionId")}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="toolName">Tool name</Label>
-                    <Input
-                      id="toolName"
-                      placeholder="e.g., SEND_SLACK_MESSAGE"
-                      {...form.register("toolName")}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="toolArguments">
-                      Arguments (optional JSON)
-                    </Label>
-                    <Textarea
-                      id="toolArguments"
-                      placeholder='{"channel": "#general", "message": "Hello"}'
-                      rows={3}
-                      {...form.register("toolArguments")}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {actionType === "agent_prompt" && (
-                <div className="flex flex-col gap-3">
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="agentId">Agent (Virtual MCP) ID</Label>
-                    <Input
-                      id="agentId"
-                      placeholder="Virtual MCP ID"
-                      {...form.register("agentId")}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="agentPrompt">Prompt</Label>
-                    <Textarea
-                      id="agentPrompt"
-                      placeholder="Check the latest emails and summarize for the team"
-                      rows={3}
-                      {...form.register("agentPrompt")}
-                    />
-                  </div>
-                </div>
-              )}
+          {/* Right panel: activity */}
+          <ResizablePanel defaultSize={45} minSize={25}>
+            <div className="h-full overflow-auto border-l border-border">
+              <TriggerActivityPanel trigger={trigger} />
             </div>
-
-            {/* Recent Runs */}
-            <div className="flex flex-col gap-2 pt-4 border-t">
-              <Label className="text-base font-semibold">Recent Activity</Label>
-              {trigger.lastRunAt ? (
-                <div className="text-sm text-muted-foreground">
-                  <p>
-                    Last run: {formatTimeAgo(new Date(trigger.lastRunAt))}
-                    {trigger.lastRunStatus === "success" && (
-                      <span className="ml-1 text-green-500">Success</span>
-                    )}
-                    {trigger.lastRunStatus === "failed" && (
-                      <span className="ml-1 text-destructive">Failed</span>
-                    )}
-                  </p>
-                  {trigger.lastRunError && (
-                    <p className="mt-1 text-destructive text-xs">
-                      Error: {trigger.lastRunError}
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  This trigger has not run yet.
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </Page.Content>
     </Page>
   );

@@ -26,22 +26,6 @@ export const TRIGGER_CREATE = defineTool({
     if (input.triggerType === "event" && !input.eventType) {
       throw new Error("eventType is required for event triggers");
     }
-    if (
-      input.actionType === "tool_call" &&
-      (!input.connectionId || !input.toolName)
-    ) {
-      throw new Error(
-        "connectionId and toolName are required for tool_call actions",
-      );
-    }
-    if (
-      input.actionType === "agent_prompt" &&
-      (!input.agentId || !input.agentPrompt)
-    ) {
-      throw new Error(
-        "agentId and agentPrompt are required for agent_prompt actions",
-      );
-    }
 
     const userId = ctx.auth.user?.id;
     if (!userId) {

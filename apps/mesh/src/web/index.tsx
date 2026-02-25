@@ -109,6 +109,12 @@ const oauthCallbackRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/oauth-callback.tsx")),
 });
 
+const onboardingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/onboarding",
+  component: lazyRouteComponent(() => import("./routes/onboarding.tsx")),
+});
+
 // ============================================
 // SHELL LAYOUT (authenticated wrapper)
 // ============================================
@@ -366,11 +372,6 @@ const triggersRoute = createRoute({
   path: "/triggers",
   beforeLoad: orgAdminGuard,
   component: lazyRouteComponent(() => import("./routes/orgs/triggers.tsx")),
-  validateSearch: z.lazy(() =>
-    z.object({
-      action: z.enum(["create"]).optional(),
-    }),
-  ),
 });
 
 const triggerDetailRoute = createRoute({
@@ -486,6 +487,7 @@ const routeTree = rootRoute.addChildren([
   oauthCallbackRoute,
   connectRoute,
   storeInviteRoute,
+  onboardingRoute,
 ]);
 
 const router = createRouter({
