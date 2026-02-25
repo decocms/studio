@@ -150,6 +150,9 @@ const projectLayout = createRoute({
   getParentRoute: () => shellLayout,
   path: "/$org/$project",
   component: lazyRouteComponent(() => import("./layouts/project-layout.tsx")),
+  validateSearch: z.object({
+    settings: z.string().optional(),
+  }),
 });
 
 // ============================================
@@ -170,11 +173,19 @@ const tasksRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/tasks.tsx")),
 });
 
-// Project settings (new - different from org settings)
+// Project settings (redirects to settings modal via search param)
 const projectSettingsRoute = createRoute({
   getParentRoute: () => projectLayout,
   path: "/settings",
-  component: lazyRouteComponent(() => import("./routes/project-settings.tsx")),
+  beforeLoad: ({ params }) => {
+    const isOrgAdmin = params.project === ORG_ADMIN_PROJECT_SLUG;
+    throw redirect({
+      to: "/$org/$project",
+      params,
+      search: { settings: isOrgAdmin ? "org.general" : "project.general" },
+    });
+  },
+  component: () => null,
 });
 
 // ============================================
