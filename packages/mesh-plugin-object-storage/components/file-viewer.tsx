@@ -40,6 +40,124 @@ const IMAGE_EXTENSIONS = new Set([
 ]);
 
 const MARKDOWN_EXTENSIONS = new Set(["md", "mdx"]);
+const JSON_EXTENSIONS = new Set(["json", "jsonl", "jsonc"]);
+
+/**
+ * Pretty-print JSON with syntax coloring via spans.
+ * Returns an array of React elements with colored tokens.
+ */
+function JsonPrettyView({ content }: { content: string }) {
+  let formatted: string;
+  try {
+    formatted = JSON.stringify(JSON.parse(content), null, 2);
+  } catch {
+    // Not valid JSON — render as-is
+    return (
+      <pre className="p-6 text-sm font-mono whitespace-pre-wrap break-words">
+        {content}
+      </pre>
+    );
+  }
+
+  // Tokenize for syntax coloring
+  const lines = formatted.split("\n");
+
+  return (
+    <pre className="p-6 text-sm font-mono whitespace-pre-wrap break-words">
+      {lines.map((line, i) => (
+        <span key={i}>
+          {colorizeJsonLine(line)}
+          {i < lines.length - 1 ? "\n" : ""}
+        </span>
+      ))}
+    </pre>
+  );
+}
+
+function colorizeJsonLine(line: string): React.ReactNode[] {
+  const parts: React.ReactNode[] = [];
+  let remaining = line;
+  let keyIdx = 0;
+
+  while (remaining.length > 0) {
+    // Match leading whitespace
+    const wsMatch = remaining.match(/^(\s+)/);
+    if (wsMatch) {
+      const ws = wsMatch[1]!;
+      parts.push(ws);
+      remaining = remaining.slice(ws.length);
+      continue;
+    }
+
+    // Match JSON key: "key":
+    const keyMatch = remaining.match(/^("(?:[^"\\]|\\.)*")\s*:/);
+    if (keyMatch) {
+      const keyText = keyMatch[1]!;
+      parts.push(
+        <span key={`k${keyIdx++}`} className="text-primary">
+          {keyText}
+        </span>,
+      );
+      parts.push(":");
+      remaining = remaining.slice(keyMatch[0].length);
+      continue;
+    }
+
+    // Match string value: "value"
+    const strMatch = remaining.match(/^("(?:[^"\\]|\\.)*")/);
+    if (strMatch) {
+      const strText = strMatch[1]!;
+      parts.push(
+        <span
+          key={`s${keyIdx++}`}
+          className="text-green-600 dark:text-green-400"
+        >
+          {strText}
+        </span>,
+      );
+      remaining = remaining.slice(strText.length);
+      continue;
+    }
+
+    // Match number
+    const numMatch = remaining.match(/^(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/);
+    if (numMatch) {
+      const numText = numMatch[1]!;
+      parts.push(
+        <span
+          key={`n${keyIdx++}`}
+          className="text-amber-600 dark:text-amber-400"
+        >
+          {numText}
+        </span>,
+      );
+      remaining = remaining.slice(numText.length);
+      continue;
+    }
+
+    // Match boolean/null
+    const boolMatch = remaining.match(/^(true|false|null)/);
+    if (boolMatch) {
+      const boolText = boolMatch[1]!;
+      parts.push(
+        <span
+          key={`b${keyIdx++}`}
+          className="text-violet-600 dark:text-violet-400"
+        >
+          {boolText}
+        </span>,
+      );
+      remaining = remaining.slice(boolText.length);
+      continue;
+    }
+
+    // Consume one character (brackets, commas, etc.)
+    parts.push(remaining[0]);
+    remaining = remaining.slice(1);
+  }
+
+  return parts;
+}
 
 export default function FileViewer() {
   const { key } = objectStorageRouter.useSearch({ from: "/viewer" });
@@ -50,10 +168,12 @@ export default function FileViewer() {
   const ext = key.split(".").pop()?.toLowerCase() ?? "";
   const isImage = IMAGE_EXTENSIONS.has(ext);
   const isMarkdown = MARKDOWN_EXTENSIONS.has(ext);
+  const isJson = JSON_EXTENSIONS.has(ext);
+  const hasPreview = isMarkdown || isJson;
   const fileName = getFileName(key);
 
   const [viewMode, setViewMode] = useState<"raw" | "preview">(
-    isMarkdown ? "preview" : "raw",
+    hasPreview ? "preview" : "raw",
   );
 
   const goBack = () => {
@@ -117,8 +237,8 @@ export default function FileViewer() {
           <span className="text-xs text-muted-foreground truncate">{key}</span>
         </div>
 
-        {/* Raw / Preview toggle for markdown files */}
-        {isMarkdown && textContent != null && (
+        {/* Raw / Preview toggle for markdown and JSON files */}
+        {hasPreview && textContent != null && (
           <div className="flex items-center gap-1 rounded-md border border-border p-0.5">
             <Button
               variant={viewMode === "raw" ? "secondary" : "ghost"}
@@ -193,6 +313,8 @@ export default function FileViewer() {
               <LazyMarkdown>{textContent}</LazyMarkdown>
             </Suspense>
           </div>
+        ) : isJson && textContent != null && viewMode === "preview" ? (
+          <JsonPrettyView content={textContent} />
         ) : textContent != null ? (
           <pre className="p-6 text-sm font-mono whitespace-pre-wrap break-words">
             {textContent}
