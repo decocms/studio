@@ -230,4 +230,7 @@ export const KEYS = {
   // Onboarding resolve (post-login, requires auth + diagnostic token)
   onboardingResolve: (token: string) =>
     ["onboarding", "resolve", token] as const,
+
+  // Interview allowed models (scoped by org slug, used on onboard-interview page)
+  interviewModels: (org: string) => ["interview", "models", org] as const,
 } as const;

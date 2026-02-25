@@ -70,7 +70,11 @@ function SpinnerIcon({ className }: { className?: string }) {
 
 function SetupSkeleton() {
   return (
-    <div className="animate-pulse space-y-4" aria-busy="true" aria-label="Loading setup">
+    <div
+      className="animate-pulse space-y-4"
+      aria-busy="true"
+      aria-label="Loading setup"
+    >
       <div className="h-6 w-48 rounded bg-muted" />
       <div className="h-4 w-64 rounded bg-muted" />
       <div className="mt-6 rounded-xl border border-border bg-card p-6">
@@ -210,15 +214,16 @@ export default function OnboardSetupPage() {
     useQuery<ResolveData>({
       queryKey: KEYS.onboardingResolve(token ?? ""),
       queryFn: () =>
-        fetch(`/api/onboarding/resolve?token=${encodeURIComponent(token ?? "")}`)
-          .then((r) => {
-            if (r.status === 401) {
-              // Session expired — will be handled by redirect below
-              throw new Error("UNAUTHORIZED");
-            }
-            if (!r.ok) throw new Error(`HTTP ${r.status}`);
-            return r.json();
-          }),
+        fetch(
+          `/api/onboarding/resolve?token=${encodeURIComponent(token ?? "")}`,
+        ).then((r) => {
+          if (r.status === 401) {
+            // Session expired — will be handled by redirect below
+            throw new Error("UNAUTHORIZED");
+          }
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return r.json();
+        }),
       enabled: !!token && !!session.data,
       retry: false,
     });
@@ -226,7 +231,12 @@ export default function OnboardSetupPage() {
   const claimMutation = useMutation<
     ClaimResult,
     Error,
-    { token: string; action: "create" | "join"; orgId?: string; orgName?: string }
+    {
+      token: string;
+      action: "create" | "join";
+      orgId?: string;
+      orgName?: string;
+    }
   >({
     mutationFn: (body) =>
       fetch("/api/onboarding/claim", {
@@ -245,8 +255,8 @@ export default function OnboardSetupPage() {
       if (typeof window !== "undefined") {
         sessionStorage.removeItem(LOCALSTORAGE_KEYS.onboardingToken());
       }
-      // Redirect to the org dashboard
-      window.location.href = `/${data.organizationSlug}`;
+      // Redirect to the interview page (instead of org dashboard)
+      window.location.href = `/onboard-interview?org=${data.organizationSlug}&token=${token}`;
     },
     onError: (err) => {
       setClaimError(err.message ?? "Something went wrong. Please try again.");

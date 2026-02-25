@@ -121,6 +121,22 @@ const onboardSetupRoute = createRoute({
 });
 
 /**
+ * Post-org-setup interview page (requires auth, runs 3-question chat interview)
+ */
+const onboardInterviewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/onboard-interview",
+  component: lazyRouteComponent(() => import("./routes/onboard-interview.tsx")),
+  validateSearch: z.lazy(() =>
+    z.object({
+      org: z.string().optional(),
+      token: z.string().optional(),
+      step: z.string().optional(),
+    }),
+  ),
+});
+
+/**
  * Store invite route - deep links to store apps without knowing the org slug
  * After login, redirects to the user's first org and first registry
  */
@@ -494,6 +510,7 @@ const routeTree = rootRoute.addChildren([
   onboardingRoute,
   reportRoute,
   onboardSetupRoute,
+  onboardInterviewRoute,
 ]);
 
 const router = createRouter({

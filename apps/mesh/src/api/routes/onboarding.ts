@@ -9,8 +9,9 @@
  * Auth is checked manually via the Better Auth session API.
  *
  * Routes:
- *   GET  /api/onboarding/resolve?token=... — Resolve org options from a diagnostic token
- *   POST /api/onboarding/claim             — Claim session by creating/joining an org
+ *   GET  /api/onboarding/resolve?token=...  — Resolve org options from a diagnostic token
+ *   POST /api/onboarding/claim              — Claim session by creating/joining an org
+ *   POST /api/onboarding/interview-results  — Persist interview goals/challenges to org context
  */
 
 import { Hono } from "hono";
@@ -19,6 +20,7 @@ import { z } from "zod";
 import type { Kysely } from "kysely";
 import type { auth } from "../../auth";
 import type { Database } from "../../storage/types";
+import type { DiagnosticResult } from "../../diagnostic/types";
 import { DiagnosticSessionStorage } from "../../storage/diagnostic-sessions";
 import { ProjectsStorage } from "../../storage/projects";
 
@@ -109,6 +111,14 @@ const ClaimBodySchema = z.object({
   action: z.enum(["create", "join"]),
   orgId: z.string().optional(),
   orgName: z.string().optional(),
+});
+
+const InterviewResultsBodySchema = z.object({
+  token: z.string().min(1),
+  organizationId: z.string().min(1),
+  goals: z.array(z.string()),
+  challenges: z.array(z.string()),
+  priorities: z.array(z.string()),
 });
 
 // ============================================================================
@@ -453,6 +463,79 @@ export function createOnboardingRoutes(
       },
       200,
     );
+  });
+
+  // --------------------------------------------------------------------------
+  // POST /interview-results — Persist interview goals/challenges to org context
+  // --------------------------------------------------------------------------
+
+  app.post("/interview-results", async (c) => {
+    // 1. Parse and validate request body
+    let body: z.infer<typeof InterviewResultsBodySchema>;
+    try {
+      const raw = await c.req.json();
+      const parsed = InterviewResultsBodySchema.safeParse(raw);
+      if (!parsed.success) {
+        return c.json(
+          {
+            error: "Invalid request body",
+            details: parsed.error.flatten().fieldErrors,
+          },
+          400,
+        );
+      }
+      body = parsed.data;
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    // 2. Auth check
+    const user = await getSessionUser(c);
+    if (!user) {
+      return c.json({ error: "Authentication required" }, 401);
+    }
+
+    // 3. Load diagnostic session
+    const diagnosticSession = await sessionStorage.findByToken(body.token);
+    if (!diagnosticSession) {
+      return c.json({ error: "Session not found" }, 404);
+    }
+
+    // 4. Verify session belongs to the specified org
+    if (
+      diagnosticSession.organizationId &&
+      diagnosticSession.organizationId !== body.organizationId
+    ) {
+      return c.json(
+        { error: "Session does not belong to this organization" },
+        403,
+      );
+    }
+
+    // 5. Persist interview results into the diagnostic session's results JSON
+    const interviewResults = {
+      goals: body.goals,
+      challenges: body.challenges,
+      priorities: body.priorities,
+      completedAt: new Date().toISOString(),
+    };
+
+    try {
+      await sessionStorage.updateResults(
+        body.token,
+        "interviewResults" as keyof DiagnosticResult,
+        interviewResults,
+      );
+    } catch (err) {
+      console.error(
+        "[onboarding/interview-results] Failed to persist results:",
+        err,
+      );
+      return c.json({ error: "Failed to persist interview results" }, 500);
+    }
+
+    // 6. Return success
+    return c.json({ success: true }, 200);
   });
 
   return app;
