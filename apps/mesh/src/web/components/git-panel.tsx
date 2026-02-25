@@ -527,11 +527,13 @@ function CommitForm({
   connectionId,
   modelClient,
   watcher,
+  onCommitted,
 }: {
   client: Client;
   connectionId: string;
   modelClient: Client | null;
   watcher: { pause: () => void; resume: () => void };
+  onCommitted?: () => void;
 }) {
   const queryClient = useQueryClient();
   const chatBridge = useChatBridge();
@@ -574,11 +576,26 @@ function CommitForm({
     },
     onSuccess: () => {
       setMessage("");
+      // Cancel in-flight refetches (e.g. from the topbar watcher reacting to
+      // pre-commit hook file writes) so they don't overwrite the optimistic data.
+      queryClient.cancelQueries({
+        queryKey: GIT_QUERY_KEYS.status(connectionId),
+      });
+      queryClient.cancelQueries({
+        queryKey: GIT_QUERY_KEYS.diff(connectionId),
+      });
+      // Optimistically clear status so the topbar button updates instantly
+      queryClient.setQueryData(GIT_QUERY_KEYS.status(connectionId), []);
+      queryClient.setQueryData(GIT_QUERY_KEYS.diff(connectionId), "");
+      onCommitted?.();
     },
     onSettled: () => {
-      // Resume watcher after a delay to let filesystem settle
-      setTimeout(() => watcher.resume(), 1000);
-      invalidateAfterCommit();
+      // Resume watcher after a delay to let filesystem settle, then
+      // invalidate so the real status is fetched once things are stable.
+      setTimeout(() => {
+        watcher.resume();
+        invalidateAfterCommit();
+      }, 1000);
     },
   });
 
@@ -852,6 +869,7 @@ export function GitPanel({
               connectionId={connectionId}
               modelClient={modelClient}
               watcher={watcher}
+              onCommitted={onClose}
             />
           </section>
 
