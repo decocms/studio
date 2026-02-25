@@ -650,6 +650,40 @@ export interface EventDelivery {
 }
 
 // ============================================================================
+// Trigger Table Definitions
+// ============================================================================
+
+export type TriggerType = "cron" | "event";
+export type TriggerActionType = "tool_call" | "agent_prompt";
+export type TriggerRunStatus = "success" | "failed";
+
+export interface TriggerTable {
+  id: string;
+  organization_id: string;
+  title: string | null;
+  enabled: number; // SQLite boolean (0 or 1)
+  trigger_type: TriggerType;
+  cron_expression: string | null;
+  event_type: string | null;
+  event_filter: string | null;
+  action_type: TriggerActionType;
+  connection_id: string | null;
+  tool_name: string | null;
+  tool_arguments: string | null;
+  agent_id: string | null;
+  agent_prompt: string | null;
+  event_id: string | null;
+  subscription_id: string | null;
+  last_run_at: string | null;
+  last_run_status: TriggerRunStatus | null;
+  last_run_error: string | null;
+  created_at: ColumnType<Date, Date | string, never>;
+  updated_at: ColumnType<Date, Date | string, Date | string>;
+  created_by: string;
+  updated_by: string | null;
+}
+
+// ============================================================================
 // Virtual MCP Table Definitions
 // ============================================================================
 
@@ -905,4 +939,7 @@ export interface Database {
   // Projects tables
   projects: ProjectTable;
   project_plugin_configs: ProjectPluginConfigTable;
+
+  // Triggers table
+  triggers: TriggerTable;
 }
