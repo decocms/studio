@@ -206,7 +206,7 @@ export function MeshAccountSwitcher({
                 </div>
                 <ChevronSelectorVertical
                   size={16}
-                  className="shrink-0 text-sidebar-foreground/40 group-data-[studio]/sidebar-wrapper:text-sidebar-foreground/85"
+                  className="shrink-0 text-sidebar-foreground/40"
                 />
               </>
             )}

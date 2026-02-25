@@ -15,7 +15,7 @@ import {
   FaceSmile,
   Folder,
   Home02,
-  Target04,
+  Settings01,
   Users03,
 } from "@untitledui/icons";
 import { pluginRootSidebarItems, pluginSidebarGroups } from "../index.tsx";
@@ -204,16 +204,28 @@ export function useProjectSidebarItems(): SidebarSection[] {
 
   if (isOrgAdminProject) {
     // Org-admin sidebar layout:
-    // - Home, Projects (top-level)
-    // - Build group: Agents, Connections, Monitor, Tasks (if enabled)
-    // - Manage group: Members, Store
+    // - Home, Tasks (if enabled), Projects (if enabled) (top-level)
+    // - Build group: Agents, Connections, Store
+    // - Manage group: Monitor, Members, Settings
     // - Plugin items / groups
-    // (Settings is in the footer)
+    const settingsItem: NavigationSidebarItem = {
+      key: "settings",
+      label: "Settings",
+      icon: <Settings01 />,
+      isActive: isActiveRoute("settings"),
+      onClick: () =>
+        navigate({
+          to: "/$org/$project/settings",
+          params: { org, project: ORG_ADMIN_PROJECT_SLUG },
+        }),
+    };
+
     const sections: SidebarSection[] = [
       {
         type: "items",
         items: [
           homeItem,
+          ...(preferences.experimental_tasks ? [tasksItem] : []),
           ...(preferences.experimental_projects ? [projectsItem] : []),
         ],
       },
@@ -222,12 +234,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
         group: {
           id: "build",
           label: "Build",
-          items: [
-            agentsItem,
-            connectionsItem,
-            monitorItem,
-            ...(preferences.experimental_tasks ? [tasksItem] : []),
-          ],
+          items: [agentsItem, connectionsItem, storeItem],
           defaultExpanded: true,
         },
       },
@@ -236,7 +243,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
         group: {
           id: "manage",
           label: "Manage",
-          items: [membersItem, storeItem],
+          items: [monitorItem, membersItem, settingsItem],
           defaultExpanded: true,
         },
       },
@@ -244,15 +251,11 @@ export function useProjectSidebarItems(): SidebarSection[] {
 
     // Add flat plugin items if any
     if (pluginItems.length > 0) {
-      sections.push({ type: "divider" });
       sections.push({ type: "items", items: pluginItems });
     }
 
     // Add plugin groups
     if (pluginGroupSections.length > 0) {
-      if (pluginItems.length === 0) {
-        sections.push({ type: "divider" });
-      }
       sections.push(...pluginGroupSections);
     }
 
@@ -263,7 +266,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
   const projectTasksItem: NavigationSidebarItem = {
     key: "tasks",
     label: "Tasks",
-    icon: <Target04 />,
+    icon: <CheckDone01 />,
     isActive: isActiveRoute("tasks"),
     onClick: () =>
       navigate({

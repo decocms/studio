@@ -61,7 +61,7 @@ export function MeshSidebarHeader({ onCreateProject }: MeshSidebarHeaderProps) {
                     variant="ghost"
                     size="icon"
                     className={cn(
-                      "size-7 hover:bg-sidebar-accent text-sidebar-foreground/50 hover:text-sidebar-foreground group-data-[studio]/sidebar-wrapper:text-sidebar-foreground/85",
+                      "size-7 hover:bg-sidebar-accent text-sidebar-foreground/50 hover:text-sidebar-foreground",
                       isChatOpen && "bg-sidebar-accent text-sidebar-foreground",
                     )}
                     onClick={toggleChat}
