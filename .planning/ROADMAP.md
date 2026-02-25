@@ -173,5 +173,5 @@ Plans:
 | 18. deco link command | v1.3 | 0/? | Not started | - |
 | 19. Diagnostic Backend | v1.4 | Complete    | 2026-02-25 | 2026-02-25 |
 | 20. Public Report UI | 3/3 | Complete    | 2026-02-25 | - |
-| 21. Auth Handoff | 3/3 | Complete   | 2026-02-25 | - |
+| 21. Auth Handoff | 3/3 | Complete    | 2026-02-25 | - |
 | 22. Interview + Recommendations | v1.4 | 0/? | Not started | - |
