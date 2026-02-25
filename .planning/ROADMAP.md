@@ -160,6 +160,11 @@ Plans:
   2. The interview uses the existing decopilot chat UI and stores the declared goals and challenges to the org's company context
   3. After the interview, the user sees 2–3 agent recommendation cards, each showing the agent's purpose, a plain-English explanation of why it was recommended given their diagnostic results and goals, and what connections it needs
   4. Clicking "Connect" on a recommendation card opens the connection setup wizard with the connection type pre-populated from the agent's requirements
+**Plans:** 3 plans
+Plans:
+- [ ] 22-01-PLAN.md — Interview page + onboarding system prompt + completion persistence
+- [ ] 22-02-PLAN.md — Recommendation types + rule-based scoring engine + API endpoint
+- [ ] 22-03-PLAN.md — Recommendation cards UI + connection setup navigation
 
 ## Progress
 
@@ -174,4 +179,4 @@ Plans:
 | 19. Diagnostic Backend | v1.4 | Complete    | 2026-02-25 | 2026-02-25 |
 | 20. Public Report UI | 3/3 | Complete    | 2026-02-25 | - |
 | 21. Auth Handoff | 3/3 | Complete    | 2026-02-25 | - |
-| 22. Interview + Recommendations | v1.4 | 0/? | Not started | - |
+| 22. Interview + Recommendations | v1.4 | 0/3 | Not started | - |
