@@ -1,44 +1,32 @@
-import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
+import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { createMeshClient } from "./runtime.js";
+import type { MeshClientDeps } from "./runtime.js";
 
-// Mock the MCP SDK before importing runtime
+// Build mock constructors without touching the module registry
 const mockCallTool = mock(
   async ({ name, arguments: args }: { name: string; arguments: unknown }) => ({
     isError: false,
     structuredContent: { tool: name, args },
   }),
 );
-
 const mockConnect = mock(async () => {});
 const mockClose = mock(async () => {});
 
-const MockClient = mock(function () {
+function MockClient() {
   return { callTool: mockCallTool, connect: mockConnect, close: mockClose };
-});
+}
+function MockTransport() {}
 
-const MockTransport = mock(function () {});
-
-mock.module("@modelcontextprotocol/sdk/client/index.js", () => ({
+const deps = {
   Client: MockClient,
-}));
-
-mock.module("@modelcontextprotocol/sdk/client/streamableHttp.js", () => ({
-  StreamableHTTPClientTransport: MockTransport,
-}));
-
-// Import AFTER mocking
-const { createMeshClient } = await import("./runtime.js");
+  Transport: MockTransport,
+} as unknown as MeshClientDeps;
 
 describe("createMeshClient", () => {
-  afterAll(() => {
-    mock.restore();
-  });
-
   beforeEach(() => {
     mockCallTool.mockClear();
     mockConnect.mockClear();
     mockClose.mockClear();
-    MockClient.mockClear();
-    MockTransport.mockClear();
   });
 
   test("returns an object with callable tool methods", async () => {
@@ -46,10 +34,10 @@ describe("createMeshClient", () => {
       MY_TOOL: { input: { id: string }; output: { name: string } };
     };
 
-    const client = createMeshClient<Tools>({
-      mcpId: "vmc_test",
-      apiKey: "sk_test",
-    });
+    const client = createMeshClient<Tools>(
+      { mcpId: "vmc_test", apiKey: "sk_test" },
+      deps,
+    );
 
     const result = await client.MY_TOOL({ id: "123" });
 
@@ -63,19 +51,23 @@ describe("createMeshClient", () => {
   test("lazy-connects on first call", async () => {
     type Tools = { TOOL: { input: Record<string, never>; output: unknown } };
 
-    const client = createMeshClient<Tools>({ mcpId: "vmc_test", apiKey: "sk" });
+    const client = createMeshClient<Tools>(
+      { mcpId: "vmc_test", apiKey: "sk" },
+      deps,
+    );
 
     expect(mockConnect).not.toHaveBeenCalled();
-
     await client.TOOL({});
-
     expect(mockConnect).toHaveBeenCalledTimes(1);
   });
 
   test("reuses connection on subsequent calls", async () => {
     type Tools = { TOOL: { input: Record<string, never>; output: unknown } };
 
-    const client = createMeshClient<Tools>({ mcpId: "vmc_test", apiKey: "sk" });
+    const client = createMeshClient<Tools>(
+      { mcpId: "vmc_test", apiKey: "sk" },
+      deps,
+    );
 
     await client.TOOL({});
     await client.TOOL({});
@@ -93,40 +85,22 @@ describe("createMeshClient", () => {
     type Tools = {
       FAIL_TOOL: { input: Record<string, never>; output: unknown };
     };
-    const client = createMeshClient<Tools>({ mcpId: "vmc_test", apiKey: "sk" });
+    const client = createMeshClient<Tools>(
+      { mcpId: "vmc_test", apiKey: "sk" },
+      deps,
+    );
 
     await expect(client.FAIL_TOOL({})).rejects.toThrow(
       "Tool failed: bad input",
     );
   });
 
-  test("builds URL with correct mcpId and baseUrl", async () => {
-    type Tools = { TOOL: { input: Record<string, never>; output: unknown } };
-
-    createMeshClient<Tools>({
-      mcpId: "vmc_abc123",
-      apiKey: "sk_key",
-      baseUrl: "https://custom.example.com",
-    });
-
-    // Transport is constructed lazily, so call a tool to trigger connect
-    const client = createMeshClient<Tools>({
-      mcpId: "vmc_abc123",
-      apiKey: "sk_key",
-      baseUrl: "https://custom.example.com",
-    });
-
-    await client.TOOL({});
-
-    const transportArg = MockTransport.mock.calls[0][0] as URL;
-    expect(transportArg.toString()).toBe(
-      "https://custom.example.com/mcp/virtual-mcp/vmc_abc123",
-    );
-  });
-
   test("close() closes the underlying client and allows reconnect", async () => {
     type Tools = { TOOL: { input: Record<string, never>; output: unknown } };
-    const client = createMeshClient<Tools>({ mcpId: "vmc_test", apiKey: "sk" });
+    const client = createMeshClient<Tools>(
+      { mcpId: "vmc_test", apiKey: "sk" },
+      deps,
+    );
 
     await client.TOOL({});
     expect(mockConnect).toHaveBeenCalledTimes(1);
@@ -134,19 +108,56 @@ describe("createMeshClient", () => {
     await client.close();
     expect(mockClose).toHaveBeenCalledTimes(1);
 
-    // After close, next call should reconnect
     await client.TOOL({});
     expect(mockConnect).toHaveBeenCalledTimes(2);
   });
 
-  test("defaults baseUrl to https://mesh-admin.decocms.com", async () => {
+  test("builds URL with correct mcpId and baseUrl", async () => {
     type Tools = { TOOL: { input: Record<string, never>; output: unknown } };
-    const client = createMeshClient<Tools>({ mcpId: "vmc_abc", apiKey: "sk" });
+
+    const capturedUrls: URL[] = [];
+    const capturingTransport = function (url: URL) {
+      capturedUrls.push(url);
+    };
+
+    const client = createMeshClient<Tools>(
+      {
+        mcpId: "vmc_abc123",
+        apiKey: "sk_key",
+        baseUrl: "https://custom.example.com",
+      },
+      {
+        ...deps,
+        Transport: capturingTransport as unknown as MeshClientDeps["Transport"],
+      },
+    );
 
     await client.TOOL({});
 
-    const transportArg = MockTransport.mock.calls[0][0] as URL;
-    expect(transportArg.toString()).toBe(
+    expect(capturedUrls[0]?.toString()).toBe(
+      "https://custom.example.com/mcp/virtual-mcp/vmc_abc123",
+    );
+  });
+
+  test("defaults baseUrl to https://mesh-admin.decocms.com", async () => {
+    type Tools = { TOOL: { input: Record<string, never>; output: unknown } };
+
+    const capturedUrls: URL[] = [];
+    const capturingTransport = function (url: URL) {
+      capturedUrls.push(url);
+    };
+
+    const client = createMeshClient<Tools>(
+      { mcpId: "vmc_abc", apiKey: "sk" },
+      {
+        ...deps,
+        Transport: capturingTransport as unknown as MeshClientDeps["Transport"],
+      },
+    );
+
+    await client.TOOL({});
+
+    expect(capturedUrls[0]?.toString()).toBe(
       "https://mesh-admin.decocms.com/mcp/virtual-mcp/vmc_abc",
     );
   });
