@@ -48,9 +48,7 @@ export function SettingsModal() {
         <div className="flex flex-1 min-h-0 overflow-hidden">
           {/* Left sidebar */}
           <Suspense
-            fallback={
-              <div className="w-52 shrink-0 border-r border-border" />
-            }
+            fallback={<div className="w-52 shrink-0 border-r border-border" />}
           >
             <SettingsSidebar activeSection={activeSection} onNavigate={open} />
           </Suspense>

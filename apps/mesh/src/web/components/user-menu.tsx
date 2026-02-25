@@ -20,7 +20,7 @@ import {
 import { GitHubIcon } from "@daveyplate/better-auth-ui";
 import { authClient } from "@/web/lib/auth-client";
 import { useState } from "react";
-import { UserSettingsDialog } from "@/web/components/user-settings-dialog.tsx";
+import { useSettingsModal } from "@/web/hooks/use-settings-modal";
 import { toast } from "sonner";
 
 function MeshUserMenuBase({
@@ -30,7 +30,7 @@ function MeshUserMenuBase({
   user: { id: string; name?: string; email: string };
   userImage?: string;
 }) {
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const { open: openSettings } = useSettingsModal();
   const [copied, setCopied] = useState(false);
 
   const handleCopyUserInfo = () => {
@@ -42,173 +42,162 @@ function MeshUserMenuBase({
   };
 
   return (
-    <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button className="flex w-full h-8 items-center gap-2 rounded-md px-1 hover:bg-sidebar-accent transition-colors text-left min-w-0">
-            <Avatar
-              url={userImage}
-              fallback={user.name || user.email || "U"}
-              shape="circle"
-              size="2xs"
-              className="shrink-0 size-5"
-            />
-            <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
-              <div className="text-sm font-medium truncate text-sidebar-foreground leading-none">
-                {user.name || "User"}
-              </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button className="flex w-full h-8 items-center gap-2 rounded-md px-1 hover:bg-sidebar-accent transition-colors text-left min-w-0">
+          <Avatar
+            url={userImage}
+            fallback={user.name || user.email || "U"}
+            shape="circle"
+            size="2xs"
+            className="shrink-0 size-5"
+          />
+          <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
+            <div className="text-sm font-medium truncate text-sidebar-foreground leading-none">
+              {user.name || "User"}
             </div>
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          side="top"
-          align="end"
-          collisionPadding={8}
-          className="w-64 flex flex-col gap-0.5"
-          onCloseAutoFocus={(e) => e.preventDefault()}
+          </div>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        side="top"
+        align="end"
+        collisionPadding={8}
+        className="w-64 flex flex-col gap-0.5"
+        onCloseAutoFocus={(e) => e.preventDefault()}
+      >
+        {/* User info */}
+        <DropdownMenuItem
+          onClick={handleCopyUserInfo}
+          className="gap-2.5 group"
         >
-          {/* User info */}
-          <DropdownMenuItem
-            onClick={handleCopyUserInfo}
-            className="gap-2.5 group"
+          <Avatar
+            url={userImage}
+            fallback={user.name || user.email || "U"}
+            shape="circle"
+            size="sm"
+            className="shrink-0"
+          />
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium truncate">
+              {user.name || "User"}
+            </div>
+            <div className="text-xs text-muted-foreground truncate">
+              {user.email}
+            </div>
+          </div>
+          <div className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+            {copied ? (
+              <Check size={14} className="text-green-600" />
+            ) : (
+              <Copy01 size={14} className="text-muted-foreground" />
+            )}
+          </div>
+        </DropdownMenuItem>
+
+        <DropdownMenuSeparator />
+
+        {/* Main actions */}
+        <DropdownMenuItem
+          className="gap-2.5"
+          onClick={() => openSettings("account.preferences")}
+        >
+          <Settings01 size={14} className="shrink-0 text-muted-foreground" />
+          <span>Settings</span>
+        </DropdownMenuItem>
+
+        <DropdownMenuItem asChild>
+          <a
+            href="https://www.decocms.com/terms-of-use"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2.5 group"
           >
-            <Avatar
-              url={userImage}
-              fallback={user.name || user.email || "U"}
-              shape="circle"
-              size="sm"
-              className="shrink-0"
+            <File06 size={14} className="shrink-0 text-muted-foreground" />
+            <span className="flex-1">Terms of Use</span>
+            <LinkExternal01
+              size={14}
+              className="shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
             />
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium truncate">
-                {user.name || "User"}
-              </div>
-              <div className="text-xs text-muted-foreground truncate">
-                {user.email}
-              </div>
-            </div>
-            <div className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-              {copied ? (
-                <Check size={14} className="text-green-600" />
-              ) : (
-                <Copy01 size={14} className="text-muted-foreground" />
-              )}
-            </div>
-          </DropdownMenuItem>
+          </a>
+        </DropdownMenuItem>
 
-          <DropdownMenuSeparator />
-
-          {/* Main actions */}
-          <DropdownMenuItem
-            className="gap-2.5"
-            onClick={() => setSettingsOpen(true)}
+        <DropdownMenuItem asChild>
+          <a
+            href="https://www.decocms.com/privacy-policy"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2.5 group"
           >
-            <Settings01 size={14} className="shrink-0 text-muted-foreground" />
-            <span>Settings</span>
-          </DropdownMenuItem>
+            <Shield01 size={14} className="shrink-0 text-muted-foreground" />
+            <span className="flex-1">Privacy Policy</span>
+            <LinkExternal01
+              size={14}
+              className="shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+            />
+          </a>
+        </DropdownMenuItem>
 
-          <DropdownMenuItem asChild>
-            <a
-              href="https://www.decocms.com/terms-of-use"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2.5 group"
-            >
-              <File06 size={14} className="shrink-0 text-muted-foreground" />
-              <span className="flex-1">Terms of Use</span>
-              <LinkExternal01
-                size={14}
-                className="shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
-              />
-            </a>
-          </DropdownMenuItem>
-
-          <DropdownMenuItem asChild>
-            <a
-              href="https://www.decocms.com/privacy-policy"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2.5 group"
-            >
-              <Shield01 size={14} className="shrink-0 text-muted-foreground" />
-              <span className="flex-1">Privacy Policy</span>
-              <LinkExternal01
-                size={14}
-                className="shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
-              />
-            </a>
-          </DropdownMenuItem>
-
-          <DropdownMenuItem asChild>
-            <a
-              href="https://github.com/decocms/mesh"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2.5 group"
-            >
-              <GitHubIcon className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
-              <span className="flex-1">decocms/mesh</span>
-              <LinkExternal01
-                size={14}
-                className="shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
-              />
-            </a>
-          </DropdownMenuItem>
-
-          <DropdownMenuItem asChild>
-            <a
-              href="https://decocms.com/discord"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2.5 group"
-            >
-              <Users03 size={14} className="shrink-0 text-muted-foreground" />
-              <span className="flex-1">Community</span>
-              <LinkExternal01
-                size={14}
-                className="shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
-              />
-            </a>
-          </DropdownMenuItem>
-
-          <DropdownMenuItem asChild>
-            <a
-              href="https://decocms.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2.5 group"
-            >
-              <Globe01 size={14} className="shrink-0 text-muted-foreground" />
-              <span className="flex-1">Homepage</span>
-              <LinkExternal01
-                size={14}
-                className="shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
-              />
-            </a>
-          </DropdownMenuItem>
-
-          <DropdownMenuSeparator />
-
-          {/* Sign out */}
-          <DropdownMenuItem
-            className="gap-2.5"
-            onClick={() => authClient.signOut()}
+        <DropdownMenuItem asChild>
+          <a
+            href="https://github.com/decocms/mesh"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2.5 group"
           >
-            <LogOut01 size={14} className="shrink-0 text-muted-foreground" />
-            <span>Sign out</span>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+            <GitHubIcon className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+            <span className="flex-1">decocms/mesh</span>
+            <LinkExternal01
+              size={14}
+              className="shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+            />
+          </a>
+        </DropdownMenuItem>
 
-      {settingsOpen && (
-        <UserSettingsDialog
-          open={settingsOpen}
-          onOpenChange={setSettingsOpen}
-          user={user}
-          userImage={userImage}
-        />
-      )}
-    </>
+        <DropdownMenuItem asChild>
+          <a
+            href="https://decocms.com/discord"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2.5 group"
+          >
+            <Users03 size={14} className="shrink-0 text-muted-foreground" />
+            <span className="flex-1">Community</span>
+            <LinkExternal01
+              size={14}
+              className="shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+            />
+          </a>
+        </DropdownMenuItem>
+
+        <DropdownMenuItem asChild>
+          <a
+            href="https://decocms.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2.5 group"
+          >
+            <Globe01 size={14} className="shrink-0 text-muted-foreground" />
+            <span className="flex-1">Homepage</span>
+            <LinkExternal01
+              size={14}
+              className="shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+            />
+          </a>
+        </DropdownMenuItem>
+
+        <DropdownMenuSeparator />
+
+        {/* Sign out */}
+        <DropdownMenuItem
+          className="gap-2.5"
+          onClick={() => authClient.signOut()}
+        >
+          <LogOut01 size={14} className="shrink-0 text-muted-foreground" />
+          <span>Sign out</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
