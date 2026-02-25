@@ -89,6 +89,24 @@ const connectRoute = createRoute({
 });
 
 /**
+ * Storefront diagnostic onboarding (public, no auth)
+ */
+const onboardingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/onboarding",
+  component: lazyRouteComponent(() => import("./routes/onboarding.tsx")),
+});
+
+/**
+ * Diagnostic report view (public, no auth)
+ */
+const reportRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/report/$token",
+  component: lazyRouteComponent(() => import("./routes/report.tsx")),
+});
+
+/**
  * Store invite route - deep links to store apps without knowing the org slug
  * After login, redirects to the user's first org and first registry
  */
@@ -459,6 +477,8 @@ const routeTree = rootRoute.addChildren([
   oauthCallbackRoute,
   connectRoute,
   storeInviteRoute,
+  onboardingRoute,
+  reportRoute,
 ]);
 
 const router = createRouter({

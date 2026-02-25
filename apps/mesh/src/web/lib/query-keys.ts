@@ -222,4 +222,8 @@ export const KEYS = {
     ["project-plugin-configs", projectId] as const,
   projectPluginConfig: (projectId: string, pluginId: string) =>
     ["project-plugin-config", projectId, pluginId] as const,
+
+  // Diagnostic session polling (public, no auth)
+  diagnosticSession: (token: string) =>
+    ["diagnostic", "session", token] as const,
 } as const;
