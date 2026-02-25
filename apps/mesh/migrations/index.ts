@@ -33,6 +33,7 @@ import * as migration031adddependencymode from "./031-add-dependency-mode.ts";
 import * as migration032projects from "./032-projects.ts";
 import * as migration033threadstatus from "./033-thread-status.ts";
 import * as migration034monitoringdashboards from "./034-monitoring-dashboards.ts";
+import * as migration035triggers from "./035-triggers.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -78,6 +79,7 @@ const migrations: Record<string, Migration> = {
   "032-projects": migration032projects,
   "033-thread-status": migration033threadstatus,
   "034-monitoring-dashboards": migration034monitoringdashboards,
+  "035-triggers": migration035triggers,
 };
 
 export default migrations;
