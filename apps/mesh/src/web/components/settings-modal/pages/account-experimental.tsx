@@ -51,7 +51,7 @@ export function AccountExperimentalPage() {
         </p>
       </div>
 
-      <div className="flex flex-col rounded-lg border border-border bg-muted/25 px-4">
+      <div className="flex flex-col rounded-lg border border-amber-500/20 bg-amber-500/5 px-4">
         <ExperimentalRow
           icon={<Folder size={16} />}
           label="Projects"

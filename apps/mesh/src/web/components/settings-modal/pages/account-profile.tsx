@@ -18,16 +18,18 @@ export function AccountProfilePage() {
 
   const handleCopyUserId = () => {
     if (!user?.id) return;
-    navigator.clipboard.writeText(user.id).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+    navigator.clipboard.writeText(user.id);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
     <div className="flex flex-col gap-8">
       <div>
         <h2 className="text-base font-semibold text-foreground">Profile</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          Your account identity on this workspace.
+        </p>
       </div>
 
       <div className="flex items-center gap-4">
@@ -48,37 +50,34 @@ export function AccountProfilePage() {
         </div>
       </div>
 
-      <div className="flex flex-col">
-        <p className="py-4 text-base font-semibold text-foreground border-b border-border">
+      <div className="border-t border-border pt-6 flex flex-col gap-2">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           User ID
         </p>
-        <div className="flex items-center justify-between gap-6 py-4">
-          <p className="text-sm text-muted-foreground">User ID</p>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={handleCopyUserId}
-                  className="group flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <span className="font-mono text-sm">{user?.id}</span>
-                  {copied ? (
-                    <Check size={14} className="text-green-600 shrink-0" />
-                  ) : (
-                    <Copy01
-                      size={14}
-                      className="shrink-0 opacity-70 group-hover:opacity-100 transition-opacity"
-                    />
-                  )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="left">
-                <p className="text-xs">Copy user ID</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={handleCopyUserId}
+                className="group flex items-center gap-2 w-fit text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <span className="font-mono text-xs">{user?.id}</span>
+                {copied ? (
+                  <Check size={14} className="text-green-600 shrink-0" />
+                ) : (
+                  <Copy01
+                    size={14}
+                    className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                  />
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p className="text-xs">Copy user ID</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
     </div>
   );
