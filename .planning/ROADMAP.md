@@ -130,7 +130,11 @@ Plans:
   3. Traffic, competitor comparison, SEO rankings/backlinks, and brand/visual identity sections are visible with realistic data, each marked with a "Pro" or upgrade indicator
   4. Clicking the share button copies the report URL to clipboard — the same URL loads the full report for anyone with the link, with no login required
   5. The AI company context section has an edit affordance visible on the report page (edit requires login, but the affordance is present pre-login)
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 20-01-PLAN.md — Routes + URL input page + loading state with agent checklist + polling
+- [ ] 20-02-PLAN.md — Report page scaffold + real data sections (performance, SEO, tech stack, company context) + share button + edit affordance
+- [ ] 20-03-PLAN.md — Mocked Pro sections (traffic, SEO rankings, brand, percentile) + Pro badge component
 
 ### Phase 21: Auth Handoff
 **Goal**: After viewing the report, the user is prompted to log in; the diagnostic state survives the full OAuth redirect cycle; after login the org is created from the email domain and the report is associated with it
