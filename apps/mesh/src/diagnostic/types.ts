@@ -116,6 +116,43 @@ export interface DiagnosticResult {
   seo?: SeoResult | null;
   techStack?: TechStackResult | null;
   companyContext?: CompanyContextResult | null;
+  interviewResults?: InterviewResults | null;
+}
+
+// ============================================================================
+// Interview + Recommendation Types
+// ============================================================================
+
+/** Interview results persisted after onboarding chat */
+export interface InterviewResults {
+  goals: string[];
+  challenges: string[];
+  priorities: string[];
+}
+
+/** A single agent recommendation with explanation */
+export interface AgentRecommendation {
+  /** Virtual MCP ID */
+  agentId: string;
+  /** Virtual MCP title */
+  agentTitle: string;
+  /** Virtual MCP description */
+  agentDescription: string | null;
+  /** Virtual MCP icon */
+  agentIcon: string | null;
+  /** Plain-English explanation of why this agent was recommended */
+  reason: string;
+  /** Relevance score (0-100) — used for ordering, not displayed */
+  score: number;
+  /** Connection types/names this agent needs to function */
+  requiredConnections: Array<{
+    /** Connection title from the Virtual MCP's connections list */
+    title: string;
+    /** Connection ID */
+    connectionId: string;
+    /** Whether this connection is already configured */
+    isConfigured: boolean;
+  }>;
 }
 
 // ============================================================================
