@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-25)
 
 **Core value:** E-commerce teams get an instant storefront diagnostic and guided onboarding into a team of AI agents that optimize their store.
-**Current focus:** Milestone v1.4 — Storefront Onboarding (Phase 19 in progress)
+**Current focus:** Milestone v1.4 — Storefront Onboarding (Phase 19 complete, Phase 20 next)
 
 ## Current Position
 
-Phase: 19 of 22 in v1.4 (Diagnostic Backend)
-Plan: 3 of 3
-Status: In Progress
-Last activity: 2026-02-25 — completed 19-02 (all 4 diagnostic agents + shared crawler)
+Phase: 19 of 22 in v1.4 (Diagnostic Backend) — COMPLETE
+Plan: 3 of 3 (all done)
+Status: Complete
+Last activity: 2026-02-25 — completed 19-03 (orchestrator + public diagnostic API routes)
 
-Progress: [██░░░░░░░░] 8% (v1.4, 2/3 plans in phase 19 done)
+Progress: [███░░░░░░░] 12% (v1.4, 3/3 plans in phase 19 done)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
-- Average duration: 7 min
-- Total execution time: 13 min
+- Total plans completed: 3
+- Average duration: 5 min
+- Total execution time: 15 min
 
 **By Phase:**
 
@@ -29,8 +29,9 @@ Progress: [██░░░░░░░░] 8% (v1.4, 2/3 plans in phase 19 done)
 |-------|-------|-------|----------|
 | Phase 19 P01 | 1 | 6 min | 6 min |
 | Phase 19 P02 | 1 | 7 min | 7 min |
+| Phase 19 P03 | 1 | 2 min | 2 min |
 
-**Recent Trend:** 7 min/plan
+**Recent Trend:** 5 min/plan
 
 *Updated after each plan completion*
 
@@ -52,6 +53,9 @@ Recent decisions affecting current work:
 - [Phase 19]: PSI API embeds CrUX field data in loadingExperience — no separate CrUX API call needed for plan 02 agents
 - [Phase 19]: LLM provider packages are optional runtime deps for company context agent — dynamic any-cast imports avoid TypeScript module resolution errors
 - [Phase 19]: DIAGNOSTIC_AGENTS registry preserves per-agent typed signatures — seo/tech_stack take CrawlResult, web_performance/company_context take (url, CrawlResult)
+- [Phase 19]: agentIdToResultKey maps snake_case agent IDs to camelCase DiagnosticResult keys (web_performance → webPerformance)
+- [Phase 19]: createDiagnosticRoutes(db) factory pattern used for pre-auth public routes — avoids needing MeshContext entirely
+- [Phase 19]: Session always reaches "completed" even if all agents fail — homepage crawl failure is the only "failed" path
 
 ### Pending Todos
 
@@ -66,5 +70,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 19-02-PLAN.md — all 4 diagnostic agents implemented (SEO, tech stack, web performance, company context)
+Stopped at: Completed 19-03-PLAN.md — orchestrator + public diagnostic API routes (Phase 19 complete)
 Resume file: None
