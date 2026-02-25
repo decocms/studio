@@ -114,7 +114,11 @@ Git site binding tools, pending changes UI, commit dialog with Claude-generated 
   2. Polling the session token shows progressive status updates and eventually resolves to a complete result set with Core Web Vitals (LCP, INP, CLS), mobile/desktop performance scores, CrUX real-user data (or PSI field data fallback), detected platform, SEO signals, tech stack, and a one-paragraph AI company context
   3. If one diagnostic agent fails or times out, the session still resolves with partial results — no single agent failure blocks the report
   4. Submitting a private IP address, localhost, or non-HTTP URL is rejected with a clear error before any outbound fetch occurs
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 19-01-PLAN.md — DB schema (diagnostic_sessions), SSRF validator, storage operations
+- [ ] 19-02-PLAN.md — Diagnostic agents (HTML crawler, SEO, Tech Stack, Web Performance, Company Context)
+- [ ] 19-03-PLAN.md — Orchestrator (parallel execution, progressive status) + public API routes
 
 ### Phase 20: Public Report UI
 **Goal**: Diagnostic results render as a structured, shareable public report page accessible without login — including real data sections and clearly-marked mocked sections — with the URL input page as the entry point
