@@ -1,16 +1,12 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type {
-  MeshClientInstance,
-  MeshClientOptions,
-  ToolMap,
-} from "./index.js";
+import type { MeshClient, MeshClientOptions, ToolMap } from "./index.js";
 
 const DEFAULT_BASE_URL = "https://mesh-admin.decocms.com";
 
 export function createMeshClient<T extends ToolMap>(
   opts: MeshClientOptions,
-): MeshClientInstance<T> {
+): MeshClient<T> {
   // Shared promise prevents concurrent calls from creating multiple connections
   let connectPromise: Promise<Client> | null = null;
 
@@ -41,8 +37,18 @@ export function createMeshClient<T extends ToolMap>(
     return connectPromise;
   }
 
-  return new Proxy({} as MeshClientInstance<T>, {
+  return new Proxy({} as MeshClient<T>, {
     get(_target, toolName: string) {
+      if (toolName === "close") {
+        return async () => {
+          if (connectPromise) {
+            const client = await connectPromise;
+            await client.close();
+            connectPromise = null;
+          }
+        };
+      }
+
       return async (input: unknown) => {
         const client = await getClient();
         const result = await client.callTool({

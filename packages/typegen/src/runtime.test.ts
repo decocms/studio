@@ -9,9 +9,10 @@ const mockCallTool = mock(
 );
 
 const mockConnect = mock(async () => {});
+const mockClose = mock(async () => {});
 
 const MockClient = mock(function () {
-  return { callTool: mockCallTool, connect: mockConnect };
+  return { callTool: mockCallTool, connect: mockConnect, close: mockClose };
 });
 
 const MockTransport = mock(function () {});
@@ -31,6 +32,7 @@ describe("createMeshClient", () => {
   beforeEach(() => {
     mockCallTool.mockClear();
     mockConnect.mockClear();
+    mockClose.mockClear();
     MockClient.mockClear();
     MockTransport.mockClear();
   });
@@ -116,6 +118,21 @@ describe("createMeshClient", () => {
     expect(transportArg.toString()).toBe(
       "https://custom.example.com/mcp/virtual-mcp/vmc_abc123",
     );
+  });
+
+  test("close() closes the underlying client and allows reconnect", async () => {
+    type Tools = { TOOL: { input: Record<string, never>; output: unknown } };
+    const client = createMeshClient<Tools>({ mcpId: "vmc_test", apiKey: "sk" });
+
+    await client.TOOL({});
+    expect(mockConnect).toHaveBeenCalledTimes(1);
+
+    await client.close();
+    expect(mockClose).toHaveBeenCalledTimes(1);
+
+    // After close, next call should reconnect
+    await client.TOOL({});
+    expect(mockConnect).toHaveBeenCalledTimes(2);
   });
 
   test("defaults baseUrl to https://mesh-admin.decocms.com", async () => {
