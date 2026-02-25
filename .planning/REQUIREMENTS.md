@@ -95,41 +95,41 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DIAG-01 | TBD | Pending |
-| DIAG-02 | TBD | Pending |
-| DIAG-03 | TBD | Pending |
-| DIAG-04 | TBD | Pending |
-| DIAG-05 | TBD | Pending |
-| DIAG-06 | TBD | Pending |
-| DIAG-07 | TBD | Pending |
-| DIAG-08 | TBD | Pending |
-| DIAG-09 | TBD | Pending |
-| DIAG-10 | TBD | Pending |
-| DIAG-11 | TBD | Pending |
-| DIAG-12 | TBD | Pending |
-| RPT-01 | TBD | Pending |
-| RPT-02 | TBD | Pending |
-| RPT-03 | TBD | Pending |
-| RPT-04 | TBD | Pending |
-| RPT-05 | TBD | Pending |
-| RPT-06 | TBD | Pending |
-| AUTH-01 | TBD | Pending |
-| AUTH-02 | TBD | Pending |
-| AUTH-03 | TBD | Pending |
-| AUTH-04 | TBD | Pending |
-| INTV-01 | TBD | Pending |
-| INTV-02 | TBD | Pending |
-| INTV-03 | TBD | Pending |
-| AGNT-01 | TBD | Pending |
-| AGNT-02 | TBD | Pending |
-| AGNT-03 | TBD | Pending |
-| AGNT-04 | TBD | Pending |
+| DIAG-01 | Phase 19 | Pending |
+| DIAG-02 | Phase 19 | Pending |
+| DIAG-03 | Phase 19 | Pending |
+| DIAG-04 | Phase 19 | Pending |
+| DIAG-05 | Phase 19 | Pending |
+| DIAG-06 | Phase 19 | Pending |
+| DIAG-07 | Phase 20 | Pending |
+| DIAG-08 | Phase 20 | Pending |
+| DIAG-09 | Phase 20 | Pending |
+| DIAG-10 | Phase 20 | Pending |
+| DIAG-11 | Phase 19 | Pending |
+| DIAG-12 | Phase 19 | Pending |
+| RPT-01 | Phase 20 | Pending |
+| RPT-02 | Phase 20 | Pending |
+| RPT-03 | Phase 20 | Pending |
+| RPT-04 | Phase 20 | Pending |
+| RPT-05 | Phase 20 | Pending |
+| RPT-06 | Phase 20 | Pending |
+| AUTH-01 | Phase 21 | Pending |
+| AUTH-02 | Phase 21 | Pending |
+| AUTH-03 | Phase 21 | Pending |
+| AUTH-04 | Phase 21 | Pending |
+| INTV-01 | Phase 22 | Pending |
+| INTV-02 | Phase 22 | Pending |
+| INTV-03 | Phase 22 | Pending |
+| AGNT-01 | Phase 22 | Pending |
+| AGNT-02 | Phase 22 | Pending |
+| AGNT-03 | Phase 22 | Pending |
+| AGNT-04 | Phase 22 | Pending |
 
 **Coverage:**
 - v1.4 requirements: 29 total (12 DIAG + 6 RPT + 4 AUTH + 3 INTV + 4 AGNT)
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 29
+- Mapped to phases: 29
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-25*
-*Last updated: 2026-02-25 — v1.4 Storefront Onboarding*
+*Last updated: 2026-02-25 — v1.4 traceability complete (phases 19–22)*

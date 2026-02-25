@@ -5,7 +5,8 @@
 - ✅ **v1.0 — Core Mesh** - Phases 1–5 (shipped, on main)
 - ✅ **v1.1 — Site Editor Foundation** - Phases 6–9 (shipped, on gui/site-builder)
 - ✅ **v1.2 — Git-Native Editing** - Phases 11–14 (shipped, on gui/site-builder)
-- 🚧 **v1.3 — Local-First Development** - Phases 15–18 (current)
+- 🚧 **v1.3 — Local-First Development** - Phases 15–18 (in progress)
+- 📋 **v1.4 — Storefront Onboarding** - Phases 19–22 (planned)
 
 <details>
 <summary>✅ v1.0 — Core Mesh (Phases 1–5) — SHIPPED</summary>
@@ -30,7 +31,7 @@ Git site binding tools, pending changes UI, commit dialog with Claude-generated 
 
 ---
 
-### 🚧 v1.3 — Local-First Development (Current)
+### 🚧 v1.3 — Local-First Development (In Progress)
 
 **Milestone Goal:** Ship the site editor and local development experience as clean, reviewable PRs from a well-structured set of new packages. Four packages, four PRs, each independently mergeable.
 
@@ -40,6 +41,10 @@ Git site binding tools, pending changes UI, commit dialog with Claude-generated 
 - [ ] **Phase 16: plugin-deco-blocks** - Standalone deco blocks framework: scanners, DECO_BLOCKS_BINDING, Claude skill
 - [ ] **Phase 17: site-editor plugin** - Full site editor UI with visual composer and git UX
 - [ ] **Phase 18: deco link command** - `deco link ./folder` in packages/cli connects local project to Mesh
+- [ ] **Phase 19: Diagnostic Backend** - DB schema + parallel diagnostic service functions (real data: PSI, CrUX, HTML crawl, tech detection, AI context)
+- [ ] **Phase 20: Public Report UI** - Public Hono routes + React report page with all sections (real + mocked)
+- [ ] **Phase 21: Auth Handoff** - Login gate after report, token preservation through OAuth, org creation + report association
+- [ ] **Phase 22: Interview + Recommendations** - Post-login chat interview, agent recommendation engine, connection setup from recommendation cards
 
 ## Phase Details
 
@@ -94,9 +99,59 @@ Git site binding tools, pending changes UI, commit dialog with Claude-generated 
 
 > **Amended 2026-02-20:** Replaced `npx @decocms/mesh ./folder` with `deco link` in packages/cli (deco-cli). CLI is the portable piece — Mesh can be local or remote. Auto-setup (admin/admin) remains needed for local Mesh but lives in Mesh startup, not in the CLI.
 
+---
+
+### 📋 v1.4 — Storefront Onboarding (Planned)
+
+**Milestone Goal:** Self-service onboarding for e-commerce users — enter a storefront URL, get an instant diagnostic with real data, then guided setup into the platform. Value delivered before login; login triggered after the "wow moment."
+
+### Phase 19: Diagnostic Backend
+**Goal**: A user can enter any storefront URL and trigger a diagnostic that runs real agents in parallel — PSI performance scores, CrUX real-user data, HTML/SEO extraction, tech stack detection, and AI company context — with results persisted to a session that survives page refresh
+**Depends on**: Nothing (pure backend, no UI dependencies)
+**Requirements**: DIAG-01, DIAG-02, DIAG-03, DIAG-04, DIAG-05, DIAG-06, DIAG-11, DIAG-12
+**Success Criteria** (what must be TRUE):
+  1. Submitting a valid storefront URL returns a session token immediately (no blocking on the 10–30 second pipeline)
+  2. Polling the session token shows progressive status updates and eventually resolves to a complete result set with Core Web Vitals (LCP, INP, CLS), mobile/desktop performance scores, CrUX real-user data (or PSI field data fallback), detected platform, SEO signals, tech stack, and a one-paragraph AI company context
+  3. If one diagnostic agent fails or times out, the session still resolves with partial results — no single agent failure blocks the report
+  4. Submitting a private IP address, localhost, or non-HTTP URL is rejected with a clear error before any outbound fetch occurs
+**Plans**: TBD
+
+### Phase 20: Public Report UI
+**Goal**: Diagnostic results render as a structured, shareable public report page accessible without login — including real data sections and clearly-marked mocked sections — with the URL input page as the entry point
+**Depends on**: Phase 19 (Diagnostic Backend)
+**Requirements**: DIAG-07, DIAG-08, DIAG-09, DIAG-10, RPT-01, RPT-02, RPT-03, RPT-04, RPT-05, RPT-06
+**Success Criteria** (what must be TRUE):
+  1. Visiting `/onboard` shows a URL input page with no login required; submitting a URL transitions to a loading state with progressive status messages, then to the completed report
+  2. The report renders at `/report/<token>` with sections for performance (CWV scores), SEO (title/meta/OG/schema), tech stack, and AI company context — all sourced from real diagnostic data
+  3. Traffic, competitor comparison, SEO rankings/backlinks, and brand/visual identity sections are visible with realistic data, each marked with a "Pro" or upgrade indicator
+  4. Clicking the share button copies the report URL to clipboard — the same URL loads the full report for anyone with the link, with no login required
+  5. The AI company context section has an edit affordance visible on the report page (edit requires login, but the affordance is present pre-login)
+**Plans**: TBD
+
+### Phase 21: Auth Handoff
+**Goal**: After viewing the report, the user is prompted to log in; the diagnostic state survives the full OAuth redirect cycle; after login the org is created from the email domain and the report is associated with it
+**Depends on**: Phase 20 (Public Report UI)
+**Requirements**: AUTH-01, AUTH-02, AUTH-03, AUTH-04
+**Success Criteria** (what must be TRUE):
+  1. After the report loads, the user sees a login/signup prompt — clicking it navigates to the login page without losing the diagnostic session token
+  2. After completing login or OAuth (including multi-step redirects), the user lands on a page that still has access to their diagnostic report — the token is not lost
+  3. After login, an org is automatically created or joined based on the user's email domain — no manual org setup required
+  4. The diagnostic report appears in the org's Reports plugin view and the company context from the report is editable by the logged-in user
+**Plans**: TBD
+
+### Phase 22: Interview + Recommendations
+**Goal**: Post-login, the user completes a focused 3-question chat interview about their goals; the system recommends 2–3 relevant agents based on diagnostic results and declared goals; the user can start connection setup directly from a recommendation card
+**Depends on**: Phase 21 (Auth Handoff)
+**Requirements**: INTV-01, INTV-02, INTV-03, AGNT-01, AGNT-02, AGNT-03, AGNT-04
+**Success Criteria** (what must be TRUE):
+  1. After login, the user enters a chat-based interview that asks at most 3 focused questions about their goals and challenges — the interview completes in under 2 minutes
+  2. The interview uses the existing decopilot chat UI and stores the declared goals and challenges to the org's company context
+  3. After the interview, the user sees 2–3 agent recommendation cards, each showing the agent's purpose, a plain-English explanation of why it was recommended given their diagnostic results and goals, and what connections it needs
+  4. Clicking "Connect" on a recommendation card opens the connection setup wizard with the connection type pre-populated from the agent's requirements
+
 ## Progress
 
-**Execution Order:** 15 → 16 → 17 → 18
+**Execution Order:** 15 → 16 → 17 → 18 → 19 → 20 → 21 → 22
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -104,3 +159,7 @@ Git site binding tools, pending changes UI, commit dialog with Claude-generated 
 | 16. plugin-deco-blocks | v1.3 | 0/? | Not started | - |
 | 17. site-editor plugin | v1.3 | 0/? | Not started | - |
 | 18. deco link command | v1.3 | 0/? | Not started | - |
+| 19. Diagnostic Backend | v1.4 | 0/? | Not started | - |
+| 20. Public Report UI | v1.4 | 0/? | Not started | - |
+| 21. Auth Handoff | v1.4 | 0/? | Not started | - |
+| 22. Interview + Recommendations | v1.4 | 0/? | Not started | - |
