@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-25)
 
 **Core value:** E-commerce teams get an instant storefront diagnostic and guided onboarding into a team of AI agents that optimize their store.
-**Current focus:** Milestone v1.4 — Storefront Onboarding (Phase 19 complete, Phase 20 next)
+**Current focus:** Milestone v1.4 — Storefront Onboarding (Phase 20 in progress, plan 1/3 done)
 
 ## Current Position
 
-Phase: 19 of 22 in v1.4 (Diagnostic Backend) — COMPLETE
-Plan: 3 of 3 (all done)
-Status: Complete
-Last activity: 2026-02-25 — completed 19-03 (orchestrator + public diagnostic API routes)
+Phase: 20 of 22 in v1.4 (Public Report UI) — In Progress
+Plan: 1 of 3 done (plan 02 next)
+Status: In Progress
+Last activity: 2026-02-25 — completed 20-01 (/onboarding page with URL input, agent checklist, route registration)
 
-Progress: [███░░░░░░░] 12% (v1.4, 3/3 plans in phase 19 done)
+Progress: [████░░░░░░] 15% (v1.4, 4/? plans done)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
+- Total plans completed: 4
 - Average duration: 5 min
-- Total execution time: 15 min
+- Total execution time: 20 min
 
 **By Phase:**
 
@@ -30,6 +30,7 @@ Progress: [███░░░░░░░] 12% (v1.4, 3/3 plans in phase 19 done
 | Phase 19 P01 | 1 | 6 min | 6 min |
 | Phase 19 P02 | 1 | 7 min | 7 min |
 | Phase 19 P03 | 1 | 2 min | 2 min |
+| Phase 20 P01 | 1 | 5 min | 5 min |
 
 **Recent Trend:** 5 min/plan
 
@@ -56,6 +57,8 @@ Recent decisions affecting current work:
 - [Phase 19]: agentIdToResultKey maps snake_case agent IDs to camelCase DiagnosticResult keys (web_performance → webPerformance)
 - [Phase 19]: createDiagnosticRoutes(db) factory pattern used for pre-auth public routes — avoids needing MeshContext entirely
 - [Phase 19]: Session always reaches "completed" even if all agents fail — homepage crawl failure is the only "failed" path
+- [Phase 20-public-report-ui]: Use <Navigate> component (not useNavigate hook) for report redirect — avoids banned useEffect pattern
+- [Phase 20-public-report-ui]: refetchInterval as callback function stops polling declaratively when session completes/fails
 
 ### Pending Todos
 
@@ -70,5 +73,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 19-03-PLAN.md — orchestrator + public diagnostic API routes (Phase 19 complete)
+Stopped at: Completed 20-01-PLAN.md — /onboarding page with URL input, agent checklist, and route registration
 Resume file: None
