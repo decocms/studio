@@ -21,6 +21,15 @@ const fileBrowserSearchSchema = z.object({
 export type FileBrowserSearch = z.infer<typeof fileBrowserSearchSchema>;
 
 /**
+ * Search schema for the file viewer route.
+ */
+const fileViewerSearchSchema = z.object({
+  key: z.string(),
+});
+
+export type FileViewerSearch = z.infer<typeof fileViewerSearchSchema>;
+
+/**
  * Plugin router with typed hooks for navigation and search params.
  */
 export const objectStorageRouter = createPluginRouter((ctx) => {
@@ -33,5 +42,12 @@ export const objectStorageRouter = createPluginRouter((ctx) => {
     validateSearch: fileBrowserSearchSchema,
   });
 
-  return [indexRoute];
+  const viewerRoute = createRoute({
+    getParentRoute: () => ctx.parentRoute,
+    path: "/viewer",
+    component: lazyRouteComponent(() => import("../components/file-viewer")),
+    validateSearch: fileViewerSearchSchema,
+  });
+
+  return [indexRoute, viewerRoute];
 });

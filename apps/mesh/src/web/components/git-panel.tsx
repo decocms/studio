@@ -3,11 +3,13 @@ import {
   useChatBridge,
   useMCPClientOptional,
   useProjectContext,
+  Locator,
 } from "@decocms/mesh-sdk";
 import { useModelConnections } from "@/web/hooks/collections/use-llm";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useConnectionWatch } from "@/web/hooks/use-connection-watch";
 import { useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import {
   gitBranch,
   gitBranchList,
@@ -447,9 +449,11 @@ function BranchSection({
 function ChangedFilesList({
   client,
   connectionId,
+  onFileClick,
 }: {
   client: Client;
   connectionId: string;
+  onFileClick?: (filePath: string) => void;
 }) {
   const [showDiff, setShowDiff] = useState(false);
 
@@ -496,16 +500,18 @@ function ChangedFilesList({
       </button>
       <div className="space-y-0.5">
         {files.map((file) => (
-          <div
+          <button
             key={file.path}
-            className="flex items-center gap-2 text-xs py-1 px-2 rounded hover:bg-muted/50 min-w-0"
+            type="button"
+            onClick={() => onFileClick?.(file.path)}
+            className="flex items-center gap-2 text-xs py-1 px-2 rounded hover:bg-muted/50 min-w-0 w-full text-left"
           >
             <span className="shrink-0">{statusIcon(file.status)}</span>
             <span className="truncate flex-1 font-mono">{file.path}</span>
             <span className="text-muted-foreground shrink-0">
               {statusLabel(file.status)}
             </span>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -802,6 +808,18 @@ export function GitPanel({
 }) {
   const queryClient = useQueryClient();
   const { modelClient } = useModelClient();
+  const navigate = useNavigate();
+  const { locator } = useProjectContext();
+  const { org, project } = Locator.parse(locator);
+
+  const handleFileClick = (filePath: string) => {
+    navigate({
+      to: "/$org/$project/$pluginId/viewer",
+      params: { org, project, pluginId: "object-storage" },
+      search: { key: filePath },
+    });
+    onClose();
+  };
 
   const refreshAll = () => {
     queryClient.invalidateQueries({
@@ -856,7 +874,11 @@ export function GitPanel({
             <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
               Changes
             </h3>
-            <ChangedFilesList client={client} connectionId={connectionId} />
+            <ChangedFilesList
+              client={client}
+              connectionId={connectionId}
+              onFileClick={handleFileClick}
+            />
           </section>
 
           {/* Commit Form */}

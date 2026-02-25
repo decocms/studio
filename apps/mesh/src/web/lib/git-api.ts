@@ -67,8 +67,12 @@ export async function gitStatus(client: Client): Promise<ChangedFile[]> {
     .split("\n")
     .filter(Boolean)
     .map((line) => {
-      const code = line.slice(0, 2).trim();
-      const path = line.slice(3);
+      // git status --porcelain format: XY<space>path
+      // But MCP bash output may have inconsistent whitespace,
+      // so split on first space-then-non-space transition.
+      const match = line.match(/^(.{1,2})\s+(.+)$/);
+      const code = (match?.[1] ?? line.slice(0, 2)).trim();
+      const path = match?.[2] ?? line.slice(3);
       const status =
         code === "M" || code === "MM"
           ? "M"
