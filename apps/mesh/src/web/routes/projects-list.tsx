@@ -2,11 +2,13 @@ import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { ORG_ADMIN_PROJECT_SLUG, useProjectContext } from "@decocms/mesh-sdk";
 import { useProjects } from "@/web/hooks/use-project";
+import { useLocalDevDiscovery } from "@/web/hooks/use-local-dev-discovery";
 import { Page } from "@/web/components/page";
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
 import { ProjectCard } from "@/web/components/project-card";
 import { EmptyState } from "@/web/components/empty-state.tsx";
 import { CreateProjectDialog } from "@/web/components/create-project-dialog";
+import { LocalDevBanner } from "@/web/components/local-dev-banner";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -18,6 +20,7 @@ import { Button } from "@deco/ui/components/button.tsx";
 export default function ProjectsListPage() {
   const { org } = useProjectContext();
   const { data: projects, isLoading } = useProjects(org.id);
+  const { data: discoveredInstances } = useLocalDevDiscovery();
   const [search, setSearch] = useState("");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const navigate = useNavigate();
@@ -79,6 +82,11 @@ export default function ProjectsListPage() {
           }
         }}
       />
+
+      {/* Local Dev Discovery Banner */}
+      {discoveredInstances && discoveredInstances.length > 0 && (
+        <LocalDevBanner instances={discoveredInstances} />
+      )}
 
       {/* Content */}
       <Page.Content className="@container">

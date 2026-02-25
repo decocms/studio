@@ -25,19 +25,12 @@ export const objectStoragePlugin: Plugin<typeof OBJECT_STORAGE_BINDING> = {
   renderHeader: (props) => <PluginHeader {...props} />,
   renderEmptyState: () => <PluginEmptyState />,
   setup: (context: PluginSetupContext) => {
-    const { registerSidebarGroup, registerPluginRoutes } = context;
+    const { registerRootSidebarItem, registerPluginRoutes } = context;
 
-    // Register sidebar group with items
-    registerSidebarGroup({
-      id: "object-storage",
-      label: "Object Storage",
-      items: [
-        {
-          icon: <Folder size={16} />,
-          label: "File browser",
-        },
-      ],
-      defaultExpanded: true,
+    // Register as a flat sidebar item (single entry, no accordion needed)
+    registerRootSidebarItem({
+      icon: <Folder size={16} />,
+      label: "File browser",
     });
 
     // Create and register plugin routes using the typed router

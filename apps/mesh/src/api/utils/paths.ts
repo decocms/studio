@@ -83,6 +83,7 @@ export function shouldSkipMeshContext(path: string): boolean {
   return (
     path === "/" ||
     path.startsWith(PATH_PREFIXES.API_AUTH) ||
+    path.startsWith("/api/cli/") ||
     isSystemPath(path) ||
     isStaticFilePath(path)
   );

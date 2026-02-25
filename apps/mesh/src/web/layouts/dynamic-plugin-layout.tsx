@@ -5,14 +5,20 @@
  * Uses the plugin's renderHeader/renderEmptyState if defined, otherwise falls back to Outlet.
  */
 
-import { Outlet, useParams } from "@tanstack/react-router";
+import { Outlet, useParams, useRouteContext } from "@tanstack/react-router";
 import { Suspense } from "react";
 import { Loading01 } from "@untitledui/icons";
 import { sourcePlugins } from "../plugins";
 import { PluginLayout } from "./plugin-layout";
 
 export default function DynamicPluginLayout() {
-  const { pluginId } = useParams({ strict: false }) as { pluginId: string };
+  // Static plugin routes set pluginId in route context via beforeLoad.
+  // The $pluginId fallback route provides it as a URL param instead.
+  const routeContext = useRouteContext({ strict: false }) as {
+    pluginId?: string;
+  };
+  const params = useParams({ strict: false }) as { pluginId?: string };
+  const pluginId = routeContext?.pluginId ?? params?.pluginId ?? "";
 
   // Find the plugin by ID
   const plugin = sourcePlugins.find((p) => p.id === pluginId);

@@ -66,6 +66,8 @@ apps/benchmark/data
 # AI planning files (root-level only, not docs/plans/)
 /plans
 .cursor/plans
+.claude/
+.planning/
 
 # Local demo/prototype directories
 studio-demo/

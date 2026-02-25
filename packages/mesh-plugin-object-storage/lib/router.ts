@@ -15,7 +15,7 @@ import * as z from "zod";
 const fileBrowserSearchSchema = z.object({
   path: z.string().optional().default(""),
   flat: z.boolean().optional().default(false),
-  view: z.enum(["table", "grid"]).optional().default("grid"),
+  view: z.enum(["table", "grid"]).optional().default("table"),
 });
 
 export type FileBrowserSearch = z.infer<typeof fileBrowserSearchSchema>;

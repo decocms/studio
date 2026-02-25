@@ -21,6 +21,7 @@ export const LOCALSTORAGE_KEYS = {
   sidebarOpen: () => `mesh:sidebar-open`,
   selectedRegistry: (org: string) => `mesh:store:selected-registry:${org}`,
   orgHomeQuickstart: (org: string) => `mesh:org-home:quickstart:${org}`,
+  gitPanelOpen: () => `mesh:git-panel:open`,
   storeShowStdio: () => `mesh:store:show-stdio`,
   preferences: () => `mesh:user:preferences`,
   pluginConnection: (org: string, pluginId: string) =>

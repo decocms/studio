@@ -5,33 +5,43 @@
 See: .planning/PROJECT.md (updated 2026-02-20)
 
 **Core value:** Developers can connect any MCP server to Mesh and get auth, routing, observability, and a visual site editor for Deco sites.
-**Current focus:** Milestone v1.3 — Phase 15: local-dev daemon (ready to plan)
+**Current focus:** Milestone v1.3 — Phase 18: deco-link-command (executing)
 
 ## Current Position
 
-Phase: 15 of 18 (local-dev daemon)
-Plan: — of — (not yet planned)
-Status: Ready to plan
-Last activity: 2026-02-20 — Roadmap created, v1.3 phases 15–18 defined
+Phase: 18 of 18 (deco-link-command)
+Plan: 2 of 2 complete
+Status: Complete
+Last activity: 2026-02-22 — Plan 18-02 complete: deco link command — meshLinkCommand with full orchestration (Connection + Project creation, site-editor auto-enable, idempotency, SIGINT teardown)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
-- Average duration: —
-- Total execution time: —
+- Total plans completed: 2
+- Average duration: 2 min
+- Total execution time: 4 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 16-plugin-deco-blocks | 2 | 4 min | 2 min |
 
-**Recent Trend:** No data yet
+**Recent Trend:** Phase 16 plans 1-2 each executed in 2 min
 
 *Updated after each plan completion*
+| Phase 16 P03 | 2 | 2 tasks | 3 files |
+| Phase 16-plugin-deco-blocks P04 | 4 | 2 tasks | 4 files |
+| Phase 17-site-editor-plugin P01 | 2 | 2 tasks | 7 files |
+| Phase 17-site-editor-plugin P02 | 3 | 2 tasks | 4 files |
+| Phase 17-site-editor-plugin P03 | 2 | 2 tasks | 3 files |
+| Phase 17-site-editor-plugin P04 | 3 | 2 tasks | 5 files |
+| Phase 17-site-editor-plugin P05 | 3 | 2 tasks | 8 files |
+| Phase 17-site-editor-plugin P06 | 3 | 2 tasks | 8 files |
+| Phase 18-deco-link-command P01 | 3 | 2 tasks | 4 files |
+| Phase 18 P02 | 3 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -50,6 +60,34 @@ Recent decisions affecting current work:
 - Bash tool is unrestricted, scoped to project folder — like Claude Code's bash
 - deco-cli (packages/cli) already exists with login; `deco link` is a new command added to it
 - Browser auto-opens on `deco link` (best DX, confirmed)
+- z.record(z.string(), z.unknown()) required for Zod v4 — two-arg form, single-arg deprecated
+- DECO_BLOCKS_BINDING lives in packages/bindings/ not in the plugin — enables site-editor import without plugin dependency
+- [Phase 16-plugin-deco-blocks]: Skills placed at packages/mesh-plugin-deco-blocks/.claude/commands/deco/ satisfying BLK-06 in-package requirement
+- [Phase 16-plugin-deco-blocks]: RootlessError (not NoRootTypeError) is the actual error class in ts-json-schema-generator — caught for Props-not-named-Props fallback
+- [Phase 16-plugin-deco-blocks]: index.ts re-exports DECO_BLOCKS_BINDING for consumers who don't want to import @decocms/bindings directly
+- [Phase 16-plugin-deco-blocks]: extractReturnTypeSchema handles T[] return types by stripping suffix, generating element schema, wrapping in array schema
+- [Phase 17-site-editor-plugin]: Plugin uses ClientPlugin<typeof DECO_BLOCKS_BINDING> for binding-filtered activation — tab hides automatically for projects without the binding
+- [Phase 17-site-editor-plugin]: server/index.ts stub with empty routes() — extended in plan 17-06 with commit-message route
+- [Phase 17-site-editor-plugin]: registerPluginRoutes([]) in plan 01 setup — routes wired in plan 17-04 when TanStack Router setup exists
+- [Phase 17-site-editor-plugin]: GenericToolCaller separate from TypedToolCaller — filesystem/bash tools not in DECO_BLOCKS_BINDING
+- [Phase 17-site-editor-plugin]: listPages handles both { entries: [...] } and bare array response shapes defensively
+- [Phase 17-site-editor-plugin]: hasBashTool gates git UI at runtime by checking connection.tools array for bash
+- [Phase 17-site-editor-plugin]: Page/BlockInstance types defined inline in use-iframe-bridge.ts pending plan 17-02 page-api.ts completion
+- [Phase 17-site-editor-plugin]: undoRedoReducer exported as named export to enable direct (non-renderHook) testing
+- [Phase 17-site-editor-plugin]: @deco/ui imports require .tsx extension — bundler moduleResolution doesn't auto-resolve for workspace packages
+- [Phase 17-site-editor-plugin]: usePluginContext uses typeof DECO_BLOCKS_BINDING (runtime value) as generic, not DecoBlocksBinding type alias
+- [Phase 17-site-editor-plugin]: page-composer.tsx stub created in plan 17-04 to satisfy TS lazy import resolution in router.ts
+- [Phase 17-site-editor-plugin]: Module-level keyboard store (_undoFn/_redoFn + kbStore singleton) with useSyncExternalStore — avoids useEffect ban for Cmd+Z/Cmd+Shift+Z keyboard shortcuts
+- [Phase 17-site-editor-plugin]: typedCaller cast pattern — toolCaller cast to TypedToolCaller<DecoBlocksBinding> for block/loader tools and GenericToolCaller for filesystem tools
+- [Phase 17-site-editor-plugin]: resetTrackerRef inline ref pattern — { current: '' } created in render body to detect pageId changes and call useUndoRedo.reset() without useEffect
+- [Phase 17-site-editor-plugin]: FooterBar returns null when hasBashTool() is false — entire git UX absent for non-bash connections
+- [Phase 17-site-editor-plugin]: Server /commit-message returns { message: "" } (not error) when ANTHROPIC_API_KEY is absent — graceful degradation to manual entry
+- [Phase 18-deco-link-command]: System keychain storage via execSync platform CLIs (security/secret-tool) with ~/.deco_mesh_tokens.json fallback — no native addon
+- [Phase 18-deco-link-command]: startLocalDev() returns null when daemon already running — null signals no child to manage
+- [Phase 18-deco-link-command]: getOrganizationId() tries /api/auth/get-session then /api/auth/organization/list for resilience
+- [Phase 18-deco-link-command]: OAuth callback supports both cookie-based sessions and token query param strategy
+- [Phase 18]: Browser opens to plain project URL — no auto-login token per CONTEXT.md locked decision
+- [Phase 18]: isDecoSite() evaluated before writeLinkState so .deco detection is pre-create (no false positives)
 
 ### Pending Todos
 
@@ -63,6 +101,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-20
-Stopped at: Roadmap written, all 35 v1.3 requirements mapped to phases 15–18
+Last session: 2026-02-22
+Stopped at: Completed 18-02-PLAN.md — deco link command (mesh link mode + CLI registration)
 Resume file: None

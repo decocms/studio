@@ -115,6 +115,7 @@
     "lucide-react": "^0.468.0",
     "marked": "^15.0.6",
     "mesh-plugin-object-storage": "workspace:*",
+    "mesh-plugin-preview": "workspace:*",
     "mesh-plugin-private-registry": "workspace:*",
     "farmrio-collection-reorder": "workspace:*",
     "mesh-plugin-reports": "workspace:*",

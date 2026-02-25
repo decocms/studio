@@ -211,6 +211,9 @@ export const KEYS = {
   memberTags: (locator: string, memberId: string) =>
     [locator, "member-tags", memberId] as const,
 
+  // Local-dev discovery
+  localDevDiscovery: () => ["local-dev-discovery"] as const,
+
   // Projects (scoped by organization)
   projects: (organizationId: string) => ["projects", organizationId] as const,
   project: (organizationId: string, slug: string) =>

@@ -46,6 +46,8 @@ const loginRoute = createRoute({
     z.object({
       // Regular login redirect
       next: z.string().optional(),
+      // CLI auth callback URL (deco link)
+      redirectTo: z.string().optional(),
       // OAuth flow params (passed by Better Auth MCP plugin)
       client_id: z.string().optional(),
       redirect_uri: z.string().optional(),
@@ -357,15 +359,18 @@ const workflowsRoute = createRoute({
 // PLUGIN ROUTES
 // ============================================
 
-const pluginLayoutRoute = createRoute({
-  getParentRoute: () => projectLayout, // Changed from shellLayout
+// Fallback route for $pluginId — keeps TypeScript route types valid for
+// navigate({ to: "/$org/$project/$pluginId", params: { pluginId: "x" } }).
+// Static per-plugin routes below take priority over this dynamic param.
+const pluginFallbackRoute = createRoute({
+  getParentRoute: () => projectLayout,
   path: "/$pluginId",
   component: lazyRouteComponent(
     () => import("./layouts/dynamic-plugin-layout.tsx"),
   ),
 });
 
-// Plugin setup (same as before)
+// Plugin setup
 export const pluginRootSidebarItems: {
   pluginId: string;
   icon: ReactNode;
@@ -380,14 +385,29 @@ export const pluginSidebarGroups: {
   defaultExpanded?: boolean;
 }[] = [];
 
-const pluginRoutes: AnyRoute[] = [];
+// Per-plugin static routes — each plugin gets its own parent route with a
+// static path segment (e.g. "/site-editor", "/object-storage"). This avoids
+// the ambiguity of pathless wrapper routes where the router can't distinguish
+// which plugin's children to render.
+const pluginStaticRoutes: AnyRoute[] = [];
 
 sourcePlugins.forEach((plugin: AnyClientPlugin) => {
   // Only invoke setup if the plugin provides it
   if (!plugin.setup) return;
 
+  const pluginParentRoute = createRoute({
+    getParentRoute: () => projectLayout,
+    path: `/${plugin.id}`,
+    beforeLoad: () => ({ pluginId: plugin.id }),
+    component: lazyRouteComponent(
+      () => import("./layouts/dynamic-plugin-layout.tsx"),
+    ),
+  });
+
+  const childRoutes: AnyRoute[] = [];
+
   const context: PluginSetupContext = {
-    parentRoute: pluginLayoutRoute as AnyRoute,
+    parentRoute: pluginParentRoute as AnyRoute,
     routing: {
       createRoute: createRoute,
       lazyRouteComponent: lazyRouteComponent,
@@ -397,15 +417,14 @@ sourcePlugins.forEach((plugin: AnyClientPlugin) => {
     registerSidebarGroup: (group) =>
       pluginSidebarGroups.push({ pluginId: plugin.id, ...group }),
     registerPluginRoutes: (routes) => {
-      pluginRoutes.push(...routes);
+      childRoutes.push(...routes);
     },
   };
 
   plugin.setup(context);
-});
 
-// Add all plugin routes as children of the plugin layout
-const pluginLayoutWithChildren = pluginLayoutRoute.addChildren(pluginRoutes);
+  pluginStaticRoutes.push(pluginParentRoute.addChildren(childRoutes));
+});
 
 // ============================================
 // ROUTE TREE
@@ -429,7 +448,8 @@ const projectRoutes = [
   agentsRoute,
   agentDetailRoute,
   workflowsRoute,
-  pluginLayoutWithChildren,
+  ...pluginStaticRoutes,
+  pluginFallbackRoute,
 ];
 
 const projectLayoutWithChildren = projectLayout.addChildren(projectRoutes);

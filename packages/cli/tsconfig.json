@@ -13,10 +13,12 @@
   "exclude": [
     "node_modules",
     "dist",
+    "src/**/*.test.ts",
     "../../apps/**/*",
     "../../packages/sdk/**/*",
     "../../packages/ai/**/*",
     "../../packages/runtime/**/*",
-    "../../packages/ui/**/*"
+    "../../packages/ui/**/*",
+    "../../packages/local-dev/**/*"
   ]
 }

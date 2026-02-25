@@ -84,6 +84,7 @@ export interface ProjectPluginConfigStoragePort {
     },
   ): Promise<ProjectPluginConfig>;
   delete(projectId: string, pluginId: string): Promise<boolean>;
+  listByConnectionId(connectionId: string): Promise<ProjectPluginConfig[]>;
 }
 
 // ============================================================================

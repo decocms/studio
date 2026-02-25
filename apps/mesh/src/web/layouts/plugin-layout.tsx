@@ -28,7 +28,12 @@ import {
   type ConnectionEntity,
 } from "@decocms/mesh-sdk";
 import { authClient } from "@/web/lib/auth-client";
-import { Outlet, useParams, Link } from "@tanstack/react-router";
+import {
+  Outlet,
+  useParams,
+  useRouteContext,
+  Link,
+} from "@tanstack/react-router";
 import { Loading01, Settings01 } from "@untitledui/icons";
 import { Suspense, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -113,10 +118,14 @@ export function PluginLayout({
   const {
     org: orgParam,
     project: projectParam,
-    pluginId,
+    pluginId: pluginIdParam,
   } = useParams({
     strict: false,
-  }) as { org: string; project: string; pluginId: string };
+  }) as { org: string; project: string; pluginId?: string };
+  const routeContext = useRouteContext({ strict: false }) as {
+    pluginId?: string;
+  };
+  const pluginId = routeContext?.pluginId ?? pluginIdParam ?? "";
   const allConnections = useConnections();
   const { data: authSession } = authClient.useSession();
 

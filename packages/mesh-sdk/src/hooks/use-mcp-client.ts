@@ -126,7 +126,7 @@ export function useMCPClient({
     queryKey,
     queryFn: () => createMCPClient({ connectionId, orgId, token, meshUrl }),
     staleTime: Infinity, // Keep client alive while query is active
-    gcTime: 0, // Clean up immediately when query is inactive
+    gcTime: 5 * 60 * 1000, // Keep cached 5 min after last subscriber unmounts
   });
 
   return client!;
@@ -173,7 +173,7 @@ export function useMCPClientOptional({
       });
     },
     staleTime: Infinity,
-    gcTime: 0,
+    gcTime: 5 * 60 * 1000, // Keep cached 5 min after last subscriber unmounts
   });
 
   return client ?? null;
