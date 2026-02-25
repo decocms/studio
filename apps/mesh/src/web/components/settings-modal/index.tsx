@@ -55,7 +55,7 @@ function ProjectContextWrapper({
     description: project.description,
     enabledPlugins: project.enabledPlugins,
     ui: project.ui,
-    isOrgAdmin: false,
+    isOrgAdmin: projectSlug === ORG_ADMIN_PROJECT_SLUG,
   };
 
   return (
