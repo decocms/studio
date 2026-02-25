@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-25)
 
 **Core value:** E-commerce teams get an instant storefront diagnostic and guided onboarding into a team of AI agents that optimize their store.
-**Current focus:** Milestone v1.4 — Storefront Onboarding (Phase 22 in progress: interview + recommendations)
+**Current focus:** Milestone v1.4 — Storefront Onboarding (Phase 22 complete: full onboarding flow done)
 
 ## Current Position
 
-Phase: 22 of 22 in v1.4 (Interview + Recommendations) — In Progress
-Plan: 2 of 3 done
-Status: In Progress
-Last activity: 2026-02-25 — completed 22-02 (recommendation engine + GET /recommendations endpoint)
+Phase: 22 of 22 in v1.4 (Interview + Recommendations) — Complete
+Plan: 3 of 3 done
+Status: Phase Complete
+Last activity: 2026-02-25 — completed 22-03 (recommendation cards UI — full onboarding flow done)
 
-Progress: [█████░░░░░] 27% (v1.4, 9/? plans done)
+Progress: [██████████] 100% (v1.4, 10/10 plans done)
 
 ## Performance Metrics
 
@@ -39,9 +39,10 @@ Progress: [█████░░░░░] 27% (v1.4, 9/? plans done)
 | Phase 22 P01 | 1 | 7 min | 7 min |
 | Phase 22 P02 | 1 | 3 min | 3 min |
 
-**Recent Trend:** 3 min/plan
+**Recent Trend:** 2 min/plan
 
 *Updated after each plan completion*
+| Phase 22 P03 | 1 | 2 min | 2 min |
 
 ## Accumulated Context
 
@@ -86,6 +87,8 @@ Recent decisions affecting current work:
 - [Phase 22-recommendations 22-02]: Virtual MCPs stored as connections with connection_type=VIRTUAL — no separate virtual_mcp table, query connections table with type filter
 - [Phase 22-recommendations 22-02]: Decopilot filtered in recommendations by id.startsWith('decopilot_') — avoids importing mesh-sdk constants into onboarding factory module
 - [Phase 22-recommendations 22-02]: JsonObject<T> Kysely column has SELECT type T (Record, not string) — dual-parse guard (typeof check) required before JSON.parse on metadata column
+- [Phase 22]: Navigate to connections via window.location.href (not router) — interview page outside shell layout requires full page reload for cross-layout navigation
+- [Phase 22]: Connect action uses ?add=true without type pre-population — connection type not available in AgentRecommendation metadata
 
 ### Pending Todos
 
@@ -95,10 +98,10 @@ None yet.
 
 - RESOLVED: Phase 19 SSRF validation blocker — SSRF validator implemented and tested (48 tests pass)
 - RESOLVED: Phase 19 @ai-sdk/openai availability — using dynamic any-cast imports for optional runtime deps
-- Phase 22: Virtual MCP capability metadata schema unknown — may need new tags/requiredConnections field added before recommendation scoring can be implemented
+- RESOLVED: Phase 22 Virtual MCP capability metadata — requiredConnections built from child connections of each Virtual MCP, no new schema fields needed
 
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 22-02-PLAN.md — recommendation engine + GET /recommendations endpoint (AGNT-01, AGNT-02)
+Stopped at: Completed 22-03-PLAN.md — recommendation cards UI (AGNT-03, AGNT-04) — Phase 22 complete
 Resume file: None

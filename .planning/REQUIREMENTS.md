@@ -47,8 +47,8 @@
 
 - [x] **AGNT-01**: After interview, system recommends 2-3 agents based on diagnostic results + declared goals
 - [x] **AGNT-02**: Each recommendation shows the agent's purpose, why it's recommended, and what connections it needs
-- [ ] **AGNT-03**: User can initiate connection setup directly from an agent recommendation card
-- [ ] **AGNT-04**: Connection setup pre-populates the connection type from the agent's requirements
+- [x] **AGNT-03**: User can initiate connection setup directly from an agent recommendation card
+- [x] **AGNT-04**: Connection setup pre-populates the connection type from the agent's requirements
 
 ## v1.3 Requirements (previous milestone)
 
@@ -122,8 +122,8 @@
 | INTV-03 | Phase 22 | Complete |
 | AGNT-01 | Phase 22 | Complete |
 | AGNT-02 | Phase 22 | Complete |
-| AGNT-03 | Phase 22 | Pending |
-| AGNT-04 | Phase 22 | Pending |
+| AGNT-03 | Phase 22 | Complete |
+| AGNT-04 | Phase 22 | Complete |
 
 **Coverage:**
 - v1.4 requirements: 29 total (12 DIAG + 6 RPT + 4 AUTH + 3 INTV + 4 AGNT)
