@@ -66,17 +66,9 @@ export class ProjectPluginConfigsStorage
       .selectFrom("project_plugin_configs")
       .selectAll("project_plugin_configs")
       .where("project_plugin_configs.project_id", "=", projectId)
-      .where("project_plugin_configs.plugin_id", "=", pluginId);
-
-    if (organizationId) {
-      query = query
-        .innerJoin(
-          "projects",
-          "projects.id",
-          "project_plugin_configs.project_id",
-        )
-        .where("projects.organization_id", "=", organizationId);
-    }
+      .where("project_plugin_configs.plugin_id", "=", pluginId)
+      .innerJoin("projects", "projects.id", "project_plugin_configs.project_id")
+      .where("projects.organization_id", "=", organizationId);
 
     const row = await query.executeTakeFirst();
     return row ? this.parseRow(row) : null;
