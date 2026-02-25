@@ -145,7 +145,11 @@ Plans:
   2. After completing login or OAuth (including multi-step redirects), the user lands on a page that still has access to their diagnostic report — the token is not lost
   3. After login, an org is automatically created or joined based on the user's email domain — no manual org setup required
   4. The diagnostic report appears in the org's Reports plugin view and the company context from the report is editable by the logged-in user
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 21-01-PLAN.md — Onboarding claim API routes (resolve org options + claim session with org/project creation)
+- [ ] 21-02-PLAN.md — Login CTA on report page + diagnostic token preservation through OAuth
+- [ ] 21-03-PLAN.md — Post-login onboard-setup page (org resolution UI + claim flow + redirect)
 
 ### Phase 22: Interview + Recommendations
 **Goal**: Post-login, the user completes a focused 3-question chat interview about their goals; the system recommends 2–3 relevant agents based on diagnostic results and declared goals; the user can start connection setup directly from a recommendation card
