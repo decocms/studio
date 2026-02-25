@@ -32,9 +32,9 @@
 
 ### Authentication Flow (AUTH)
 
-- [ ] **AUTH-01**: User sees a login/signup prompt after viewing the initial diagnostic report
+- [x] **AUTH-01**: User sees a login/signup prompt after viewing the initial diagnostic report
 - [ ] **AUTH-02**: After login, system creates or joins an org derived from the user's email domain
-- [ ] **AUTH-03**: Pre-auth diagnostic state (URL + report token) is preserved through the login/signup flow
+- [x] **AUTH-03**: Pre-auth diagnostic state (URL + report token) is preserved through the login/signup flow
 - [ ] **AUTH-04**: After login, the diagnostic report is associated with the user's org and visible in the Reports plugin
 
 ### Interview + Goals (INTV)
@@ -113,9 +113,9 @@
 | RPT-04 | Phase 20 | Complete |
 | RPT-05 | Phase 20 | Complete |
 | RPT-06 | Phase 20 | Complete |
-| AUTH-01 | Phase 21 | Pending |
+| AUTH-01 | Phase 21 | Complete |
 | AUTH-02 | Phase 21 | Pending |
-| AUTH-03 | Phase 21 | Pending |
+| AUTH-03 | Phase 21 | Complete |
 | AUTH-04 | Phase 21 | Pending |
 | INTV-01 | Phase 22 | Pending |
 | INTV-02 | Phase 22 | Pending |

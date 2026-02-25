@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-25)
 
 **Core value:** E-commerce teams get an instant storefront diagnostic and guided onboarding into a team of AI agents that optimize their store.
-**Current focus:** Milestone v1.4 — Storefront Onboarding (Phase 20 complete, Phase 21 next)
+**Current focus:** Milestone v1.4 — Storefront Onboarding (Phase 21 in progress: auth handoff)
 
 ## Current Position
 
-Phase: 20 of 22 in v1.4 (Public Report UI) — Complete
-Plan: 3 of 3 done (phase complete)
+Phase: 21 of 22 in v1.4 (Auth Handoff) — In Progress
+Plan: 2 of 3 done
 Status: In Progress
-Last activity: 2026-02-25 — completed 20-03 (mocked Pro sections: traffic, SEO rankings, brand, percentile)
+Last activity: 2026-02-25 — completed 21-02 (login CTA with sessionStorage token fallback on report page)
 
-Progress: [█████░░░░░] 18% (v1.4, 5/? plans done)
+Progress: [█████░░░░░] 21% (v1.4, 7/? plans done)
 
 ## Performance Metrics
 
@@ -33,8 +33,9 @@ Progress: [█████░░░░░] 18% (v1.4, 5/? plans done)
 | Phase 20 P01 | 1 | 5 min | 5 min |
 | Phase 20 P02 | 1 | 4 min | 4 min |
 | Phase 20 P03 | 1 | 3 min | 3 min |
+| Phase 21 P02 | 1 | 1 min | 1 min |
 
-**Recent Trend:** 3 min/plan
+**Recent Trend:** 1 min/plan
 
 *Updated after each plan completion*
 
@@ -67,6 +68,8 @@ Recent decisions affecting current work:
 - [Phase 20]: All mocked Pro section data is static constants at top of each file — no props needed, sections are self-contained
 - [Phase 20]: opacity-70 on mocked data content hints at locked content while ProBadge is the primary upgrade indicator
 - [Phase 20]: violet-100 border accent on mocked sections provides subtle visual distinction from real data sections
+- [Phase 21-auth-handoff]: SignupCTA uses authClient.useSession() and synchronous sessionStorage write during render — no useEffect, fully React 19 compatible
+- [Phase 21-auth-handoff]: ?next= param encodes /onboard-setup?token=<token> — post-login redirect lands on setup page with token in URL, sessionStorage serves as OAuth redirect fallback
 
 ### Pending Todos
 
@@ -81,5 +84,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 20-03-PLAN.md — mocked Pro sections (traffic, SEO rankings, brand, percentile) integrated into report page
+Stopped at: Completed 21-02-PLAN.md — login CTA with sessionStorage token fallback on report page
 Resume file: None
