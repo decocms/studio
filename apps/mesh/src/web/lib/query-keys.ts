@@ -226,4 +226,8 @@ export const KEYS = {
   // Diagnostic session polling (public, no auth)
   diagnosticSession: (token: string) =>
     ["diagnostic", "session", token] as const,
+
+  // Onboarding resolve (post-login, requires auth + diagnostic token)
+  onboardingResolve: (token: string) =>
+    ["onboarding", "resolve", token] as const,
 } as const;
