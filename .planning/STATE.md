@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-25)
 ## Current Position
 
 Phase: 21 of 22 in v1.4 (Auth Handoff) — In Progress
-Plan: 2 of 3 done
-Status: In Progress
-Last activity: 2026-02-25 — completed 21-02 (login CTA with sessionStorage token fallback on report page)
+Plan: 3 of 3 done
+Status: Complete
+Last activity: 2026-02-25 — completed 21-03 (post-login onboard-setup page with org resolution and claim flow)
 
 Progress: [█████░░░░░] 21% (v1.4, 7/? plans done)
 
@@ -35,6 +35,7 @@ Progress: [█████░░░░░] 21% (v1.4, 7/? plans done)
 | Phase 20 P03 | 1 | 3 min | 3 min |
 | Phase 21 P01 | 1 | 3 min | 3 min |
 | Phase 21 P02 | 1 | 1 min | 1 min |
+| Phase 21 P03 | 1 | 2 min | 2 min |
 
 **Recent Trend:** 2 min/plan
 
@@ -74,6 +75,8 @@ Recent decisions affecting current work:
 - [Phase 21-auth-handoff 21-01]: Project creation on claim is non-fatal — session associated with org even if project slug conflicts
 - [Phase 21-auth-handoff]: SignupCTA uses authClient.useSession() and synchronous sessionStorage write during render — no useEffect, fully React 19 compatible
 - [Phase 21-auth-handoff]: ?next= param encodes /onboard-setup?token=<token> — post-login redirect lands on setup page with token in URL, sessionStorage serves as OAuth redirect fallback
+- [Phase 21-auth-handoff 21-03]: Per-mutation-variable loading state pattern — claimMutation.variables?.action comparison targets specific buttons without shared loading state
+- [Phase 21-auth-handoff 21-03]: onboardSetupRoute is a public route outside shellLayout — auth check is internal in the component, consistent with /onboarding and /report/$token
 
 ### Pending Todos
 
@@ -88,5 +91,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 21-01-PLAN.md — onboarding API routes (resolve + claim endpoints with org/project creation)
+Stopped at: Completed 21-03-PLAN.md — post-login onboard-setup page completing the full auth handoff flow (AUTH-01 through AUTH-04)
 Resume file: None

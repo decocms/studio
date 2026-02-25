@@ -43,7 +43,7 @@ Git site binding tools, pending changes UI, commit dialog with Claude-generated 
 - [ ] **Phase 18: deco link command** - `deco link ./folder` in packages/cli connects local project to Mesh
 - [x] **Phase 19: Diagnostic Backend** - DB schema + parallel diagnostic service functions (real data: PSI, CrUX, HTML crawl, tech detection, AI context) (completed 2026-02-25)
 - [x] **Phase 20: Public Report UI** - Public Hono routes + React report page with all sections (real + mocked) (completed 2026-02-25)
-- [ ] **Phase 21: Auth Handoff** - Login gate after report, token preservation through OAuth, org creation + report association
+- [x] **Phase 21: Auth Handoff** - Login gate after report, token preservation through OAuth, org creation + report association (completed 2026-02-25)
 - [ ] **Phase 22: Interview + Recommendations** - Post-login chat interview, agent recommendation engine, connection setup from recommendation cards
 
 ## Phase Details
@@ -145,7 +145,7 @@ Plans:
   2. After completing login or OAuth (including multi-step redirects), the user lands on a page that still has access to their diagnostic report — the token is not lost
   3. After login, an org is automatically created or joined based on the user's email domain — no manual org setup required
   4. The diagnostic report appears in the org's Reports plugin view and the company context from the report is editable by the logged-in user
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 Plans:
 - [ ] 21-01-PLAN.md — Onboarding claim API routes (resolve org options + claim session with org/project creation)
 - [ ] 21-02-PLAN.md — Login CTA on report page + diagnostic token preservation through OAuth
@@ -173,5 +173,5 @@ Plans:
 | 18. deco link command | v1.3 | 0/? | Not started | - |
 | 19. Diagnostic Backend | v1.4 | Complete    | 2026-02-25 | 2026-02-25 |
 | 20. Public Report UI | 3/3 | Complete    | 2026-02-25 | - |
-| 21. Auth Handoff | 2/3 | In Progress|  | - |
+| 21. Auth Handoff | 3/3 | Complete   | 2026-02-25 | - |
 | 22. Interview + Recommendations | v1.4 | 0/? | Not started | - |
