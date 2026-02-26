@@ -180,10 +180,16 @@ app.post("/:org/decopilot/stream", async (c) => {
       status: "in_progress",
     });
 
-    // Create model client and virtual MCP client in parallel (they are independent)
-    const [modelClient, mcpClient] = await Promise.all([
+    // Always create a passthrough client (all real tools) + model client.
+    // If mode is smart_tool_selection or code_execution, also create the strategy
+    // client so we get the gateway meta-tools (SEARCH/DESCRIBE/CALL_TOOL/RUN_CODE).
+    const isGatewayMode = agent.mode !== "passthrough";
+    const [modelClient, passthroughClient, strategyClient] = await Promise.all([
       clientFromConnection(modelConnection, ctx, false),
-      createVirtualClientFrom(virtualMcp, ctx, agent.mode),
+      createVirtualClientFrom(virtualMcp, ctx, "passthrough"),
+      isGatewayMode
+        ? createVirtualClientFrom(virtualMcp, ctx, agent.mode)
+        : Promise.resolve(null),
     ]);
 
     // Add streaming support since agents may use streaming models
@@ -207,7 +213,8 @@ app.post("/:org/decopilot/stream", async (c) => {
     const abortSignal = c.req.raw.signal;
     abortSignal.addEventListener("abort", () => {
       modelClient.close().catch(() => {});
-      // Mark thread as failed on client disconnect
+      passthroughClient.close().catch(() => {});
+      strategyClient?.close().catch(() => {});
       if (mem.thread.id) {
         ctx.storage.threads
           .update(mem.thread.id, { status: "failed" })
@@ -216,7 +223,7 @@ app.post("/:org/decopilot/stream", async (c) => {
     });
 
     // Get server instructions if available (for virtual MCP agents)
-    const serverInstructions = mcpClient.getInstructions();
+    const serverInstructions = passthroughClient.getInstructions();
 
     // Merge platform instructions with request system messages
     const systemPrompt = DECOPILOT_BASE_PROMPT(serverInstructions);
@@ -245,12 +252,24 @@ app.post("/:org/decopilot/stream", async (c) => {
     const uiStream = createUIMessageStream({
       execute: async ({ writer }) => {
         // Create tools inside execute so they have access to writer
-        const mcpTools = await toolsFromMCP(
-          mcpClient,
+        // Always get the full passthrough tools (all real tools from connections)
+        const passthroughTools = await toolsFromMCP(
+          passthroughClient,
           toolOutputMap,
           writer,
           toolApprovalLevel,
         );
+
+        // If using a gateway mode, also get the strategy meta-tools
+        // (GATEWAY_SEARCH_TOOLS, GATEWAY_DESCRIBE_TOOLS, GATEWAY_CALL_TOOL / GATEWAY_RUN_CODE)
+        const strategyTools = strategyClient
+          ? await toolsFromMCP(
+              strategyClient,
+              toolOutputMap,
+              writer,
+              toolApprovalLevel,
+            )
+          : {};
 
         const builtInTools = await getBuiltInTools(
           writer,
@@ -264,7 +283,23 @@ app.post("/:org/decopilot/stream", async (c) => {
           ctx,
         );
 
-        const tools = { ...mcpTools, ...builtInTools };
+        // Merge all tools: strategy meta-tools override passthrough tools with the same name,
+        // and built-in tools take final precedence.
+        const tools = {
+          ...passthroughTools,
+          ...strategyTools,
+          ...builtInTools,
+        };
+
+        // In gateway modes, only expose the strategy meta-tools + built-ins to the LLM.
+        // The passthrough tools are still registered (so the AI SDK won't throw if the
+        // model calls a discovered tool directly), but the LLM won't see their schemas.
+        const activeToolNames = strategyClient
+          ? ([
+              ...Object.keys(strategyTools),
+              ...Object.keys(builtInTools),
+            ] as (keyof typeof tools)[])
+          : undefined;
 
         // Process conversation with tools for validation
         const {
@@ -314,6 +349,7 @@ app.post("/:org/decopilot/stream", async (c) => {
           system: processedSystemMessages,
           messages: processedMessages,
           tools,
+          activeTools: activeToolNames,
           temperature,
           maxOutputTokens,
           abortSignal,
