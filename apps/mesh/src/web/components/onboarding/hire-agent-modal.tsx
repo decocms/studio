@@ -142,7 +142,7 @@ export function HireAgentModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[860px] max-w-[95vw] p-0 gap-0 overflow-hidden">
-        <div className="grid grid-cols-[1fr_1fr] min-h-[520px]">
+        <div className="grid grid-cols-[260px_1fr] min-h-[520px]">
           {/* ── Left column ──────────────────────────────────────────── */}
           <div className="flex flex-col gap-5 bg-muted/20 border-r border-border p-6">
             {/* Agent icon + identity */}
