@@ -5,6 +5,8 @@
  */
 
 import { Page } from "@/web/components/page";
+import { useNavigate } from "@tanstack/react-router";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   Breadcrumb,
@@ -99,6 +101,8 @@ function SeverityIcon({ severity }: { severity: Severity }) {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function SeoPage() {
+  const { org, project } = useProjectContext();
+  const navigate = useNavigate();
   return (
     <Page>
       <Page.Header>
@@ -116,9 +120,18 @@ export default function SeoPage() {
           </Breadcrumb>
         </Page.Header.Left>
         <Page.Header.Right>
-          <span className="text-xs text-muted-foreground">
-            Last checked 2h ago
-          </span>
+          <button
+            type="button"
+            onClick={() =>
+              navigate({
+                to: "/$org/$project/triggers",
+                params: { org: org.slug, project: project.slug },
+              })
+            }
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Last checked 2h ago →
+          </button>
           <Button variant="outline" size="sm" className="h-7 text-xs">
             Run check
           </Button>

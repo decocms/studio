@@ -149,9 +149,18 @@ export default function PerformancePage() {
           </Breadcrumb>
         </Page.Header.Left>
         <Page.Header.Right>
-          <span className="text-xs text-muted-foreground">
-            Last checked 2h ago
-          </span>
+          <button
+            type="button"
+            onClick={() =>
+              navigate({
+                to: "/$org/$project/triggers",
+                params: { org: org.slug, project: project.slug },
+              })
+            }
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Last checked 2h ago →
+          </button>
           <Button variant="outline" size="sm" className="h-7 text-xs">
             Run check
           </Button>

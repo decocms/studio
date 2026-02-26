@@ -17,8 +17,9 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@deco/ui/components/breadcrumb.tsx";
-import { useSearch } from "@tanstack/react-router";
-import { Check, Edit01, Edit05 } from "@untitledui/icons";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useProjectContext } from "@decocms/mesh-sdk";
+import { Check, Edit01, Edit05, File06, Plus } from "@untitledui/icons";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -319,11 +320,107 @@ function BlogEditor({ draft }: { draft: Draft }) {
   );
 }
 
+// ─── BlogList ─────────────────────────────────────────────────────────────────
+
+const LIST_POSTS: {
+  id: string;
+  title: string;
+  status: "draft" | "published" | "scheduled";
+  category: string;
+  wordCount: number;
+  updatedAt: string;
+}[] = [
+  {
+    id: "bp-1",
+    title: DRAFTS["bp-1"]!.title,
+    status: "draft",
+    category: DRAFTS["bp-1"]!.category,
+    wordCount: DRAFTS["bp-1"]!.wordCount,
+    updatedAt: "2h ago",
+  },
+  {
+    id: "bp-2",
+    title: DRAFTS["bp-2"]!.title,
+    status: "draft",
+    category: DRAFTS["bp-2"]!.category,
+    wordCount: DRAFTS["bp-2"]!.wordCount,
+    updatedAt: "1d ago",
+  },
+  {
+    id: "bp-3",
+    title: DRAFTS["bp-3"]!.title,
+    status: "published",
+    category: DRAFTS["bp-3"]!.category,
+    wordCount: DRAFTS["bp-3"]!.wordCount,
+    updatedAt: "3d ago",
+  },
+];
+
+const STATUS_STYLES = {
+  draft: "bg-amber-50 text-amber-700 border-amber-200",
+  published: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  scheduled: "bg-blue-50 text-blue-700 border-blue-200",
+};
+
+function BlogList({ onOpen }: { onOpen: (id: string) => void }) {
+  return (
+    <div className="flex-1 overflow-y-auto">
+      <div className="max-w-[900px] mx-auto px-8 py-8 flex flex-col gap-4">
+        {LIST_POSTS.map((post) => (
+          <button
+            key={post.id}
+            type="button"
+            onClick={() => onOpen(post.id)}
+            className="flex items-center gap-4 rounded-xl border border-border bg-card px-5 py-4 text-left hover:bg-muted/20 transition-colors group"
+          >
+            <div className="flex items-center justify-center size-9 rounded-lg bg-violet-100 text-violet-600 shrink-0">
+              <File06 size={16} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-foreground truncate">
+                {post.title}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {post.category} · {post.wordCount.toLocaleString()} words ·{" "}
+                {post.updatedAt}
+              </p>
+            </div>
+            <span
+              className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full border capitalize ${STATUS_STYLES[post.status]}`}
+            >
+              {post.status}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function BlogPage() {
+  const { org, project } = useProjectContext();
+  const navigate = useNavigate();
   const { taskId } = useSearch({ strict: false }) as { taskId?: string };
-  const draft = (DRAFTS[taskId ?? "bp-1"] ?? DRAFTS["bp-1"]) as Draft;
+
+  const draft = taskId ? ((DRAFTS[taskId] ?? DRAFTS["bp-1"]) as Draft) : null;
+
+  function handleOpenPost(id: string) {
+    navigate({
+      to: "/$org/$project/blog",
+      params: { org: org.slug, project: project.slug },
+      search: { taskId: id },
+    });
+  }
+
+  function handleBackToList() {
+    navigate({
+      to: "/$org/$project/blog",
+      params: { org: org.slug, project: project.slug },
+      search: {},
+    });
+  }
 
   return (
     <Page>
@@ -332,21 +429,45 @@ export default function BlogPage() {
           <Breadcrumb>
             <BreadcrumbList>
               <BreadcrumbItem>
-                <BreadcrumbPage className="text-muted-foreground">
-                  Blog
-                </BreadcrumbPage>
+                {draft ? (
+                  <button
+                    type="button"
+                    onClick={handleBackToList}
+                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Blog
+                  </button>
+                ) : (
+                  <BreadcrumbPage>Blog</BreadcrumbPage>
+                )}
               </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <BreadcrumbPage>{draft.title}</BreadcrumbPage>
-              </BreadcrumbItem>
+              {draft && (
+                <>
+                  <BreadcrumbSeparator />
+                  <BreadcrumbItem>
+                    <BreadcrumbPage>{draft.title}</BreadcrumbPage>
+                  </BreadcrumbItem>
+                </>
+              )}
             </BreadcrumbList>
           </Breadcrumb>
         </Page.Header.Left>
+        {!draft && (
+          <Page.Header.Right>
+            <Button size="sm" variant="outline">
+              <Plus size={13} />
+              New post
+            </Button>
+          </Page.Header.Right>
+        )}
       </Page.Header>
 
       <Page.Content className="flex flex-col overflow-hidden">
-        <BlogEditor draft={draft} />
+        {draft ? (
+          <BlogEditor draft={draft} />
+        ) : (
+          <BlogList onOpen={handleOpenPost} />
+        )}
       </Page.Content>
     </Page>
   );
