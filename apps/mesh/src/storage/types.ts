@@ -555,7 +555,7 @@ export interface ReportTable {
   summary: string;
   source: string | null;
   tags: JsonArray<string> | null;
-  lifecycle_status: string | null;
+  lifecycle_status: string;
   sections: JsonObject<ReportSection[]>;
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;

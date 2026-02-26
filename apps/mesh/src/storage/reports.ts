@@ -98,7 +98,7 @@ export class KyselyReportsStorage implements ReportsStorage {
           summary: data.summary,
           source: data.source ?? null,
           tags: data.tags ? JSON.stringify(data.tags) : null,
-          lifecycle_status: data.lifecycleStatus ?? null,
+          lifecycle_status: data.lifecycleStatus ?? "unread",
           sections: JSON.stringify(data.sections),
           updated_at: now,
         })
@@ -165,7 +165,7 @@ export class KyselyReportsStorage implements ReportsStorage {
     summary: string;
     source: string | null;
     tags: string | string[] | null;
-    lifecycle_status: string | null;
+    lifecycle_status: string;
     sections: string | ReportSection[];
     created_at: string | Date;
     updated_at: string | Date;

@@ -328,7 +328,7 @@ const ReportsUpsertOutputSchema = z.object({
   updatedAt: z.string(),
   source: z.string().optional(),
   tags: z.array(z.string()).optional(),
-  lifecycleStatus: z.string().optional(),
+  lifecycleStatus: ReportLifecycleStatusSchema.optional(),
   sections: z.array(ReportSectionSchema),
 });
 

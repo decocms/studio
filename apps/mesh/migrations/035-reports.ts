@@ -20,7 +20,9 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .addColumn("summary", "text", (col) => col.notNull())
     .addColumn("source", "text")
     .addColumn("tags", "text")
-    .addColumn("lifecycle_status", "text", (col) => col.defaultTo("unread"))
+    .addColumn("lifecycle_status", "text", (col) =>
+      col.notNull().defaultTo("unread"),
+    )
     .addColumn("sections", "text", (col) => col.notNull())
     .addColumn("created_at", "text", (col) => col.notNull())
     .addColumn("updated_at", "text", (col) => col.notNull())
