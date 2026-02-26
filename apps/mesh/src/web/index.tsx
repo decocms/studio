@@ -242,6 +242,24 @@ const blogRoute = createRoute({
   }),
 });
 
+// Agents marketplace (storefront onboarding — available for all projects)
+const agentsMarketplaceRoute = createRoute({
+  getParentRoute: () => projectLayout,
+  path: "/hire",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/agents-marketplace.tsx"),
+  ),
+});
+
+// Agent store detail (storefront onboarding — available for all projects)
+const agentStoreDetailRoute = createRoute({
+  getParentRoute: () => projectLayout,
+  path: "/hire/$agentId",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/agent-store-detail.tsx"),
+  ),
+});
+
 // Project settings (redirects to settings modal via search param)
 const projectSettingsRoute = createRoute({
   getParentRoute: () => projectLayout,
@@ -504,6 +522,8 @@ const projectRoutes = [
   projectHomeRoute,
   tasksRoute,
   blogRoute,
+  agentsMarketplaceRoute,
+  agentStoreDetailRoute,
   projectSettingsRoute,
   projectsListRoute,
   membersRoute,

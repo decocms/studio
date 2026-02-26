@@ -304,6 +304,18 @@ export function useProjectSidebarItems(): SidebarSection[] {
       }),
   };
 
+  const agentsMarketplaceItem: NavigationSidebarItem = {
+    key: "hire",
+    label: "Agents",
+    icon: <Users03 />,
+    isActive: isActiveRoute("hire"),
+    onClick: () =>
+      navigate({
+        to: "/$org/$project/hire",
+        params: { org, project },
+      }),
+  };
+
   // Regular project sidebar layout:
   // - Home, Tasks, Diagnostic
   // - [Divider] (if enabled plugins exist)
@@ -314,6 +326,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
     homeItem,
     projectTasksItem,
     diagnosticItem,
+    agentsMarketplaceItem,
     ...(blogHired ? [blogItem] : []),
   ];
 
