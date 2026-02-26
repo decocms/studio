@@ -41,7 +41,7 @@ export interface CatalogAgent {
   lastRun: string | null;
 }
 
-export const CATALOG: CatalogAgent[] = [
+const _CATALOG_UNSORTED: CatalogAgent[] = [
   {
     id: "blog-post-generator",
     name: "Blog Post Generator",
@@ -118,6 +118,12 @@ export const CATALOG: CatalogAgent[] = [
     tasksRun: 0,
     lastRun: null,
   },
+];
+
+// Available agents first, coming soon at the end
+export const CATALOG: CatalogAgent[] = [
+  ..._CATALOG_UNSORTED.filter((a) => !a.comingSoon),
+  ..._CATALOG_UNSORTED.filter((a) => a.comingSoon),
 ];
 
 // ─── Avatar colors ─────────────────────────────────────────────────────────────
