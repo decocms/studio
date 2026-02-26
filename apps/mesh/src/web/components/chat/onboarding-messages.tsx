@@ -15,7 +15,6 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   AlertCircle,
   ArrowRight,
-  Check,
   ChevronDown,
   ChevronUp,
   File06,
@@ -24,13 +23,6 @@ import {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Stage = "loading" | "recommend" | "proposed" | "approved";
-
-const ALREADY_KNOWS = [
-  "Brand colors & visual identity",
-  "Tech stack (Shopify Plus)",
-  "~4.8M monthly visitors",
-  "Top 3 competitors identified",
-];
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -176,24 +168,6 @@ function AgentRecommendationCard({
             Researches, writes and publishes SEO-optimised blog posts for your
             store on autopilot.
           </p>
-        </div>
-      </div>
-
-      {/* Already knows chips */}
-      <div className="flex flex-col gap-1.5">
-        <p className="text-xs font-medium text-muted-foreground">
-          Already knows about {domain}
-        </p>
-        <div className="flex flex-wrap gap-1.5">
-          {ALREADY_KNOWS.map((fact) => (
-            <span
-              key={fact}
-              className="flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs text-emerald-700"
-            >
-              <Check size={10} />
-              {fact}
-            </span>
-          ))}
         </div>
       </div>
 
