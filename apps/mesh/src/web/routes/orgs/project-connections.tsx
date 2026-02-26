@@ -81,12 +81,15 @@ const PERSONAL_CONNECTIONS = [
 ];
 
 function ProjectConnectionsContent() {
+  const [connectedOrg, setConnectedOrg] = useState<Set<string>>(
+    new Set(ORG_CONNECTIONS.filter((c) => c.connected).map((c) => c.id)),
+  );
   const [connectedPersonal, setConnectedPersonal] = useState<Set<string>>(
     new Set(),
   );
   const [connecting, setConnecting] = useState<Set<string>>(new Set());
 
-  function handleConnect(id: string) {
+  function handleConnect(id: string, type: "org" | "personal") {
     setConnecting((prev) => new Set(prev).add(id));
     setTimeout(() => {
       setConnecting((prev) => {
@@ -94,7 +97,11 @@ function ProjectConnectionsContent() {
         next.delete(id);
         return next;
       });
-      setConnectedPersonal((prev) => new Set(prev).add(id));
+      if (type === "org") {
+        setConnectedOrg((prev) => new Set(prev).add(id));
+      } else {
+        setConnectedPersonal((prev) => new Set(prev).add(id));
+      }
     }, 800);
   }
 
@@ -131,54 +138,63 @@ function ProjectConnectionsContent() {
             </div>
 
             <div className="flex flex-col gap-2">
-              {ORG_CONNECTIONS.map((conn) => (
-                <div
-                  key={conn.id}
-                  className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3"
-                >
-                  <img
-                    src={conn.iconUrl}
-                    alt={conn.name}
-                    className="size-8 rounded-lg"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium text-foreground">
-                        {conn.name}
-                      </p>
-                      <Badge
-                        variant="secondary"
-                        className="text-[10px] px-1.5 py-0 h-4"
-                      >
-                        Org
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {conn.description}
-                    </p>
-                    {conn.usedBy.length > 0 && (
+              {ORG_CONNECTIONS.map((conn) => {
+                const isConnected = connectedOrg.has(conn.id);
+                const isConnecting = connecting.has(conn.id);
+                return (
+                  <div
+                    key={conn.id}
+                    className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3"
+                  >
+                    <img
+                      src={conn.iconUrl}
+                      alt={conn.name}
+                      className="size-8 rounded-lg"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium text-foreground">
+                          {conn.name}
+                        </p>
+                        <Badge
+                          variant="secondary"
+                          className="text-[10px] px-1.5 py-0 h-4"
+                        >
+                          Org
+                        </Badge>
+                      </div>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        Used by: {conn.usedBy.join(", ")}
+                        {conn.description}
                       </p>
+                      {conn.usedBy.length > 0 && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Used by: {conn.usedBy.join(", ")}
+                        </p>
+                      )}
+                    </div>
+                    {isConnected ? (
+                      <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 shrink-0">
+                        <Check size={12} />
+                        Connected
+                        {conn.connectedBy && ` · ${conn.connectedBy}`}
+                      </div>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={isConnecting}
+                        onClick={() => handleConnect(conn.id, "org")}
+                        className="shrink-0"
+                      >
+                        {isConnecting ? (
+                          <Loading01 size={14} className="animate-spin" />
+                        ) : null}
+                        {isConnecting ? "Connecting..." : "Connect"}
+                      </Button>
                     )}
                   </div>
-                  {conn.connected ? (
-                    <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 shrink-0">
-                      <Check size={12} />
-                      Connected &middot; {conn.connectedBy}
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <span className="text-xs text-muted-foreground">
-                        Not connected
-                      </span>
-                      <Badge variant="outline" className="text-[10px]">
-                        Setup in Studio
-                      </Badge>
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -226,7 +242,7 @@ function ProjectConnectionsContent() {
                         variant="outline"
                         size="sm"
                         disabled={isConnecting}
-                        onClick={() => handleConnect(conn.id)}
+                        onClick={() => handleConnect(conn.id, "personal")}
                         className="shrink-0"
                       >
                         {isConnecting ? (
