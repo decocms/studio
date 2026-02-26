@@ -540,9 +540,9 @@ export function createOnboardingRoutes(
 
     // 4. Check if storefront already exists
     const existing = await db
-      .selectFrom("project")
+      .selectFrom("projects")
       .select(["id", "slug"])
-      .where("organizationId", "=", organizationId)
+      .where("organization_id", "=", organizationId)
       .where("slug", "=", "storefront")
       .executeTakeFirst();
 
