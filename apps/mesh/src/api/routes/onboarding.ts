@@ -49,23 +49,6 @@ function slugify(input: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-/**
- * Derive a slug from a storefront URL — take the hostname and replace dots
- * with hyphens so "mystore.com" becomes "mystore-com".
- */
-function urlToSlug(url: string): string {
-  try {
-    const parsed = new URL(url);
-    return parsed.hostname.replace(/\./g, "-").toLowerCase();
-  } catch {
-    // Fallback: strip protocol and replace non-slug chars
-    return url
-      .replace(/^https?:\/\//i, "")
-      .replace(/[^a-z0-9-]/gi, "-")
-      .toLowerCase()
-      .replace(/^-+|-+$/g, "");
-  }
-}
 
 /**
  * Extract a human-readable company name from an AI-generated description.
