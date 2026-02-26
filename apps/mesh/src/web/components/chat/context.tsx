@@ -642,23 +642,31 @@ export function ChatProvider({ children }: PropsWithChildren) {
   }) => {
     chatDispatch({ type: "SET_FINISH_REASON", payload: finishReason ?? null });
 
+    const threadId =
+      (message.metadata as Metadata | undefined)?.thread_id ??
+      threadManager.activeThreadId;
+
     if (isAbort || isDisconnect || isError) {
+      // Persist partial messages so the UI doesn't flash back to stale
+      // server data when the message source switches from chat.messages
+      // to threadManager.messages (isStreaming -> false).
+      if (threadId && messages.length > 0) {
+        threadManager.updateMessagesCache(threadId, messages);
+      }
       return;
     }
 
-    const { thread_id } = message.metadata ?? {};
-
-    if (!thread_id) {
+    if (!threadId) {
       return;
     }
 
     // Show notification (sound + browser popup) if enabled
     if (preferences.enableNotifications) {
       showNotification({
-        tag: `chat-${thread_id}`,
+        tag: `chat-${threadId}`,
         title: "Decopilot is waiting for your input at",
         body:
-          threadManager.threads.find((t) => t.id === thread_id)?.title ??
+          threadManager.threads.find((t) => t.id === threadId)?.title ??
           "New chat",
       });
     }
@@ -668,7 +676,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
     }
 
     // Update messages cache with the latest messages from the stream
-    threadManager.updateMessagesCache(thread_id, messages);
+    threadManager.updateMessagesCache(threadId, messages);
   };
 
   const onError = (error: Error) => {
@@ -801,6 +809,14 @@ export function ChatProvider({ children }: PropsWithChildren) {
     },
   });
 
+  // Reset resume state when switching threads so failures from one thread
+  // don't block resume attempts on a different thread.
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    hasResumedRef.current = null;
+    resumeFailCountRef.current = 0;
+  }, [threadManager.activeThreadId]);
+
   // Trigger resume on page load / thread switch when a background run is active.
   // Also safety-net poll in case SSE events are missed (NATS at-most-once).
   const SAFETY_NET_POLL_MS = 30_000;
@@ -915,6 +931,15 @@ export function ChatProvider({ children }: PropsWithChildren) {
     if (!threadId) return;
     hasResumedRef.current = null;
     resumeFailCountRef.current = 0;
+
+    // Snapshot streaming messages into the thread cache BEFORE stopping.
+    // When chat.stop() fires, isStreaming flips to false and the UI switches
+    // from chat.messages to threadManager.messages — this preserves the
+    // partial content generated up to the abort point.
+    if (chat.messages.length > 0) {
+      threadManager.updateMessagesCache(threadId, chat.messages);
+    }
+
     chat.stop();
     try {
       const res = await fetch(`/api/${org.slug}/decopilot/cancel/${threadId}`, {

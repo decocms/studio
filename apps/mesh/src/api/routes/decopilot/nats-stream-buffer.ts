@@ -174,15 +174,17 @@ export class NatsStreamBuffer implements StreamBuffer {
     return new ReadableStream({
       async pull(controller) {
         while (true) {
+          let timer: ReturnType<typeof setTimeout> | undefined;
           const result = await Promise.race([
             iter.next(),
-            new Promise<{ done: true; value: undefined }>((r) =>
-              setTimeout(
+            new Promise<{ done: true; value: undefined }>((r) => {
+              timer = setTimeout(
                 () => r({ done: true, value: undefined }),
                 PULL_TIMEOUT_MS,
-              ),
-            ),
+              );
+            }),
           ]);
+          clearTimeout(timer);
           if (result.done) {
             sub.unsubscribe();
             controller.close();

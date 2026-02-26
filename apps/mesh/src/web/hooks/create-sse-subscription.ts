@@ -62,7 +62,11 @@ export function createSSESubscription(
         conn.es.addEventListener(type, handler);
       }
 
+      let unsubscribed = false;
       return () => {
+        if (unsubscribed) return;
+        unsubscribed = true;
+
         for (const type of eventTypes) {
           conn.es.removeEventListener(type, handler);
         }

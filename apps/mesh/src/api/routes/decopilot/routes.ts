@@ -511,10 +511,12 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         onFinish: async ({ responseMessage, finishReason }) => {
           streamFinished = true;
           closeClients?.();
-          if (abortSignal.aborted) return;
 
           if (pendingSave) await pendingSave;
           await saveMessagesToThread(responseMessage);
+
+          // Abort listener already called failThread(); skip status update
+          if (abortSignal.aborted) return;
 
           const threadStatus = resolveThreadStatus(
             finishReason,

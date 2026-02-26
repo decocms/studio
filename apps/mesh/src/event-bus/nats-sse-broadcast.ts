@@ -37,10 +37,10 @@ export class NatsSSEBroadcast implements SSEBroadcastStrategy {
   constructor(private readonly options: NatsSSEBroadcastOptions) {}
 
   async start(localEmit: LocalEmitFn): Promise<void> {
+    this.localEmit = localEmit;
+
     const nc = this.options.getConnection();
     if (!nc || this.sub) return;
-
-    this.localEmit = localEmit;
     this.sub = nc.subscribe(SUBJECT);
 
     const decoder = new TextDecoder();
