@@ -800,19 +800,6 @@ export function ChatProvider({ children }: PropsWithChildren) {
       return;
     }
 
-    // If the last assistant message has pending approval-requested tool calls,
-    // strip it before sending to avoid "Tool result is missing" errors.
-    const currentMessages = chat.messages;
-    const lastMessage = currentMessages.at(-1);
-    if (
-      lastMessage?.role === "assistant" &&
-      lastMessage.parts.some(
-        (part) => "state" in part && part.state === "approval-requested",
-      )
-    ) {
-      chat.setMessages(currentMessages.slice(0, -1));
-    }
-
     resetInteraction();
 
     const messageMetadata: Metadata = {
