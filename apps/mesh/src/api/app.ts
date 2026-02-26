@@ -115,7 +115,7 @@ import { getToolsByCategory, MANAGEMENT_TOOLS } from "../tools/registry";
 import { Env } from "./env";
 import { devLogger } from "./utils/dev-logger";
 import { streamSSE } from "hono/streaming";
-import { SSEEvent, sseHub } from "@/event-bus/sse-hub";
+import { type SSEEvent, sseHub } from "../event-bus";
 const getHandleOAuthProtectedResourceMetadata = () =>
   oAuthProtectedResourceMetadata(auth);
 const getHandleOAuthDiscoveryMetadata = () => oAuthDiscoveryMetadata(auth);
@@ -170,6 +170,12 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   if (options.eventBus) {
     eventBus = options.eventBus;
+    sseHub.start().catch((error) => {
+      console.error(
+        "[SSEHub] Error starting broadcast (custom eventBus):",
+        error,
+      );
+    });
   } else {
     // Create notify function that uses the context factory
     // This is called by the worker to deliver events to subscribers

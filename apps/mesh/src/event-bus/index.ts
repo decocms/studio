@@ -58,6 +58,8 @@ export type { EventBus } from "./interface";
 
 export type { NotifyStrategy } from "./notify-strategy";
 
+export { sseHub, type SSEEvent } from "./sse-hub";
+
 /**
  * Notify strategy selection.
  *
@@ -178,6 +180,8 @@ export function createEventBus(
 
   if (natsUrl) {
     console.log("[SSEHub] Using NATS SSE broadcast (cross-pod)");
+  } else {
+    console.log("[SSEHub] Using local SSE broadcast (single-pod)");
   }
 
   return new EventBusImpl({

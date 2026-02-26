@@ -81,10 +81,16 @@ class SSEHub {
   /**
    * Initialize the hub with a broadcast strategy and start it.
    * Must be called before emit() for cross-pod broadcasting to work.
-   * Safe to call multiple times — subsequent calls are no-ops.
+   *
+   * If already started and a new strategy is provided, stops the current
+   * strategy first and restarts with the new one (safe for HMR).
+   * If already started with no new strategy, this is a no-op.
    */
   async start(strategy?: SSEBroadcastStrategy): Promise<void> {
-    if (this.started) return;
+    if (this.started) {
+      if (!strategy) return;
+      await this.stop();
+    }
 
     if (strategy) {
       this.strategy = strategy;

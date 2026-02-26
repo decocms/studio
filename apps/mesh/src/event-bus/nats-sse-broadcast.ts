@@ -31,13 +31,25 @@ export class NatsSSEBroadcast implements SSEBroadcastStrategy {
   private nc: NatsConnection | null = null;
   private sub: Subscription | null = null;
   private localEmit: LocalEmitFn | null = null;
+  private startPromise: Promise<void> | null = null;
   private readonly originId = crypto.randomUUID();
+  private readonly encoder = new TextEncoder();
 
   constructor(private readonly options: NatsSSEBroadcastOptions) {}
 
   async start(localEmit: LocalEmitFn): Promise<void> {
     if (this.nc) return;
+    if (this.startPromise) return this.startPromise;
 
+    this.startPromise = this._doStart(localEmit);
+    try {
+      await this.startPromise;
+    } finally {
+      this.startPromise = null;
+    }
+  }
+
+  private async _doStart(localEmit: LocalEmitFn): Promise<void> {
     this.localEmit = localEmit;
     this.nc = await connect({ servers: this.options.servers });
     this.sub = this.nc.subscribe(SUBJECT);
@@ -47,9 +59,17 @@ export class NatsSSEBroadcast implements SSEBroadcastStrategy {
     (async () => {
       for await (const msg of this.sub!) {
         try {
-          const payload: NatsSSEMessage = JSON.parse(decoder.decode(msg.data));
-          if (payload.originId === this.originId) continue;
-          this.localEmit?.(payload.organizationId, payload.event);
+          const parsed = JSON.parse(decoder.decode(msg.data));
+          if (
+            typeof parsed?.originId !== "string" ||
+            typeof parsed?.organizationId !== "string" ||
+            typeof parsed?.event?.id !== "string" ||
+            typeof parsed?.event?.type !== "string"
+          ) {
+            continue;
+          }
+          if (parsed.originId === this.originId) continue;
+          this.localEmit?.(parsed.organizationId, parsed.event as SSEEvent);
         } catch {
           // Malformed message — skip
         }
@@ -74,10 +94,7 @@ export class NatsSSEBroadcast implements SSEBroadcastStrategy {
     };
 
     try {
-      this.nc.publish(
-        SUBJECT,
-        new TextEncoder().encode(JSON.stringify(payload)),
-      );
+      this.nc.publish(SUBJECT, this.encoder.encode(JSON.stringify(payload)));
     } catch (err) {
       console.warn("[NatsSSEBroadcast] Publish failed (non-critical):", err);
     }
