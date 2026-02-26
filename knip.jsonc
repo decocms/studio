@@ -25,6 +25,9 @@
     },
     "packages/mesh-sdk": {
       "ignoreDependencies": ["sonner"]
+    },
+    "packages/typegen": {
+      "ignore": ["src/*.test.ts"]
     }
   },
   "ignoreDependencies": ["@types/*"],

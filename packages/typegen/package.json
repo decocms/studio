@@ -1,0 +1,38 @@
+{
+  "name": "@decocms/typegen",
+  "version": "0.1.0",
+  "description": "Generate typed TypeScript clients for Mesh Virtual MCPs",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "typegen": "./dist/cli.js"
+  },
+  "files": [
+    "dist/**/*"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx src/cli.ts",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.26.0",
+    "json-schema-to-typescript": "^15.0.4",
+    "prettier": "^3.6.2"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^24.6.2",
+    "tsup": "^8.5.0",
+    "tsx": "^4.7.1",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

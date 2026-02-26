@@ -41,7 +41,7 @@ import {
   Loading01,
   Play,
   Plus,
-  Share07,
+  ZapCircle,
   Tool01,
   Users03,
 } from "@untitledui/icons";
@@ -308,24 +308,17 @@ function VirtualMcpDetailViewWithData({
           <TooltipContent side="bottom">Test this agent in chat</TooltipContent>
         </Tooltip>
 
-        <Tooltip delayDuration={0}>
-          <TooltipTrigger asChild>
-            <span className="inline-block">
-              <Button
-                variant="outline"
-                size="icon"
-                className="size-7 border border-input"
-                onClick={() =>
-                  dispatch({ type: "SET_SHARE_DIALOG_OPEN", payload: true })
-                }
-                aria-label="Share"
-              >
-                <Share07 size={14} />
-              </Button>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Share</TooltipContent>
-        </Tooltip>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 gap-1.5 px-2 border border-input"
+          onClick={() =>
+            dispatch({ type: "SET_SHARE_DIALOG_OPEN", payload: true })
+          }
+        >
+          <ZapCircle size={14} />
+          Connect
+        </Button>
 
         <PinToSidebarButton
           title={virtualMcp.title}
