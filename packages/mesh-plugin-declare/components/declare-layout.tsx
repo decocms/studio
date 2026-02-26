@@ -3,13 +3,16 @@
  *
  * Self-contained layout for the declare plugin.
  * Resolves the connection from plugin config, then:
- * 1. Check if declare server is already running (heuristic, like preview)
- * 2. If running → embed iframe immediately
- * 3. If not running but .planning/ exists → start server, then embed
- * 4. If neither → show setup screen
+ * 1. Read .planning/server.port (written by declare-cc serve)
+ * 2. If file exists with a port → embed iframe at that port
+ * 3. If .planning/ exists but no server.port → show "start server" state
+ * 4. If no .planning/ at all → show init setup screen
+ *
+ * No heuristic port detection — each project's declare server writes
+ * its own .planning/server.port file so there's no cross-project confusion.
  */
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   SELF_MCP_ALIAS_ID,
@@ -32,8 +35,6 @@ type PluginConfigOutput = {
     settings: Record<string, unknown> | null;
   } | null;
 };
-
-const DEFAULT_PORT = 3847;
 
 /** Extract text from an MCP tool result. */
 function extractText(result: { content?: unknown }): string {
@@ -76,66 +77,52 @@ async function runBash(
   }
 }
 
-/** Check if declare server is responding on the given port. */
+/** Check if declare server is responding on the given port via /api/graph. */
 async function checkServerRunning(
   client: Client,
   port: number,
 ): Promise<boolean> {
   const { stdout, exitCode } = await runBash(
     client,
-    `curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://localhost:${port}`,
+    `curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://localhost:${port}/api/graph`,
   );
   if (exitCode !== 0) return false;
   const code = parseInt(stdout.trim(), 10);
-  return code >= 200 && code < 500;
-}
-
-/** Check if .planning/ directory exists. */
-async function checkPlanningExists(client: Client): Promise<boolean> {
-  const { exitCode } = await runBash(client, "test -d .planning && echo yes");
-  return exitCode === 0;
-}
-
-/** Read .planning/server.port for custom port, or return default. */
-async function readServerPort(client: Client): Promise<number> {
-  const { stdout, exitCode } = await runBash(
-    client,
-    "cat .planning/server.port 2>/dev/null",
-  );
-  if (exitCode === 0 && stdout.trim()) {
-    const parsed = parseInt(stdout.trim(), 10);
-    if (!Number.isNaN(parsed) && parsed > 0) return parsed;
-  }
-  return DEFAULT_PORT;
+  return code === 200;
 }
 
 type DetectResult =
-  | { state: "running"; port: number }
-  | { state: "stopped"; port: number }
+  | { state: "has-port"; port: number }
+  | { state: "has-planning" }
   | { state: "no-planning" };
 
 /**
- * Detect declare state: server running, .planning/ exists, or neither.
+ * Detect declare state by reading files — no heuristic port probing.
+ * .planning/server.port is the sole source of truth for the server port.
  */
 async function detectDeclareState(client: Client): Promise<DetectResult> {
-  // Check default port first (fast path)
-  const runningOnDefault = await checkServerRunning(client, DEFAULT_PORT);
-  if (runningOnDefault) return { state: "running", port: DEFAULT_PORT };
-
-  // Check if .planning/ exists
-  const hasPlanning = await checkPlanningExists(client);
-  if (!hasPlanning) return { state: "no-planning" };
-
-  // .planning/ exists — check for custom port
-  const port = await readServerPort(client);
-
-  // If custom port differs from default, check that too
-  if (port !== DEFAULT_PORT) {
-    const runningOnCustom = await checkServerRunning(client, port);
-    if (runningOnCustom) return { state: "running", port };
+  // Try reading .planning/server.port first (most specific check)
+  const { stdout: portText, exitCode: portExit } = await runBash(
+    client,
+    "cat .planning/server.port 2>/dev/null",
+  );
+  if (portExit === 0 && portText.trim()) {
+    const port = parseInt(portText.trim(), 10);
+    if (!Number.isNaN(port) && port > 0) {
+      return { state: "has-port", port };
+    }
   }
 
-  return { state: "stopped", port };
+  // Check if .planning/ directory exists at all
+  const { exitCode: dirExit } = await runBash(
+    client,
+    "test -d .planning && echo yes",
+  );
+  if (dirExit === 0) {
+    return { state: "has-planning" };
+  }
+
+  return { state: "no-planning" };
 }
 
 export default function DeclareLayout() {
@@ -167,7 +154,7 @@ export default function DeclareLayout() {
     orgId: org.id,
   });
 
-  // Detect declare state: running server, .planning/ exists, or neither
+  // Detect declare state from files
   const {
     data: declareState,
     isLoading: isDetecting,
@@ -176,6 +163,13 @@ export default function DeclareLayout() {
     queryKey: KEYS.planningCheck(configuredConnectionId ?? ""),
     queryFn: () => detectDeclareState(connectionClient!),
     enabled: !!connectionClient && !!configuredConnectionId,
+    // Poll while waiting for server.port to appear (user may start server externally)
+    refetchInterval: (query) => {
+      const state = query.state.data;
+      // Poll every 3s when .planning/ exists but no server.port yet
+      if (state?.state === "has-planning") return 3_000;
+      return false;
+    },
   });
 
   // Loading state
@@ -206,7 +200,7 @@ export default function DeclareLayout() {
     );
   }
 
-  // No .planning/ directory and no server running — show setup
+  // No .planning/ directory — show init setup
   if (!declareState || declareState.state === "no-planning") {
     return (
       <DeclareSetup
@@ -216,57 +210,128 @@ export default function DeclareLayout() {
     );
   }
 
-  // Server already running or .planning/ exists — show dashboard
+  // .planning/ exists but no server.port — show "start server" prompt
+  if (declareState.state === "has-planning") {
+    return (
+      <DeclareStartServer
+        client={connectionClient}
+        onStarted={() => redetect()}
+      />
+    );
+  }
+
+  // server.port exists — show dashboard
   return (
     <DeclareDashboard
       client={connectionClient}
       connectionId={configuredConnectionId}
-      initialPort={declareState.port}
-      alreadyRunning={declareState.state === "running"}
+      port={declareState.port}
     />
   );
 }
 
 /**
+ * Shown when .planning/ exists but no server.port file.
+ * Offers to start the declare server.
+ */
+function DeclareStartServer({
+  client,
+  onStarted,
+}: {
+  client: Client;
+  onStarted: () => void;
+}) {
+  const [isStarting, setIsStarting] = useState(false);
+
+  const handleStart = async () => {
+    setIsStarting(true);
+    try {
+      await client.callTool({
+        name: "bash",
+        arguments: {
+          cmd: "nohup npx dcl serve > .planning/serve.log 2>&1 &",
+          timeout: 0,
+        },
+      });
+      // Poll for server.port to be written
+      for (let i = 0; i < 10; i++) {
+        await new Promise((r) => setTimeout(r, 1_500));
+        const { stdout, exitCode } = await runBash(
+          client,
+          "cat .planning/server.port 2>/dev/null",
+        );
+        if (exitCode === 0 && stdout.trim()) {
+          onStarted();
+          return;
+        }
+      }
+      onStarted(); // try anyway
+    } catch {
+      setIsStarting(false);
+    }
+  };
+
+  if (isStarting) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3">
+        <Loading01 size={32} className="animate-spin text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">
+          Starting declare server...
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center h-full p-8">
+      <div className="flex flex-col items-center gap-6 max-w-sm w-full">
+        <div className="text-center">
+          <h2 className="text-lg font-semibold mb-1">
+            Declare Server Not Running
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            The .planning/ directory exists but the declare server isn't
+            running. Start it to view the dashboard.
+          </p>
+        </div>
+        <Button onClick={handleStart}>Start Server</Button>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Declare Dashboard — embeds the declare-cc dashboard in an iframe.
- * If not already running, starts the server first.
+ * Port comes from .planning/server.port (written by declare-cc serve).
  */
 function DeclareDashboard({
   client,
   connectionId,
-  initialPort,
-  alreadyRunning,
+  port,
 }: {
   client: Client;
   connectionId: string;
-  initialPort: number;
-  alreadyRunning: boolean;
+  port: number;
 }) {
   const startedRef = useRef(false);
-  const port = initialPort;
   const iframeUrl = `http://localhost:${port}`;
 
-  // Check if server is running, start if needed
+  // Verify the server is actually responding, start if needed
   const serverQuery = useQuery({
     queryKey: KEYS.serverCheck(connectionId, port),
     queryFn: async (): Promise<
       { status: "running" } | { status: "error"; message: string }
     > => {
-      // If we already know it's running, skip the check
-      if (alreadyRunning && !startedRef.current) {
-        return { status: "running" };
-      }
-
       const isRunning = await checkServerRunning(client, port);
       if (isRunning) return { status: "running" };
 
-      // Start server (only once per mount cycle)
+      // server.port exists but server not responding — try starting it
       if (!startedRef.current) {
         startedRef.current = true;
         await client.callTool({
           name: "bash",
           arguments: {
-            cmd: `nohup npx declare-cc serve > .planning/serve.log 2>&1 &`,
+            cmd: "nohup npx dcl serve > .planning/serve.log 2>&1 &",
             timeout: 0,
           },
         });
@@ -293,7 +358,6 @@ function DeclareDashboard({
   const isError = result?.status === "error";
   const isRunning = result?.status === "running" && !isLoading;
 
-  // Loading / starting state
   if (!isRunning && !isError) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3">
@@ -307,7 +371,6 @@ function DeclareDashboard({
     );
   }
 
-  // Error state
   if (isError) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3 p-8">
@@ -328,7 +391,6 @@ function DeclareDashboard({
     );
   }
 
-  // Running — show iframe fullscreen (no toolbar)
   return (
     <iframe
       src={iframeUrl}

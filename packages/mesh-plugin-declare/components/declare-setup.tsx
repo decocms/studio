@@ -2,83 +2,127 @@
  * Declare Setup — Empty State
  *
  * Shown when .planning/ directory doesn't exist.
- * Offers to initialize declare-cc or ask AI to set it up.
+ * Flow:
+ * 1. Install declare-cc as devDependency
+ * 2. Run `npx dcl` which auto-inits .planning/, starts server, writes server.port
+ * 3. Poll for server.port to appear → transition to dashboard
  */
 
 import { useState } from "react";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { Button } from "@deco/ui/components/button.tsx";
-import { Flag06, Loading01, Stars01 } from "@untitledui/icons";
-import { useChatBridge } from "@decocms/mesh-sdk";
+import { Flag06, Loading01 } from "@untitledui/icons";
 
 interface DeclareSetupProps {
   client: Client;
   onInitialized: () => void;
 }
 
+/** Extract text from an MCP tool result. */
+function extractText(result: { content?: unknown }): string {
+  const raw = result.content;
+  if (Array.isArray(raw)) {
+    const first = raw[0] as { text?: string } | undefined;
+    return first?.text ?? "";
+  }
+  if (typeof raw === "string") return raw;
+  return "";
+}
+
+/** Parse bash tool response to get exit code. */
+function parseExitCode(text: string): number {
+  try {
+    const parsed = JSON.parse(text) as { exitCode?: number };
+    return parsed.exitCode ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
 export default function DeclareSetup({
   client,
   onInitialized,
 }: DeclareSetupProps) {
-  const [isInitializing, setIsInitializing] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
+  const [status, setStatus] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const chatBridge = useChatBridge();
 
-  const handleInitialize = async () => {
-    setIsInitializing(true);
+  const handleStart = async () => {
+    setIsStarting(true);
     setError(null);
 
     try {
-      const result = (await client.callTool({
+      // Step 1: Install declare-cc as devDependency
+      setStatus("Installing declare-cc...");
+      const installResult = (await client.callTool({
         name: "bash",
-        arguments: { cmd: "npx declare-cc", timeout: 30000 },
+        arguments: {
+          cmd: "npm install --save-dev declare-cc@latest 2>&1 || bun add --dev declare-cc@latest 2>&1",
+          timeout: 60000,
+        },
       })) as { content?: unknown };
 
-      // Check if .planning/ was created
-      const raw = (result as { content?: unknown }).content;
-      let text = "";
-      if (Array.isArray(raw)) {
-        const first = raw[0] as { text?: string } | undefined;
-        text = first?.text ?? "";
+      const installText = extractText(installResult);
+      if (parseExitCode(installText) !== 0) {
+        // Try the raw output — npm might have succeeded even with exit code issues
+        // Continue anyway since the package might already be installed
       }
 
-      // Check exit code from structured response
-      try {
-        const parsed = JSON.parse(text) as { exitCode?: number };
-        if (parsed.exitCode !== 0) {
-          setError("Initialization failed. Check the terminal for details.");
-          setIsInitializing(false);
-          return;
+      // Step 2: Start dcl (auto-inits .planning/ + starts server + writes port)
+      setStatus("Starting declare server...");
+      await client.callTool({
+        name: "bash",
+        arguments: {
+          cmd: "nohup npx dcl > /tmp/dcl-init.log 2>&1 &",
+          timeout: 0,
+        },
+      });
+
+      // Step 3: Poll for .planning/server.port to appear
+      setStatus("Waiting for server...");
+      for (let i = 0; i < 20; i++) {
+        await new Promise((r) => setTimeout(r, 1_500));
+        const checkResult = (await client.callTool({
+          name: "bash",
+          arguments: { cmd: "cat .planning/server.port 2>/dev/null" },
+        })) as { content?: unknown };
+
+        const text = extractText(checkResult);
+        try {
+          const parsed = JSON.parse(text) as {
+            stdout?: string;
+            exitCode?: number;
+          };
+          if (parsed.exitCode === 0 && parsed.stdout?.trim()) {
+            onInitialized();
+            return;
+          }
+        } catch {
+          if (text.trim() && /^\d+$/.test(text.trim())) {
+            onInitialized();
+            return;
+          }
         }
-      } catch {
-        // Non-JSON response is fine, proceed
       }
 
-      onInitialized();
-    } catch {
-      setError("Failed to run declare-cc. Make sure npx is available.");
+      setError("Server didn't start within 30s. Check the terminal output.");
+    } catch (e) {
+      setError(
+        `Failed to initialize: ${e instanceof Error ? e.message : "unknown error"}`,
+      );
     } finally {
-      setIsInitializing(false);
+      setIsStarting(false);
     }
   };
 
-  const handleAskAI = () => {
-    if (!chatBridge) return;
-    chatBridge.sendMessage(
-      "Set up Declare for this project. Run `npx declare-cc` in the project root " +
-        "to initialize the .planning/ directory with a project roadmap. " +
-        "Analyze the codebase to create meaningful milestones and actions.",
-    );
-  };
-
-  if (isInitializing) {
+  if (isStarting) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-8">
         <div className="flex flex-col items-center gap-6 max-w-sm w-full">
           <Flag06 size={48} className="text-muted-foreground" />
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loading01 size={16} className="animate-spin" />
-            Initializing declare-cc...
+            {status}
           </div>
         </div>
       </div>
@@ -100,15 +144,7 @@ export default function DeclareSetup({
           <p className="text-sm text-destructive text-center">{error}</p>
         )}
 
-        <div className="flex flex-col gap-2 w-full">
-          <Button onClick={handleInitialize}>Initialize</Button>
-          {chatBridge && (
-            <Button variant="outline" onClick={handleAskAI}>
-              <Stars01 size={14} className="mr-1" />
-              Ask AI to set up
-            </Button>
-          )}
-        </div>
+        <Button onClick={handleStart}>Initialize</Button>
       </div>
     </div>
   );
