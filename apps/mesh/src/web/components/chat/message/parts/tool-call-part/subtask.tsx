@@ -4,7 +4,7 @@ import type { ToolSubtaskMetadata } from "../../use-filter-parts.ts";
 import { IntegrationIcon } from "@/web/components/integration-icon";
 import type { ToolDefinition } from "@decocms/mesh-sdk";
 import { Users03 } from "@untitledui/icons";
-import { useChat } from "../../../context.tsx";
+import { useChatStable } from "../../../context.tsx";
 import type { SubtaskToolPart } from "../../../types.ts";
 import { extractTextFromOutput, getToolPartErrorText } from "../utils.ts";
 import { ToolCallShell } from "./common.tsx";
@@ -27,7 +27,7 @@ export function SubtaskPart({
   annotations,
   latency,
 }: SubtaskPartProps) {
-  const { virtualMcps } = useChat();
+  const { virtualMcps } = useChatStable();
 
   // State computation
   const isInputStreaming =

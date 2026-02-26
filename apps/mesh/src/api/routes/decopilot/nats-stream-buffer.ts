@@ -154,13 +154,22 @@ export class NatsStreamBuffer implements StreamBuffer {
 
     const subj = streamSubject(threadId);
 
-    const sub = await js.subscribe(subj, {
-      ordered: true,
-      config: {
-        filter_subject: subj,
-        ack_policy: AckPolicy.None,
-      },
-    });
+    let sub;
+    try {
+      sub = await js.subscribe(subj, {
+        ordered: true,
+        config: {
+          filter_subject: subj,
+          ack_policy: AckPolicy.None,
+        },
+      });
+    } catch (err) {
+      console.warn(
+        "[Decopilot] JetStream replay unavailable (non-critical):",
+        (err as Error)?.message ?? err,
+      );
+      return null;
+    }
 
     const decoder = new TextDecoder();
 

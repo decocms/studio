@@ -1,4 +1,4 @@
-import { useChat } from "@/web/components/chat";
+import { useChatStable } from "@/web/components/chat";
 import { CollectionDisplayButton } from "@/web/components/collections/collection-display-button.tsx";
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
 import { CollectionTableWrapper } from "@/web/components/collections/collection-table-wrapper.tsx";
@@ -103,7 +103,7 @@ function TasksContent() {
     orgId: org.id,
   });
   const navigate = useNavigate();
-  const { switchToThread } = useChat();
+  const { switchToThread } = useChatStable();
   const queryClient = useQueryClient();
 
   const [stepCounts, setStepCounts] = useState<Map<string, number>>(new Map());

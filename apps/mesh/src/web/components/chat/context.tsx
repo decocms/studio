@@ -29,6 +29,7 @@ import {
   type PropsWithChildren,
   Suspense,
   useContext,
+  useDeferredValue,
   useEffect,
   useReducer,
   useRef,
@@ -97,54 +98,54 @@ type ChatFromUseChat = Pick<
 >;
 
 /**
- * Combined context value including interaction state, thread management, and session state
+ * Stable context — values that change infrequently (model/thread/mode selection, actions).
+ * Consumers reading only stable fields skip re-renders during streaming.
  */
-interface ChatContextValue extends ChatFromUseChat {
-  // Interaction state (tiptapDoc lives in ChatInput local state)
-  /** Ref to the current tiptapDoc — for non-rendering reads (e.g. IceBreakers) */
+interface ChatStableValue {
   tiptapDocRef: React.RefObject<Metadata["tiptapDoc"]>;
   resetInteraction: () => void;
 
-  // Thread management
   activeThreadId: string;
-  createThread: () => void; // For creating new threads (with prefetch)
-  switchToThread: (threadId: string) => Promise<void>; // For switching with cache prefilling
+  createThread: () => void;
+  switchToThread: (threadId: string) => Promise<void>;
   threads: Thread[];
   hideThread: (threadId: string) => void;
 
-  // Thread pagination (for infinite scroll)
   hasNextPage?: boolean;
   isFetchingNextPage?: boolean;
   fetchNextPage?: () => void;
 
-  // Virtual MCP state
   virtualMcps: VirtualMCPInfo[];
   selectedVirtualMcp: VirtualMCPInfo | null;
   setVirtualMcpId: (virtualMcpId: string | null) => void;
 
-  // Model state
   modelsConnections: ReturnType<typeof useModelConnections>;
   selectedModel: ChatModelsConfig | null;
   setSelectedModel: (model: ModelChangePayload) => void;
 
-  // Mode state
   selectedMode: ToolSelectionStrategy;
   setSelectedMode: (mode: ToolSelectionStrategy) => void;
 
-  // Chat state (extends useChat; sendMessage overridden, isStreaming/isChatEmpty derived)
   sendMessage: (tiptapDoc: Metadata["tiptapDoc"]) => Promise<void>;
+  cancelRun: () => Promise<void>;
+}
+
+/**
+ * Stream context — values that change per chunk or stream lifecycle event.
+ * Messages are deferred via useDeferredValue so React skips intermediate renders.
+ */
+interface ChatStreamValue extends ChatFromUseChat {
   isStreaming: boolean;
   isChatEmpty: boolean;
   finishReason: string | null;
   clearFinishReason: () => void;
   /** Derived from chat.messages (AI SDK state) to avoid stale reads during message source switches */
   isWaitingForApprovals: boolean;
-
-  // Background run control (run survives client disconnect)
   /** True when thread is in_progress but we have no active local stream */
   isRunInProgress: boolean;
-  cancelRun: () => Promise<void>;
 }
+
+type ChatContextValue = ChatStableValue & ChatStreamValue;
 
 // ============================================================================
 // Implementation
@@ -482,7 +483,8 @@ function derivePartsFromTiptapDoc(
   return parts;
 }
 
-const ChatContext = createContext<ChatContextValue | null>(null);
+const ChatStableContext = createContext<ChatStableValue | null>(null);
+const ChatStreamContext = createContext<ChatStreamValue | null>(null);
 
 /**
  * Silent child component that auto-selects the first available model when
@@ -811,11 +813,14 @@ export function ChatProvider({ children }: PropsWithChildren) {
 
   // Reset resume state when switching threads so failures from one thread
   // don't block resume attempts on a different thread.
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect
-  useEffect(() => {
+  // Done during render (not in useEffect) to avoid React strict-mode
+  // double-mount resetting the guard and firing duplicate attach requests.
+  const prevActiveThreadIdRef = useRef(threadManager.activeThreadId);
+  if (prevActiveThreadIdRef.current !== threadManager.activeThreadId) {
+    prevActiveThreadIdRef.current = threadManager.activeThreadId;
     hasResumedRef.current = null;
     resumeFailCountRef.current = 0;
-  }, [threadManager.activeThreadId]);
+  }
 
   // Trigger resume on page load / thread switch when a background run is active.
   // Also safety-net poll in case SSE events are missed (NATS at-most-once).
@@ -891,7 +896,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
     // internal state is current (needed for onFinish cache write-back and
     // sendAutomaticallyWhen checks on the response).
     if (threadManager.messages.length > 0) {
-      chat.setMessages(threadManager.messages);
+      chatRef.current.setMessages(threadManager.messages);
     }
     resetInteraction();
 
@@ -923,7 +928,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
       metadata: messageMetadata,
     };
 
-    await chat.sendMessage(userMessage, { metadata });
+    await chatRef.current.sendMessage(userMessage, { metadata });
   };
 
   const cancelRun = async () => {
@@ -936,11 +941,11 @@ export function ChatProvider({ children }: PropsWithChildren) {
     // When chat.stop() fires, isStreaming flips to false and the UI switches
     // from chat.messages to threadManager.messages — this preserves the
     // partial content generated up to the abort point.
-    if (chat.messages.length > 0) {
-      threadManager.updateMessagesCache(threadId, chat.messages);
+    if (chatRef.current.messages.length > 0) {
+      threadManager.updateMessagesCache(threadId, chatRef.current.messages);
     }
 
-    chat.stop();
+    chatRef.current.stop();
     try {
       const res = await fetch(`/api/${org.slug}/decopilot/cancel/${threadId}`, {
         method: "POST",
@@ -979,39 +984,33 @@ export function ChatProvider({ children }: PropsWithChildren) {
   // 7. CONTEXT VALUE & RETURN
   // ===========================================================================
 
-  const value: ChatContextValue = {
-    // Chat state (tiptapDoc managed locally in ChatInput)
+  const deferredMessages = useDeferredValue(messages);
+
+  const stableValue: ChatStableValue = {
     tiptapDocRef,
     resetInteraction,
-
-    // Thread management (using threadManager)
     activeThreadId: threadManager.activeThreadId,
     threads: threadManager.threads,
     createThread,
     switchToThread,
     hideThread,
-
-    // Thread pagination
     hasNextPage: threadManager.hasNextPage,
     isFetchingNextPage: threadManager.isFetchingNextPage,
     fetchNextPage: threadManager.fetchNextPage,
-
-    // Virtual MCP state
     virtualMcps,
     selectedVirtualMcp,
     setVirtualMcpId,
-
-    // Model state
     modelsConnections,
     selectedModel,
     setSelectedModel,
-
-    // Mode state
     selectedMode,
     setSelectedMode,
+    sendMessage,
+    cancelRun,
+  };
 
-    // Chat session state (from useChat, or server-polled during background runs)
-    messages,
+  const streamValue: ChatStreamValue = {
+    messages: deferredMessages,
     status: chat.status,
     setMessages: chat.setMessages,
     error: chat.error,
@@ -1019,44 +1018,62 @@ export function ChatProvider({ children }: PropsWithChildren) {
     stop: stopForContext,
     addToolOutput: chat.addToolOutput,
     addToolApprovalResponse: chat.addToolApprovalResponse,
-    sendMessage,
     isStreaming,
     isChatEmpty,
     finishReason: chatState.finishReason,
     clearFinishReason,
     isWaitingForApprovals,
     isRunInProgress,
-    cancelRun,
   };
 
   return (
-    <ChatContext.Provider value={value}>
-      {/* Auto-selects first model when none is stored.
-          ErrorBoundary ensures MCP errors (e.g. auth failures) never crash the provider. */}
-      <ErrorBoundary fallback={null}>
-        <Suspense fallback={null}>
-          <ModelAutoSelector
-            modelsConnections={modelsConnections}
-            currentConfig={selectedModel}
-            onAutoSelect={setModel}
-            allowAll={allowAll}
-            isModelAllowed={isModelAllowed}
-          />
-        </Suspense>
-      </ErrorBoundary>
-      {children}
-    </ChatContext.Provider>
+    <ChatStableContext.Provider value={stableValue}>
+      <ChatStreamContext.Provider value={streamValue}>
+        <ErrorBoundary fallback={null}>
+          <Suspense fallback={null}>
+            <ModelAutoSelector
+              modelsConnections={modelsConnections}
+              currentConfig={selectedModel}
+              onAutoSelect={setModel}
+              allowAll={allowAll}
+              isModelAllowed={isModelAllowed}
+            />
+          </Suspense>
+        </ErrorBoundary>
+        {children}
+      </ChatStreamContext.Provider>
+    </ChatStableContext.Provider>
   );
 }
 
 /**
- * Hook to access the full chat context
- * Returns interaction state, thread management, virtual MCP, model, and chat session state
+ * Stable chat values (model, mode, threads, virtual MCP, actions).
+ * Does NOT re-render during streaming.
  */
-export function useChat() {
-  const context = useContext(ChatContext);
+export function useChatStable() {
+  const context = useContext(ChatStableContext);
   if (!context) {
-    throw new Error("useChat must be used within a ChatProvider");
+    throw new Error("useChatStable must be used within a ChatProvider");
   }
   return context;
+}
+
+/**
+ * Streaming chat values (messages, status, error, derived booleans).
+ * Re-renders during streaming with deferred batching.
+ */
+function useChatStream() {
+  const context = useContext(ChatStreamContext);
+  if (!context) {
+    throw new Error("useChatStream must be used within a ChatProvider");
+  }
+  return context;
+}
+
+/**
+ * Full chat context (stable + stream merged).
+ * Prefer useChatStable() or useChatStream() to reduce re-renders during streaming.
+ */
+export function useChat(): ChatContextValue {
+  return { ...useChatStable(), ...useChatStream() };
 }

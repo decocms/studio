@@ -13,7 +13,7 @@ import {
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Clock, SearchMd, Trash01 } from "@untitledui/icons";
 import { useRef, useState } from "react";
-import { useChat } from "./context";
+import { useChatStable } from "./context";
 import type { Thread } from "./types.ts";
 
 type ThreadSection = {
@@ -116,7 +116,7 @@ export function ThreadHistoryPopover({
     isFetchingNextPage,
     fetchNextPage,
     hideThread,
-  } = useChat();
+  } = useChatStable();
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   // Set up intersection observer for infinite scroll
