@@ -187,10 +187,14 @@ export default function PreviewFrame({
   connectionId,
 }: PreviewFrameProps) {
   const [iframeKey, setIframeKey] = useState(0);
+  const [path, setPath] = useState("/");
+  const [isEditingUrl, setIsEditingUrl] = useState(false);
+  const [urlDraft, setUrlDraft] = useState("");
+  const urlInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const startedRef = useRef(false);
 
-  const iframeUrl = `http://localhost:${config.port}`;
+  const iframeUrl = `http://localhost:${config.port}${path === "/" ? "" : path}`;
 
   // Check if server is running, start if needed, poll until ready.
   // Returns a ServerResult so the UI can be derived from query state alone.
@@ -254,7 +258,10 @@ export default function PreviewFrame({
   const handleRefresh = () => setIframeKey((k) => k + 1);
 
   const handleOpenInTab = () => {
-    window.open(iframeUrl, "_blank");
+    window.open(
+      `http://localhost:${config.port}${path === "/" ? "" : path}`,
+      "_blank",
+    );
   };
 
   const handleRetry = () => {
@@ -305,12 +312,51 @@ export default function PreviewFrame({
     <div className="flex flex-col h-full">
       {/* Toolbar */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-background">
-        {/* Status indicator */}
+        {/* Editable URL bar */}
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <span className="size-2 rounded-full bg-emerald-500 shrink-0" />
-          <span className="text-sm text-muted-foreground truncate font-mono">
-            localhost:{config.port}
-          </span>
+          {isEditingUrl ? (
+            <input
+              ref={urlInputRef}
+              type="text"
+              value={urlDraft}
+              onChange={(e) => setUrlDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  const value = urlDraft.trim();
+                  // Parse "localhost:PORT/path" or just "/path"
+                  const match = value.match(/^(?:localhost:(\d+))?(\/.*)?$/);
+                  if (match) {
+                    if (match[1]) {
+                      // Port change is display-only (config.port drives the server)
+                    }
+                    setPath(match[2] || "/");
+                    setIframeKey((k) => k + 1);
+                  }
+                  setIsEditingUrl(false);
+                } else if (e.key === "Escape") {
+                  setIsEditingUrl(false);
+                }
+              }}
+              onBlur={() => setIsEditingUrl(false)}
+              className="text-sm font-mono bg-transparent border-none outline-none text-foreground flex-1 min-w-0 p-0"
+              spellCheck={false}
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                const display = `localhost:${config.port}${path === "/" ? "/" : path}`;
+                setUrlDraft(display);
+                setIsEditingUrl(true);
+                requestAnimationFrame(() => urlInputRef.current?.select());
+              }}
+              className="text-sm text-muted-foreground truncate font-mono hover:text-foreground transition-colors cursor-text text-left"
+            >
+              localhost:{config.port}
+              {path !== "/" && path}
+            </button>
+          )}
         </div>
 
         {/* Actions */}
