@@ -2,20 +2,24 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Rebuild the post-login onboarding flow to demo the full agent hire journey — from welcome + diagnostic context → hire drawer → task proposals → blog workspace — all mocked.
+**Goal:** Rebuild the post-login onboarding flow to demo the full agent hire journey — from welcome + diagnostic context → hire modal → task proposals → blog workspace — all mocked.
 
-**Architecture:** `onboarding-messages.tsx` drives a 4-stage state machine (recommend → hiring → proposed → approved). A `HireAgentDrawer` Sheet handles the hire UX. After hire, mocked task cards navigate to a new `/blog` route that shows a split blog-draft-viewer + chat panel.
+**Architecture:** `onboarding-messages.tsx` drives a 4-stage state machine (recommend → hiring → proposed → approved). A `HireAgentModal` Dialog (two-column layout) handles the hire UX. After hire, mocked task cards navigate to a new `/blog` route that shows a split blog-draft-viewer + chat panel.
 
 **Tech Stack:** React 19, TanStack Router, Tailwind v4, @deco/ui (Sheet, Dialog, Button), @untitledui/icons. Everything is mocked — no API calls, no TDD required.
 
 ---
 
-### Task 1: Create `hire-agent-drawer.tsx`
+### Task 1: Create `hire-agent-modal.tsx`
 
 **Files:**
-- Create: `apps/mesh/src/web/components/onboarding/hire-agent-drawer.tsx`
+- Create: `apps/mesh/src/web/components/onboarding/hire-agent-modal.tsx`
 
-This is a Sheet that slides in from the right showing: agent intro, what it already knows, plugins it installs, optional connections (mocked), and a 3-option autonomy selector.
+This is a Dialog (full modal, NOT a Sheet/drawer) with a **two-column layout**:
+- **Left column**: agent identity, "what it already knows" from diagnostic, plugins it installs
+- **Right column**: optional connections (mocked connect buttons), autonomy selector, hire CTA
+
+Use `Dialog` from `@deco/ui/components/dialog.tsx`. Max width `max-w-2xl` or `max-w-3xl`, no overlay scroll — the modal should be tall enough to show everything without scrolling.
 
 **Step 1: Create the component**
 
@@ -94,7 +98,7 @@ const AUTONOMY_OPTIONS: {
 
 // ─── Props ───────────────────────────────────────────────────────────────────
 
-export interface HireAgentDrawerProps {
+export interface HireAgentModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   orgName: string;
@@ -103,12 +107,12 @@ export interface HireAgentDrawerProps {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function HireAgentDrawer({
+export function HireAgentModal({
   open,
   onOpenChange,
   orgName,
   onHire,
-}: HireAgentDrawerProps) {
+}: HireAgentModalProps) {
   const [autonomy, setAutonomy] = useState<AutonomyMode>("review");
   const [connected, setConnected] = useState<Set<string>>(new Set());
   const [connecting, setConnecting] = useState<string | null>(null);
@@ -314,8 +318,8 @@ bun run fmt
 **Step 3: Commit**
 
 ```bash
-git add apps/mesh/src/web/components/onboarding/hire-agent-drawer.tsx
-git commit -m "feat(onboarding): add HireAgentDrawer component"
+git add apps/mesh/src/web/components/onboarding/hire-agent-modal.tsx
+git commit -m "feat(onboarding): add HireAgentModal component"
 ```
 
 ---
@@ -337,7 +341,7 @@ Full rewrite. Replaces 3-question flow with: welcome + expandable diagnostic + o
  *   recommend → hiring → proposed → approved
  *
  * Stage "recommend": welcome + diagnostic card + Blog Post Generator card
- * Stage "hiring":    HireAgentDrawer open
+ * Stage "hiring":    HireAgentModal open
  * Stage "proposed":  task proposal cards (3 blog topics)
  * Stage "approved":  done state + invite CTA
  */
@@ -346,7 +350,7 @@ import { useState } from "react";
 import { Button } from "@deco/ui/components/button.tsx";
 import { MemoizedMarkdown } from "./markdown.tsx";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
-import { HireAgentDrawer } from "@/web/components/onboarding/hire-agent-drawer.tsx";
+import { HireAgentModal } from "@/web/components/onboarding/hire-agent-modal.tsx";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowRight,
@@ -720,7 +724,7 @@ export function OnboardingMessages({
       )}
 
       {/* Hire drawer */}
-      <HireAgentDrawer
+      <HireAgentModal
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
         orgName={orgName}
