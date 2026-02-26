@@ -9,7 +9,6 @@
 import { useState } from "react";
 import { Button } from "@deco/ui/components/button.tsx";
 import { MemoizedMarkdown } from "./markdown.tsx";
-import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { HireAgentModal } from "@/web/components/onboarding/hire-agent-modal.tsx";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -17,7 +16,7 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
-  FileText,
+  File06,
 } from "@untitledui/icons";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -209,7 +208,7 @@ function AgentRecommendationCard({
       {/* Header */}
       <div className="flex items-start gap-3">
         <div className="flex items-center justify-center size-12 rounded-2xl bg-violet-100 text-violet-600 shrink-0">
-          <FileText size={22} />
+          <File06 size={22} />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-base font-semibold text-foreground">
@@ -287,7 +286,9 @@ function TaskProposalCards({
         >
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <p className="text-sm font-medium text-foreground">{task.title}</p>
+              <p className="text-sm font-medium text-foreground">
+                {task.title}
+              </p>
               <CompetitionBadge level={task.competition} />
             </div>
             <div className="flex items-center gap-2 mt-1">
@@ -358,9 +359,7 @@ export interface OnboardingMessagesProps {
   onComplete: () => void;
 }
 
-export function OnboardingMessages({
-  orgName,
-}: OnboardingMessagesProps) {
+export function OnboardingMessages({ orgName }: OnboardingMessagesProps) {
   const domain = orgName.replace(/-/g, ".").toLowerCase();
   const navigate = useNavigate();
 

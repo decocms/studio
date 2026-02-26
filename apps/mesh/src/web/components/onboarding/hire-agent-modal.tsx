@@ -14,11 +14,7 @@ import {
   DialogTitle,
 } from "@deco/ui/components/dialog.tsx";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
-import {
-  Check,
-  FileText,
-  Package,
-} from "@untitledui/icons";
+import { Check, File06, Package } from "@untitledui/icons";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -163,7 +159,7 @@ export function HireAgentModal({
             {/* Agent icon + identity */}
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-center size-14 rounded-2xl bg-violet-100 text-violet-600">
-                <FileText size={26} />
+                <File06 size={26} />
               </div>
               <div>
                 <DialogTitle className="text-base font-semibold text-foreground">

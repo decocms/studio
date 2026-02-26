@@ -12,7 +12,7 @@ import {
   CheckDone01,
   Container,
   FaceSmile,
-  FileText,
+  File06,
   Folder,
   Home02,
   SearchMd,
@@ -295,7 +295,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
   const blogItem: NavigationSidebarItem = {
     key: "blog",
     label: "Blog",
-    icon: <FileText />,
+    icon: <File06 />,
     isActive: isActiveRoute("blog"),
     onClick: () =>
       navigate({

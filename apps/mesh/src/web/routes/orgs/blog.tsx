@@ -9,7 +9,7 @@ import { useState } from "react";
 import { Page } from "@/web/components/page";
 import { Button } from "@deco/ui/components/button.tsx";
 import { useSearch } from "@tanstack/react-router";
-import { Check, FileText, Send01 } from "@untitledui/icons";
+import { Check, File06, Send01 } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -197,10 +197,7 @@ function renderContent(content: string) {
       elements.push(<div key={key++} className="h-2" />);
     } else {
       elements.push(
-        <p
-          key={key++}
-          className="text-sm text-foreground leading-relaxed mb-0"
-        >
+        <p key={key++} className="text-sm text-foreground leading-relaxed mb-0">
           {line}
         </p>,
       );
@@ -291,7 +288,7 @@ function ThinkingDots() {
   return (
     <div className="flex items-start gap-3">
       <div className="shrink-0 flex items-center justify-center size-7 rounded-xl bg-violet-100 text-violet-600">
-        <FileText size={14} />
+        <File06 size={14} />
       </div>
       <div className="rounded-2xl rounded-tl-sm bg-muted px-4 py-3">
         <span className="flex gap-1">
@@ -345,7 +342,7 @@ function AgentChat() {
       {/* Header */}
       <div className="shrink-0 flex items-center gap-2.5 border-b border-border px-4 py-3">
         <div className="flex items-center justify-center size-7 rounded-xl bg-violet-100 text-violet-600">
-          <FileText size={14} />
+          <File06 size={14} />
         </div>
         <span className="text-sm font-semibold text-foreground">
           Blog Post Generator
@@ -358,7 +355,7 @@ function AgentChat() {
           msg.role === "agent" ? (
             <div key={msg.id} className="flex items-start gap-3">
               <div className="shrink-0 flex items-center justify-center size-7 rounded-xl bg-violet-100 text-violet-600">
-                <FileText size={14} />
+                <File06 size={14} />
               </div>
               <div className="rounded-2xl rounded-tl-sm bg-muted px-4 py-2.5 text-sm text-foreground max-w-[85%]">
                 {msg.text}
@@ -409,7 +406,7 @@ export default function BlogPage() {
     taskId?: string;
   };
 
-  const draft = DRAFTS[taskId ?? "bp-1"] ?? DRAFTS["bp-1"];
+  const draft = (DRAFTS[taskId ?? "bp-1"] ?? DRAFTS["bp-1"]) as Draft;
 
   return (
     <Page>
