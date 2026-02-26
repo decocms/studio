@@ -1,29 +1,22 @@
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { CronScheduleSelector } from "./cron-schedule-selector";
 import { Input } from "@deco/ui/components/input.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@deco/ui/components/select.tsx";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
 import {
-  isDecopilot,
-  useConnections,
-  useMCPClientOptional,
-  useMCPToolsListQuery,
-  useProjectContext,
-  useVirtualMCPs,
-} from "@decocms/mesh-sdk";
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@deco/ui/components/command.tsx";
+import { cn } from "@deco/ui/lib/utils.ts";
+import { isDecopilot, useConnections, useVirtualMCPs } from "@decocms/mesh-sdk";
 import {
   Check,
   ChevronSelectorVertical,
@@ -91,14 +84,14 @@ export function PillToggle<T extends string>({
   options: { value: T; label: string }[];
 }) {
   return (
-    <div className="inline-flex self-start rounded-lg bg-muted p-0.5">
+    <div className="inline-flex self-start rounded-lg bg-muted/50 p-0.5 gap-0.5">
       {options.map((option) => (
         <button
           key={option.value}
           type="button"
           onClick={() => onChange(option.value)}
           className={cn(
-            "rounded-md px-3 py-1.5 text-sm font-medium transition-all duration-150",
+            "rounded-md px-3 py-1.5 text-[13px] font-medium transition-all duration-150",
             value === option.value
               ? "bg-background text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground",
@@ -138,136 +131,174 @@ export function CronPreview({ expression }: { expression: string }) {
   }
 }
 
-// ---- ConnectionSelector (rich, with icons) ----
+// ---- EventSourceList ----
 
-export function ConnectionSelector({
-  value,
-  onChange,
+function EventSourceList({
+  selectedId,
+  onSelect,
 }: {
-  value: string;
-  onChange: (v: string) => void;
+  selectedId: string | null;
+  onSelect: (connectionId: string) => void;
 }) {
   const connections = useConnections();
-  const selected = connections.find((c) => c.id === value);
 
-  return (
-    <Select
-      value={value || "none"}
-      onValueChange={(v) => onChange(v === "none" ? "" : v)}
-    >
-      <SelectTrigger className="w-full">
-        <SelectValue placeholder="Select a connection...">
-          {selected ? (
-            <div className="flex items-center gap-2">
-              {selected.icon ? (
-                <img
-                  src={selected.icon}
-                  alt={selected.title}
-                  className="w-4 h-4 rounded shrink-0"
-                />
-              ) : (
-                <div className="w-4 h-4 rounded bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center text-[10px] font-semibold text-primary shrink-0">
-                  {selected.title.slice(0, 1).toUpperCase()}
-                </div>
-              )}
-              <span className="truncate">{selected.title}</span>
-            </div>
-          ) : (
-            "Select a connection..."
-          )}
-        </SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="none">No connection</SelectItem>
-        {connections.map((connection) => (
-          <SelectItem key={connection.id} value={connection.id}>
-            <div className="flex items-center gap-2">
-              {connection.icon ? (
-                <img
-                  src={connection.icon}
-                  alt={connection.title}
-                  className="w-4 h-4 rounded"
-                />
-              ) : (
-                <div className="w-4 h-4 rounded bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center text-[10px] font-semibold text-primary">
-                  {connection.title.slice(0, 1).toUpperCase()}
-                </div>
-              )}
-              <span>{connection.title}</span>
-            </div>
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-}
-
-// ---- ToolSelector (with loading state) ----
-
-export function ToolSelector({
-  connectionId,
-  value,
-  onChange,
-}: {
-  connectionId: string;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  const { org } = useProjectContext();
-  const client = useMCPClientOptional({
-    connectionId: connectionId || undefined,
-    orgId: org.id,
-  });
-
-  const toolsQuery = useMCPToolsListQuery({
-    client: client!,
-    enabled: client !== null,
-  });
-
-  const tools = toolsQuery.data?.tools ?? [];
-  const selected = tools.find((t) => t.name === value);
-
-  if (toolsQuery.isLoading) {
+  if (connections.length === 0) {
     return (
-      <div className="flex items-center gap-2 h-9 rounded-md border border-input px-3 text-sm text-muted-foreground">
-        <Loading01 size={14} className="animate-spin" />
-        Loading tools...
-      </div>
+      <p className="text-sm text-muted-foreground py-2">
+        No connections available
+      </p>
     );
   }
 
   return (
-    <Select
-      value={value || "none"}
-      onValueChange={(v) => onChange(v === "none" ? "" : v)}
-    >
-      <SelectTrigger className="w-full">
-        <SelectValue placeholder="Select a tool...">
-          {selected
-            ? (selected.annotations?.title ?? selected.name)
-            : "Select a tool..."}
-        </SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="none">No tool</SelectItem>
-        {tools.map((tool) => (
-          <SelectItem key={tool.name} value={tool.name}>
-            <div className="flex flex-col gap-0.5">
-              <span>{tool.annotations?.title ?? tool.name}</span>
-              {tool.description && (
-                <span className="text-xs text-muted-foreground line-clamp-1">
-                  {tool.description}
-                </span>
-              )}
-            </div>
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <div className="flex flex-col rounded-lg border border-border/60 overflow-hidden divide-y divide-border/30 max-h-[240px] overflow-y-auto">
+      {connections.map((conn) => (
+        <button
+          key={conn.id}
+          type="button"
+          onClick={() => onSelect(conn.id)}
+          className={cn(
+            "flex items-center gap-3 px-3 py-2.5 text-sm transition-colors text-left shrink-0",
+            selectedId === conn.id ? "bg-accent/60" : "hover:bg-accent/30",
+          )}
+        >
+          <IntegrationIcon
+            icon={conn.icon}
+            name={conn.title}
+            size="xs"
+            className="shrink-0"
+          />
+          <span className="text-foreground">{conn.title}</span>
+        </button>
+      ))}
+    </div>
   );
 }
 
-// ---- AgentSelector (searchable Popover grid) ----
+// ---- ToolCombobox ----
+
+function ToolComboboxContent({
+  value,
+  connectionId,
+  onChange,
+}: {
+  value: string;
+  connectionId: string;
+  onChange: (toolName: string, connId: string) => void;
+}) {
+  const connections = useConnections();
+  const [open, setOpen] = useState(false);
+
+  // Build tool groups from connections that have tools
+  const groups = connections
+    .filter((c) => c.tools && c.tools.length > 0)
+    .map((c) => ({
+      connection: c,
+      tools: c.tools!,
+    }));
+
+  // Find selected tool info
+  const selectedConnection = connections.find((c) => c.id === connectionId);
+  const selectedTool = selectedConnection?.tools?.find((t) => t.name === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "flex items-center gap-3 w-full rounded-lg border border-input/60 px-3 py-2.5 text-sm",
+            "hover:border-input hover:bg-accent/30 transition-all text-left cursor-pointer",
+            !selectedTool && "text-muted-foreground",
+          )}
+        >
+          {selectedTool ? (
+            <div className="flex items-center gap-2.5 flex-1 min-w-0">
+              <IntegrationIcon
+                icon={selectedConnection?.icon}
+                name={selectedConnection?.title ?? ""}
+                size="2xs"
+                className="shrink-0"
+              />
+              <div className="flex flex-col min-w-0">
+                <span className="text-sm text-foreground truncate">
+                  {selectedTool.annotations?.title ?? selectedTool.name}
+                </span>
+                {selectedTool.description && (
+                  <span className="text-xs text-muted-foreground truncate">
+                    {selectedTool.description}
+                  </span>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 flex-1">
+              <SearchMd size={16} className="shrink-0 opacity-40" />
+              <span>Search for a tool...</span>
+            </div>
+          )}
+          <ChevronSelectorVertical size={16} className="shrink-0 opacity-40" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[480px] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Search tools across all connections..." />
+          <CommandList className="max-h-[350px]">
+            <CommandEmpty>No tools found</CommandEmpty>
+            {groups.map(({ connection, tools }) => (
+              <CommandGroup
+                key={connection.id}
+                heading={
+                  <div className="flex items-center gap-2">
+                    <IntegrationIcon
+                      icon={connection.icon}
+                      name={connection.title}
+                      size="2xs"
+                      className="shrink-0"
+                    />
+                    <span>{connection.title}</span>
+                  </div>
+                }
+              >
+                {tools.map((tool) => {
+                  const isSelected =
+                    value === tool.name && connectionId === connection.id;
+                  return (
+                    <CommandItem
+                      key={`${connection.id}:${tool.name}`}
+                      value={`${connection.title} ${tool.annotations?.title ?? tool.name} ${tool.description ?? ""}`}
+                      onSelect={() => {
+                        onChange(tool.name, connection.id);
+                        setOpen(false);
+                      }}
+                      className="py-2"
+                    >
+                      <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                        <span className="text-sm">
+                          {tool.annotations?.title ?? tool.name}
+                        </span>
+                        {tool.description && (
+                          <span className="text-xs text-muted-foreground line-clamp-1">
+                            {tool.description}
+                          </span>
+                        )}
+                      </div>
+                      {isSelected && (
+                        <Check size={16} className="shrink-0 text-foreground" />
+                      )}
+                    </CommandItem>
+                  );
+                })}
+              </CommandGroup>
+            ))}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ---- AgentSelector ----
 
 export function AgentSelector({
   value,
@@ -315,13 +346,13 @@ export function AgentSelector({
         <button
           type="button"
           className={cn(
-            "flex items-center gap-2 h-9 w-full rounded-md border border-input bg-background px-3 text-sm",
-            "hover:bg-accent/50 transition-colors text-left",
+            "flex items-center gap-3 w-full rounded-lg border border-input/60 px-3 py-2.5 text-sm",
+            "hover:border-input hover:bg-accent/30 transition-all text-left cursor-pointer",
             !selected && "text-muted-foreground",
           )}
         >
           {selected ? (
-            <div className="flex items-center gap-2 flex-1 min-w-0">
+            <div className="flex items-center gap-2.5 flex-1 min-w-0">
               <IntegrationIcon
                 icon={selected.icon}
                 name={selected.title}
@@ -329,15 +360,15 @@ export function AgentSelector({
                 fallbackIcon={<Users03 size={10} />}
                 className="rounded shrink-0"
               />
-              <span className="truncate">{selected.title}</span>
+              <span className="text-foreground truncate">{selected.title}</span>
             </div>
           ) : (
-            <span className="flex-1">Select an agent...</span>
+            <div className="flex items-center gap-2 flex-1">
+              <SearchMd size={16} className="shrink-0 opacity-40" />
+              <span>Select an agent...</span>
+            </div>
           )}
-          <ChevronSelectorVertical
-            size={16}
-            className="shrink-0 text-muted-foreground"
-          />
+          <ChevronSelectorVertical size={16} className="shrink-0 opacity-40" />
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-[480px] p-0 overflow-hidden" align="start">
@@ -427,7 +458,7 @@ export function AgentSelector({
 
 export function SelectorFallback() {
   return (
-    <div className="flex items-center gap-2 h-9 rounded-md border border-input px-3 text-sm text-muted-foreground">
+    <div className="flex items-center gap-2 h-9 rounded-lg border border-input/60 px-3 text-sm text-muted-foreground">
       <Loading01 size={14} className="animate-spin" />
       Loading...
     </div>
@@ -454,11 +485,21 @@ export function TriggerFormFields({
   const toolName = useWatch({ control: form.control, name: "toolName" });
   const agentId = useWatch({ control: form.control, name: "agentId" });
 
+  // Track which connection is selected as event source (visual state)
+  const [eventSourceId, setEventSourceId] = useState<string | null>(null);
+
+  const handleEventSourceSelect = (connId: string) => {
+    setEventSourceId(connId);
+  };
+
   return (
-    <div className="flex flex-col gap-6">
-      {/* When section */}
-      <div className="flex flex-col gap-4">
-        <Label className="text-sm font-semibold text-foreground">When</Label>
+    <div className="flex flex-col gap-8">
+      {/* ---- When ---- */}
+      <div className="flex flex-col gap-5">
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          When
+        </span>
+
         <PillToggle
           value={triggerType}
           onChange={(v) => form.setValue("triggerType", v, SET_OPTS)}
@@ -468,43 +509,65 @@ export function TriggerFormFields({
           ]}
         />
 
+        {/* Schedule config */}
         {triggerType === "cron" && (
-          <div className="flex flex-col gap-2 animate-in fade-in slide-in-from-top-1 duration-150">
+          <div className="flex flex-col gap-3 animate-in fade-in slide-in-from-top-1 duration-150">
             <CronScheduleSelector
               value={cronExpression}
               onChange={(v) => form.setValue("cronExpression", v, SET_OPTS)}
             />
-            <CronPreview expression={cronExpression} />
           </div>
         )}
 
+        {/* Event config */}
         {triggerType === "event" && (
-          <div className="flex flex-col gap-3 animate-in fade-in slide-in-from-top-1 duration-150">
+          <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-top-1 duration-150">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="eventType">Event type</Label>
-              <Input
-                id="eventType"
-                placeholder="e.g., order.created"
-                {...form.register("eventType")}
-              />
+              <span className="text-[13px] text-muted-foreground">
+                Triggered in
+              </span>
+              <Suspense fallback={<SelectorFallback />}>
+                <EventSourceList
+                  selectedId={eventSourceId}
+                  onSelect={handleEventSourceSelect}
+                />
+              </Suspense>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="eventFilter">Filter (optional)</Label>
-              <Input
-                id="eventFilter"
-                placeholder="JSONPath filter on event data"
-                {...form.register("eventFilter")}
-              />
+
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs text-muted-foreground">
+                  Event type
+                </span>
+                <Input
+                  placeholder="e.g., message_received"
+                  {...form.register("eventType")}
+                  className="h-8 text-sm"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs text-muted-foreground">
+                  Filter (optional)
+                </span>
+                <Input
+                  placeholder="JSONPath filter on event data"
+                  {...form.register("eventFilter")}
+                  className="h-8 text-sm"
+                />
+              </div>
             </div>
           </div>
         )}
       </div>
 
-      <div className="border-t border-border" />
+      <div className="border-t border-border/40" />
 
-      {/* Then section */}
-      <div className="flex flex-col gap-4">
-        <Label className="text-sm font-semibold text-foreground">Then</Label>
+      {/* ---- Then ---- */}
+      <div className="flex flex-col gap-5">
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          Then
+        </span>
+
         <PillToggle
           value={actionType}
           onChange={(v) => form.setValue("actionType", v, SET_OPTS)}
@@ -516,63 +579,51 @@ export function TriggerFormFields({
 
         {actionType === "tool_call" && (
           <div className="flex flex-col gap-3 animate-in fade-in slide-in-from-top-1 duration-150">
-            <div className="flex flex-col gap-1.5">
-              <Label>Connection</Label>
-              <Suspense fallback={<SelectorFallback />}>
-                <ConnectionSelector
-                  value={connectionId}
-                  onChange={(v) => {
-                    form.setValue("connectionId", v, SET_OPTS);
-                    form.setValue("toolName", "", SET_OPTS);
-                  }}
-                />
-              </Suspense>
-            </div>
-            {connectionId && (
+            <Suspense fallback={<SelectorFallback />}>
+              <ToolComboboxContent
+                value={toolName}
+                connectionId={connectionId}
+                onChange={(tool, conn) => {
+                  form.setValue("toolName", tool, SET_OPTS);
+                  form.setValue("connectionId", conn, SET_OPTS);
+                }}
+              />
+            </Suspense>
+            {toolName && (
               <div className="flex flex-col gap-1.5 animate-in fade-in duration-150">
-                <Label>Tool</Label>
-                <Suspense fallback={<SelectorFallback />}>
-                  <ToolSelector
-                    connectionId={connectionId}
-                    value={toolName}
-                    onChange={(v) => form.setValue("toolName", v, SET_OPTS)}
-                  />
-                </Suspense>
+                <span className="text-xs text-muted-foreground">
+                  Arguments (optional JSON)
+                </span>
+                <Textarea
+                  placeholder='{"channel": "#general", "message": "Hello"}'
+                  rows={3}
+                  className="font-mono text-xs resize-none"
+                  {...form.register("toolArguments")}
+                />
               </div>
             )}
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="toolArguments">Arguments (optional JSON)</Label>
-              <Textarea
-                id="toolArguments"
-                placeholder='{"channel": "#general", "message": "Hello"}'
-                rows={3}
-                className="font-mono text-xs"
-                {...form.register("toolArguments")}
-              />
-            </div>
           </div>
         )}
 
         {actionType === "agent_prompt" && (
           <div className="flex flex-col gap-3 animate-in fade-in slide-in-from-top-1 duration-150">
-            <div className="flex flex-col gap-1.5">
-              <Label>Agent</Label>
-              <Suspense fallback={<SelectorFallback />}>
-                <AgentSelector
-                  value={agentId}
-                  onChange={(v) => form.setValue("agentId", v, SET_OPTS)}
-                />
-              </Suspense>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="agentPrompt">Prompt</Label>
-              <Textarea
-                id="agentPrompt"
-                placeholder="Check the latest emails and summarize for the team"
-                rows={3}
-                {...form.register("agentPrompt")}
+            <Suspense fallback={<SelectorFallback />}>
+              <AgentSelector
+                value={agentId}
+                onChange={(v) => form.setValue("agentId", v, SET_OPTS)}
               />
-            </div>
+            </Suspense>
+            {agentId && (
+              <div className="flex flex-col gap-1.5 animate-in fade-in duration-150">
+                <span className="text-xs text-muted-foreground">Prompt</span>
+                <Textarea
+                  placeholder="Check the latest emails and summarize for the team"
+                  rows={3}
+                  className="resize-none"
+                  {...form.register("agentPrompt")}
+                />
+              </div>
+            )}
           </div>
         )}
       </div>

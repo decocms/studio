@@ -14,23 +14,12 @@ import {
 } from "@deco/ui/components/breadcrumb.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
 import { Switch } from "@deco/ui/components/switch.tsx";
 import {
   ResizablePanelGroup,
   ResizablePanel,
   ResizableHandle,
 } from "@deco/ui/components/resizable.tsx";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@deco/ui/components/alert-dialog.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { KEYS } from "@/web/lib/query-keys";
 import {
@@ -46,14 +35,8 @@ import {
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import {
-  Clock,
-  FlipBackward,
-  Loading01,
-  Save01,
-  Trash01,
-} from "@untitledui/icons";
-import { Suspense, useState } from "react";
+import { Clock, FlipBackward, Loading01, Save01 } from "@untitledui/icons";
+import { Suspense } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { Cron } from "croner";
@@ -201,13 +184,10 @@ function TriggerActivityPanel({
 
 function TriggerDetailContent() {
   const { org, locator } = useProjectContext();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { triggerId } = useParams({ strict: false }) as {
     triggerId: string;
   };
-  const [deleteOpen, setDeleteOpen] = useState(false);
-
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
@@ -284,26 +264,6 @@ function TriggerDetailContent() {
     },
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async () => {
-      await client.callTool({
-        name: "TRIGGER_DELETE",
-        arguments: { id: triggerId },
-      });
-    },
-    onSuccess: () => {
-      toast.success("Trigger deleted");
-      queryClient.invalidateQueries({ queryKey: KEYS.triggers(locator) });
-      navigate({
-        to: "/$org/$project/triggers",
-        params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
-      });
-    },
-    onError: (err) => {
-      toast.error(`Failed to delete trigger: ${err.message}`);
-    },
-  });
-
   const toggleMutation = useMutation({
     mutationFn: async (enabled: boolean) => {
       await client.callTool({
@@ -325,28 +285,6 @@ function TriggerDetailContent() {
 
   return (
     <Page>
-      {/* Delete Confirmation */}
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Trigger?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete this
-              trigger.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteMutation.mutate()}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
       {/* Header */}
       <Page.Header>
         <Page.Header.Left>
@@ -373,24 +311,6 @@ function TriggerDetailContent() {
           </Breadcrumb>
         </Page.Header.Left>
         <Page.Header.Right>
-          <div className="flex items-center gap-2">
-            <Switch
-              checked={trigger.enabled}
-              onCheckedChange={(checked) => toggleMutation.mutate(checked)}
-              disabled={toggleMutation.isPending}
-            />
-            <span className="text-sm text-muted-foreground">
-              {trigger.enabled ? "Enabled" : "Disabled"}
-            </span>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setDeleteOpen(true)}
-          >
-            <Trash01 size={14} />
-            Delete
-          </Button>
           {isDirty && (
             <>
               <Button
@@ -424,19 +344,30 @@ function TriggerDetailContent() {
         <ResizablePanelGroup direction="horizontal" className="h-full">
           {/* Left panel: form */}
           <ResizablePanel defaultSize={55} minSize={35}>
-            <div className="h-full overflow-auto p-5">
+            <div className="h-full overflow-auto">
               <form
                 onSubmit={onSubmit}
-                className="max-w-2xl flex flex-col gap-5"
+                className="max-w-xl mx-auto flex flex-col gap-8 pt-10 pb-20 px-6"
               >
-                {/* Name */}
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="title">Name</Label>
+                {/* Inline editable title + enable toggle */}
+                <div className="flex items-center gap-3">
                   <Input
-                    id="title"
-                    placeholder="e.g., Daily email summary"
                     {...form.register("title")}
+                    className="h-auto py-0.5 text-lg! font-medium leading-7 px-1 -mx-1 border-transparent hover:bg-input/25 focus:border-input bg-transparent transition-all placeholder:text-muted-foreground/40 placeholder:font-normal flex-1 min-w-0"
+                    placeholder="Untitled trigger"
                   />
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Switch
+                      checked={trigger.enabled}
+                      onCheckedChange={(checked) =>
+                        toggleMutation.mutate(checked)
+                      }
+                      disabled={toggleMutation.isPending}
+                    />
+                    <span className="text-sm text-muted-foreground">
+                      {trigger.enabled ? "Enabled" : "Disabled"}
+                    </span>
+                  </div>
                 </div>
 
                 <TriggerFormFields form={form} />
@@ -448,7 +379,7 @@ function TriggerDetailContent() {
 
           {/* Right panel: activity */}
           <ResizablePanel defaultSize={45} minSize={25}>
-            <div className="h-full overflow-auto border-l border-border">
+            <div className="h-full overflow-auto border-l border-border/50">
               <TriggerActivityPanel trigger={trigger} triggerId={triggerId} />
             </div>
           </ResizablePanel>

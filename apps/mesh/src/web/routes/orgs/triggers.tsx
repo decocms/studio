@@ -1,5 +1,14 @@
+import { CollectionDisplayButton } from "@/web/components/collections/collection-display-button.tsx";
+import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
+import { CollectionTableWrapper } from "@/web/components/collections/collection-table-wrapper.tsx";
+import { ConnectionCard } from "@/web/components/connections/connection-card.tsx";
+import { EmptyState } from "@/web/components/empty-state.tsx";
+import { ErrorBoundary } from "@/web/components/error-boundary";
 import { Page } from "@/web/components/page";
 import type { TriggerEntity } from "@/web/components/triggers/trigger-form";
+import { useListState } from "@/web/hooks/use-list-state";
+import { KEYS } from "@/web/lib/query-keys";
+import { formatTimeAgo } from "@/web/lib/format-time";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -8,9 +17,23 @@ import {
 } from "@deco/ui/components/breadcrumb.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Switch } from "@deco/ui/components/switch.tsx";
-import { EmptyState } from "@/web/components/empty-state.tsx";
-import { ErrorBoundary } from "@/web/components/error-boundary";
-import { KEYS } from "@/web/lib/query-keys";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@deco/ui/components/alert-dialog.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@deco/ui/components/dropdown-menu.tsx";
+import type { TableColumn } from "@/web/components/collections/collection-table.tsx";
 import {
   SELF_MCP_ALIAS_ID,
   ORG_ADMIN_PROJECT_SLUG,
@@ -25,14 +48,18 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import {
   Clock,
+  DotsVertical,
+  Eye,
   Lightning01,
-  ArrowRight,
   Loading01,
   Plus,
+  Trash01,
 } from "@untitledui/icons";
-import { Suspense } from "react";
+import { Suspense, useReducer } from "react";
 import { Cron } from "croner";
 import { toast } from "sonner";
+
+// ---- Helpers ----
 
 function cronToHuman(expr: string): string {
   try {
@@ -71,15 +98,12 @@ function cronToHuman(expr: string): string {
     ) {
       return "Every minute";
     }
-
     if (min?.startsWith("*/") && hour === "*") {
       return `Every ${min.slice(2)} minutes`;
     }
-
     if (min !== "*" && hour === "*" && dayOfMonth === "*") {
       return `Every hour at :${min?.padStart(2, "0")}`;
     }
-
     if (hour?.startsWith("*/")) {
       return `Every ${hour.slice(2)} hours`;
     }
@@ -89,27 +113,20 @@ function cronToHuman(expr: string): string {
         ? `${hour?.padStart(2, "0")}:${min?.padStart(2, "0")}`
         : null;
 
-    if (dayOfWeek === "1-5" && timeStr) {
-      return `Weekdays at ${timeStr}`;
-    }
-
+    if (dayOfWeek === "1-5" && timeStr) return `Weekdays at ${timeStr}`;
     if (dayOfWeek !== "*" && timeStr) {
       const days = dayOfWeek.split(",").map((d) => dayNames[Number(d)] ?? d);
       return `${days.join(", ")} at ${timeStr}`;
     }
-
     if (dayOfMonth !== "*" && month === "*" && timeStr) {
       return `Day ${dayOfMonth} of every month at ${timeStr}`;
     }
-
     if (dayOfMonth !== "*" && month !== "*" && timeStr) {
       return `${monthNames[Number(month)] ?? month} ${dayOfMonth} at ${timeStr}`;
     }
-
     if (timeStr && dayOfMonth === "*" && month === "*" && dayOfWeek === "*") {
       return `Daily at ${timeStr}`;
     }
-
     return expr;
   } catch {
     return expr;
@@ -137,89 +154,53 @@ function getNextRun(expr: string): string | null {
   }
 }
 
-function describeAction(trigger: TriggerEntity): string {
-  if (trigger.actionType === "tool_call") {
-    return `Call ${trigger.toolName ?? "tool"}${trigger.connectionId ? " on connection" : ""}`;
+function triggerDescription(trigger: TriggerEntity): string {
+  if (trigger.triggerType === "cron" && trigger.cronExpression) {
+    return cronToHuman(trigger.cronExpression);
   }
-  return "Run agent with prompt";
+  if (trigger.eventType) {
+    return `On "${trigger.eventType}" event`;
+  }
+  return "Not configured";
 }
 
-function TriggerCard({
-  trigger,
-  onToggle,
-  isToggling,
-  onClick,
-}: {
-  trigger: TriggerEntity;
-  onToggle: () => void;
-  isToggling: boolean;
-  onClick: () => void;
-}) {
-  const nextRun =
-    trigger.triggerType === "cron" && trigger.cronExpression
-      ? getNextRun(trigger.cronExpression)
-      : null;
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="w-full text-left rounded-xl border border-border bg-card p-4 transition-colors duration-150 hover:bg-accent/50 cursor-pointer"
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5 min-w-0 flex-1">
-          {trigger.triggerType === "cron" ? (
-            <Clock size={16} className="shrink-0 text-muted-foreground" />
-          ) : (
-            <Lightning01 size={16} className="shrink-0 text-muted-foreground" />
-          )}
-          <div className="flex flex-col min-w-0">
-            <span className="text-sm font-medium text-foreground truncate">
-              {trigger.title || "Untitled trigger"}
-            </span>
-            <span className="text-xs text-muted-foreground truncate">
-              {trigger.triggerType === "cron" && trigger.cronExpression
-                ? cronToHuman(trigger.cronExpression)
-                : trigger.eventType
-                  ? `On "${trigger.eventType}" event`
-                  : "Not configured"}
-            </span>
-          </div>
-        </div>
-        <div
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => e.stopPropagation()}
-        >
-          <Switch
-            checked={trigger.enabled}
-            onCheckedChange={onToggle}
-            disabled={isToggling}
-          />
-        </div>
-      </div>
-
-      <div className="flex items-center gap-2 mt-2 ml-[26px]">
-        <ArrowRight size={14} className="shrink-0 text-muted-foreground" />
-        <span className="text-xs text-muted-foreground truncate">
-          {describeAction(trigger)}
-        </span>
-        {nextRun && (
-          <>
-            <span className="text-muted-foreground/40">&#183;</span>
-            <span className="text-xs text-muted-foreground">
-              Next: {nextRun}
-            </span>
-          </>
-        )}
-      </div>
-    </button>
-  );
+function actionDescription(trigger: TriggerEntity): string {
+  if (trigger.actionType === "tool_call") {
+    return trigger.toolName ?? "Call a tool";
+  }
+  return "Run an agent";
 }
+
+// ---- Dialog state ----
+
+type DialogState =
+  | { mode: "idle" }
+  | { mode: "deleting"; trigger: TriggerEntity };
+
+type DialogAction =
+  | { type: "delete"; trigger: TriggerEntity }
+  | { type: "close" };
+
+function dialogReducer(_state: DialogState, action: DialogAction): DialogState {
+  switch (action.type) {
+    case "delete":
+      return { mode: "deleting", trigger: action.trigger };
+    case "close":
+      return { mode: "idle" };
+  }
+}
+
+// ---- Main content ----
 
 function TriggersContent() {
   const { org, locator } = useProjectContext();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  const listState = useListState({
+    namespace: org.slug,
+    resource: "triggers",
+  });
 
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -241,7 +222,21 @@ function TriggersContent() {
     },
   });
 
-  const triggers = data?.triggers ?? [];
+  const allTriggers = data?.triggers ?? [];
+
+  // Client-side search filter
+  const triggers = listState.searchTerm
+    ? allTriggers.filter((t) => {
+        const s = listState.searchTerm.toLowerCase();
+        return (
+          (t.title ?? "").toLowerCase().includes(s) ||
+          triggerDescription(t).toLowerCase().includes(s) ||
+          actionDescription(t).toLowerCase().includes(s)
+        );
+      })
+    : allTriggers;
+
+  const [dialogState, dispatch] = useReducer(dialogReducer, { mode: "idle" });
 
   const toggleMutation = useMutation({
     mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
@@ -256,6 +251,22 @@ function TriggersContent() {
     onError: (err) => {
       toast.error(`Failed to toggle trigger: ${err.message}`);
       queryClient.invalidateQueries({ queryKey: KEYS.triggers(locator) });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await client.callTool({
+        name: "TRIGGER_DELETE",
+        arguments: { id },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: KEYS.triggers(locator) });
+      toast.success("Trigger deleted");
+    },
+    onError: (err) => {
+      toast.error(`Failed to delete trigger: ${err.message}`);
     },
   });
 
@@ -291,8 +302,191 @@ function TriggersContent() {
     },
   });
 
+  const confirmDelete = async () => {
+    if (dialogState.mode !== "deleting") return;
+    const id = dialogState.trigger.id;
+    dispatch({ type: "close" });
+    try {
+      await deleteMutation.mutateAsync(id);
+    } catch {
+      // Error toast handled by mutation
+    }
+  };
+
+  const navigateToTrigger = (trigger: TriggerEntity) => {
+    navigate({
+      to: "/$org/$project/triggers/$triggerId",
+      params: {
+        org: org.slug,
+        project: ORG_ADMIN_PROJECT_SLUG,
+        triggerId: trigger.id,
+      },
+    });
+  };
+
+  const columns: TableColumn<TriggerEntity>[] = [
+    {
+      id: "title",
+      header: "Name",
+      render: (trigger) => (
+        <div className="flex items-center gap-2.5 min-w-0">
+          {trigger.triggerType === "cron" ? (
+            <Clock size={16} className="shrink-0 text-muted-foreground" />
+          ) : (
+            <Lightning01 size={16} className="shrink-0 text-muted-foreground" />
+          )}
+          <span className="text-sm font-medium text-foreground truncate">
+            {trigger.title || "Untitled trigger"}
+          </span>
+        </div>
+      ),
+      cellClassName: "w-48 min-w-0 shrink-0",
+      sortable: true,
+    },
+    {
+      id: "triggerType",
+      header: "Schedule",
+      render: (trigger) => (
+        <span className="text-sm text-foreground truncate">
+          {triggerDescription(trigger)}
+        </span>
+      ),
+      cellClassName: "flex-1 min-w-0",
+      sortable: true,
+    },
+    {
+      id: "actionType",
+      header: "Action",
+      render: (trigger) => (
+        <span className="text-sm text-muted-foreground truncate">
+          {actionDescription(trigger)}
+        </span>
+      ),
+      cellClassName: "w-40 shrink-0",
+      sortable: true,
+    },
+    {
+      id: "enabled",
+      header: "Enabled",
+      render: (trigger) => (
+        <div onClick={(e) => e.stopPropagation()}>
+          <Switch
+            checked={trigger.enabled}
+            onCheckedChange={() =>
+              toggleMutation.mutate({
+                id: trigger.id,
+                enabled: !trigger.enabled,
+              })
+            }
+            disabled={toggleMutation.isPending}
+          />
+        </div>
+      ),
+      cellClassName: "w-20 shrink-0",
+    },
+    {
+      id: "updatedAt",
+      header: "Updated",
+      render: (trigger) => (
+        <span className="text-xs text-muted-foreground whitespace-nowrap">
+          {trigger.updatedAt ? formatTimeAgo(new Date(trigger.updatedAt)) : "—"}
+        </span>
+      ),
+      cellClassName: "w-24 shrink-0",
+      sortable: true,
+    },
+    {
+      id: "actions",
+      header: "",
+      render: (trigger) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <DotsVertical size={20} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                navigateToTrigger(trigger);
+              }}
+            >
+              <Eye size={16} />
+              Open
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={(e) => {
+                e.stopPropagation();
+                dispatch({ type: "delete", trigger });
+              }}
+            >
+              <Trash01 size={16} />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+      cellClassName: "w-12 shrink-0",
+    },
+  ];
+
+  const ctaButton = (
+    <Button
+      onClick={() => createMutation.mutate()}
+      size="sm"
+      className="h-7 px-3 rounded-lg text-sm font-medium"
+      disabled={createMutation.isPending}
+    >
+      {createMutation.isPending ? (
+        <Loading01 size={14} className="animate-spin" />
+      ) : (
+        <Plus size={16} />
+      )}
+      {createMutation.isPending ? "Creating..." : "New Trigger"}
+    </Button>
+  );
+
+  const emptyIcon = <Lightning01 size={36} className="text-muted-foreground" />;
+
   return (
     <Page>
+      {/* Delete Confirmation */}
+      <AlertDialog
+        open={dialogState.mode === "deleting"}
+        onOpenChange={(open) => !open && dispatch({ type: "close" })}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Trigger?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete{" "}
+              <span className="font-medium text-foreground">
+                {dialogState.mode === "deleting" &&
+                  (dialogState.trigger.title || "Untitled trigger")}
+              </span>
+              .
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Header */}
       <Page.Header>
         <Page.Header.Left>
           <Breadcrumb>
@@ -304,60 +498,166 @@ function TriggersContent() {
           </Breadcrumb>
         </Page.Header.Left>
         <Page.Header.Right>
-          <Button
-            onClick={() => createMutation.mutate()}
-            size="sm"
-            className="h-7 px-3 rounded-lg text-sm font-medium"
-            disabled={createMutation.isPending}
-          >
-            {createMutation.isPending ? (
-              <Loading01 size={14} className="animate-spin" />
-            ) : (
-              <Plus size={16} />
-            )}
-            {createMutation.isPending ? "Creating..." : "New Trigger"}
-          </Button>
+          <CollectionDisplayButton
+            viewMode={listState.viewMode}
+            onViewModeChange={listState.setViewMode}
+            sortKey={listState.sortKey}
+            sortDirection={listState.sortDirection}
+            onSort={listState.handleSort}
+            sortOptions={[
+              { id: "title", label: "Name" },
+              { id: "triggerType", label: "Schedule" },
+              { id: "updatedAt", label: "Updated" },
+            ]}
+          />
+          {ctaButton}
         </Page.Header.Right>
       </Page.Header>
 
+      {/* Search */}
+      <CollectionSearch
+        value={listState.search}
+        onChange={listState.setSearch}
+        placeholder="Search for a trigger..."
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            listState.setSearch("");
+            (event.target as HTMLInputElement).blur();
+          }
+        }}
+      />
+
+      {/* Content */}
       <Page.Content>
-        <div className="flex-1 overflow-auto p-5">
-          {triggers.length === 0 ? (
-            <EmptyState
-              image={
-                <Lightning01 size={36} className="text-muted-foreground" />
-              }
-              title="No triggers yet"
-              description="Create your first automation — schedule recurring actions or react to events."
-            />
-          ) : (
-            <div className="flex flex-col gap-3 max-w-3xl">
-              {triggers.map((trigger) => (
-                <TriggerCard
-                  key={trigger.id}
-                  trigger={trigger}
-                  onToggle={() =>
-                    toggleMutation.mutate({
+        {listState.viewMode === "cards" ? (
+          <div className="flex-1 overflow-auto p-5">
+            {triggers.length === 0 ? (
+              <EmptyState
+                image={emptyIcon}
+                title={
+                  listState.search ? "No triggers found" : "No triggers yet"
+                }
+                description={
+                  listState.search
+                    ? `No triggers match "${listState.search}"`
+                    : "Create your first automation — schedule recurring actions or react to events."
+                }
+              />
+            ) : (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
+                {triggers.map((trigger) => (
+                  <ConnectionCard
+                    key={trigger.id}
+                    connection={{
                       id: trigger.id,
-                      enabled: !trigger.enabled,
-                    })
-                  }
-                  isToggling={toggleMutation.isPending}
-                  onClick={() =>
-                    navigate({
-                      to: "/$org/$project/triggers/$triggerId",
-                      params: {
-                        org: org.slug,
-                        project: ORG_ADMIN_PROJECT_SLUG,
-                        triggerId: trigger.id,
-                      },
-                    })
-                  }
-                />
-              ))}
-            </div>
-          )}
-        </div>
+                      title: trigger.title || "Untitled trigger",
+                      description: triggerDescription(trigger),
+                      icon: null,
+                    }}
+                    fallbackIcon={
+                      trigger.triggerType === "cron" ? (
+                        <Clock size={20} />
+                      ) : (
+                        <Lightning01 size={20} />
+                      )
+                    }
+                    onClick={() => navigateToTrigger(trigger)}
+                    footer={
+                      <div className="flex items-center justify-between w-full">
+                        <span className="text-xs text-muted-foreground truncate">
+                          {actionDescription(trigger)}
+                          {trigger.triggerType === "cron" &&
+                            trigger.cronExpression &&
+                            (() => {
+                              const next = getNextRun(trigger.cronExpression);
+                              return next ? ` · Next: ${next}` : "";
+                            })()}
+                        </span>
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <Switch
+                            checked={trigger.enabled}
+                            onCheckedChange={() =>
+                              toggleMutation.mutate({
+                                id: trigger.id,
+                                enabled: !trigger.enabled,
+                              })
+                            }
+                            disabled={toggleMutation.isPending}
+                          />
+                        </div>
+                      </div>
+                    }
+                    headerActions={
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <DotsVertical size={20} />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                          align="end"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigateToTrigger(trigger);
+                            }}
+                          >
+                            <Eye size={16} />
+                            Open
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              dispatch({ type: "delete", trigger });
+                            }}
+                          >
+                            <Trash01 size={16} />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    }
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="h-full flex flex-col overflow-hidden">
+            <CollectionTableWrapper
+              columns={columns}
+              data={triggers}
+              isLoading={false}
+              sortKey={listState.sortKey}
+              sortDirection={listState.sortDirection}
+              onSort={listState.handleSort}
+              onRowClick={navigateToTrigger}
+              emptyState={
+                listState.search ? (
+                  <EmptyState
+                    image={emptyIcon}
+                    title="No triggers found"
+                    description={`No triggers match "${listState.search}"`}
+                  />
+                ) : (
+                  <EmptyState
+                    image={emptyIcon}
+                    title="No triggers yet"
+                    description="Create your first automation — schedule recurring actions or react to events."
+                  />
+                )
+              }
+            />
+          </div>
+        )}
       </Page.Content>
     </Page>
   );
