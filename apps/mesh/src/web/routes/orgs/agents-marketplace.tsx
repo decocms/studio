@@ -34,6 +34,7 @@ export interface CatalogAgent {
   description: string;
   category: string;
   hired: boolean;
+  comingSoon?: boolean;
   connections: string[];
   approvalPct: number;
   tasksRun: number;
@@ -60,6 +61,7 @@ export const CATALOG: CatalogAgent[] = [
       "Identifies keyword gaps and proposes on-page improvements across your catalog",
     category: "SEO",
     hired: false,
+    comingSoon: true,
     connections: ["Google Search Console", "Google Analytics"],
     approvalPct: 87,
     tasksRun: 0,
@@ -84,6 +86,7 @@ export const CATALOG: CatalogAgent[] = [
       "Detects missing images, broken variants, and pricing inconsistencies in your catalog",
     category: "Catalog",
     hired: false,
+    comingSoon: true,
     connections: ["VTEX", "Shopify"],
     approvalPct: 88,
     tasksRun: 0,
@@ -96,6 +99,7 @@ export const CATALOG: CatalogAgent[] = [
       "Analyzes funnel drop-off and proposes A/B test hypotheses backed by your analytics data",
     category: "CRO",
     hired: false,
+    comingSoon: true,
     connections: ["Google Analytics", "Hotjar"],
     approvalPct: 82,
     tasksRun: 0,
@@ -108,6 +112,7 @@ export const CATALOG: CatalogAgent[] = [
       "Monitors competitor pricing, promotions, and new arrivals weekly",
     category: "Intelligence",
     hired: false,
+    comingSoon: true,
     connections: [],
     approvalPct: 79,
     tasksRun: 0,
@@ -164,8 +169,14 @@ function AgentCard({
   return (
     <button
       type="button"
-      onClick={onClick}
-      className="group flex flex-col gap-0 rounded-xl border border-border bg-card text-left hover:shadow-sm transition-shadow cursor-pointer overflow-hidden"
+      onClick={agent.comingSoon ? undefined : onClick}
+      disabled={agent.comingSoon}
+      className={cn(
+        "group flex flex-col gap-0 rounded-xl border border-border bg-card text-left transition-shadow overflow-hidden",
+        agent.comingSoon
+          ? "opacity-50 cursor-not-allowed"
+          : "hover:shadow-sm cursor-pointer",
+      )}
     >
       {/* Card body */}
       <div className="flex flex-col gap-3 px-4 pt-4 pb-3 flex-1">
@@ -190,6 +201,14 @@ function AgentCard({
                   className="text-[10px] px-1.5 py-0 h-4"
                 >
                   Hired
+                </Badge>
+              )}
+              {agent.comingSoon && (
+                <Badge
+                  variant="secondary"
+                  className="text-[10px] px-1.5 py-0 h-4"
+                >
+                  Coming soon
                 </Badge>
               )}
             </div>
