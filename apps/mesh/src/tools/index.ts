@@ -127,6 +127,7 @@ const CORE_TOOLS = [
   TriggerTools.TRIGGER_GET,
   TriggerTools.TRIGGER_UPDATE,
   TriggerTools.TRIGGER_DELETE,
+  TriggerTools.TRIGGER_RUNS_LIST,
 
   // Project tools
   ProjectTools.PROJECT_LIST,

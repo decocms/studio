@@ -107,3 +107,24 @@ export const TriggerIdInputSchema = z.object({
 export const DeleteTriggerOutputSchema = z.object({
   success: z.boolean(),
 });
+
+export const TriggerRunsListInputSchema = z.object({
+  triggerId: z.string().describe("Trigger ID to list runs for"),
+  limit: z
+    .number()
+    .optional()
+    .default(20)
+    .describe("Max number of runs to return"),
+});
+
+export const TriggerRunSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  status: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const TriggerRunsListOutputSchema = z.object({
+  runs: z.array(TriggerRunSchema),
+});
