@@ -662,8 +662,15 @@ export function ChatProvider({ children }: PropsWithChildren) {
       return;
     }
 
+    // Always persist streamed messages into the thread cache so the UI
+    // doesn't flash stale data when the message source switches from
+    // chat.messages (streaming) to threadManager.messages (server).
+    if (messages.length > 0) {
+      threadManager.updateMessagesCache(threadId, messages);
+    }
+
     // Show notification (sound + browser popup) if enabled
-    if (preferences.enableNotifications) {
+    if (preferences.enableNotifications && finishReason === "stop") {
       showNotification({
         tag: `chat-${threadId}`,
         title: "Decopilot is waiting for your input at",
@@ -672,13 +679,6 @@ export function ChatProvider({ children }: PropsWithChildren) {
           "New chat",
       });
     }
-
-    if (finishReason !== "stop") {
-      return;
-    }
-
-    // Update messages cache with the latest messages from the stream
-    threadManager.updateMessagesCache(threadId, messages);
   };
 
   const onError = (error: Error) => {
