@@ -147,13 +147,19 @@ export interface CreateAppOptions {
 export async function createApp(options: CreateAppOptions = {}) {
   const database = options.database ?? getDb();
 
-  // Stop any existing event bus worker (cleanup during HMR)
+  // Stop any existing event bus worker and SSE hub (cleanup during HMR)
   if (currentEventBus && currentEventBus.isRunning()) {
     console.log("[EventBus] Stopping previous worker (HMR cleanup)");
     // Fire and forget - don't block app creation
     // The stop is mostly synchronous, async part is just UNLISTEN cleanup
     Promise.resolve(currentEventBus.stop()).catch((error) => {
       console.error("[EventBus] Error stopping previous worker:", error);
+    });
+    sseHub.stop().catch((error) => {
+      console.error(
+        "[SSEHub] Error stopping previous broadcast (HMR cleanup):",
+        error,
+      );
     });
   }
 

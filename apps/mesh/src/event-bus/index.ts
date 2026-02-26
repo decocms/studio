@@ -11,6 +11,9 @@
  *   - nats:     NatsNotifyStrategy + polling safety net
  *   - postgres: PostgresNotifyStrategy (LISTEN/NOTIFY) + polling safety net
  *   - polling:  PollingStrategy only
+ * - SSEBroadcastStrategy: Cross-pod SSE fan-out (selected alongside NotifyStrategy)
+ *   - nats:     NatsSSEBroadcast (events replicated via NATS pub/sub)
+ *   - default:  LocalSSEBroadcast (in-memory only, single process)
  *
  * Usage:
  * ```ts
@@ -28,9 +31,12 @@ import {
   type EventBusConfig,
 } from "./interface";
 import { NatsNotifyStrategy } from "./nats-notify";
+import { NatsSSEBroadcast } from "./nats-sse-broadcast";
 import { compose } from "./notify-strategy";
 import { PollingStrategy } from "./polling";
 import { PostgresNotifyStrategy } from "./postgres-notify";
+import { LocalSSEBroadcast } from "./sse-broadcast-strategy";
+import { sseHub } from "./sse-hub";
 
 // Re-export types and interfaces
 export {
@@ -68,6 +74,10 @@ export type { NotifyStrategy } from "./notify-strategy";
  * In all cases except "polling", a PollingStrategy is composed as a safety
  * net to pick up scheduled retries and deliveries that may be missed by the
  * primary pubsub mechanism.
+ *
+ * SSE broadcast strategy follows the same resolution:
+ *   - NATS available → NatsSSEBroadcast (cross-pod fan-out)
+ *   - Otherwise      → LocalSSEBroadcast (in-memory only)
  */
 type NotifyStrategyName = "nats" | "postgres" | "polling";
 
@@ -90,9 +100,11 @@ function resolveNotifyStrategy(database: MeshDatabase): NotifyStrategyName {
 }
 
 /**
- * Create an EventBus instance.
+ * Create an EventBus instance and start the SSE hub with the appropriate
+ * broadcast strategy.
  *
- * Notify strategy is selected based on NOTIFY_STRATEGY and NATS_URL env vars.
+ * Notify strategy and SSE broadcast strategy are selected based on
+ * NOTIFY_STRATEGY and NATS_URL env vars.
  * See resolveNotifyStrategy for full selection logic.
  *
  * @param database - MeshDatabase instance (discriminated union)
@@ -109,11 +121,11 @@ export function createEventBus(
 
   const strategyName = resolveNotifyStrategy(database);
   const polling = new PollingStrategy(pollIntervalMs);
+  const natsUrl = process.env.NATS_URL;
 
   let notifyStrategy;
   switch (strategyName) {
     case "nats": {
-      const natsUrl = process.env.NATS_URL;
       if (!natsUrl) {
         throw new Error(
           "[EventBus] NOTIFY_STRATEGY=nats requires NATS_URL to be set",
@@ -152,6 +164,20 @@ export function createEventBus(
     default:
       console.log("[EventBus] Using polling notify strategy");
       notifyStrategy = polling;
+  }
+
+  // Start SSE hub with the appropriate broadcast strategy.
+  // NATS available → cross-pod fan-out; otherwise → local only.
+  const sseBroadcast = natsUrl
+    ? new NatsSSEBroadcast({ servers: natsUrl })
+    : new LocalSSEBroadcast();
+
+  sseHub.start(sseBroadcast).catch((err) => {
+    console.error("[SSEHub] Failed to start broadcast strategy:", err);
+  });
+
+  if (natsUrl) {
+    console.log("[SSEHub] Using NATS SSE broadcast (cross-pod)");
   }
 
   return new EventBusImpl({
