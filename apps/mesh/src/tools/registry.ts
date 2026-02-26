@@ -119,6 +119,7 @@ const ALL_TOOL_NAMES = [
   "TRIGGER_GET",
   "TRIGGER_UPDATE",
   "TRIGGER_DELETE",
+  "TRIGGER_RUNS_LIST",
   // Project tools
   "PROJECT_LIST",
   "PROJECT_GET",
@@ -532,6 +533,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Triggers",
     dangerous: true,
   },
+  {
+    name: "TRIGGER_RUNS_LIST",
+    description: "List trigger run history",
+    category: "Triggers",
+  },
   // Project tools
   {
     name: "PROJECT_LIST",
@@ -644,6 +650,7 @@ const TOOL_LABELS: Record<ToolName, string> = {
   TRIGGER_GET: "View trigger details",
   TRIGGER_UPDATE: "Update triggers",
   TRIGGER_DELETE: "Delete triggers",
+  TRIGGER_RUNS_LIST: "List trigger runs",
   PROJECT_LIST: "List projects",
   PROJECT_GET: "View project details",
   PROJECT_CREATE: "Create project",
