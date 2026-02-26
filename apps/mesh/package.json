@@ -45,8 +45,8 @@
     "quickjs-emscripten-core": "^0.31.0"
   },
   "devDependencies": {
-    "@ai-sdk/provider": "^3.0.0",
-    "@ai-sdk/react": "^3.0.1",
+    "@ai-sdk/provider": "^3.0.8",
+    "@ai-sdk/react": "^3.0.103",
     "@better-auth/sso": "1.4.1",
     "@daveyplate/better-auth-ui": "^3.2.7",
     "@deco/ui": "workspace:*",
@@ -100,7 +100,7 @@
     "@untitledui/icons": "^0.0.19",
     "@vercel/nft": "^1.1.1",
     "@vitejs/plugin-react": "^5.1.0",
-    "ai": "^6.0.1",
+    "ai": "^6.0.101",
     "babel-plugin-react-compiler": "^1.0.0",
     "better-auth": "1.4.5",
     "class-variance-authority": "^0.7.1",
