@@ -337,7 +337,6 @@ export function OnboardingMessages({ orgName }: OnboardingMessagesProps) {
       <HireAgentModal
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
-        orgName={orgName}
         onHire={handleHire}
       />
     </>

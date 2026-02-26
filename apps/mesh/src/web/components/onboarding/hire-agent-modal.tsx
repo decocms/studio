@@ -23,18 +23,10 @@ type AutonomyMode = "review" | "monitor" | "autonomous";
 export interface HireAgentModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  orgName: string;
   onHire: (mode: AutonomyMode) => void;
 }
 
 // ─── Static data ──────────────────────────────────────────────────────────────
-
-const ALREADY_KNOWS = [
-  "Brand colors & visual identity",
-  "Tech stack (Shopify Plus)",
-  "~4.8M monthly visitors",
-  "Top 3 competitors identified",
-];
 
 const CONNECTIONS = [
   {
@@ -128,11 +120,8 @@ function ConnectionRow({
 export function HireAgentModal({
   open,
   onOpenChange,
-  orgName,
   onHire,
 }: HireAgentModalProps) {
-  const domain = orgName.replace(/-/g, ".").toLowerCase();
-
   const [connected, setConnected] = useState<Set<string>>(new Set());
   const [connecting, setConnecting] = useState<string | null>(null);
   const [autonomy, setAutonomy] = useState<AutonomyMode>("review");
@@ -152,7 +141,7 @@ export function HireAgentModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl p-0 gap-0 overflow-hidden">
+      <DialogContent className="max-w-4xl p-0 gap-0 overflow-hidden">
         <div className="grid grid-cols-[1fr_1fr] min-h-[520px]">
           {/* ── Left column ──────────────────────────────────────────── */}
           <div className="flex flex-col gap-5 bg-muted/20 border-r border-border p-6">
@@ -169,25 +158,6 @@ export function HireAgentModal({
                   Researches, writes and publishes SEO-optimised blog posts for
                   your store on autopilot.
                 </p>
-              </div>
-            </div>
-
-            {/* Already knows */}
-            <div className="flex flex-col gap-2">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Already knows about {domain}
-              </p>
-              <div className="flex flex-col gap-1.5">
-                {ALREADY_KNOWS.map((fact) => (
-                  <div key={fact} className="flex items-start gap-2">
-                    <div className="shrink-0 flex items-center justify-center size-4 rounded-full bg-emerald-100 text-emerald-600 mt-0.5">
-                      <Check size={10} />
-                    </div>
-                    <span className="text-sm text-foreground leading-snug">
-                      {fact}
-                    </span>
-                  </div>
-                ))}
               </div>
             </div>
 
