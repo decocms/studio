@@ -114,6 +114,7 @@
     "jose": "^6.0.11",
     "lucide-react": "^0.468.0",
     "marked": "^15.0.6",
+    "mesh-plugin-declare": "workspace:*",
     "mesh-plugin-object-storage": "workspace:*",
     "mesh-plugin-preview": "workspace:*",
     "mesh-plugin-private-registry": "workspace:*",

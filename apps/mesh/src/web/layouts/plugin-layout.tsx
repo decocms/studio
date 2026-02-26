@@ -40,6 +40,7 @@ import { useQuery } from "@tanstack/react-query";
 import { KEYS } from "@/web/lib/query-keys";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Page } from "@/web/components/page";
+import { SaveChangesButton } from "@/web/components/topbar/save-changes-button";
 
 interface PluginLayoutProps {
   /**
@@ -289,6 +290,11 @@ export function PluginLayout({
               onConnectionChange: () => {},
             })}
           </Page.Header.Left>
+          <Page.Header.Right>
+            <Suspense>
+              <SaveChangesButton />
+            </Suspense>
+          </Page.Header.Right>
         </Page.Header>
         <Page.Content>
           <Suspense

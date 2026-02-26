@@ -30,7 +30,7 @@ export const objectStoragePlugin: Plugin<typeof OBJECT_STORAGE_BINDING> = {
     // Register as a flat sidebar item (single entry, no accordion needed)
     registerRootSidebarItem({
       icon: <Folder size={16} />,
-      label: "File browser",
+      label: "Files",
     });
 
     // Create and register plugin routes using the typed router
