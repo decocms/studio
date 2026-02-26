@@ -133,10 +133,13 @@ export async function gitCommit(
 }
 
 /**
- * List all local branches.
+ * List local branches sorted by most recent commit (newest first).
  */
 export async function gitBranchList(client: Client): Promise<string[]> {
-  const r = await bash(client, "git branch --format='%(refname:short)'");
+  const r = await bash(
+    client,
+    "git branch --sort=-committerdate --format='%(refname:short)'",
+  );
   if (!r.stdout.trim()) return [];
   return r.stdout
     .trim()
