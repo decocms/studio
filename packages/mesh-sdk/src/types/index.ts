@@ -24,3 +24,21 @@ export {
   type VirtualMCPUpdateData,
   type VirtualMCPConnection,
 } from "./virtual-mcp";
+
+export {
+  THREAD_STATUSES,
+  THREAD_DISPLAY_STATUSES,
+  DECOPILOT_EVENTS,
+  ALL_DECOPILOT_EVENT_TYPES,
+  createDecopilotStepEvent,
+  createDecopilotFinishEvent,
+  createDecopilotThreadStatusEvent,
+  type ThreadStatus,
+  type ThreadDisplayStatus,
+  type DecopilotEventType,
+  type DecopilotStepEvent,
+  type DecopilotFinishEvent,
+  type DecopilotThreadStatusEvent,
+  type DecopilotSSEEvent,
+  type DecopilotEventMap,
+} from "./decopilot-events";
