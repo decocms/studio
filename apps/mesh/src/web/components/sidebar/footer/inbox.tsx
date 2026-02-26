@@ -1,4 +1,5 @@
 import { authClient } from "@/web/lib/auth-client";
+import { setCurrentOrgId } from "@/web/lib/org-store";
 import { MeshUserMenu } from "@/web/components/user-menu";
 import { useSettingsModal } from "@/web/hooks/use-settings-modal";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -55,6 +56,12 @@ function InvitationItem({ invitation }: { invitation: Invitation }) {
         const setActiveResult = await authClient.organization.setActive({
           organizationId: invitation.organizationId,
         });
+
+        // Keep the per-tab org store in sync with the explicit switch.
+        if (setActiveResult?.data?.id) {
+          setCurrentOrgId(setActiveResult.data.id);
+        }
+
         toast.success("Invitation accepted!");
         const slug = setActiveResult?.data?.slug;
         window.location.href = slug ? `/${slug}` : "/";
