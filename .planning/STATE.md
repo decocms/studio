@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-25)
 Phase: 22 of 22 in v1.4 (Interview + Recommendations) — Complete
 Plan: 3 of 3 done
 Status: Phase Complete
-Last activity: 2026-02-25 — completed 22-03 (recommendation cards UI — full onboarding flow done)
+Last activity: 2026-02-26 — completed quick task 001 (onboarding redesign — hire modal, blog workspace, task proposals)
 
 Progress: [██████████] 100% (v1.4, 10/10 plans done)
 
@@ -100,8 +100,14 @@ None yet.
 - RESOLVED: Phase 19 @ai-sdk/openai availability — using dynamic any-cast imports for optional runtime deps
 - RESOLVED: Phase 22 Virtual MCP capability metadata — requiredConnections built from child connections of each Virtual MCP, no new schema fields needed
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 001 | Onboarding redesign — hire modal, blog workspace, task proposals | 2026-02-26 | 7f4ffa8b2 | [001-onboarding-redesign](./quick/001-onboarding-redesign/) |
+
 ## Session Continuity
 
-Last session: 2026-02-25
-Stopped at: Completed 22-03-PLAN.md — recommendation cards UI (AGNT-03, AGNT-04) — Phase 22 complete
+Last session: 2026-02-26
+Stopped at: Quick task 001 — onboarding redesign with Blog Post Generator hire flow, blog workspace, task proposal cards
 Resume file: None
