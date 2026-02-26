@@ -5,14 +5,24 @@
  * When events are published through the EventBus, they are also pushed
  * to all connected SSE clients for the same organization.
  *
+ * Cross-pod support:
+ * The hub delegates broadcasting to an SSEBroadcastStrategy. In single-process
+ * mode (LocalSSEBroadcast), events stay in-memory. In multi-pod deployments
+ * (NatsSSEBroadcast), events are replicated to all pods via NATS pub/sub.
+ *
  * Design goals:
  * - Zero buffering: events are written directly to the stream
  * - Org-scoped: listeners are keyed by organizationId
  * - Bounded: max connections per org to prevent OOM
  * - Cleanup on disconnect: listeners removed when HTTP connection closes
+ * - Pluggable broadcast: strategy handles cross-process replication
  */
 
 import type { Event } from "../storage/types";
+import {
+  LocalSSEBroadcast,
+  type SSEBroadcastStrategy,
+} from "./sse-broadcast-strategy";
 
 // ============================================================================
 // Types
@@ -53,16 +63,45 @@ const MAX_TOTAL_CONNECTIONS = 500;
 // ============================================================================
 
 /**
- * Global SSE hub for fan-out of event bus events to SSE connections.
+ * SSE hub for fan-out of event bus events to SSE connections.
  *
- * This is a singleton — there's one hub per process. It holds no event data,
- * only references to active listener callbacks. Memory usage is proportional
- * to the number of connected SSE clients, not the number of events.
+ * Holds references to active listener callbacks — no event data.
+ * Memory usage is proportional to connected SSE clients, not event volume.
+ *
+ * The broadcast strategy controls whether events reach only this process
+ * (LocalSSEBroadcast) or all pods (NatsSSEBroadcast).
  */
 class SSEHub {
   /** Listeners indexed by organizationId for fast lookup */
   private listeners = new Map<string, Map<string, SSEListener>>();
   private totalCount = 0;
+  private strategy: SSEBroadcastStrategy = new LocalSSEBroadcast();
+  private started = false;
+
+  /**
+   * Initialize the hub with a broadcast strategy and start it.
+   * Must be called before emit() for cross-pod broadcasting to work.
+   * Safe to call multiple times — subsequent calls are no-ops.
+   */
+  async start(strategy?: SSEBroadcastStrategy): Promise<void> {
+    if (this.started) return;
+
+    if (strategy) {
+      this.strategy = strategy;
+    }
+
+    await this.strategy.start((orgId, event) => this.localEmit(orgId, event));
+    this.started = true;
+  }
+
+  /**
+   * Stop the broadcast strategy and release resources.
+   */
+  async stop(): Promise<void> {
+    if (!this.started) return;
+    await this.strategy.stop();
+    this.started = false;
+  }
 
   /**
    * Register a new SSE listener for an organization.
@@ -112,31 +151,13 @@ class SSEHub {
   }
 
   /**
-   * Fan out an event to all matching SSE listeners for the organization.
+   * Broadcast an event to all SSE listeners across all pods.
    *
-   * This is called from the EventBus publish path. It's synchronous and
-   * non-blocking — each listener's push callback writes to a ReadableStream.
+   * Delegates to the configured SSEBroadcastStrategy which handles
+   * both local delivery and cross-pod replication.
    */
   emit(organizationId: string, event: SSEEvent): void {
-    const orgListeners = this.listeners.get(organizationId);
-    if (!orgListeners || orgListeners.size === 0) return;
-
-    for (const listener of orgListeners.values()) {
-      // Apply type filter if specified
-      if (
-        listener.typePatterns &&
-        !matchesAnyPattern(event.type, listener.typePatterns)
-      ) {
-        continue;
-      }
-
-      try {
-        listener.push(event);
-      } catch {
-        // Listener's stream is broken — remove it
-        this.remove(organizationId, listener.id);
-      }
-    }
+    this.strategy.broadcast(organizationId, event);
   }
 
   /**
@@ -151,6 +172,30 @@ class SSEHub {
    */
   get count(): number {
     return this.totalCount;
+  }
+
+  /**
+   * Deliver an event to local SSE listeners only (called by the strategy).
+   * This is the actual fan-out to HTTP streams on this process.
+   */
+  private localEmit(organizationId: string, event: SSEEvent): void {
+    const orgListeners = this.listeners.get(organizationId);
+    if (!orgListeners || orgListeners.size === 0) return;
+
+    for (const listener of orgListeners.values()) {
+      if (
+        listener.typePatterns &&
+        !matchesAnyPattern(event.type, listener.typePatterns)
+      ) {
+        continue;
+      }
+
+      try {
+        listener.push(event);
+      } catch {
+        this.remove(organizationId, listener.id);
+      }
+    }
   }
 }
 
