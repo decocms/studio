@@ -232,6 +232,16 @@ const tasksRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/tasks.tsx")),
 });
 
+// Blog workspace (new — available for all projects)
+const blogRoute = createRoute({
+  getParentRoute: () => projectLayout,
+  path: "/blog",
+  component: lazyRouteComponent(() => import("./routes/orgs/blog.tsx")),
+  validateSearch: (search: Record<string, unknown>) => ({
+    taskId: typeof search.taskId === "string" ? search.taskId : undefined,
+  }),
+});
+
 // Project settings (redirects to settings modal via search param)
 const projectSettingsRoute = createRoute({
   getParentRoute: () => projectLayout,
@@ -493,6 +503,7 @@ const storeRouteWithChildren = storeRoute.addChildren([storeDetailRoute]);
 const projectRoutes = [
   projectHomeRoute,
   tasksRoute,
+  blogRoute,
   projectSettingsRoute,
   projectsListRoute,
   membersRoute,

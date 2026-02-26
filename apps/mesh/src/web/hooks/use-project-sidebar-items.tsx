@@ -12,6 +12,7 @@ import {
   CheckDone01,
   Container,
   FaceSmile,
+  FileText,
   Folder,
   Home02,
   SearchMd,
@@ -287,6 +288,22 @@ export function useProjectSidebarItems(): SidebarSection[] {
       }),
   };
 
+  const blogHired =
+    typeof localStorage !== "undefined" &&
+    localStorage.getItem("mesh_blog_hired") === "true";
+
+  const blogItem: NavigationSidebarItem = {
+    key: "blog",
+    label: "Blog",
+    icon: <FileText />,
+    isActive: isActiveRoute("blog"),
+    onClick: () =>
+      navigate({
+        to: "/$org/$project/blog",
+        params: { org, project },
+      }),
+  };
+
   // Regular project sidebar layout:
   // - Home, Tasks, Diagnostic
   // - [Divider] (if enabled plugins exist)
@@ -297,6 +314,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
     homeItem,
     projectTasksItem,
     diagnosticItem,
+    ...(blogHired ? [blogItem] : []),
   ];
 
   const sections: SidebarSection[] = [{ type: "items", items: projectItems }];
