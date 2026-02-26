@@ -145,11 +145,9 @@ function DiagnosticCard({ domain }: { domain: string }) {
 }
 
 function AgentRecommendationCard({
-  domain,
   onHire,
   onHireOthers,
 }: {
-  domain: string;
   onHire: () => void;
   onHireOthers: () => void;
 }) {
@@ -285,7 +283,6 @@ export function OnboardingMessages({ orgName }: OnboardingMessagesProps) {
 
             {stage === "recommend" && (
               <AgentRecommendationCard
-                domain={domain}
                 onHire={() => setDrawerOpen(true)}
                 onHireOthers={() =>
                   navigate({
