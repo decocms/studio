@@ -242,6 +242,15 @@ const blogRoute = createRoute({
   }),
 });
 
+// Project-level connections (storefront — same UI as org-admin, no guard)
+const projectConnectionsRoute = createRoute({
+  getParentRoute: () => projectLayout,
+  path: "/connections",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/project-connections.tsx"),
+  ),
+});
+
 // Agents marketplace (storefront onboarding — available for all projects)
 const agentsMarketplaceRoute = createRoute({
   getParentRoute: () => projectLayout,
@@ -522,6 +531,7 @@ const projectRoutes = [
   projectHomeRoute,
   tasksRoute,
   blogRoute,
+  projectConnectionsRoute,
   agentsMarketplaceRoute,
   agentStoreDetailRoute,
   projectSettingsRoute,

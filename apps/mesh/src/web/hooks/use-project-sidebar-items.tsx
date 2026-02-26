@@ -294,12 +294,9 @@ export function useProjectSidebarItems(): SidebarSection[] {
     key: "connections",
     label: "Connections",
     icon: <Container />,
-    isActive: isActiveRoute("mcps"),
+    isActive: isActiveRoute("connections"),
     onClick: () =>
-      navigate({
-        to: "/$org/$project/mcps",
-        params: { org, project: ORG_ADMIN_PROJECT_SLUG },
-      }),
+      navigate({ to: "/$org/$project/connections", params: { org, project } }),
   };
 
   // [Context] group — links to diagnostic sections
