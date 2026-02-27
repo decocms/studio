@@ -16,7 +16,7 @@ bunx @decocms/typegen --mcp <virtual-mcp-id> --key <api-key> --output client.ts
 |------|---------|---------|
 | `--mcp` | — | **required** |
 | `--key` | `MESH_API_KEY` | — |
-| `--url` | `MESH_BASE_URL` | `https://mesh-admin.decocms.com` |
+| `--url` | `MESH_BASE_URL` | `https://studio.decocms.com` |
 | `--output` | — | `client.ts` |
 
 ### 2. Use the generated client
@@ -59,7 +59,7 @@ import { createMeshClient } from "@decocms/typegen";
 const client = createMeshClient<Tools>({
   mcpId: "vmc_abc123",   // Virtual MCP ID
   apiKey: "sk_...",      // Falls back to process.env.MESH_API_KEY
-  baseUrl: "https://...", // Falls back to https://mesh-admin.decocms.com
+  baseUrl: "https://...", // Falls back to https://studio.decocms.com
 });
 ```
 

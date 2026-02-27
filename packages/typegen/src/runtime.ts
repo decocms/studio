@@ -2,7 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { MeshClient, MeshClientOptions, ToolMap } from "./index.js";
 
-const DEFAULT_BASE_URL = "https://mesh-admin.decocms.com";
+const DEFAULT_BASE_URL = "https://studio.decocms.com";
 
 /** @internal - overrideable constructors for testing */
 export interface MeshClientDeps {

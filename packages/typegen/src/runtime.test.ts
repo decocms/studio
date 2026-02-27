@@ -139,7 +139,7 @@ describe("createMeshClient", () => {
     );
   });
 
-  test("defaults baseUrl to https://mesh-admin.decocms.com", async () => {
+  test("defaults baseUrl to https://studio.decocms.com", async () => {
     type Tools = { TOOL: { input: Record<string, never>; output: unknown } };
 
     const capturedUrls: URL[] = [];
@@ -158,7 +158,7 @@ describe("createMeshClient", () => {
     await client.TOOL({});
 
     expect(capturedUrls[0]?.toString()).toBe(
-      "https://mesh-admin.decocms.com/mcp/virtual-mcp/vmc_abc",
+      "https://studio.decocms.com/mcp/virtual-mcp/vmc_abc",
     );
   });
 });

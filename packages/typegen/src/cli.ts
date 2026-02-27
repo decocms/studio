@@ -6,7 +6,7 @@ import { writeFile } from "node:fs/promises";
 import process from "node:process";
 import { generateClientCode } from "./codegen.js";
 
-const DEFAULT_BASE_URL = "https://mesh-admin.decocms.com";
+const DEFAULT_BASE_URL = "https://studio.decocms.com";
 
 function parseArgs(argv: string[]): {
   mcpId: string;

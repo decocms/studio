@@ -13,7 +13,7 @@ export interface MeshClientOptions {
   mcpId: string;
   /** Falls back to process.env.MESH_API_KEY */
   apiKey?: string;
-  /** Falls back to https://mesh-admin.decocms.com */
+  /** Falls back to https://studio.decocms.com */
   baseUrl?: string;
 }
 
