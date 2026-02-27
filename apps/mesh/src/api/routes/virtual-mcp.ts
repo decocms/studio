@@ -23,6 +23,7 @@ import {
   parseStrategyFromMode,
 } from "../../mcp-clients/virtual-mcp";
 import type { Env } from "../env";
+import { ct } from "node_modules/better-auth/dist/index-COnelCGa.d.mts";
 
 // Define Hono variables type
 const app = new Hono<Env>();
@@ -91,6 +92,13 @@ export async function handleVirtualMcpRequest(
           error: `Agent is inactive: ${virtualMcp.id ?? "Decopilot"}`,
         },
         503,
+      );
+    }
+
+    if (organizationId !== ctx.organization?.id) {
+      return c.json(
+        { error: "Forbidden: Agent does not belong to your organization" },
+        403,
       );
     }
 
