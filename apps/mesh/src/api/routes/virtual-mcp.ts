@@ -94,7 +94,10 @@ export async function handleVirtualMcpRequest(
       );
     }
 
-    if (organizationId !== ctx.organization?.id) {
+    if (
+      ctx.organization?.id &&
+      virtualMcp.organization_id !== ctx.organization.id
+    ) {
       return c.json(
         { error: "Forbidden: Agent does not belong to your organization" },
         403,
