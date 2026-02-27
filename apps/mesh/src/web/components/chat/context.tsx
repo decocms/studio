@@ -179,8 +179,11 @@ const createModelsTransport = (
         ? [systemMessage, ...userMessage]
         : userMessage;
 
-      // Fall back to last message metadata when requestMetadata is missing models/agent
+      // Fall back to last message metadata when requestMetadata is missing fields
+      // (e.g. during re-sends from addToolOutput / addToolApprovalResponse)
       const lastMsgMeta = (messages.at(-1)?.metadata ?? {}) as Metadata;
+      const lastUserMeta = (messages.findLast((m) => m.role === "user")
+        ?.metadata ?? {}) as Metadata;
       const mergedMetadata = {
         ...metadata,
         agent: metadata.agent ?? lastMsgMeta.agent,
@@ -188,11 +191,18 @@ const createModelsTransport = (
         thread_id: metadata.thread_id ?? lastMsgMeta.thread_id,
       };
 
+      const resolvedToolApprovalLevel =
+        toolApprovalLevel ??
+        lastMsgMeta.toolApprovalLevel ??
+        lastUserMeta.toolApprovalLevel;
+
       return {
         body: {
           messages: allMessages,
           ...mergedMetadata,
-          ...(toolApprovalLevel && { toolApprovalLevel }),
+          ...(resolvedToolApprovalLevel && {
+            toolApprovalLevel: resolvedToolApprovalLevel,
+          }),
         },
       };
     },
@@ -904,6 +914,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
       tiptapDoc,
       created_at: new Date().toISOString(),
       thread_id: threadManager.activeThreadId,
+      toolApprovalLevel: preferences.toolApprovalLevel,
       agent: {
         id: selectedVirtualMcp?.id ?? decopilotId,
         mode: selectedMode,
@@ -918,7 +929,6 @@ export function ChatProvider({ children }: PropsWithChildren) {
       ...messageMetadata,
       system: contextPrompt,
       models: selectedModel,
-      toolApprovalLevel: preferences.toolApprovalLevel,
     };
 
     const userMessage: ChatMessage = {
