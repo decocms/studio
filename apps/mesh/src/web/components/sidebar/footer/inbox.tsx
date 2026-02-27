@@ -150,9 +150,7 @@ class SilentErrorBoundary extends Component<
   }
 }
 
-const DECO_AI_GATEWAY_HOSTS = [
-  "sites-deco-ai-gateway.decocache.com",
-];
+const DECO_AI_GATEWAY_HOSTS = ["sites-deco-ai-gateway.decocache.com"];
 
 interface GatewayUsageResult {
   limit: { remaining: number | null; total: number | null };

@@ -30,9 +30,7 @@ import {
 
 // -- Constants --
 
-const DECO_AI_GATEWAY_HOSTS = [
-  "sites-deco-ai-gateway.decocache.com",
-];
+const DECO_AI_GATEWAY_HOSTS = ["sites-deco-ai-gateway.decocache.com"];
 
 // -- Types --
 
@@ -113,7 +111,10 @@ function buildChartData(
       const d = new Date(now);
       d.setMonth(d.getMonth() - i);
       data.push({
-        date: d.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+        date: d.toLocaleDateString("en-US", {
+          month: "short",
+          year: "2-digit",
+        }),
         amount: i === 0 ? usage.monthly : 0,
       });
     }
@@ -154,8 +155,7 @@ function AddCreditDialog({
   const { mutate, isPending } = useMCPToolCallMutation({ client });
 
   const effectiveAmount =
-    selectedAmount ??
-    (customAmount ? parseFloat(customAmount) : null);
+    selectedAmount ?? (customAmount ? parseFloat(customAmount) : null);
 
   const handleConfirm = () => {
     if (!effectiveAmount || effectiveAmount <= 0) return;
@@ -173,9 +173,8 @@ function AddCreditDialog({
       },
       {
         onSuccess: (result) => {
-          const payload = (
-            result as { structuredContent?: SetLimitResult }
-          ).structuredContent;
+          const payload = (result as { structuredContent?: SetLimitResult })
+            .structuredContent;
 
           if (payload?.checkout_url) {
             setCheckoutUrl(payload.checkout_url);
@@ -252,7 +251,10 @@ function AddCreditDialog({
 
             {/* Custom amount */}
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="custom-amount" className="text-xs text-muted-foreground">
+              <Label
+                htmlFor="custom-amount"
+                className="text-xs text-muted-foreground"
+              >
                 Or enter a custom amount
               </Label>
               <div className="relative">
@@ -275,9 +277,7 @@ function AddCreditDialog({
               </div>
             </div>
 
-            {error && (
-              <p className="text-xs text-destructive">{error}</p>
-            )}
+            {error && <p className="text-xs text-destructive">{error}</p>}
 
             <div className="flex items-center justify-between pt-1">
               <p className="text-xs text-muted-foreground">
@@ -288,11 +288,7 @@ function AddCreditDialog({
               </p>
               <Button
                 onClick={handleConfirm}
-                disabled={
-                  isPending ||
-                  !effectiveAmount ||
-                  effectiveAmount <= 0
-                }
+                disabled={isPending || !effectiveAmount || effectiveAmount <= 0}
                 className="gap-2"
               >
                 {isPending ? "Generating..." : "Continue"}
@@ -317,9 +313,7 @@ function CreditCard({
   onAddCredit: () => void;
 }) {
   const usedPct =
-    total > 0
-      ? Math.min(100, ((total - available) / total) * 100)
-      : 0;
+    total > 0 ? Math.min(100, ((total - available) / total) * 100) : 0;
 
   return (
     <div className="relative overflow-hidden rounded-xl border border-border bg-gradient-to-br from-card via-card to-muted/30 p-6">
@@ -371,24 +365,18 @@ const PERIOD_LABELS: Record<ChartPeriod, string> = {
   month: "Monthly",
 };
 
-const PERIOD_USAGE_KEY: Record<
-  ChartPeriod,
-  keyof GatewayUsageResult["usage"]
-> = {
-  day: "daily",
-  week: "weekly",
-  month: "monthly",
-};
+const PERIOD_USAGE_KEY: Record<ChartPeriod, keyof GatewayUsageResult["usage"]> =
+  {
+    day: "daily",
+    week: "weekly",
+    month: "monthly",
+  };
 
 const chartConfig = {
   amount: { label: "Spend", color: "var(--chart-1)" },
 } satisfies ChartConfig;
 
-function UsageSection({
-  usage,
-}: {
-  usage: GatewayUsageResult["usage"];
-}) {
+function UsageSection({ usage }: { usage: GatewayUsageResult["usage"] }) {
   const [period, setPeriod] = useState<ChartPeriod>("day");
   const data = buildChartData(period, usage);
   const periodTotal = usage[PERIOD_USAGE_KEY[period]];
