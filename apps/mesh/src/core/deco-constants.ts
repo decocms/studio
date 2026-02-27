@@ -13,6 +13,10 @@ export const DECO_STORE_URL = "https://api.decocms.com/mcp/registry";
 /** OpenRouter MCP URL (deco-hosted) */
 export const OPENROUTER_MCP_URL = "https://sites-openrouter.decocache.com/mcp";
 
+/** Deco AI Gateway MCP URL (deco-hosted) */
+export const DECO_AI_GATEWAY_MCP_URL =
+  "https://sites-deco-ai-gateway.decocache.com/mcp";
+
 /** OpenRouter icon URL */
 export const OPENROUTER_ICON_URL =
   "https://assets.decocache.com/decocms/b2e2f64f-6025-45f7-9e8c-3b3ebdd073d8/openrouter_logojpg.jpg";

@@ -27,10 +27,7 @@ import {
   useMCPToolCallQuery,
   useProjectContext,
 } from "@decocms/mesh-sdk";
-
-// -- Constants --
-
-const DECO_AI_GATEWAY_HOSTS = ["sites-deco-ai-gateway.decocache.com"];
+import { DECO_AI_GATEWAY_MCP_URL } from "@/core/deco-constants";
 
 // -- Types --
 
@@ -596,16 +593,9 @@ class BillingErrorBoundary extends Component<
 function BillingContent() {
   const connections = useConnections();
 
-  const gatewayConnection = connections.find((c) => {
-    try {
-      return (
-        !!c.connection_url &&
-        DECO_AI_GATEWAY_HOSTS.includes(new URL(c.connection_url).host)
-      );
-    } catch {
-      return false;
-    }
-  });
+  const gatewayConnection = connections.find(
+    (c) => c.connection_url === DECO_AI_GATEWAY_MCP_URL,
+  );
 
   if (!gatewayConnection?.id) {
     return <BillingEmpty />;

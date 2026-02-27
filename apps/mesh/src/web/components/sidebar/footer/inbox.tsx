@@ -24,6 +24,7 @@ import {
   useMCPToolCallQuery,
   useProjectContext,
 } from "@decocms/mesh-sdk";
+import { DECO_AI_GATEWAY_MCP_URL } from "@/core/deco-constants";
 
 interface Invitation {
   id: string;
@@ -150,8 +151,6 @@ class SilentErrorBoundary extends Component<
   }
 }
 
-const DECO_AI_GATEWAY_HOSTS = ["sites-deco-ai-gateway.decocache.com"];
-
 interface GatewayUsageResult {
   limit: { remaining: number | null; total: number | null };
 }
@@ -193,16 +192,9 @@ function CreditChip({ connectionId }: { connectionId: string }) {
 function CreditChipConditional() {
   const connections = useConnections();
 
-  const gatewayConnection = connections.find((c) => {
-    try {
-      return (
-        !!c.connection_url &&
-        DECO_AI_GATEWAY_HOSTS.includes(new URL(c.connection_url).host)
-      );
-    } catch {
-      return false;
-    }
-  });
+  const gatewayConnection = connections.find(
+    (c) => c.connection_url === DECO_AI_GATEWAY_MCP_URL,
+  );
 
   if (!gatewayConnection?.id) {
     return null;
