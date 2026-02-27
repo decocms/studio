@@ -271,10 +271,10 @@ export function VirtualMCPSelector({
                 type="button"
                 disabled={disabled}
                 className={cn(
-                  "flex items-center justify-center size-8 rounded-full transition-colors shrink-0",
+                  "relative flex items-center justify-center size-8 rounded-md text-muted-foreground/75 transition-colors shrink-0",
                   disabled
                     ? "cursor-not-allowed opacity-50"
-                    : "cursor-pointer hover:bg-accent",
+                    : "cursor-pointer hover:text-muted-foreground",
                   className,
                 )}
                 aria-label={placeholder}
@@ -283,12 +283,47 @@ export function VirtualMCPSelector({
                   <IntegrationIcon
                     icon={selectedVirtualMcp.icon}
                     name={selectedVirtualMcp.title}
-                    size="xs"
+                    size="sm"
                     fallbackIcon={<Users03 size={16} />}
-                    className="rounded-md shrink-0 aspect-square"
+                    className="rounded-md shrink-0 absolute inset-0 size-full"
                   />
                 ) : (
-                  <Users03 size={16} />
+                  <>
+                    <svg className="absolute inset-0 size-full" fill="none">
+                      <defs>
+                        <linearGradient
+                          id="agent-border-gradient"
+                          gradientUnits="userSpaceOnUse"
+                          x1="0"
+                          y1="0"
+                          x2="32"
+                          y2="32"
+                        >
+                          <animateTransform
+                            attributeName="gradientTransform"
+                            type="rotate"
+                            from="0 16 16"
+                            to="360 16 16"
+                            dur="6s"
+                            repeatCount="indefinite"
+                          />
+                          <stop offset="0%" stopColor="var(--chart-1)" />
+                          <stop offset="100%" stopColor="var(--chart-4)" />
+                        </linearGradient>
+                      </defs>
+                      <rect
+                        x="0.5"
+                        y="0.5"
+                        width="31"
+                        height="31"
+                        rx="5.5"
+                        stroke="url(#agent-border-gradient)"
+                        strokeWidth="1"
+                        strokeDasharray="3 3"
+                      />
+                    </svg>
+                    <Users03 size={16} />
+                  </>
                 )}
               </button>
             </PopoverTrigger>

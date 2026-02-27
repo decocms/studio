@@ -518,21 +518,19 @@ function SelectedModelDisplay({
     );
   }
 
+  // Strip provider prefix (e.g. "Anthropic: Claude Sonnet 4.5" → "Claude Sonnet 4.5")
+  const displayName = model.title.includes(": ")
+    ? model.title.split(": ").slice(1).join(": ")
+    : model.title;
+
   return (
-    <div className="flex items-center gap-0 group-hover:gap-2 group-data-[state=open]:gap-2 min-w-0 overflow-hidden transition-all duration-200">
-      {model.logo && (
-        <img
-          src={model.logo}
-          className="w-5 h-5 shrink-0 rounded-sm"
-          alt={model.title}
-        />
-      )}
-      <span className="text-sm text-muted-foreground group-hover:text-foreground group-data-[state=open]:text-foreground truncate whitespace-nowrap max-w-0 opacity-0 group-hover:max-w-[150px] group-hover:opacity-100 group-data-[state=open]:max-w-[150px] group-data-[state=open]:opacity-100 transition-all duration-200 ease-in-out overflow-hidden">
-        {model.title}
+    <div className="flex items-center gap-1.5 min-w-0">
+      <span className="text-sm text-muted-foreground truncate whitespace-nowrap">
+        {displayName}
       </span>
       <ChevronDown
         size={14}
-        className="text-muted-foreground opacity-0 max-w-0 group-hover:opacity-50 group-hover:max-w-[14px] group-data-[state=open]:opacity-50 group-data-[state=open]:max-w-[14px] shrink-0 transition-all duration-200 ease-in-out overflow-hidden"
+        className="text-muted-foreground opacity-50 shrink-0"
       />
     </div>
   );
@@ -837,13 +835,13 @@ function FallbackModelDisplay({
   const id = selectedModel.thinking.id;
   const shortName = id.split("/").pop() ?? id;
   return (
-    <div className="flex items-center gap-0 group-hover:gap-2 group-data-[state=open]:gap-2 min-w-0 overflow-hidden transition-all duration-200">
-      <span className="text-sm text-muted-foreground group-hover:text-foreground group-data-[state=open]:text-foreground truncate whitespace-nowrap max-w-0 opacity-0 group-hover:max-w-[150px] group-hover:opacity-100 group-data-[state=open]:max-w-[150px] group-data-[state=open]:opacity-100 transition-all duration-200 ease-in-out overflow-hidden">
+    <div className="flex items-center gap-1.5 min-w-0">
+      <span className="text-sm text-muted-foreground truncate whitespace-nowrap">
         {shortName}
       </span>
       <ChevronDown
         size={14}
-        className="text-muted-foreground opacity-0 max-w-0 group-hover:opacity-50 group-hover:max-w-[14px] group-data-[state=open]:opacity-50 group-data-[state=open]:max-w-[14px] shrink-0 transition-all duration-200 ease-in-out overflow-hidden"
+        className="text-muted-foreground opacity-50 shrink-0"
       />
     </div>
   );

@@ -77,7 +77,7 @@ function FileNodeView(props: NodeViewProps) {
         "inline-flex items-center gap-1",
         "cursor-default select-none",
         "text-xs font-light",
-        "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+        "bg-muted text-muted-foreground",
         isSelected && "outline-2 outline-blue-300 outline-offset-0",
       )}
     >
@@ -85,7 +85,7 @@ function FileNodeView(props: NodeViewProps) {
         <TooltipTrigger asChild>
           <span>{name}</span>
         </TooltipTrigger>
-        <TooltipContent side="top" className="max-w-sm">
+        <TooltipContent side="top" className="max-w-sm p-1.5">
           {isImage ? (
             <img
               src={`data:${mimeType};base64,${data}`}

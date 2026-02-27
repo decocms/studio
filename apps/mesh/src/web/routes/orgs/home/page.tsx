@@ -36,14 +36,6 @@ import { toast } from "sonner";
 /**
  * Get time-based greeting
  */
-function getTimeBasedGreeting(): string {
-  const hour = new Date().getHours();
-  if (hour >= 5 && hour < 12) return "Morning";
-  if (hour >= 12 && hour < 17) return "Afternoon";
-  if (hour >= 17 && hour < 22) return "Evening";
-  return "Night";
-}
-
 // ---------- Main Content ----------
 
 function HomeContent() {
@@ -62,7 +54,6 @@ function HomeContent() {
   const [isThreadsSidebarOpen, setIsThreadsSidebarOpen] = useState(false);
 
   const userName = session?.user?.name?.split(" ")[0] || "there";
-  const greeting = getTimeBasedGreeting();
 
   // Use Decopilot as default agent
   const defaultAgent = getWellKnownDecopilotVirtualMCP(org.id);
@@ -154,9 +145,9 @@ function HomeContent() {
         </>
       ) : (
         <div className="flex-1 min-h-0 flex flex-col items-center justify-center px-10 pb-32 pt-10">
-          <div className="flex flex-col items-center gap-3 w-full max-w-[600px]">
+          <div className="flex flex-col items-center w-full max-w-[600px]">
             {/* Agent Image */}
-            <div className="flex justify-center">
+            <div className="flex justify-center mb-4">
               <IntegrationIcon
                 icon={displayAgent.icon}
                 name={displayAgent.title}
@@ -167,17 +158,14 @@ function HomeContent() {
             </div>
 
             {/* Greeting */}
-            <div className="text-center">
-              <p className="text-lg font-medium text-foreground">
-                {greeting} {userName},
-              </p>
-              <p className="text-base text-muted-foreground opacity-50 mb-0">
-                What are we building today?
+            <div className="text-center mb-8">
+              <p className="text-xl font-medium text-foreground">
+                What's on your mind, {userName}?
               </p>
             </div>
 
             {/* Chat Input */}
-            <div className="w-full -mt-1">
+            <div className="w-full">
               <Chat.Input />
             </div>
 

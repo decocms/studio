@@ -1,4 +1,3 @@
-import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { calculateUsageStats } from "@/web/lib/usage-utils.ts";
 import { getAgentColor } from "@/web/utils/agent-color";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -95,15 +94,51 @@ function DecopilotIconButton({
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
-            <Button
+            <button
               type="button"
-              variant="ghost"
-              size="icon"
-              className="size-8 rounded-full"
+              className={cn(
+                "relative flex items-center justify-center size-8 rounded-md text-muted-foreground/75 transition-colors shrink-0",
+                disabled
+                  ? "cursor-not-allowed opacity-50"
+                  : "cursor-pointer hover:text-muted-foreground",
+              )}
               disabled={disabled}
             >
+              <svg className="absolute inset-0 size-full" fill="none">
+                <defs>
+                  <linearGradient
+                    id="agent-border-gradient-decopilot"
+                    gradientUnits="userSpaceOnUse"
+                    x1="0"
+                    y1="0"
+                    x2="32"
+                    y2="32"
+                  >
+                    <animateTransform
+                      attributeName="gradientTransform"
+                      type="rotate"
+                      from="0 16 16"
+                      to="360 16 16"
+                      dur="6s"
+                      repeatCount="indefinite"
+                    />
+                    <stop offset="0%" stopColor="var(--chart-1)" />
+                    <stop offset="100%" stopColor="var(--chart-4)" />
+                  </linearGradient>
+                </defs>
+                <rect
+                  x="0.5"
+                  y="0.5"
+                  width="31"
+                  height="31"
+                  rx="5.5"
+                  stroke="url(#agent-border-gradient-decopilot)"
+                  strokeWidth="1"
+                  strokeDasharray="3 3"
+                />
+              </svg>
               <Users03 size={16} />
-            </Button>
+            </button>
           </PopoverTrigger>
         </TooltipTrigger>
         {!open && <TooltipContent side="top">Decopilot</TooltipContent>}
@@ -198,17 +233,10 @@ function VirtualMCPBadge({
             type="button"
             disabled={disabled}
             className={cn(
-              "flex items-center gap-1.5 hover:opacity-80 transition-opacity",
+              "flex items-center gap-1.5 px-2 py-1 rounded-md hover:opacity-80 transition-opacity",
               disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
             )}
           >
-            <IntegrationIcon
-              icon={virtualMcp.icon}
-              name={virtualMcp.title}
-              size="2xs"
-              className="bg-background rounded-sm"
-              fallbackIcon={virtualMcp.fallbackIcon ?? <Users03 size={10} />}
-            />
             <span className="text-xs text-white font-normal">
               {virtualMcp.title}
             </span>
@@ -335,35 +363,90 @@ export function ChatInput() {
     }
   };
 
+  // Track whether a non-Decopilot agent is active
+  const hasAgentBadge =
+    !!selectedVirtualMcp?.id && !isDecopilot(selectedVirtualMcp.id);
+
+  // Track if wrapper visuals should still show (stays true during exit animation)
+  const [showWrapper, setShowWrapper] = useState(false);
+  if (hasAgentBadge && !showWrapper) {
+    setShowWrapper(true);
+  }
+
+  const handleGridTransitionEnd = () => {
+    if (!hasAgentBadge) {
+      setShowWrapper(false);
+      lastAgentRef.current = null;
+    }
+  };
+
+  // Keep last active agent + color for exit animation
+  const lastAgentRef = useRef<{
+    id: string;
+    virtualMcps: VirtualMCPInfo[];
+    color: ReturnType<typeof getAgentColor>;
+  } | null>(null);
+
   const color = selectedVirtualMcp
     ? getAgentColor(selectedVirtualMcp.id)
     : null;
 
-  return (
-    <div className="flex flex-col w-full min-h-42 justify-end">
-      {/* Virtual MCP wrapper with badge */}
-      <div
-        className={cn(
-          "relative rounded-xl w-full flex flex-col",
-          selectedVirtualMcp && "shadow-sm",
-          color?.bg,
-        )}
-      >
-        {/* Highlight floats above the form area */}
-        <ChatHighlight />
+  if (hasAgentBadge && selectedVirtualMcp?.id) {
+    lastAgentRef.current = { id: selectedVirtualMcp.id, virtualMcps, color };
+  }
 
-        {/* Virtual MCP Badge Header */}
-        {selectedVirtualMcp?.id && !isDecopilot(selectedVirtualMcp.id) && (
-          <VirtualMCPBadge
-            onVirtualMcpChange={setVirtualMcpId}
-            virtualMcpId={selectedVirtualMcp.id}
-            virtualMcps={virtualMcps}
-            disabled={isStreaming}
+  const badgeAgent = hasAgentBadge ? selectedVirtualMcp : null;
+  const badgeAgentId = badgeAgent?.id ?? lastAgentRef.current?.id;
+  const badgeVirtualMcps = badgeAgent
+    ? virtualMcps
+    : (lastAgentRef.current?.virtualMcps ?? []);
+  // Use current color when active, last color during exit animation
+  const wrapperBg = color?.bg ?? lastAgentRef.current?.color?.bg;
+
+  return (
+    <div className="flex flex-col w-full justify-end">
+      {/* Virtual MCP wrapper with badge */}
+      <div className="relative rounded-xl w-full flex flex-col">
+        {/* Colored background overlay - stays during exit animation */}
+        {showWrapper && (
+          <div
+            className={cn(
+              "absolute inset-0 rounded-xl pointer-events-none",
+              wrapperBg,
+            )}
           />
         )}
 
+        {/* Highlight floats above the form area */}
+        <ChatHighlight />
+
+        {/* Virtual MCP Badge Header - animated expand/collapse */}
+        <div
+          className={cn(
+            "relative z-10 grid transition-[grid-template-rows] duration-250 ease-out overflow-hidden rounded-t-xl",
+            hasAgentBadge ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+          )}
+          onTransitionEnd={handleGridTransitionEnd}
+        >
+          <div className="overflow-hidden">
+            {badgeAgentId && (
+              <VirtualMCPBadge
+                onVirtualMcpChange={setVirtualMcpId}
+                virtualMcpId={badgeAgentId}
+                virtualMcps={badgeVirtualMcps}
+                disabled={isStreaming}
+              />
+            )}
+          </div>
+        </div>
+
         {/* Inner container with the input */}
-        <div className="p-0.5">
+        <div
+          className={cn(
+            "transition-[padding] duration-250 ease-out",
+            showWrapper ? "p-0.5" : "p-0",
+          )}
+        >
           <TiptapProvider
             key={activeThreadId}
             tiptapDoc={tiptapDoc}
@@ -375,8 +458,7 @@ export function ChatInput() {
             <form
               onSubmit={handleSubmit}
               className={cn(
-                "w-full relative rounded-xl min-h-[130px] flex flex-col border border-border bg-background",
-                !selectedVirtualMcp && "shadow-sm",
+                "w-full relative rounded-xl min-h-[130px] flex flex-col border border-border bg-background shadow-sm",
               )}
             >
               <div className="relative flex flex-col gap-2 flex-1">
@@ -391,14 +473,13 @@ export function ChatInput() {
 
               {/* Bottom Actions Row */}
               <div className="flex items-center justify-between p-2.5">
-                {/* Left Actions (agent selector and usage stats) */}
-                <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+                {/* Left Actions (agent, file upload, mode) */}
+                <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
                   {isRunInProgress && (
                     <span className="text-xs text-muted-foreground shrink-0">
                       Run in progress
                     </span>
                   )}
-                  {/* Always show selector button - DecopilotIconButton for Decopilot, VirtualMCPSelector for others */}
                   {selectedVirtualMcp && isDecopilot(selectedVirtualMcp.id) ? (
                     <DecopilotIconButton
                       onVirtualMcpChange={setVirtualMcpId}
@@ -414,6 +495,17 @@ export function ChatInput() {
                       disabled={isStreaming}
                     />
                   )}
+                  <FileUploadButton
+                    selectedModel={selectedModel}
+                    isStreaming={isStreaming}
+                  />
+                  <ModeSelector
+                    selectedMode={selectedMode}
+                    onModeChange={setSelectedMode}
+                    placeholder="Mode"
+                    variant="borderless"
+                    disabled={isStreaming}
+                  />
                   <ThreadUsageStats usage={usage} />
                   {contextWindow && lastTotalTokens > 0 && (
                     <ContextWindow
@@ -423,25 +515,14 @@ export function ChatInput() {
                   )}
                 </div>
 
-                {/* Right Actions (model, mode, file upload, send button) */}
-                <div className="flex items-center gap-1">
+                {/* Right Actions (model, send) */}
+                <div className="flex items-center gap-1.5">
                   <ModelSelector
                     selectedModel={selectedModel ?? undefined}
                     onModelChange={setSelectedModel}
                     modelsConnections={modelsConnections}
                     placeholder="Model"
                     variant="borderless"
-                  />
-                  <ModeSelector
-                    selectedMode={selectedMode}
-                    onModeChange={setSelectedMode}
-                    placeholder="Mode"
-                    variant="borderless"
-                    disabled={isStreaming}
-                  />
-                  <FileUploadButton
-                    selectedModel={selectedModel}
-                    isStreaming={isStreaming}
                   />
 
                   <Button

@@ -1,5 +1,4 @@
 import { Badge } from "@deco/ui/components/badge.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
 import {
   Popover,
   PopoverContent,
@@ -13,13 +12,7 @@ import {
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import type { ToolSelectionStrategy } from "@/mcp-clients/virtual-mcp/types";
-import {
-  ArrowsRight,
-  Check,
-  ChevronDown,
-  Code01,
-  Lightbulb02,
-} from "@untitledui/icons";
+import { ArrowsRight, Check, Code01, Lightbulb02 } from "@untitledui/icons";
 import { useState } from "react";
 
 /**
@@ -69,8 +62,8 @@ function ModeItemContent({
     <div
       onClick={onSelect}
       className={cn(
-        "flex items-start gap-3 py-3 px-3 hover:bg-accent cursor-pointer rounded-lg transition-colors",
-        isSelected && "bg-accent",
+        "flex items-start gap-3 py-3 px-3 hover:bg-accent/50 cursor-pointer rounded-lg transition-colors",
+        isSelected && "bg-accent/50",
       )}
     >
       {/* Icon */}
@@ -101,42 +94,6 @@ function ModeItemContent({
   );
 }
 
-function SelectedModeDisplay({
-  mode,
-  placeholder = "Select mode",
-}: {
-  mode: ToolSelectionStrategy | undefined;
-  placeholder?: string;
-}) {
-  if (!mode) {
-    return (
-      <div className="flex items-center gap-1.5">
-        <span className="text-sm text-muted-foreground">{placeholder}</span>
-        <ChevronDown
-          size={14}
-          className="text-muted-foreground opacity-50 shrink-0"
-        />
-      </div>
-    );
-  }
-
-  const config = MODE_CONFIGS[mode];
-  const Icon = config.icon;
-
-  return (
-    <div className="flex items-center gap-0 group-hover:gap-2 group-data-[state=open]:gap-2 min-w-0 overflow-hidden transition-all duration-200">
-      <Icon className="size-4 text-muted-foreground shrink-0" />
-      <span className="text-sm text-muted-foreground group-hover:text-foreground group-data-[state=open]:text-foreground truncate whitespace-nowrap max-w-0 opacity-0 group-hover:max-w-[150px] group-hover:opacity-100 group-data-[state=open]:max-w-[150px] group-data-[state=open]:opacity-100 transition-all duration-200 ease-in-out overflow-hidden">
-        {config.label}
-      </span>
-      <ChevronDown
-        size={14}
-        className="text-muted-foreground opacity-0 max-w-0 group-hover:opacity-50 group-hover:max-w-[14px] group-data-[state=open]:opacity-50 group-data-[state=open]:max-w-[14px] shrink-0 transition-all duration-200 ease-in-out overflow-hidden"
-      />
-    </div>
-  );
-}
-
 export interface ModeSelectorProps {
   selectedMode: ToolSelectionStrategy;
   onModeChange: (mode: ToolSelectionStrategy) => void;
@@ -153,9 +110,7 @@ export interface ModeSelectorProps {
 export function ModeSelector({
   selectedMode,
   onModeChange,
-  variant = "borderless",
   className,
-  placeholder = "Mode",
   disabled = false,
 }: ModeSelectorProps) {
   const [open, setOpen] = useState(false);
@@ -171,27 +126,26 @@ export function ModeSelector({
         <Tooltip>
           <TooltipTrigger asChild>
             <PopoverTrigger asChild>
-              <Button
-                variant={variant === "borderless" ? "ghost" : "outline"}
-                size="sm"
+              <button
+                type="button"
+                disabled={disabled}
                 className={cn(
-                  "text-sm hover:bg-accent rounded-lg py-0.5 px-1 gap-1 shadow-none cursor-pointer border-0 group focus-visible:ring-0 focus-visible:ring-offset-0 min-w-0 shrink justify-start overflow-hidden",
-                  variant === "borderless" && "md:border-none",
-                  disabled && "cursor-not-allowed opacity-50",
+                  "flex items-center justify-center size-8 rounded-md border border-border text-muted-foreground/75 transition-colors shrink-0",
+                  disabled
+                    ? "cursor-not-allowed opacity-50"
+                    : "cursor-pointer hover:text-muted-foreground",
                   className,
                 )}
-                disabled={disabled}
-                data-state={open ? "open" : "closed"}
               >
-                <SelectedModeDisplay
-                  mode={selectedMode}
-                  placeholder={placeholder}
-                />
-              </Button>
+                {(() => {
+                  const Icon = MODE_CONFIGS[selectedMode]?.icon ?? ArrowsRight;
+                  return <Icon size={16} />;
+                })()}
+              </button>
             </PopoverTrigger>
           </TooltipTrigger>
           <TooltipContent side="top" className="text-xs">
-            {MODE_CONFIGS[selectedMode]?.description ?? "Choose agent mode"}
+            {MODE_CONFIGS[selectedMode]?.label ?? "Choose agent mode"}
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
