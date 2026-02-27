@@ -30,6 +30,7 @@ import {
 } from "@untitledui/icons";
 import type { FormEvent } from "react";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
+import type { Metadata } from "./types.ts";
 import { useChat } from "./context";
 import { ChatHighlight } from "./highlight";
 import { ModeSelector } from "./select-mode";
@@ -271,8 +272,7 @@ function VirtualMCPBadge({
 export function ChatInput() {
   const {
     activeThreadId,
-    tiptapDoc,
-    setTiptapDoc,
+    tiptapDocRef,
     virtualMcps,
     selectedVirtualMcp,
     setVirtualMcpId,
@@ -283,9 +283,29 @@ export function ChatInput() {
     setSelectedMode,
     messages,
     isStreaming,
+    isRunInProgress,
     sendMessage,
     stop,
+    cancelRun,
   } = useChat();
+
+  // tiptapDoc lives here (not in context) so keystrokes don't re-render
+  // the entire context tree. The ref on context lets IceBreakers read it.
+  const [tiptapDoc, setTiptapDocLocal] =
+    useState<Metadata["tiptapDoc"]>(undefined);
+
+  const setTiptapDoc = (doc: Metadata["tiptapDoc"]) => {
+    setTiptapDocLocal(doc);
+    tiptapDocRef.current = doc;
+  };
+
+  // Reset input when switching threads (TiptapProvider also remounts via key)
+  const prevThreadRef = useRef(activeThreadId);
+  if (prevThreadRef.current !== activeThreadId) {
+    prevThreadRef.current = activeThreadId;
+    setTiptapDocLocal(undefined);
+    tiptapDocRef.current = undefined;
+  }
 
   const contextWindow = selectedModel?.thinking.limits?.contextWindow;
 
@@ -301,12 +321,17 @@ export function ChatInput() {
   const canSubmit =
     !isStreaming && !!selectedModel && !isTiptapDocEmpty(tiptapDoc);
 
+  const showStopOrCancel = isStreaming || isRunInProgress;
+
   const handleSubmit = (e?: FormEvent) => {
     e?.preventDefault();
     if (isStreaming) {
       stop();
+    } else if (isRunInProgress) {
+      void cancelRun();
     } else if (canSubmit && tiptapDoc) {
       void sendMessage(tiptapDoc);
+      setTiptapDoc(undefined);
     }
   };
 
@@ -368,6 +393,11 @@ export function ChatInput() {
               <div className="flex items-center justify-between p-2.5">
                 {/* Left Actions (agent selector and usage stats) */}
                 <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+                  {isRunInProgress && (
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      Run in progress
+                    </span>
+                  )}
                   {/* Always show selector button - DecopilotIconButton for Decopilot, VirtualMCPSelector for others */}
                   {selectedVirtualMcp && isDecopilot(selectedVirtualMcp.id) ? (
                     <DecopilotIconButton
@@ -415,28 +445,39 @@ export function ChatInput() {
                   />
 
                   <Button
-                    type={isStreaming ? "button" : "submit"}
+                    type={showStopOrCancel ? "button" : "submit"}
                     onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
-                      if (isStreaming) {
+                      if (showStopOrCancel) {
                         e.preventDefault();
                         e.stopPropagation();
-                        stop();
+                        if (isStreaming) stop();
+                        else void cancelRun();
                       }
                     }}
-                    variant={canSubmit || isStreaming ? "default" : "ghost"}
+                    variant={
+                      canSubmit || showStopOrCancel ? "default" : "ghost"
+                    }
                     size="icon"
-                    disabled={!canSubmit && !isStreaming}
+                    disabled={!canSubmit && !showStopOrCancel}
                     className={cn(
                       "size-8 rounded-full transition-all",
                       !canSubmit &&
-                        !isStreaming &&
+                        !showStopOrCancel &&
                         "bg-muted text-muted-foreground hover:bg-muted hover:text-muted-foreground cursor-not-allowed",
                     )}
                     title={
-                      isStreaming ? "Stop generating" : "Send message (Enter)"
+                      isStreaming
+                        ? "Stop generating"
+                        : isRunInProgress
+                          ? "Cancel run"
+                          : "Send message (Enter)"
                     }
                   >
-                    {isStreaming ? <Stop size={20} /> : <ArrowUp size={20} />}
+                    {showStopOrCancel ? (
+                      <Stop size={20} />
+                    ) : (
+                      <ArrowUp size={20} />
+                    )}
                   </Button>
                 </div>
               </div>

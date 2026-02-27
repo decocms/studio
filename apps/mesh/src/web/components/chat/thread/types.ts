@@ -1,3 +1,5 @@
+import type { ThreadDisplayStatus } from "@decocms/mesh-sdk";
+
 // Constants
 export const THREAD_CONSTANTS = {
   /** Page size for thread messages queries */
@@ -15,6 +17,8 @@ export interface Thread {
   created_at: string; // ISO string
   updated_at: string; // ISO string
   hidden?: boolean;
+  /** Execution status from server — includes virtual "expired" for stale in_progress threads */
+  status?: ThreadDisplayStatus;
 }
 
 export type { ChatMessage } from "../types.ts";

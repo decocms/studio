@@ -1,5 +1,5 @@
 import type { VirtualMCPEntity } from "@/tools/virtual/schema";
-import { useChat } from "@/web/components/chat/context";
+import { useChatStable } from "@/web/components/chat/context";
 import { EmptyState } from "@/web/components/empty-state.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
@@ -216,7 +216,7 @@ function VirtualMcpDetailViewWithData({
 
   // Auto-open chat with this agent selected
   const [, setChatOpen] = useDecoChatOpen();
-  const { setVirtualMcpId } = useChat();
+  const { setVirtualMcpId } = useChatStable();
 
   // Open chat on mount (without selecting the agent)
   // oxlint-disable-next-line ban-use-effect/ban-use-effect

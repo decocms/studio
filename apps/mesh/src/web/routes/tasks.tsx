@@ -1,4 +1,3 @@
-import { useChat } from "@/web/components/chat";
 import { CollectionDisplayButton } from "@/web/components/collections/collection-display-button.tsx";
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
 import { CollectionTableWrapper } from "@/web/components/collections/collection-table-wrapper.tsx";
@@ -16,6 +15,7 @@ import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
+  type ThreadDisplayStatus,
 } from "@decocms/mesh-sdk";
 import {
   Breadcrumb,
@@ -33,16 +33,24 @@ import {
   Clock,
 } from "@untitledui/icons";
 import { useNavigate } from "@tanstack/react-router";
-import { useSuspenseQuery } from "@tanstack/react-query";
-import { Suspense } from "react";
+import { useSuspenseQuery, useQueryClient } from "@tanstack/react-query";
+import { Suspense, useState } from "react";
+import { useDecopilotEvents } from "@/web/hooks/use-decopilot-events";
+import { useChatStable } from "../components/chat/context";
 
-function TaskStatusBadge({ status }: { status: string }) {
+function TaskStatusBadge({
+  status,
+  stepCount,
+}: {
+  status: ThreadDisplayStatus;
+  stepCount?: number;
+}) {
   switch (status) {
     case "in_progress":
       return (
         <Badge variant="secondary" className="gap-1">
           <Loading01 size={11} className="animate-spin" />
-          Running
+          {stepCount ? `Running · step ${stepCount}` : "Running"}
         </Badge>
       );
     case "completed":
@@ -95,7 +103,31 @@ function TasksContent() {
     orgId: org.id,
   });
   const navigate = useNavigate();
-  const { switchToThread } = useChat();
+  const { switchToThread } = useChatStable();
+  const queryClient = useQueryClient();
+
+  const [stepCounts, setStepCounts] = useState<Map<string, number>>(new Map());
+
+  useDecopilotEvents({
+    orgId: org.id,
+    onStep: (event) => {
+      setStepCounts((prev) => {
+        const next = new Map(prev);
+        next.set(event.subject, event.data.stepCount);
+        return next;
+      });
+    },
+    onThreadStatus: (event) => {
+      queryClient.invalidateQueries({ queryKey: KEYS.taskThreads(locator) });
+      if (event.data.status !== "in_progress") {
+        setStepCounts((prev) => {
+          const next = new Map(prev);
+          next.delete(event.subject);
+          return next;
+        });
+      }
+    },
+  });
 
   // useListState and ThreadEntity both use snake_case for audit fields
   const listState = useListState({
@@ -165,7 +197,10 @@ function TasksContent() {
       id: "status",
       header: "Status",
       render: (thread) => (
-        <TaskStatusBadge status={thread.status ?? "completed"} />
+        <TaskStatusBadge
+          status={thread.status ?? "completed"}
+          stepCount={stepCounts.get(thread.id)}
+        />
       ),
       cellClassName: "w-40 shrink-0",
       sortable: true,

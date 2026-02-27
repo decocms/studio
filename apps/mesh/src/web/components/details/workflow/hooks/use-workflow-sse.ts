@@ -15,27 +15,11 @@
 import { useSyncExternalStore } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@decocms/mesh-sdk";
+import { createSSESubscription } from "../../../../hooks/create-sse-subscription";
 
 // ============================================================================
-// Shared EventSource per org (ref-counted)
+// Shared connection pool
 // ============================================================================
-
-interface SharedConnection {
-  es: EventSource;
-  refCount: number;
-  queryClients: Set<QueryClient>;
-  /** Pending debounce timer for coalescing invalidations */
-  debounceTimer: ReturnType<typeof setTimeout> | null;
-}
-
-const connections = new Map<string, SharedConnection>();
-
-/** Tool names whose query caches should be invalidated on workflow events */
-const INVALIDATION_TARGETS = [
-  "COLLECTION_WORKFLOW_EXECUTION_LIST",
-  "COLLECTION_WORKFLOW_EXECUTION_GET",
-  "COLLECTION_WORKFLOW_EXECUTION_GET_STEP_RESULT",
-];
 
 const WORKFLOW_EVENT_TYPES = [
   "workflow.execution.created",
@@ -44,11 +28,28 @@ const WORKFLOW_EVENT_TYPES = [
   "workflow.step.completed",
 ];
 
+const workflowSSE = createSSESubscription({
+  buildUrl: (orgId) => `/org/${orgId}/watch?types=workflow.*`,
+  eventTypes: WORKFLOW_EVENT_TYPES,
+});
+
+/** Tool names whose query caches should be invalidated on workflow events */
+const INVALIDATION_TARGETS = [
+  "COLLECTION_WORKFLOW_EXECUTION_LIST",
+  "COLLECTION_WORKFLOW_EXECUTION_GET",
+  "COLLECTION_WORKFLOW_EXECUTION_GET_STEP_RESULT",
+];
+
 /** Debounce window — coalesce rapid SSE events into one invalidation */
 const DEBOUNCE_MS = 500;
 
-function invalidateAllClients(conn: SharedConnection): void {
-  for (const client of conn.queryClients) {
+const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const queryClients = new Map<string, Set<QueryClient>>();
+
+function invalidateAllClients(orgId: string): void {
+  const clients = queryClients.get(orgId);
+  if (!clients) return;
+  for (const client of clients) {
     client.invalidateQueries({
       predicate: (query) =>
         query.queryKey.some(
@@ -58,47 +59,18 @@ function invalidateAllClients(conn: SharedConnection): void {
   }
 }
 
-function scheduleInvalidation(conn: SharedConnection): void {
-  // If a timer is already pending, the upcoming flush will cover this event too
-  if (conn.debounceTimer !== null) return;
+function scheduleInvalidation(orgId: string): void {
+  if (debounceTimers.has(orgId)) return;
 
-  conn.debounceTimer = setTimeout(() => {
-    conn.debounceTimer = null;
-    invalidateAllClients(conn);
-  }, DEBOUNCE_MS);
+  debounceTimers.set(
+    orgId,
+    setTimeout(() => {
+      debounceTimers.delete(orgId);
+      invalidateAllClients(orgId);
+    }, DEBOUNCE_MS),
+  );
 }
 
-function getOrCreateConnection(orgId: string): SharedConnection {
-  let conn = connections.get(orgId);
-
-  if (!conn) {
-    const url = `/org/${orgId}/watch?types=workflow.*`;
-    const es = new EventSource(url);
-
-    conn = { es, refCount: 0, queryClients: new Set(), debounceTimer: null };
-    connections.set(orgId, conn);
-
-    const onEvent = () => scheduleInvalidation(conn!);
-
-    for (const eventType of WORKFLOW_EVENT_TYPES) {
-      es.addEventListener(eventType, onEvent);
-    }
-
-    es.onerror = () => {
-      if (es.readyState === EventSource.CLOSED) {
-        if (conn!.debounceTimer !== null) {
-          clearTimeout(conn!.debounceTimer);
-        }
-        connections.delete(orgId);
-      }
-    };
-  }
-
-  return conn;
-}
-
-// Snapshot is constant — we don't derive render state from SSE,
-// we only use the subscription for its side-effect (query invalidation).
 const getSnapshot = () => 0;
 
 // ============================================================================
@@ -117,34 +89,33 @@ const getSnapshot = () => 0;
 export function useWorkflowSSE(): void {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
-
   const orgId = org.id;
 
   const subscribe = (onStoreChange: () => void) => {
-    const conn = getOrCreateConnection(orgId);
-    conn.refCount++;
-    conn.queryClients.add(queryClient);
-
-    // Attach per-subscriber handler so useSyncExternalStore can track changes
-    const handler = () => onStoreChange();
-    for (const eventType of WORKFLOW_EVENT_TYPES) {
-      conn.es.addEventListener(eventType, handler);
+    let clients = queryClients.get(orgId);
+    if (!clients) {
+      clients = new Set();
+      queryClients.set(orgId, clients);
     }
+    clients.add(queryClient);
+
+    const handler = () => {
+      scheduleInvalidation(orgId);
+      onStoreChange();
+    };
+
+    const unsubscribe = workflowSSE.subscribe(orgId, handler);
 
     return () => {
-      for (const eventType of WORKFLOW_EVENT_TYPES) {
-        conn.es.removeEventListener(eventType, handler);
+      unsubscribe();
+      clients!.delete(queryClient);
+      if (clients!.size === 0) {
+        queryClients.delete(orgId);
       }
-
-      conn.queryClients.delete(queryClient);
-      conn.refCount--;
-
-      if (conn.refCount <= 0) {
-        if (conn.debounceTimer !== null) {
-          clearTimeout(conn.debounceTimer);
-        }
-        conn.es.close();
-        connections.delete(orgId);
+      const timer = debounceTimers.get(orgId);
+      if (timer && !queryClients.has(orgId)) {
+        clearTimeout(timer);
+        debounceTimers.delete(orgId);
       }
     };
   };

@@ -5,5 +5,6 @@
  * The actual implementation lives in ./decopilot/routes.ts
  */
 
-export { default } from "./decopilot/routes";
+export { createDecopilotRoutes } from "./decopilot/routes";
+export type { DecopilotDeps } from "./decopilot/routes";
 export type { StreamRequest } from "./decopilot/schemas";

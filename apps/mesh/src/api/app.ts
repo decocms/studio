@@ -31,7 +31,7 @@ import {
   tracingMiddleware,
 } from "../observability";
 import authRoutes from "./routes/auth";
-import decopilotRoutes from "./routes/decopilot";
+import { createDecopilotRoutes } from "./routes/decopilot";
 import downstreamTokenRoutes from "./routes/downstream-token";
 import virtualMcpRoutes from "./routes/virtual-mcp";
 import oauthProxyRoutes, {
@@ -49,9 +49,25 @@ import {
   runPluginStartupHooks,
 } from "../core/plugin-loader";
 import { CredentialVault } from "../encryption/credential-vault";
+import {
+  LocalCancelBroadcast,
+  type CancelBroadcast,
+} from "./routes/decopilot/cancel-broadcast";
+import { createNatsConnectionProvider } from "../nats/connection";
+import { NatsCancelBroadcast } from "./routes/decopilot/nats-cancel-broadcast";
+import {
+  NoOpStreamBuffer,
+  type StreamBuffer,
+} from "./routes/decopilot/stream-buffer";
+import { NatsStreamBuffer } from "./routes/decopilot/nats-stream-buffer";
+import { RunRegistry } from "./routes/decopilot/run-registry";
+import { SqlThreadStorage } from "../storage/threads";
 
 // Track current event bus instance for cleanup during HMR
 let currentEventBus: EventBus | null = null;
+
+// Track decopilot strategy cleanup (abort active runs, stop strategies) during HMR
+let currentDecopilotCleanup: (() => void) | null = null;
 
 // ============================================================================
 // Deco Store OAuth Helpers
@@ -163,6 +179,21 @@ export async function createApp(options: CreateAppOptions = {}) {
     });
   }
 
+  // Create shared NATS provider when NATS_URL is set (must init before event bus)
+  const natsUrl = process.env.NATS_URL;
+  let natsProvider = natsUrl ? createNatsConnectionProvider() : null;
+  if (natsProvider) {
+    try {
+      await natsProvider.init(natsUrl!);
+    } catch (err) {
+      console.warn(
+        "[NATS] Connection failed, falling back to local-only mode:",
+        err,
+      );
+      natsProvider = null;
+    }
+  }
+
   // Create event bus with a lazy context getter
   // The notify function needs a context, but the context needs the event bus
   // We resolve this by having notify create its own system context
@@ -180,11 +211,50 @@ export async function createApp(options: CreateAppOptions = {}) {
     // Create notify function that uses the context factory
     // This is called by the worker to deliver events to subscribers
     // EventBus uses the full MeshDatabase (includes Pool for PostgreSQL)
-    eventBus = createEventBus(database);
+    eventBus = createEventBus(database, undefined, natsProvider);
   }
 
   // Track for cleanup during HMR
   currentEventBus = eventBus;
+
+  // Decopilot strategy cleanup on HMR / shutdown
+  if (currentDecopilotCleanup) currentDecopilotCleanup();
+  const threadStorage = new SqlThreadStorage(database.db);
+
+  const runRegistry = new RunRegistry();
+
+  const cancelBroadcast: CancelBroadcast = natsProvider
+    ? new NatsCancelBroadcast({
+        getConnection: () => natsProvider!.getConnection(),
+      })
+    : new LocalCancelBroadcast();
+
+  const streamBuffer: StreamBuffer = natsProvider
+    ? new NatsStreamBuffer({
+        getConnection: () => natsProvider!.getConnection(),
+        getJetStream: () => natsProvider!.getJetStream(),
+      })
+    : new NoOpStreamBuffer();
+
+  cancelBroadcast
+    .start((threadId) => runRegistry.cancelLocal(threadId))
+    .catch((err) => {
+      console.error("[Decopilot] CancelBroadcast start failed:", err);
+    });
+  streamBuffer.init().catch((err) => {
+    console.warn(
+      "[Decopilot] StreamBuffer init failed, attach/late-join disabled:",
+      err,
+    );
+  });
+
+  currentDecopilotCleanup = () => {
+    runRegistry.stopAll(threadStorage);
+    runRegistry.dispose();
+    cancelBroadcast.stop().catch(() => {});
+    streamBuffer.teardown();
+    natsProvider?.drain().catch(() => {});
+  };
 
   const app = new Hono<Env>();
 
@@ -633,6 +703,11 @@ export async function createApp(options: CreateAppOptions = {}) {
     }
   });
 
+  const decopilotRoutes = createDecopilotRoutes({
+    cancelBroadcast,
+    streamBuffer,
+    runRegistry,
+  });
   app.route("/api", decopilotRoutes);
 
   // OpenAI-compatible LLM API routes

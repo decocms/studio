@@ -6,9 +6,10 @@
  * when it receives a message, so SSE clients on every pod get the event.
  *
  * Uses a per-instance origin ID to avoid double-emitting on the publisher pod.
+ * Connection is provided by NatsConnectionProvider (does not own/drain).
  */
 
-import { connect, type NatsConnection, type Subscription } from "nats";
+import type { NatsConnection, Subscription } from "nats";
 import type { SSEEvent } from "./sse-hub";
 import type {
   LocalEmitFn,
@@ -24,35 +25,23 @@ interface NatsSSEMessage {
 }
 
 export interface NatsSSEBroadcastOptions {
-  servers: string | string[];
+  getConnection: () => NatsConnection | null;
 }
 
 export class NatsSSEBroadcast implements SSEBroadcastStrategy {
-  private nc: NatsConnection | null = null;
   private sub: Subscription | null = null;
   private localEmit: LocalEmitFn | null = null;
-  private startPromise: Promise<void> | null = null;
   private readonly originId = crypto.randomUUID();
   private readonly encoder = new TextEncoder();
 
   constructor(private readonly options: NatsSSEBroadcastOptions) {}
 
   async start(localEmit: LocalEmitFn): Promise<void> {
-    if (this.nc) return;
-    if (this.startPromise) return this.startPromise;
-
-    this.startPromise = this._doStart(localEmit);
-    try {
-      await this.startPromise;
-    } finally {
-      this.startPromise = null;
-    }
-  }
-
-  private async _doStart(localEmit: LocalEmitFn): Promise<void> {
     this.localEmit = localEmit;
-    this.nc = await connect({ servers: this.options.servers });
-    this.sub = this.nc.subscribe(SUBJECT);
+
+    const nc = this.options.getConnection();
+    if (!nc || this.sub) return;
+    this.sub = nc.subscribe(SUBJECT);
 
     const decoder = new TextDecoder();
 
@@ -82,10 +71,10 @@ export class NatsSSEBroadcast implements SSEBroadcastStrategy {
   }
 
   broadcast(organizationId: string, event: SSEEvent): void {
-    // Always emit locally first (fast path for SSE clients on this pod)
     this.localEmit?.(organizationId, event);
 
-    if (!this.nc) return;
+    const nc = this.options.getConnection();
+    if (!nc) return;
 
     const payload: NatsSSEMessage = {
       originId: this.originId,
@@ -94,7 +83,7 @@ export class NatsSSEBroadcast implements SSEBroadcastStrategy {
     };
 
     try {
-      this.nc.publish(SUBJECT, this.encoder.encode(JSON.stringify(payload)));
+      nc.publish(SUBJECT, this.encoder.encode(JSON.stringify(payload)));
     } catch (err) {
       console.warn("[NatsSSEBroadcast] Publish failed (non-critical):", err);
     }
@@ -104,12 +93,6 @@ export class NatsSSEBroadcast implements SSEBroadcastStrategy {
     this.sub?.unsubscribe();
     this.sub = null;
     this.localEmit = null;
-
-    if (this.nc) {
-      await this.nc.drain();
-      this.nc = null;
-    }
-
     console.log("[NatsSSEBroadcast] Stopped");
   }
 }

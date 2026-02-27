@@ -18,6 +18,7 @@ import {
 import type { Context } from "hono";
 
 import type { MeshContext, OrganizationScope } from "@/core/mesh-context";
+import { HTTPException } from "hono/http-exception";
 import { MCP_TOOL_CALL_TIMEOUT_MS } from "../proxy";
 import { estimateJsonTokens } from "./built-in-tools/read-tool-output";
 
@@ -165,4 +166,31 @@ export async function toolsFromMCP(
   });
 
   return Object.fromEntries(toolEntries);
+}
+
+/**
+ * Validate that the caller owns the thread and it belongs to the org.
+ * Reusable across cancel, attach, and other thread-scoped endpoints.
+ */
+export async function validateThreadOwnership(
+  c: Context<{ Variables: { meshContext: MeshContext } }>,
+) {
+  const ctx = c.get("meshContext");
+  const userId = ctx.auth?.user?.id;
+  if (!userId) {
+    throw new HTTPException(401, { message: "Unauthorized" });
+  }
+  const organization = ensureOrganization(c);
+  const threadId = c.req.param("threadId");
+  if (/[.*>\s]/.test(threadId)) {
+    throw new HTTPException(400, { message: "Invalid thread ID" });
+  }
+  const thread = await ctx.storage.threads.get(threadId);
+  if (!thread || thread.organization_id !== organization.id) {
+    throw new HTTPException(404, { message: "Thread not found" });
+  }
+  if (thread.created_by !== userId) {
+    throw new HTTPException(403, { message: "Not authorized" });
+  }
+  return { ctx, organization, thread, threadId, userId };
 }

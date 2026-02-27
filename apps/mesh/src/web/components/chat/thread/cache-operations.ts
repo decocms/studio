@@ -54,6 +54,7 @@ export function updateThreadInCache(
       created_at: currentThread.created_at,
       updated_at: updates.updated_at ?? currentThread.updated_at,
       hidden: updates.hidden ?? currentThread.hidden,
+      status: updates.status ?? currentThread.status,
     };
     updatedItems[threadIndex] = updatedThread;
 

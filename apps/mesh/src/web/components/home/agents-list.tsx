@@ -5,7 +5,7 @@
  * Only shows when the organization has agents.
  */
 
-import { useChat } from "@/web/components/chat/context";
+import { useChatStable } from "@/web/components/chat/context";
 import {
   VirtualMCPPopoverContent,
   type VirtualMCPInfo,
@@ -34,7 +34,7 @@ function AgentPreview({
     icon?: string | null;
   };
 }) {
-  const { setVirtualMcpId } = useChat();
+  const { setVirtualMcpId } = useChatStable();
 
   const handleClick = () => {
     // Select the agent in the chat context
@@ -138,7 +138,7 @@ function SeeAllButton({
  */
 function AgentsListContent() {
   const virtualMcps = useVirtualMCPs();
-  const { selectedVirtualMcp, setVirtualMcpId } = useChat();
+  const { selectedVirtualMcp, setVirtualMcpId } = useChatStable();
 
   // Filter out the default Decopilot agent (it's not a real agent)
   const agents = virtualMcps

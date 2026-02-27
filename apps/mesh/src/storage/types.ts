@@ -14,6 +14,7 @@
 import type { ColumnType } from "kysely";
 import type { OAuthConfig, ToolDefinition } from "../tools/connection/schema";
 import type { ChatMessage } from "../api/routes/decopilot/types";
+import { ThreadStatus } from "@decocms/mesh-sdk";
 
 // ============================================================================
 // Type Utilities
@@ -691,14 +692,11 @@ export interface ConnectionAggregationTable {
  * Threads are scopes users in organizations and store messages with Agents.
  */
 
-/** Stored thread statuses (persisted in DB). */
-export const THREAD_STATUSES = [
-  "in_progress",
-  "requires_action",
-  "failed",
-  "completed",
-] as const;
-export type ThreadStatus = (typeof THREAD_STATUSES)[number];
+/** Stored thread statuses (persisted in DB). Canonical source: @decocms/mesh-sdk */
+export {
+  THREAD_STATUSES,
+  type ThreadStatus,
+} from "@decocms/mesh-sdk";
 
 export interface ThreadTable {
   id: string;

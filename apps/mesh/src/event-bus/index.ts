@@ -22,6 +22,7 @@
  * ```
  */
 
+import type { NatsConnectionProvider } from "../nats/connection";
 import type { MeshDatabase } from "../database";
 import { createEventBusStorage } from "../storage/event-bus";
 import { EventBus as EventBusImpl } from "./event-bus";
@@ -111,11 +112,13 @@ function resolveNotifyStrategy(database: MeshDatabase): NotifyStrategyName {
  *
  * @param database - MeshDatabase instance (discriminated union)
  * @param config - Optional event bus configuration
+ * @param natsProvider - Optional shared NATS connection provider (when using NATS strategies)
  * @returns EventBus instance
  */
 export function createEventBus(
   database: MeshDatabase,
   config?: EventBusConfig,
+  natsProvider?: NatsConnectionProvider | null,
 ): EventBus {
   const storage = createEventBusStorage(database.db);
   const pollIntervalMs =
@@ -140,10 +143,19 @@ export function createEventBus(
           return "unknown";
         }
       })();
+      if (!natsProvider) {
+        console.warn(
+          `[EventBus] NATS unavailable (${natsHost}), falling back to polling`,
+        );
+        notifyStrategy = polling;
+        break;
+      }
       console.log(`[EventBus] Using NATS notify strategy (${natsHost})`);
       notifyStrategy = compose(
         polling,
-        new NatsNotifyStrategy({ servers: natsUrl }),
+        new NatsNotifyStrategy({
+          getConnection: () => natsProvider!.getConnection(),
+        }),
       );
       break;
     }
@@ -170,15 +182,18 @@ export function createEventBus(
 
   // Start SSE hub with the appropriate broadcast strategy.
   // NATS available → cross-pod fan-out; otherwise → local only.
-  const sseBroadcast = natsUrl
-    ? new NatsSSEBroadcast({ servers: natsUrl })
-    : new LocalSSEBroadcast();
+  const sseBroadcast =
+    natsUrl && natsProvider
+      ? new NatsSSEBroadcast({
+          getConnection: () => natsProvider!.getConnection(),
+        })
+      : new LocalSSEBroadcast();
 
   sseHub.start(sseBroadcast).catch((err) => {
     console.error("[SSEHub] Failed to start broadcast strategy:", err);
   });
 
-  if (natsUrl) {
+  if (natsUrl && natsProvider) {
     console.log("[SSEHub] Using NATS SSE broadcast (cross-pod)");
   } else {
     console.log("[SSEHub] Using local SSE broadcast (single-pod)");

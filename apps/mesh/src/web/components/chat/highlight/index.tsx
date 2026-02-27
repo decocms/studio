@@ -124,6 +124,7 @@ export function ChatHighlight() {
     clearFinishReason,
     messages,
     isStreaming,
+    isWaitingForApprovals,
     addToolOutput,
     sendMessage,
   } = useChat();
@@ -138,14 +139,6 @@ export function ChatHighlight() {
   const isWaitingForUserInput = userAskParts?.filter(
     (p) => p.state !== "output-available",
   )?.length;
-
-  // Check if any tools are awaiting approval
-  const isWaitingForApprovals =
-    lastMessage?.role === "assistant"
-      ? lastMessage.parts.some(
-          (part) => "state" in part && part.state === "approval-requested",
-        )
-      : false;
 
   const handleFixInChat = () => {
     if (error) {

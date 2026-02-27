@@ -171,6 +171,10 @@ export function createSubtaskTool(
             providerMetadata,
           });
         },
+        onAbort: () => {
+          console.error(`[subtask:${agent_id}] Aborted`);
+          mcpClient.close().catch(() => {});
+        },
         onError: (error) => {
           console.error(`[subtask:${agent_id}] Error`, error);
         },

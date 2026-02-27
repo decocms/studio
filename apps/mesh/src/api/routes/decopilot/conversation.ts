@@ -36,14 +36,9 @@ export interface ProcessedConversation {
   originalMessages: ChatMessage[];
 }
 
-/**
- * Marks any tool parts still in "approval-requested" state as "output-denied".
- * This happens when the user sends a new message without approving/rejecting
- * pending tool calls. convertToModelMessages then produces the correct
- * assistant(tool-call) → tool(tool-result) pairing automatically.
- */
-function denyPendingApprovals(messages: ChatMessage[]): ChatMessage[] {
-  return messages.map((msg) => {
+export function denyPendingApprovals(messages: ChatMessage[]): ChatMessage[] {
+  let patched = false;
+  const result = messages.map((msg) => {
     if (msg.role !== "assistant") return msg;
 
     const hasPending = msg.parts.some(
@@ -51,6 +46,7 @@ function denyPendingApprovals(messages: ChatMessage[]): ChatMessage[] {
     );
     if (!hasPending) return msg;
 
+    patched = true;
     return {
       ...msg,
       parts: msg.parts.map((part) => {
@@ -74,6 +70,8 @@ function denyPendingApprovals(messages: ChatMessage[]): ChatMessage[] {
       }),
     } as ChatMessage;
   });
+
+  return patched ? result : messages;
 }
 
 function splitMessages(messages: ModelMessage[]): {

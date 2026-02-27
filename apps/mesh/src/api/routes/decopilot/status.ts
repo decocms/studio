@@ -15,22 +15,6 @@ type ResponsePart = {
 };
 
 /**
- * Returns true if the text contains a direct question to the user (sentence-ending ?).
- * Strips URLs, code blocks, and inline code to avoid false positives from query strings,
- * ternary operators, regex literals, etc.
- */
-function hasDirectQuestion(text: string): boolean {
-  const sanitized = text
-    .replace(/```[\s\S]*?```/g, "")
-    .replace(/`[^`]*`/g, "")
-    .replace(/https?:\/\/\S+/g, "")
-    .replace(/www\.\S+/g, "");
-
-  const lastParagraph = sanitized.split(/\n\s*\n/).at(-1) ?? sanitized;
-  return /\?(\s|[)"'\]},]|$)/m.test(lastParagraph);
-}
-
-/**
  * Resolves the thread status from the AI SDK stream result.
  *
  * @param finishReason - The AI SDK finish reason for the last step
@@ -42,11 +26,6 @@ export function resolveThreadStatus(
   responseParts: ResponsePart[] = [],
 ): ThreadStatus {
   if (finishReason === "stop") {
-    // Question in last text part -> waiting for user answer
-    const lastTextPart = responseParts.findLast((p) => p.type === "text");
-    if (lastTextPart?.text && hasDirectQuestion(lastTextPart.text)) {
-      return "requires_action";
-    }
     return "completed";
   }
 

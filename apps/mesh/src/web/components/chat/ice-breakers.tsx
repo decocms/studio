@@ -23,7 +23,7 @@ import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
 import { Suspense, useReducer, useState } from "react";
 import { toast } from "sonner";
 import { ErrorBoundary } from "../error-boundary";
-import { useChat } from "./context";
+import { useChatStable } from "./context";
 import {
   PromptArgsDialog,
   type PromptArgumentValues,
@@ -238,7 +238,7 @@ function iceBreakerReducer(
  * @param connectionId - The connection ID, or null for the management MCP
  */
 function IceBreakersContent({ connectionId }: { connectionId: string | null }) {
-  const { tiptapDoc, sendMessage } = useChat();
+  const { tiptapDocRef, sendMessage } = useChatStable();
   const { org } = useProjectContext();
   const client = useMCPClient({
     connectionId,
@@ -263,7 +263,7 @@ function IceBreakersContent({ connectionId }: { connectionId: string | null }) {
 
       // Append prompt to current tiptapDoc and send
       // Wrap mention in a paragraph since it's an inline node
-      const newTiptapDoc = appendToTiptapDoc(tiptapDoc, {
+      const newTiptapDoc = appendToTiptapDoc(tiptapDocRef.current, {
         type: "paragraph",
         content: [
           createMentionDoc({
@@ -337,7 +337,7 @@ function IceBreakersContent({ connectionId }: { connectionId: string | null }) {
  * Includes ErrorBoundary, Suspense, and container internally.
  */
 export function IceBreakers({ className }: IceBreakersProps) {
-  const { selectedVirtualMcp } = useChat();
+  const { selectedVirtualMcp } = useChatStable();
   // When selectedVirtualMcp is null, use decopilot ID (default agent)
   const { org } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
