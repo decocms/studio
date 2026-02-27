@@ -23,8 +23,6 @@ interface MCPAppLoaderProps {
   minHeight?: number;
   maxHeight?: number;
   className?: string;
-  developerMode?: boolean;
-  isFirstInSequence?: boolean;
 }
 
 export function MCPAppLoader({
