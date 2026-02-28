@@ -2,8 +2,11 @@
  * Server Constants
  *
  * Centralized configuration for server-related constants.
- * Respects BASE_URL and PORT environment variables.
+ * Respects BASE_URL, PORT, and MESH_HOME environment variables.
  */
+
+import { homedir } from "os";
+import { join } from "path";
 
 /**
  * Get the base URL for the server.
@@ -18,4 +21,20 @@ export function getBaseUrl(): string {
   }
   const port = process.env.PORT || "3000";
   return `http://localhost:${port}`;
+}
+
+/**
+ * Get the Mesh home directory for data storage.
+ *
+ * Priority:
+ * 1. MESH_HOME environment variable (if set)
+ * 2. ~/deco/
+ *
+ * This is the default location for:
+ * - Database (mesh.db)
+ * - Secrets (secrets.json)
+ * - Local assets (assets/)
+ */
+export function getMeshHome(): string {
+  return process.env.MESH_HOME || join(homedir(), "deco");
 }

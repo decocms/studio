@@ -6,6 +6,7 @@ import {
   ORG_ADMIN_PROJECT_SLUG,
 } from "@decocms/mesh-sdk";
 import { getBaseUrl } from "@/core/server-constants";
+import { isLocalMode } from "@/auth/local-mode";
 import { getDb } from "@/database";
 import { CredentialVault } from "@/encryption/credential-vault";
 import { ConnectionStorage } from "@/storage/connection";
@@ -77,6 +78,34 @@ function getDefaultOrgMcps(organizationId: string): MCPCreationSpec[] {
     {
       data: getWellKnownRegistryConnection(organizationId),
     },
+    // Local Files - filesystem object storage (only in local mode)
+    ...(isLocalMode()
+      ? [
+          {
+            data: {
+              id: "local-files",
+              title: "Local Files",
+              description: "Local filesystem storage for files and assets",
+              connection_type: "HTTP" as const,
+              connection_url: `${getBaseUrl()}/mcp/dev-assets`,
+              icon: null,
+              app_name: "@deco/local-files",
+              connection_token: null,
+              connection_headers: null,
+              oauth_config: null,
+              configuration_state: null,
+              configuration_scopes: null,
+              metadata: {
+                isDefault: true,
+                type: "local-files",
+              },
+            } satisfies ConnectionCreateData,
+            permissions: {
+              self: ["*"],
+            },
+          },
+        ]
+      : []),
   ];
 }
 

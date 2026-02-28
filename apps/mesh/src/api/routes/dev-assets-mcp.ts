@@ -47,8 +47,11 @@ interface ToolDefinition {
   };
 }
 
-// Base directory for dev assets (relative to cwd)
-const DEV_ASSETS_BASE_DIR = "./data/assets";
+// Base directory for assets.
+// Uses MESH_HOME/assets when available (local mode), falls back to ./data/assets
+const DEV_ASSETS_BASE_DIR = process.env.MESH_HOME
+  ? `${process.env.MESH_HOME}/assets`
+  : "./data/assets";
 
 // Default URL expiration time in seconds (1 hour)
 const DEFAULT_EXPIRES_IN = 3600;

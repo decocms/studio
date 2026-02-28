@@ -8,6 +8,7 @@
 import { Hono } from "hono";
 import { authConfig, resetPasswordEnabled } from "../../auth";
 import { KNOWN_OAUTH_PROVIDERS, OAuthProvider } from "@/auth/oauth-providers";
+import { isLocalMode } from "@/auth/local-mode";
 
 const app = new Hono();
 
@@ -41,6 +42,11 @@ export type AuthConfig = {
    * Disabled by default in production unless UNSAFE_ALLOW_STDIO_TRANSPORT=true
    */
   stdioEnabled: boolean;
+  /**
+   * Whether local mode is active (zero-ceremony developer experience).
+   * When true, the frontend should auto-login and skip org selection.
+   */
+  localMode: boolean;
 };
 
 /**
@@ -87,6 +93,7 @@ app.get("/config", async (c) => {
             enabled: false,
           },
       stdioEnabled,
+      localMode: isLocalMode(),
     };
 
     return c.json({ success: true, config });
@@ -101,6 +108,40 @@ app.get("/config", async (c) => {
       },
       500,
     );
+  }
+});
+
+/**
+ * Local Mode Auto-Session Endpoint
+ *
+ * When local mode is active, this endpoint signs in the admin user
+ * and returns the session. The frontend calls this to skip the login form.
+ *
+ * Route: POST /api/auth/custom/local-session
+ */
+app.post("/local-session", async (c) => {
+  if (!isLocalMode()) {
+    return c.json({ success: false, error: "Local mode is not active" }, 403);
+  }
+
+  try {
+    const { auth } = await import("../../auth");
+
+    // Sign in as the local admin user
+    const result = await auth.api.signInEmail({
+      body: {
+        email: "admin@localhost",
+        password: "admin",
+      },
+      asResponse: true,
+    });
+
+    // Forward the response (includes Set-Cookie headers)
+    return result;
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Failed to create local session";
+    return c.json({ success: false, error: errorMessage }, 500);
   }
 });
 
