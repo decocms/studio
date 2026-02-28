@@ -17,6 +17,7 @@ import {
 import { getToolPartErrorText, safeStringify } from "../utils.ts";
 import { ApprovalActions } from "./approval-actions.tsx";
 import { MCPAppLoader } from "@/mcp-apps/mcp-app-loader.tsx";
+import { cn } from "@deco/ui/lib/utils.ts";
 
 interface GenericToolCallPartProps {
   part: ToolUIPart | DynamicToolUIPart;
@@ -176,11 +177,11 @@ export function GenericToolCallPart({
       />
       {canRenderMCPApp && (
         <div
-          className={
-            isBorderless
-              ? "mt-2"
-              : "mt-2 border border-border/75 rounded-lg overflow-hidden p-3"
-          }
+          className={cn(
+            "mt-2",
+            !isBorderless &&
+              "border border-border/75 rounded-lg overflow-hidden p-3",
+          )}
         >
           <Suspense
             fallback={
