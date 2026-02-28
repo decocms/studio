@@ -81,8 +81,14 @@ function AutoLogin({ redirectTo }: { redirectTo: string }) {
           throw new Error(data.error || "Auto-login failed");
         }
         if (!cancelled) {
+          // Validate redirectTo to prevent open redirects.
+          // Only allow relative paths that start with "/" but not "//".
+          const safeRedirect =
+            redirectTo.startsWith("/") && !redirectTo.startsWith("//")
+              ? redirectTo
+              : "/";
           // Reload to pick up the new session cookie
-          window.location.href = redirectTo;
+          window.location.href = safeRedirect;
         }
       } catch (err) {
         if (!cancelled) {

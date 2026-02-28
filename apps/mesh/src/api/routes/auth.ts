@@ -8,7 +8,11 @@
 import { Hono } from "hono";
 import { authConfig, resetPasswordEnabled } from "../../auth";
 import { KNOWN_OAUTH_PROVIDERS, OAuthProvider } from "@/auth/oauth-providers";
-import { isLocalMode } from "@/auth/local-mode";
+import {
+  getLocalAdminUser,
+  isLocalMode,
+  LOCAL_ADMIN_PASSWORD,
+} from "@/auth/local-mode";
 
 const app = new Hono();
 
@@ -126,8 +130,6 @@ app.post("/local-session", async (c) => {
 
   try {
     const { auth } = await import("../../auth");
-    const { getLocalAdminUser } = await import("../../auth/local-mode");
-
     const adminUser = await getLocalAdminUser();
     if (!adminUser) {
       return c.json(
@@ -140,7 +142,7 @@ app.post("/local-session", async (c) => {
     const result = await auth.api.signInEmail({
       body: {
         email: adminUser.email,
-        password: "admin@mesh",
+        password: LOCAL_ADMIN_PASSWORD,
       },
       asResponse: true,
     });

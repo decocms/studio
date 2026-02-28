@@ -22,7 +22,14 @@ import { spawn } from "child_process";
 // Resolve MESH_HOME
 // ============================================================================
 
-const defaultHome = process.env.MESH_HOME || join(homedir(), "deco");
+// When MESH_HOME is explicitly set, respect it (CI, tests, custom setups).
+// Otherwise default to ~/deco for interactive dev.
+const meshAppDir = import.meta.dir.replace("/scripts", "");
+const explicitHome = process.env.MESH_HOME;
+const userHome = join(homedir(), "deco");
+// In CI / non-TTY without explicit MESH_HOME, use a repo-local directory
+// so tests never touch the developer's real ~/deco data.
+const ciHome = join(meshAppDir, ".mesh-dev");
 
 const dim = "\x1b[2m";
 const reset = "\x1b[0m";
@@ -43,10 +50,18 @@ function prompt(question: string): Promise<string> {
 
 let meshHome: string;
 
-if (existsSync(defaultHome)) {
-  meshHome = defaultHome;
+if (explicitHome) {
+  // Explicit MESH_HOME takes priority (CI, tests, custom setups)
+  meshHome = explicitHome;
+} else if (!process.stdin.isTTY) {
+  // Non-interactive (CI) — use repo-local directory to avoid touching ~/deco
+  meshHome = ciHome;
+} else if (existsSync(userHome)) {
+  // Interactive with existing ~/deco — use it
+  meshHome = userHome;
 } else {
-  const displayDefault = defaultHome.replace(homedir(), "~");
+  // Interactive, first run — prompt for location
+  const displayDefault = userHome.replace(homedir(), "~");
   console.log("");
   console.log(`${bold}${cyan}MCP Mesh${reset} ${dim}(dev)${reset}`);
   console.log("");
@@ -54,7 +69,7 @@ if (existsSync(defaultHome)) {
     `  Where should Mesh store its data? ${dim}(${displayDefault})${reset} `,
   );
   if (answer === "") {
-    meshHome = defaultHome;
+    meshHome = userHome;
   } else {
     meshHome = answer.startsWith("~")
       ? join(homedir(), answer.slice(1))
@@ -159,7 +174,7 @@ const child = spawn(
     stdio: "inherit",
     shell: true,
     env: process.env,
-    cwd: import.meta.dir.replace("/scripts", ""),
+    cwd: meshAppDir,
   },
 );
 

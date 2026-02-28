@@ -724,16 +724,16 @@ function ConnectionModelList({
   allModelsRef.current = allModels;
 
   // Resolve the selected model for the details panel default
-  const resolvedRef = useRef(false);
-  if (selectedModel && !resolvedRef.current && allModels.length > 0) {
-    resolvedRef.current = true;
-    const found =
-      allModels.find((m) => m.id === selectedModel.thinking.id) ?? null;
-    if (found) {
-      // Schedule state update to avoid setting parent state during render
-      queueMicrotask(() => onSelectedModelResolved(found));
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    if (selectedModel && allModels.length > 0) {
+      const found =
+        allModels.find((m) => m.id === selectedModel.thinking.id) ?? null;
+      if (found) {
+        onSelectedModelResolved(found);
+      }
     }
-  }
+  }, [selectedModel, allModels, onSelectedModelResolved]);
 
   const models = allowAll
     ? allModels

@@ -150,8 +150,10 @@ function prompt(question: string): Promise<string> {
 let meshHome: string;
 
 if (values.home) {
-  // Explicitly passed via --home flag
-  meshHome = values.home;
+  // Explicitly passed via --home flag — expand ~ to home directory
+  meshHome = values.home.startsWith("~")
+    ? join(homedir(), values.home.slice(1))
+    : values.home;
 } else if (existsSync(defaultHome)) {
   // Default directory already exists (not first run)
   meshHome = defaultHome;

@@ -11,7 +11,7 @@ import { getDb } from "@/database";
 import { userInfo } from "os";
 import { auth } from "./index";
 
-const LOCAL_ADMIN_PASSWORD = "admin@mesh";
+export const LOCAL_ADMIN_PASSWORD = "admin@mesh";
 
 function getLocalUserName(): string {
   try {

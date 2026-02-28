@@ -39,6 +39,9 @@ coverage/
 # Temporary files
 /tmp/
 
+# Dev/test local data directory
+.mesh-dev/
+
 
 
 # Authentication tokens
