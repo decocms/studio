@@ -405,6 +405,12 @@ ${widgetScript(
 .code-block .copy:hover { background: ${tokens.gray200}; }
 .code-block pre { padding: 12px 16px; overflow-x: auto; margin: 0; }
 .code-block code { font-family: ${tokens.fontMono}; font-size: 13px; color: ${tokens.gray900}; line-height: 1.6; white-space: pre; }
+.code-block .kw { color: #8250df; }
+.code-block .str { color: #0a3069; }
+.code-block .num { color: #0550ae; }
+.code-block .cm { color: #6e7781; font-style: italic; }
+.code-block .fn { color: #8250df; }
+.code-block .op { color: #cf222e; }
 </style></head><body>
 <div class="code-block">
   <div class="header"><span class="lang" id="lang">code</span><button class="copy" onclick="copyCode()">Copy</button></div>
@@ -413,11 +419,24 @@ ${widgetScript(
 ${widgetScript(
   "Code",
   `
-  document.getElementById('code').textContent = args.code || '';
+  var el = document.getElementById('code');
+  var code = args.code || '';
   document.getElementById('lang').textContent = args.language || 'text';
+  el.innerHTML = highlightCode(code);
 `,
 )}
 <script>
+function escH(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function highlightCode(code) {
+  return escH(code)
+    .replace(/(\/\/.*)$/gm, '<span class="cm">$1</span>')
+    .replace(/(\/\\*[\\s\\S]*?\\*\/)/g, '<span class="cm">$1</span>')
+    .replace(/\\b(const|let|var|function|return|if|else|for|while|import|export|from|async|await|new|class|extends|default|try|catch|throw|typeof|instanceof)\\b/g, '<span class="kw">$1</span>')
+    .replace(/(&quot;[^&]*?&quot;|&#39;[^&]*?&#39;|&amp;quot;.*?&amp;quot;)/g, '<span class="str">$1</span>')
+    .replace(/(["'][^"']*?["'])/g, '<span class="str">$1</span>')
+    .replace(/(\\b\\d+\\.?\\d*\\b)/g, '<span class="num">$1</span>')
+    .replace(/(=&gt;|===|!==|&&|\\|\\||\\+|-|\\*|=)/g, '<span class="op">$1</span>');
+}
 function copyCode() {
   var t = document.getElementById('code').textContent;
   navigator.clipboard.writeText(t).catch(function(){});
@@ -695,6 +714,10 @@ ${widgetScript(
 )}
 <script>
 function renderMd(md) {
+  // Handle fenced code blocks first
+  md = md.replace(/\`\`\`(\\w*)\\n([\\s\\S]*?)\`\`\`/g, function(m, lang, code) {
+    return '<pre><code>' + code.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</code></pre>';
+  });
   return md
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
     .replace(/^## (.+)$/gm, '<h2>$1</h2>')
@@ -706,7 +729,7 @@ function renderMd(md) {
     .replace(/^- (.+)$/gm, '<li>$1</li>')
     .replace(/(<li>.*<\\/li>)/s, '<ul>$1</ul>')
     .replace(/\\n{2,}/g, '</p><p>')
-    .replace(/^(?!<[hbulo])(.+)$/gm, '<p>$1</p>');
+    .replace(/^(?!<[hbulop])(.+)$/gm, '<p>$1</p>');
 }
 </script>
 </body></html>`,
@@ -1121,13 +1144,10 @@ ${widgetScript(
 .area-chart { padding: 4px 0; }
 .area-chart .title { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
 .area-chart svg { display: block; width: 100%; }
-.area-chart .labels { display: flex; justify-content: space-between; margin-top: 4px; }
-.area-chart .labels span { font-size: 11px; color: ${tokens.gray700}; }
 </style></head><body>
 <div class="area-chart">
   <div class="title" id="title">Chart</div>
-  <svg id="svg" viewBox="0 0 300 100" preserveAspectRatio="none" height="100"></svg>
-  <div class="labels" id="labels"></div>
+  <svg id="svg" viewBox="0 0 300 120"></svg>
 </div>
 ${widgetScript(
   "Area Chart",
@@ -1146,12 +1166,14 @@ ${widgetScript(
   var line = pts.map(function(p){return p.x+','+p.y;}).join(' L');
   var area = 'M0,' + H + ' L' + line + ' L' + W + ',' + H + ' Z';
   var svg = document.getElementById('svg');
+  var labels = data.map(function(d, i) {
+    return '<text x="' + (i * step).toFixed(1) + '" y="115" text-anchor="middle" font-size="9" fill="${tokens.gray700}">' + escH(d.label||'') + '</text>';
+  }).join('');
   svg.innerHTML = '<defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${tokens.primary}" stop-opacity="0.4"/><stop offset="100%" stop-color="${tokens.primary}" stop-opacity="0.05"/></linearGradient></defs>' +
     '<path d="' + area + '" fill="url(#ag)"/>' +
     '<path d="M' + line + '" fill="none" stroke="${tokens.primary}" stroke-width="2"/>' +
-    pts.map(function(p){return '<circle cx="'+p.x+'" cy="'+p.y+'" r="3" fill="${tokens.primary}"/>';}).join('');
-  var lb = document.getElementById('labels');
-  lb.innerHTML = data.map(function(d){return '<span>'+escH(d.label||'')+'</span>';}).join('');
+    pts.map(function(p){return '<circle cx="'+p.x+'" cy="'+p.y+'" r="3" fill="${tokens.primary}"/>';}).join('') +
+    labels;
 `,
 )}
 <script>function escH(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}</script>
