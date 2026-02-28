@@ -70,11 +70,11 @@ const UI_WIDGET_RESOURCES: Record<string, UIWidgetResource> = {
     name: "Counter",
     description: "Interactive counter widget with increment/decrement controls",
     html: `<!DOCTYPE html><html><head><style>${baseCSS}
-.counter { text-align: center; }
-.counter .label { font-size: 13px; color: ${tokens.gray700}; margin-bottom: 8px; }
-.counter .value { font-size: 48px; font-weight: 700; color: ${tokens.primary}; margin: 12px 0; }
-.counter .controls { display: flex; gap: 8px; justify-content: center; }
-.counter button { width: 40px; height: 40px; border-radius: ${tokens.borderRadius}; border: 1px solid ${tokens.gray200}; background: white; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+.counter { text-align: center; padding: 8px 0; }
+.counter .label { font-size: 12px; color: ${tokens.gray700}; margin-bottom: 4px; }
+.counter .value { font-size: 32px; font-weight: 700; color: ${tokens.primary}; margin: 4px 0 8px; }
+.counter .controls { display: flex; gap: 6px; justify-content: center; }
+.counter button { width: 34px; height: 34px; border-radius: ${tokens.borderRadius}; border: 1px solid ${tokens.gray200}; background: white; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
 .counter button:hover { background: ${tokens.primary}; color: white; border-color: ${tokens.primary}; }
 </style></head><body>
 <div class="counter">
@@ -964,7 +964,7 @@ ${widgetScript(
     name: "Switch",
     description: "Toggle switch with label and description",
     html: `<!DOCTYPE html><html><head><style>${baseCSS}
-.switch-widget { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.switch-widget { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; }
 .switch-widget .text .label { font-size: 14px; font-weight: 500; }
 .switch-widget .text .desc { font-size: 12px; color: ${tokens.gray700}; margin-top: 2px; }
 .switch-widget .toggle { width: 44px; height: 24px; border-radius: 12px; background: ${tokens.gray300}; position: relative; cursor: pointer; transition: background 0.2s; flex-shrink: 0; }
