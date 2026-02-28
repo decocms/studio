@@ -5,6 +5,7 @@ import { defineTool } from "../../core/define-tool.ts";
 export const UI_TODO = defineTool({
   name: "UI_TODO",
   description: "Display an interactive todo list",
+  _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/todo" },
   inputSchema: z.object({
     items: z
       .array(
@@ -22,13 +23,11 @@ export const UI_TODO = defineTool({
   }),
   outputSchema: z.object({
     message: z.string(),
-    _meta: z.record(z.string(), z.unknown()).optional(),
   }),
   handler: async (input) => {
     const done = input.items.filter((i) => i.completed).length;
     return {
       message: `Todo "${input.title}": ${done}/${input.items.length} completed`,
-      _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/todo" },
     };
   },
 });

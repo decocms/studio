@@ -5,6 +5,7 @@ import { defineTool } from "../../core/define-tool.ts";
 export const UI_METRIC = defineTool({
   name: "UI_METRIC",
   description: "Display a key metric with optional unit and trend indicator",
+  _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/metric" },
   inputSchema: z.object({
     value: z.coerce.number().describe("Metric value to display"),
     label: z.string().describe("Label for the metric"),
@@ -16,7 +17,6 @@ export const UI_METRIC = defineTool({
   }),
   outputSchema: z.object({
     message: z.string(),
-    _meta: z.record(z.string(), z.unknown()).optional(),
   }),
   handler: async (input) => {
     const trendLabel =
@@ -27,7 +27,6 @@ export const UI_METRIC = defineTool({
           : "no change";
     return {
       message: `Metric "${input.label}": ${input.value}${input.unit} (${trendLabel})`,
-      _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/metric" },
     };
   },
 });

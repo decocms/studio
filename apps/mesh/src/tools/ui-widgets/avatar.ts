@@ -5,6 +5,7 @@ import { defineTool } from "../../core/define-tool.ts";
 export const UI_AVATAR = defineTool({
   name: "UI_AVATAR",
   description: "Display a user avatar with optional status indicator",
+  _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/avatar" },
   inputSchema: z.object({
     name: z.string().describe("User display name"),
     imageUrl: z.string().default("").describe("URL for the avatar image"),
@@ -15,13 +16,11 @@ export const UI_AVATAR = defineTool({
   }),
   outputSchema: z.object({
     message: z.string(),
-    _meta: z.record(z.string(), z.unknown()).optional(),
   }),
   handler: async (input) => {
     const statusText = input.status ? ` (${input.status})` : "";
     return {
       message: `Avatar: ${input.name}${statusText}`,
-      _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/avatar" },
     };
   },
 });

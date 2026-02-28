@@ -5,6 +5,7 @@ import { defineTool } from "../../core/define-tool.ts";
 export const UI_KBD = defineTool({
   name: "UI_KBD",
   description: "Display keyboard shortcut reference",
+  _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/kbd" },
   inputSchema: z.object({
     shortcuts: z
       .array(
@@ -20,7 +21,6 @@ export const UI_KBD = defineTool({
   }),
   outputSchema: z.object({
     message: z.string(),
-    _meta: z.record(z.string(), z.unknown()).optional(),
   }),
   handler: async (input) => {
     const summary = input.shortcuts
@@ -28,7 +28,6 @@ export const UI_KBD = defineTool({
       .join("; ");
     return {
       message: `Keyboard shortcuts (${input.shortcuts.length}): ${summary || "none"}`,
-      _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/kbd" },
     };
   },
 });

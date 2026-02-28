@@ -5,6 +5,7 @@ import { defineTool } from "../../core/define-tool.ts";
 export const UI_CHART = defineTool({
   name: "UI_CHART",
   description: "Display an animated bar chart with labeled data points",
+  _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/chart" },
   inputSchema: z.object({
     data: z
       .array(
@@ -19,13 +20,11 @@ export const UI_CHART = defineTool({
   }),
   outputSchema: z.object({
     message: z.string(),
-    _meta: z.record(z.string(), z.unknown()).optional(),
   }),
   handler: async (input) => {
     const summary = input.data.map((d) => `${d.label}: ${d.value}`).join(", ");
     return {
       message: `Chart "${input.title}" with ${input.data.length} data points: ${summary || "empty"}`,
-      _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/chart" },
     };
   },
 });

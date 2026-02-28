@@ -5,6 +5,7 @@ import { defineTool } from "../../core/define-tool.ts";
 export const UI_CONFIRMATION = defineTool({
   name: "UI_CONFIRMATION",
   description: "Display a confirmation dialog with customizable actions",
+  _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/confirmation" },
   inputSchema: z.object({
     title: z.string().describe("Dialog title"),
     message: z.string().describe("Confirmation message to display"),
@@ -19,12 +20,10 @@ export const UI_CONFIRMATION = defineTool({
   }),
   outputSchema: z.object({
     message: z.string(),
-    _meta: z.record(z.string(), z.unknown()).optional(),
   }),
   handler: async (input) => {
     return {
       message: `Confirmation "${input.title}": ${input.message} [${input.confirmLabel} / ${input.cancelLabel}]`,
-      _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/confirmation" },
     };
   },
 });

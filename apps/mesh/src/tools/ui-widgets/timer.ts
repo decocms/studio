@@ -5,6 +5,7 @@ import { defineTool } from "../../core/define-tool.ts";
 export const UI_TIMER = defineTool({
   name: "UI_TIMER",
   description: "Display an interactive countdown timer",
+  _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/timer" },
   inputSchema: z.object({
     duration: z.coerce
       .number()
@@ -14,12 +15,10 @@ export const UI_TIMER = defineTool({
   }),
   outputSchema: z.object({
     message: z.string(),
-    _meta: z.record(z.string(), z.unknown()).optional(),
   }),
   handler: async (input) => {
     return {
       message: `Timer "${input.label}" set for ${input.duration}s`,
-      _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/timer" },
     };
   },
 });

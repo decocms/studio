@@ -5,6 +5,7 @@ import { defineTool } from "../../core/define-tool.ts";
 export const UI_SPARKLINE = defineTool({
   name: "UI_SPARKLINE",
   description: "Display a compact sparkline trend chart",
+  _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/sparkline" },
   inputSchema: z.object({
     values: z
       .array(z.coerce.number())
@@ -14,14 +15,12 @@ export const UI_SPARKLINE = defineTool({
   }),
   outputSchema: z.object({
     message: z.string(),
-    _meta: z.record(z.string(), z.unknown()).optional(),
   }),
   handler: async (input) => {
     const count = input.values.length;
     const last = count > 0 ? input.values[count - 1] : 0;
     return {
       message: `Sparkline "${input.label}": ${count} points, latest value ${last}`,
-      _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/sparkline" },
     };
   },
 });

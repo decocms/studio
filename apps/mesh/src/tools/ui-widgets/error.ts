@@ -5,6 +5,7 @@ import { defineTool } from "../../core/define-tool.ts";
 export const UI_ERROR = defineTool({
   name: "UI_ERROR",
   description: "Display an error message with optional code and details",
+  _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/error" },
   inputSchema: z.object({
     message: z.string().describe("Error message"),
     code: z
@@ -18,13 +19,11 @@ export const UI_ERROR = defineTool({
   }),
   outputSchema: z.object({
     message: z.string(),
-    _meta: z.record(z.string(), z.unknown()).optional(),
   }),
   handler: async (input) => {
     const prefix = input.code ? `[${input.code}] ` : "";
     return {
       message: `Error: ${prefix}${input.message}`,
-      _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/error" },
     };
   },
 });

@@ -5,6 +5,7 @@ import { defineTool } from "../../core/define-tool.ts";
 export const UI_AREA_CHART = defineTool({
   name: "UI_AREA_CHART",
   description: "Display an area chart with gradient fill",
+  _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/area-chart" },
   inputSchema: z.object({
     data: z
       .array(
@@ -19,13 +20,11 @@ export const UI_AREA_CHART = defineTool({
   }),
   outputSchema: z.object({
     message: z.string(),
-    _meta: z.record(z.string(), z.unknown()).optional(),
   }),
   handler: async (input) => {
     const summary = input.data.map((d) => `${d.label}: ${d.value}`).join(", ");
     return {
       message: `Area chart "${input.title}" with ${input.data.length} points: ${summary || "empty"}`,
-      _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/area-chart" },
     };
   },
 });

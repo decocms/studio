@@ -5,6 +5,7 @@ import { defineTool } from "../../core/define-tool.ts";
 export const UI_TABLE = defineTool({
   name: "UI_TABLE",
   description: "Display a data table with columns and rows",
+  _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/table" },
   inputSchema: z.object({
     columns: z.array(z.string()).describe("Column header names"),
     rows: z
@@ -15,12 +16,10 @@ export const UI_TABLE = defineTool({
   }),
   outputSchema: z.object({
     message: z.string(),
-    _meta: z.record(z.string(), z.unknown()).optional(),
   }),
   handler: async (input) => {
     return {
       message: `Table "${input.title}": ${input.columns.length} columns, ${input.rows.length} rows`,
-      _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/table" },
     };
   },
 });

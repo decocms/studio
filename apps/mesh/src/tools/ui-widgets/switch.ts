@@ -5,6 +5,7 @@ import { defineTool } from "../../core/define-tool.ts";
 export const UI_SWITCH = defineTool({
   name: "UI_SWITCH",
   description: "Display a toggle switch control",
+  _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/switch" },
   inputSchema: z.object({
     label: z.string().describe("Label for the switch"),
     checked: z
@@ -18,13 +19,11 @@ export const UI_SWITCH = defineTool({
   }),
   outputSchema: z.object({
     message: z.string(),
-    _meta: z.record(z.string(), z.unknown()).optional(),
   }),
   handler: async (input) => {
     const state = input.checked ? "ON" : "OFF";
     return {
       message: `Switch "${input.label}": ${state}`,
-      _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/switch" },
     };
   },
 });

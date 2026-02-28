@@ -5,6 +5,7 @@ import { defineTool } from "../../core/define-tool.ts";
 export const UI_FORM_RESULT = defineTool({
   name: "UI_FORM_RESULT",
   description: "Display a form submission result summary",
+  _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/form-result" },
   inputSchema: z.object({
     fields: z
       .array(
@@ -26,13 +27,11 @@ export const UI_FORM_RESULT = defineTool({
   }),
   outputSchema: z.object({
     message: z.string(),
-    _meta: z.record(z.string(), z.unknown()).optional(),
   }),
   handler: async (input) => {
     const status = input.success ? "success" : "failure";
     return {
       message: `${input.title} (${status}): ${input.fields.length} field${input.fields.length === 1 ? "" : "s"}`,
-      _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/form-result" },
     };
   },
 });

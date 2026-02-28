@@ -274,7 +274,7 @@ ${widgetScript(
 ${widgetScript(
   "Timer",
   `
-  window._timerDuration = (args.duration || 60);
+  window._timerDuration = (args.duration ?? 60);
   window._remaining = window._timerDuration;
   if (args.label) document.getElementById('lbl').textContent = args.label;
   renderTime();

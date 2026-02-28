@@ -6,6 +6,7 @@ export const UI_COUNTER = defineTool({
   name: "UI_COUNTER",
   description:
     "Display an interactive counter widget with increment/decrement controls",
+  _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/counter" },
   inputSchema: z.object({
     initialValue: z.coerce
       .number()
@@ -15,12 +16,10 @@ export const UI_COUNTER = defineTool({
   }),
   outputSchema: z.object({
     message: z.string(),
-    _meta: z.record(z.string(), z.unknown()).optional(),
   }),
   handler: async (input) => {
     return {
       message: `Counter "${input.label}" initialized at ${input.initialValue}`,
-      _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/counter" },
     };
   },
 });

@@ -5,6 +5,7 @@ import { defineTool } from "../../core/define-tool.ts";
 export const UI_RATING = defineTool({
   name: "UI_RATING",
   description: "Display a star rating indicator",
+  _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/rating" },
   inputSchema: z.object({
     value: z.coerce.number().default(0).describe("Current rating value"),
     max: z.coerce.number().default(5).describe("Maximum number of stars"),
@@ -12,12 +13,10 @@ export const UI_RATING = defineTool({
   }),
   outputSchema: z.object({
     message: z.string(),
-    _meta: z.record(z.string(), z.unknown()).optional(),
   }),
   handler: async (input) => {
     return {
       message: `Rating "${input.label}": ${input.value}/${input.max}`,
-      _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/rating" },
     };
   },
 });

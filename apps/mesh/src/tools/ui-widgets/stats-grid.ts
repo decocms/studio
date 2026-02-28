@@ -5,6 +5,7 @@ import { defineTool } from "../../core/define-tool.ts";
 export const UI_STATS_GRID = defineTool({
   name: "UI_STATS_GRID",
   description: "Display a grid of dashboard statistics",
+  _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/stats-grid" },
   inputSchema: z.object({
     stats: z
       .array(
@@ -20,7 +21,6 @@ export const UI_STATS_GRID = defineTool({
   }),
   outputSchema: z.object({
     message: z.string(),
-    _meta: z.record(z.string(), z.unknown()).optional(),
   }),
   handler: async (input) => {
     const summary = input.stats
@@ -28,7 +28,6 @@ export const UI_STATS_GRID = defineTool({
       .join(", ");
     return {
       message: `Stats grid (${input.stats.length} items): ${summary || "empty"}`,
-      _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/stats-grid" },
     };
   },
 });
