@@ -1,7 +1,7 @@
 import { isUIResourceUri, MCP_APP_DISPLAY_MODES } from "@/mcp-apps/types.ts";
 import { MCPAppRenderer } from "@/mcp-apps/mcp-app-renderer.tsx";
 import { getUIWidgetResource } from "@/tools/ui-widgets/resources.ts";
-import { useUIResourceLoader } from "@/web/components/chat/message/parts/use-ui-resource-loader.ts";
+import { useUIResourceLoader } from "@/mcp-apps/use-ui-resource-loader.ts";
 import { CollectionDisplayButton } from "@/web/components/collections/collection-display-button.tsx";
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
 import { CollectionTableWrapper } from "@/web/components/collections/collection-table-wrapper.tsx";

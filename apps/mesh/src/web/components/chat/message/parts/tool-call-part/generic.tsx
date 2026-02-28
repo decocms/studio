@@ -15,7 +15,7 @@ import {
 } from "./utils.tsx";
 import { getToolPartErrorText, safeStringify } from "../utils.ts";
 import { ApprovalActions } from "./approval-actions.tsx";
-import { MCPAppLoader } from "../mcp-app-loader.tsx";
+import { MCPAppLoader } from "@/mcp-apps/mcp-app-loader.tsx";
 
 interface GenericToolCallPartProps {
   part: ToolUIPart | DynamicToolUIPart;

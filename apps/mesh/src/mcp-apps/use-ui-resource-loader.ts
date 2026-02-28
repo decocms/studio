@@ -1,8 +1,5 @@
-import { injectCSP } from "@/mcp-apps/csp-injector.ts";
-import {
-  UIResourceLoader,
-  type ReadResourceFn,
-} from "@/mcp-apps/resource-loader.ts";
+import { injectCSP } from "./csp-injector.ts";
+import { UIResourceLoader, type ReadResourceFn } from "./resource-loader.ts";
 import { useRef, useState } from "react";
 
 const sharedLoader = new UIResourceLoader();
