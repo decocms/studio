@@ -17,10 +17,11 @@ import { ErrorBoundary } from "@/web/components/error-boundary";
 import { MONITORING_CONFIG } from "@/web/components/monitoring/config.ts";
 import { LogRow } from "@/web/components/monitoring/log-row.tsx";
 import {
-  MonitoringStatsRow,
   MonitoringStatsRowSkeleton,
   calculateStats,
+  KPIChart,
   type DateRange,
+  type MonitoringStatsData,
 } from "@/web/components/monitoring/monitoring-stats-row.tsx";
 import { DashboardsTab } from "@/web/components/monitoring/dashboards-tab";
 import { useInfiniteScroll } from "@/web/hooks/use-infinite-scroll.ts";
@@ -38,7 +39,12 @@ import {
 import { Badge } from "@deco/ui/components/badge.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { FilterLines, PauseCircle, PlayCircle } from "@untitledui/icons";
+import {
+  FilterLines,
+  PauseCircle,
+  PlayCircle,
+  Container,
+} from "@untitledui/icons";
 import { Input } from "@deco/ui/components/input.tsx";
 import { MultiSelect } from "@deco/ui/components/multi-select.tsx";
 import {
@@ -83,7 +89,9 @@ import {
 import { CollectionTabs } from "@/web/components/collections/collection-tabs.tsx";
 import { Switch } from "@deco/ui/components/switch.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
-import { AnalyticsTab } from "@/web/components/monitoring/analytics-tab.tsx";
+import { TopTools } from "@/web/components/monitoring/analytics-top-tools.tsx";
+import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
+import { HomeGridCell } from "@/web/routes/orgs/home/home-grid-cell.tsx";
 import {
   Table,
   TableBody,
@@ -101,6 +109,164 @@ interface MonitoringStatsProps {
   connectionIds: string[];
   logs: MonitoringLogsResponse["logs"];
   total?: number;
+  connections: ReturnType<typeof useConnections>;
+}
+
+interface ServerMetric {
+  connectionId: string;
+  requests: number;
+  errors: number;
+  errorRate: number;
+  avgLatencyMs: number;
+}
+
+function aggregateServerMetrics(
+  logs: Array<{
+    connectionId: string;
+    isError: boolean;
+    durationMs: number;
+  }>,
+): Map<string, ServerMetric> {
+  const metrics = new Map<
+    string,
+    { requests: number; errors: number; totalLatency: number }
+  >();
+
+  for (const log of logs) {
+    if (!log.connectionId) continue;
+    const existing = metrics.get(log.connectionId) ?? {
+      requests: 0,
+      errors: 0,
+      totalLatency: 0,
+    };
+    metrics.set(log.connectionId, {
+      requests: existing.requests + 1,
+      errors: existing.errors + (log.isError ? 1 : 0),
+      totalLatency: existing.totalLatency + log.durationMs,
+    });
+  }
+
+  const result = new Map<string, ServerMetric>();
+  for (const [connectionId, data] of metrics) {
+    result.set(connectionId, {
+      connectionId,
+      requests: data.requests,
+      errors: data.errors,
+      errorRate: data.requests > 0 ? (data.errors / data.requests) * 100 : 0,
+      avgLatencyMs: data.requests > 0 ? data.totalLatency / data.requests : 0,
+    });
+  }
+  return result;
+}
+
+type LeaderboardMode = "requests" | "errors" | "latency";
+
+function getMetricValue(m: ServerMetric, mode: LeaderboardMode): number {
+  if (mode === "requests") return m.requests;
+  if (mode === "errors") return m.errorRate;
+  return m.avgLatencyMs;
+}
+
+function formatMetric(m: ServerMetric, mode: LeaderboardMode): string {
+  if (mode === "requests") return m.requests.toLocaleString();
+  if (mode === "errors") return `${m.errorRate.toFixed(1)}%`;
+  return `${Math.round(m.avgLatencyMs)}ms`;
+}
+
+const STAT_KPI_CONFIG: Array<{
+  label: string;
+  dataKey: "calls" | "errors" | "p95";
+  colorNum: number;
+  barColor: string;
+  leaderboardMode: LeaderboardMode;
+  getValue: (s: MonitoringStatsData) => string;
+}> = [
+  {
+    label: "Tool Calls",
+    dataKey: "calls",
+    colorNum: 1,
+    barColor: "bg-chart-1",
+    leaderboardMode: "requests",
+    getValue: (s) => s.totalCalls.toLocaleString(),
+  },
+  {
+    label: "Latency",
+    dataKey: "p95",
+    colorNum: 4,
+    barColor: "bg-chart-4",
+    leaderboardMode: "latency",
+    getValue: (s) => `${Math.round(s.avgDurationMs)}ms`,
+  },
+  {
+    label: "Errors",
+    dataKey: "errors",
+    colorNum: 3,
+    barColor: "bg-chart-3",
+    leaderboardMode: "errors",
+    getValue: (s) => s.totalErrors.toLocaleString(),
+  },
+];
+
+function ConnectionLeaderboard({
+  logs,
+  connections,
+  mode,
+  barColor,
+}: {
+  logs: MonitoringLogsResponse["logs"];
+  connections: ReturnType<typeof useConnections>;
+  mode: LeaderboardMode;
+  barColor: string;
+}) {
+  const metricsMap = aggregateServerMetrics(logs);
+  const allConnections = connections ?? [];
+
+  const ranked = allConnections
+    .map((c) => ({ connection: c, metric: metricsMap.get(c.id) }))
+    .filter((item) => item.metric)
+    .sort(
+      (a, b) =>
+        getMetricValue(b.metric!, mode) - getMetricValue(a.metric!, mode),
+    )
+    .slice(0, 5);
+
+  const maxValue = ranked[0]?.metric
+    ? getMetricValue(ranked[0].metric, mode)
+    : 1;
+
+  if (ranked.length === 0) return null;
+
+  return (
+    <div className="space-y-1.5 mt-2">
+      {ranked.map(({ connection, metric }) => {
+        const value = getMetricValue(metric!, mode);
+        const pct = maxValue > 0 ? Math.min((value / maxValue) * 100, 100) : 0;
+        return (
+          <div key={connection.id} className="flex items-center gap-1.5">
+            <IntegrationIcon
+              icon={connection.icon}
+              name={connection.title}
+              size="xs"
+              fallbackIcon={<Container />}
+              className="shrink-0 size-4! min-w-4!"
+            />
+            <span className="text-[10px] text-foreground truncate min-w-0 w-20">
+              {connection.title}
+            </span>
+            <div className="relative h-1.5 bg-muted/50 overflow-hidden flex-1">
+              <div
+                className={cn("h-full", barColor)}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <span className="text-[10px] tabular-nums shrink-0 text-foreground">
+              {formatMetric(metric!, mode)}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function MonitoringStatsContent({
@@ -108,23 +274,51 @@ function MonitoringStatsContent({
   connectionIds,
   logs: allLogs,
   total,
+  connections,
 }: MonitoringStatsProps) {
-  // Filter logs by multiple connection IDs (client-side if more than one selected)
   let logs = allLogs;
   if (connectionIds.length > 1) {
     logs = logs.filter((log) => connectionIds.includes(log.connectionId));
   }
 
-  // Use server total for stats calculation (logs are paginated, so we need the total)
   const totalCalls = connectionIds.length > 1 ? undefined : total;
   const stats = calculateStats(logs, displayDateRange, undefined, totalCalls);
 
   return (
-    <MonitoringStatsRow
-      stats={stats}
-      chartHeight="h-[30px] md:h-[40px]"
-      compact
-    />
+    <div className="grid grid-cols-3 gap-[0.5px] bg-border flex-shrink-0">
+      {STAT_KPI_CONFIG.map(
+        ({ label, dataKey, colorNum, barColor, leaderboardMode, getValue }) => (
+          <HomeGridCell
+            key={dataKey}
+            title={
+              <div className="flex flex-col gap-0.5 md:gap-1">
+                <p className="text-xs md:text-sm text-muted-foreground">
+                  {label}
+                </p>
+                <p className="text-sm md:text-lg font-medium">
+                  {getValue(stats)}
+                </p>
+              </div>
+            }
+          >
+            <div className="flex flex-col w-full">
+              <KPIChart
+                data={stats.data}
+                dataKey={dataKey}
+                colorNum={colorNum}
+                chartHeight="h-[30px] md:h-[40px]"
+              />
+              <ConnectionLeaderboard
+                logs={logs}
+                connections={connections}
+                mode={leaderboardMode}
+                barColor={barColor}
+              />
+            </div>
+          </HomeGridCell>
+        ),
+      )}
+    </div>
   );
 }
 
@@ -784,7 +978,7 @@ const MonitoringLogsTable = Object.assign(MonitoringLogsTableContent, {
 // ============================================================================
 
 interface MonitoringDashboardContentProps {
-  tab: "logs" | "analytics" | "dashboards";
+  tab: "logs" | "dashboards";
   dateRange: DateRange;
   displayDateRange: DateRange;
   connectionIds: string[];
@@ -801,7 +995,7 @@ interface MonitoringDashboardContentProps {
   onUpdateFilters: (updates: Partial<MonitoringSearchParams>) => void;
   onTimeRangeChange: (range: TimeRangeValue) => void;
   onStreamingToggle: () => void;
-  onTabChange: (tab: "logs" | "analytics" | "dashboards") => void;
+  onTabChange: (tab: "logs" | "dashboards") => void;
 }
 
 function MonitoringDashboardContent({
@@ -910,9 +1104,14 @@ function MonitoringDashboardContent({
     }
   };
 
+  // Build dateRange strings for analytics components (use display range, not the streaming-extended fetch range)
+  const analyticsDateRange = {
+    startDate: displayDateRange.startDate.toISOString(),
+    endDate: displayDateRange.endDate.toISOString(),
+  };
+
   const tabs = [
-    { id: "logs" as const, label: "Logs" },
-    { id: "analytics" as const, label: "Analytics" },
+    { id: "logs" as const, label: "Connections" },
     { id: "dashboards" as const, label: "Dashboards" },
   ];
 
@@ -980,22 +1179,33 @@ function MonitoringDashboardContent({
         <CollectionTabs
           tabs={tabs}
           activeTab={tab}
-          onTabChange={(tabId) =>
-            onTabChange(tabId as "logs" | "analytics" | "dashboards")
-          }
+          onTabChange={(tabId) => onTabChange(tabId as "logs" | "dashboards")}
         />
       </div>
 
       {tab === "dashboards" ? (
         <DashboardsTab />
-      ) : tab === "logs" ? (
+      ) : (
         <div className="flex-1 flex flex-col overflow-auto md:overflow-hidden">
-          {/* Stats Banner */}
+          {/* Top Tools Chart */}
+          <div className="border-b border-border">
+            <ErrorBoundary fallback={null}>
+              <Suspense fallback={<TopTools.Skeleton />}>
+                <TopTools.Content
+                  metricsMode="requests"
+                  dateRange={analyticsDateRange}
+                />
+              </Suspense>
+            </ErrorBoundary>
+          </div>
+
+          {/* Stats with Connection Leaderboards */}
           <MonitoringStats
             displayDateRange={displayDateRange}
             connectionIds={connectionIds}
             logs={allLogs}
             total={total}
+            connections={allConnections}
           />
 
           {/* Search Bar */}
@@ -1030,8 +1240,6 @@ function MonitoringDashboardContent({
             />
           </div>
         </div>
-      ) : (
-        <AnalyticsTab />
       )}
     </>
   );
@@ -1082,8 +1290,7 @@ export default function MonitoringDashboard() {
   const fromResult = expressionToDate(from);
   const toResult = expressionToDate(to);
 
-  const startDate =
-    fromResult.date || new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const startDate = fromResult.date || new Date(Date.now() - 30 * 60 * 1000);
   const originalEndDate = toResult.date || new Date();
 
   // Original range for bucket calculations (what user selected)
@@ -1150,6 +1357,9 @@ export default function MonitoringDashboard() {
               </Page.Header>
               <Page.Content>
                 <div className="flex-1 flex flex-col overflow-auto md:overflow-hidden">
+                  <div className="border-b border-border">
+                    <TopTools.Skeleton />
+                  </div>
                   <MonitoringStats.Skeleton />
                   <MonitoringLogsTable.Skeleton />
                 </div>

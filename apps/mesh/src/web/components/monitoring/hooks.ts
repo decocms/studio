@@ -20,8 +20,11 @@ function getLast24HoursDateRange() {
   };
 }
 
-export function useMonitoringLogs() {
-  const dateRange = getLast24HoursDateRange();
+export function useMonitoringLogs(externalDateRange?: {
+  startDate: string;
+  endDate: string;
+}) {
+  const dateRange = externalDateRange ?? getLast24HoursDateRange();
   const { org } = useProjectContext();
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,

@@ -14,7 +14,7 @@ import {
 } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { Container } from "@untitledui/icons";
-import { Line, LineChart } from "recharts";
+import { Line, LineChart, XAxis } from "recharts";
 import { useMonitoringLogs } from "./hooks";
 import type { BaseMonitoringLog } from "./index";
 
@@ -108,14 +108,17 @@ function buildStackedToolBuckets(
 
 interface TopToolsContentProps {
   metricsMode: MetricsMode;
+  dateRange?: { startDate: string; endDate: string };
 }
 
-function TopToolsContent(_props: TopToolsContentProps) {
+function TopToolsContent({
+  dateRange: externalDateRange,
+}: TopToolsContentProps) {
   const { org } = useProjectContext();
   const navigate = useNavigate();
   const connections = useConnections() ?? [];
 
-  const { data: logsData, dateRange } = useMonitoringLogs();
+  const { data: logsData, dateRange } = useMonitoringLogs(externalDateRange);
 
   const logs = logsData?.logs ?? [];
   const start = new Date(dateRange.startDate);
@@ -132,9 +135,6 @@ function TopToolsContent(_props: TopToolsContentProps) {
       params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
     });
   };
-
-  const formatDate = (date: Date) =>
-    date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
   return (
     <HomeGridCell
@@ -166,18 +166,26 @@ function TopToolsContent(_props: TopToolsContentProps) {
     >
       {topTools.length === 0 ? (
         <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
-          No tool activity in the last 24 hours
+          No tool activity in this time range
         </div>
       ) : (
         <div className="flex flex-col gap-2 w-full h-full cursor-pointer hover:opacity-80 transition-opacity">
           <ChartContainer
-            className="flex-1 min-h-0 max-h-[120px] w-full"
+            className="flex-1 min-h-0 max-h-[140px] w-full"
             config={chartConfig}
           >
             <LineChart
               data={buckets}
-              margin={{ left: 0, right: 0, top: 5, bottom: 5 }}
+              margin={{ left: 8, right: 8, top: 5, bottom: 5 }}
             >
+              <XAxis
+                dataKey="label"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                interval="preserveStartEnd"
+                minTickGap={60}
+              />
               <ChartTooltip
                 content={({ active, payload }) => {
                   if (!active || !payload || payload.length === 0) return null;
@@ -250,10 +258,6 @@ function TopToolsContent(_props: TopToolsContentProps) {
               ))}
             </LineChart>
           </ChartContainer>
-          <div className="flex items-start justify-between text-xs text-muted-foreground w-full">
-            <p>{formatDate(start)}</p>
-            <p>{formatDate(end)}</p>
-          </div>
         </div>
       )}
     </HomeGridCell>
