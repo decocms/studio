@@ -285,3 +285,17 @@ See `AGENTS.md` for detailed coding guidelines and conventions.
 <div align="center">
   <sub>Made with ❤️ by the <a href="https://decocms.com">deco</a> community</sub>
 </div>
+
+
+## Installation
+
+```bash
+# Installation instructions
+```
+
+
+## Usage
+
+```python
+# Usage examples
+```
