@@ -43,5 +43,5 @@ export function getUIResourceUri(meta: unknown): string | undefined {
 }
 
 export function isUIResourceUri(uri: string): boolean {
-  return uri.startsWith(UI_RESOURCE_URI_SCHEME);
+  return uri.startsWith(UI_RESOURCE_URI_SCHEME) || uri.startsWith("/_widgets/");
 }

@@ -55,6 +55,7 @@ export function MCPAppLoader({
 
   const {
     html: appHtml,
+    url: appUrl,
     loading,
     error,
   } = useUIResourceLoader(uiResourceUri, handleReadResource);
@@ -86,11 +87,12 @@ export function MCPAppLoader({
     );
   }
 
-  if (!appHtml) return null;
+  if (!appHtml && !appUrl) return null;
 
   return (
     <MCPAppRenderer
-      html={appHtml}
+      html={appHtml ?? undefined}
+      url={appUrl ?? undefined}
       uri={uiResourceUri}
       toolName={toolName}
       toolInput={toolInput as Record<string, unknown> | undefined}

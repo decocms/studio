@@ -20,7 +20,8 @@ import { useRef, useState } from "react";
 // ---------------------------------------------------------------------------
 
 interface MCPAppRendererProps {
-  html: string;
+  html?: string;
+  url?: string;
   uri: string;
   toolName?: string;
   toolInput?: Record<string, unknown>;
@@ -82,6 +83,7 @@ function buildHostContext(
 
 export function MCPAppRenderer({
   html,
+  url,
   uri,
   toolName,
   toolInput,
@@ -210,6 +212,9 @@ export function MCPAppRenderer({
   // Render
   // -----------------------------------------------------------------------
 
+  // Guard: nothing to render
+  if (!html && !url) return null;
+
   if (error) {
     return (
       <div
@@ -238,8 +243,15 @@ export function MCPAppRenderer({
       )}
       <iframe
         ref={handleIframeRef}
-        srcDoc={html}
-        sandbox="allow-scripts allow-forms"
+        src={url ?? undefined}
+        srcDoc={html ?? undefined}
+        // allow-same-origin is required for React module scripts loaded via src.
+        // Safe: url is validated in useUIResourceLoader to be same-origin /_widgets/* only.
+        sandbox={
+          url
+            ? "allow-scripts allow-same-origin allow-forms"
+            : "allow-scripts allow-forms"
+        }
         className={cn("w-full h-full border-0", isLoading && "invisible")}
         title={`MCP App: ${toolName ?? uri}`}
       />
