@@ -16,6 +16,10 @@
 import { parseArgs } from "util";
 import { homedir } from "os";
 import { join } from "path";
+import { existsSync } from "fs";
+import { createInterface } from "readline";
+
+const defaultHome = process.env.MESH_HOME || join(homedir(), "deco");
 
 const { values } = parseArgs({
   args: process.argv.slice(2),
@@ -27,7 +31,6 @@ const { values } = parseArgs({
     },
     home: {
       type: "string",
-      default: process.env.MESH_HOME || join(homedir(), "deco"),
     },
     help: {
       type: "boolean",
@@ -119,13 +122,67 @@ if (values.version) {
 // Set PORT environment variable for the server
 process.env.PORT = values.port;
 
-// Set MESH_HOME - this is the canonical data directory
-const meshHome = values.home!;
+// ANSI color codes (needed early for the prompt)
+const dim = "\x1b[2m";
+const reset = "\x1b[0m";
+const bold = "\x1b[1m";
+const cyan = "\x1b[36m";
+const yellow = "\x1b[33m";
+const green = "\x1b[32m";
+
+// ============================================================================
+// Resolve MESH_HOME — prompt on first run if using default
+// ============================================================================
+
+/**
+ * Prompt the user for input via readline.
+ */
+function prompt(question: string): Promise<string> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer.trim());
+    });
+  });
+}
+
+let meshHome: string;
+
+if (values.home) {
+  // Explicitly passed via --home flag
+  meshHome = values.home;
+} else if (existsSync(defaultHome)) {
+  // Default directory already exists (not first run)
+  meshHome = defaultHome;
+} else {
+  // First run with default path — ask the user
+  const displayDefault = defaultHome.replace(homedir(), "~");
+  console.log("");
+  console.log(`${bold}${cyan}MCP Mesh${reset}`);
+  console.log("");
+  const answer = await prompt(
+    `  Where should Mesh store its data? ${dim}(${displayDefault})${reset} `,
+  );
+  if (answer === "") {
+    meshHome = defaultHome;
+  } else {
+    // Expand ~ to home directory
+    meshHome = answer.startsWith("~")
+      ? join(homedir(), answer.slice(1))
+      : answer;
+  }
+}
+
 process.env.MESH_HOME = meshHome;
 
-// Ensure NODE_ENV defaults to production when running via CLI
+// Ensure NODE_ENV defaults to production when running via CLI.
+// However, when running from source (not the bundled dist), use development
+// so the asset server proxies to the Vite dev server instead of serving
+// from a nonexistent dist/client/ directory.
 if (!process.env.NODE_ENV) {
-  process.env.NODE_ENV = "production";
+  const isRunningFromSource = import.meta.url.includes("/src/cli.ts");
+  process.env.NODE_ENV = isRunningFromSource ? "development" : "production";
 }
 
 // Determine if local mode should be active
@@ -137,14 +194,6 @@ const hasCustomAuthConfig =
   process.env.AUTH_CONFIG_PATH !== "./auth-config.json";
 const localMode = !values["no-local-mode"] && !hasCustomAuthConfig;
 process.env.MESH_LOCAL_MODE = localMode ? "true" : "false";
-
-// ANSI color codes
-const dim = "\x1b[2m";
-const reset = "\x1b[0m";
-const bold = "\x1b[1m";
-const cyan = "\x1b[36m";
-const yellow = "\x1b[33m";
-const green = "\x1b[32m";
 
 // ============================================================================
 // Secrets management
