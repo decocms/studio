@@ -36,6 +36,8 @@ export interface BucketPoint {
   calls: number;
   errors: number;
   errorRate: number;
+  avg: number;
+  p50: number;
   p95: number;
 }
 
@@ -154,6 +156,12 @@ function buildBuckets(
     calls: b.calls,
     errors: b.errors,
     errorRate: b.calls > 0 ? (b.errors / b.calls) * 100 : 0,
+    avg: Math.round(
+      b.durations.length > 0
+        ? b.durations.reduce((a, c) => a + c, 0) / b.durations.length
+        : 0,
+    ),
+    p50: Math.round(percentile(b.durations, 0.5)),
     p95: Math.round(percentile(b.durations, 0.95)),
   }));
 }
@@ -166,6 +174,7 @@ export interface MonitoringStatsData {
   totalCalls: number;
   totalErrors: number;
   avgDurationMs: number;
+  p95DurationMs: number;
   data: BucketPoint[];
 }
 
@@ -178,10 +187,12 @@ export function calculateStats(
 ): MonitoringStatsData {
   const totalCalls = overrideTotalCalls ?? logs.length;
   const totalErrors = logs.filter((log) => log.isError).length;
+  const durations = logs.map((log) => log.durationMs);
   const avgDurationMs =
-    logs.length > 0
-      ? logs.reduce((sum, log) => sum + log.durationMs, 0) / logs.length
+    durations.length > 0
+      ? durations.reduce((sum, d) => sum + d, 0) / durations.length
       : 0;
+  const p95DurationMs = percentile(durations, 0.95);
   const data = buildBuckets(
     logs,
     dateRange.startDate,
@@ -189,7 +200,7 @@ export function calculateStats(
     bucketCount,
   );
 
-  return { totalCalls, totalErrors, avgDurationMs, data };
+  return { totalCalls, totalErrors, avgDurationMs, p95DurationMs, data };
 }
 
 // ============================================================================
@@ -198,7 +209,7 @@ export function calculateStats(
 
 export interface KPIChartProps {
   data: BucketPoint[];
-  dataKey: "calls" | "errors" | "p95";
+  dataKey: "calls" | "errors" | "avg" | "p50" | "p95";
   colorNum: number;
   chartHeight: string;
 }

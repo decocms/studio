@@ -66,7 +66,7 @@ import {
 import { expressionToDate } from "@deco/ui/lib/time-expressions.ts";
 import { useSuspenseInfiniteQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { Suspense, useRef, useState } from "react";
+import { type ReactNode, Suspense, useRef, useState } from "react";
 import {
   type EnrichedMonitoringLog,
   type MonitoringLogsResponse,
@@ -89,7 +89,10 @@ import {
 import { CollectionTabs } from "@/web/components/collections/collection-tabs.tsx";
 import { Switch } from "@deco/ui/components/switch.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
-import { TopTools } from "@/web/components/monitoring/analytics-top-tools.tsx";
+import {
+  TopTools,
+  type TopChartMetric,
+} from "@/web/components/monitoring/analytics-top-tools.tsx";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { HomeGridCell } from "@/web/routes/orgs/home/home-grid-cell.tsx";
 import {
@@ -110,6 +113,8 @@ interface MonitoringStatsProps {
   logs: MonitoringLogsResponse["logs"];
   total?: number;
   connections: ReturnType<typeof useConnections>;
+  selectedMetric: TopChartMetric;
+  onMetricSelect: (metric: TopChartMetric) => void;
 }
 
 interface ServerMetric {
@@ -175,11 +180,12 @@ function formatMetric(m: ServerMetric, mode: LeaderboardMode): string {
 
 const STAT_KPI_CONFIG: Array<{
   label: string;
-  dataKey: "calls" | "errors" | "p95";
+  dataKey: "calls" | "errors" | "avg" | "p50" | "p95";
   colorNum: number;
   barColor: string;
   leaderboardMode: LeaderboardMode;
-  getValue: (s: MonitoringStatsData) => string;
+  chartMetric: TopChartMetric;
+  renderTitle: (s: MonitoringStatsData) => ReactNode;
 }> = [
   {
     label: "Tool Calls",
@@ -187,7 +193,15 @@ const STAT_KPI_CONFIG: Array<{
     colorNum: 1,
     barColor: "bg-chart-1",
     leaderboardMode: "requests",
-    getValue: (s) => s.totalCalls.toLocaleString(),
+    chartMetric: "calls",
+    renderTitle: (s) => (
+      <div className="flex flex-col gap-0.5 md:gap-1">
+        <p className="text-xs md:text-sm text-muted-foreground">Tool Calls</p>
+        <p className="text-sm md:text-lg font-medium">
+          {s.totalCalls.toLocaleString()}
+        </p>
+      </div>
+    ),
   },
   {
     label: "Latency",
@@ -195,7 +209,30 @@ const STAT_KPI_CONFIG: Array<{
     colorNum: 4,
     barColor: "bg-chart-4",
     leaderboardMode: "latency",
-    getValue: (s) => `${Math.round(s.avgDurationMs)}ms`,
+    chartMetric: "latency",
+    renderTitle: (s) => (
+      <div className="flex flex-col gap-0.5 md:gap-1">
+        <p className="text-xs md:text-sm text-muted-foreground">Latency</p>
+        <div className="flex items-baseline gap-3">
+          <div>
+            <span className="text-sm md:text-lg font-medium">
+              {Math.round(s.avgDurationMs)}ms
+            </span>
+            <span className="text-[10px] md:text-xs text-muted-foreground ml-1">
+              avg
+            </span>
+          </div>
+          <div>
+            <span className="text-sm md:text-lg font-medium">
+              {Math.round(s.p95DurationMs)}ms
+            </span>
+            <span className="text-[10px] md:text-xs text-muted-foreground ml-1">
+              p95
+            </span>
+          </div>
+        </div>
+      </div>
+    ),
   },
   {
     label: "Errors",
@@ -203,7 +240,15 @@ const STAT_KPI_CONFIG: Array<{
     colorNum: 3,
     barColor: "bg-chart-3",
     leaderboardMode: "errors",
-    getValue: (s) => s.totalErrors.toLocaleString(),
+    chartMetric: "errors",
+    renderTitle: (s) => (
+      <div className="flex flex-col gap-0.5 md:gap-1">
+        <p className="text-xs md:text-sm text-muted-foreground">Errors</p>
+        <p className="text-sm md:text-lg font-medium">
+          {s.totalErrors.toLocaleString()}
+        </p>
+      </div>
+    ),
   },
 ];
 
@@ -275,6 +320,8 @@ function MonitoringStatsContent({
   logs: allLogs,
   total,
   connections,
+  selectedMetric,
+  onMetricSelect,
 }: MonitoringStatsProps) {
   let logs = allLogs;
   if (connectionIds.length > 1) {
@@ -285,38 +332,50 @@ function MonitoringStatsContent({
   const stats = calculateStats(logs, displayDateRange, undefined, totalCalls);
 
   return (
-    <div className="grid grid-cols-3 gap-[0.5px] bg-border flex-shrink-0">
+    <div className="grid grid-cols-3 gap-[0.5px] bg-border flex-shrink-0 border-b border-border">
       {STAT_KPI_CONFIG.map(
-        ({ label, dataKey, colorNum, barColor, leaderboardMode, getValue }) => (
-          <HomeGridCell
-            key={dataKey}
-            title={
-              <div className="flex flex-col gap-0.5 md:gap-1">
-                <p className="text-xs md:text-sm text-muted-foreground">
-                  {label}
-                </p>
-                <p className="text-sm md:text-lg font-medium">
-                  {getValue(stats)}
-                </p>
-              </div>
-            }
-          >
-            <div className="flex flex-col w-full">
-              <KPIChart
-                data={stats.data}
-                dataKey={dataKey}
-                colorNum={colorNum}
-                chartHeight="h-[30px] md:h-[40px]"
-              />
-              <ConnectionLeaderboard
-                logs={logs}
-                connections={connections}
-                mode={leaderboardMode}
-                barColor={barColor}
-              />
+        ({
+          dataKey,
+          colorNum,
+          barColor,
+          leaderboardMode,
+          chartMetric,
+          renderTitle,
+        }) => {
+          const isSelected = selectedMetric === chartMetric;
+          return (
+            <div
+              key={dataKey}
+              className="bg-background relative cursor-pointer"
+              onClick={() => onMetricSelect(chartMetric)}
+            >
+              {isSelected && (
+                <div
+                  className="absolute top-0 left-0 right-0 h-0.5 z-10"
+                  style={{
+                    backgroundColor: `var(--chart-${colorNum})`,
+                  }}
+                />
+              )}
+              <HomeGridCell title={renderTitle(stats)}>
+                <div className="flex flex-col w-full">
+                  <KPIChart
+                    data={stats.data}
+                    dataKey={dataKey}
+                    colorNum={colorNum}
+                    chartHeight="h-[30px] md:h-[40px]"
+                  />
+                  <ConnectionLeaderboard
+                    logs={logs}
+                    connections={connections}
+                    mode={leaderboardMode}
+                    barColor={barColor}
+                  />
+                </div>
+              </HomeGridCell>
             </div>
-          </HomeGridCell>
-        ),
+          );
+        },
       )}
     </div>
   );
@@ -1104,6 +1163,8 @@ function MonitoringDashboardContent({
     }
   };
 
+  const [topChartMetric, setTopChartMetric] = useState<TopChartMetric>("calls");
+
   // Build dateRange strings for analytics components (use display range, not the streaming-extended fetch range)
   const analyticsDateRange = {
     startDate: displayDateRange.startDate.toISOString(),
@@ -1188,11 +1249,11 @@ function MonitoringDashboardContent({
       ) : (
         <div className="flex-1 flex flex-col overflow-auto md:overflow-hidden">
           {/* Top Tools Chart */}
-          <div className="border-b border-border">
+          <div className="border-b border-border relative z-10">
             <ErrorBoundary fallback={null}>
               <Suspense fallback={<TopTools.Skeleton />}>
                 <TopTools.Content
-                  metricsMode="requests"
+                  metricsMode={topChartMetric}
                   dateRange={analyticsDateRange}
                 />
               </Suspense>
@@ -1206,6 +1267,8 @@ function MonitoringDashboardContent({
             logs={allLogs}
             total={total}
             connections={allConnections}
+            selectedMetric={topChartMetric}
+            onMetricSelect={setTopChartMetric}
           />
 
           {/* Search Bar */}
