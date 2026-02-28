@@ -335,23 +335,6 @@ if (!values["skip-migrations"]) {
 }
 
 // ============================================================================
-// Local mode: auto-seed admin user + organization
-// ============================================================================
-
-if (localMode) {
-  try {
-    const { seedLocalMode } = await import("./auth/local-mode");
-    const seeded = await seedLocalMode();
-    if (seeded) {
-      console.log(`${green}Local environment initialized.${reset}`);
-    }
-  } catch (error) {
-    console.error("Failed to seed local mode:", error);
-    // Non-fatal: continue starting the server
-  }
-}
-
-// ============================================================================
 // Print final status and start server
 // ============================================================================
 
