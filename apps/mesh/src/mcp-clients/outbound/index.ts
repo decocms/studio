@@ -102,13 +102,6 @@ export async function createOutboundClient(
 
       const headers = await buildRequestHeaders(connection, ctx, superUser);
 
-      console.log("[EventBus:Debug] outbound HTTP client", {
-        connectionId,
-        url: connection.connection_url,
-        superUser,
-        headerKeys: Object.keys(headers),
-      });
-
       const httpParams = connection.connection_headers;
       if (httpParams && "headers" in httpParams) {
         Object.assign(headers, httpParams.headers);

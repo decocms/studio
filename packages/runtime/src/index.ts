@@ -203,14 +203,6 @@ export const withBindings = <TEnv>({
         (decoded.organizationId as string) ?? metadata.organizationId,
       ensureAuthenticated: AUTHENTICATED(decoded.user ?? decoded.sub),
     } as RequestContext<any>;
-
-    console.log("[EventBus:Debug] withBindings decoded", {
-      meshUrl: context.meshUrl ?? "NONE",
-      connectionId: context.connectionId ?? "NONE",
-      organizationId: context.organizationId ?? "NONE",
-      stateKeys: context.state ? Object.keys(context.state as object) : [],
-      hasAuth: !!context.authorization,
-    });
   } else if (typeof tokenOrContext === "object") {
     context = tokenOrContext;
     const decoded = decodeJwt(tokenOrContext.token);
