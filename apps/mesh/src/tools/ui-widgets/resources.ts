@@ -249,15 +249,16 @@ ${widgetScript(
     name: "Timer",
     description: "Countdown timer with start, pause, and reset controls",
     html: `<!DOCTYPE html><html><head><style>${baseCSS}
-.timer { text-align: center; }
-.timer .label { font-size: 13px; color: ${tokens.gray700}; margin-bottom: 8px; }
-.timer .display { font-size: 42px; font-weight: 700; font-family: ${tokens.fontMono}; letter-spacing: 2px; margin: 8px 0 16px; color: ${tokens.gray900}; }
-.timer .controls { display: flex; gap: 8px; justify-content: center; }
-.timer button { padding: 6px 16px; border-radius: 6px; border: none; font-size: 13px; font-weight: 500; cursor: pointer; transition: opacity 0.15s; }
-.timer .start { background: ${tokens.success}; color: white; }
-.timer .pause { background: ${tokens.warning}; color: white; }
-.timer .reset { background: ${tokens.gray200}; color: ${tokens.gray700}; }
-.timer button:hover { opacity: 0.85; }
+.timer { text-align: center; padding: 4px 0; }
+.timer .label { font-size: 12px; color: ${tokens.gray700}; margin-bottom: 4px; }
+.timer .display { font-size: 28px; font-weight: 600; font-family: ${tokens.fontMono}; letter-spacing: 1px; margin: 4px 0 12px; color: ${tokens.gray900}; }
+.timer .controls { display: flex; gap: 6px; justify-content: center; }
+.timer button { padding: 5px 14px; border-radius: 6px; border: 1px solid ${tokens.gray200}; font-size: 12px; font-weight: 500; cursor: pointer; background: white; color: ${tokens.gray700}; transition: all 0.15s; }
+.timer button:hover { background: ${tokens.gray100}; border-color: ${tokens.gray300}; }
+.timer .start { color: ${tokens.success}; border-color: ${tokens.success}; }
+.timer .start:hover { background: #f0fdf4; }
+.timer .pause { color: ${tokens.warning}; border-color: ${tokens.warning}; }
+.timer .pause:hover { background: #fffbeb; }
 </style></head><body>
 <div class="timer">
   <div class="label" id="lbl">Timer</div>
@@ -1174,16 +1175,23 @@ ${widgetScript(
   var vals = data.map(function(d){return d.value||0;});
   var mn = Math.min.apply(null, vals), mx = Math.max.apply(null, vals);
   var range = mx - mn || 1;
-  var niceStep = Math.pow(10, Math.floor(Math.log10(range))) || 1;
-  if (range / niceStep < 3) niceStep = niceStep / 2;
+  var TARGET_TICKS = 4;
+  var rawStep = range / TARGET_TICKS;
+  var mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  var nice = [1, 2, 5, 10];
+  var niceStep = nice.reduce(function(best, n) {
+    var s = n * mag;
+    return Math.abs(range / s - TARGET_TICKS) < Math.abs(range / best - TARGET_TICKS) ? s : best;
+  }, mag) || 1;
   var yMin = Math.floor(mn / niceStep) * niceStep;
   var yMax = Math.ceil(mx / niceStep) * niceStep;
   var yRange = yMax - yMin || 1;
   var yTicks = [];
-  for (var y = yMin; y <= yMax; y += niceStep) yTicks.push(y);
+  for (var y = yMin; y <= yMax; y += niceStep) yTicks.push(Math.round(y * 1e6) / 1e6);
+  if (yTicks.length > 6) { yTicks = [yTicks[0], yTicks[Math.floor(yTicks.length/2)], yTicks[yTicks.length-1]]; }
   var maxLabelLen = Math.max.apply(null, yTicks.map(function(v){return String(v).length;}));
-  var LM = maxLabelLen * 7 + 4;
-  var TW = 340, TH = 130, padT = 8, chartH = 95, xAxisY = padT + chartH;
+  var LM = maxLabelLen * 7 + 8;
+  var TW = 340, TH = 130, padT = 10, chartH = 90, xAxisY = padT + chartH;
   var chartW = TW - LM;
   document.getElementById('svg').setAttribute('viewBox', '0 0 ' + TW + ' ' + TH);
   var step = chartW / (vals.length - 1 || 1);
@@ -1192,8 +1200,8 @@ ${widgetScript(
   });
   var gridLines = yTicks.map(function(v) {
     var gy = padT + chartH - ((v - yMin) / yRange) * chartH;
-    return '<line x1="' + LM + '" y1="' + gy.toFixed(1) + '" x2="' + TW + '" y2="' + gy.toFixed(1) + '" stroke="${tokens.gray200}" stroke-width="0.5"/>' +
-      '<text x="' + (LM - 4) + '" y="' + (gy + 3).toFixed(1) + '" text-anchor="end" font-size="9" fill="${tokens.gray700}">' + v + '</text>';
+    return '<line x1="' + LM + '" y1="' + gy.toFixed(1) + '" x2="' + TW + '" y2="' + gy.toFixed(1) + '" stroke="${tokens.gray200}" stroke-width="0.5" stroke-dasharray="3,3"/>' +
+      '<text x="' + (LM - 6) + '" y="' + (gy + 3).toFixed(1) + '" text-anchor="end" font-size="8" fill="${tokens.gray700}" opacity="0.7">' + v + '</text>';
   }).join('');
   var line = pts.map(function(p){return p.x.toFixed(1)+','+p.y.toFixed(1);}).join(' L');
   var area = 'M' + LM + ',' + xAxisY + ' L' + line + ' L' + pts[pts.length-1].x.toFixed(1) + ',' + xAxisY + ' Z';
@@ -1208,7 +1216,7 @@ ${widgetScript(
   var svg = document.getElementById('svg');
   svg.innerHTML = '<defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${tokens.primary}" stop-opacity="0.3"/><stop offset="100%" stop-color="${tokens.primary}" stop-opacity="0.02"/></linearGradient></defs>' +
     gridLines +
-    '<line x1="' + LM + '" y1="' + xAxisY + '" x2="' + TW + '" y2="' + xAxisY + '" stroke="${tokens.gray300}" stroke-width="0.5"/>' +
+    '<line x1="' + LM + '" y1="' + xAxisY + '" x2="' + TW + '" y2="' + xAxisY + '" stroke="${tokens.gray200}" stroke-width="0.5"/>' +
     '<path d="' + area + '" fill="url(#ag)"/>' +
     '<path d="M' + line + '" fill="none" stroke="${tokens.primary}" stroke-width="2"/>' +
     circles + xLabels;
