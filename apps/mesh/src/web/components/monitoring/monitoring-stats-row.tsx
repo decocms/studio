@@ -196,14 +196,19 @@ export function calculateStats(
 // Chart Components
 // ============================================================================
 
-interface KPIChartProps {
+export interface KPIChartProps {
   data: BucketPoint[];
   dataKey: "calls" | "errors" | "p95";
   colorNum: number;
   chartHeight: string;
 }
 
-function KPIChart({ data, dataKey, colorNum, chartHeight }: KPIChartProps) {
+export function KPIChart({
+  data,
+  dataKey,
+  colorNum,
+  chartHeight,
+}: KPIChartProps) {
   const colorVar = `var(--chart-${colorNum})`;
 
   return (
@@ -360,14 +365,24 @@ export function MonitoringStatsRowSkeleton() {
         <HomeGridCell
           key={i}
           title={
-            <div className="flex flex-col gap-1">
-              <div className="h-5 w-20 rounded bg-muted animate-pulse" />
-              <div className="h-6 w-16 rounded bg-muted animate-pulse" />
+            <div className="flex flex-col gap-0.5 md:gap-1">
+              <div className="h-4 w-16 rounded bg-muted animate-pulse" />
+              <div className="h-5 md:h-6 w-12 rounded bg-muted animate-pulse" />
             </div>
           }
         >
-          <div className="flex flex-col gap-2 w-full">
-            <div className="h-[40px] w-full rounded bg-muted animate-pulse" />
+          <div className="flex flex-col w-full">
+            <div className="h-[30px] md:h-[40px] w-full rounded bg-muted animate-pulse" />
+            <div className="space-y-1.5 mt-2">
+              {Array.from({ length: 3 }).map((_, j) => (
+                <div key={j} className="flex items-center gap-1.5">
+                  <div className="size-4 rounded-sm bg-muted animate-pulse shrink-0" />
+                  <div className="h-2.5 w-20 rounded bg-muted animate-pulse" />
+                  <div className="h-1.5 flex-1 bg-muted animate-pulse" />
+                  <div className="h-2.5 w-8 rounded bg-muted animate-pulse shrink-0" />
+                </div>
+              ))}
+            </div>
           </div>
         </HomeGridCell>
       ))}

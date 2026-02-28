@@ -110,18 +110,20 @@ function getMetricPercentage(
 interface TopServersContentProps {
   metricsMode: MetricsMode;
   onMetricsModeChange?: (mode: MetricsMode) => void;
+  dateRange?: { startDate: string; endDate: string };
 }
 
 function TopServersContent({
   metricsMode,
   onMetricsModeChange,
+  dateRange: externalDateRange,
 }: TopServersContentProps) {
   const { org } = useProjectContext();
   const navigate = useNavigate();
 
   const connections = useConnections({ pageSize: 100 }) ?? [];
 
-  const { data: logsData } = useMonitoringLogs();
+  const { data: logsData } = useMonitoringLogs(externalDateRange);
 
   const logs = logsData?.logs ?? [];
 
