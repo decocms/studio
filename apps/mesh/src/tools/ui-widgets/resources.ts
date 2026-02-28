@@ -160,6 +160,7 @@ ${widgetScript(
 .progress .fill { height: 100%; background: linear-gradient(90deg, ${tokens.primary}, ${tokens.primaryLight}); border-radius: 4px; transition: width 0.5s ease; }
 @media (prefers-color-scheme: dark) {
   .progress .track { background: #1f2937; }
+  .progress .pct { color: #d1d5db; }
 }
 </style></head><body>
 <div class="progress">
@@ -316,6 +317,7 @@ function resetTimer() { pauseTimer(); window._remaining = window._timerDuration;
 .status .text { font-size: 13px; font-weight: 500; }
 @media (prefers-color-scheme: dark) {
   .status { background: #1f2937; }
+  .status .text { color: #e5e7eb; }
 }
 </style></head><body>
 <div class="status">
@@ -350,6 +352,7 @@ ${widgetScript(
 @media (prefers-color-scheme: dark) {
   .quote { background: #1f2937; }
   .quote .text { color: #d1d5db; }
+  .quote .author { color: #9ca3af; }
 }
 </style></head><body>
 <div class="quote">
@@ -656,6 +659,7 @@ ${widgetScript(
 .todo .item .text.done { text-decoration: line-through; color: ${tokens.gray500}; }
 @media (prefers-color-scheme: dark) {
   .todo .item { border-color: #1f2937; }
+  .todo .item .text.done { color: #9ca3af; }
 }
 </style></head><body>
 <div class="todo">
@@ -707,6 +711,7 @@ ${widgetScript(
 @media (prefers-color-scheme: dark) {
   .md .title-bar { border-color: #374151; }
   .md .content code { background: #1f2937; }
+  .md .content blockquote { color: #9ca3af; }
 }
 </style></head><body>
 <div class="md">
@@ -788,13 +793,18 @@ ${widgetScript(
 .form-result .header .icon { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; }
 .form-result .header .icon.ok { background: #dcfce7; color: #166534; }
 .form-result .header .icon.fail { background: #fee2e2; color: #991b1b; }
-.form-result .header .title { font-size: 15px; font-weight: 600; }
+.form-result .header .title { font-size: 15px; font-weight: 600; color: ${tokens.gray900}; }
 .form-result .fields { display: flex; flex-direction: column; gap: 8px; }
 .form-result .field { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; background: ${tokens.gray100}; border-radius: 6px; }
-.form-result .field .label { font-size: 11px; color: ${tokens.gray500}; text-transform: uppercase; letter-spacing: 0.05em; }
+.form-result .field .label { font-size: 11px; color: ${tokens.gray700}; text-transform: uppercase; letter-spacing: 0.05em; }
 .form-result .field .value { font-size: 14px; font-weight: 500; }
 @media (prefers-color-scheme: dark) {
-  .form-result .field { background: #1f2937; }
+  .form-result .header .title { color: #f9fafb; }
+  .form-result .header .icon.ok { background: #166534; color: #dcfce7; }
+  .form-result .header .icon.fail { background: #991b1b; color: #fee2e2; }
+  .form-result .field { background: #374151; }
+  .form-result .field .label { color: #d1d5db; }
+  .form-result .field .value { color: #f9fafb; }
 }
 </style></head><body>
 <div class="form-result">
@@ -937,6 +947,8 @@ ${widgetScript(
 .avatar-widget .info .status-text { font-size: 12px; color: ${tokens.gray500}; }
 @media (prefers-color-scheme: dark) {
   .avatar-widget .status-dot { border-color: #111827; }
+  .avatar-widget .info .status-text { color: #9ca3af; }
+  .avatar-widget .info .name { color: #f9fafb; }
 }
 </style></head><body>
 <div class="avatar-widget">
@@ -1138,6 +1150,8 @@ ${widgetScript(
 .stats-grid .card .trend.down { color: ${tokens.danger}; }
 @media (prefers-color-scheme: dark) {
   .stats-grid .card { background: #1f2937; }
+  .stats-grid .card .label { color: #9ca3af; }
+  .stats-grid .card .value { color: #f9fafb; }
 }
 </style></head><body>
 <div class="stats-grid" id="grid"></div>

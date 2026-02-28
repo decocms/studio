@@ -10,6 +10,7 @@ import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { PinToSidebarButton } from "@/web/components/pin-to-sidebar-button";
 import { ViewActions } from "@/web/components/details/layout";
 import { useConnection, useMCPClient } from "@decocms/mesh-sdk";
+import { Badge } from "@deco/ui/components/badge.tsx";
 import { Card } from "@deco/ui/components/card.tsx";
 import { useRouterState } from "@tanstack/react-router";
 import { LayersTwo01, XClose } from "@untitledui/icons";
@@ -26,6 +27,8 @@ interface McpResource {
   description?: string;
   mimeType?: string;
 }
+
+type ResourceFilter = "all" | "ui-apps" | "resources";
 
 export interface ResourcesListProps {
   /** Array of resources to display */
@@ -44,6 +47,8 @@ export interface ResourcesListProps {
   showToolbar?: boolean;
   /** Custom empty state message */
   emptyMessage?: string;
+  /** Whether this list has UI app resources (enables filter badges) */
+  hasUIApps?: boolean;
 }
 
 /**
@@ -56,10 +61,12 @@ function ResourcesList({
   onResourceClick,
   showToolbar = true,
   emptyMessage = "This connection doesn't have any resources yet.",
+  hasUIApps = false,
 }: ResourcesListProps) {
   const routerState = useRouterState();
   const url = routerState.location.href;
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<ResourceFilter>("all");
   const [viewMode, setViewMode] = useState<"table" | "cards">("table");
   const [sortKey, setSortKey] = useState<string | undefined>("name");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>(
@@ -84,21 +91,27 @@ function ResourcesList({
     }
   };
 
-  const filteredResources =
+  const typeFilteredResources =
     !resources || resources.length === 0
       ? []
-      : !search.trim()
-        ? resources
-        : (() => {
-            const searchLower = search.toLowerCase();
-            return resources.filter(
-              (r) =>
-                r.uri.toLowerCase().includes(searchLower) ||
-                (r.name && r.name.toLowerCase().includes(searchLower)) ||
-                (r.description &&
-                  r.description.toLowerCase().includes(searchLower)),
-            );
-          })();
+      : filter === "ui-apps"
+        ? resources.filter((r) => isUIResourceUri(r.uri))
+        : filter === "resources"
+          ? resources.filter((r) => !isUIResourceUri(r.uri))
+          : resources;
+
+  const filteredResources = !search.trim()
+    ? typeFilteredResources
+    : (() => {
+        const searchLower = search.toLowerCase();
+        return typeFilteredResources.filter(
+          (r) =>
+            r.uri.toLowerCase().includes(searchLower) ||
+            (r.name && r.name.toLowerCase().includes(searchLower)) ||
+            (r.description &&
+              r.description.toLowerCase().includes(searchLower)),
+        );
+      })();
 
   const sortedResources =
     !sortKey || !sortDirection
@@ -110,14 +123,22 @@ function ResourcesList({
           return sortDirection === "asc" ? comparison : -comparison;
         });
 
+  const getResourceType = (resource: McpResource) =>
+    isUIResourceUri(resource.uri) ? "UI App" : resource.mimeType || "—";
+
   const columns = [
     {
       id: "name",
       header: "Name",
       render: (resource: McpResource) => (
-        <span className="text-sm font-medium text-foreground">
-          {resource.name || resource.uri}
-        </span>
+        <div className="flex items-center gap-2">
+          {isUIResourceUri(resource.uri) && (
+            <LayersTwo01 className="size-3.5 text-primary shrink-0" />
+          )}
+          <span className="text-sm font-medium text-foreground">
+            {resource.name || resource.uri}
+          </span>
+        </div>
       ),
       sortable: true,
     },
@@ -147,7 +168,7 @@ function ResourcesList({
       header: "Type",
       render: (resource: McpResource) => (
         <span className="text-sm text-muted-foreground">
-          {resource.mimeType || "—"}
+          {getResourceType(resource)}
         </span>
       ),
       sortable: true,
@@ -184,18 +205,46 @@ function ResourcesList({
       )}
 
       <div className="flex flex-col h-full overflow-hidden">
-        {/* Search */}
-        <CollectionSearch
-          value={search}
-          onChange={setSearch}
-          placeholder="Search resources..."
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              setSearch("");
-              (event.target as HTMLInputElement).blur();
-            }
-          }}
-        />
+        {/* Search + Filter badges */}
+        <div className="flex items-center shrink-0 border-b border-border">
+          <CollectionSearch
+            value={search}
+            onChange={setSearch}
+            placeholder="Search resources..."
+            className="flex-1 border-b-0"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                setSearch("");
+                (event.target as HTMLInputElement).blur();
+              }
+            }}
+          />
+          {hasUIApps && (
+            <div className="flex items-center gap-1.5 pr-4">
+              <Badge
+                variant={filter === "all" ? "secondary" : "outline"}
+                className="cursor-pointer"
+                onClick={() => setFilter("all")}
+              >
+                All
+              </Badge>
+              <Badge
+                variant={filter === "ui-apps" ? "secondary" : "outline"}
+                className="cursor-pointer"
+                onClick={() => setFilter("ui-apps")}
+              >
+                UI Apps
+              </Badge>
+              <Badge
+                variant={filter === "resources" ? "secondary" : "outline"}
+                className="cursor-pointer"
+                onClick={() => setFilter("resources")}
+              >
+                Resources
+              </Badge>
+            </div>
+          )}
+        </div>
 
         {/* Content: Cards or Table */}
         {viewMode === "cards" ? (
@@ -217,12 +266,16 @@ function ResourcesList({
                     onClick={() => handleResourceClick(resource)}
                   >
                     <div className="flex flex-col gap-4 p-6">
-                      <IntegrationIcon
-                        icon={null}
-                        name={resource.name || resource.uri}
-                        size="md"
-                        className="shrink-0 shadow-sm"
-                      />
+                      {isUIResourceUri(resource.uri) ? (
+                        <LayersTwo01 className="size-8 text-primary" />
+                      ) : (
+                        <IntegrationIcon
+                          icon={null}
+                          name={resource.name || resource.uri}
+                          size="md"
+                          className="shrink-0 shadow-sm"
+                        />
+                      )}
                       <div className="flex flex-col gap-1">
                         <h3 className="text-base font-medium text-foreground truncate">
                           {resource.name || resource.uri}
@@ -266,51 +319,6 @@ function ResourcesList({
         )}
       </div>
     </>
-  );
-}
-
-function UIAppsSection({
-  uiResources,
-  onAppClick,
-}: {
-  uiResources: McpResource[];
-  onAppClick: (resource: McpResource) => void;
-}) {
-  if (uiResources.length === 0) return null;
-
-  return (
-    <div className="border-b border-border pb-4 mb-4">
-      <div className="flex items-center gap-2 mb-3 px-5 pt-4">
-        <LayersTwo01 className="size-4 text-muted-foreground" />
-        <h3 className="text-sm font-medium text-foreground">UI Apps</h3>
-        <span className="text-xs text-muted-foreground">
-          ({uiResources.length})
-        </span>
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 px-5">
-        {uiResources.map((resource) => (
-          <Card
-            key={resource.uri}
-            className="cursor-pointer transition-colors hover:bg-accent/50"
-            onClick={() => onAppClick(resource)}
-          >
-            <div className="flex flex-col gap-2 p-4">
-              <div className="flex items-center gap-2">
-                <LayersTwo01 className="size-4 text-primary" />
-                <span className="text-sm font-medium text-foreground truncate">
-                  {resource.name || resource.uri.replace("ui://mesh/", "")}
-                </span>
-              </div>
-              {resource.description && (
-                <p className="text-xs text-muted-foreground line-clamp-2">
-                  {resource.description}
-                </p>
-              )}
-            </div>
-          </Card>
-        ))}
-      </div>
-    </div>
   );
 }
 
@@ -412,9 +420,13 @@ export function ResourcesTab({
   const connection = useConnection(connectionId);
   const [previewApp, setPreviewApp] = useState<McpResource | null>(null);
 
-  const uiResources = resources?.filter((r) => isUIResourceUri(r.uri)) ?? [];
-  const regularResources =
-    resources?.filter((r) => !isUIResourceUri(r.uri)) ?? [];
+  const hasUIApps = resources?.some((r) => isUIResourceUri(r.uri)) ?? false;
+
+  const handleResourceClick = (resource: McpResource) => {
+    if (isUIResourceUri(resource.uri)) {
+      setPreviewApp(resource);
+    }
+  };
 
   if (previewApp) {
     return (
@@ -439,22 +451,14 @@ export function ResourcesTab({
   }
 
   return (
-    <>
-      {uiResources.length > 0 && (
-        <UIAppsSection uiResources={uiResources} onAppClick={setPreviewApp} />
-      )}
-      <ResourcesList
-        resources={regularResources}
-        connectionId={connectionId}
-        org={org}
-        connectionTitle={connection?.title}
-        connectionIcon={connection?.icon}
-        emptyMessage={
-          uiResources.length > 0
-            ? "No other resources available."
-            : "This connection doesn't have any resources yet."
-        }
-      />
-    </>
+    <ResourcesList
+      resources={resources}
+      connectionId={connectionId}
+      org={org}
+      connectionTitle={connection?.title}
+      connectionIcon={connection?.icon}
+      onResourceClick={handleResourceClick}
+      hasUIApps={hasUIApps}
+    />
   );
 }
