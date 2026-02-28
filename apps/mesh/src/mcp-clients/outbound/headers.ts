@@ -68,7 +68,7 @@ export async function buildRequestHeaders(
         user: { id: userId },
         metadata: {
           state: connection.configuration_state ?? undefined,
-          meshUrl: process.env.MESH_URL ?? ctx.baseUrl,
+          meshUrl: ctx.baseUrl,
           connectionId,
           organizationId: ctx.organization?.id,
         },
