@@ -436,14 +436,18 @@ ${widgetScript(
       `ipt>
 function escH(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function highlightCode(code) {
-  var h = escH(code);
-  var S = '<' + 'span class="';
-  var E = '<' + '/span>';
-  h = h.replace(/(\\/\\/.*)$/gm, S + 'cm">' + '$1' + E);
-  h = h.replace(/\\b(const|let|var|function|return|if|else|for|while|import|export|from|async|await|new|class|extends|default|try|catch|throw|typeof|instanceof)\\b/g, S + 'kw">' + '$1' + E);
-  h = h.replace(/(&quot;[^&]*?&quot;)/g, S + 'str">' + '$1' + E);
-  h = h.replace(/(\\b\\d+\\.?\\d*\\b)/g, S + 'num">' + '$1' + E);
-  return h;
+  var S = function(c,t){return '<' + 'span class="' + c + '">' + t + '<' + '/span>';};
+  return escH(code).split('\\n').map(function(line) {
+    var trimmed = line.replace(/^\\s+/, '');
+    if (trimmed.indexOf('//') === 0) return S('cm', line);
+    line = line.replace(/\\b(const|let|var|function|return|if|else|for|while|import|export|from|async|await|new|class|extends|default|try|catch|throw|typeof|instanceof)\\b/g, function(m){return S('kw',m);});
+    line = line.replace(/(&quot;[^&]*?&quot;)/g, function(m){return S('str',m);});
+    line = line.replace(/(&#39;[^&]*?&#39;)/g, function(m){return S('str',m);});
+    line = line.replace(/(\\b\\d+\\.?\\d*\\b)/g, function(m){return S('num',m);});
+    var ci = line.indexOf('//');
+    if (ci > -1) { line = line.substring(0, ci) + S('cm', line.substring(ci)); }
+    return line;
+  }).join('\\n');
 }
 function copyCode() {
   var t = document.getElementById('code').textContent;
@@ -1149,14 +1153,17 @@ ${widgetScript(
   "ui://mesh/area-chart": {
     name: "Area Chart",
     description: "Area chart for time-series data visualization",
-    html: `<!DOCTYPE html><html><head><style>${baseCSS}
-.area-chart { padding: 4px 0; }
+    html:
+      `<!DOCTYPE html><html><head><style>${baseCSS}
+.area-chart { padding: 4px 0; position: relative; }
 .area-chart .title { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
 .area-chart svg { display: block; width: 100%; }
+.area-chart .tooltip { position: absolute; pointer-events: none; background: ${tokens.gray900}; color: white; font-size: 11px; padding: 4px 8px; border-radius: 4px; white-space: nowrap; display: none; z-index: 10; transform: translate(-50%, -100%); margin-top: -8px; }
 </style></head><body>
 <div class="area-chart">
   <div class="title" id="title">Chart</div>
-  <svg id="svg" viewBox="0 0 300 120"></svg>
+  <svg id="svg"></svg>
+  <div class="tooltip" id="tip"></div>
 </div>
 ${widgetScript(
   "Area Chart",
@@ -1167,27 +1174,66 @@ ${widgetScript(
   var vals = data.map(function(d){return d.value||0;});
   var mn = Math.min.apply(null, vals), mx = Math.max.apply(null, vals);
   var range = mx - mn || 1;
-  var W = 300, H = 100, padT = 5, padB = 5;
-  var step = W / (vals.length - 1 || 1);
+  var niceStep = Math.pow(10, Math.floor(Math.log10(range))) || 1;
+  if (range / niceStep < 3) niceStep = niceStep / 2;
+  var yMin = Math.floor(mn / niceStep) * niceStep;
+  var yMax = Math.ceil(mx / niceStep) * niceStep;
+  var yRange = yMax - yMin || 1;
+  var yTicks = [];
+  for (var y = yMin; y <= yMax; y += niceStep) yTicks.push(y);
+  var maxLabelLen = Math.max.apply(null, yTicks.map(function(v){return String(v).length;}));
+  var LM = maxLabelLen * 7 + 4;
+  var TW = 340, TH = 130, padT = 8, chartH = 95, xAxisY = padT + chartH;
+  var chartW = TW - LM;
+  document.getElementById('svg').setAttribute('viewBox', '0 0 ' + TW + ' ' + TH);
+  var step = chartW / (vals.length - 1 || 1);
   var pts = vals.map(function(v, i) {
-    return { x: (i * step).toFixed(1), y: (H - padB - ((v - mn) / range) * (H - padT - padB)).toFixed(1) };
+    return { x: LM + i * step, y: padT + chartH - ((v - yMin) / yRange) * chartH };
   });
-  var line = pts.map(function(p){return p.x+','+p.y;}).join(' L');
-  var area = 'M0,' + H + ' L' + line + ' L' + W + ',' + H + ' Z';
-  var svg = document.getElementById('svg');
-  var last = data.length - 1;
-  var labels = data.map(function(d, i) {
-    var anchor = i === 0 ? 'start' : i === last ? 'end' : 'middle';
-    return '<text x="' + (i * step).toFixed(1) + '" y="115" text-anchor="' + anchor + '" font-size="9" fill="${tokens.gray700}">' + escH(d.label||'') + '</text>';
+  var gridLines = yTicks.map(function(v) {
+    var gy = padT + chartH - ((v - yMin) / yRange) * chartH;
+    return '<line x1="' + LM + '" y1="' + gy.toFixed(1) + '" x2="' + TW + '" y2="' + gy.toFixed(1) + '" stroke="${tokens.gray200}" stroke-width="0.5"/>' +
+      '<text x="' + (LM - 4) + '" y="' + (gy + 3).toFixed(1) + '" text-anchor="end" font-size="9" fill="${tokens.gray700}">' + v + '</text>';
   }).join('');
-  svg.innerHTML = '<defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${tokens.primary}" stop-opacity="0.4"/><stop offset="100%" stop-color="${tokens.primary}" stop-opacity="0.05"/></linearGradient></defs>' +
+  var line = pts.map(function(p){return p.x.toFixed(1)+','+p.y.toFixed(1);}).join(' L');
+  var area = 'M' + LM + ',' + xAxisY + ' L' + line + ' L' + pts[pts.length-1].x.toFixed(1) + ',' + xAxisY + ' Z';
+  var last = data.length - 1;
+  var xLabels = data.map(function(d, i) {
+    var anchor = i === 0 ? 'start' : i === last ? 'end' : 'middle';
+    return '<text x="' + (LM + i * step).toFixed(1) + '" y="' + (TH - 2) + '" text-anchor="' + anchor + '" font-size="9" fill="${tokens.gray700}">' + escH(d.label||'') + '</text>';
+  }).join('');
+  var circles = pts.map(function(p, i) {
+    return '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="3.5" fill="${tokens.primary}" stroke="white" stroke-width="1.5" style="cursor:pointer" data-i="' + i + '"/>';
+  }).join('');
+  var svg = document.getElementById('svg');
+  svg.innerHTML = '<defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${tokens.primary}" stop-opacity="0.3"/><stop offset="100%" stop-color="${tokens.primary}" stop-opacity="0.02"/></linearGradient></defs>' +
+    gridLines +
+    '<line x1="' + LM + '" y1="' + xAxisY + '" x2="' + TW + '" y2="' + xAxisY + '" stroke="${tokens.gray300}" stroke-width="0.5"/>' +
     '<path d="' + area + '" fill="url(#ag)"/>' +
     '<path d="M' + line + '" fill="none" stroke="${tokens.primary}" stroke-width="2"/>' +
-    pts.map(function(p){return '<circle cx="'+p.x+'" cy="'+p.y+'" r="3" fill="${tokens.primary}"/>';}).join('') +
-    labels;
+    circles + xLabels;
+  var tip = document.getElementById('tip');
+  svg.addEventListener('mouseover', function(e) {
+    var c = e.target.closest ? e.target.closest('circle') : null;
+    if (c && c.dataset.i !== undefined) {
+      var i = Number(c.dataset.i);
+      var d = data[i];
+      tip.textContent = (d.label ? d.label + ': ' : '') + vals[i];
+      tip.style.display = 'block';
+      var r = c.getBoundingClientRect();
+      var pr = svg.closest('.area-chart').getBoundingClientRect();
+      tip.style.left = (r.left - pr.left + r.width/2) + 'px';
+      tip.style.top = (r.top - pr.top) + 'px';
+    }
+  });
+  svg.addEventListener('mouseout', function(e) {
+    if (e.target.tagName === 'circle') tip.style.display = 'none';
+  });
 `,
 )}
-<script>function escH(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}</script>
+<scr` +
+      `ipt>function escH(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}</scr` +
+      `ipt>
 </body></html>`,
     exampleInput: {
       data: [
