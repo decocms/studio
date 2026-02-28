@@ -101,12 +101,7 @@ export function MCPAppLoader({
   if (!appHtml) return null;
 
   return (
-    <div
-      className={cn(
-        "border border-border rounded-lg overflow-hidden",
-        className,
-      )}
-    >
+    <div className={cn(className)}>
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
         <div className="flex items-center gap-2">
           <LayersTwo01 className="size-4 text-muted-foreground" />
