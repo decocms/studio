@@ -176,6 +176,11 @@ if (values.home) {
 
 process.env.MESH_HOME = meshHome;
 
+// Set DATABASE_URL to MESH_HOME/mesh.db. The CLI owns the data directory,
+// so we always use the SQLite database inside it. This prevents accidentally
+// connecting to a PostgreSQL database from the shell environment.
+process.env.DATABASE_URL = `file:${join(meshHome, "mesh.db")}`;
+
 // Ensure NODE_ENV defaults to production when running via CLI
 if (!process.env.NODE_ENV) {
   process.env.NODE_ENV = "production";
