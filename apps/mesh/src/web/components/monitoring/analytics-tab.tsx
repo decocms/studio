@@ -6,7 +6,7 @@
 
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { Suspense, useState } from "react";
-import { TopTools } from "./analytics-top-tools";
+import { TopTools, type TopChartMetric } from "./analytics-top-tools";
 import { TopServers, type MetricsMode } from "./analytics-top-servers";
 import { TopAgents } from "./analytics-top-agents";
 
@@ -25,7 +25,13 @@ export function AnalyticsTab() {
           }
         >
           <Suspense fallback={<TopTools.Skeleton />}>
-            <TopTools.Content metricsMode={metricsMode} />
+            <TopTools.Content
+              metricsMode={
+                metricsMode === "requests"
+                  ? "calls"
+                  : (metricsMode as TopChartMetric)
+              }
+            />
           </Suspense>
         </ErrorBoundary>
       </div>
