@@ -5,7 +5,6 @@ import type { ToolUIPart, DynamicToolUIPart } from "ai";
 import type { ToolDefinition } from "@decocms/mesh-sdk";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { getUIResourceUri } from "@/mcp-apps/types.ts";
-import { getUIWidgetResource } from "@/tools/ui-widgets/resources.ts";
 import { Atom02, LayersTwo01 } from "@untitledui/icons";
 import { useChatStable } from "@/web/components/chat/context.tsx";
 import { ToolCallShell } from "./common.tsx";
@@ -184,7 +183,7 @@ function MCPAppRenderer({
 
   if (!org?.id) return null;
 
-  const isBorderless = !!getUIWidgetResource(uiResourceUri)?.borderless;
+  const isBorderless = uiResourceUri.includes("borderless=true");
 
   return (
     <div
