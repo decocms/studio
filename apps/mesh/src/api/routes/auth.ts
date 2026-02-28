@@ -131,7 +131,7 @@ app.post("/local-session", async (c) => {
     const result = await auth.api.signInEmail({
       body: {
         email: "admin@localhost.mesh",
-        password: "admin",
+        password: "admin@mesh",
       },
       asResponse: true,
     });

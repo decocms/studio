@@ -11,7 +11,7 @@ import { getDb } from "@/database";
 import { auth } from "./index";
 
 const LOCAL_ADMIN_EMAIL = "admin@localhost.mesh";
-const LOCAL_ADMIN_PASSWORD = "admin";
+const LOCAL_ADMIN_PASSWORD = "admin@mesh";
 const LOCAL_ADMIN_NAME = "Local Admin";
 const LOCAL_ORG_NAME = "Local";
 const LOCAL_ORG_SLUG = "local";
