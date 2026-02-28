@@ -140,8 +140,6 @@ const DEFAULT_SHORTLIST = [
   "openai/gpt-5.3-codex",
   "google/gemini-3-pro-preview",
   "google/gemini-2.5-pro",
-  "cohere/command-a",
-  "cohere/command-r-plus",
   // Faster
   "anthropic/claude-haiku-4.5",
   "anthropic/claude-haiku-4.5-20251001",
@@ -149,20 +147,10 @@ const DEFAULT_SHORTLIST = [
   "google/gemini-3-flash-preview",
   "openai/gpt-5.1-codex-mini",
   "x-ai/grok-code-fast-1",
-  "mistralai/codestral-latest",
-  "mistralai/codestral",
-  "qwen/qwen3-235b-a22b",
-  "qwen/qwen-plus",
-  "minimax/minimax-m1-80k",
-  "minimax/minimax-m1",
   // Cheaper
   "google/gemini-2.5-flash",
   "deepseek/deepseek-v3.2",
   "google/gemini-2.5-flash-lite",
-  "mistralai/mistral-small-3.2-24b-instruct",
-  "mistralai/mistral-small-3.2",
-  "mistralai/mistral-small-latest",
-  "mistralai/mistral-small",
   "openai/gpt-oss-120b:free",
 ];
 const defaultShortlistSet = new Set(DEFAULT_SHORTLIST);
