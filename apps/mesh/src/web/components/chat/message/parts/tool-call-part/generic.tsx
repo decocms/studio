@@ -170,7 +170,7 @@ export function GenericToolCallPart({
         actions={actions}
       />
       {canRenderMCPApp && (
-        <div>
+        <div className="mt-2">
           <Suspense
             fallback={
               <div className="flex items-center justify-center h-32 rounded-lg">
