@@ -10,6 +10,9 @@ import type {
   ReportSection,
   ReportStatus,
 } from "@decocms/bindings";
+import { REPORTS_BINDING } from "@decocms/bindings";
+import { usePluginContext } from "@decocms/mesh-sdk/plugins";
+import { Button } from "@deco/ui/components/button.tsx";
 import {
   Table,
   TableBody,
@@ -27,10 +30,15 @@ import {
   Columns02,
   File02,
   Hash02,
+  Loading01,
   Minus,
   Rows03,
 } from "@untitledui/icons";
+import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
+import { toast } from "sonner";
+import { buildVtexApplyPayload } from "../lib/vtex-reorder";
+import { useVtexConnectionContext } from "./vtex-connection-context";
 
 const STATUS_DOT: Record<ReportStatus, string> = {
   passing: "bg-emerald-500",
@@ -373,27 +381,96 @@ function RankedListSection({
   title?: string;
   rows: RankedListRow[];
 }) {
+  const { connection } = usePluginContext<typeof REPORTS_BINDING>();
+  const { connection: vtexConnection, toolCaller: vtexToolCaller } =
+    useVtexConnectionContext();
   const [showComparison, setShowComparison] = useState(false);
   const mockedPreviousRows = buildMockedPreviousRows(rows);
+  const applyPayload = buildVtexApplyPayload(rows);
+  const hasVtexReorderTool =
+    vtexConnection?.tools?.some(
+      (tool) => tool.name === "VTEX_REORDER_COLLECTION",
+    ) ?? false;
+  const missingVtexConnection = !vtexConnection || !vtexToolCaller;
+  const applyBlockedReason = missingVtexConnection
+    ? "Configure uma conexao VTEX para aplicar a sugestao."
+    : !hasVtexReorderTool
+      ? "A conexao VTEX selecionada nao possui a tool VTEX_REORDER_COLLECTION."
+      : !applyPayload.ok
+        ? applyPayload.error
+        : null;
+  const reportsConnectionLabel = connection.title;
+
+  const applyMutation = useMutation({
+    mutationFn: async () => {
+      if (missingVtexConnection || !vtexToolCaller) {
+        throw new Error("Configure uma conexao VTEX para aplicar a sugestao.");
+      }
+      if (!hasVtexReorderTool) {
+        throw new Error(
+          "A conexao VTEX selecionada nao possui a tool VTEX_REORDER_COLLECTION.",
+        );
+      }
+      if (!applyPayload.ok) {
+        throw new Error(applyPayload.error);
+      }
+
+      return vtexToolCaller("VTEX_REORDER_COLLECTION", {
+        collectionId: applyPayload.collectionId,
+        xml: applyPayload.xml,
+      });
+    },
+    onSuccess: () => {
+      const skuCount = applyPayload.ok ? applyPayload.skuCount : rows.length;
+      toast.success(`Sugestao aplicada com sucesso (${skuCount} SKUs).`);
+    },
+    onError: (error) => {
+      const message =
+        error instanceof Error ? error.message : "Falha ao aplicar sugestao.";
+      toast.error(message);
+    },
+  });
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         {title && <SectionHeader icon={Rows03} title={title} />}
-        <button
-          type="button"
-          onClick={() => setShowComparison((prev) => !prev)}
-          className={cn(
-            "inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md border transition-colors",
-            showComparison
-              ? "bg-primary text-primary-foreground border-primary"
-              : "bg-transparent text-muted-foreground border-border hover:text-foreground hover:border-foreground/30",
-          )}
-        >
-          <Columns02 size={14} />
-          Comparar com Ordenação Atual
-        </button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => applyMutation.mutate()}
+            disabled={applyMutation.isPending || !!applyBlockedReason}
+            title={applyBlockedReason ?? undefined}
+          >
+            {applyMutation.isPending ? (
+              <Loading01 size={14} className="animate-spin" />
+            ) : null}
+            Apply Suggestion
+          </Button>
+          <button
+            type="button"
+            onClick={() => setShowComparison((prev) => !prev)}
+            className={cn(
+              "inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md border transition-colors",
+              showComparison
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-transparent text-muted-foreground border-border hover:text-foreground hover:border-foreground/30",
+            )}
+          >
+            <Columns02 size={14} />
+            Comparar com Ordenacao Atual
+          </button>
+        </div>
       </div>
+      {applyBlockedReason && (
+        <p className="text-xs text-muted-foreground">{applyBlockedReason}</p>
+      )}
+      {!applyBlockedReason && (
+        <p className="text-xs text-muted-foreground">
+          Report conectado via: {reportsConnectionLabel}
+        </p>
+      )}
 
       {showComparison ? (
         <div className="flex gap-4 items-start">
@@ -412,7 +489,6 @@ export function RankingSectionRenderer({
 }: {
   section: ReportSection;
 }) {
-  console.log("RankingSectionRenderer section:", section);
   switch (section.type) {
     case "markdown":
       return <MarkdownSection content={section.content} />;

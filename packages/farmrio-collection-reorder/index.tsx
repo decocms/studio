@@ -2,8 +2,7 @@
  * Collection Reorder Ranking Plugin
  *
  * Provides a UI for viewing collection reorder ranking reports.
- * Uses the same REPORTS_BINDING as the reports plugin — shows all reports
- * with a specialized layout for ranking visualization.
+ * Uses reports binding for data and a plugin-specific VTEX connection for apply.
  */
 
 import { REPORTS_BINDING } from "@decocms/bindings";

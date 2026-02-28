@@ -2,32 +2,33 @@
  * Ranking Layout
  *
  * Self-contained layout for the collection reorder ranking plugin.
- * Uses the same Reports MCP connection as the reports plugin.
+ * Uses one connection for reports and an optional second VTEX connection for apply.
  * Uses URL search params (?reportId=...) for copyable report URLs.
  */
 
 import {
-  type Binder,
+  REPORTS_BINDING,
+  VTEX_REORDER_COLLECTION_BINDING,
   connectionImplementsBinding,
   type PluginContext,
-  REPORTS_BINDING,
 } from "@decocms/bindings";
+import { useNavigate, useSearch } from "@decocms/bindings/plugin-router";
 import {
   SELF_MCP_ALIAS_ID,
+  type ConnectionEntity,
   useConnections,
   useMCPClient,
   useMCPClientOptional,
   useProjectContext,
-  type ConnectionEntity,
 } from "@decocms/mesh-sdk";
 import { PluginContextProvider } from "@decocms/mesh-sdk/plugins";
-import { useNavigate, useSearch } from "@decocms/bindings/plugin-router";
 import { useQuery } from "@tanstack/react-query";
 import { Loading01, Settings01 } from "@untitledui/icons";
 import { KEYS } from "../lib/query-keys";
-import RankingEmptyState from "./ranking-empty-state";
 import RankingDetail from "./ranking-detail";
+import RankingEmptyState from "./ranking-empty-state";
 import RankingsList from "./rankings-list";
+import { VtexConnectionProvider } from "./vtex-connection-context";
 
 function filterConnectionsByBinding(
   connections: ConnectionEntity[] | undefined,
@@ -86,9 +87,29 @@ export default function RankingLayout() {
   const configuredConnection = configuredConnectionId
     ? validConnections.find((c) => c.id === configuredConnectionId)
     : null;
+  const settings =
+    pluginConfig?.config?.settings &&
+    typeof pluginConfig.config.settings === "object"
+      ? (pluginConfig.config.settings as Record<string, unknown>)
+      : null;
+  const configuredVtexConnectionId =
+    typeof settings?.vtexConnectionId === "string"
+      ? settings.vtexConnectionId
+      : null;
+  const configuredVtexConnection = configuredVtexConnectionId
+    ? (allConnections?.find(
+        (conn) =>
+          conn.id === configuredVtexConnectionId &&
+          connectionImplementsBinding(conn, VTEX_REORDER_COLLECTION_BINDING),
+      ) ?? null)
+    : null;
 
   const configuredClient = useMCPClientOptional({
     connectionId: configuredConnection?.id,
+    orgId: org.id,
+  });
+  const configuredVtexClient = useMCPClientOptional({
+    connectionId: configuredVtexConnection?.id,
     orgId: org.id,
   });
 
@@ -117,15 +138,15 @@ export default function RankingLayout() {
           <Settings01 size={48} className="text-muted-foreground mb-2" />
           <h2 className="text-lg font-semibold">Plugin Not Configured</h2>
           <p className="text-sm text-muted-foreground">
-            This plugin requires a connection to be configured. Go to project
-            settings to select which integration to use.
+            This plugin requires a reports connection to be configured. Go to
+            project settings to select which integration to use.
           </p>
         </div>
       </div>
     );
   }
 
-  const pluginContext: PluginContext<Binder> = {
+  const pluginContext: PluginContext<typeof REPORTS_BINDING> = {
     connectionId: configuredConnection.id,
     connection: {
       id: configuredConnection.id,
@@ -147,25 +168,54 @@ export default function RankingLayout() {
             .then((result) => result.structuredContent ?? result)
         : Promise.reject(
             new Error("MCP client is not available"),
-          )) as PluginContext<Binder>["toolCaller"],
+          )) as PluginContext<typeof REPORTS_BINDING>["toolCaller"],
     org: orgContext,
     session: null,
   };
 
+  const vtexContext = {
+    connection: configuredVtexConnection
+      ? {
+          id: configuredVtexConnection.id,
+          title: configuredVtexConnection.title,
+          icon: configuredVtexConnection.icon,
+          description: configuredVtexConnection.description,
+          app_name: configuredVtexConnection.app_name,
+          app_id: configuredVtexConnection.app_id,
+          tools: configuredVtexConnection.tools,
+          metadata: configuredVtexConnection.metadata,
+        }
+      : null,
+    toolCaller: configuredVtexClient
+      ? (
+          toolName: "VTEX_REORDER_COLLECTION",
+          args: { collectionId: string; xml: string },
+        ) =>
+          configuredVtexClient
+            .callTool({
+              name: toolName,
+              arguments: args,
+            })
+            .then((result) => result.structuredContent ?? result)
+      : null,
+  };
+
   return (
     <PluginContextProvider value={pluginContext}>
-      <div className="flex flex-col h-full overflow-hidden">
-        <div className="flex-1 overflow-hidden">
-          {reportId ? (
-            <RankingDetail
-              reportId={reportId}
-              onBack={() => setReportId(null)}
-            />
-          ) : (
-            <RankingsList onSelectReport={setReportId} />
-          )}
+      <VtexConnectionProvider value={vtexContext}>
+        <div className="flex flex-col h-full overflow-hidden">
+          <div className="flex-1 overflow-hidden">
+            {reportId ? (
+              <RankingDetail
+                reportId={reportId}
+                onBack={() => setReportId(null)}
+              />
+            ) : (
+              <RankingsList onSelectReport={setReportId} />
+            )}
+          </div>
         </div>
-      </div>
+      </VtexConnectionProvider>
     </PluginContextProvider>
   );
 }

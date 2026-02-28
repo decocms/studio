@@ -132,3 +132,15 @@ export {
   type SectionGroup,
   groupSections,
 } from "./well-known/reports";
+
+// Re-export VTEX reorder binding types
+export {
+  VTEX_COLLECTION_REORDER_BINDING,
+  type VtexCollectionReorderBinding,
+  VTEX_REORDER_COLLECTION_BINDING,
+  type VtexReorderCollectionBinding,
+  VtexReorderCollectionInputSchema,
+  type VtexReorderCollectionInput,
+  VtexReorderCollectionOutputSchema,
+  type VtexReorderCollectionOutput,
+} from "./well-known/vtex";
