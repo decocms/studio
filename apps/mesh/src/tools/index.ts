@@ -274,7 +274,8 @@ export const managementMCP = async (ctx: MeshContext) => {
   const uiResources = listUIWidgetResources();
   for (const r of uiResources) {
     const resource = getUIWidgetResource(r.uri);
-    if (resource) {
+    if (resource && (resource.html || resource.path)) {
+      const content = resource.html ?? resource.path ?? "";
       server.resource(
         r.name,
         r.uri,
@@ -287,7 +288,7 @@ export const managementMCP = async (ctx: MeshContext) => {
             {
               uri: r.uri,
               mimeType: RESOURCE_MIME_TYPE,
-              text: resource.html,
+              text: content,
             },
           ],
         }),

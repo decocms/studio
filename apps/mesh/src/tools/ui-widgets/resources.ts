@@ -61,13 +61,93 @@ parent.postMessage({jsonrpc:'2.0',id:requestId++,method:'ui/initialize',params:{
 interface UIWidgetResource {
   name: string;
   description: string;
-  html: string;
+  /** HTML content for legacy srcDoc-based widgets */
+  html?: string;
+  /** Route path for React-based widgets (e.g. "/_widgets/counter") */
+  path?: string;
   exampleInput: Record<string, unknown>;
   /** If true, widget has its own visual container and should render without an outer border/padding wrapper */
   borderless?: boolean;
 }
 
 const UI_WIDGET_RESOURCES: Record<string, UIWidgetResource> = {
+  // ─── React-based widgets (served via /_widgets/* routes) ───────────────────
+  "/_widgets/area-chart": {
+    name: "Area Chart",
+    description: "Display an area chart with gradient fill",
+    path: "/_widgets/area-chart",
+    exampleInput: {
+      data: [
+        { label: "Jan", value: 10 },
+        { label: "Feb", value: 25 },
+        { label: "Mar", value: 18 },
+        { label: "Apr", value: 35 },
+      ],
+      title: "Revenue",
+    },
+  },
+  "/_widgets/calendar": {
+    name: "Calendar",
+    description: "Display a mini calendar with highlighted dates",
+    path: "/_widgets/calendar",
+    exampleInput: { month: 2, year: 2026, highlightedDates: [14, 20, 25] },
+  },
+  "/_widgets/chart": {
+    name: "Chart",
+    description: "Display an animated bar chart with labeled data points",
+    path: "/_widgets/chart",
+    exampleInput: {
+      data: [
+        { label: "Mon", value: 40 },
+        { label: "Tue", value: 80 },
+        { label: "Wed", value: 60 },
+        { label: "Thu", value: 90 },
+        { label: "Fri", value: 50 },
+      ],
+      title: "Weekly Stats",
+    },
+  },
+  "/_widgets/code": {
+    name: "Code",
+    description: "Display a syntax-highlighted code snippet",
+    path: "/_widgets/code",
+    borderless: true,
+    exampleInput: {
+      code: "const greet = (name: string) => `Hello, ${name}!`;",
+      language: "typescript",
+    },
+  },
+  "/_widgets/counter": {
+    name: "Counter",
+    description: "Interactive counter widget with increment/decrement controls",
+    path: "/_widgets/counter",
+    exampleInput: { initialValue: 42, label: "My Counter" },
+  },
+  "/_widgets/sparkline": {
+    name: "Sparkline",
+    description: "Display a compact sparkline trend chart",
+    path: "/_widgets/sparkline",
+    exampleInput: {
+      values: [10, 25, 15, 40, 30, 55, 45],
+      label: "Revenue",
+    },
+  },
+  "/_widgets/table": {
+    name: "Table",
+    description: "Display a data table with columns and rows",
+    path: "/_widgets/table",
+    exampleInput: {
+      columns: ["Name", "Status", "Count"],
+      rows: [
+        ["Alice", "Active", "42"],
+        ["Bob", "Pending", "17"],
+        ["Carol", "Active", "98"],
+      ],
+      title: "Users",
+    },
+  },
+
+  // ─── Legacy HTML-based widgets ─────────────────────────────────────────────
   "ui://mesh/counter": {
     name: "Counter",
     description: "Interactive counter widget with increment/decrement controls",

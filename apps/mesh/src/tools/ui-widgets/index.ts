@@ -12,7 +12,7 @@ const dataPoint = z.object({
 export const UI_AREA_CHART = defineTool({
   name: "UI_AREA_CHART",
   description: "Display an area chart with gradient fill",
-  _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/area-chart" },
+  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/area-chart" },
   inputSchema: z.object({
     data: z
       .array(dataPoint)
@@ -51,7 +51,7 @@ export const UI_AVATAR = defineTool({
 export const UI_CALENDAR = defineTool({
   name: "UI_CALENDAR",
   description: "Display a mini calendar with highlighted dates",
-  _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/calendar" },
+  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/calendar" },
   inputSchema: z.object({
     month: z.coerce
       .number()
@@ -92,7 +92,7 @@ export const UI_CALENDAR = defineTool({
 export const UI_CHART = defineTool({
   name: "UI_CHART",
   description: "Display an animated bar chart with labeled data points",
-  _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/chart" },
+  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/chart" },
   inputSchema: z.object({
     data: z
       .array(dataPoint)
@@ -112,7 +112,7 @@ export const UI_CHART = defineTool({
 export const UI_CODE = defineTool({
   name: "UI_CODE",
   description: "Display a syntax-highlighted code snippet",
-  _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/code" },
+  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/code" },
   inputSchema: z.object({
     code: z.string().describe("Code content to display"),
     language: z
@@ -155,7 +155,7 @@ export const UI_COUNTER = defineTool({
   name: "UI_COUNTER",
   description:
     "Display an interactive counter widget with increment/decrement controls",
-  _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/counter" },
+  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/counter" },
   inputSchema: z.object({
     initialValue: z.coerce
       .number()
@@ -442,7 +442,7 @@ export const UI_SLIDER = defineTool({
 export const UI_SPARKLINE = defineTool({
   name: "UI_SPARKLINE",
   description: "Display a compact sparkline trend chart",
-  _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/sparkline" },
+  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/sparkline" },
   inputSchema: z.object({
     values: z
       .array(z.coerce.number())
@@ -528,7 +528,7 @@ export const UI_SWITCH = defineTool({
 export const UI_TABLE = defineTool({
   name: "UI_TABLE",
   description: "Display a data table with columns and rows",
-  _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/table" },
+  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/table" },
   inputSchema: z.object({
     columns: z.array(z.string()).describe("Column header names"),
     rows: z
