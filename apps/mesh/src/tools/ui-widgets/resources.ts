@@ -9,7 +9,7 @@ interface UIWidgetResource {
 }
 
 const UI_WIDGET_RESOURCES: Record<string, UIWidgetResource> = {
-  "/_widgets/area-chart": {
+  "ui://self/area-chart": {
     name: "Area Chart",
     description: "Display an area chart with gradient fill",
     path: "/_widgets/area-chart",
@@ -23,19 +23,19 @@ const UI_WIDGET_RESOURCES: Record<string, UIWidgetResource> = {
       title: "Revenue",
     },
   },
-  "/_widgets/avatar": {
+  "ui://self/avatar": {
     name: "Avatar",
     description: "Display a user avatar with optional status indicator",
     path: "/_widgets/avatar",
     exampleInput: { name: "Jane Doe", status: "online" },
   },
-  "/_widgets/calendar": {
+  "ui://self/calendar": {
     name: "Calendar",
     description: "Display a mini calendar with highlighted dates",
     path: "/_widgets/calendar",
     exampleInput: { month: 2, year: 2026, highlightedDates: [14, 20, 25] },
   },
-  "/_widgets/chart": {
+  "ui://self/chart": {
     name: "Chart",
     description: "Display an animated bar chart with labeled data points",
     path: "/_widgets/chart",
@@ -50,16 +50,16 @@ const UI_WIDGET_RESOURCES: Record<string, UIWidgetResource> = {
       title: "Weekly Stats",
     },
   },
-  "/_widgets/code?borderless=true": {
+  "ui://self/code?borderless=true": {
     name: "Code",
     description: "Display a syntax-highlighted code snippet",
-    path: "/_widgets/code?borderless=true",
+    path: "/_widgets/code",
     exampleInput: {
       code: "const greet = (name: string) => `Hello, ${name}!`;",
       language: "typescript",
     },
   },
-  "/_widgets/confirmation": {
+  "ui://self/confirmation": {
     name: "Confirmation",
     description: "Display a confirmation dialog with customizable actions",
     path: "/_widgets/confirmation",
@@ -70,13 +70,13 @@ const UI_WIDGET_RESOURCES: Record<string, UIWidgetResource> = {
       cancelLabel: "Cancel",
     },
   },
-  "/_widgets/counter": {
+  "ui://self/counter": {
     name: "Counter",
     description: "Interactive counter widget with increment/decrement controls",
     path: "/_widgets/counter",
     exampleInput: { initialValue: 42, label: "My Counter" },
   },
-  "/_widgets/diff": {
+  "ui://self/diff": {
     name: "Diff",
     description: "Display a side-by-side text diff viewer",
     path: "/_widgets/diff",
@@ -86,17 +86,17 @@ const UI_WIDGET_RESOURCES: Record<string, UIWidgetResource> = {
       title: "Changes",
     },
   },
-  "/_widgets/error?borderless=true": {
+  "ui://self/error?borderless=true": {
     name: "Error",
     description: "Display an error message with optional code and details",
-    path: "/_widgets/error?borderless=true",
+    path: "/_widgets/error",
     exampleInput: {
       message: "Connection refused",
       code: "ECONNREFUSED",
       details: "Could not connect to database at localhost:5432",
     },
   },
-  "/_widgets/form-result": {
+  "ui://self/form-result": {
     name: "Form Result",
     description: "Display a form submission result summary",
     path: "/_widgets/form-result",
@@ -109,13 +109,13 @@ const UI_WIDGET_RESOURCES: Record<string, UIWidgetResource> = {
       ],
     },
   },
-  "/_widgets/greeting": {
+  "ui://self/greeting": {
     name: "Greeting",
     description: "Display a personalized greeting card",
     path: "/_widgets/greeting",
     exampleInput: { name: "Alice", message: "Welcome back!" },
   },
-  "/_widgets/image": {
+  "ui://self/image": {
     name: "Image",
     description: "Display an image with optional caption",
     path: "/_widgets/image",
@@ -125,7 +125,7 @@ const UI_WIDGET_RESOURCES: Record<string, UIWidgetResource> = {
       caption: "A beautiful landscape",
     },
   },
-  "/_widgets/json-viewer": {
+  "ui://self/json-viewer": {
     name: "JSON Viewer",
     description: "Display an interactive JSON tree viewer",
     path: "/_widgets/json-viewer",
@@ -134,7 +134,7 @@ const UI_WIDGET_RESOURCES: Record<string, UIWidgetResource> = {
       title: "User Data",
     },
   },
-  "/_widgets/kbd": {
+  "ui://self/kbd": {
     name: "Keyboard Shortcuts",
     description: "Display keyboard shortcut reference",
     path: "/_widgets/kbd",
@@ -146,7 +146,7 @@ const UI_WIDGET_RESOURCES: Record<string, UIWidgetResource> = {
       ],
     },
   },
-  "/_widgets/markdown": {
+  "ui://self/markdown": {
     name: "Markdown",
     description: "Display rendered markdown content",
     path: "/_widgets/markdown",
@@ -156,50 +156,50 @@ const UI_WIDGET_RESOURCES: Record<string, UIWidgetResource> = {
       title: "README",
     },
   },
-  "/_widgets/metric": {
+  "ui://self/metric": {
     name: "Metric",
     description: "Key metric display with value, unit, and trend indicator",
     path: "/_widgets/metric",
     exampleInput: { value: 1234, label: "Revenue", unit: "$", trend: 12.5 },
   },
-  "/_widgets/notification?borderless=true": {
+  "ui://self/notification?borderless=true": {
     name: "Notification",
     description: "Display a notification banner with type styling",
-    path: "/_widgets/notification?borderless=true",
+    path: "/_widgets/notification",
     exampleInput: {
       type: "success",
       title: "Saved",
       message: "Your changes have been saved successfully.",
     },
   },
-  "/_widgets/progress": {
+  "ui://self/progress": {
     name: "Progress",
     description: "Display a visual progress bar with label and percentage",
     path: "/_widgets/progress",
     exampleInput: { value: 65, max: 100, label: "Upload progress" },
   },
-  "/_widgets/quote?borderless=true": {
+  "ui://self/quote?borderless=true": {
     name: "Quote",
     description: "Quote display with author attribution",
-    path: "/_widgets/quote?borderless=true",
+    path: "/_widgets/quote",
     exampleInput: {
       text: "The only way to do great work is to love what you do.",
       author: "Steve Jobs",
     },
   },
-  "/_widgets/rating": {
+  "ui://self/rating": {
     name: "Rating",
     description: "Display a star rating indicator",
     path: "/_widgets/rating",
     exampleInput: { value: 4, max: 5, label: "Product Rating" },
   },
-  "/_widgets/slider": {
+  "ui://self/slider": {
     name: "Slider",
     description: "Display a range slider control",
     path: "/_widgets/slider",
     exampleInput: { value: 70, min: 0, max: 100, label: "Volume" },
   },
-  "/_widgets/sparkline": {
+  "ui://self/sparkline": {
     name: "Sparkline",
     description: "Display a compact sparkline trend chart",
     path: "/_widgets/sparkline",
@@ -208,10 +208,10 @@ const UI_WIDGET_RESOURCES: Record<string, UIWidgetResource> = {
       label: "Revenue",
     },
   },
-  "/_widgets/stats-grid?borderless=true": {
+  "ui://self/stats-grid?borderless=true": {
     name: "Stats Grid",
     description: "Display a grid of dashboard statistics",
-    path: "/_widgets/stats-grid?borderless=true",
+    path: "/_widgets/stats-grid",
     exampleInput: {
       stats: [
         { label: "Users", value: "1,234", trend: 5.2 },
@@ -221,13 +221,13 @@ const UI_WIDGET_RESOURCES: Record<string, UIWidgetResource> = {
       ],
     },
   },
-  "/_widgets/status": {
+  "ui://self/status": {
     name: "Status",
     description: "Display a status badge indicator",
     path: "/_widgets/status",
     exampleInput: { status: "online", label: "API Server" },
   },
-  "/_widgets/switch": {
+  "ui://self/switch": {
     name: "Switch",
     description: "Display a toggle switch control",
     path: "/_widgets/switch",
@@ -237,7 +237,7 @@ const UI_WIDGET_RESOURCES: Record<string, UIWidgetResource> = {
       checked: false,
     },
   },
-  "/_widgets/table": {
+  "ui://self/table": {
     name: "Table",
     description: "Display a data table with columns and rows",
     path: "/_widgets/table",
@@ -251,13 +251,13 @@ const UI_WIDGET_RESOURCES: Record<string, UIWidgetResource> = {
       title: "Users",
     },
   },
-  "/_widgets/timer": {
+  "ui://self/timer": {
     name: "Timer",
     description: "Display an interactive countdown timer",
     path: "/_widgets/timer",
     exampleInput: { duration: 300, label: "Session Timer" },
   },
-  "/_widgets/todo": {
+  "ui://self/todo": {
     name: "Todo",
     description: "Display an interactive todo list",
     path: "/_widgets/todo",

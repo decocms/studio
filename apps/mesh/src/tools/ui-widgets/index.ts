@@ -1,4 +1,3 @@
-import { RESOURCE_URI_META_KEY } from "@modelcontextprotocol/ext-apps";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool.ts";
 
@@ -12,7 +11,7 @@ const dataPoint = z.object({
 export const UI_AREA_CHART = defineTool({
   name: "UI_AREA_CHART",
   description: "Display an area chart with gradient fill",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/area-chart" },
+  _meta: { ui: { resourceUri: "ui://self/area-chart" } },
   inputSchema: z.object({
     data: z
       .array(dataPoint)
@@ -32,7 +31,7 @@ export const UI_AREA_CHART = defineTool({
 export const UI_AVATAR = defineTool({
   name: "UI_AVATAR",
   description: "Display a user avatar with optional status indicator",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/avatar" },
+  _meta: { ui: { resourceUri: "ui://self/avatar" } },
   inputSchema: z.object({
     name: z.string().describe("User display name"),
     imageUrl: z.string().default("").describe("URL for the avatar image"),
@@ -51,7 +50,7 @@ export const UI_AVATAR = defineTool({
 export const UI_CALENDAR = defineTool({
   name: "UI_CALENDAR",
   description: "Display a mini calendar with highlighted dates",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/calendar" },
+  _meta: { ui: { resourceUri: "ui://self/calendar" } },
   inputSchema: z.object({
     month: z.coerce
       .number()
@@ -92,7 +91,7 @@ export const UI_CALENDAR = defineTool({
 export const UI_CHART = defineTool({
   name: "UI_CHART",
   description: "Display an animated bar chart with labeled data points",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/chart" },
+  _meta: { ui: { resourceUri: "ui://self/chart" } },
   inputSchema: z.object({
     data: z
       .array(dataPoint)
@@ -112,7 +111,7 @@ export const UI_CHART = defineTool({
 export const UI_CODE = defineTool({
   name: "UI_CODE",
   description: "Display a syntax-highlighted code snippet",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/code?borderless=true" },
+  _meta: { ui: { resourceUri: "ui://self/code?borderless=true" } },
   inputSchema: z.object({
     code: z.string().describe("Code content to display"),
     language: z
@@ -132,7 +131,7 @@ export const UI_CODE = defineTool({
 export const UI_CONFIRMATION = defineTool({
   name: "UI_CONFIRMATION",
   description: "Display a confirmation dialog with customizable actions",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/confirmation" },
+  _meta: { ui: { resourceUri: "ui://self/confirmation" } },
   inputSchema: z.object({
     title: z.string().describe("Dialog title"),
     message: z.string().describe("Confirmation message to display"),
@@ -155,7 +154,7 @@ export const UI_COUNTER = defineTool({
   name: "UI_COUNTER",
   description:
     "Display an interactive counter widget with increment/decrement controls",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/counter" },
+  _meta: { ui: { resourceUri: "ui://self/counter" } },
   inputSchema: z.object({
     initialValue: z.coerce
       .number()
@@ -172,7 +171,7 @@ export const UI_COUNTER = defineTool({
 export const UI_DIFF = defineTool({
   name: "UI_DIFF",
   description: "Display a side-by-side text diff viewer",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/diff" },
+  _meta: { ui: { resourceUri: "ui://self/diff" } },
   inputSchema: z.object({
     before: z.string().describe("Original text content"),
     after: z.string().describe("Modified text content"),
@@ -187,7 +186,7 @@ export const UI_DIFF = defineTool({
 export const UI_ERROR = defineTool({
   name: "UI_ERROR",
   description: "Display an error message with optional code and details",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/error?borderless=true" },
+  _meta: { ui: { resourceUri: "ui://self/error?borderless=true" } },
   inputSchema: z.object({
     message: z.string().describe("Error message"),
     code: z
@@ -208,7 +207,7 @@ export const UI_ERROR = defineTool({
 export const UI_FORM_RESULT = defineTool({
   name: "UI_FORM_RESULT",
   description: "Display a form submission result summary",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/form-result" },
+  _meta: { ui: { resourceUri: "ui://self/form-result" } },
   inputSchema: z.object({
     fields: z
       .array(
@@ -240,7 +239,7 @@ export const UI_FORM_RESULT = defineTool({
 export const UI_GREETING = defineTool({
   name: "UI_GREETING",
   description: "Display a personalized greeting card",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/greeting" },
+  _meta: { ui: { resourceUri: "ui://self/greeting" } },
   inputSchema: z.object({
     name: z.string().describe("Name of the person to greet"),
     message: z
@@ -257,7 +256,7 @@ export const UI_GREETING = defineTool({
 export const UI_IMAGE = defineTool({
   name: "UI_IMAGE",
   description: "Display an image with optional caption",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/image" },
+  _meta: { ui: { resourceUri: "ui://self/image" } },
   inputSchema: z.object({
     src: z.string().describe("Image URL"),
     alt: z.string().default("").describe("Alt text for the image"),
@@ -272,7 +271,7 @@ export const UI_IMAGE = defineTool({
 export const UI_JSON_VIEWER = defineTool({
   name: "UI_JSON_VIEWER",
   description: "Display an interactive JSON tree viewer",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/json-viewer" },
+  _meta: { ui: { resourceUri: "ui://self/json-viewer" } },
   inputSchema: z.object({
     data: z.unknown().describe("JSON data to display"),
     title: z.string().default("JSON").describe("Title for the viewer"),
@@ -290,7 +289,7 @@ export const UI_JSON_VIEWER = defineTool({
 export const UI_KBD = defineTool({
   name: "UI_KBD",
   description: "Display keyboard shortcut reference",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/kbd" },
+  _meta: { ui: { resourceUri: "ui://self/kbd" } },
   inputSchema: z.object({
     shortcuts: z
       .array(
@@ -318,7 +317,7 @@ export const UI_KBD = defineTool({
 export const UI_MARKDOWN = defineTool({
   name: "UI_MARKDOWN",
   description: "Display rendered markdown content",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/markdown" },
+  _meta: { ui: { resourceUri: "ui://self/markdown" } },
   inputSchema: z.object({
     content: z.string().describe("Markdown content to render"),
     title: z.string().default("").describe("Optional title above the content"),
@@ -336,7 +335,7 @@ export const UI_MARKDOWN = defineTool({
 export const UI_METRIC = defineTool({
   name: "UI_METRIC",
   description: "Display a key metric with optional unit and trend indicator",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/metric" },
+  _meta: { ui: { resourceUri: "ui://self/metric" } },
   inputSchema: z.object({
     value: z.coerce.number().describe("Metric value to display"),
     label: z.string().describe("Label for the metric"),
@@ -363,7 +362,7 @@ export const UI_METRIC = defineTool({
 export const UI_NOTIFICATION = defineTool({
   name: "UI_NOTIFICATION",
   description: "Display a notification banner with type styling",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/notification?borderless=true" },
+  _meta: { ui: { resourceUri: "ui://self/notification?borderless=true" } },
   inputSchema: z.object({
     message: z.string().describe("Notification message"),
     type: z
@@ -380,7 +379,7 @@ export const UI_NOTIFICATION = defineTool({
 export const UI_PROGRESS = defineTool({
   name: "UI_PROGRESS",
   description: "Display a visual progress bar with label and percentage",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/progress" },
+  _meta: { ui: { resourceUri: "ui://self/progress" } },
   inputSchema: z.object({
     value: z.coerce.number().default(0).describe("Current progress value"),
     max: z.coerce.number().default(100).describe("Maximum progress value"),
@@ -399,7 +398,7 @@ export const UI_PROGRESS = defineTool({
 export const UI_QUOTE = defineTool({
   name: "UI_QUOTE",
   description: "Display a quote with attribution",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/quote?borderless=true" },
+  _meta: { ui: { resourceUri: "ui://self/quote?borderless=true" } },
   inputSchema: z.object({
     text: z.string().describe("The quote text"),
     author: z.string().default("Unknown").describe("Author of the quote"),
@@ -411,7 +410,7 @@ export const UI_QUOTE = defineTool({
 export const UI_RATING = defineTool({
   name: "UI_RATING",
   description: "Display a star rating indicator",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/rating" },
+  _meta: { ui: { resourceUri: "ui://self/rating" } },
   inputSchema: z.object({
     value: z.coerce.number().default(0).describe("Current rating value"),
     max: z.coerce.number().default(5).describe("Maximum number of stars"),
@@ -426,7 +425,7 @@ export const UI_RATING = defineTool({
 export const UI_SLIDER = defineTool({
   name: "UI_SLIDER",
   description: "Display a range slider control",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/slider" },
+  _meta: { ui: { resourceUri: "ui://self/slider" } },
   inputSchema: z.object({
     value: z.coerce.number().default(50).describe("Current slider value"),
     min: z.coerce.number().default(0).describe("Minimum slider value"),
@@ -442,7 +441,7 @@ export const UI_SLIDER = defineTool({
 export const UI_SPARKLINE = defineTool({
   name: "UI_SPARKLINE",
   description: "Display a compact sparkline trend chart",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/sparkline" },
+  _meta: { ui: { resourceUri: "ui://self/sparkline" } },
   inputSchema: z.object({
     values: z
       .array(z.coerce.number())
@@ -463,7 +462,7 @@ export const UI_SPARKLINE = defineTool({
 export const UI_STATS_GRID = defineTool({
   name: "UI_STATS_GRID",
   description: "Display a grid of dashboard statistics",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/stats-grid?borderless=true" },
+  _meta: { ui: { resourceUri: "ui://self/stats-grid?borderless=true" } },
   inputSchema: z.object({
     stats: z
       .array(
@@ -491,7 +490,7 @@ export const UI_STATS_GRID = defineTool({
 export const UI_STATUS = defineTool({
   name: "UI_STATUS",
   description: "Display a status badge indicator",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/status" },
+  _meta: { ui: { resourceUri: "ui://self/status" } },
   inputSchema: z.object({
     status: z
       .enum(["online", "offline", "busy", "away"])
@@ -507,7 +506,7 @@ export const UI_STATUS = defineTool({
 export const UI_SWITCH = defineTool({
   name: "UI_SWITCH",
   description: "Display a toggle switch control",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/switch" },
+  _meta: { ui: { resourceUri: "ui://self/switch" } },
   inputSchema: z.object({
     label: z.string().describe("Label for the switch"),
     checked: z
@@ -528,7 +527,7 @@ export const UI_SWITCH = defineTool({
 export const UI_TABLE = defineTool({
   name: "UI_TABLE",
   description: "Display a data table with columns and rows",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/table" },
+  _meta: { ui: { resourceUri: "ui://self/table" } },
   inputSchema: z.object({
     columns: z.array(z.string()).describe("Column header names"),
     rows: z
@@ -546,7 +545,7 @@ export const UI_TABLE = defineTool({
 export const UI_TIMER = defineTool({
   name: "UI_TIMER",
   description: "Display an interactive countdown timer",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/timer" },
+  _meta: { ui: { resourceUri: "ui://self/timer" } },
   inputSchema: z.object({
     duration: z.coerce
       .number()
@@ -563,7 +562,7 @@ export const UI_TIMER = defineTool({
 export const UI_TODO = defineTool({
   name: "UI_TODO",
   description: "Display an interactive todo list",
-  _meta: { [RESOURCE_URI_META_KEY]: "/_widgets/todo" },
+  _meta: { ui: { resourceUri: "ui://self/todo" } },
   inputSchema: z.object({
     items: z
       .array(
