@@ -1,15 +1,12 @@
 "use client";
 
-import { useState } from "react";
 import { useMCPClient } from "@decocms/mesh-sdk";
 import type {
   CallToolResult,
   ReadResourceResult,
 } from "@modelcontextprotocol/sdk/types.js";
-import { LayersTwo01, ChevronDown, ChevronUp } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { MCPAppRenderer } from "@/mcp-apps/mcp-app-renderer.tsx";
-import { MCP_APP_DISPLAY_MODES } from "@/mcp-apps/types.ts";
 import { useUIResourceLoader } from "./use-ui-resource-loader.ts";
 
 interface MCPAppLoaderProps {
@@ -17,7 +14,6 @@ interface MCPAppLoaderProps {
   connectionId: string;
   orgId: string;
   toolName: string;
-  friendlyName: string;
   toolInput: unknown;
   toolResult: unknown;
   minHeight?: number;
@@ -30,29 +26,30 @@ export function MCPAppLoader({
   connectionId,
   orgId,
   toolName,
-  friendlyName,
   toolInput,
   toolResult,
-  minHeight = MCP_APP_DISPLAY_MODES.collapsed.minHeight,
-  maxHeight = MCP_APP_DISPLAY_MODES.collapsed.maxHeight,
+  minHeight = 0,
+  maxHeight = 600,
   className,
 }: MCPAppLoaderProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
-
-  const mcpClient = useMCPClient({ connectionId, orgId });
+  // Use the connection client for tool calls (the virtual MCP / agent endpoint)
+  const toolClient = useMCPClient({ connectionId, orgId });
+  // Use the management MCP (null connectionId → /mcp) for reading resources,
+  // since ui://mesh/* resources are registered on the management server
+  const resourceClient = useMCPClient({ connectionId: null, orgId });
 
   const handleCallTool = async (
     name: string,
     args: Record<string, unknown>,
   ): Promise<CallToolResult> => {
-    const result = await mcpClient.callTool({ name, arguments: args });
+    const result = await toolClient.callTool({ name, arguments: args });
     return result as CallToolResult;
   };
 
   const handleReadResource = async (
     uri: string,
   ): Promise<ReadResourceResult> => {
-    const result = await mcpClient.readResource({ uri });
+    const result = await resourceClient.readResource({ uri });
     return result as ReadResourceResult;
   };
 
@@ -62,20 +59,11 @@ export function MCPAppLoader({
     error,
   } = useUIResourceLoader(uiResourceUri, handleReadResource);
 
-  const currentMode = isExpanded
-    ? MCP_APP_DISPLAY_MODES.expanded
-    : MCP_APP_DISPLAY_MODES.collapsed;
-  const currentMinHeight = minHeight ?? currentMode.minHeight;
-  const currentMaxHeight = maxHeight ?? currentMode.maxHeight;
-
   if (loading) {
     return (
       <div
-        className={cn(
-          "flex items-center justify-center border border-border rounded-lg",
-          className,
-        )}
-        style={{ height: `${currentMinHeight}px` }}
+        className={cn("flex items-center justify-center rounded-lg", className)}
+        style={{ height: `${minHeight}px` }}
       >
         <div className="flex items-center gap-2 text-muted-foreground">
           <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -101,42 +89,17 @@ export function MCPAppLoader({
   if (!appHtml) return null;
 
   return (
-    <div
-      className={cn(
-        "border border-border rounded-lg overflow-hidden",
-        className,
-      )}
-    >
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-        <div className="flex items-center gap-2">
-          <LayersTwo01 className="size-4 text-muted-foreground" />
-          <span className="text-sm font-medium text-foreground">
-            {friendlyName}
-          </span>
-        </div>
-        <button
-          type="button"
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="p-1 rounded hover:bg-muted transition-colors"
-        >
-          {isExpanded ? (
-            <ChevronUp className="size-4 text-muted-foreground" />
-          ) : (
-            <ChevronDown className="size-4 text-muted-foreground" />
-          )}
-        </button>
-      </div>
-      <MCPAppRenderer
-        html={appHtml}
-        uri={uiResourceUri}
-        toolName={toolName}
-        toolInput={toolInput as Record<string, unknown> | undefined}
-        toolResult={toolResult as CallToolResult | undefined}
-        minHeight={currentMinHeight}
-        maxHeight={currentMaxHeight}
-        callTool={handleCallTool}
-        readResource={handleReadResource}
-      />
-    </div>
+    <MCPAppRenderer
+      html={appHtml}
+      uri={uiResourceUri}
+      toolName={toolName}
+      toolInput={toolInput as Record<string, unknown> | undefined}
+      toolResult={toolResult as CallToolResult | undefined}
+      minHeight={minHeight}
+      maxHeight={maxHeight}
+      callTool={handleCallTool}
+      readResource={handleReadResource}
+      className={cn("rounded-lg overflow-hidden", className)}
+    />
   );
 }

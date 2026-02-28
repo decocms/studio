@@ -21,11 +21,9 @@ const tokens = {
 };
 
 const baseCSS = `
+  :root { color-scheme: light only; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: ${tokens.fontFamily}; font-size: ${tokens.fontSize}; color: ${tokens.gray900}; background: transparent; padding: 16px; line-height: 1.5; }
-  @media (prefers-color-scheme: dark) {
-    body { color: #e5e7eb; }
-  }
+  body { font-family: ${tokens.fontFamily}; font-size: ${tokens.fontSize}; color: ${tokens.gray900}; background: transparent; padding: 4px 0; line-height: 1.5; }
 `;
 
 function notifySize(): string {
@@ -73,15 +71,11 @@ const UI_WIDGET_RESOURCES: Record<string, UIWidgetResource> = {
     description: "Interactive counter widget with increment/decrement controls",
     html: `<!DOCTYPE html><html><head><style>${baseCSS}
 .counter { text-align: center; }
-.counter .label { font-size: 13px; color: ${tokens.gray500}; margin-bottom: 8px; }
+.counter .label { font-size: 13px; color: ${tokens.gray700}; margin-bottom: 8px; }
 .counter .value { font-size: 48px; font-weight: 700; color: ${tokens.primary}; margin: 12px 0; }
 .counter .controls { display: flex; gap: 8px; justify-content: center; }
 .counter button { width: 40px; height: 40px; border-radius: ${tokens.borderRadius}; border: 1px solid ${tokens.gray200}; background: white; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
 .counter button:hover { background: ${tokens.primary}; color: white; border-color: ${tokens.primary}; }
-@media (prefers-color-scheme: dark) {
-  .counter button { background: #1f2937; border-color: #374151; color: #e5e7eb; }
-  .counter button:hover { background: ${tokens.primary}; border-color: ${tokens.primary}; color: white; }
-}
 </style></head><body>
 <div class="counter">
   <div class="label" id="lbl">Counter</div>
@@ -116,18 +110,19 @@ function update(d) {
     name: "Metric",
     description: "Key metric display with value, unit, and trend indicator",
     html: `<!DOCTYPE html><html><head><style>${baseCSS}
-.metric { padding: 8px 0; }
-.metric .label { font-size: 12px; color: ${tokens.gray500}; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
-.metric .row { display: flex; align-items: baseline; gap: 4px; }
-.metric .unit { font-size: 24px; font-weight: 600; color: ${tokens.gray500}; }
-.metric .value { font-size: 36px; font-weight: 700; }
-.metric .trend { font-size: 13px; font-weight: 600; margin-top: 6px; display: flex; align-items: center; gap: 4px; }
+.metric { padding: 4px 0; }
+.metric .label { font-size: 11px; color: ${tokens.gray700}; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
+.metric .row { display: flex; align-items: baseline; gap: 6px; }
+.metric .prefix { font-size: 28px; font-weight: 600; color: ${tokens.gray700}; }
+.metric .value { font-size: 36px; font-weight: 700; color: ${tokens.gray900}; }
+.metric .suffix { font-size: 14px; font-weight: 500; color: ${tokens.gray700}; }
+.metric .trend { font-size: 13px; font-weight: 600; margin-top: 4px; display: flex; align-items: center; gap: 4px; }
 .metric .trend.up { color: ${tokens.success}; }
 .metric .trend.down { color: ${tokens.danger}; }
 </style></head><body>
 <div class="metric">
   <div class="label" id="lbl">Metric</div>
-  <div class="row"><span class="unit" id="unit"></span><span class="value" id="val">0</span></div>
+  <div class="row"><span class="prefix" id="prefix"></span><span class="value" id="val">0</span><span class="suffix" id="suffix"></span></div>
   <div class="trend" id="trend"></div>
 </div>
 ${widgetScript(
@@ -135,7 +130,10 @@ ${widgetScript(
   `
   if (args.label) document.getElementById('lbl').textContent = args.label;
   if (args.value !== undefined) document.getElementById('val').textContent = Number(args.value).toLocaleString();
-  document.getElementById('unit').textContent = args.unit || '';
+  var u = args.unit || '';
+  var isPrefix = u.length <= 1 || /^[$€£¥₹%#]$/.test(u);
+  document.getElementById('prefix').textContent = isPrefix ? u : '';
+  document.getElementById('suffix').textContent = isPrefix ? '' : u;
   var t = document.getElementById('trend');
   if (args.trend !== undefined) {
     var up = args.trend >= 0;
@@ -155,13 +153,9 @@ ${widgetScript(
 .progress { padding: 4px 0; }
 .progress .header { display: flex; justify-content: space-between; margin-bottom: 8px; }
 .progress .label { font-size: 13px; font-weight: 500; }
-.progress .pct { font-size: 13px; color: ${tokens.gray500}; }
+.progress .pct { font-size: 13px; color: ${tokens.gray700}; }
 .progress .track { height: 8px; background: ${tokens.gray100}; border-radius: 4px; overflow: hidden; }
 .progress .fill { height: 100%; background: linear-gradient(90deg, ${tokens.primary}, ${tokens.primaryLight}); border-radius: 4px; transition: width 0.5s ease; }
-@media (prefers-color-scheme: dark) {
-  .progress .track { background: #1f2937; }
-  .progress .pct { color: #d1d5db; }
-}
 </style></head><body>
 <div class="progress">
   <div class="header"><span class="label" id="lbl">Progress</span><span class="pct" id="pct">0%</span></div>
@@ -215,7 +209,7 @@ ${widgetScript(
 .chart .bars { display: flex; align-items: flex-end; gap: 8px; height: 120px; padding-top: 8px; }
 .chart .bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; justify-content: flex-end; }
 .chart .bar { width: 100%; min-width: 20px; background: linear-gradient(180deg, ${tokens.primaryLight}, ${tokens.primary}); border-radius: 4px 4px 0 0; transition: height 0.4s ease; }
-.chart .bar-label { font-size: 11px; color: ${tokens.gray500}; margin-top: 6px; text-align: center; }
+.chart .bar-label { font-size: 11px; color: ${tokens.gray700}; margin-top: 6px; text-align: center; }
 .chart .bar-value { font-size: 11px; font-weight: 600; margin-bottom: 4px; }
 </style></head><body>
 <div class="chart">
@@ -256,8 +250,8 @@ ${widgetScript(
     description: "Countdown timer with start, pause, and reset controls",
     html: `<!DOCTYPE html><html><head><style>${baseCSS}
 .timer { text-align: center; }
-.timer .label { font-size: 13px; color: ${tokens.gray500}; margin-bottom: 8px; }
-.timer .display { font-size: 42px; font-weight: 700; font-family: ${tokens.fontMono}; letter-spacing: 2px; margin: 8px 0 16px; }
+.timer .label { font-size: 13px; color: ${tokens.gray700}; margin-bottom: 8px; }
+.timer .display { font-size: 42px; font-weight: 700; font-family: ${tokens.fontMono}; letter-spacing: 2px; margin: 8px 0 16px; color: ${tokens.gray900}; }
 .timer .controls { display: flex; gap: 8px; justify-content: center; }
 .timer button { padding: 6px 16px; border-radius: 6px; border: none; font-size: 13px; font-weight: 500; cursor: pointer; transition: opacity 0.15s; }
 .timer .start { background: ${tokens.success}; color: white; }
@@ -315,10 +309,6 @@ function resetTimer() { pauseTimer(); window._remaining = window._timerDuration;
 .status .dot.error { background: ${tokens.danger}; box-shadow: 0 0 6px ${tokens.danger}; }
 .status .dot.warning { background: ${tokens.warning}; box-shadow: 0 0 6px ${tokens.warning}; }
 .status .text { font-size: 13px; font-weight: 500; }
-@media (prefers-color-scheme: dark) {
-  .status { background: #1f2937; }
-  .status .text { color: #e5e7eb; }
-}
 </style></head><body>
 <div class="status">
   <div class="dot" id="dot"></div>
@@ -346,14 +336,9 @@ ${widgetScript(
     description: "Quote display with author attribution",
     html: `<!DOCTYPE html><html><head><style>${baseCSS}
 .quote { padding: 16px 20px; border-left: 3px solid ${tokens.primary}; background: ${tokens.gray100}; border-radius: 0 ${tokens.borderRadius} ${tokens.borderRadius} 0; }
-.quote .text { font-size: 16px; font-style: italic; line-height: 1.6; color: ${tokens.gray700}; }
-.quote .author { font-size: 13px; color: ${tokens.gray500}; margin-top: 10px; }
+.quote .text { font-size: 16px; font-style: italic; line-height: 1.6; color: ${tokens.gray900}; }
+.quote .author { font-size: 13px; color: ${tokens.gray700}; margin-top: 10px; font-weight: 500; }
 .quote .author::before { content: '\\2014\\00A0'; }
-@media (prefers-color-scheme: dark) {
-  .quote { background: #1f2937; }
-  .quote .text { color: #d1d5db; }
-  .quote .author { color: #9ca3af; }
-}
 </style></head><body>
 <div class="quote">
   <div class="text" id="text"></div>
@@ -379,12 +364,12 @@ ${widgetScript(
     description: "Compact sparkline chart for trend visualization",
     html: `<!DOCTYPE html><html><head><style>${baseCSS}
 .sparkline { padding: 4px 0; }
-.sparkline .label { font-size: 13px; color: ${tokens.gray500}; margin-bottom: 8px; }
+.sparkline .label { font-size: 13px; color: ${tokens.gray700}; margin-bottom: 8px; }
 .sparkline svg { display: block; width: 100%; }
 </style></head><body>
 <div class="sparkline">
   <div class="label" id="lbl">Trend</div>
-  <svg id="svg" viewBox="0 0 200 50" preserveAspectRatio="none" height="50"></svg>
+  <svg id="svg" viewBox="0 0 200 50" preserveAspectRatio="xMidYMid meet" height="50"></svg>
 </div>
 ${widgetScript(
   "Sparkline",
@@ -412,14 +397,18 @@ ${widgetScript(
   "ui://mesh/code": {
     name: "Code",
     description: "Code snippet display with language label",
-    html: `<!DOCTYPE html><html><head><style>${baseCSS}
-.code-block { background: #1e1e2e; border-radius: ${tokens.borderRadius}; overflow: hidden; }
-.code-block .header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #181825; }
-.code-block .lang { font-size: 11px; color: #a6adc8; text-transform: uppercase; letter-spacing: 0.05em; }
-.code-block .copy { font-size: 11px; color: #a6adc8; background: none; border: 1px solid #313244; border-radius: 4px; padding: 2px 8px; cursor: pointer; }
-.code-block .copy:hover { background: #313244; }
-.code-block pre { padding: 12px 16px; overflow-x: auto; }
-.code-block code { font-family: ${tokens.fontMono}; font-size: 13px; color: #cdd6f4; line-height: 1.6; white-space: pre; }
+    html: `<!DOCTYPE html><html><head>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"><\/script>
+<style>${baseCSS}
+.code-block { background: #0d1117; border-radius: ${tokens.borderRadius}; overflow: hidden; }
+.code-block .header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #161b22; }
+.code-block .lang { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em; }
+.code-block .copy { font-size: 11px; color: #8b949e; background: none; border: 1px solid #30363d; border-radius: 4px; padding: 2px 8px; cursor: pointer; }
+.code-block .copy:hover { background: #30363d; color: #c9d1d9; }
+.code-block pre { padding: 12px 16px; overflow-x: auto; margin: 0; }
+.code-block code { font-family: ${tokens.fontMono}; font-size: 13px; line-height: 1.6; white-space: pre; }
+.code-block pre code.hljs { background: transparent; padding: 0; }
 </style></head><body>
 <div class="code-block">
   <div class="header"><span class="lang" id="lang">code</span><button class="copy" onclick="copyCode()">Copy</button></div>
@@ -428,8 +417,12 @@ ${widgetScript(
 ${widgetScript(
   "Code",
   `
-  document.getElementById('code').textContent = args.code || '';
-  document.getElementById('lang').textContent = args.language || 'text';
+  var el = document.getElementById('code');
+  el.textContent = args.code || '';
+  var lang = args.language || 'text';
+  document.getElementById('lang').textContent = lang;
+  el.className = 'language-' + lang;
+  if (typeof hljs !== 'undefined') { hljs.highlightElement(el); }
 `,
 )}
 <script>
@@ -437,7 +430,7 @@ function copyCode() {
   var t = document.getElementById('code').textContent;
   navigator.clipboard.writeText(t).catch(function(){});
 }
-</script>
+<\/script>
 </body></html>`,
     exampleInput: {
       code: "console.log('Hello, World!');",
@@ -451,7 +444,7 @@ function copyCode() {
     html: `<!DOCTYPE html><html><head><style>${baseCSS}
 .confirm { padding: 8px 0; }
 .confirm .title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
-.confirm .msg { font-size: 14px; color: ${tokens.gray500}; margin-bottom: 16px; line-height: 1.5; }
+.confirm .msg { font-size: 14px; color: ${tokens.gray700}; margin-bottom: 16px; line-height: 1.5; }
 .confirm .actions { display: flex; gap: 8px; justify-content: flex-end; }
 .confirm button { padding: 8px 16px; border-radius: 6px; border: none; font-size: 13px; font-weight: 500; cursor: pointer; }
 .confirm .cancel { background: ${tokens.gray200}; color: ${tokens.gray700}; }
@@ -507,8 +500,8 @@ function choose(yes) {
 .json-viewer .str { color: #22c55e; }
 .json-viewer .num { color: #f59e0b; }
 .json-viewer .bool { color: #ef4444; }
-.json-viewer .null { color: ${tokens.gray500}; }
-.json-viewer .bracket { color: ${tokens.gray500}; }
+.json-viewer .null { color: ${tokens.gray700}; }
+.json-viewer .bracket { color: ${tokens.gray700}; }
 .json-viewer .toggle { cursor: pointer; user-select: none; }
 .json-viewer .nested { padding-left: 20px; }
 </style></head><body>
@@ -564,11 +557,6 @@ function escapeHTML(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').rep
 .tbl th { text-align: left; padding: 8px 12px; background: ${tokens.gray100}; font-weight: 600; border-bottom: 2px solid ${tokens.gray200}; }
 .tbl td { padding: 8px 12px; border-bottom: 1px solid ${tokens.gray100}; }
 .tbl tr:hover td { background: #f8f9ff; }
-@media (prefers-color-scheme: dark) {
-  .tbl th { background: #1f2937; border-color: #374151; }
-  .tbl td { border-color: #1f2937; }
-  .tbl tr:hover td { background: #111827; }
-}
 </style></head><body>
 <div class="tbl">
   <div class="title" id="title">Table</div>
@@ -613,14 +601,8 @@ ${widgetScript(
 .diff .before .pane-header { background: #fee2e2; color: #991b1b; }
 .diff .after .pane-header { background: #dcfce7; color: #166534; }
 .diff .pane-body { padding: 10px; font-family: ${tokens.fontMono}; font-size: 13px; white-space: pre-wrap; word-break: break-all; min-height: 40px; border: 1px solid ${tokens.gray200}; border-top: none; border-radius: 0 0 6px 6px; }
-.diff .before .pane-body { background: #fef2f2; }
-.diff .after .pane-body { background: #f0fdf4; }
-@media (prefers-color-scheme: dark) {
-  .diff .before .pane-header { background: #450a0a; color: #fca5a5; }
-  .diff .after .pane-header { background: #052e16; color: #86efac; }
-  .diff .before .pane-body { background: #1c0a0a; border-color: #374151; }
-  .diff .after .pane-body { background: #0a1c0f; border-color: #374151; }
-}
+.diff .before .pane-body { background: #fef2f2; color: #991b1b; }
+.diff .after .pane-body { background: #f0fdf4; color: #166534; }
 </style></head><body>
 <div class="diff">
   <div class="title" id="title">Diff</div>
@@ -656,11 +638,7 @@ ${widgetScript(
 .todo .item:last-child { border-bottom: none; }
 .todo .item input[type="checkbox"] { width: 18px; height: 18px; accent-color: ${tokens.primary}; cursor: pointer; }
 .todo .item .text { font-size: 14px; }
-.todo .item .text.done { text-decoration: line-through; color: ${tokens.gray500}; }
-@media (prefers-color-scheme: dark) {
-  .todo .item { border-color: #1f2937; }
-  .todo .item .text.done { color: #9ca3af; }
-}
+.todo .item .text.done { text-decoration: line-through; color: ${tokens.gray700}; }
 </style></head><body>
 <div class="todo">
   <div class="title" id="title">Tasks</div>
@@ -697,7 +675,7 @@ ${widgetScript(
     description: "Simple markdown content renderer",
     html: `<!DOCTYPE html><html><head><style>${baseCSS}
 .md { padding: 4px 0; }
-.md .title-bar { font-size: 12px; color: ${tokens.gray500}; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid ${tokens.gray100}; }
+.md .title-bar { font-size: 12px; color: ${tokens.gray700}; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid ${tokens.gray100}; }
 .md .content h1 { font-size: 24px; font-weight: 700; margin: 16px 0 8px; }
 .md .content h2 { font-size: 20px; font-weight: 600; margin: 14px 0 6px; }
 .md .content h3 { font-size: 16px; font-weight: 600; margin: 12px 0 4px; }
@@ -707,12 +685,7 @@ ${widgetScript(
 .md .content code { font-family: ${tokens.fontMono}; background: ${tokens.gray100}; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
 .md .content ul, .md .content ol { padding-left: 24px; margin: 8px 0; }
 .md .content li { margin: 4px 0; }
-.md .content blockquote { border-left: 3px solid ${tokens.primary}; padding-left: 12px; color: ${tokens.gray500}; margin: 8px 0; }
-@media (prefers-color-scheme: dark) {
-  .md .title-bar { border-color: #374151; }
-  .md .content code { background: #1f2937; }
-  .md .content blockquote { color: #9ca3af; }
-}
+.md .content blockquote { border-left: 3px solid ${tokens.primary}; padding-left: 12px; color: ${tokens.gray700}; margin: 8px 0; }
 </style></head><body>
 <div class="md">
   <div class="title-bar" id="titlebar"></div>
@@ -755,8 +728,8 @@ function renderMd(md) {
     html: `<!DOCTYPE html><html><head><style>${baseCSS}
 .img-widget { text-align: center; }
 .img-widget img { max-width: 100%; border-radius: ${tokens.borderRadius}; box-shadow: ${tokens.shadow}; }
-.img-widget .caption { font-size: 12px; color: ${tokens.gray500}; margin-top: 8px; }
-.img-widget .alt { font-size: 13px; color: ${tokens.gray500}; padding: 24px; border: 2px dashed ${tokens.gray200}; border-radius: ${tokens.borderRadius}; }
+.img-widget .caption { font-size: 12px; color: ${tokens.gray700}; margin-top: 8px; }
+.img-widget .alt { font-size: 13px; color: ${tokens.gray700}; padding: 24px; border: 2px dashed ${tokens.gray200}; border-radius: ${tokens.borderRadius}; }
 </style></head><body>
 <div class="img-widget">
   <div id="container"></div>
@@ -778,8 +751,8 @@ ${widgetScript(
 )}
 </body></html>`,
     exampleInput: {
-      src: "https://via.placeholder.com/400x200",
-      alt: "Placeholder",
+      src: "https://www.decocms.com/logo.svg",
+      alt: "Deco Logo",
       caption: "Sample Image",
     },
   },
@@ -798,14 +771,6 @@ ${widgetScript(
 .form-result .field { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; background: ${tokens.gray100}; border-radius: 6px; }
 .form-result .field .label { font-size: 11px; color: ${tokens.gray700}; text-transform: uppercase; letter-spacing: 0.05em; }
 .form-result .field .value { font-size: 14px; font-weight: 500; }
-@media (prefers-color-scheme: dark) {
-  .form-result .header .title { color: #f9fafb; }
-  .form-result .header .icon.ok { background: #166534; color: #dcfce7; }
-  .form-result .header .icon.fail { background: #991b1b; color: #fee2e2; }
-  .form-result .field { background: #374151; }
-  .form-result .field .label { color: #d1d5db; }
-  .form-result .field .value { color: #f9fafb; }
-}
 </style></head><body>
 <div class="form-result">
   <div class="header"><div class="icon" id="icon"></div><div class="title" id="title">Result</div></div>
@@ -850,12 +815,6 @@ ${widgetScript(
 .error-widget .msg { font-size: 15px; font-weight: 600; color: #991b1b; }
 .error-widget .code { font-size: 11px; font-family: ${tokens.fontMono}; color: #b91c1c; background: #fee2e2; padding: 2px 8px; border-radius: 4px; margin-top: 4px; display: inline-block; }
 .error-widget .details { font-size: 13px; color: #7f1d1d; margin-top: 8px; line-height: 1.5; }
-@media (prefers-color-scheme: dark) {
-  .error-widget { background: #450a0a; border-color: #7f1d1d; }
-  .error-widget .msg { color: #fca5a5; }
-  .error-widget .code { background: #7f1d1d; color: #fecaca; }
-  .error-widget .details { color: #fecaca; }
-}
 </style></head><body>
 <div class="error-widget">
   <div class="header"><span class="icon">&#9888;</span><span class="msg" id="msg">Error</span></div>
@@ -898,16 +857,6 @@ ${widgetScript(
 .notif.error .body .title { color: #991b1b; }
 .notif.warning .body .title { color: #92400e; }
 .notif.info .body .title { color: #1e40af; }
-@media (prefers-color-scheme: dark) {
-  .notif.success { background: #052e16; border-color: #166534; }
-  .notif.error { background: #450a0a; border-color: #991b1b; }
-  .notif.warning { background: #451a03; border-color: #92400e; }
-  .notif.info { background: #172554; border-color: #1e40af; }
-  .notif.success .body .title { color: #86efac; }
-  .notif.error .body .title { color: #fca5a5; }
-  .notif.warning .body .title { color: #fcd34d; }
-  .notif.info .body .title { color: #93c5fd; }
-}
 </style></head><body>
 <div class="notif info" id="notif">
   <span class="icon" id="icon">&#8505;</span>
@@ -944,12 +893,7 @@ ${widgetScript(
 .avatar-widget .status-dot.offline { background: ${tokens.gray300}; }
 .avatar-widget .status-dot.busy { background: ${tokens.danger}; }
 .avatar-widget .info .name { font-size: 15px; font-weight: 600; }
-.avatar-widget .info .status-text { font-size: 12px; color: ${tokens.gray500}; }
-@media (prefers-color-scheme: dark) {
-  .avatar-widget .status-dot { border-color: #111827; }
-  .avatar-widget .info .status-text { color: #9ca3af; }
-  .avatar-widget .info .name { color: #f9fafb; }
-}
+.avatar-widget .info .status-text { font-size: 12px; color: ${tokens.gray700}; }
 </style></head><body>
 <div class="avatar-widget">
   <div class="circle" id="circle"><div class="status-dot" id="statusDot"></div></div>
@@ -986,7 +930,7 @@ ${widgetScript(
     html: `<!DOCTYPE html><html><head><style>${baseCSS}
 .switch-widget { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .switch-widget .text .label { font-size: 14px; font-weight: 500; }
-.switch-widget .text .desc { font-size: 12px; color: ${tokens.gray500}; margin-top: 2px; }
+.switch-widget .text .desc { font-size: 12px; color: ${tokens.gray700}; margin-top: 2px; }
 .switch-widget .toggle { width: 44px; height: 24px; border-radius: 12px; background: ${tokens.gray300}; position: relative; cursor: pointer; transition: background 0.2s; flex-shrink: 0; }
 .switch-widget .toggle.on { background: ${tokens.primary}; }
 .switch-widget .toggle .knob { width: 20px; height: 20px; border-radius: 50%; background: white; position: absolute; top: 2px; left: 2px; transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
@@ -1027,7 +971,7 @@ function toggle() {
     html: `<!DOCTYPE html><html><head><style>${baseCSS}
 .slider-widget { padding: 4px 0; }
 .slider-widget .header { display: flex; justify-content: space-between; margin-bottom: 8px; }
-.slider-widget .label { font-size: 13px; font-weight: 500; }
+.slider-widget .label { font-size: 13px; font-weight: 500; color: ${tokens.gray900}; }
 .slider-widget .val { font-size: 13px; font-weight: 600; color: ${tokens.primary}; }
 .slider-widget input[type="range"] { width: 100%; height: 6px; -webkit-appearance: none; appearance: none; background: ${tokens.gray200}; border-radius: 3px; outline: none; }
 .slider-widget input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: ${tokens.primary}; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.2); }
@@ -1056,7 +1000,7 @@ ${widgetScript(
     description: "Star rating display with interactive selection",
     html: `<!DOCTYPE html><html><head><style>${baseCSS}
 .rating-widget { padding: 4px 0; }
-.rating-widget .label { font-size: 13px; color: ${tokens.gray500}; margin-bottom: 8px; }
+.rating-widget .label { font-size: 13px; color: ${tokens.gray700}; margin-bottom: 8px; }
 .rating-widget .stars { display: flex; gap: 4px; }
 .rating-widget .star { font-size: 28px; cursor: pointer; color: ${tokens.gray200}; transition: color 0.15s; line-height: 1; }
 .rating-widget .star.filled { color: #f59e0b; }
@@ -1101,12 +1045,7 @@ ${widgetScript(
 .kbd-widget .desc { font-size: 13px; color: ${tokens.gray700}; }
 .kbd-widget .keys { display: flex; gap: 4px; }
 .kbd-widget kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 26px; padding: 0 8px; font-family: ${tokens.fontMono}; font-size: 12px; background: ${tokens.gray100}; border: 1px solid ${tokens.gray300}; border-radius: 5px; box-shadow: 0 1px 0 ${tokens.gray300}; }
-.kbd-widget .plus { color: ${tokens.gray500}; font-size: 11px; }
-@media (prefers-color-scheme: dark) {
-  .kbd-widget .row { border-color: #1f2937; }
-  .kbd-widget .desc { color: #d1d5db; }
-  .kbd-widget kbd { background: #1f2937; border-color: #374151; box-shadow: 0 1px 0 #374151; color: #e5e7eb; }
-}
+.kbd-widget .plus { color: ${tokens.gray700}; font-size: 11px; }
 </style></head><body>
 <div class="kbd-widget" id="list"></div>
 ${widgetScript(
@@ -1141,18 +1080,13 @@ ${widgetScript(
     html: `<!DOCTYPE html><html><head><style>${baseCSS}
 .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
 .stats-grid .card { padding: 14px; background: ${tokens.gray100}; border-radius: ${tokens.borderRadius}; }
-.stats-grid .card .label { font-size: 11px; color: ${tokens.gray500}; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+.stats-grid .card .label { font-size: 11px; color: ${tokens.gray700}; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
 .stats-grid .card .row { display: flex; align-items: baseline; gap: 4px; }
-.stats-grid .card .unit { font-size: 16px; color: ${tokens.gray500}; font-weight: 600; }
+.stats-grid .card .unit { font-size: 16px; color: ${tokens.gray700}; font-weight: 600; }
 .stats-grid .card .value { font-size: 24px; font-weight: 700; }
 .stats-grid .card .trend { font-size: 12px; font-weight: 600; margin-top: 4px; }
 .stats-grid .card .trend.up { color: ${tokens.success}; }
 .stats-grid .card .trend.down { color: ${tokens.danger}; }
-@media (prefers-color-scheme: dark) {
-  .stats-grid .card { background: #1f2937; }
-  .stats-grid .card .label { color: #9ca3af; }
-  .stats-grid .card .value { color: #f9fafb; }
-}
 </style></head><body>
 <div class="stats-grid" id="grid"></div>
 ${widgetScript(
@@ -1164,7 +1098,9 @@ ${widgetScript(
     var c = document.createElement('div'); c.className = 'card';
     var lbl = '<div class="label">' + escH(s.label || '') + '</div>';
     var u = s.unit || '';
-    var row = '<div class="row"><span class="unit">' + escH(u) + '</span><span class="value">' + Number(s.value||0).toLocaleString() + '</span></div>';
+    var v = isNaN(Number(s.value)) ? escH(String(s.value||'—')) : Number(s.value).toLocaleString();
+    var isPrefix = u.length <= 1;
+    var row = '<div class="row">' + (isPrefix ? '<span class="unit">' + escH(u) + '</span>' : '') + '<span class="value">' + v + '</span>' + (!isPrefix ? '<span class="unit">' + escH(u) + '</span>' : '') + '</div>';
     var trend = '';
     if (s.trend !== undefined) {
       var up = s.trend >= 0;
@@ -1192,11 +1128,11 @@ ${widgetScript(
 .area-chart .title { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
 .area-chart svg { display: block; width: 100%; }
 .area-chart .labels { display: flex; justify-content: space-between; margin-top: 4px; }
-.area-chart .labels span { font-size: 11px; color: ${tokens.gray500}; }
+.area-chart .labels span { font-size: 11px; color: ${tokens.gray700}; }
 </style></head><body>
 <div class="area-chart">
   <div class="title" id="title">Chart</div>
-  <svg id="svg" viewBox="0 0 300 100" preserveAspectRatio="none" height="100"></svg>
+  <svg id="svg" viewBox="0 0 300 100" preserveAspectRatio="xMidYMid meet" height="100"></svg>
   <div class="labels" id="labels"></div>
 </div>
 ${widgetScript(
@@ -1245,23 +1181,19 @@ ${widgetScript(
 .cal { padding: 4px 0; max-width: 280px; }
 .cal .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .cal .header .month { font-size: 15px; font-weight: 600; }
-.cal .header button { background: none; border: 1px solid ${tokens.gray200}; border-radius: 4px; width: 28px; height: 28px; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; }
+.cal .header button { background: none; border: 1px solid ${tokens.gray300}; border-radius: 4px; width: 28px; height: 28px; cursor: pointer; font-size: 14px; color: ${tokens.gray700}; display: flex; align-items: center; justify-content: center; }
 .cal .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
-.cal .dow { font-size: 11px; color: ${tokens.gray500}; font-weight: 600; padding: 4px 0; }
+.cal .dow { font-size: 11px; color: ${tokens.gray700}; font-weight: 600; padding: 4px 0; }
 .cal .day { font-size: 13px; padding: 6px 0; border-radius: 6px; cursor: default; }
 .cal .day.today { background: ${tokens.primary}; color: white; font-weight: 600; }
 .cal .day.highlight { background: #e0e7ff; color: ${tokens.primary}; font-weight: 600; }
 .cal .day.empty { visibility: hidden; }
-@media (prefers-color-scheme: dark) {
-  .cal .header button { border-color: #374151; color: #e5e7eb; }
-  .cal .day.highlight { background: #312e81; color: #c7d2fe; }
-}
 </style></head><body>
 <div class="cal">
   <div class="header">
-    <button onclick="changeMonth(-1)">&lsaquo;</button>
+    <button onclick="changeMonth(-1)">&#x2190;</button>
     <span class="month" id="monthLabel"></span>
-    <button onclick="changeMonth(1)">&rsaquo;</button>
+    <button onclick="changeMonth(1)">&#x2192;</button>
   </div>
   <div class="grid" id="grid"></div>
 </div>

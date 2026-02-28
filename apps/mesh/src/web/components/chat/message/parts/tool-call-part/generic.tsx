@@ -91,14 +91,24 @@ export function GenericToolCallPart({
   const { org } = useProjectContext();
 
   const toolOutput = part.output;
-  const toolMeta =
-    toolOutput != null &&
-    typeof toolOutput === "object" &&
-    "_meta" in (toolOutput as Record<string, unknown>)
-      ? ((toolOutput as Record<string, unknown>)._meta as
-          | Record<string, unknown>
-          | undefined)
-      : undefined;
+  // Extract _meta from tool output. The output may be either:
+  // 1. A CallToolResult with structuredContent containing _meta
+  // 2. The raw structured content directly with _meta at top level
+  const toolMeta = (() => {
+    if (toolOutput == null || typeof toolOutput !== "object") return undefined;
+    const out = toolOutput as Record<string, unknown>;
+    // Check structuredContent first (CallToolResult wrapper)
+    if (
+      out.structuredContent != null &&
+      typeof out.structuredContent === "object"
+    ) {
+      const sc = out.structuredContent as Record<string, unknown>;
+      if ("_meta" in sc) return sc._meta as Record<string, unknown> | undefined;
+    }
+    // Fall back to top-level _meta
+    if ("_meta" in out) return out._meta as Record<string, unknown> | undefined;
+    return undefined;
+  })();
 
   const uiResourceUri = getUIResourceUri(toolMeta);
 
@@ -160,10 +170,10 @@ export function GenericToolCallPart({
         actions={actions}
       />
       {canRenderMCPApp && (
-        <div className="mt-2">
+        <div>
           <Suspense
             fallback={
-              <div className="flex items-center justify-center h-32 border border-border rounded-lg">
+              <div className="flex items-center justify-center h-32 rounded-lg">
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                   <span className="text-sm">Loading app...</span>
@@ -176,12 +186,8 @@ export function GenericToolCallPart({
               connectionId={connectionId!}
               orgId={org!.id}
               toolName={toolName}
-              friendlyName={friendlyName}
               toolInput={part.input}
               toolResult={part.output}
-              minHeight={150}
-              maxHeight={400}
-              className="border border-border rounded-lg"
             />
           </Suspense>
         </div>
