@@ -159,12 +159,15 @@ export async function seedOrgDb(organizationId: string, createdBy: string) {
           connectionToken = key?.key;
         }
         // Get tools either from the lazy getter or by fetching from MCP
+        // Use the newly created API key token if available (for auth-protected endpoints)
+        const effectiveToken =
+          mcpConfig.data.connection_token ?? connectionToken;
         const fetchResult = await fetchToolsFromMCP({
           id: "pending",
           title: mcpConfig.data.title,
           connection_type: mcpConfig.data.connection_type,
           connection_url: mcpConfig.data.connection_url,
-          connection_token: mcpConfig.data.connection_token,
+          connection_token: effectiveToken,
           connection_headers: mcpConfig.data.connection_headers,
         }).catch(() => null);
         const tools =
