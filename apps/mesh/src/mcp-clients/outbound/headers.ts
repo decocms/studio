@@ -38,6 +38,18 @@ export async function buildRequestHeaders(
     connection.configuration_scopes,
   );
 
+  console.log("[EventBus:Debug] buildRequestHeaders", {
+    connectionId,
+    superUser,
+    ctxUserId: ctx.auth.user?.id?.slice(0, 8) ?? "NONE",
+    orgId: ctx.organization?.id ?? "NONE",
+    createdBy: connection.created_by?.slice(0, 8) ?? "NONE",
+    permissionKeys: Object.keys(permissions),
+    permissionDetail: Object.entries(permissions).map(
+      ([k, v]) => `${k}:[${v.join(",")}]`,
+    ),
+  });
+
   const userId =
     ctx.auth.user?.id ??
     ctx.auth.apiKey?.userId ??
@@ -66,6 +78,14 @@ export async function buildRequestHeaders(
         .catch((error) => [null, error] as const)
     : [null, new Error("User ID required to issue configuration token")];
 
+  console.log("[EventBus:Debug] token issued", {
+    connectionId,
+    hasToken: !!configurationToken,
+    error: error instanceof Error ? error.message : undefined,
+    userId: userId?.slice(0, 8) ?? "NONE",
+    orgInMetadata: ctx.organization?.id ?? "NONE",
+  });
+
   if (error) {
     console.error("Failed to issue configuration token:", configurationToken);
   }
@@ -83,6 +103,14 @@ export async function buildRequestHeaders(
 
   const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);
   const cachedToken = await tokenStorage.get(connectionId);
+
+  console.log("[EventBus:Debug] downstream token", {
+    connectionId,
+    hasCachedToken: !!cachedToken,
+    hasRefresh: !!cachedToken?.refreshToken,
+    expiresAt: cachedToken?.expiresAt ?? "NONE",
+    hasConnectionToken: !!connection.connection_token,
+  });
 
   if (cachedToken) {
     const canRefresh =

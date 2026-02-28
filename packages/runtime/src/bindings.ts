@@ -114,6 +114,14 @@ export const proxyConnectionForId = (
     headers["x-mesh-token"] = ctx.token;
   }
 
+  console.log("[EventBus:Debug] proxyConnectionForId", {
+    connectionId,
+    meshUrl: ctx.meshUrl,
+    hasToken: !!ctx.token,
+    tokenPreview: ctx.token?.slice(0, 20) ?? "NONE",
+    targetUrl: new URL(`/mcp/${connectionId}`, ctx.meshUrl).href,
+  });
+
   return {
     type: "HTTP",
     url: new URL(`/mcp/${connectionId}`, ctx.meshUrl).href,

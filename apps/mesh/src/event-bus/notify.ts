@@ -112,8 +112,23 @@ export function createNotifySubscriber(): NotifySubscriberFn {
       // Standard path: deliver via MCP proxy ON_EVENTS
       const ctx = await ContextFactory.create();
 
+      console.log("[EventBus:Debug] notify context created", {
+        hasUser: !!ctx.auth.user,
+        userId: ctx.auth.user?.id ?? "NONE",
+        hasOrg: !!ctx.organization,
+        orgId: ctx.organization?.id ?? "NONE",
+        connectionId,
+        eventCount: events.length,
+        eventTypes: events.map((e) => e.type),
+      });
+
       // Create MCP proxy for the subscriber connection
       const proxy = await dangerouslyCreateSuperUserMCPProxy(connectionId, ctx);
+
+      console.log("[EventBus:Debug] proxy created for subscriber", {
+        connectionId,
+        orgIdAfterProxy: ctx.organization?.id ?? "NONE",
+      });
 
       // Use the Event Subscriber binding - pass the whole proxy object
       // Same pattern as LanguageModelBinding.forClient(proxy) in models.ts

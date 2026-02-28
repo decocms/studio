@@ -527,6 +527,13 @@ async function authenticateRequest(
       );
 
       if (meshJwtPayload) {
+        console.log("[EventBus:Debug] mesh JWT verified", {
+          sub: meshJwtPayload.sub?.slice(0, 8) ?? "NONE",
+          organizationId: meshJwtPayload.metadata?.organizationId ?? "NONE",
+          connectionId: meshJwtPayload.metadata?.connectionId ?? "NONE",
+          permissionKeys: Object.keys(meshJwtPayload.permissions ?? {}),
+        });
+
         // Look up user's organization role for admin/owner bypass
         let role: string | undefined;
         const organizationId = meshJwtPayload.metadata?.organizationId;
@@ -542,6 +549,16 @@ async function authenticateRequest(
                 .executeTakeFirst(),
           );
           role = membership?.role;
+
+          console.log("[EventBus:Debug] JWT membership result", {
+            organizationId,
+            role: role ?? "NO_ROLE",
+          });
+        } else {
+          console.log("[EventBus:Debug] JWT membership SKIPPED", {
+            hasSub: !!meshJwtPayload.sub,
+            hasOrgId: !!organizationId,
+          });
         }
 
         return {
