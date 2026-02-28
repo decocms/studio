@@ -32,8 +32,15 @@ const underline = "\x1b[4m";
 const url = `http://localhost:${port}`;
 
 // Create asset handler - handles both dev proxy and production static files
+// When running from source (src/index.ts), the "../client" relative path
+// doesn't resolve to dist/client/. Fall back to dist/client/ relative to CWD.
+import { existsSync } from "fs";
+const resolvedClientDir = resolveClientDir(import.meta.url, "../client");
+const clientDir = existsSync(resolvedClientDir)
+  ? resolvedClientDir
+  : resolveClientDir(import.meta.url, "../dist/client");
 const handleAssets = createAssetHandler({
-  clientDir: resolveClientDir(import.meta.url, "../client"),
+  clientDir,
   isServerPath,
 });
 
