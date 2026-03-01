@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh .claude/setup-worktree.sh"
+            "command": "sh -c 'INPUT=$(cat); NAME=$(echo \"$INPUT\" | jq -r .name); CWD=$(echo \"$INPUT\" | jq -r .cwd); DIR=\"$CWD/.claude/worktrees/$NAME\"; BRANCH=\"claude/$NAME\"; git -C \"$CWD\" worktree add -b \"$BRANCH\" \"$DIR\" HEAD >&2; cp \"$CWD/apps/mesh/.env\" \"$DIR/apps/mesh/.env\" 2>/dev/null >&2 || true; echo \"$DIR\"'"
           }
         ]
       }
