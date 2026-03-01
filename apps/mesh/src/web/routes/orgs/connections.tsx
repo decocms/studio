@@ -9,6 +9,7 @@ import { EmptyState } from "@/web/components/empty-state.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { Page } from "@/web/components/page";
+import { StoreDiscovery } from "@/web/components/store";
 import type { RegistryItem } from "@/web/components/store/types";
 import { User } from "@/web/components/user/user.tsx";
 import { useRegistryConnections } from "@/web/hooks/use-binding";
@@ -91,7 +92,7 @@ import {
   Terminal,
   Trash01,
 } from "@untitledui/icons";
-import { Suspense, useEffect, useReducer } from "react";
+import { Suspense, useEffect, useReducer, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { formatTimeAgo } from "@/web/lib/format-time";
@@ -585,6 +586,8 @@ function OrgMcpsContent() {
     orgId: org.id,
   });
 
+  const [storeOpen, setStoreOpen] = useState(false);
+
   const invalidateConnections = () => {
     queryClient.invalidateQueries({
       predicate: (query) => {
@@ -1006,29 +1009,47 @@ function OrgMcpsContent() {
     <div className="flex items-center gap-2">
       <Button
         variant="outline"
-        onClick={() =>
-          navigate({
-            to: "/$org/$project/store",
-            params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
-          })
-        }
+        onClick={() => setStoreOpen(true)}
         size="sm"
         className="h-7 px-3 rounded-lg text-sm font-medium"
       >
-        Browse Store
+        Add Connection
       </Button>
       <Button
         onClick={openCreateDialog}
         size="sm"
         className="h-7 px-3 rounded-lg text-sm font-medium"
       >
-        Custom Connection
+        Custom
       </Button>
     </div>
   );
 
   return (
     <Page>
+      {/* Store Modal */}
+      <Dialog open={storeOpen} onOpenChange={setStoreOpen}>
+        <DialogContent className="sm:max-w-3xl h-[85vh] p-0 flex flex-col gap-0 overflow-hidden">
+          <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
+            <DialogTitle>Add Connection</DialogTitle>
+            <DialogDescription>
+              Browse the store to find and connect MCP servers
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-hidden">
+            {registryId ? (
+              <StoreDiscovery registryId={registryId} />
+            ) : (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-sm text-muted-foreground">
+                  No registries available. Add a registry connection first.
+                </p>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog
         open={isCreating || dialogState.mode === "editing"}
         onOpenChange={handleDialogClose}
@@ -1506,17 +1527,9 @@ function OrgMcpsContent() {
                   !listState.search && (
                     <Button
                       variant="outline"
-                      onClick={() =>
-                        navigate({
-                          to: "/$org/$project/store",
-                          params: {
-                            org: org.slug,
-                            project: ORG_ADMIN_PROJECT_SLUG,
-                          },
-                        })
-                      }
+                      onClick={() => setStoreOpen(true)}
                     >
-                      Browse Store
+                      Add Connection
                     </Button>
                   )
                 }
@@ -1596,17 +1609,9 @@ function OrgMcpsContent() {
                         actions={
                           <Button
                             variant="outline"
-                            onClick={() =>
-                              navigate({
-                                to: "/$org/$project/store",
-                                params: {
-                                  org: org.slug,
-                                  project: ORG_ADMIN_PROJECT_SLUG,
-                                },
-                              })
-                            }
+                            onClick={() => setStoreOpen(true)}
                           >
-                            Browse Store
+                            Add Connection
                           </Button>
                         }
                       />

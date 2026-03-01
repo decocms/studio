@@ -19,12 +19,12 @@ import {
 } from "@deco/ui/components/breadcrumb.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@deco/ui/components/sheet.tsx";
 import {
   Form,
   FormControl,
@@ -467,17 +467,20 @@ function ConnectionInspectorViewWithConnection({
 
   return (
     <>
-      {/* Settings Dialog */}
-      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="max-w-lg overflow-y-auto max-h-[90vh]">
-          <DialogHeader className="mb-2">
-            <DialogTitle>Configure connection</DialogTitle>
-            <DialogDescription>
-              Update the URL, authentication, and other technical settings.
-            </DialogDescription>
-          </DialogHeader>
+      {/* Settings Sheet */}
+      <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <SheetContent
+          side="right"
+          className="sm:max-w-[520px] p-0 flex flex-col gap-0 overflow-hidden"
+        >
+          <SheetHeader className="px-6 py-4 border-b border-border shrink-0">
+            <SheetTitle className="text-base">{connection.title}</SheetTitle>
+            <SheetDescription className="text-xs">
+              Update URL, authentication, and other settings
+            </SheetDescription>
+          </SheetHeader>
           <Form {...form}>
-            <div className="flex flex-col gap-6">
+            <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-6">
               <div className="flex flex-col gap-4">
                 <FormField
                   control={form.control}
@@ -525,24 +528,24 @@ function ConnectionInspectorViewWithConnection({
                   onViewReadme={undefined}
                 />
               )}
-              <div className="flex gap-2 pt-2 border-t border-border">
-                <Button
-                  onClick={handleSave}
-                  disabled={!hasAnyChanges || isUpdating}
-                  className="flex-1"
-                >
-                  {isUpdating ? "Saving…" : "Save changes"}
+            </div>
+            <div className="px-6 py-4 border-t border-border flex gap-2 shrink-0">
+              <Button
+                onClick={handleSave}
+                disabled={!hasAnyChanges || isUpdating}
+                className="flex-1"
+              >
+                {isUpdating ? "Saving…" : "Save changes"}
+              </Button>
+              {hasAnyChanges && (
+                <Button variant="outline" onClick={handleUndo}>
+                  Undo
                 </Button>
-                {hasAnyChanges && (
-                  <Button variant="outline" onClick={handleUndo}>
-                    Undo
-                  </Button>
-                )}
-              </div>
+              )}
             </div>
           </Form>
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
 
       {/* Main page */}
       <ViewLayout breadcrumb={breadcrumb}>
