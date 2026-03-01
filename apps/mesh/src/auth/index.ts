@@ -312,9 +312,25 @@ const database = getDbDialect(databaseUrl);
 /**
  * Better Auth instance with MCP, API Key, and Admin plugins
  */
+const baseUrl = getBaseUrl();
+
+// Build trusted origins: include both localhost and 127.0.0.1 variants
+function getTrustedOrigins(): string[] {
+  const origins = [baseUrl];
+  const url = new URL(baseUrl);
+  if (url.hostname === "localhost") {
+    origins.push(baseUrl.replace("localhost", "127.0.0.1"));
+  } else if (url.hostname === "127.0.0.1") {
+    origins.push(baseUrl.replace("127.0.0.1", "localhost"));
+  }
+  return origins;
+}
+
 export const auth = betterAuth({
   // Base URL for OAuth - will be overridden by request context
-  baseURL: getBaseUrl(),
+  baseURL: baseUrl,
+
+  trustedOrigins: getTrustedOrigins(),
 
   // Better Auth can use the dialect directly
   database,
