@@ -1,5 +1,6 @@
 import { useDecoChatOpen } from "@/web/hooks/use-deco-chat-open";
 import { Button } from "@deco/ui/components/button.tsx";
+import { SidebarTrigger } from "@deco/ui/components/sidebar.tsx";
 import {
   Tooltip,
   TooltipContent,
@@ -86,11 +87,14 @@ function PageHeader({
     <div
       className={cn(
         "shrink-0 w-full border-b border-border/50 h-11 overflow-x-auto",
-        "flex items-center justify-between gap-3 pr-2 pl-4 min-w-max",
+        "flex items-center justify-between gap-3 pr-2 pl-4",
         className,
       )}
     >
-      <div className="flex items-center gap-1">{left}</div>
+      <div className="flex items-center gap-1">
+        <SidebarTrigger className="md:hidden text-muted-foreground" />
+        {left}
+      </div>
       <div className="flex items-center">
         {right}
         {!hideSidebarTrigger && (
@@ -111,7 +115,7 @@ function PageHeaderLeft({
   return (
     <div
       className={cn(
-        "flex items-center gap-2 shrink-0 overflow-hidden",
+        "flex items-center gap-2 shrink-0 overflow-hidden min-w-0",
         className,
       )}
     >
