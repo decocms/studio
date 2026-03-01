@@ -21,11 +21,8 @@ import {
   ArrowLeft,
   ChevronDown,
   ChevronSelectorVertical,
-  CurrencyDollar,
   File06,
-  Grid01,
   Image01,
-  LogOut04,
   RefreshCcw01,
   SearchMd,
   Settings01,
@@ -181,91 +178,6 @@ function setShortlist(connectionId: string, ids: string[]) {
 }
 
 // ============================================================================
-// Model Stats (percentile computation)
-// ============================================================================
-
-interface ModelStats {
-  inputCosts: number[];
-  outputCosts: number[];
-  contextWindows: number[];
-}
-
-function computeModelStats(models: LLM[]): ModelStats {
-  const inputCosts = models
-    .map((m) => m.costs?.input)
-    .filter((c): c is number => c != null && c > 0)
-    .map((c) => c * 1_000_000)
-    .sort((a, b) => a - b);
-
-  const outputCosts = models
-    .map((m) => m.costs?.output)
-    .filter((c): c is number => c != null && c > 0)
-    .map((c) => c * 1_000_000)
-    .sort((a, b) => a - b);
-
-  const contextWindows = models
-    .map((m) => m.limits?.contextWindow)
-    .filter((c): c is number => c != null && c > 0)
-    .sort((a, b) => a - b);
-
-  return { inputCosts, outputCosts, contextWindows };
-}
-
-function getPercentile(sortedValues: number[], value: number): number {
-  if (sortedValues.length === 0) return 50;
-  let count = 0;
-  for (const v of sortedValues) {
-    if (v < value) count++;
-    else break;
-  }
-  return Math.round((count / sortedValues.length) * 100);
-}
-
-function getCostColor(percentile: number): string {
-  if (percentile <= 15) return "var(--color-green-600)";
-  if (percentile <= 35) return "var(--color-green-500)";
-  if (percentile <= 65) return "var(--color-amber-500)";
-  if (percentile <= 85) return "var(--color-orange-500)";
-  return "var(--color-red-500)";
-}
-
-function getCostTag(
-  percentile: number,
-): { label: string; color: string } | null {
-  if (percentile <= 10)
-    return { label: "Bottom 10%", color: "var(--color-green-600)" };
-  if (percentile <= 25)
-    return { label: "Budget", color: "var(--color-green-500)" };
-  if (percentile >= 95)
-    return { label: "Top 5%", color: "var(--color-red-500)" };
-  if (percentile >= 90)
-    return { label: "Top 10%", color: "var(--color-red-500)" };
-  if (percentile >= 75)
-    return { label: "Premium", color: "var(--color-orange-500)" };
-  return null;
-}
-
-function getContextSizeLabel(tokens: number): { label: string; color: string } {
-  if (tokens < 32_000)
-    return { label: "Small", color: "var(--color-amber-500)" };
-  if (tokens < 200_000)
-    return { label: "Medium", color: "var(--color-blue-500)" };
-  if (tokens < 1_000_000)
-    return { label: "Large", color: "var(--color-green-500)" };
-  return { label: "XL", color: "var(--color-green-600)" };
-}
-
-function getOutputSizeLabel(tokens: number): { label: string; color: string } {
-  if (tokens < 8_000)
-    return { label: "Small", color: "var(--color-amber-500)" };
-  if (tokens < 32_000)
-    return { label: "Medium", color: "var(--color-blue-500)" };
-  if (tokens < 128_000)
-    return { label: "Large", color: "var(--color-green-500)" };
-  return { label: "XL", color: "var(--color-green-600)" };
-}
-
-// ============================================================================
 // useModels Hook
 // ============================================================================
 
@@ -290,6 +202,59 @@ export function useModels(connectionId: string | undefined): LLM[] {
 }
 
 // ============================================================================
+// Contextual annotations (absolute thresholds, not relative to model list)
+// ============================================================================
+
+// 1–4 context level for dot indicator (absolute thresholds)
+function getContextLevel(tokens: number): {
+  level: number;
+  label: string;
+  description: string;
+} {
+  if (tokens < 32_000)
+    return { level: 1, label: "Small", description: "Short conversations" };
+  if (tokens < 200_000)
+    return { level: 2, label: "Medium", description: "Good for most tasks" };
+  if (tokens < 500_000)
+    return {
+      level: 3,
+      label: "Large",
+      description: "Long projects & research",
+    };
+  return { level: 4, label: "Very large", description: "Massive files & data" };
+}
+
+// Semantic colors per level — context (more = better: red→green)
+const CONTEXT_DOT_COLORS = [
+  "bg-red-500",
+  "bg-amber-500",
+  "bg-emerald-500",
+  "bg-emerald-600",
+] as const;
+
+// Semantic colors per level — cost (more = worse: green→red)
+const COST_DOLLAR_COLORS = [
+  "text-emerald-500",
+  "text-amber-500",
+  "text-orange-500",
+  "text-red-500",
+] as const;
+
+// Approximate word count for token amounts
+function approxWords(tokens: number): string {
+  const k = Math.round((tokens * 0.75) / 1000);
+  return k >= 1 ? `~${k}K words` : `~${Math.round(tokens * 0.75)} words`;
+}
+
+// 1–4 cost level (absolute thresholds, input $/1M)
+function getCostLevel(inputPerM: number): { level: number; label: string } {
+  if (inputPerM < 1) return { level: 1, label: "Cheap" };
+  if (inputPerM < 5) return { level: 2, label: "Moderate" };
+  if (inputPerM < 15) return { level: 3, label: "High" };
+  return { level: 4, label: "Expensive" };
+}
+
+// ============================================================================
 // UI Components
 // ============================================================================
 
@@ -310,53 +275,27 @@ const CAPABILITY_CONFIGS: Record<string, { icon: ReactNode; label: string }> = {
 };
 
 function CapabilityBadge({ capability }: { capability: string }) {
-  const config = (() => {
-    const knownConfig = CAPABILITY_CONFIGS[capability];
-    return knownConfig || { icon: null, label: capability };
-  })();
-
+  const config = CAPABILITY_CONFIGS[capability] ?? {
+    icon: null,
+    label: capability,
+  };
   const displayLabel = config.label
     .split("-")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
 
-  const chartColorVar = `var(--chart-1)`;
-
   return (
-    <div
-      className="flex items-center gap-1.5 py-0.5 px-1.5 rounded-md text-xs font-medium"
-      style={{
-        backgroundColor: `color-mix(in oklch, ${chartColorVar} 15%, transparent)`,
-        color: chartColorVar,
-      }}
-    >
-      {config.icon}
-      <span>{displayLabel}</span>
-    </div>
-  );
-}
-
-function CostBadge({ label, color }: { label: string; color: string }) {
-  return (
-    <span
-      className="text-[10px] font-medium px-1.5 py-0.5 rounded-full ml-1.5 whitespace-nowrap"
-      style={{
-        backgroundColor: `color-mix(in oklch, ${color} 12%, transparent)`,
-        color,
-      }}
-    >
-      {label}
+    <span className="text-xs text-muted-foreground border border-border rounded px-2 py-0.5">
+      {displayLabel}
     </span>
   );
 }
 
 function ModelDetailsPanel({
   model,
-  stats,
   compact = false,
 }: {
   model: LLM | null;
-  stats?: ModelStats | null;
   compact?: boolean;
 }) {
   if (!model) {
@@ -367,96 +306,42 @@ function ModelDetailsPanel({
     );
   }
 
-  const hasDetails =
-    model.limits?.contextWindow ||
-    model.costs?.input ||
-    model.costs?.output ||
-    model.limits?.maxOutputTokens;
-
-  if (!hasDetails && !compact) {
-    return (
-      <div className="flex flex-col gap-3 py-1 px-1.5">
-        <div className="flex items-center gap-3 py-2 px-0">
-          {model.logo && (
-            <img src={model.logo} className="w-6 h-6" alt={model.title} />
-          )}
-          <p className="text-lg font-medium leading-7">{model.title}</p>
-        </div>
-        {model.description && (
-          <p className="text-sm text-muted-foreground">{model.description}</p>
-        )}
-      </div>
-    );
-  }
-
-  if (!hasDetails && compact) return null;
-
   const inputCostPerM =
     model.costs?.input != null ? model.costs.input * 1_000_000 : null;
   const outputCostPerM =
     model.costs?.output != null ? model.costs.output * 1_000_000 : null;
-  const inputPercentile =
-    inputCostPerM != null && stats
-      ? getPercentile(stats.inputCosts, inputCostPerM)
-      : null;
-  const outputPercentile =
-    outputCostPerM != null && stats
-      ? getPercentile(stats.outputCosts, outputCostPerM)
-      : null;
-  const inputTag = inputPercentile != null ? getCostTag(inputPercentile) : null;
-  const outputTag =
-    outputPercentile != null ? getCostTag(outputPercentile) : null;
-  const inputColor =
-    inputPercentile != null
-      ? getCostColor(inputPercentile)
-      : "var(--muted-foreground)";
-  const outputColor =
-    outputPercentile != null
-      ? getCostColor(outputPercentile)
-      : "var(--muted-foreground)";
-  const contextSize = model.limits?.contextWindow
-    ? getContextSizeLabel(model.limits.contextWindow)
-    : null;
-  const outputSize = model.limits?.maxOutputTokens
-    ? getOutputSizeLabel(model.limits.maxOutputTokens)
-    : null;
+
+  const providerLabel = model.title.includes(": ")
+    ? model.title.split(": ")[0]
+    : (model.provider ?? model.id.split("/")[0]);
+  const modelName = model.title.includes(": ")
+    ? model.title.split(": ").slice(1).join(": ")
+    : model.title;
 
   if (compact) {
     return (
-      <div className="flex flex-col gap-2.5 pt-3 pb-3 px-3 rounded-b-lg text-xs">
+      <div className="flex flex-col gap-2 pt-3 pb-3 px-3 text-xs">
         {model.limits?.contextWindow && (
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">Context</span>
             <span className="text-foreground font-medium">
               {model.limits.contextWindow.toLocaleString()} tokens
-              {contextSize && (
-                <CostBadge
-                  label={contextSize.label}
-                  color={contextSize.color}
-                />
-              )}
             </span>
           </div>
         )}
         {inputCostPerM != null && (
           <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">Input cost</span>
-            <span className="font-medium" style={{ color: inputColor }}>
+            <span className="text-muted-foreground">Input</span>
+            <span className="text-foreground font-medium">
               ${inputCostPerM.toFixed(2)} / 1M
-              {inputTag && (
-                <CostBadge label={inputTag.label} color={inputTag.color} />
-              )}
             </span>
           </div>
         )}
         {outputCostPerM != null && (
           <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">Output cost</span>
-            <span className="font-medium" style={{ color: outputColor }}>
+            <span className="text-muted-foreground">Output</span>
+            <span className="text-foreground font-medium">
               ${outputCostPerM.toFixed(2)} / 1M
-              {outputTag && (
-                <CostBadge label={outputTag.label} color={outputTag.color} />
-              )}
             </span>
           </div>
         )}
@@ -465,9 +350,6 @@ function ModelDetailsPanel({
             <span className="text-muted-foreground">Output limit</span>
             <span className="text-foreground font-medium">
               {model.limits.maxOutputTokens.toLocaleString()} tokens
-              {outputSize && (
-                <CostBadge label={outputSize.label} color={outputSize.color} />
-              )}
             </span>
           </div>
         )}
@@ -476,106 +358,150 @@ function ModelDetailsPanel({
   }
 
   return (
-    <div className="flex flex-col gap-3 py-1 px-1.5">
-      <div className="flex flex-col gap-3 py-2 px-0">
-        <div className="flex items-center gap-3 min-w-0 pr-6">
+    <div className="flex flex-col gap-5 py-1 px-1.5">
+      {/* Header */}
+      <div className="flex flex-col gap-1 pt-1 pr-6">
+        <span className="text-xs font-medium text-muted-foreground">
+          {providerLabel}
+        </span>
+        <div className="flex items-center gap-2.5">
           {model.logo && (
             <img
               src={model.logo}
-              className="w-7 h-7 shrink-0"
+              className="size-6 shrink-0 rounded-md"
               alt={model.title}
             />
           )}
-          <div className="flex flex-col min-w-0">
-            <span className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wide">
-              {model.title.includes(": ")
-                ? model.title.split(": ")[0]
-                : (model.provider ?? model.id.split("/")[0])}
-            </span>
-            <p className="text-base font-semibold leading-snug truncate">
-              {model.title.includes(": ")
-                ? model.title.split(": ").slice(1).join(": ")
-                : model.title}
-            </p>
-          </div>
+          <p className="text-lg font-semibold leading-snug tracking-tight">
+            {modelName}
+          </p>
         </div>
-        <p className="text-xs text-muted-foreground/60 font-mono">{model.id}</p>
-        {model.capabilities && model.capabilities.length > 0 && (
-          <div className="flex items-center gap-2">
-            {model.capabilities.map((capability) => (
-              <CapabilityBadge key={capability} capability={capability} />
-            ))}
-          </div>
-        )}
+        <p className="text-xs text-muted-foreground/50 font-mono">{model.id}</p>
       </div>
 
-      <div className="flex flex-col gap-4">
-        {model.limits?.contextWindow && (
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center gap-1.5">
-              <Grid01 className="w-3.5 h-3.5 text-muted-foreground" />
-              <p className="text-sm text-foreground">Context window</p>
-              {contextSize && (
-                <CostBadge
-                  label={contextSize.label}
-                  color={contextSize.color}
-                />
-              )}
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {model.limits.contextWindow.toLocaleString()} tokens
-            </p>
-          </div>
-        )}
+      {/* Capabilities */}
+      {model.capabilities && model.capabilities.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 pb-4 border-b border-border">
+          {model.capabilities.map((capability) => (
+            <CapabilityBadge key={capability} capability={capability} />
+          ))}
+        </div>
+      )}
 
-        {(inputCostPerM != null || outputCostPerM != null) && (
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center gap-1.5">
-              <CurrencyDollar className="w-3.5 h-3.5 text-muted-foreground" />
-              <p className="text-sm text-foreground">Costs</p>
-            </div>
-            <div className="flex flex-col gap-1">
-              {inputCostPerM != null && (
-                <div className="flex items-center">
-                  <span className="text-sm" style={{ color: inputColor }}>
-                    ${inputCostPerM.toFixed(2)} / 1M tokens (input)
+      {/* Stats */}
+      <div className="flex flex-col gap-6">
+        {model.limits?.contextWindow &&
+          (() => {
+            const { level, label, description } = getContextLevel(
+              model.limits.contextWindow,
+            );
+            return (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-medium text-muted-foreground">
+                  Context window
+                </span>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-0.5">
+                    {[1, 2, 3, 4].map((i) => (
+                      <div
+                        key={i}
+                        className={cn(
+                          "w-2 h-2 rounded-full",
+                          i <= level
+                            ? CONTEXT_DOT_COLORS[level - 1]
+                            : "bg-muted",
+                        )}
+                      />
+                    ))}
+                  </div>
+                  <span className="text-xs text-muted-foreground font-medium">
+                    {label}
                   </span>
-                  {inputTag && (
-                    <CostBadge label={inputTag.label} color={inputTag.color} />
-                  )}
-                </div>
-              )}
-              {outputCostPerM != null && (
-                <div className="flex items-center">
-                  <span className="text-sm" style={{ color: outputColor }}>
-                    ${outputCostPerM.toFixed(2)} / 1M tokens (output)
+                  <span className="text-xs text-muted-foreground">
+                    — {description}
                   </span>
-                  {outputTag && (
-                    <CostBadge
-                      label={outputTag.label}
-                      color={outputTag.color}
-                    />
-                  )}
                 </div>
-              )}
-            </div>
-          </div>
-        )}
+                <span className="text-sm text-muted-foreground">
+                  {model.limits.contextWindow.toLocaleString()} tokens
+                </span>
+              </div>
+            );
+          })()}
 
         {model.limits?.maxOutputTokens && (
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center gap-1.5">
-              <LogOut04 className="w-4.5 h-4.5 text-muted-foreground/70" />
-              <p className="text-sm text-foreground">Output limit</p>
-              {outputSize && (
-                <CostBadge label={outputSize.label} color={outputSize.color} />
-              )}
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted-foreground">
+              Output limit
+            </span>
+            <div className="flex items-baseline gap-2">
+              <span className="text-sm text-foreground">
+                {model.limits.maxOutputTokens.toLocaleString()} tokens
+              </span>
+              <span className="text-sm text-muted-foreground">
+                {approxWords(model.limits.maxOutputTokens)}
+              </span>
             </div>
-            <p className="text-sm text-muted-foreground">
-              {model.limits.maxOutputTokens.toLocaleString()} token limit
-            </p>
           </div>
         )}
+
+        {(inputCostPerM != null || outputCostPerM != null) &&
+          (() => {
+            const { level, label } =
+              inputCostPerM != null
+                ? getCostLevel(inputCostPerM)
+                : { level: 0, label: "" };
+            return (
+              <div className="flex flex-col gap-2">
+                <span className="text-xs font-medium text-muted-foreground">
+                  Pricing
+                </span>
+                {inputCostPerM != null && (
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center">
+                      {[1, 2, 3, 4].map((i) => (
+                        <span
+                          key={i}
+                          className={cn(
+                            "text-sm font-bold leading-none",
+                            i <= level
+                              ? COST_DOLLAR_COLORS[level - 1]
+                              : "text-muted-foreground/20",
+                          )}
+                        >
+                          $
+                        </span>
+                      ))}
+                    </div>
+                    <span className="text-xs text-muted-foreground font-medium">
+                      {label}
+                    </span>
+                  </div>
+                )}
+                <div className="flex flex-col gap-1">
+                  {inputCostPerM != null && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-muted-foreground">
+                        Input
+                      </span>
+                      <span className="text-xs text-foreground">
+                        ${inputCostPerM.toFixed(2)} / 1M tokens
+                      </span>
+                    </div>
+                  )}
+                  {outputCostPerM != null && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-muted-foreground">
+                        Output
+                      </span>
+                      <span className="text-xs text-foreground">
+                        ${outputCostPerM.toFixed(2)} / 1M tokens
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
       </div>
     </div>
   );
@@ -588,24 +514,33 @@ function ModelItemContent({
   model: LLM;
   onHover: (model: LLM) => void;
 }) {
+  const displayName = model.title.includes(": ")
+    ? model.title.split(": ").slice(1).join(": ")
+    : model.title;
+  const provider = model.title.includes(": ")
+    ? model.title.split(": ")[0]
+    : (model.provider ?? model.id.split("/")[0]);
+
   return (
     <div
-      className="flex items-center gap-2 min-h-8 py-3 px-3 hover:bg-accent cursor-pointer rounded-lg"
+      className="flex items-center gap-2.5 py-2 px-3 hover:bg-accent cursor-pointer rounded-lg"
       onMouseEnter={() => onHover(model)}
     >
       {model.logo && (
-        <img src={model.logo} className="w-5 h-5 shrink-0" alt={model.title} />
+        <img
+          src={model.logo}
+          className="w-4 h-4 shrink-0 rounded-sm"
+          alt={model.title}
+        />
       )}
-      <span className="text-sm text-foreground flex-1 min-w-0 line-clamp-1">
-        {model.title}
-      </span>
-      {model.capabilities && model.capabilities.length > 0 && (
-        <div className="flex items-center gap-1.5 shrink-0">
-          {model.capabilities.slice(0, 2).map((capability) => (
-            <CapabilityBadge key={capability} capability={capability} />
-          ))}
-        </div>
-      )}
+      <div className="flex flex-col flex-1 min-w-0">
+        <span className="text-sm text-foreground leading-tight truncate">
+          {displayName}
+        </span>
+        <span className="text-xs text-muted-foreground/60 leading-tight">
+          {provider}
+        </span>
+      </div>
     </div>
   );
 }
@@ -676,7 +611,7 @@ function ModelListErrorFallback({
 
 function ModelListSkeleton() {
   return (
-    <div className="flex-1 overflow-y-auto px-0.5 pt-2 space-y-1">
+    <div className="flex-1 overflow-y-auto p-2 space-y-1">
       {Array.from({ length: 6 }).map((_, i) => (
         <div
           key={i}
@@ -877,14 +812,14 @@ function ConnectionModelList({
 
   if (searchTerm.trim().length > 0) {
     return (
-      <div className="flex-1 overflow-y-auto px-0.5 pt-2">
+      <div className="flex-1 overflow-y-auto p-2">
         {filteredModels.map((m) => {
           const isSelected = m.id === selectedModel?.thinking.id;
           return (
             <div
               key={m.id}
               onClick={() => onModelSelect(m)}
-              className={cn("rounded-lg mb-1", isSelected && "bg-accent")}
+              className={cn("rounded-lg mb-1", isSelected && "bg-accent/50")}
             >
               <ModelItemContent model={m} onHover={onHover} />
             </div>
@@ -909,7 +844,7 @@ function ConnectionModelList({
             <div
               key={m.id}
               onClick={() => onModelSelect(m)}
-              className={cn("rounded-lg mb-1", isSelected && "bg-accent")}
+              className={cn("rounded-lg mb-1", isSelected && "bg-accent/50")}
             >
               <ModelItemContent model={m} onHover={onHover} />
             </div>
@@ -920,7 +855,7 @@ function ConnectionModelList({
   };
 
   return (
-    <div className="flex-1 overflow-y-auto px-0.5 pt-2">
+    <div className="flex-1 overflow-y-auto p-2">
       {TIER_IDS.map((tierId) =>
         renderBrowseSection(TIER_LABELS[tierId], grouped[tierId]),
       )}
@@ -1012,7 +947,7 @@ function ModelSelectorContentFallback() {
             <Skeleton className="w-[140px] h-8 shrink-0" />
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto px-0.5 pt-2 space-y-1">
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
           {Array.from({ length: 8 }).map((_, i) => (
             <div
               key={i}
@@ -1115,11 +1050,6 @@ function ModelSelectorContent({
     onClose();
   };
 
-  const stats =
-    allModelsRef.current.length > 0
-      ? computeModelStats(allModelsRef.current)
-      : null;
-
   return (
     <div className="flex flex-col md:flex-row h-[460px]">
       <div className="flex-1 flex flex-col md:border-r md:w-[420px] md:min-w-[420px]">
@@ -1201,27 +1131,22 @@ function ModelSelectorContent({
             />
           </Suspense>
         </ErrorBoundary>
-      </div>
-
-      <div className="hidden md:flex md:flex-col md:w-[320px] md:shrink-0 p-3">
-        <div className="flex-1">
-          <ModelDetailsPanel
-            model={hoveredModel ?? resolvedSelectedModel}
-            stats={stats}
-          />
-        </div>
         {!managing && (
-          <div className="flex justify-end pt-2">
+          <div className="border-t border-border">
             <button
               type="button"
               onClick={() => setManaging(true)}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+              className="flex items-center gap-2 w-full px-4 py-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent cursor-pointer"
             >
-              <Settings01 className="size-3.5" />
+              <Settings01 className="size-3.5 shrink-0" />
               Manage models
             </button>
           </div>
         )}
+      </div>
+
+      <div className="hidden md:flex md:flex-col md:w-[320px] md:shrink-0 p-3">
+        <ModelDetailsPanel model={hoveredModel ?? resolvedSelectedModel} />
       </div>
     </div>
   );
