@@ -54,7 +54,7 @@ interface ConnectionSidebarProps {
   onRemoveOAuth?: () => void | Promise<void>;
 }
 
-function ConnectionFields({
+export function ConnectionFields({
   form,
   connection,
   hasOAuthToken,
