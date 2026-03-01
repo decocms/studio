@@ -19,6 +19,13 @@ import {
 } from "@deco/ui/components/breadcrumb.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@deco/ui/components/dialog.tsx";
+import {
   Form,
   FormControl,
   FormField,
@@ -28,18 +35,13 @@ import {
 } from "@deco/ui/components/form.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@deco/ui/components/sheet.tsx";
-import {
   isStdioParameters,
   ORG_ADMIN_PROJECT_SLUG,
   useConnection,
   useConnectionActions,
   useMCPClient,
+  useMCPPromptsListQuery,
+  useMCPResourcesListQuery,
   useMCPToolsListQuery,
   useProjectContext,
   type ConnectionEntity,
@@ -261,6 +263,8 @@ function ConnectionInspectorViewWithConnection({
   onUpdate,
   isUpdating,
   tools,
+  prompts,
+  resources,
 }: {
   connection: ConnectionEntity;
   connectionId: string;
@@ -275,6 +279,8 @@ function ConnectionInspectorViewWithConnection({
     annotations?: ToolDefinition["annotations"];
     _meta?: Record<string, unknown>;
   }>;
+  prompts: Array<{ name: string; description?: string }>;
+  resources: Array<{ name: string; description?: string; uri?: string }>;
 }) {
   const navigate = useNavigate({ from: "/$org/$project/mcps/$connectionId" });
   const queryClient = useQueryClient();
@@ -461,15 +467,15 @@ function ConnectionInspectorViewWithConnection({
 
   return (
     <>
-      {/* Settings Sheet */}
-      <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <SheetContent className="w-[460px] sm:w-[460px] overflow-y-auto">
-          <SheetHeader className="mb-6">
-            <SheetTitle>Configure connection</SheetTitle>
-            <SheetDescription>
+      {/* Settings Dialog */}
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="max-w-lg overflow-y-auto max-h-[90vh]">
+          <DialogHeader className="mb-2">
+            <DialogTitle>Configure connection</DialogTitle>
+            <DialogDescription>
               Update the URL, authentication, and other technical settings.
-            </SheetDescription>
-          </SheetHeader>
+            </DialogDescription>
+          </DialogHeader>
           <Form {...form}>
             <div className="flex flex-col gap-6">
               <div className="flex flex-col gap-4">
@@ -535,8 +541,8 @@ function ConnectionInspectorViewWithConnection({
               </div>
             </div>
           </Form>
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
 
       {/* Main page */}
       <ViewLayout breadcrumb={breadcrumb}>
@@ -550,8 +556,12 @@ function ConnectionInspectorViewWithConnection({
             <div className="flex gap-6 p-6">
               {/* Left column */}
               <div className="flex-1 min-w-0 flex flex-col gap-5">
-                <ConnectionActivity />
-                <ConnectionCapabilities tools={tools} />
+                <ConnectionActivity connectionId={connectionId} />
+                <ConnectionCapabilities
+                  tools={tools}
+                  prompts={prompts}
+                  resources={resources}
+                />
               </div>
               {/* Right column */}
               <div className="w-72 shrink-0 flex flex-col gap-5">
@@ -607,6 +617,21 @@ function ConnectionInspectorViewContent() {
         _meta: t._meta as Record<string, unknown> | undefined,
       }));
 
+  // Fetch prompts and resources from the MCP connection
+  const { data: promptsData } = useMCPPromptsListQuery({ client });
+  const { data: resourcesData } = useMCPResourcesListQuery({ client });
+
+  const prompts = (promptsData?.prompts ?? []).map((p) => ({
+    name: p.name,
+    description: p.description,
+  }));
+
+  const resources = (resourcesData?.resources ?? []).map((r) => ({
+    name: r.name,
+    description: r.description,
+    uri: r.uri,
+  }));
+
   // Update connection handler
   const handleUpdateConnection = async (
     updatedConnection: Partial<ConnectionEntity>,
@@ -652,6 +677,8 @@ function ConnectionInspectorViewContent() {
       onUpdate={handleUpdateConnection}
       isUpdating={actions.update.isPending}
       tools={tools}
+      prompts={prompts}
+      resources={resources}
     />
   );
 }

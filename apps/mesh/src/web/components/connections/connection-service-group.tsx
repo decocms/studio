@@ -36,6 +36,7 @@ export function ConnectionServiceGroup({
         <ConnectionInstanceRow
           connection={firstInstance}
           onClick={() => onInstanceClick(firstInstance.id)}
+          showIcon
         />
       </div>
     );

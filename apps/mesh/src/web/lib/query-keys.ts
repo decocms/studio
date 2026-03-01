@@ -147,6 +147,8 @@ export const KEYS = {
   }) => ["monitoring", "logs", filters] as const,
   monitoringLogsInfinite: (locator: string, paramsKey: string) =>
     ["monitoring", "logs-infinite", locator, paramsKey] as const,
+  connectionActivity: (connectionId: string, timeframe: string) =>
+    ["monitoring", "activity", connectionId, timeframe] as const,
 
   // Monitoring dashboards
   monitoringDashboards: (locator: ProjectLocator) =>
