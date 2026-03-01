@@ -40,8 +40,6 @@ import {
   useConnection,
   useConnectionActions,
   useMCPClient,
-  useMCPPromptsListQuery,
-  useMCPResourcesListQuery,
   useMCPToolsListQuery,
   useProjectContext,
   type ConnectionEntity,
@@ -267,17 +265,8 @@ function ConnectionInspectorViewWithConnection({
   connection: ConnectionEntity;
   connectionId: string;
   org: string;
-  requestedTabId: string;
-  collections: ReturnType<typeof useCollectionBindings>;
   onUpdate: (connection: Partial<ConnectionEntity>) => Promise<void>;
   isUpdating: boolean;
-  prompts: Array<{ name: string; description?: string }>;
-  resources: Array<{
-    uri: string;
-    name?: string;
-    description?: string;
-    mimeType?: string;
-  }>;
   tools: Array<{
     name: string;
     description?: string;
@@ -286,7 +275,6 @@ function ConnectionInspectorViewWithConnection({
     annotations?: ToolDefinition["annotations"];
     _meta?: Record<string, unknown>;
   }>;
-  isLoadingTools: boolean;
 }) {
   const navigate = useNavigate({ from: "/$org/$project/mcps/$connectionId" });
   const queryClient = useQueryClient();
@@ -588,25 +576,14 @@ function ConnectionInspectorViewContent() {
   });
   const { org: projectOrg } = useProjectContext();
 
-  // We can use search params for active tab if we want persistent tabs
-  const search = useSearch({ from: "/shell/$org/$project/mcps/$connectionId" });
-  const requestedTabId = search.tab ?? "";
-
   const connection = useConnection(connectionId);
   const actions = useConnectionActions();
-
-  // Detect collection bindings
-  const collections = useCollectionBindings(connection ?? undefined);
 
   // Get MCP client for this connection (suspense-based)
   const client = useMCPClient({
     connectionId,
     orgId: projectOrg.id,
   });
-
-  // Fetch prompts and resources using SDK hooks
-  const { data: promptsData } = useMCPPromptsListQuery({ client });
-  const { data: resourcesData } = useMCPResourcesListQuery({ client });
 
   // Fetch tools - uses cached if available, otherwise fetches dynamically
   // VIRTUAL connections always fetch dynamically because:
@@ -615,20 +592,11 @@ function ConnectionInspectorViewContent() {
   const isVirtualConnection = connection?.connection_type === "VIRTUAL";
   const hasCachedTools =
     !isVirtualConnection && connection?.tools && connection.tools.length > 0;
-  const { data: toolsData, isLoading: isLoadingTools } = useMCPToolsListQuery({
+  const { data: toolsData } = useMCPToolsListQuery({
     client,
     enabled: !hasCachedTools,
   });
 
-  const prompts = (promptsData?.prompts ?? []).map((p) => ({
-    name: p.name,
-    description: p.description,
-  }));
-  const resources = (resourcesData?.resources ?? []).map((r) => ({
-    uri: r.uri,
-    name: r.name,
-    description: r.description,
-  }));
   const tools = hasCachedTools
     ? (connection.tools ?? [])
     : (toolsData?.tools ?? []).map((t) => ({
@@ -681,14 +649,9 @@ function ConnectionInspectorViewContent() {
       org={org}
       connection={connection}
       connectionId={connectionId}
-      requestedTabId={requestedTabId}
-      collections={collections}
       onUpdate={handleUpdateConnection}
       isUpdating={actions.update.isPending}
-      prompts={prompts}
-      resources={resources}
       tools={tools}
-      isLoadingTools={isLoadingTools}
     />
   );
 }
