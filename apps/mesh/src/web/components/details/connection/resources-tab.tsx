@@ -363,7 +363,7 @@ function UIAppPreview({
         <div className="flex items-center gap-2">
           <LayersTwo01 className="size-4 text-primary" />
           <h3 className="text-sm font-medium text-foreground">
-            {resource.name || resource.uri.replace("ui://mesh/", "")}
+            {resource.name || resource.uri.replace("ui://self/", "")}
           </h3>
         </div>
         <button

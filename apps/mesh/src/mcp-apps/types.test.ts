@@ -39,7 +39,7 @@ describe("getUIResourceUri", () => {
 describe("isUIResourceUri", () => {
   it("returns true for ui:// URIs", () => {
     expect(isUIResourceUri("ui://counter")).toBe(true);
-    expect(isUIResourceUri("ui://mesh/greeting")).toBe(true);
+    expect(isUIResourceUri("ui://self/greeting")).toBe(true);
     expect(isUIResourceUri("ui://self/code?borderless=true")).toBe(true);
   });
   it("returns false for http URIs", () => {

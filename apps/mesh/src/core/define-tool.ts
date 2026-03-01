@@ -55,7 +55,7 @@ export interface ToolBinder<
    *
    * @example
    * ```typescript
-   * _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/my-widget" }
+   * _meta: { [RESOURCE_URI_META_KEY]: "ui://self/my-widget" }
    * ```
    */
   _meta?: Record<string, unknown>;

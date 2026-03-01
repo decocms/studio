@@ -35,7 +35,7 @@ export function MCPAppLoader({
   // Use the connection client for tool calls (the virtual MCP / agent endpoint)
   const toolClient = useMCPClient({ connectionId, orgId });
   // Use the management MCP (null connectionId → /mcp) for reading resources,
-  // since ui://mesh/* resources are registered on the management server
+  // since ui://self/* resources are registered on the management server
   const resourceClient = useMCPClient({ connectionId: null, orgId });
 
   const handleCallTool = async (
