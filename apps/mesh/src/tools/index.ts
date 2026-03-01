@@ -140,6 +140,7 @@ interface CombinedTool {
   inputSchema: unknown;
   outputSchema: unknown;
   annotations?: ToolAnnotations;
+  _meta?: Record<string, unknown>;
   handler: (input: unknown, ctx: MeshContext) => Promise<unknown>;
   execute: (input: unknown, ctx: MeshContext) => Promise<unknown>;
 }
@@ -184,7 +185,7 @@ export const managementMCP = async (ctx: MeshContext) => {
   // Create MCP server directly
   const server = new McpServer(
     { name: "mcp-mesh-management", version: "1.0.0" },
-    { capabilities: { tools: {} } },
+    { capabilities: { tools: {}, resources: {} } },
   );
 
   // Register each tool with the server
@@ -212,6 +213,7 @@ export const managementMCP = async (ctx: MeshContext) => {
         inputSchema: inputShape,
         outputSchema: outputShape,
         annotations: tool.annotations,
+        _meta: tool._meta,
       },
       async (args) => {
         ctx.access.setToolName(tool.name);

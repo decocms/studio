@@ -13,6 +13,7 @@ export interface ToolMetadata {
   annotations?: NonNullable<ToolDefinition["annotations"]>;
   /** Latency in seconds (converted from ms for UI) */
   latencySeconds?: number;
+  _meta?: ToolDefinition["_meta"];
 }
 
 export interface ToolSubtaskMetadata {
@@ -40,7 +41,13 @@ export function useFilterParts(message: ChatMessage | null) {
 
       if (p.type === "data-tool-metadata" && "id" in p && "data" in p) {
         const data = (
-          p as { data: { annotations?: unknown; latencyMs?: number } }
+          p as {
+            data: {
+              annotations?: unknown;
+              latencyMs?: number;
+              _meta?: unknown;
+            };
+          }
         ).data;
         const meta: ToolMetadata = {};
         if (data.annotations) {
@@ -53,6 +60,9 @@ export function useFilterParts(message: ChatMessage | null) {
           Number.isFinite(data.latencyMs)
         ) {
           meta.latencySeconds = data.latencyMs / 1000;
+        }
+        if (data._meta && typeof data._meta === "object") {
+          meta._meta = data._meta as ToolDefinition["_meta"];
         }
         toolMetadata.set((p as { id: string }).id, meta);
         continue;

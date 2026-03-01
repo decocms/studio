@@ -89,6 +89,15 @@ const connectRoute = createRoute({
 });
 
 /**
+ * Widget routes — public, no auth. Widget pages receive all data via postMessage.
+ */
+const widgetRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/_widgets/$widgetId",
+  component: lazyRouteComponent(() => import("./routes/widgets/_route.tsx")),
+});
+
+/**
  * Store invite route - deep links to store apps without knowing the org slug
  * After login, redirects to the user's first org and first registry
  */
@@ -463,6 +472,7 @@ const routeTree = rootRoute.addChildren([
   oauthCallbackRoute,
   connectRoute,
   storeInviteRoute,
+  widgetRoute,
 ]);
 
 const router = createRouter({

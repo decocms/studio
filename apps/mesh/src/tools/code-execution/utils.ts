@@ -201,7 +201,7 @@ async function loadToolsFromConnections(
 
       allTools.push({
         ...tool,
-        _meta: { connectionId, connectionTitle },
+        _meta: { ...tool._meta, connectionId, connectionTitle },
       });
       mappings.set(tool.name, connectionId);
     }

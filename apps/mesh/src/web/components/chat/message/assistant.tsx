@@ -265,6 +265,7 @@ function MessagePart({ part, id, usageStats, dataParts }: MessagePartProps) {
           part={part}
           annotations={getMeta(part.toolCallId)?.annotations}
           latency={getMeta(part.toolCallId)?.latencySeconds}
+          toolMeta={getMeta(part.toolCallId)?._meta}
         />
       );
     case "tool-user_ask":
@@ -312,6 +313,7 @@ function MessagePart({ part, id, usageStats, dataParts }: MessagePartProps) {
             part={fallback}
             annotations={meta?.annotations}
             latency={meta?.latencySeconds}
+            toolMeta={meta?._meta}
           />
         );
       }

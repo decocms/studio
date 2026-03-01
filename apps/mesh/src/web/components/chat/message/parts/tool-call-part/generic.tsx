@@ -1,8 +1,12 @@
 "use client";
 
+import { Suspense } from "react";
 import type { ToolUIPart, DynamicToolUIPart } from "ai";
 import type { ToolDefinition } from "@decocms/mesh-sdk";
-import { Atom02 } from "@untitledui/icons";
+import { useProjectContext } from "@decocms/mesh-sdk";
+import { getUIResourceUri } from "@/mcp-apps/types.ts";
+import { Atom02, LayersTwo01 } from "@untitledui/icons";
+import { useChatStable } from "@/web/components/chat/context.tsx";
 import { ToolCallShell } from "./common.tsx";
 import {
   getFriendlyToolName,
@@ -11,6 +15,8 @@ import {
 } from "./utils.tsx";
 import { getToolPartErrorText, safeStringify } from "../utils.ts";
 import { ApprovalActions } from "./approval-actions.tsx";
+import { MCPAppLoader } from "@/mcp-apps/mcp-app-loader.tsx";
+import { cn } from "@deco/ui/lib/utils.ts";
 
 interface GenericToolCallPartProps {
   part: ToolUIPart | DynamicToolUIPart;
@@ -20,6 +26,8 @@ interface GenericToolCallPartProps {
   annotations?: ToolDefinition["annotations"];
   /** Latency in seconds from data-tool-metadata part */
   latency?: number;
+  /** Tool _meta from data-tool-metadata part */
+  toolMeta?: ToolDefinition["_meta"];
 }
 
 function safeStringifyFormatted(value: unknown): string {
@@ -72,6 +80,7 @@ export function GenericToolCallPart({
   part,
   annotations,
   latency,
+  toolMeta,
 }: GenericToolCallPartProps) {
   // Extract tool name with proper dynamic-tool handling
   const toolName =
@@ -81,6 +90,20 @@ export function GenericToolCallPart({
         ? "Dynamic Tool"
         : part.type.replace("tool-", "") || "Tool";
   const friendlyName = getFriendlyToolName(toolName);
+
+  const { selectedVirtualMcp } = useChatStable();
+
+  const uiResourceUri = getUIResourceUri(toolMeta);
+
+  const connectionId =
+    toolMeta &&
+    typeof toolMeta === "object" &&
+    toolMeta !== null &&
+    "connectionId" in toolMeta
+      ? String(toolMeta.connectionId)
+      : (selectedVirtualMcp?.id ?? null);
+
+  const hasMCPApp = !!uiResourceUri && part.state === "output-available";
 
   // Compute state-dependent props
   const title = getTitle(part.state, friendlyName);
@@ -99,7 +122,7 @@ export function GenericToolCallPart({
     const errorText = getToolPartErrorText(part);
     if (detail) detail += "\n\n";
     detail += "# Error\n" + errorText;
-  } else if (part.output !== undefined) {
+  } else if (part.output !== undefined && !hasMCPApp) {
     if (detail) detail += "\n\n";
     detail += "# Output\n" + safeStringifyFormatted(part.output);
   }
@@ -113,7 +136,13 @@ export function GenericToolCallPart({
   return (
     <div className="my-2">
       <ToolCallShell
-        icon={<Atom02 className="size-4 text-muted-foreground" />}
+        icon={
+          hasMCPApp ? (
+            <LayersTwo01 className="size-4 text-muted-foreground" />
+          ) : (
+            <Atom02 className="size-4 text-muted-foreground" />
+          )
+        }
         title={title}
         annotations={annotations}
         latency={latency}
@@ -122,6 +151,67 @@ export function GenericToolCallPart({
         detail={detail || null}
         actions={actions}
       />
+      {hasMCPApp && uiResourceUri && connectionId && (
+        <MCPAppRenderer
+          uiResourceUri={uiResourceUri}
+          connectionId={connectionId}
+          toolName={toolName}
+          toolInput={part.input}
+          toolResult={part.output}
+        />
+      )}
+    </div>
+  );
+}
+
+interface MCPAppRendererProps {
+  uiResourceUri: string;
+  connectionId: string;
+  toolName: string;
+  toolInput: unknown;
+  toolResult: unknown;
+}
+
+function MCPAppRenderer({
+  uiResourceUri,
+  connectionId,
+  toolName,
+  toolInput,
+  toolResult,
+}: MCPAppRendererProps) {
+  const { org } = useProjectContext();
+
+  if (!org?.id) return null;
+
+  const isBorderless = uiResourceUri.includes("borderless=true");
+
+  return (
+    <div
+      className={cn(
+        "mt-2",
+        !isBorderless &&
+          "border border-border/75 rounded-lg overflow-hidden p-3",
+      )}
+    >
+      <Suspense
+        fallback={
+          <div className="flex items-center justify-center h-32">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              <span className="text-sm">Loading app...</span>
+            </div>
+          </div>
+        }
+      >
+        <MCPAppLoader
+          uiResourceUri={uiResourceUri}
+          connectionId={connectionId}
+          orgId={org.id}
+          toolName={toolName}
+          toolInput={toolInput}
+          toolResult={toolResult}
+        />
+      </Suspense>
     </div>
   );
 }

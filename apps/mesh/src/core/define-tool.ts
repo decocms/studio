@@ -48,6 +48,17 @@ export interface ToolBinder<
   inputSchema: TInput;
   outputSchema: TOutput;
   annotations?: ToolAnnotations;
+  /**
+   * Static `_meta` to inject into every tool response.
+   * Merged with any `_meta` already present in the handler's return value.
+   * Use this to associate a UI resource URI without polluting the outputSchema.
+   *
+   * @example
+   * ```typescript
+   * _meta: { [RESOURCE_URI_META_KEY]: "ui://mesh/my-widget" }
+   * ```
+   */
+  _meta?: Record<string, unknown>;
 }
 /**
  * Tool definition structure

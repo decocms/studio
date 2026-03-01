@@ -38,6 +38,7 @@
   },
   "dependencies": {
     "@jitl/quickjs-wasmfile-release-sync": "^0.31.0",
+    "@modelcontextprotocol/ext-apps": "^1.1.2",
     "dompurify": "^3.3.1",
     "kysely": "^0.28.8",
     "kysely-bun-worker": "^0.6.0",

@@ -45,6 +45,7 @@ interface ToolDefinition {
   annotations?: {
     [key: string]: unknown;
   };
+  _meta?: Record<string, unknown>;
 }
 
 // Base directory for dev assets (relative to cwd)
@@ -509,6 +510,7 @@ export async function handleDevAssetsMcpRequest(
         inputSchema: inputShape,
         outputSchema: outputShape,
         annotations: tool.annotations,
+        _meta: tool._meta,
       },
       async (args) => {
         try {

@@ -74,7 +74,7 @@ export async function toolsFromMCP(
   const list = await client.listTools();
 
   const toolEntries = list.tools.map((t) => {
-    const { name, title, description, inputSchema, annotations } = t;
+    const { name, title, description, inputSchema, annotations, _meta } = t;
 
     return [
       name,
@@ -109,7 +109,8 @@ export async function toolsFromMCP(
                 type: "data-tool-metadata",
                 id: options.toolCallId,
                 data: {
-                  annotations: t.annotations,
+                  _meta,
+                  annotations,
                   latencyMs,
                 },
               });
