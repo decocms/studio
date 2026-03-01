@@ -18,15 +18,16 @@ import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   AlertTriangle,
+  AlignLeft,
   ArrowLeft,
   ChevronDown,
   ChevronSelectorVertical,
-  File06,
   Image01,
   RefreshCcw01,
   SearchMd,
   Settings01,
   Stars01,
+  Tool01,
 } from "@untitledui/icons";
 import { Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
@@ -259,34 +260,26 @@ function getCostLevel(inputPerM: number): { level: number; label: string } {
 // ============================================================================
 
 const CAPABILITY_CONFIGS: Record<string, { icon: ReactNode; label: string }> = {
-  reasoning: { icon: <Stars01 className="size-4" />, label: "Reasoning" },
-  "image-upload": {
-    icon: <Image01 className="size-4" />,
-    label: "Can analyze images",
-  },
-  "file-upload": {
-    icon: <File06 className="size-4" />,
-    label: "Can analyze files",
-  },
+  text: { icon: <AlignLeft className="size-3.5" />, label: "Text" },
+  vision: { icon: <Image01 className="size-3.5" />, label: "Vision" },
+  tools: { icon: <Tool01 className="size-3.5" />, label: "Tools" },
+  reasoning: { icon: <Stars01 className="size-3.5" />, label: "Reasoning" },
   "web-search": {
-    icon: <SearchMd className="size-4" />,
-    label: "Can search the web to answer questions",
+    icon: <SearchMd className="size-3.5" />,
+    label: "Web search",
   },
 };
 
 function CapabilityBadge({ capability }: { capability: string }) {
   const config = CAPABILITY_CONFIGS[capability] ?? {
     icon: null,
-    label: capability,
+    label: capability.charAt(0).toUpperCase() + capability.slice(1),
   };
-  const displayLabel = config.label
-    .split("-")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
 
   return (
-    <span className="text-xs text-muted-foreground border border-border rounded px-2 py-0.5">
-      {displayLabel}
+    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground border border-border rounded px-2 py-0.5">
+      {config.icon}
+      {config.label}
     </span>
   );
 }
