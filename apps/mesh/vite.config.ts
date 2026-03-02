@@ -13,6 +13,8 @@ export default defineConfig({
     port: parseInt(process.env.VITE_PORT || "4000", 10),
     hmr: {
       overlay: true,
+      host: "localhost",
+      clientPort: parseInt(process.env.VITE_PORT || "4000", 10),
     },
   },
   clearScreen: false,

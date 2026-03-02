@@ -2,6 +2,7 @@
   "name": "@decocms/mesh-monorepo",
   "devDependencies": {
     "@biomejs/biome": "2.2.5",
+    "@types/bun": "^1.3.1",
     "@types/node": "^24.9.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.0.4",
@@ -18,6 +19,8 @@
   "scripts": {
     "link": "deco link -p 3000 -e BASE_URL -- bun run dev",
     "dev": "bun run --env-file=.env --cwd=apps/mesh dev",
+    "dev:worktree": "bun run scripts/dev-worktree.ts",
+    "dev:conductor": "WORKTREE_SLUG=$CONDUCTOR_WORKSPACE_NAME bun run dev:worktree",
     "fmt": "biome format --write",
     "lint": "oxlint",
     "check": "bun run --workspaces check",
