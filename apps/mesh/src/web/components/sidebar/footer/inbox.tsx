@@ -152,15 +152,38 @@ class SilentErrorBoundary extends Component<
   }
 }
 
+type LimitPeriod = "daily" | "weekly" | "monthly";
+
 interface GatewayUsageResult {
+  billing: { mode: "prepaid" | "postpaid"; limitPeriod: LimitPeriod | null };
   limit: { remaining: number | null; total: number | null };
+  usage: { total: number; daily: number; weekly: number; monthly: number };
 }
 
-function creditColor(remaining: number, total: number | null): string {
+const CHIP_PERIOD_KEY = "gateway-chip-period";
+
+function getChipPeriod(): LimitPeriod {
+  try {
+    const stored = localStorage.getItem(CHIP_PERIOD_KEY);
+    if (stored === "daily" || stored === "weekly" || stored === "monthly")
+      return stored;
+  } catch {
+    // ignore
+  }
+  return "daily";
+}
+
+function prepaidColor(remaining: number, total: number | null): string {
   if (!total || total <= 0) return "text-foreground/70";
   const pct = remaining / total;
   if (pct <= 0.05) return "text-destructive";
   if (pct <= 0.2) return "text-amber-500 dark:text-amber-400";
+  return "text-foreground/70";
+}
+
+function postpaidUsedColor(percentUsed: number): string {
+  if (percentUsed >= 90) return "text-destructive";
+  if (percentUsed >= 70) return "text-amber-500 dark:text-amber-400";
   return "text-foreground/70";
 }
 
@@ -179,8 +202,39 @@ function CreditChip({ connectionId }: { connectionId: string }) {
       (result as { structuredContent?: GatewayUsageResult }).structuredContent,
   });
 
-  const credits = data?.limit.remaining ?? 0;
-  const total = data?.limit.total ?? null;
+  const billingMode = data?.billing.mode ?? "prepaid";
+  const limitTotal = data?.limit.total ?? null;
+  const limitRemaining = data?.limit.remaining ?? 0;
+  const usage = data?.usage ?? { total: 0, daily: 0, weekly: 0, monthly: 0 };
+
+  let label: string;
+  let value: string;
+  let valueColor: string;
+
+  if (billingMode === "prepaid") {
+    label = "Credits";
+    value = `$${limitRemaining.toFixed(2)}`;
+    valueColor = prepaidColor(limitRemaining, limitTotal);
+  } else if (limitTotal != null && limitTotal > 0) {
+    const used = limitTotal - limitRemaining;
+    const pct = Math.min(100, Math.round((used / limitTotal) * 100));
+    label = "Usage";
+    value = `${pct}%`;
+    valueColor = postpaidUsedColor(pct);
+  } else {
+    const chipPeriod = getChipPeriod();
+    const periodUsage =
+      chipPeriod === "daily"
+        ? usage.daily
+        : chipPeriod === "weekly"
+          ? usage.weekly
+          : usage.monthly;
+    const periodSuffix =
+      chipPeriod === "daily" ? "/day" : chipPeriod === "weekly" ? "/wk" : "/mo";
+    label = "Usage";
+    value = `$${periodUsage.toFixed(2)}${periodSuffix}`;
+    valueColor = "text-foreground/70";
+  }
 
   return (
     <button
@@ -190,15 +244,10 @@ function CreditChip({ connectionId }: { connectionId: string }) {
     >
       <div className="flex items-center gap-1.5">
         <Coins01 size={13} className="text-muted-foreground/60 shrink-0" />
-        <span className="text-xs text-muted-foreground">Credits</span>
+        <span className="text-xs text-muted-foreground">{label}</span>
       </div>
-      <span
-        className={cn(
-          "text-xs font-medium tabular-nums",
-          creditColor(credits, total),
-        )}
-      >
-        ${credits.toFixed(2)}
+      <span className={cn("text-xs font-medium tabular-nums", valueColor)}>
+        {value}
       </span>
     </button>
   );

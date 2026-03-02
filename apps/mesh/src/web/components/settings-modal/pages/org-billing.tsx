@@ -21,8 +21,10 @@ import {
   DialogDescription,
 } from "@deco/ui/components/dialog.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { AlertCircle, Coins01, Plus } from "@untitledui/icons";
+import { AlertCircle, Coins01, Plus, RefreshCcw01 } from "@untitledui/icons";
+import { useQueryClient } from "@tanstack/react-query";
 import {
+  KEYS,
   useConnections,
   useMCPClient,
   useMCPToolCallMutation,
@@ -32,6 +34,9 @@ import {
 import { isDecoAIGatewayUrl } from "@/core/deco-constants";
 
 // -- Types --
+
+type BillingMode = "prepaid" | "postpaid";
+type LimitPeriod = "daily" | "weekly" | "monthly";
 
 interface CreditEstimation {
   avgDailySpend: number;
@@ -49,7 +54,7 @@ interface AlertConfig {
 }
 
 interface GatewayUsageResult {
-  billing: { mode: "prepaid" | "postpaid" };
+  billing: { mode: BillingMode; limitPeriod: LimitPeriod | null };
   limit: {
     total: number | null;
     remaining: number | null;
@@ -64,7 +69,8 @@ interface GatewayUsageResult {
 
 interface SetLimitResult {
   checkout_url: string | null;
-  billing_mode: "prepaid" | "postpaid";
+  billing_mode: BillingMode;
+  limit_period: LimitPeriod | null;
   new_limit_usd: number;
   current_limit_usd: number;
   amount_usd: number | null;
@@ -82,6 +88,27 @@ function formatUSD(value: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+}
+
+const CHIP_PERIOD_KEY = "gateway-chip-period";
+
+function getChipPeriod(): LimitPeriod {
+  try {
+    const stored = localStorage.getItem(CHIP_PERIOD_KEY);
+    if (stored === "daily" || stored === "weekly" || stored === "monthly")
+      return stored;
+  } catch {
+    // ignore
+  }
+  return "daily";
+}
+
+function setChipPeriod(period: LimitPeriod) {
+  try {
+    localStorage.setItem(CHIP_PERIOD_KEY, period);
+  } catch {
+    // ignore
+  }
 }
 
 function buildChartData(
@@ -144,63 +171,117 @@ const CONFIDENCE_LABEL: Record<CreditEstimation["confidence"], string> = {
   high: "High confidence",
 };
 
-// -- Add Credit Dialog --
+const PERIOD_LABEL: Record<LimitPeriod, string> = {
+  daily: "daily",
+  weekly: "weekly",
+  monthly: "monthly",
+};
+
+// -- Add Credit / Configure Limit Dialog --
 
 const PRESET_AMOUNTS = [5, 10, 25, 50, 100];
+const LIMIT_PERIODS: Array<{ value: LimitPeriod | "none"; label: string }> = [
+  { value: "daily", label: "Daily" },
+  { value: "weekly", label: "Weekly" },
+  { value: "monthly", label: "Monthly" },
+  { value: "none", label: "No reset" },
+];
 
-interface AddCreditDialogProps {
+interface LimitDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   connectionId: string;
   currentLimitUsd: number;
+  billingMode: BillingMode;
+  currentLimitPeriod: LimitPeriod | null;
 }
 
-function AddCreditDialog({
+function LimitDialog({
   open,
   onOpenChange,
   connectionId,
   currentLimitUsd,
-}: AddCreditDialogProps) {
+  billingMode,
+  currentLimitPeriod,
+}: LimitDialogProps) {
   const { org } = useProjectContext();
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
   const [customAmount, setCustomAmount] = useState("");
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [limitPeriod, setLimitPeriod] = useState<LimitPeriod | "none">(
+    currentLimitPeriod ?? "none",
+  );
 
   const client = useMCPClient({ connectionId, orgId: org.id });
-
   const { mutate, isPending } = useMCPToolCallMutation({ client });
+  const queryClient = useQueryClient();
 
-  const effectiveAmount =
-    selectedAmount ?? (customAmount ? parseFloat(customAmount) : null);
+  const isPostpaid = billingMode === "postpaid";
+  const customAmountValue = customAmount
+    ? Number.parseFloat(customAmount)
+    : null;
+  const effectiveAmount = selectedAmount ?? customAmountValue;
+  const resolvedLimitPeriod = limitPeriod === "none" ? null : limitPeriod;
+  const isUnchangedPostpaid =
+    isPostpaid &&
+    effectiveAmount != null &&
+    effectiveAmount === currentLimitUsd &&
+    resolvedLimitPeriod === currentLimitPeriod;
+  const gatewayUsageQueryKey = KEYS.mcpToolCall(
+    client,
+    "GATEWAY_USAGE",
+    JSON.stringify({}),
+  );
+
+  const refreshGatewayUsage = async () => {
+    await queryClient.invalidateQueries({
+      queryKey: gatewayUsageQueryKey,
+      exact: true,
+    });
+    await queryClient.refetchQueries({
+      queryKey: gatewayUsageQueryKey,
+      exact: true,
+      type: "active",
+    });
+  };
 
   const handleConfirm = () => {
     if (!effectiveAmount || effectiveAmount <= 0) return;
 
-    const newLimit = currentLimitUsd + effectiveAmount;
+    const newLimit = isPostpaid
+      ? effectiveAmount
+      : currentLimitUsd + effectiveAmount;
     setError(null);
 
+    const args: Record<string, unknown> = {
+      limit_usd: newLimit,
+      billing_mode: billingMode,
+      return_url: window.location.href,
+    };
+    if (isPostpaid) {
+      args.limit_period = limitPeriod;
+    }
+
     mutate(
+      { name: "GATEWAY_SET_LIMIT", arguments: args },
       {
-        name: "GATEWAY_SET_LIMIT",
-        arguments: {
-          limit_usd: newLimit,
-          return_url: window.location.href,
-        },
-      },
-      {
-        onSuccess: (result) => {
+        onSuccess: async (result) => {
           const payload = (result as { structuredContent?: SetLimitResult })
             .structuredContent;
 
+          if (!payload?.checkout_url) {
+            await refreshGatewayUsage();
+          }
+
           if (payload?.checkout_url) {
             setCheckoutUrl(payload.checkout_url);
-          } else if (payload?.billing_mode === "postpaid") {
+          } else {
             handleClose();
           }
         },
         onError: (err) => {
-          setError(err.message ?? "Failed to create payment link.");
+          setError(err.message ?? "Failed to update limit.");
         },
       },
     );
@@ -211,17 +292,23 @@ function AddCreditDialog({
     setCustomAmount("");
     setCheckoutUrl(null);
     setError(null);
+    setLimitPeriod(currentLimitPeriod ?? "none");
     onOpenChange(false);
   };
+
+  const title = isPostpaid ? "Configure Spending Limit" : "Add Credit";
+  const description = isPostpaid
+    ? "Set a spending limit for your AI Gateway. The limit resets automatically based on the selected period."
+    : "Choose how much credit to add to your AI Gateway.";
+  const amountLabel = isPostpaid ? "New limit" : "Select amount";
+  const confirmLabel = isPostpaid ? "Set Limit" : "Continue";
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Add Credit</DialogTitle>
-          <DialogDescription>
-            Choose how much credit to add to your AI Gateway.
-          </DialogDescription>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
         {checkoutUrl ? (
@@ -242,7 +329,7 @@ function AddCreditDialog({
             {/* Preset amounts */}
             <div className="flex flex-col gap-2">
               <Label className="text-xs text-muted-foreground">
-                Select amount
+                {amountLabel}
               </Label>
               <div className="grid grid-cols-5 gap-2">
                 {PRESET_AMOUNTS.map((amount) => (
@@ -272,7 +359,9 @@ function AddCreditDialog({
                 htmlFor="custom-amount"
                 className="text-xs text-muted-foreground"
               >
-                Or enter a custom amount
+                {isPostpaid
+                  ? "Or enter the exact new limit"
+                  : "Or enter a custom amount"}
               </Label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
@@ -281,8 +370,8 @@ function AddCreditDialog({
                 <Input
                   id="custom-amount"
                   type="number"
-                  min="1"
-                  step="1"
+                  min="0.01"
+                  step="0.01"
                   placeholder="0.00"
                   className="pl-7"
                   value={customAmount}
@@ -294,21 +383,65 @@ function AddCreditDialog({
               </div>
             </div>
 
+            {/* Period selector — postpaid only */}
+            {isPostpaid && (
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs text-muted-foreground">
+                  Reset period
+                </Label>
+                <div className="grid grid-cols-4 gap-2">
+                  {LIMIT_PERIODS.map(({ value, label }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setLimitPeriod(value)}
+                      className={cn(
+                        "rounded-md border px-2 py-2 text-xs font-medium transition-colors",
+                        limitPeriod === value
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border hover:bg-muted",
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {error && <p className="text-xs text-destructive">{error}</p>}
 
             <div className="flex items-center justify-between pt-1">
               <p className="text-xs text-muted-foreground">
-                Current limit:{" "}
-                <span className="font-medium text-foreground">
-                  {formatUSD(currentLimitUsd)}
-                </span>
+                {isPostpaid ? (
+                  <>
+                    Current limit:{" "}
+                    <span className="font-medium text-foreground">
+                      {currentLimitUsd > 0
+                        ? formatUSD(currentLimitUsd)
+                        : "none"}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    Current limit:{" "}
+                    <span className="font-medium text-foreground">
+                      {formatUSD(currentLimitUsd)}
+                    </span>
+                  </>
+                )}
               </p>
               <Button
                 onClick={handleConfirm}
-                disabled={isPending || !effectiveAmount || effectiveAmount <= 0}
+                disabled={
+                  isPending ||
+                  !effectiveAmount ||
+                  effectiveAmount <= 0 ||
+                  isUnchangedPostpaid
+                }
                 className="gap-2"
               >
-                {isPending ? "Generating..." : "Continue"}
+                {isPending ? "Updating..." : confirmLabel}
               </Button>
             </div>
           </div>
@@ -318,7 +451,7 @@ function AddCreditDialog({
   );
 }
 
-// -- Credit Forecast --
+// -- Credit Forecast (prepaid only) --
 
 function CreditForecast({
   estimation,
@@ -367,7 +500,88 @@ function CreditForecast({
   );
 }
 
-// -- Credit card --
+// -- Spending Card (postpaid) --
+
+function SpendingCard({
+  usage,
+  limit,
+  limitPeriod,
+  onConfigureLimit,
+}: {
+  usage: GatewayUsageResult["usage"];
+  limit: GatewayUsageResult["limit"];
+  limitPeriod: LimitPeriod | null;
+  onConfigureLimit: () => void;
+}) {
+  const hasLimit = limit.total != null && limit.total > 0;
+  const percentUsed = hasLimit
+    ? Math.min(
+        100,
+        Math.round(
+          ((limit.total! - (limit.remaining ?? 0)) / limit.total!) * 100,
+        ),
+      )
+    : null;
+
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-border bg-gradient-to-br from-card via-card to-muted/30 p-6">
+      <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-1">
+          <p className="text-xs font-medium text-muted-foreground tracking-wide uppercase">
+            Spending
+          </p>
+          <p className="text-3xl font-bold tabular-nums text-foreground tracking-tight">
+            {formatUSD(usage.total)}
+          </p>
+          {hasLimit && (
+            <p className="text-xs text-muted-foreground">
+              of {formatUSD(limit.total!)} limit
+              {limitPeriod && (
+                <span className="ml-1.5 inline-flex items-center gap-1">
+                  <RefreshCcw01 size={10} />
+                  {PERIOD_LABEL[limitPeriod]}
+                </span>
+              )}
+            </p>
+          )}
+          {!hasLimit && (
+            <p className="text-xs text-muted-foreground">No limit configured</p>
+          )}
+        </div>
+        <Button onClick={onConfigureLimit} variant="outline" className="gap-2">
+          <Plus size={16} />
+          {hasLimit ? "Configure Limit" : "Set Limit"}
+        </Button>
+      </div>
+
+      {hasLimit && percentUsed != null && (
+        <div className="mt-4">
+          <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+            <div
+              className={cn(
+                "h-full rounded-full transition-all",
+                percentUsed >= 90
+                  ? "bg-destructive"
+                  : percentUsed >= 70
+                    ? "bg-amber-500"
+                    : "bg-primary",
+              )}
+              style={{ width: `${percentUsed}%` }}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            {percentUsed}% used
+            {limit.reset && (
+              <span className="ml-2">· resets {limit.reset}</span>
+            )}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// -- Credit card (prepaid) --
 
 function CreditCard({
   available,
@@ -431,9 +645,11 @@ function CreditCard({
 function AlertSection({
   connectionId,
   alert,
+  billingMode,
 }: {
   connectionId: string;
   alert: AlertConfig;
+  billingMode: BillingMode;
 }) {
   const { org } = useProjectContext();
   const [enabled, setEnabled] = useState(alert.enabled);
@@ -485,13 +701,18 @@ function AlertSection({
     );
   };
 
+  const thresholdDescription =
+    billingMode === "postpaid"
+      ? `Notify when usage reaches ${formatUSD(parseFloat(thresholdStr) || 0)}`
+      : `Notify when credit drops below ${formatUSD(parseFloat(thresholdStr) || 0)}`;
+
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <AlertCircle size={16} className="text-muted-foreground" />
           <p className="text-xs font-medium text-muted-foreground tracking-wide uppercase">
-            Low-Balance Alert
+            {billingMode === "postpaid" ? "Usage Alert" : "Low-Balance Alert"}
           </p>
         </div>
         <Switch checked={enabled} onCheckedChange={setEnabled} />
@@ -509,7 +730,9 @@ function AlertSection({
               htmlFor="alert-threshold"
               className="text-xs text-muted-foreground"
             >
-              Alert threshold
+              {billingMode === "postpaid"
+                ? "Alert at usage"
+                : "Alert threshold"}
             </Label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
@@ -547,9 +770,7 @@ function AlertSection({
 
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted-foreground">
-            {enabled
-              ? `Notify when credit drops below ${formatUSD(parseFloat(thresholdStr) || 0)}`
-              : "Alerts are disabled"}
+            {enabled ? thresholdDescription : "Alerts are disabled"}
           </p>
           <div className="flex items-center gap-2">
             {saved && (
@@ -694,11 +915,50 @@ function UsageSection({ usage }: { usage: GatewayUsageResult["usage"] }) {
   );
 }
 
+// -- Chip display period picker (postpaid, no limit) --
+
+function ChipDisplayPicker() {
+  const [period, setPeriod] = useState<LimitPeriod>(getChipPeriod);
+
+  const handleChange = (p: LimitPeriod) => {
+    setPeriod(p);
+    setChipPeriod(p);
+  };
+
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-border bg-card p-5">
+      <p className="text-xs font-medium text-muted-foreground tracking-wide uppercase">
+        Sidebar Display Period
+      </p>
+      <p className="text-xs text-muted-foreground">
+        Choose which usage period is shown in the sidebar when no limit is set.
+      </p>
+      <div className="flex gap-2 mt-1">
+        {(["daily", "weekly", "monthly"] as LimitPeriod[]).map((p) => (
+          <button
+            key={p}
+            type="button"
+            onClick={() => handleChange(p)}
+            className={cn(
+              "rounded-md border px-3 py-1.5 text-xs font-medium capitalize transition-colors",
+              period === p
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border hover:bg-muted text-muted-foreground",
+            )}
+          >
+            {p}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // -- Billing with real data --
 
 function BillingWithData({ connectionId }: { connectionId: string }) {
   const { org } = useProjectContext();
-  const [addCreditOpen, setAddCreditOpen] = useState(false);
+  const [limitDialogOpen, setLimitDialogOpen] = useState(false);
 
   const client = useMCPClient({ connectionId, orgId: org.id });
 
@@ -719,13 +979,22 @@ function BillingWithData({ connectionId }: { connectionId: string }) {
   const total = data?.limit.total ?? 0;
   const usage = data?.usage ?? { total: 0, daily: 0, weekly: 0, monthly: 0 };
   const billingMode = data?.billing.mode ?? "prepaid";
+  const limitPeriod = data?.billing.limitPeriod ?? null;
   const estimation = data?.estimation ?? null;
   const alert = data?.alert ?? {
     enabled: false,
     threshold_usd: 10,
     email: null,
   };
-  const currentLimitUsd = total;
+  const limit = data?.limit ?? {
+    total: null,
+    remaining: null,
+    reset: null,
+    includeByokInLimit: false,
+  };
+
+  const showChipPicker =
+    billingMode === "postpaid" && (total == null || total === 0);
 
   return (
     <>
@@ -741,26 +1010,40 @@ function BillingWithData({ connectionId }: { connectionId: string }) {
         )}
       </div>
 
-      <CreditCard
-        available={available}
-        total={total}
-        estimation={estimation}
-        onAddCredit={() => setAddCreditOpen(true)}
-      />
+      {billingMode === "postpaid" ? (
+        <SpendingCard
+          usage={usage}
+          limit={limit}
+          limitPeriod={limitPeriod}
+          onConfigureLimit={() => setLimitDialogOpen(true)}
+        />
+      ) : (
+        <CreditCard
+          available={available}
+          total={total}
+          estimation={estimation}
+          onAddCredit={() => setLimitDialogOpen(true)}
+        />
+      )}
 
       <UsageSection usage={usage} />
+
+      {showChipPicker && <ChipDisplayPicker />}
 
       <AlertSection
         key={`${alert.enabled}-${alert.threshold_usd}-${alert.email}`}
         connectionId={connectionId}
         alert={alert}
+        billingMode={billingMode}
       />
 
-      <AddCreditDialog
-        open={addCreditOpen}
-        onOpenChange={setAddCreditOpen}
+      <LimitDialog
+        open={limitDialogOpen}
+        onOpenChange={setLimitDialogOpen}
         connectionId={connectionId}
-        currentLimitUsd={currentLimitUsd}
+        currentLimitUsd={total}
+        billingMode={billingMode}
+        currentLimitPeriod={limitPeriod}
       />
     </>
   );
