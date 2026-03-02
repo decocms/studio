@@ -212,7 +212,7 @@ WORKTREE_SLUG=my-feature bun run dev:worktree
 # → http://my-feature.localhost is live
 ```
 
-Ports for Hono and Vite are allocated automatically. On exit (Ctrl+C) the route is removed and ports are freed. State is tracked in `~/.studio-worktrees/proxy-map.json`.
+Ports for Hono and Vite are allocated automatically. On exit (Ctrl+C) the route is removed and ports are freed. State is tracked in `~/.worktree-devservers/proxy-map.json`.
 
 **Conductor adapter** (sets `WORKTREE_SLUG` from `CONDUCTOR_WORKSPACE_NAME` automatically):
 
