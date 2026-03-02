@@ -1,7 +1,7 @@
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Lightbulb01, Stars01, Target04 } from "@untitledui/icons";
 import type { ToolUIPart } from "ai";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { ToolCallShell } from "./parts/tool-call-part/common.tsx";
 import type { ChatMessage } from "../types.ts";
 import { MessageStatsBar } from "../usage-stats.tsx";
@@ -297,11 +297,17 @@ export function MessageAssistant({
   const isLoading = isStreaming || isSubmitted;
 
   // Track when this message's generation started for the live elapsed timer
-  const startedAtRef = useRef<number | null>(null);
-  if (isLoading && startedAtRef.current === null) {
-    startedAtRef.current = Date.now();
-  } else if (!isLoading) {
-    startedAtRef.current = null;
+  const [startedAt, setStartedAt] = useState<number | null>(() =>
+    isLoading ? Date.now() : null,
+  );
+  const [prevIsLoading, setPrevIsLoading] = useState(isLoading);
+  if (prevIsLoading !== isLoading) {
+    setPrevIsLoading(isLoading);
+    if (isLoading) {
+      setStartedAt(Date.now());
+    } else {
+      setStartedAt(null);
+    }
   }
 
   // Handle null message or empty parts
@@ -356,8 +362,8 @@ export function MessageAssistant({
               />
             );
           })}
-          {isLast && isLoading && startedAtRef.current !== null && (
-            <GeneratingFooter startedAt={startedAtRef.current} />
+          {isLast && isLoading && startedAt !== null && (
+            <GeneratingFooter startedAt={startedAt} />
           )}
         </div>
       ) : isLoading ? (
