@@ -202,7 +202,7 @@ bun run migrate        # Run database migrations
 
 ```bash
 brew install caddy
-brew services start caddy
+sudo caddy start
 ```
 
 **Start dev server for a worktree:**
