@@ -222,10 +222,12 @@ function LimitDialog({
     ? Number.parseFloat(customAmount)
     : null;
   const effectiveAmount = selectedAmount ?? customAmountValue;
+  const resolvedLimitPeriod = limitPeriod === "none" ? null : limitPeriod;
   const isUnchangedPostpaid =
     isPostpaid &&
     effectiveAmount != null &&
-    effectiveAmount === currentLimitUsd;
+    effectiveAmount === currentLimitUsd &&
+    resolvedLimitPeriod === currentLimitPeriod;
   const gatewayUsageQueryKey = KEYS.mcpToolCall(
     client,
     "GATEWAY_USAGE",
