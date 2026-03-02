@@ -29,7 +29,7 @@ export function isDecoAIGatewayUrl(
     return AI_GATEWAY_URLS.some((candidate) => {
       const expected = new URL(candidate);
       return (
-        url.host === expected.host &&
+        url.origin === expected.origin &&
         url.pathname.replace(/\/$/, "") === expected.pathname
       );
     });
