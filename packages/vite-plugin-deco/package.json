@@ -1,6 +1,6 @@
 {
   "name": "@decocms/vite-plugin",
-  "version": "1.0.0-alpha.1",
+  "version": "1.0.0-alpha.2",
   "type": "module",
   "exports": {
     ".": "./index.ts"

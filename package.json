@@ -11,7 +11,7 @@
     "oxlint": "1.23.0",
     "react": "^19.2.0",
     "typescript": "^5.9.3",
-    "worktree-devservers": "^0.1.0"
+    "worktree-devservers": "0.3.1"
   },
   "engines": {
     "node": ">=24.0.0"
