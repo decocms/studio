@@ -210,7 +210,9 @@ function ShellLayoutContent() {
     return (
       <div className="min-h-screen bg-background">
         <header className="h-12 flex items-center justify-end px-4 border-b border-border">
-          <MeshUserMenu />
+          <div className="w-fit">
+            <MeshUserMenu />
+          </div>
         </header>
         <Outlet />
       </div>
