@@ -32,8 +32,15 @@ const underline = "\x1b[4m";
 const url = `http://localhost:${port}`;
 
 // Create asset handler - handles both dev proxy and production static files
+// When running from source (src/index.ts), the "../client" relative path
+// doesn't resolve to dist/client/. Fall back to dist/client/ relative to CWD.
+import { existsSync } from "fs";
+const resolvedClientDir = resolveClientDir(import.meta.url, "../client");
+const clientDir = existsSync(resolvedClientDir)
+  ? resolvedClientDir
+  : resolveClientDir(import.meta.url, "../dist/client");
 const handleAssets = createAssetHandler({
-  clientDir: resolveClientDir(import.meta.url, "../client"),
+  clientDir,
   isServerPath,
 });
 
@@ -59,6 +66,23 @@ Bun.serve({
   },
   development: process.env.NODE_ENV !== "production",
 });
+
+// Local mode: seed admin user + organization after server is listening
+// This must run after Bun.serve() so that the org seed can fetch tools
+// from the self MCP endpoint (http://localhost:PORT/mcp/self)
+if (process.env.MESH_LOCAL_MODE === "true") {
+  (async () => {
+    try {
+      const { seedLocalMode } = await import("./auth/local-mode");
+      const seeded = await seedLocalMode();
+      if (seeded) {
+        console.log(`\n${green}Local environment initialized.${reset}`);
+      }
+    } catch (error) {
+      console.error("Failed to seed local mode:", error);
+    }
+  })();
+}
 
 // Internal debug server (only enabled via ENABLE_DEBUG_SERVER=true)
 if (enableDebugServer) {

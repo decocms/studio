@@ -536,7 +536,13 @@ function ModelAutoSelector({
       ? models
       : models.filter((m) => isModelAllowed(firstConnection.id, m.id));
 
-    const first = allowedModels[0];
+    // Prefer Claude Opus 4.6 as default, fall back to Sonnet 4.6, then any
+    const preferred =
+      allowedModels.find((m) => m.id.includes("claude-4.6-opus")) ??
+      allowedModels.find((m) => m.id.includes("claude-opus-4.6")) ??
+      allowedModels.find((m) => m.id.includes("claude-sonnet-4.6")) ??
+      allowedModels.find((m) => m.id.includes("claude-sonnet"));
+    const first = preferred ?? allowedModels[0];
     if (!first) return;
     onAutoSelect({
       id: first.id,

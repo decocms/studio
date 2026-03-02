@@ -52,10 +52,13 @@ export class SqlThreadStorage implements ThreadStoragePort {
       updated_by: data.updated_by ?? null,
     };
 
+    // Insert the thread, then select it back (compatible with both PostgreSQL and SQLite)
+    await this.db.insertInto("threads").values(row).execute();
+
     const result = await this.db
-      .insertInto("threads")
-      .values(row)
-      .returningAll()
+      .selectFrom("threads")
+      .selectAll()
+      .where("id", "=", id)
       .executeTakeFirstOrThrow();
 
     return this.threadFromDbRow(result);

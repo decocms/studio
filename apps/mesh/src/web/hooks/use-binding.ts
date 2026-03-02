@@ -203,6 +203,7 @@ export interface ValidatedCollection {
  * e.g., "LLM" -> "Llm", "USER_PROFILES" -> "User Profiles"
  */
 function formatCollectionName(name: string): string {
+  if (name === "LLM") return "Models";
   return name
     .toLowerCase()
     .split("_")
