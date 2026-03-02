@@ -325,12 +325,16 @@ function RankedListSection({
 
       return vtexToolCaller("VTEX_REORDER_COLLECTION", {
         collectionId: applyPayload.collectionId,
-        xml: applyPayload.xml,
+        productIds: applyPayload.productIds,
       });
     },
     onSuccess: () => {
-      const skuCount = applyPayload.ok ? applyPayload.skuCount : rows.length;
-      toast.success(`Sugestão aplicada com sucesso (${skuCount} SKUs).`);
+      const productCount = applyPayload.ok
+        ? applyPayload.productCount
+        : rows.length;
+      toast.success(
+        `Sugestão aplicada com sucesso (${productCount} produtos).`,
+      );
     },
     onError: (error) => {
       const message =

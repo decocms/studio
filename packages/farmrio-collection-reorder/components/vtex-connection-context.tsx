@@ -3,7 +3,7 @@ import { createContext, useContext, type ReactNode } from "react";
 
 type VtexToolCaller = (
   toolName: "VTEX_REORDER_COLLECTION",
-  args: { collectionId: string; xml: string },
+  args: { collectionId: string; productIds: string[] },
 ) => Promise<unknown>;
 
 type VtexConnectionContextValue = {

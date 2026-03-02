@@ -130,10 +130,10 @@ export type VtexRemoveSkuFromCollectionOutput = z.infer<
 
 export const VtexReorderCollectionInputSchema = z.object({
   collectionId: z.union([z.string().min(1), z.number().int().positive()]),
-  xml: z
-    .string()
+  productIds: z
+    .array(z.union([z.string().min(1), z.number().int().positive()]))
     .min(1)
-    .describe("Collection reorder XML payload (ArrayOfCollectionItemDTO)"),
+    .describe("Ordered VTEX product IDs"),
 });
 export const VtexReorderCollectionOutputSchema = z.object({}).passthrough();
 export type VtexReorderCollectionInput = z.infer<

@@ -8,38 +8,15 @@ type ApplyPayloadError = {
 type ApplyPayloadSuccess = {
   ok: true;
   collectionId: string;
-  xml: string;
-  skuCount: number;
+  productIds: string[];
+  productCount: number;
 };
 
 export type VtexApplyPayloadResult = ApplyPayloadSuccess | ApplyPayloadError;
 
-function escapeXml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-}
-
-export function buildVtexCollectionItemsXml(skuIds: string[]): string {
-  const itemBlocks = skuIds.map(
-    (skuId) =>
-      `  <CollectionItemDTO>\n    <SkuId>${escapeXml(skuId)}</SkuId>\n  </CollectionItemDTO>`,
-  );
-
-  return [
-    '<?xml version="1.0" encoding="utf-8"?>',
-    "<ArrayOfCollectionItemDTO>",
-    ...itemBlocks,
-    "</ArrayOfCollectionItemDTO>",
-  ].join("\n");
-}
-
 /**
  * Builds the VTEX apply payload from a ranked list.
- * Uses rankedItem.id as the SKU identifier (DB row id).
+ * Uses rankedItem.id as the product identifier.
  * vtexCollectionId is the collection's DB id (used as VTEX collection id).
  */
 export function buildVtexApplyPayload(
@@ -54,23 +31,23 @@ export function buildVtexApplyPayload(
   }
 
   const orderedRows = [...rows].sort((a, b) => a.position - b.position);
-  const skuIds: string[] = [];
+  const productIds: string[] = [];
 
   for (const row of orderedRows) {
-    const skuId = row.id != null ? String(row.id) : null;
-    if (!skuId) {
+    const productId = row.id != null ? String(row.id) : null;
+    if (!productId) {
       return {
         ok: false,
-        error: `SkuId ausente no item #${row.position} (${row.label}).`,
+        error: `ProductId ausente no item #${row.position} (${row.label}).`,
       };
     }
-    skuIds.push(skuId);
+    productIds.push(productId);
   }
 
   return {
     ok: true,
     collectionId: String(vtexCollectionId),
-    xml: buildVtexCollectionItemsXml(skuIds),
-    skuCount: skuIds.length,
+    productIds,
+    productCount: productIds.length,
   };
 }

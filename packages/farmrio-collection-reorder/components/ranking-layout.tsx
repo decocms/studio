@@ -302,7 +302,7 @@ export default function RankingLayout() {
     toolCaller: configuredVtexClient
       ? (
           toolName: "VTEX_REORDER_COLLECTION",
-          args: { collectionId: string; xml: string },
+          args: { collectionId: string; productIds: string[] },
         ) =>
           configuredVtexClient
             .callTool({
