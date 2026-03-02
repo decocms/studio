@@ -157,6 +157,22 @@ export interface ResourceExecutionContext {
 }
 
 /**
+ * CSP policy for MCP UI resources.
+ * Allows an MCP app to declare which external origins it needs to load scripts,
+ * styles, images, fonts, and establish network connections.
+ */
+export interface McpUiResourceCsp {
+  /** Origins allowed in script-src, style-src, img-src, font-src (e.g. ["http://localhost:3000"]) */
+  resourceDomains?: string[];
+  /** Origins allowed in connect-src (fetch/XHR/WebSocket) */
+  connectDomains?: string[];
+  /** Origins allowed in frame-src */
+  frameDomains?: string[];
+  /** Origins allowed in base-uri */
+  baseUriDomains?: string[];
+}
+
+/**
  * Resource contents returned from read operations.
  * Per MCP spec, resources return either text or blob content.
  */
@@ -169,6 +185,29 @@ export interface ResourceContents {
   text?: string;
   /** Base64-encoded binary content (for binary resources) */
   blob?: string;
+  /**
+   * Optional metadata for MCP UI resources.
+   * Use `_meta.ui.csp` to declare which external origins the HTML content needs
+   * (e.g. a Vite dev server URL). MCP Mesh uses this to build a permissive
+   * Content Security Policy for the sandboxed iframe that renders the app.
+   *
+   * @example
+   * ```ts
+   * _meta: {
+   *   ui: {
+   *     csp: {
+   *       resourceDomains: ["http://localhost:3000"],
+   *       connectDomains: ["http://localhost:3000"],
+   *     },
+   *   },
+   * }
+   * ```
+   */
+  _meta?: {
+    ui?: {
+      csp?: McpUiResourceCsp;
+    };
+  };
 }
 
 /**
@@ -865,6 +904,7 @@ export const createMCPServer = <
                   uri: result.uri,
                   mimeType: result.mimeType,
                   text: result.text,
+                  ...(result._meta ? { _meta: result._meta } : {}),
                 },
               ],
             };
@@ -875,6 +915,7 @@ export const createMCPServer = <
                   uri: result.uri,
                   mimeType: result.mimeType,
                   blob: result.blob,
+                  ...(result._meta ? { _meta: result._meta } : {}),
                 },
               ],
             };
@@ -883,7 +924,12 @@ export const createMCPServer = <
           // Fallback to empty text if neither provided
           return {
             contents: [
-              { uri: result.uri, mimeType: result.mimeType, text: "" },
+              {
+                uri: result.uri,
+                mimeType: result.mimeType,
+                text: "",
+                ...(result._meta ? { _meta: result._meta } : {}),
+              },
             ],
           };
         },
