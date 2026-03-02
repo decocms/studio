@@ -14,7 +14,7 @@ export const DECO_STORE_URL = "https://api.decocms.com/mcp/registry";
 export const OPENROUTER_MCP_URL = "https://sites-openrouter.decocache.com/mcp";
 
 /** Deco AI Gateway MCP URL (deco-hosted) */
-export const DECO_AI_GATEWAY_MCP_URL =
+const DECO_AI_GATEWAY_MCP_URL =
   "https://sites-deco-ai-gateway.decocache.com/mcp";
 
 const AI_GATEWAY_URLS = [DECO_AI_GATEWAY_MCP_URL];
