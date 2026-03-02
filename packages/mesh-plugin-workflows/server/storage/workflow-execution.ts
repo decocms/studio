@@ -263,26 +263,12 @@ export class WorkflowExecutionStorage {
   } | null> {
     const now = Date.now();
 
-    // Check precondition: execution must be "enqueued"
-    const current = await this.db
-      .selectFrom("workflow_execution")
-      .select("status")
-      .where("id", "=", executionId)
-      .executeTakeFirst();
-
-    if (current?.status !== "enqueued") return null;
-
-    await this.db
+    const updated = await this.db
       .updateTable("workflow_execution")
       .set({ status: "running", updated_at: now })
       .where("id", "=", executionId)
       .where("status", "=", "enqueued")
-      .execute();
-
-    const updated = await this.db
-      .selectFrom("workflow_execution")
-      .selectAll()
-      .where("id", "=", executionId)
+      .returningAll()
       .executeTakeFirst();
 
     if (!updated) return null;
@@ -326,23 +312,8 @@ export class WorkflowExecutionStorage {
       query = query.where("status", "=", options.onlyIfStatus);
     }
 
-    await query.execute();
-
-    // Re-fetch and verify the update was applied
-    const row = await this.db
-      .selectFrom("workflow_execution")
-      .selectAll()
-      .where("id", "=", id)
-      .executeTakeFirst();
-
-    if (!row) return null;
-
-    // If onlyIfStatus was specified, verify the status actually changed
-    if (options?.onlyIfStatus && data.status && row.status !== data.status) {
-      return null;
-    }
-
-    return row;
+    const row = await query.returningAll().executeTakeFirst();
+    return row ?? null;
   }
 
   async cancelExecution(
@@ -350,28 +321,16 @@ export class WorkflowExecutionStorage {
     organizationId: string,
   ): Promise<boolean> {
     const now = Date.now();
-
-    // Check if the execution is in a cancellable state
-    const current = await this.db
-      .selectFrom("workflow_execution")
-      .select("status")
-      .where("id", "=", executionId)
-      .where("organization_id", "=", organizationId)
-      .executeTakeFirst();
-
-    if (!current || !["enqueued", "running"].includes(current.status)) {
-      return false;
-    }
-
-    await this.db
+    const result = await this.db
       .updateTable("workflow_execution")
       .set({ status: "cancelled", updated_at: now })
       .where("id", "=", executionId)
       .where("organization_id", "=", organizationId)
       .where("status", "in", ["enqueued", "running"])
-      .execute();
+      .returningAll()
+      .executeTakeFirst();
 
-    return true;
+    return !!result;
   }
 
   async resumeExecution(
@@ -381,16 +340,6 @@ export class WorkflowExecutionStorage {
     return this.db.transaction().execute(async (trx) => {
       const now = Date.now();
 
-      // Check if the execution is actually cancelled before attempting resume
-      const current = await trx
-        .selectFrom("workflow_execution")
-        .select("status")
-        .where("id", "=", executionId)
-        .where("organization_id", "=", organizationId)
-        .executeTakeFirst();
-
-      if (current?.status !== "cancelled") return false;
-
       // Clear claimed-but-not-completed step results
       await trx
         .deleteFrom("workflow_execution_step_result")
@@ -398,7 +347,7 @@ export class WorkflowExecutionStorage {
         .where("completed_at_epoch_ms", "is", null)
         .execute();
 
-      await trx
+      const result = await trx
         .updateTable("workflow_execution")
         .set({
           status: "enqueued",
@@ -408,9 +357,10 @@ export class WorkflowExecutionStorage {
         .where("id", "=", executionId)
         .where("organization_id", "=", organizationId)
         .where("status", "=", "cancelled")
-        .execute();
+        .returningAll()
+        .executeTakeFirst();
 
-      return true;
+      return !!result;
     });
   }
 
@@ -510,17 +460,7 @@ export class WorkflowExecutionStorage {
     error?: string;
     completed_at_epoch_ms?: number;
   }): Promise<ParsedStepResult | null> {
-    // Check if the step result already exists (idempotent claim)
-    const existing = await this.db
-      .selectFrom("workflow_execution_step_result")
-      .selectAll()
-      .where("execution_id", "=", data.execution_id)
-      .where("step_id", "=", data.step_id)
-      .executeTakeFirst();
-
-    if (existing) return null;
-
-    await this.db
+    const row = await this.db
       .insertInto("workflow_execution_step_result")
       .values({
         execution_id: data.execution_id,
@@ -531,13 +471,7 @@ export class WorkflowExecutionStorage {
         error: data.error !== undefined ? JSON.stringify(data.error) : null,
       })
       .onConflict((oc) => oc.columns(["execution_id", "step_id"]).doNothing())
-      .execute();
-
-    const row = await this.db
-      .selectFrom("workflow_execution_step_result")
-      .selectAll()
-      .where("execution_id", "=", data.execution_id)
-      .where("step_id", "=", data.step_id)
+      .returningAll()
       .executeTakeFirst();
 
     return row ? parseStepResult(row) : null;
@@ -565,18 +499,12 @@ export class WorkflowExecutionStorage {
 
     if (Object.keys(setValues).length === 0) return null;
 
-    await this.db
+    const row = await this.db
       .updateTable("workflow_execution_step_result")
       .set(setValues)
       .where("execution_id", "=", executionId)
       .where("step_id", "=", stepId)
-      .execute();
-
-    const row = await this.db
-      .selectFrom("workflow_execution_step_result")
-      .selectAll()
-      .where("execution_id", "=", executionId)
-      .where("step_id", "=", stepId)
+      .returningAll()
       .executeTakeFirst();
 
     return row ? parseStepResult(row) : null;
@@ -633,18 +561,12 @@ export class WorkflowExecutionStorage {
     if (output !== undefined) setValues.output = JSON.stringify(output);
     if (error !== undefined) setValues.error = JSON.stringify(error);
 
-    await this.db
+    const row = await this.db
       .updateTable("workflow_execution_step_result")
       .set(setValues)
       .where("execution_id", "=", executionId)
       .where("step_id", "=", stepId)
-      .execute();
-
-    const row = await this.db
-      .selectFrom("workflow_execution_step_result")
-      .selectAll()
-      .where("execution_id", "=", executionId)
-      .where("step_id", "=", stepId)
+      .returningAll()
       .executeTakeFirst();
 
     return row ? parseStepResult(row) : null;

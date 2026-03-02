@@ -66,12 +66,10 @@ export class WorkflowCollectionStorage {
   }
 
   async create(data: NewWorkflowCollection): Promise<ParsedWorkflowCollection> {
-    await this.db.insertInto("workflow_collection").values(data).execute();
-
     const row = await this.db
-      .selectFrom("workflow_collection")
-      .selectAll()
-      .where("id", "=", data.id)
+      .insertInto("workflow_collection")
+      .values(data)
+      .returningAll()
       .executeTakeFirstOrThrow();
 
     return parseCollection(row);
@@ -88,7 +86,7 @@ export class WorkflowCollectionStorage {
       updated_by?: string | null;
     },
   ): Promise<WorkflowCollectionRow> {
-    await this.db
+    return await this.db
       .updateTable("workflow_collection")
       .set({
         ...data,
@@ -96,13 +94,7 @@ export class WorkflowCollectionStorage {
       })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
-      .execute();
-
-    return await this.db
-      .selectFrom("workflow_collection")
-      .selectAll()
-      .where("id", "=", id)
-      .where("organization_id", "=", organizationId)
+      .returningAll()
       .executeTakeFirstOrThrow();
   }
 
@@ -110,19 +102,11 @@ export class WorkflowCollectionStorage {
     id: string,
     organizationId: string,
   ): Promise<WorkflowCollectionRow> {
-    const row = await this.db
-      .selectFrom("workflow_collection")
-      .selectAll()
-      .where("id", "=", id)
-      .where("organization_id", "=", organizationId)
-      .executeTakeFirstOrThrow();
-
-    await this.db
+    return await this.db
       .deleteFrom("workflow_collection")
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
-      .execute();
-
-    return row;
+      .returningAll()
+      .executeTakeFirstOrThrow();
   }
 }
