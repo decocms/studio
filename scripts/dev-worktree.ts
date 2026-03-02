@@ -207,17 +207,33 @@ async function run(slug: string): Promise<void> {
   const repoRoot = join(import.meta.dir, "..");
 
   // Load .env manually so PORT/VITE_PORT take precedence over file values.
-  // Using --env-file in the child command can override inherited env vars.
   const dotEnv = loadDotEnv(join(repoRoot, "apps/mesh/.env"));
+  const meshDir = join(repoRoot, "apps/mesh");
+  const sharedEnv = {
+    ...process.env,
+    ...dotEnv,
+    NODE_ENV: "development",
+    PORT: String(port),
+    VITE_PORT: String(vitePort),
+  };
 
-  const child = Bun.spawn(["bun", "run", "--cwd=apps/mesh", "dev"], {
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      ...dotEnv,
-      PORT: String(port),
-      VITE_PORT: String(vitePort),
-    },
+  // Run migrations first
+  const migrate = Bun.spawn(["bun", "run", "src/database/migrate.ts"], {
+    cwd: meshDir,
+    env: sharedEnv,
+    stdio: ["inherit", "inherit", "inherit"],
+  });
+  await migrate.exited;
+
+  // Spawn Vite and Hono directly so ports are passed as literal CLI args,
+  // bypassing the bun run script chain that strips env vars.
+  const vite = Bun.spawn(
+    ["bun", "--bun", "vite", "dev", "--port", String(vitePort)],
+    { cwd: meshDir, env: sharedEnv, stdio: ["inherit", "inherit", "inherit"] },
+  );
+  const hono = Bun.spawn(["bun", "--hot", "run", "src/index.ts"], {
+    cwd: meshDir,
+    env: sharedEnv,
     stdio: ["inherit", "inherit", "inherit"],
   });
 
@@ -231,14 +247,15 @@ async function run(slug: string): Promise<void> {
     const current = readMap();
     delete current[slug];
     writeMap(current);
-    child.kill();
+    vite.kill();
+    hono.kill();
     process.exit(0);
   }
 
   process.on("SIGINT", cleanup);
   process.on("SIGTERM", cleanup);
 
-  await child.exited;
+  await Promise.race([vite.exited, hono.exited]);
   await cleanup();
 }
 
