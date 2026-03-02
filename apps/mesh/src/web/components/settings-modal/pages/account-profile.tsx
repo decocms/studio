@@ -52,7 +52,7 @@ export function AccountProfilePage() {
         <p className="py-4 text-base font-semibold text-foreground border-b border-border">
           User ID
         </p>
-        <div className="flex items-center justify-between gap-6 py-4">
+        <div className="flex items-center justify-between gap-6 py-4 border-b border-border">
           <p className="text-sm text-muted-foreground">User ID</p>
           <TooltipProvider>
             <Tooltip>
@@ -78,6 +78,12 @@ export function AccountProfilePage() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+        </div>
+        <div className="flex items-center justify-between gap-6 py-4">
+          <p className="text-sm text-muted-foreground">Mesh version</p>
+          <span className="font-mono text-sm text-muted-foreground">
+            v{__MESH_VERSION__}
+          </span>
         </div>
       </div>
     </div>

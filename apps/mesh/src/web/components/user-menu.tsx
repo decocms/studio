@@ -196,6 +196,12 @@ function MeshUserMenuBase({
           <LogOut01 size={14} className="shrink-0 text-muted-foreground" />
           <span>Sign out</span>
         </DropdownMenuItem>
+
+        <div className="px-2 py-1.5">
+          <span className="text-xs text-muted-foreground/60">
+            v{__MESH_VERSION__}
+          </span>
+        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   );
