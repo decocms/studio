@@ -46,7 +46,7 @@ import {
   type TiptapInputHandle,
 } from "./tiptap/input";
 import { isTiptapDocEmpty } from "./tiptap/utils";
-import { ThreadUsageStats } from "./usage-stats";
+import { SessionStats } from "./usage-stats";
 
 // ============================================================================
 // DecopilotIconButton - Icon button for Decopilot (similar to FileUploadButton)
@@ -506,9 +506,9 @@ export function ChatInput() {
                     variant="borderless"
                     disabled={isStreaming}
                   />
-                  <ThreadUsageStats usage={usage} />
                   {contextWindow && lastTotalTokens > 0 && (
-                    <ContextWindow
+                    <SessionStats
+                      usage={usage}
                       totalTokens={lastTotalTokens}
                       contextWindow={contextWindow}
                     />
@@ -567,81 +567,5 @@ export function ChatInput() {
         </div>
       </div>
     </div>
-  );
-}
-
-function formatTokens(n: number) {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}k`;
-  return n.toLocaleString();
-}
-
-const RING_SIZE = 16;
-const RING_STROKE = 2.5;
-const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
-const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
-
-function ContextWindow({
-  totalTokens,
-  contextWindow,
-}: {
-  totalTokens: number;
-  contextWindow: number;
-}) {
-  const pct = Math.min((totalTokens / contextWindow) * 100, 100);
-  const offset = RING_CIRCUMFERENCE - (pct / 100) * RING_CIRCUMFERENCE;
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground h-6 px-1 shrink-0 cursor-default"
-        >
-          <svg width={RING_SIZE} height={RING_SIZE} className="-rotate-90">
-            <circle
-              cx={RING_SIZE / 2}
-              cy={RING_SIZE / 2}
-              r={RING_RADIUS}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={RING_STROKE}
-              className="opacity-15"
-            />
-            <circle
-              cx={RING_SIZE / 2}
-              cy={RING_SIZE / 2}
-              r={RING_RADIUS}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={RING_STROKE}
-              strokeDasharray={RING_CIRCUMFERENCE}
-              strokeDashoffset={offset}
-              strokeLinecap="round"
-              className={cn(
-                pct > 90
-                  ? "text-destructive"
-                  : pct > 70
-                    ? "text-warning"
-                    : "text-muted-foreground",
-              )}
-            />
-          </svg>
-          <span className="text-[10px] font-mono tabular-nums">
-            {formatTokens(totalTokens)}/{formatTokens(contextWindow)}
-          </span>
-        </button>
-      </TooltipTrigger>
-      <TooltipContent side="top" className="font-mono text-[11px]">
-        <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
-          <span className="text-muted">tokens</span>
-          <span>{totalTokens.toLocaleString()}</span>
-          <span className="text-muted">context</span>
-          <span>{contextWindow.toLocaleString()}</span>
-          <span className="text-muted">used</span>
-          <span>{pct.toFixed(1)}%</span>
-        </div>
-      </TooltipContent>
-    </Tooltip>
   );
 }

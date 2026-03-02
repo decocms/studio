@@ -4,8 +4,14 @@ import {
   TooltipContent,
 } from "@deco/ui/components/tooltip.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
-import { Activity, Coins01 } from "@untitledui/icons";
+import { Activity } from "@untitledui/icons";
+import { cn } from "@deco/ui/lib/utils.ts";
 import type { UsageStats as UsageStatsType } from "@/web/lib/usage-utils.ts";
+
+const RING_SIZE = 16;
+const RING_STROKE = 2.5;
+const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
 interface UsageStatsProps {
   usage: UsageStatsType | null | undefined;
@@ -143,8 +149,7 @@ export function ThreadUsageStats({ usage }: UsageStatsProps) {
           size="sm"
           className="text-muted-foreground hover:text-foreground pl-1! h-6 gap-1 whitespace-nowrap shrink-0"
         >
-          <Coins01 size={12} />
-          <span className="text-[10px] font-mono tabular-nums">
+          <span className="text-[11px] font-mono tabular-nums">
             ${cost.toFixed(4)}
           </span>
         </Button>
@@ -160,6 +165,94 @@ export function ThreadUsageStats({ usage }: UsageStatsProps) {
           <span className="text-right tabular-nums">
             {outputTokens.toLocaleString()}
           </span>
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+interface SessionStatsProps {
+  usage: UsageStatsType | null | undefined;
+  totalTokens: number;
+  contextWindow: number;
+}
+
+export function SessionStats({
+  usage,
+  totalTokens,
+  contextWindow,
+}: SessionStatsProps) {
+  const pct = Math.min((totalTokens / contextWindow) * 100, 100);
+  const offset = RING_CIRCUMFERENCE - (pct / 100) * RING_CIRCUMFERENCE;
+  const cost = usage?.cost ?? 0;
+  const inputTokens = usage?.inputTokens ?? 0;
+  const outputTokens = usage?.outputTokens ?? 0;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground h-6 px-1 shrink-0 cursor-default"
+        >
+          <svg width={RING_SIZE} height={RING_SIZE} className="-rotate-90">
+            <circle
+              cx={RING_SIZE / 2}
+              cy={RING_SIZE / 2}
+              r={RING_RADIUS}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={RING_STROKE}
+              className="opacity-15"
+            />
+            <circle
+              cx={RING_SIZE / 2}
+              cy={RING_SIZE / 2}
+              r={RING_RADIUS}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={RING_STROKE}
+              strokeDasharray={RING_CIRCUMFERENCE}
+              strokeDashoffset={offset}
+              strokeLinecap="round"
+              className={cn(
+                pct > 90
+                  ? "text-destructive"
+                  : pct > 70
+                    ? "text-warning"
+                    : "text-muted-foreground",
+              )}
+            />
+          </svg>
+          <span className="text-[11px] font-mono tabular-nums">
+            {pct.toFixed(0)}%{cost > 0 ? ` · $${cost.toFixed(2)}` : ""}
+          </span>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="font-mono text-[11px]">
+        <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+          <span className="text-muted">context</span>
+          <span className="text-right tabular-nums">{pct.toFixed(1)}%</span>
+          <span className="text-muted">tokens</span>
+          <span className="text-right tabular-nums">
+            {totalTokens.toLocaleString()}
+          </span>
+          {cost > 0 && (
+            <>
+              <span className="text-muted">cost</span>
+              <span className="text-right tabular-nums">
+                ${cost.toFixed(4)}
+              </span>
+              <span className="text-muted">in</span>
+              <span className="text-right tabular-nums">
+                {inputTokens.toLocaleString()}
+              </span>
+              <span className="text-muted">out</span>
+              <span className="text-right tabular-nums">
+                {outputTokens.toLocaleString()}
+              </span>
+            </>
+          )}
         </div>
       </TooltipContent>
     </Tooltip>
