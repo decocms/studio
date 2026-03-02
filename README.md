@@ -194,6 +194,32 @@ bun run dev:server     # Hono server with hot reload
 bun run migrate        # Run database migrations
 ```
 
+### Running with worktrees (subdomain per workspace)
+
+`dev:worktree` routes `http://<WORKTREE_SLUG>.localhost` to the dev server via Caddy. Useful for running multiple workspaces in parallel without port conflicts.
+
+**One-time setup:**
+
+```bash
+brew install caddy
+brew services start caddy
+```
+
+**Start dev server for a worktree:**
+
+```bash
+WORKTREE_SLUG=my-feature bun run dev:worktree
+# → http://my-feature.localhost is live
+```
+
+Ports for Hono and Vite are allocated automatically. On exit (Ctrl+C) the route is removed and ports are freed. State is tracked in `~/.studio-worktrees/proxy-map.json`.
+
+**Conductor adapter** (sets `WORKTREE_SLUG` from `CONDUCTOR_WORKSPACE_NAME` automatically):
+
+```bash
+bun run dev:conductor
+```
+
 ---
 
 ## Deploy Anywhere
