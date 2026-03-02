@@ -28,6 +28,7 @@ import * as OrganizationTools from "./organization";
 import * as ProjectTools from "./projects";
 import * as TagTools from "./tags";
 import * as ThreadTools from "./thread";
+import * as TriggerTools from "./triggers";
 import * as UserTools from "./user";
 import { ToolName } from "./registry";
 
@@ -119,6 +120,14 @@ const CORE_TOOLS = [
   TagTools.TAGS_DELETE,
   TagTools.MEMBER_TAGS_GET,
   TagTools.MEMBER_TAGS_SET,
+
+  // Trigger tools
+  TriggerTools.TRIGGER_CREATE,
+  TriggerTools.TRIGGER_LIST,
+  TriggerTools.TRIGGER_GET,
+  TriggerTools.TRIGGER_UPDATE,
+  TriggerTools.TRIGGER_DELETE,
+  TriggerTools.TRIGGER_RUNS_LIST,
 
   // Project tools
   ProjectTools.PROJECT_LIST,

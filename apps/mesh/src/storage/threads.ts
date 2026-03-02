@@ -46,6 +46,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
       title: data.title,
       description: data.description ?? null,
       status: data.status ?? "completed",
+      trigger_id: data.trigger_id ?? null,
       created_at: now,
       updated_at: now,
       created_by: data.created_by,
@@ -92,6 +93,9 @@ export class SqlThreadStorage implements ThreadStoragePort {
     }
     if (data.status !== undefined) {
       updateData.status = data.status;
+    }
+    if (data.trigger_id !== undefined) {
+      updateData.trigger_id = data.trigger_id;
     }
 
     await this.db
@@ -261,12 +265,31 @@ export class SqlThreadStorage implements ThreadStoragePort {
   // Private Helper Methods
   // ==========================================================================
 
+  async listByTriggerId(
+    triggerId: string,
+    options?: { limit?: number },
+  ): Promise<Thread[]> {
+    let query = this.db
+      .selectFrom("threads")
+      .selectAll()
+      .where("trigger_id", "=", triggerId)
+      .orderBy("created_at", "desc");
+
+    if (options?.limit) {
+      query = query.limit(options.limit);
+    }
+
+    const rows = await query.execute();
+    return rows.map((row) => this.threadFromDbRow(row));
+  }
+
   private threadFromDbRow(row: {
     id: string;
     organization_id: string;
     title: string;
     description: string | null;
     status: string;
+    trigger_id?: string | null;
     created_at: Date | string;
     updated_at: Date | string;
     created_by: string;
@@ -279,6 +302,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
       title: row.title,
       description: row.description,
       status: row.status as ThreadStatus,
+      trigger_id: row.trigger_id ?? null,
       created_at: toIsoString(row.created_at),
       updated_at: toIsoString(row.updated_at),
       created_by: row.created_by,

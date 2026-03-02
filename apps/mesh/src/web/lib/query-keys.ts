@@ -217,6 +217,13 @@ export const KEYS = {
     ["project", organizationId, slug] as const,
   projectById: (projectId: string) => ["project", "byId", projectId] as const,
 
+  // Triggers (scoped by locator)
+  triggers: (locator: ProjectLocator) => [locator, "triggers"] as const,
+  trigger: (locator: ProjectLocator, triggerId: string) =>
+    [locator, "trigger", triggerId] as const,
+  triggerRuns: (locator: ProjectLocator, triggerId: string) =>
+    [locator, "trigger-runs", triggerId] as const,
+
   // Project plugin configs
   projectPluginConfigs: (projectId: string) =>
     ["project-plugin-configs", projectId] as const,

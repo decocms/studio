@@ -12,6 +12,7 @@ import {
   CheckDone01,
   Container,
   Dataflow03,
+  Lightning01,
   FaceSmile,
   Folder,
   Home02,
@@ -127,6 +128,18 @@ export function useProjectSidebarItems(): SidebarSection[] {
       }),
   };
 
+  const triggersItem: NavigationSidebarItem = {
+    key: "triggers",
+    label: "Triggers",
+    icon: <Lightning01 />,
+    isActive: isActiveRoute("triggers"),
+    onClick: () =>
+      navigate({
+        to: "/$org/$project/triggers",
+        params: { org, project: ORG_ADMIN_PROJECT_SLUG },
+      }),
+  };
+
   const monitorItem: NavigationSidebarItem = {
     key: "monitoring",
     label: "Monitor",
@@ -234,7 +247,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
         group: {
           id: "build",
           label: "Build",
-          items: [agentsItem, connectionsItem, storeItem],
+          items: [agentsItem, connectionsItem, triggersItem, storeItem],
           defaultExpanded: true,
         },
       },

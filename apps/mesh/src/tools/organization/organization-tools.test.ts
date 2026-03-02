@@ -195,6 +195,7 @@ const createMockContext = (
       projects: null as never,
       projectPluginConfigs: null as never,
       monitoringDashboards: null as never,
+      triggers: null as never,
     },
     vault: null as never,
     authInstance: authInstance as unknown as BetterAuthInstance,

@@ -30,7 +30,8 @@ export type ToolCategory =
   | "Event Bus"
   | "Code Execution"
   | "Tags"
-  | "Projects";
+  | "Projects"
+  | "Triggers";
 
 /**
  * All tool names - keep in sync with ALL_TOOLS in index.ts
@@ -112,6 +113,13 @@ const ALL_TOOL_NAMES = [
   "TAGS_DELETE",
   "MEMBER_TAGS_GET",
   "MEMBER_TAGS_SET",
+  // Trigger tools
+  "TRIGGER_CREATE",
+  "TRIGGER_LIST",
+  "TRIGGER_GET",
+  "TRIGGER_UPDATE",
+  "TRIGGER_DELETE",
+  "TRIGGER_RUNS_LIST",
   // Project tools
   "PROJECT_LIST",
   "PROJECT_GET",
@@ -498,6 +506,38 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Set member tags",
     category: "Tags",
   },
+  // Trigger tools
+  {
+    name: "TRIGGER_CREATE",
+    description: "Create triggers",
+    category: "Triggers",
+  },
+  {
+    name: "TRIGGER_LIST",
+    description: "List triggers",
+    category: "Triggers",
+  },
+  {
+    name: "TRIGGER_GET",
+    description: "View trigger details",
+    category: "Triggers",
+  },
+  {
+    name: "TRIGGER_UPDATE",
+    description: "Update triggers",
+    category: "Triggers",
+  },
+  {
+    name: "TRIGGER_DELETE",
+    description: "Delete triggers",
+    category: "Triggers",
+    dangerous: true,
+  },
+  {
+    name: "TRIGGER_RUNS_LIST",
+    description: "List trigger run history",
+    category: "Triggers",
+  },
   // Project tools
   {
     name: "PROJECT_LIST",
@@ -605,6 +645,12 @@ const TOOL_LABELS: Record<ToolName, string> = {
   TAGS_DELETE: "Delete organization tag",
   MEMBER_TAGS_GET: "Get member tags",
   MEMBER_TAGS_SET: "Set member tags",
+  TRIGGER_CREATE: "Create triggers",
+  TRIGGER_LIST: "List triggers",
+  TRIGGER_GET: "View trigger details",
+  TRIGGER_UPDATE: "Update triggers",
+  TRIGGER_DELETE: "Delete triggers",
+  TRIGGER_RUNS_LIST: "List trigger runs",
   PROJECT_LIST: "List projects",
   PROJECT_GET: "View project details",
   PROJECT_CREATE: "Create project",
@@ -635,6 +681,7 @@ export function getToolsByCategory() {
     "Code Execution": [],
     Tags: [],
     Projects: [],
+    Triggers: [],
   };
 
   for (const tool of MANAGEMENT_TOOLS) {

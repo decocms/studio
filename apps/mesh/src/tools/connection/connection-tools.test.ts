@@ -84,6 +84,7 @@ describe("Connection Tools", () => {
         projects: null as never,
         projectPluginConfigs: null as never,
         monitoringDashboards: null as never,
+        triggers: null as never,
       },
       vault,
       authInstance: null as never,

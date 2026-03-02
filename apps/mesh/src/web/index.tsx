@@ -361,6 +361,22 @@ const agentDetailRoute = createRoute({
   ),
 });
 
+const triggersRoute = createRoute({
+  getParentRoute: () => projectLayout,
+  path: "/triggers",
+  beforeLoad: orgAdminGuard,
+  component: lazyRouteComponent(() => import("./routes/orgs/triggers.tsx")),
+});
+
+const triggerDetailRoute = createRoute({
+  getParentRoute: () => projectLayout,
+  path: "/triggers/$triggerId",
+  beforeLoad: orgAdminGuard,
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/trigger-detail.tsx"),
+  ),
+});
+
 // Workflows (available for all projects)
 const workflowsRoute = createRoute({
   getParentRoute: () => projectLayout,
@@ -443,6 +459,8 @@ const projectRoutes = [
   storeRouteWithChildren,
   agentsRoute,
   agentDetailRoute,
+  triggersRoute,
+  triggerDetailRoute,
   workflowsRoute,
   pluginLayoutWithChildren,
 ];
