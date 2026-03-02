@@ -153,6 +153,12 @@ type ChatContextValue = ChatStableValue & ChatStreamValue;
 
 const createModelsTransport = (
   org: string,
+  /**
+   * Mutable ref holding the most-recent toolApprovalLevel preference.
+   * Passed as a ref so auto-sends (triggered by sendAutomaticallyWhen) always
+   * pick up the current value even though requestMetadata is empty at that point.
+   */
+  toolApprovalLevelRef: { current: string | undefined },
 ): DefaultChatTransport<UIMessage<Metadata>> =>
   new DefaultChatTransport<UIMessage<Metadata>>({
     api: `/api/${org}/decopilot/stream`,
@@ -191,10 +197,14 @@ const createModelsTransport = (
         thread_id: metadata.thread_id ?? lastMsgMeta.thread_id,
       };
 
+      // Priority: explicit requestMetadata → last AI msg → last user msg → current preference ref
+      // The ref ensures that changing the approval level dropdown mid-session
+      // propagates to all subsequent auto-sends, not just new user-initiated messages.
       const resolvedToolApprovalLevel =
         toolApprovalLevel ??
         lastMsgMeta.toolApprovalLevel ??
-        lastUserMeta.toolApprovalLevel;
+        lastUserMeta.toolApprovalLevel ??
+        toolApprovalLevelRef.current;
 
       return {
         body: {
@@ -587,6 +597,14 @@ export function ChatProvider({ children }: PropsWithChildren) {
   // Shared ref for tiptapDoc — ChatInput owns the state, others read the ref.
   const tiptapDocRef = useRef<Metadata["tiptapDoc"]>(undefined);
 
+  // Keep a live ref to the current toolApprovalLevel so the transport's
+  // prepareSendMessagesRequest can read the most-recent value even during
+  // auto-sends that have no requestMetadata (e.g. after addToolApprovalResponse).
+  const toolApprovalLevelRef = useRef<string | undefined>(
+    preferences.toolApprovalLevel,
+  );
+  toolApprovalLevelRef.current = preferences.toolApprovalLevel;
+
   // Virtual MCP state
   const virtualMcps = useVirtualMCPs();
   const [storedSelectedVirtualMcpId, setSelectedVirtualMcpId] = useLocalStorage<
@@ -631,7 +649,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
   // Get decopilot ID for when no agent is explicitly selected (default agent)
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
 
-  const transport = createModelsTransport(org.slug);
+  const transport = createModelsTransport(org.slug, toolApprovalLevelRef);
 
   // ===========================================================================
   // 3. HOOK CALLBACKS - Functions passed to hooks

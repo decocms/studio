@@ -67,7 +67,7 @@ export function getApprovalId(part: {
 
 /**
  * Derive the effective UI state for a tool call part.
- * Returns "error", "loading", or "idle" based on the tool state.
+ * Returns "error", "loading", "approval", or "idle" based on the tool state.
  *
  * @param state - The current state of the tool part
  * @param preliminary - Optional flag indicating streaming output (for subtasks)
@@ -76,17 +76,21 @@ export function getApprovalId(part: {
 export function getEffectiveState(
   state: string,
   preliminary?: boolean,
-): "loading" | "error" | "idle" {
+): "loading" | "error" | "idle" | "approval" {
   // Error state takes precedence
   if (state === "output-error") {
     return "error";
   }
 
-  // Loading states: input generation, approval waiting, or streaming output
+  // Approval state — distinct from loading (no shimmer, user action required)
+  if (state === "approval-requested") {
+    return "approval";
+  }
+
+  // Loading states: input generation or streaming output
   if (
     state === "input-streaming" ||
     state === "input-available" ||
-    state === "approval-requested" ||
     (state === "output-available" && preliminary === true)
   ) {
     return "loading";

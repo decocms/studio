@@ -1,51 +1,58 @@
 "use client";
 
+import { cn } from "@deco/ui/lib/utils.ts";
 import { MessageQuestionCircle } from "@untitledui/icons";
 import type { UserAskToolPart } from "../../../types.ts";
 import { getToolPartErrorText } from "../utils.ts";
-import { ToolCallShell } from "./common.tsx";
 
 interface UserAskPartProps {
   part: UserAskToolPart;
-  /** Latency in seconds from data-tool-metadata part */
+  /** Latency in seconds from data-tool-metadata part (unused here) */
   latency?: number;
 }
 
-export function UserAskPart({ part, latency }: UserAskPartProps) {
-  // Only render if state starts with "output-"
+export function UserAskPart({ part }: UserAskPartProps) {
+  // Only render after user has responded
   if (!part.state.startsWith("output-")) {
     return null;
   }
 
-  // Title: the question text with fallback
-  const title = part.input?.prompt?.trim() || "Question";
+  const question = part.input?.prompt?.trim() || "Question";
+  const isError =
+    part.state === "output-error" || part.state === "output-denied";
+  const isDenied = part.state === "output-denied";
 
-  // Build the detail content and summary
-  const summary: string =
-    part.state === "output-denied"
-      ? "Response was denied by the user"
-      : part.state === "output-error"
-        ? getToolPartErrorText(part)
-        : (part.output?.response ?? "");
-
-  // Derive UI state for ToolCallShell
-  const effectiveState: "loading" | "error" | "idle" =
-    part.state === "output-error" || part.state === "output-denied"
-      ? "error"
-      : "idle";
+  const answer: string = isDenied
+    ? "Skipped"
+    : part.state === "output-error"
+      ? (getToolPartErrorText(part) ?? "Error")
+      : (part.output?.response ?? "");
 
   return (
-    <div className="my-2">
-      <ToolCallShell
-        icon={
-          <MessageQuestionCircle className="size-4 text-muted-foreground" />
-        }
-        title={title}
-        summary={summary}
-        latency={latency}
-        state={effectiveState}
-        detail={`# Question\n${part.input?.prompt ?? ""}\n\n# Answer\n${summary}`}
-      />
+    <div className="my-1.5 flex flex-col gap-1">
+      {/* Question row */}
+      <div className="flex items-start gap-2">
+        <MessageQuestionCircle className="size-4 text-muted-foreground/50 shrink-0 mt-0.5" />
+        <span className="text-[14px] text-muted-foreground leading-snug">
+          {question}
+        </span>
+      </div>
+
+      {/* Answer row */}
+      {answer && (
+        <div className="ml-6 pl-2 border-l border-border/50">
+          <span
+            className={cn(
+              "text-[14px] leading-snug",
+              isError
+                ? "text-muted-foreground/50 italic"
+                : "text-foreground/70",
+            )}
+          >
+            {answer}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
