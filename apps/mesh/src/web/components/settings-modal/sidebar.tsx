@@ -233,6 +233,12 @@ export function SettingsSidebar({
           </Suspense>
         </div>
       )}
+      {/* Version */}
+      <div className="mt-auto px-4 pb-1">
+        <span className="text-xs text-muted-foreground/50">
+          v{__MESH_VERSION__}
+        </span>
+      </div>
     </div>
   );
 }
