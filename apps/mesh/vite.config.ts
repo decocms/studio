@@ -10,7 +10,6 @@ export default defineConfig({
     __MESH_VERSION__: JSON.stringify(pkg.version),
   },
   server: {
-    port: parseInt(process.env.VITE_PORT || "4000", 10),
     hmr: {
       overlay: true,
       host: "localhost",

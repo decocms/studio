@@ -198,7 +198,10 @@ export function baseDecoPlugin(decoConfig: PluginConfig = {}): Plugin {
     name: "vite-plugin-base-deco",
     config: () => ({
       server: {
-        port: decoConfig.port || DEFAULT_PORT,
+        port:
+          decoConfig.port ||
+          parseInt(process.env.VITE_PORT || "", 10) ||
+          DEFAULT_PORT,
         strictPort: true,
       },
       build: {

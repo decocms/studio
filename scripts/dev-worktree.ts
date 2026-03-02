@@ -159,6 +159,9 @@ async function ensureCaddyServer(): Promise<void> {
 }
 
 async function registerRoute(slug: string, port: number): Promise<void> {
+  // Remove any stale route for this slug first (avoids duplicates)
+  await removeRoute(slug);
+
   const route = {
     "@id": `worktree-${slug}`,
     match: [{ host: [`${slug}.localhost`] }],
@@ -200,6 +203,7 @@ async function run(slug: string): Promise<void> {
       usedPorts.add(entry.vitePort);
     } else {
       console.log(`🧹 Cleaned stale entry for '${key}'`);
+      await removeRoute(key);
       delete map[key];
     }
   }
