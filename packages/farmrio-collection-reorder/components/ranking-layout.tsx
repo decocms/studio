@@ -139,7 +139,7 @@ export default function RankingLayout() {
     queryFn: async (): Promise<FarmrioCollectionItem[]> => {
       const result = (await configuredClient!.callTool({
         name: "collection_list",
-        arguments: { isEnable: true, limit: 200 },
+        arguments: { isEnabled: true, limit: 200 },
       })) as { structuredContent?: unknown };
       const data = (result.structuredContent ?? result) as {
         success: boolean;

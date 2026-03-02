@@ -7,7 +7,7 @@
 import type {
   FarmrioSection,
   FarmrioMetricItem,
-  FarmriaCriteriaItem,
+  FarmrioCriteriaItem,
   FarmrioRankedItem,
 } from "@decocms/bindings";
 import { FARMRIO_REORDER_BINDING } from "@decocms/bindings";
@@ -112,7 +112,7 @@ function CriteriaSection({
   items,
 }: {
   title?: string | null;
-  items: FarmriaCriteriaItem[];
+  items: FarmrioCriteriaItem[];
 }) {
   return (
     <div className="space-y-4">

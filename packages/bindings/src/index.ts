@@ -139,7 +139,7 @@ export {
   type FarmrioReorderBinding,
   type FarmrioCollectionItem,
   type FarmrioMetricItem,
-  type FarmriaCriteriaItem,
+  type FarmrioCriteriaItem,
   type FarmrioRankedItem,
   type FarmrioSection,
   type FarmrioReportSummary,

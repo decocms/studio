@@ -2,7 +2,7 @@ export type {
   FarmrioCollectionItem as Collection,
   FarmrioCollectionItem,
   FarmrioMetricItem,
-  FarmriaCriteriaItem,
+  FarmrioCriteriaItem,
   FarmrioRankedItem,
   FarmrioSection,
   FarmrioReportSummary,
