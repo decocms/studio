@@ -91,7 +91,7 @@ async function ensureCaddyServer(): Promise<void> {
   // Intermediate paths may not exist yet (fresh Caddy with empty config).
   // Use /load to merge our server into the top-level config safely.
   const currentRes = await fetch(`${CADDY_ADMIN}/config/`);
-  const current = currentRes.ok ? await currentRes.json() : {};
+  const current = (currentRes.ok ? await currentRes.json() : null) ?? {};
 
   const merged = {
     ...current,
