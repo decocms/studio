@@ -60,28 +60,34 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
+function isPortFree(port: number): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    Bun.connect({
+      hostname: "127.0.0.1",
+      port,
+      socket: {
+        open(socket) {
+          socket.end();
+          resolve(false); // something is listening → port is in use
+        },
+        error() {
+          resolve(true); // ECONNREFUSED → port is free
+        },
+        connectError() {
+          resolve(true); // connection refused → port is free
+        },
+      },
+    }).catch(() => resolve(true));
+  });
+}
+
 async function findFreePort(
   start: number,
   usedPorts: Set<number>,
 ): Promise<number> {
   for (let port = start; port < start + 1000; port++) {
     if (usedPorts.has(port)) continue;
-    try {
-      const server = Bun.listen({
-        hostname: "127.0.0.1",
-        port,
-        socket: {
-          open() {},
-          data() {},
-          close() {},
-          error() {},
-        },
-      });
-      server.stop();
-      return port;
-    } catch {
-      // port in use, try next
-    }
+    if (await isPortFree(port)) return port;
   }
   throw new Error(`No free port found starting from ${start}`);
 }
