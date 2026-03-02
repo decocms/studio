@@ -189,18 +189,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           defaultWindowSize: windowSize,
         }),
       ]);
-      // On first message to a thread: store the agent ID in description
-      if (agent.id && !mem.thread.description) {
-        ctx.storage.threads
-          .update(mem.thread.id, { description: agent.id })
-          .catch((error) => {
-            console.error(
-              "[decopilot:stream] Error storing agent in thread",
-              error,
-            );
-          });
-      }
-
       const saveMessagesToThread = async (
         ...messages: (typeof requestMessage | undefined)[]
       ) => {

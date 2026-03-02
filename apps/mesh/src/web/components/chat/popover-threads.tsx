@@ -1,4 +1,3 @@
-import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import {
   Popover,
   PopoverContent,
@@ -12,15 +11,7 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { isDecopilot } from "@decocms/mesh-sdk";
-import {
-  Check,
-  Clock,
-  Edit01,
-  SearchMd,
-  Trash01,
-  Users03,
-} from "@untitledui/icons";
+import { Check, Clock, Edit01, SearchMd, Trash01 } from "@untitledui/icons";
 import { useRef, useState } from "react";
 import { useChatStable } from "./context";
 import type { Thread } from "./types.ts";
@@ -128,7 +119,6 @@ export function ThreadHistoryPopover({
     fetchNextPage,
     hideThread,
     renameThread,
-    virtualMcps,
   } = useChatStable();
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -191,19 +181,6 @@ export function ThreadHistoryPopover({
     } else if (e.key === "Escape") {
       setEditingThreadId(null);
     }
-  };
-
-  const getThreadAgent = (thread: Thread) => {
-    const ref = thread.description;
-    if (!ref) return null;
-    // Treat stored decopilot IDs and the old stored title "Decopilot" as no-agent
-    if (isDecopilot(ref) || ref.toLowerCase() === "decopilot") return null;
-    // ID match (new format) then title match (old format where title was stored)
-    return (
-      virtualMcps.find((v) => v.id === ref) ??
-      virtualMcps.find((v) => v.title === ref) ??
-      null
-    );
   };
 
   return (
@@ -274,7 +251,6 @@ export function ThreadHistoryPopover({
                       {section.threads.map((thread) => {
                         const isActive = thread.id === activeThreadId;
                         const isEditing = editingThreadId === thread.id;
-                        const agent = getThreadAgent(thread);
                         return (
                           <div
                             key={thread.id}
@@ -332,16 +308,6 @@ export function ThreadHistoryPopover({
                             </div>
                             {!isEditing && (
                               <div className="flex items-center gap-1 shrink-0">
-                                {agent && (
-                                  <div title={agent.title}>
-                                    <IntegrationIcon
-                                      icon={agent.icon}
-                                      name={agent.title}
-                                      size="xs"
-                                      fallbackIcon={<Users03 size={12} />}
-                                    />
-                                  </div>
-                                )}
                                 <button
                                   type="button"
                                   onClick={(e) => startEditing(thread, e)}
