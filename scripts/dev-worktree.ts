@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { readFileSync } from "fs";
 import { join } from "path";
-import { startWorktree } from "./caddy-devserver-cluster";
+import { startWorktree } from "worktree-devservers";
 
 function loadDotEnv(path: string): Record<string, string> {
   try {
