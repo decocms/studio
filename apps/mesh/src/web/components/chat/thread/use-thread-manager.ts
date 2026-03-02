@@ -197,6 +197,28 @@ export function useThreadManager() {
   };
 
   /**
+   * Rename a thread
+   * Calls backend to update thread title, then updates cache
+   */
+  const renameThread = async (threadId: string, title: string) => {
+    try {
+      const updatedThread = await callUpdateThreadTool(client, threadId, {
+        title,
+      });
+      if (updatedThread) {
+        updateThreadInCache(queryClient, locator, threadId, {
+          title,
+          updated_at: updatedThread.updated_at ?? new Date().toISOString(),
+        });
+      }
+    } catch (error) {
+      const err = error as Error;
+      toast.error(`Failed to rename thread: ${err.message}`);
+      console.error("[chat] Failed to rename thread:", error);
+    }
+  };
+
+  /**
    * Hide a thread
    * Calls backend to hide thread, switches away if it's the current thread, and updates cache
    */
@@ -257,6 +279,7 @@ export function useThreadManager() {
     createThread,
     switchThread,
     updateThread,
+    renameThread,
     hideThread,
     updateMessagesCache: updateMessagesInCache,
   };

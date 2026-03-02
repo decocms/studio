@@ -108,6 +108,7 @@ interface ChatStableValue {
   activeThreadId: string;
   createThread: () => void;
   switchToThread: (threadId: string) => Promise<void>;
+  renameThread: (threadId: string, title: string) => Promise<void>;
   threads: Thread[];
   hideThread: (threadId: string) => void;
 
@@ -868,6 +869,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
     threadManager.createThread();
   };
   const switchToThread = threadManager.switchThread;
+  const renameThread = threadManager.renameThread;
   const hideThread = threadManager.hideThread;
 
   // Chat state functions
@@ -1003,6 +1005,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
     threads: threadManager.threads,
     createThread,
     switchToThread,
+    renameThread,
     hideThread,
     hasNextPage: threadManager.hasNextPage,
     isFetchingNextPage: threadManager.isFetchingNextPage,

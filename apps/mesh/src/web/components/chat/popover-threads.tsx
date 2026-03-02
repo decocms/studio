@@ -1,3 +1,4 @@
+import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import {
   Popover,
   PopoverContent,
@@ -11,7 +12,15 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { Clock, SearchMd, Trash01 } from "@untitledui/icons";
+import { isDecopilot } from "@decocms/mesh-sdk";
+import {
+  Check,
+  Clock,
+  Edit01,
+  SearchMd,
+  Trash01,
+  Users03,
+} from "@untitledui/icons";
 import { useRef, useState } from "react";
 import { useChatStable } from "./context";
 import type { Thread } from "./types.ts";
@@ -108,6 +117,8 @@ export function ThreadHistoryPopover({
   variant?: "outline" | "icon";
 }) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [editingThreadId, setEditingThreadId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
   const {
     activeThreadId,
     switchToThread,
@@ -116,6 +127,8 @@ export function ThreadHistoryPopover({
     isFetchingNextPage,
     fetchNextPage,
     hideThread,
+    renameThread,
+    virtualMcps,
   } = useChatStable();
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -153,6 +166,45 @@ export function ThreadHistoryPopover({
     : threads;
 
   const sections = groupThreadsByDate(filteredThreads);
+
+  const startEditing = (thread: Thread, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingThreadId(thread.id);
+    setEditingTitle(thread.title || "");
+  };
+
+  const commitEdit = async (threadId: string) => {
+    const trimmed = editingTitle.trim();
+    if (trimmed) {
+      await renameThread(threadId, trimmed);
+    }
+    setEditingThreadId(null);
+  };
+
+  const handleKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    threadId: string,
+  ) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commitEdit(threadId);
+    } else if (e.key === "Escape") {
+      setEditingThreadId(null);
+    }
+  };
+
+  const getThreadAgent = (thread: Thread) => {
+    const ref = thread.description;
+    if (!ref) return null;
+    // Treat stored decopilot IDs and the old stored title "Decopilot" as no-agent
+    if (isDecopilot(ref) || ref.toLowerCase() === "decopilot") return null;
+    // ID match (new format) then title match (old format where title was stored)
+    return (
+      virtualMcps.find((v) => v.id === ref) ??
+      virtualMcps.find((v) => v.title === ref) ??
+      null
+    );
+  };
 
   return (
     <TooltipProvider>
@@ -221,6 +273,8 @@ export function ThreadHistoryPopover({
                       </div>
                       {section.threads.map((thread) => {
                         const isActive = thread.id === activeThreadId;
+                        const isEditing = editingThreadId === thread.id;
+                        const agent = getThreadAgent(thread);
                         return (
                           <div
                             key={thread.id}
@@ -228,34 +282,93 @@ export function ThreadHistoryPopover({
                               "flex items-center gap-2 px-3 py-2 hover:bg-accent cursor-pointer group",
                               isActive && "bg-accent/50",
                             )}
-                            onClick={() => switchToThread(thread.id)}
+                            onClick={() =>
+                              !isEditing && switchToThread(thread.id)
+                            }
                           >
-                            <div className="flex-1 min-w-0 flex items-center gap-2">
-                              <span className="text-sm truncate">
-                                {thread.title || "New chat"}
-                              </span>
-                              <span className="text-xs text-muted-foreground shrink-0">
-                                {isActive
-                                  ? "current"
-                                  : section.showRelativeTime
-                                    ? formatRelativeTime(thread.updated_at)
-                                    : null}
-                              </span>
+                            <div className="flex-1 min-w-0">
+                              {isEditing ? (
+                                <div
+                                  className="flex items-center gap-1"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <input
+                                    autoFocus
+                                    value={editingTitle}
+                                    onChange={(e) =>
+                                      setEditingTitle(e.target.value)
+                                    }
+                                    onBlur={() => commitEdit(thread.id)}
+                                    onKeyDown={(e) =>
+                                      handleKeyDown(e, thread.id)
+                                    }
+                                    className="flex-1 text-sm bg-transparent border-b border-foreground/30 focus:border-foreground outline-none pb-0.5 min-w-0"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => commitEdit(thread.id)}
+                                    className="p-0.5 hover:bg-accent rounded shrink-0"
+                                  >
+                                    <Check
+                                      size={12}
+                                      className="text-muted-foreground hover:text-foreground"
+                                    />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm truncate">
+                                    {thread.title || "New chat"}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground shrink-0">
+                                    {isActive
+                                      ? "current"
+                                      : section.showRelativeTime
+                                        ? formatRelativeTime(thread.updated_at)
+                                        : null}
+                                  </span>
+                                </div>
+                              )}
                             </div>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                hideThread(thread.id);
-                              }}
-                              className="opacity-0 cursor-pointer group/trash group-hover:opacity-100 p-1 hover:bg-destructive/10 rounded transition-opacity"
-                              title="Remove chat"
-                            >
-                              <Trash01
-                                size={14}
-                                className="text-muted-foreground group-hover/trash:text-destructive"
-                              />
-                            </button>
+                            {!isEditing && (
+                              <div className="flex items-center gap-1 shrink-0">
+                                {agent && (
+                                  <div title={agent.title}>
+                                    <IntegrationIcon
+                                      icon={agent.icon}
+                                      name={agent.title}
+                                      size="xs"
+                                      fallbackIcon={<Users03 size={12} />}
+                                    />
+                                  </div>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={(e) => startEditing(thread, e)}
+                                  className="opacity-0 cursor-pointer group-hover:opacity-100 p-1 hover:bg-accent rounded transition-opacity"
+                                  title="Rename chat"
+                                >
+                                  <Edit01
+                                    size={13}
+                                    className="text-muted-foreground hover:text-foreground"
+                                  />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    hideThread(thread.id);
+                                  }}
+                                  className="opacity-0 cursor-pointer group/trash group-hover:opacity-100 p-1 hover:bg-destructive/10 rounded transition-opacity"
+                                  title="Remove chat"
+                                >
+                                  <Trash01
+                                    size={14}
+                                    className="text-muted-foreground group-hover/trash:text-destructive"
+                                  />
+                                </button>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
