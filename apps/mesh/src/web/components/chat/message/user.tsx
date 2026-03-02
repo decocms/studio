@@ -2,7 +2,7 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { type UIMessage } from "ai";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { FileNode } from "../tiptap/file/node.tsx";
 import { MentionNode } from "../tiptap/mention/node.tsx";
 import type { Metadata } from "../types.ts";
@@ -62,6 +62,15 @@ export function MessageUser<T extends Metadata>({
 }: MessageProps<T>) {
   const { id, parts, metadata } = message;
   const [isFocused, setIsFocused] = useState(false);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+  const overflowChecked = useRef(false);
+
+  const setContentRef = (node: HTMLDivElement | null) => {
+    if (node && !overflowChecked.current) {
+      overflowChecked.current = true;
+      setIsOverflowing(node.scrollHeight > node.clientHeight);
+    }
+  };
 
   // Early return if no parts
   if (!parts || parts.length === 0) {
@@ -89,14 +98,19 @@ export function MessageUser<T extends Metadata>({
           onClick={handleClick}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
-          className="w-full border min-w-0 shadow-xs rounded-lg text-[0.9375rem] wrap-break-word overflow-wrap-anywhere bg-background cursor-pointer transition-colors relative flex outline-none"
+          className="w-full border border-border/60 min-w-0 shadow-xs rounded-lg text-[14px] wrap-break-word overflow-wrap-anywhere bg-background cursor-pointer transition-colors relative flex outline-none"
         >
+          <div className="absolute inset-0 bg-muted/75 rounded-lg pointer-events-none" />
           <div
+            ref={setContentRef}
             className={cn(
-              "z-10 px-4 py-2 transition-opacity max-h-[120px] flex-1",
+              "z-10 px-4 py-2 transition-opacity max-h-[84px] flex-1",
               isFocused
                 ? "overflow-auto opacity-100"
-                : "overflow-hidden opacity-99 mask-b-from-1%",
+                : cn(
+                    "overflow-hidden opacity-99",
+                    isOverflowing && "mask-b-from-1%",
+                  ),
             )}
           >
             <div>

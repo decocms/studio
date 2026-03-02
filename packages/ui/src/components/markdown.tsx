@@ -28,7 +28,7 @@ export const markdownComponents: Components = {
     <h4 {...props} className="text-base font-semibold mt-3 mb-1 first:mt-0" />
   ),
   p: (props: React.HTMLAttributes<HTMLParagraphElement>) => (
-    <p {...props} className="leading-relaxed text-[15px] mb-2 last:mb-0" />
+    <p {...props} className="leading-relaxed text-[14px] mb-2 last:mb-0" />
   ),
   strong: (props: React.HTMLAttributes<HTMLElement>) => (
     <strong {...props} className="font-bold" />
@@ -51,7 +51,7 @@ export const markdownComponents: Components = {
     <ol {...props} className="list-decimal ml-6 my-3 space-y-1.5" />
   ),
   li: (props: React.HTMLAttributes<HTMLLIElement>) => (
-    <li {...props} className="leading-relaxed text-[15px]" />
+    <li {...props} className="leading-relaxed text-[14px]" />
   ),
   blockquote: (props: React.HTMLAttributes<HTMLQuoteElement>) => (
     <blockquote
@@ -65,15 +65,15 @@ export const markdownComponents: Components = {
   code: (props: React.HTMLAttributes<HTMLElement>) => (
     <code
       {...props}
-      className="px-1 py-0.5 bg-muted rounded text-[15px] font-mono break-all"
+      className="px-1 py-0.5 bg-background border border-border rounded text-[14px] font-mono break-all"
     />
   ),
   pre: (props: React.HTMLAttributes<HTMLPreElement>) => (
     <pre
       {...props}
-      className="flex w-full min-w-0 my-4 bg-muted rounded-lg border border-border overflow-hidden"
+      className="flex w-full min-w-0 my-4 bg-background rounded-lg border border-border overflow-hidden"
     >
-      <code className="flex-1 min-w-0 p-4 text-[15px] font-mono whitespace-pre overflow-x-auto">
+      <code className="flex-1 min-w-0 p-4 text-[14px] font-mono whitespace-pre overflow-x-auto">
         {props.children}
       </code>
     </pre>
