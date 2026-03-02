@@ -131,32 +131,34 @@ export function AccountPreferencesPage() {
               <SelectTrigger className="w-36">
                 <span>
                   {
-                    { none: "None", readonly: "Read-only", yolo: "YOLO" }[
-                      preferences.toolApprovalLevel
-                    ]
+                    {
+                      none: "Always ask",
+                      readonly: "Skip read-only",
+                      yolo: "Auto-approve all",
+                    }[preferences.toolApprovalLevel]
                   }
                 </span>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none" textValue="None">
+                <SelectItem value="none" textValue="Always ask">
                   <div className="flex flex-col gap-0.5">
-                    <span className="font-medium">None</span>
+                    <span className="font-medium">Always ask</span>
                     <span className="text-xs text-muted-foreground">
                       Require approval for all tool calls
                     </span>
                   </div>
                 </SelectItem>
-                <SelectItem value="readonly" textValue="Read-only">
+                <SelectItem value="readonly" textValue="Skip read-only">
                   <div className="flex flex-col gap-0.5">
-                    <span className="font-medium">Read-only</span>
+                    <span className="font-medium">Skip read-only</span>
                     <span className="text-xs text-muted-foreground">
                       Auto-approve read-only tools
                     </span>
                   </div>
                 </SelectItem>
-                <SelectItem value="yolo" textValue="YOLO">
+                <SelectItem value="yolo" textValue="Auto-approve all">
                   <div className="flex flex-col gap-0.5">
-                    <span className="font-medium">YOLO</span>
+                    <span className="font-medium">Auto-approve all</span>
                     <span className="text-xs text-muted-foreground">
                       Execute all tools without approval
                     </span>

@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@deco/ui/lib/utils.ts";
 import type { ToolSubtaskMetadata } from "../../use-filter-parts.ts";
 import { IntegrationIcon } from "@/web/components/integration-icon";
 import type { ToolDefinition } from "@decocms/mesh-sdk";
@@ -15,18 +16,13 @@ interface SubtaskPartProps {
   part: SubtaskToolPart;
   /** Subtask metadata from data part */
   subtaskMeta?: ToolSubtaskMetadata;
-  /** Tool annotations from data part */
+  /** Tool annotations from data part (unused in chat) */
   annotations?: ToolDefinition["annotations"];
   /** Latency in seconds from data-tool-metadata part */
   latency?: number;
 }
 
-export function SubtaskPart({
-  part,
-  subtaskMeta,
-  annotations,
-  latency,
-}: SubtaskPartProps) {
+export function SubtaskPart({ part, subtaskMeta, latency }: SubtaskPartProps) {
   const { virtualMcps } = useChatStable();
 
   // State computation
@@ -50,7 +46,7 @@ export function SubtaskPart({
   // Usage extraction from data part
   const usage = subtaskMeta?.usage;
 
-  // Title mapping
+  // Title: agent name or fallback status
   const title: string = agent?.title
     ? agent.title
     : isInputStreaming
@@ -63,14 +59,15 @@ export function SubtaskPart({
             ? "Subtask failed"
             : "Subtask";
 
-  // Summary (task prompt)
-  const summary = part.input?.prompt ?? "";
+  // Summary: the task prompt (what this subtask was asked to do)
+  const prompt = part.input?.prompt ?? "";
+  const summary = prompt.length > 120 ? prompt.slice(0, 120) + "…" : prompt;
 
   // Detail (expanded content)
   const response = isError
     ? getToolPartErrorText(part)
     : (extractTextFromOutput(part.output) ?? "No output available");
-  const detail = `# Task\n${part.input?.prompt ?? "No prompt provided"}\n\n# ${isError ? "Error" : "Execution"}\n${response}`;
+  const detail = `# Task\n${part.input?.prompt ?? "No prompt provided"}\n\n# ${isError ? "Error" : "Result"}\n${response}`;
 
   // Icon
   const icon = (
@@ -78,6 +75,7 @@ export function SubtaskPart({
       icon={agent?.icon}
       name={agent?.title ?? "Subtask"}
       size="2xs"
+      className="rounded-xs"
       fallbackIcon={<Users03 />}
     />
   );
@@ -89,7 +87,7 @@ export function SubtaskPart({
   ) : undefined;
 
   return (
-    <div className="my-2">
+    <div className={cn(effectiveState === "approval" && "my-2")}>
       <ToolCallShell
         icon={icon}
         title={title}
@@ -97,7 +95,6 @@ export function SubtaskPart({
         usage={usage}
         latency={latency}
         detail={detail}
-        annotations={annotations}
         state={effectiveState}
         actions={actions}
       />

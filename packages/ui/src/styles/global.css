@@ -197,6 +197,13 @@
   --font-mono: var(--font-mono);
   --font-serif: var(--font-serif);
 
+  /* Custom font weight scale */
+  --font-weight-light: 300;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 650;
+
   /* Box Shadow Scale */
   --shadow-xs: var(--shadow-xs);
   --shadow-sm: var(--shadow-sm);

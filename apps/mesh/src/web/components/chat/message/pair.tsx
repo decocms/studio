@@ -80,7 +80,7 @@ export function MessagePair({ pair, isLastPair, status }: MessagePairProps) {
     <div ref={handlePairRef} className="flex flex-col pb-2">
       {/* Sticky overlay to prevent scrolling content from appearing above the user message */}
       <div className="sticky top-0 z-50 w-full h-4 bg-background" />
-      <div className="sticky mb-3 top-4 z-50">
+      <div className="sticky mb-6 top-4 z-50">
         <MessageUser message={pair.user} onScrollToPair={scrollToPair} />
       </div>
       {/* Single MessageAssistant - handles all states internally */}

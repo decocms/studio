@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useCopy } from "@deco/ui/hooks/use-copy.ts";
-import { Button } from "@deco/ui/components/button.tsx";
+import { cn } from "@deco/ui/lib/utils.ts";
 import { MemoizedMarkdown } from "../../markdown.tsx";
 import { Check, Copy01 } from "@untitledui/icons";
 import type { TextUIPart } from "ai";
@@ -10,6 +10,8 @@ interface MessageTextPartProps {
   part: TextUIPart;
   copyable?: boolean;
   extraActions?: ReactNode;
+  /** When true, actions row is always visible instead of hover-only */
+  alwaysShowActions?: boolean;
 }
 
 export function MessageTextPart({
@@ -17,6 +19,7 @@ export function MessageTextPart({
   part,
   copyable = false,
   extraActions,
+  alwaysShowActions = false,
 }: MessageTextPartProps) {
   const { handleCopy } = useCopy();
   const [isCopied, setIsCopied] = useState(false);
@@ -32,23 +35,35 @@ export function MessageTextPart({
   const showActions = showCopyButton || extraActions;
 
   return (
-    <div className="group/part relative mb-2">
+    <div className="group/part relative">
       <MemoizedMarkdown id={id} text={part.text} />
       {showActions && (
-        <div className="flex w-full items-center text-xs text-muted-foreground opacity-0 pointer-events-none transition-all duration-200 group-hover/part:opacity-100 group-hover/part:pointer-events-auto mt-2">
-          <div className="flex items-center gap-1">
-            {showCopyButton && (
-              <Button
-                onClick={handleCopyMessage}
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground hover:text-foreground size-6 whitespace-nowrap"
-              >
-                {isCopied ? <Check size={12} /> : <Copy01 size={12} />}
-              </Button>
-            )}
-            {extraActions}
-          </div>
+        <div
+          className={cn(
+            "flex w-full items-center gap-2 text-sm text-muted-foreground transition-all duration-200 mt-1 py-1",
+            alwaysShowActions
+              ? "opacity-100"
+              : "opacity-0 pointer-events-none group-hover/part:opacity-100 group-hover/part:pointer-events-auto",
+          )}
+        >
+          {extraActions}
+          {showCopyButton && extraActions && (
+            <span className="text-muted-foreground/40 select-none">·</span>
+          )}
+          {showCopyButton && (
+            <button
+              type="button"
+              onClick={handleCopyMessage}
+              className="text-muted-foreground [@media(hover:hover)]:hover:text-foreground transition-colors active:scale-[0.97]"
+              aria-label="Copy message"
+            >
+              {isCopied ? (
+                <Check className="size-4" />
+              ) : (
+                <Copy01 className="size-4" />
+              )}
+            </button>
+          )}
         </div>
       )}
     </div>
