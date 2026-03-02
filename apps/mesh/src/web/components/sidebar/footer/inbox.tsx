@@ -14,6 +14,7 @@ import {
 } from "@deco/ui/components/sidebar.tsx";
 import { Check, Coins01, Inbox01, XClose } from "@untitledui/icons";
 import { AuthUIContext } from "@daveyplate/better-auth-ui";
+import { cn } from "@deco/ui/lib/utils.ts";
 import { Component, Suspense, useContext, useState } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 import { toast } from "sonner";
@@ -24,7 +25,7 @@ import {
   useMCPToolCallQuery,
   useProjectContext,
 } from "@decocms/mesh-sdk";
-import { DECO_AI_GATEWAY_MCP_URL } from "@/core/deco-constants";
+import { isDecoAIGatewayUrl } from "@/core/deco-constants";
 
 interface Invitation {
   id: string;
@@ -155,6 +156,14 @@ interface GatewayUsageResult {
   limit: { remaining: number | null; total: number | null };
 }
 
+function creditColor(remaining: number, total: number | null): string {
+  if (!total || total <= 0) return "text-foreground/70";
+  const pct = remaining / total;
+  if (pct <= 0.05) return "text-destructive";
+  if (pct <= 0.2) return "text-amber-500 dark:text-amber-400";
+  return "text-foreground/70";
+}
+
 function CreditChip({ connectionId }: { connectionId: string }) {
   const { open } = useSettingsModal();
   const { org } = useProjectContext();
@@ -171,6 +180,7 @@ function CreditChip({ connectionId }: { connectionId: string }) {
   });
 
   const credits = data?.limit.remaining ?? 0;
+  const total = data?.limit.total ?? null;
 
   return (
     <button
@@ -182,7 +192,12 @@ function CreditChip({ connectionId }: { connectionId: string }) {
         <Coins01 size={13} className="text-muted-foreground/60 shrink-0" />
         <span className="text-xs text-muted-foreground">Credits</span>
       </div>
-      <span className="text-xs font-medium tabular-nums text-foreground/70">
+      <span
+        className={cn(
+          "text-xs font-medium tabular-nums",
+          creditColor(credits, total),
+        )}
+      >
         ${credits.toFixed(2)}
       </span>
     </button>
@@ -192,8 +207,8 @@ function CreditChip({ connectionId }: { connectionId: string }) {
 function CreditChipConditional() {
   const connections = useConnections();
 
-  const gatewayConnection = connections.find(
-    (c) => c.connection_url === DECO_AI_GATEWAY_MCP_URL,
+  const gatewayConnection = connections.find((c) =>
+    isDecoAIGatewayUrl(c.connection_url),
   );
 
   if (!gatewayConnection?.id) {

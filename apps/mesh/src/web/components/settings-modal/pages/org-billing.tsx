@@ -11,6 +11,8 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
+import { Switch } from "@deco/ui/components/switch.tsx";
+import { Badge } from "@deco/ui/components/badge.tsx";
 import {
   Dialog,
   DialogContent,
@@ -19,7 +21,7 @@ import {
   DialogDescription,
 } from "@deco/ui/components/dialog.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { Coins01, Plus } from "@untitledui/icons";
+import { AlertCircle, Coins01, Plus } from "@untitledui/icons";
 import {
   useConnections,
   useMCPClient,
@@ -27,12 +29,27 @@ import {
   useMCPToolCallQuery,
   useProjectContext,
 } from "@decocms/mesh-sdk";
-import { DECO_AI_GATEWAY_MCP_URL } from "@/core/deco-constants";
+import { isDecoAIGatewayUrl } from "@/core/deco-constants";
 
 // -- Types --
 
+interface CreditEstimation {
+  avgDailySpend: number;
+  estimatedDaysRemaining: number | null;
+  estimatedDepletionDate: string | null;
+  resetsBeforeDepletion: boolean;
+  confidence: "low" | "medium" | "high";
+  basedOn: "monthly" | "weekly" | "daily";
+}
+
+interface AlertConfig {
+  enabled: boolean;
+  threshold_usd: number;
+  email: string | null;
+}
+
 interface GatewayUsageResult {
-  billing: { mode: "prepaid" | "postpaid"; markupPct: number };
+  billing: { mode: "prepaid" | "postpaid" };
   limit: {
     total: number | null;
     remaining: number | null;
@@ -40,12 +57,9 @@ interface GatewayUsageResult {
     includeByokInLimit: boolean;
   };
   usage: { total: number; daily: number; weekly: number; monthly: number };
-  effectiveCost: {
-    total: number;
-    daily: number;
-    weekly: number;
-    monthly: number;
-  };
+  estimation: CreditEstimation | null;
+  alert: AlertConfig;
+  connectionId: string;
 }
 
 interface SetLimitResult {
@@ -123,6 +137,12 @@ function buildChartData(
 
   return data;
 }
+
+const CONFIDENCE_LABEL: Record<CreditEstimation["confidence"], string> = {
+  low: "Low confidence",
+  medium: "Medium confidence",
+  high: "High confidence",
+};
 
 // -- Add Credit Dialog --
 
@@ -298,15 +318,66 @@ function AddCreditDialog({
   );
 }
 
+// -- Credit Forecast --
+
+function CreditForecast({
+  estimation,
+}: {
+  estimation: CreditEstimation | null;
+}) {
+  if (!estimation) return null;
+
+  const { estimatedDaysRemaining, estimatedDepletionDate, avgDailySpend } =
+    estimation;
+
+  if (estimatedDaysRemaining == null) return null;
+
+  const depletionLabel = estimatedDepletionDate
+    ? new Date(estimatedDepletionDate).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : null;
+
+  return (
+    <div className="mt-3 flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
+      <span className="tabular-nums font-medium text-foreground">
+        ~{estimatedDaysRemaining} day{estimatedDaysRemaining !== 1 ? "s" : ""}{" "}
+        remaining
+      </span>
+      {depletionLabel && <span>(until {depletionLabel})</span>}
+      <span className="text-muted-foreground/60">|</span>
+      <span className="tabular-nums">avg {formatUSD(avgDailySpend)}/day</span>
+      {estimation.resetsBeforeDepletion && (
+        <>
+          <span className="text-muted-foreground/60">|</span>
+          <span className="text-green-600 dark:text-green-400">
+            Resets before depletion
+          </span>
+        </>
+      )}
+      <Badge
+        variant="outline"
+        className="text-[10px] px-1.5 py-0 h-4 font-normal"
+      >
+        {CONFIDENCE_LABEL[estimation.confidence]}
+      </Badge>
+    </div>
+  );
+}
+
 // -- Credit card --
 
 function CreditCard({
   available,
   total,
+  estimation,
   onAddCredit,
 }: {
   available: number;
   total: number;
+  estimation: CreditEstimation | null;
   onAddCredit: () => void;
 }) {
   const usedPct =
@@ -336,7 +407,6 @@ function CreditCard({
         </Button>
       </div>
 
-      {/* Usage bar */}
       {total > 0 && (
         <div className="mt-4">
           <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
@@ -346,10 +416,158 @@ function CreditCard({
             />
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            {formatUSD(total - available)} used
+            {formatUSD(Math.max(0, total - available))} used
           </p>
         </div>
       )}
+
+      <CreditForecast estimation={estimation} />
+    </div>
+  );
+}
+
+// -- Alert Section --
+
+function AlertSection({
+  connectionId,
+  alert,
+}: {
+  connectionId: string;
+  alert: AlertConfig;
+}) {
+  const { org } = useProjectContext();
+  const [enabled, setEnabled] = useState(alert.enabled);
+  const [thresholdStr, setThresholdStr] = useState(String(alert.threshold_usd));
+  const [email, setEmail] = useState(alert.email ?? "");
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const client = useMCPClient({ connectionId, orgId: org.id });
+  const { mutate, isPending } = useMCPToolCallMutation({ client });
+
+  const hasChanges =
+    enabled !== alert.enabled ||
+    thresholdStr !== String(alert.threshold_usd) ||
+    email !== (alert.email ?? "");
+
+  const handleSave = () => {
+    setError(null);
+    setSaved(false);
+
+    const threshold = parseFloat(thresholdStr);
+    if (enabled && (!email || !email.includes("@"))) {
+      setError("A valid email is required to enable alerts.");
+      return;
+    }
+    if (Number.isNaN(threshold) || threshold <= 0) {
+      setError("Threshold must be a positive number.");
+      return;
+    }
+
+    mutate(
+      {
+        name: "GATEWAY_SET_ALERT",
+        arguments: {
+          enabled,
+          threshold_usd: threshold,
+          ...(email ? { email } : {}),
+        },
+      },
+      {
+        onSuccess: () => {
+          setSaved(true);
+          setTimeout(() => setSaved(false), 3000);
+        },
+        onError: (err) => {
+          setError(err.message ?? "Failed to save alert config.");
+        },
+      },
+    );
+  };
+
+  return (
+    <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <AlertCircle size={16} className="text-muted-foreground" />
+          <p className="text-xs font-medium text-muted-foreground tracking-wide uppercase">
+            Low-Balance Alert
+          </p>
+        </div>
+        <Switch checked={enabled} onCheckedChange={setEnabled} />
+      </div>
+
+      <div
+        className={cn(
+          "flex flex-col gap-3 transition-opacity",
+          !enabled && "opacity-50 pointer-events-none",
+        )}
+      >
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label
+              htmlFor="alert-threshold"
+              className="text-xs text-muted-foreground"
+            >
+              Alert threshold
+            </Label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                $
+              </span>
+              <Input
+                id="alert-threshold"
+                type="number"
+                min="1"
+                step="1"
+                className="pl-7"
+                value={thresholdStr}
+                onChange={(e) => setThresholdStr(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label
+              htmlFor="alert-email"
+              className="text-xs text-muted-foreground"
+            >
+              Email
+            </Label>
+            <Input
+              id="alert-email"
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {error && <p className="text-xs text-destructive">{error}</p>}
+
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">
+            {enabled
+              ? `Notify when credit drops below ${formatUSD(parseFloat(thresholdStr) || 0)}`
+              : "Alerts are disabled"}
+          </p>
+          <div className="flex items-center gap-2">
+            {saved && (
+              <span className="text-xs text-green-600 dark:text-green-400">
+                Saved
+              </span>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleSave}
+              disabled={isPending || !hasChanges}
+            >
+              {isPending ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -500,17 +718,43 @@ function BillingWithData({ connectionId }: { connectionId: string }) {
   const available = data?.limit.remaining ?? 0;
   const total = data?.limit.total ?? 0;
   const usage = data?.usage ?? { total: 0, daily: 0, weekly: 0, monthly: 0 };
+  const billingMode = data?.billing.mode ?? "prepaid";
+  const estimation = data?.estimation ?? null;
+  const alert = data?.alert ?? {
+    enabled: false,
+    threshold_usd: 10,
+    email: null,
+  };
   const currentLimitUsd = total;
 
   return (
     <>
+      <div className="flex items-center gap-2">
+        <h2 className="text-base font-semibold text-foreground">Billing</h2>
+        {billingMode === "postpaid" && (
+          <Badge
+            variant="outline"
+            className="text-[10px] px-1.5 py-0 h-4 font-normal capitalize"
+          >
+            Postpaid
+          </Badge>
+        )}
+      </div>
+
       <CreditCard
         available={available}
         total={total}
+        estimation={estimation}
         onAddCredit={() => setAddCreditOpen(true)}
       />
 
       <UsageSection usage={usage} />
+
+      <AlertSection
+        key={`${alert.enabled}-${alert.threshold_usd}-${alert.email}`}
+        connectionId={connectionId}
+        alert={alert}
+      />
 
       <AddCreditDialog
         open={addCreditOpen}
@@ -593,8 +837,8 @@ class BillingErrorBoundary extends Component<
 function BillingContent() {
   const connections = useConnections();
 
-  const gatewayConnection = connections.find(
-    (c) => c.connection_url === DECO_AI_GATEWAY_MCP_URL,
+  const gatewayConnection = connections.find((c) =>
+    isDecoAIGatewayUrl(c.connection_url),
   );
 
   if (!gatewayConnection?.id) {
@@ -603,14 +847,6 @@ function BillingContent() {
 
   return (
     <>
-      {/* Header */}
-      <div>
-        <h2 className="text-base font-semibold text-foreground">Billing</h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          Monitor usage and manage credits for your organization.
-        </p>
-      </div>
-
       <BillingWithData connectionId={gatewayConnection.id} />
     </>
   );
