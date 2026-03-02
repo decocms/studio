@@ -1,48 +1,75 @@
 /**
- * Hooks for fetching report data via the REPORTS_BINDING tools.
- * Lists all reports without category filter.
+ * Hooks for fetching report data via FARMRIO_REORDER_BINDING tools.
  */
 
 import { useQuery } from "@tanstack/react-query";
 import {
-  REPORTS_BINDING,
-  type ReportsListOutput,
-  type Report,
+  FARMRIO_REORDER_BINDING,
+  type FarmrioReport,
+  type FarmrioReportSummary,
+  type FarmrioCollectionItem,
 } from "@decocms/bindings";
 import { usePluginContext } from "@decocms/mesh-sdk/plugins";
 import { KEYS } from "../lib/query-keys";
 
 /**
- * Fetch the list of all reports (no category filter).
+ * Fetch the list of reports for a given collection (by DB id).
  */
-export function useRankingReportsList() {
+export function useRankingReportsList(collectionDbId: number) {
   const { connectionId, toolCaller } =
-    usePluginContext<typeof REPORTS_BINDING>();
+    usePluginContext<typeof FARMRIO_REORDER_BINDING>();
 
   return useQuery({
-    queryKey: KEYS.reportsList(connectionId),
-    queryFn: async (): Promise<ReportsListOutput> => {
-      const result = await toolCaller("REPORTS_LIST", {});
-      return result;
+    queryKey: KEYS.reportsList(connectionId, collectionDbId),
+    queryFn: async (): Promise<FarmrioReportSummary[]> => {
+      const result = await toolCaller("report_list", {
+        collectionId: collectionDbId,
+        limit: 200,
+      });
+      return result.items ?? [];
     },
-    staleTime: 60 * 1000, // 1 minute
+    enabled: !!collectionDbId,
+    staleTime: 60 * 1000,
   });
 }
 
 /**
- * Fetch a single report by ID with full content.
+ * Fetch a single report by DB id with full content (includes sections).
  */
-export function useRankingReport(reportId: string) {
+export function useRankingReport(reportId: number) {
   const { connectionId, toolCaller } =
-    usePluginContext<typeof REPORTS_BINDING>();
+    usePluginContext<typeof FARMRIO_REORDER_BINDING>();
 
   return useQuery({
     queryKey: KEYS.report(connectionId, reportId),
-    queryFn: async (): Promise<Report> => {
-      const result = await toolCaller("REPORTS_GET", { id: reportId });
-      return result;
+    queryFn: async (): Promise<FarmrioReport> => {
+      const result = await toolCaller("report_get", { id: reportId });
+      if (!result.item) {
+        throw new Error("Report not found");
+      }
+      return result.item;
     },
     enabled: !!reportId,
-    staleTime: 60 * 1000, // 1 minute
+    staleTime: 60 * 1000,
+  });
+}
+
+/**
+ * Fetch the list of enabled collections.
+ */
+export function useCollectionsList() {
+  const { connectionId, toolCaller } =
+    usePluginContext<typeof FARMRIO_REORDER_BINDING>();
+
+  return useQuery({
+    queryKey: KEYS.collectionsList(connectionId),
+    queryFn: async (): Promise<FarmrioCollectionItem[]> => {
+      const result = await toolCaller("collection_list", {
+        isEnabled: true,
+        limit: 200,
+      });
+      return result.items ?? [];
+    },
+    staleTime: 30 * 1000,
   });
 }

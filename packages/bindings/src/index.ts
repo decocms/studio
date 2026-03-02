@@ -133,6 +133,29 @@ export {
   groupSections,
 } from "./well-known/reports";
 
+// Re-export Farmrio collection reorder binding types
+export {
+  FARMRIO_REORDER_BINDING,
+  type FarmrioReorderBinding,
+  type FarmrioCollectionItem,
+  type FarmrioMetricItem,
+  type FarmriaCriteriaItem,
+  type FarmrioRankedItem,
+  type FarmrioSection,
+  type FarmrioReportSummary,
+  type FarmrioReport,
+  type CollectionListInput,
+  type CollectionListOutput,
+  type CollectionCreateInput,
+  type CollectionCreateOutput,
+  type CollectionUpdateInput,
+  type CollectionUpdateOutput,
+  type ReportListInput,
+  type ReportListOutput,
+  type ReportGetInput,
+  type ReportGetOutput,
+} from "./well-known/farmrio-reorder";
+
 // Re-export VTEX reorder binding types
 export {
   VTEX_COLLECTION_REORDER_BINDING,

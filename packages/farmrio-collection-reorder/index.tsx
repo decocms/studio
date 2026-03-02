@@ -1,11 +1,11 @@
 /**
  * Collection Reorder Ranking Plugin
  *
- * Provides a UI for viewing collection reorder ranking reports.
- * Uses reports binding for data and a plugin-specific VTEX connection for apply.
+ * Provides a UI for viewing and applying collection reorder ranking reports.
+ * Uses FARMRIO_REORDER_BINDING which matches the farmrio-db-reorder MCP schema.
  */
 
-import { REPORTS_BINDING } from "@decocms/bindings";
+import { FARMRIO_REORDER_BINDING } from "@decocms/bindings";
 import type {
   ClientPlugin,
   PluginSetupContext,
@@ -19,11 +19,11 @@ const RankingLayout = lazy(() => import("./components/ranking-layout"));
  * Collection Reorder Ranking Plugin Definition
  */
 export const collectionReorderRankingPlugin: ClientPlugin<
-  typeof REPORTS_BINDING
+  typeof FARMRIO_REORDER_BINDING
 > = {
   id: "collection-reorder-ranking",
   description: "View collection reorder ranking reports",
-  binding: REPORTS_BINDING,
+  binding: FARMRIO_REORDER_BINDING,
   LayoutComponent: RankingLayout,
   setup: (context: PluginSetupContext) => {
     context.registerSidebarGroup({

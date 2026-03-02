@@ -1,11 +1,5 @@
+import type { FarmrioCollectionItem } from "@decocms/bindings";
 import { Button } from "@deco/ui/components/button.tsx";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@deco/ui/components/card.tsx";
 import {
   Dialog,
   DialogContent,
@@ -14,25 +8,30 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@deco/ui/components/dialog.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
 import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbList,
-  BreadcrumbPage,
-} from "@deco/ui/components/breadcrumb.tsx";
-import { BarChart01, Plus, Trash01 } from "@untitledui/icons";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@deco/ui/components/dropdown-menu.tsx";
+import { Input } from "@deco/ui/components/input.tsx";
+import { Switch } from "@deco/ui/components/switch.tsx";
+import { BarChart01, DotsVertical, Plus, SearchMd } from "@untitledui/icons";
 import { useState } from "react";
-import type { Collection } from "../lib/types";
 
 interface CollectionsListProps {
-  collections: Collection[];
-  onSelectCollection: (id: string) => void;
+  collections: FarmrioCollectionItem[];
+  onSelectCollection: (collection: FarmrioCollectionItem) => void;
   onAddCollection: (input: {
-    name: string;
-    vtexCollectionId: string;
+    title: string;
+    farmCollectionId: string;
+    decoCollectionId?: string;
   }) => Promise<void>;
-  onDeleteCollection: (id: string) => Promise<void>;
+  onDeleteCollection: (collection: FarmrioCollectionItem) => Promise<void>;
+  onToggleCollection: (
+    collection: FarmrioCollectionItem,
+    isEnabled: boolean,
+  ) => Promise<void>;
 }
 
 export default function CollectionsList({
@@ -40,16 +39,28 @@ export default function CollectionsList({
   onSelectCollection,
   onAddCollection,
   onDeleteCollection,
+  onToggleCollection,
 }: CollectionsListProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [vtexCollectionId, setVtexCollectionId] = useState("");
+  const [title, setTitle] = useState("");
+  const [farmCollectionIdInput, setFarmCollectionIdInput] = useState("");
+  const [decoCollectionIdInput, setDecoCollectionIdInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [search, setSearch] = useState("");
+
+  const filtered = collections.filter(
+    (c) =>
+      !search.trim() ||
+      c.title.toLowerCase().includes(search.toLowerCase()) ||
+      c.farmCollectionId.includes(search),
+  );
 
   const resetForm = () => {
-    setName("");
-    setVtexCollectionId("");
+    setTitle("");
+    setFarmCollectionIdInput("");
+    setDecoCollectionIdInput("");
   };
 
   const handleOpenChange = (open: boolean) => {
@@ -58,14 +69,15 @@ export default function CollectionsList({
   };
 
   const handleCreate = async () => {
-    const trimmedName = name.trim();
-    const trimmedVtexId = vtexCollectionId.trim();
-    if (!trimmedName || !trimmedVtexId) return;
+    const trimmedTitle = title.trim();
+    const trimmedFarmId = farmCollectionIdInput.trim();
+    if (!trimmedTitle || !trimmedFarmId) return;
     setIsSubmitting(true);
     try {
       await onAddCollection({
-        name: trimmedName,
-        vtexCollectionId: trimmedVtexId,
+        title: trimmedTitle,
+        farmCollectionId: trimmedFarmId,
+        decoCollectionId: decoCollectionIdInput.trim() || undefined,
       });
       handleOpenChange(false);
     } finally {
@@ -73,104 +85,204 @@ export default function CollectionsList({
     }
   };
 
-  const handleDelete = async (id: string) => {
-    setDeletingId(id);
+  const handleToggle = async (
+    collection: FarmrioCollectionItem,
+    value: boolean,
+  ) => {
+    setTogglingId(collection.id);
     try {
-      await onDeleteCollection(id);
+      await onToggleCollection(collection, value);
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  const handleDelete = async (collection: FarmrioCollectionItem) => {
+    setDeletingId(collection.id);
+    try {
+      await onDeleteCollection(collection);
     } finally {
       setDeletingId(null);
     }
   };
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="shrink-0 w-full border-b border-border h-12 overflow-x-auto flex items-center justify-between gap-3 px-4 min-w-max">
-        <div className="flex items-center gap-2 shrink-0 overflow-hidden">
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <BreadcrumbPage>Collection Ranking</BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
+    <div className="flex flex-col h-full bg-background">
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 py-5 border-b border-border">
+        <h1 className="text-xl font-semibold text-foreground">
+          PLP Optimizations
+        </h1>
+        <div className="flex items-center gap-3">
+          {/* Search */}
+          <div className="relative">
+            <SearchMd
+              size={16}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search for a PLP..."
+              className="pl-9 w-56 h-9 text-sm"
+            />
+          </div>
+          {/* New collection */}
+          <Button
+            size="sm"
+            className="bg-black text-white hover:bg-black/80 font-medium border-none"
+            onClick={() => setIsOpen(true)}
+          >
+            <Plus size={14} className="mr-1" />
+            New collection
+          </Button>
         </div>
-
-        <Button size="sm" onClick={() => setIsOpen(true)}>
-          <Plus size={14} className="mr-1" />
-          Add Collection
-        </Button>
       </div>
 
-      <div className="flex-1 overflow-auto p-6">
+      {/* Table */}
+      <div className="flex-1 overflow-auto">
         {collections.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center">
+          <div className="flex flex-col items-center justify-center h-full text-center p-8">
             <BarChart01 size={48} className="text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">No collections yet</h3>
+            <h3 className="text-lg font-medium mb-2">
+              Nenhuma collection ainda
+            </h3>
             <p className="text-muted-foreground max-w-sm">
-              Add your first collection to start viewing collection-specific
-              reports.
+              Adicione sua primeira collection para começar a visualizar os
+              reports de ranking.
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {collections.map((collection) => (
-              <Card
-                key={collection.id}
-                className="group relative cursor-pointer transition-shadow hover:shadow-md"
-                onClick={() => onSelectCollection(collection.id)}
-              >
-                <CardHeader className="pb-2 pt-5 px-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <CardTitle className="text-sm leading-snug line-clamp-2">
-                      {collection.name}
-                    </CardTitle>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-7 text-muted-foreground hover:text-destructive"
-                      disabled={deletingId === collection.id}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void handleDelete(collection.id);
-                      }}
-                    >
-                      <Trash01 size={14} />
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="px-5 pb-5">
-                  <CardDescription className="text-xs">
-                    VTEX Collection ID:{" "}
-                    <span className="font-mono text-foreground">
-                      {collection.vtexCollectionId}
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-6 py-3 w-full">
+                  Name
+                </th>
+                <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3 whitespace-nowrap">
+                  Farm ID
+                </th>
+                <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3 whitespace-nowrap">
+                  Deco ID
+                </th>
+                <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3 whitespace-nowrap">
+                  Status
+                </th>
+                <th className="px-4 py-3 w-10" />
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((collection) => (
+                <tr
+                  key={collection.id}
+                  className="border-b border-border hover:bg-muted/40 transition-colors group"
+                >
+                  <td
+                    className="px-6 py-4 cursor-pointer"
+                    onClick={() => onSelectCollection(collection)}
+                  >
+                    <span className="font-medium text-foreground hover:underline">
+                      {collection.title}
                     </span>
-                  </CardDescription>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                  </td>
+                  <td className="px-4 py-4">
+                    <span className="font-mono text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                      {collection.farmCollectionId}
+                    </span>
+                  </td>
+                  <td className="px-4 py-4">
+                    {collection.decoCollectionId ? (
+                      <span className="font-mono text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                        {collection.decoCollectionId}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground/50">
+                        —
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-4">
+                    <Switch
+                      className="cursor-pointer"
+                      checked={collection.isEnabled}
+                      disabled={togglingId === collection.id}
+                      onCheckedChange={(value) => {
+                        void handleToggle(collection, value);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </td>
+                  <td className="px-4 py-4">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="cursor-pointer opacity-0 group-hover:opacity-100 inline-flex items-center justify-center size-7 rounded hover:bg-muted transition-opacity"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <DotsVertical
+                            size={16}
+                            className="text-muted-foreground"
+                          />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          disabled={deletingId === collection.id}
+                          onSelect={() => {
+                            void handleDelete(collection);
+                          }}
+                        >
+                          {deletingId === collection.id
+                            ? "Removendo..."
+                            : "Remover collection"}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="px-6 py-12 text-center text-muted-foreground text-sm"
+                  >
+                    Nenhuma collection encontrada para &ldquo;{search}&rdquo;
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         )}
       </div>
 
+      {/* Add Collection Dialog */}
       <Dialog open={isOpen} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Add Collection</DialogTitle>
+            <DialogTitle>New collection</DialogTitle>
             <DialogDescription>
-              Configure a collection name and VTEX collection ID.
+              Configure o nome e os IDs da collection.
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-3">
             <Input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="Collection name"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="Nome da collection (ex: Vestidos)"
             />
             <Input
-              value={vtexCollectionId}
-              onChange={(event) => setVtexCollectionId(event.target.value)}
-              placeholder="VTEX collection ID"
+              value={farmCollectionIdInput}
+              onChange={(event) => setFarmCollectionIdInput(event.target.value)}
+              placeholder="Farm Collection ID (ex: 1031)"
+            />
+            <Input
+              value={decoCollectionIdInput}
+              onChange={(event) => setDecoCollectionIdInput(event.target.value)}
+              placeholder="Deco Collection ID (opcional)"
             />
           </div>
 
@@ -180,15 +292,15 @@ export default function CollectionsList({
               onClick={() => handleOpenChange(false)}
               disabled={isSubmitting}
             >
-              Cancel
+              Cancelar
             </Button>
             <Button
               onClick={() => void handleCreate()}
               disabled={
-                isSubmitting || !name.trim() || !vtexCollectionId.trim()
+                isSubmitting || !title.trim() || !farmCollectionIdInput.trim()
               }
             >
-              {isSubmitting ? "Saving..." : "Save collection"}
+              {isSubmitting ? "Salvando..." : "Criar collection"}
             </Button>
           </DialogFooter>
         </DialogContent>

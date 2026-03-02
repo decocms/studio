@@ -1,16 +1,16 @@
 /**
  * Section renderers for ranking reports.
- * Renders metrics, criteria, and ranked-list sections with specialized UI.
+ * Renders sections as returned by the Farmrio MCP:
+ * metrics (metricItems), criteria (criteriaItems), note (content), ranked-list (rankedItems).
  */
 
 import type {
-  CriterionItem,
-  MetricItem,
-  RankedListRow,
-  ReportSection,
-  ReportStatus,
+  FarmrioSection,
+  FarmrioMetricItem,
+  FarmriaCriteriaItem,
+  FarmrioRankedItem,
 } from "@decocms/bindings";
-import { REPORTS_BINDING } from "@decocms/bindings";
+import { FARMRIO_REORDER_BINDING } from "@decocms/bindings";
 import { usePluginContext } from "@decocms/mesh-sdk/plugins";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
@@ -27,7 +27,6 @@ import {
   ArrowDown,
   ArrowUp,
   CheckVerified02,
-  Columns02,
   File02,
   Hash02,
   Loading01,
@@ -35,12 +34,11 @@ import {
   Rows03,
 } from "@untitledui/icons";
 import { useMutation } from "@tanstack/react-query";
-import { useState } from "react";
 import { toast } from "sonner";
 import { buildVtexApplyPayload } from "../lib/vtex-reorder";
 import { useVtexConnectionContext } from "./vtex-connection-context";
 
-const STATUS_DOT: Record<ReportStatus, string> = {
+const STATUS_DOT: Record<string, string> = {
   passing: "bg-emerald-500",
   warning: "bg-amber-500",
   failing: "bg-red-500",
@@ -64,11 +62,7 @@ function SectionHeader({
   );
 }
 
-function MarkdownSection({ content }: { content: string }) {
-  return <Markdown>{content}</Markdown>;
-}
-
-function MetricCard({ metric }: { metric: MetricItem }) {
+function MetricCard({ metric }: { metric: FarmrioMetricItem }) {
   return (
     <div className="flex flex-col gap-3 items-start justify-end border border-border rounded-lg p-5 flex-1">
       <div className="text-2xl leading-8 text-foreground font-normal tabular-nums">
@@ -84,7 +78,7 @@ function MetricCard({ metric }: { metric: MetricItem }) {
           <span
             className={cn(
               "inline-block size-2 rounded-full shrink-0",
-              STATUS_DOT[metric.status],
+              STATUS_DOT[metric.status] ?? "bg-muted-foreground",
             )}
           />
         )}
@@ -94,24 +88,17 @@ function MetricCard({ metric }: { metric: MetricItem }) {
   );
 }
 
-export function MetricsSection({
+function MetricsSection({
   title,
   items,
-  stacked = false,
 }: {
-  title?: string;
-  items: MetricItem[];
-  stacked?: boolean;
+  title?: string | null;
+  items: FarmrioMetricItem[];
 }) {
   return (
     <div className="space-y-4">
       {title && <SectionHeader icon={Rows03} title={title} />}
-      <div
-        className={cn(
-          "flex gap-4",
-          stacked ? "flex-col items-stretch" : "items-stretch",
-        )}
-      >
+      <div className="flex gap-4 items-stretch">
         {items.map((metric, i) => (
           <MetricCard key={`${metric.label}-${i}`} metric={metric} />
         ))}
@@ -120,55 +107,12 @@ export function MetricsSection({
   );
 }
 
-function TableSection({
-  title,
-  columns,
-  rows,
-}: {
-  title?: string;
-  columns: string[];
-  rows: (string | number | null)[][];
-}) {
-  return (
-    <div className="space-y-4">
-      {title && <SectionHeader icon={Rows03} title={title} />}
-      <div className="rounded-lg border overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {columns.map((col) => (
-                <TableHead
-                  key={col}
-                  className="font-mono text-xs uppercase text-muted-foreground"
-                >
-                  {col}
-                </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row, rowIdx) => (
-              <TableRow key={rowIdx}>
-                {row.map((cell, cellIdx) => (
-                  <TableCell key={cellIdx} className="text-sm">
-                    {cell ?? <span className="text-muted-foreground">—</span>}
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-    </div>
-  );
-}
-
-export function CriteriaSection({
+function CriteriaSection({
   title,
   items,
 }: {
-  title?: string;
-  items: CriterionItem[];
+  title?: string | null;
+  items: FarmriaCriteriaItem[];
 }) {
   return (
     <div className="space-y-4">
@@ -212,7 +156,7 @@ function NoteSection({ content }: { content: string }) {
   return (
     <div className="space-y-4">
       <SectionHeader icon={File02} title="Notas" />
-      <p className="text-sm text-foreground opacity-80 leading-5">{content}</p>
+      <Markdown>{content}</Markdown>
     </div>
   );
 }
@@ -239,137 +183,96 @@ function DeltaBadge({ delta }: { delta: number }) {
   );
 }
 
-function buildMockedPreviousRows(rows: RankedListRow[]): RankedListRow[] {
-  if (rows.length === 0) return [];
-  return rows
-    .map((row) => {
-      const previousPosition =
-        row.reference_position !== undefined
-          ? row.reference_position
-          : row.position + (row.delta ?? 0);
-      return {
-        ...row,
-        position: previousPosition,
-        delta: 0,
-        reference_position: undefined,
-      };
-    })
-    .sort((a, b) => a.position - b.position);
-}
-
-function RankedTable({
-  rows,
-  label,
-}: {
-  rows: RankedListRow[];
-  label?: string;
-}) {
-  const valueColCount = Math.max(4, ...rows.map((r) => r.values.length));
-  const valueHeaders = [
-    "IMPRESSIONS",
-    "SELECT RATE",
-    "ATC",
-    "PURCHASE RATE",
-    ...Array.from(
-      { length: Math.max(0, valueColCount - 4) },
-      (_, i) => `Val ${i + 5}`,
-    ),
-  ];
-
+function RankedTable({ rows }: { rows: FarmrioRankedItem[] }) {
   return (
-    <div className="flex flex-col gap-2 min-w-0 flex-1">
-      {label && (
-        <span className="text-xs font-mono uppercase text-muted-foreground opacity-60 tracking-wide px-1">
-          {label}
-        </span>
-      )}
-      <div className="border border-border rounded-lg overflow-auto max-h-[820px]">
-        <Table>
-          <TableHeader className="sticky top-0 bg-background z-10">
-            <TableRow>
-              <TableHead className="font-mono text-xs uppercase text-muted-foreground w-[60px]">
-                #
-              </TableHead>
-              <TableHead className="font-mono text-xs uppercase text-muted-foreground w-[60px]">
-                DELTA
-              </TableHead>
-              <TableHead className="font-mono text-xs uppercase text-muted-foreground">
-                PRODUTO
-              </TableHead>
-              {valueHeaders.slice(0, valueColCount).map((h) => (
-                <TableHead
-                  key={h}
-                  className="font-mono text-xs uppercase text-muted-foreground"
-                >
-                  {h}
-                </TableHead>
-              ))}
+    <div className="border border-border rounded-lg overflow-auto max-h-[820px]">
+      <Table>
+        <TableHeader className="sticky top-0 bg-background z-10">
+          <TableRow>
+            <TableHead className="font-mono text-xs uppercase text-muted-foreground w-[60px]">
+              #
+            </TableHead>
+            <TableHead className="font-mono text-xs uppercase text-muted-foreground w-[60px]">
+              DELTA
+            </TableHead>
+            <TableHead className="font-mono text-xs uppercase text-muted-foreground">
+              PRODUTO
+            </TableHead>
+            <TableHead className="font-mono text-xs uppercase text-muted-foreground">
+              SESSÕES
+            </TableHead>
+            <TableHead className="font-mono text-xs uppercase text-muted-foreground">
+              SELECT RATE
+            </TableHead>
+            <TableHead className="font-mono text-xs uppercase text-muted-foreground">
+              ADD TO CART
+            </TableHead>
+            <TableHead className="font-mono text-xs uppercase text-muted-foreground">
+              PURCHASE RATE
+            </TableHead>
+            <TableHead className="font-mono text-xs uppercase text-muted-foreground">
+              DISPONIB.
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row, rowIdx) => (
+            <TableRow key={rowIdx}>
+              <TableCell>
+                <div className="flex items-center gap-1 opacity-50">
+                  <Hash02 size={16} className="text-muted-foreground" />
+                  <span className="text-sm font-medium text-muted-foreground tabular-nums">
+                    {row.position}
+                  </span>
+                </div>
+              </TableCell>
+              <TableCell>
+                {row.delta !== undefined ? (
+                  <DeltaBadge delta={row.delta} />
+                ) : (
+                  "—"
+                )}
+              </TableCell>
+              <TableCell>
+                <div className="flex items-center gap-2">
+                  {row.image && (
+                    <img
+                      src={row.image}
+                      alt=""
+                      className="h-12 w-8 object-cover rounded-sm shrink-0 bg-muted"
+                    />
+                  )}
+                  <span className="text-sm font-medium text-foreground truncate max-w-48">
+                    {row.label}
+                  </span>
+                </div>
+              </TableCell>
+              <TableCell className="text-sm tabular-nums">
+                {row.sessions?.toLocaleString() ?? "—"}
+              </TableCell>
+              <TableCell className="text-sm tabular-nums">
+                {row.valueSelectRate ??
+                  (row.selectRate != null
+                    ? `${(row.selectRate * 100).toFixed(2)}%`
+                    : "—")}
+              </TableCell>
+              <TableCell className="text-sm tabular-nums">
+                {row.addToCartRate != null
+                  ? `${(row.addToCartRate * 100).toFixed(2)}%`
+                  : "—"}
+              </TableCell>
+              <TableCell className="text-sm tabular-nums">
+                {row.purchaseRate != null
+                  ? `${(row.purchaseRate * 100).toFixed(3)}%`
+                  : "—"}
+              </TableCell>
+              <TableCell className="text-sm tabular-nums">
+                {row.valueAvailability ?? "—"}
+              </TableCell>
             </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row, rowIdx) => {
-              const delta =
-                row.reference_position !== undefined
-                  ? row.reference_position - row.position
-                  : (row.delta ?? 0);
-
-              return (
-                <TableRow key={rowIdx}>
-                  <TableCell>
-                    <div className="flex items-center gap-1 opacity-50">
-                      <Hash02 size={16} className="text-muted-foreground" />
-                      <span className="text-sm font-medium text-muted-foreground tabular-nums">
-                        {row.position}
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <DeltaBadge delta={delta} />
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      {row.image && (
-                        <img
-                          src={row.image}
-                          alt=""
-                          className="h-12 w-8 object-cover rounded-sm shrink-0 bg-muted"
-                        />
-                      )}
-                      <span className="text-sm font-medium text-foreground truncate">
-                        {row.label}
-                      </span>
-                    </div>
-                  </TableCell>
-                  {(() => {
-                    const columnNoteKeys = [
-                      "sessions",
-                      "select_rate",
-                      "add_to_cart_rate",
-                      "purchase_rate",
-                    ];
-                    const noteObj =
-                      typeof row.note === "object" && row.note !== null
-                        ? (row.note as Record<string, string | number | null>)
-                        : null;
-                    const allValues: (string | number | null)[] = Array.from(
-                      { length: valueColCount },
-                      (_, i) =>
-                        noteObj?.[columnNoteKeys[i] ?? ""] ??
-                        row.values[i] ??
-                        null,
-                    );
-                    return allValues.map((val, cellIdx) => (
-                      <TableCell key={cellIdx} className="text-sm tabular-nums">
-                        {val ?? "—"}
-                      </TableCell>
-                    ));
-                  })()}
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </div>
+          ))}
+        </TableBody>
+      </Table>
     </div>
   );
 }
@@ -377,38 +280,43 @@ function RankedTable({
 function RankedListSection({
   title,
   rows,
+  decoCollectionId,
 }: {
-  title?: string;
-  rows: RankedListRow[];
+  title?: string | null;
+  rows: FarmrioRankedItem[];
+  decoCollectionId: string | undefined;
 }) {
-  const { connection } = usePluginContext<typeof REPORTS_BINDING>();
+  const { connection } = usePluginContext<typeof FARMRIO_REORDER_BINDING>();
   const { connection: vtexConnection, toolCaller: vtexToolCaller } =
     useVtexConnectionContext();
-  const [showComparison, setShowComparison] = useState(false);
-  const mockedPreviousRows = buildMockedPreviousRows(rows);
-  const applyPayload = buildVtexApplyPayload(rows);
+
+  const applyPayload = decoCollectionId
+    ? buildVtexApplyPayload(rows, decoCollectionId)
+    : {
+        ok: false as const,
+        error: "decoCollectionId não disponível para esta collection.",
+      };
   const hasVtexReorderTool =
     vtexConnection?.tools?.some(
       (tool) => tool.name === "VTEX_REORDER_COLLECTION",
     ) ?? false;
   const missingVtexConnection = !vtexConnection || !vtexToolCaller;
   const applyBlockedReason = missingVtexConnection
-    ? "Configure uma conexao VTEX para aplicar a sugestao."
+    ? "Configure uma conexão VTEX para aplicar a sugestão."
     : !hasVtexReorderTool
-      ? "A conexao VTEX selecionada nao possui a tool VTEX_REORDER_COLLECTION."
+      ? "A conexão VTEX selecionada não possui a tool VTEX_REORDER_COLLECTION."
       : !applyPayload.ok
         ? applyPayload.error
         : null;
-  const reportsConnectionLabel = connection.title;
 
   const applyMutation = useMutation({
     mutationFn: async () => {
       if (missingVtexConnection || !vtexToolCaller) {
-        throw new Error("Configure uma conexao VTEX para aplicar a sugestao.");
+        throw new Error("Configure uma conexão VTEX para aplicar a sugestão.");
       }
       if (!hasVtexReorderTool) {
         throw new Error(
-          "A conexao VTEX selecionada nao possui a tool VTEX_REORDER_COLLECTION.",
+          "A conexão VTEX selecionada não possui a tool VTEX_REORDER_COLLECTION.",
         );
       }
       if (!applyPayload.ok) {
@@ -422,11 +330,11 @@ function RankedListSection({
     },
     onSuccess: () => {
       const skuCount = applyPayload.ok ? applyPayload.skuCount : rows.length;
-      toast.success(`Sugestao aplicada com sucesso (${skuCount} SKUs).`);
+      toast.success(`Sugestão aplicada com sucesso (${skuCount} SKUs).`);
     },
     onError: (error) => {
       const message =
-        error instanceof Error ? error.message : "Falha ao aplicar sugestao.";
+        error instanceof Error ? error.message : "Falha ao aplicar sugestão.";
       toast.error(message);
     },
   });
@@ -448,66 +356,52 @@ function RankedListSection({
             ) : null}
             Apply Suggestion
           </Button>
-          <button
-            type="button"
-            onClick={() => setShowComparison((prev) => !prev)}
-            className={cn(
-              "inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md border transition-colors",
-              showComparison
-                ? "bg-primary text-primary-foreground border-primary"
-                : "bg-transparent text-muted-foreground border-border hover:text-foreground hover:border-foreground/30",
-            )}
-          >
-            <Columns02 size={14} />
-            Comparar com Ordenacao Atual
-          </button>
         </div>
       </div>
-      {applyBlockedReason && (
+      {applyBlockedReason ? (
         <p className="text-xs text-muted-foreground">{applyBlockedReason}</p>
-      )}
-      {!applyBlockedReason && (
+      ) : (
         <p className="text-xs text-muted-foreground">
-          Report conectado via: {reportsConnectionLabel}
+          Report via: {connection.title}
         </p>
       )}
-
-      {showComparison ? (
-        <div className="flex gap-4 items-start">
-          <RankedTable rows={rows} label="Ordenação Proposta" />
-          <RankedTable rows={mockedPreviousRows} label="Ordenação Atual" />
-        </div>
-      ) : (
-        <RankedTable rows={rows} />
-      )}
+      <RankedTable rows={rows} />
     </div>
   );
 }
 
 export function RankingSectionRenderer({
   section,
+  decoCollectionId,
 }: {
-  section: ReportSection;
+  section: FarmrioSection;
+  decoCollectionId: string | undefined;
 }) {
   switch (section.type) {
-    case "markdown":
-      return <MarkdownSection content={section.content} />;
     case "metrics":
-      return <MetricsSection title={section.title} items={section.items} />;
-    case "table":
       return (
-        <TableSection
+        <MetricsSection
           title={section.title}
-          columns={section.columns}
-          rows={section.rows}
+          items={section.metricItems ?? []}
         />
       );
     case "criteria":
-      return <CriteriaSection title={section.title} items={section.items} />;
+      return (
+        <CriteriaSection
+          title={section.title}
+          items={section.criteriaItems ?? []}
+        />
+      );
     case "note":
-      return <NoteSection content={section.content} />;
+      return section.content ? <NoteSection content={section.content} /> : null;
     case "ranked-list":
-      return <RankedListSection title={section.title} rows={section.rows} />;
+      return (
+        <RankedListSection
+          title={section.title}
+          rows={section.rankedItems ?? []}
+          decoCollectionId={decoCollectionId}
+        />
+      );
     default:
       return null;
   }

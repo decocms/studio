@@ -1,14 +1,4 @@
-import type { RankedListRow } from "@decocms/bindings";
-
-export const HARDCODED_COLLECTION_ID = "REPLACE_WITH_COLLECTION_ID";
-
-type NoteValue = string | number | null | undefined;
-
-type RankedRowNote = {
-  SkuId?: NoteValue;
-  skuId?: NoteValue;
-  sku_id?: NoteValue;
-};
+import type { FarmrioRankedItem } from "@decocms/bindings";
 
 type ApplyPayloadError = {
   ok: false;
@@ -23,29 +13,6 @@ type ApplyPayloadSuccess = {
 };
 
 export type VtexApplyPayloadResult = ApplyPayloadSuccess | ApplyPayloadError;
-
-function normalizeSkuId(value: NoteValue): string | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return String(Math.trunc(value));
-  }
-  if (typeof value === "string" && value.trim().length > 0) {
-    return value.trim();
-  }
-  return null;
-}
-
-function readSkuIdFromNote(note: RankedListRow["note"]): string | null {
-  if (!note || typeof note !== "object") {
-    return null;
-  }
-
-  const rowNote = note as RankedRowNote;
-  return (
-    normalizeSkuId(rowNote.SkuId) ??
-    normalizeSkuId(rowNote.skuId) ??
-    normalizeSkuId(rowNote.sku_id)
-  );
-}
 
 function escapeXml(value: string): string {
   return value
@@ -70,8 +37,14 @@ export function buildVtexCollectionItemsXml(skuIds: string[]): string {
   ].join("\n");
 }
 
+/**
+ * Builds the VTEX apply payload from a ranked list.
+ * Uses rankedItem.id as the SKU identifier (DB row id).
+ * vtexCollectionId is the collection's DB id (used as VTEX collection id).
+ */
 export function buildVtexApplyPayload(
-  rows: RankedListRow[],
+  rows: FarmrioRankedItem[],
+  vtexCollectionId: number | string,
 ): VtexApplyPayloadResult {
   if (rows.length === 0) {
     return {
@@ -84,7 +57,7 @@ export function buildVtexApplyPayload(
   const skuIds: string[] = [];
 
   for (const row of orderedRows) {
-    const skuId = readSkuIdFromNote(row.note);
+    const skuId = row.id != null ? String(row.id) : null;
     if (!skuId) {
       return {
         ok: false,
@@ -96,7 +69,7 @@ export function buildVtexApplyPayload(
 
   return {
     ok: true,
-    collectionId: HARDCODED_COLLECTION_ID,
+    collectionId: String(vtexCollectionId),
     xml: buildVtexCollectionItemsXml(skuIds),
     skuCount: skuIds.length,
   };

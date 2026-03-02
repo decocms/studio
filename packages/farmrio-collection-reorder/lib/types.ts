@@ -1,5 +1,10 @@
-export interface Collection {
-  id: string;
-  name: string;
-  vtexCollectionId: string;
-}
+export type {
+  FarmrioCollectionItem as Collection,
+  FarmrioCollectionItem,
+  FarmrioMetricItem,
+  FarmriaCriteriaItem,
+  FarmrioRankedItem,
+  FarmrioSection,
+  FarmrioReportSummary,
+  FarmrioReport,
+} from "@decocms/bindings";

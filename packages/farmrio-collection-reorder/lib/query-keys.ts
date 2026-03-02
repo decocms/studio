@@ -3,9 +3,22 @@
  */
 
 export const KEYS = {
-  reportsList: (connectionId: string) =>
-    ["collection-reorder-ranking", "reports", "list", connectionId] as const,
-  report: (connectionId: string, reportId: string) =>
+  collectionsList: (connectionId: string) =>
+    [
+      "collection-reorder-ranking",
+      "collections",
+      "list",
+      connectionId,
+    ] as const,
+  reportsList: (connectionId: string, collectionDbId: number) =>
+    [
+      "collection-reorder-ranking",
+      "reports",
+      "list",
+      connectionId,
+      collectionDbId,
+    ] as const,
+  report: (connectionId: string, reportId: number) =>
     [
       "collection-reorder-ranking",
       "reports",
