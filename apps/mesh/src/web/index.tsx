@@ -18,6 +18,8 @@ import type { ReactNode } from "react";
 
 import "../../index.css";
 
+import { authClient } from "@/web/lib/auth-client";
+import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import { sourcePlugins } from "./plugins.ts";
 import type {
   AnyClientPlugin,
@@ -130,11 +132,31 @@ const shellLayout = createRoute({
   component: lazyRouteComponent(() => import("./layouts/shell-layout.tsx")),
 });
 
-// Home route (landing, redirects to first org)
+// Home route (landing, redirects to last or only org)
 const homeRoute = createRoute({
   getParentRoute: () => shellLayout,
   path: "/",
   component: lazyRouteComponent(() => import("./routes/home.tsx")),
+  beforeLoad: async () => {
+    // Fast path: redirect to the last visited org stored in localStorage
+    const lastOrgSlug = localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug());
+    if (lastOrgSlug) {
+      throw redirect({
+        to: "/$org/$project",
+        params: { org: lastOrgSlug, project: ORG_ADMIN_PROJECT_SLUG },
+      });
+    }
+
+    // Slow path: first-time user — redirect if they only have one org
+    const { data: orgs } = await authClient.organization.list();
+    const onlyOrg = orgs?.length === 1 ? orgs[0] : undefined;
+    if (onlyOrg) {
+      throw redirect({
+        to: "/$org/$project",
+        params: { org: onlyOrg.slug, project: ORG_ADMIN_PROJECT_SLUG },
+      });
+    }
+  },
 });
 
 // ============================================
