@@ -26,7 +26,14 @@ export function resolveThreadStatus(
   responseParts: ResponsePart[] = [],
 ): ThreadStatus {
   if (finishReason === "stop") {
-    return "completed";
+    const text = responseParts
+      .filter((p) => p.type === "text" && p.text)
+      .map((p) => p.text!)
+      .join("\n");
+
+    // Strip URLs so their query strings don't trigger a false positive
+    const textWithoutUrls = text.replace(/https?:\/\/[^\s)>\]]+/g, "");
+    return textWithoutUrls.includes("?") ? "requires_action" : "completed";
   }
 
   if (finishReason === "tool-calls") {
