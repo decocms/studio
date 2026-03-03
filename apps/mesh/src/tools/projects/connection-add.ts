@@ -6,7 +6,7 @@
 
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth } from "../../core/mesh-context";
+import { requireAuth, requireOrganization } from "../../core/mesh-context";
 
 export const PROJECT_CONNECTION_ADD = defineTool({
   name: "PROJECT_CONNECTION_ADD" as const,
@@ -30,23 +30,21 @@ export const PROJECT_CONNECTION_ADD = defineTool({
 
   handler: async (input, ctx) => {
     requireAuth(ctx);
+    const organization = requireOrganization(ctx);
     await ctx.access.check();
 
     const { projectId, connectionId } = input;
 
-    // Validate project exists
+    // Validate project exists and belongs to the caller's org
     const project = await ctx.storage.projects.get(projectId);
-    if (!project) {
+    if (!project || project.organizationId !== organization.id) {
       throw new Error(`Project not found: ${projectId}`);
     }
 
     // Validate connection exists and belongs to the same org
     const connection = await ctx.storage.connections.findById(connectionId);
-    if (!connection) {
+    if (!connection || connection.organization_id !== organization.id) {
       throw new Error(`Connection not found: ${connectionId}`);
-    }
-    if (connection.organization_id !== project.organizationId) {
-      throw new Error("Connection does not belong to the same organization");
     }
 
     const pc = await ctx.storage.projectConnections.add(

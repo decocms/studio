@@ -6,7 +6,7 @@
 
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth } from "../../core/mesh-context";
+import { requireAuth, requireOrganization } from "../../core/mesh-context";
 
 const connectionSummarySchema = z.object({
   id: z.string(),
@@ -36,9 +36,15 @@ export const PROJECT_CONNECTION_LIST = defineTool({
 
   handler: async (input, ctx) => {
     requireAuth(ctx);
+    const organization = requireOrganization(ctx);
     await ctx.access.check();
 
     const { projectId } = input;
+
+    const project = await ctx.storage.projects.get(projectId);
+    if (!project || project.organizationId !== organization.id) {
+      throw new Error(`Project not found: ${projectId}`);
+    }
 
     const projectConnections =
       await ctx.storage.projectConnections.list(projectId);
