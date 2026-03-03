@@ -21,14 +21,20 @@ describe("resolveThreadStatus", () => {
 
   test("stop with question mark only inside URL -> completed", () => {
     const parts = [
-      { type: "text", text: "Check out https://example.com/page?foo=bar for more info." },
+      {
+        type: "text",
+        text: "Check out https://example.com/page?foo=bar for more info.",
+      },
     ];
     expect(resolveThreadStatus("stop", parts)).toBe("completed");
   });
 
   test("stop with question and URL -> requires_action", () => {
     const parts = [
-      { type: "text", text: "See https://example.com/page?q=1 — does this help?" },
+      {
+        type: "text",
+        text: "See https://example.com/page?q=1 — does this help?",
+      },
     ];
     expect(resolveThreadStatus("stop", parts)).toBe("requires_action");
   });
