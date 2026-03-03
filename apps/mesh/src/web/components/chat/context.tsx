@@ -154,11 +154,7 @@ type ChatContextValue = ChatStableValue & ChatStreamValue;
 
 const createModelsTransport = (
   org: string,
-  /**
-   * Mutable ref holding the most-recent toolApprovalLevel preference.
-   * Passed as a ref so auto-sends (triggered by sendAutomaticallyWhen) always
-   * pick up the current value even though requestMetadata is empty at that point.
-   */
+  /** Live ref to the current toolApprovalLevel preference. */
   toolApprovalLevelRef: { current: string | undefined },
 ): DefaultChatTransport<UIMessage<Metadata>> =>
   new DefaultChatTransport<UIMessage<Metadata>>({
@@ -171,9 +167,8 @@ const createModelsTransport = (
       const {
         system,
         tiptapDoc: _tiptapDoc,
-        toolApprovalLevel,
         ...metadata
-      } = requestMetadata as Metadata & { toolApprovalLevel?: string };
+      } = requestMetadata as Metadata;
       const systemMessage: UIMessage<Metadata> | null = system
         ? {
             id: crypto.randomUUID(),
@@ -189,8 +184,6 @@ const createModelsTransport = (
       // Fall back to last message metadata when requestMetadata is missing fields
       // (e.g. during re-sends from addToolOutput / addToolApprovalResponse)
       const lastMsgMeta = (messages.at(-1)?.metadata ?? {}) as Metadata;
-      const lastUserMeta = (messages.findLast((m) => m.role === "user")
-        ?.metadata ?? {}) as Metadata;
       const mergedMetadata = {
         ...metadata,
         agent: metadata.agent ?? lastMsgMeta.agent,
@@ -198,21 +191,15 @@ const createModelsTransport = (
         thread_id: metadata.thread_id ?? lastMsgMeta.thread_id,
       };
 
-      // Priority: explicit requestMetadata → last AI msg → last user msg → current preference ref
-      // The ref ensures that changing the approval level dropdown mid-session
-      // propagates to all subsequent auto-sends, not just new user-initiated messages.
-      const resolvedToolApprovalLevel =
-        toolApprovalLevel ??
-        lastMsgMeta.toolApprovalLevel ??
-        lastUserMeta.toolApprovalLevel ??
-        toolApprovalLevelRef.current;
-
       return {
         body: {
           messages: allMessages,
           ...mergedMetadata,
-          ...(resolvedToolApprovalLevel && {
-            toolApprovalLevel: resolvedToolApprovalLevel,
+          // Always read from the live ref so changing the approval level
+          // dropdown takes effect immediately, including during auto-sends
+          // after addToolApprovalResponse.
+          ...(toolApprovalLevelRef.current && {
+            toolApprovalLevel: toolApprovalLevelRef.current,
           }),
         },
       };
@@ -934,7 +921,6 @@ export function ChatProvider({ children }: PropsWithChildren) {
       tiptapDoc,
       created_at: new Date().toISOString(),
       thread_id: threadManager.activeThreadId,
-      toolApprovalLevel: preferences.toolApprovalLevel,
       agent: {
         id: selectedVirtualMcp?.id ?? decopilotId,
         mode: selectedMode,

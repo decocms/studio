@@ -65,8 +65,6 @@ export interface Metadata {
   system?: string;
   /** Tiptap document for rich user input (includes prompt tags with resources) */
   tiptapDoc?: TiptapDoc;
-  /** Tool approval level preference */
-  toolApprovalLevel?: "none" | "readonly" | "yolo";
   usage?: {
     inputTokens?: number;
     outputTokens?: number;
