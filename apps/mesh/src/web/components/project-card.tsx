@@ -56,7 +56,6 @@ export function ProjectCard({ project, onSettingsClick }: ProjectCardProps) {
             className={cn(
               "absolute top-3 right-3 size-6 rounded-md flex items-center justify-center",
               "bg-black/20 hover:bg-black/40 transition-colors",
-              "opacity-0 group-hover:opacity-100",
             )}
           >
             <Settings className="size-3.5 text-white" />

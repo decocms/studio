@@ -16,6 +16,7 @@ import type {
   OrganizationSettings,
   OrganizationTag,
   Project,
+  ProjectConnection,
   ProjectPluginConfig,
   ProjectUI,
   Thread,
@@ -70,6 +71,12 @@ export interface ProjectStoragePort {
     }>,
   ): Promise<Project | null>;
   delete(projectId: string): Promise<boolean>;
+}
+
+export interface ProjectConnectionStoragePort {
+  list(projectId: string): Promise<ProjectConnection[]>;
+  add(projectId: string, connectionId: string): Promise<ProjectConnection>;
+  remove(projectId: string, connectionId: string): Promise<boolean>;
 }
 
 export interface ProjectPluginConfigStoragePort {

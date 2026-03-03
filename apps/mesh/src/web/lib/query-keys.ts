@@ -222,4 +222,12 @@ export const KEYS = {
     ["project-plugin-configs", projectId] as const,
   projectPluginConfig: (projectId: string, pluginId: string) =>
     ["project-plugin-config", projectId, pluginId] as const,
+
+  // Project connections (dependencies)
+  projectConnections: (projectId: string) =>
+    ["project-connections", projectId] as const,
+
+  // Project connection details (with tools, for sidebar)
+  projectConnectionDetails: (projectId: string, connectionIds: string[]) =>
+    ["project-connections", projectId, "details", connectionIds] as const,
 } as const;

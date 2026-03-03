@@ -34,8 +34,12 @@ export default function ProjectsListPage() {
 
   const handleSettingsClick = (projectSlug: string) => {
     navigate({
-      to: "/$org/$project/settings",
-      params: { org: org.slug, project: projectSlug },
+      to: "/$org/$project/projects/$slug/settings/general",
+      params: {
+        org: org.slug,
+        project: ORG_ADMIN_PROJECT_SLUG,
+        slug: projectSlug,
+      },
     });
   };
 

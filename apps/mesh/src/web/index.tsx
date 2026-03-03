@@ -176,19 +176,26 @@ const tasksRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/tasks.tsx")),
 });
 
-// Project settings (redirects to settings modal via search param)
+// Project settings redirect
 const projectSettingsRoute = createRoute({
   getParentRoute: () => projectLayout,
   path: "/settings",
   beforeLoad: ({ params }) => {
     const isOrgAdmin = params.project === ORG_ADMIN_PROJECT_SLUG;
+    if (isOrgAdmin) {
+      throw redirect({
+        to: "/$org/$project",
+        params,
+        search: { settings: "org.general" },
+      });
+    }
+    // Regular projects: redirect to org-admin project settings page
     throw redirect({
-      to: "/$org/$project",
-      params,
-      search: {
-        settings: isOrgAdmin
-          ? "org.general"
-          : `project:${params.project}:general`,
+      to: "/$org/$project/projects/$slug/settings/general",
+      params: {
+        org: params.org,
+        project: ORG_ADMIN_PROJECT_SLUG,
+        slug: params.project,
       },
     });
   },
@@ -219,6 +226,68 @@ const projectsListRoute = createRoute({
   path: "/projects",
   beforeLoad: orgAdminGuard,
   component: lazyRouteComponent(() => import("./routes/projects-list.tsx")),
+});
+
+// Project settings (org-admin only - dedicated page)
+const projectSettingsLayout = createRoute({
+  getParentRoute: () => projectLayout,
+  path: "/projects/$slug/settings",
+  beforeLoad: orgAdminGuard,
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/project-settings/layout.tsx"),
+  ),
+});
+
+const projectSettingsIndexRoute = createRoute({
+  getParentRoute: () => projectSettingsLayout,
+  path: "/",
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: "/$org/$project/projects/$slug/settings/general",
+      params,
+    });
+  },
+  component: () => null,
+});
+
+const projectSettingsGeneralRoute = createRoute({
+  getParentRoute: () => projectSettingsLayout,
+  path: "/general",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/project-settings/general.tsx"),
+  ),
+});
+
+const projectSettingsDependenciesRoute = createRoute({
+  getParentRoute: () => projectSettingsLayout,
+  path: "/dependencies",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/project-settings/dependencies.tsx"),
+  ),
+});
+
+const projectSettingsSidebarRoute = createRoute({
+  getParentRoute: () => projectSettingsLayout,
+  path: "/sidebar",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/project-settings/sidebar-settings.tsx"),
+  ),
+});
+
+const projectSettingsPluginsRoute = createRoute({
+  getParentRoute: () => projectSettingsLayout,
+  path: "/plugins",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/project-settings/plugins.tsx"),
+  ),
+});
+
+const projectSettingsDangerRoute = createRoute({
+  getParentRoute: () => projectSettingsLayout,
+  path: "/danger",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/project-settings/danger.tsx"),
+  ),
 });
 
 // Members
@@ -364,6 +433,13 @@ const agentDetailRoute = createRoute({
   ),
 });
 
+// Pinned App View (available for all projects)
+const projectAppViewRoute = createRoute({
+  getParentRoute: () => projectLayout,
+  path: "/apps/$connectionId/$toolName",
+  component: lazyRouteComponent(() => import("./routes/project-app-view.tsx")),
+});
+
 // Workflows (available for all projects)
 const workflowsRoute = createRoute({
   getParentRoute: () => projectLayout,
@@ -431,11 +507,21 @@ const pluginLayoutWithChildren = pluginLayoutRoute.addChildren(pluginRoutes);
 
 const storeRouteWithChildren = storeRoute.addChildren([storeDetailRoute]);
 
+const projectSettingsWithChildren = projectSettingsLayout.addChildren([
+  projectSettingsIndexRoute,
+  projectSettingsGeneralRoute,
+  projectSettingsDependenciesRoute,
+  projectSettingsSidebarRoute,
+  projectSettingsPluginsRoute,
+  projectSettingsDangerRoute,
+]);
+
 const projectRoutes = [
   projectHomeRoute,
   tasksRoute,
   projectSettingsRoute,
   projectsListRoute,
+  projectSettingsWithChildren,
   membersRoute,
   connectionsRoute,
   connectionDetailRoute,
@@ -447,6 +533,7 @@ const projectRoutes = [
   agentsRoute,
   agentDetailRoute,
   workflowsRoute,
+  projectAppViewRoute,
   pluginLayoutWithChildren,
 ];
 

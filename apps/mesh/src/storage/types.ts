@@ -804,11 +804,19 @@ export interface MemberTag {
 /**
  * Project UI customization settings
  */
+export interface PinnedView {
+  connectionId: string;
+  toolName: string;
+  label: string;
+  icon: string | null;
+}
+
 export interface ProjectUI {
   banner: string | null;
   bannerColor: string | null;
   icon: string | null;
   themeColor: string | null;
+  pinnedViews?: PinnedView[] | null;
 }
 
 /**
@@ -840,6 +848,27 @@ export interface Project {
   ui: ProjectUI | null;
   createdAt: Date | string;
   updatedAt: Date | string;
+}
+
+/**
+ * Project connection join table definition
+ * Links projects to organization connections (dependencies)
+ */
+export interface ProjectConnectionTable {
+  id: string;
+  project_id: string;
+  connection_id: string;
+  created_at: ColumnType<Date, Date | string, never>;
+}
+
+/**
+ * Project connection entity - Runtime representation
+ */
+export interface ProjectConnection {
+  id: string;
+  projectId: string;
+  connectionId: string;
+  createdAt: Date | string;
 }
 
 /**
@@ -914,5 +943,6 @@ export interface Database {
 
   // Projects tables
   projects: ProjectTable;
+  project_connections: ProjectConnectionTable;
   project_plugin_configs: ProjectPluginConfigTable;
 }

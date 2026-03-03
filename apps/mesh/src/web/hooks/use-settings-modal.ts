@@ -6,19 +6,9 @@ export type SettingsSection =
   | "account.experimental"
   | "org.general"
   | "org.plugins"
-  | "org.billing"
-  | `project:${string}:general`
-  | `project:${string}:plugins`
-  | `project:${string}:danger`;
+  | "org.billing";
 
-export function projectSection(
-  slug: string,
-  sub: "general" | "plugins" | "danger",
-): SettingsSection {
-  return `project:${slug}:${sub}` as SettingsSection;
-}
-
-const STATIC_SECTIONS = new Set([
+const VALID_SECTIONS = new Set<string>([
   "account.profile",
   "account.preferences",
   "account.experimental",
@@ -31,24 +21,7 @@ function isValidSettingsSection(
   value: string | undefined,
 ): value is SettingsSection {
   if (!value) return false;
-  if (STATIC_SECTIONS.has(value)) return true;
-  const parts = value.split(":");
-  return (
-    parts.length === 3 &&
-    parts[0] === "project" &&
-    !!parts[1] &&
-    (parts[2] === "general" || parts[2] === "plugins" || parts[2] === "danger")
-  );
-}
-
-export function parseProjectSection(section: SettingsSection): {
-  slug: string;
-  sub: "general" | "plugins" | "danger";
-} | null {
-  if (!section.startsWith("project:")) return null;
-  const [, slug, sub] = section.split(":");
-  if (!slug || !sub) return null;
-  return { slug, sub: sub as "general" | "plugins" | "danger" };
+  return VALID_SECTIONS.has(value);
 }
 
 export function useSettingsModal() {

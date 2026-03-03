@@ -653,16 +653,15 @@ function ConnectionInspectorViewContent() {
   const { data: promptsData } = useMCPPromptsListQuery({ client });
   const { data: resourcesData } = useMCPResourcesListQuery({ client });
 
-  // Fetch tools - uses cached if available, otherwise fetches dynamically
-  // VIRTUAL connections always fetch dynamically because:
-  // 1. Their tools column contains virtual tool definitions (code), not cached downstream tools
-  // 2. The actual tools list (virtual + downstream) comes from the MCP proxy
+  // VIRTUAL connections fetch tools dynamically because their tools column
+  // contains virtual tool definitions (code), not cached downstream tools.
+  // The actual tools list (virtual + downstream) comes from the MCP proxy.
+  // Non-VIRTUAL connections use tools from connection data (backfilled by
+  // COLLECTION_CONNECTIONS_GET when null).
   const isVirtualConnection = connection?.connection_type === "VIRTUAL";
-  const hasCachedTools =
-    !isVirtualConnection && connection?.tools && connection.tools.length > 0;
   const { data: toolsData, isLoading: isLoadingTools } = useMCPToolsListQuery({
     client,
-    enabled: !hasCachedTools,
+    enabled: isVirtualConnection,
   });
 
   const prompts = (promptsData?.prompts ?? []).map((p) => ({
@@ -674,15 +673,15 @@ function ConnectionInspectorViewContent() {
     name: r.name,
     description: r.description,
   }));
-  const tools = hasCachedTools
-    ? (connection.tools ?? [])
-    : (toolsData?.tools ?? []).map((t) => ({
+  const tools = isVirtualConnection
+    ? (toolsData?.tools ?? []).map((t) => ({
         name: t.name,
         description: t.description,
         inputSchema: t.inputSchema as Record<string, unknown> | undefined,
         annotations: t.annotations,
         _meta: t._meta as Record<string, unknown> | undefined,
-      }));
+      }))
+    : (connection?.tools ?? []);
 
   // Update connection handler
   const handleUpdateConnection = async (

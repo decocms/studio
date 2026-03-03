@@ -128,6 +128,10 @@ const CORE_TOOLS = [
   ProjectTools.PROJECT_DELETE,
   ProjectTools.PROJECT_PLUGIN_CONFIG_GET,
   ProjectTools.PROJECT_PLUGIN_CONFIG_UPDATE,
+  ProjectTools.PROJECT_CONNECTION_LIST,
+  ProjectTools.PROJECT_CONNECTION_ADD,
+  ProjectTools.PROJECT_CONNECTION_REMOVE,
+  ProjectTools.PROJECT_PINNED_VIEWS_UPDATE,
 ] as const satisfies { name: ToolName }[];
 
 // Plugin tools - collected at startup, gated by org settings at runtime

@@ -10,6 +10,7 @@ import {
 } from "@deco/ui/components/sidebar.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
+import { LinkExternal01 } from "@untitledui/icons";
 import type { ReactNode } from "react";
 import type { NavigationSidebarItem, SidebarSection } from "./types";
 import { SidebarCollapsibleGroup } from "./sidebar-group";
@@ -32,11 +33,24 @@ function SidebarNavigationItem({ item }: { item: NavigationSidebarItem }) {
         onClick={item.onClick}
         isActive={item.isActive}
         tooltip={item.label}
+        className={cn(item.isExternal && "group/external")}
       >
         <span className="[&>svg]:size-4">{item.icon}</span>
-        <span className="truncate group-data-[collapsible=icon]:hidden">
+        <span
+          className={cn(
+            "truncate group-data-[collapsible=icon]:hidden",
+            item.isExternal &&
+              "group-hover/external:underline underline-offset-2",
+          )}
+        >
           {item.label}
         </span>
+        {item.isExternal && (
+          <LinkExternal01
+            size={12}
+            className="ml-auto mr-1 shrink-0 opacity-0 group-hover/external:opacity-60 transition-opacity group-data-[collapsible=icon]:hidden"
+          />
+        )}
       </SidebarMenuButton>
     </SidebarMenuItem>
   );

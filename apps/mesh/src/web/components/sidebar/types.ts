@@ -6,6 +6,8 @@ export interface NavigationSidebarItem {
   icon: ReactNode;
   onClick: () => void;
   isActive?: boolean;
+  /** Shows an external-link icon on hover and underlines the label */
+  isExternal?: boolean;
 }
 
 export interface SidebarItemGroup {

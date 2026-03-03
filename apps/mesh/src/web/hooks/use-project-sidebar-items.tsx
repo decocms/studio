@@ -15,6 +15,7 @@ import {
   FaceSmile,
   Folder,
   Home02,
+  LayoutLeft,
   Settings01,
   Users03,
 } from "@untitledui/icons";
@@ -29,11 +30,27 @@ export function useProjectSidebarItems(): SidebarSection[] {
   const { org, project } = Locator.parse(locator);
   const isOrgAdminProject = Locator.isOrgAdminProject(locator);
 
-  // Fetch project data to get enabledPlugins (sidebar is outside ProjectLayout context)
+  // Fetch project data to get enabledPlugins and pinnedViews
   const { data: projectData } = useProject(orgContext.id, project);
 
   // All projects (including org-admin) use project-level enabledPlugins
   const enabledPlugins = projectData?.enabledPlugins ?? [];
+
+  // Pinned views from project UI settings
+  const pinnedViews =
+    (
+      projectData?.ui as
+        | {
+            pinnedViews?: Array<{
+              connectionId: string;
+              toolName: string;
+              label: string;
+              icon: string | null;
+            }> | null;
+          }
+        | null
+        | undefined
+    )?.pinnedViews ?? [];
 
   // Filter plugins to only show enabled ones
   const enabledPluginItems = pluginRootSidebarItems.filter((item) =>
@@ -202,6 +219,43 @@ export function useProjectSidebarItems(): SidebarSection[] {
     }),
   );
 
+  // Build pinned views sidebar items
+  const pinnedViewItems: NavigationSidebarItem[] = pinnedViews.map((view) => ({
+    key: `app-${view.connectionId}-${view.toolName}`,
+    label: view.label || view.toolName,
+    icon: view.icon ? (
+      <img src={view.icon} alt="" className="size-4 rounded" />
+    ) : (
+      <LayoutLeft />
+    ),
+    isActive: isActiveRoute(
+      `apps/${view.connectionId}/${encodeURIComponent(view.toolName)}`,
+    ),
+    onClick: () =>
+      navigate({
+        to: "/$org/$project/apps/$connectionId/$toolName",
+        params: {
+          org,
+          project,
+          connectionId: view.connectionId,
+          toolName: view.toolName,
+        },
+      }),
+  }));
+
+  const pinnedViewsSection: SidebarSection | null =
+    pinnedViewItems.length > 0
+      ? {
+          type: "group",
+          group: {
+            id: "apps",
+            label: "Apps",
+            items: pinnedViewItems,
+            defaultExpanded: true,
+          },
+        }
+      : null;
+
   if (isOrgAdminProject) {
     // Org-admin sidebar layout:
     // - Home, Tasks (if enabled), Projects (if enabled) (top-level)
@@ -259,6 +313,11 @@ export function useProjectSidebarItems(): SidebarSection[] {
       sections.push(...pluginGroupSections);
     }
 
+    // Add pinned views
+    if (pinnedViewsSection) {
+      sections.push(pinnedViewsSection);
+    }
+
     return sections;
   }
 
@@ -287,16 +346,29 @@ export function useProjectSidebarItems(): SidebarSection[] {
       }),
   };
 
+  const configureItem: NavigationSidebarItem = {
+    key: "configure",
+    label: "Configure",
+    icon: <Settings01 />,
+    isActive: false,
+    isExternal: true,
+    onClick: () =>
+      navigate({
+        to: "/$org/$project/projects/$slug/settings/general",
+        params: { org, project: ORG_ADMIN_PROJECT_SLUG, slug: project },
+      }),
+  };
+
   // Regular project sidebar layout (matching Figma):
-  // - Home, Tasks, Workflows
+  // - Home, Tasks, Workflows, Configure
   // - [Divider] (if enabled plugins exist)
   // - Plugin items (flat)
   // - Plugin groups
-  // (Settings is in the footer)
   const projectItems: NavigationSidebarItem[] = [
     homeItem,
     ...(preferences.experimental_tasks ? [projectTasksItem] : []),
     projectWorkflowsItem,
+    configureItem,
   ];
 
   const sections: SidebarSection[] = [{ type: "items", items: projectItems }];
@@ -310,6 +382,11 @@ export function useProjectSidebarItems(): SidebarSection[] {
   // Add plugin groups
   if (pluginGroupSections.length > 0) {
     sections.push(...pluginGroupSections);
+  }
+
+  // Add pinned views
+  if (pinnedViewsSection) {
+    sections.push(pinnedViewsSection);
   }
 
   return sections;

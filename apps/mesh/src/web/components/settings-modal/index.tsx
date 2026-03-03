@@ -3,7 +3,6 @@ import { X } from "@untitledui/icons";
 import { Suspense } from "react";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import {
-  parseProjectSection,
   useSettingsModal,
   type SettingsSection,
 } from "@/web/hooks/use-settings-modal";
@@ -18,9 +17,7 @@ import { AccountProfilePage } from "./pages/account-profile";
 import { AccountPreferencesPage } from "./pages/account-preferences";
 import { AccountExperimentalPage } from "./pages/account-experimental";
 import { OrgGeneralPage } from "./pages/org-general";
-import { ProjectGeneralPage } from "./pages/project-general";
 import { ProjectPluginsPage } from "./pages/project-plugins";
-import { ProjectDangerPage } from "./pages/project-danger";
 import { OrgBillingPage } from "./pages/org-billing";
 
 function ContentSkeleton() {
@@ -67,18 +64,6 @@ function ProjectContextWrapper({
 }
 
 function SettingsContent({ section }: { section: SettingsSection }) {
-  const parsed = parseProjectSection(section);
-
-  if (parsed) {
-    return (
-      <ProjectContextWrapper projectSlug={parsed.slug}>
-        {parsed.sub === "general" && <ProjectGeneralPage />}
-        {parsed.sub === "plugins" && <ProjectPluginsPage />}
-        {parsed.sub === "danger" && <ProjectDangerPage />}
-      </ProjectContextWrapper>
-    );
-  }
-
   switch (section) {
     case "account.profile":
       return <AccountProfilePage />;
@@ -129,7 +114,7 @@ export function SettingsModal() {
               <span className="sr-only">Close</span>
             </button>
 
-            <div className="p-8 pt-0">
+            <div className="p-8">
               <Suspense fallback={<ContentSkeleton />}>
                 <SettingsContent section={activeSection} />
               </Suspense>

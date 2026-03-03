@@ -120,6 +120,10 @@ const ALL_TOOL_NAMES = [
   "PROJECT_DELETE",
   "PROJECT_PLUGIN_CONFIG_GET",
   "PROJECT_PLUGIN_CONFIG_UPDATE",
+  "PROJECT_CONNECTION_LIST",
+  "PROJECT_CONNECTION_ADD",
+  "PROJECT_CONNECTION_REMOVE",
+  "PROJECT_PINNED_VIEWS_UPDATE",
 ] as const;
 
 /**
@@ -535,6 +539,26 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Update project plugin configuration",
     category: "Projects",
   },
+  {
+    name: "PROJECT_CONNECTION_LIST",
+    description: "List project connections",
+    category: "Projects",
+  },
+  {
+    name: "PROJECT_CONNECTION_ADD",
+    description: "Add connection to project",
+    category: "Projects",
+  },
+  {
+    name: "PROJECT_CONNECTION_REMOVE",
+    description: "Remove connection from project",
+    category: "Projects",
+  },
+  {
+    name: "PROJECT_PINNED_VIEWS_UPDATE",
+    description: "Update project pinned sidebar views",
+    category: "Projects",
+  },
 ];
 
 /**
@@ -612,6 +636,10 @@ const TOOL_LABELS: Record<ToolName, string> = {
   PROJECT_DELETE: "Delete project",
   PROJECT_PLUGIN_CONFIG_GET: "View plugin config",
   PROJECT_PLUGIN_CONFIG_UPDATE: "Update plugin config",
+  PROJECT_CONNECTION_LIST: "List project connections",
+  PROJECT_CONNECTION_ADD: "Add project connection",
+  PROJECT_CONNECTION_REMOVE: "Remove project connection",
+  PROJECT_PINNED_VIEWS_UPDATE: "Update pinned views",
 };
 
 // ============================================================================
