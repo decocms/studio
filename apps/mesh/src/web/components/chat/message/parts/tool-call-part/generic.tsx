@@ -3,6 +3,7 @@
 import { MCPAppRenderer as MCPAppIframeRenderer } from "@/mcp-apps/mcp-app-renderer.tsx";
 import { getUIResourceUri } from "@/mcp-apps/types.ts";
 import { useChatStable } from "@/web/components/chat/context.tsx";
+import { Button } from "@deco/ui/components/button.tsx";
 import {
   Tooltip,
   TooltipContent,
@@ -18,11 +19,13 @@ import {
   Eye,
   Globe02,
   LayersTwo01,
+  RefreshCw01,
   XClose,
 } from "@untitledui/icons";
 import type { DynamicToolUIPart, ToolUIPart } from "ai";
 import type React from "react";
 import { Suspense } from "react";
+import { ErrorBoundary } from "@/web/components/error-boundary.tsx";
 import { getToolPartErrorText, safeStringify } from "../utils.ts";
 import { ApprovalActions } from "./approval-actions.tsx";
 import { ToolCallShell } from "./common.tsx";
@@ -240,25 +243,46 @@ export function GenericToolCallPart({
         actions={actions}
       />
       {hasMCPApp && uiResourceUri && connectionId && org?.id && (
-        <Suspense
-          fallback={
-            <div className="mt-2 flex items-center justify-center h-12 border border-border/75 rounded-lg overflow-hidden p-3">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                <span className="text-sm">Loading app...</span>
-              </div>
+        <ErrorBoundary
+          fallback={({ resetError }) => (
+            <div className="mt-2 flex items-center gap-2 px-3 py-2.5 border border-dashed border-destructive/30 bg-destructive/5 rounded-lg">
+              <AlertCircle size={16} className="shrink-0 text-destructive" />
+              <span className="flex-1 text-xs text-destructive font-medium">
+                Failed to load <span className="font-mono">{friendlyName}</span>{" "}
+                app
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1.5 shrink-0"
+                onClick={resetError}
+              >
+                <RefreshCw01 className="size-3.5" />
+                Retry
+              </Button>
             </div>
-          }
+          )}
         >
-          <MCPAppRenderer
-            uiResourceUri={uiResourceUri}
-            connectionId={connectionId}
-            orgId={org.id}
-            toolName={toolName}
-            toolInput={part.input}
-            toolResult={part.output}
-          />
-        </Suspense>
+          <Suspense
+            fallback={
+              <div className="mt-2 flex items-center justify-center h-12 border border-border/75 rounded-lg overflow-hidden p-3">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  <span className="text-sm">Loading app...</span>
+                </div>
+              </div>
+            }
+          >
+            <MCPAppRenderer
+              uiResourceUri={uiResourceUri}
+              connectionId={connectionId}
+              orgId={org.id}
+              toolName={toolName}
+              toolInput={part.input}
+              toolResult={part.output}
+            />
+          </Suspense>
+        </ErrorBoundary>
       )}
     </div>
   );
