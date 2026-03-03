@@ -165,7 +165,7 @@ if (
     resetPasswordEnabled = true;
 
     sendResetPassword = async ({ user, url }) => {
-      void sendEmail({
+      await sendEmail({
         to: user.email,
         subject: "Reset your password",
         html: `
