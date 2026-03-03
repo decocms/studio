@@ -3,18 +3,20 @@ import { CollectionDisplayButton } from "@/web/components/collections/collection
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
 import { CollectionTableWrapper } from "@/web/components/collections/collection-table-wrapper.tsx";
 import { type TableColumn } from "@/web/components/collections/collection-table.tsx";
-import { ConnectionCard } from "@/web/components/connections/connection-card.tsx";
+import { ConnectionServiceGroup } from "@/web/components/connections/connection-service-group.tsx";
 import { ConnectionStatus } from "@/web/components/connections/connection-status.tsx";
 import { EmptyState } from "@/web/components/empty-state.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { Page } from "@/web/components/page";
+import { StoreDiscovery } from "@/web/components/store";
 import type { RegistryItem } from "@/web/components/store/types";
 import { User } from "@/web/components/user/user.tsx";
 import { useRegistryConnections } from "@/web/hooks/use-binding";
 import { useListState } from "@/web/hooks/use-list-state";
 import { authClient } from "@/web/lib/auth-client";
 import { useAuthConfig } from "@/web/providers/auth-config-provider";
+import { groupConnections } from "@/web/utils/group-connections.ts";
 import {
   extractItemsFromResponse,
   findListToolName,
@@ -90,7 +92,7 @@ import {
   Terminal,
   Trash01,
 } from "@untitledui/icons";
-import { Suspense, useEffect, useReducer } from "react";
+import { Suspense, useEffect, useReducer, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { formatTimeAgo } from "@/web/lib/format-time";
@@ -410,9 +412,12 @@ function OrgMcpsContent() {
   const { stdioEnabled } = useAuthConfig();
 
   // Consolidated list UI state (search, filters, sorting, view mode)
+  // Using "connections-v2" resource key to reset persisted view mode preference
+  // to "cards" now that the accordion design is the primary list view.
   const listState = useListState<ConnectionEntity>({
     namespace: org.slug,
-    resource: "connections",
+    resource: "connections-v2",
+    defaultViewMode: "cards",
   });
 
   const actions = useConnectionActions();
@@ -580,6 +585,8 @@ function OrgMcpsContent() {
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
   });
+
+  const [storeOpen, setStoreOpen] = useState(false);
 
   const invalidateConnections = () => {
     queryClient.invalidateQueries({
@@ -1002,29 +1009,47 @@ function OrgMcpsContent() {
     <div className="flex items-center gap-2">
       <Button
         variant="outline"
-        onClick={() =>
-          navigate({
-            to: "/$org/$project/store",
-            params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
-          })
-        }
+        onClick={() => setStoreOpen(true)}
         size="sm"
         className="h-7 px-3 rounded-lg text-sm font-medium"
       >
-        Browse Store
+        Add Connection
       </Button>
       <Button
         onClick={openCreateDialog}
         size="sm"
         className="h-7 px-3 rounded-lg text-sm font-medium"
       >
-        Custom Connection
+        Custom
       </Button>
     </div>
   );
 
   return (
     <Page>
+      {/* Store Modal */}
+      <Dialog open={storeOpen} onOpenChange={setStoreOpen}>
+        <DialogContent className="sm:max-w-3xl h-[85vh] p-0 flex flex-col gap-0 overflow-hidden">
+          <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
+            <DialogTitle>Add Connection</DialogTitle>
+            <DialogDescription>
+              Browse the store to find and connect MCP servers
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-hidden">
+            {registryId ? (
+              <StoreDiscovery registryId={registryId} />
+            ) : (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-sm text-muted-foreground">
+                  No registries available. Add a registry connection first.
+                </p>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog
         open={isCreating || dialogState.mode === "editing"}
         onOpenChange={handleDialogClose}
@@ -1502,98 +1527,30 @@ function OrgMcpsContent() {
                   !listState.search && (
                     <Button
                       variant="outline"
-                      onClick={() =>
-                        navigate({
-                          to: "/$org/$project/store",
-                          params: {
-                            org: org.slug,
-                            project: ORG_ADMIN_PROJECT_SLUG,
-                          },
-                        })
-                      }
+                      onClick={() => setStoreOpen(true)}
                     >
-                      Browse Store
+                      Add Connection
                     </Button>
                   )
                 }
               />
             ) : (
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
-                {connections.map((connection) => (
-                  <ConnectionCard
-                    key={connection.id}
-                    connection={connection}
-                    fallbackIcon={<Container />}
-                    onClick={() =>
+              <div className="flex flex-col gap-2">
+                {groupConnections(connections).map((group) => (
+                  <ConnectionServiceGroup
+                    key={group.key}
+                    serviceName={group.serviceName}
+                    icon={group.icon}
+                    instances={group.instances}
+                    onInstanceClick={(id) =>
                       navigate({
                         to: "/$org/$project/mcps/$connectionId",
                         params: {
                           org: org.slug,
                           project: ORG_ADMIN_PROJECT_SLUG,
-                          connectionId: connection.id,
+                          connectionId: id,
                         },
                       })
-                    }
-                    headerActions={
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <DotsVertical size={20} />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent
-                          align="end"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigate({
-                                to: "/$org/$project/mcps/$connectionId",
-                                params: {
-                                  org: org.slug,
-                                  project: ORG_ADMIN_PROJECT_SLUG,
-                                  connectionId: connection.id,
-                                },
-                              });
-                            }}
-                          >
-                            <Eye size={16} />
-                            Open
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              dispatch({ type: "delete", connection });
-                            }}
-                          >
-                            <Trash01 size={16} />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    }
-                    body={<ConnectionStatus status={connection.status} />}
-                    footer={
-                      <div className="flex items-center justify-between text-xs text-muted-foreground w-full min-w-0">
-                        <div className="flex-1 min-w-0">
-                          <User
-                            id={connection.updated_by ?? connection.created_by}
-                            size="3xs"
-                          />
-                        </div>
-                        <span className="shrink-0 ml-2">
-                          {connection.updated_at
-                            ? formatTimeAgo(new Date(connection.updated_at))
-                            : "—"}
-                        </span>
-                      </div>
                     }
                   />
                 ))}
@@ -1652,17 +1609,9 @@ function OrgMcpsContent() {
                         actions={
                           <Button
                             variant="outline"
-                            onClick={() =>
-                              navigate({
-                                to: "/$org/$project/store",
-                                params: {
-                                  org: org.slug,
-                                  project: ORG_ADMIN_PROJECT_SLUG,
-                                },
-                              })
-                            }
+                            onClick={() => setStoreOpen(true)}
                           >
-                            Browse Store
+                            Add Connection
                           </Button>
                         }
                       />

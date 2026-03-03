@@ -54,7 +54,7 @@ interface ConnectionSidebarProps {
   onRemoveOAuth?: () => void | Promise<void>;
 }
 
-function ConnectionFields({
+export function ConnectionFields({
   form,
   connection,
   hasOAuthToken,
@@ -97,7 +97,7 @@ function ConnectionFields({
 
   if (isVirtualConnection) {
     return (
-      <div className="flex flex-col gap-4 p-5 border-b border-border">
+      <div className="flex flex-col gap-4 border-b border-border py-4">
         <div className="flex flex-col gap-3">
           <span className="text-xs text-muted-foreground font-medium">
             Type
@@ -129,7 +129,7 @@ function ConnectionFields({
   }
 
   return (
-    <div className="flex flex-col gap-4 p-5 border-b border-border">
+    <div className="flex flex-col gap-4 border-b border-border py-4">
       <FormField
         control={form.control}
         name="ui_type"

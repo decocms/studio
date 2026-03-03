@@ -1,4 +1,3 @@
-import { EmptyState } from "@/web/components/empty-state.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary.tsx";
 import {
   useMCPClient,
@@ -165,20 +164,11 @@ function McpConfigurationContent({
 
   if (!hasProperties) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <EmptyState
-          image={
-            <img
-              src="/empty-state-success-muted.svg"
-              alt=""
-              width={220}
-              height={200}
-              aria-hidden="true"
-            />
-          }
-          title="This server is all set!"
-          description="No additional configuration is needed. Everything is ready to go."
-        />
+      <div className="flex items-center gap-2 py-1">
+        <div className="size-2 rounded-full bg-green-500 shrink-0" />
+        <span className="text-sm text-muted-foreground">
+          No additional configuration needed
+        </span>
       </div>
     );
   }
@@ -228,23 +218,14 @@ function SettingsTabContent(props: SettingsTabProps) {
     );
   }
 
-  // Authenticated but no MCP binding - show success state
+  // Authenticated but no MCP binding - no extra config needed
   if (!hasMcpBinding) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <EmptyState
-          image={
-            <img
-              src="/empty-state-success-muted.svg"
-              alt=""
-              width={220}
-              height={200}
-              aria-hidden="true"
-            />
-          }
-          title="This server is all set!"
-          description="No additional configuration is needed. Everything is ready to go."
-        />
+      <div className="flex items-center gap-2 py-1">
+        <div className="size-2 rounded-full bg-green-500 shrink-0" />
+        <span className="text-sm text-muted-foreground">
+          No additional configuration needed
+        </span>
       </div>
     );
   }
