@@ -38,8 +38,9 @@ import {
   useMCPToolCallQuery,
   useProjectContext,
 } from "@decocms/mesh-sdk";
-import { isDecoAIGatewayUrl } from "@/core/deco-constants";
 import { useMembers } from "@/web/hooks/use-members";
+import { connectionImplementsBinding } from "@/web/hooks/use-binding";
+import { AI_GATEWAY_BILLING_BINDING } from "@decocms/bindings/ai-gateway";
 
 // -- Types --
 
@@ -1251,7 +1252,7 @@ function BillingBreakdown() {
 
   const { data: callsByConn, isLoading: l2 } = useMCPToolCallQuery<
     WidgetPreviewResult | undefined
-  >(widgetQuery({ fn: "count", groupByColumn: "connection_title" }));
+  >(widgetQuery({ fn: "count_all", groupByColumn: "connection_title" }));
 
   const { data: costByUser, isLoading: l3 } = useMCPToolCallQuery<
     WidgetPreviewResult | undefined
@@ -1259,7 +1260,7 @@ function BillingBreakdown() {
 
   const { data: callsByUser, isLoading: l4 } = useMCPToolCallQuery<
     WidgetPreviewResult | undefined
-  >(widgetQuery({ fn: "count", groupByColumn: "user_id" }));
+  >(widgetQuery({ fn: "count_all", groupByColumn: "user_id" }));
 
   const { data: costByTool, isLoading: l5 } = useMCPToolCallQuery<
     WidgetPreviewResult | undefined
@@ -1425,8 +1426,7 @@ function bucketTimeseriesByMonth(
 
 function BillingHistory() {
   const { org } = useProjectContext();
-  const [period, setPeriod] = useState<BillingStatsPeriod>("90d");
-  const timeRange = periodToTimeRange(period);
+  const timeRange = periodToTimeRange("90d");
 
   const selfClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -1459,7 +1459,7 @@ function BillingHistory() {
       widget: {
         type: "timeseries",
         source: { path: COST_PATH, from: "output" },
-        aggregation: { fn: "count", interval: "1d" },
+        aggregation: { fn: "count_all", interval: "1d" },
       },
       timeRange,
     },
@@ -1483,12 +1483,9 @@ function BillingHistory() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">
-          Usage history from monitoring logs
-        </p>
-        <PeriodSelector period={period} onPeriodChange={setPeriod} />
-      </div>
+      <p className="text-xs text-muted-foreground">
+        Usage history from monitoring logs (last 90 days)
+      </p>
 
       <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-5">
         <p className="text-xs font-medium text-muted-foreground tracking-wide uppercase">
@@ -1712,7 +1709,7 @@ function BillingContent() {
   const connections = useConnections();
 
   const gatewayConnection = connections.find((c) =>
-    isDecoAIGatewayUrl(c.connection_url),
+    connectionImplementsBinding(c, AI_GATEWAY_BILLING_BINDING),
   );
 
   return (

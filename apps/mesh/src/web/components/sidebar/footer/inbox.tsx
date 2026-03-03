@@ -25,7 +25,8 @@ import {
   useMCPToolCallQuery,
   useProjectContext,
 } from "@decocms/mesh-sdk";
-import { isDecoAIGatewayUrl } from "@/core/deco-constants";
+import { connectionImplementsBinding } from "@/web/hooks/use-binding";
+import { AI_GATEWAY_BILLING_BINDING } from "@decocms/bindings/ai-gateway";
 
 interface Invitation {
   id: string;
@@ -257,7 +258,7 @@ function CreditChipConditional() {
   const connections = useConnections();
 
   const gatewayConnection = connections.find((c) =>
-    isDecoAIGatewayUrl(c.connection_url),
+    connectionImplementsBinding(c, AI_GATEWAY_BILLING_BINDING),
   );
 
   if (!gatewayConnection?.id) {
