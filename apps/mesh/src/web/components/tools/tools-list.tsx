@@ -11,9 +11,16 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
+import { getUIResourceUri } from "@/mcp-apps/types.ts";
 import type { ToolDefinition } from "@decocms/mesh-sdk";
 import { ORG_ADMIN_PROJECT_SLUG } from "@decocms/mesh-sdk";
-import { AlertTriangle, Eye, Globe02, RefreshCw01 } from "@untitledui/icons";
+import {
+  AlertTriangle,
+  Eye,
+  Globe02,
+  LayersTwo01,
+  RefreshCw01,
+} from "@untitledui/icons";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { ViewActions } from "@/web/components/details/layout";
@@ -22,6 +29,7 @@ export interface Tool {
   name: string;
   description?: string;
   annotations?: ToolDefinition["annotations"];
+  _meta?: Record<string, unknown>;
 }
 
 const ANNOTATION_HINTS = [
@@ -48,15 +56,29 @@ const ANNOTATION_HINTS = [
 
 export function ToolAnnotationBadges({
   annotations,
+  _meta,
 }: {
   annotations?: ToolDefinition["annotations"];
+  _meta?: Record<string, unknown>;
 }) {
-  if (!annotations) return null;
-  const active = ANNOTATION_HINTS.filter((h) => annotations[h.key] === true);
-  if (active.length === 0) return null;
+  const hasUI = !!getUIResourceUri(_meta);
+  const active = annotations
+    ? ANNOTATION_HINTS.filter((h) => annotations[h.key] === true)
+    : [];
+  if (active.length === 0 && !hasUI) return null;
   return (
     <TooltipProvider>
       <div className="flex gap-1 flex-nowrap">
+        {hasUI && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge asChild variant="secondary" className="size-6 p-1">
+                <LayersTwo01 />
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent>Interactive</TooltipContent>
+          </Tooltip>
+        )}
         {active.map(({ label, Icon, variant }) => (
           <Tooltip key={label}>
             <TooltipTrigger asChild>
@@ -179,7 +201,10 @@ export function ToolsList({
       id: "annotations",
       header: "Hints",
       render: (tool: Tool) => (
-        <ToolAnnotationBadges annotations={tool.annotations} />
+        <ToolAnnotationBadges
+          annotations={tool.annotations}
+          _meta={tool._meta}
+        />
       ),
       cellClassName: "w-32 shrink-0",
     },

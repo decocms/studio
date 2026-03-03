@@ -236,7 +236,12 @@ function ToolsTab({
     id: tool.name,
     name: tool.name,
     description: tool.description,
-    tags: <ToolAnnotationBadges annotations={tool.annotations} />,
+    tags: (
+      <ToolAnnotationBadges
+        annotations={tool.annotations}
+        _meta={tool._meta as Record<string, unknown> | undefined}
+      />
+    ),
   }));
 
   const EMPTY_MESSAGE = "No tools available";

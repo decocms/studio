@@ -285,6 +285,7 @@ function ConnectionInspectorViewWithConnection({
     inputSchema?: Record<string, unknown>;
     outputSchema?: Record<string, unknown>;
     annotations?: ToolDefinition["annotations"];
+    _meta?: Record<string, unknown>;
   }>;
   isLoadingTools: boolean;
 }) {
@@ -681,6 +682,7 @@ function ConnectionInspectorViewContent() {
         description: t.description,
         inputSchema: t.inputSchema as Record<string, unknown> | undefined,
         annotations: t.annotations,
+        _meta: t._meta as Record<string, unknown> | undefined,
       }));
 
   // Update connection handler
