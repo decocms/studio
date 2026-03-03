@@ -13,6 +13,7 @@ import {
   WORKFLOW_BINDING,
   WORKFLOW_EXECUTION_BINDING,
 } from "@decocms/bindings/workflow";
+import { AI_GATEWAY_BILLING_BINDING } from "@decocms/bindings/ai-gateway";
 
 /**
  * Map of well-known binding names to their definitions
@@ -23,6 +24,7 @@ const BUILTIN_BINDINGS: Record<string, Binder> = {
   WORKFLOW_EXECUTION: WORKFLOW_EXECUTION_BINDING,
   ASSISTANTS: ASSISTANTS_BINDING,
   MCP: MCP_BINDING,
+  AI_GATEWAY_BILLING: AI_GATEWAY_BILLING_BINDING,
 };
 
 /**

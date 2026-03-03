@@ -38,8 +38,9 @@ import {
   useMCPToolCallQuery,
   useProjectContext,
 } from "@decocms/mesh-sdk";
-import { isDecoAIGatewayUrl } from "@/core/deco-constants";
 import { useMembers } from "@/web/hooks/use-members";
+import { connectionImplementsBinding } from "@/web/hooks/use-binding";
+import { AI_GATEWAY_BILLING_BINDING } from "@decocms/bindings/ai-gateway";
 
 // -- Types --
 
@@ -1712,7 +1713,7 @@ function BillingContent() {
   const connections = useConnections();
 
   const gatewayConnection = connections.find((c) =>
-    isDecoAIGatewayUrl(c.connection_url),
+    connectionImplementsBinding(c, AI_GATEWAY_BILLING_BINDING),
   );
 
   return (

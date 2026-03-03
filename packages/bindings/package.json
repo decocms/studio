@@ -30,6 +30,7 @@
     "./workflow": "./src/well-known/workflow.ts",
     "./plugins": "./src/core/plugins.ts",
     "./plugin-router": "./src/core/plugin-router.tsx",
+    "./ai-gateway": "./src/well-known/ai-gateway.ts",
     "./server-plugin": "./src/core/server-plugin.ts"
   },
   "engines": {
