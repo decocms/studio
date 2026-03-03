@@ -117,10 +117,13 @@ function classifyModel(modelId: string): TierId | null {
   if (modelId.endsWith(FREE_SUFFIX)) return "cheaper";
   for (const { tier, prefix } of SORTED_TIER_RULES) {
     if (modelId.startsWith(prefix)) {
-      // For exact-only prefixes, the rest must be empty or start with a non-alpha char (date suffixes ok)
+      // For exact-only prefixes, skip named sub-variants (e.g. -preview) but allow date suffixes (e.g. -20250601)
       if (EXACT_ONLY_PREFIXES.has(prefix) && modelId.length > prefix.length) {
         const nextChar = modelId[prefix.length];
-        if (nextChar === "-") continue; // skip sub-variants like -preview
+        if (nextChar === "-") {
+          const charAfterHyphen = modelId[prefix.length + 1];
+          if (!charAfterHyphen || !/\d/.test(charAfterHyphen)) continue;
+        }
       }
       return tier;
     }
@@ -225,20 +228,20 @@ function getContextLevel(tokens: number): {
   return { level: 4, label: "Very large", description: "Massive files & data" };
 }
 
-// Semantic colors per level — context (more = better: red→green)
+// Semantic colors per level — context (more = better: destructive→success)
 const CONTEXT_DOT_COLORS = [
-  "bg-red-500",
-  "bg-amber-500",
-  "bg-emerald-500",
-  "bg-emerald-600",
+  "bg-destructive",
+  "bg-warning",
+  "bg-success",
+  "bg-success",
 ] as const;
 
-// Semantic colors per level — cost (more = worse: green→red)
+// Semantic colors per level — cost (more = worse: success→destructive)
 const COST_DOLLAR_COLORS = [
-  "text-emerald-500",
-  "text-amber-500",
-  "text-orange-500",
-  "text-red-500",
+  "text-success",
+  "text-warning",
+  "text-warning",
+  "text-destructive",
 ] as const;
 
 // Approximate word count for token amounts
@@ -773,7 +776,10 @@ function ConnectionModelList({
   }
 
   // --- Browse mode ---
-  const shortlistedModels = models.filter((m) => shortlistSet.has(m.id));
+  // If no allowed models match the shortlist, skip it and show all allowed models
+  const shortlistedCandidates = models.filter((m) => shortlistSet.has(m.id));
+  const shortlistedModels =
+    shortlistedCandidates.length > 0 ? shortlistedCandidates : models;
 
   const filteredModels = searchTerm.trim()
     ? shortlistedModels.filter((model) => {
