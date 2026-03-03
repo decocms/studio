@@ -1,5 +1,5 @@
 import { devServerProxy } from "./dev-server-proxy";
-import { resolve, dirname, join, extname } from "path";
+import { resolve, dirname, join, extname, basename, sep } from "path";
 
 /**
  * Returns appropriate Cache-Control headers based on the file being served.
@@ -14,11 +14,11 @@ function getAssetCacheHeaders(
   filePath: string,
   indexPath: string,
 ): Record<string, string> {
-  if (filePath === indexPath || filePath.endsWith("/index.html")) {
+  if (filePath === indexPath || basename(filePath) === "index.html") {
     return { "Cache-Control": "no-cache" };
   }
 
-  if (filePath.includes("/assets/")) {
+  if (filePath.includes(`${sep}assets${sep}`)) {
     return { "Cache-Control": "public, max-age=31536000, immutable" };
   }
 
