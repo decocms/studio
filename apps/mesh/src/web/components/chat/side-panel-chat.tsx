@@ -46,7 +46,7 @@ function ChatPanelContent() {
 
     return (
       <Chat className="animate-in fade-in-0 duration-200">
-        <Page.Header className="flex-none" hideSidebarTrigger>
+        <Page.Header className="flex-none" hideChat>
           <Page.Header.Left className="gap-2" />
           <Page.Header.Right className="gap-1">
             <button
@@ -89,7 +89,7 @@ function ChatPanelContent() {
               : "duration-300 opacity-100 translate-x-0",
         )}
       >
-        <Page.Header className="flex-none" hideSidebarTrigger>
+        <Page.Header className="flex-none" hideChat>
           <Page.Header.Left className="gap-2">
             {!isChatEmpty && activeThread?.title && (
               <EditableThreadTitle

@@ -307,7 +307,7 @@ function OrgAgentsContent() {
       {/* Content: Cards or Table */}
       <Page.Content>
         {listState.viewMode === "cards" ? (
-          <div className="flex-1 overflow-auto p-5">
+          <div className="flex-1 overflow-auto p-3 md:p-5">
             {virtualMcps.length === 0 ? (
               <EmptyState
                 image={<Users03 size={36} className="text-muted-foreground" />}
@@ -319,7 +319,7 @@ function OrgAgentsContent() {
                 }
               />
             ) : (
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
                 {virtualMcps.map((virtualMcp) => (
                   <ConnectionCard
                     key={virtualMcp.id ?? "default"}

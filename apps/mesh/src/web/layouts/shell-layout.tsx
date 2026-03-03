@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Chat } from "@/web/components/chat/index";
+import { ChatBottomSheet } from "@/web/components/chat/chat-bottom-sheet";
 import { ChatPanel } from "@/web/components/chat/side-panel-chat";
 import { CreateProjectDialog } from "@/web/components/create-project-dialog";
 import { MeshSidebar } from "@/web/components/sidebar";
@@ -8,6 +9,7 @@ import { MeshUserMenu } from "@/web/components/user-menu.tsx";
 import { useDecoChatOpen } from "@/web/hooks/use-deco-chat-open";
 import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
+import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import RequiredAuthLayout from "@/web/layouts/required-auth-layout";
 import { authClient } from "@/web/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
@@ -93,6 +95,41 @@ function ShellLayoutInner({
     30,
   );
   const [preferences] = usePreferences();
+  const isMobile = useIsMobile();
+
+  if (isMobile) {
+    return (
+      <SidebarLayout
+        className="flex-1 bg-sidebar"
+        data-studio={
+          isStudio && preferences.experimental_projects ? "" : undefined
+        }
+        style={
+          {
+            "--sidebar-width": "13.5rem",
+            "--sidebar-width-mobile": "11rem",
+          } as Record<string, string>
+        }
+      >
+        <MeshSidebar onCreateProject={onCreateProject} />
+        <SidebarInset
+          className="pt-1.5 flex flex-col flex-1 min-h-0"
+          style={{ background: "transparent" }}
+        >
+          <div
+            className={cn(
+              "flex flex-col flex-1 min-h-0 bg-card overflow-hidden",
+              "border-t border-l border-r border-sidebar-border",
+              "rounded-tl-[0.75rem] rounded-tr-[0.75rem]",
+            )}
+          >
+            <Outlet />
+          </div>
+        </SidebarInset>
+        {!isHomeRoute && <ChatBottomSheet />}
+      </SidebarLayout>
+    );
+  }
 
   return (
     <SidebarLayout
