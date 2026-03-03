@@ -7,7 +7,7 @@
 
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth } from "../../core/mesh-context";
+import { requireAuth, requireOrganization } from "../../core/mesh-context";
 import type { ProjectUI } from "../../storage/types";
 
 export const PROJECT_CONNECTION_REMOVE = defineTool({
@@ -31,9 +31,20 @@ export const PROJECT_CONNECTION_REMOVE = defineTool({
 
   handler: async (input, ctx) => {
     requireAuth(ctx);
+    const organization = requireOrganization(ctx);
     await ctx.access.check();
 
     const { projectId, connectionId } = input;
+
+    const project = await ctx.storage.projects.get(projectId);
+    if (!project || project.organizationId !== organization.id) {
+      throw new Error(`Project not found: ${projectId}`);
+    }
+
+    const connection = await ctx.storage.connections.findById(connectionId);
+    if (!connection || connection.organization_id !== organization.id) {
+      throw new Error(`Connection not found: ${connectionId}`);
+    }
 
     const removed = await ctx.storage.projectConnections.remove(
       projectId,
@@ -41,7 +52,6 @@ export const PROJECT_CONNECTION_REMOVE = defineTool({
     );
 
     // Clean up orphaned pinned views referencing this connection
-    const project = await ctx.storage.projects.get(projectId);
     if (project?.ui?.pinnedViews?.length) {
       const filtered = project.ui.pinnedViews.filter(
         (v) => v.connectionId !== connectionId,

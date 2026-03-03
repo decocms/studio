@@ -44,7 +44,7 @@ export class ProjectConnectionsStorage implements ProjectConnectionStoragePort {
     const now = new Date().toISOString();
     const id = generatePrefixedId("pc");
 
-    await this.db
+    const result = await this.db
       .insertInto("project_connections")
       .values({
         id,
@@ -52,14 +52,25 @@ export class ProjectConnectionsStorage implements ProjectConnectionStoragePort {
         connection_id: connectionId,
         created_at: now,
       })
-      .execute();
+      .onConflict((oc) =>
+        oc.columns(["project_id", "connection_id"]).doNothing(),
+      )
+      .returning(["id", "project_id", "connection_id", "created_at"])
+      .executeTakeFirst();
 
-    return {
-      id,
-      projectId,
-      connectionId,
-      createdAt: now,
-    };
+    if (result) {
+      return this.parseRow(result);
+    }
+
+    // Conflict: row already exists, fetch and return it
+    const existing = await this.db
+      .selectFrom("project_connections")
+      .selectAll()
+      .where("project_id", "=", projectId)
+      .where("connection_id", "=", connectionId)
+      .executeTakeFirstOrThrow();
+
+    return this.parseRow(existing);
   }
 
   async remove(projectId: string, connectionId: string): Promise<boolean> {

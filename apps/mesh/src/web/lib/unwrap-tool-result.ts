@@ -1,6 +1,15 @@
 export function unwrapToolResult<T>(result: unknown): T {
-  const payload =
-    (result as { structuredContent?: unknown }).structuredContent ?? result;
+  const topLevel = result as {
+    isError?: boolean;
+    structuredContent?: unknown;
+    content?: Array<{ text?: string }>;
+  } | null;
+
+  if (topLevel?.isError) {
+    throw new Error(topLevel.content?.[0]?.text ?? "Tool call failed");
+  }
+
+  const payload = topLevel?.structuredContent ?? result;
   const maybeError = payload as {
     isError?: boolean;
     content?: Array<{ text?: string }>;
