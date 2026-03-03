@@ -1,3 +1,5 @@
+import { MCPAppRenderer } from "@/mcp-apps/mcp-app-renderer.tsx";
+import { getUIResourceUri, MCP_APP_DISPLAY_MODES } from "@/mcp-apps/types.ts";
 import {
   Alert,
   AlertDescription,
@@ -41,9 +43,11 @@ import {
   Code01,
   Copy01,
   Database01,
+  LayersTwo01,
   Play,
-  XClose,
+  StopCircle,
 } from "@untitledui/icons";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
 import { PinToSidebarButton } from "../pin-to-sidebar-button";
@@ -61,6 +65,7 @@ import {
   useProjectContext,
 } from "@decocms/mesh-sdk";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
+import { ToolAnnotationBadges } from "@/web/components/tools/tools-list.tsx";
 import { MonacoCodeEditor } from "./workflow/components/monaco-editor";
 
 export interface ToolDetailsViewProps {
@@ -168,6 +173,13 @@ function ToolDetailsAuthenticated({
     string,
     unknown
   > | null>(null);
+  const [rawToolResult, setRawToolResult] = useState<CallToolResult | null>(
+    null,
+  );
+  const [lastToolInput, setLastToolInput] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
   const [executionError, setExecutionError] = useState<string | null>(null);
   const [isExecuting, setIsExecuting] = useState(false);
   const [stats, setStats] = useState<{
@@ -189,6 +201,15 @@ function ToolDetailsAuthenticated({
 
   // Find the tool definition
   const tool = toolsQuery.data?.tools?.find((t) => t.name === toolName);
+  const uiResourceUri = getUIResourceUri(tool?._meta);
+
+  const [resultView, setResultView] = useState<"ui" | "json">("json");
+  const [hasSetDefaultView, setHasSetDefaultView] = useState(false);
+  // Default to UI view once the tool's resource URI becomes available
+  if (uiResourceUri && !hasSetDefaultView) {
+    setResultView("ui");
+    setHasSetDefaultView(true);
+  }
 
   const toolProperties = tool?.inputSchema?.properties;
   const toolPropertyKeys = toolProperties ? Object.keys(toolProperties) : [];
@@ -210,6 +231,8 @@ function ToolDetailsAuthenticated({
     setIsExecuting(true);
     setExecutionError(null);
     setExecutionResult(null);
+    setRawToolResult(null);
+    setLastToolInput(null);
     setStats(null);
 
     const startTime = performance.now();
@@ -253,7 +276,7 @@ function ToolDetailsAuthenticated({
       const result = (await client.callTool({
         name: toolName,
         arguments: args,
-      })) as { structuredContent?: unknown };
+      })) as CallToolResult & { structuredContent?: unknown };
       const payload = (result.structuredContent ?? result) as Record<
         string,
         unknown
@@ -263,6 +286,8 @@ function ToolDetailsAuthenticated({
       const durationMs = Math.round(endTime - startTime);
 
       setExecutionResult(payload);
+      setRawToolResult(result);
+      setLastToolInput(args);
 
       // Calculate mocked stats based on result size
       const resultStr = JSON.stringify(payload);
@@ -293,6 +318,8 @@ function ToolDetailsAuthenticated({
 
   const handleClear = () => {
     setExecutionResult(null);
+    setRawToolResult(null);
+    setLastToolInput(null);
     setExecutionError(null);
     setStats(null);
   };
@@ -507,9 +534,15 @@ function ToolDetailsAuthenticated({
         <div className="flex flex-col h-full overflow-hidden">
           {/* Results Header */}
           <div className="flex items-center justify-between px-4 h-14 border-t lg:border-t-0 border-b border-border bg-background">
-            <h2 className="text-sm font-medium text-foreground uppercase tracking-wide">
-              Result
-            </h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-sm font-medium text-foreground uppercase tracking-wide">
+                Result
+              </h2>
+              <ToolAnnotationBadges
+                annotations={tool?.annotations}
+                _meta={tool?._meta as Record<string, unknown> | undefined}
+              />
+            </div>
 
             {/* Execution Stats */}
             {stats && (
@@ -550,44 +583,61 @@ function ToolDetailsAuthenticated({
           {/* Execute Buttons Row */}
           <div className="flex items-center justify-end lg:justify-between px-4 h-14 border-b border-border bg-background">
             <div className="flex items-center gap-2 w-full lg:w-auto">
-              <Button
-                size="sm"
-                variant="default"
-                className="h-8 gap-2 flex-1 lg:flex-none"
-                onClick={handleExecute}
-                disabled={isExecuting}
-              >
-                {isExecuting ? (
-                  <>
-                    <Loading01 size={14} className="animate-spin" />
-                    Executing...
-                  </>
-                ) : (
-                  <>
-                    <Play className="h-3.5 w-3.5 fill-current" />
-                    Execute Tool
-                  </>
-                )}
-              </Button>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      className="h-8 w-8 shrink-0"
-                      onClick={handleClear}
-                      disabled={!executionResult && !executionError}
-                    >
-                      <XClose size={14} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Clear results</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              {isExecuting ? (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="h-8 gap-2 flex-1 lg:flex-none"
+                  onClick={handleClear}
+                >
+                  <StopCircle className="h-3.5 w-3.5" />
+                  Cancel
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="default"
+                  className="h-8 gap-2 flex-1 lg:flex-none"
+                  onClick={handleExecute}
+                >
+                  <Play className="h-3.5 w-3.5 fill-current" />
+                  Execute Tool
+                </Button>
+              )}
             </div>
+            {/* View toggle: UI / JSON */}
+            {uiResourceUri && (
+              <TooltipProvider>
+                <div className="flex items-center gap-1">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant={resultView === "ui" ? "secondary" : "ghost"}
+                        className="h-8 w-8"
+                        onClick={() => setResultView("ui")}
+                      >
+                        <LayersTwo01 size={14} />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Interactive view</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant={resultView === "json" ? "secondary" : "ghost"}
+                        className="h-8 w-8"
+                        onClick={() => setResultView("json")}
+                      >
+                        <Code01 size={14} />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>JSON view</TooltipContent>
+                  </Tooltip>
+                </div>
+              </TooltipProvider>
+            )}
           </div>
 
           {/* Error Alert */}
@@ -609,7 +659,30 @@ function ToolDetailsAuthenticated({
 
           {/* Results Content */}
           <div className="relative flex-1 overflow-auto bg-muted/50">
-            {executionResult ? (
+            {uiResourceUri && resultView === "ui" && client ? (
+              <Suspense
+                fallback={
+                  <div className="flex items-center justify-center h-48">
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      <span className="text-sm">Loading app...</span>
+                    </div>
+                  </div>
+                }
+              >
+                <MCPAppRenderer
+                  resourceURI={uiResourceUri}
+                  toolName={toolName}
+                  toolInput={lastToolInput ?? undefined}
+                  toolResult={rawToolResult ?? undefined}
+                  displayMode="fullscreen"
+                  minHeight={MCP_APP_DISPLAY_MODES.view.minHeight}
+                  maxHeight={MCP_APP_DISPLAY_MODES.view.maxHeight}
+                  client={client}
+                  className="h-full"
+                />
+              </Suspense>
+            ) : executionResult ? (
               <>
                 <MonacoCodeEditor
                   code={JSON.stringify(executionResult, null, 2)}

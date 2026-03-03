@@ -1,23 +1,36 @@
 "use client";
 
-import type React from "react";
-import type { ToolUIPart, DynamicToolUIPart } from "ai";
-import type { ToolDefinition } from "@decocms/mesh-sdk";
-import { AlertCircle, Eye, Globe02, Tool01, XClose } from "@untitledui/icons";
+import { MCPAppRenderer as MCPAppIframeRenderer } from "@/mcp-apps/mcp-app-renderer.tsx";
+import { getUIResourceUri } from "@/mcp-apps/types.ts";
+import { useChatStable } from "@/web/components/chat/context.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { ToolCallShell } from "./common.tsx";
+import type { ToolDefinition } from "@decocms/mesh-sdk";
+import { useMCPClient, useProjectContext } from "@decocms/mesh-sdk";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
-  getFriendlyToolName,
-  getApprovalId,
-  getEffectiveState,
-} from "./utils.tsx";
+  AlertCircle,
+  Atom02,
+  Eye,
+  Globe02,
+  LayersTwo01,
+  XClose,
+} from "@untitledui/icons";
+import type { DynamicToolUIPart, ToolUIPart } from "ai";
+import type React from "react";
+import { Suspense } from "react";
 import { getToolPartErrorText, safeStringify } from "../utils.ts";
 import { ApprovalActions } from "./approval-actions.tsx";
+import { ToolCallShell } from "./common.tsx";
+import {
+  getApprovalId,
+  getEffectiveState,
+  getFriendlyToolName,
+} from "./utils.tsx";
 
 interface GenericToolCallPartProps {
   part: ToolUIPart | DynamicToolUIPart;
@@ -29,6 +42,8 @@ interface GenericToolCallPartProps {
   latency?: number;
   /** Whether this part belongs to the last (most recent) assistant message */
   isLastMessage?: boolean;
+  /** Tool _meta from data-tool-metadata part */
+  toolMeta?: ToolDefinition["_meta"];
 }
 
 function safeStringifyFormatted(value: unknown): string {
@@ -60,22 +75,26 @@ function AnnotationBadge({
 
 function AnnotationBadges({
   annotations,
+  toolMeta,
 }: {
   annotations?: ToolDefinition["annotations"];
+  toolMeta?: ToolDefinition["_meta"];
 }) {
-  if (!annotations) return null;
+  const hasUI = !!getUIResourceUri(toolMeta);
+  if (!annotations && !hasUI) return null;
   return (
     <>
-      {annotations.readOnlyHint && (
+      {hasUI && <AnnotationBadge icon={<LayersTwo01 />} label="Interactive" />}
+      {annotations?.readOnlyHint && (
         <AnnotationBadge icon={<Eye />} label="Read-only — no side effects" />
       )}
-      {annotations.destructiveHint && (
+      {annotations?.destructiveHint && (
         <AnnotationBadge
           icon={<AlertCircle />}
           label="May modify or delete data"
         />
       )}
-      {annotations.openWorldHint && (
+      {annotations?.openWorldHint && (
         <AnnotationBadge
           icon={<Globe02 />}
           label="Reaches outside this system"
@@ -132,6 +151,7 @@ export function GenericToolCallPart({
   annotations,
   latency,
   isLastMessage,
+  toolMeta,
 }: GenericToolCallPartProps) {
   // Extract tool name with proper dynamic-tool handling
   const toolName =
@@ -141,6 +161,23 @@ export function GenericToolCallPart({
         ? "Dynamic Tool"
         : part.type.replace("tool-", "") || "Tool";
   const friendlyName = getFriendlyToolName(toolName);
+
+  const { selectedVirtualMcp } = useChatStable();
+  const { org } = useProjectContext();
+
+  const uiResourceUri = getUIResourceUri(toolMeta);
+
+  const connectionId =
+    toolMeta &&
+    typeof toolMeta === "object" &&
+    toolMeta !== null &&
+    "connectionId" in toolMeta &&
+    toolMeta.connectionId != null &&
+    toolMeta.connectionId !== ""
+      ? String(toolMeta.connectionId)
+      : (selectedVirtualMcp?.id ?? null);
+
+  const hasMCPApp = !!uiResourceUri && part.state === "output-available";
 
   // Compute state-dependent props
   // Cancelled = explicitly denied OR stale approval (conversation moved on)
@@ -168,7 +205,7 @@ export function GenericToolCallPart({
   if (part.state === "output-error") {
     if (detail) detail += "\n\n";
     detail += "# Error\n" + (errorText ?? "");
-  } else if (part.output !== undefined) {
+  } else if (part.output !== undefined && !hasMCPApp) {
     if (detail) detail += "\n\n";
     detail += "# Output\n" + safeStringifyFormatted(part.output);
   }
@@ -182,15 +219,78 @@ export function GenericToolCallPart({
   return (
     <div className={cn(effectiveState === "approval" && "my-2")}>
       <ToolCallShell
-        icon={isCancelled ? <XClose /> : <Tool01 />}
+        icon={
+          isCancelled ? (
+            <XClose />
+          ) : hasMCPApp ? (
+            <LayersTwo01 className="size-4 text-muted-foreground" />
+          ) : (
+            <Atom02 className="size-4 text-muted-foreground" />
+          )
+        }
         iconDestructive={isCancelled}
-        trailing={<AnnotationBadges annotations={annotations} />}
+        trailing={
+          <AnnotationBadges annotations={annotations} toolMeta={toolMeta} />
+        }
         title={friendlyName}
         latency={latency}
         summary={summary}
         state={effectiveState}
         detail={detail || null}
         actions={actions}
+      />
+      {hasMCPApp && uiResourceUri && connectionId && org?.id && (
+        <Suspense
+          fallback={
+            <div className="mt-2 flex items-center justify-center h-12 border border-border/75 rounded-lg overflow-hidden p-3">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                <span className="text-sm">Loading app...</span>
+              </div>
+            </div>
+          }
+        >
+          <MCPAppRenderer
+            uiResourceUri={uiResourceUri}
+            connectionId={connectionId}
+            orgId={org.id}
+            toolName={toolName}
+            toolInput={part.input}
+            toolResult={part.output}
+          />
+        </Suspense>
+      )}
+    </div>
+  );
+}
+
+interface MCPAppRendererProps {
+  uiResourceUri: string;
+  connectionId: string;
+  orgId: string;
+  toolName: string;
+  toolInput: unknown;
+  toolResult: unknown;
+}
+
+function MCPAppRenderer({
+  uiResourceUri,
+  connectionId,
+  orgId,
+  toolName,
+  toolInput,
+  toolResult,
+}: MCPAppRendererProps) {
+  const client = useMCPClient({ connectionId, orgId });
+
+  return (
+    <div className="mt-2 border border-border/75 rounded-lg overflow-hidden p-3">
+      <MCPAppIframeRenderer
+        resourceURI={uiResourceUri}
+        toolName={toolName}
+        toolInput={toolInput as Record<string, unknown> | undefined}
+        toolResult={toolResult as CallToolResult | undefined}
+        client={client}
       />
     </div>
   );
