@@ -212,4 +212,91 @@ describe("injectCSP with resourceCsp", () => {
     });
     expect(result).toContain("form-action 'none'");
   });
+
+  it("adds unsafe-eval to script-src when unsafeEval is true", () => {
+    const result = injectCSP(html, {
+      resourceCsp: { unsafeEval: true },
+    });
+    expect(result).toContain("script-src 'unsafe-inline' 'unsafe-eval'");
+  });
+
+  it("combines unsafeEval with resourceDomains in script-src", () => {
+    const result = injectCSP(html, {
+      resourceCsp: {
+        unsafeEval: true,
+        resourceDomains: ["https://cesium.com"],
+      },
+    });
+    expect(result).toContain(
+      "script-src 'unsafe-inline' 'unsafe-eval' https://cesium.com",
+    );
+  });
+
+  it("does not add unsafe-eval when unsafeEval is false", () => {
+    const result = injectCSP(html, {
+      resourceCsp: {
+        unsafeEval: false,
+        resourceDomains: ["https://cdn.example.com"],
+      },
+    });
+    expect(result).not.toContain("unsafe-eval");
+  });
+
+  it("combines unsafeEval and wasmEval in script-src", () => {
+    const result = injectCSP(html, {
+      resourceCsp: {
+        unsafeEval: true,
+        wasmEval: true,
+        resourceDomains: ["https://cesium.com"],
+      },
+    });
+    expect(result).toContain(
+      "script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://cesium.com",
+    );
+  });
+
+  it("adds wasm-unsafe-eval to script-src when wasmEval is true", () => {
+    const result = injectCSP(html, {
+      resourceCsp: { wasmEval: true },
+    });
+    expect(result).toContain("script-src 'unsafe-inline' 'wasm-unsafe-eval'");
+  });
+
+  it("combines wasmEval with resourceDomains in script-src", () => {
+    const result = injectCSP(html, {
+      resourceCsp: {
+        wasmEval: true,
+        resourceDomains: ["https://cesium.com"],
+      },
+    });
+    expect(result).toContain(
+      "script-src 'unsafe-inline' 'wasm-unsafe-eval' https://cesium.com",
+    );
+  });
+
+  it("does not add wasm-unsafe-eval when wasmEval is false", () => {
+    const result = injectCSP(html, {
+      resourceCsp: {
+        wasmEval: false,
+        resourceDomains: ["https://cdn.example.com"],
+      },
+    });
+    expect(result).not.toContain("wasm-unsafe-eval");
+  });
+
+  it("does not add wasm-unsafe-eval when wasmEval is omitted", () => {
+    const result = injectCSP(html, {
+      resourceCsp: {
+        resourceDomains: ["https://cdn.example.com"],
+      },
+    });
+    expect(result).not.toContain("wasm-unsafe-eval");
+  });
+
+  it("falls back to DEFAULT_CSP when only wasmEval is false", () => {
+    const result = injectCSP(html, {
+      resourceCsp: { wasmEval: false },
+    });
+    expect(result).toContain(DEFAULT_CSP);
+  });
 });

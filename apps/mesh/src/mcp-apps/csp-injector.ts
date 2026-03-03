@@ -8,6 +8,7 @@ export const DEFAULT_CSP = [
   "font-src data:",
   "connect-src 'none'",
   "frame-src 'none'",
+  "worker-src blob:",
   "form-action 'none'",
   "base-uri 'none'",
 ].join("; ");
@@ -85,23 +86,29 @@ function buildCSPPolicy(options: CSPInjectorOptions): string {
   const hasConnectDomains = connectDomains.length > 0;
   const hasFrameDomains = frameDomains.length > 0;
   const hasBaseUriDomains = baseUriDomains.length > 0;
+  const hasUnsafeEval = rc.unsafeEval === true;
+  const hasWasmEval = rc.wasmEval === true;
 
   if (
     !hasResourceDomains &&
     !hasConnectDomains &&
     !hasFrameDomains &&
-    !hasBaseUriDomains
+    !hasBaseUriDomains &&
+    !hasUnsafeEval &&
+    !hasWasmEval
   ) {
     return DEFAULT_CSP;
   }
 
   const rd = resourceDomains.join(" ");
+  const evalToken = hasUnsafeEval ? " 'unsafe-eval'" : "";
+  const wasmToken = hasWasmEval ? " 'wasm-unsafe-eval'" : "";
 
   const directives = [
     "default-src 'none'",
     hasResourceDomains
-      ? `script-src 'unsafe-inline' ${rd}`
-      : "script-src 'unsafe-inline'",
+      ? `script-src 'unsafe-inline'${evalToken}${wasmToken} ${rd}`
+      : `script-src 'unsafe-inline'${evalToken}${wasmToken}`,
     hasResourceDomains
       ? `style-src 'unsafe-inline' ${rd}`
       : "style-src 'unsafe-inline'",
@@ -115,6 +122,7 @@ function buildCSPPolicy(options: CSPInjectorOptions): string {
     hasFrameDomains
       ? `frame-src ${frameDomains.join(" ")}`
       : "frame-src 'none'",
+    "worker-src blob:",
     "form-action 'none'",
     hasBaseUriDomains
       ? `base-uri ${baseUriDomains.join(" ")}`

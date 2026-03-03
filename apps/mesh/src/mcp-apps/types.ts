@@ -4,10 +4,35 @@ export type {
   McpUiDisplayMode,
   McpUiInitializeResult,
   McpUiResourceMeta,
-  McpUiResourceCsp,
   McpUiHostStyles,
   McpUiTheme,
 } from "@modelcontextprotocol/ext-apps";
+
+import type { McpUiResourceCsp as _McpUiResourceCsp } from "@modelcontextprotocol/ext-apps";
+
+/**
+ * Extended CSP type that adds `wasmEval` on top of the upstream
+ * `McpUiResourceCsp`. When the upstream spec adds this field we can
+ * drop the extension and re-export directly.
+ */
+export interface McpUiResourceCsp extends _McpUiResourceCsp {
+  /**
+   * When `true`, adds `'unsafe-eval'` to the `script-src` directive,
+   * allowing `eval()` / `new Function()` inside the sandboxed iframe.
+   *
+   * Required by libraries that use runtime code generation (e.g. CesiumJS's
+   * knockout.js bindings).
+   */
+  unsafeEval?: boolean;
+
+  /**
+   * When `true`, adds `'wasm-unsafe-eval'` to the `script-src` directive,
+   * allowing WebAssembly compilation inside the sandboxed iframe.
+   *
+   * Required by libraries like CesiumJS that use `WebAssembly.instantiate()`.
+   */
+  wasmEval?: boolean;
+}
 
 export { RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps";
 
