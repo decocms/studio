@@ -277,8 +277,8 @@ const monitoringRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/orgs/monitoring.tsx")),
   validateSearch: z.lazy(() =>
     z.object({
-      tab: z.enum(["logs", "analytics", "dashboards"]).default("logs"),
-      from: z.string().default("now-24h"),
+      tab: z.enum(["logs", "dashboards"]).default("logs"),
+      from: z.string().default("now-30m"),
       to: z.string().default("now"),
       connectionId: z.array(z.string()).optional().default([]),
       virtualMcpId: z.array(z.string()).optional().default([]),

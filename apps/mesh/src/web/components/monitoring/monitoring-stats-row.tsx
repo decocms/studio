@@ -36,6 +36,8 @@ export interface BucketPoint {
   calls: number;
   errors: number;
   errorRate: number;
+  avg: number;
+  p50: number;
   p95: number;
 }
 
@@ -154,6 +156,12 @@ function buildBuckets(
     calls: b.calls,
     errors: b.errors,
     errorRate: b.calls > 0 ? (b.errors / b.calls) * 100 : 0,
+    avg: Math.round(
+      b.durations.length > 0
+        ? b.durations.reduce((a, c) => a + c, 0) / b.durations.length
+        : 0,
+    ),
+    p50: Math.round(percentile(b.durations, 0.5)),
     p95: Math.round(percentile(b.durations, 0.95)),
   }));
 }
@@ -166,6 +174,7 @@ export interface MonitoringStatsData {
   totalCalls: number;
   totalErrors: number;
   avgDurationMs: number;
+  p95DurationMs: number;
   data: BucketPoint[];
 }
 
@@ -178,10 +187,12 @@ export function calculateStats(
 ): MonitoringStatsData {
   const totalCalls = overrideTotalCalls ?? logs.length;
   const totalErrors = logs.filter((log) => log.isError).length;
+  const durations = logs.map((log) => log.durationMs);
   const avgDurationMs =
-    logs.length > 0
-      ? logs.reduce((sum, log) => sum + log.durationMs, 0) / logs.length
+    durations.length > 0
+      ? durations.reduce((sum, d) => sum + d, 0) / durations.length
       : 0;
+  const p95DurationMs = percentile(durations, 0.95);
   const data = buildBuckets(
     logs,
     dateRange.startDate,
@@ -189,21 +200,26 @@ export function calculateStats(
     bucketCount,
   );
 
-  return { totalCalls, totalErrors, avgDurationMs, data };
+  return { totalCalls, totalErrors, avgDurationMs, p95DurationMs, data };
 }
 
 // ============================================================================
 // Chart Components
 // ============================================================================
 
-interface KPIChartProps {
+export interface KPIChartProps {
   data: BucketPoint[];
-  dataKey: "calls" | "errors" | "p95";
+  dataKey: "calls" | "errors" | "avg" | "p50" | "p95";
   colorNum: number;
   chartHeight: string;
 }
 
-function KPIChart({ data, dataKey, colorNum, chartHeight }: KPIChartProps) {
+export function KPIChart({
+  data,
+  dataKey,
+  colorNum,
+  chartHeight,
+}: KPIChartProps) {
   const colorVar = `var(--chart-${colorNum})`;
 
   return (
@@ -245,111 +261,6 @@ function KPIChart({ data, dataKey, colorNum, chartHeight }: KPIChartProps) {
 }
 
 // ============================================================================
-// Main Component
-// ============================================================================
-
-export type KPIType = "calls" | "errors" | "p95";
-
-export interface MonitoringStatsRowProps {
-  stats: MonitoringStatsData;
-  /** Chart height class, e.g., "h-[40px]" or "h-[103px]" */
-  chartHeight?: string;
-  /** Whether to show date range labels below charts */
-  showDateLabels?: boolean;
-  /** Date range for labels */
-  dateRange?: DateRange;
-  /** Whether this is a compact view (monitoring page) */
-  compact?: boolean;
-  /** Optional click handler for KPI cards */
-  onKPIClick?: (kpiType: KPIType) => void;
-}
-
-const KPI_CONFIG = [
-  {
-    label: "Tool Calls",
-    dataKey: "calls",
-    colorNum: 1,
-    getValue: (s: MonitoringStatsData) => s.totalCalls.toLocaleString(),
-  },
-  {
-    label: "Errors",
-    dataKey: "errors",
-    colorNum: 3,
-    getValue: (s: MonitoringStatsData) => s.totalErrors.toLocaleString(),
-  },
-  {
-    label: "Latency",
-    dataKey: "p95",
-    colorNum: 4,
-    getValue: (s: MonitoringStatsData) => `${Math.round(s.avgDurationMs)}ms`,
-  },
-] as const;
-
-export function MonitoringStatsRow({
-  stats,
-  chartHeight = "h-[40px]",
-  showDateLabels = false,
-  dateRange,
-  compact = false,
-  onKPIClick,
-}: MonitoringStatsRowProps) {
-  const formatDate = (date: Date) =>
-    date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-
-  const titleClass = compact
-    ? "flex flex-col gap-0.5 md:gap-1"
-    : "flex flex-col gap-1";
-  const labelClass = compact
-    ? "text-xs md:text-sm text-muted-foreground"
-    : "text-sm text-muted-foreground";
-  const valueClass = compact
-    ? "text-sm md:text-lg font-medium"
-    : "text-lg font-medium";
-
-  const dateLabels = showDateLabels && dateRange && (
-    <div className="flex items-start justify-between text-xs text-muted-foreground w-full">
-      <p>{formatDate(dateRange.startDate)}</p>
-      <p>{formatDate(dateRange.endDate)}</p>
-    </div>
-  );
-
-  const isClickable = !!onKPIClick;
-
-  return (
-    <div className="grid grid-cols-3 gap-[0.5px] bg-border flex-shrink-0">
-      {KPI_CONFIG.map(({ label, dataKey, colorNum, getValue }) => (
-        <HomeGridCell
-          key={dataKey}
-          title={
-            <div className={titleClass}>
-              <p className={labelClass}>{label}</p>
-              <p className={valueClass}>{getValue(stats)}</p>
-            </div>
-          }
-        >
-          <div
-            className={cn(
-              "flex flex-col gap-2 w-full",
-              isClickable &&
-                "cursor-pointer hover:opacity-80 transition-opacity",
-            )}
-            onClick={onKPIClick ? () => onKPIClick(dataKey) : undefined}
-          >
-            <KPIChart
-              data={stats.data}
-              dataKey={dataKey}
-              colorNum={colorNum}
-              chartHeight={chartHeight}
-            />
-            {dateLabels}
-          </div>
-        </HomeGridCell>
-      ))}
-    </div>
-  );
-}
-
-// ============================================================================
 // Skeleton
 // ============================================================================
 
@@ -360,14 +271,24 @@ export function MonitoringStatsRowSkeleton() {
         <HomeGridCell
           key={i}
           title={
-            <div className="flex flex-col gap-1">
-              <div className="h-5 w-20 rounded bg-muted animate-pulse" />
-              <div className="h-6 w-16 rounded bg-muted animate-pulse" />
+            <div className="flex flex-col gap-0.5 md:gap-1">
+              <div className="h-4 w-16 rounded bg-muted animate-pulse" />
+              <div className="h-5 md:h-6 w-12 rounded bg-muted animate-pulse" />
             </div>
           }
         >
-          <div className="flex flex-col gap-2 w-full">
-            <div className="h-[40px] w-full rounded bg-muted animate-pulse" />
+          <div className="flex flex-col w-full">
+            <div className="h-[30px] md:h-[40px] w-full rounded bg-muted animate-pulse" />
+            <div className="space-y-1.5 mt-2">
+              {Array.from({ length: 3 }).map((_, j) => (
+                <div key={j} className="flex items-center gap-1.5">
+                  <div className="size-4 rounded-sm bg-muted animate-pulse shrink-0" />
+                  <div className="h-2.5 w-20 rounded bg-muted animate-pulse" />
+                  <div className="h-1.5 flex-1 bg-muted animate-pulse" />
+                  <div className="h-2.5 w-8 rounded bg-muted animate-pulse shrink-0" />
+                </div>
+              ))}
+            </div>
           </div>
         </HomeGridCell>
       ))}
