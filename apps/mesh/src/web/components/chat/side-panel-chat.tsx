@@ -7,7 +7,6 @@ import {
   useProjectContext,
 } from "@decocms/mesh-sdk";
 import {
-  AlignLeft,
   ChevronLeft,
   CheckDone01,
   Loading01,
@@ -17,11 +16,11 @@ import {
 } from "@untitledui/icons";
 import { Suspense, useState, useTransition } from "react";
 import { ErrorBoundary } from "../error-boundary";
-import { usePreferences } from "@/web/hooks/use-preferences.ts";
+
 import { Chat, useChat } from "./index";
 import { ChatContextPanel } from "./context-panel";
 import { TaskListContent } from "./tasks-panel";
-import { ThreadsViewContent } from "./threads-sidebar";
+
 import { EditableThreadTitle } from "./editable-thread-title";
 
 function ChatPanelContent() {
@@ -37,8 +36,6 @@ function ChatPanelContent() {
     threads,
   } = useChat();
   const activeThread = threads.find((thread) => thread.id === activeThreadId);
-  const [preferences] = usePreferences();
-  const tasksEnabled = preferences.experimental_tasks;
   const [activePanel, setActivePanel] = useState<
     "chat" | "threads" | "context"
   >("chat");
@@ -129,19 +126,12 @@ function ChatPanelContent() {
               type="button"
               onClick={() => setActivePanel("threads")}
               className="flex size-6 items-center justify-center rounded-full p-1 hover:bg-transparent group cursor-pointer"
-              title={tasksEnabled ? "Tasks" : "Chats"}
+              title="Tasks"
             >
-              {tasksEnabled ? (
-                <CheckDone01
-                  size={16}
-                  className="text-muted-foreground group-hover:text-foreground transition-colors"
-                />
-              ) : (
-                <AlignLeft
-                  size={16}
-                  className="text-muted-foreground group-hover:text-foreground transition-colors"
-                />
-              )}
+              <CheckDone01
+                size={16}
+                className="text-muted-foreground group-hover:text-foreground transition-colors"
+              />
             </button>
             <button
               type="button"
@@ -201,9 +191,7 @@ function ChatPanelContent() {
       >
         <Page.Header className="flex-none" hideSidebarTrigger>
           <Page.Header.Left className="gap-2">
-            <span className="text-sm font-normal text-foreground">
-              {tasksEnabled ? "Tasks" : "Chats"}
-            </span>
+            <span className="text-sm font-normal text-foreground">Tasks</span>
           </Page.Header.Left>
           <Page.Header.Right className="gap-1">
             <button
@@ -238,24 +226,12 @@ function ChatPanelContent() {
               </div>
             }
           >
-            {tasksEnabled ? (
-              <TaskListContent
-                onTaskSelect={async (taskId) => {
-                  await switchToThread(taskId);
-                  setActivePanel("chat");
-                }}
-              />
-            ) : (
-              <ThreadsViewContent
-                threads={threads}
-                activeThreadId={activeThreadId}
-                onThreadSelect={async (threadId) => {
-                  await switchToThread(threadId);
-                  setActivePanel("chat");
-                }}
-                showHeader={false}
-              />
-            )}
+            <TaskListContent
+              onTaskSelect={async (taskId) => {
+                await switchToThread(taskId);
+                setActivePanel("chat");
+              }}
+            />
           </Suspense>
         </ErrorBoundary>
       </div>

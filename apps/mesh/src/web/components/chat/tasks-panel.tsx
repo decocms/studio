@@ -10,7 +10,7 @@
 
 import { useChat } from "@/web/components/chat/index";
 import { useChatStable } from "@/web/components/chat/context";
-import { ThreadsViewContent } from "@/web/components/chat/threads-sidebar";
+
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
 import { User } from "@/web/components/user/user.tsx";
 import { useTaskData } from "@/web/hooks/use-task-data";
@@ -27,7 +27,7 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { usePreferences } from "@/web/hooks/use-preferences.ts";
+
 import {
   Check,
   ChevronRight,
@@ -308,18 +308,13 @@ export function TaskListContent({ onTaskSelect }: TaskListContentProps) {
 // --- Home page panel wrapper ---
 
 function TasksPanelContent() {
-  const { createThread, isChatEmpty, threads, activeThreadId, switchToThread } =
-    useChat();
-  const [preferences] = usePreferences();
-  const tasksEnabled = preferences.experimental_tasks;
+  const { createThread, isChatEmpty } = useChat();
 
   return (
     <div className="flex flex-col h-full bg-background border-r border-border/50">
       {/* Header */}
       <div className="h-11 px-4 flex items-center justify-between shrink-0 border-b border-border/50">
-        <span className="text-sm font-normal text-foreground">
-          {tasksEnabled ? "Tasks" : "Chats"}
-        </span>
+        <span className="text-sm font-normal text-foreground">Tasks</span>
         <button
           type="button"
           onClick={() => createThread()}
@@ -331,16 +326,7 @@ function TasksPanelContent() {
         </button>
       </div>
 
-      {tasksEnabled ? (
-        <TaskListContent />
-      ) : (
-        <ThreadsViewContent
-          threads={threads}
-          activeThreadId={activeThreadId}
-          onThreadSelect={switchToThread}
-          showHeader={false}
-        />
-      )}
+      <TaskListContent />
     </div>
   );
 }
