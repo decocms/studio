@@ -7,9 +7,7 @@
       "project": [],
       "ignoreDependencies": []
     },
-    "packages/ui": {
-      "ignore": ["src/styles/global.css"]
-    },
+    "packages/ui": {},
     "packages/runtime": {
       "entry": ["scripts/generate-json-schema.ts"]
     },
