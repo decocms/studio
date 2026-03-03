@@ -6,7 +6,6 @@ import {
   useMCPClient,
   useProjectContext,
 } from "@decocms/mesh-sdk";
-import { PinToSidebarButton } from "@/web/components/pin-to-sidebar-button";
 import {
   Form,
   FormControl,
@@ -16,7 +15,6 @@ import {
 import { Input } from "@deco/ui/components/input.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { PromptSchema } from "@decocms/bindings/prompt";
-import { useRouterState } from "@tanstack/react-router";
 import { Suspense } from "react";
 import { useForm, type UseFormReturn } from "react-hook-form";
 import { z } from "zod";
@@ -130,9 +128,6 @@ function PromptDetailContent({
   providerId: string;
   promptId: string;
 }) {
-  const routerState = useRouterState();
-  const url = routerState.location.href;
-
   const { org } = useProjectContext();
   const client = useMCPClient({
     connectionId: providerId || null,
@@ -230,7 +225,6 @@ function PromptDetailContent({
           isDirty={form.formState.isDirty}
           isSaving={isSaving}
         />
-        <PinToSidebarButton title={prompt.title} url={url} icon="description" />
       </ViewActions>
 
       <div className="h-full">

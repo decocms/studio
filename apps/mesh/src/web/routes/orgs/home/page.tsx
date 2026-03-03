@@ -26,7 +26,6 @@ import {
 import {
   ClockRewind,
   MessageChatSquare,
-  Pin01,
   Plus,
   Share07,
   Users03,
@@ -121,25 +120,6 @@ function HomeContent() {
               </Button>
             </TooltipTrigger>
             <TooltipContent>Chat history</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="size-7 border border-input"
-                onClick={() => {
-                  // TODO: Implement thread pinning functionality
-                  toast.info("Pin feature coming soon");
-                }}
-                disabled={isChatEmpty}
-                aria-label="Pin chat"
-              >
-                <Pin01 size={16} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Pin chat</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>

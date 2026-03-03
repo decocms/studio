@@ -6,7 +6,6 @@ import { Suspense } from "react";
 import { NavigationSidebar } from "./navigation";
 import { MeshSidebarHeader } from "./header";
 import { SidebarInboxFooter } from "./footer/inbox";
-import { SidebarItemsSection } from "./items";
 import { SidebarProjectsSection } from "./projects-section";
 
 // Export types for external use
@@ -37,17 +36,13 @@ export function MeshSidebar({ onCreateProject }: MeshSidebarProps) {
       }
       footer={<SidebarInboxFooter />}
       additionalContent={
-        <ErrorBoundary>
-          <Suspense fallback={null}>
-            {isOrgAdmin ? (
-              preferences.experimental_projects ? (
-                <SidebarProjectsSection />
-              ) : null
-            ) : (
-              <SidebarItemsSection />
-            )}
-          </Suspense>
-        </ErrorBoundary>
+        isOrgAdmin && preferences.experimental_projects ? (
+          <ErrorBoundary>
+            <Suspense fallback={null}>
+              <SidebarProjectsSection />
+            </Suspense>
+          </ErrorBoundary>
+        ) : null
       }
     />
   );

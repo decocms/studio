@@ -6,7 +6,6 @@ import {
   type EnvVar,
 } from "@/web/components/env-vars-editor";
 import { getUIResourceUri } from "@/mcp-apps/types.ts";
-import { PinToSidebarButton } from "@/web/components/pin-to-sidebar-button";
 import { SaveActions } from "@/web/components/save-actions";
 import {
   useBindingConnections,
@@ -46,7 +45,6 @@ import {
   Link,
   useNavigate,
   useParams,
-  useRouterState,
   useSearch,
 } from "@tanstack/react-router";
 import { Loading01 } from "@untitledui/icons";
@@ -293,8 +291,6 @@ function ConnectionInspectorViewWithConnection({
 }) {
   const navigate = useNavigate({ from: "/$org/$project/mcps/$connectionId" });
   const queryClient = useQueryClient();
-  const routerState = useRouterState();
-  const url = routerState.location.href;
   const connectionActions = useConnectionActions();
 
   const authStatus = useMCPAuthStatus({
@@ -530,11 +526,6 @@ function ConnectionInspectorViewWithConnection({
           onUndo={handleUndo}
           isDirty={hasAnyChanges}
           isSaving={isUpdating}
-        />
-        <PinToSidebarButton
-          title={connection.title}
-          url={url}
-          icon={connection.icon ?? "settings"}
         />
       </ViewActions>
       <div className="flex h-full w-full bg-background overflow-hidden">

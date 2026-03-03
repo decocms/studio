@@ -3,10 +3,7 @@ import { CollectionSearch } from "@/web/components/collections/collection-search
 import { CollectionTableWrapper } from "@/web/components/collections/collection-table-wrapper.tsx";
 import { EmptyState } from "@/web/components/empty-state.tsx";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
-import { PinToSidebarButton } from "@/web/components/pin-to-sidebar-button";
-import { useConnection } from "@decocms/mesh-sdk";
 import { Card } from "@deco/ui/components/card.tsx";
-import { useRouterState } from "@tanstack/react-router";
 import { useState } from "react";
 import { ViewActions } from "@/web/components/details/layout";
 
@@ -25,10 +22,6 @@ export interface ResourcesListProps {
   connectionId?: string;
   /** Organization slug for context */
   org?: string;
-  /** Connection title for display */
-  connectionTitle?: string;
-  /** Connection icon for pinning */
-  connectionIcon?: string | null;
   /** Custom click handler */
   onResourceClick?: (resource: McpResource) => void;
   /** Whether to show the ViewActions toolbar (default: true) */
@@ -42,14 +35,10 @@ export interface ResourcesListProps {
  */
 function ResourcesList({
   resources,
-  connectionTitle,
-  connectionIcon,
   onResourceClick,
   showToolbar = true,
   emptyMessage = "This connection doesn't have any resources yet.",
 }: ResourcesListProps) {
-  const routerState = useRouterState();
-  const url = routerState.location.href;
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState<"table" | "cards">("table");
   const [sortKey, setSortKey] = useState<string | undefined>("name");
@@ -164,13 +153,6 @@ function ResourcesList({
             onSort={handleSort}
             sortOptions={sortOptions}
           />
-          <PinToSidebarButton
-            title={
-              connectionTitle ? `${connectionTitle}: Resources` : "Resources"
-            }
-            url={url}
-            icon={connectionIcon ?? "folder"}
-          />
         </ViewActions>
       )}
 
@@ -271,15 +253,11 @@ export function ResourcesTab({
   connectionId,
   org,
 }: ResourcesTabProps) {
-  const connection = useConnection(connectionId);
-
   return (
     <ResourcesList
       resources={resources}
       connectionId={connectionId}
       org={org}
-      connectionTitle={connection?.title}
-      connectionIcon={connection?.icon}
     />
   );
 }

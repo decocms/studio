@@ -22,12 +22,7 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { Loading01 } from "@untitledui/icons";
-import {
-  Link,
-  useParams,
-  useRouterState,
-  useSearch,
-} from "@tanstack/react-router";
+import { Link, useParams, useSearch } from "@tanstack/react-router";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -50,8 +45,7 @@ import {
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
-import { PinToSidebarButton } from "../pin-to-sidebar-button";
-import { ViewActions, ViewLayout } from "./layout";
+import { ViewLayout } from "./layout";
 import {
   OAuthAuthenticationState,
   ManualAuthRequiredState,
@@ -124,8 +118,6 @@ function ToolDetailsAuthenticated({
   toolName: string;
   connectionId: string;
 }) {
-  const routerState = useRouterState();
-  const url = routerState.location.href;
   // Read replayId from search params to check for prefilled input
   const { replayId } = useSearch({ strict: false }) as { replayId?: string };
 
@@ -369,14 +361,6 @@ function ToolDetailsAuthenticated({
 
   return (
     <ViewLayout breadcrumb={breadcrumb}>
-      <ViewActions>
-        <PinToSidebarButton
-          title={tool?.name ?? beautifyToolName(toolName)}
-          url={url}
-          icon="build"
-        />
-      </ViewActions>
-
       <div className="grid grid-cols-1 lg:grid-cols-2 h-full">
         {/* Left Panel - Tool Info, Parameters & Execute */}
         <div className="flex flex-col border-r border-border overflow-hidden">

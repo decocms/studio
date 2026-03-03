@@ -1,10 +1,8 @@
-import { PinToSidebarButton } from "@/web/components/pin-to-sidebar-button";
 import { VirtualMCPSelect } from "./virtual-mcp-select";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Spinner } from "@deco/ui/components/spinner.tsx";
 import { ViewModeToggle } from "@deco/ui/components/view-mode-toggle.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { useRouterState } from "@tanstack/react-router";
 import {
   ClockFastForward,
   Code02,
@@ -50,8 +48,6 @@ export function WorkflowEditorHeader({
   onSave,
   isSaving,
 }: WorkflowEditorHeaderProps) {
-  const routerState = useRouterState();
-  const url = routerState.location.href;
   const { viewMode, setViewMode, showExecutionsList, toggleExecutionsList } =
     useViewModeStore();
   const { resetToOriginalWorkflow, setSelectedVirtualMcpId } =
@@ -108,8 +104,6 @@ export function WorkflowEditorHeader({
                 { value: "code", icon: <Code02 /> },
               ]}
             />
-
-            <PinToSidebarButton title={title} url={url} icon="workflow" />
 
             <TooltipProvider>
               <Tooltip delayDuration={0}>

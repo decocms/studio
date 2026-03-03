@@ -3,7 +3,6 @@ import { useChatStable } from "@/web/components/chat/context";
 import { EmptyState } from "@/web/components/empty-state.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
-import { PinToSidebarButton } from "@/web/components/pin-to-sidebar-button";
 import { useDecoChatOpen } from "@/web/hooks/use-deco-chat-open";
 import { Badge } from "@deco/ui/components/badge.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -27,12 +26,7 @@ import {
   useVirtualMCPActions,
 } from "@decocms/mesh-sdk";
 import { zodResolver } from "@hookform/resolvers/zod";
-import {
-  Link,
-  useNavigate,
-  useParams,
-  useRouterState,
-} from "@tanstack/react-router";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
   ChevronRight,
   ChevronUp,
@@ -193,8 +187,6 @@ function VirtualMcpDetailViewWithData({
   virtualMcp: VirtualMCPEntity;
 }) {
   const { org } = useProjectContext();
-  const routerState = useRouterState();
-  const url = routerState.location.href;
   const actions = useVirtualMCPActions();
 
   // Form setup
@@ -319,12 +311,6 @@ function VirtualMcpDetailViewWithData({
           <ZapCircle size={14} />
           Connect
         </Button>
-
-        <PinToSidebarButton
-          title={virtualMcp.title}
-          url={url}
-          icon={virtualMcp.icon ?? "cpu_chip"}
-        />
       </ViewActions>
 
       <div className="flex h-full w-full bg-background overflow-auto">
