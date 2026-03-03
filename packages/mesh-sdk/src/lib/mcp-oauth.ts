@@ -660,8 +660,11 @@ async function checkOAuthTokenStatus(
   try {
     const path = `/api/connections/${connectionId}/oauth-token/status`;
     const url = apiBaseUrl ? new URL(path, apiBaseUrl).href : path;
+    const currentOrigin = getCurrentOrigin();
+    const isSameOrigin =
+      !apiBaseUrl || new URL(apiBaseUrl).origin === currentOrigin;
     const response = await fetch(url, {
-      credentials: apiBaseUrl ? "omit" : "include", // Don't send cookies for cross-origin
+      credentials: isSameOrigin ? "include" : "omit", // Don't send cookies for cross-origin
     });
     if (!response.ok) {
       return { hasToken: false };
