@@ -54,26 +54,3 @@ Example output: Database Connection Setup
 
 Example input: "What tools are available?"
 Example output: Available Tools Overview`;
-
-export const DESCRIPTION_GENERATOR_PROMPT = `Your task: Summarize what the AI assistant did or said in 8-15 words.
-
-Rules:
-- Output ONLY the summary, nothing else
-- No quotes, no punctuation at the end
-- No explanations, no "Summary:" prefix
-- Use past tense for completed actions
-- If the assistant asked the user a question, include the question topic
-- Be specific and descriptive, not generic
-- Just the raw summary text
-
-Example input: "I've created the database migration files and updated the schema to include the new columns you requested."
-Example output: Created database migration files and updated schema with new columns
-
-Example input: "Here's a poem I wrote about autumn. What feeling or mood does this poem evoke for you?"
-Example output: Wrote an autumn poem and asking what mood it evokes
-
-Example input: "I encountered an error: ECONNREFUSED when trying to connect to the Slack API."
-Example output: Failed to connect to Slack API due to connection refused error
-
-Example input: "I've summarized 17 Slack threads and organized them into your Notion workspace."
-Example output: Summarized 17 Slack threads into Notion workspace`;

@@ -5,12 +5,6 @@
  */
 
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@deco/ui/components/sheet.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Check, Edit01, MessageChatSquare } from "@untitledui/icons";
 import { useState } from "react";
@@ -222,73 +216,5 @@ export function ThreadsViewContent({
         )}
       </div>
     </>
-  );
-}
-
-interface ThreadsSidebarProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  threads: Thread[];
-  activeThreadId: string;
-  onThreadSelect: (threadId: string) => void;
-}
-
-export function ThreadsSidebar({
-  open,
-  onOpenChange,
-  threads,
-  activeThreadId,
-  onThreadSelect,
-}: ThreadsSidebarProps) {
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="right"
-        className="w-[480px] sm:w-[540px] p-0 flex flex-col"
-      >
-        <SheetHeader className="h-12 px-4 flex flex-row items-center justify-between border-b shrink-0">
-          <SheetTitle className="text-sm font-medium">Chat History</SheetTitle>
-        </SheetHeader>
-
-        <ThreadsViewContent
-          threads={threads}
-          activeThreadId={activeThreadId}
-          onThreadSelect={onThreadSelect}
-          showHeader={false}
-        />
-      </SheetContent>
-    </Sheet>
-  );
-}
-
-/**
- * ThreadsView Component
- *
- * A full-view of threads for the lateral chat panel.
- * Uses CSS visibility toggle instead of z-index overlay.
- */
-interface ThreadsViewProps {
-  threads: Thread[];
-  activeThreadId: string;
-  onThreadSelect: (threadId: string) => void;
-  onClose: () => void;
-}
-
-export function ThreadsView({
-  threads,
-  activeThreadId,
-  onThreadSelect,
-  onClose,
-}: ThreadsViewProps) {
-  return (
-    <div className="flex flex-col h-full w-full bg-background">
-      <ThreadsViewContent
-        threads={threads}
-        activeThreadId={activeThreadId}
-        onThreadSelect={onThreadSelect}
-        onClose={onClose}
-        showBackButton
-      />
-    </div>
   );
 }
