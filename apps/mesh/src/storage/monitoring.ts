@@ -16,12 +16,20 @@ import { generatePrefixedId } from "@/shared/utils/generate-id";
 // Aggregation Types
 // ============================================================================
 
+export type GroupByColumn =
+  | "connection_id"
+  | "connection_title"
+  | "user_id"
+  | "tool_name"
+  | "virtual_mcp_id";
+
 export interface AggregationParams {
   organizationId: string;
   path: string; // JSONPath to extract, e.g., "$.usage.total_tokens"
   from: "input" | "output";
   aggregation: AggregationFunction;
-  groupBy?: string; // Optional JSONPath for grouping
+  groupBy?: string; // Optional JSONPath for grouping (extracted from JSON)
+  groupByColumn?: GroupByColumn; // Optional table column for grouping (takes priority over groupBy)
   interval?: string; // For timeseries: "1h", "1d"
   filters?: {
     connectionIds?: string[];
@@ -310,6 +318,7 @@ export class SqlMonitoringStorage implements MonitoringStorage {
       from,
       aggregation,
       groupBy,
+      groupByColumn,
       interval,
       filters,
     } = params;
@@ -357,7 +366,29 @@ export class SqlMonitoringStorage implements MonitoringStorage {
     // Get JSON extraction expression
     const valueExpr = this.jsonExtractPath(sourceColumn, path);
 
-    // If we have groupBy, return grouped results
+    // If we have groupByColumn (table column), use it directly (takes priority over groupBy JSONPath)
+    if (groupByColumn) {
+      const colRef = sql.ref(groupByColumn);
+      const rows = await baseQuery
+        .select([
+          sql<string>`${colRef}`.as("group_key"),
+          this.aggregationExpression(aggregation, valueExpr).as("agg_value"),
+        ])
+        .groupBy(sql`${colRef}`)
+        .execute();
+
+      return {
+        value: null,
+        groups: rows
+          .filter((row) => row.group_key !== null)
+          .map((row) => ({
+            key: String(row.group_key),
+            value: Number(row.agg_value) || 0,
+          })),
+      };
+    }
+
+    // If we have groupBy JSONPath, return grouped results
     if (groupBy) {
       // Use text extraction for groupBy (it's typically a string like model name)
       const groupExpr = this.jsonExtractPathText(sourceColumn, groupBy);
@@ -521,6 +552,9 @@ export class SqlMonitoringStorage implements MonitoringStorage {
         return sql`MAX(${valueExpr})`;
       case "count":
         return sql`COUNT(${valueExpr})`;
+      case "count_all":
+        // Counts all rows regardless of whether the JSON path has a value
+        return sql`COUNT(*)`;
       case "last":
         // For "last", we'd need a subquery - simplified to max for now
         return sql`MAX(${valueExpr})`;

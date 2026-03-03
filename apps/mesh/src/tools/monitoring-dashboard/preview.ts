@@ -18,7 +18,7 @@ const WidgetConfigSchema = z.object({
   }),
   aggregation: z.object({
     fn: z
-      .enum(["sum", "avg", "min", "max", "count", "last"])
+      .enum(["sum", "avg", "min", "max", "count", "count_all", "last"])
       .describe("Aggregation function"),
     groupBy: z.string().optional().describe("JSONPath for grouping (table)"),
     interval: z

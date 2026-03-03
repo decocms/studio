@@ -20,11 +20,18 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@deco/ui/components/dialog.tsx";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@deco/ui/components/tabs.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { AlertCircle, Coins01, Plus, RefreshCcw01 } from "@untitledui/icons";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   KEYS,
+  SELF_MCP_ALIAS_ID,
   useConnections,
   useMCPClient,
   useMCPToolCallMutation,
@@ -81,6 +88,31 @@ interface UsageDataPoint {
   amount: number;
 }
 
+type BillingStatsPeriod = "7d" | "30d" | "90d";
+
+interface BillingStatsResult {
+  timeseries: Array<{ timestamp: string; cost: number; calls: number }>;
+  byConnection: Array<{ title: string; cost: number; calls: number }>;
+  byModel: Array<{ model: string; cost: number; calls: number }>;
+  byUser: Array<{ userId: string; cost: number; calls: number }>;
+  topTools: Array<{ name: string; cost: number; calls: number }>;
+  totals: { cost: number; calls: number };
+}
+
+interface BillingHistoryPayment {
+  id: string;
+  amountUsd: number;
+  currentLimitUsd: number | null;
+  newLimitUsd: number;
+  status: "completed" | "expired";
+  createdAt: string;
+  completedAt: string | null;
+}
+
+interface BillingHistoryResult {
+  payments: BillingHistoryPayment[];
+}
+
 // -- Helpers --
 
 function formatUSD(value: number): string {
@@ -109,60 +141,6 @@ function setChipPeriod(period: LimitPeriod) {
   } catch {
     // ignore
   }
-}
-
-function buildChartData(
-  period: ChartPeriod,
-  usage: GatewayUsageResult["usage"],
-): UsageDataPoint[] {
-  const now = new Date();
-  const data: UsageDataPoint[] = [];
-
-  if (period === "day") {
-    for (let i = 29; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      data.push({
-        date: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-        amount: i === 0 ? usage.daily : 0,
-      });
-    }
-    data[data.length - 1] = {
-      date: data[data.length - 1]?.date ?? "Today",
-      amount: usage.daily,
-    };
-  } else if (period === "week") {
-    for (let i = 11; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i * 7);
-      data.push({
-        date: `W${String(52 - i)}`,
-        amount: i === 0 ? usage.weekly : 0,
-      });
-    }
-    data[data.length - 1] = {
-      date: data[data.length - 1]?.date ?? "This week",
-      amount: usage.weekly,
-    };
-  } else {
-    for (let i = 11; i >= 0; i--) {
-      const d = new Date(now);
-      d.setMonth(d.getMonth() - i);
-      data.push({
-        date: d.toLocaleDateString("en-US", {
-          month: "short",
-          year: "2-digit",
-        }),
-        amount: i === 0 ? usage.monthly : 0,
-      });
-    }
-    data[data.length - 1] = {
-      date: data[data.length - 1]?.date ?? "This month",
-      amount: usage.monthly,
-    };
-  }
-
-  return data;
 }
 
 const CONFIDENCE_LABEL: Record<CreditEstimation["confidence"], string> = {
@@ -795,29 +773,45 @@ function AlertSection({
 
 // -- Chart section --
 
-type ChartPeriod = "day" | "week" | "month";
-
-const PERIOD_LABELS: Record<ChartPeriod, string> = {
-  day: "Daily",
-  week: "Weekly",
-  month: "Monthly",
-};
-
-const PERIOD_USAGE_KEY: Record<ChartPeriod, keyof GatewayUsageResult["usage"]> =
-  {
-    day: "daily",
-    week: "weekly",
-    month: "monthly",
-  };
-
 const chartConfig = {
   amount: { label: "Spend", color: "var(--chart-1)" },
 } satisfies ChartConfig;
 
 function UsageSection({ usage }: { usage: GatewayUsageResult["usage"] }) {
-  const [period, setPeriod] = useState<ChartPeriod>("day");
-  const data = buildChartData(period, usage);
-  const periodTotal = usage[PERIOD_USAGE_KEY[period]];
+  const { org } = useProjectContext();
+  const [period, setPeriod] = useState<BillingStatsPeriod>("30d");
+
+  const selfClient = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+  });
+
+  const { data: stats } = useMCPToolCallQuery<BillingStatsResult | undefined>({
+    client: selfClient,
+    toolName: "MONITORING_BILLING_STATS",
+    toolArguments: { period },
+    staleTime: 60_000,
+    select: (result) =>
+      (result as { structuredContent?: BillingStatsResult }).structuredContent,
+  });
+
+  const chartData: UsageDataPoint[] = (stats?.timeseries ?? []).map((p) => ({
+    date: new Date(p.timestamp).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    }),
+    amount: p.cost,
+  }));
+
+  const periodTotal = stats?.totals.cost ?? 0;
+  const periodCalls = stats?.totals.calls ?? 0;
+
+  const periodLabel =
+    period === "7d"
+      ? "last 7 days"
+      : period === "30d"
+        ? "last 30 days"
+        : "last 90 days";
 
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-5">
@@ -830,87 +824,73 @@ function UsageSection({ usage }: { usage: GatewayUsageResult["usage"] }) {
             <p className="text-2xl font-bold tabular-nums text-foreground tracking-tight">
               {formatUSD(periodTotal)}
             </p>
-            <p className="text-xs text-muted-foreground">
-              {period === "day"
-                ? "today"
-                : period === "week"
-                  ? "this week"
-                  : "this month"}
-            </p>
+            <p className="text-xs text-muted-foreground">{periodLabel}</p>
           </div>
           <p className="text-xs text-muted-foreground tabular-nums">
-            {formatUSD(usage.total)} all-time
+            {periodCalls.toLocaleString()} calls · {formatUSD(usage.total)}{" "}
+            all-time
           </p>
         </div>
-        <div className="flex items-center rounded-md border border-border bg-muted/50 p-0.5">
-          {(Object.keys(PERIOD_LABELS) as ChartPeriod[]).map((p) => (
-            <button
-              key={p}
-              type="button"
-              onClick={() => setPeriod(p)}
-              className={cn(
-                "px-2.5 py-1 text-xs font-medium rounded-sm transition-colors",
-                period === p
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {PERIOD_LABELS[p]}
-            </button>
-          ))}
-        </div>
+        <PeriodSelector period={period} onPeriodChange={setPeriod} />
       </div>
 
-      <ChartContainer config={chartConfig} className="h-[280px] w-full">
-        <AreaChart
-          data={data}
-          margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
-        >
-          <defs>
-            <linearGradient id="fillAmount" x1="0" y1="0" x2="0" y2="1">
-              <stop
-                offset="5%"
-                stopColor="var(--color-amount)"
-                stopOpacity={0.3}
-              />
-              <stop
-                offset="95%"
-                stopColor="var(--color-amount)"
-                stopOpacity={0}
-              />
-            </linearGradient>
-          </defs>
-          <CartesianGrid vertical={false} strokeDasharray="3 3" />
-          <XAxis
-            dataKey="date"
-            tickLine={false}
-            axisLine={false}
-            tickMargin={8}
-            fontSize={11}
-          />
-          <YAxis
-            tickLine={false}
-            axisLine={false}
-            tickMargin={4}
-            fontSize={11}
-            tickFormatter={(v: number) => `$${v}`}
-          />
-          <ChartTooltip
-            content={
-              <ChartTooltipContent
-                formatter={(value) => formatUSD(value as number)}
-              />
-            }
-          />
-          <Area
-            type="monotone"
-            dataKey="amount"
-            stroke="var(--color-amount)"
-            fill="url(#fillAmount)"
-            strokeWidth={2}
-          />
-        </AreaChart>
-      </ChartContainer>
+      {chartData.length > 0 ? (
+        <ChartContainer config={chartConfig} className="h-[200px] w-full">
+          <AreaChart
+            data={chartData}
+            margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
+          >
+            <defs>
+              <linearGradient id="fillAmount" x1="0" y1="0" x2="0" y2="1">
+                <stop
+                  offset="5%"
+                  stopColor="var(--color-amount)"
+                  stopOpacity={0.3}
+                />
+                <stop
+                  offset="95%"
+                  stopColor="var(--color-amount)"
+                  stopOpacity={0}
+                />
+              </linearGradient>
+            </defs>
+            <CartesianGrid vertical={false} strokeDasharray="3 3" />
+            <XAxis
+              dataKey="date"
+              tickLine={false}
+              axisLine={false}
+              tickMargin={8}
+              fontSize={11}
+              interval="preserveStartEnd"
+            />
+            <YAxis
+              tickLine={false}
+              axisLine={false}
+              tickMargin={4}
+              fontSize={11}
+              tickFormatter={(v: number) => `$${v}`}
+            />
+            <ChartTooltip
+              content={
+                <ChartTooltipContent
+                  formatter={(value) => formatUSD(value as number)}
+                />
+              }
+            />
+            <Area
+              type="monotone"
+              dataKey="amount"
+              stroke="var(--color-amount)"
+              fill="url(#fillAmount)"
+              strokeWidth={2}
+            />
+          </AreaChart>
+        </ChartContainer>
+      ) : (
+        <div className="h-[200px] flex items-center justify-center text-xs text-muted-foreground">
+          No usage data available for this period
+        </div>
+      )}
     </div>
   );
 }
@@ -950,6 +930,427 @@ function ChipDisplayPicker() {
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+// -- Horizontal bar row (reused in breakdown sections) --
+
+function HorizontalBarRow({
+  label,
+  value,
+  subValue,
+  maxValue,
+  color = "bg-chart-1",
+}: {
+  label: string;
+  value: string;
+  subValue?: string;
+  maxValue: number;
+  color?: string;
+}) {
+  const numericValue = parseFloat(value.replace(/[^0-9.]/g, "")) || 0;
+  const pct = maxValue > 0 ? Math.min((numericValue / maxValue) * 100, 100) : 0;
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-foreground truncate min-w-0 w-36 shrink-0">
+        {label}
+      </span>
+      <div className="relative h-2 bg-muted/50 overflow-hidden flex-1 rounded-sm">
+        <div
+          className={cn("h-full transition-all duration-500 ease-out", color)}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <span className="text-xs tabular-nums shrink-0 text-foreground font-medium">
+        {value}
+      </span>
+      {subValue && (
+        <span className="text-xs tabular-nums shrink-0 text-muted-foreground">
+          {subValue}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// -- Breakdown section block --
+
+function BreakdownBlock({
+  title,
+  children,
+  empty,
+}: {
+  title: string;
+  children: ReactNode;
+  empty?: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-5">
+      <p className="text-xs font-medium text-muted-foreground tracking-wide uppercase">
+        {title}
+      </p>
+      {empty ? (
+        <p className="text-xs text-muted-foreground py-4 text-center">
+          No data available for this period
+        </p>
+      ) : (
+        children
+      )}
+    </div>
+  );
+}
+
+// -- Period selector for breakdown / history tabs --
+
+const STATS_PERIOD_LABELS: Record<BillingStatsPeriod, string> = {
+  "7d": "7 days",
+  "30d": "30 days",
+  "90d": "90 days",
+};
+
+function PeriodSelector({
+  period,
+  onPeriodChange,
+}: {
+  period: BillingStatsPeriod;
+  onPeriodChange: (p: BillingStatsPeriod) => void;
+}) {
+  return (
+    <div className="flex items-center rounded-md border border-border bg-muted/50 p-0.5 self-start">
+      {(Object.keys(STATS_PERIOD_LABELS) as BillingStatsPeriod[]).map((p) => (
+        <button
+          key={p}
+          type="button"
+          onClick={() => onPeriodChange(p)}
+          className={cn(
+            "px-2.5 py-1 text-xs font-medium rounded-sm transition-colors",
+            period === p
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {STATS_PERIOD_LABELS[p]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// -- Billing Breakdown Tab (uses MONITORING_BILLING_STATS from self MCP) --
+
+function BillingBreakdown() {
+  const { org } = useProjectContext();
+  const [period, setPeriod] = useState<BillingStatsPeriod>("30d");
+
+  const selfClient = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+  });
+
+  const { data: stats, isLoading } = useMCPToolCallQuery<
+    BillingStatsResult | undefined
+  >({
+    client: selfClient,
+    toolName: "MONITORING_BILLING_STATS",
+    toolArguments: { period },
+    staleTime: 60_000,
+    select: (result) =>
+      (result as { structuredContent?: BillingStatsResult }).structuredContent,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Skeleton className="h-8 w-48" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-40 rounded-xl" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const totals = stats?.totals ?? { cost: 0, calls: 0 };
+  const byConnection = stats?.byConnection ?? [];
+  const byModel = stats?.byModel ?? [];
+  const byUser = stats?.byUser ?? [];
+  const topTools = stats?.topTools ?? [];
+
+  const maxConnCost = byConnection[0]?.cost ?? 1;
+  const maxModelCost = byModel[0]?.cost ?? 1;
+  const maxUserCost = byUser[0]?.cost ?? 1;
+  const maxToolCalls = topTools[0]?.calls ?? 1;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <div className="flex gap-4 text-sm">
+          <span className="text-muted-foreground">
+            Total:{" "}
+            <span className="font-semibold text-foreground">
+              {formatUSD(totals.cost)}
+            </span>
+          </span>
+          <span className="text-muted-foreground">
+            Calls:{" "}
+            <span className="font-semibold text-foreground">
+              {totals.calls.toLocaleString()}
+            </span>
+          </span>
+        </div>
+        <PeriodSelector period={period} onPeriodChange={setPeriod} />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <BreakdownBlock
+          title="Cost by Connection"
+          empty={byConnection.length === 0}
+        >
+          <div className="space-y-2.5">
+            {byConnection.slice(0, 8).map((item) => (
+              <HorizontalBarRow
+                key={item.title}
+                label={item.title}
+                value={formatUSD(item.cost)}
+                subValue={`${item.calls.toLocaleString()} calls`}
+                maxValue={maxConnCost}
+                color="bg-chart-1"
+              />
+            ))}
+          </div>
+        </BreakdownBlock>
+
+        <BreakdownBlock title="Cost by Model" empty={byModel.length === 0}>
+          <div className="space-y-2.5">
+            {byModel.slice(0, 8).map((item) => (
+              <HorizontalBarRow
+                key={item.model}
+                label={item.model}
+                value={formatUSD(item.cost)}
+                subValue={`${item.calls.toLocaleString()} calls`}
+                maxValue={maxModelCost}
+                color="bg-chart-2"
+              />
+            ))}
+          </div>
+        </BreakdownBlock>
+
+        <BreakdownBlock title="Cost by User" empty={byUser.length === 0}>
+          <div className="space-y-2.5">
+            {byUser.slice(0, 8).map((item) => (
+              <HorizontalBarRow
+                key={item.userId}
+                label={item.userId}
+                value={formatUSD(item.cost)}
+                subValue={`${item.calls.toLocaleString()} calls`}
+                maxValue={maxUserCost}
+                color="bg-chart-4"
+              />
+            ))}
+          </div>
+        </BreakdownBlock>
+
+        <BreakdownBlock title="Top Tools" empty={topTools.length === 0}>
+          <div className="space-y-2.5">
+            {topTools.slice(0, 8).map((item) => (
+              <HorizontalBarRow
+                key={item.name}
+                label={item.name}
+                value={item.calls.toLocaleString()}
+                subValue={item.cost > 0 ? formatUSD(item.cost) : undefined}
+                maxValue={maxToolCalls}
+                color="bg-chart-3"
+              />
+            ))}
+          </div>
+        </BreakdownBlock>
+      </div>
+    </div>
+  );
+}
+
+// -- Monthly bucket helper for history --
+
+function bucketTimeseriesByMonth(
+  timeseries: Array<{ timestamp: string; cost: number; calls: number }>,
+): Array<{ month: string; cost: number; calls: number }> {
+  const buckets = new Map<string, { cost: number; calls: number }>();
+  for (const point of timeseries) {
+    const d = new Date(point.timestamp);
+    const key = d.toLocaleDateString("en-US", {
+      month: "short",
+      year: "2-digit",
+    });
+    const existing = buckets.get(key) ?? { cost: 0, calls: 0 };
+    buckets.set(key, {
+      cost: existing.cost + point.cost,
+      calls: existing.calls + point.calls,
+    });
+  }
+  return Array.from(buckets.entries())
+    .map(([month, data]) => ({ month, ...data }))
+    .reverse();
+}
+
+// -- Billing History Tab --
+
+function BillingHistory({
+  connectionId,
+  billingMode,
+}: {
+  connectionId: string;
+  billingMode: BillingMode;
+}) {
+  const { org } = useProjectContext();
+  const [period, setPeriod] = useState<BillingStatsPeriod>("90d");
+
+  const selfClient = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+  });
+  const gatewayClient = useMCPClient({ connectionId, orgId: org.id });
+
+  const { data: stats, isLoading: statsLoading } = useMCPToolCallQuery<
+    BillingStatsResult | undefined
+  >({
+    client: selfClient,
+    toolName: "MONITORING_BILLING_STATS",
+    toolArguments: { period },
+    staleTime: 60_000,
+    select: (result) =>
+      (result as { structuredContent?: BillingStatsResult }).structuredContent,
+  });
+
+  const { data: history, isLoading: historyLoading } = useMCPToolCallQuery<
+    BillingHistoryResult | undefined
+  >({
+    client: gatewayClient,
+    toolName: "GATEWAY_BILLING_HISTORY",
+    toolArguments: {},
+    staleTime: 60_000,
+    select: (result) =>
+      (result as { structuredContent?: BillingHistoryResult })
+        .structuredContent,
+    enabled: billingMode === "prepaid",
+  });
+
+  const isLoading =
+    statsLoading || (billingMode === "prepaid" && historyLoading);
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-48 rounded-xl" />
+        <Skeleton className="h-48 rounded-xl" />
+      </div>
+    );
+  }
+
+  const monthlyBuckets = bucketTimeseriesByMonth(stats?.timeseries ?? []);
+  const payments = history?.payments ?? [];
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">
+          Usage history from monitoring logs
+        </p>
+        <PeriodSelector period={period} onPeriodChange={setPeriod} />
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-5">
+        <p className="text-xs font-medium text-muted-foreground tracking-wide uppercase">
+          Monthly Usage
+        </p>
+        {monthlyBuckets.length === 0 ? (
+          <p className="text-xs text-muted-foreground py-4 text-center">
+            No usage data available for this period
+          </p>
+        ) : (
+          <div className="w-full">
+            <div className="grid grid-cols-3 gap-x-4 pb-1.5 border-b border-border text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+              <span>Month</span>
+              <span className="text-right">Cost</span>
+              <span className="text-right">Calls</span>
+            </div>
+            <div className="divide-y divide-border">
+              {monthlyBuckets.map((bucket) => (
+                <div
+                  key={bucket.month}
+                  className="grid grid-cols-3 gap-x-4 py-2 text-xs"
+                >
+                  <span className="text-foreground font-medium">
+                    {bucket.month}
+                  </span>
+                  <span className="text-right tabular-nums text-foreground">
+                    {formatUSD(bucket.cost)}
+                  </span>
+                  <span className="text-right tabular-nums text-muted-foreground">
+                    {bucket.calls.toLocaleString()}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {billingMode === "prepaid" && (
+        <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-5">
+          <p className="text-xs font-medium text-muted-foreground tracking-wide uppercase">
+            Credit Purchases
+          </p>
+          {payments.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-4 text-center">
+              No payment history found
+            </p>
+          ) : (
+            <div className="w-full">
+              <div className="grid grid-cols-4 gap-x-4 pb-1.5 border-b border-border text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                <span>Date</span>
+                <span className="text-right">Amount</span>
+                <span className="text-right">New Limit</span>
+                <span className="text-right">Status</span>
+              </div>
+              <div className="divide-y divide-border">
+                {payments.map((p) => (
+                  <div
+                    key={p.id}
+                    className="grid grid-cols-4 gap-x-4 py-2 text-xs"
+                  >
+                    <span className="text-muted-foreground">
+                      {new Date(p.createdAt).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "2-digit",
+                      })}
+                    </span>
+                    <span className="text-right tabular-nums text-foreground font-medium">
+                      {formatUSD(p.amountUsd)}
+                    </span>
+                    <span className="text-right tabular-nums text-foreground">
+                      {formatUSD(p.newLimitUsd)}
+                    </span>
+                    <span
+                      className={cn(
+                        "text-right capitalize",
+                        p.status === "completed"
+                          ? "text-green-600 dark:text-green-400"
+                          : "text-muted-foreground",
+                      )}
+                    >
+                      {p.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1010,32 +1411,59 @@ function BillingWithData({ connectionId }: { connectionId: string }) {
         )}
       </div>
 
-      {billingMode === "postpaid" ? (
-        <SpendingCard
-          usage={usage}
-          limit={limit}
-          limitPeriod={limitPeriod}
-          onConfigureLimit={() => setLimitDialogOpen(true)}
-        />
-      ) : (
-        <CreditCard
-          available={available}
-          total={total}
-          estimation={estimation}
-          onAddCredit={() => setLimitDialogOpen(true)}
-        />
-      )}
+      <Tabs defaultValue="summary" variant="underline">
+        <TabsList variant="underline">
+          <TabsTrigger value="summary" variant="underline">
+            Summary
+          </TabsTrigger>
+          <TabsTrigger value="breakdown" variant="underline">
+            Breakdown
+          </TabsTrigger>
+          <TabsTrigger value="history" variant="underline">
+            History
+          </TabsTrigger>
+        </TabsList>
 
-      <UsageSection usage={usage} />
+        <TabsContent value="summary" className="flex flex-col gap-4 pt-2">
+          {billingMode === "postpaid" ? (
+            <SpendingCard
+              usage={usage}
+              limit={limit}
+              limitPeriod={limitPeriod}
+              onConfigureLimit={() => setLimitDialogOpen(true)}
+            />
+          ) : (
+            <CreditCard
+              available={available}
+              total={total}
+              estimation={estimation}
+              onAddCredit={() => setLimitDialogOpen(true)}
+            />
+          )}
 
-      {showChipPicker && <ChipDisplayPicker />}
+          <UsageSection usage={usage} />
 
-      <AlertSection
-        key={`${alert.enabled}-${alert.threshold_usd}-${alert.email}`}
-        connectionId={connectionId}
-        alert={alert}
-        billingMode={billingMode}
-      />
+          {showChipPicker && <ChipDisplayPicker />}
+
+          <AlertSection
+            key={`${alert.enabled}-${alert.threshold_usd}-${alert.email}`}
+            connectionId={connectionId}
+            alert={alert}
+            billingMode={billingMode}
+          />
+        </TabsContent>
+
+        <TabsContent value="breakdown" className="pt-2">
+          <BillingBreakdown />
+        </TabsContent>
+
+        <TabsContent value="history" className="pt-2">
+          <BillingHistory
+            connectionId={connectionId}
+            billingMode={billingMode}
+          />
+        </TabsContent>
+      </Tabs>
 
       <LimitDialog
         open={limitDialogOpen}

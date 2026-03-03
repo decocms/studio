@@ -73,6 +73,7 @@ const CORE_TOOLS = [
   // Monitoring tools
   MonitoringTools.MONITORING_LOGS_LIST,
   MonitoringTools.MONITORING_STATS,
+  MonitoringTools.MONITORING_BILLING_STATS,
 
   // Monitoring Dashboard tools
   MonitoringDashboardTools.MONITORING_DASHBOARD_CREATE,

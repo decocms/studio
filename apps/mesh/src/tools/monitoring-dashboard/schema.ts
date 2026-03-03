@@ -12,7 +12,7 @@ import { z } from "zod";
 // ============================================================================
 
 const AggregationFunctionSchema = z
-  .enum(["sum", "avg", "min", "max", "count", "last"])
+  .enum(["sum", "avg", "min", "max", "count", "count_all", "last"])
   .describe("Aggregation function to apply");
 
 // ============================================================================

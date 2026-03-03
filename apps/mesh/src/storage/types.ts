@@ -446,6 +446,7 @@ export type AggregationFunction =
   | "min"
   | "max"
   | "count"
+  | "count_all"
   | "last";
 
 /**
