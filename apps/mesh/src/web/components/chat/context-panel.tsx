@@ -175,6 +175,11 @@ export function ChatContextPanel({
       ? ((stats.totalTokens / contextWindow) * 100).toFixed(1)
       : null;
 
+  const usagePctNum =
+    contextWindow && contextWindow > 0
+      ? (stats.totalTokens / contextWindow) * 100
+      : 0;
+
   // Per-role token breakdown from message metadata
   const userTokens = (messages as ChatMessage[])
     .filter((m) => m.role === "user")
@@ -287,6 +292,33 @@ export function ChatContextPanel({
     },
   ];
 
+  if (!activeThread && visibleMessages.length === 0) {
+    return (
+      <div
+        className={cn(
+          "flex flex-col h-full w-[320px] shrink-0 border-l border-border bg-background",
+          className,
+        )}
+      >
+        <div className="h-12 px-4 flex items-center justify-between shrink-0 border-b border-border">
+          <span className="text-sm font-medium text-foreground">Context</span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex size-6 items-center justify-center rounded hover:bg-accent transition-colors"
+          >
+            <XClose size={14} className="text-muted-foreground" />
+          </button>
+        </div>
+        <div className="flex-1 flex items-center justify-center px-4 text-center">
+          <p className="text-xs text-muted-foreground">
+            Start a conversation to see context
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(
@@ -334,6 +366,23 @@ export function ChatContextPanel({
             Token Metrics
           </span>
           <StatGrid items={tokenStats} />
+          {contextWindow !== null && contextWindow > 0 && stats.totalTokens > 0 && (
+            <div className="flex flex-col gap-1">
+              <div className="h-1 w-full rounded-full bg-muted overflow-hidden">
+                <div
+                  className={cn(
+                    "h-full rounded-full transition-all",
+                    usagePctNum > 80
+                      ? "bg-destructive"
+                      : usagePctNum > 60
+                        ? "bg-warning"
+                        : "bg-primary",
+                  )}
+                  style={{ width: `${usagePctNum}%` }}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="h-px bg-border" />
