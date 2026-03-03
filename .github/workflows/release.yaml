@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "apps/mesh/**"
+      - "packages/runtime/**"
       - "packages/mesh-plugin-*/**"
       - "packages/mesh-sdk/**"
   workflow_dispatch:
