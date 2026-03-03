@@ -12,6 +12,7 @@ import {
   type AnyRoute,
 } from "@tanstack/react-router";
 import { SplashScreen } from "@/web/components/splash-screen";
+import { ChunkErrorBoundary } from "@/web/components/error-boundary";
 import * as z from "zod";
 import type { ReactNode } from "react";
 
@@ -26,11 +27,13 @@ import { ORG_ADMIN_PROJECT_SLUG } from "@decocms/mesh-sdk";
 
 const rootRoute = createRootRoute({
   component: () => (
-    <Providers>
-      <Suspense fallback={<SplashScreen />}>
-        <Outlet />
-      </Suspense>
-    </Providers>
+    <ChunkErrorBoundary>
+      <Providers>
+        <Suspense fallback={<SplashScreen />}>
+          <Outlet />
+        </Suspense>
+      </Providers>
+    </ChunkErrorBoundary>
   ),
 });
 

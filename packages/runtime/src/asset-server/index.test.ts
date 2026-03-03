@@ -155,11 +155,16 @@ describe("createAssetHandler", () => {
   const indexContent = "<!DOCTYPE html><html><body>SPA</body></html>";
   const cssContent = "body { color: red; }";
 
+  const jsContent = "export default function(){}";
+  const faviconContent = "<svg/>";
+
   beforeAll(() => {
     // Create temp directory with test files
     mkdirSync(resolve(tempDir, "assets"), { recursive: true });
     writeFileSync(resolve(tempDir, "index.html"), indexContent);
     writeFileSync(resolve(tempDir, "assets/style.css"), cssContent);
+    writeFileSync(resolve(tempDir, "assets/chunk-AbC123.js"), jsContent);
+    writeFileSync(resolve(tempDir, "favicon.svg"), faviconContent);
   });
 
   afterAll(() => {
@@ -322,6 +327,84 @@ describe("createAssetHandler", () => {
       expect(result).not.toBeNull();
       const text = await result?.text();
       expect(text).toBe(indexContent);
+    });
+  });
+
+  describe("Cache-Control headers", () => {
+    const acceptsHtml = { headers: { accept: "text/html" } };
+
+    test("index.html returns Cache-Control: no-cache", async () => {
+      const handler = createAssetHandler({
+        env: "production",
+        clientDir: tempDir,
+      });
+
+      const request = new Request("http://localhost:3000/", acceptsHtml);
+      const result = await handler(request);
+
+      expect(result).not.toBeNull();
+      expect(result!.headers.get("Cache-Control")).toBe("no-cache");
+    });
+
+    test("SPA fallback returns Cache-Control: no-cache", async () => {
+      const handler = createAssetHandler({
+        env: "production",
+        clientDir: tempDir,
+      });
+
+      const request = new Request(
+        "http://localhost:3000/some/spa/route",
+        acceptsHtml,
+      );
+      const result = await handler(request);
+
+      expect(result).not.toBeNull();
+      expect(result!.headers.get("Cache-Control")).toBe("no-cache");
+    });
+
+    test("hashed JS asset returns Cache-Control: immutable", async () => {
+      const handler = createAssetHandler({
+        env: "production",
+        clientDir: tempDir,
+      });
+
+      const request = new Request(
+        "http://localhost:3000/assets/chunk-AbC123.js",
+      );
+      const result = await handler(request);
+
+      expect(result).not.toBeNull();
+      expect(result!.headers.get("Cache-Control")).toBe(
+        "public, max-age=31536000, immutable",
+      );
+    });
+
+    test("CSS asset returns Cache-Control: immutable", async () => {
+      const handler = createAssetHandler({
+        env: "production",
+        clientDir: tempDir,
+      });
+
+      const request = new Request("http://localhost:3000/assets/style.css");
+      const result = await handler(request);
+
+      expect(result).not.toBeNull();
+      expect(result!.headers.get("Cache-Control")).toBe(
+        "public, max-age=31536000, immutable",
+      );
+    });
+
+    test("non-asset files return no Cache-Control header", async () => {
+      const handler = createAssetHandler({
+        env: "production",
+        clientDir: tempDir,
+      });
+
+      const request = new Request("http://localhost:3000/favicon.svg");
+      const result = await handler(request);
+
+      expect(result).not.toBeNull();
+      expect(result!.headers.get("Cache-Control")).toBeNull();
     });
   });
 });
