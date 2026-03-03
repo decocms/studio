@@ -1,0 +1,7 @@
+{
+  "scripts": {
+    "setup": "bun install",
+    "run": "bun run dev:conductor",
+    "archive": "rm -rf node_modules"
+  }
+}
