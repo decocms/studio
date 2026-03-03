@@ -3,6 +3,28 @@
   <head>
     <title>MCP Mesh</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script>
+      // Catch module/script load failures (e.g. stale assets after deploy).
+      // Runs before React so it covers the main bundle, not just lazy chunks.
+      (function () {
+        var KEY = "__mesh_chunk_reload_ts";
+        window.addEventListener(
+          "error",
+          function (e) {
+            var t = e.target;
+            if (t && (t.tagName === "SCRIPT" || t.tagName === "LINK")) {
+              var last = sessionStorage.getItem(KEY);
+              var now = Date.now();
+              if (!last || now - Number(last) > 10000) {
+                sessionStorage.setItem(KEY, String(now));
+                window.location.reload();
+              }
+            }
+          },
+          true,
+        );
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
