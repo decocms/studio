@@ -11,6 +11,7 @@ import {
   SELF_MCP_ALIAS_ID,
 } from "@decocms/mesh-sdk";
 import { KEYS } from "@/web/lib/query-keys";
+import { unwrapToolResult } from "@/web/lib/unwrap-tool-result";
 
 interface ConnectionListResult {
   connections: Array<{
@@ -20,19 +21,6 @@ interface ConnectionListResult {
     connectionType: string;
     status: string;
   }>;
-}
-
-function unwrapToolResult<T>(result: unknown): T {
-  const payload =
-    (result as { structuredContent?: unknown }).structuredContent ?? result;
-  const maybeError = payload as {
-    isError?: boolean;
-    content?: Array<{ text?: string }>;
-  } | null;
-  if (maybeError?.isError) {
-    throw new Error(maybeError.content?.[0]?.text ?? "Tool call failed");
-  }
-  return payload as T;
 }
 
 function ProjectDependenciesForm() {
@@ -94,7 +82,7 @@ function ProjectDependenciesForm() {
         .filter(([, enabled]) => !enabled)
         .map(([connId]) => connId);
 
-      await Promise.all([
+      const results = await Promise.all([
         ...adds.map((connectionId) =>
           client.callTool({
             name: "PROJECT_CONNECTION_ADD",
@@ -108,6 +96,9 @@ function ProjectDependenciesForm() {
           }),
         ),
       ]);
+      for (const result of results) {
+        unwrapToolResult(result);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({

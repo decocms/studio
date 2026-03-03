@@ -238,7 +238,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
           org,
           project,
           connectionId: view.connectionId,
-          toolName: encodeURIComponent(view.toolName),
+          toolName: view.toolName,
         },
       }),
   }));

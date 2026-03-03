@@ -11,6 +11,7 @@ import {
 } from "@decocms/mesh-sdk";
 import { getUIResourceUri } from "@/mcp-apps/types.ts";
 import { KEYS } from "@/web/lib/query-keys";
+import { unwrapToolResult } from "@/web/lib/unwrap-tool-result";
 
 interface ConnectionListResult {
   connections: Array<{
@@ -39,19 +40,6 @@ interface ConnectionWithTools {
   title: string;
   icon: string | null;
   uiTools: UITool[];
-}
-
-function unwrapToolResult<T>(result: unknown): T {
-  const payload =
-    (result as { structuredContent?: unknown }).structuredContent ?? result;
-  const maybeError = payload as {
-    isError?: boolean;
-    content?: Array<{ text?: string }>;
-  } | null;
-  if (maybeError?.isError) {
-    throw new Error(maybeError.content?.[0]?.text ?? "Tool call failed");
-  }
-  return payload as T;
 }
 
 function ConnectionToolsSection({
@@ -287,10 +275,11 @@ function ProjectSidebarForm() {
 
   const mutation = useMutation({
     mutationFn: async () => {
-      await client.callTool({
+      const result = await client.callTool({
         name: "PROJECT_PINNED_VIEWS_UPDATE",
         arguments: { projectId: project.id, pinnedViews },
       });
+      unwrapToolResult(result);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({

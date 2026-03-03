@@ -43,19 +43,20 @@ export const PROJECT_CONNECTION_LIST = defineTool({
     const projectConnections =
       await ctx.storage.projectConnections.list(projectId);
 
-    const connections = [];
-    for (const pc of projectConnections) {
-      const conn = await ctx.storage.connections.findById(pc.connectionId);
-      if (conn) {
-        connections.push({
-          id: conn.id,
-          title: conn.title,
-          icon: conn.icon ?? null,
-          connectionType: conn.connection_type,
-          status: conn.status,
-        });
-      }
-    }
+    const results = await Promise.all(
+      projectConnections.map((pc) =>
+        ctx.storage.connections.findById(pc.connectionId),
+      ),
+    );
+    const connections = results
+      .filter((conn) => conn != null)
+      .map((conn) => ({
+        id: conn.id,
+        title: conn.title,
+        icon: conn.icon ?? null,
+        connectionType: conn.connection_type,
+        status: conn.status,
+      }));
 
     return { connections };
   },
