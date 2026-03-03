@@ -6,8 +6,6 @@ import {
   useConnection,
   useMCPToolCall,
 } from "@decocms/mesh-sdk";
-import { Button } from "@deco/ui/components/button.tsx";
-import { AlertCircle, RefreshCw01 } from "@untitledui/icons";
 import { MCPAppRenderer } from "@/mcp-apps/mcp-app-renderer.tsx";
 import { getUIResourceUri, MCP_APP_DISPLAY_MODES } from "@/mcp-apps/types.ts";
 import { ErrorBoundary } from "@/web/components/error-boundary.tsx";
@@ -96,26 +94,7 @@ export default function ProjectAppView() {
   });
 
   return (
-    <ErrorBoundary
-      key={`${connectionId}:${toolName}`}
-      fallback={({ resetError }) => (
-        <div className="flex flex-col items-center justify-center h-full gap-4">
-          <div className="flex items-center gap-2 text-destructive">
-            <AlertCircle size={20} />
-            <span className="text-sm font-medium">Failed to load app</span>
-          </div>
-          <Button
-            size="sm"
-            variant="outline"
-            className="gap-1.5"
-            onClick={resetError}
-          >
-            <RefreshCw01 size={14} />
-            Retry
-          </Button>
-        </div>
-      )}
-    >
+    <ErrorBoundary key={`${connectionId}:${toolName}`} fallback={undefined}>
       <Suspense
         fallback={
           <div className="flex items-center justify-center h-full">
