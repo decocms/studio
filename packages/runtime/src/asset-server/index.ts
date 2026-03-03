@@ -1,6 +1,30 @@
 import { devServerProxy } from "./dev-server-proxy";
 import { resolve, dirname, join, extname } from "path";
 
+/**
+ * Returns appropriate Cache-Control headers based on the file being served.
+ *
+ * - index.html / SPA fallback: `no-cache` so browsers always revalidate,
+ *   preventing stale HTML from referencing old hashed asset URLs after deploys.
+ * - Hashed assets (/assets/*): immutable with 1-year max-age since the content
+ *   hash in the filename changes on every build.
+ * - Everything else: no explicit caching directive (browser defaults apply).
+ */
+function getAssetCacheHeaders(
+  filePath: string,
+  indexPath: string,
+): Record<string, string> {
+  if (filePath === indexPath || filePath.endsWith("/index.html")) {
+    return { "Cache-Control": "no-cache" };
+  }
+
+  if (filePath.includes("/assets/")) {
+    return { "Cache-Control": "public, max-age=31536000, immutable" };
+  }
+
+  return {};
+}
+
 export interface AssetServerConfig {
   /**
    * Environment mode. Determines whether to proxy to dev server or serve static files.
@@ -227,7 +251,9 @@ export function createAssetHandler(config: AssetServerConfig = {}) {
       try {
         const file = Bun.file(pathToTry);
         if (await file.exists()) {
-          return new Response(file);
+          return new Response(file, {
+            headers: getAssetCacheHeaders(pathToTry, indexPath),
+          });
         }
       } catch {
         // Continue to next path
