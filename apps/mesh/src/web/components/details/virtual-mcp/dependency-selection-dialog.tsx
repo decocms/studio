@@ -32,7 +32,7 @@ import {
   Tool01,
 } from "@untitledui/icons";
 import type { ReactNode } from "react";
-import { Suspense, useReducer } from "react";
+import { Suspense, useDeferredValue, useReducer } from "react";
 import type { VirtualMCPConnection } from "@decocms/mesh-sdk/types";
 import {
   ALL_ITEMS_SELECTED,
@@ -719,18 +719,20 @@ export function DependencySelectionDialog({
   form,
   connections,
 }: DependencySelectionDialogProps) {
-  const allConnections = useConnections({});
-
   const [dialogState, dispatch] = useReducer(dialogReducer, {
     activeTab: "tools",
     searchTerm: "",
-    selectedId: findOrFirst(allConnections, selectedId)?.id ?? null,
+    selectedId: selectedId,
   });
+
+  const deferredSearchTerm = useDeferredValue(dialogState.searchTerm);
+  const allConnections = useConnections({ searchTerm: deferredSearchTerm });
 
   // Convert connections array to Record for local use
   const formData = connectionsToRecord(connections ?? []);
 
   const currentConnection = findOrFirst(allConnections, dialogState.selectedId);
+  const effectiveSelectedId = currentConnection?.id ?? null;
 
   // Use shared helper functions from selection-utils
   const hasSelections = (connId: string): boolean =>
@@ -909,7 +911,7 @@ export function DependencySelectionDialog({
               <ConnectionsList
                 allConnections={allConnections}
                 searchTerm={dialogState.searchTerm}
-                selectedId={dialogState.selectedId}
+                selectedId={effectiveSelectedId}
                 hasSelections={hasSelections}
                 getSelectionSummary={getSelectionSummary}
                 onConnectionClick={handleConnectionClick}
@@ -920,12 +922,12 @@ export function DependencySelectionDialog({
 
           {/* Right Content - Tools/Resources/Prompts */}
           <div className="flex-1 flex flex-col overflow-hidden">
-            {currentConnection && dialogState.selectedId ? (
+            {currentConnection && effectiveSelectedId ? (
               <ConnectionDetailsContent
-                key={dialogState.selectedId}
+                key={effectiveSelectedId}
                 currentConnection={currentConnection}
                 activeTab={dialogState.activeTab}
-                selectedId={dialogState.selectedId}
+                selectedId={effectiveSelectedId}
                 formData={formData}
                 toggleTool={toggleTool}
                 toggleResource={toggleResource}
