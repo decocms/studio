@@ -33,9 +33,10 @@ import {
   useEffect,
   useReducer,
   useRef,
+  useSyncExternalStore,
 } from "react";
 import { useDecopilotEvents } from "../../hooks/use-decopilot-events";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useModelConnections } from "../../hooks/collections/use-llm";
 import { useAllowedModels } from "../../hooks/use-allowed-models";
@@ -556,6 +557,103 @@ function ModelAutoSelector({
   return null;
 }
 
+const SAFETY_NET_POLL_MS = 30_000;
+const getSnapshot = () => 0;
+
+interface TaskStreamManagerProps {
+  taskId: string;
+  activeTask: Task | undefined;
+  isStreaming: boolean;
+  chatRef: React.RefObject<UseChatHelpers<ChatMessage>>;
+  queryClient: QueryClient;
+  locator: ProjectLocator;
+  orgId: string;
+}
+
+/**
+ * Behavior-only component managing stream resumption and safety-net polling.
+ * Keyed by activeTaskId so it remounts on task switch — all refs start fresh.
+ */
+function TaskStreamManager({
+  taskId,
+  activeTask,
+  isStreaming,
+  chatRef,
+  queryClient,
+  locator,
+  orgId,
+}: TaskStreamManagerProps) {
+  const hasResumedRef = useRef<string | null>(null);
+  const resumeFailCountRef = useRef(0);
+  const MAX_RESUME_RETRIES = 3;
+
+  const invalidateTaskData = () => {
+    queryClient.invalidateQueries({ queryKey: KEYS.tasks(locator) });
+    if (taskId) {
+      queryClient.invalidateQueries({
+        predicate: (query) => {
+          const key = query.queryKey;
+          if (key[3] !== "collection" || key[4] !== "THREAD_MESSAGES") {
+            return false;
+          }
+          const serialized = typeof key[6] === "string" ? key[6] : "";
+          return serialized.includes(taskId);
+        },
+      });
+    }
+  };
+
+  const tryResumeStream = (reason: string) => {
+    if (!taskId || hasResumedRef.current === taskId) return;
+    if (resumeFailCountRef.current >= MAX_RESUME_RETRIES) return;
+    hasResumedRef.current = taskId;
+
+    console.log(`[chat] resumeStream (${reason})`, taskId);
+    chatRef.current.resumeStream().catch((err: unknown) => {
+      console.error("[chat] resumeStream error", err);
+      resumeFailCountRef.current++;
+      hasResumedRef.current = null;
+      invalidateTaskData();
+    });
+  };
+
+  useDecopilotEvents({
+    orgId,
+    taskId,
+    onStep: () => tryResumeStream("sse-step"),
+    onFinish: () => {
+      hasResumedRef.current = null;
+      resumeFailCountRef.current = 0;
+      if (!isStreaming) {
+        invalidateTaskData();
+      }
+    },
+    onTaskStatus: () => {
+      if (!isStreaming) {
+        invalidateTaskData();
+      }
+    },
+  });
+
+  const isRunInProgress =
+    (activeTask?.status === "in_progress" ||
+      activeTask?.status === "expired") &&
+    !isStreaming;
+
+  const subscribe = (_onStoreChange: () => void) => {
+    if (!isRunInProgress) return () => {};
+
+    tryResumeStream("page-load");
+
+    const id = setInterval(() => invalidateTaskData(), SAFETY_NET_POLL_MS);
+    return () => clearInterval(id);
+  };
+
+  useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+
+  return null;
+}
+
 /**
  * Provider component for chat context
  * Consolidates all chat-related state: interaction, tasks, virtual MCP, model, and chat session
@@ -764,100 +862,6 @@ export function ChatProvider({ children }: PropsWithChildren) {
   // being re-created when `chat` changes (avoids unstable closure deps).
   const chatRef = useRef(chat);
   chatRef.current = chat;
-  const hasResumedRef = useRef<string | null>(null);
-  const resumeFailCountRef = useRef(0);
-  const MAX_RESUME_RETRIES = 3;
-
-  const invalidateTaskData = () => {
-    queryClient.invalidateQueries({ queryKey: KEYS.tasks(locator) });
-    const tid = taskManager.activeTaskId;
-    if (tid) {
-      queryClient.invalidateQueries({
-        predicate: (query) => {
-          const key = query.queryKey;
-          if (key[3] !== "collection" || key[4] !== "THREAD_MESSAGES") {
-            return false;
-          }
-          const serialized = typeof key[6] === "string" ? key[6] : "";
-          return serialized.includes(tid);
-        },
-      });
-    }
-  };
-
-  // Resume an in-progress stream via the AI SDK's transport.reconnectToStream
-  // (GET /attach/:taskId → JetStream replay).  The SDK handles all internal
-  // message state: status flips to "streaming", chat.messages updates live.
-  const tryResumeStream = (reason: string) => {
-    const tid = taskManager.activeTaskId;
-    if (!tid || hasResumedRef.current === tid) return;
-    if (resumeFailCountRef.current >= MAX_RESUME_RETRIES) return;
-    hasResumedRef.current = tid;
-
-    console.log(`[chat] resumeStream (${reason})`, tid);
-    chatRef.current.resumeStream().catch((err: unknown) => {
-      console.error("[chat] resumeStream error", err);
-      resumeFailCountRef.current++;
-      hasResumedRef.current = null;
-      invalidateTaskData();
-    });
-  };
-
-  const invalidateTaskDataRef = useRef(invalidateTaskData);
-  invalidateTaskDataRef.current = invalidateTaskData;
-
-  const tryResumeStreamRef = useRef(tryResumeStream);
-  tryResumeStreamRef.current = tryResumeStream;
-
-  useDecopilotEvents({
-    orgId: org.id,
-    taskId: taskManager.activeTaskId,
-    onStep: () => tryResumeStream("sse-step"),
-    onFinish: () => {
-      hasResumedRef.current = null;
-      resumeFailCountRef.current = 0;
-      if (!isStreaming) {
-        invalidateTaskData();
-      }
-    },
-    onTaskStatus: () => {
-      if (!isStreaming) {
-        invalidateTaskData();
-      }
-    },
-  });
-
-  // Reset resume state when switching tasks so failures from one task
-  // don't block resume attempts on a different task.
-  // Done during render (not in useEffect) to avoid React strict-mode
-  // double-mount resetting the guard and firing duplicate attach requests.
-  const prevActiveTaskIdRef = useRef(taskManager.activeTaskId);
-  if (prevActiveTaskIdRef.current !== taskManager.activeTaskId) {
-    prevActiveTaskIdRef.current = taskManager.activeTaskId;
-    hasResumedRef.current = null;
-    resumeFailCountRef.current = 0;
-  }
-
-  // Trigger resume on page load / task switch when a background run is active.
-  // Also safety-net poll in case SSE events are missed (NATS at-most-once).
-  const SAFETY_NET_POLL_MS = 30_000;
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect
-  useEffect(() => {
-    if (!isRunInProgress) return;
-
-    tryResumeStreamRef.current("page-load");
-
-    invalidateTaskDataRef.current();
-    const safetyId = setInterval(
-      () => invalidateTaskDataRef.current(),
-      SAFETY_NET_POLL_MS,
-    );
-
-    return () => {
-      clearInterval(safetyId);
-    };
-  }, [isRunInProgress]);
-
   // Show real-time chat.messages during active streaming (local or resumed);
   // otherwise use server-sourced taskManager.messages.
   const messages = isStreaming
@@ -950,8 +954,6 @@ export function ChatProvider({ children }: PropsWithChildren) {
   const cancelRun = async () => {
     const taskId = taskManager.activeTaskId;
     if (!taskId) return;
-    hasResumedRef.current = null;
-    resumeFailCountRef.current = 0;
 
     // Snapshot streaming messages into the task cache BEFORE stopping.
     // When chat.stop() fires, isStreaming flips to false and the UI switches
@@ -1054,6 +1056,16 @@ export function ChatProvider({ children }: PropsWithChildren) {
               onAutoSelect={setModel}
               allowAll={allowAll}
               isModelAllowed={isModelAllowed}
+            />
+            <TaskStreamManager
+              key={taskManager.activeTaskId}
+              taskId={taskManager.activeTaskId}
+              activeTask={activeTask}
+              isStreaming={isStreaming}
+              chatRef={chatRef}
+              queryClient={queryClient}
+              locator={locator}
+              orgId={org.id}
             />
           </Suspense>
         </ErrorBoundary>
