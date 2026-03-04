@@ -2,7 +2,7 @@ import { cn } from "@deco/ui/lib/utils.js";
 import { CSSProperties, useEffect, useState } from "react";
 
 /**
- * Typewriter title component for animated thread titles
+ * Typewriter title component for animated task titles
  * Displays text with a typewriter animation effect, then truncates with ellipsis if needed
  */
 export function TypewriterTitle({

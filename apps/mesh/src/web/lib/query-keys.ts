@@ -15,15 +15,8 @@ export const KEYS = {
   authConfig: () => ["authConfig"] as const,
   session: () => ["session"] as const,
 
-  // Chat store (IndexedDB) queries
-  threads: (locator: string) => ["threads", locator] as const,
-  taskThreads: (locator: string) => ["task-threads", locator] as const,
-  virtualMcpThreads: (locator: string, virtualMcpId: string) =>
-    ["threads", locator, "virtual-mcp", virtualMcpId] as const,
-  thread: (locator: string, threadId: string) =>
-    ["thread", locator, threadId] as const,
-  threadMessages: (locator: string, threadId: string) =>
-    ["thread-messages", locator, threadId] as const,
+  // Task queries
+  tasks: (locator: string) => ["tasks", locator] as const,
   messages: (locator: string) => ["messages", locator] as const,
 
   // Organizations list

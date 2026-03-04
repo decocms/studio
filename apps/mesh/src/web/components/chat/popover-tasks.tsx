@@ -14,11 +14,11 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { Check, Clock, Edit01, SearchMd, Trash01 } from "@untitledui/icons";
 import { useRef, useState } from "react";
 import { useChatStable } from "./context";
-import type { Thread } from "./types.ts";
+import type { Task } from "./task/types.ts";
 
-type ThreadSection = {
+type TaskSection = {
   label: string;
-  threads: Thread[];
+  tasks: Task[];
   showRelativeTime: boolean;
 };
 
@@ -34,67 +34,67 @@ function formatRelativeTime(dateString: string): string {
   return `${diffHours}h`;
 }
 
-function groupThreadsByDate(threads: Thread[]): ThreadSection[] {
+function groupTasksByDate(tasks: Task[]): TaskSection[] {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const yesterday = new Date(today.getTime() - 86400000);
   const last7Days = new Date(today.getTime() - 7 * 86400000);
   const last30Days = new Date(today.getTime() - 30 * 86400000);
 
-  const todayThreads: Thread[] = [];
-  const yesterdayThreads: Thread[] = [];
-  const last7DaysThreads: Thread[] = [];
-  const last30DaysThreads: Thread[] = [];
-  const olderThreads: Thread[] = [];
+  const todayTasks: Task[] = [];
+  const yesterdayTasks: Task[] = [];
+  const last7DaysTasks: Task[] = [];
+  const last30DaysTasks: Task[] = [];
+  const olderTasks: Task[] = [];
 
-  for (const thread of threads) {
-    const date = new Date(thread.updated_at);
+  for (const task of tasks) {
+    const date = new Date(task.updated_at);
     if (date >= today) {
-      todayThreads.push(thread);
+      todayTasks.push(task);
     } else if (date >= yesterday) {
-      yesterdayThreads.push(thread);
+      yesterdayTasks.push(task);
     } else if (date >= last7Days) {
-      last7DaysThreads.push(thread);
+      last7DaysTasks.push(task);
     } else if (date >= last30Days) {
-      last30DaysThreads.push(thread);
+      last30DaysTasks.push(task);
     } else {
-      olderThreads.push(thread);
+      olderTasks.push(task);
     }
   }
 
-  const result: ThreadSection[] = [];
-  if (todayThreads.length > 0) {
+  const result: TaskSection[] = [];
+  if (todayTasks.length > 0) {
     result.push({
       label: "Today",
-      threads: todayThreads,
+      tasks: todayTasks,
       showRelativeTime: true,
     });
   }
-  if (yesterdayThreads.length > 0) {
+  if (yesterdayTasks.length > 0) {
     result.push({
       label: "Yesterday",
-      threads: yesterdayThreads,
+      tasks: yesterdayTasks,
       showRelativeTime: false,
     });
   }
-  if (last7DaysThreads.length > 0) {
+  if (last7DaysTasks.length > 0) {
     result.push({
       label: "7 days ago",
-      threads: last7DaysThreads,
+      tasks: last7DaysTasks,
       showRelativeTime: false,
     });
   }
-  if (last30DaysThreads.length > 0) {
+  if (last30DaysTasks.length > 0) {
     result.push({
       label: "30 days ago",
-      threads: last30DaysThreads,
+      tasks: last30DaysTasks,
       showRelativeTime: false,
     });
   }
-  if (olderThreads.length > 0) {
+  if (olderTasks.length > 0) {
     result.push({
       label: "Older",
-      threads: olderThreads,
+      tasks: olderTasks,
       showRelativeTime: false,
     });
   }
@@ -102,23 +102,23 @@ function groupThreadsByDate(threads: Thread[]): ThreadSection[] {
   return result;
 }
 
-export function ThreadHistoryPopover({
+export function TaskHistoryPopover({
   variant = "icon",
 }: {
   variant?: "outline" | "icon";
 }) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [editingThreadId, setEditingThreadId] = useState<string | null>(null);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const {
-    activeThreadId,
-    switchToThread,
-    threads,
+    activeTaskId,
+    switchToTask,
+    tasks,
     hasNextPage,
     isFetchingNextPage,
     fetchNextPage,
-    hideThread,
-    renameThread,
+    hideTask,
+    renameTask,
   } = useChatStable();
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -149,37 +149,37 @@ export function ThreadHistoryPopover({
     sentinelRef.current = node;
   };
 
-  const filteredThreads = searchQuery.trim()
-    ? threads.filter((thread) =>
-        thread.title.toLowerCase().includes(searchQuery.toLowerCase()),
+  const filteredTasks = searchQuery.trim()
+    ? tasks.filter((task) =>
+        task.title.toLowerCase().includes(searchQuery.toLowerCase()),
       )
-    : threads;
+    : tasks;
 
-  const sections = groupThreadsByDate(filteredThreads);
+  const sections = groupTasksByDate(filteredTasks);
 
-  const startEditing = (thread: Thread, e: React.MouseEvent) => {
+  const startEditing = (task: Task, e: React.MouseEvent) => {
     e.stopPropagation();
-    setEditingThreadId(thread.id);
-    setEditingTitle(thread.title || "");
+    setEditingTaskId(task.id);
+    setEditingTitle(task.title || "");
   };
 
-  const commitEdit = async (threadId: string) => {
+  const commitEdit = async (taskId: string) => {
     const trimmed = editingTitle.trim();
     if (trimmed) {
-      await renameThread(threadId, trimmed);
+      await renameTask(taskId, trimmed);
     }
-    setEditingThreadId(null);
+    setEditingTaskId(null);
   };
 
   const handleKeyDown = (
     e: React.KeyboardEvent<HTMLInputElement>,
-    threadId: string,
+    taskId: string,
   ) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      commitEdit(threadId);
+      commitEdit(taskId);
     } else if (e.key === "Escape") {
-      setEditingThreadId(null);
+      setEditingTaskId(null);
     }
   };
 
@@ -234,7 +234,7 @@ export function ThreadHistoryPopover({
             </div>
 
             <div className="max-h-[300px] overflow-y-auto">
-              {filteredThreads.length === 0 ? (
+              {filteredTasks.length === 0 ? (
                 <div className="p-4 text-center text-sm text-muted-foreground">
                   {searchQuery.trim() ? "No chats found" : "No chats yet"}
                 </div>
@@ -248,19 +248,17 @@ export function ThreadHistoryPopover({
                           {section.label}
                         </span>
                       </div>
-                      {section.threads.map((thread) => {
-                        const isActive = thread.id === activeThreadId;
-                        const isEditing = editingThreadId === thread.id;
+                      {section.tasks.map((task) => {
+                        const isActive = task.id === activeTaskId;
+                        const isEditing = editingTaskId === task.id;
                         return (
                           <div
-                            key={thread.id}
+                            key={task.id}
                             className={cn(
                               "flex items-center gap-2 px-3 py-2 hover:bg-accent cursor-pointer group",
                               isActive && "bg-accent/50",
                             )}
-                            onClick={() =>
-                              !isEditing && switchToThread(thread.id)
-                            }
+                            onClick={() => !isEditing && switchToTask(task.id)}
                           >
                             <div className="flex-1 min-w-0">
                               {isEditing ? (
@@ -274,16 +272,14 @@ export function ThreadHistoryPopover({
                                     onChange={(e) =>
                                       setEditingTitle(e.target.value)
                                     }
-                                    onBlur={() => commitEdit(thread.id)}
-                                    onKeyDown={(e) =>
-                                      handleKeyDown(e, thread.id)
-                                    }
+                                    onBlur={() => commitEdit(task.id)}
+                                    onKeyDown={(e) => handleKeyDown(e, task.id)}
                                     className="flex-1 text-sm bg-transparent border-b border-foreground/30 focus:border-foreground outline-none pb-0.5 min-w-0"
                                   />
                                   <button
                                     type="button"
                                     onMouseDown={(e) => e.preventDefault()}
-                                    onClick={() => commitEdit(thread.id)}
+                                    onClick={() => commitEdit(task.id)}
                                     className="p-0.5 hover:bg-accent rounded shrink-0"
                                   >
                                     <Check
@@ -295,13 +291,13 @@ export function ThreadHistoryPopover({
                               ) : (
                                 <div className="flex items-center gap-2">
                                   <span className="text-sm truncate">
-                                    {thread.title || "New chat"}
+                                    {task.title || "New chat"}
                                   </span>
                                   <span className="text-xs text-muted-foreground shrink-0">
                                     {isActive
                                       ? "current"
                                       : section.showRelativeTime
-                                        ? formatRelativeTime(thread.updated_at)
+                                        ? formatRelativeTime(task.updated_at)
                                         : null}
                                   </span>
                                 </div>
@@ -311,7 +307,7 @@ export function ThreadHistoryPopover({
                               <div className="flex items-center gap-1 shrink-0">
                                 <button
                                   type="button"
-                                  onClick={(e) => startEditing(thread, e)}
+                                  onClick={(e) => startEditing(task, e)}
                                   className="opacity-0 cursor-pointer group-hover:opacity-100 p-1 hover:bg-accent rounded transition-opacity"
                                   title="Rename chat"
                                 >
@@ -324,7 +320,7 @@ export function ThreadHistoryPopover({
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    hideThread(thread.id);
+                                    hideTask(task.id);
                                   }}
                                   className="opacity-0 cursor-pointer group/trash group-hover:opacity-100 p-1 hover:bg-destructive/10 rounded transition-opacity"
                                   title="Remove chat"

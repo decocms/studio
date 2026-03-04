@@ -139,12 +139,14 @@ interface SessionStatsProps {
   usage: UsageStatsType | null | undefined;
   totalTokens: number;
   contextWindow: number;
+  onOpenContextPanel?: () => void;
 }
 
 export function SessionStats({
   usage,
   totalTokens,
   contextWindow,
+  onOpenContextPanel,
 }: SessionStatsProps) {
   const pct = Math.min((totalTokens / contextWindow) * 100, 100);
   const offset = RING_CIRCUMFERENCE - (pct / 100) * RING_CIRCUMFERENCE;
@@ -157,7 +159,11 @@ export function SessionStats({
       <TooltipTrigger asChild>
         <button
           type="button"
-          className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground h-6 px-1 shrink-0 cursor-default"
+          onClick={onOpenContextPanel}
+          className={cn(
+            "flex items-center gap-1.5 text-muted-foreground hover:text-foreground h-6 px-1 shrink-0",
+            onOpenContextPanel ? "cursor-pointer" : "cursor-default",
+          )}
         >
           <svg width={RING_SIZE} height={RING_SIZE} className="-rotate-90">
             <circle

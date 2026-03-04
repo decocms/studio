@@ -279,7 +279,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
         type: "items",
         items: [
           homeItem,
-          ...(preferences.experimental_tasks ? [tasksItem] : []),
+          tasksItem,
           ...(preferences.experimental_projects ? [projectsItem] : []),
         ],
       },
@@ -366,7 +366,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
   // - Plugin groups
   const projectItems: NavigationSidebarItem[] = [
     homeItem,
-    ...(preferences.experimental_tasks ? [projectTasksItem] : []),
+    projectTasksItem,
     projectWorkflowsItem,
     configureItem,
   ];

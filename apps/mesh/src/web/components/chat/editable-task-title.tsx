@@ -4,24 +4,24 @@ import { useChatStable } from "./context";
 import { TypewriterTitle } from "./typewriter-title";
 
 /**
- * Editable thread title for chat headers.
+ * Editable task title for chat headers.
  *
  * Display mode: renders TypewriterTitle animation.
  * Click: switches to an input for renaming (text auto-selected for easy copy).
  * Enter/blur: saves if changed. Escape: discards.
  */
-export function EditableThreadTitle({
-  threadId,
+export function EditableTaskTitle({
+  taskId,
   text,
   className,
 }: {
-  threadId: string;
+  taskId: string;
   text: string;
   className?: string;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editingTitle, setEditingTitle] = useState("");
-  const { renameThread } = useChatStable();
+  const { renameTask } = useChatStable();
 
   const startEditing = () => {
     setEditingTitle(text);
@@ -31,7 +31,7 @@ export function EditableThreadTitle({
   const commitEdit = async () => {
     const trimmed = editingTitle.trim();
     if (trimmed && trimmed !== text) {
-      await renameThread(threadId, trimmed);
+      await renameTask(taskId, trimmed);
     }
     setIsEditing(false);
   };

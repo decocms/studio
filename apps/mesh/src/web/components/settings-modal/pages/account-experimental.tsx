@@ -1,5 +1,5 @@
 import { Switch } from "@deco/ui/components/switch.tsx";
-import { CheckDone01, Folder } from "@untitledui/icons";
+import { Folder } from "@untitledui/icons";
 import { usePreferences } from "@/web/hooks/use-preferences.ts";
 
 function ExperimentalRow({
@@ -61,18 +61,6 @@ export function AccountExperimentalPage() {
             setPreferences((prev) => ({
               ...prev,
               experimental_projects: checked,
-            }))
-          }
-        />
-        <ExperimentalRow
-          icon={<CheckDone01 size={16} />}
-          label="Tasks"
-          description="Enable the tasks feature in the sidebar."
-          checked={preferences.experimental_tasks}
-          onCheckedChange={(checked) =>
-            setPreferences((prev) => ({
-              ...prev,
-              experimental_tasks: checked,
             }))
           }
         />

@@ -6,17 +6,17 @@ import type { ProjectLocator } from "@decocms/mesh-sdk";
  * This is used to avoid inline key definitions and to ensure consistency.
  */
 export const LOCALSTORAGE_KEYS = {
-  assistantChatThreads: (locator: ProjectLocator) =>
-    `mesh:assistant-chat:threads:${locator}`,
-  messages: (locator: ProjectLocator, threadId: string) =>
-    `mesh:messages:${locator}:${threadId}`,
+  assistantChatTasks: (locator: ProjectLocator) =>
+    `mesh:assistant-chat:tasks:${locator}`,
+  messages: (locator: ProjectLocator, taskId: string) =>
+    `mesh:messages:${locator}:${taskId}`,
   decoChatOpen: () => `mesh:decochat:open`,
   chatSelectedModel: (locator: ProjectLocator) =>
     `mesh:chat:selectedModel:${locator}`,
   chatSelectedMode: (locator: ProjectLocator) =>
     `mesh:chat:selectedMode:${locator}`,
-  assistantChatActiveThread: (locator: ProjectLocator) =>
-    `mesh:assistant-chat:active-thread:${locator}`,
+  assistantChatActiveTask: (locator: ProjectLocator) =>
+    `mesh:assistant-chat:active-task:${locator}`,
   decoChatPanelWidth: () => `mesh:decochat:panel-width`,
   sidebarOpen: () => `mesh:sidebar-open`,
   selectedRegistry: (org: string) => `mesh:store:selected-registry:${org}`,

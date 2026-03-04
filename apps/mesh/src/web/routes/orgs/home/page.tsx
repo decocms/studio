@@ -6,8 +6,9 @@
  */
 
 import { Chat, useChat } from "@/web/components/chat/index";
-import { ThreadsSidebar } from "@/web/components/chat/threads-sidebar.tsx";
-import { EditableThreadTitle } from "@/web/components/chat/editable-thread-title";
+import { ChatContextPanel } from "@/web/components/chat/context-panel";
+import { TasksPanel } from "@/web/components/chat/tasks-panel";
+import { EditableTaskTitle } from "@/web/components/chat/editable-task-title";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { AgentsList } from "@/web/components/home/agents-list.tsx";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
@@ -15,27 +16,18 @@ import { Page } from "@/web/components/page";
 import { authClient } from "@/web/lib/auth-client";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@deco/ui/components/resizable.tsx";
+import { cn } from "@deco/ui/lib/utils.ts";
 import {
   getWellKnownDecopilotVirtualMCP,
   useProjectContext,
 } from "@decocms/mesh-sdk";
-import {
-  ClockRewind,
-  MessageChatSquare,
-  Plus,
-  Share07,
-  Users03,
-} from "@untitledui/icons";
+import { LayoutRight, MessageChatSquare, Users03 } from "@untitledui/icons";
 import { Suspense, useState } from "react";
-import { toast } from "sonner";
 
-/**
- * Get time-based greeting
- */
 // ---------- Main Content ----------
 
 function HomeContent() {
@@ -44,14 +36,12 @@ function HomeContent() {
   const {
     modelsConnections,
     isChatEmpty,
-    activeThreadId,
-    createThread,
-    switchToThread,
-    threads,
+    activeTaskId,
+    tasks,
     selectedVirtualMcp,
   } = useChat();
-  const activeThread = threads.find((thread) => thread.id === activeThreadId);
-  const [isThreadsSidebarOpen, setIsThreadsSidebarOpen] = useState(false);
+  const activeTask = tasks.find((task) => task.id === activeTaskId);
+  const [showContext, setShowContext] = useState(false);
 
   const userName = session?.user?.name?.split(" ")[0] || "there";
 
@@ -62,136 +52,134 @@ function HomeContent() {
   // Show empty state when no LLM binding is found
   if (modelsConnections.length === 0) {
     return (
-      <div className="flex flex-col size-full bg-background items-center justify-center">
-        <Chat.NoLlmBindingEmptyState org={org} />
-      </div>
+      <ResizablePanelGroup direction="horizontal" className="size-full">
+        <ResizablePanel defaultSize={20} minSize={10} id="tasks" order={1}>
+          <TasksPanel />
+        </ResizablePanel>
+        <ResizableHandle className="bg-border/30" />
+        <ResizablePanel
+          defaultSize={showContext ? 50 : 80}
+          minSize={30}
+          id="main"
+          order={2}
+        >
+          <div className="flex flex-col h-full bg-background items-center justify-center">
+            <Chat.NoLlmBindingEmptyState org={org} />
+          </div>
+        </ResizablePanel>
+        {showContext && (
+          <>
+            <ResizableHandle className="bg-border/30" />
+            <ResizablePanel
+              defaultSize={30}
+              minSize={15}
+              id="context"
+              order={3}
+            >
+              <ChatContextPanel onClose={() => setShowContext(false)} />
+            </ResizablePanel>
+          </>
+        )}
+      </ResizablePanelGroup>
     );
   }
 
   return (
-    <Chat>
-      <Page.Header className="flex-none z-10 bg-background">
-        <Page.Header.Left className="gap-2">
-          {activeThread?.title && (
-            <EditableThreadTitle
-              threadId={activeThread.id}
-              text={activeThread.title}
-              className="text-sm font-medium text-foreground"
-            />
+    <ResizablePanelGroup direction="horizontal" className="size-full">
+      <ResizablePanel defaultSize={20} minSize={10} id="tasks" order={1}>
+        <TasksPanel />
+      </ResizablePanel>
+      <ResizableHandle className="bg-border/30" />
+      <ResizablePanel
+        defaultSize={showContext ? 50 : 80}
+        minSize={30}
+        id="main"
+        order={2}
+      >
+        <Chat className="h-full bg-background">
+          <Page.Header className="flex-none z-10 bg-background">
+            <Page.Header.Left className="gap-2">
+              {activeTask?.title && (
+                <EditableTaskTitle
+                  taskId={activeTask.id}
+                  text={activeTask.title}
+                  className="text-sm font-medium text-foreground"
+                />
+              )}
+            </Page.Header.Left>
+            <Page.Header.Right className="gap-1">
+              {!isChatEmpty && (
+                <button
+                  type="button"
+                  onClick={() => setShowContext((v) => !v)}
+                  className={cn(
+                    "flex size-7 items-center justify-center rounded-md border border-input hover:bg-accent transition-colors",
+                    showContext && "bg-accent",
+                  )}
+                  title="Toggle context panel"
+                >
+                  <LayoutRight size={14} className="text-muted-foreground" />
+                </button>
+              )}
+            </Page.Header.Right>
+          </Page.Header>
+
+          {!isChatEmpty ? (
+            <>
+              <Chat.Main>
+                <Chat.Messages />
+              </Chat.Main>
+              <Chat.Footer>
+                <Chat.Input onOpenContextPanel={() => setShowContext(true)} />
+              </Chat.Footer>
+            </>
+          ) : (
+            <div className="flex-1 min-h-0 flex flex-col items-center justify-center px-10 pb-32 pt-10">
+              <div className="flex flex-col items-center w-full max-w-[600px]">
+                {/* Agent Image */}
+                <div className="flex justify-center mb-4">
+                  <IntegrationIcon
+                    icon={displayAgent.icon}
+                    name={displayAgent.title}
+                    size="md"
+                    fallbackIcon={<Users03 size={20} />}
+                    className="size-12 rounded-xl border border-stone-200/60 shadow-sm aspect-square transition-opacity duration-200"
+                  />
+                </div>
+
+                {/* Greeting */}
+                <div className="text-center mb-8">
+                  <p className="text-xl font-medium text-foreground">
+                    What's on your mind, {userName}?
+                  </p>
+                </div>
+
+                {/* Chat Input */}
+                <div className="w-full">
+                  <Chat.Input />
+                </div>
+
+                {/* Ice breakers for selected agent */}
+                <Chat.IceBreakers className="w-full" />
+              </div>
+
+              {/* Agents List - Separate container to allow wider width */}
+              <div className="flex flex-col items-center w-full mt-4">
+                <AgentsList />
+              </div>
+            </div>
           )}
-        </Page.Header.Left>
-        <Page.Header.Right className="gap-1">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="size-7 border border-input"
-                onClick={() => createThread()}
-                disabled={isChatEmpty}
-                aria-label="New chat"
-              >
-                <Plus size={16} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>New chat</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="size-7 border border-input"
-                onClick={() => setIsThreadsSidebarOpen(true)}
-                aria-label="Chat history"
-              >
-                <ClockRewind size={16} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Chat history</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="size-7 border border-input"
-                onClick={() => {
-                  // TODO: Implement share functionality
-                  toast.info("Share feature coming soon");
-                }}
-                disabled={isChatEmpty}
-                aria-label="Share chat"
-              >
-                <Share07 size={16} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Share chat</TooltipContent>
-          </Tooltip>
-        </Page.Header.Right>
-      </Page.Header>
-
-      {!isChatEmpty ? (
+        </Chat>
+      </ResizablePanel>
+      {showContext && (
         <>
-          <Chat.Main>
-            <Chat.Messages />
-          </Chat.Main>
-          <Chat.Footer>
-            <Chat.Input />
-          </Chat.Footer>
+          <ResizableHandle className="bg-border/30" />
+          <ResizablePanel defaultSize={30} minSize={15} id="context" order={3}>
+            <ChatContextPanel onClose={() => setShowContext(false)} />
+          </ResizablePanel>
         </>
-      ) : (
-        <div className="flex-1 min-h-0 flex flex-col items-center justify-center px-10 pb-32 pt-10">
-          <div className="flex flex-col items-center w-full max-w-[600px]">
-            {/* Agent Image */}
-            <div className="flex justify-center mb-4">
-              <IntegrationIcon
-                icon={displayAgent.icon}
-                name={displayAgent.title}
-                size="md"
-                fallbackIcon={<Users03 size={20} />}
-                className="size-12 rounded-xl border border-stone-200/60 shadow-sm aspect-square transition-opacity duration-200"
-              />
-            </div>
-
-            {/* Greeting */}
-            <div className="text-center mb-8">
-              <p className="text-xl font-medium text-foreground">
-                What's on your mind, {userName}?
-              </p>
-            </div>
-
-            {/* Chat Input */}
-            <div className="w-full">
-              <Chat.Input />
-            </div>
-
-            {/* Ice breakers for selected agent */}
-            <Chat.IceBreakers className="w-full" />
-          </div>
-
-          {/* Agents List - Separate container to allow wider width */}
-          <div className="flex flex-col items-center w-full mt-4">
-            <AgentsList />
-          </div>
-        </div>
       )}
-
-      {/* Threads Sidebar */}
-      <ThreadsSidebar
-        open={isThreadsSidebarOpen}
-        onOpenChange={setIsThreadsSidebarOpen}
-        threads={threads}
-        activeThreadId={activeThreadId}
-        onThreadSelect={async (threadId) => {
-          await switchToThread(threadId);
-          setIsThreadsSidebarOpen(false);
-        }}
-      />
-    </Chat>
+    </ResizablePanelGroup>
   );
 }
 

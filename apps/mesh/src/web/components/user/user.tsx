@@ -23,6 +23,10 @@ export interface UserProps {
    */
   showEmail?: boolean;
   /**
+   * Whether to show only the avatar without name/email (default: false)
+   */
+  avatarOnly?: boolean;
+  /**
    * Additional CSS classes
    */
   className?: string;
@@ -37,6 +41,7 @@ export function User({
   id,
   size = "xs",
   showEmail = false,
+  avatarOnly = false,
   className,
 }: UserProps) {
   const { data: user, isLoading, isError } = useUserById(id);
@@ -46,12 +51,14 @@ export function User({
     return (
       <div className={cn("flex items-center gap-2", className)}>
         <Avatar.Skeleton shape="circle" size={size} />
-        <div className="flex flex-col gap-1">
-          <div className="h-3 w-24 bg-muted animate-pulse rounded" />
-          {showEmail && (
-            <div className="h-2 w-32 bg-muted animate-pulse rounded" />
-          )}
-        </div>
+        {!avatarOnly && (
+          <div className="flex flex-col gap-1">
+            <div className="h-3 w-24 bg-muted animate-pulse rounded" />
+            {showEmail && (
+              <div className="h-2 w-32 bg-muted animate-pulse rounded" />
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -61,9 +68,11 @@ export function User({
     return (
       <div className={cn("flex items-center gap-2", className)}>
         <Avatar shape="circle" size={size} fallback="?" muted />
-        <div className="flex flex-col">
-          <div className="text-sm text-muted-foreground">Unknown User</div>
-        </div>
+        {!avatarOnly && (
+          <div className="flex flex-col">
+            <div className="text-sm text-muted-foreground">Unknown User</div>
+          </div>
+        )}
       </div>
     );
   }
@@ -77,12 +86,14 @@ export function User({
         url={user.image ?? undefined}
         fallback={user.name}
       />
-      <div className="flex flex-col">
-        <div className="text-sm font-medium">{user.name}</div>
-        {showEmail && (
-          <div className="text-xs text-muted-foreground">{user.email}</div>
-        )}
-      </div>
+      {!avatarOnly && (
+        <div className="flex flex-col">
+          <div className="text-sm font-medium">{user.name}</div>
+          {showEmail && (
+            <div className="text-xs text-muted-foreground">{user.email}</div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

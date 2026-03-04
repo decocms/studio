@@ -77,27 +77,15 @@ export interface Metadata {
 }
 
 // ============================================================================
-// Chat Threads Types
-// ============================================================================
-
-export interface Thread {
-  id: string;
-  title: string;
-  created_at: string; // ISO string
-  updated_at: string; // ISO string
-  hidden?: boolean;
-}
-
-// ============================================================================
-// Parent Thread Types
+// Parent Task Types
 // ============================================================================
 
 /**
- * Parent thread context for tracking message editing/branching flow
+ * Parent task context for tracking message editing/branching flow
  * All fields refer to the parent message being branched from
  */
-export interface ParentThread {
-  /** Thread ID of the parent message */
+export interface ParentTask {
+  /** Task ID of the parent message (maps to thread_id DB column) */
   thread_id: string;
   /** ID of the parent message being branched from */
   messageId: string;

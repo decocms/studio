@@ -6,12 +6,22 @@ import {
   getWellKnownDecopilotVirtualMCP,
   useProjectContext,
 } from "@decocms/mesh-sdk";
-import { ClockRewind, Plus, Users03, X } from "@untitledui/icons";
+import {
+  ChevronLeft,
+  CheckDone01,
+  Loading01,
+  Plus,
+  Users03,
+  X,
+} from "@untitledui/icons";
 import { Suspense, useState, useTransition } from "react";
 import { ErrorBoundary } from "../error-boundary";
+
 import { Chat, useChat } from "./index";
-import { ThreadsView } from "./threads-sidebar";
-import { EditableThreadTitle } from "./editable-thread-title";
+import { ChatContextPanel } from "./context-panel";
+import { TaskListContent } from "./tasks-panel";
+
+import { EditableTaskTitle } from "./editable-task-title";
 
 function ChatPanelContent() {
   const { org } = useProjectContext();
@@ -20,22 +30,24 @@ function ChatPanelContent() {
     selectedVirtualMcp,
     modelsConnections,
     isChatEmpty,
-    activeThreadId,
-    createThread,
-    switchToThread,
-    threads,
+    activeTaskId,
+    createTask,
+    switchToTask,
+    tasks,
   } = useChat();
-  const activeThread = threads.find((thread) => thread.id === activeThreadId);
-  const [showThreadsOverlay, setShowThreadsOverlay] = useState(false);
+  const activeTask = tasks.find((task) => task.id === activeTaskId);
+  const [activePanel, setActivePanel] = useState<"chat" | "tasks" | "context">(
+    "chat",
+  );
   const [isPending, startTransition] = useTransition();
 
   // Use Decopilot as default agent
   const defaultAgent = getWellKnownDecopilotVirtualMCP(org.id);
   const displayAgent = selectedVirtualMcp ?? defaultAgent;
 
-  const handleNewThread = () => {
+  const handleNewTask = () => {
     startTransition(() => {
-      createThread();
+      createTask();
     });
   };
 
@@ -81,20 +93,18 @@ function ChatPanelContent() {
       {/* Chat view */}
       <div
         className={cn(
-          "absolute inset-0 flex flex-col transition-[opacity,transform] ease-[var(--ease-out-quart)]",
-          showThreadsOverlay
-            ? "duration-300 opacity-0 -translate-x-4 pointer-events-none"
-            : isPending
-              ? "duration-150 opacity-0 pointer-events-none"
-              : "duration-300 opacity-100 translate-x-0",
+          "absolute inset-0 flex flex-col transition-opacity duration-100 ease-out",
+          activePanel !== "chat" || isPending
+            ? "opacity-0 pointer-events-none"
+            : "opacity-100",
         )}
       >
         <Page.Header className="flex-none" hideSidebarTrigger>
           <Page.Header.Left className="gap-2">
-            {!isChatEmpty && activeThread?.title && (
-              <EditableThreadTitle
-                threadId={activeThread.id}
-                text={activeThread.title}
+            {!isChatEmpty && activeTask?.title && (
+              <EditableTaskTitle
+                taskId={activeTask.id}
+                text={activeTask.title}
                 className="text-sm font-medium text-foreground"
               />
             )}
@@ -102,7 +112,7 @@ function ChatPanelContent() {
           <Page.Header.Right className="gap-1">
             <button
               type="button"
-              onClick={handleNewThread}
+              onClick={handleNewTask}
               disabled={isPending}
               className="flex size-6 items-center justify-center rounded-full p-1 hover:bg-transparent group cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               title="New chat"
@@ -114,11 +124,11 @@ function ChatPanelContent() {
             </button>
             <button
               type="button"
-              onClick={() => setShowThreadsOverlay(true)}
+              onClick={() => setActivePanel("tasks")}
               className="flex size-6 items-center justify-center rounded-full p-1 hover:bg-transparent group cursor-pointer"
-              title="Chat history"
+              title="Tasks"
             >
-              <ClockRewind
+              <CheckDone01
                 size={16}
                 className="text-muted-foreground group-hover:text-foreground transition-colors"
               />
@@ -166,25 +176,76 @@ function ChatPanelContent() {
         </Chat.Main>
 
         <Chat.Footer>
-          <Chat.Input />
+          <Chat.Input onOpenContextPanel={() => setActivePanel("context")} />
         </Chat.Footer>
       </div>
 
-      {/* Threads view */}
+      {/* Tasks view */}
       <div
         className={cn(
-          "absolute inset-0 flex flex-col transition-[opacity,transform] duration-300 ease-[var(--ease-out-quart)]",
-          showThreadsOverlay
-            ? "opacity-100 translate-x-0"
-            : "opacity-0 translate-x-4 pointer-events-none",
+          "absolute inset-0 flex flex-col transition-opacity duration-100 ease-out",
+          activePanel === "tasks"
+            ? "opacity-100"
+            : "opacity-0 pointer-events-none",
         )}
       >
-        <ThreadsView
-          threads={threads}
-          activeThreadId={activeThreadId}
-          onThreadSelect={switchToThread}
-          onClose={() => setShowThreadsOverlay(false)}
-        />
+        <Page.Header className="flex-none" hideSidebarTrigger>
+          <Page.Header.Left className="gap-2">
+            <span className="text-sm font-normal text-foreground">Tasks</span>
+          </Page.Header.Left>
+          <Page.Header.Right className="gap-1">
+            <button
+              type="button"
+              onClick={() => setActivePanel("chat")}
+              className="flex size-6 items-center justify-center rounded-full p-1 hover:bg-transparent transition-colors group cursor-pointer"
+              title="Back to chat"
+            >
+              <ChevronLeft
+                size={16}
+                className="text-muted-foreground group-hover:text-foreground transition-colors"
+              />
+            </button>
+          </Page.Header.Right>
+        </Page.Header>
+        <ErrorBoundary
+          fallback={() => (
+            <div className="flex-1 flex items-center justify-center">
+              <p className="text-xs text-muted-foreground">
+                Unable to load tasks
+              </p>
+            </div>
+          )}
+        >
+          <Suspense
+            fallback={
+              <div className="flex-1 flex items-center justify-center">
+                <Loading01
+                  size={16}
+                  className="animate-spin text-muted-foreground"
+                />
+              </div>
+            }
+          >
+            <TaskListContent
+              onTaskSelect={async (taskId) => {
+                await switchToTask(taskId);
+                setActivePanel("chat");
+              }}
+            />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      {/* Context view */}
+      <div
+        className={cn(
+          "absolute inset-0 flex flex-col transition-opacity duration-100 ease-out",
+          activePanel === "context"
+            ? "opacity-100"
+            : "opacity-0 pointer-events-none",
+        )}
+      >
+        <ChatContextPanel back onClose={() => setActivePanel("chat")} />
       </div>
     </Chat>
   );

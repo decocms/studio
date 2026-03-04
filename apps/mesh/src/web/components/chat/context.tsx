@@ -1,7 +1,7 @@
 /**
  * Chat Context
  *
- * Manages chat interaction, thread management, virtual MCP/model selection, and chat session state.
+ * Manages chat interaction, task management, virtual MCP/model selection, and chat session state.
  * Provides optimized state management to minimize re-renders across the component tree.
  */
 
@@ -50,14 +50,9 @@ import { KEYS } from "../../lib/query-keys";
 import { LOCALSTORAGE_KEYS } from "../../lib/localstorage-keys";
 import { type ModelChangePayload, useModels } from "./select-model";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
-import { useThreadManager } from "./thread";
+import { useTaskManager, type Task } from "./task";
 import type { FileAttrs } from "./tiptap/file/node.tsx";
-import type {
-  ChatMessage,
-  ChatModelsConfig,
-  Metadata,
-  Thread,
-} from "./types.ts";
+import type { ChatMessage, ChatModelsConfig, Metadata } from "./types.ts";
 import {
   chatStateReducer,
   initialChatState,
@@ -98,19 +93,19 @@ type ChatFromUseChat = Pick<
 >;
 
 /**
- * Stable context — values that change infrequently (model/thread/mode selection, actions).
+ * Stable context — values that change infrequently (model/task/mode selection, actions).
  * Consumers reading only stable fields skip re-renders during streaming.
  */
 interface ChatStableValue {
   tiptapDocRef: React.RefObject<Metadata["tiptapDoc"]>;
   resetInteraction: () => void;
 
-  activeThreadId: string;
-  createThread: () => void;
-  switchToThread: (threadId: string) => Promise<void>;
-  renameThread: (threadId: string, title: string) => Promise<void>;
-  threads: Thread[];
-  hideThread: (threadId: string) => void;
+  activeTaskId: string;
+  createTask: () => void;
+  switchToTask: (taskId: string) => Promise<void>;
+  renameTask: (taskId: string, title: string) => Promise<void>;
+  tasks: Task[];
+  hideTask: (taskId: string) => void;
 
   hasNextPage?: boolean;
   isFetchingNextPage?: boolean;
@@ -142,7 +137,7 @@ interface ChatStreamValue extends ChatFromUseChat {
   clearFinishReason: () => void;
   /** Derived from chat.messages (AI SDK state) to avoid stale reads during message source switches */
   isWaitingForApprovals: boolean;
-  /** True when thread is in_progress but we have no active local stream */
+  /** True when task is in_progress but we have no active local stream */
   isRunInProgress: boolean;
 }
 
@@ -563,7 +558,7 @@ function ModelAutoSelector({
 
 /**
  * Provider component for chat context
- * Consolidates all chat-related state: interaction, threads, virtual MCP, model, and chat session
+ * Consolidates all chat-related state: interaction, tasks, virtual MCP, model, and chat session
  */
 export function ChatProvider({ children }: PropsWithChildren) {
   // ===========================================================================
@@ -573,8 +568,8 @@ export function ChatProvider({ children }: PropsWithChildren) {
   const { locator, org } = useProjectContext();
   const queryClient = useQueryClient();
 
-  // Unified thread manager hook handles all thread state and operations
-  const threadManager = useThreadManager();
+  // Unified task manager hook handles all task state and operations
+  const taskManager = useTaskManager();
 
   // Project context
   // User session
@@ -620,8 +615,8 @@ export function ChatProvider({ children }: PropsWithChildren) {
       "code_execution",
     );
 
-  // Messages are fetched by threadManager
-  const initialMessages = threadManager.messages;
+  // Messages are fetched by taskManager
+  const initialMessages = taskManager.messages;
 
   // Context prompt
   const contextPrompt = useContextHook(storedSelectedVirtualMcpId);
@@ -666,39 +661,38 @@ export function ChatProvider({ children }: PropsWithChildren) {
   }) => {
     chatDispatch({ type: "SET_FINISH_REASON", payload: finishReason ?? null });
 
-    const threadId =
+    const taskId =
       (message.metadata as Metadata | undefined)?.thread_id ??
-      threadManager.activeThreadId;
+      taskManager.activeTaskId;
 
     if (isAbort || isDisconnect || isError) {
       // Persist partial messages so the UI doesn't flash back to stale
       // server data when the message source switches from chat.messages
-      // to threadManager.messages (isStreaming -> false).
-      if (threadId && messages.length > 0) {
-        threadManager.updateMessagesCache(threadId, messages);
+      // to taskManager.messages (isStreaming -> false).
+      if (taskId && messages.length > 0) {
+        taskManager.updateMessagesCache(taskId, messages);
       }
       return;
     }
 
-    if (!threadId) {
+    if (!taskId) {
       return;
     }
 
-    // Always persist streamed messages into the thread cache so the UI
+    // Always persist streamed messages into the task cache so the UI
     // doesn't flash stale data when the message source switches from
-    // chat.messages (streaming) to threadManager.messages (server).
+    // chat.messages (streaming) to taskManager.messages (server).
     if (messages.length > 0) {
-      threadManager.updateMessagesCache(threadId, messages);
+      taskManager.updateMessagesCache(taskId, messages);
     }
 
     // Show notification (sound + browser popup) if enabled
     if (preferences.enableNotifications) {
       showNotification({
-        tag: `chat-${threadId}`,
+        tag: `chat-${taskId}`,
         title: "Decopilot is waiting for your input at",
         body:
-          threadManager.threads.find((t) => t.id === threadId)?.title ??
-          "New chat",
+          taskManager.tasks.find((t) => t.id === taskId)?.title ?? "New chat",
       });
     }
   };
@@ -712,7 +706,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
   // ===========================================================================
 
   const chat = useAIChat<ChatMessage>({
-    id: threadManager.activeThreadId,
+    id: taskManager.activeTaskId,
     messages: initialMessages,
     transport,
     sendAutomaticallyWhen: ({ messages }) =>
@@ -729,7 +723,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
           return;
         }
 
-        threadManager.updateThread(threadManager.activeThreadId, {
+        taskManager.updateTask(taskManager.activeTaskId, {
           title,
           updated_at: new Date().toISOString(),
         });
@@ -756,14 +750,14 @@ export function ChatProvider({ children }: PropsWithChildren) {
   })();
 
   const isChatEmpty =
-    chat.messages.length === 0 && threadManager.messages.length === 0;
+    chat.messages.length === 0 && taskManager.messages.length === 0;
 
-  const activeThread = threadManager.threads.find(
-    (t) => t.id === threadManager.activeThreadId,
+  const activeTask = taskManager.tasks.find(
+    (t) => t.id === taskManager.activeTaskId,
   );
   const isRunInProgress =
-    (activeThread?.status === "in_progress" ||
-      activeThread?.status === "expired") &&
+    (activeTask?.status === "in_progress" ||
+      activeTask?.status === "expired") &&
     !isStreaming;
 
   // Ref so the SSE subscription handler can call resumeStream without
@@ -774,9 +768,9 @@ export function ChatProvider({ children }: PropsWithChildren) {
   const resumeFailCountRef = useRef(0);
   const MAX_RESUME_RETRIES = 3;
 
-  const invalidateThreadData = () => {
-    queryClient.invalidateQueries({ queryKey: KEYS.threads(locator) });
-    const tid = threadManager.activeThreadId;
+  const invalidateTaskData = () => {
+    queryClient.invalidateQueries({ queryKey: KEYS.tasks(locator) });
+    const tid = taskManager.activeTaskId;
     if (tid) {
       queryClient.invalidateQueries({
         predicate: (query) => {
@@ -792,10 +786,10 @@ export function ChatProvider({ children }: PropsWithChildren) {
   };
 
   // Resume an in-progress stream via the AI SDK's transport.reconnectToStream
-  // (GET /attach/:threadId → JetStream replay).  The SDK handles all internal
+  // (GET /attach/:taskId → JetStream replay).  The SDK handles all internal
   // message state: status flips to "streaming", chat.messages updates live.
   const tryResumeStream = (reason: string) => {
-    const tid = threadManager.activeThreadId;
+    const tid = taskManager.activeTaskId;
     if (!tid || hasResumedRef.current === tid) return;
     if (resumeFailCountRef.current >= MAX_RESUME_RETRIES) return;
     hasResumedRef.current = tid;
@@ -805,46 +799,46 @@ export function ChatProvider({ children }: PropsWithChildren) {
       console.error("[chat] resumeStream error", err);
       resumeFailCountRef.current++;
       hasResumedRef.current = null;
-      invalidateThreadData();
+      invalidateTaskData();
     });
   };
 
-  const invalidateThreadDataRef = useRef(invalidateThreadData);
-  invalidateThreadDataRef.current = invalidateThreadData;
+  const invalidateTaskDataRef = useRef(invalidateTaskData);
+  invalidateTaskDataRef.current = invalidateTaskData;
 
   const tryResumeStreamRef = useRef(tryResumeStream);
   tryResumeStreamRef.current = tryResumeStream;
 
   useDecopilotEvents({
     orgId: org.id,
-    threadId: threadManager.activeThreadId,
+    taskId: taskManager.activeTaskId,
     onStep: () => tryResumeStream("sse-step"),
     onFinish: () => {
       hasResumedRef.current = null;
       resumeFailCountRef.current = 0;
       if (!isStreaming) {
-        invalidateThreadData();
+        invalidateTaskData();
       }
     },
-    onThreadStatus: () => {
+    onTaskStatus: () => {
       if (!isStreaming) {
-        invalidateThreadData();
+        invalidateTaskData();
       }
     },
   });
 
-  // Reset resume state when switching threads so failures from one thread
-  // don't block resume attempts on a different thread.
+  // Reset resume state when switching tasks so failures from one task
+  // don't block resume attempts on a different task.
   // Done during render (not in useEffect) to avoid React strict-mode
   // double-mount resetting the guard and firing duplicate attach requests.
-  const prevActiveThreadIdRef = useRef(threadManager.activeThreadId);
-  if (prevActiveThreadIdRef.current !== threadManager.activeThreadId) {
-    prevActiveThreadIdRef.current = threadManager.activeThreadId;
+  const prevActiveTaskIdRef = useRef(taskManager.activeTaskId);
+  if (prevActiveTaskIdRef.current !== taskManager.activeTaskId) {
+    prevActiveTaskIdRef.current = taskManager.activeTaskId;
     hasResumedRef.current = null;
     resumeFailCountRef.current = 0;
   }
 
-  // Trigger resume on page load / thread switch when a background run is active.
+  // Trigger resume on page load / task switch when a background run is active.
   // Also safety-net poll in case SSE events are missed (NATS at-most-once).
   const SAFETY_NET_POLL_MS = 30_000;
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
@@ -853,9 +847,9 @@ export function ChatProvider({ children }: PropsWithChildren) {
 
     tryResumeStreamRef.current("page-load");
 
-    invalidateThreadDataRef.current();
+    invalidateTaskDataRef.current();
     const safetyId = setInterval(
-      () => invalidateThreadDataRef.current(),
+      () => invalidateTaskDataRef.current(),
       SAFETY_NET_POLL_MS,
     );
 
@@ -865,23 +859,23 @@ export function ChatProvider({ children }: PropsWithChildren) {
   }, [isRunInProgress]);
 
   // Show real-time chat.messages during active streaming (local or resumed);
-  // otherwise use server-sourced threadManager.messages.
+  // otherwise use server-sourced taskManager.messages.
   const messages = isStreaming
     ? chat.messages
-    : (threadManager.messages as ChatMessage[]);
+    : (taskManager.messages as ChatMessage[]);
 
   // ===========================================================================
   // 6. RETURNED FUNCTIONS - Functions exposed via context
   // ===========================================================================
 
-  // Thread actions are provided by threadManager
-  const createThread = () => {
+  // Task actions are provided by taskManager
+  const createTask = () => {
     resetInteraction();
-    threadManager.createThread();
+    taskManager.createTask();
   };
-  const switchToThread = threadManager.switchThread;
-  const renameThread = threadManager.renameThread;
-  const hideThread = threadManager.hideThread;
+  const switchToTask = taskManager.switchToTask;
+  const renameTask = taskManager.renameTask;
+  const hideTask = taskManager.hideTask;
 
   // Chat state functions
   const resetInteraction = () => chatDispatch({ type: "RESET" });
@@ -918,15 +912,15 @@ export function ChatProvider({ children }: PropsWithChildren) {
     // Sync server-sourced messages into useAIChat before sending so its
     // internal state is current (needed for onFinish cache write-back and
     // sendAutomaticallyWhen checks on the response).
-    if (threadManager.messages.length > 0) {
-      chatRef.current.setMessages(threadManager.messages);
+    if (taskManager.messages.length > 0) {
+      chatRef.current.setMessages(taskManager.messages);
     }
     resetInteraction();
 
     const messageMetadata: Metadata = {
       tiptapDoc,
       created_at: new Date().toISOString(),
-      thread_id: threadManager.activeThreadId,
+      thread_id: taskManager.activeTaskId,
       agent: {
         id: selectedVirtualMcp?.id ?? decopilotId,
         mode: selectedMode,
@@ -954,22 +948,22 @@ export function ChatProvider({ children }: PropsWithChildren) {
   };
 
   const cancelRun = async () => {
-    const threadId = threadManager.activeThreadId;
-    if (!threadId) return;
+    const taskId = taskManager.activeTaskId;
+    if (!taskId) return;
     hasResumedRef.current = null;
     resumeFailCountRef.current = 0;
 
-    // Snapshot streaming messages into the thread cache BEFORE stopping.
+    // Snapshot streaming messages into the task cache BEFORE stopping.
     // When chat.stop() fires, isStreaming flips to false and the UI switches
-    // from chat.messages to threadManager.messages — this preserves the
+    // from chat.messages to taskManager.messages — this preserves the
     // partial content generated up to the abort point.
     if (chatRef.current.messages.length > 0) {
-      threadManager.updateMessagesCache(threadId, chatRef.current.messages);
+      taskManager.updateMessagesCache(taskId, chatRef.current.messages);
     }
 
     chatRef.current.stop();
     try {
-      const res = await fetch(`/api/${org.slug}/decopilot/cancel/${threadId}`, {
+      const res = await fetch(`/api/${org.slug}/decopilot/cancel/${taskId}`, {
         method: "POST",
         credentials: "include",
       });
@@ -979,7 +973,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
         };
         throw new Error(data.message ?? `Cancel failed: ${res.status}`);
       }
-      await queryClient.invalidateQueries({ queryKey: KEYS.threads(locator) });
+      await queryClient.invalidateQueries({ queryKey: KEYS.tasks(locator) });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to cancel";
       toast.error(msg);
@@ -1011,15 +1005,15 @@ export function ChatProvider({ children }: PropsWithChildren) {
   const stableValue: ChatStableValue = {
     tiptapDocRef,
     resetInteraction,
-    activeThreadId: threadManager.activeThreadId,
-    threads: threadManager.threads,
-    createThread,
-    switchToThread,
-    renameThread,
-    hideThread,
-    hasNextPage: threadManager.hasNextPage,
-    isFetchingNextPage: threadManager.isFetchingNextPage,
-    fetchNextPage: threadManager.fetchNextPage,
+    activeTaskId: taskManager.activeTaskId,
+    tasks: taskManager.tasks,
+    createTask,
+    switchToTask,
+    renameTask,
+    hideTask,
+    hasNextPage: taskManager.hasNextPage,
+    isFetchingNextPage: taskManager.isFetchingNextPage,
+    fetchNextPage: taskManager.fetchNextPage,
     virtualMcps,
     selectedVirtualMcp,
     setVirtualMcpId,
@@ -1070,7 +1064,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
 }
 
 /**
- * Stable chat values (model, mode, threads, virtual MCP, actions).
+ * Stable chat values (model, mode, tasks, virtual MCP, actions).
  * Does NOT re-render during streaming.
  */
 export function useChatStable() {

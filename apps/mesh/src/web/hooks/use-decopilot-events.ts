@@ -2,7 +2,7 @@
  * useDecopilotEvents — Subscribe to typed decopilot SSE events
  *
  * Connects to the /org/:orgId/watch SSE endpoint, parses incoming events
- * into the discriminated DecopilotSSEEvent union, filters by threadId when
+ * into the discriminated DecopilotSSEEvent union, filters by taskId when
  * provided, and dispatches to typed handlers.
  *
  * Uses useSyncExternalStore for proper React 19 subscription lifecycle.
@@ -42,23 +42,23 @@ const getSnapshot = () => 0;
 export interface UseDecopilotEventsOptions {
   /** Organization ID for the SSE endpoint */
   orgId: string;
-  /** Only fire handlers for events matching this thread (omit for all threads) */
-  threadId?: string;
+  /** Only fire handlers for events matching this task (omit for all tasks) */
+  taskId?: string;
   /** Disable the SSE connection (default: true) */
   enabled?: boolean;
   /** Called on each "decopilot.step" event (new content available) */
   onStep?: (event: DecopilotStepEvent) => void;
   /** Called on each "decopilot.finish" event (stream ended) */
   onFinish?: (event: DecopilotFinishEvent) => void;
-  /** Called on each "decopilot.thread.status" event (thread status changed) */
-  onThreadStatus?: (event: DecopilotThreadStatusEvent) => void;
+  /** Called on each "decopilot.thread.status" event (task status changed) */
+  onTaskStatus?: (event: DecopilotThreadStatusEvent) => void;
 }
 
 interface CallbacksRef {
-  threadId?: string;
+  taskId?: string;
   onStep?: (event: DecopilotStepEvent) => void;
   onFinish?: (event: DecopilotFinishEvent) => void;
-  onThreadStatus?: (event: DecopilotThreadStatusEvent) => void;
+  onTaskStatus?: (event: DecopilotThreadStatusEvent) => void;
 }
 
 /**
@@ -67,30 +67,30 @@ interface CallbacksRef {
  * The underlying EventSource is ref-counted per orgId, so multiple
  * components can subscribe without opening duplicate connections.
  *
- * Callbacks and threadId are read from a ref so the `subscribe` function
+ * Callbacks and taskId are read from a ref so the `subscribe` function
  * identity only changes when `enabled` or `orgId` change — keeping the
  * EventSource connection stable across re-renders.
  */
 export function useDecopilotEvents(options: UseDecopilotEventsOptions): void {
   const {
     orgId,
-    threadId,
+    taskId,
     enabled = true,
     onStep,
     onFinish,
-    onThreadStatus,
+    onTaskStatus,
   } = options;
 
   const callbacksRef = useRef<CallbacksRef>({
-    threadId,
+    taskId,
     onStep,
     onFinish,
-    onThreadStatus,
+    onTaskStatus,
   });
-  callbacksRef.current = { threadId, onStep, onFinish, onThreadStatus };
+  callbacksRef.current = { taskId, onStep, onFinish, onTaskStatus };
 
   // `subscribe` only depends on `enabled` and `orgId` so the EventSource
-  // connection is not torn down when callbacks or threadId change.
+  // connection is not torn down when callbacks or taskId change.
   const subscribeRef = useRef<
     ((onStoreChange: () => void) => () => void) | null
   >(null);
@@ -120,7 +120,7 @@ export function useDecopilotEvents(options: UseDecopilotEventsOptions): void {
         }
 
         const cb = callbacksRef.current;
-        if (cb.threadId && event.subject !== cb.threadId) return;
+        if (cb.taskId && event.subject !== cb.taskId) return;
 
         switch (event.type) {
           case DECOPILOT_EVENTS.STEP:
@@ -130,7 +130,7 @@ export function useDecopilotEvents(options: UseDecopilotEventsOptions): void {
             cb.onFinish?.(event);
             break;
           case DECOPILOT_EVENTS.THREAD_STATUS:
-            cb.onThreadStatus?.(event);
+            cb.onTaskStatus?.(event);
             break;
         }
 

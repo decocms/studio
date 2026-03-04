@@ -5,7 +5,7 @@ import { IceBreakers } from "./ice-breakers";
 import { ChatInput } from "./input";
 import { MessagePair, useMessagePairs } from "./message/pair.tsx";
 import { NoLlmBindingEmptyState } from "./no-llm-binding-empty-state";
-import { ThreadHistoryPopover } from "./popover-threads";
+import { TaskHistoryPopover } from "./popover-tasks";
 import { DecoChatSkeleton } from "./skeleton";
 export type { ToolSelectionStrategy } from "@/mcp-clients/virtual-mcp/types";
 export { useChat } from "./context";
@@ -127,5 +127,5 @@ export const Chat = Object.assign(ChatRoot, {
   Skeleton: DecoChatSkeleton,
   IceBreakers: IceBreakers,
   NoLlmBindingEmptyState: NoLlmBindingEmptyState,
-  ThreadHistoryPopover: ThreadHistoryPopover,
+  TaskHistoryPopover: TaskHistoryPopover,
 });

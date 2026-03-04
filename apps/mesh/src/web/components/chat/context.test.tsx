@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import type { ParentThread } from "./types.ts";
+import type { ParentTask } from "./types.ts";
 import {
   chatStateReducer,
   type ChatState,
@@ -15,34 +15,34 @@ import {
 
 describe("ChatState Reducer Logic", () => {
   const initialState: ChatState = {
-    parentThread: null,
+    parentTask: null,
     finishReason: null,
   };
 
   test("should initialize with empty state", () => {
-    expect(initialState.parentThread).toBeNull();
+    expect(initialState.parentTask).toBeNull();
     expect(initialState.finishReason).toBeNull();
   });
 
   test("should start branch with START_BRANCH action", () => {
-    const parentThread: ParentThread = {
+    const parentTask: ParentTask = {
       thread_id: "thread-123",
       messageId: "msg-456",
     };
 
     const action: ChatStateAction = {
       type: "START_BRANCH",
-      payload: parentThread,
+      payload: parentTask,
     };
 
     const newState = chatStateReducer(initialState, action);
 
-    expect(newState.parentThread).toEqual(parentThread);
+    expect(newState.parentTask).toEqual(parentTask);
   });
 
   test("should clear branch context with CLEAR_BRANCH action", () => {
     const stateWithBranch: ChatState = {
-      parentThread: {
+      parentTask: {
         thread_id: "thread-123",
         messageId: "msg-456",
       },
@@ -53,7 +53,7 @@ describe("ChatState Reducer Logic", () => {
 
     const newState = chatStateReducer(stateWithBranch, action);
 
-    expect(newState.parentThread).toBeNull();
+    expect(newState.parentTask).toBeNull();
   });
 
   test("should set finish reason with SET_FINISH_REASON action", () => {
@@ -65,12 +65,12 @@ describe("ChatState Reducer Logic", () => {
     const newState = chatStateReducer(initialState, action);
 
     expect(newState.finishReason).toBe("stop");
-    expect(newState.parentThread).toBeNull();
+    expect(newState.parentTask).toBeNull();
   });
 
   test("SET_FINISH_REASON returns same reference when payload is unchanged", () => {
     const stateWithReason: ChatState = {
-      parentThread: null,
+      parentTask: null,
       finishReason: "stop",
     };
 
@@ -86,7 +86,7 @@ describe("ChatState Reducer Logic", () => {
 
   test("should clear finish reason with CLEAR_FINISH_REASON action", () => {
     const stateWithFinishReason: ChatState = {
-      parentThread: null,
+      parentTask: null,
       finishReason: "stop",
     };
 
@@ -99,7 +99,7 @@ describe("ChatState Reducer Logic", () => {
 
   test("should reset all state with RESET action", () => {
     const stateWithData: ChatState = {
-      parentThread: {
+      parentTask: {
         thread_id: "thread-123",
         messageId: "msg-456",
       },
@@ -110,25 +110,25 @@ describe("ChatState Reducer Logic", () => {
 
     const newState = chatStateReducer(stateWithData, action);
 
-    expect(newState.parentThread).toBeNull();
+    expect(newState.parentTask).toBeNull();
     expect(newState.finishReason).toBeNull();
   });
 
   test("should handle multiple sequential actions", () => {
     let state = initialState;
 
-    const parentThread: ParentThread = {
+    const parentTask: ParentTask = {
       thread_id: "thread-1",
       messageId: "msg-1",
     };
     state = chatStateReducer(state, {
       type: "START_BRANCH",
-      payload: parentThread,
+      payload: parentTask,
     });
-    expect(state.parentThread).toEqual(parentThread);
+    expect(state.parentTask).toEqual(parentTask);
 
     state = chatStateReducer(state, { type: "CLEAR_BRANCH" });
-    expect(state.parentThread).toBeNull();
+    expect(state.parentTask).toBeNull();
 
     state = chatStateReducer(state, {
       type: "SET_FINISH_REASON",
@@ -137,26 +137,26 @@ describe("ChatState Reducer Logic", () => {
     expect(state.finishReason).toBe("stop");
 
     state = chatStateReducer(state, { type: "RESET" });
-    expect(state.parentThread).toBeNull();
+    expect(state.parentTask).toBeNull();
     expect(state.finishReason).toBeNull();
   });
 
   test("should preserve state immutability", () => {
-    const originalParentThread: ParentThread = {
+    const originalParentTask: ParentTask = {
       thread_id: "thread-1",
       messageId: "msg-1",
     };
 
     const originalState: ChatState = {
-      parentThread: originalParentThread,
+      parentTask: originalParentTask,
       finishReason: null,
     };
 
     const newState = chatStateReducer(originalState, { type: "CLEAR_BRANCH" });
 
-    expect(originalParentThread.thread_id).toBe("thread-1");
-    expect(originalState.parentThread).toEqual(originalParentThread);
-    expect(newState.parentThread).toBeNull();
+    expect(originalParentTask.thread_id).toBe("thread-1");
+    expect(originalState.parentTask).toEqual(originalParentTask);
+    expect(newState.parentTask).toBeNull();
     expect(newState).not.toBe(originalState);
   });
 });

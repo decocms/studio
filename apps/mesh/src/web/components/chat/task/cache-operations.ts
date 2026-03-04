@@ -11,52 +11,50 @@ import {
 import type { QueryClient } from "@tanstack/react-query";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { KEYS } from "../../../lib/query-keys";
-import type { ChatMessage, Thread, ThreadsInfiniteQueryData } from "./types.ts";
-import { THREAD_CONSTANTS } from "./types.ts";
+import type { ChatMessage, Task, TasksInfiniteQueryData } from "./types.ts";
+import { TASK_CONSTANTS } from "./types.ts";
 
 /**
- * Update thread in React Query cache
+ * Update task in React Query cache
  */
-export function updateThreadInCache(
+export function updateTaskInCache(
   queryClient: QueryClient,
   locator: string,
-  threadId: string,
-  updates: Partial<Thread>,
+  taskId: string,
+  updates: Partial<Task>,
 ): void {
-  const queryKey = KEYS.threads(locator);
+  const queryKey = KEYS.tasks(locator);
 
   const currentData =
-    queryClient.getQueryData<ThreadsInfiniteQueryData>(queryKey);
+    queryClient.getQueryData<TasksInfiniteQueryData>(queryKey);
 
   if (!currentData) {
     return;
   }
 
   const updatedPages = currentData.pages.map((page) => {
-    const threadIndex = page.items.findIndex(
-      (thread) => thread.id === threadId,
-    );
+    const taskIndex = page.items.findIndex((task) => task.id === taskId);
 
-    if (threadIndex === -1) {
+    if (taskIndex === -1) {
       return page;
     }
 
     const updatedItems = [...page.items];
-    const currentThread = updatedItems[threadIndex];
+    const currentTask = updatedItems[taskIndex];
 
-    if (!currentThread) {
+    if (!currentTask) {
       return page;
     }
 
-    const updatedThread: Thread = {
-      id: currentThread.id,
-      title: updates.title ?? currentThread.title,
-      created_at: currentThread.created_at,
-      updated_at: updates.updated_at ?? currentThread.updated_at,
-      hidden: updates.hidden ?? currentThread.hidden,
-      status: updates.status ?? currentThread.status,
+    const updatedTask: Task = {
+      id: currentTask.id,
+      title: updates.title ?? currentTask.title,
+      created_at: currentTask.created_at,
+      updated_at: updates.updated_at ?? currentTask.updated_at,
+      hidden: updates.hidden ?? currentTask.hidden,
+      status: updates.status ?? currentTask.status,
     };
-    updatedItems[threadIndex] = updatedThread;
+    updatedItems[taskIndex] = updatedTask;
 
     return {
       ...page,
@@ -68,9 +66,9 @@ export function updateThreadInCache(
     return (
       page.items.length !== currentData.pages[pageIndex]?.items.length ||
       page.items.some(
-        (thread, index) =>
-          thread.id === threadId &&
-          thread !== currentData.pages[pageIndex]?.items[index],
+        (task, index) =>
+          task.id === taskId &&
+          task !== currentData.pages[pageIndex]?.items[index],
       )
     );
   });
@@ -84,24 +82,24 @@ export function updateThreadInCache(
 }
 
 /**
- * Add thread optimistically to the cache
+ * Add task optimistically to the cache
  */
-export function addThreadToCache(
+export function addTaskToCache(
   queryClient: QueryClient,
   locator: string,
-  thread: Thread,
+  task: Task,
 ): void {
-  const queryKey = KEYS.threads(locator);
+  const queryKey = KEYS.tasks(locator);
 
   const currentData =
-    queryClient.getQueryData<ThreadsInfiniteQueryData>(queryKey);
+    queryClient.getQueryData<TasksInfiniteQueryData>(queryKey);
 
   if (!currentData) {
     // No cache exists yet, create initial structure
     queryClient.setQueryData(queryKey, {
       pages: [
         {
-          items: [thread],
+          items: [task],
           hasMore: false,
           totalCount: 1,
         },
@@ -111,20 +109,20 @@ export function addThreadToCache(
     return;
   }
 
-  // Check if thread already exists in cache
-  const threadExists = currentData.pages.some((page) =>
-    page.items.some((t) => t.id === thread.id),
+  // Check if task already exists in cache
+  const taskExists = currentData.pages.some((page) =>
+    page.items.some((t) => t.id === task.id),
   );
-  if (threadExists) {
+  if (taskExists) {
     return;
   }
 
-  // Add thread to the first page (most recent threads)
+  // Add task to the first page (most recent tasks)
   const firstPage = currentData.pages[0];
   if (firstPage) {
     const updatedFirstPage = {
       ...firstPage,
-      items: [thread, ...firstPage.items],
+      items: [task, ...firstPage.items],
       totalCount: (firstPage.totalCount ?? firstPage.items.length) + 1,
     };
 
@@ -138,7 +136,7 @@ export function addThreadToCache(
       ...currentData,
       pages: [
         {
-          items: [thread],
+          items: [task],
           hasMore: false,
           totalCount: 1,
         },
@@ -148,21 +146,21 @@ export function addThreadToCache(
 }
 
 /**
- * Prefetch messages for a thread
+ * Prefetch messages for a task
  */
-export async function prefetchThreadMessages(
+export async function prefetchTaskMessages(
   queryClient: QueryClient,
   client: Client | null,
   orgId: string,
-  threadId: string,
+  taskId: string,
 ): Promise<void> {
   if (!client) {
     return;
   }
 
   const queryKey = buildCollectionQueryKey(client, "THREAD_MESSAGES", orgId, {
-    filters: [{ column: "thread_id", value: threadId }],
-    pageSize: THREAD_CONSTANTS.THREAD_MESSAGES_PAGE_SIZE,
+    filters: [{ column: "thread_id", value: taskId }],
+    pageSize: TASK_CONSTANTS.TASK_MESSAGES_PAGE_SIZE,
   });
 
   if (!queryKey) {
@@ -179,7 +177,7 @@ export async function prefetchThreadMessages(
   const listToolName = "COLLECTION_THREAD_MESSAGES_LIST";
   const where = buildWhereExpression(
     undefined,
-    [{ column: "thread_id", value: threadId }],
+    [{ column: "thread_id", value: taskId }],
     [],
   );
   const orderBy = buildOrderByExpression(
@@ -191,7 +189,7 @@ export async function prefetchThreadMessages(
   const toolArguments: CollectionListInput = {
     ...(where && { where }),
     ...(orderBy && { orderBy }),
-    limit: THREAD_CONSTANTS.THREAD_MESSAGES_PAGE_SIZE,
+    limit: TASK_CONSTANTS.TASK_MESSAGES_PAGE_SIZE,
     offset: 0,
   };
 
@@ -204,20 +202,20 @@ export async function prefetchThreadMessages(
       });
       return result;
     },
-    staleTime: THREAD_CONSTANTS.QUERY_STALE_TIME,
+    staleTime: TASK_CONSTANTS.QUERY_STALE_TIME,
     retry: false,
   });
 }
 
 /**
- * Update messages cache for a thread with new messages
+ * Update messages cache for a task with new messages
  * Populates the cache directly without refetching from backend
  */
 export function updateMessagesCache(
   queryClient: QueryClient,
   client: Client | null,
   orgId: string,
-  threadId: string,
+  taskId: string,
   messages: ChatMessage[],
 ): void {
   if (!client) {
@@ -225,8 +223,8 @@ export function updateMessagesCache(
   }
 
   const queryKey = buildCollectionQueryKey(client, "THREAD_MESSAGES", orgId, {
-    filters: [{ column: "thread_id", value: threadId }],
-    pageSize: THREAD_CONSTANTS.THREAD_MESSAGES_PAGE_SIZE,
+    filters: [{ column: "thread_id", value: taskId }],
+    pageSize: TASK_CONSTANTS.TASK_MESSAGES_PAGE_SIZE,
   });
 
   if (!queryKey) {
@@ -235,7 +233,7 @@ export function updateMessagesCache(
 
   // Update cache with new messages in the format expected by useCollectionList
   // This matches the structure returned by the MCP tool (before select transformation)
-  // Use type assertion similar to useThreadMessages since runtime structure works correctly
+  // Use type assertion similar to useTaskMessages since runtime structure works correctly
   queryClient.setQueryData(queryKey, {
     structuredContent: {
       items: messages as (CollectionEntity & ChatMessage)[],
