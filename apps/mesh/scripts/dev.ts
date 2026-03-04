@@ -11,7 +11,7 @@
  */
 
 import { existsSync } from "fs";
-import { mkdir } from "fs/promises";
+import { chmod, mkdir } from "fs/promises";
 import { createInterface } from "readline";
 import { homedir } from "os";
 import { join } from "path";
@@ -116,7 +116,7 @@ if (!process.env.ENCRYPTION_KEY) {
   if (savedSecrets.ENCRYPTION_KEY) {
     process.env.ENCRYPTION_KEY = savedSecrets.ENCRYPTION_KEY;
   } else {
-    savedSecrets.ENCRYPTION_KEY = "";
+    savedSecrets.ENCRYPTION_KEY = randomBytes(32).toString("base64");
     process.env.ENCRYPTION_KEY = savedSecrets.ENCRYPTION_KEY;
     secretsModified = true;
   }
@@ -125,6 +125,7 @@ if (!process.env.ENCRYPTION_KEY) {
 if (secretsModified) {
   try {
     await Bun.write(secretsFilePath, JSON.stringify(savedSecrets, null, 2));
+    await chmod(secretsFilePath, 0o600);
   } catch (error) {
     console.warn(
       `${yellow}Warning: Could not save secrets file: ${error}${reset}`,

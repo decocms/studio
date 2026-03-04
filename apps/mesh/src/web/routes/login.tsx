@@ -72,13 +72,21 @@ function AutoLogin({ redirectTo }: { redirectTo: string }) {
 
     (async () => {
       try {
-        const res = await fetch("/api/auth/custom/local-session", {
-          method: "POST",
-          credentials: "include",
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.error || "Auto-login failed");
+        let res: Response | undefined;
+        for (let attempt = 0; attempt < 5; attempt++) {
+          res = await fetch("/api/auth/custom/local-session", {
+            method: "POST",
+            credentials: "include",
+          });
+          if (res.ok || res.status < 500) break;
+          // Retry on 5xx with exponential backoff
+          await new Promise((r) =>
+            setTimeout(r, Math.min(1000 * 2 ** attempt, 10000)),
+          );
+        }
+        if (!res?.ok) {
+          const data = await res?.json().catch(() => ({}));
+          throw new Error(data?.error || "Auto-login failed");
         }
         if (!cancelled) {
           // Validate redirectTo to prevent open redirects.

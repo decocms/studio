@@ -146,10 +146,10 @@ export function useTaskManager() {
     orgId: org.id,
   });
 
-  // Manage active task ID with localStorage persistence
+  // Always start with a fresh chat on page load — ignore any previously stored task
   const [activeTaskId, setActiveTaskId] = useLocalStorage<string>(
     LOCALSTORAGE_KEYS.assistantChatActiveTask(locator),
-    tasks[0]?.id ?? crypto.randomUUID(),
+    () => crypto.randomUUID(),
   );
 
   // Fetch messages for the active task

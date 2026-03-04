@@ -157,6 +157,9 @@ if (values.home) {
 } else if (existsSync(defaultHome)) {
   // Default directory already exists (not first run)
   meshHome = defaultHome;
+} else if (!process.stdin.isTTY) {
+  // Non-interactive (Docker, CI, systemd) — use default without prompting
+  meshHome = defaultHome;
 } else {
   // First run with default path — ask the user
   const displayDefault = defaultHome.replace(homedir(), "~");
@@ -205,7 +208,7 @@ process.env.MESH_LOCAL_MODE = localMode ? "true" : "false";
 const secretsFilePath = join(meshHome, "secrets.json");
 
 const crypto = await import("crypto");
-const { mkdir } = await import("fs/promises");
+const { mkdir, chmod } = await import("fs/promises");
 
 interface SecretsFile {
   BETTER_AUTH_SECRET?: string;
@@ -246,7 +249,7 @@ if (!process.env.ENCRYPTION_KEY) {
   if (savedSecrets.ENCRYPTION_KEY) {
     process.env.ENCRYPTION_KEY = savedSecrets.ENCRYPTION_KEY;
   } else {
-    savedSecrets.ENCRYPTION_KEY = "";
+    savedSecrets.ENCRYPTION_KEY = crypto.randomBytes(32).toString("base64");
     process.env.ENCRYPTION_KEY = savedSecrets.ENCRYPTION_KEY;
     secretsModified = true;
   }
@@ -257,6 +260,7 @@ if (!process.env.ENCRYPTION_KEY) {
 if (secretsModified) {
   try {
     await Bun.write(secretsFilePath, JSON.stringify(savedSecrets, null, 2));
+    await chmod(secretsFilePath, 0o600);
   } catch (error) {
     console.warn(
       `${yellow}Warning: Could not save secrets file: ${error}${reset}`,

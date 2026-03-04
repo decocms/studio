@@ -83,7 +83,12 @@ export async function seedLocalMode(): Promise<boolean> {
     .execute();
 
   // Rename the auto-created org to {username}-local
-  const orgSlug = `${username}-local`;
+  // Normalize slug: lowercase, replace non-alphanumeric with hyphens, collapse/trim
+  const orgSlug = `${username}-local`
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
   const orgName = `${displayName} Local`;
   await database.db
     .updateTable("organization")
