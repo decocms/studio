@@ -143,15 +143,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version-check.outputs.current-version }}
-          name: "@decocms/mesh v${{ steps.version-check.outputs.current-version }}"
+          name: "Deco Studio v${{ steps.version-check.outputs.current-version }}"
           body: |
-            ## MCP Mesh v${{ steps.version-check.outputs.current-version }}
+            ## Deco Studio v${{ steps.version-check.outputs.current-version }}
 
-            Self-hostable Virtual MCP for managing AI connections and tools.
+            Open-source control plane for your AI agents.
 
-            ### Install via npm
+            ### Install via Bun
             ```bash
-            bunx @decocms/mesh@${{ steps.version-check.outputs.current-version }}
+            bunx decocms@${{ steps.version-check.outputs.current-version }}
             ```
 
             ### Install via Docker
@@ -175,11 +175,11 @@ jobs:
         run: |
           echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "🎉 **@decocms/mesh v${{ steps.version-check.outputs.current-version }} Released**" >> $GITHUB_STEP_SUMMARY
+          echo "🎉 **Deco Studio v${{ steps.version-check.outputs.current-version }} Released**" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### npm" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "bunx @decocms/mesh@${{ steps.version-check.outputs.current-version }}" >> $GITHUB_STEP_SUMMARY
+          echo "bunx decocms@${{ steps.version-check.outputs.current-version }}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Docker" >> $GITHUB_STEP_SUMMARY

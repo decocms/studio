@@ -603,12 +603,11 @@ function TaskStreamManager({
     }
   };
 
-  const tryResumeStream = (reason: string) => {
+  const tryResumeStream = (_reason: string) => {
     if (!taskId || hasResumedRef.current === taskId) return;
     if (resumeFailCountRef.current >= MAX_RESUME_RETRIES) return;
     hasResumedRef.current = taskId;
 
-    console.log(`[chat] resumeStream (${reason})`, taskId);
     chatRef.current.resumeStream().catch((err: unknown) => {
       console.error("[chat] resumeStream error", err);
       resumeFailCountRef.current++;

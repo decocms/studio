@@ -1,0 +1,48 @@
+{
+  "name": "decocms",
+  "version": "2.135.1",
+  "description": "Open-source control plane for your AI agents. Hire agents, connect tools, track costs.",
+  "author": "Deco team",
+  "license": "MIT",
+  "homepage": "https://github.com/decocms/mesh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/decocms/mesh.git",
+    "directory": "packages/studio"
+  },
+  "bugs": {
+    "url": "https://github.com/decocms/mesh/issues"
+  },
+  "bin": {
+    "deco": "./bin/deco.js"
+  },
+  "files": [
+    "bin/**/*"
+  ],
+  "dependencies": {
+    "@decocms/mesh": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "ai-agents",
+    "mcp",
+    "model-context-protocol",
+    "ai",
+    "gateway",
+    "self-hosted",
+    "mesh",
+    "studio",
+    "deco",
+    "decocms",
+    "cli",
+    "cursor",
+    "claude",
+    "observability",
+    "cost-tracking",
+    "integrations",
+    "oauth",
+    "rbac"
+  ]
+}
