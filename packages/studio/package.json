@@ -1,7 +1,7 @@
 {
   "name": "decocms",
   "version": "2.135.1",
-  "description": "Deco Studio - Self-hostable MCP Gateway",
+  "description": "One secure endpoint for every MCP server. Open-source MCP control plane with auth, routing, and observability.",
   "author": "Deco team",
   "license": "MIT",
   "homepage": "https://github.com/decocms/mesh",
@@ -34,6 +34,14 @@
     "mesh",
     "studio",
     "deco",
-    "decocms"
+    "decocms",
+    "cli",
+    "cursor",
+    "claude",
+    "opentelemetry",
+    "observability",
+    "rbac",
+    "oauth",
+    "proxy"
   ]
 }
