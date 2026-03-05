@@ -36,6 +36,61 @@ function hashServerUrl(url: string): string {
 }
 
 /**
+ * Override origin for OAuth redirect URIs.
+ * Set via `setOAuthRedirectOrigin()` when the browser runs behind a proxy
+ * (e.g. tokyo.localhost) that external OAuth servers may not accept.
+ */
+let _oauthRedirectOrigin: string | null = null;
+
+/**
+ * Set a custom origin for OAuth redirect URIs.
+ * Call this at app init with the server's internal URL (e.g. http://localhost:3000)
+ * so that external OAuth servers accept the redirect URI.
+ */
+export function setOAuthRedirectOrigin(origin: string): void {
+  _oauthRedirectOrigin = origin;
+}
+
+/**
+ * Get the origin to use for OAuth redirect URIs.
+ * Returns the override if set, otherwise falls back to window.location.origin.
+ */
+function getOAuthRedirectOrigin(): string {
+  return _oauthRedirectOrigin ?? window.location.origin;
+}
+
+/**
+ * Check if we're in a local dev environment (localhost or .localhost subdomain).
+ */
+function isLocalDev(): boolean {
+  const { hostname } = window.location;
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname.endsWith(".localhost")
+  );
+}
+
+/**
+ * Check if a postMessage origin is allowed.
+ * In local dev, accept both the current origin and localhost variants.
+ */
+function isAllowedOrigin(origin: string): boolean {
+  if (origin === window.location.origin) return true;
+  if (!isLocalDev()) return false;
+  try {
+    const url = new URL(origin);
+    return (
+      url.hostname === "localhost" ||
+      url.hostname === "127.0.0.1" ||
+      url.hostname.endsWith(".localhost")
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Global in-memory store for active OAuth sessions.
  */
 const activeOAuthSessions = new Map<string, McpOAuthProvider>();
@@ -89,7 +144,7 @@ class McpOAuthProvider implements OAuthClientProvider {
   constructor(options: McpOAuthProviderOptions) {
     this.serverUrl = options.serverUrl;
     this._redirectUrl =
-      options.callbackUrl ?? `${window.location.origin}/oauth/callback`;
+      options.callbackUrl ?? `${getOAuthRedirectOrigin()}/oauth/callback`;
     this._windowMode = options.windowMode ?? "popup";
 
     // Build scope string if provided
@@ -392,7 +447,7 @@ export async function authenticateMcp(params: {
 
         // Primary: Listen for postMessage from popup
         const handleMessage = async (event: MessageEvent) => {
-          if (event.origin !== window.location.origin) return;
+          if (!isAllowedOrigin(event.origin)) return;
           if (event.data?.type === "mcp:oauth:callback") {
             await processCallback(event.data);
           }
@@ -499,7 +554,11 @@ function sendCallbackData(
 ): boolean {
   // Try postMessage first (primary method)
   if (window.opener && !window.opener.closed) {
-    window.opener.postMessage(data, window.location.origin);
+    // Use "*" for local dev where redirect URI (localhost:PORT) may differ
+    // from the opener origin (e.g. proxy.localhost). This is safe because
+    // the data is just an OAuth code already visible in the URL.
+    const target = isLocalDev() ? "*" : window.location.origin;
+    window.opener.postMessage(data, target);
     return true;
   }
 
