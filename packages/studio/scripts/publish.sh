@@ -61,6 +61,7 @@ fi
 # Patch package.json: set version and pin dependency
 cd "$STUDIO_DIR"
 cp package.json package.json.bak
+trap 'mv -f "$STUDIO_DIR/package.json.bak" "$STUDIO_DIR/package.json" 2>/dev/null; echo "🔄 Restored workspace:* dependency in package.json"' EXIT
 
 node -e "
 const pkg = require('./package.json');
@@ -86,6 +87,4 @@ else
   echo "✅ Published @decocms/studio@$MESH_VERSION"
 fi
 
-# Restore workspace dependency
-mv package.json.bak package.json
-echo "🔄 Restored workspace:* dependency in package.json"
+# Trap handler restores package.json on exit

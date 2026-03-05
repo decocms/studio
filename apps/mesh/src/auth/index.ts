@@ -27,6 +27,7 @@ import {
   defaultStatements,
 } from "better-auth/plugins/organization/access";
 
+import { isLocalMode } from "@/auth/local-mode";
 import { config } from "@/core/config";
 import { getBaseUrl } from "@/core/server-constants";
 import { createAccessControl, Role } from "@decocms/better-auth/plugins/access";
@@ -323,11 +324,13 @@ function getTrustedOrigins(): string[] {
   } else if (url.hostname === "127.0.0.1") {
     origins.push(baseUrl.replace("127.0.0.1", "localhost"));
   }
-  // In dev, also trust localhost:PORT when BASE_URL uses a custom hostname (e.g. worktree proxies)
-  const port = process.env.PORT || "3000";
-  const localhostOrigin = `http://localhost:${port}`;
-  if (!origins.includes(localhostOrigin)) {
-    origins.push(localhostOrigin);
+  // In local mode, also trust localhost:PORT when BASE_URL uses a custom hostname (e.g. worktree proxies)
+  if (isLocalMode()) {
+    const port = process.env.PORT || "3000";
+    const localhostOrigin = `http://localhost:${port}`;
+    if (!origins.includes(localhostOrigin)) {
+      origins.push(localhostOrigin);
+    }
   }
   return origins;
 }
