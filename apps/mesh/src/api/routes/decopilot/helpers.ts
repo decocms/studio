@@ -183,6 +183,9 @@ export async function validateThreadOwnership(
   }
   const organization = ensureOrganization(c);
   const threadId = c.req.param("threadId");
+  if (!threadId) {
+    throw new HTTPException(400, { message: "Missing thread ID" });
+  }
   if (/[.*>\s]/.test(threadId)) {
     throw new HTTPException(400, { message: "Invalid thread ID" });
   }

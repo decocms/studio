@@ -60,6 +60,9 @@ export function mountDevRoutes(
       const url = new URL(c.req.url);
       const baseUrl = `${url.protocol}//${url.host}`;
       const toolName = c.req.param("toolName");
+      if (!toolName) {
+        return c.json({ error: "Missing tool name" }, 400);
+      }
       const args = (await c.req.json()) as Record<string, unknown>;
 
       const result = await callDevAssetsTool(toolName, args, ctx, baseUrl);

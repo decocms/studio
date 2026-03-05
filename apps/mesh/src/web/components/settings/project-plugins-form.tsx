@@ -14,7 +14,6 @@ import { Container } from "@untitledui/icons";
 import { sourcePlugins } from "@/web/plugins";
 import { pluginSidebarGroups } from "@/web/index";
 import type { AnyClientPlugin } from "@decocms/bindings/plugins";
-import { VTEX_REORDER_COLLECTION_BINDING } from "@decocms/bindings";
 import { BindingSelector } from "@/web/components/binding-selector";
 
 type ProjectUpdateOutput = {
@@ -87,18 +86,12 @@ function pluginRequiresMcpBinding(plugin: AnyClientPlugin): boolean {
 }
 
 type PendingBindings = Record<string, string | null>;
-type PendingVtexBindingEntry = {
-  value: string | null;
-  baseSettings: Record<string, unknown> | null;
-};
-type PendingVtexBindings = Record<string, PendingVtexBindingEntry>;
 
 type PluginRowProps = {
   plugin: AnyClientPlugin;
   isEnabled: boolean;
   isSaving: boolean;
   pendingBinding: string | null | undefined;
-  pendingVtexBinding: PendingVtexBindingEntry | undefined;
   description: string | null;
   label: string;
   icon?: ReactNode;
@@ -109,12 +102,6 @@ type PluginRowProps = {
     value: string | null,
     serverValue: string | null,
   ) => void;
-  onVtexBindingChange: (
-    pluginId: string,
-    value: string | null,
-    serverValue: string | null,
-    baseSettings: Record<string, unknown> | null,
-  ) => void;
   onToggle: (pluginId: string, enabled: boolean) => void;
 };
 
@@ -123,14 +110,12 @@ function PluginRow({
   isEnabled,
   isSaving,
   pendingBinding,
-  pendingVtexBinding,
   description,
   label,
   icon,
   projectId,
   client,
   onBindingChange,
-  onVtexBindingChange,
   onToggle,
 }: PluginRowProps) {
   const needsBinding = pluginRequiresMcpBinding(plugin);
@@ -156,20 +141,6 @@ function PluginRow({
   const serverConnectionId = configData?.config?.connectionId ?? null;
   const selectorValue =
     pendingBinding !== undefined ? pendingBinding : serverConnectionId;
-  const serverSettings =
-    configData?.config?.settings &&
-    typeof configData.config.settings === "object"
-      ? (configData.config.settings as Record<string, unknown>)
-      : null;
-  const serverVtexConnectionId =
-    typeof serverSettings?.vtexConnectionId === "string"
-      ? serverSettings.vtexConnectionId
-      : null;
-  const vtexSelectorValue =
-    pendingVtexBinding !== undefined
-      ? pendingVtexBinding.value
-      : serverVtexConnectionId;
-  const isCollectionReorderPlugin = plugin.id === "collection-reorder-ranking";
 
   return (
     <div
@@ -222,27 +193,6 @@ function PluginRow({
               disabled={isSaving || isConfigLoading}
             />
           </div>
-
-          {isCollectionReorderPlugin && (
-            <div className="flex items-center gap-3">
-              <Label className="text-xs text-muted-foreground w-24">VTEX</Label>
-              <BindingSelector
-                value={vtexSelectorValue ?? null}
-                onValueChange={(value) =>
-                  onVtexBindingChange(
-                    plugin.id,
-                    value,
-                    serverVtexConnectionId,
-                    serverSettings,
-                  )
-                }
-                binding={VTEX_REORDER_COLLECTION_BINDING}
-                placeholder="Select VTEX connection..."
-                className="w-56"
-                disabled={isSaving || isConfigLoading}
-              />
-            </div>
-          )}
         </div>
       )}
     </div>
@@ -263,8 +213,6 @@ export function ProjectPluginsForm() {
     {},
   );
   const [pendingBindings, setPendingBindings] = useState<PendingBindings>({});
-  const [pendingVtexBindings, setPendingVtexBindings] =
-    useState<PendingVtexBindings>({});
   const [isSaving, setIsSaving] = useState(false);
 
   const serverPlugins = project.enabledPlugins ?? [];
@@ -294,8 +242,7 @@ export function ProjectPluginsForm() {
   // Check if there are unsaved changes
   const hasChanges =
     Object.keys(pendingChanges).length > 0 ||
-    Object.keys(pendingBindings).length > 0 ||
-    Object.keys(pendingVtexBindings).length > 0;
+    Object.keys(pendingBindings).length > 0;
 
   const handleTogglePlugin = (pluginId: string, enabled: boolean) => {
     const serverEnabled = serverPlugins.includes(pluginId);
@@ -326,26 +273,6 @@ export function ProjectPluginsForm() {
     }
 
     setPendingBindings((prev) => ({ ...prev, [pluginId]: value }));
-  };
-
-  const handleVtexBindingChange = (
-    pluginId: string,
-    value: string | null,
-    serverValue: string | null,
-    baseSettings: Record<string, unknown> | null,
-  ) => {
-    if (value === serverValue) {
-      setPendingVtexBindings((prev) => {
-        const { [pluginId]: _, ...rest } = prev;
-        return rest;
-      });
-      return;
-    }
-
-    setPendingVtexBindings((prev) => ({
-      ...prev,
-      [pluginId]: { value, baseSettings },
-    }));
   };
 
   const mutation = useMutation({
@@ -411,7 +338,6 @@ export function ProjectPluginsForm() {
 
       setPendingChanges({});
       setPendingBindings({});
-      setPendingVtexBindings({});
       toast.success("Plugins updated successfully");
     },
     onError: (error) => {
@@ -427,29 +353,14 @@ export function ProjectPluginsForm() {
 
   const handleSave = () => {
     setIsSaving(true);
-    const pluginIdsWithBindingChanges = new Set([
-      ...Object.keys(pendingBindings),
-      ...Object.keys(pendingVtexBindings),
-    ]);
-    const bindingUpdates = Array.from(pluginIdsWithBindingChanges).map(
-      (pluginId) => {
-        const pendingConnectionId = pendingBindings[pluginId];
-        const pendingVtex = pendingVtexBindings[pluginId];
-        const settings = pendingVtex
-          ? {
-              ...(pendingVtex.baseSettings ?? {}),
-              vtexConnectionId: pendingVtex.value,
-            }
-          : undefined;
-
-        return {
-          pluginId,
-          connectionId:
-            pendingConnectionId !== undefined ? pendingConnectionId : undefined,
-          settings,
-        };
-      },
-    );
+    const bindingUpdates = Object.keys(pendingBindings).map((pluginId) => {
+      const pendingConnectionId = pendingBindings[pluginId];
+      return {
+        pluginId,
+        connectionId:
+          pendingConnectionId !== undefined ? pendingConnectionId : undefined,
+      };
+    });
 
     mutation.mutate({
       enabledPlugins: getEnabledPluginsList(),
@@ -461,7 +372,6 @@ export function ProjectPluginsForm() {
   const handleCancel = () => {
     setPendingChanges({});
     setPendingBindings({});
-    setPendingVtexBindings({});
   };
 
   // Get plugin metadata from sidebar groups
@@ -498,14 +408,12 @@ export function ProjectPluginsForm() {
               isEnabled={isEnabled}
               isSaving={isSaving}
               pendingBinding={pendingBindings[plugin.id]}
-              pendingVtexBinding={pendingVtexBindings[plugin.id]}
               description={description}
               label={meta?.label ?? plugin.id}
               icon={meta?.icon ?? <Container size={14} />}
               projectId={project.id}
               client={client}
               onBindingChange={handleBindingChange}
-              onVtexBindingChange={handleVtexBindingChange}
               onToggle={handleTogglePlugin}
             />
           );
