@@ -10,131 +10,39 @@
  *   bun run migrate && concurrently "bun run dev:client" "bun run dev:server"
  */
 
-import { existsSync } from "fs";
-import { chmod, mkdir } from "fs/promises";
-import { createInterface } from "readline";
-import { homedir } from "os";
 import { join } from "path";
-import { randomBytes } from "crypto";
 import { spawn } from "child_process";
+
+import {
+  ansi,
+  loadOrCreateSecrets,
+  resolveMeshHome,
+  printBanner,
+  printStatus,
+} from "./bootstrap";
 
 // ============================================================================
 // Resolve MESH_HOME
 // ============================================================================
 
-// When MESH_HOME is explicitly set, respect it (CI, tests, custom setups).
-// Otherwise default to ~/deco for interactive dev.
 const meshAppDir = join(import.meta.dir, "..");
-const explicitHome = process.env.MESH_HOME;
-const userHome = join(homedir(), "deco");
+const userHome = join((await import("os")).homedir(), "deco");
 // In CI / non-TTY without explicit MESH_HOME, use a repo-local directory
 // so tests never touch the developer's real ~/deco data.
 const ciHome = join(meshAppDir, ".mesh-dev");
 
-const dim = "\x1b[2m";
-const reset = "\x1b[0m";
-const bold = "\x1b[1m";
-const cyan = "\x1b[36m";
-const yellow = "\x1b[33m";
-const green = "\x1b[32m";
-
-function prompt(question: string): Promise<string> {
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise((resolve) => {
-    rl.question(question, (answer) => {
-      rl.close();
-      resolve(answer.trim());
-    });
-  });
-}
-
-let meshHome: string;
-
-if (explicitHome) {
-  // Explicit MESH_HOME takes priority (CI, tests, custom setups)
-  meshHome = explicitHome;
-} else if (!process.stdin.isTTY) {
-  // Non-interactive (CI) — use repo-local directory to avoid touching ~/deco
-  meshHome = ciHome;
-} else if (existsSync(userHome)) {
-  // Interactive with existing ~/deco — use it
-  meshHome = userHome;
-} else {
-  // Interactive, first run — prompt for location
-  const displayDefault = userHome.replace(homedir(), "~");
-  console.log("");
-  console.log(`${bold}${cyan}Deco Studio${reset} ${dim}(dev)${reset}`);
-  console.log("");
-  const answer = await prompt(
-    `  Where should Deco store its data? ${dim}(${displayDefault})${reset} `,
-  );
-  if (answer === "") {
-    meshHome = userHome;
-  } else {
-    meshHome =
-      answer === "~"
-        ? homedir()
-        : answer.startsWith("~/")
-          ? join(homedir(), answer.slice(2))
-          : answer;
-  }
-}
+const meshHome = await resolveMeshHome({
+  explicit: process.env.MESH_HOME,
+  defaultPath: userHome,
+  ciFallback: ciHome,
+  banner: `${ansi.bold}${ansi.cyan}Deco Studio${ansi.reset} ${ansi.dim}(dev)${ansi.reset}`,
+});
 
 // ============================================================================
-// Secrets management (same logic as src/cli.ts)
+// Secrets management
 // ============================================================================
 
-await mkdir(meshHome, { recursive: true, mode: 0o700 });
-
-const secretsFilePath = join(meshHome, "secrets.json");
-
-interface SecretsFile {
-  BETTER_AUTH_SECRET?: string;
-  ENCRYPTION_KEY?: string;
-}
-
-let savedSecrets: SecretsFile = {};
-try {
-  const file = Bun.file(secretsFilePath);
-  if (await file.exists()) {
-    savedSecrets = await file.json();
-  }
-} catch {
-  // File doesn't exist or is invalid — will create new secrets
-}
-
-let secretsModified = false;
-
-if (!process.env.BETTER_AUTH_SECRET) {
-  if (savedSecrets.BETTER_AUTH_SECRET) {
-    process.env.BETTER_AUTH_SECRET = savedSecrets.BETTER_AUTH_SECRET;
-  } else {
-    savedSecrets.BETTER_AUTH_SECRET = randomBytes(32).toString("base64");
-    process.env.BETTER_AUTH_SECRET = savedSecrets.BETTER_AUTH_SECRET;
-    secretsModified = true;
-  }
-}
-
-if (!process.env.ENCRYPTION_KEY) {
-  if (savedSecrets.ENCRYPTION_KEY) {
-    process.env.ENCRYPTION_KEY = savedSecrets.ENCRYPTION_KEY;
-  } else {
-    savedSecrets.ENCRYPTION_KEY = randomBytes(32).toString("base64");
-    process.env.ENCRYPTION_KEY = savedSecrets.ENCRYPTION_KEY;
-    secretsModified = true;
-  }
-}
-
-if (secretsModified) {
-  try {
-    await Bun.write(secretsFilePath, JSON.stringify(savedSecrets, null, 2));
-    await chmod(secretsFilePath, 0o600);
-  } catch (error) {
-    console.warn(
-      `${yellow}Warning: Could not save secrets file: ${error}${reset}`,
-    );
-  }
-}
+await loadOrCreateSecrets(meshHome);
 
 // ============================================================================
 // Set environment variables
@@ -149,20 +57,17 @@ process.env.MESH_LOCAL_MODE = process.env.MESH_LOCAL_MODE ?? "true";
 // Banner
 // ============================================================================
 
-const displayHome = meshHome.replace(homedir(), "~");
+printBanner({
+  meshHome,
+  localMode: true,
+  label: `Deco Studio ${ansi.dim}(dev)${ansi.reset}`,
+});
 
-console.log("");
-console.log(`${bold}${cyan}Deco Studio${reset} ${dim}(dev)${reset}`);
-console.log("");
-console.log(
-  `${bold}  Mode:     ${green}Local${reset}${bold} (auto-login enabled)${reset}`,
-);
-console.log(`${bold}  Home:     ${dim}${displayHome}/${reset}`);
-console.log(`${bold}  Database: ${dim}${displayHome}/mesh.db${reset}`);
-if (process.env.BASE_URL) {
-  console.log(`${bold}  URL:      ${dim}${process.env.BASE_URL}${reset}`);
-}
-console.log("");
+printStatus({
+  meshHome,
+  localMode: true,
+  baseUrl: process.env.BASE_URL,
+});
 
 // ============================================================================
 // Spawn the dev pipeline

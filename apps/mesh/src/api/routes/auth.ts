@@ -11,8 +11,8 @@ import { authConfig, resetPasswordEnabled } from "../../auth";
 import { KNOWN_OAUTH_PROVIDERS, OAuthProvider } from "@/auth/oauth-providers";
 import {
   getLocalAdminUser,
+  getLocalAdminPassword,
   isLocalMode,
-  LOCAL_ADMIN_PASSWORD,
 } from "@/auth/local-mode";
 
 const app = new Hono();
@@ -161,10 +161,11 @@ app.post("/local-session", async (c) => {
     }
 
     // Sign in as the local admin user
+    const password = await getLocalAdminPassword();
     const result = await auth.api.signInEmail({
       body: {
         email: adminUser.email,
-        password: LOCAL_ADMIN_PASSWORD,
+        password,
       },
       asResponse: true,
     });

@@ -2,13 +2,11 @@
 /**
  * Deco Studio CLI Entry Point
  *
- * Deco Studio CLI Entry Point
- *
- * This script serves as the bin entry point for `npx decocms` / `deco`.
+ * This script serves as the bin entry point for `bunx decocms` / `deco`.
  * It runs database migrations, seeds the local environment, and starts the server.
  *
  * Usage:
- *   npx decocms
+ *   bunx decocms
  *   deco --port 8080
  *   deco --home ~/my-mesh
  *   deco --no-local-mode
@@ -19,7 +17,14 @@ import { parseArgs } from "util";
 import { homedir } from "os";
 import { join } from "path";
 import { existsSync } from "fs";
-import { createInterface } from "readline";
+
+import {
+  ansi,
+  loadOrCreateSecrets,
+  resolveMeshHome,
+  printBanner,
+  printStatus,
+} from "../scripts/bootstrap";
 
 const defaultHome = process.env.MESH_HOME || join(homedir(), "deco");
 
@@ -122,68 +127,17 @@ if (values.version) {
 // Setup environment
 // ============================================================================
 
-// Set PORT environment variable for the server
 process.env.PORT = values.port;
 
-// ANSI color codes (needed early for the prompt)
-const dim = "\x1b[2m";
-const reset = "\x1b[0m";
-const bold = "\x1b[1m";
-const cyan = "\x1b[36m";
-const yellow = "\x1b[33m";
-const green = "\x1b[32m";
-
 // ============================================================================
-// Resolve MESH_HOME — prompt on first run if using default
+// Resolve MESH_HOME
 // ============================================================================
 
-/**
- * Prompt the user for input via readline.
- */
-function prompt(question: string): Promise<string> {
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise((resolve) => {
-    rl.question(question, (answer) => {
-      rl.close();
-      resolve(answer.trim());
-    });
-  });
-}
-
-let meshHome: string;
-
-if (values.home) {
-  // Explicitly passed via --home flag — expand ~ to home directory
-  meshHome = values.home.startsWith("~")
-    ? join(homedir(), values.home.slice(1))
-    : values.home;
-} else if (existsSync(defaultHome)) {
-  // Default directory already exists (not first run)
-  meshHome = defaultHome;
-} else if (!process.stdin.isTTY) {
-  // Non-interactive (Docker, CI, systemd) — use default without prompting
-  meshHome = defaultHome;
-} else {
-  // First run with default path — ask the user
-  const displayDefault = defaultHome.replace(homedir(), "~");
-  console.log("");
-  console.log(`${bold}${cyan}Deco Studio${reset}`);
-  console.log("");
-  const answer = await prompt(
-    `  Where should Deco store its data? ${dim}(${displayDefault})${reset} `,
-  );
-  if (answer === "") {
-    meshHome = defaultHome;
-  } else {
-    // Expand ~ to home directory (only bare ~ or ~/path, not ~user)
-    meshHome =
-      answer === "~"
-        ? homedir()
-        : answer.startsWith("~/")
-          ? join(homedir(), answer.slice(2))
-          : answer;
-  }
-}
+const meshHome = await resolveMeshHome({
+  explicit: values.home || process.env.MESH_HOME,
+  defaultPath: defaultHome,
+  banner: `${ansi.bold}${ansi.cyan}Deco Studio${ansi.reset}`,
+});
 
 process.env.MESH_HOME = meshHome;
 
@@ -208,93 +162,27 @@ const hasCustomAuthConfig =
 const localMode = !values["no-local-mode"] && !hasCustomAuthConfig;
 process.env.MESH_LOCAL_MODE = localMode ? "true" : "false";
 
+// CLI is the intended local runner — allow local mode even when NODE_ENV=production
+if (localMode) {
+  process.env.MESH_ALLOW_LOCAL_PROD = "true";
+}
+
 // ============================================================================
 // Secrets management
 // ============================================================================
 
-const secretsFilePath = join(meshHome, "secrets.json");
-
-const crypto = await import("crypto");
-const { mkdir, chmod } = await import("fs/promises");
-
-interface SecretsFile {
-  BETTER_AUTH_SECRET?: string;
-  ENCRYPTION_KEY?: string;
-}
-
-// Ensure MESH_HOME directory exists
-await mkdir(meshHome, { recursive: true, mode: 0o700 });
-
-// Try to load existing secrets from file
-let savedSecrets: SecretsFile = {};
-try {
-  const file = Bun.file(secretsFilePath);
-  if (await file.exists()) {
-    savedSecrets = await file.json();
-  }
-} catch {
-  // File doesn't exist or is invalid, will create new secrets
-}
-
-// Track which secrets are from file vs env (independently)
-let betterAuthFromFile = false;
-let encryptionKeyFromFile = false;
-let secretsModified = false;
-
-if (!process.env.BETTER_AUTH_SECRET) {
-  if (savedSecrets.BETTER_AUTH_SECRET) {
-    process.env.BETTER_AUTH_SECRET = savedSecrets.BETTER_AUTH_SECRET;
-  } else {
-    savedSecrets.BETTER_AUTH_SECRET = crypto.randomBytes(32).toString("base64");
-    process.env.BETTER_AUTH_SECRET = savedSecrets.BETTER_AUTH_SECRET;
-    secretsModified = true;
-  }
-  betterAuthFromFile = true;
-}
-
-if (!process.env.ENCRYPTION_KEY) {
-  if (savedSecrets.ENCRYPTION_KEY) {
-    process.env.ENCRYPTION_KEY = savedSecrets.ENCRYPTION_KEY;
-  } else {
-    savedSecrets.ENCRYPTION_KEY = crypto.randomBytes(32).toString("base64");
-    process.env.ENCRYPTION_KEY = savedSecrets.ENCRYPTION_KEY;
-    secretsModified = true;
-  }
-  encryptionKeyFromFile = true;
-}
-
-// Save secrets to file if we generated new ones
-if (secretsModified) {
-  try {
-    await Bun.write(secretsFilePath, JSON.stringify(savedSecrets, null, 2));
-    await chmod(secretsFilePath, 0o600);
-  } catch (error) {
-    console.warn(
-      `${yellow}Warning: Could not save secrets file: ${error}${reset}`,
-    );
-  }
-}
+const { betterAuthFromFile, encryptionKeyFromFile } =
+  await loadOrCreateSecrets(meshHome);
 
 // ============================================================================
 // Startup banner
 // ============================================================================
 
-const displayHome = meshHome.replace(homedir(), "~");
-
-console.log("");
-console.log(`${bold}${cyan}Deco Studio${reset}`);
-console.log(`${dim}Open-source control plane for your AI agents${reset}`);
-console.log("");
-
-if (betterAuthFromFile || encryptionKeyFromFile) {
-  console.log(
-    `${dim}Using generated secrets from: ${displayHome}/secrets.json${reset}`,
-  );
-  console.log(
-    `${dim}For production, set BETTER_AUTH_SECRET and ENCRYPTION_KEY env vars.${reset}`,
-  );
-  console.log("");
-}
+printBanner({
+  meshHome,
+  localMode,
+  showSecretHint: betterAuthFromFile || encryptionKeyFromFile,
+});
 
 // ============================================================================
 // Build frontend if needed (when running from source)
@@ -306,7 +194,7 @@ if (betterAuthFromFile || encryptionKeyFromFile) {
   const clientIndexPath = join(clientDistDir, "index.html");
 
   if (!existsSync(clientIndexPath)) {
-    console.log(`${dim}Building frontend (first run)...${reset}`);
+    console.log(`${ansi.dim}Building frontend (first run)...${ansi.reset}`);
     const { execSync } = await import("child_process");
     // Resolve apps/mesh directory — works whether running from src/ or dist/server/
     const meshAppDir = existsSync(join(scriptDir, "../vite.config.ts"))
@@ -321,10 +209,10 @@ if (betterAuthFromFile || encryptionKeyFromFile) {
           cwd: meshAppDir,
           stdio: ["ignore", "pipe", "pipe"],
         });
-        console.log(`${dim}Frontend build complete.${reset}`);
-      } catch (error) {
+        console.log(`${ansi.dim}Frontend build complete.${ansi.reset}`);
+      } catch {
         console.warn(
-          `${yellow}Warning: Could not build frontend. UI may not be available.${reset}`,
+          `${ansi.yellow}Warning: Could not build frontend. UI may not be available.${ansi.reset}`,
         );
       }
     }
@@ -336,11 +224,11 @@ if (betterAuthFromFile || encryptionKeyFromFile) {
 // ============================================================================
 
 if (!values["skip-migrations"]) {
-  console.log(`${dim}Running database migrations...${reset}`);
+  console.log(`${ansi.dim}Running database migrations...${ansi.reset}`);
   try {
     const { migrateToLatest } = await import("./database/migrate");
     await migrateToLatest({ keepOpen: true });
-    console.log(`${dim}Migrations complete.${reset}`);
+    console.log(`${ansi.dim}Migrations complete.${ansi.reset}`);
   } catch (error) {
     console.error("Failed to run migrations:", error);
     process.exit(1);
@@ -351,20 +239,12 @@ if (!values["skip-migrations"]) {
 // Print final status and start server
 // ============================================================================
 
-const port = values.port;
-console.log("");
-console.log(
-  `${bold}  Mode:     ${localMode ? `${green}Local${reset}${bold} (auto-login enabled)` : "Standard (login required)"}${reset}`,
-);
-console.log(`${bold}  Home:     ${dim}${displayHome}/${reset}`);
-console.log(`${bold}  Database: ${dim}${displayHome}/mesh.db${reset}`);
-if (localMode) {
-  console.log(`${bold}  Assets:   ${dim}${displayHome}/assets/${reset}`);
-}
-console.log(
-  `${bold}  URL:      ${dim}${process.env.BASE_URL || `http://localhost:${port}`}${reset}`,
-);
-console.log("");
+printStatus({
+  meshHome,
+  localMode,
+  port: values.port,
+  showAssets: true,
+});
 
 // Import and start the server
 await import("./index");

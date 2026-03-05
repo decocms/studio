@@ -9,13 +9,32 @@
 
 import { getDb } from "@/database";
 import { userInfo } from "os";
+import { join } from "path";
 import { auth } from "./index";
 
-// Internal password for the auto-seeded local admin user.
-// Security note: this value is NOT the security boundary — the /local-session
-// endpoint is protected by a loopback-only check (see auth routes), so only
-// requests from localhost/127.0.0.1 can use it.
-export const LOCAL_ADMIN_PASSWORD = "admin@mesh";
+/**
+ * Get the per-install local admin password from secrets.json.
+ * Falls back to a default if secrets.json is unavailable (should not happen
+ * in normal CLI flow since loadOrCreateSecrets() runs first).
+ */
+export async function getLocalAdminPassword(): Promise<string> {
+  const meshHome = process.env.MESH_HOME;
+  if (meshHome) {
+    try {
+      const file = Bun.file(join(meshHome, "secrets.json"));
+      if (await file.exists()) {
+        const secrets = await file.json();
+        if (secrets.LOCAL_ADMIN_PASSWORD) {
+          return secrets.LOCAL_ADMIN_PASSWORD;
+        }
+      }
+    } catch {
+      // Fall through to default
+    }
+  }
+  // Fallback — only reachable if secrets.json wasn't written yet
+  return "admin@mesh";
+}
 
 function getLocalUserName(): string {
   try {
@@ -60,6 +79,7 @@ export async function seedLocalMode(): Promise<boolean> {
   const username = getLocalUserName();
   const email = `${username}@localhost.mesh`;
   const displayName = capitalize(username);
+  const password = await getLocalAdminPassword();
 
   // Create admin user via Better Auth signup.
   // The databaseHooks.user.create.after hook in auth/index.ts will
@@ -67,7 +87,7 @@ export async function seedLocalMode(): Promise<boolean> {
   const signUpResult = await auth.api.signUpEmail({
     body: {
       email,
-      password: LOCAL_ADMIN_PASSWORD,
+      password,
       name: displayName,
     },
   });
@@ -126,10 +146,14 @@ export function isLocalMode(): boolean {
   return process.env.MESH_LOCAL_MODE === "true";
 }
 
-// Seed readiness gate — local-session waits for this before granting access
+// Seed readiness gate — local-session waits for this before granting access.
+// Resolves immediately if not in local mode (no seeding to wait for).
 let _seedResolve: () => void;
 const _seedReady = new Promise<void>((resolve) => {
   _seedResolve = resolve;
+  if (!isLocalMode()) {
+    resolve();
+  }
 });
 
 /** Mark local-mode seeding as complete. Called from index.ts after seedLocalMode(). */
@@ -137,7 +161,7 @@ export function markSeedComplete(): void {
   _seedResolve();
 }
 
-/** Wait for local-mode seeding to finish. No-op if already complete. */
+/** Wait for local-mode seeding to finish. No-op if already complete or not in local mode. */
 export function waitForSeed(): Promise<void> {
   return _seedReady;
 }

@@ -31,6 +31,21 @@ const underline = "\x1b[4m";
 
 const url = process.env.BASE_URL || `http://localhost:${port}`;
 
+// Refuse local mode in production — it disables authentication
+if (
+  process.env.MESH_LOCAL_MODE === "true" &&
+  process.env.NODE_ENV === "production" &&
+  !process.env.MESH_ALLOW_LOCAL_PROD
+) {
+  console.error(
+    "\x1b[31mError: Local mode is not allowed in production (NODE_ENV=production).\x1b[0m",
+  );
+  console.error(
+    "Set MESH_ALLOW_LOCAL_PROD=true to override (not recommended).",
+  );
+  process.exit(1);
+}
+
 // Create asset handler - handles both dev proxy and production static files
 // When running from source (src/index.ts), the "../client" relative path
 // doesn't resolve to dist/client/. Fall back to dist/client/ relative to CWD.
@@ -72,8 +87,8 @@ Bun.serve({
 // This must run after Bun.serve() so that the org seed can fetch tools
 // from the self MCP endpoint (http://localhost:PORT/mcp/self)
 if (process.env.MESH_LOCAL_MODE === "true") {
-  import("./auth/local-mode").then(
-    async ({ seedLocalMode, markSeedComplete }) => {
+  import("./auth/local-mode")
+    .then(async ({ seedLocalMode, markSeedComplete }) => {
       try {
         const seeded = await seedLocalMode();
         if (seeded) {
@@ -84,8 +99,10 @@ if (process.env.MESH_LOCAL_MODE === "true") {
       } finally {
         markSeedComplete();
       }
-    },
-  );
+    })
+    .catch((error) => {
+      console.error("Failed to load local-mode module:", error);
+    });
 }
 
 // Internal debug server (only enabled via ENABLE_DEBUG_SERVER=true)

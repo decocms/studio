@@ -554,10 +554,12 @@ function sendCallbackData(
 ): boolean {
   // Try postMessage first (primary method)
   if (window.opener && !window.opener.closed) {
-    // Use "*" for local dev where redirect URI (localhost:PORT) may differ
-    // from the opener origin (e.g. proxy.localhost). This is safe because
-    // the data is just an OAuth code already visible in the URL.
-    const target = isLocalDev() ? "*" : window.location.origin;
+    // In local dev the redirect URI (localhost:PORT) may differ from the
+    // opener origin (e.g. proxy.localhost). Use the configured redirect origin
+    // so the message is scoped to a known origin rather than "*".
+    const target = isLocalDev()
+      ? getOAuthRedirectOrigin()
+      : window.location.origin;
     window.opener.postMessage(data, target);
     return true;
   }
