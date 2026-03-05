@@ -128,7 +128,16 @@ async function createMCPProxyDoNotUseDirectly(
   if (ctx.organization && connection.organization_id !== ctx.organization.id) {
     throw new Error("Connection does not belong to the active organization");
   }
-  ctx.organization ??= { id: connection.organization_id };
+  if (!ctx.organization) {
+    const org = await ctx.db
+      .selectFrom("organization")
+      .select(["id", "slug", "name"])
+      .where("id", "=", connection.organization_id)
+      .executeTakeFirst();
+    ctx.organization = org
+      ? { id: org.id, slug: org.slug, name: org.name }
+      : { id: connection.organization_id };
+  }
 
   // Check connection status
   if (connection.status !== "active") {
