@@ -41,6 +41,24 @@ function detectTheme(): "light" | "dark" {
     : "light";
 }
 
+function detectLocale(): string {
+  if (typeof navigator === "undefined") return "en";
+  return navigator.language ?? "en";
+}
+
+function detectTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    return "UTC";
+  }
+}
+
+function detectPlatform(): "web" | "desktop" | "mobile" {
+  if (typeof navigator === "undefined") return "web";
+  return /Mobi|Android/i.test(navigator.userAgent) ? "mobile" : "web";
+}
+
 function buildHostContext(
   displayMode: McpUiDisplayMode,
   toolInfo?: McpUiHostContext["toolInfo"],
@@ -50,6 +68,9 @@ function buildHostContext(
     theme: detectTheme(),
     displayMode,
     availableDisplayModes: ["inline", "fullscreen"],
+    locale: detectLocale(),
+    timeZone: detectTimeZone(),
+    platform: detectPlatform(),
     ...(toolInfo != null && { toolInfo }),
     ...(maxHeight != null && {
       containerDimensions: { maxHeight },
