@@ -10,7 +10,6 @@
  *   bunx @decocms/mesh --port 8080
  *   bunx @decocms/mesh --help
  */
-
 import { parseArgs } from "util";
 
 const { values } = parseArgs({
