@@ -21,6 +21,10 @@
       ],
       "ignore": ["src/api/index.ts"]
     },
+    "packages/studio": {
+      // Runtime dependency resolved via require() in bin/deco.js
+      "ignoreDependencies": ["@decocms/mesh"]
+    },
     "packages/mesh-sdk": {
       "ignoreDependencies": ["sonner"]
     },
