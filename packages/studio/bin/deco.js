@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // Re-export the @decocms/mesh CLI entry point.
-// This wrapper package exists so that `bunx @decocms/studio` works
+// This wrapper package exists so that `npx decocms` / `deco` works
 // while the canonical package remains @decocms/mesh.
 
 const { execFileSync } = require("child_process");

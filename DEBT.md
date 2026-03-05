@@ -22,11 +22,12 @@ The auto-auth flow (install OpenRouter → OAuth popup → chat ready) lives on
 - Key files: `apps/mesh/src/web/lib/authenticate-connection.ts`,
   `apps/mesh/src/web/components/chat/no-llm-binding-empty-state.tsx`
 
-## @decocms/studio package rename
+## decocms package rename
 
-`packages/studio/` is a thin wrapper that depends on `@decocms/mesh`. Eventually
-the source should move to `@decocms/studio` as the canonical package and
-`@decocms/mesh` becomes the wrapper (or is deprecated).
+`packages/studio/` publishes as `decocms` on npm (`npx decocms` / `deco` CLI).
+It's a thin wrapper that depends on `@decocms/mesh`. Eventually the source
+should move to `decocms` as the canonical package and `@decocms/mesh` becomes
+the wrapper (or is deprecated).
 
 ## Password migration for local admin
 

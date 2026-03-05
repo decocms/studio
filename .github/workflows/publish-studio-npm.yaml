@@ -1,4 +1,4 @@
-name: Publish @decocms/studio
+name: Publish decocms
 
 on:
   push:
@@ -44,12 +44,12 @@ jobs:
         id: check
         run: |
           VERSION=${{ steps.mesh-version.outputs.version }}
-          if npm view "@decocms/studio@$VERSION" version >/dev/null 2>&1; then
+          if npm view "decocms@$VERSION" version >/dev/null 2>&1; then
             echo "skip=true" >> $GITHUB_OUTPUT
-            echo "⏭️ @decocms/studio@$VERSION already published"
+            echo "⏭️ decocms@$VERSION already published"
           else
             echo "skip=false" >> $GITHUB_OUTPUT
-            echo "✅ Will publish @decocms/studio@$VERSION"
+            echo "✅ Will publish decocms@$VERSION"
           fi
 
       - name: Patch studio package.json

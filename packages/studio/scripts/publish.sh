@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Publish @decocms/studio as a wrapper for @decocms/mesh.
+# Publish `decocms` as a wrapper for @decocms/mesh.
 #
 # This script:
 #   1. Reads the current @decocms/mesh version
 #   2. Patches packages/studio/package.json to use that exact version
-#   3. Publishes @decocms/studio to npm with the same version & tag
+#   3. Publishes `decocms` to npm with the same version & tag
 #   4. Restores the workspace:* dependency afterward
 #
 # Usage:
@@ -53,8 +53,8 @@ fi
 echo "🏷️  npm tag: $NPM_TAG"
 
 # Check if already published
-if npm view "@decocms/studio@$MESH_VERSION" version >/dev/null 2>&1; then
-  echo "⏭️  @decocms/studio@$MESH_VERSION already published, skipping."
+if npm view "decocms@$MESH_VERSION" version >/dev/null 2>&1; then
+  echo "⏭️  decocms@$MESH_VERSION already published, skipping."
   exit 0
 fi
 
@@ -70,7 +70,7 @@ pkg.dependencies['@decocms/mesh'] = '$MESH_VERSION';
 require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
 "
 
-echo "✅ Patched studio package.json → v$MESH_VERSION"
+echo "✅ Patched decocms package.json → v$MESH_VERSION"
 
 # Publish
 if [ "$DRY_RUN" = true ]; then
@@ -82,9 +82,9 @@ if [ "$DRY_RUN" = true ]; then
   npm publish --dry-run --access public --tag "$NPM_TAG" 2>&1 || true
 else
   echo ""
-  echo "🚀 Publishing @decocms/studio@$MESH_VERSION..."
+  echo "🚀 Publishing decocms@$MESH_VERSION..."
   npm publish --access public --tag "$NPM_TAG"
-  echo "✅ Published @decocms/studio@$MESH_VERSION"
+  echo "✅ Published decocms@$MESH_VERSION"
 fi
 
 # Trap handler restores package.json on exit
