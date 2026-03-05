@@ -128,7 +128,25 @@ app.post("/local-session", async (c) => {
     return c.json({ success: false, error: "Local mode is not active" }, 403);
   }
 
+  // Only allow from loopback to prevent LAN access when bound to 0.0.0.0
+  const forwarded = c.req.header("x-forwarded-for");
+  const remoteAddr =
+    forwarded?.split(",")[0]?.trim() ?? c.req.header("x-real-ip") ?? "";
+  const isLoopback =
+    remoteAddr === "127.0.0.1" ||
+    remoteAddr === "::1" ||
+    remoteAddr === "localhost" ||
+    remoteAddr === "" || // same-machine requests with no proxy
+    remoteAddr === "::ffff:127.0.0.1";
+  if (!isLoopback) {
+    return c.json({ success: false, error: "Forbidden" }, 403);
+  }
+
   try {
+    // Wait for local-mode seeding to complete before attempting login
+    const { waitForSeed } = await import("@/auth/local-mode");
+    await waitForSeed();
+
     const { auth } = await import("../../auth");
     const adminUser = await getLocalAdminUser();
     if (!adminUser) {

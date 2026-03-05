@@ -11,6 +11,10 @@ import { getDb } from "@/database";
 import { userInfo } from "os";
 import { auth } from "./index";
 
+// Internal password for the auto-seeded local admin user.
+// Security note: this value is NOT the security boundary — the /local-session
+// endpoint is protected by a loopback-only check (see auth routes), so only
+// requests from localhost/127.0.0.1 can use it.
 export const LOCAL_ADMIN_PASSWORD = "admin@mesh";
 
 function getLocalUserName(): string {
@@ -120,4 +124,20 @@ export async function getLocalAdminUser() {
 
 export function isLocalMode(): boolean {
   return process.env.MESH_LOCAL_MODE === "true";
+}
+
+// Seed readiness gate — local-session waits for this before granting access
+let _seedResolve: () => void;
+const _seedReady = new Promise<void>((resolve) => {
+  _seedResolve = resolve;
+});
+
+/** Mark local-mode seeding as complete. Called from index.ts after seedLocalMode(). */
+export function markSeedComplete(): void {
+  _seedResolve();
+}
+
+/** Wait for local-mode seeding to finish. No-op if already complete. */
+export function waitForSeed(): Promise<void> {
+  return _seedReady;
 }

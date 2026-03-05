@@ -72,7 +72,7 @@ if (explicitHome) {
     meshHome = userHome;
   } else {
     meshHome = answer.startsWith("~")
-      ? join(homedir(), answer.slice(1))
+      ? join(homedir(), answer.slice(2))
       : answer;
   }
 }

@@ -174,17 +174,18 @@ if (values.home) {
   } else {
     // Expand ~ to home directory
     meshHome = answer.startsWith("~")
-      ? join(homedir(), answer.slice(1))
+      ? join(homedir(), answer.slice(2))
       : answer;
   }
 }
 
 process.env.MESH_HOME = meshHome;
 
-// Set DATABASE_URL to MESH_HOME/mesh.db. The CLI owns the data directory,
-// so we always use the SQLite database inside it. This prevents accidentally
-// connecting to a PostgreSQL database from the shell environment.
-process.env.DATABASE_URL = `file:${join(meshHome, "mesh.db")}`;
+// Default DATABASE_URL to MESH_HOME/mesh.db if not explicitly set.
+// Respects user-provided DATABASE_URL (e.g. PostgreSQL connection strings).
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = `file:${join(meshHome, "mesh.db")}`;
+}
 
 // Ensure NODE_ENV defaults to production when running via CLI
 if (!process.env.NODE_ENV) {

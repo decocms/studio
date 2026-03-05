@@ -71,17 +71,20 @@ Bun.serve({
 // This must run after Bun.serve() so that the org seed can fetch tools
 // from the self MCP endpoint (http://localhost:PORT/mcp/self)
 if (process.env.MESH_LOCAL_MODE === "true") {
-  (async () => {
-    try {
-      const { seedLocalMode } = await import("./auth/local-mode");
-      const seeded = await seedLocalMode();
-      if (seeded) {
-        console.log(`\n${green}Local environment initialized.${reset}`);
+  import("./auth/local-mode").then(
+    async ({ seedLocalMode, markSeedComplete }) => {
+      try {
+        const seeded = await seedLocalMode();
+        if (seeded) {
+          console.log(`\n${green}Local environment initialized.${reset}`);
+        }
+      } catch (error) {
+        console.error("Failed to seed local mode:", error);
+      } finally {
+        markSeedComplete();
       }
-    } catch (error) {
-      console.error("Failed to seed local mode:", error);
-    }
-  })();
+    },
+  );
 }
 
 // Internal debug server (only enabled via ENABLE_DEBUG_SERVER=true)
