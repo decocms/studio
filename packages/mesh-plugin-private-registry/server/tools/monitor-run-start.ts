@@ -792,7 +792,7 @@ export async function ensureMonitorConnection(
   const created = await ctx.storage.connections.create({
     organization_id: organizationId,
     created_by: userId,
-    title: `[Monitor] ${item.title}`,
+    title: `[MCP Tester] ${item.title}`,
     description: `Auto-created monitor connection for ${item.id}`,
     app_name: "private-registry-monitor",
     app_id: `${PLUGIN_ID}:monitor`,
