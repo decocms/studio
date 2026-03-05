@@ -1,4 +1,5 @@
 import { generatePrefixedId } from "@/shared/utils/generate-id";
+import { ConnectionsSetup } from "@/web/components/connections-setup";
 import { CollectionDisplayButton } from "@/web/components/collections/collection-display-button.tsx";
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
 import { CollectionTableWrapper } from "@/web/components/collections/collection-table-wrapper.tsx";
@@ -90,7 +91,7 @@ import {
   Terminal,
   Trash01,
 } from "@untitledui/icons";
-import { Suspense, useEffect, useReducer } from "react";
+import { Suspense, useEffect, useReducer, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { formatTimeAgo } from "@/web/lib/format-time";
@@ -420,6 +421,7 @@ function OrgMcpsContent() {
   const connections = useConnections(listState);
 
   const [dialogState, dispatch] = useReducer(dialogReducer, { mode: "idle" });
+  const [isSetupOpen, setIsSetupOpen] = useState(false);
 
   // Optional registry lookup: use first available registry connection as a name/description source
   const registryConnection = useRegistryConnections(connections)[0];
@@ -1009,6 +1011,14 @@ function OrgMcpsContent() {
     <div className="flex items-center gap-2">
       <Button
         variant="outline"
+        onClick={() => setIsSetupOpen(true)}
+        size="sm"
+        className="h-7 px-3 rounded-lg text-sm font-medium"
+      >
+        Quick Setup
+      </Button>
+      <Button
+        variant="outline"
         onClick={() =>
           navigate({
             to: "/$org/$project/store",
@@ -1436,6 +1446,38 @@ function OrgMcpsContent() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Quick Setup Dialog */}
+      <Dialog open={isSetupOpen} onOpenChange={setIsSetupOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Quick Setup</DialogTitle>
+            <DialogDescription>
+              Install and authenticate a set of essential connections.
+            </DialogDescription>
+          </DialogHeader>
+          <ConnectionsSetup
+            slots={{
+              openrouter: {
+                label: "AI Model (OpenRouter)",
+                registry: "deco-registry",
+                item_id: "deco/openrouter",
+              },
+              github: {
+                label: "GitHub",
+                registry: "deco-registry",
+                item_id: "deco/github",
+              },
+              gmail: {
+                label: "Google Gmail",
+                registry: "deco-registry",
+                item_id: "deco/google-gmail",
+              },
+            }}
+            onComplete={() => setIsSetupOpen(false)}
+          />
+        </DialogContent>
+      </Dialog>
 
       {/* Page Header */}
       <Page.Header>
