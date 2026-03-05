@@ -11,6 +11,7 @@ export const connectionFormSchema = z
   .object({
     title: z.string().min(1, "Name is required"),
     description: z.string().nullable().optional(),
+    icon: z.string().nullable().optional(),
     // UI type for display
     // - NPX: convenience wrapper for npm packages
     // - STDIO: custom command for local servers

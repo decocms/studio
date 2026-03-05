@@ -151,6 +151,7 @@ function connectionToFormValues(
   const baseFields = {
     title: connection.title,
     description: connection.description ?? "",
+    icon: connection.icon ?? null,
     configuration_state: connection.configuration_state ?? {},
     configuration_scopes: scopes || connection.configuration_scopes || [],
   };
@@ -243,6 +244,7 @@ function formValuesToConnectionUpdate(
   return {
     title: data.title,
     description: data.description || null,
+    icon: data.icon ?? null,
     connection_type: connectionType,
     connection_url: connectionUrl,
     ...(connectionToken && { connection_token: connectionToken }),

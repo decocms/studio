@@ -21,3 +21,14 @@ export function pickRandomCapybaraIcon(): string {
     CAPYBARA_ICON_MIN;
   return `/icons/capy-${index}.png`;
 }
+
+/**
+ * Returns all available capybara icon paths.
+ */
+export function getAllCapybaraIcons(): string[] {
+  const icons: string[] = [];
+  for (let i = CAPYBARA_ICON_MIN; i <= CAPYBARA_ICON_MAX; i++) {
+    icons.push(`/icons/capy-${i}.png`);
+  }
+  return icons;
+}

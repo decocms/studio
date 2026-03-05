@@ -2,6 +2,7 @@ import type { VirtualMCPEntity } from "@/tools/virtual/schema";
 import { useChatStable } from "@/web/components/chat/context";
 import { EmptyState } from "@/web/components/empty-state.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary";
+import { IconPicker } from "@/web/components/icon-picker.tsx";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { useDecoChatOpen } from "@/web/hooks/use-deco-chat-open";
 import { Badge } from "@deco/ui/components/badge.tsx";
@@ -318,12 +319,19 @@ function VirtualMcpDetailViewWithData({
           {/* Header section */}
           <div className="flex items-start justify-between gap-4 p-6 shrink-0">
             <div className="flex items-start gap-4 flex-1 min-w-0">
-              <IntegrationIcon
-                icon={virtualMcp.icon}
-                name={form.watch("title") || "Agent"}
-                size="lg"
-                className="shrink-0 shadow-sm"
-                fallbackIcon={<Users03 />}
+              <Controller
+                control={form.control}
+                name="icon"
+                render={({ field }) => (
+                  <IconPicker
+                    value={field.value}
+                    onChange={field.onChange}
+                    name={form.watch("title") || "Agent"}
+                    size="lg"
+                    className="shrink-0 shadow-sm"
+                    fallbackIcon={<Users03 />}
+                  />
+                )}
               />
               <div className="flex flex-col flex-1 min-w-0">
                 <Input

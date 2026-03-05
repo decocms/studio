@@ -119,6 +119,7 @@ const connectionFormSchema = z
   .object({
     title: z.string().min(1, "Name is required"),
     description: z.string().nullable().optional(),
+    icon: z.string().nullable().optional(),
     // UI type - includes "NPX" and "STDIO" which both map to STDIO internally
     ui_type: z.enum(["HTTP", "SSE", "Websocket", "NPX", "STDIO"]),
     // For HTTP/SSE/Websocket
@@ -466,6 +467,7 @@ function OrgMcpsContent() {
     defaultValues: {
       title: "",
       description: null,
+      icon: null,
       ui_type: "HTTP",
       connection_url: "",
       connection_token: null,
@@ -517,6 +519,7 @@ function OrgMcpsContent() {
           form.reset({
             title: editingConnection.title,
             description: editingConnection.description,
+            icon: editingConnection.icon ?? null,
             ui_type: "NPX",
             connection_url: "",
             connection_token: null,
@@ -532,6 +535,7 @@ function OrgMcpsContent() {
           form.reset({
             title: editingConnection.title,
             description: editingConnection.description,
+            icon: editingConnection.icon ?? null,
             ui_type: "STDIO",
             connection_url: "",
             connection_token: null,
@@ -547,6 +551,7 @@ function OrgMcpsContent() {
         form.reset({
           title: editingConnection.title,
           description: editingConnection.description,
+          icon: editingConnection.icon ?? null,
           ui_type: editingConnection.connection_type as
             | "HTTP"
             | "SSE"
@@ -564,6 +569,7 @@ function OrgMcpsContent() {
       form.reset({
         title: "",
         description: null,
+        icon: null,
         ui_type: "HTTP",
         connection_url: "",
         connection_token: null,
@@ -721,6 +727,7 @@ function OrgMcpsContent() {
         data: {
           title: data.title,
           description: data.description || null,
+          icon: data.icon ?? null,
           connection_type: connectionType,
           connection_url: connectionUrl,
           ...(connectionToken && { connection_token: connectionToken }),
@@ -748,7 +755,7 @@ function OrgMcpsContent() {
       updated_at: new Date().toISOString(),
       created_by: session?.user?.id || "system",
       organization_id: org.id,
-      icon: null,
+      icon: data.icon ?? null,
       app_name: null,
       app_id: null,
       connection_headers: connectionParameters,

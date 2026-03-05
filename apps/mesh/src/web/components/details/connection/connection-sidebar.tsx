@@ -1,6 +1,7 @@
 import type { ConnectionEntity } from "@/tools/connection/schema";
 import { parseVirtualUrl } from "@/tools/connection/schema";
 import { EnvVarsEditor } from "@/web/components/env-vars-editor";
+import { IconPicker } from "@/web/components/icon-picker.tsx";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { useAuthConfig } from "@/web/providers/auth-config-provider";
 import { useProjectContext } from "@decocms/mesh-sdk";
@@ -40,7 +41,7 @@ import {
   XClose,
 } from "@untitledui/icons";
 import { formatDistanceToNow } from "date-fns";
-import { useForm, useWatch } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { User } from "@/web/components/user/user.tsx";
 import { ConnectionVirtualMCPsSection } from "./settings-tab/connection-virtual-mcps-section";
 import type { ConnectionFormData } from "./settings-tab/schema";
@@ -456,12 +457,28 @@ export function ConnectionSidebar({
       <div className="flex flex-col h-full overflow-auto">
         {/* Header section - Icon, Title, Description */}
         <div className="flex flex-col gap-4 p-5 border-b border-border">
-          <IntegrationIcon
-            icon={connection.icon}
-            name={connection.title}
-            size="lg"
-            className="shadow-sm"
-          />
+          {connection.app_name && connection.icon ? (
+            <IntegrationIcon
+              icon={connection.icon}
+              name={connection.title}
+              size="lg"
+              className="shadow-sm"
+            />
+          ) : (
+            <Controller
+              control={form.control}
+              name="icon"
+              render={({ field }) => (
+                <IconPicker
+                  value={field.value}
+                  onChange={field.onChange}
+                  name={connection.title}
+                  size="lg"
+                  className="shadow-sm"
+                />
+              )}
+            />
+          )}
           <div className="flex flex-col">
             <FormField
               control={form.control}
