@@ -20,7 +20,7 @@
     "bin/**/*"
   ],
   "dependencies": {
-    "@decocms/mesh": "workspace:*"
+    "@decocms/mesh": "2.138.0"
   },
   "publishConfig": {
     "access": "public"
