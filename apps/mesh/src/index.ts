@@ -35,7 +35,7 @@ const url = process.env.BASE_URL || `http://localhost:${port}`;
 if (
   process.env.MESH_LOCAL_MODE === "true" &&
   process.env.NODE_ENV === "production" &&
-  !process.env.MESH_ALLOW_LOCAL_PROD
+  process.env.MESH_ALLOW_LOCAL_PROD !== "true"
 ) {
   console.error(
     "\x1b[31mError: Local mode is not allowed in production (NODE_ENV=production).\x1b[0m",
