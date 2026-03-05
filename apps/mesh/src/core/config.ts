@@ -60,20 +60,6 @@ export interface Config {
    * @default true
    */
   autoCreateOrganizationOnSignup?: boolean;
-  /**
-   * Whether to run in local mode (zero-ceremony developer experience).
-   * When true:
-   * - Auto-creates admin@localhost user and "Local" organization on first run
-   * - Auto-logs in without requiring sign-up or login
-   * - Enables local filesystem object storage
-   * - Skips organization selection screen
-   *
-   * Automatically enabled when running via CLI unless --no-local-mode is passed
-   * or a custom auth config is detected.
-   *
-   * @default undefined (determined at runtime by CLI)
-   */
-  localMode?: boolean;
 }
 
 // Config paths can be overridden via environment variables for k8s flexibility

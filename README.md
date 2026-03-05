@@ -61,7 +61,7 @@ bun run dev
 
 → runs at [http://localhost:3000](http://localhost:3000) (client) + API server
 
-Or use `bunx decocms` to instantly get a mesh running.
+Or use `npx @decocms/mesh` to instantly get a mesh running.
 
 ---
 

@@ -39,9 +39,6 @@ import {
 import type { ChatMessage, Task } from "./types.ts";
 import { TASK_CONSTANTS } from "./types.ts";
 
-// Fresh UUID per page load, stable across remounts within the same session
-const FRESH_SESSION_TASK_ID = crypto.randomUUID();
-
 /**
  * Hook to get all tasks with infinite scroll pagination
  *
@@ -149,11 +146,10 @@ export function useTaskManager() {
     orgId: org.id,
   });
 
-  // Always start with a fresh chat on page load — ignore any previously stored task.
-  // Uses module-level constant so remounts within the same session stay stable.
+  // Manage active task ID with localStorage persistence
   const [activeTaskId, setActiveTaskId] = useLocalStorage<string>(
     LOCALSTORAGE_KEYS.assistantChatActiveTask(locator),
-    () => FRESH_SESSION_TASK_ID,
+    tasks[0]?.id ?? crypto.randomUUID(),
   );
 
   // Fetch messages for the active task

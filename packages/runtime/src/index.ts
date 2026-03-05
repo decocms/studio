@@ -220,21 +220,12 @@ export const withBindings = <TEnv>({
         state?: Record<string, unknown>;
         meshUrl?: string;
         connectionId?: string;
-        organizationId?: string;
-        organizationName?: string;
-        organizationSlug?: string;
       }) ?? {};
     const appName = decoded.appName as string | undefined;
     context.authorization ??= authorization;
     context.callerApp = appName;
     context.connectionId ??=
       (decoded.connectionId as string) ?? metadata.connectionId;
-    context.organizationId ??=
-      (decoded.organizationId as string) ?? metadata.organizationId;
-    context.organizationName ??=
-      (decoded.organizationName as string) ?? metadata.organizationName;
-    context.organizationSlug ??=
-      (decoded.organizationSlug as string) ?? metadata.organizationSlug;
     context.ensureAuthenticated = AUTHENTICATED(decoded.user ?? decoded.sub);
   } else {
     context = {

@@ -673,12 +673,8 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.use("/mcp/virtual-mcp/:virtualMcpId?", mcpAuth);
   app.use("/mcp/self", mcpAuth);
 
-  // Local file storage MCP routes
-  // Available in dev mode (NODE_ENV !== production) OR when local mode is active
-  if (
-    process.env.NODE_ENV !== "production" ||
-    process.env.MESH_LOCAL_MODE === "true"
-  ) {
+  // Dev-only routes (local file storage MCP for testing object-storage plugin)
+  if (process.env.NODE_ENV !== "production") {
     // Using require() for synchronous loading to ensure routes are registered
     // before any requests come in. Static imports in dev-only.ts allow knip tracking.
     // eslint-disable-next-line @typescript-eslint/no-require-imports

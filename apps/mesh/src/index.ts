@@ -29,33 +29,11 @@ const green = "\x1b[32m";
 const cyan = "\x1b[36m";
 const underline = "\x1b[4m";
 
-const url = process.env.BASE_URL || `http://localhost:${port}`;
-
-// Refuse local mode in production — it disables authentication
-if (
-  process.env.MESH_LOCAL_MODE === "true" &&
-  process.env.NODE_ENV === "production" &&
-  process.env.MESH_ALLOW_LOCAL_PROD !== "true"
-) {
-  console.error(
-    "\x1b[31mError: Local mode is not allowed in production (NODE_ENV=production).\x1b[0m",
-  );
-  console.error(
-    "Set MESH_ALLOW_LOCAL_PROD=true to override (not recommended).",
-  );
-  process.exit(1);
-}
+const url = `http://localhost:${port}`;
 
 // Create asset handler - handles both dev proxy and production static files
-// When running from source (src/index.ts), the "../client" relative path
-// doesn't resolve to dist/client/. Fall back to dist/client/ relative to CWD.
-import { existsSync } from "fs";
-const resolvedClientDir = resolveClientDir(import.meta.url, "../client");
-const clientDir = existsSync(resolvedClientDir)
-  ? resolvedClientDir
-  : resolveClientDir(import.meta.url, "../dist/client");
 const handleAssets = createAssetHandler({
-  clientDir,
+  clientDir: resolveClientDir(import.meta.url, "../client"),
   isServerPath,
 });
 
@@ -75,43 +53,12 @@ Bun.serve({
   idleTimeout: 0,
   port,
   hostname: "0.0.0.0", // Listen on all network interfaces (required for K8s)
-  fetch: async (request, server) => {
+  fetch: async (request) => {
     // Try assets first (static files or dev proxy), then API
-    // Pass server as env so Hono's getConnInfo can access requestIP
-    return (await handleAssets(request)) ?? app.fetch(request, { server });
+    return (await handleAssets(request)) ?? app.fetch(request);
   },
   development: process.env.NODE_ENV !== "production",
 });
-
-// Local mode: seed admin user + organization after server is listening
-// This must run after Bun.serve() so that the org seed can fetch tools
-// from the self MCP endpoint (http://localhost:PORT/mcp/self)
-if (process.env.MESH_LOCAL_MODE === "true") {
-  import("./auth/local-mode")
-    .then(async ({ seedLocalMode, markSeedComplete }) => {
-      try {
-        const seeded = await seedLocalMode();
-        if (seeded) {
-          console.log(`\n${green}Local environment initialized.${reset}`);
-        }
-      } catch (error) {
-        console.error("Failed to seed local mode:", error);
-      } finally {
-        markSeedComplete();
-      }
-    })
-    .catch(async (error) => {
-      console.error("Failed to load local-mode module:", error);
-      // Still release the seed gate so /local-session doesn't hang forever
-      try {
-        const { markSeedComplete } = await import("./auth/local-mode");
-        markSeedComplete();
-      } catch {
-        // Module itself failed to load — gate was never armed (isLocalMode()
-        // would have resolved it immediately in the Promise constructor)
-      }
-    });
-}
 
 // Internal debug server (only enabled via ENABLE_DEBUG_SERVER=true)
 if (enableDebugServer) {

@@ -276,20 +276,13 @@ function parseDatabaseUrl(databaseUrl?: string): DatabaseConfig {
 // ============================================================================
 
 /**
- * Get database URL from environment or default.
- *
- * When MESH_HOME is set (via env or CLI --home flag), defaults to MESH_HOME/mesh.db.
- * Otherwise falls back to ./data/mesh.db relative to CWD for backward compatibility.
+ * Get database URL from environment or default
  */
 export function getDatabaseUrl(): string {
-  if (process.env.DATABASE_URL) {
-    return process.env.DATABASE_URL;
-  }
-  // If MESH_HOME is set, use it as the base for the database
-  if (process.env.MESH_HOME) {
-    return `file:${path.join(process.env.MESH_HOME, "mesh.db")}`;
-  }
-  return `file:${path.join(process.cwd(), "data/mesh.db")}`;
+  const databaseUrl =
+    process.env.DATABASE_URL ||
+    `file:${path.join(process.cwd(), "data/mesh.db")}`;
+  return databaseUrl;
 }
 
 /**

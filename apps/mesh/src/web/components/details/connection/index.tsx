@@ -12,7 +12,7 @@ import {
   useCollectionBindings,
 } from "@/web/hooks/use-binding";
 import { useMCPAuthStatus } from "@/web/hooks/use-mcp-auth-status";
-import { authenticateConnection } from "@/web/lib/authenticate-connection";
+import { authenticateMcp } from "@/web/lib/mcp-oauth";
 import { KEYS } from "@/web/lib/query-keys";
 import {
   Breadcrumb,
@@ -339,14 +339,75 @@ function ConnectionInspectorViewWithConnection({
   };
 
   const handleAuthenticate = async () => {
-    const success = await authenticateConnection(
-      connection.id,
-      connectionActions,
-      queryClient,
-    );
-    if (success) {
-      toast.success("Authentication successful");
+    const { token, tokenInfo, error } = await authenticateMcp({
+      connectionId: connection.id,
+    });
+    if (error || !token) {
+      toast.error(`Authentication failed: ${error}`);
+      return;
     }
+
+    if (tokenInfo) {
+      try {
+        const response = await fetch(
+          `/api/connections/${connection.id}/oauth-token`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+              accessToken: tokenInfo.accessToken,
+              refreshToken: tokenInfo.refreshToken,
+              expiresIn: tokenInfo.expiresIn,
+              scope: tokenInfo.scope,
+              clientId: tokenInfo.clientId,
+              clientSecret: tokenInfo.clientSecret,
+              tokenEndpoint: tokenInfo.tokenEndpoint,
+            }),
+          },
+        );
+        if (!response.ok) {
+          console.error("Failed to save OAuth token:", await response.text());
+          await connectionActions.update.mutateAsync({
+            id: connection.id,
+            data: { connection_token: token },
+          });
+        } else {
+          try {
+            await connectionActions.update.mutateAsync({
+              id: connection.id,
+              data: {},
+            });
+          } catch (err) {
+            console.warn(
+              "Failed to refresh connection tools after OAuth:",
+              err,
+            );
+          }
+        }
+      } catch (err) {
+        console.error("Error saving OAuth token:", err);
+        await connectionActions.update.mutateAsync({
+          id: connection.id,
+          data: { connection_token: token },
+        });
+      }
+    } else {
+      await connectionActions.update.mutateAsync({
+        id: connection.id,
+        data: { connection_token: token },
+      });
+    }
+
+    const mcpProxyUrl = new URL(
+      `/mcp/${connection.id}`,
+      window.location.origin,
+    );
+    await queryClient.invalidateQueries({
+      queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
+    });
+
+    toast.success("Authentication successful");
   };
 
   const handleRemoveOAuth = async () => {

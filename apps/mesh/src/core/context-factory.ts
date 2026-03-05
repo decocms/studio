@@ -545,29 +545,6 @@ async function authenticateRequest(
           role = membership?.role;
         }
 
-        let organization: OrganizationContext | undefined;
-        const metaOrgId = meshJwtPayload.metadata?.organizationId;
-        if (metaOrgId) {
-          const metaName = meshJwtPayload.metadata?.organizationName;
-          const metaSlug = meshJwtPayload.metadata?.organizationSlug;
-          if (metaName || metaSlug) {
-            organization = { id: metaOrgId, name: metaName, slug: metaSlug };
-          } else {
-            const orgRow = await timings.measure(
-              "auth_query_org_for_mesh_jwt",
-              () =>
-                db
-                  .selectFrom("organization")
-                  .select(["id", "slug", "name"])
-                  .where("id", "=", metaOrgId)
-                  .executeTakeFirst(),
-            );
-            organization = orgRow
-              ? { id: orgRow.id, slug: orgRow.slug, name: orgRow.name }
-              : { id: metaOrgId };
-          }
-        }
-
         return {
           user: {
             id: meshJwtPayload.sub,
@@ -576,7 +553,11 @@ async function authenticateRequest(
           },
           role,
           permissions: meshJwtPayload.permissions,
-          organization,
+          organization: meshJwtPayload.metadata?.organizationId
+            ? {
+                id: meshJwtPayload.metadata?.organizationId,
+              }
+            : undefined,
         };
       }
     } catch {

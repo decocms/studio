@@ -19,13 +19,3 @@ export function getBaseUrl(): string {
   const port = process.env.PORT || "3000";
   return `http://localhost:${port}`;
 }
-
-/**
- * Get the internal loopback URL for server-to-server connections.
- * Always uses localhost:PORT so the server can reach itself
- * even when BASE_URL is a proxy hostname (e.g. tokyo.localhost).
- */
-export function getInternalUrl(): string {
-  const port = process.env.PORT || "3000";
-  return `http://localhost:${port}`;
-}

@@ -1,5 +1,4 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@deco/ui/components/button.tsx";
 import { EmptyState } from "../empty-state";
@@ -12,7 +11,7 @@ import {
 } from "@decocms/mesh-sdk";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import { authClient } from "@/web/lib/auth-client";
-import { authenticateConnection } from "@/web/lib/authenticate-connection";
+import { useDecoChatOpen } from "@/web/hooks/use-deco-chat-open";
 
 interface NoLlmBindingEmptyStateProps {
   title?: string;
@@ -30,8 +29,8 @@ export function NoLlmBindingEmptyState({
   org,
 }: NoLlmBindingEmptyStateProps) {
   const actions = useConnectionActions();
+  const [, setDecoChatOpen] = useDecoChatOpen();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { data: session } = authClient.useSession();
   const allConnections = useConnections();
 
@@ -57,36 +56,35 @@ export function NoLlmBindingEmptyState({
         (conn) => conn.connection_url === OPENROUTER_MCP_URL,
       );
 
-      const connectionId = existingConnection?.id ?? null;
-
-      if (!connectionId) {
-        // Create new OpenRouter connection
-        const connectionData = getWellKnownOpenRouterConnection({
-          id: generatePrefixedId("conn"),
+      if (existingConnection) {
+        setDecoChatOpen(false);
+        navigate({
+          to: "/$org/$project/mcps/$connectionId",
+          params: {
+            org: org.slug,
+            project: ORG_ADMIN_PROJECT_SLUG,
+            connectionId: existingConnection.id,
+          },
         });
-
-        const result = await actions.create.mutateAsync(connectionData);
-
-        // Immediately trigger OAuth auth — opens popup, stays on Home
-        const success = await authenticateConnection(
-          result.id,
-          actions,
-          queryClient,
-        );
-        if (success) {
-          toast.success("OpenRouter connected successfully");
-        }
-      } else {
-        // Connection exists but may not be authenticated — trigger auth
-        const success = await authenticateConnection(
-          connectionId,
-          actions,
-          queryClient,
-        );
-        if (success) {
-          toast.success("OpenRouter authenticated successfully");
-        }
+        return;
       }
+
+      // Create new OpenRouter connection
+      const connectionData = getWellKnownOpenRouterConnection({
+        id: generatePrefixedId("conn"),
+      });
+
+      const result = await actions.create.mutateAsync(connectionData);
+
+      setDecoChatOpen(false);
+      navigate({
+        to: "/$org/$project/mcps/$connectionId",
+        params: {
+          org: org.slug,
+          project: ORG_ADMIN_PROJECT_SLUG,
+          connectionId: result.id,
+        },
+      });
     } catch (error) {
       toast.error(
         `Failed to connect OpenRouter: ${error instanceof Error ? error.message : String(error)}`,

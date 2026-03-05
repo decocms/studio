@@ -27,7 +27,7 @@ import {
 import { Hono } from "hono";
 import { createHmac } from "node:crypto";
 import { mkdir, readdir, rm, stat } from "node:fs/promises";
-import { join, relative, resolve, sep } from "node:path";
+import { join, relative } from "node:path";
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
@@ -48,11 +48,8 @@ interface ToolDefinition {
   _meta?: Record<string, unknown>;
 }
 
-// Base directory for assets.
-// Uses MESH_HOME/assets when available (local mode), falls back to ./data/assets
-const DEV_ASSETS_BASE_DIR = process.env.MESH_HOME
-  ? `${process.env.MESH_HOME}/assets`
-  : "./data/assets";
+// Base directory for dev assets (relative to cwd)
+const DEV_ASSETS_BASE_DIR = "./data/assets";
 
 // Default URL expiration time in seconds (1 hour)
 const DEFAULT_EXPIRES_IN = 3600;
@@ -86,26 +83,21 @@ function getOrgAssetsDir(orgId: string): string {
 }
 
 /**
- * Sanitize a file key — strips leading slashes only.
- * Actual traversal prevention is enforced by getFilePath's containment check.
+ * Sanitize a file key to prevent directory traversal
  */
 function sanitizeKey(key: string): string {
-  return key.replace(/^\/+/, "");
+  // Remove leading slashes and normalize path
+  const normalized = key.replace(/^\/+/, "").replace(/\.\./g, "");
+  return normalized;
 }
 
 /**
- * Get the full file path for a key within an org's assets.
- * Throws if the resolved path escapes the org's base directory.
+ * Get the full file path for a key within an org's assets
  */
 function getFilePath(orgId: string, key: string): string {
   const baseDir = getOrgAssetsDir(orgId);
   const sanitizedKey = sanitizeKey(key);
-  const resolved = resolve(join(baseDir, sanitizedKey));
-  const realBase = resolve(baseDir);
-  if (resolved !== realBase && !resolved.startsWith(realBase + sep)) {
-    throw new Error("Path traversal detected");
-  }
-  return resolved;
+  return join(baseDir, sanitizedKey);
 }
 
 /**
