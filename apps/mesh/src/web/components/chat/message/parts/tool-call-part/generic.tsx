@@ -12,7 +12,7 @@ import {
 
 import type { ToolDefinition } from "@decocms/mesh-sdk";
 import { useMCPClient, useProjectContext } from "@decocms/mesh-sdk";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import {
   AlertCircle,
   Atom02,
@@ -269,6 +269,7 @@ export function GenericToolCallPart({
               toolName={toolName}
               toolInput={part.input}
               toolResult={part.output}
+              toolMeta={toolMeta as Record<string, unknown> | undefined}
             />
           </Suspense>
         </ErrorBoundary>
@@ -284,6 +285,7 @@ interface MCPAppRendererProps {
   toolName: string;
   toolInput: unknown;
   toolResult: unknown;
+  toolMeta?: Record<string, unknown>;
 }
 
 function MCPAppRenderer({
@@ -293,14 +295,21 @@ function MCPAppRenderer({
   toolName,
   toolInput,
   toolResult,
+  toolMeta,
 }: MCPAppRendererProps) {
   const client = useMCPClient({ connectionId, orgId });
+
+  const toolDef: Tool = {
+    name: toolName,
+    inputSchema: { type: "object" },
+    ...(toolMeta != null && { _meta: toolMeta }),
+  };
 
   return (
     <div className="mt-2 border border-border/75 rounded-lg overflow-hidden p-3">
       <MCPAppIframeRenderer
         resourceURI={uiResourceUri}
-        toolName={toolName}
+        toolInfo={{ tool: toolDef }}
         toolInput={toolInput as Record<string, unknown> | undefined}
         toolResult={toolResult as CallToolResult | undefined}
         client={client}

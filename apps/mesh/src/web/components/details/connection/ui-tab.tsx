@@ -88,7 +88,9 @@ export function UiTab({ tools, connectionId, org }: UiTabProps) {
                   <div className="h-[200px] overflow-hidden border-b border-border">
                     <MCPAppRenderer
                       resourceURI={resourceUri}
-                      toolName={tool.name}
+                      toolInfo={{
+                        tool: tool as import("@modelcontextprotocol/sdk/types.js").Tool,
+                      }}
                       displayMode="inline"
                       minHeight={200}
                       maxHeight={200}

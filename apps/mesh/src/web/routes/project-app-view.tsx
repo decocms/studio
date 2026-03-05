@@ -6,6 +6,7 @@ import {
   useConnection,
   useMCPToolCall,
 } from "@decocms/mesh-sdk";
+import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { MCPAppRenderer } from "@/mcp-apps/mcp-app-renderer.tsx";
 import { getUIResourceUri, MCP_APP_DISPLAY_MODES } from "@/mcp-apps/types.ts";
 import { ErrorBoundary } from "@/web/components/error-boundary.tsx";
@@ -14,23 +15,28 @@ const EMPTY_TOOL_INPUT: Record<string, unknown> = {};
 
 function AppRenderer({
   client,
-  toolName,
   resourceURI,
+  tool,
 }: {
   client: ReturnType<typeof useMCPClient>;
-  toolName: string;
   resourceURI: string;
+  tool: {
+    name: string;
+    description?: string;
+    inputSchema?: Record<string, unknown>;
+    _meta?: Record<string, unknown>;
+  };
 }) {
   const { data: toolResult } = useMCPToolCall({
     client,
-    toolName,
+    toolName: tool.name,
     toolArguments: EMPTY_TOOL_INPUT,
   });
 
   return (
     <MCPAppRenderer
       resourceURI={resourceURI}
-      toolName={toolName}
+      toolInfo={{ tool: tool as Tool }}
       toolInput={EMPTY_TOOL_INPUT}
       toolResult={toolResult}
       displayMode="fullscreen"
@@ -79,13 +85,7 @@ function AppViewContent({
     );
   }
 
-  return (
-    <AppRenderer
-      client={client}
-      toolName={decodedToolName}
-      resourceURI={resourceURI}
-    />
-  );
+  return <AppRenderer client={client} resourceURI={resourceURI} tool={tool} />;
 }
 
 export default function ProjectAppView() {

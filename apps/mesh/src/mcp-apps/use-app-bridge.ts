@@ -43,12 +43,14 @@ function detectTheme(): "light" | "dark" {
 
 function buildHostContext(
   displayMode: McpUiDisplayMode,
+  toolInfo?: McpUiHostContext["toolInfo"],
   maxHeight?: number,
 ): McpUiHostContext {
   return {
     theme: detectTheme(),
     displayMode,
     availableDisplayModes: ["inline", "fullscreen"],
+    ...(toolInfo != null && { toolInfo }),
     ...(maxHeight != null && {
       containerDimensions: { maxHeight },
     }),
@@ -75,7 +77,7 @@ interface BridgeStoreConfig {
   displayMode: McpUiDisplayMode;
   minHeight: number;
   maxHeight: number;
-  toolName?: string;
+  toolInfo?: McpUiHostContext["toolInfo"];
   toolInput?: Record<string, unknown>;
   toolResult?: CallToolResult;
   onMessage?: (params: McpUiMessageRequest["params"]) => void;
@@ -190,8 +192,8 @@ class BridgeStore {
     };
 
     try {
-      const { client, displayMode, maxHeight } = this.config;
-      const hostContext = buildHostContext(displayMode, maxHeight);
+      const { client, displayMode, maxHeight, toolInfo } = this.config;
+      const hostContext = buildHostContext(displayMode, toolInfo, maxHeight);
 
       // Pass the MCP client directly — AppBridge auto-wires oncalltool,
       // onreadresource, onlistresources, etc. via the client's capabilities.
@@ -246,7 +248,10 @@ class BridgeStore {
 
     bridge.onloggingmessage = ({ level, data }) => {
       const method = level === "error" ? "error" : "debug";
-      console[method](`[MCP App ${this.config.toolName ?? "unknown"}]`, data);
+      console[method](
+        `[MCP App ${this.config.toolInfo?.tool.name ?? "unknown"}]`,
+        data,
+      );
     };
 
     bridge.ondownloadfile = async ({ contents }) => {
@@ -335,7 +340,7 @@ interface UseAppBridgeOptions {
   displayMode: McpUiDisplayMode;
   minHeight: number;
   maxHeight: number;
-  toolName?: string;
+  toolInfo?: McpUiHostContext["toolInfo"];
   toolInput?: Record<string, unknown>;
   toolResult?: CallToolResult;
   onMessage?: (params: McpUiMessageRequest["params"]) => void;

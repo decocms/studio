@@ -656,7 +656,13 @@ function ToolDetailsAuthenticated({
               >
                 <MCPAppRenderer
                   resourceURI={uiResourceUri}
-                  toolName={toolName}
+                  toolInfo={
+                    tool
+                      ? {
+                          tool: tool as import("@modelcontextprotocol/sdk/types.js").Tool,
+                        }
+                      : undefined
+                  }
                   toolInput={lastToolInput ?? undefined}
                   toolResult={rawToolResult ?? undefined}
                   displayMode="fullscreen"

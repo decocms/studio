@@ -2,6 +2,7 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { useMCPReadResource } from "@decocms/mesh-sdk";
 import type {
   McpUiDisplayMode,
+  McpUiHostContext,
   McpUiMessageRequest,
 } from "@modelcontextprotocol/ext-apps";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -37,7 +38,7 @@ function useResourceHtml(data: ReadResourceData | undefined): string | null {
 
 interface MCPAppRendererProps {
   resourceURI: string;
-  toolName?: string;
+  toolInfo?: McpUiHostContext["toolInfo"];
   toolInput?: Record<string, unknown>;
   toolResult?: CallToolResult;
   displayMode?: McpUiDisplayMode;
@@ -54,7 +55,7 @@ interface MCPAppRendererProps {
 
 export function MCPAppRenderer({
   resourceURI: uri,
-  toolName,
+  toolInfo,
   toolInput,
   toolResult,
   displayMode = "inline",
@@ -72,7 +73,7 @@ export function MCPAppRenderer({
     displayMode,
     minHeight,
     maxHeight,
-    toolName,
+    toolInfo,
     toolInput,
     toolResult,
     onMessage,
@@ -92,6 +93,8 @@ export function MCPAppRenderer({
       </div>
     );
   }
+
+  const toolName = toolInfo?.tool.name;
 
   return (
     <div
