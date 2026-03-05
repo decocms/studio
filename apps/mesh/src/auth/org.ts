@@ -5,7 +5,7 @@ import {
   ORG_ADMIN_PROJECT_NAME,
   ORG_ADMIN_PROJECT_SLUG,
 } from "@decocms/mesh-sdk";
-import { getBaseUrl, getInternalUrl } from "@/core/server-constants";
+import { getInternalUrl } from "@/core/server-constants";
 import { isLocalMode } from "@/auth/local-mode";
 import { getDb } from "@/database";
 import { CredentialVault } from "@/encryption/credential-vault";
