@@ -1,6 +1,6 @@
 # Deco Studio
 
-One secure endpoint for every MCP server — run locally in seconds.
+Open-source control plane for your AI agents. Install in 30 seconds.
 
 ```bash
 npx decocms
@@ -13,34 +13,28 @@ npm i -g decocms
 deco
 ```
 
-## What is this?
+## What is Deco Studio?
 
-Deco Studio (powered by [MCP Mesh](https://github.com/decocms/mesh)) is an
-open-source control plane for Model Context Protocol (MCP) traffic. It sits
-between your MCP clients (Cursor, Claude, Windsurf, VS Code, custom agents) and
-your MCP servers, providing a unified layer for auth, routing, and observability.
+Deco Studio is where you hire AI agents, connect tools, and manage projects —
+all from a single dashboard. Browse specialized agents, wire up 50+ integrations
+via MCP, and track every token, cost, and action in real time.
+
+- **Hire agents** — browse specialized AI agents or create your own from custom prompts. Agents can compose and call each other.
+- **Connect tools** — 50+ integrations (GitHub, Slack, Postgres, OpenAI, and more) with one-click OAuth and granular RBAC.
+- **Track everything** — real-time cost attribution, latency monitoring, and error tracking per agent and connection.
+- **Run locally** — private, SQLite-based setup on your machine. No cloud required.
+- **Scale to teams** — optional cloud sync via [studio.decocms.com](https://studio.decocms.com), or self-host for your org.
 
 ```
-MCP Clients (Cursor, Claude, VS Code, agents)
-                    │
-                    ▼
-              Deco Studio
-    Virtual MCPs · Policies · Traces · Vault
-                    │
-                    ▼
-MCP Servers (Slack, GitHub, Postgres, your APIs)
+Your AI Agents & MCP Clients
+              │
+              ▼
+        Deco Studio
+  Agents · Tools · Observability
+              │
+              ▼
+ Integrations (Slack, GitHub, APIs, DBs...)
 ```
-
-## Features
-
-- **Single endpoint** — replace M x N client/server configs with one governed URL
-- **RBAC & policies** — workspace and project-level access control with audit trails
-- **Full observability** — OpenTelemetry tracing, cost tracking, error monitoring
-- **Virtual MCPs** — runtime strategies for optimal tool selection (full-context, smart selection, code execution)
-- **Token vault** — secure credential storage for MCP server connections
-- **Local-first** — runs on your machine with SQLite, no cloud required
-- **OAuth built-in** — connect to OAuth-protected MCP servers with one click
-- **AI chat** — built-in chat UI with multi-provider support (OpenRouter, OpenAI, Anthropic, etc.)
 
 ## Quick start
 
@@ -49,17 +43,9 @@ MCP Servers (Slack, GitHub, Postgres, your APIs)
 npx decocms
 
 # Opens at http://localhost:3000
-# Connect your MCP clients to http://localhost:3000/mcp
 ```
 
-Point any MCP client at `http://localhost:3000/mcp` and all your MCP servers
-are available through a single endpoint.
-
-## Connect MCP clients
-
-### Cursor / Claude Desktop / VS Code
-
-Add to your MCP config:
+Connect any MCP client to `http://localhost:3000/mcp`:
 
 ```json
 {
@@ -71,20 +57,19 @@ Add to your MCP config:
 }
 ```
 
-## Self-host in production
+## Deploy
 
-For team and production deployments, see the
-[full documentation](https://docs.deco.page/) — supports Docker, Bun/Node,
-Kubernetes, and PostgreSQL.
+Run locally with SQLite, or deploy for your team with Docker, Bun/Node,
+Kubernetes, and PostgreSQL. See the [docs](https://docs.deco.page/).
 
 ## Links
 
+- [Website](https://decocms.com/studio)
 - [Documentation](https://docs.deco.page/)
 - [GitHub](https://github.com/decocms/mesh)
 - [Discord](https://decocms.com/discord)
-- [Website](https://decocms.com/mesh)
 
 ## License
 
-Sustainable Use License (SUL) — free to self-host for internal use and client
+Sustainable Use License — free to self-host for internal use and client
 projects. See [LICENSE.md](https://github.com/decocms/mesh/blob/main/LICENSE.md).

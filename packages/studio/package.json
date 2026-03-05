@@ -1,7 +1,7 @@
 {
   "name": "decocms",
   "version": "2.135.1",
-  "description": "One secure endpoint for every MCP server. Open-source MCP control plane with auth, routing, and observability.",
+  "description": "Open-source control plane for your AI agents. Hire agents, connect tools, track costs.",
   "author": "Deco team",
   "license": "MIT",
   "homepage": "https://github.com/decocms/mesh",
@@ -26,6 +26,7 @@
     "access": "public"
   },
   "keywords": [
+    "ai-agents",
     "mcp",
     "model-context-protocol",
     "ai",
@@ -38,10 +39,10 @@
     "cli",
     "cursor",
     "claude",
-    "opentelemetry",
     "observability",
-    "rbac",
+    "cost-tracking",
+    "integrations",
     "oauth",
-    "proxy"
+    "rbac"
   ]
 }
