@@ -25,6 +25,7 @@ const HOST_CAPABILITIES: McpUiHostCapabilities = {
   serverResources: {},
   logging: {},
   message: {},
+  downloadFile: {},
 };
 
 const INIT_TIMEOUT_MS = 15_000;
@@ -246,6 +247,30 @@ class BridgeStore {
     bridge.onloggingmessage = ({ level, data }) => {
       const method = level === "error" ? "error" : "debug";
       console[method](`[MCP App ${this.config.toolName ?? "unknown"}]`, data);
+    };
+
+    bridge.ondownloadfile = async ({ contents }) => {
+      for (const item of contents) {
+        if (item.type === "resource") {
+          const res = item.resource;
+          const blob =
+            "blob" in res
+              ? new Blob(
+                  [Uint8Array.from(atob(res.blob), (c) => c.charCodeAt(0))],
+                  { type: res.mimeType },
+                )
+              : new Blob([res.text ?? ""], { type: res.mimeType });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = res.uri.split("/").pop() ?? "download";
+          link.click();
+          URL.revokeObjectURL(url);
+        } else if (item.type === "resource_link") {
+          window.open(item.uri, "_blank");
+        }
+      }
+      return {};
     };
   }
 
