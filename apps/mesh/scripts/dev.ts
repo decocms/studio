@@ -155,6 +155,9 @@ console.log(
 );
 console.log(`${bold}  Home:     ${dim}${displayHome}/${reset}`);
 console.log(`${bold}  Database: ${dim}${displayHome}/mesh.db${reset}`);
+if (process.env.BASE_URL) {
+  console.log(`${bold}  URL:      ${dim}${process.env.BASE_URL}${reset}`);
+}
 console.log("");
 
 // ============================================================================

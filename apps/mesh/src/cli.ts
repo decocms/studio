@@ -354,7 +354,9 @@ console.log(`${bold}  Database: ${dim}${displayHome}/mesh.db${reset}`);
 if (localMode) {
   console.log(`${bold}  Assets:   ${dim}${displayHome}/assets/${reset}`);
 }
-console.log(`${bold}  URL:      ${dim}http://localhost:${port}${reset}`);
+console.log(
+  `${bold}  URL:      ${dim}${process.env.BASE_URL || `http://localhost:${port}`}${reset}`,
+);
 console.log("");
 
 // Import and start the server

@@ -323,6 +323,12 @@ function getTrustedOrigins(): string[] {
   } else if (url.hostname === "127.0.0.1") {
     origins.push(baseUrl.replace("127.0.0.1", "localhost"));
   }
+  // In dev, also trust localhost:PORT when BASE_URL uses a custom hostname (e.g. worktree proxies)
+  const port = process.env.PORT || "3000";
+  const localhostOrigin = `http://localhost:${port}`;
+  if (!origins.includes(localhostOrigin)) {
+    origins.push(localhostOrigin);
+  }
   return origins;
 }
 

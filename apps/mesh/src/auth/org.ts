@@ -5,7 +5,7 @@ import {
   ORG_ADMIN_PROJECT_NAME,
   ORG_ADMIN_PROJECT_SLUG,
 } from "@decocms/mesh-sdk";
-import { getBaseUrl } from "@/core/server-constants";
+import { getBaseUrl, getInternalUrl } from "@/core/server-constants";
 import { isLocalMode } from "@/auth/local-mode";
 import { getDb } from "@/database";
 import { CredentialVault } from "@/encryption/credential-vault";
@@ -68,7 +68,7 @@ function getDefaultOrgMcps(organizationId: string): MCPCreationSpec[] {
           },
         );
       },
-      data: getWellKnownSelfConnection(getBaseUrl(), organizationId),
+      data: getWellKnownSelfConnection(getInternalUrl(), organizationId),
     },
     // MCP Registry (Community Registry) - public registry, no permissions required
     {
@@ -87,7 +87,7 @@ function getDefaultOrgMcps(organizationId: string): MCPCreationSpec[] {
               title: "Local Files",
               description: "Local filesystem storage for files and assets",
               connection_type: "HTTP" as const,
-              connection_url: `${getBaseUrl()}/mcp/dev-assets`,
+              connection_url: `${getInternalUrl()}/mcp/dev-assets`,
               icon: null,
               app_name: "@deco/local-files",
               connection_token: null,

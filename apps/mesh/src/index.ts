@@ -29,7 +29,7 @@ const green = "\x1b[32m";
 const cyan = "\x1b[36m";
 const underline = "\x1b[4m";
 
-const url = `http://localhost:${port}`;
+const url = process.env.BASE_URL || `http://localhost:${port}`;
 
 // Create asset handler - handles both dev proxy and production static files
 // When running from source (src/index.ts), the "../client" relative path
