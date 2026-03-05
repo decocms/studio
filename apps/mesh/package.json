@@ -52,7 +52,7 @@
     "@better-auth/sso": "1.4.1",
     "@daveyplate/better-auth-ui": "^3.2.7",
     "@deco/ui": "workspace:*",
-    "@decocms/better-auth": "1.5.17",
+    "@decocms/better-auth": "1.5.19",
     "@decocms/bindings": "workspace:*",
     "@decocms/mesh-sdk": "workspace:*",
     "@decocms/runtime": "workspace:*",
