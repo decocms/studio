@@ -267,6 +267,15 @@ function StoreMCPServerDetailContent() {
     number | null
   >(null);
 
+  // Duplicate warning state: step "warning" → "rename"
+  const [duplicateWarning, setDuplicateWarning] = useState<{
+    step: "warning" | "rename";
+    existing: ConnectionEntity[];
+    pendingArgs: [number?, number?, number?];
+    suggestedName: string;
+    customName: string;
+  } | null>(null);
+
   const actions = useConnectionActions();
   const allConnections = useConnections();
   const { data: session } = authClient.useSession();
@@ -560,10 +569,11 @@ function StoreMCPServerDetailContent() {
       ? activeTabId
       : defaultTabId;
 
-  const handleInstall = async (
+  const doInstall = async (
     versionIndex?: number,
     remoteIndex?: number,
     packageIndex?: number,
+    titleOverride?: string,
   ) => {
     const version = allVersions[versionIndex ?? 0] || selectedItem;
     if (!version || !org || !session?.user?.id) return;
@@ -595,6 +605,10 @@ function StoreMCPServerDetailContent() {
       return;
     }
 
+    if (titleOverride) {
+      connectionData.title = titleOverride;
+    }
+
     try {
       const { id } = await actions.create.mutateAsync(connectionData);
 
@@ -611,6 +625,35 @@ function StoreMCPServerDetailContent() {
         `Failed to connect MCP Server: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+  };
+
+  const handleInstall = async (
+    versionIndex?: number,
+    remoteIndex?: number,
+    packageIndex?: number,
+  ) => {
+    const version = allVersions[versionIndex ?? 0] || selectedItem;
+    if (!version) return;
+
+    const appName = version.id ?? version.title;
+    const existing = allConnections.filter(
+      (c) => c.app_name === appName || c.title === version.title,
+    );
+
+    if (existing.length > 0) {
+      const baseName = version.title || "MCP Server";
+      const suggestedName = `${baseName} (${existing.length + 1})`;
+      setDuplicateWarning({
+        step: "warning",
+        existing,
+        pendingArgs: [versionIndex, remoteIndex, packageIndex],
+        suggestedName,
+        customName: suggestedName,
+      });
+      return;
+    }
+
+    doInstall(versionIndex, remoteIndex, packageIndex);
   };
 
   const handleBackClick = () => {
@@ -657,6 +700,131 @@ function StoreMCPServerDetailContent() {
 
   return (
     <div className="flex flex-col h-full border-l border-border">
+      {/* Duplicate warning dialog (two steps) */}
+      {duplicateWarning && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => setDuplicateWarning(null)}
+        >
+          <div
+            className="bg-background border rounded-lg shadow-lg p-6 max-w-md w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {duplicateWarning.step === "warning" ? (
+              <>
+                <h3 className="text-lg font-semibold mb-2">
+                  MCP Already Installed
+                </h3>
+                <p className="text-sm text-muted-foreground mb-3">
+                  You already have{" "}
+                  <strong>{duplicateWarning.existing.length}</strong> instance
+                  {duplicateWarning.existing.length !== 1 ? "s" : ""} of this
+                  MCP installed:
+                </p>
+                <ul className="text-sm space-y-1 mb-4 max-h-32 overflow-auto">
+                  {duplicateWarning.existing.map((c) => (
+                    <li
+                      key={c.id}
+                      className="flex items-center gap-2 text-muted-foreground"
+                    >
+                      <span className="font-medium text-foreground">
+                        {c.title}
+                      </span>
+                      <span className="text-xs">
+                        (
+                        {c.created_at
+                          ? new Date(c.created_at).toLocaleDateString()
+                          : "—"}
+                        )
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    className="px-3 py-1.5 text-sm rounded-md border hover:bg-muted/50 transition-colors"
+                    onClick={() => setDuplicateWarning(null)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="px-3 py-1.5 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                    onClick={() =>
+                      setDuplicateWarning({
+                        ...duplicateWarning,
+                        step: "rename",
+                      })
+                    }
+                  >
+                    Install Anyway
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 className="text-lg font-semibold mb-2">Choose a name</h3>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Give this instance a different name to distinguish it, or keep
+                  the suggested one.
+                </p>
+                <input
+                  type="text"
+                  className="w-full rounded-md border bg-transparent px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-primary"
+                  value={duplicateWarning.customName}
+                  onChange={(e) =>
+                    setDuplicateWarning({
+                      ...duplicateWarning,
+                      customName: e.target.value,
+                    })
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      const name =
+                        duplicateWarning.customName.trim() ||
+                        duplicateWarning.suggestedName;
+                      const args = duplicateWarning.pendingArgs;
+                      setDuplicateWarning(null);
+                      doInstall(...args, name);
+                    }
+                  }}
+                  autoFocus
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    className="px-3 py-1.5 text-sm rounded-md border hover:bg-muted/50 transition-colors"
+                    onClick={() =>
+                      setDuplicateWarning({
+                        ...duplicateWarning,
+                        step: "warning",
+                      })
+                    }
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    className="px-3 py-1.5 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                    onClick={() => {
+                      const name =
+                        duplicateWarning.customName.trim() ||
+                        duplicateWarning.suggestedName;
+                      const args = duplicateWarning.pendingArgs;
+                      setDuplicateWarning(null);
+                      doInstall(...args, name);
+                    }}
+                  >
+                    Install
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <MCPServerDetailHeader breadcrumb={breadcrumb} />
 

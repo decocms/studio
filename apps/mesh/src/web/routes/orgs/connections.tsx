@@ -1,8 +1,15 @@
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import { CollectionDisplayButton } from "@/web/components/collections/collection-display-button.tsx";
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
-import { CollectionTableWrapper } from "@/web/components/collections/collection-table-wrapper.tsx";
 import { type TableColumn } from "@/web/components/collections/collection-table.tsx";
+import {
+  Table as UITable,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@deco/ui/components/table.tsx";
 import { ConnectionCard } from "@/web/components/connections/connection-card.tsx";
 import { ConnectionStatus } from "@/web/components/connections/connection-status.tsx";
 import { EmptyState } from "@/web/components/empty-state.tsx";
@@ -29,6 +36,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@deco/ui/components/alert-dialog.tsx";
+import { Badge } from "@deco/ui/components/badge.tsx";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -36,6 +44,7 @@ import {
   BreadcrumbPage,
 } from "@deco/ui/components/breadcrumb.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
+import { Checkbox } from "@deco/ui/components/checkbox.tsx";
 import {
   Dialog,
   DialogContent,
@@ -67,6 +76,7 @@ import {
   SelectValue,
 } from "@deco/ui/components/select.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
+import { cn } from "@deco/ui/lib/utils.ts";
 import {
   ORG_ADMIN_PROJECT_SLUG,
   SELF_MCP_ALIAS_ID,
@@ -75,22 +85,30 @@ import {
   useMCPClient,
   useMCPToolCallQuery,
   useProjectContext,
+  useVirtualMCPs,
   type ConnectionEntity,
+  type VirtualMCPEntity,
 } from "@decocms/mesh-sdk";
 import { toast } from "sonner";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
+  ArrowDown,
+  ArrowUp,
+  CheckSquare,
+  ChevronDown,
   Container,
   DotsVertical,
   Eye,
   Globe02,
   Loading01,
+  Plus,
   Terminal,
   Trash01,
+  XClose,
 } from "@untitledui/icons";
-import { Suspense, useEffect, useReducer } from "react";
+import { Fragment, Suspense, useEffect, useReducer, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { formatTimeAgo } from "@/web/lib/format-time";
@@ -106,6 +124,107 @@ import {
   recordToEnvVars,
   type EnvVar,
 } from "@/web/components/env-vars-editor";
+
+// ---------------------------------------------------------------------------
+// Grouping helpers
+// ---------------------------------------------------------------------------
+
+interface ConnectionGroup {
+  type: "group";
+  key: string;
+  icon: string | null;
+  title: string;
+  connections: ConnectionEntity[];
+}
+
+interface SingleConnection {
+  type: "single";
+  connection: ConnectionEntity;
+}
+
+type GroupedItem = SingleConnection | ConnectionGroup;
+
+function getGroupKey(c: ConnectionEntity): string {
+  return c.title.trim().replace(/\s+\(\d+\)$/, "");
+}
+
+function groupConnections(connections: ConnectionEntity[]): GroupedItem[] {
+  const buckets = new Map<string, ConnectionEntity[]>();
+  for (const c of connections) {
+    if (c.connection_type === "VIRTUAL") continue;
+    const key = getGroupKey(c);
+    const list = buckets.get(key);
+    if (list) {
+      list.push(c);
+    } else {
+      buckets.set(key, [c]);
+    }
+  }
+
+  const items: GroupedItem[] = [];
+  const seen = new Set<string>();
+
+  for (const c of connections) {
+    if (c.connection_type === "VIRTUAL") continue;
+    const key = getGroupKey(c);
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const bucket = buckets.get(key)!;
+    const first = bucket[0]!;
+    if (bucket.length === 1) {
+      items.push({ type: "single", connection: first });
+    } else {
+      items.push({
+        type: "group",
+        key,
+        icon: first.icon,
+        title: first.app_name
+          ? first.title.replace(/\s*\(\d+\)\s*$/, "")
+          : first.title,
+        connections: bucket,
+      });
+    }
+  }
+  return items;
+}
+
+function getUniqueCreators(connections: ConnectionEntity[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const c of connections) {
+    if (c.created_by && !seen.has(c.created_by)) {
+      seen.add(c.created_by);
+      result.push(c.created_by);
+    }
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Connection type / status filter types
+// ---------------------------------------------------------------------------
+
+type ConnectionTypeFilter = "ALL" | "HTTP" | "SSE" | "Websocket" | "STDIO";
+
+type ConnectionStatusFilter = "ALL" | "active" | "inactive" | "error";
+
+function countByStatus(connections: ConnectionEntity[]) {
+  let active = 0;
+  let inactive = 0;
+  let error = 0;
+  for (const c of connections) {
+    if (c.connection_type === "VIRTUAL") continue;
+    if (c.status === "active") active++;
+    else if (c.status === "error") error++;
+    else inactive++;
+  }
+  return { active, inactive, error, total: active + inactive + error };
+}
+
+// ---------------------------------------------------------------------------
+// Schemas
+// ---------------------------------------------------------------------------
 
 // Environment variable schema
 const envVarSchema = z.object({
@@ -402,6 +521,735 @@ function dialogReducer(_state: DialogState, action: DialogAction): DialogState {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Grouped card: collapsible row for connections sharing the same app_name
+// ---------------------------------------------------------------------------
+
+function ConnectionGroupCard({
+  group,
+  onNavigate,
+  onDelete,
+  selectionMode,
+  selectedIds,
+  onToggleSelect,
+}: {
+  group: ConnectionGroup;
+  onNavigate: (id: string) => void;
+  onDelete: (connection: ConnectionEntity) => void;
+  selectionMode: boolean;
+  selectedIds: Set<string>;
+  onToggleSelect: (id: string) => void;
+}) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const allSelected = group.connections.every((c) => selectedIds.has(c.id));
+  const someSelected = group.connections.some((c) => selectedIds.has(c.id));
+  const creators = getUniqueCreators(group.connections);
+
+  const mostRecent = group.connections.reduce((latest, c) => {
+    const t = c.updated_at ?? c.created_at;
+    const l = latest.updated_at ?? latest.created_at;
+    if (!t) return latest;
+    if (!l) return c;
+    return new Date(t) > new Date(l) ? c : latest;
+  }, group.connections[0]!);
+  const recentTs = mostRecent.updated_at ?? mostRecent.created_at;
+
+  return (
+    <>
+      <ConnectionCard
+        connection={{
+          title: group.title,
+          icon: group.icon,
+          description: `${group.connections.length} instances`,
+        }}
+        onClick={() =>
+          selectionMode
+            ? (() => {
+                for (const c of group.connections) {
+                  if (allSelected) {
+                    if (selectedIds.has(c.id)) onToggleSelect(c.id);
+                  } else {
+                    if (!selectedIds.has(c.id)) onToggleSelect(c.id);
+                  }
+                }
+              })()
+            : setDialogOpen(true)
+        }
+        className={cn(
+          selectionMode && allSelected && "ring-2 ring-primary",
+          selectionMode &&
+            someSelected &&
+            !allSelected &&
+            "ring-1 ring-primary/50",
+        )}
+        fallbackIcon={<Container />}
+        headerActions={
+          selectionMode ? (
+            <Checkbox
+              checked={
+                allSelected ? true : someSelected ? "indeterminate" : false
+              }
+              onCheckedChange={() => {
+                for (const c of group.connections) {
+                  if (allSelected) {
+                    if (selectedIds.has(c.id)) onToggleSelect(c.id);
+                  } else {
+                    if (!selectedIds.has(c.id)) onToggleSelect(c.id);
+                  }
+                }
+              }}
+            />
+          ) : (
+            <Badge variant="secondary" className="text-xs tabular-nums">
+              x{group.connections.length}
+            </Badge>
+          )
+        }
+        body={
+          <div className="flex items-center gap-1">
+            {group.connections.slice(0, 6).map((c) => (
+              <ConnectionStatus key={c.id} status={c.status} />
+            ))}
+          </div>
+        }
+        footer={
+          <div className="flex items-center justify-between text-xs text-muted-foreground w-full min-w-0">
+            <div className="flex items-center -space-x-1.5">
+              {creators.map((id) => (
+                <User
+                  key={id}
+                  id={id}
+                  size="3xs"
+                  avatarOnly={creators.length > 1}
+                />
+              ))}
+            </div>
+            <span className="shrink-0 ml-2">
+              {recentTs ? formatTimeAgo(new Date(recentTs)) : "—"}
+            </span>
+          </div>
+        }
+      />
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="sm:max-w-lg p-0 gap-0">
+          <DialogHeader className="px-6 pt-6 pb-4">
+            <div className="flex items-center gap-3">
+              <IntegrationIcon
+                icon={group.icon}
+                name={group.title}
+                size="md"
+                className="shrink-0 shadow-sm"
+                fallbackIcon={<Container />}
+              />
+              <div>
+                <DialogTitle>
+                  {group.title}
+                  <Badge
+                    variant="secondary"
+                    className="ml-2 text-xs tabular-nums"
+                  >
+                    x{group.connections.length}
+                  </Badge>
+                </DialogTitle>
+                <DialogDescription>
+                  {group.connections.length} installed instances
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+          <div className="divide-y max-h-80 overflow-auto">
+            {group.connections.map((c) => (
+              <div
+                key={c.id}
+                className="flex items-center gap-3 px-6 py-3 hover:bg-muted/30 cursor-pointer transition-colors"
+                onClick={() => {
+                  setDialogOpen(false);
+                  onNavigate(c.id);
+                }}
+              >
+                <IntegrationIcon
+                  icon={c.icon}
+                  name={c.title}
+                  size="sm"
+                  className="shrink-0"
+                  fallbackIcon={<Container />}
+                />
+                <div className="flex-1 min-w-0 flex items-center gap-2">
+                  <span className="text-sm font-medium text-foreground truncate">
+                    {c.title}
+                  </span>
+                  <ConnectionStatus status={c.status} />
+                </div>
+                <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0">
+                  <User id={c.created_by} size="3xs" />
+                  <span>
+                    {c.created_at ? formatTimeAgo(new Date(c.created_at)) : "—"}
+                  </span>
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <DotsVertical size={16} />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setDialogOpen(false);
+                        onNavigate(c.id);
+                      }}
+                    >
+                      <Eye size={16} />
+                      Open
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onClick={() => onDelete(c)}
+                    >
+                      <Trash01 size={16} />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Floating bulk action bar (centered, same pattern as private-registry)
+// ---------------------------------------------------------------------------
+
+function BulkActionBar({
+  count,
+  total,
+  onSelectAll,
+  onDeselectAll,
+  onDelete,
+  onAddToAgent,
+  onToggleStatus,
+  onCancel,
+}: {
+  count: number;
+  total: number;
+  onSelectAll: () => void;
+  onDeselectAll: () => void;
+  onDelete: () => void;
+  onAddToAgent: () => void;
+  onToggleStatus: (status: "active" | "inactive") => void;
+  onCancel: () => void;
+}) {
+  if (count === 0) return null;
+
+  return (
+    <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2">
+      <div className="rounded-xl border border-border bg-background/95 shadow-lg backdrop-blur px-3 py-2 flex items-center gap-2">
+        <div className="text-xs text-muted-foreground pr-1 tabular-nums">
+          {count} selected
+        </div>
+        {count < total ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs px-2"
+            onClick={onSelectAll}
+          >
+            Select all ({total})
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs px-2"
+            onClick={onDeselectAll}
+          >
+            Clear selection
+          </Button>
+        )}
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs px-2"
+          onClick={onAddToAgent}
+        >
+          <Plus size={13} />
+          Add to Agent
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs px-2"
+          onClick={() => onToggleStatus("active")}
+        >
+          Enable
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs px-2"
+          onClick={() => onToggleStatus("inactive")}
+        >
+          Disable
+        </Button>
+        <Button
+          variant="destructive"
+          size="sm"
+          className="h-7 text-xs px-2"
+          onClick={onDelete}
+        >
+          <Trash01 size={13} />
+          Delete
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 text-xs px-2"
+          onClick={onCancel}
+        >
+          <XClose size={13} />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Add to Agent dialog
+// ---------------------------------------------------------------------------
+
+function AddToAgentDialog({
+  open,
+  onOpenChange,
+  agents,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  agents: VirtualMCPEntity[];
+  onConfirm: (agentId: string) => void;
+}) {
+  const [selected, setSelected] = useState<string | null>(null);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[400px]">
+        <DialogHeader>
+          <DialogTitle>Add to Agent</DialogTitle>
+          <DialogDescription>
+            Select an agent to add the selected connections to.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="max-h-60 overflow-auto py-2 space-y-1">
+          {agents.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              No agents found
+            </p>
+          ) : (
+            agents.map((agent) => (
+              <button
+                key={agent.id}
+                type="button"
+                onClick={() => setSelected(agent.id)}
+                className={cn(
+                  "flex items-center gap-3 w-full rounded-md px-3 py-2 text-left transition-colors",
+                  selected === agent.id
+                    ? "bg-primary/10 ring-1 ring-primary"
+                    : "hover:bg-muted/50",
+                )}
+              >
+                <IntegrationIcon
+                  icon={agent.icon}
+                  name={agent.title}
+                  size="sm"
+                  className="shrink-0"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{agent.title}</p>
+                  {agent.description && (
+                    <p className="text-xs text-muted-foreground truncate">
+                      {agent.description}
+                    </p>
+                  )}
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            disabled={!selected}
+            onClick={() => {
+              if (selected) {
+                onConfirm(selected);
+                onOpenChange(false);
+                setSelected(null);
+              }
+            }}
+          >
+            Add
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Bulk delete confirmation dialog
+// ---------------------------------------------------------------------------
+
+function BulkDeleteDialog({
+  open,
+  onOpenChange,
+  count,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  count: number;
+  onConfirm: () => void;
+}) {
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            Delete {count} connection{count !== 1 ? "s" : ""}?
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            This will permanently delete the selected connection
+            {count !== 1 ? "s" : ""}. This action cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={onConfirm}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            Delete {count} connection{count !== 1 ? "s" : ""}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Grouped table: renders CollectionTable-style rows with collapsible groups
+// ---------------------------------------------------------------------------
+
+function GroupedConnectionTable({
+  columns,
+  grouped,
+  sortKey,
+  sortDirection,
+  onSort,
+  onRowClick,
+  selectionMode,
+  selectedIds,
+  onToggleSelect,
+  emptyState,
+}: {
+  columns: TableColumn<ConnectionEntity>[];
+  grouped: GroupedItem[];
+  sortKey?: string;
+  sortDirection?: "asc" | "desc" | null;
+  onSort?: (key: string) => void;
+  onRowClick: (connection: ConnectionEntity) => void;
+  selectionMode: boolean;
+  selectedIds: Set<string>;
+  onToggleSelect: (id: string) => void;
+  emptyState?: React.ReactNode;
+}) {
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  const toggleGroup = (key: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  if (grouped.length === 0 && emptyState) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        {emptyState}
+      </div>
+    );
+  }
+
+  const colCount = columns.length;
+
+  return (
+    <div className="flex-1 overflow-auto">
+      <UITable className="w-full border-collapse">
+        <TableHeader className="border-b-0">
+          <TableRow className="h-9 hover:bg-transparent border-b border-border">
+            {columns.map((col, idx) => {
+              const isActiveSort = sortKey === col.id;
+              const headerBase =
+                "px-4 py-2 text-left font-mono font-normal text-muted-foreground text-[11px] h-9 uppercase tracking-wider";
+              const isLast = idx === colCount - 1;
+              return (
+                <TableHead
+                  key={col.id}
+                  className={cn(
+                    headerBase,
+                    isLast && "w-8",
+                    "group transition-colors select-none",
+                    col.sortable && "hover:bg-accent cursor-pointer",
+                    col.cellClassName,
+                  )}
+                  onClick={
+                    col.sortable && onSort ? () => onSort(col.id) : undefined
+                  }
+                >
+                  <span className="flex items-center gap-1">
+                    {col.header}
+                    {col.sortable && (
+                      <span className="w-4 flex items-center justify-center">
+                        {isActiveSort &&
+                          sortDirection &&
+                          (sortDirection === "asc" ? (
+                            <ArrowUp
+                              size={16}
+                              className="text-muted-foreground"
+                            />
+                          ) : (
+                            <ArrowDown
+                              size={16}
+                              className="text-muted-foreground"
+                            />
+                          ))}
+                      </span>
+                    )}
+                  </span>
+                </TableHead>
+              );
+            })}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {grouped.map((item) => {
+            if (item.type === "single") {
+              const c = item.connection;
+              return (
+                <TableRow
+                  key={c.id}
+                  className={cn(
+                    "group/data-row transition-colors border-b-0 hover:bg-accent/50 cursor-pointer",
+                    selectionMode && selectedIds.has(c.id) && "bg-primary/5",
+                  )}
+                  onClick={() => onRowClick(c)}
+                >
+                  {columns.map((col) => (
+                    <TableCell
+                      key={col.id}
+                      className={cn(
+                        "px-5 py-4 h-16 align-middle text-sm text-foreground",
+                        col.cellClassName,
+                      )}
+                    >
+                      <div className="min-w-0 w-full truncate overflow-hidden whitespace-nowrap">
+                        {col.render ? col.render(c) : null}
+                      </div>
+                    </TableCell>
+                  ))}
+                </TableRow>
+              );
+            }
+
+            const group = item;
+            const isExpanded = expandedGroups.has(group.key);
+            const allSelected = group.connections.every((c) =>
+              selectedIds.has(c.id),
+            );
+            const someSelected = group.connections.some((c) =>
+              selectedIds.has(c.id),
+            );
+            const creators = getUniqueCreators(group.connections);
+
+            const mostRecent = group.connections.reduce((latest, c) => {
+              const t = c.updated_at ?? c.created_at;
+              const l = latest.updated_at ?? latest.created_at;
+              if (!t) return latest;
+              if (!l) return c;
+              return new Date(t) > new Date(l) ? c : latest;
+            }, group.connections[0]!);
+
+            return (
+              <Fragment key={group.key}>
+                {/* Group header row — cells align with columns */}
+                <TableRow
+                  className="border-b-0 hover:bg-accent/50 cursor-pointer transition-colors"
+                  onClick={() => toggleGroup(group.key)}
+                >
+                  {columns.map((col) => {
+                    const base = cn(
+                      "px-5 py-3 h-14 align-middle text-sm",
+                      col.cellClassName,
+                    );
+
+                    if (col.id === "select") {
+                      return (
+                        <TableCell key={col.id} className={base}>
+                          <Checkbox
+                            checked={
+                              allSelected
+                                ? true
+                                : someSelected
+                                  ? "indeterminate"
+                                  : false
+                            }
+                            onCheckedChange={() => {
+                              for (const c of group.connections) {
+                                if (allSelected) {
+                                  if (selectedIds.has(c.id))
+                                    onToggleSelect(c.id);
+                                } else {
+                                  if (!selectedIds.has(c.id))
+                                    onToggleSelect(c.id);
+                                }
+                              }
+                            }}
+                            onClick={(e: React.MouseEvent) =>
+                              e.stopPropagation()
+                            }
+                          />
+                        </TableCell>
+                      );
+                    }
+
+                    if (col.id === "title") {
+                      return (
+                        <TableCell key={col.id} className={base}>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <IntegrationIcon
+                              icon={group.icon}
+                              name={group.title}
+                              size="sm"
+                              className="shrink-0 shadow-sm"
+                              fallbackIcon={<Container />}
+                            />
+                            <span className="text-sm font-medium text-foreground truncate">
+                              {group.title}
+                            </span>
+                            <Badge
+                              variant="secondary"
+                              className="text-xs tabular-nums"
+                            >
+                              x{group.connections.length}
+                            </Badge>
+                          </div>
+                        </TableCell>
+                      );
+                    }
+
+                    if (col.id === "updated_by") {
+                      return (
+                        <TableCell key={col.id} className={base}>
+                          <div className="flex items-center -space-x-1.5">
+                            {creators.map((id) => (
+                              <User
+                                key={id}
+                                id={id}
+                                size="3xs"
+                                avatarOnly={creators.length > 1}
+                              />
+                            ))}
+                          </div>
+                        </TableCell>
+                      );
+                    }
+
+                    if (col.id === "updated_at") {
+                      const ts = mostRecent.updated_at ?? mostRecent.created_at;
+                      return (
+                        <TableCell key={col.id} className={base}>
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">
+                            {ts ? formatTimeAgo(new Date(ts)) : "—"}
+                          </span>
+                        </TableCell>
+                      );
+                    }
+
+                    if (col.id === "actions") {
+                      return (
+                        <TableCell key={col.id} className={base}>
+                          <ChevronDown
+                            size={16}
+                            className={cn(
+                              "text-muted-foreground transition-transform",
+                              isExpanded && "rotate-180",
+                            )}
+                          />
+                        </TableCell>
+                      );
+                    }
+
+                    return <TableCell key={col.id} className={base} />;
+                  })}
+                </TableRow>
+
+                {/* Expanded child rows */}
+                {isExpanded &&
+                  group.connections.map((c) => (
+                    <TableRow
+                      key={c.id}
+                      className={cn(
+                        "group/data-row transition-colors border-b-0 hover:bg-accent/50 cursor-pointer bg-muted/20",
+                        selectionMode &&
+                          selectedIds.has(c.id) &&
+                          "bg-primary/5",
+                      )}
+                      onClick={() => onRowClick(c)}
+                    >
+                      {columns.map((col) => (
+                        <TableCell
+                          key={col.id}
+                          className={cn(
+                            "px-5 py-3 h-14 align-middle text-sm text-foreground",
+                            col.cellClassName,
+                            col.id === "title" && "pl-12",
+                          )}
+                        >
+                          <div className="min-w-0 w-full truncate overflow-hidden whitespace-nowrap">
+                            {col.render ? col.render(c) : null}
+                          </div>
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+              </Fragment>
+            );
+          })}
+        </TableBody>
+      </UITable>
+    </div>
+  );
+}
+
+// ===========================================================================
+
 function OrgMcpsContent() {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
@@ -420,6 +1268,45 @@ function OrgMcpsContent() {
   const connections = useConnections(listState);
 
   const [dialogState, dispatch] = useReducer(dialogReducer, { mode: "idle" });
+
+  // Selection / bulk-action state
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [addToAgentOpen, setAddToAgentOpen] = useState(false);
+
+  // Type & status filters
+  const [typeFilter, setTypeFilter] = useState<ConnectionTypeFilter>("ALL");
+  const [statusFilter, setStatusFilter] =
+    useState<ConnectionStatusFilter>("ALL");
+
+  // Agents list (for Add to Agent dialog)
+  const agents = useVirtualMCPs();
+
+  // Non-virtual connections with filters applied
+  const nonVirtualConnections = connections.filter((c) => {
+    if (c.connection_type === "VIRTUAL") return false;
+    if (typeFilter !== "ALL" && c.connection_type !== typeFilter) return false;
+    if (statusFilter !== "ALL" && c.status !== statusFilter) return false;
+    return true;
+  });
+
+  const stats = countByStatus(connections);
+  const grouped = groupConnections(nonVirtualConnections);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  };
 
   // Optional registry lookup: use first available registry connection as a name/description source
   const registryConnection = useRegistryConnections(connections)[0];
@@ -599,6 +1486,101 @@ function OrgMcpsContent() {
         );
       },
     });
+  };
+
+  // Bulk action handlers
+  const handleBulkDelete = async () => {
+    setBulkDeleteOpen(false);
+    const ids = [...selectedIds];
+    let deleted = 0;
+
+    for (const id of ids) {
+      try {
+        const result = await selfClient!.callTool({
+          name: "COLLECTION_CONNECTIONS_DELETE",
+          arguments: { id, force: true },
+        });
+        if (!result.isError) deleted++;
+      } catch {
+        // continue with next
+      }
+    }
+
+    invalidateConnections();
+    toast.success(`Deleted ${deleted} connection${deleted !== 1 ? "s" : ""}`);
+    exitSelectionMode();
+  };
+
+  const handleBulkToggleStatus = async (status: "active" | "inactive") => {
+    const ids = [...selectedIds];
+    let updated = 0;
+
+    for (const id of ids) {
+      try {
+        await actions.update.mutateAsync({ id, data: { status } });
+        updated++;
+      } catch {
+        // continue
+      }
+    }
+
+    invalidateConnections();
+    toast.success(
+      `${status === "active" ? "Enabled" : "Disabled"} ${updated} connection${updated !== 1 ? "s" : ""}`,
+    );
+    exitSelectionMode();
+  };
+
+  const handleAddToAgent = async (agentId: string) => {
+    const agent = agents.find((a) => a.id === agentId);
+    if (!agent || !selfClient) return;
+
+    const existingConnIds = new Set(
+      agent.connections.map((c) => c.connection_id),
+    );
+    const newConns = [...selectedIds]
+      .filter((id) => !existingConnIds.has(id))
+      .map((connection_id) => ({
+        connection_id,
+        selected_tools: null as string[] | null,
+        selected_resources: null as string[] | null,
+        selected_prompts: null as string[] | null,
+      }));
+
+    if (newConns.length === 0) {
+      toast.info("All selected connections are already in that agent");
+      return;
+    }
+
+    try {
+      await selfClient.callTool({
+        name: "COLLECTION_VIRTUAL_MCP_UPDATE",
+        arguments: {
+          id: agentId,
+          data: {
+            connections: [...agent.connections, ...newConns],
+          },
+        },
+      });
+
+      queryClient.invalidateQueries({
+        predicate: (query) => {
+          const key = query.queryKey;
+          return (
+            key[1] === org.id &&
+            key[3] === "collection" &&
+            key[4] === "VIRTUAL_MCP"
+          );
+        },
+      });
+
+      toast.success(
+        `Added ${newConns.length} connection${newConns.length !== 1 ? "s" : ""} to "${agent.title}"`,
+      );
+      exitSelectionMode();
+    } catch {
+      toast.error("Failed to add connections to agent");
+    }
   };
 
   /** Extract error text from an MCP tool result's content array */
@@ -878,6 +1860,22 @@ function OrgMcpsContent() {
   };
 
   const columns: TableColumn<ConnectionEntity>[] = [
+    ...(selectionMode
+      ? [
+          {
+            id: "select",
+            header: "",
+            render: (connection: ConnectionEntity) => (
+              <Checkbox
+                checked={selectedIds.has(connection.id)}
+                onCheckedChange={() => toggleSelect(connection.id)}
+                onClick={(e: React.MouseEvent) => e.stopPropagation()}
+              />
+            ),
+            cellClassName: "w-10 shrink-0",
+          } satisfies TableColumn<ConnectionEntity>,
+        ]
+      : []),
     {
       id: "title",
       header: "Name",
@@ -1007,26 +2005,49 @@ function OrgMcpsContent() {
 
   const ctaButton = (
     <div className="flex items-center gap-2">
-      <Button
-        variant="outline"
-        onClick={() =>
-          navigate({
-            to: "/$org/$project/store",
-            params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
-          })
-        }
-        size="sm"
-        className="h-7 px-3 rounded-lg text-sm font-medium"
-      >
-        Browse Store
-      </Button>
-      <Button
-        onClick={openCreateDialog}
-        size="sm"
-        className="h-7 px-3 rounded-lg text-sm font-medium"
-      >
-        Custom Connection
-      </Button>
+      {selectionMode ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-3 rounded-lg text-sm font-medium"
+          onClick={exitSelectionMode}
+        >
+          <XClose size={14} />
+          Cancel
+        </Button>
+      ) : (
+        <>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 px-3 rounded-lg text-sm font-medium"
+            onClick={() => setSelectionMode(true)}
+          >
+            <CheckSquare size={14} />
+            Select
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() =>
+              navigate({
+                to: "/$org/$project/store",
+                params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
+              })
+            }
+            size="sm"
+            className="h-7 px-3 rounded-lg text-sm font-medium"
+          >
+            Browse Store
+          </Button>
+          <Button
+            onClick={openCreateDialog}
+            size="sm"
+            className="h-7 px-3 rounded-lg text-sm font-medium"
+          >
+            Custom Connection
+          </Button>
+        </>
+      )}
     </div>
   );
 
@@ -1437,13 +2458,34 @@ function OrgMcpsContent() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Bulk action dialogs */}
+      <BulkDeleteDialog
+        open={bulkDeleteOpen}
+        onOpenChange={setBulkDeleteOpen}
+        count={selectedIds.size}
+        onConfirm={handleBulkDelete}
+      />
+      <AddToAgentDialog
+        open={addToAgentOpen}
+        onOpenChange={setAddToAgentOpen}
+        agents={agents}
+        onConfirm={handleAddToAgent}
+      />
+
       {/* Page Header */}
       <Page.Header>
         <Page.Header.Left>
           <Breadcrumb>
             <BreadcrumbList>
               <BreadcrumbItem>
-                <BreadcrumbPage>Connections</BreadcrumbPage>
+                <BreadcrumbPage className="flex items-center gap-2">
+                  Connections
+                  <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                    {stats.total} total
+                    {stats.active > 0 && ` · ${stats.active} active`}
+                    {stats.error > 0 && ` · ${stats.error} errors`}
+                  </span>
+                </BreadcrumbPage>
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
@@ -1462,29 +2504,60 @@ function OrgMcpsContent() {
               { id: "updated_by", label: "Updated by" },
               { id: "updated_at", label: "Updated" },
             ]}
+            filters={[
+              {
+                label: "Type",
+                value: typeFilter,
+                onChange: (v) =>
+                  setTypeFilter((v as ConnectionTypeFilter) || "ALL"),
+                options: [
+                  { id: "ALL", label: "All" },
+                  { id: "HTTP", label: "HTTP" },
+                  { id: "SSE", label: "SSE" },
+                  { id: "Websocket", label: "WebSocket" },
+                  { id: "STDIO", label: "STDIO" },
+                ],
+              },
+              {
+                label: "Status",
+                value: statusFilter,
+                onChange: (v) =>
+                  setStatusFilter((v as ConnectionStatusFilter) || "ALL"),
+                options: [
+                  { id: "ALL", label: "All" },
+                  { id: "active", label: "Active" },
+                  { id: "inactive", label: "Inactive" },
+                  { id: "error", label: "Error" },
+                ],
+              },
+            ]}
           />
           {ctaButton}
         </Page.Header.Right>
       </Page.Header>
 
-      {/* Search Bar */}
-      <CollectionSearch
-        value={listState.search}
-        onChange={listState.setSearch}
-        placeholder="Search for a Connection..."
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            listState.setSearch("");
-            (event.target as HTMLInputElement).blur();
-          }
-        }}
-      />
+      {/* Search */}
+      <div className="flex items-center gap-3 px-5 pb-0">
+        <div className="flex-1">
+          <CollectionSearch
+            value={listState.search}
+            onChange={listState.setSearch}
+            placeholder="Search for a Connection..."
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                listState.setSearch("");
+                (event.target as HTMLInputElement).blur();
+              }
+            }}
+          />
+        </div>
+      </div>
 
       {/* Content: Cards or Table */}
       <Page.Content>
         {listState.viewMode === "cards" ? (
           <div className="flex-1 overflow-auto p-5">
-            {connections.length === 0 ? (
+            {nonVirtualConnections.length === 0 ? (
               <EmptyState
                 image={
                   <img
@@ -1495,11 +2568,7 @@ function OrgMcpsContent() {
                     aria-hidden="true"
                   />
                 }
-                title={
-                  listState.search
-                    ? "No Connections found"
-                    : "No Connections found"
-                }
+                title="No Connections found"
                 description={
                   listState.search
                     ? `No Connections match "${listState.search}"`
@@ -1526,84 +2595,132 @@ function OrgMcpsContent() {
               />
             ) : (
               <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
-                {connections.map((connection) => (
-                  <ConnectionCard
-                    key={connection.id}
-                    connection={connection}
-                    fallbackIcon={<Container />}
-                    onClick={() =>
-                      navigate({
-                        to: "/$org/$project/mcps/$connectionId",
-                        params: {
-                          org: org.slug,
-                          project: ORG_ADMIN_PROJECT_SLUG,
-                          connectionId: connection.id,
-                        },
-                      })
-                    }
-                    headerActions={
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <DotsVertical size={20} />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent
-                          align="end"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigate({
+                {grouped.map((item) => {
+                  if (item.type === "group") {
+                    return (
+                      <ConnectionGroupCard
+                        key={item.key}
+                        group={item}
+                        onNavigate={(id) =>
+                          navigate({
+                            to: "/$org/$project/mcps/$connectionId",
+                            params: {
+                              org: org.slug,
+                              project: ORG_ADMIN_PROJECT_SLUG,
+                              connectionId: id,
+                            },
+                          })
+                        }
+                        onDelete={(c) =>
+                          dispatch({ type: "delete", connection: c })
+                        }
+                        selectionMode={selectionMode}
+                        selectedIds={selectedIds}
+                        onToggleSelect={toggleSelect}
+                      />
+                    );
+                  }
+
+                  const connection = item.connection;
+                  return (
+                    <div key={connection.id} className="relative">
+                      {selectionMode && (
+                        <div className="absolute top-3 left-3 z-10">
+                          <Checkbox
+                            checked={selectedIds.has(connection.id)}
+                            onCheckedChange={() => toggleSelect(connection.id)}
+                          />
+                        </div>
+                      )}
+                      <ConnectionCard
+                        connection={connection}
+                        fallbackIcon={<Container />}
+                        onClick={() =>
+                          selectionMode
+                            ? toggleSelect(connection.id)
+                            : navigate({
                                 to: "/$org/$project/mcps/$connectionId",
                                 params: {
                                   org: org.slug,
                                   project: ORG_ADMIN_PROJECT_SLUG,
                                   connectionId: connection.id,
                                 },
-                              });
-                            }}
-                          >
-                            <Eye size={16} />
-                            Open
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              dispatch({ type: "delete", connection });
-                            }}
-                          >
-                            <Trash01 size={16} />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    }
-                    body={<ConnectionStatus status={connection.status} />}
-                    footer={
-                      <div className="flex items-center justify-between text-xs text-muted-foreground w-full min-w-0">
-                        <div className="flex-1 min-w-0">
-                          <User
-                            id={connection.updated_by ?? connection.created_by}
-                            size="3xs"
-                          />
-                        </div>
-                        <span className="shrink-0 ml-2">
-                          {connection.updated_at
-                            ? formatTimeAgo(new Date(connection.updated_at))
-                            : "—"}
-                        </span>
-                      </div>
-                    }
-                  />
-                ))}
+                              })
+                        }
+                        className={cn(
+                          selectionMode &&
+                            selectedIds.has(connection.id) &&
+                            "ring-2 ring-primary",
+                        )}
+                        headerActions={
+                          !selectionMode ? (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <DotsVertical size={20} />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent
+                                align="end"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate({
+                                      to: "/$org/$project/mcps/$connectionId",
+                                      params: {
+                                        org: org.slug,
+                                        project: ORG_ADMIN_PROJECT_SLUG,
+                                        connectionId: connection.id,
+                                      },
+                                    });
+                                  }}
+                                >
+                                  <Eye size={16} />
+                                  Open
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    dispatch({ type: "delete", connection });
+                                  }}
+                                >
+                                  <Trash01 size={16} />
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          ) : undefined
+                        }
+                        body={<ConnectionStatus status={connection.status} />}
+                        footer={
+                          <div className="flex items-center justify-between text-xs text-muted-foreground w-full min-w-0">
+                            <div className="flex-1 min-w-0">
+                              <User
+                                id={
+                                  connection.updated_by ?? connection.created_by
+                                }
+                                size="3xs"
+                              />
+                            </div>
+                            <span className="shrink-0 ml-2">
+                              {connection.updated_at
+                                ? formatTimeAgo(new Date(connection.updated_at))
+                                : "—"}
+                            </span>
+                          </div>
+                        }
+                      />
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1611,23 +2728,27 @@ function OrgMcpsContent() {
           <div className="h-full flex flex-col overflow-hidden">
             <div className="flex-1 overflow-auto min-w-0">
               <div className="min-w-[1000px]">
-                <CollectionTableWrapper
+                <GroupedConnectionTable
                   columns={columns}
-                  data={connections}
-                  isLoading={false}
+                  grouped={grouped}
                   sortKey={listState.sortKey}
                   sortDirection={listState.sortDirection}
                   onSort={listState.handleSort}
                   onRowClick={(connection) =>
-                    navigate({
-                      to: "/$org/$project/mcps/$connectionId",
-                      params: {
-                        org: org.slug,
-                        project: ORG_ADMIN_PROJECT_SLUG,
-                        connectionId: connection.id,
-                      },
-                    })
+                    selectionMode
+                      ? toggleSelect(connection.id)
+                      : navigate({
+                          to: "/$org/$project/mcps/$connectionId",
+                          params: {
+                            org: org.slug,
+                            project: ORG_ADMIN_PROJECT_SLUG,
+                            connectionId: connection.id,
+                          },
+                        })
                   }
+                  selectionMode={selectionMode}
+                  selectedIds={selectedIds}
+                  onToggleSelect={toggleSelect}
                   emptyState={
                     listState.search ? (
                       <EmptyState
@@ -1681,6 +2802,22 @@ function OrgMcpsContent() {
           </div>
         )}
       </Page.Content>
+
+      {/* Floating bulk action bar */}
+      {selectionMode && (
+        <BulkActionBar
+          count={selectedIds.size}
+          total={nonVirtualConnections.length}
+          onSelectAll={() => {
+            setSelectedIds(new Set(nonVirtualConnections.map((c) => c.id)));
+          }}
+          onDeselectAll={() => setSelectedIds(new Set())}
+          onDelete={() => setBulkDeleteOpen(true)}
+          onAddToAgent={() => setAddToAgentOpen(true)}
+          onToggleStatus={handleBulkToggleStatus}
+          onCancel={exitSelectionMode}
+        />
+      )}
     </Page>
   );
 }
