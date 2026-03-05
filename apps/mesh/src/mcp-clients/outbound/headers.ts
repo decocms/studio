@@ -59,6 +59,8 @@ export async function buildRequestHeaders(
           meshUrl: ctx.baseUrl,
           connectionId,
           organizationId: ctx.organization?.id,
+          organizationName: ctx.organization?.name,
+          organizationSlug: ctx.organization?.slug,
         },
         permissions,
       })
