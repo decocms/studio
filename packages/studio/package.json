@@ -1,0 +1,38 @@
+{
+  "name": "@decocms/studio",
+  "version": "2.135.1",
+  "description": "Deco Studio - Self-hostable MCP Gateway (wrapper for @decocms/mesh)",
+  "author": "Deco team",
+  "license": "MIT",
+  "homepage": "https://github.com/decocms/mesh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/decocms/mesh.git",
+    "directory": "packages/studio"
+  },
+  "bugs": {
+    "url": "https://github.com/decocms/mesh/issues"
+  },
+  "bin": {
+    "studio": "./bin/studio.js"
+  },
+  "files": [
+    "bin/**/*"
+  ],
+  "dependencies": {
+    "@decocms/mesh": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ai",
+    "gateway",
+    "self-hosted",
+    "mesh",
+    "studio",
+    "deco"
+  ]
+}

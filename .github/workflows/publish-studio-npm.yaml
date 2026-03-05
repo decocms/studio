@@ -1,0 +1,74 @@
+name: Publish @decocms/studio
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/mesh/package.json"
+      - "packages/studio/**"
+  workflow_dispatch:
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Read mesh version
+        id: mesh-version
+        run: |
+          VERSION=$(node -e "console.log(require('./apps/mesh/package.json').version)")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+          if [[ "$VERSION" == *-* ]]; then
+            echo "npm-tag=next" >> $GITHUB_OUTPUT
+          else
+            echo "npm-tag=latest" >> $GITHUB_OUTPUT
+          fi
+
+          echo "📦 @decocms/mesh version: $VERSION"
+
+      - name: Check if already published
+        id: check
+        run: |
+          VERSION=${{ steps.mesh-version.outputs.version }}
+          if npm view "@decocms/studio@$VERSION" version >/dev/null 2>&1; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "⏭️ @decocms/studio@$VERSION already published"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "✅ Will publish @decocms/studio@$VERSION"
+          fi
+
+      - name: Patch studio package.json
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          VERSION=${{ steps.mesh-version.outputs.version }}
+          cd packages/studio
+          node -e "
+            const pkg = require('./package.json');
+            pkg.version = '$VERSION';
+            pkg.dependencies['@decocms/mesh'] = '$VERSION';
+            require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          echo "✅ Patched to v$VERSION"
+          cat package.json
+
+      - name: Publish to npm
+        if: steps.check.outputs.skip == 'false'
+        run: npm publish --access public --tag ${{ steps.mesh-version.outputs.npm-tag }} --provenance
+        working-directory: packages/studio
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
