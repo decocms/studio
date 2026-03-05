@@ -1,6 +1,6 @@
 {
   "name": "decocms",
-  "version": "2.138.0",
+  "version": "2.138.1",
   "description": "Open-source control plane for your AI agents. Hire agents, connect tools, track costs.",
   "author": "Deco team",
   "license": "MIT",
@@ -20,7 +20,7 @@
     "bin/**/*"
   ],
   "dependencies": {
-    "@decocms/mesh": "2.138.0"
+    "@decocms/mesh": "2.138.1"
   },
   "publishConfig": {
     "access": "public"
