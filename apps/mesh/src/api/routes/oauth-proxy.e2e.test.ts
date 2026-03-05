@@ -90,6 +90,11 @@ function createMockEventBus(): EventBus {
   };
 }
 
+const TEST_ORG_ID = "org_test";
+const TEST_AUTH_HEADERS = {
+  Authorization: "Bearer test-api-key",
+};
+
 let database: MeshDatabase;
 let app: Awaited<ReturnType<typeof createApp>>;
 const connectionMap = new Map<string, string>();
@@ -103,8 +108,6 @@ describe("MCP OAuth Proxy E2E", () => {
     await createTestSchema(database.db);
     app = await createApp({ database, eventBus: createMockEventBus() });
 
-    const orgId = "org_test";
-
     // Mock auth to allow authenticated requests
     spyOn(auth.api, "getMcpSession").mockResolvedValue(null);
     spyOn(auth.api, "verifyApiKey").mockResolvedValue({
@@ -117,7 +120,7 @@ describe("MCP OAuth Proxy E2E", () => {
         permissions: { self: ["COLLECTION_CONNECTIONS_LIST"] },
         metadata: {
           organization: {
-            id: orgId,
+            id: TEST_ORG_ID,
             slug: "test-org",
             name: "Test Organization",
           },
@@ -134,7 +137,7 @@ describe("MCP OAuth Proxy E2E", () => {
         .insertInto("connections")
         .values({
           id: connectionId,
-          organization_id: orgId,
+          organization_id: TEST_ORG_ID,
           created_by: "test_user",
           title: server.name,
           connection_type: "HTTP",
@@ -155,7 +158,7 @@ describe("MCP OAuth Proxy E2E", () => {
         .insertInto("connections")
         .values({
           id: connectionId,
-          organization_id: orgId,
+          organization_id: TEST_ORG_ID,
           created_by: "test_user",
           title: server.name,
           connection_type: "HTTP",
@@ -170,6 +173,135 @@ describe("MCP OAuth Proxy E2E", () => {
 
   afterAll(async () => {
     await closeDatabase(database);
+  });
+
+  // ===========================================================================
+  // Access Control - Auth & Organization checks (IDOR protection)
+  // ===========================================================================
+
+  describe("Access Control", () => {
+    test("returns 401 for unauthenticated requests", async () => {
+      const connectionId = connectionMap.get(MCP_SERVERS[0]!.url)!;
+
+      // Temporarily override the mock to simulate unauthenticated request
+      const verifyMock = spyOn(auth.api, "verifyApiKey").mockResolvedValue({
+        valid: false,
+        error: "Invalid key",
+        key: null,
+      } as never);
+
+      const res = await app.request(
+        `/oauth-proxy/${connectionId}/authorize?response_type=code&client_id=test&state=test`,
+        { redirect: "manual" },
+      );
+
+      expect(res.status).toBe(401);
+      const body = await res.json();
+      expect(body.error).toBe("Unauthorized");
+
+      // Restore the original mock for subsequent tests
+      verifyMock.mockResolvedValue({
+        valid: true,
+        error: null,
+        key: {
+          id: "test-key-id",
+          name: "Test API Key",
+          userId: "test-user-id",
+          permissions: { self: ["COLLECTION_CONNECTIONS_LIST"] },
+          metadata: {
+            organization: {
+              id: TEST_ORG_ID,
+              slug: "test-org",
+              name: "Test Organization",
+            },
+          },
+        },
+      } as never);
+    });
+
+    test("returns 404 for non-existent connection", async () => {
+      const res = await app.request(
+        `/oauth-proxy/conn_nonexistent/authorize?response_type=code&client_id=test&state=test`,
+        {
+          redirect: "manual",
+          headers: TEST_AUTH_HEADERS,
+        },
+      );
+
+      expect(res.status).toBe(404);
+      const body = await res.json();
+      expect(body.error).toBe("Connection not found");
+    });
+
+    test("returns 403 for cross-organization connection access (IDOR protection)", async () => {
+      // Create a connection belonging to a different organization
+      const crossOrgConnectionId = "conn_cross_org";
+      await database.db
+        .insertInto("connections")
+        .values({
+          id: crossOrgConnectionId,
+          organization_id: "org_other", // Different from TEST_ORG_ID
+          created_by: "other_user",
+          title: "Cross Org Server",
+          connection_type: "HTTP",
+          connection_url: "https://example.com/mcp",
+          status: "active",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .execute();
+
+      const res = await app.request(
+        `/oauth-proxy/${crossOrgConnectionId}/authorize?response_type=code&client_id=test&state=test`,
+        {
+          redirect: "manual",
+          headers: TEST_AUTH_HEADERS,
+        },
+      );
+
+      expect(res.status).toBe(403);
+      const body = await res.json();
+      expect(body.error).toBe(
+        "Connection does not belong to your organization",
+      );
+    });
+
+    test("returns 403 for cross-org token endpoint access", async () => {
+      const res = await app.request(`/oauth-proxy/conn_cross_org/token`, {
+        method: "POST",
+        headers: {
+          ...TEST_AUTH_HEADERS,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: "grant_type=authorization_code&code=test_code",
+      });
+
+      expect(res.status).toBe(403);
+      const body = await res.json();
+      expect(body.error).toBe(
+        "Connection does not belong to your organization",
+      );
+    });
+
+    test("returns 403 for cross-org register endpoint access", async () => {
+      const res = await app.request(`/oauth-proxy/conn_cross_org/register`, {
+        method: "POST",
+        headers: {
+          ...TEST_AUTH_HEADERS,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          client_name: "malicious-client",
+          redirect_uris: ["https://evil.com/callback"],
+        }),
+      });
+
+      expect(res.status).toBe(403);
+      const body = await res.json();
+      expect(body.error).toBe(
+        "Connection does not belong to your organization",
+      );
+    });
   });
 
   // ===========================================================================
@@ -239,7 +371,10 @@ describe("MCP OAuth Proxy E2E", () => {
         const connectionId = connectionMap.get(server.url)!;
         const res = await app.request(
           `/oauth-proxy/${connectionId}/authorize?response_type=code&client_id=test&state=test`,
-          { redirect: "manual" },
+          {
+            redirect: "manual",
+            headers: TEST_AUTH_HEADERS,
+          },
         );
 
         // Must be a redirect (302)
@@ -263,7 +398,10 @@ describe("MCP OAuth Proxy E2E", () => {
         const proxyResourceUrl = `http://localhost/mcp/${connectionId}`;
         const res = await app.request(
           `/oauth-proxy/${connectionId}/authorize?response_type=code&client_id=test&state=test&resource=${encodeURIComponent(proxyResourceUrl)}`,
-          { redirect: "manual" },
+          {
+            redirect: "manual",
+            headers: TEST_AUTH_HEADERS,
+          },
         );
 
         expect(res.status).toBe(302);

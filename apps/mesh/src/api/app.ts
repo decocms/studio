@@ -383,10 +383,23 @@ export async function createApp(options: CreateAppOptions = {}) {
       c.set("meshContext", ctx);
     }
 
+    // Require authentication (user session or API key)
+    const user = ctx.auth.user;
+    if (!user) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
     // Get connection URL
     const connection = await ctx.storage.connections.findById(connectionId);
     if (!connection?.connection_url) {
       return c.json({ error: "Connection not found" }, 404);
+    }
+
+    if (connection.organization_id !== ctx.organization?.id) {
+      return c.json(
+        { error: "Connection does not belong to your organization" },
+        403,
+      );
     }
 
     // Get origin auth server - tries Protected Resource Metadata first, then falls back to origin root
