@@ -1,6 +1,5 @@
-import { getWellKnownMcpStudioConnection } from "@decocms/mesh-sdk";
-import { useProjectContext } from "@decocms/mesh-sdk";
-import { BindingCollectionView } from "@/web/components/binding-collection-view";
+import { SELF_MCP_ALIAS_ID, useProjectContext } from "@decocms/mesh-sdk";
+import { CollectionTab } from "@/web/components/details/connection/collection-tab";
 import { PluginNotEnabledEmptyState } from "@/web/components/plugin-not-enabled-empty-state";
 import { Page } from "@/web/components/page";
 import {
@@ -13,8 +12,16 @@ import { Dataflow03 } from "@untitledui/icons";
 
 const WORKFLOWS_PLUGIN_ID = "workflows";
 
+const WORKFLOW_COLLECTION = {
+  name: "WORKFLOW",
+  displayName: "Workflow",
+  hasCreateTool: true,
+  hasUpdateTool: true,
+  hasDeleteTool: true,
+};
+
 export default function WorkflowPage() {
-  const { project } = useProjectContext();
+  const { project, org } = useProjectContext();
   const enabledPlugins = project.enabledPlugins ?? [];
   const isPluginEnabled = enabledPlugins.includes(WORKFLOWS_PLUGIN_ID);
 
@@ -52,15 +59,26 @@ export default function WorkflowPage() {
   }
 
   return (
-    <BindingCollectionView
-      bindingName="WORKFLOW"
-      collectionName="workflow"
-      title="Workflows"
-      emptyState={{
-        title: "Create Workflows",
-        description: "Run durable MCP tool calls in background.",
-      }}
-      wellKnownMcp={getWellKnownMcpStudioConnection()}
-    />
+    <Page>
+      <Page.Header>
+        <Page.Header.Left>
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbPage>Workflows</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+        </Page.Header.Left>
+      </Page.Header>
+
+      <Page.Content>
+        <CollectionTab
+          connectionId={SELF_MCP_ALIAS_ID}
+          org={org.slug}
+          activeCollection={WORKFLOW_COLLECTION}
+        />
+      </Page.Content>
+    </Page>
   );
 }
