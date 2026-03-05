@@ -172,10 +172,13 @@ if (values.home) {
   if (answer === "") {
     meshHome = defaultHome;
   } else {
-    // Expand ~ to home directory
-    meshHome = answer.startsWith("~")
-      ? join(homedir(), answer.slice(2))
-      : answer;
+    // Expand ~ to home directory (only bare ~ or ~/path, not ~user)
+    meshHome =
+      answer === "~"
+        ? homedir()
+        : answer.startsWith("~/")
+          ? join(homedir(), answer.slice(2))
+          : answer;
   }
 }
 

@@ -60,9 +60,10 @@ Bun.serve({
   idleTimeout: 0,
   port,
   hostname: "0.0.0.0", // Listen on all network interfaces (required for K8s)
-  fetch: async (request) => {
+  fetch: async (request, server) => {
     // Try assets first (static files or dev proxy), then API
-    return (await handleAssets(request)) ?? app.fetch(request);
+    // Pass server as env so Hono's getConnInfo can access requestIP
+    return (await handleAssets(request)) ?? app.fetch(request, { server });
   },
   development: process.env.NODE_ENV !== "production",
 });

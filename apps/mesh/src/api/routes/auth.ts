@@ -6,6 +6,7 @@
  */
 
 import { Hono } from "hono";
+import { getConnInfo } from "hono/bun";
 import { authConfig, resetPasswordEnabled } from "../../auth";
 import { KNOWN_OAUTH_PROVIDERS, OAuthProvider } from "@/auth/oauth-providers";
 import {
@@ -129,14 +130,17 @@ app.post("/local-session", async (c) => {
   }
 
   // Only allow from loopback to prevent LAN access when bound to 0.0.0.0
-  const forwarded = c.req.header("x-forwarded-for");
-  const remoteAddr =
-    forwarded?.split(",")[0]?.trim() ?? c.req.header("x-real-ip") ?? "";
+  // Uses Bun's socket-level requestIP — not spoofable via headers
+  let remoteAddr: string | undefined;
+  try {
+    const info = getConnInfo(c);
+    remoteAddr = info.remote.address;
+  } catch {
+    // getConnInfo may fail in test environments without a real server
+  }
   const isLoopback =
     remoteAddr === "127.0.0.1" ||
     remoteAddr === "::1" ||
-    remoteAddr === "localhost" ||
-    remoteAddr === "" || // same-machine requests with no proxy
     remoteAddr === "::ffff:127.0.0.1";
   if (!isLoopback) {
     return c.json({ success: false, error: "Forbidden" }, 403);
