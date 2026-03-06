@@ -66,7 +66,11 @@ const handleSignal = async (signal: string) => {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(`\n[${signal}] Shutting down...`);
-  await shutdown();
+  try {
+    await shutdown();
+  } catch (err) {
+    console.error("[Shutdown] Error during cleanup:", err);
+  }
   process.exit(0);
 };
 process.on("SIGTERM", () => handleSignal("SIGTERM"));
