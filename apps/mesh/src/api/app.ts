@@ -629,7 +629,14 @@ export async function createApp(options: CreateAppOptions = {}) {
     const meshCtx = await ContextFactory.create(c.req.raw, { timings });
     c.set("meshContext", meshCtx);
 
-    return next();
+    try {
+      return await next();
+    } finally {
+      // Dispose the per-request client pool to close MCP client connections.
+      // Without this, every request that uses getOrCreateClient() leaks
+      // connections, eventually exhausting file descriptors and memory.
+      await meshCtx.getOrCreateClient[Symbol.asyncDispose]();
+    }
   });
 
   // Get all management tools (for OAuth consent UI)
