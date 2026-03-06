@@ -1216,7 +1216,7 @@ function mergeGroups(
 
 function BillingBreakdown() {
   const { org } = useProjectContext();
-  const [period, setPeriod] = useState<BillingStatsPeriod>("30d");
+  const [period, setPeriod] = useState<BillingStatsPeriod>("7d");
   const timeRange = periodToTimeRange(period);
   const { data: membersData } = useMembers();
   const members = membersData?.data?.members ?? [];
