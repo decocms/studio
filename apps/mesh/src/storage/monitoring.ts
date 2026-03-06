@@ -56,14 +56,9 @@ export interface AggregationResult {
 
 export class SqlMonitoringStorage implements MonitoringStorage {
   private redactor: RegexRedactor;
-  private databaseType: "sqlite" | "postgres";
 
-  constructor(
-    private db: Kysely<Database>,
-    databaseType: "sqlite" | "postgres" = "sqlite",
-  ) {
+  constructor(private db: Kysely<Database>) {
     this.redactor = new RegexRedactor();
-    this.databaseType = databaseType;
   }
 
   /**
@@ -72,13 +67,7 @@ export class SqlMonitoringStorage implements MonitoringStorage {
    * Note: properties column is stored as text, so PostgreSQL needs a cast to jsonb.
    */
   private jsonExtract(column: string, key: string) {
-    if (this.databaseType === "postgres") {
-      // PostgreSQL: cast text to jsonb, then use ->> operator for text extraction
-      return sql`(${sql.ref(column)}::jsonb)->>${key}`;
-    }
-    // SQLite: use json_extract with JSON path
-    const jsonPath = `$.${key}`;
-    return sql`json_extract(${sql.ref(column)}, ${jsonPath})`;
+    return sql`(${sql.ref(column)}::jsonb)->>${key}`;
   }
 
   /**
@@ -88,13 +77,7 @@ export class SqlMonitoringStorage implements MonitoringStorage {
    * but ',Engineering,Sales,' LIKE '%,Eng,%' does NOT match
    */
   private jsonExtractWithCommas(column: string, key: string) {
-    if (this.databaseType === "postgres") {
-      // PostgreSQL: wrap extracted value in commas
-      return sql`(',' || (${sql.ref(column)}::jsonb)->>${key} || ',')`;
-    }
-    // SQLite: wrap extracted value in commas
-    const jsonPath = `$.${key}`;
-    return sql`(',' || json_extract(${sql.ref(column)}, ${jsonPath}) || ',')`;
+    return sql`(',' || (${sql.ref(column)}::jsonb)->>${key} || ',')`;
   }
 
   /**
@@ -516,15 +499,9 @@ export class SqlMonitoringStorage implements MonitoringStorage {
    * Used for values that will be aggregated (sum, avg, etc.)
    */
   private jsonExtractPath(column: string, jsonPath: string) {
-    if (this.databaseType === "postgres") {
-      // PostgreSQL: use jsonb extraction operators
-      // For nested paths like $.usage.total_tokens, use #>>
-      const pathParts = jsonPath.replace(/^\$\.?/, "").split(".");
-      const pathArray = `{${pathParts.join(",")}}`;
-      return sql`(${sql.ref(column)}::jsonb #>> ${pathArray})::numeric`;
-    }
-    // SQLite: use json_extract with JSON path
-    return sql`CAST(json_extract(${sql.ref(column)}, ${jsonPath}) AS REAL)`;
+    const pathParts = jsonPath.replace(/^\$\.?/, "").split(".");
+    const pathArray = `{${pathParts.join(",")}}`;
+    return sql`(${sql.ref(column)}::jsonb #>> ${pathArray})::numeric`;
   }
 
   /**
@@ -532,13 +509,9 @@ export class SqlMonitoringStorage implements MonitoringStorage {
    * Used for groupBy fields which are typically strings.
    */
   private jsonExtractPathText(column: string, jsonPath: string) {
-    if (this.databaseType === "postgres") {
-      const pathParts = jsonPath.replace(/^\$\.?/, "").split(".");
-      const pathArray = `{${pathParts.join(",")}}`;
-      return sql`(${sql.ref(column)}::jsonb #>> ${pathArray})`;
-    }
-    // SQLite: use json_extract with JSON path (returns text naturally)
-    return sql`json_extract(${sql.ref(column)}, ${jsonPath})`;
+    const pathParts = jsonPath.replace(/^\$\.?/, "").split(".");
+    const pathArray = `{${pathParts.join(",")}}`;
+    return sql`(${sql.ref(column)}::jsonb #>> ${pathArray})`;
   }
 
   /**
@@ -574,7 +547,6 @@ export class SqlMonitoringStorage implements MonitoringStorage {
    * Get time bucket expression for timeseries grouping.
    */
   private timeBucketExpression(interval: string) {
-    // Parse interval like "1h", "1d", "15m"
     const match = interval.match(/^(\d+)([mhd])$/);
     if (!match) {
       throw new Error(
@@ -588,49 +560,26 @@ export class SqlMonitoringStorage implements MonitoringStorage {
     }
     const amount = parseInt(amountStr, 10);
 
-    if (this.databaseType === "postgres") {
-      // PostgreSQL: use date_trunc or custom bucketing
-      let truncUnit: string;
-      switch (unit) {
-        case "m":
-          truncUnit = "minute";
-          break;
-        case "h":
-          truncUnit = "hour";
-          break;
-        case "d":
-          truncUnit = "day";
-          break;
-        default:
-          truncUnit = "hour";
-      }
-      if (amount === 1) {
-        return sql`date_trunc(${truncUnit}, timestamp::timestamp)`;
-      }
-      // For non-1 intervals, use epoch-based bucketing
-      const secondsPerUnit = unit === "m" ? 60 : unit === "h" ? 3600 : 86400;
-      const bucketSeconds = amount * secondsPerUnit;
-      return sql`to_timestamp(floor(extract(epoch from timestamp::timestamp) / ${bucketSeconds}) * ${bucketSeconds})`;
-    }
-
-    // SQLite: use strftime for bucketing
+    let truncUnit: string;
     switch (unit) {
       case "m":
-        if (amount === 1) {
-          return sql`strftime('%Y-%m-%d %H:%M:00', timestamp)`;
-        }
-        // For multi-minute buckets, round down
-        return sql`strftime('%Y-%m-%d %H:', timestamp) || printf('%02d', (cast(strftime('%M', timestamp) as integer) / ${amount}) * ${amount}) || ':00'`;
+        truncUnit = "minute";
+        break;
       case "h":
-        if (amount === 1) {
-          return sql`strftime('%Y-%m-%d %H:00:00', timestamp)`;
-        }
-        return sql`strftime('%Y-%m-%d ', timestamp) || printf('%02d', (cast(strftime('%H', timestamp) as integer) / ${amount}) * ${amount}) || ':00:00'`;
+        truncUnit = "hour";
+        break;
       case "d":
-        return sql`strftime('%Y-%m-%d 00:00:00', timestamp)`;
+        truncUnit = "day";
+        break;
       default:
-        return sql`strftime('%Y-%m-%d %H:00:00', timestamp)`;
+        truncUnit = "hour";
     }
+    if (amount === 1) {
+      return sql`date_trunc(${truncUnit}, timestamp::timestamp)`;
+    }
+    const secondsPerUnit = unit === "m" ? 60 : unit === "h" ? 3600 : 86400;
+    const bucketSeconds = amount * secondsPerUnit;
+    return sql`to_timestamp(floor(extract(epoch from timestamp::timestamp) / ${bucketSeconds}) * ${bucketSeconds})`;
   }
 
   // ============================================================================
@@ -665,13 +614,11 @@ export class SqlMonitoringStorage implements MonitoringStorage {
       }
     }
 
-    // Pattern match: property value matches pattern (using LIKE)
+    // Pattern match: property value matches pattern (using ILIKE)
     if (propertyPatterns) {
       for (const [key, pattern] of Object.entries(propertyPatterns)) {
         const jsonExpr = this.jsonExtract("properties", key);
-        // Use ILIKE for PostgreSQL (case-insensitive), LIKE for SQLite
-        const likeOp = this.databaseType === "postgres" ? "ilike" : "like";
-        query = query.where(jsonExpr as never, likeOp, pattern as never);
+        query = query.where(jsonExpr as never, "ilike", pattern as never);
       }
     }
 

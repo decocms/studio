@@ -272,7 +272,11 @@ export async function closeDatabase(database: MeshDatabase): Promise<void> {
   }
 
   if (database.type === "pglite") {
-    await database.pglite.close();
+    try {
+      await database.pglite.close();
+    } catch {
+      // PGlite may already be closed by Kysely's destroy()
+    }
   }
 }
 
