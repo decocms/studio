@@ -11,44 +11,15 @@ import { RegexRedactor } from "../monitoring/redactor";
 import type { MonitoringStorage, PropertyFilters } from "./ports";
 import type {
   AggregationFunction,
+  AggregationParams,
+  AggregationResult,
   Database,
   GroupByColumn,
   MonitoringLog,
 } from "./types";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 
-export type { GroupByColumn };
-
-export interface AggregationParams {
-  organizationId: string;
-  path: string; // JSONPath to extract, e.g., "$.usage.total_tokens"
-  from: "input" | "output";
-  aggregation: AggregationFunction;
-  groupBy?: string; // Optional JSONPath for grouping (extracted from JSON)
-  groupByColumn?: GroupByColumn; // Optional table column for grouping (takes priority over groupBy)
-  interval?: string; // For timeseries: "1h", "1d"
-  limit?: number; // Max number of groups to return (applies to groupBy/groupByColumn, ordered by value desc)
-  filters?: {
-    connectionIds?: string[];
-    virtualMcpIds?: string[];
-    toolNames?: string[];
-    startDate?: Date;
-    endDate?: Date;
-    propertyFilters?: PropertyFilters;
-  };
-}
-
-export interface AggregationResult {
-  value: number | null;
-  groups?: Array<{
-    key: string;
-    value: number;
-  }>;
-  timeseries?: Array<{
-    timestamp: string;
-    value: number;
-  }>;
-}
+export type { AggregationParams, AggregationResult, GroupByColumn };
 
 // ============================================================================
 // Monitoring Storage Implementation

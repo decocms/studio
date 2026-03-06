@@ -460,6 +460,43 @@ export type AggregationFunction =
   | "last";
 
 /**
+ * Parameters for monitoring data aggregation queries
+ */
+export interface AggregationParams {
+  organizationId: string;
+  path: string; // JSONPath to extract, e.g., "$.usage.total_tokens"
+  from: "input" | "output";
+  aggregation: AggregationFunction;
+  groupBy?: string; // Optional JSONPath for grouping (extracted from JSON)
+  groupByColumn?: GroupByColumn; // Optional table column for grouping (takes priority over groupBy)
+  interval?: string; // For timeseries: "1h", "1d"
+  limit?: number; // Max number of groups to return (applies to groupBy/groupByColumn, ordered by value desc)
+  filters?: {
+    connectionIds?: string[];
+    virtualMcpIds?: string[];
+    toolNames?: string[];
+    startDate?: Date;
+    endDate?: Date;
+    propertyFilters?: import("./ports").PropertyFilters;
+  };
+}
+
+/**
+ * Result of a monitoring data aggregation query
+ */
+export interface AggregationResult {
+  value: number | null;
+  groups?: Array<{
+    key: string;
+    value: number;
+  }>;
+  timeseries?: Array<{
+    timestamp: string;
+    value: number;
+  }>;
+}
+
+/**
  * Widget display types
  */
 export type WidgetType = "metric" | "timeseries" | "table";

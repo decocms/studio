@@ -12,6 +12,8 @@ import type {
   VirtualMCPUpdateData,
 } from "../tools/virtual/schema";
 import type {
+  AggregationParams,
+  AggregationResult,
   MonitoringLog,
   OrganizationSettings,
   OrganizationTag,
@@ -172,6 +174,13 @@ export interface MonitoringStorage {
     errorRate: number;
     avgDurationMs: number;
   }>;
+  aggregate(params: AggregationParams): Promise<AggregationResult>;
+  countMatched(params: {
+    organizationId: string;
+    path: string;
+    from: "input" | "output";
+    filters?: AggregationParams["filters"];
+  }): Promise<number>;
 }
 
 // ============================================================================
