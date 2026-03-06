@@ -180,6 +180,11 @@ export class EventBusWorker {
       do {
         this.pendingNotify = false;
         await this.processEvents();
+        // Yield briefly between coalescing iterations to prevent a CPU-burning
+        // busy-loop when notifications arrive faster than processing completes.
+        if (this.pendingNotify) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
       } while (this.pendingNotify);
     } catch (error) {
       console.error("[EventBus] Error processing events:", error);

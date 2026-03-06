@@ -101,7 +101,7 @@ interface MCPRequest {
 
 describe("Access Control Integration Tests", () => {
   let database: MeshDatabase;
-  let app: Awaited<ReturnType<typeof createApp>>;
+  let app: Awaited<ReturnType<typeof createApp>>["app"];
   let testUsers: Map<string, TestUser>;
   let testOrganizations: Map<string, TestOrganization>;
   let testConnections: Map<string, TestConnection>;
@@ -121,7 +121,7 @@ describe("Access Control Integration Tests", () => {
     await createTestSchema(database.db);
 
     // Create app instance with test database and mock event bus
-    app = await createApp({ database, eventBus: createMockEventBus() });
+    ({ app } = await createApp({ database, eventBus: createMockEventBus() }));
 
     // Initialize test data maps
     testUsers = new Map();

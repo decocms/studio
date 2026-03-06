@@ -125,6 +125,9 @@ const defaultPoolOptions = {
   connectionTimeoutMillis: 30000,
   // Allow the process to exit even with idle connections
   allowExitOnIdle: true,
+  // Prevent runaway queries from exhausting PG connections and crashing the process.
+  // Monitoring JSONB queries on text columns can take 170s+ without this guard.
+  statement_timeout: 30000, // 30s max per query
 };
 function createPostgresDatabase(config: DatabaseConfig): PostgresDatabase {
   const pool = new Pool({

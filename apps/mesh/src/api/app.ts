@@ -201,12 +201,14 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   if (options.eventBus) {
     eventBus = options.eventBus;
-    sseHub.start().catch((error) => {
+    try {
+      await sseHub.start();
+    } catch (error) {
       console.error(
         "[SSEHub] Error starting broadcast (custom eventBus):",
         error,
       );
-    });
+    }
   } else {
     // Create notify function that uses the context factory
     // This is called by the worker to deliver events to subscribers
@@ -593,20 +595,21 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Start the event bus worker (async - resets stuck deliveries from previous crashes)
   // Then run plugin startup hooks (e.g., recover stuck workflow executions)
-  Promise.resolve(eventBus.start())
-    .then(() => {
-      console.log("[EventBus] Worker started");
-      // db is typed as `any` to avoid Kysely version mismatch issues between packages
-      return runPluginStartupHooks({
-        db: database.db as any,
-        publish: async (organizationId, event) => {
-          await eventBus.publish(organizationId, "", event);
-        },
-      });
-    })
-    .catch((error) => {
-      console.error("[EventBus] Error during startup:", error);
+  // Await critical startup to avoid degraded state where the event bus
+  // or plugins aren't ready when the first request arrives.
+  try {
+    await eventBus.start();
+    console.log("[EventBus] Worker started");
+    // db is typed as `any` to avoid Kysely version mismatch issues between packages
+    await runPluginStartupHooks({
+      db: database.db as any,
+      publish: async (organizationId, event) => {
+        await eventBus.publish(organizationId, "", event);
+      },
     });
+  } catch (error) {
+    console.error("[EventBus] Error during startup:", error);
+  }
 
   // Inject MeshContext into requests
   // Skip auth routes, static files, health check, and metrics - they don't need MeshContext
@@ -629,7 +632,29 @@ export async function createApp(options: CreateAppOptions = {}) {
     const meshCtx = await ContextFactory.create(c.req.raw, { timings });
     c.set("meshContext", meshCtx);
 
-    return next();
+    // Dispose the per-request client pool when the request ends.
+    // Two mechanisms handle the two response types:
+    // - Abort signal: fires when the client disconnects (handles SSE/streaming)
+    // - Finally block: fires when next() resolves (handles non-streaming JSON)
+    // Both are needed because SSE streams outlive next(), while non-streaming
+    // keep-alive connections may never fire the abort signal.
+    // Disposal is idempotent so both can safely fire.
+    c.req.raw.signal.addEventListener("abort", () => {
+      meshCtx.getOrCreateClient[Symbol.asyncDispose]().catch((err) =>
+        console.error("[ClientPool] Disposal error:", err),
+      );
+    });
+
+    try {
+      return await next();
+    } finally {
+      // Skip for SSE — the abort signal handles cleanup when the stream ends.
+      if (!c.res?.headers?.get("content-type")?.includes("text/event-stream")) {
+        await meshCtx.getOrCreateClient[Symbol.asyncDispose]().catch((err) =>
+          console.error("[ClientPool] Disposal error:", err),
+        );
+      }
+    }
   });
 
   // Get all management tools (for OAuth consent UI)
@@ -870,5 +895,18 @@ export async function createApp(options: CreateAppOptions = {}) {
     );
   });
 
-  return app;
+  // Graceful shutdown: stop active runs, event bus, SSE hub, NATS
+  const shutdown = async () => {
+    console.log("[Shutdown] Graceful shutdown initiated");
+    runRegistry.stopAll(threadStorage);
+    runRegistry.dispose();
+    await cancelBroadcast.stop().catch(() => {});
+    streamBuffer.teardown();
+    await Promise.resolve(eventBus.stop()).catch(() => {});
+    await sseHub.stop().catch(() => {});
+    await natsProvider?.drain().catch(() => {});
+    console.log("[Shutdown] Cleanup complete");
+  };
+
+  return { app, shutdown };
 }

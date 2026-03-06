@@ -90,9 +90,11 @@ export const MONITORING_DASHBOARD_QUERY = defineTool({
       ? new Date(input.timeRange.endDate)
       : now;
 
-    // Execute each widget's aggregation
-    const results: WidgetQueryResult[] = await Promise.all(
-      dashboard.widgets.map(async (widget: DashboardWidget) => {
+    // Execute widgets sequentially to avoid N concurrent expensive JSONB queries
+    // that can exhaust PG connections and crash the process
+    const results: WidgetQueryResult[] = [];
+    for (const widget of dashboard.widgets as DashboardWidget[]) {
+      const widgetResult = await (async () => {
         // Merge dashboard-level filters with widget-level filters
         // Dashboard-level propertyFilters are exact-match only; runtime ones
         // support all operators (eq, contains, exists, in).
@@ -155,8 +157,9 @@ export const MONITORING_DASHBOARD_QUERY = defineTool({
             timeseries: undefined,
           };
         }
-      }),
-    );
+      })();
+      results.push(widgetResult);
+    }
 
     return {
       dashboardId: input.dashboardId,

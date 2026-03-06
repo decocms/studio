@@ -91,7 +91,7 @@ function createMockEventBus(): EventBus {
 }
 
 let database: MeshDatabase;
-let app: Awaited<ReturnType<typeof createApp>>;
+let app: Awaited<ReturnType<typeof createApp>>["app"];
 const connectionMap = new Map<string, string>();
 
 describe("MCP OAuth Proxy E2E", () => {
@@ -101,7 +101,7 @@ describe("MCP OAuth Proxy E2E", () => {
 
     database = createDatabase(":memory:");
     await createTestSchema(database.db);
-    app = await createApp({ database, eventBus: createMockEventBus() });
+    ({ app } = await createApp({ database, eventBus: createMockEventBus() }));
 
     const orgId = "org_test";
 

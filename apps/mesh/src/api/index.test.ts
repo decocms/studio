@@ -54,12 +54,12 @@ function createMockEventBus(): EventBus {
 
 describe("Hono App", () => {
   let database: MeshDatabase;
-  let app: Awaited<ReturnType<typeof createApp>>;
+  let app: Awaited<ReturnType<typeof createApp>>["app"];
 
   beforeEach(async () => {
     database = createDatabase(":memory:");
     await createTestSchema(database.db);
-    app = await createApp({ database, eventBus: createMockEventBus() });
+    ({ app } = await createApp({ database, eventBus: createMockEventBus() }));
   });
 
   afterEach(async () => {

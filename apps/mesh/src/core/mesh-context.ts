@@ -327,10 +327,12 @@ export interface MeshContext {
   ) => ReturnType<typeof createMCPProxy>;
 
   // Client pool for STDIO connection reuse (LRU cache)
-  getOrCreateClient: <T extends Transport>(
+  getOrCreateClient: (<T extends Transport>(
     transport: T,
     key: string,
-  ) => Promise<Client>;
+  ) => Promise<Client>) & {
+    [Symbol.asyncDispose]: () => Promise<void>;
+  };
 }
 
 // ============================================================================

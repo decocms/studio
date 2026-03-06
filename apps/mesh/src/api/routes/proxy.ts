@@ -284,7 +284,6 @@ app.all("/:connectionId", async (c) => {
       // Connect server to transport
       await server.connect(transport);
 
-      // Handle request and cleanup
       return await transport.handleRequest(c.req.raw);
     } catch (error) {
       // Check if this is an auth error - if so, return appropriate 401

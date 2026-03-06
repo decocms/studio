@@ -229,7 +229,9 @@ const createMockContext = (
       timestamp: new Date(),
     },
     createMCPProxy: vi.fn().mockResolvedValue({}),
-    getOrCreateClient: vi.fn().mockResolvedValue({}),
+    getOrCreateClient: Object.assign(vi.fn().mockResolvedValue({}), {
+      [Symbol.asyncDispose]: async () => {},
+    }),
   };
 };
 

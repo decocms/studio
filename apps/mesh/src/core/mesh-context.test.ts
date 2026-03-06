@@ -56,7 +56,9 @@ const createMockContext = (overrides?: Partial<MeshContext>): MeshContext => ({
   },
   eventBus: null as unknown as EventBus,
   createMCPProxy: async () => ({}) as never,
-  getOrCreateClient: async () => ({}) as never,
+  getOrCreateClient: Object.assign(async () => ({}) as never, {
+    [Symbol.asyncDispose]: async () => {},
+  }),
   ...overrides,
 });
 
