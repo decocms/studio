@@ -38,7 +38,7 @@ const handleAssets = createAssetHandler({
 });
 
 // Create the Hono app
-const app = await createApp();
+const { app, shutdown } = await createApp();
 
 console.log("");
 console.log(`${green}✓${reset} ${bold}Ready${reset}`);
@@ -59,6 +59,18 @@ Bun.serve({
   },
   development: process.env.NODE_ENV !== "production",
 });
+
+// Graceful shutdown on SIGTERM/SIGINT (container restart, deploy, Ctrl+C)
+let shuttingDown = false;
+const handleSignal = async (signal: string) => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`\n[${signal}] Shutting down...`);
+  await shutdown();
+  process.exit(0);
+};
+process.on("SIGTERM", () => handleSignal("SIGTERM"));
+process.on("SIGINT", () => handleSignal("SIGINT"));
 
 // Internal debug server (only enabled via ENABLE_DEBUG_SERVER=true)
 if (enableDebugServer) {

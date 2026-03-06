@@ -877,5 +877,18 @@ export async function createApp(options: CreateAppOptions = {}) {
     );
   });
 
-  return app;
+  // Graceful shutdown: stop active runs, event bus, SSE hub, NATS
+  const shutdown = async () => {
+    console.log("[Shutdown] Graceful shutdown initiated");
+    runRegistry.stopAll(threadStorage);
+    runRegistry.dispose();
+    await cancelBroadcast.stop().catch(() => {});
+    streamBuffer.teardown();
+    await eventBus.stop();
+    await sseHub.stop().catch(() => {});
+    await natsProvider?.drain().catch(() => {});
+    console.log("[Shutdown] Cleanup complete");
+  };
+
+  return { app, shutdown };
 }

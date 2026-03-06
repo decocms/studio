@@ -44,13 +44,13 @@ describe("MCP Integration", () => {
     let client: Client | null = null;
     let originalFetch: typeof global.fetch;
     let database: MeshDatabase;
-    let app: Awaited<ReturnType<typeof createApp>>;
+    let app: Awaited<ReturnType<typeof createApp>>["app"];
 
     beforeEach(async () => {
       // Create test database and app
       database = createDatabase(":memory:");
       await createTestSchema(database.db);
-      app = await createApp({ database, eventBus: createMockEventBus() });
+      ({ app } = await createApp({ database, eventBus: createMockEventBus() }));
 
       // Store original fetch
       originalFetch = global.fetch;
