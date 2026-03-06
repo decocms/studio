@@ -127,20 +127,33 @@ const defaultPoolOptions = {
   connectionTimeoutMillis: 30000,
   // Allow the process to exit even with idle connections
   allowExitOnIdle: true,
+  // PROTECTION: Kill queries that run too long (prevents runaway queries)
+  // Configurable via DATABASE_PG_STATEMENT_TIMEOUT (default 30s)
+  statement_timeout:
+    parseInt(process.env.DATABASE_PG_STATEMENT_TIMEOUT ?? "", 10) || 30000,
+  // PROTECTION: Kill idle transactions (prevents connection hoarding)
+  // Transactions sitting open lock resources and prevent autovacuum
+  idle_in_transaction_session_timeout:
+    parseInt(process.env.DATABASE_PG_IDLE_TX_TIMEOUT ?? "", 10) || 10000,
 };
 
 function createPostgresDatabase(config: DatabaseConfig): PostgresDatabase {
   const maxConnections =
     config.options?.maxConnections ??
-    parseInt(process.env.DATABASE_PG_MAX_CONNECTIONS ?? "", 10) ||
-    5; // FIX: Reduced from 10. With multiple K8s pods, total = pods × max.
-       // Tune via DATABASE_PG_MAX_CONNECTIONS env var without code changes.
+    (process.env.DATABASE_PG_MAX_CONNECTIONS
+      ? parseInt(process.env.DATABASE_PG_MAX_CONNECTIONS, 10)
+      : 5); // FIX: Reduced from 10. With multiple K8s pods, total = pods × max.
+  // Tune via DATABASE_PG_MAX_CONNECTIONS env var without code changes.
 
   const pool = new Pool({
     connectionString: config.connectionString,
     max: maxConnections,
     ssl: process.env.DATABASE_PG_SSL === "true" ? true : false,
     ...defaultPoolOptions,
+    // Set default session parameters for all connections
+    // These apply via "SET" on connection initialization
+    idle_in_transaction_session_timeout:
+      parseInt(process.env.DATABASE_PG_IDLE_TX_TIMEOUT ?? "", 10) || 10000,
   });
 
   // FIX: Handle async pool errors to prevent silent process crashes
@@ -313,14 +326,17 @@ export function getDbDialect(databaseUrl?: string): Dialect {
     const config = parseDatabaseUrl(databaseUrl ?? getDatabaseUrl());
 
     if (config.type === "postgres") {
-      const maxConnections =
-        parseInt(process.env.DATABASE_PG_MAX_CONNECTIONS ?? "", 10) || 5;
+      const maxConnections = process.env.DATABASE_PG_MAX_CONNECTIONS
+        ? parseInt(process.env.DATABASE_PG_MAX_CONNECTIONS, 10)
+        : 5;
 
       const pool = new Pool({
         connectionString: config.connectionString,
         max: maxConnections,
         ssl: process.env.DATABASE_PG_SSL === "true" ? true : false,
         ...defaultPoolOptions,
+        idle_in_transaction_session_timeout:
+          parseInt(process.env.DATABASE_PG_IDLE_TX_TIMEOUT ?? "", 10) || 10000,
       });
 
       pool.on("error", (err) => {
@@ -337,7 +353,6 @@ export function getDbDialect(databaseUrl?: string): Dialect {
 
   return dialectInstance;
 }
-
 
 /**
  * Create MeshDatabase instance with auto-detected dialect
