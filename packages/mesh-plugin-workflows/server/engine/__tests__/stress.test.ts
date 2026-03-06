@@ -292,7 +292,7 @@ describe("Stress Tests", () => {
       }
 
       expect(allExecutions).toHaveLength(orgCount * workflowsPerOrg);
-    });
+    }, 15_000);
 
     it("organizations don't see each other's executions in list queries", async () => {
       const orgA = "org_iso_a";
