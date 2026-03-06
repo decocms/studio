@@ -29,21 +29,13 @@ export { runSeed, type SeedName };
  */
 async function tableExists(
   db: Kysely<Database>,
-  dbType: "sqlite" | "postgres",
+  _dbType: "pglite" | "postgres",
   tableName: string,
 ): Promise<boolean> {
-  const query =
-    dbType === "sqlite"
-      ? sql<{ name: string }>`
-          SELECT name FROM sqlite_master 
-          WHERE type='table' AND name=${tableName}
-        `
-      : sql<{ table_name: string }>`
-          SELECT table_name FROM information_schema.tables 
-          WHERE table_schema='public' AND table_name=${tableName}
-        `;
-
-  const result = await query.execute(db);
+  const result = await sql<{ table_name: string }>`
+    SELECT table_name FROM information_schema.tables
+    WHERE table_schema='public' AND table_name=${tableName}
+  `.execute(db);
   return result.rows.length > 0;
 }
 
@@ -52,7 +44,7 @@ async function tableExists(
  */
 async function ensurePluginMigrationsTable(
   db: Kysely<Database>,
-  dbType: "sqlite" | "postgres",
+  dbType: "pglite" | "postgres",
 ): Promise<void> {
   if (await tableExists(db, dbType, "plugin_migrations")) {
     return;
@@ -78,7 +70,7 @@ async function ensurePluginMigrationsTable(
  */
 async function migrateExistingPluginRecords(
   db: Kysely<Database>,
-  dbType: "sqlite" | "postgres",
+  dbType: "pglite" | "postgres",
 ): Promise<void> {
   if (!(await tableExists(db, dbType, "kysely_migration"))) {
     return; // Fresh database
@@ -274,7 +266,7 @@ export interface MigrateOptions {
  */
 export async function runKyselyMigrations(
   db: Kysely<Database>,
-  dbType: "sqlite" | "postgres",
+  dbType: "pglite" | "postgres",
 ): Promise<void> {
   // IMPORTANT: Clean up plugin migrations from kysely_migration BEFORE running
   // Kysely's migrator. Kysely checks for missing migrations at startup and will
