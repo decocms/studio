@@ -23,6 +23,11 @@ import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto";
 import { RuntimeNodeInstrumentation } from "@opentelemetry/instrumentation-runtime-node";
 import { enableFetchInstrumentation } from "./instrumentations/fetch";
+import { NDJSONSpanExporter } from "../monitoring/ndjson-span-exporter";
+import {
+  MONITORING_SPAN_NAME,
+  DEFAULT_MONITORING_DATA_PATH,
+} from "../monitoring/schema";
 
 import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
 import type { MetricReader } from "@opentelemetry/sdk-metrics";
@@ -170,6 +175,40 @@ class RatioSampler implements Sampler {
 }
 
 /**
+ * Monitoring Always Sampler - ensures monitoring spans are never dropped
+ * Monitoring spans (mcp.proxy.callTool) get 100% sampling.
+ * All other spans fall through to the inner sampler.
+ */
+class MonitoringAlwaysSampler implements Sampler {
+  constructor(private inner: Sampler) {}
+
+  shouldSample(
+    ctx: Context,
+    traceId: string,
+    spanName: string,
+    spanKind: SpanKind,
+    attributes: Attributes,
+    links: Link[],
+  ): SamplingResult {
+    if (spanName === MONITORING_SPAN_NAME) {
+      return { decision: SamplingDecision.RECORD_AND_SAMPLED };
+    }
+    return this.inner.shouldSample(
+      ctx,
+      traceId,
+      spanName,
+      spanKind,
+      attributes,
+      links,
+    );
+  }
+
+  toString(): string {
+    return "MonitoringAlwaysSampler";
+  }
+}
+
+/**
  * Create Prometheus exporter as a MetricReader
  * This collects metrics from the SDK and exposes them for Prometheus to scrape
  * preventServerStart: true means we handle the HTTP endpoint ourselves via Hono
@@ -179,16 +218,33 @@ export const prometheusExporter = new PrometheusExporter({
 });
 
 /**
- * Create the debug sampler with 10% ratio fallback
+ * Create the debug sampler with 10% ratio fallback,
+ * wrapped by MonitoringAlwaysSampler to ensure monitoring spans are never dropped
  */
-const headSampler = new DebugSampler(new RatioSampler(HEAD_SAMPLER_RATIO));
+const headSampler = new MonitoringAlwaysSampler(
+  new DebugSampler(new RatioSampler(HEAD_SAMPLER_RATIO)),
+);
+
+/**
+ * Select trace exporter based on environment.
+ * "local" (default): NDJSON files for DuckDB queries
+ * "otlp": OTel Collector for cloud deployments
+ */
+const exportMode = process.env.MONITORING_EXPORT_MODE ?? "local";
+const traceExporter =
+  exportMode === "otlp"
+    ? new OTLPTraceExporter()
+    : new NDJSONSpanExporter({
+        basePath:
+          process.env.MONITORING_DATA_PATH ?? DEFAULT_MONITORING_DATA_PATH,
+      });
 
 /**
  * Initialize OpenTelemetry SDK
  */
 const sdk = new NodeSDK({
   serviceName: process.env.OTEL_SERVICE_NAME ?? "mesh",
-  traceExporter: new OTLPTraceExporter(),
+  traceExporter,
   metricReader: prometheusExporter as unknown as MetricReader,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sampler: headSampler,
