@@ -11,7 +11,7 @@
     "check": "echo 'Skipping type check - benchmark relies on mesh internals'"
   },
   "dependencies": {
-    "@decocms/mesh": "workspace:*",
+    "decocms": "workspace:*",
     "@modelcontextprotocol/sdk": "1.26.0",
     "@openrouter/ai-sdk-provider": "^1.5.4",
     "ai": "^6.0.1",
