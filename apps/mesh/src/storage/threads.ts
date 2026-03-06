@@ -123,10 +123,15 @@ export class SqlThreadStorage implements ThreadStoragePort {
     userId?: string,
     options?: { limit?: number; offset?: number },
   ): Promise<{ threads: Thread[]; total: number }> {
-    // When a userId is given we want: threads owned by userId OR shared with userId
+    // When a userId is given we want: threads owned by userId OR shared with userId.
+    // The LEFT JOIN is constrained to the current user so each thread appears at most once.
     let query = this.db
       .selectFrom("threads")
-      .leftJoin("thread_members", "thread_members.thread_id", "threads.id")
+      .leftJoin("thread_members", (join) =>
+        join
+          .onRef("thread_members.thread_id", "=", "threads.id")
+          .on("thread_members.user_id", "=", userId ?? ""),
+      )
       .select([
         "threads.id",
         "threads.organization_id",
@@ -155,7 +160,11 @@ export class SqlThreadStorage implements ThreadStoragePort {
 
     let countQuery = this.db
       .selectFrom("threads")
-      .leftJoin("thread_members", "thread_members.thread_id", "threads.id")
+      .leftJoin("thread_members", (join) =>
+        join
+          .onRef("thread_members.thread_id", "=", "threads.id")
+          .on("thread_members.user_id", "=", userId ?? ""),
+      )
       .select((eb) => eb.fn.count("threads.id").as("count"))
       .where("threads.organization_id", "=", organizationId)
       .where("threads.hidden", "=", false);

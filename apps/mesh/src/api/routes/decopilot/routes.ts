@@ -191,17 +191,11 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         }),
       ]);
 
-      // Reject writes from shared members (read-only access)
+      // Only the thread owner can write messages
       if (mem.thread.created_by !== userId) {
-        const isSharedMember = await ctx.storage.threads.isMember(
-          mem.thread.id,
-          userId,
-        );
-        if (isSharedMember) {
-          throw new HTTPException(403, {
-            message: "Shared threads are read-only",
-          });
-        }
+        throw new HTTPException(403, {
+          message: "Only the thread owner can send messages",
+        });
       }
 
       const saveMessagesToThread = async (

@@ -170,10 +170,10 @@ export async function toolsFromMCP(
 }
 
 /**
- * Validate that the caller owns the thread and it belongs to the org.
- * Reusable across cancel, attach, and other thread-scoped endpoints.
+ * Shared thread validation: resolves auth, org, and thread from the request.
+ * Does NOT check ownership or membership — callers decide the access policy.
  */
-export async function validateThreadOwnership(
+async function resolveThread(
   c: Context<{ Variables: { meshContext: MeshContext } }>,
 ) {
   const ctx = c.get("meshContext");
@@ -193,10 +193,21 @@ export async function validateThreadOwnership(
   if (!thread || thread.organization_id !== organization.id) {
     throw new HTTPException(404, { message: "Thread not found" });
   }
-  if (thread.created_by !== userId) {
+  return { ctx, organization, thread, threadId, userId };
+}
+
+/**
+ * Validate that the caller owns the thread.
+ * Reusable across cancel and other owner-only endpoints.
+ */
+export async function validateThreadOwnership(
+  c: Context<{ Variables: { meshContext: MeshContext } }>,
+) {
+  const resolved = await resolveThread(c);
+  if (resolved.thread.created_by !== resolved.userId) {
     throw new HTTPException(403, { message: "Not authorized" });
   }
-  return { ctx, organization, thread, threadId, userId };
+  return resolved;
 }
 
 /**
@@ -206,29 +217,16 @@ export async function validateThreadOwnership(
 export async function validateThreadAccess(
   c: Context<{ Variables: { meshContext: MeshContext } }>,
 ) {
-  const ctx = c.get("meshContext");
-  const userId = ctx.auth?.user?.id;
-  if (!userId) {
-    throw new HTTPException(401, { message: "Unauthorized" });
-  }
-  const organization = ensureOrganization(c);
-  const threadId = c.req.param("threadId");
-  if (!threadId) {
-    throw new HTTPException(400, { message: "Missing thread ID" });
-  }
-  if (/[.*>\s]/.test(threadId)) {
-    throw new HTTPException(400, { message: "Invalid thread ID" });
-  }
-  const thread = await ctx.storage.threads.get(threadId);
-  if (!thread || thread.organization_id !== organization.id) {
-    throw new HTTPException(404, { message: "Thread not found" });
-  }
-  const isOwner = thread.created_by === userId;
+  const resolved = await resolveThread(c);
+  const isOwner = resolved.thread.created_by === resolved.userId;
   if (!isOwner) {
-    const isMember = await ctx.storage.threads.isMember(threadId, userId);
+    const isMember = await resolved.ctx.storage.threads.isMember(
+      resolved.threadId,
+      resolved.userId,
+    );
     if (!isMember) {
       throw new HTTPException(403, { message: "Not authorized" });
     }
   }
-  return { ctx, organization, thread, threadId, userId, isOwner };
+  return { ...resolved, isOwner };
 }

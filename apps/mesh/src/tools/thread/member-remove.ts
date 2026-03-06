@@ -2,7 +2,7 @@
  * THREAD_MEMBER_REMOVE Tool
  *
  * Remove a member from a shared thread.
- * Any existing member (or the owner) can remove members.
+ * Only the thread owner can remove members.
  */
 
 import { z } from "zod";
@@ -12,7 +12,7 @@ import { requireOrganization } from "../../core/mesh-context";
 export const THREAD_MEMBER_REMOVE = defineTool({
   name: "THREAD_MEMBER_REMOVE",
   description:
-    "Remove a member from a shared thread. Any current member or the thread owner can remove others.",
+    "Remove a member from a shared thread. Only the thread owner can remove members.",
   annotations: {
     title: "Remove Thread Member",
     readOnlyHint: false,
@@ -44,14 +44,9 @@ export const THREAD_MEMBER_REMOVE = defineTool({
       throw new Error("Thread not found");
     }
 
-    // Only the owner or an existing member can remove members
-    const isOwner = thread.created_by === callerId;
-    const isMember = await ctx.storage.threads.isMember(
-      input.thread_id,
-      callerId,
-    );
-    if (!isOwner && !isMember) {
-      throw new Error("Only thread members can remove other members");
+    // Only the thread owner can remove members
+    if (thread.created_by !== callerId) {
+      throw new Error("Only the thread owner can remove members");
     }
 
     await ctx.storage.threads.removeMember(input.thread_id, input.user_id);

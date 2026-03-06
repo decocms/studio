@@ -1,8 +1,8 @@
 /**
  * THREAD_MEMBER_ADD Tool
  *
- * Share a thread with an org member, granting them read access.
- * Any existing member (or the owner) can add new members.
+ * Share a thread with an org member, granting them read-only access.
+ * Only the thread owner can add members.
  */
 
 import { z } from "zod";
@@ -12,7 +12,7 @@ import { requireOrganization } from "../../core/mesh-context";
 export const THREAD_MEMBER_ADD = defineTool({
   name: "THREAD_MEMBER_ADD",
   description:
-    "Share a thread with an org member, granting them read-only access. Any current member or the thread owner can invite others.",
+    "Share a thread with an org member, granting them read-only access. Only the thread owner can add members.",
   annotations: {
     title: "Add Thread Member",
     readOnlyHint: false,
@@ -44,14 +44,9 @@ export const THREAD_MEMBER_ADD = defineTool({
       throw new Error("Thread not found");
     }
 
-    // Only the owner or an existing member can add new members
-    const isOwner = thread.created_by === callerId;
-    const isMember = await ctx.storage.threads.isMember(
-      input.thread_id,
-      callerId,
-    );
-    if (!isOwner && !isMember) {
-      throw new Error("Only thread members can add other members");
+    // Only the thread owner can add members
+    if (thread.created_by !== callerId) {
+      throw new Error("Only the thread owner can add members");
     }
 
     // Verify the target user is in the same org
