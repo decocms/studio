@@ -27,6 +27,7 @@ export interface AggregationParams {
   groupBy?: string; // Optional JSONPath for grouping (extracted from JSON)
   groupByColumn?: GroupByColumn; // Optional table column for grouping (takes priority over groupBy)
   interval?: string; // For timeseries: "1h", "1d"
+  limit?: number; // Max number of groups to return (applies to groupBy/groupByColumn, ordered by value desc)
   filters?: {
     connectionIds?: string[];
     virtualMcpIds?: string[];
@@ -365,22 +366,27 @@ export class SqlMonitoringStorage implements MonitoringStorage {
     // If we have groupByColumn (table column), use it directly (takes priority over groupBy JSONPath)
     if (groupByColumn) {
       const colRef = sql.ref(groupByColumn);
-      const rows = await baseQuery
+      let groupQuery = baseQuery
         .select([
           sql<string>`${colRef}`.as("group_key"),
           this.aggregationExpression(aggregation, valueExpr).as("agg_value"),
         ])
+        .where(sql`${colRef}`, "is not", null)
         .groupBy(sql`${colRef}`)
-        .execute();
+        .orderBy(sql`agg_value`, "desc");
+
+      if (params.limit) {
+        groupQuery = groupQuery.limit(params.limit);
+      }
+
+      const rows = await groupQuery.execute();
 
       return {
         value: null,
-        groups: rows
-          .filter((row) => row.group_key !== null)
-          .map((row) => ({
-            key: String(row.group_key),
-            value: Number(row.agg_value) || 0,
-          })),
+        groups: rows.map((row) => ({
+          key: String(row.group_key),
+          value: Number(row.agg_value) || 0,
+        })),
       };
     }
 
@@ -388,22 +394,27 @@ export class SqlMonitoringStorage implements MonitoringStorage {
     if (groupBy) {
       // Use text extraction for groupBy (it's typically a string like model name)
       const groupExpr = this.jsonExtractPathText(sourceColumn, groupBy);
-      const rows = await baseQuery
+      let groupQuery = baseQuery
         .select([
           sql<string>`${groupExpr}`.as("group_key"),
           this.aggregationExpression(aggregation, valueExpr).as("agg_value"),
         ])
+        .where(sql`${groupExpr}`, "is not", null)
         .groupBy(sql`${groupExpr}`)
-        .execute();
+        .orderBy(sql`agg_value`, "desc");
+
+      if (params.limit) {
+        groupQuery = groupQuery.limit(params.limit);
+      }
+
+      const rows = await groupQuery.execute();
 
       return {
         value: null,
-        groups: rows
-          .filter((row) => row.group_key !== null)
-          .map((row) => ({
-            key: String(row.group_key),
-            value: Number(row.agg_value) || 0,
-          })),
+        groups: rows.map((row) => ({
+          key: String(row.group_key),
+          value: Number(row.agg_value) || 0,
+        })),
       };
     }
 
