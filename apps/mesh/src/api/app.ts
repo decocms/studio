@@ -887,7 +887,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     runRegistry.dispose();
     await cancelBroadcast.stop().catch(() => {});
     streamBuffer.teardown();
-    await eventBus.stop().catch(() => {});
+    await Promise.resolve(eventBus.stop()).catch(() => {});
     await sseHub.stop().catch(() => {});
     await natsProvider?.drain().catch(() => {});
     console.log("[Shutdown] Cleanup complete");
