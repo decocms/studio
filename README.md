@@ -55,6 +55,9 @@ It replaces M×N integrations (M MCP servers × N clients) with one production e
 git clone https://github.com/decocms/mesh.git
 bun install
 
+# First-time setup
+bun run --cwd=apps/mesh setup
+
 # Run locally (client + API server)
 bun run dev
 ```
@@ -169,6 +172,9 @@ Every tool call automatically gets: input/output validation, access control chec
 ```bash
 # Install dependencies
 bun install
+
+# First-time setup (creates ~/deco/, secrets, and .env)
+bun run --cwd=apps/mesh setup
 
 # Run dev server (client + API)
 bun run dev

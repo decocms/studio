@@ -14,6 +14,7 @@
  */
 
 import { parseArgs } from "util";
+import { existsSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 
@@ -166,11 +167,23 @@ if (localMode) {
 }
 
 // ============================================================================
-// Secrets management
+// First-time setup (auto-run if secrets don't exist yet)
 // ============================================================================
+
+const isFirstRun = !existsSync(join(meshHome, "secrets.json"));
+if (isFirstRun) {
+  console.log(`${ansi.dim}First run detected — running setup...${ansi.reset}`);
+}
 
 const { betterAuthFromFile, encryptionKeyFromFile } =
   await loadOrCreateSecrets(meshHome);
+
+if (isFirstRun) {
+  const displayHome = meshHome.replace((await import("os")).homedir(), "~");
+  console.log(
+    `${ansi.dim}Created secrets at ${displayHome}/secrets.json${ansi.reset}`,
+  );
+}
 
 // ============================================================================
 // Startup banner

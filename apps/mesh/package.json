@@ -21,7 +21,8 @@
     "dist/**/*"
   ],
   "scripts": {
-    "dev": "bun run scripts/dev.ts",
+    "setup": "bun run scripts/setup.ts",
+    "dev": "bun run migrate && concurrently \"bun run dev:client\" \"bun run dev:server\"",
     "dev:client": "bun --bun vite dev",
     "dev:server": "NODE_ENV=development bun --env-file=.env --hot run src/index.ts",
     "build:client": "bun --bun vite build",

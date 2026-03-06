@@ -19,9 +19,7 @@
         // Dev-only module loaded via require() - needs explicit entry
         "src/api/routes/dev-only.ts"
       ],
-      "ignore": ["src/api/index.ts"],
-      // concurrently is spawned via shell in scripts/dev.ts
-      "ignoreDependencies": ["concurrently"]
+      "ignore": ["src/api/index.ts"]
     },
     "packages/mesh-sdk": {
       "ignoreDependencies": ["sonner"]
