@@ -1,7 +1,7 @@
 /**
  * Shared bootstrap utilities for CLI and dev scripts.
  *
- * Extracted to avoid duplication between src/cli.ts and scripts/dev.ts.
+ * Extracted to avoid duplication between src/cli.ts and scripts/dev-local.ts.
  * Both entry points resolve MESH_HOME, manage secrets, and print banners
  * using these shared functions.
  */
