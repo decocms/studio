@@ -12,16 +12,16 @@ This document proposes a unified infrastructure architecture that collapses thes
 
 - **One SQL dialect (PostgreSQL)** by using PGlite — PostgreSQL compiled to WebAssembly — for local, and native PostgreSQL for cloud. This eliminates the dual-dialect problem entirely. Kysely remains the query builder; only the driver changes.
 
-- **One monitoring pipeline (OpenTelemetry)** that feeds into Parquet files queryable by DuckDB. Locally, a thin in-process exporter writes Parquet to disk. In cloud, the standard OTLP exporter sends data to an OTel Collector sidecar that writes Parquet to S3 (for the product dashboard) and forwards to Grafana (for SRE ops). DuckDB reads Parquet in both cases — local files or S3 — through the same query interface. This replaces the current split of OTel-for-ops plus database-for-dashboards with a single system.
+- **One monitoring pipeline (OpenTelemetry)** that feeds into Parquet files queryable by ClickHouse SQL. Locally, a thin in-process exporter writes Parquet to disk and chdb (embedded ClickHouse) queries them. In cloud, the standard OTLP exporter sends data to an OTel Collector sidecar that writes Parquet to S3 (for the product dashboard) and forwards to Grafana (for SRE ops). chdb reads Parquet in both cases — local files or S3 — through the same ClickHouse SQL interface. This replaces the current split of OTel-for-ops plus database-for-dashboards with a single system, and the same ClickHouse SQL dialect works in both environments.
 
 - **NATS stays as-is** for cross-pod coordination in cloud (event bus, stream buffering, SSE fan-out), with polling as the local fallback. No changes needed here.
 
-The local deployment becomes a single process with two embedded engines (PGlite + DuckDB) and no external services. The cloud deployment remains stateless pods backed by PostgreSQL, NATS, S3, and OTel Collector. The application code doesn't branch on environment — it branches on which driver is injected at startup.
+The local deployment becomes a single process with two embedded engines (PGlite + chdb) and no external services. The cloud deployment remains stateless pods backed by PostgreSQL, NATS, S3, and OTel Collector. The application code doesn't branch on environment — it branches on which driver is injected at startup.
 
 ## Goals
 
 1. **Single SQL dialect** — eliminate SQLite/PostgreSQL divergence by using PostgreSQL everywhere
-2. **Unified monitoring** — one instrumentation system (OpenTelemetry) with Parquet/DuckDB for dashboard analytics
+2. **Unified monitoring** — one instrumentation system (OpenTelemetry) with Parquet/chdb (embedded ClickHouse) for dashboard analytics
 3. **Zero-dependency local setup** — everything runs under a single `npx decocms` command with no external services
 4. **Cloud-native scaling** — stateless pods backed by PostgreSQL, S3, NATS, and OTel Collector
 
@@ -46,9 +46,9 @@ LOCAL (npx decocms)                    CLOUD (Kubernetes)
 │  │  PGlite (in-proc) │   │            │  ├─ PostgreSQL (managed)            │
 │  │  ./data/mesh.pglite│   │            │  ├─ NATS (cross-pod coordination)  │
 │  │                    │   │            │  ├─ S3 (monitoring Parquet + blobs) │
-│  │  DuckDB (in-proc) │   │            │  └─ OTel Collector (sidecar)       │
+│  │  chdb (in-proc)   │   │            │  └─ OTel Collector (sidecar)       │
 │  │  (reads Parquet)   │   │            │                                     │
-│  └──────────────────┘   │            │  DuckDB (in each pod, reads S3)     │
+│  └──────────────────┘   │            │  chdb (in each pod, reads S3)       │
 └─────────────────────────┘            └─────────────────────────────────────┘
 ```
 
@@ -133,9 +133,9 @@ Controlled by `NATS_URL` and `NOTIFY_STRATEGY` environment variables (existing b
 
 ### Decision
 
-**Unified OTel instrumentation + Parquet files + DuckDB for dashboard queries.**
+**Unified OTel instrumentation + Parquet files + chdb (embedded ClickHouse) for dashboard queries.**
 
-This replaces the current dual system (OTel for ops + `monitoring_logs` table for dashboards) with a single pipeline.
+This replaces the current dual system (OTel for ops + `monitoring_logs` table for dashboards) with a single pipeline. Using chdb (ClickHouse compiled as an embeddable library) means the same ClickHouse SQL dialect works both locally and in cloud — no query translation layer needed.
 
 ### Architecture
 
@@ -160,10 +160,10 @@ OTel SDK SpanExporter
 Dashboard UI queries
        │
        ▼
-DuckDBMonitoringStorage
+ClickHouseMonitoringStorage (via chdb)
        │
-       ├── LOCAL: read_parquet('./data/monitoring/**/*.parquet')
-       └── CLOUD: read_parquet('s3://bucket/monitoring/**/*.parquet')
+       ├── LOCAL: SELECT * FROM file('./data/monitoring/**/*.parquet', Parquet)
+       └── CLOUD: SELECT * FROM s3('s3://bucket/monitoring/**/*.parquet', Parquet)
 ```
 
 ### What Gets Removed
@@ -180,26 +180,28 @@ DuckDBMonitoringStorage
 Custom OTel `SpanExporter` for local use:
 - Implements `export(spans: ReadableSpan[]): Promise<ExportResult>`
 - Buffers spans in memory (flush threshold: 1000 spans or 60 seconds)
-- On flush: writes Parquet file via DuckDB's `COPY` command or `parquet-wasm`
+- On flush: writes Parquet file via `parquet-wasm` or chdb's `INSERT INTO FUNCTION file()` command
 - File naming: `./data/monitoring/YYYY/MM/DD/HH/batch-{counter}.parquet`
 - Time-partitioned for efficient range queries
 
-#### DuckDBMonitoringStorage
+#### ClickHouseMonitoringStorage (via chdb)
 
-Implements the existing `MonitoringStorage` interface + aggregate methods:
+Implements the existing `MonitoringStorage` interface + aggregate methods using ClickHouse SQL:
 
-| Method | DuckDB Query Pattern |
-|--------|---------------------|
-| `query(filters)` | `SELECT * FROM read_parquet(path) WHERE ... ORDER BY timestamp DESC LIMIT N` |
-| `getStats(filters)` | `SELECT count(*), avg(duration_ms), sum(is_error)::float/count(*) FROM ...` |
-| `aggregate(params)` | `SELECT date_trunc(interval, timestamp), agg(json_extract(output, path)) FROM ... GROUP BY 1` |
-| `countMatched(params)` | `SELECT count(*) FROM ... WHERE json_extract(output, path) IS NOT NULL` |
+| Method | ClickHouse Query Pattern |
+|--------|-------------------------|
+| `query(filters)` | `SELECT * FROM file(path, Parquet) WHERE ... ORDER BY timestamp DESC LIMIT N` |
+| `getStats(filters)` | `SELECT count(*), avg(duration_ms), sumIf(1, is_error)/count(*) FROM ...` |
+| `aggregate(params)` | `SELECT toStartOfInterval(timestamp, INTERVAL 1 HOUR), agg(JSONExtractFloat(output, 'path')) FROM ... GROUP BY 1` |
+| `countMatched(params)` | `SELECT count(*) FROM ... WHERE JSONExtractFloat(output, 'path') IS NOT NULL` |
 
-DuckDB advantages over current approach:
-- **One SQL dialect** for all monitoring queries (vs current SQLite + PostgreSQL branching)
+chdb (embedded ClickHouse) advantages over current approach:
+- **One SQL dialect everywhere** — same ClickHouse SQL locally (chdb) and in cloud (ClickHouse server). No query translation needed.
 - **Columnar storage** — aggregations are 10-100x faster on large datasets
-- **Native Parquet support** — no ETL, just `read_parquet()` with glob patterns
-- **Native S3 support** — reads S3 Parquet files transparently with `httpfs` extension
+- **Native Parquet support** — `file()` for local, `s3()` for cloud, with glob patterns
+- **Native S3 support** — reads S3 Parquet files transparently via `s3()` table function
+- **Rich analytics functions** — `toStartOfInterval()`, `JSONExtract*()`, `sumIf()`, `quantile()`, etc.
+- **Fastest SQL-on-Parquet** — chdb is benchmarked as the fastest embedded engine for Parquet queries
 
 #### Span Enrichment
 
@@ -233,22 +235,22 @@ span.setAttribute("mesh.connection.id", connectionId);
 
 ```
 monitoring span parquet columns:
-├── id: VARCHAR (span ID)
-├── organization_id: VARCHAR
-├── connection_id: VARCHAR
-├── connection_title: VARCHAR
-├── tool_name: VARCHAR
-├── input: VARCHAR (JSON string, redacted)
-├── output: VARCHAR (JSON string, redacted)
-├── is_error: BOOLEAN
-├── error_message: VARCHAR (nullable)
-├── duration_ms: INTEGER
-├── timestamp: TIMESTAMP
-├── user_id: VARCHAR (nullable)
-├── request_id: VARCHAR
-├── user_agent: VARCHAR (nullable)
-├── virtual_mcp_id: VARCHAR (nullable)
-├── properties: VARCHAR (JSON string, nullable)
+├── id: String (span ID)
+├── organization_id: String
+├── connection_id: String
+├── connection_title: String
+├── tool_name: String
+├── input: String (JSON string, redacted)
+├── output: String (JSON string, redacted)
+├── is_error: UInt8 (ClickHouse boolean)
+├── error_message: Nullable(String)
+├── duration_ms: UInt32
+├── timestamp: DateTime64(3)
+├── user_id: Nullable(String)
+├── request_id: String
+├── user_agent: Nullable(String)
+├── virtual_mcp_id: Nullable(String)
+├── properties: Nullable(String) (JSON string)
 ```
 
 ### Retention
@@ -268,7 +270,7 @@ monitoring span parquet columns:
 |-----------|-----------|----------|
 | Relational DB | PGlite (in-process WASM) | `./data/mesh.pglite/` |
 | Monitoring writes | ParquetSpanExporter (in-process) | `./data/monitoring/*.parquet` |
-| Monitoring queries | DuckDB (in-process native) | reads `./data/monitoring/` |
+| Monitoring queries | chdb (in-process, embedded ClickHouse) | reads `./data/monitoring/` |
 | Message passing | Polling strategy | in-process timer |
 | OTel export | None (local Parquet only) | — |
 
@@ -277,7 +279,7 @@ monitoring span parquet columns:
 | Package | Purpose | Approx Size |
 |---------|---------|-------------|
 | `@electric-sql/pglite` | PostgreSQL (WASM) | ~10MB |
-| `duckdb` | Analytics queries (native binary) | ~15MB |
+| `chdb` | Analytics queries (embedded ClickHouse, native binary) | ~50MB |
 
 **npm package removals:**
 
@@ -293,7 +295,7 @@ monitoring span parquet columns:
 |-----------|-----------|-------|
 | Relational DB | PostgreSQL (managed) | Existing setup |
 | Monitoring writes | OTLP → OTel Collector → S3 Parquet | Collector is a sidecar |
-| Monitoring queries | DuckDB (in-pod, reads S3) | `httpfs` extension for S3 |
+| Monitoring queries | chdb (in-pod, reads S3) | `s3()` table function |
 | SRE dashboards | OTel Collector → Grafana | Second collector pipeline |
 | Message passing | NATS | Existing setup |
 | Prometheus metrics | `/metrics` endpoint | Existing setup |
@@ -311,7 +313,7 @@ function createInfrastructure(env: ProcessEnv) {
 
   // Monitoring
   const monitoringBasePath = env.MONITORING_PARQUET_PATH ?? "./data/monitoring";
-  const monitoringStorage = new DuckDBMonitoringStorage(monitoringBasePath);
+  const monitoringStorage = new ClickHouseMonitoringStorage(monitoringBasePath);
 
   // OTel span exporter
   const spanExporter = env.OTEL_EXPORTER_OTLP_ENDPOINT
@@ -338,7 +340,7 @@ function createInfrastructure(env: ProcessEnv) {
 | **Relational DB** | PGlite (in-process WASM) | PostgreSQL (managed) |
 | **SQL Dialect** | PostgreSQL (via PGlite) | PostgreSQL (native) |
 | **Monitoring writes** | ParquetSpanExporter (in-process) | OTLP → Collector → S3 Parquet |
-| **Monitoring queries** | DuckDB → local Parquet | DuckDB → S3 Parquet |
+| **Monitoring queries** | chdb → local Parquet | chdb → S3 Parquet |
 | **SRE observability** | N/A | Collector → Grafana |
 | **Message passing** | Polling | NATS |
 | **Prometheus metrics** | `/metrics` endpoint | `/metrics` endpoint |
@@ -351,7 +353,7 @@ function createInfrastructure(env: ProcessEnv) {
 | Dependency | Type | Purpose |
 |-----------|------|---------|
 | `@electric-sql/pglite` | npm (WASM) | Local PostgreSQL |
-| `duckdb` | npm (native binary) | Monitoring analytics |
+| `chdb` | npm (native binary) | Monitoring analytics (embedded ClickHouse) |
 
 ## 7. Removed Dependencies
 
@@ -365,8 +367,8 @@ function createInfrastructure(env: ProcessEnv) {
 | Risk | Mitigation |
 |------|-----------|
 | PGlite immaturity in Bun | Test early; fallback is `DATABASE_URL=postgres://localhost` |
-| DuckDB native binary platform support | Covers Mac (arm64/x64) + Linux (x64/arm64); Windows via WSL |
+| chdb native binary platform support | Verify Mac (arm64/x64) + Linux (x64/arm64) coverage; Node.js bindings are young (v1.3.0) |
 | OTel span attribute size limits | Truncate large input/output at application level (e.g., 50KB cap) |
 | Parquet write latency on flush | Buffer in memory, flush async — doesn't block tool execution |
-| S3 query latency for dashboards | DuckDB caches Parquet metadata; time partitioning limits scanned files |
+| S3 query latency for dashboards | chdb supports Parquet metadata caching; time partitioning limits scanned files |
 | Existing monitoring_logs data migration | Export to Parquet as a one-time migration, or accept data loss for historical logs |
