@@ -118,20 +118,34 @@ const defaultPoolOptions = {
   // Keep connections alive to avoid reconnection latency across regions
   keepAlive: true,
   keepAliveInitialDelayMillis: 10000,
-  // Allow connections to stay idle longer (5 min instead of default 10s)
-  // This reduces reconnection overhead for cross-region databases
-  idleTimeoutMillis: 300000,
+  // FIX: Reduced from 300000 (5min) to 30000 (30s).
+  // In Kubernetes, pods are ephemeral — holding idle connections for 5min
+  // causes burst "Connection reset by peer" on RDS when pods are terminated.
+  // 30s releases idle connections proactively before pod shutdown.
+  idleTimeoutMillis: 30000,
   // Increase connection timeout for high-latency networks (30s)
   connectionTimeoutMillis: 30000,
   // Allow the process to exit even with idle connections
   allowExitOnIdle: true,
 };
+
 function createPostgresDatabase(config: DatabaseConfig): PostgresDatabase {
+  const maxConnections =
+    config.options?.maxConnections ??
+    parseInt(process.env.DATABASE_PG_MAX_CONNECTIONS ?? "", 10) ||
+    5; // FIX: Reduced from 10. With multiple K8s pods, total = pods × max.
+       // Tune via DATABASE_PG_MAX_CONNECTIONS env var without code changes.
+
   const pool = new Pool({
     connectionString: config.connectionString,
-    max: config.options?.maxConnections || 10,
+    max: maxConnections,
     ssl: process.env.DATABASE_PG_SSL === "true" ? true : false,
     ...defaultPoolOptions,
+  });
+
+  // FIX: Handle async pool errors to prevent silent process crashes
+  pool.on("error", (err) => {
+    console.error("[db] Unexpected pool client error:", err);
   });
 
   const dialect = new PostgresDialect({ pool });
@@ -288,25 +302,42 @@ export function getDatabaseUrl(): string {
 /**
  * Create a Kysely dialect for the given database URL
  * This allows you to create a dialect without creating the full MeshDatabase
+ *
+ * FIX: Now a singleton. Previously, every call created a new Pool that was
+ * never closed, leaking connections on every invocation.
  */
-export function getDbDialect(databaseUrl?: string): Dialect {
-  const config = parseDatabaseUrl(databaseUrl);
+let dialectInstance: Dialect | null = null;
 
-  if (config.type === "postgres") {
-    return new PostgresDialect({
-      pool: new Pool({
+export function getDbDialect(databaseUrl?: string): Dialect {
+  if (!dialectInstance) {
+    const config = parseDatabaseUrl(databaseUrl ?? getDatabaseUrl());
+
+    if (config.type === "postgres") {
+      const maxConnections =
+        parseInt(process.env.DATABASE_PG_MAX_CONNECTIONS ?? "", 10) || 5;
+
+      const pool = new Pool({
         connectionString: config.connectionString,
-        max: config.options?.maxConnections || 10,
+        max: maxConnections,
         ssl: process.env.DATABASE_PG_SSL === "true" ? true : false,
         ...defaultPoolOptions,
-      }),
-    });
+      });
+
+      pool.on("error", (err) => {
+        console.error("[db] Unexpected dialect pool client error:", err);
+      });
+
+      dialectInstance = new PostgresDialect({ pool });
+    } else {
+      let dbPath = extractSqlitePath(config.connectionString);
+      dbPath = ensureSqliteDirectory(dbPath);
+      dialectInstance = new BunWorkerDialect({ url: dbPath || ":memory:" });
+    }
   }
 
-  let dbPath = extractSqlitePath(config.connectionString);
-  dbPath = ensureSqliteDirectory(dbPath);
-  return new BunWorkerDialect({ url: dbPath || ":memory:" });
+  return dialectInstance;
 }
+
 
 /**
  * Create MeshDatabase instance with auto-detected dialect
