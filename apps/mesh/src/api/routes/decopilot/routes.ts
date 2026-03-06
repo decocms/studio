@@ -42,6 +42,7 @@ import {
 import {
   ensureOrganization,
   toolsFromMCP,
+  validateThreadAccess,
   validateThreadOwnership,
 } from "./helpers";
 import { createMemory } from "./memory";
@@ -189,6 +190,20 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           defaultWindowSize: windowSize,
         }),
       ]);
+
+      // Reject writes from shared members (read-only access)
+      if (mem.thread.created_by !== userId) {
+        const isSharedMember = await ctx.storage.threads.isMember(
+          mem.thread.id,
+          userId,
+        );
+        if (isSharedMember) {
+          throw new HTTPException(403, {
+            message: "Shared threads are read-only",
+          });
+        }
+      }
+
       const saveMessagesToThread = async (
         ...messages: (typeof requestMessage | undefined)[]
       ) => {
@@ -600,7 +615,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
   app.get("/:org/decopilot/attach/:threadId", async (c) => {
     try {
-      const { threadId } = await validateThreadOwnership(c);
+      const { threadId } = await validateThreadAccess(c);
 
       const run = runRegistry.getRun(threadId);
       if (!run || run.status !== "running") {

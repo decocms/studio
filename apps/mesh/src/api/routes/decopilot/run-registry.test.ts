@@ -11,6 +11,10 @@ function mockStorage(): ThreadStoragePort {
     list: mock(() => Promise.resolve({ threads: [], total: 0 })),
     saveMessages: mock(() => Promise.resolve()),
     listMessages: mock(() => Promise.resolve({ messages: [], total: 0 })),
+    addMember: mock(() => Promise.resolve()),
+    removeMember: mock(() => Promise.resolve()),
+    listMembers: mock(() => Promise.resolve([])),
+    isMember: mock(() => Promise.resolve(false)),
   };
 }
 

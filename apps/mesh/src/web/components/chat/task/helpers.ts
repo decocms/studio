@@ -29,13 +29,14 @@ export async function callUpdateTaskTool(
 /**
  * Build an optimistic task object for immediate cache insertion
  */
-export function buildOptimisticTask(id: string): Task {
+export function buildOptimisticTask(id: string, userId?: string): Task {
   const now = new Date().toISOString();
   return {
     id,
     title: "New chat", // Empty title until first message generates one
     created_at: now,
     updated_at: now,
+    ...(userId && { created_by: userId }),
   };
 }
 

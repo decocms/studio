@@ -20,6 +20,8 @@ export interface Task {
   created_by?: string;
   /** Execution status from server — includes virtual "expired" for stale in_progress tasks */
   status?: ThreadDisplayStatus;
+  /** True when this thread was shared with the current user (they are not the owner) */
+  is_shared?: boolean;
 }
 
 export type { ChatMessage } from "../types.ts";

@@ -55,6 +55,12 @@ export const ThreadEntitySchema = z.object({
     .string()
     .nullable()
     .describe("User ID who last updated the thread"),
+  is_shared: z
+    .boolean()
+    .optional()
+    .describe(
+      "True when this thread was shared with the current user (they are not the owner)",
+    ),
 });
 
 export type ThreadEntity = z.infer<typeof ThreadEntitySchema>;

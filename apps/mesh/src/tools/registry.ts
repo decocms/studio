@@ -106,6 +106,9 @@ const ALL_TOOL_NAMES = [
   "COLLECTION_THREADS_UPDATE",
   "COLLECTION_THREADS_DELETE",
   "COLLECTION_THREAD_MESSAGES_LIST",
+  "THREAD_MEMBER_ADD",
+  "THREAD_MEMBER_REMOVE",
+  "THREAD_MEMBERS_LIST",
   // Tag tools
   "TAGS_LIST",
   "TAGS_CREATE",
@@ -475,6 +478,21 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "List thread messages",
     category: "Threads",
   },
+  {
+    name: "THREAD_MEMBER_ADD",
+    description: "Share a thread with an org member",
+    category: "Threads",
+  },
+  {
+    name: "THREAD_MEMBER_REMOVE",
+    description: "Remove a member from a shared thread",
+    category: "Threads",
+  },
+  {
+    name: "THREAD_MEMBERS_LIST",
+    description: "List members of a shared thread",
+    category: "Threads",
+  },
   // Tag tools
   {
     name: "TAGS_LIST",
@@ -624,6 +642,9 @@ const TOOL_LABELS: Record<ToolName, string> = {
   COLLECTION_THREADS_UPDATE: "Update threads",
   COLLECTION_THREADS_DELETE: "Delete threads",
   COLLECTION_THREAD_MESSAGES_LIST: "List thread messages",
+  THREAD_MEMBER_ADD: "Share thread with member",
+  THREAD_MEMBER_REMOVE: "Remove member from thread",
+  THREAD_MEMBERS_LIST: "List thread members",
   TAGS_LIST: "List organization tags",
   TAGS_CREATE: "Create organization tag",
   TAGS_DELETE: "Delete organization tag",

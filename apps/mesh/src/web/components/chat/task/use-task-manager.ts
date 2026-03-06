@@ -21,6 +21,7 @@ import {
   useSuspenseInfiniteQuery,
 } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { authClient } from "@/web/lib/auth-client";
 import { useCollectionCachePrefill } from "../../../hooks/use-collection-cache-prefill";
 import { useLocalStorage } from "../../../hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "../../../lib/localstorage-keys";
@@ -135,6 +136,7 @@ function useTaskMessages(taskId: string | null) {
 export function useTaskManager() {
   const { locator, org } = useProjectContext();
   const queryClient = useQueryClient();
+  const { data: session } = authClient.useSession();
   const { prefillCollectionCache } = useCollectionCachePrefill();
 
   // Fetch tasks list with pagination
@@ -161,7 +163,7 @@ export function useTaskManager() {
    */
   const createTask = () => {
     const newTaskId = crypto.randomUUID();
-    const optimisticTask = buildOptimisticTask(newTaskId);
+    const optimisticTask = buildOptimisticTask(newTaskId, session?.user?.id);
 
     // Add task optimistically to cache so it appears immediately
     addTaskToCache(queryClient, locator, optimisticTask);

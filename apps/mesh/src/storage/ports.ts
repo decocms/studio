@@ -20,6 +20,7 @@ import type {
   ProjectPluginConfig,
   ProjectUI,
   Thread,
+  ThreadMember,
   ThreadMessage,
 } from "./types";
 
@@ -30,7 +31,8 @@ export interface ThreadStoragePort {
   delete(id: string): Promise<void>;
   list(
     organizationId: string,
-    createdBy?: string,
+    /** When provided, returns threads owned by userId AND threads shared with userId */
+    userId?: string,
     options?: { limit?: number; offset?: number },
   ): Promise<{ threads: Thread[]; total: number }>;
   // Message operations - upserts by id (updates existing rows)
@@ -43,6 +45,11 @@ export interface ThreadStoragePort {
       sort?: "asc" | "desc";
     },
   ): Promise<{ messages: ThreadMessage[]; total: number }>;
+  // Member operations
+  addMember(threadId: string, userId: string, addedBy: string): Promise<void>;
+  removeMember(threadId: string, userId: string): Promise<void>;
+  listMembers(threadId: string): Promise<ThreadMember[]>;
+  isMember(threadId: string, userId: string): Promise<boolean>;
 }
 
 // ============================================================================

@@ -13,3 +13,8 @@ export { COLLECTION_THREADS_DELETE } from "./delete";
 
 // Thread messages tool
 export { COLLECTION_THREAD_MESSAGES_LIST } from "./list-messages";
+
+// Thread member sharing tools
+export { THREAD_MEMBER_ADD } from "./member-add";
+export { THREAD_MEMBER_REMOVE } from "./member-remove";
+export { THREAD_MEMBERS_LIST } from "./member-list";

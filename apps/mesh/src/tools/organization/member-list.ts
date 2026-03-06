@@ -65,7 +65,10 @@ export const ORGANIZATION_MEMBER_LIST = defineTool({
     });
 
     // Convert dates to ISO strings for JSON Schema compatibility
-    const members = (Array.isArray(result) ? result : []).map((member) => ({
+    const rawMembers = Array.isArray(result)
+      ? result
+      : ((result as { members?: unknown[] })?.members ?? []);
+    const members = rawMembers.map((member) => ({
       ...member,
       createdAt:
         member.createdAt instanceof Date

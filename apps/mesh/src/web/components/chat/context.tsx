@@ -902,6 +902,14 @@ export function ChatProvider({ children }: PropsWithChildren) {
 
   // Chat functions
   const sendMessage = async (tiptapDoc: Metadata["tiptapDoc"]) => {
+    // Prevent sending messages in shared (read-only) threads
+    const currentTask = taskManager.tasks.find(
+      (t) => t.id === taskManager.activeTaskId,
+    );
+    if (currentTask?.is_shared) {
+      return;
+    }
+
     if (!selectedModel) {
       toast.error("No model configured");
       return;

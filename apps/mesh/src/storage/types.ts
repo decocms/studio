@@ -734,6 +734,29 @@ export interface Thread {
   updated_by: string | null;
   hidden: boolean | null;
   status: ThreadStatus;
+  /** True when this thread was shared with the current user (not owned by them) */
+  is_shared?: boolean;
+}
+
+/**
+ * Thread member table definition
+ * Tracks which org members have been granted read access to a thread.
+ */
+export interface ThreadMemberTable {
+  thread_id: string;
+  user_id: string;
+  added_by: string;
+  added_at: ColumnType<string, string, never>;
+}
+
+/**
+ * Thread member entity - Runtime representation
+ */
+export interface ThreadMember {
+  thread_id: string;
+  user_id: string;
+  added_by: string;
+  added_at: string;
 }
 
 export interface ThreadMessageTable {
@@ -936,6 +959,7 @@ export interface Database {
 
   threads: ThreadTable;
   thread_messages: ThreadMessageTable;
+  thread_members: ThreadMemberTable;
 
   // Member tags tables
   organization_tags: OrganizationTagTable;

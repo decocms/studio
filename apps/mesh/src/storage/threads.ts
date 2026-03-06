@@ -9,7 +9,13 @@ import type { Kysely } from "kysely";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import { DEFAULT_THREAD_TITLE } from "@/api/routes/decopilot/constants";
 import type { ThreadStoragePort } from "./ports";
-import type { Database, Thread, ThreadMessage, ThreadStatus } from "./types";
+import type {
+  Database,
+  Thread,
+  ThreadMember,
+  ThreadMessage,
+  ThreadStatus,
+} from "./types";
 
 function toIsoString(v: Date | string): string {
   return typeof v === "string" ? v : v.toISOString();
@@ -114,26 +120,53 @@ export class SqlThreadStorage implements ThreadStoragePort {
 
   async list(
     organizationId: string,
-    createdBy?: string,
+    userId?: string,
     options?: { limit?: number; offset?: number },
   ): Promise<{ threads: Thread[]; total: number }> {
+    // When a userId is given we want: threads owned by userId OR shared with userId
     let query = this.db
       .selectFrom("threads")
-      .selectAll()
-      .where("organization_id", "=", organizationId)
-      .where("hidden", "=", false)
+      .leftJoin("thread_members", "thread_members.thread_id", "threads.id")
+      .select([
+        "threads.id",
+        "threads.organization_id",
+        "threads.title",
+        "threads.description",
+        "threads.hidden",
+        "threads.status",
+        "threads.created_at",
+        "threads.updated_at",
+        "threads.created_by",
+        "threads.updated_by",
+        "thread_members.user_id as member_user_id",
+      ])
+      .where("threads.organization_id", "=", organizationId)
+      .where("threads.hidden", "=", false)
+      .orderBy("threads.updated_at", "desc");
 
-      .orderBy("updated_at", "desc");
-    if (createdBy) {
-      query = query.where("created_by", "=", createdBy);
+    if (userId) {
+      query = query.where((eb) =>
+        eb.or([
+          eb("threads.created_by", "=", userId),
+          eb("thread_members.user_id", "=", userId),
+        ]),
+      );
     }
+
     let countQuery = this.db
       .selectFrom("threads")
-      .select((eb) => eb.fn.count("id").as("count"))
-      .where("organization_id", "=", organizationId)
-      .where("hidden", "=", false);
-    if (createdBy) {
-      countQuery = countQuery.where("created_by", "=", createdBy);
+      .leftJoin("thread_members", "thread_members.thread_id", "threads.id")
+      .select((eb) => eb.fn.count("threads.id").as("count"))
+      .where("threads.organization_id", "=", organizationId)
+      .where("threads.hidden", "=", false);
+
+    if (userId) {
+      countQuery = countQuery.where((eb) =>
+        eb.or([
+          eb("threads.created_by", "=", userId),
+          eb("thread_members.user_id", "=", userId),
+        ]),
+      );
     }
 
     if (options?.limit) {
@@ -149,7 +182,14 @@ export class SqlThreadStorage implements ThreadStoragePort {
     ]);
 
     return {
-      threads: rows.map((row) => this.threadFromDbRow(row)),
+      threads: rows.map((row) =>
+        this.threadFromDbRow({
+          ...row,
+          is_shared: userId
+            ? row.created_by !== userId && row.member_user_id === userId
+            : false,
+        }),
+      ),
       total: Number(countResult?.count || 0),
     };
   }
@@ -258,6 +298,62 @@ export class SqlThreadStorage implements ThreadStoragePort {
   }
 
   // ==========================================================================
+  // Thread Member Operations
+  // ==========================================================================
+
+  async addMember(
+    threadId: string,
+    userId: string,
+    addedBy: string,
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    await this.db
+      .insertInto("thread_members")
+      .values({
+        thread_id: threadId,
+        user_id: userId,
+        added_by: addedBy,
+        added_at: now,
+      })
+      .onConflict((oc) => oc.columns(["thread_id", "user_id"]).doNothing())
+      .execute();
+  }
+
+  async removeMember(threadId: string, userId: string): Promise<void> {
+    await this.db
+      .deleteFrom("thread_members")
+      .where("thread_id", "=", threadId)
+      .where("user_id", "=", userId)
+      .execute();
+  }
+
+  async listMembers(threadId: string): Promise<ThreadMember[]> {
+    const rows = await this.db
+      .selectFrom("thread_members")
+      .selectAll()
+      .where("thread_id", "=", threadId)
+      .orderBy("added_at", "asc")
+      .execute();
+
+    return rows.map((row) => ({
+      thread_id: row.thread_id,
+      user_id: row.user_id,
+      added_by: row.added_by,
+      added_at: toIsoString(row.added_at as Date | string),
+    }));
+  }
+
+  async isMember(threadId: string, userId: string): Promise<boolean> {
+    const row = await this.db
+      .selectFrom("thread_members")
+      .select("user_id")
+      .where("thread_id", "=", threadId)
+      .where("user_id", "=", userId)
+      .executeTakeFirst();
+    return !!row;
+  }
+
+  // ==========================================================================
   // Private Helper Methods
   // ==========================================================================
 
@@ -272,6 +368,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
     created_by: string;
     updated_by: string | null;
     hidden: boolean | number | null;
+    is_shared?: boolean;
   }): Thread {
     return {
       id: row.id,
@@ -284,6 +381,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
       created_by: row.created_by,
       updated_by: row.updated_by,
       hidden: !!row.hidden,
+      is_shared: row.is_shared ?? false,
     };
   }
 

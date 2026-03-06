@@ -9,6 +9,14 @@ export default defineConfig({
   define: {
     __MESH_VERSION__: JSON.stringify(pkg.version),
   },
+  resolve: {
+    dedupe: [
+      "react",
+      "react-dom",
+      "@radix-ui/react-primitive",
+      "@radix-ui/react-slot",
+    ],
+  },
   server: {
     hmr: {
       overlay: true,

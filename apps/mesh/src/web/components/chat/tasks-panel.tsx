@@ -25,6 +25,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
+import { Badge } from "@deco/ui/components/badge.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 
 import {
@@ -256,10 +257,20 @@ export function TaskListContent({ onTaskSelect }: TaskListContentProps) {
                               </button>
                             </div>
                           ) : (
-                            <TruncatedText
-                              text={task.title || "Untitled"}
-                              className="text-sm font-medium text-foreground flex-1 min-w-0"
-                            />
+                            <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                              <TruncatedText
+                                text={task.title || "Untitled"}
+                                className="text-sm font-medium text-foreground min-w-0"
+                              />
+                              {task.is_shared && (
+                                <Badge
+                                  variant="secondary"
+                                  className="text-[10px] px-1 py-0 h-4 shrink-0 font-normal"
+                                >
+                                  Shared
+                                </Badge>
+                              )}
+                            </div>
                           )}
                         </div>
                         {!isEditing && (

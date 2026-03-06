@@ -1,6 +1,7 @@
 import { IntegrationIcon } from "@/web/components/integration-icon";
 import { Page } from "@/web/components/page";
 import { useDecoChatOpen } from "@/web/hooks/use-deco-chat-open";
+import { authClient } from "@/web/lib/auth-client";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   getWellKnownDecopilotVirtualMCP,
@@ -18,6 +19,7 @@ import { Suspense, useState, useTransition } from "react";
 import { ErrorBoundary } from "../error-boundary";
 
 import { Chat, useChat } from "./index";
+import { ThreadShareDialog } from "./thread-share-dialog";
 import { ChatContextPanel } from "./context-panel";
 import { TaskListContent } from "./tasks-panel";
 
@@ -26,6 +28,7 @@ import { EditableTaskTitle } from "./editable-task-title";
 function ChatPanelContent() {
   const { org } = useProjectContext();
   const [, setOpen] = useDecoChatOpen();
+  const { data: session } = authClient.useSession();
   const {
     selectedVirtualMcp,
     modelsConnections,
@@ -36,6 +39,7 @@ function ChatPanelContent() {
     tasks,
   } = useChat();
   const activeTask = tasks.find((task) => task.id === activeTaskId);
+  const threadOwnerId = activeTask?.created_by ?? session?.user?.id;
   const [activePanel, setActivePanel] = useState<"chat" | "tasks" | "context">(
     "chat",
   );
@@ -110,6 +114,15 @@ function ChatPanelContent() {
             )}
           </Page.Header.Left>
           <Page.Header.Right className="gap-1">
+            {!isChatEmpty &&
+              activeTask?.id &&
+              threadOwnerId &&
+              !activeTask?.is_shared && (
+                <ThreadShareDialog
+                  threadId={activeTask.id}
+                  threadOwnerId={threadOwnerId}
+                />
+              )}
             <button
               type="button"
               onClick={handleNewTask}
@@ -176,7 +189,13 @@ function ChatPanelContent() {
         </Chat.Main>
 
         <Chat.Footer>
-          <Chat.Input onOpenContextPanel={() => setActivePanel("context")} />
+          {activeTask?.is_shared ? (
+            <div className="flex items-center justify-center py-3 px-4 text-sm text-muted-foreground">
+              This is a shared thread — view only.
+            </div>
+          ) : (
+            <Chat.Input onOpenContextPanel={() => setActivePanel("context")} />
+          )}
         </Chat.Footer>
       </div>
 

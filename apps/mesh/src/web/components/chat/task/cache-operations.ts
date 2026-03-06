@@ -52,7 +52,9 @@ export function updateTaskInCache(
       created_at: currentTask.created_at,
       updated_at: updates.updated_at ?? currentTask.updated_at,
       hidden: updates.hidden ?? currentTask.hidden,
+      created_by: currentTask.created_by,
       status: updates.status ?? currentTask.status,
+      is_shared: currentTask.is_shared,
     };
     updatedItems[taskIndex] = updatedTask;
 

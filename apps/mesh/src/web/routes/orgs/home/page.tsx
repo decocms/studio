@@ -7,6 +7,7 @@
 
 import { Chat, useChat } from "@/web/components/chat/index";
 import { ChatContextPanel } from "@/web/components/chat/context-panel";
+import { ThreadShareDialog } from "@/web/components/chat/thread-share-dialog";
 import { TasksPanel } from "@/web/components/chat/tasks-panel";
 import { EditableTaskTitle } from "@/web/components/chat/editable-task-title";
 import { ErrorBoundary } from "@/web/components/error-boundary";
@@ -41,6 +42,7 @@ function HomeContent() {
     selectedVirtualMcp,
   } = useChat();
   const activeTask = tasks.find((task) => task.id === activeTaskId);
+  const threadOwnerId = activeTask?.created_by ?? session?.user?.id;
   const [showContext, setShowContext] = useState(false);
 
   const userName = session?.user?.name?.split(" ")[0] || "there";
@@ -108,6 +110,15 @@ function HomeContent() {
               )}
             </Page.Header.Left>
             <Page.Header.Right className="gap-1">
+              {!isChatEmpty &&
+                activeTask?.id &&
+                threadOwnerId &&
+                !activeTask?.is_shared && (
+                  <ThreadShareDialog
+                    threadId={activeTask.id}
+                    threadOwnerId={threadOwnerId}
+                  />
+                )}
               {!isChatEmpty && (
                 <button
                   type="button"
@@ -130,7 +141,13 @@ function HomeContent() {
                 <Chat.Messages />
               </Chat.Main>
               <Chat.Footer>
-                <Chat.Input onOpenContextPanel={() => setShowContext(true)} />
+                {activeTask?.is_shared ? (
+                  <div className="flex items-center justify-center py-3 px-4 text-sm text-muted-foreground">
+                    This is a shared thread — view only.
+                  </div>
+                ) : (
+                  <Chat.Input onOpenContextPanel={() => setShowContext(true)} />
+                )}
               </Chat.Footer>
             </>
           ) : (

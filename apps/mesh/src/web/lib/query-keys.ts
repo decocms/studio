@@ -188,6 +188,9 @@ export const KEYS = {
   connectionResources: (connectionId: string) =>
     ["connection", connectionId, "resources"] as const,
 
+  // Thread members (scoped by thread ID)
+  threadMembers: (threadId: string) => ["thread-members", threadId] as const,
+
   // User data
   user: (userId: string) => ["user", userId] as const,
 

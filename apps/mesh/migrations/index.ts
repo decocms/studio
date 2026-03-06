@@ -34,6 +34,7 @@ import * as migration032projects from "./032-projects.ts";
 import * as migration033threadstatus from "./033-thread-status.ts";
 import * as migration034monitoringdashboards from "./034-monitoring-dashboards.ts";
 import * as migration035projectconnections from "./035-project-connections.ts";
+import * as migration036threadmembers from "./036-thread-members.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -80,6 +81,7 @@ const migrations: Record<string, Migration> = {
   "033-thread-status": migration033threadstatus,
   "034-monitoring-dashboards": migration034monitoringdashboards,
   "035-project-connections": migration035projectconnections,
+  "036-thread-members": migration036threadmembers,
 };
 
 export default migrations;

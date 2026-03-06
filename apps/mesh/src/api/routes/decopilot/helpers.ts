@@ -198,3 +198,37 @@ export async function validateThreadOwnership(
   }
   return { ctx, organization, thread, threadId, userId };
 }
+
+/**
+ * Validate that the caller owns or is a shared member of the thread.
+ * Use for endpoints where shared members should have read-only access (e.g. attach).
+ */
+export async function validateThreadAccess(
+  c: Context<{ Variables: { meshContext: MeshContext } }>,
+) {
+  const ctx = c.get("meshContext");
+  const userId = ctx.auth?.user?.id;
+  if (!userId) {
+    throw new HTTPException(401, { message: "Unauthorized" });
+  }
+  const organization = ensureOrganization(c);
+  const threadId = c.req.param("threadId");
+  if (!threadId) {
+    throw new HTTPException(400, { message: "Missing thread ID" });
+  }
+  if (/[.*>\s]/.test(threadId)) {
+    throw new HTTPException(400, { message: "Invalid thread ID" });
+  }
+  const thread = await ctx.storage.threads.get(threadId);
+  if (!thread || thread.organization_id !== organization.id) {
+    throw new HTTPException(404, { message: "Thread not found" });
+  }
+  const isOwner = thread.created_by === userId;
+  if (!isOwner) {
+    const isMember = await ctx.storage.threads.isMember(threadId, userId);
+    if (!isMember) {
+      throw new HTTPException(403, { message: "Not authorized" });
+    }
+  }
+  return { ctx, organization, thread, threadId, userId, isOwner };
+}
