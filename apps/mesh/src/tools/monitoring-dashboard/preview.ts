@@ -28,6 +28,14 @@ const WidgetConfigSchema = z.object({
       .string()
       .optional()
       .describe("Time interval for timeseries (15m, 1h, 1d)"),
+    limit: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe(
+        "Max number of groups to return (applies to groupBy/groupByColumn, ordered by value desc)",
+      ),
   }),
   filter: z
     .object({
@@ -81,6 +89,12 @@ export const MONITORING_WIDGET_PREVIEW = defineTool({
       })
       .optional()
       .describe("Property filters to apply"),
+    skipCount: z
+      .boolean()
+      .optional()
+      .describe(
+        "Skip the countMatched query to reduce database load when the count is not needed",
+      ),
   }),
   outputSchema: z.object({
     value: z.number().nullable().optional().describe("Aggregated value"),
@@ -92,7 +106,12 @@ export const MONITORING_WIDGET_PREVIEW = defineTool({
       .array(z.object({ timestamp: z.string(), value: z.number() }))
       .optional()
       .describe("Timeseries data points"),
-    matchedRecords: z.number().describe("Number of records that matched"),
+    matchedRecords: z
+      .number()
+      .optional()
+      .describe(
+        "Number of records that matched (omitted when skipCount is true)",
+      ),
     timeRange: z
       .object({
         startDate: z.string(),
@@ -121,15 +140,15 @@ export const MONITORING_WIDGET_PREVIEW = defineTool({
     };
 
     try {
-      // First, get count of matched records
-      const matchedRecords = await ctx.storage.monitoring.countMatched({
-        organizationId: org.id,
-        path: widget.source.path,
-        from: widget.source.from,
-        filters,
-      });
+      const matchedRecords = input.skipCount
+        ? undefined
+        : await ctx.storage.monitoring.countMatched({
+            organizationId: org.id,
+            path: widget.source.path,
+            from: widget.source.from,
+            filters,
+          });
 
-      // Then run the aggregation
       const result = await ctx.storage.monitoring.aggregate({
         organizationId: org.id,
         path: widget.source.path,
@@ -140,6 +159,7 @@ export const MONITORING_WIDGET_PREVIEW = defineTool({
           | GroupByColumn
           | undefined,
         interval: widget.aggregation.interval,
+        limit: widget.aggregation.limit,
         filters,
       });
 
@@ -157,7 +177,7 @@ export const MONITORING_WIDGET_PREVIEW = defineTool({
       console.error("Widget preview aggregation failed:", error);
       return {
         value: null,
-        matchedRecords: 0,
+        matchedRecords: undefined,
         timeRange: {
           startDate: startDate.toISOString(),
           endDate: endDate.toISOString(),

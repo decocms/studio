@@ -868,6 +868,7 @@ function UsageSection() {
           aggregation: { fn: "sum", interval: "1d" },
         },
         timeRange,
+        skipCount: true,
       },
       staleTime: 60_000,
       select: selectWidget,
@@ -886,6 +887,7 @@ function UsageSection() {
         aggregation: { fn: "count_all" },
       },
       timeRange,
+      skipCount: true,
     },
     staleTime: 60_000,
     select: selectWidget,
@@ -900,9 +902,14 @@ function UsageSection() {
       widget: {
         type: "metric",
         source: { path: COST_PATH, from: "output" },
-        aggregation: { fn: "sum", groupByColumn: "connection_title" },
+        aggregation: {
+          fn: "sum",
+          groupByColumn: "connection_title",
+          limit: 10,
+        },
       },
       timeRange,
+      skipCount: true,
     },
     staleTime: 60_000,
     select: selectWidget,
@@ -1225,6 +1232,7 @@ function BillingBreakdown() {
   const widgetQuery = (config: {
     fn: "sum" | "count" | "count_all";
     groupByColumn?: string;
+    limit?: number;
   }) =>
     ({
       client: selfClient,
@@ -1238,9 +1246,11 @@ function BillingBreakdown() {
             ...(config.groupByColumn && {
               groupByColumn: config.groupByColumn,
             }),
+            ...(config.limit && { limit: config.limit }),
           },
         },
         timeRange,
+        skipCount: true,
       },
       staleTime: 60_000,
       select: selectWidget,
@@ -1248,27 +1258,33 @@ function BillingBreakdown() {
 
   const { data: costByConn, isLoading: l1 } = useMCPToolCallQuery<
     WidgetPreviewResult | undefined
-  >(widgetQuery({ fn: "sum", groupByColumn: "connection_title" }));
+  >(widgetQuery({ fn: "sum", groupByColumn: "connection_title", limit: 20 }));
 
   const { data: callsByConn, isLoading: l2 } = useMCPToolCallQuery<
     WidgetPreviewResult | undefined
-  >(widgetQuery({ fn: "count_all", groupByColumn: "connection_title" }));
+  >(
+    widgetQuery({
+      fn: "count_all",
+      groupByColumn: "connection_title",
+      limit: 20,
+    }),
+  );
 
   const { data: costByUser, isLoading: l3 } = useMCPToolCallQuery<
     WidgetPreviewResult | undefined
-  >(widgetQuery({ fn: "sum", groupByColumn: "user_id" }));
+  >(widgetQuery({ fn: "sum", groupByColumn: "user_id", limit: 20 }));
 
   const { data: callsByUser, isLoading: l4 } = useMCPToolCallQuery<
     WidgetPreviewResult | undefined
-  >(widgetQuery({ fn: "count_all", groupByColumn: "user_id" }));
+  >(widgetQuery({ fn: "count_all", groupByColumn: "user_id", limit: 20 }));
 
   const { data: costByTool, isLoading: l5 } = useMCPToolCallQuery<
     WidgetPreviewResult | undefined
-  >(widgetQuery({ fn: "sum", groupByColumn: "tool_name" }));
+  >(widgetQuery({ fn: "sum", groupByColumn: "tool_name", limit: 20 }));
 
   const { data: callsByTool, isLoading: l6 } = useMCPToolCallQuery<
     WidgetPreviewResult | undefined
-  >(widgetQuery({ fn: "count_all", groupByColumn: "tool_name" }));
+  >(widgetQuery({ fn: "count_all", groupByColumn: "tool_name", limit: 20 }));
 
   const isLoading = l1 || l2 || l3 || l4 || l5 || l6;
 
@@ -1445,6 +1461,7 @@ function BillingHistory() {
         aggregation: { fn: "sum", interval: "1d" },
       },
       timeRange,
+      skipCount: true,
     },
     staleTime: 60_000,
     select: selectWidget,
@@ -1462,6 +1479,7 @@ function BillingHistory() {
         aggregation: { fn: "count_all", interval: "1d" },
       },
       timeRange,
+      skipCount: true,
     },
     staleTime: 60_000,
     select: selectWidget,
@@ -1608,11 +1626,13 @@ function BillingWithData({
 }: {
   gatewayConnectionId: string | null;
 }) {
+  const [activeTab, setActiveTab] = useState("summary");
+
   return (
     <>
       <h2 className="text-base font-semibold text-foreground">Billing</h2>
 
-      <Tabs defaultValue="summary" variant="underline">
+      <Tabs value={activeTab} onValueChange={setActiveTab} variant="underline">
         <TabsList variant="underline">
           <TabsTrigger value="summary" variant="underline">
             Summary
@@ -1633,11 +1653,11 @@ function BillingWithData({
         </TabsContent>
 
         <TabsContent value="breakdown" className="pt-2">
-          <BillingBreakdown />
+          {activeTab === "breakdown" && <BillingBreakdown />}
         </TabsContent>
 
         <TabsContent value="history" className="pt-2">
-          <BillingHistory />
+          {activeTab === "history" && <BillingHistory />}
         </TabsContent>
       </Tabs>
     </>
