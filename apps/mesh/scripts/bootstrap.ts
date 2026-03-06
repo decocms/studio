@@ -7,7 +7,7 @@
  */
 
 import { existsSync } from "fs";
-import { chmod, mkdir } from "fs/promises";
+import { mkdir, writeFile } from "fs/promises";
 import { createInterface } from "readline";
 import { homedir } from "os";
 import { join } from "path";
@@ -129,8 +129,9 @@ export async function loadOrCreateSecrets(
   // Save secrets to file if we generated new ones
   if (secretsModified) {
     try {
-      await Bun.write(secretsFilePath, JSON.stringify(savedSecrets, null, 2));
-      await chmod(secretsFilePath, 0o600);
+      await writeFile(secretsFilePath, JSON.stringify(savedSecrets, null, 2), {
+        mode: 0o600,
+      });
     } catch (error) {
       console.warn(
         `${ansi.yellow}Warning: Could not save secrets file: ${error}${ansi.reset}`,

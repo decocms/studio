@@ -20,7 +20,7 @@ export async function authenticateConnection(
   const { token, tokenInfo, error } = await authenticateMcp({ connectionId });
 
   if (error || !token) {
-    toast.error(`Authentication failed: ${error}`);
+    toast.error(`Authentication failed: ${error || "No token received"}`);
     return false;
   }
 
