@@ -8,6 +8,8 @@
  */
 
 import { getDb } from "@/database";
+import { randomBytes } from "crypto";
+import { mkdir, writeFile, chmod } from "fs/promises";
 import { homedir, userInfo } from "os";
 import { join } from "path";
 import { auth } from "./index";
@@ -25,8 +27,11 @@ export async function getLocalAdminPassword(): Promise<string> {
 
   const decoHome = process.env.DECOCMS_HOME || join(homedir(), "deco");
 
+  const secretsPath = join(decoHome, "secrets.json");
+
+  // Try to read existing secrets
   try {
-    const file = Bun.file(join(decoHome, "secrets.json"));
+    const file = Bun.file(secretsPath);
     if (await file.exists()) {
       const secrets = await file.json();
       if (secrets.LOCAL_ADMIN_PASSWORD) {
@@ -36,13 +41,32 @@ export async function getLocalAdminPassword(): Promise<string> {
       }
     }
   } catch {
-    // File not readable
+    // File not readable or doesn't exist
   }
 
-  throw new Error(
-    "Local admin password unavailable — secrets.json was not initialized. " +
-      "Ensure the CLI runs before the server starts (npx decocms).",
-  );
+  // Auto-generate password when running dev:local (bypasses CLI)
+  const pw = randomBytes(24).toString("base64");
+  try {
+    await mkdir(decoHome, { recursive: true, mode: 0o700 });
+    let secrets: Record<string, string> = {};
+    try {
+      const file = Bun.file(secretsPath);
+      if (await file.exists()) {
+        secrets = await file.json();
+      }
+    } catch {
+      // Start fresh
+    }
+    secrets.LOCAL_ADMIN_PASSWORD = pw;
+    await writeFile(secretsPath, JSON.stringify(secrets, null, 2), {
+      mode: 0o600,
+    });
+    await chmod(secretsPath, 0o600);
+  } catch (err) {
+    console.warn("Warning: Could not save secrets file:", err);
+  }
+  _cachedPassword = pw;
+  return pw;
 }
 
 function getLocalUserName(): string {
