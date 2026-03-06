@@ -87,31 +87,19 @@ export async function up(db: Kysely<unknown>): Promise<void> {
   // These reference virtual_mcps which we want to drop
   // ============================================================================
 
-  // Check if we're on PostgreSQL by checking for PostgreSQL-specific function
-  const isPostgres = await sql`SELECT current_database()`
-    .execute(db)
-    .then(() => true)
-    .catch(() => false);
-
-  if (isPostgres) {
-    // Drop FK constraints - PostgreSQL keeps these after rename
-    // PostgreSQL constraint names from original migration 010-gateways.ts
-    await sql`ALTER TABLE virtual_mcp_connections DROP CONSTRAINT IF EXISTS gateway_connections_gateway_id_fkey`.execute(
-      db,
-    );
-    await sql`ALTER TABLE virtual_mcp_connections DROP CONSTRAINT IF EXISTS gateway_connections_connection_id_fkey`.execute(
-      db,
-    );
-    // Also try the renamed constraint names (if migration 022 created new ones)
-    await sql`ALTER TABLE virtual_mcp_connections DROP CONSTRAINT IF EXISTS virtual_mcp_connections_virtual_mcp_id_fkey`.execute(
-      db,
-    );
-    await sql`ALTER TABLE virtual_mcp_connections DROP CONSTRAINT IF EXISTS virtual_mcp_connections_connection_id_fkey`.execute(
-      db,
-    );
-  }
-  // SQLite: FK constraints don't need to be dropped - they're part of the table definition
-  // and SQLite doesn't enforce them by default anyway
+  // Drop FK constraints that reference virtual_mcps (which we're about to drop)
+  await sql`ALTER TABLE virtual_mcp_connections DROP CONSTRAINT IF EXISTS gateway_connections_gateway_id_fkey`.execute(
+    db,
+  );
+  await sql`ALTER TABLE virtual_mcp_connections DROP CONSTRAINT IF EXISTS gateway_connections_connection_id_fkey`.execute(
+    db,
+  );
+  await sql`ALTER TABLE virtual_mcp_connections DROP CONSTRAINT IF EXISTS virtual_mcp_connections_virtual_mcp_id_fkey`.execute(
+    db,
+  );
+  await sql`ALTER TABLE virtual_mcp_connections DROP CONSTRAINT IF EXISTS virtual_mcp_connections_connection_id_fkey`.execute(
+    db,
+  );
 
   // ============================================================================
   // Step 4: Rename virtual_mcp_connections -> connection_aggregations
@@ -138,19 +126,15 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .execute();
 
   // ============================================================================
-  // Step 6: Add new FK constraints pointing to connections table (PostgreSQL only)
-  // SQLite: FK constraints are defined at table creation, not added later
-  // Migration 024 will recreate the table with proper FK constraints for both DBs
+  // Step 6: Add new FK constraints pointing to connections table
   // ============================================================================
 
-  if (isPostgres) {
-    await sql`ALTER TABLE connection_aggregations ADD CONSTRAINT conn_agg_parent_fk FOREIGN KEY (parent_connection_id) REFERENCES connections(id) ON DELETE CASCADE`.execute(
-      db,
-    );
-    await sql`ALTER TABLE connection_aggregations ADD CONSTRAINT conn_agg_child_fk FOREIGN KEY (child_connection_id) REFERENCES connections(id) ON DELETE CASCADE`.execute(
-      db,
-    );
-  }
+  await sql`ALTER TABLE connection_aggregations ADD CONSTRAINT conn_agg_parent_fk FOREIGN KEY (parent_connection_id) REFERENCES connections(id) ON DELETE CASCADE`.execute(
+    db,
+  );
+  await sql`ALTER TABLE connection_aggregations ADD CONSTRAINT conn_agg_child_fk FOREIGN KEY (child_connection_id) REFERENCES connections(id) ON DELETE CASCADE`.execute(
+    db,
+  );
 
   // ============================================================================
   // Step 7: Drop monitoring_logs.virtual_mcp_id column (no longer needed)

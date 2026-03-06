@@ -32,81 +32,8 @@ export async function down(db: Kysely<unknown>): Promise<void> {
   // Drop the index first
   await db.schema.dropIndex("idx_conn_agg_dependency_mode").execute();
 
-  // Check if we're on PostgreSQL
-  const isPostgres = await sql`SELECT current_database()`
-    .execute(db)
-    .then(() => true)
-    .catch(() => false);
-
-  if (isPostgres) {
-    // PostgreSQL supports DROP COLUMN
-    await sql`ALTER TABLE connection_aggregations DROP COLUMN dependency_mode`.execute(
-      db,
-    );
-  } else {
-    // SQLite doesn't support DROP COLUMN before 3.35.0
-    // Need to recreate the table without the column
-
-    // Drop existing indexes
-    await db.schema.dropIndex("idx_conn_agg_unique").execute();
-    await db.schema.dropIndex("idx_conn_agg_child").execute();
-    await db.schema.dropIndex("idx_conn_agg_parent").execute();
-
-    // Create new table without dependency_mode
-    await db.schema
-      .createTable("connection_aggregations_new")
-      .addColumn("id", "text", (col) => col.primaryKey())
-      .addColumn("parent_connection_id", "text", (col) =>
-        col.notNull().references("connections.id").onDelete("cascade"),
-      )
-      .addColumn("child_connection_id", "text", (col) =>
-        col.notNull().references("connections.id").onDelete("restrict"),
-      )
-      .addColumn("selected_tools", "text")
-      .addColumn("selected_resources", "text")
-      .addColumn("selected_prompts", "text")
-      .addColumn("created_at", "text", (col) =>
-        col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`),
-      )
-      .execute();
-
-    // Copy data (excluding dependency_mode)
-    await sql`
-      INSERT INTO connection_aggregations_new (
-        id, parent_connection_id, child_connection_id,
-        selected_tools, selected_resources, selected_prompts, created_at
-      )
-      SELECT
-        id, parent_connection_id, child_connection_id,
-        selected_tools, selected_resources, selected_prompts, created_at
-      FROM connection_aggregations
-    `.execute(db);
-
-    // Drop old table and rename new table
-    await db.schema.dropTable("connection_aggregations").execute();
-    await db.schema
-      .alterTable("connection_aggregations_new")
-      .renameTo("connection_aggregations")
-      .execute();
-
-    // Recreate indexes
-    await db.schema
-      .createIndex("idx_conn_agg_parent")
-      .on("connection_aggregations")
-      .columns(["parent_connection_id"])
-      .execute();
-
-    await db.schema
-      .createIndex("idx_conn_agg_child")
-      .on("connection_aggregations")
-      .columns(["child_connection_id"])
-      .execute();
-
-    await db.schema
-      .createIndex("idx_conn_agg_unique")
-      .on("connection_aggregations")
-      .columns(["parent_connection_id", "child_connection_id"])
-      .unique()
-      .execute();
-  }
+  // Drop the column
+  await sql`ALTER TABLE connection_aggregations DROP COLUMN dependency_mode`.execute(
+    db,
+  );
 }
