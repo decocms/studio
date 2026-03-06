@@ -10,6 +10,7 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { MCPAppRenderer } from "@/mcp-apps/mcp-app-renderer.tsx";
 import { getUIResourceUri, MCP_APP_DISPLAY_MODES } from "@/mcp-apps/types.ts";
 import { ErrorBoundary } from "@/web/components/error-boundary.tsx";
+import { Page } from "@/web/components/page/index.tsx";
 
 const EMPTY_TOOL_INPUT: Record<string, unknown> = {};
 
@@ -94,19 +95,24 @@ export default function ProjectAppView() {
   });
 
   return (
-    <ErrorBoundary key={`${connectionId}:${toolName}`} fallback={undefined}>
-      <Suspense
-        fallback={
-          <div className="flex items-center justify-center h-full">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-              <span className="text-sm">Loading app...</span>
-            </div>
-          </div>
-        }
-      >
-        <AppViewContent connectionId={connectionId} toolName={toolName} />
-      </Suspense>
-    </ErrorBoundary>
+    <Page>
+      <Page.Header />
+      <Page.Content className="overflow-hidden">
+        <ErrorBoundary key={`${connectionId}:${toolName}`} fallback={undefined}>
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center h-full">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  <span className="text-sm">Loading app...</span>
+                </div>
+              </div>
+            }
+          >
+            <AppViewContent connectionId={connectionId} toolName={toolName} />
+          </Suspense>
+        </ErrorBoundary>
+      </Page.Content>
+    </Page>
   );
 }

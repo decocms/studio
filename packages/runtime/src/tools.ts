@@ -858,6 +858,9 @@ export const createMCPServer = <
           }
 
           // MCP SDK expects either text or blob content, not both
+          const meta =
+            (result as { _meta?: Record<string, unknown> | null })._meta ??
+            undefined;
           if (result.text !== undefined) {
             return {
               contents: [
@@ -865,6 +868,7 @@ export const createMCPServer = <
                   uri: result.uri,
                   mimeType: result.mimeType,
                   text: result.text,
+                  ...(meta !== undefined ? { _meta: meta } : {}),
                 },
               ],
             };
@@ -875,6 +879,7 @@ export const createMCPServer = <
                   uri: result.uri,
                   mimeType: result.mimeType,
                   blob: result.blob,
+                  ...(meta !== undefined ? { _meta: meta } : {}),
                 },
               ],
             };
