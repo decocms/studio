@@ -16,7 +16,8 @@ import { CredentialVault } from "../encryption/credential-vault";
 import { getBaseUrl } from "./server-constants";
 import { ConnectionStorage } from "../storage/connection";
 import { VirtualMCPStorage } from "../storage/virtual";
-import { SqlMonitoringStorage } from "../storage/monitoring";
+import { DuckDBMonitoringStorage } from "../monitoring/duckdb-monitoring-storage";
+import { DEFAULT_PARQUET_BASE_PATH } from "../monitoring/parquet-paths";
 import { SqlMonitoringDashboardStorage } from "../storage/monitoring-dashboards";
 import { OrganizationSettingsStorage } from "../storage/organization-settings";
 import { ProjectsStorage } from "../storage/projects";
@@ -740,7 +741,9 @@ export async function createMeshContextFactory(
   const storage = {
     connections: new ConnectionStorage(config.db, vault),
     organizationSettings: new OrganizationSettingsStorage(config.db),
-    monitoring: new SqlMonitoringStorage(config.db, config.databaseType),
+    monitoring: new DuckDBMonitoringStorage(
+      process.env.MONITORING_PARQUET_PATH ?? DEFAULT_PARQUET_BASE_PATH,
+    ),
     monitoringDashboards: new SqlMonitoringDashboardStorage(config.db),
     virtualMcps: new VirtualMCPStorage(config.db),
     users: new UserStorage(config.db),

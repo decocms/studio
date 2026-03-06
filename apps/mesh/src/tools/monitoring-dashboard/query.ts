@@ -8,8 +8,11 @@ import { requireOrganization } from "@/core/mesh-context";
 import { defineTool } from "../../core/define-tool";
 import { z } from "zod";
 import { WidgetQueryResultSchema, type WidgetQueryResult } from "./schema";
-import type { AggregationFunction, DashboardWidget } from "@/storage/types";
-import type { GroupByColumn } from "@/storage/monitoring";
+import type {
+  AggregationFunction,
+  DashboardWidget,
+  GroupByColumn,
+} from "@/storage/types";
 
 export const MONITORING_DASHBOARD_QUERY = defineTool({
   name: "MONITORING_DASHBOARD_QUERY",

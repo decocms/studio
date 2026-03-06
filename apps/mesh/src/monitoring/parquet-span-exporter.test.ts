@@ -37,21 +37,16 @@ function createMonitoringSpan(
     [MONITORING_SPAN_ATTRIBUTES.CONNECTION_TITLE]:
       overrides.connectionTitle ?? "Test Connection",
     [MONITORING_SPAN_ATTRIBUTES.TOOL_NAME]: overrides.toolName ?? "test_tool",
-    [MONITORING_SPAN_ATTRIBUTES.INPUT]:
-      overrides.input ?? '{"key":"value"}',
-    [MONITORING_SPAN_ATTRIBUTES.OUTPUT]:
-      overrides.output ?? '{"result":"ok"}',
+    [MONITORING_SPAN_ATTRIBUTES.INPUT]: overrides.input ?? '{"key":"value"}',
+    [MONITORING_SPAN_ATTRIBUTES.OUTPUT]: overrides.output ?? '{"result":"ok"}',
     [MONITORING_SPAN_ATTRIBUTES.IS_ERROR]: overrides.isError ?? false,
-    [MONITORING_SPAN_ATTRIBUTES.ERROR_MESSAGE]:
-      overrides.errorMessage ?? null,
+    [MONITORING_SPAN_ATTRIBUTES.ERROR_MESSAGE]: overrides.errorMessage ?? null,
     [MONITORING_SPAN_ATTRIBUTES.DURATION_MS]: overrides.durationMs ?? 150,
     [MONITORING_SPAN_ATTRIBUTES.USER_ID]: overrides.userId ?? "user_1",
-    [MONITORING_SPAN_ATTRIBUTES.REQUEST_ID]:
-      overrides.requestId ?? "req_1",
+    [MONITORING_SPAN_ATTRIBUTES.REQUEST_ID]: overrides.requestId ?? "req_1",
     [MONITORING_SPAN_ATTRIBUTES.USER_AGENT]:
       overrides.userAgent ?? "test-client/1.0",
-    [MONITORING_SPAN_ATTRIBUTES.VIRTUAL_MCP_ID]:
-      overrides.virtualMcpId ?? null,
+    [MONITORING_SPAN_ATTRIBUTES.VIRTUAL_MCP_ID]: overrides.virtualMcpId ?? null,
     [MONITORING_SPAN_ATTRIBUTES.PROPERTIES]: overrides.properties ?? null,
   };
 
@@ -184,9 +179,7 @@ describe("ParquetSpanExporter", () => {
   });
 
   it("creates time-partitioned directory structure", async () => {
-    await exportSpans(exporter, [
-      createMonitoringSpan({ requestId: "r_dir" }),
-    ]);
+    await exportSpans(exporter, [createMonitoringSpan({ requestId: "r_dir" })]);
     await exporter.forceFlush();
 
     const files = await findParquetFiles(basePath);
@@ -227,10 +220,11 @@ async function findParquetFiles(dir: string): Promise<string[]> {
     });
     for (const entry of entries) {
       if (entry.isFile() && entry.name.endsWith(".parquet")) {
-        const entryPath =
-          "parentPath" in entry
-            ? join(entry.parentPath as string, entry.name)
-            : join(dir, entry.name);
+        // biome-ignore lint: Dirent parentPath varies by Node version
+        const parent = (entry as any).parentPath as string | undefined;
+        const entryPath = parent
+          ? join(parent, entry.name)
+          : join(dir, entry.name);
         results.push(entryPath);
       }
     }

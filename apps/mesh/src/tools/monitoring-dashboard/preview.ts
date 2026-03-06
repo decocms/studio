@@ -8,8 +8,7 @@
 import { requireOrganization } from "@/core/mesh-context";
 import { defineTool } from "../../core/define-tool";
 import { z } from "zod";
-import type { AggregationFunction } from "@/storage/types";
-import type { GroupByColumn } from "@/storage/monitoring";
+import type { AggregationFunction, GroupByColumn } from "@/storage/types";
 import { GroupByColumnSchema } from "./schema";
 
 const WidgetConfigSchema = z.object({

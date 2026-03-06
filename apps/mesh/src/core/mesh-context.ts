@@ -225,7 +225,7 @@ import type { BetterAuthInstance } from "@/auth";
 import { SqlThreadStorage } from "@/storage/threads";
 import type { EventBus } from "../event-bus/interface";
 import type { ConnectionStorage } from "../storage/connection";
-import type { SqlMonitoringStorage } from "../storage/monitoring";
+import type { DuckDBMonitoringStorage } from "../monitoring/duckdb-monitoring-storage";
 import type { SqlMonitoringDashboardStorage } from "../storage/monitoring-dashboards";
 import type { OrganizationSettingsStorage } from "../storage/organization-settings";
 import type { TagStorage } from "../storage/tags";
@@ -253,7 +253,7 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 export interface MeshStorage {
   connections: ConnectionStorage;
   organizationSettings: OrganizationSettingsStorage;
-  monitoring: SqlMonitoringStorage;
+  monitoring: DuckDBMonitoringStorage;
   monitoringDashboards: SqlMonitoringDashboardStorage;
   virtualMcps: VirtualMCPStorage;
   users: UserStorage;

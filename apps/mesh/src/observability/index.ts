@@ -28,9 +28,13 @@ import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
 import type { MetricReader } from "@opentelemetry/sdk-metrics";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import {
+  BatchSpanProcessor,
   SamplingDecision,
   SamplingResult,
 } from "@opentelemetry/sdk-trace-base";
+import { MONITORING_SPAN_NAME } from "@/monitoring/parquet-schema";
+import { ParquetSpanExporter } from "@/monitoring/parquet-span-exporter";
+import { DEFAULT_PARQUET_BASE_PATH } from "@/monitoring/parquet-paths";
 
 // Constants
 const DEBUG_QS = "__d";
@@ -95,6 +99,11 @@ class DebugSampler implements Sampler {
     attributes: Attributes,
     links: Link[],
   ): SamplingResult {
+    // Always record monitoring spans — they carry tool call data for dashboards
+    if (spanName === MONITORING_SPAN_NAME) {
+      return { decision: SamplingDecision.RECORD_AND_SAMPLED };
+    }
+
     const req = ctx.getValue(REQUEST_CONTEXT_KEY) as Request | undefined;
 
     // If no request context, fall back to inner sampler or record
@@ -184,13 +193,37 @@ export const prometheusExporter = new PrometheusExporter({
 const headSampler = new DebugSampler(new RatioSampler(HEAD_SAMPLER_RATIO));
 
 /**
+ * Build span processors.
+ *
+ * - OTLP exporter: always added when OTEL_EXPORTER_OTLP_ENDPOINT is set (cloud)
+ * - Parquet exporter: added when no OTLP endpoint (local mode — writes monitoring
+ *   spans to time-partitioned Parquet files via DuckDB)
+ */
+const monitoringBasePath =
+  process.env.MONITORING_PARQUET_PATH ?? DEFAULT_PARQUET_BASE_PATH;
+
+const spanProcessors: BatchSpanProcessor[] = [];
+
+if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
+  spanProcessors.push(new BatchSpanProcessor(new OTLPTraceExporter()));
+}
+
+// Local mode: write monitoring spans to Parquet
+if (!process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
+  spanProcessors.push(
+    new BatchSpanProcessor(
+      new ParquetSpanExporter({ basePath: monitoringBasePath }),
+    ),
+  );
+}
+
+/**
  * Initialize OpenTelemetry SDK
  */
 const sdk = new NodeSDK({
   serviceName: process.env.OTEL_SERVICE_NAME ?? "mesh",
-  traceExporter: new OTLPTraceExporter(),
+  spanProcessors,
   metricReader: prometheusExporter as unknown as MetricReader,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sampler: headSampler,
   logRecordProcessors: [new BatchLogRecordProcessor(new OTLPLogExporter())],
   instrumentations: [new RuntimeNodeInstrumentation()],
