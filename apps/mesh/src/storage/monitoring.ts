@@ -149,7 +149,7 @@ export class SqlMonitoringStorage implements MonitoringStorage {
     let query = this.db.selectFrom("monitoring_logs").selectAll();
     let countQuery = this.db
       .selectFrom("monitoring_logs")
-      .select((eb) => eb.fn.count("id").as("count"));
+      .select((eb) => eb.fn.countAll().as("count"));
 
     // Apply filters to both queries
     if (filters.organizationId) {
@@ -283,7 +283,7 @@ export class SqlMonitoringStorage implements MonitoringStorage {
     // Get total count, error count, and average duration using SQL aggregations
     const stats = await query
       .select([
-        (eb) => eb.fn.count("id").as("total_count"),
+        (eb) => eb.fn.countAll().as("total_count"),
         (eb) => eb.fn.sum(eb.ref("is_error")).as("error_count"),
         (eb) => eb.fn.avg("duration_ms").as("avg_duration"),
       ])
@@ -504,7 +504,7 @@ export class SqlMonitoringStorage implements MonitoringStorage {
     const valueExpr = this.jsonExtractPathText(sourceColumn, path);
     const result = await query
       .where(sql`${valueExpr}`, "is not", null)
-      .select((eb) => eb.fn.count("id").as("count"))
+      .select((eb) => eb.fn.countAll().as("count"))
       .executeTakeFirst();
 
     return Number(result?.count || 0);
