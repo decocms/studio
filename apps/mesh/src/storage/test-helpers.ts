@@ -3,7 +3,7 @@
  * Runs production migrations for testing
  */
 
-import { Migrator, type Kysely } from "kysely";
+import { Migrator, sql, type Kysely } from "kysely";
 import migrations from "../../migrations";
 import type { Database } from "./types";
 
@@ -229,4 +229,33 @@ export async function createTestSchema(db: Kysely<Database>): Promise<void> {
   const successCount =
     results?.filter((r) => r.status === "Success").length ?? 0;
   console.log(`✅ ${successCount} migrations applied`);
+}
+
+/**
+ * Seed common parent records required by FK constraints.
+ * PGlite (PostgreSQL) enforces FK constraints, so tests that insert into
+ * FK-constrained tables (e.g. connections) need parent records to exist first.
+ */
+export async function seedCommonTestFixtures(
+  db: Kysely<Database>,
+): Promise<void> {
+  const now = new Date().toISOString();
+
+  // Create test users
+  for (const userId of ["user_1", "user_123", "user_test", "test_user"]) {
+    await sql`
+      INSERT INTO "user" (id, email, "emailVerified", name, "createdAt", "updatedAt")
+      VALUES (${userId}, ${userId + "@test.com"}, 0, ${"Test " + userId}, ${now}, ${now})
+      ON CONFLICT (id) DO NOTHING
+    `.execute(db);
+  }
+
+  // Create test organizations
+  for (const orgId of ["org_1", "org_123", "org_456", "org_test"]) {
+    await sql`
+      INSERT INTO "organization" (id, name, slug, "createdAt")
+      VALUES (${orgId}, ${orgId}, ${orgId}, ${now})
+      ON CONFLICT (id) DO NOTHING
+    `.execute(db);
+  }
 }

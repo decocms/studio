@@ -28,7 +28,9 @@ describe("Database Factory", () => {
     });
 
     it("should create PGlite database when no URL provided", async () => {
-      const database = createDatabase(`file:${join(tempDir, "default-pglite")}`);
+      const database = createDatabase(
+        `file:${join(tempDir, "default-pglite")}`,
+      );
       expect(database).toBeDefined();
       expect(database.type).toBe("pglite");
       await closeDatabase(database);

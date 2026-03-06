@@ -21,7 +21,10 @@ import {
   closeDatabase,
   type MeshDatabase,
 } from "../../database";
-import { createTestSchema } from "../../storage/test-helpers";
+import {
+  createTestSchema,
+  seedCommonTestFixtures,
+} from "../../storage/test-helpers";
 import { createApp } from "../app";
 import type { EventBus } from "../../event-bus";
 import { auth } from "../../auth";
@@ -101,6 +104,7 @@ describe("MCP OAuth Proxy E2E", () => {
 
     database = createDatabase(":memory:");
     await createTestSchema(database.db);
+    await seedCommonTestFixtures(database.db);
     app = await createApp({ database, eventBus: createMockEventBus() });
 
     const orgId = "org_test";

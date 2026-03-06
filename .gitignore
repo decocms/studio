@@ -43,17 +43,15 @@ kv-wal
 .specstory/**
 .tsbuildinfo
 
-# SQLite database files
+# SQLite database files (legacy)
 *.db
 *.db-shm
 *.db-wal
+
+# PGlite database directories
+*.pglite
 
 .playwright-mcp/
-
-# SQLite database files
-*.db
-*.db-shm
-*.db-wal
 
 # Local test files
 deploy/auth-config.json

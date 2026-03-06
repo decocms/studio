@@ -7,7 +7,10 @@ import {
   closeDatabase,
   type MeshDatabase,
 } from "../../database";
-import { createTestSchema } from "../../storage/test-helpers";
+import {
+  createTestSchema,
+  seedCommonTestFixtures,
+} from "../../storage/test-helpers";
 import downstreamTokenRoutes from "./downstream-token";
 
 describe("Downstream Token Routes", () => {
@@ -17,6 +20,16 @@ describe("Downstream Token Routes", () => {
   beforeEach(async () => {
     database = createDatabase(":memory:");
     await createTestSchema(database.db);
+    await seedCommonTestFixtures(database.db);
+
+    // Create test connection for FK constraint
+    const { sql } = await import("kysely");
+    const now = new Date().toISOString();
+    await sql`
+      INSERT INTO connections (id, organization_id, created_by, title, connection_type, connection_url, status, created_at, updated_at)
+      VALUES ('conn_1', 'org_test', 'user_test', 'Test', 'HTTP', 'https://test.com', 'active', ${now}, ${now})
+      ON CONFLICT (id) DO NOTHING
+    `.execute(database.db);
 
     const vault = new CredentialVault(CredentialVault.generateKey());
 

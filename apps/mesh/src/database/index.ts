@@ -12,7 +12,7 @@
  */
 
 import { existsSync, mkdirSync } from "fs";
-import { type Dialect, Kysely, LogEvent, PostgresDialect, sql } from "kysely";
+import { type Dialect, Kysely, LogEvent, PostgresDialect } from "kysely";
 import { PGlite } from "@electric-sql/pglite";
 import { KyselyPGlite } from "kysely-pglite";
 import * as path from "path";
@@ -199,7 +199,11 @@ function parseDatabaseUrl(databaseUrl?: string): DatabaseConfig {
         "[Database] sqlite:// protocol is deprecated. Use file:// instead. " +
           "SQLite has been replaced by PGlite (embedded PostgreSQL).",
       );
-    // falls through
+      if (!parsed?.pathname) {
+        throw new Error("Invalid database URL: " + url);
+      }
+      return { type: "pglite", connectionString: parsed.pathname };
+
     case "file":
       if (!parsed?.pathname) {
         throw new Error("Invalid database URL: " + url);
