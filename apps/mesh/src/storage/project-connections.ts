@@ -68,7 +68,13 @@ export class ProjectConnectionsStorage implements ProjectConnectionStoragePort {
       .selectAll()
       .where("project_id", "=", projectId)
       .where("connection_id", "=", connectionId)
-      .executeTakeFirstOrThrow();
+      .executeTakeFirst();
+
+    if (!existing) {
+      throw new Error(
+        `Project connection not found after conflict: project=${projectId}, connection=${connectionId}`,
+      );
+    }
 
     return this.parseRow(existing);
   }
