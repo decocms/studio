@@ -4,12 +4,23 @@ import {
   createProxyMonitoringMiddleware,
   createProxyStreamableMonitoringMiddleware,
 } from "./proxy-monitoring";
+import { MONITORING_SPAN_NAME } from "@/monitoring/parquet-schema";
 
 function createMockCtx(overrides?: {
   userAgent?: string;
   properties?: Record<string, string>;
 }) {
   const log = vi.fn(async (_event: unknown) => {});
+
+  // Mock span that captures setAttributes calls
+  const spanAttributes: Record<string, unknown>[] = [];
+  const mockSpan = {
+    setAttributes: vi.fn((attrs: Record<string, unknown>) => {
+      spanAttributes.push(attrs);
+    }),
+    end: vi.fn(),
+  };
+  const startSpan = vi.fn((_name: string) => mockSpan);
 
   // Use defaults unless explicitly overridden (including with undefined)
   const hasUserAgentOverride = overrides && "userAgent" in overrides;
@@ -19,6 +30,7 @@ function createMockCtx(overrides?: {
     organization: { id: "org_1" },
     auth: { user: { id: "user_1" } },
     storage: { monitoring: { log } },
+    tracer: { startSpan },
     metadata: {
       requestId: "req_1",
       userAgent: hasUserAgentOverride ? overrides.userAgent : "test-client/1.0",
@@ -26,12 +38,12 @@ function createMockCtx(overrides?: {
     },
   } as unknown as MeshContext;
 
-  return { ctx, log };
+  return { ctx, log, startSpan, mockSpan, spanAttributes };
 }
 
 describe("proxy monitoring middleware", () => {
   it("logs auth-denied CallToolResult (isError=true) even if auth returns early", async () => {
-    const { ctx, log } = createMockCtx();
+    const { ctx, startSpan, spanAttributes } = createMockCtx();
 
     const middleware = createProxyMonitoringMiddleware({
       ctx,
@@ -54,24 +66,20 @@ describe("proxy monitoring middleware", () => {
     });
 
     expect(result.isError).toBe(true);
-    expect(log).toHaveBeenCalledTimes(1);
+    expect(startSpan).toHaveBeenCalledWith(MONITORING_SPAN_NAME);
 
-    const call = log.mock.calls.at(0);
-    expect(call).toBeDefined();
-    const event = call![0] as any;
-    expect(event.toolName).toBe("foo");
-    expect(event.connectionId).toBe("conn_1");
-    expect(event.isError).toBe(true);
-    expect(event.errorMessage).toContain("Authorization failed");
-    expect(event.input).toEqual({ a: 1 });
-    // If structuredContent is present, we only store that to avoid duplication.
-    expect(event.output).toEqual({ reason: "nope" });
-    // Verify new fields are logged
-    expect(event.userAgent).toBe("test-client/1.0");
+    const attrs = spanAttributes[0] as Record<string, unknown>;
+    expect(attrs["mesh.monitoring.tool_name"]).toBe("foo");
+    expect(attrs["mesh.monitoring.connection_id"]).toBe("conn_1");
+    expect(attrs["mesh.monitoring.is_error"]).toBe(true);
+    expect(attrs["mesh.monitoring.error_message"]).toContain(
+      "Authorization failed",
+    );
+    expect(attrs["mesh.monitoring.user_agent"]).toBe("test-client/1.0");
   });
 
   it("logs auth-denied streamable Response (403) without consuming the body", async () => {
-    const { ctx, log } = createMockCtx();
+    const { ctx, startSpan, spanAttributes } = createMockCtx();
 
     const middleware = createProxyStreamableMonitoringMiddleware({
       ctx,
@@ -89,7 +97,6 @@ describe("proxy monitoring middleware", () => {
       return new Response(
         JSON.stringify({
           structuredContent: { error: "nope" },
-          // Simulate the common duplication pattern (structured + text).
           content: [{ type: "text", text: "Authorization failed: nope" }],
         }),
         {
@@ -100,29 +107,23 @@ describe("proxy monitoring middleware", () => {
     });
 
     expect(response.status).toBe(403);
-    // Caller can still read the body (clone/tee should not consume it).
     expect(await response.json()).toEqual({
       structuredContent: { error: "nope" },
       content: [{ type: "text", text: "Authorization failed: nope" }],
     });
 
     // Logging happens after the stream finishes (async).
-    await new Promise((r) => setTimeout(r, 0));
-    expect(log).toHaveBeenCalledTimes(1);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(startSpan).toHaveBeenCalledWith(MONITORING_SPAN_NAME);
 
-    const call = log.mock.calls.at(0);
-    expect(call).toBeDefined();
-    const event = call![0] as any;
-    expect(event.toolName).toBe("foo");
-    expect(event.isError).toBe(true);
-    // If structuredContent is present, we only store that to avoid duplication.
-    expect(event.output).toEqual({ error: "nope" });
-    // Verify new fields are logged
-    expect(event.userAgent).toBe("test-client/1.0");
+    const attrs = spanAttributes[0] as Record<string, unknown>;
+    expect(attrs["mesh.monitoring.tool_name"]).toBe("foo");
+    expect(attrs["mesh.monitoring.is_error"]).toBe(true);
+    expect(attrs["mesh.monitoring.user_agent"]).toBe("test-client/1.0");
   });
 
   it("logs without userAgent when not provided", async () => {
-    const { ctx, log } = createMockCtx({
+    const { ctx, startSpan, spanAttributes } = createMockCtx({
       userAgent: undefined,
     });
 
@@ -142,13 +143,13 @@ describe("proxy monitoring middleware", () => {
       return { content: [], isError: false } as any;
     });
 
-    expect(log).toHaveBeenCalledTimes(1);
-    const event = log.mock.calls.at(0)![0] as any;
-    expect(event.userAgent).toBeUndefined();
+    expect(startSpan).toHaveBeenCalledWith(MONITORING_SPAN_NAME);
+    const attrs = spanAttributes[0] as Record<string, unknown>;
+    expect(attrs["mesh.monitoring.user_agent"]).toBe("");
   });
 
   it("extracts properties from _meta.properties in arguments", async () => {
-    const { ctx, log } = createMockCtx();
+    const { ctx, startSpan, spanAttributes } = createMockCtx();
 
     const middleware = createProxyMonitoringMiddleware({
       ctx,
@@ -174,16 +175,17 @@ describe("proxy monitoring middleware", () => {
       return { content: [], isError: false } as any;
     });
 
-    expect(log).toHaveBeenCalledTimes(1);
-    const event = log.mock.calls.at(0)![0] as any;
-    expect(event.properties).toEqual({
+    expect(startSpan).toHaveBeenCalledWith(MONITORING_SPAN_NAME);
+    const attrs = spanAttributes[0] as Record<string, unknown>;
+    const props = JSON.parse(attrs["mesh.monitoring.properties"] as string);
+    expect(props).toEqual({
       thread_id: "thread_123",
       trace_id: "trace_456",
     });
   });
 
   it("merges header properties with _meta.properties (header takes precedence)", async () => {
-    const { ctx, log } = createMockCtx({
+    const { ctx, startSpan, spanAttributes } = createMockCtx({
       properties: { thread_id: "header_thread", source: "header" },
     });
 
@@ -210,18 +212,18 @@ describe("proxy monitoring middleware", () => {
       return { content: [], isError: false } as any;
     });
 
-    expect(log).toHaveBeenCalledTimes(1);
-    const event = log.mock.calls.at(0)![0] as any;
-    // Header properties take precedence
-    expect(event.properties).toEqual({
-      thread_id: "header_thread", // from header (takes precedence)
-      source: "header", // from header
-      extra: "from_meta", // from _meta (no conflict)
+    expect(startSpan).toHaveBeenCalledWith(MONITORING_SPAN_NAME);
+    const attrs = spanAttributes[0] as Record<string, unknown>;
+    const props = JSON.parse(attrs["mesh.monitoring.properties"] as string);
+    expect(props).toEqual({
+      thread_id: "header_thread",
+      source: "header",
+      extra: "from_meta",
     });
   });
 
   it("logs properties from header when no _meta.properties", async () => {
-    const { ctx, log } = createMockCtx({
+    const { ctx, startSpan, spanAttributes } = createMockCtx({
       properties: { env: "production", region: "us-east" },
     });
 
@@ -241,13 +243,14 @@ describe("proxy monitoring middleware", () => {
       return { content: [], isError: false } as any;
     });
 
-    expect(log).toHaveBeenCalledTimes(1);
-    const event = log.mock.calls.at(0)![0] as any;
-    expect(event.properties).toEqual({ env: "production", region: "us-east" });
+    expect(startSpan).toHaveBeenCalledWith(MONITORING_SPAN_NAME);
+    const attrs = spanAttributes[0] as Record<string, unknown>;
+    const props = JSON.parse(attrs["mesh.monitoring.properties"] as string);
+    expect(props).toEqual({ env: "production", region: "us-east" });
   });
 
   it("ignores non-string values in _meta.properties", async () => {
-    const { ctx, log } = createMockCtx();
+    const { ctx, startSpan, spanAttributes } = createMockCtx();
 
     const middleware = createProxyMonitoringMiddleware({
       ctx,
@@ -277,9 +280,9 @@ describe("proxy monitoring middleware", () => {
       return { content: [], isError: false } as any;
     });
 
-    expect(log).toHaveBeenCalledTimes(1);
-    const event = log.mock.calls.at(0)![0] as any;
-    // Only string values should be included
-    expect(event.properties).toEqual({ valid_string: "yes" });
+    expect(startSpan).toHaveBeenCalledWith(MONITORING_SPAN_NAME);
+    const attrs = spanAttributes[0] as Record<string, unknown>;
+    const props = JSON.parse(attrs["mesh.monitoring.properties"] as string);
+    expect(props).toEqual({ valid_string: "yes" });
   });
 });

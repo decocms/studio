@@ -4,6 +4,7 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 import { isDecopilot } from "@decocms/mesh-sdk";
 import type { MeshContext } from "../../core/mesh-context";
+import { emitMonitoringSpan } from "@/monitoring/emit-monitoring-span";
 
 type CallToolMiddleware = (
   request: CallToolRequest,
@@ -201,9 +202,9 @@ async function logProxyMonitoringEvent(args: {
   errorMessage?: string;
   durationMs: number;
 }): Promise<void> {
-  const { ctx, enabled } = args;
+  const { ctx } = args;
   const organizationId = args.organizationId ?? ctx.organization?.id;
-  if (!enabled || !organizationId) return;
+  if (!organizationId) return;
 
   // Skip monitoring for decopilot connections (they don't exist in the database)
   if (isDecopilot(args.connectionId)) return;
@@ -233,7 +234,8 @@ async function logProxyMonitoringEvent(args: {
     }
   }
 
-  await ctx.storage.monitoring.log({
+  emitMonitoringSpan({
+    tracer: ctx.tracer,
     organizationId,
     connectionId: args.connectionId,
     connectionTitle: args.connectionTitle,
@@ -243,7 +245,6 @@ async function logProxyMonitoringEvent(args: {
     isError: args.isError,
     errorMessage: args.errorMessage,
     durationMs: args.durationMs,
-    timestamp: new Date(),
     userId: ctx.auth.user?.id || ctx.auth.apiKey?.userId || null,
     requestId: ctx.metadata.requestId,
     userAgent: ctx.metadata.userAgent,

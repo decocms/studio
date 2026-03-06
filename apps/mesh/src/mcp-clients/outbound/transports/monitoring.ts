@@ -1,8 +1,9 @@
 /**
  * Monitoring Transport
  *
- * Records OpenTelemetry spans/metrics and logs tool calls to database.
- * Tracks in-flight requests to correlate requests with responses.
+ * Records OpenTelemetry spans/metrics for tool calls.
+ * Uses shared emitMonitoringSpan utility to create monitoring spans.
+ * The ParquetSpanExporter picks these up and writes Parquet files.
  */
 
 import type { MeshContext } from "@/core/mesh-context";
@@ -16,13 +17,13 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 import { WrapperTransport } from "./compose";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { getMonitoringConfig } from "@/core/config";
 import {
   extractCallToolErrorMessage,
   formatMonitoringOutput,
   extractMetaProperties,
   mergeProperties,
 } from "@/api/routes/proxy-monitoring";
+import { emitMonitoringSpan } from "@/monitoring/emit-monitoring-span";
 
 interface MonitoringTransportOptions {
   ctx: MeshContext;
@@ -98,7 +99,6 @@ export class MonitoringTransport extends WrapperTransport {
 
     // Only track if request has an ID
     if (request.id !== null && request.id !== undefined) {
-      // Store request info with span
       this.inflightRequests.set(request.id, {
         startTime: Date.now(),
         method: request.method,
@@ -144,7 +144,7 @@ export class MonitoringTransport extends WrapperTransport {
         }
       : (result as CallToolResult);
 
-    // Record OpenTelemetry metrics
+    // Record OpenTelemetry metrics (unchanged)
     ctx.meter.createHistogram("connection.proxy.duration").record(duration, {
       "connection.id": connectionId,
       "tool.name": toolName,
@@ -178,74 +178,32 @@ export class MonitoringTransport extends WrapperTransport {
       span.end();
     }
 
-    // Log to database
-    this.logToDatabase({
-      toolName,
-      toolArguments,
-      result: callToolResult,
-      duration,
-      isError: Boolean(isError),
-    });
-  }
-
-  private async logToDatabase(params: {
-    toolName: string;
-    toolArguments: Record<string, unknown> | undefined;
-    result: CallToolResult;
-    duration: number;
-    isError: boolean;
-  }): Promise<void> {
-    const { ctx, connectionId, connectionTitle, virtualMcpId } = this.options;
-    const { toolName, toolArguments, result, duration, isError } = params;
-
-    // Check if monitoring is enabled
-    const enabled = getMonitoringConfig().enabled;
-
-    // Skip database logging if monitoring is disabled
-    // (OpenTelemetry metrics are still recorded above)
-    if (!enabled) {
-      return;
-    }
-
-    // Get organization ID from context
+    // Emit monitoring span (replaces logToDatabase)
     const organizationId = ctx.organization?.id;
-    if (!organizationId) {
-      return; // Skip logging if no organization context
-    }
+    if (!organizationId) return; // Skip if no organization context
 
-    // Extract error message
-    const errorMessage = extractCallToolErrorMessage(result);
-
-    // Format output
-    const output = formatMonitoringOutput(result);
-
-    // Extract and merge properties
+    const errorMessage = extractCallToolErrorMessage(callToolResult);
+    const output = formatMonitoringOutput(callToolResult);
     const metaProps = extractMetaProperties(toolArguments);
     const properties = mergeProperties(ctx.metadata.properties, metaProps);
 
-    // Log to database
-    try {
-      await ctx.storage.monitoring.log({
-        organizationId,
-        connectionId,
-        connectionTitle,
-        toolName,
-        input: (toolArguments ?? {}) as Record<string, unknown>,
-        output,
-        isError,
-        errorMessage,
-        durationMs: duration,
-        timestamp: new Date(),
-        userId: ctx.auth.user?.id || ctx.auth.apiKey?.userId || null,
-        requestId: ctx.metadata.requestId,
-        userAgent: ctx.metadata.userAgent,
-        virtualMcpId,
-        properties,
-      });
-    } catch (error) {
-      // Don't throw - logging failures shouldn't break tool execution
-      console.error("[MonitoringTransport] Failed to log to database:", error);
-    }
+    emitMonitoringSpan({
+      tracer: ctx.tracer,
+      organizationId,
+      connectionId,
+      connectionTitle: this.options.connectionTitle,
+      toolName,
+      input: (toolArguments ?? {}) as Record<string, unknown>,
+      output,
+      isError: Boolean(isError),
+      errorMessage,
+      durationMs: duration,
+      userId: ctx.auth.user?.id || ctx.auth.apiKey?.userId || null,
+      requestId: ctx.metadata.requestId,
+      userAgent: ctx.metadata.userAgent,
+      virtualMcpId: this.options.virtualMcpId,
+      properties,
+    });
   }
 
   // Clean up any dangling spans on close
