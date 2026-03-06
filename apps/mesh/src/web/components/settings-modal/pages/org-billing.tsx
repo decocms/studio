@@ -849,7 +849,7 @@ const chartConfig = {
 
 function UsageSection() {
   const { org } = useProjectContext();
-  const [period, setPeriod] = useState<BillingStatsPeriod>("30d");
+  const [period, setPeriod] = useState<BillingStatsPeriod>("7d");
   const timeRange = periodToTimeRange(period);
 
   const selfClient = useMCPClient({
