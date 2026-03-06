@@ -24,8 +24,14 @@ afterEach(async () => {
     await db.destroy();
     try {
       await pglite.close();
-    } catch {
+    } catch (error) {
       // PGlite may already be closed by Kysely's destroy()
+      if (
+        !(error instanceof Error) ||
+        !error.message.includes("PGlite is closed")
+      ) {
+        throw error;
+      }
     }
   }
   cleanupQueue.length = 0;

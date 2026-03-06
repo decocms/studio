@@ -36,8 +36,13 @@ afterEach(async () => {
   await db.destroy();
   try {
     await pglite.close();
-  } catch {
-    /* PGlite may already be closed */
+  } catch (error) {
+    if (
+      !(error instanceof Error) ||
+      !error.message.includes("PGlite is closed")
+    ) {
+      throw error;
+    }
   }
 });
 
