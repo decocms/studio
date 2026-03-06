@@ -949,7 +949,7 @@ export interface Database {
   connections: MCPConnectionTable; // MCP connections (organization-scoped)
   organization_settings: OrganizationSettingsTable; // Organization-level configuration
   api_keys: ApiKeyTable; // Better Auth API keys
-  monitoring_logs: MonitoringLogTable; // Tool call monitoring logs
+  // monitoring_logs removed — monitoring data stored in Parquet files
   monitoring_dashboards: MonitoringDashboardTable; // Custom monitoring dashboards
 
   // OAuth tables (for MCP OAuth server)
