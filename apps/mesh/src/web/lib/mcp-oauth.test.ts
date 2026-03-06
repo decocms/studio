@@ -224,6 +224,9 @@ describe("handleOAuthCallback", () => {
     location: {
       search: "",
       origin: "http://localhost:3000",
+      hostname: "localhost",
+      port: "3000",
+      protocol: "http:",
     },
     opener: null as Window | null,
     localStorage: {
@@ -274,6 +277,9 @@ describe("handleOAuthCallback", () => {
     windowMock.location = {
       search,
       origin: "http://localhost:3000",
+      hostname: "localhost",
+      port: "3000",
+      protocol: "http:",
     };
     if (!isBrowser) {
       (globalThis as unknown as { window: typeof windowMock }).window =
@@ -316,7 +322,8 @@ describe("handleOAuthCallback", () => {
         code: "auth_code_123",
         state: "state_abc",
       });
-      expect(origin).toBe("http://localhost:3000");
+      // In local dev, postMessage uses "*" to support cross-origin proxy setups
+      expect(origin).toBe("*");
     });
 
     test("handles error parameter from OAuth provider", async () => {
