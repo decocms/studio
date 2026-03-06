@@ -601,7 +601,9 @@ export async function exportCommand(options: ExportOptions): Promise<void> {
           });
           constraintsByTable.set(tableName, constraints);
           // PostgreSQL auto-creates indexes for PK and UNIQUE constraints
-          constraintIndexNames.add(constraintName);
+          if (constraintType === "PRIMARY KEY" || constraintType === "UNIQUE") {
+            constraintIndexNames.add(constraintName);
+          }
         }
 
         // Group indexes by table (excluding constraint-backed indexes)
