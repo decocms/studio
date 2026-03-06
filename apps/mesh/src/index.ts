@@ -62,10 +62,16 @@ Bun.serve({
 
 // Graceful shutdown on SIGTERM/SIGINT (container restart, deploy, Ctrl+C)
 let shuttingDown = false;
+const SHUTDOWN_TIMEOUT_MS = 10_000;
 const handleSignal = async (signal: string) => {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(`\n[${signal}] Shutting down...`);
+  const forceExit = setTimeout(() => {
+    console.error("[Shutdown] Timed out after 10s, forcing exit");
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT_MS);
+  forceExit.unref();
   try {
     await shutdown();
   } catch (err) {
