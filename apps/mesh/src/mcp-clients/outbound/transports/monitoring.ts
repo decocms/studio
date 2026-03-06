@@ -39,8 +39,13 @@ interface InflightRequest {
   span?: Span;
 }
 
+// Max concurrent fire-and-forget DB writes. Beyond this limit, logs are
+// dropped to prevent unbounded memory growth when the database is slow.
+const MAX_INFLIGHT_DB_WRITES = 50;
+
 export class MonitoringTransport extends WrapperTransport {
   private inflightRequests = new Map<string | number, InflightRequest>();
+  private inflightDbWrites = 0;
 
   constructor(
     innerTransport: Transport,
@@ -207,6 +212,12 @@ export class MonitoringTransport extends WrapperTransport {
       return;
     }
 
+    // Backpressure: drop monitoring logs when too many writes are in-flight.
+    // This prevents unbounded memory growth when the database is slow.
+    if (this.inflightDbWrites >= MAX_INFLIGHT_DB_WRITES) {
+      return;
+    }
+
     // Get organization ID from context
     const organizationId = ctx.organization?.id;
     if (!organizationId) {
@@ -224,6 +235,7 @@ export class MonitoringTransport extends WrapperTransport {
     const properties = mergeProperties(ctx.metadata.properties, metaProps);
 
     // Log to database
+    this.inflightDbWrites++;
     try {
       await ctx.storage.monitoring.log({
         organizationId,
@@ -245,6 +257,8 @@ export class MonitoringTransport extends WrapperTransport {
     } catch (error) {
       // Don't throw - logging failures shouldn't break tool execution
       console.error("[MonitoringTransport] Failed to log to database:", error);
+    } finally {
+      this.inflightDbWrites--;
     }
   }
 
