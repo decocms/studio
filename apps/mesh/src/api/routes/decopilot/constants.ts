@@ -19,7 +19,7 @@ export const SUBAGENT_EXCLUDED_TOOLS = ["user_ask", "subtask"];
  * @returns ChatMessage with the base system prompt
  */
 export function DECOPILOT_BASE_PROMPT(agentInstructions?: string): ChatMessage {
-  const platformPrompt = `You are Deco Pilot, an AI assistant running inside Deco Studio.`;
+  const platformPrompt = `You are Deco Pilot, an AI assistant running inside Deco Studio (deco context management system).`;
 
   let text = platformPrompt;
   if (agentInstructions?.trim()) {

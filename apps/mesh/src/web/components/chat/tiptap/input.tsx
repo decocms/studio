@@ -70,6 +70,7 @@ export function TiptapProvider({
     {
       extensions: GLOBAL_EXTENSIONS,
       content: tiptapDoc || "",
+      autofocus: true,
       editable: !isDisabled,
       editorProps: {
         attributes: {

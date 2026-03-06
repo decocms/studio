@@ -16,7 +16,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 
-// Base directory for dev assets — uses MESH_HOME if available
+// Base directory for assets.
+// Uses MESH_HOME/assets when available (local mode), falls back to ./data/assets
 const DEV_ASSETS_BASE_DIR = process.env.MESH_HOME
   ? `${process.env.MESH_HOME}/assets`
   : "./data/assets";
@@ -38,7 +39,7 @@ function getOrgAssetsDir(orgId: string): string {
 
 /**
  * Sanitize a file key — strips leading slashes only.
- * Containment is enforced by getFilePath() via path.resolve().
+ * Actual traversal prevention is enforced by getFilePath's containment check.
  */
 function sanitizeKey(key: string): string {
   return key.replace(/^\/+/, "");
@@ -46,15 +47,14 @@ function sanitizeKey(key: string): string {
 
 /**
  * Get the full file path for a key within an org's assets.
- * Uses path.resolve() to prevent directory traversal.
+ * Throws if the resolved path escapes the org's base directory.
  */
 function getFilePath(orgId: string, key: string): string {
   const baseDir = getOrgAssetsDir(orgId);
   const sanitizedKey = sanitizeKey(key);
-  const resolved = join(baseDir, sanitizedKey);
+  const resolved = resolve(join(baseDir, sanitizedKey));
   const realBase = resolve(baseDir);
-  const realResolved = resolve(resolved);
-  if (!realResolved.startsWith(realBase + sep) && realResolved !== realBase) {
+  if (resolved !== realBase && !resolved.startsWith(realBase + sep)) {
     throw new Error("Path traversal detected");
   }
   return resolved;
@@ -75,9 +75,9 @@ function verifySignature(
   const expectedSignature = createHmac("sha256", secret)
     .update(data)
     .digest("hex");
-  const sigBuf = Buffer.from(signature, "utf8");
-  const expBuf = Buffer.from(expectedSignature, "utf8");
-  return sigBuf.length === expBuf.length && timingSafeEqual(sigBuf, expBuf);
+  const expected = Buffer.from(expectedSignature, "hex");
+  const actual = Buffer.from(signature, "hex");
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
 /**
