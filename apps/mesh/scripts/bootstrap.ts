@@ -7,7 +7,7 @@
  */
 
 import { existsSync } from "fs";
-import { mkdir, writeFile } from "fs/promises";
+import { chmod, mkdir, writeFile } from "fs/promises";
 import { createInterface } from "readline";
 import { homedir } from "os";
 import { join } from "path";
@@ -132,6 +132,8 @@ export async function loadOrCreateSecrets(
       await writeFile(secretsFilePath, JSON.stringify(savedSecrets, null, 2), {
         mode: 0o600,
       });
+      // mode option only applies to new files; enforce on existing ones too
+      await chmod(secretsFilePath, 0o600);
     } catch (error) {
       console.warn(
         `${ansi.yellow}Warning: Could not save secrets file: ${error}${ansi.reset}`,
