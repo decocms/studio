@@ -79,7 +79,7 @@ function parsePropertiesHeader(
 
 export interface MeshContextConfig {
   db: Kysely<Database>;
-  databaseType: "sqlite" | "postgres";
+  databaseType: "pglite" | "postgres";
   auth: BetterAuthInstance;
   encryption: {
     key: string;
@@ -759,7 +759,7 @@ export async function createMeshContextFactory(
   const storage = {
     connections: new ConnectionStorage(config.db, vault),
     organizationSettings: new OrganizationSettingsStorage(config.db),
-    monitoring: new SqlMonitoringStorage(config.db, config.databaseType),
+    monitoring: new SqlMonitoringStorage(config.db),
     monitoringDashboards: new SqlMonitoringDashboardStorage(config.db),
     virtualMcps: new VirtualMCPStorage(config.db),
     users: new UserStorage(config.db),

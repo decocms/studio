@@ -33,8 +33,7 @@ describe("createMeshContextFactory", () => {
   let database: MeshDatabase;
 
   beforeAll(async () => {
-    const tempDbPath = `/tmp/test-context-factory-${Date.now()}.db`;
-    database = createDatabase(`file:${tempDbPath}`);
+    database = createDatabase(":memory:");
     await createTestSchema(database.db);
   });
 
