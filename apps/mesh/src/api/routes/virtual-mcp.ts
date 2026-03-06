@@ -141,7 +141,11 @@ export async function handleVirtualMcpRequest(
     // Connect server to transport
     await server.connect(transport);
 
-    return await transport.handleRequest(c.req.raw);
+    try {
+      return await transport.handleRequest(c.req.raw);
+    } finally {
+      await server.close();
+    }
   } catch (error) {
     const err = error as Error;
     console.error("[virtual-mcp] Error handling virtual MCP request:", err);

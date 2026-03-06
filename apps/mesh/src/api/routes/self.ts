@@ -29,7 +29,11 @@ app.all("/", async (c) => {
       c.req.raw.headers.get("Accept")?.includes("application/json") ?? false,
   });
   await server.connect(transport);
-  return transport.handleRequest(c.req.raw);
+  try {
+    return await transport.handleRequest(c.req.raw);
+  } finally {
+    await server.close();
+  }
 });
 
 export default app;

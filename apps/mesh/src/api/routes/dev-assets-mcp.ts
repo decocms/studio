@@ -536,7 +536,11 @@ export async function handleDevAssetsMcpRequest(
       req.headers.get("Accept")?.includes("application/json") ?? false,
   });
   await server.connect(transport);
-  return transport.handleRequest(req);
+  try {
+    return await transport.handleRequest(req);
+  } finally {
+    await server.close();
+  }
 }
 
 /**
