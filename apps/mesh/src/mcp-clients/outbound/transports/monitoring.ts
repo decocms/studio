@@ -16,10 +16,9 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 import { WrapperTransport } from "./compose";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { getMonitoringConfig } from "@/core/config";
+import { enrichMonitoringSpan } from "@/monitoring/enrich";
 import {
   extractCallToolErrorMessage,
-  formatMonitoringOutput,
   extractMetaProperties,
   mergeProperties,
 } from "@/api/routes/proxy-monitoring";
@@ -165,86 +164,34 @@ export class MonitoringTransport extends WrapperTransport {
       });
     }
 
-    // End OpenTelemetry span
+    // Enrich and end OpenTelemetry span
     if (span) {
       if (isError && response.error) {
         span.recordException(new Error(response.error.message));
-        span.setAttributes({
-          error: true,
-          "error.code": response.error.code,
-          "error.message": response.error.message,
-        });
       }
-      span.end();
-    }
 
-    // Log to database
-    this.logToDatabase({
-      toolName,
-      toolArguments,
-      result: callToolResult,
-      duration,
-      isError: Boolean(isError),
-    });
-  }
+      const metaProps = extractMetaProperties(toolArguments);
+      const properties = mergeProperties(ctx.metadata.properties, metaProps);
 
-  private async logToDatabase(params: {
-    toolName: string;
-    toolArguments: Record<string, unknown> | undefined;
-    result: CallToolResult;
-    duration: number;
-    isError: boolean;
-  }): Promise<void> {
-    const { ctx, connectionId, connectionTitle, virtualMcpId } = this.options;
-    const { toolName, toolArguments, result, duration, isError } = params;
-
-    // Check if monitoring is enabled
-    const enabled = getMonitoringConfig().enabled;
-
-    // Skip database logging if monitoring is disabled
-    // (OpenTelemetry metrics are still recorded above)
-    if (!enabled) {
-      return;
-    }
-
-    // Get organization ID from context
-    const organizationId = ctx.organization?.id;
-    if (!organizationId) {
-      return; // Skip logging if no organization context
-    }
-
-    // Extract error message
-    const errorMessage = extractCallToolErrorMessage(result);
-
-    // Format output
-    const output = formatMonitoringOutput(result);
-
-    // Extract and merge properties
-    const metaProps = extractMetaProperties(toolArguments);
-    const properties = mergeProperties(ctx.metadata.properties, metaProps);
-
-    // Log to database
-    try {
-      await ctx.storage.monitoring.log({
-        organizationId,
+      enrichMonitoringSpan(span, {
+        organizationId: ctx.organization?.id ?? "",
         connectionId,
-        connectionTitle,
+        connectionTitle: this.options.connectionTitle,
         toolName,
-        input: (toolArguments ?? {}) as Record<string, unknown>,
-        output,
-        isError,
-        errorMessage,
-        durationMs: duration,
-        timestamp: new Date(),
+        toolArguments,
+        result: callToolResult,
+        duration,
+        isError: Boolean(isError),
+        errorMessage: extractCallToolErrorMessage(callToolResult),
         userId: ctx.auth.user?.id || ctx.auth.apiKey?.userId || null,
         requestId: ctx.metadata.requestId,
-        userAgent: ctx.metadata.userAgent,
-        virtualMcpId,
-        properties,
+        userAgent: ctx.metadata.userAgent || null,
+        virtualMcpId: this.options.virtualMcpId || null,
+        properties: properties || null,
       });
-    } catch (error) {
-      // Don't throw - logging failures shouldn't break tool execution
-      console.error("[MonitoringTransport] Failed to log to database:", error);
+
+      // MUST end after enrichment — span snapshot freezes on end()
+      span.end();
     }
   }
 
