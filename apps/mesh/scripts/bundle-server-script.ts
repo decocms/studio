@@ -22,6 +22,7 @@ const SCRIPT_DIR =
 const SERVER_ENTRY_POINT = join(SCRIPT_DIR, "../src/index.ts");
 const CLI_ENTRY_POINT = join(SCRIPT_DIR, "../src/cli.ts");
 const MIGRATE_ENTRY_POINTS = ["@jitl/quickjs-wasmfile-release-sync"];
+const ALWAYS_EXTERNAL = ["kysely-codegen"];
 
 // Parse command line arguments
 function parseArgs() {
@@ -253,6 +254,9 @@ async function buildMigrateScript(packagesToExternalize: Set<string>) {
   for (const pkg of packagesToExternalize) {
     commandsParts.push("--external", pkg);
   }
+  for (const pkg of ALWAYS_EXTERNAL) {
+    commandsParts.push("--external", pkg);
+  }
 
   console.log(`🔨 Running command: ${commandsParts.join(" ")}`);
   // Build migrate.js
@@ -290,6 +294,9 @@ async function buildServerScript(packagesToExternalize: Set<string>) {
   for (const pkg of packagesToExternalize) {
     commandsParts.push("--external", pkg);
   }
+  for (const pkg of ALWAYS_EXTERNAL) {
+    commandsParts.push("--external", pkg);
+  }
 
   console.log(`🔨 Running command: ${commandsParts.join(" ")}`);
   // Build server.js
@@ -325,6 +332,9 @@ async function buildCliScript(packagesToExternalize: Set<string>) {
   ];
 
   for (const pkg of packagesToExternalize) {
+    commandsParts.push("--external", pkg);
+  }
+  for (const pkg of ALWAYS_EXTERNAL) {
     commandsParts.push("--external", pkg);
   }
 
