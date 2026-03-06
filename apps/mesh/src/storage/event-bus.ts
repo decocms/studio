@@ -533,72 +533,33 @@ class KyselyEventBusStorage implements EventBusStorage {
   }
 
   async claimPendingDeliveries(limit: number): Promise<PendingDelivery[]> {
-    // Distributed-safe claiming:
-    // - PostgreSQL: UPDATE ... RETURNING is atomic, returns only the rows we claimed
-    // - SQLite: Falls back to SELECT + UPDATE (safe because SQLite serializes writes)
-
     const now = new Date().toISOString();
-    let claimedIds: string[];
 
-    try {
-      // Atomic claim with RETURNING (PostgreSQL)
-      // The subquery + WHERE status='pending' ensures no double-claiming
-      const result = await this.db
-        .updateTable("event_deliveries")
-        .set({ status: "processing" })
-        .where("id", "in", (eb) =>
-          eb
-            .selectFrom("event_deliveries as d")
-            .innerJoin("event_subscriptions as s", "s.id", "d.subscription_id")
-            .select("d.id")
-            .where("d.status", "=", "pending")
-            .where("s.enabled", "=", 1)
-            .where((inner) =>
-              inner.or([
-                inner("d.next_retry_at", "is", null),
-                inner("d.next_retry_at", "<=", now),
-              ]),
-            )
-            .orderBy("d.created_at", "asc")
-            .limit(limit),
-        )
-        .where("status", "=", "pending")
-        .returning(["id"])
-        .execute();
+    // Atomic claim with RETURNING — works with both PGlite and PostgreSQL
+    const result = await this.db
+      .updateTable("event_deliveries")
+      .set({ status: "processing" })
+      .where("id", "in", (eb) =>
+        eb
+          .selectFrom("event_deliveries as d")
+          .innerJoin("event_subscriptions as s", "s.id", "d.subscription_id")
+          .select("d.id")
+          .where("d.status", "=", "pending")
+          .where("s.enabled", "=", 1)
+          .where((inner) =>
+            inner.or([
+              inner("d.next_retry_at", "is", null),
+              inner("d.next_retry_at", "<=", now),
+            ]),
+          )
+          .orderBy("d.created_at", "asc")
+          .limit(limit),
+      )
+      .where("status", "=", "pending")
+      .returning(["id"])
+      .execute();
 
-      claimedIds = result.map((r) => r.id);
-    } catch {
-      // Fallback for SQLite (no RETURNING support)
-      // SQLite serializes all writes, so simple SELECT + UPDATE is safe
-      const pendingIds = await this.db
-        .selectFrom("event_deliveries as d")
-        .innerJoin("event_subscriptions as s", "s.id", "d.subscription_id")
-        .select(["d.id"])
-        .where("d.status", "=", "pending")
-        .where("s.enabled", "=", 1)
-        .where((eb) =>
-          eb.or([
-            eb("d.next_retry_at", "is", null),
-            eb("d.next_retry_at", "<=", now),
-          ]),
-        )
-        .orderBy("d.created_at", "asc")
-        .limit(limit)
-        .execute();
-
-      if (pendingIds.length === 0) {
-        return [];
-      }
-
-      claimedIds = pendingIds.map((r) => r.id);
-
-      await this.db
-        .updateTable("event_deliveries")
-        .set({ status: "processing" })
-        .where("id", "in", claimedIds)
-        .where("status", "=", "pending")
-        .execute();
-    }
+    const claimedIds = result.map((r) => r.id);
 
     if (claimedIds.length === 0) {
       return [];
