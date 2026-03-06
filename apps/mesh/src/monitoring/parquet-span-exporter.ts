@@ -1,7 +1,4 @@
-import type {
-  ReadableSpan,
-  SpanExporter,
-} from "@opentelemetry/sdk-trace-base";
+import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-base";
 import type { ExportResult } from "@opentelemetry/core";
 import { ExportResultCode } from "@opentelemetry/core";
 import { mkdir } from "node:fs/promises";
@@ -148,8 +145,7 @@ export class ParquetSpanExporter implements SpanExporter {
     await this.ensureInitialized();
 
     // Bulk INSERT using a single multi-row VALUES clause
-    const placeholderRow =
-      "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    const placeholderRow = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     const placeholders = rows.map(() => placeholderRow).join(", ");
     const params: unknown[] = [];
     for (const row of rows) {
@@ -217,9 +213,7 @@ export class ParquetSpanExporter implements SpanExporter {
         connection_title: String(
           attrs[MONITORING_SPAN_ATTRIBUTES.CONNECTION_TITLE] ?? "",
         ),
-        tool_name: String(
-          attrs[MONITORING_SPAN_ATTRIBUTES.TOOL_NAME] ?? "",
-        ),
+        tool_name: String(attrs[MONITORING_SPAN_ATTRIBUTES.TOOL_NAME] ?? ""),
         input:
           attrs[MONITORING_SPAN_ATTRIBUTES.INPUT] != null
             ? String(attrs[MONITORING_SPAN_ATTRIBUTES.INPUT])
@@ -233,9 +227,7 @@ export class ParquetSpanExporter implements SpanExporter {
           attrs[MONITORING_SPAN_ATTRIBUTES.ERROR_MESSAGE] != null
             ? String(attrs[MONITORING_SPAN_ATTRIBUTES.ERROR_MESSAGE])
             : null,
-        duration_ms: Number(
-          attrs[MONITORING_SPAN_ATTRIBUTES.DURATION_MS] ?? 0,
-        ),
+        duration_ms: Number(attrs[MONITORING_SPAN_ATTRIBUTES.DURATION_MS] ?? 0),
         timestamp: new Date(
           span.startTime[0] * 1000 + span.startTime[1] / 1_000_000,
         ),
@@ -243,9 +235,7 @@ export class ParquetSpanExporter implements SpanExporter {
           attrs[MONITORING_SPAN_ATTRIBUTES.USER_ID] != null
             ? String(attrs[MONITORING_SPAN_ATTRIBUTES.USER_ID])
             : null,
-        request_id: String(
-          attrs[MONITORING_SPAN_ATTRIBUTES.REQUEST_ID] ?? "",
-        ),
+        request_id: String(attrs[MONITORING_SPAN_ATTRIBUTES.REQUEST_ID] ?? ""),
         user_agent:
           attrs[MONITORING_SPAN_ATTRIBUTES.USER_AGENT] != null
             ? String(attrs[MONITORING_SPAN_ATTRIBUTES.USER_AGENT])
