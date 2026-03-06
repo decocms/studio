@@ -180,8 +180,11 @@ export class NatsStreamBuffer implements StreamBuffer {
       }
     })();
 
+    const MAX_CONSECUTIVE_MALFORMED = 100;
+
     return new ReadableStream({
       async pull(controller) {
+        let consecutiveMalformed = 0;
         while (true) {
           let timer: ReturnType<typeof setTimeout> | undefined;
           const result = await Promise.race([
@@ -211,8 +214,18 @@ export class NatsStreamBuffer implements StreamBuffer {
               controller.enqueue(data.p);
               return;
             }
+            consecutiveMalformed++;
           } catch {
-            // skip malformed, continue to next message
+            consecutiveMalformed++;
+          }
+          // Prevent CPU-burning busy-loop on streams with many malformed messages
+          if (consecutiveMalformed >= MAX_CONSECUTIVE_MALFORMED) {
+            console.warn(
+              `[Decopilot] Closing replay stream after ${MAX_CONSECUTIVE_MALFORMED} consecutive malformed messages`,
+            );
+            sub.unsubscribe();
+            controller.close();
+            return;
           }
         }
       },
