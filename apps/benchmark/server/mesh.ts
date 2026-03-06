@@ -5,7 +5,7 @@
  * and uses MCP APIs to create connections and gateways.
  */
 
-import { unlinkSync } from "fs";
+import { rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import type {
@@ -282,11 +282,9 @@ export async function startMesh(port: number): Promise<MeshServerHandle> {
       server.stop(true);
       await closeDatabase(database);
 
-      // Delete temp database file
+      // Delete temp database directory (PGlite creates a directory, not a file)
       try {
-        unlinkSync(dbPath);
-        unlinkSync(`${dbPath}-wal`);
-        unlinkSync(`${dbPath}-shm`);
+        rmSync(dbPath, { recursive: true, force: true });
       } catch {
         // Ignore cleanup errors
       }

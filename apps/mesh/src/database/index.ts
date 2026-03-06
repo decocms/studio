@@ -138,7 +138,9 @@ function ensurePGliteDirectory(dataDir: string): string {
       mkdirSync(dataDir, { recursive: true, mode: 0o700 });
     } catch (error) {
       if (process.env.NODE_ENV === "production") {
-        throw new Error(`Failed to create PGlite data directory: ${dataDir}`);
+        throw new Error(`Failed to create PGlite data directory: ${dataDir}`, {
+          cause: error,
+        });
       }
       console.warn(
         `Failed to create directory ${dataDir}, using in-memory database`,
