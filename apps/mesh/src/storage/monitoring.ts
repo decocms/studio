@@ -7,6 +7,7 @@
 
 import type { Kysely } from "kysely";
 import { sql } from "kysely";
+import type { DatabaseType } from "../database";
 import { RegexRedactor } from "../monitoring/redactor";
 import type { MonitoringStorage, PropertyFilters } from "./ports";
 import type {
@@ -55,14 +56,19 @@ export interface AggregationResult {
 
 export class SqlMonitoringStorage implements MonitoringStorage {
   private redactor: RegexRedactor;
-  private databaseType: "sqlite" | "postgres";
+  private databaseType: DatabaseType;
 
   constructor(
     private db: Kysely<Database>,
-    databaseType: "sqlite" | "postgres" = "sqlite",
+    databaseType: DatabaseType = "sqlite",
   ) {
     this.redactor = new RegexRedactor();
     this.databaseType = databaseType;
+  }
+
+  /** Whether the database uses PostgreSQL SQL dialect (native Postgres or PGlite) */
+  private get isPostgresDialect(): boolean {
+    return this.isPostgresDialect || this.databaseType === "pglite";
   }
 
   /**
@@ -71,7 +77,7 @@ export class SqlMonitoringStorage implements MonitoringStorage {
    * Note: properties column is stored as text, so PostgreSQL needs a cast to jsonb.
    */
   private jsonExtract(column: string, key: string) {
-    if (this.databaseType === "postgres") {
+    if (this.isPostgresDialect) {
       // PostgreSQL: cast text to jsonb, then use ->> operator for text extraction
       return sql`(${sql.ref(column)}::jsonb)->>${key}`;
     }
@@ -87,7 +93,7 @@ export class SqlMonitoringStorage implements MonitoringStorage {
    * but ',Engineering,Sales,' LIKE '%,Eng,%' does NOT match
    */
   private jsonExtractWithCommas(column: string, key: string) {
-    if (this.databaseType === "postgres") {
+    if (this.isPostgresDialect) {
       // PostgreSQL: wrap extracted value in commas
       return sql`(',' || (${sql.ref(column)}::jsonb)->>${key} || ',')`;
     }
@@ -505,7 +511,7 @@ export class SqlMonitoringStorage implements MonitoringStorage {
    * Used for values that will be aggregated (sum, avg, etc.)
    */
   private jsonExtractPath(column: string, jsonPath: string) {
-    if (this.databaseType === "postgres") {
+    if (this.isPostgresDialect) {
       // PostgreSQL: use jsonb extraction operators
       // For nested paths like $.usage.total_tokens, use #>>
       const pathParts = jsonPath.replace(/^\$\.?/, "").split(".");
@@ -521,7 +527,7 @@ export class SqlMonitoringStorage implements MonitoringStorage {
    * Used for groupBy fields which are typically strings.
    */
   private jsonExtractPathText(column: string, jsonPath: string) {
-    if (this.databaseType === "postgres") {
+    if (this.isPostgresDialect) {
       const pathParts = jsonPath.replace(/^\$\.?/, "").split(".");
       const pathArray = `{${pathParts.join(",")}}`;
       return sql`(${sql.ref(column)}::jsonb #>> ${pathArray})`;
@@ -577,7 +583,7 @@ export class SqlMonitoringStorage implements MonitoringStorage {
     }
     const amount = parseInt(amountStr, 10);
 
-    if (this.databaseType === "postgres") {
+    if (this.isPostgresDialect) {
       // PostgreSQL: use date_trunc or custom bucketing
       let truncUnit: string;
       switch (unit) {
@@ -659,7 +665,7 @@ export class SqlMonitoringStorage implements MonitoringStorage {
       for (const [key, pattern] of Object.entries(propertyPatterns)) {
         const jsonExpr = this.jsonExtract("properties", key);
         // Use ILIKE for PostgreSQL (case-insensitive), LIKE for SQLite
-        const likeOp = this.databaseType === "postgres" ? "ilike" : "like";
+        const likeOp = this.isPostgresDialect ? "ilike" : "like";
         query = query.where(jsonExpr as never, likeOp, pattern as never);
       }
     }

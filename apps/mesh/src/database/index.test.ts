@@ -1,8 +1,9 @@
 import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it, test } from "bun:test";
 import { closeDatabase, createDatabase } from "./index";
+import type { MeshDatabase, PGliteDatabase } from "./index";
 
 describe("Database Factory", () => {
   let tempDir: string;
@@ -102,5 +103,33 @@ describe("Database Factory", () => {
       );
       expect(database.type).toBe("postgres");
     });
+  });
+});
+
+describe("MeshDatabase types", () => {
+  test("PGliteDatabase has type 'pglite' and db but no pool", () => {
+    const pglite: PGliteDatabase = {
+      type: "pglite",
+      db: {} as any,
+    };
+    const mesh: MeshDatabase = pglite;
+    expect(mesh.type).toBe("pglite");
+    expect(mesh).not.toHaveProperty("pool");
+  });
+
+  test("MeshDatabase discriminated union covers all three types", () => {
+    function getDbType(db: MeshDatabase): string {
+      switch (db.type) {
+        case "sqlite":
+          return "sqlite";
+        case "postgres":
+          return "postgres";
+        case "pglite":
+          return "pglite";
+      }
+    }
+
+    const pglite: MeshDatabase = { type: "pglite", db: {} as any };
+    expect(getDbType(pglite)).toBe("pglite");
   });
 });

@@ -15,7 +15,12 @@ import migrations from "../../migrations";
 import { runSeed, type SeedName } from "../../migrations/seeds";
 import { migrateBetterAuth } from "../auth/migrate";
 import { collectPluginMigrations } from "../core/plugin-loader";
-import { closeDatabase, getDb, type MeshDatabase } from "./index";
+import {
+  closeDatabase,
+  getDb,
+  type DatabaseType,
+  type MeshDatabase,
+} from "./index";
 import type { Database } from "../storage/types";
 
 export { runSeed, type SeedName };
@@ -29,7 +34,7 @@ export { runSeed, type SeedName };
  */
 async function tableExists(
   db: Kysely<Database>,
-  dbType: "sqlite" | "postgres",
+  dbType: DatabaseType,
   tableName: string,
 ): Promise<boolean> {
   const query =
@@ -52,7 +57,7 @@ async function tableExists(
  */
 async function ensurePluginMigrationsTable(
   db: Kysely<Database>,
-  dbType: "sqlite" | "postgres",
+  dbType: DatabaseType,
 ): Promise<void> {
   if (await tableExists(db, dbType, "plugin_migrations")) {
     return;
@@ -78,7 +83,7 @@ async function ensurePluginMigrationsTable(
  */
 async function migrateExistingPluginRecords(
   db: Kysely<Database>,
-  dbType: "sqlite" | "postgres",
+  dbType: DatabaseType,
 ): Promise<void> {
   if (!(await tableExists(db, dbType, "kysely_migration"))) {
     return; // Fresh database
@@ -274,7 +279,7 @@ export interface MigrateOptions {
  */
 export async function runKyselyMigrations(
   db: Kysely<Database>,
-  dbType: "sqlite" | "postgres",
+  dbType: DatabaseType,
 ): Promise<void> {
   // IMPORTANT: Clean up plugin migrations from kysely_migration BEFORE running
   // Kysely's migrator. Kysely checks for missing migrations at startup and will

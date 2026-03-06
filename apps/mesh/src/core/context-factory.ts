@@ -11,6 +11,7 @@
 
 import type { Meter, Tracer } from "@opentelemetry/api";
 import type { Kysely } from "kysely";
+import type { DatabaseType } from "../database";
 import { verifyMeshToken } from "../auth/jwt";
 import { CredentialVault } from "../encryption/credential-vault";
 import { getBaseUrl } from "./server-constants";
@@ -79,7 +80,7 @@ function parsePropertiesHeader(
 
 export interface MeshContextConfig {
   db: Kysely<Database>;
-  databaseType: "sqlite" | "postgres";
+  databaseType: DatabaseType;
   auth: BetterAuthInstance;
   encryption: {
     key: string;

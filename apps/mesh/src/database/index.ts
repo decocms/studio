@@ -67,7 +67,7 @@ const log = (event: LogEvent) => {
 /**
  * Supported database types
  */
-export type DatabaseType = "sqlite" | "postgres";
+export type DatabaseType = "sqlite" | "postgres" | "pglite";
 
 /**
  * SQLite database connection
@@ -88,10 +88,20 @@ export interface PostgresDatabase {
 }
 
 /**
+ * PGlite database connection (PostgreSQL compiled to WASM)
+ * Uses PostgreSQL SQL dialect but runs in-process without a Pool.
+ * Does NOT support LISTEN/NOTIFY.
+ */
+export interface PGliteDatabase {
+  type: "pglite";
+  db: Kysely<DatabaseSchema>;
+}
+
+/**
  * MeshDatabase - discriminated union of all supported database types
  * Use `database.type` to discriminate between implementations
  */
-export type MeshDatabase = SqliteDatabase | PostgresDatabase;
+export type MeshDatabase = SqliteDatabase | PostgresDatabase | PGliteDatabase;
 
 // ============================================================================
 // Internal Types
