@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import { ChdbEngine, createMonitoringEngine } from "./query-engine";
+import {
+  ChdbEngine,
+  ClickHouseClientEngine,
+  createMonitoringEngine,
+} from "./query-engine";
 import { mkdtemp, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -87,9 +91,20 @@ describe("createMonitoringEngine", () => {
     expect(source).toContain("./data/monitoring");
   });
 
-  it("should throw when clickhouseUrl is set (not yet implemented)", () => {
-    expect(() =>
-      createMonitoringEngine({ clickhouseUrl: "http://localhost:8123" }),
-    ).toThrow("not yet implemented");
+  it("should create ClickHouseClientEngine when clickhouseUrl is set", () => {
+    const { engine, source } = createMonitoringEngine({
+      clickhouseUrl: "http://localhost:8123",
+    });
+    expect(engine).toBeInstanceOf(ClickHouseClientEngine);
+    expect(source).toBe("monitoring_logs");
+  });
+
+  it("should use custom tableName when clickhouseUrl is set", () => {
+    const { engine, source } = createMonitoringEngine({
+      clickhouseUrl: "http://localhost:8123",
+      tableName: "custom_table",
+    });
+    expect(engine).toBeInstanceOf(ClickHouseClientEngine);
+    expect(source).toBe("custom_table");
   });
 });

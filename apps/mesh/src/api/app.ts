@@ -69,6 +69,8 @@ import { NatsStreamBuffer } from "./routes/decopilot/nats-stream-buffer";
 import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { SqlThreadStorage } from "../storage/threads";
+import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
+import { DEFAULT_MONITORING_DATA_PATH } from "../monitoring/schema";
 
 // Track current event bus instance for cleanup during HMR
 let currentEventBus: EventBus | null = null;
@@ -643,6 +645,37 @@ export async function createApp(options: CreateAppOptions = {}) {
     .catch((error) => {
       console.error("[EventBus] Error during startup:", error);
     });
+
+  // NDJSON monitoring retention cleanup
+  const monitoringBasePath =
+    process.env.MONITORING_DATA_PATH ?? DEFAULT_MONITORING_DATA_PATH;
+  const retentionDays = Math.max(
+    1,
+    Number(process.env.MONITORING_RETENTION_DAYS) || 30,
+  );
+
+  cleanupOldMonitoringFiles(monitoringBasePath, { maxAgeDays: retentionDays })
+    .then((deleted) => {
+      if (deleted > 0)
+        console.log(
+          `[monitoring] Cleaned up ${deleted} old monitoring partitions`,
+        );
+    })
+    .catch((err) =>
+      console.error("[monitoring] Retention cleanup failed:", err),
+    );
+
+  const retentionTimer = setInterval(
+    () => {
+      cleanupOldMonitoringFiles(monitoringBasePath, {
+        maxAgeDays: retentionDays,
+      }).catch((err) =>
+        console.error("[monitoring] Retention cleanup failed:", err),
+      );
+    },
+    24 * 60 * 60 * 1000,
+  );
+  retentionTimer.unref();
 
   // Inject MeshContext into requests
   // Skip auth routes, static files, health check, and metrics - they don't need MeshContext
