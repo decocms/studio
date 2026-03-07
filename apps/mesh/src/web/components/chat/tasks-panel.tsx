@@ -35,7 +35,6 @@ import {
   Plus,
 } from "@untitledui/icons";
 import { Suspense, useRef, useState } from "react";
-import { useForm } from "react-hook-form";
 import { ErrorBoundary } from "../error-boundary";
 import { User as UserIcon, Users as UsersIcon } from "lucide-react";
 import {
@@ -85,26 +84,14 @@ function TruncatedText({
   );
 }
 
-type OwnerFilterFormValues = {
-  visibility: TaskOwnerFilter;
-};
-
 function TaskOwnerFilter() {
   const { ownerFilter, setOwnerFilter } = useChatStable();
 
-  const { watch, setValue } = useForm<OwnerFilterFormValues>({
-    defaultValues: { visibility: ownerFilter },
-  });
-
-  const visibility = watch("visibility");
-
   const handleChange = (value: string) => {
-    const next = value as TaskOwnerFilter;
-    setValue("visibility", next);
-    setOwnerFilter(next);
+    setOwnerFilter(value as TaskOwnerFilter);
   };
 
-  const isFiltered = visibility === "me";
+  const isFiltered = ownerFilter === "me";
   const Icon = isFiltered ? UserIcon : UsersIcon;
 
   return (
@@ -126,7 +113,10 @@ function TaskOwnerFilter() {
       <DropdownMenuContent align="end">
         <DropdownMenuLabel>Filter by owner</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuRadioGroup value={visibility} onValueChange={handleChange}>
+        <DropdownMenuRadioGroup
+          value={ownerFilter}
+          onValueChange={handleChange}
+        >
           <DropdownMenuRadioItem value="me">My tasks</DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="everyone">
             All tasks

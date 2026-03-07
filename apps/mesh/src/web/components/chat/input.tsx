@@ -421,9 +421,7 @@ export function ChatInput({
   if (userId && task?.created_by && task.created_by !== userId) {
     return (
       <div className="flex flex-col w-full justify-end">
-        <div className="relative rounded-xl w-full flex flex-col">
-          <div className="absolute inset-0 rounded-xl pointer-events-none bg-muted" />
-        </div>
+        <div className="relative rounded-xl w-full flex flex-col min-h-[130px] border border-border bg-muted" />
       </div>
     );
   }
