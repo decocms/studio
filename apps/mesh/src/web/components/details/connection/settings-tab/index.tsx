@@ -186,6 +186,7 @@ function McpConfigurationContent({
   return (
     <div className="flex-1 overflow-auto">
       <McpConfigurationForm
+        formKey={connection.id}
         stateSchema={stateSchema}
         formState={formState ?? {}}
         onFormStateChange={handleFormStateChange}

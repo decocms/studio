@@ -27,6 +27,7 @@ import type { ChatModelsConfig } from "@/web/components/chat/types";
 import { ModelChangePayload, ModelSelector } from "@/web/components/chat";
 
 interface McpConfigurationFormProps {
+  formKey: string;
   formState: Record<string, unknown>;
   onFormStateChange: (state: Record<string, unknown>) => void;
   stateSchema: Record<string, unknown>;
@@ -493,6 +494,7 @@ const TEMPLATES = {
 };
 
 export function McpConfigurationForm({
+  formKey,
   formState,
   onFormStateChange,
   stateSchema,
@@ -528,8 +530,7 @@ export function McpConfigurationForm({
   return (
     <div className="flex flex-col h-full overflow-auto p-5">
       <RjsfForm
-        // Force re-render when formState changes by using a key
-        key={JSON.stringify(formState)}
+        key={formKey}
         schema={stateSchema}
         validator={validator}
         formData={formState}

@@ -361,7 +361,7 @@ function ToolDetailsAuthenticated({
 
   return (
     <ViewLayout breadcrumb={breadcrumb}>
-      <div className="grid grid-cols-1 lg:grid-cols-2 h-full">
+      <div className="grid grid-cols-1 lg:grid-cols-[30%_70%] h-full">
         {/* Left Panel - Tool Info, Parameters & Execute */}
         <div className="flex flex-col border-r border-border overflow-hidden">
           <div className="flex-1 overflow-auto">

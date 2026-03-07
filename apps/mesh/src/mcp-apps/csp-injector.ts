@@ -64,7 +64,8 @@ export function injectCSP(
   return "<head>\n" + metaTag + "\n</head>\n" + html;
 }
 
-const DOMAIN_RE = /^https?:\/\/[a-zA-Z0-9._-]+(:\d+)?$/;
+// Supports exact domains and wildcard subdomains (e.g. https://*.decocdn.com)
+const DOMAIN_RE = /^https?:\/\/(\*\.)?[a-zA-Z0-9._-]+(:\d+)?\/?$/;
 
 function validateDomains(domains: string[] | undefined): string[] {
   if (!domains || domains.length === 0) return [];
