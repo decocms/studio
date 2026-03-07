@@ -6,6 +6,7 @@
  * client's listTools() for VIRTUAL connections or when cached tools aren't available.
  */
 
+import type { ToolListCache } from "../tool-list-cache";
 import type { ConnectionEntity } from "@/tools/connection/schema";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { ListToolsResult, Tool } from "@modelcontextprotocol/sdk/types.js";
@@ -23,6 +24,7 @@ import type { ListToolsResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 export function withToolCaching(
   client: Client,
   connection: ConnectionEntity,
+  cache?: ToolListCache,
 ): Client {
   // Store original listTools method
   const originalListTools = client.listTools.bind(client);
@@ -52,8 +54,26 @@ export function withToolCaching(
       };
     }
 
+    // Check cross-pod cache before hitting the downstream connection
+    // VIRTUAL connections are excluded: their tool lists are dynamic and must
+    // always be assembled fresh by the aggregator via originalListTools()
+    if (!isVirtualConnection && cache) {
+      const cached = await cache.get(connection.id);
+      if (cached) {
+        return { tools: cached };
+      }
+    }
+
     // Fall back to client for connections without indexed tools (or VIRTUAL connections)
-    return await originalListTools();
+    const result = await originalListTools();
+
+    // Populate cache so other pods (and next cold start) skip the downstream call
+    // VIRTUAL connections are excluded for the same reason as above
+    if (!isVirtualConnection && cache && result.tools.length > 0) {
+      cache.set(connection.id, result.tools).catch(() => {});
+    }
+
+    return result;
   };
 
   // Override listTools directly on the instance to preserve prototype methods

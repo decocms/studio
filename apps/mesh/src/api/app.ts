@@ -54,6 +54,12 @@ import {
   type CancelBroadcast,
 } from "./routes/decopilot/cancel-broadcast";
 import { createNatsConnectionProvider } from "../nats/connection";
+import {
+  InMemoryToolListCache,
+  JetStreamKVToolListCache,
+  setToolListCache,
+  type ToolListCache,
+} from "../mcp-clients/tool-list-cache";
 import { NatsCancelBroadcast } from "./routes/decopilot/nats-cancel-broadcast";
 import {
   NoOpStreamBuffer,
@@ -194,6 +200,24 @@ export async function createApp(options: CreateAppOptions = {}) {
     }
   }
 
+  // Create tool list cache: JetStream KV when NATS is available, local Map otherwise
+  let toolListCache: ToolListCache = natsProvider
+    ? new JetStreamKVToolListCache({
+        getJetStream: () => natsProvider!.getJetStream(),
+        getConnection: () => natsProvider!.getConnection(),
+      })
+    : new InMemoryToolListCache();
+  if (toolListCache instanceof JetStreamKVToolListCache) {
+    await toolListCache.init().catch((err) => {
+      console.warn(
+        "[ToolListCache] KV init failed, falling back to in-memory cache:",
+        err,
+      );
+      toolListCache = new InMemoryToolListCache();
+    });
+  }
+  setToolListCache(toolListCache);
+
   // Create event bus with a lazy context getter
   // The notify function needs a context, but the context needs the event bus
   // We resolve this by having notify create its own system context
@@ -253,6 +277,8 @@ export async function createApp(options: CreateAppOptions = {}) {
     runRegistry.dispose();
     cancelBroadcast.stop().catch(() => {});
     streamBuffer.teardown();
+    toolListCache.teardown();
+    setToolListCache(null);
     natsProvider?.drain().catch(() => {});
   };
 
