@@ -180,6 +180,7 @@ export interface AggregationParams {
   groupBy?: string;
   groupByColumn?: GroupByColumn;
   interval?: string;
+  limit?: number;
   filters?: {
     connectionIds?: string[];
     virtualMcpIds?: string[];

@@ -95,7 +95,7 @@ export function mergeProperties(
  * If the tool result includes a `structuredContent` payload, store ONLY that to
  * avoid duplicating both structured + text output in the database.
  */
-export function formatMonitoringOutput(
+function formatMonitoringOutput(
   value: unknown,
 ): Record<string, unknown> {
   if (value && typeof value === "object" && !Array.isArray(value)) {
