@@ -59,18 +59,25 @@ function useTasks(ownerFilter: TaskOwnerFilter, userId: string | undefined) {
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, refetch } =
     useSuspenseInfiniteQuery({
-      queryKey: KEYS.tasks(locator, ownerFilter),
+      queryKey: KEYS.tasks(
+        locator,
+        ownerFilter,
+        ownerFilter === "me" ? userId : undefined,
+      ),
       queryFn: async ({ pageParam = 0 }) => {
         if (!client) {
           throw new Error("MCP client is not available");
+        }
+        if (ownerFilter === "me" && !userId) {
+          return { items: [], hasMore: false, totalCount: 0 };
         }
         const baseInput: CollectionListInput = {
           limit: TASK_CONSTANTS.TASKS_PAGE_SIZE,
           offset: pageParam,
         };
         const input =
-          ownerFilter === "me" && userId
-            ? { ...baseInput, where: { created_by: userId } }
+          ownerFilter === "me"
+            ? { ...baseInput, where: { created_by: userId! } }
             : baseInput;
 
         const result = (await client.callTool({
@@ -185,7 +192,13 @@ export function useTaskManager() {
     const optimisticTask = buildOptimisticTask(newTaskId);
 
     // Add task optimistically to cache so it appears immediately
-    addTaskToCache(queryClient, locator, optimisticTask, ownerFilter);
+    addTaskToCache(
+      queryClient,
+      locator,
+      optimisticTask,
+      ownerFilter,
+      ownerFilter === "me" ? userId : undefined,
+    );
 
     // Prefill message cache
     if (client) {
@@ -213,7 +226,14 @@ export function useTaskManager() {
    * Updates task data directly in React Query cache without refetching
    */
   const updateTask = (taskId: string, updates: Partial<Task>) => {
-    updateTaskInCache(queryClient, locator, taskId, updates, ownerFilter);
+    updateTaskInCache(
+      queryClient,
+      locator,
+      taskId,
+      updates,
+      ownerFilter,
+      ownerFilter === "me" ? userId : undefined,
+    );
   };
 
   /**
@@ -235,6 +255,7 @@ export function useTaskManager() {
             updated_at: updatedTask.updated_at ?? new Date().toISOString(),
           },
           ownerFilter,
+          ownerFilter === "me" ? userId : undefined,
         );
       }
     } catch (error) {
@@ -276,6 +297,7 @@ export function useTaskManager() {
             updated_at: updatedTask.updated_at ?? new Date().toISOString(),
           },
           ownerFilter,
+          ownerFilter === "me" ? userId : undefined,
         );
       }
     } catch (error) {
@@ -307,8 +329,9 @@ export function useTaskManager() {
       const updatedAt = event.time;
 
       for (const filter of ["me", "everyone"] as const) {
+        const filterUserId = filter === "me" ? userId : undefined;
         const cached = queryClient.getQueryData<TasksInfiniteQueryData>(
-          KEYS.tasks(locator, filter),
+          KEYS.tasks(locator, filter, filterUserId),
         );
         const inCache =
           cached?.pages.some((p) => p.items.some((t) => t.id === threadId)) ??
@@ -321,6 +344,7 @@ export function useTaskManager() {
             threadId,
             { status: newStatus, updated_at: updatedAt },
             filter,
+            filterUserId,
           );
         } else if (filter === "everyone") {
           // Task not yet in the "everyone" cache — could be a new task from
