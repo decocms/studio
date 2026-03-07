@@ -22,7 +22,7 @@ const SCRIPT_DIR =
 const SERVER_ENTRY_POINT = join(SCRIPT_DIR, "../src/index.ts");
 const CLI_ENTRY_POINT = join(SCRIPT_DIR, "../src/cli.ts");
 const MIGRATE_ENTRY_POINTS = ["@jitl/quickjs-wasmfile-release-sync"];
-const ALWAYS_EXTERNAL = ["kysely-codegen"];
+const ALWAYS_EXTERNAL = ["kysely-codegen", "@electric-sql/pglite"];
 
 // Parse command line arguments
 function parseArgs() {
