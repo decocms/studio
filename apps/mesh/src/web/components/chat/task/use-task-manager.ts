@@ -10,6 +10,7 @@ import type {
   CollectionListOutput,
 } from "@decocms/bindings/collections";
 import type { CollectionEntity } from "@decocms/mesh-sdk";
+import type { ProjectLocator } from "@decocms/mesh-sdk";
 import {
   SELF_MCP_ALIAS_ID,
   useCollectionList,
@@ -158,16 +159,29 @@ export function useTaskManager() {
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
 
-  const [ownerFilter, rawSetOwnerFilter] = useState<TaskOwnerFilter>(() => {
+  const readStoredFilter = (loc: ProjectLocator): TaskOwnerFilter => {
     try {
       const stored = localStorage.getItem(
-        LOCALSTORAGE_KEYS.chatTaskOwnerFilter(locator),
+        LOCALSTORAGE_KEYS.chatTaskOwnerFilter(loc),
       );
       return stored ? (JSON.parse(stored) as TaskOwnerFilter) : "me";
     } catch {
       return "me";
     }
-  });
+  };
+
+  const [ownerFilter, rawSetOwnerFilter] = useState<TaskOwnerFilter>(() =>
+    readStoredFilter(locator),
+  );
+
+  // When locator changes (project/org switch), re-read the persisted filter
+  // for the new context. Calling setState during render causes React to discard
+  // the in-progress render and immediately re-render with the corrected value.
+  const [prevLocator, setPrevLocator] = useState(locator);
+  if (prevLocator !== locator) {
+    setPrevLocator(locator);
+    rawSetOwnerFilter(readStoredFilter(locator));
+  }
 
   const [isFilterChangePending, startFilterTransition] = useTransition();
 
