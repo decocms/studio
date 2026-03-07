@@ -46,11 +46,8 @@ export class PollingStrategy implements NotifyStrategy {
   }
 
   async notify(_eventId: string): Promise<void> {
-    // Optionally trigger immediate processing when an event is published.
-    // This provides faster delivery while still having the timer as a backup.
-    if (this.onNotify) {
-      this.onNotify();
-    }
+    // No-op: polling is a timer-based safety net only.
+    // Immediate notification is handled by NatsNotifyStrategy.
   }
 
   private scheduleNext(): void {
