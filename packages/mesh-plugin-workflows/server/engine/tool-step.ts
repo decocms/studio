@@ -95,9 +95,6 @@ export async function executeToolStep(
       completedAt: Date.now(),
       error: errorMessage,
     };
-  } finally {
-    // Fire-and-forget close
-    proxy?.close().catch(() => {});
   }
 
   // Post-processing: checkpoint raw output then run transformCode
