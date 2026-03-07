@@ -27,6 +27,15 @@ export interface ThreadStoragePort {
   create(data: Partial<Thread>): Promise<Thread>;
   get(id: string): Promise<Thread | null>;
   update(id: string, data: Partial<Thread>): Promise<Thread>;
+  /**
+   * Atomically transitions a thread to "failed" only when its current
+   * persisted status is "in_progress". Safe to call concurrently — the
+   * conditional WHERE clause prevents clobbering a terminal status.
+   *
+   * Returns true if the row was updated, false if it was already in a
+   * terminal state (no-op).
+   */
+  forceFailIfInProgress(id: string): Promise<boolean>;
   delete(id: string): Promise<void>;
   list(
     organizationId: string,
