@@ -128,8 +128,11 @@ describe("proxy monitoring middleware", () => {
       content: [{ type: "text", text: "Authorization failed: nope" }],
     });
 
-    // Span emitted asynchronously
-    await new Promise((r) => setTimeout(r, 50));
+    // Span emitted asynchronously — poll until it arrives
+    const deadline = Date.now() + 1000;
+    while (spans.length === 0 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
     expect(spans.length).toBe(1);
     expect(spans[0]!._attrs[MESH_ATTR.TOOL_NAME]).toBe("foo");
     expect(spans[0]!._attrs[MESH_ATTR.TOOL_IS_ERROR]).toBe(true);

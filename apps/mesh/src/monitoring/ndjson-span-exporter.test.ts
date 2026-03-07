@@ -204,9 +204,11 @@ describe("NDJSONSpanExporter", () => {
   });
 
   it("should return FAILED when disk write fails", async () => {
-    // Use an invalid path to trigger write failure
+    // Use a file as basePath so mkdir will always fail (can't create dirs under a file)
+    const blocker = join(tmpDir, "not-a-dir");
+    await Bun.write(blocker, "");
     const badExporter = new NDJSONSpanExporter({
-      basePath: "/nonexistent/readonly/path",
+      basePath: join(blocker, "subdir"),
       flushThreshold: 1,
       flushIntervalMs: 60_000,
     });

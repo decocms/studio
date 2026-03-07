@@ -62,7 +62,11 @@ export class NDJSONSpanExporter implements SpanExporter {
 
     const intervalMs = options.flushIntervalMs ?? 60_000;
     if (intervalMs > 0 && intervalMs < 60_000 * 60) {
-      this.flushTimer = setInterval(() => this.flush(), intervalMs);
+      this.flushTimer = setInterval(() => {
+        this.flush().catch((err) => {
+          console.error("[NDJSONSpanExporter] Timer flush failed:", err);
+        });
+      }, intervalMs);
       if (
         this.flushTimer &&
         typeof this.flushTimer === "object" &&
@@ -156,6 +160,13 @@ export class NDJSONSpanExporter implements SpanExporter {
     this.flushInProgress = this.writeNDJSON(strings);
     try {
       await this.flushInProgress;
+    } catch (err) {
+      // Restore buffer so spans are not lost on write failure
+      this.bufferStrings = strings.concat(this.bufferStrings);
+      for (const s of strings) {
+        this.bufferBytes += s.length + 1;
+      }
+      throw err;
     } finally {
       this.flushInProgress = null;
     }
