@@ -49,9 +49,8 @@ export function updateTaskInCache(
     }
 
     const updatedTask: Task = {
-      id: currentTask.id,
+      ...currentTask,
       title: updates.title ?? currentTask.title,
-      created_at: currentTask.created_at,
       updated_at: updates.updated_at ?? currentTask.updated_at,
       hidden: updates.hidden ?? currentTask.hidden,
       status: updates.status ?? currentTask.status,
