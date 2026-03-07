@@ -49,10 +49,7 @@ import {
   runPluginStartupHooks,
 } from "../core/plugin-loader";
 import { CredentialVault } from "../encryption/credential-vault";
-import {
-  LocalCancelBroadcast,
-  type CancelBroadcast,
-} from "./routes/decopilot/cancel-broadcast";
+import { type CancelBroadcast } from "./routes/decopilot/cancel-broadcast";
 import { createNatsConnectionProvider } from "../nats/connection";
 import {
   InMemoryToolListCache,
@@ -60,11 +57,12 @@ import {
   setToolListCache,
   type ToolListCache,
 } from "../mcp-clients/tool-list-cache";
-import { NatsCancelBroadcast } from "./routes/decopilot/nats-cancel-broadcast";
 import {
-  NoOpStreamBuffer,
-  type StreamBuffer,
-} from "./routes/decopilot/stream-buffer";
+  ensureLocalNatsServer,
+  type LocalNatsServer,
+} from "../nats/local-server";
+import { NatsCancelBroadcast } from "./routes/decopilot/nats-cancel-broadcast";
+import { type StreamBuffer } from "./routes/decopilot/stream-buffer";
 import { NatsStreamBuffer } from "./routes/decopilot/nats-stream-buffer";
 import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
@@ -76,7 +74,10 @@ import { DEFAULT_MONITORING_URI } from "../monitoring/schema";
 let currentEventBus: EventBus | null = null;
 
 // Track decopilot strategy cleanup (abort active runs, stop strategies) during HMR
-let currentDecopilotCleanup: (() => void) | null = null;
+let currentDecopilotCleanup: (() => void | Promise<void>) | null = null;
+
+// Track local NATS server instance for cleanup during HMR / shutdown
+let currentLocalNatsServer: LocalNatsServer | null = null;
 
 // Track monitoring retention timer for cleanup during HMR
 let currentRetentionTimer: ReturnType<typeof setInterval> | null = null;
@@ -184,12 +185,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Stop any existing event bus worker and SSE hub (cleanup during HMR)
   if (currentEventBus && currentEventBus.isRunning()) {
     console.log("[EventBus] Stopping previous worker (HMR cleanup)");
-    // Fire and forget - don't block app creation
-    // The stop is mostly synchronous, async part is just UNLISTEN cleanup
-    Promise.resolve(currentEventBus.stop()).catch((error) => {
+    await Promise.resolve(currentEventBus.stop()).catch((error: unknown) => {
       console.error("[EventBus] Error stopping previous worker:", error);
     });
-    sseHub.stop().catch((error) => {
+    await sseHub.stop().catch((error) => {
       console.error(
         "[SSEHub] Error stopping previous broadcast (HMR cleanup):",
         error,
@@ -197,41 +196,18 @@ export async function createApp(options: CreateAppOptions = {}) {
     });
   }
 
-  // Create shared NATS provider when NATS_URL is set (must init before event bus)
-  const natsUrl = process.env.NATS_URL;
-  let natsProvider = natsUrl ? createNatsConnectionProvider() : null;
-  if (natsProvider) {
-    try {
-      await natsProvider.init(natsUrl!);
-    } catch (err) {
-      console.warn(
-        "[NATS] Connection failed, falling back to local-only mode:",
-        err,
-      );
-      natsProvider = null;
-    }
-  }
+  // Decopilot strategy cleanup on HMR (drains old NATS connection)
+  if (currentDecopilotCleanup) await currentDecopilotCleanup();
 
-  // Create tool list cache: JetStream KV when NATS is available, local Map otherwise
-  let toolListCache: ToolListCache = natsProvider
-    ? new JetStreamKVToolListCache({
-        getJetStream: () => natsProvider!.getJetStream(),
-        getConnection: () => natsProvider!.getConnection(),
-      })
-    : new InMemoryToolListCache();
-  if (toolListCache instanceof JetStreamKVToolListCache) {
-    await toolListCache.init().catch((err) => {
-      console.warn(
-        "[ToolListCache] KV init failed, falling back to in-memory cache:",
-        err,
-      );
-      toolListCache = new InMemoryToolListCache();
-    });
-  }
+  const threadStorage = new SqlThreadStorage(database.db);
+
   // Create event bus with a lazy context getter
   // The notify function needs a context, but the context needs the event bus
   // We resolve this by having notify create its own system context
   let eventBus: EventBus;
+  let cancelBroadcast: CancelBroadcast;
+  let streamBuffer: StreamBuffer;
+  let toolListCache: ToolListCache;
 
   if (options.eventBus) {
     eventBus = options.eventBus;
@@ -241,36 +217,69 @@ export async function createApp(options: CreateAppOptions = {}) {
         error,
       );
     });
+
+    // In test/mock mode, use no-op decopilot strategies
+    const { LocalCancelBroadcast } = await import(
+      "./routes/decopilot/cancel-broadcast"
+    );
+    const { NoOpStreamBuffer } = await import(
+      "./routes/decopilot/stream-buffer"
+    );
+    cancelBroadcast = new LocalCancelBroadcast();
+    streamBuffer = new NoOpStreamBuffer();
+    toolListCache = new InMemoryToolListCache();
   } else {
-    // Create notify function that uses the context factory
-    // This is called by the worker to deliver events to subscribers
-    // EventBus uses the full MeshDatabase (includes Pool for PostgreSQL)
+    // Ensure NATS is available — spawn local server if NATS_URL is not set
+    let natsUrl = process.env.NATS_URL;
+    let natsToken: string | undefined;
+
+    if (!natsUrl) {
+      if (!currentLocalNatsServer) {
+        currentLocalNatsServer = await ensureLocalNatsServer();
+      }
+      natsUrl = currentLocalNatsServer.url;
+      natsToken = currentLocalNatsServer.token;
+    }
+
+    const natsProvider = createNatsConnectionProvider();
+    await natsProvider.init(natsUrl, natsToken);
+
     eventBus = createEventBus(database, undefined, natsProvider);
+
+    // Decopilot strategies — always NATS
+    cancelBroadcast = new NatsCancelBroadcast({
+      getConnection: () => natsProvider.getConnection(),
+    });
+
+    streamBuffer = new NatsStreamBuffer({
+      getConnection: () => natsProvider.getConnection(),
+      getJetStream: () => natsProvider.getJetStream(),
+    });
+
+    toolListCache = new JetStreamKVToolListCache({
+      getJetStream: () => natsProvider.getJetStream(),
+      getConnection: () => natsProvider.getConnection(),
+    });
+    if (toolListCache instanceof JetStreamKVToolListCache) {
+      await toolListCache.init().catch((err) => {
+        console.warn(
+          "[ToolListCache] KV init failed, falling back to in-memory cache:",
+          err,
+        );
+        toolListCache = new InMemoryToolListCache();
+      });
+    }
+
+    streamBuffer.init().catch((err) => {
+      console.warn(
+        "[Decopilot] StreamBuffer init failed, attach/late-join disabled:",
+        err,
+      );
+    });
   }
-
-  // Track for cleanup during HMR
-  currentEventBus = eventBus;
-
-  // Decopilot strategy cleanup on HMR / shutdown
-  if (currentDecopilotCleanup) currentDecopilotCleanup();
 
   // Set tool list cache after cleanup to avoid previous cleanup nulling the new cache
   setToolListCache(toolListCache);
-
-  const threadStorage = new SqlThreadStorage(database.db);
-
-  const cancelBroadcast: CancelBroadcast = natsProvider
-    ? new NatsCancelBroadcast({
-        getConnection: () => natsProvider!.getConnection(),
-      })
-    : new LocalCancelBroadcast();
-
-  const streamBuffer: StreamBuffer = natsProvider
-    ? new NatsStreamBuffer({
-        getConnection: () => natsProvider!.getConnection(),
-        getJetStream: () => natsProvider!.getJetStream(),
-      })
-    : new NoOpStreamBuffer();
 
   const cancelReactorDeps: RunReactorDeps = {
     storage: threadStorage,
@@ -289,12 +298,6 @@ export async function createApp(options: CreateAppOptions = {}) {
     .catch((err) => {
       console.error("[Decopilot] CancelBroadcast start failed:", err);
     });
-  streamBuffer.init().catch((err) => {
-    console.warn(
-      "[Decopilot] StreamBuffer init failed, attach/late-join disabled:",
-      err,
-    );
-  });
 
   currentDecopilotCleanup = () => {
     runRegistry.stopAll();
@@ -303,9 +306,10 @@ export async function createApp(options: CreateAppOptions = {}) {
     streamBuffer.teardown();
     toolListCache.teardown();
     setToolListCache(null);
-    natsProvider?.drain().catch(() => {});
   };
 
+  // Track for cleanup during HMR
+  currentEventBus = eventBus;
   const app = new Hono<Env>();
 
   // ============================================================================
@@ -942,4 +946,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   });
 
   return app;
+}
+
+export async function shutdownApp() {
+  if (currentDecopilotCleanup) await currentDecopilotCleanup();
+  await currentLocalNatsServer?.stop();
+  currentLocalNatsServer = null;
 }

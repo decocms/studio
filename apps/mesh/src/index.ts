@@ -13,7 +13,7 @@ import {
   createAssetHandler,
   resolveClientDir,
 } from "@decocms/runtime/asset-server";
-import { createApp } from "./api/app";
+import { createApp, shutdownApp } from "./api/app";
 import { isServerPath } from "./api/utils/paths";
 import { startDebugServer } from "./debug";
 
@@ -58,6 +58,16 @@ Bun.serve({
     return (await handleAssets(request)) ?? app.fetch(request);
   },
   development: process.env.NODE_ENV !== "production",
+});
+
+// Graceful shutdown: drain NATS, stop local server
+process.on("SIGINT", async () => {
+  await shutdownApp();
+  process.exit(0);
+});
+process.on("SIGTERM", async () => {
+  await shutdownApp();
+  process.exit(0);
 });
 
 // Internal debug server (only enabled via ENABLE_DEBUG_SERVER=true)

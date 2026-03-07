@@ -17,7 +17,7 @@ import { connect, type JetStreamClient, type NatsConnection } from "nats";
 
 export interface NatsConnectionProvider {
   /** Connect to NATS eagerly. Fails fast if unreachable. */
-  init(url: string | string[]): Promise<void>;
+  init(url: string | string[], token?: string): Promise<void>;
   /** Returns the shared connection, or null if not initialized. */
   getConnection(): NatsConnection | null;
   /** Returns a JetStream client from the shared connection, or null. */
@@ -35,9 +35,9 @@ export function createNatsConnectionProvider(): NatsConnectionProvider {
   let js: JetStreamClient | null = null;
 
   return {
-    async init(url: string | string[]): Promise<void> {
+    async init(url: string | string[], token?: string): Promise<void> {
       if (nc) return;
-      nc = await connect({ servers: url });
+      nc = await connect({ servers: url, token });
       console.log("[NATS] Connected");
     },
 
