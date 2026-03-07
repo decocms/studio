@@ -23,6 +23,7 @@ import {
   ArrowUp,
   ChevronDown,
   Edit01,
+  Lock01,
   Stop,
   Users03,
   XCircle,
@@ -420,8 +421,11 @@ export function ChatInput({
 
   if (userId && task?.created_by && task.created_by !== userId) {
     return (
-      <div className="flex flex-col w-full justify-end">
-        <div className="relative rounded-xl w-full flex flex-col min-h-[130px] border border-border bg-muted" />
+      <div className="flex w-full items-center gap-2 px-3 py-2.5 rounded-xl border border-border bg-muted/40 text-muted-foreground">
+        <Lock01 size={14} className="shrink-0" />
+        <span className="text-sm">
+          Read only — you&apos;re viewing someone else&apos;s thread
+        </span>
       </div>
     );
   }

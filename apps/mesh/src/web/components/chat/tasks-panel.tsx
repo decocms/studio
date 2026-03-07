@@ -85,14 +85,19 @@ function TruncatedText({
 }
 
 function TaskOwnerFilter() {
-  const { ownerFilter, setOwnerFilter } = useChatStable();
+  const { ownerFilter, setOwnerFilter, isFilterChangePending } =
+    useChatStable();
 
   const handleChange = (value: string) => {
     setOwnerFilter(value as TaskOwnerFilter);
   };
 
   const isFiltered = ownerFilter === "me";
-  const Icon = isFiltered ? UserIcon : UsersIcon;
+  const Icon = isFilterChangePending
+    ? Loading01
+    : isFiltered
+      ? UserIcon
+      : UsersIcon;
 
   return (
     <DropdownMenu>
@@ -101,11 +106,16 @@ function TaskOwnerFilter() {
           variant="ghost"
           className="size-8"
           title={isFiltered ? "My tasks" : "All tasks"}
+          disabled={isFilterChangePending}
         >
           <Icon
             size={14}
             className={cn(
-              isFiltered ? "text-foreground" : "text-muted-foreground",
+              isFilterChangePending
+                ? "animate-spin text-muted-foreground"
+                : isFiltered
+                  ? "text-foreground"
+                  : "text-muted-foreground",
             )}
           />
         </Button>

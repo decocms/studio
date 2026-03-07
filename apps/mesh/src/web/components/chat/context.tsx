@@ -114,6 +114,7 @@ interface ChatStableValue {
 
   ownerFilter: TaskOwnerFilter;
   setOwnerFilter: (filter: TaskOwnerFilter) => void;
+  isFilterChangePending: boolean;
 
   virtualMcps: VirtualMCPInfo[];
   selectedVirtualMcp: VirtualMCPInfo | null;
@@ -1021,6 +1022,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
     fetchNextPage: taskManager.fetchNextPage,
     ownerFilter: taskManager.ownerFilter,
     setOwnerFilter: taskManager.setOwnerFilter,
+    isFilterChangePending: taskManager.isFilterChangePending,
     virtualMcps,
     selectedVirtualMcp,
     setVirtualMcpId,

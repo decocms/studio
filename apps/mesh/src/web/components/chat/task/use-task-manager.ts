@@ -38,6 +38,7 @@ import {
   callUpdateTaskTool,
   findNextAvailableTask,
 } from "./helpers.ts";
+import { useTransition } from "react";
 import type { ChatMessage, Task, TasksInfiniteQueryData } from "./types.ts";
 import { TASK_CONSTANTS } from "./types.ts";
 
@@ -157,10 +158,16 @@ export function useTaskManager() {
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
 
-  const [ownerFilter, setOwnerFilter] = useLocalStorage<TaskOwnerFilter>(
+  const [ownerFilter, rawSetOwnerFilter] = useLocalStorage<TaskOwnerFilter>(
     LOCALSTORAGE_KEYS.chatTaskOwnerFilter(locator),
     "me",
   );
+
+  const [isFilterChangePending, startFilterTransition] = useTransition();
+
+  const setOwnerFilter = (filter: TaskOwnerFilter) => {
+    startFilterTransition(() => rawSetOwnerFilter(filter));
+  };
 
   // Fetch tasks list with pagination
   const { tasks, hasNextPage, isFetchingNextPage, fetchNextPage } = useTasks(
@@ -366,6 +373,7 @@ export function useTaskManager() {
     fetchNextPage,
     ownerFilter,
     setOwnerFilter,
+    isFilterChangePending,
     createTask,
     switchToTask,
     updateTask,
