@@ -12,7 +12,13 @@
 export const MONITORING_SPAN_NAME = "mcp.proxy.callTool";
 
 /** Default base path for monitoring NDJSON files. */
-export const DEFAULT_MONITORING_DATA_PATH = "./data/monitoring";
+import { homedir } from "node:os";
+import { join } from "node:path";
+export const DEFAULT_MONITORING_DATA_PATH = join(
+  homedir(),
+  "deco",
+  "monitoring",
+);
 
 /** Shared constants for mesh.* span attribute keys. */
 export const MESH_ATTR = {

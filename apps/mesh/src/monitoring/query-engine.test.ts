@@ -88,7 +88,7 @@ describe("createMonitoringEngine", () => {
 
   it("should use DEFAULT_MONITORING_DATA_PATH when no basePath", () => {
     const { source } = createMonitoringEngine({});
-    expect(source).toContain("data/monitoring");
+    expect(source).toContain("deco/monitoring");
   });
 
   it("should create ClickHouseClientEngine when clickhouseUrl is set", () => {

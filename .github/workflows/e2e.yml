@@ -31,10 +31,5 @@ jobs:
         run: |
           echo '{"emailAndPassword":{"enabled":true},"socialProviders":{},"saml":{"enabled":false,"providers":[]},"emailProviders":[],"magicLinkConfig":{"enabled":false}}' > auth-config.json
 
-      - name: Create data directory
-        run: mkdir -p data
-
       - name: Run e2e tests
         run: bun run test:e2e
-        env:
-          DATABASE_URL: "file://./data/mesh"
