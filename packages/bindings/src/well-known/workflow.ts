@@ -99,6 +99,7 @@ export type StepConfig = z.infer<typeof StepConfigSchema>;
  * Data flow uses @ref syntax:
  * - @input.field → workflow input
  * - @stepName.field → output from a previous step
+ * - @ctx.execution_id → current workflow execution ID
  */
 
 type JsonSchema = {
@@ -124,10 +125,22 @@ const JsonSchemaSchema: z.ZodType<JsonSchema> = z.lazy(() =>
     .passthrough(),
 );
 
+/**
+ * Step names that are reserved by the @ref system and cannot be used as step names.
+ * These are intercepted before step lookup in the ref resolver.
+ */
+export const RESERVED_STEP_NAMES = ["input", "item", "index", "ctx"] as const;
+
 export const StepSchema = z.object({
   name: z
     .string()
     .min(1)
+    .refine(
+      (name) => !(RESERVED_STEP_NAMES as readonly string[]).includes(name),
+      {
+        message: `Step name is reserved. Reserved names: ${RESERVED_STEP_NAMES.join(", ")}`,
+      },
+    )
     .describe(
       "Unique identifier for this step. Other steps reference its output as @name.field",
     ),
@@ -137,7 +150,7 @@ export const StepSchema = z.object({
     .record(z.string(), z.unknown())
     .optional()
     .describe(
-      "Data passed to the action. Use @ref for dynamic values: @input.field (workflow input), @stepName.field (previous step output), @item/@index (loop context). Example: { 'userId': '@input.user_id', 'data': '@fetch.result' }",
+      "Data passed to the action. Use @ref for dynamic values: @input.field (workflow input), @stepName.field (previous step output), @item/@index (loop context), @ctx.execution_id (current execution ID). Example: { 'userId': '@input.user_id', 'data': '@fetch.result', 'executionId': '@ctx.execution_id' }",
     ),
   outputSchema: JsonSchemaSchema.optional().describe(
     "Optional JSON Schema describing the expected output of the step.",

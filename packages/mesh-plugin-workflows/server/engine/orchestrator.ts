@@ -403,7 +403,7 @@ export async function handleStepExecute(
   if (isIteration && step.forEach?.ref) {
     const { resolved: forEachResolved } = resolveAllRefs(
       { items: step.forEach.ref },
-      { workflowInput, stepOutputs },
+      { workflowInput, stepOutputs, executionId },
     );
     const items = (forEachResolved as { items: unknown[] }).items;
     const item = Array.isArray(items) ? items[iterationIndex] : undefined;
@@ -413,12 +413,14 @@ export async function handleStepExecute(
       stepOutputs,
       item,
       index: iterationIndex,
+      executionId,
     });
     resolvedInput = resolved as Record<string, unknown>;
   } else {
     const { resolved } = resolveAllRefs(step.input, {
       workflowInput,
       stepOutputs,
+      executionId,
     });
     resolvedInput = resolved as Record<string, unknown>;
   }
@@ -577,7 +579,7 @@ async function handleForEachIterationCompletion(
 
   const { resolved } = resolveAllRefs(
     { items: step.forEach!.ref },
-    { workflowInput, stepOutputs },
+    { workflowInput, stepOutputs, executionId },
   );
   const items = (resolved as { items: unknown[] }).items;
 
@@ -669,7 +671,7 @@ async function dispatchStep(
   if (isForEachStep(step)) {
     const { resolved } = resolveAllRefs(
       { items: step.forEach!.ref },
-      { workflowInput, stepOutputs },
+      { workflowInput, stepOutputs, executionId },
     );
     const items = (resolved as { items: unknown[] }).items;
 

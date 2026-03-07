@@ -22,6 +22,8 @@ export interface RefContext {
   item?: unknown;
   /** Current index in forEach loop (if applicable) */
   index?: number;
+  /** Current execution ID (accessible via @ctx.execution_id) */
+  executionId?: string;
 }
 
 /**
@@ -43,7 +45,7 @@ export function isAtRef(value: unknown): value is `@${string}` {
  * Parse an @ref string into its components
  */
 export function parseAtRef(ref: `@${string}`): {
-  type: "step" | "input" | "item" | "index";
+  type: "step" | "input" | "item" | "index" | "ctx";
   stepName?: string;
   path?: string;
 } {
@@ -64,6 +66,12 @@ export function parseAtRef(ref: `@${string}`): {
   if (refStr === "input" || refStr.startsWith("input.")) {
     const path = refStr.length > 5 ? refStr.substring(6) : "";
     return { type: "input", path };
+  }
+
+  // Execution context reference: @ctx.execution_id
+  if (refStr === "ctx" || refStr.startsWith("ctx.")) {
+    const path = refStr.length > 3 ? refStr.substring(4) : "";
+    return { type: "ctx", path };
   }
 
   // Step output reference: @stepName.path
@@ -161,6 +169,16 @@ export function resolveRef(ref: `@${string}`, ctx: RefContext): RefResolution {
 
       case "index": {
         return { value: ctx.index };
+      }
+
+      case "ctx": {
+        if (parsed.path === "execution_id") {
+          return { value: ctx.executionId };
+        }
+        return {
+          value: undefined,
+          error: `Unknown ctx property: ${parsed.path}`,
+        };
       }
 
       default:

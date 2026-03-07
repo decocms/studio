@@ -114,6 +114,18 @@ describe("parseAtRef", () => {
     expect(result.stepName).toBe("inputValidator");
     expect(result.path).toBe("");
   });
+
+  it("parses @ctx.execution_id as ctx type", () => {
+    const result = parseAtRef("@ctx.execution_id");
+    expect(result.type).toBe("ctx");
+    expect(result.path).toBe("execution_id");
+  });
+
+  it("parses @ctx without path as ctx type", () => {
+    const result = parseAtRef("@ctx");
+    expect(result.type).toBe("ctx");
+    expect(result.path).toBe("");
+  });
 });
 
 // ============================================================================
@@ -280,6 +292,20 @@ describe("resolveRef", () => {
     const result = resolveRef("@input.nonExistent", ctx);
     expect(result.value).toBeUndefined();
     expect(result.error).toContain("Input path not found");
+  });
+
+  it("resolves @ctx.execution_id to executionId", () => {
+    const ctx = makeCtx({ executionId: "exec-abc-123" });
+    const result = resolveRef("@ctx.execution_id", ctx);
+    expect(result.value).toBe("exec-abc-123");
+    expect(result.error).toBeUndefined();
+  });
+
+  it("returns error for unknown @ctx property", () => {
+    const ctx = makeCtx({ executionId: "exec-abc-123" });
+    const result = resolveRef("@ctx.unknown_prop" as `@${string}`, ctx);
+    expect(result.value).toBeUndefined();
+    expect(result.error).toContain("Unknown ctx property");
   });
 });
 
