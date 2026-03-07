@@ -76,6 +76,7 @@ export class RunRegistry {
     const run = this.runs.get(threadId);
     if (!run || run.status !== "running") return false;
     run.status = "failed";
+    this.runs.delete(threadId);
     run.abortController.abort();
     return true;
   }

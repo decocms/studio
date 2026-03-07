@@ -779,7 +779,6 @@ export async function createApp(options: CreateAppOptions = {}) {
         typePatterns: typePatterns?.length ? typePatterns : null,
         push: (event: SSEEvent) => {
           // Write to the SSE stream — fire-and-forget
-          // If the stream is closed, writeSSE will throw and the hub will remove us
           stream
             .writeSSE({
               id: event.id,
@@ -787,7 +786,9 @@ export async function createApp(options: CreateAppOptions = {}) {
               data: JSON.stringify(event),
             })
             .catch(() => {
-              // Stream broken — cleanup happens via onAbort
+              // Stream broken — remove immediately so no further events are
+              // attempted. onAbort handles interval cleanup.
+              sseHub.remove(orgId, listenerId);
             });
         },
       });
@@ -810,16 +811,13 @@ export async function createApp(options: CreateAppOptions = {}) {
         });
       }, 30_000);
 
-      // Cleanup when the client disconnects
-      stream.onAbort(() => {
-        clearInterval(keepaliveInterval);
-        sseHub.remove(orgId, listenerId);
-      });
-
-      // Keep the stream open until the client disconnects
-      // We use a promise that resolves when the request is aborted
+      // Cleanup when the client disconnects and keep the stream open
       await new Promise<void>((resolve) => {
-        stream.onAbort(() => resolve());
+        stream.onAbort(() => {
+          clearInterval(keepaliveInterval);
+          sseHub.remove(orgId, listenerId);
+          resolve();
+        });
       });
     });
   });

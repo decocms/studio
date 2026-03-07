@@ -108,6 +108,18 @@ export class SqlThreadStorage implements ThreadStoragePort {
     return thread;
   }
 
+  async forceFailIfInProgress(id: string): Promise<boolean> {
+    const now = new Date().toISOString();
+    const result = await this.db
+      .updateTable("threads")
+      .set({ status: "failed", updated_at: now })
+      .where("id", "=", id)
+      .where("status", "=", "in_progress")
+      .executeTakeFirst();
+
+    return (result.numUpdatedRows ?? BigInt(0)) > BigInt(0);
+  }
+
   async delete(id: string): Promise<void> {
     await this.db.deleteFrom("threads").where("id", "=", id).execute();
   }

@@ -207,7 +207,10 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         });
       };
 
+      let threadCompleted = false;
       const completeThread = (status: ThreadStatus) => {
+        if (threadCompleted) return;
+        threadCompleted = true;
         ctx.storage.threads.update(mem.thread.id, { status }).catch((error) => {
           console.error(
             "[decopilot:stream] Error updating thread status",
@@ -260,7 +263,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // execute once MCP connections are established.
       abortSignal.addEventListener("abort", () => {
         closeClients?.();
-        failThread!();
+        failThread?.();
       });
 
       const isGatewayMode = agent.mode !== "passthrough";
@@ -387,26 +390,33 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
               abortSignal,
               model: modelProvider.fastModel ?? modelProvider.thinkingModel,
               userMessage: JSON.stringify(processedMessages[0]?.content),
-            }).then(async (title) => {
-              if (!title) return;
+            })
+              .then(async (title) => {
+                if (!title) return;
 
-              await ctx.storage.threads
-                .update(mem.thread.id, { title })
-                .catch((error) => {
-                  console.error(
-                    "[decopilot:stream] Error updating thread title",
-                    error,
-                  );
-                });
+                await ctx.storage.threads
+                  .update(mem.thread.id, { title })
+                  .catch((error) => {
+                    console.error(
+                      "[decopilot:stream] Error updating thread title",
+                      error,
+                    );
+                  });
 
-              if (!streamFinished) {
-                writer.write({
-                  type: "data-thread-title",
-                  data: { title },
-                  transient: true,
-                });
-              }
-            });
+                if (!streamFinished) {
+                  writer.write({
+                    type: "data-thread-title",
+                    data: { title },
+                    transient: true,
+                  });
+                }
+              })
+              .catch((error) => {
+                console.warn(
+                  "[decopilot:stream] Title generation failed:",
+                  error,
+                );
+              });
           }
 
           let reasoningStartAt: Date | null = null;
@@ -539,7 +549,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           console.error("[decopilot] stream error:", error);
 
           if (mem.thread.id) {
-            failThread!();
+            failThread?.();
           }
 
           return error instanceof Error ? error.message : String(error);
@@ -583,7 +593,8 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   // ============================================================================
 
   app.post("/:org/decopilot/cancel/:threadId", async (c) => {
-    const { threadId } = await validateThreadOwnership(c);
+    const { threadId, ctx, thread, organization } =
+      await validateThreadOwnership(c);
 
     if (runRegistry.cancelLocal(threadId)) {
       return c.json({ cancelled: true });
@@ -591,6 +602,36 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
     // Not on this pod — broadcast to all pods
     cancelBroadcast.broadcast(threadId);
+
+    // Ghost run: server restarted while a run was in progress. No pod has this
+    // run in memory, so the broadcast will never resolve. Force-fail the thread
+    // in the DB so the user can send new messages.
+    if (thread.status === "in_progress") {
+      console.warn("[decopilot:cancel] Ghost run detected, force-failing", {
+        threadId,
+      });
+      ctx.storage.threads
+        .forceFailIfInProgress(threadId)
+        .then((updated) => {
+          if (!updated) return;
+          streamBuffer.purge(threadId);
+          sseHub.emit(
+            organization.id,
+            createDecopilotThreadStatusEvent(threadId, "failed"),
+          );
+          sseHub.emit(
+            organization.id,
+            createDecopilotFinishEvent(threadId, "failed"),
+          );
+        })
+        .catch((err) => {
+          console.error(
+            "[decopilot:cancel] Failed to force-fail ghost thread",
+            { threadId, err },
+          );
+        });
+    }
+
     return c.json({ cancelled: true, async: true }, 202);
   });
 

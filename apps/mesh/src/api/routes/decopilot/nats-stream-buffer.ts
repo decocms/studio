@@ -128,7 +128,7 @@ export class NatsStreamBuffer implements StreamBuffer {
       );
     };
 
-    abortSignal?.addEventListener("abort", publishDone);
+    abortSignal?.addEventListener("abort", publishDone, { once: true });
 
     return stream.pipeThrough(
       new TransformStream({
@@ -180,6 +180,11 @@ export class NatsStreamBuffer implements StreamBuffer {
       }
     })();
 
+    const cleanup = () => {
+      sub.unsubscribe();
+      iter.return(undefined).catch(() => {});
+    };
+
     return new ReadableStream({
       async pull(controller) {
         while (true) {
@@ -195,7 +200,7 @@ export class NatsStreamBuffer implements StreamBuffer {
           ]);
           clearTimeout(timer);
           if (result.done) {
-            sub.unsubscribe();
+            cleanup();
             controller.close();
             return;
           }
@@ -203,7 +208,7 @@ export class NatsStreamBuffer implements StreamBuffer {
           try {
             const data = JSON.parse(decoder.decode(msg.data));
             if (data.done) {
-              sub.unsubscribe();
+              cleanup();
               controller.close();
               return;
             }
@@ -217,7 +222,7 @@ export class NatsStreamBuffer implements StreamBuffer {
         }
       },
       cancel() {
-        sub.unsubscribe();
+        cleanup();
       },
     });
   }
