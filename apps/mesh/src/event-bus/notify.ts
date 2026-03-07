@@ -14,6 +14,7 @@ import {
   hasPluginEventHandlers,
   routeEventsToPlugins,
 } from "@/core/plugin-loader";
+import { createClientPool } from "@/mcp-clients/outbound/client-pool";
 import { EventSubscriberBinding } from "@decocms/bindings";
 import type { ServerPluginEventContext } from "@decocms/bindings/server-plugin";
 import {
@@ -71,10 +72,17 @@ export function createNotifySubscriber(): NotifySubscriberFn {
             });
           },
           createMCPProxy: async (targetConnectionId: string) => {
-            // Use super-user proxy since this runs in a background worker context
+            // Use super-user proxy since this runs in a background worker context.
+            // Each call gets an isolated client pool so concurrent steps (e.g. parallel
+            // workflow tool steps) don't share the same downstream MCP connection —
+            // StreamableHTTPClientTransport sessions are not safe for concurrent use.
+            const isolatedCtx = {
+              ...ctx,
+              getOrCreateClient: createClientPool(),
+            };
             const proxy = await dangerouslyCreateSuperUserMCPProxy(
               targetConnectionId,
-              ctx,
+              isolatedCtx,
             );
             // Wrap to match the simplified ServerPluginEventContext interface
             return {

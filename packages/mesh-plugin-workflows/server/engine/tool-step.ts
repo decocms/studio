@@ -96,7 +96,6 @@ export async function executeToolStep(
       error: errorMessage,
     };
   } finally {
-    // Fire-and-forget close
     proxy?.close().catch(() => {});
   }
 
