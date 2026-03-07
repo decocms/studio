@@ -26,6 +26,7 @@ import { useCollectionCachePrefill } from "../../../hooks/use-collection-cache-p
 import { useLocalStorage } from "../../../hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "../../../lib/localstorage-keys";
 import { KEYS } from "../../../lib/query-keys";
+import { useDecopilotEvents } from "../../../hooks/use-decopilot-events";
 import {
   addTaskToCache,
   prefetchTaskMessages,
@@ -37,7 +38,7 @@ import {
   callUpdateTaskTool,
   findNextAvailableTask,
 } from "./helpers.ts";
-import type { ChatMessage, Task } from "./types.ts";
+import type { ChatMessage, Task, TasksInfiniteQueryData } from "./types.ts";
 import { TASK_CONSTANTS } from "./types.ts";
 
 export type TaskOwnerFilter = "me" | "everyone";
@@ -294,6 +295,43 @@ export function useTaskManager() {
   ) => {
     updateMessagesCache(queryClient, client, org.id, taskId, newMessages);
   };
+
+  // Subscribe to org-wide SSE events so the task list stays real-time.
+  // No taskId filter — we want status changes for ALL threads in the org.
+  useDecopilotEvents({
+    orgId: org.id,
+    enabled: true,
+    onTaskStatus: (event) => {
+      const threadId = event.subject;
+      const newStatus = event.data.status;
+      const updatedAt = event.time;
+
+      for (const filter of ["me", "everyone"] as const) {
+        const cached = queryClient.getQueryData<TasksInfiniteQueryData>(
+          KEYS.tasks(locator, filter),
+        );
+        const inCache =
+          cached?.pages.some((p) => p.items.some((t) => t.id === threadId)) ??
+          false;
+
+        if (inCache) {
+          updateTaskInCache(
+            queryClient,
+            locator,
+            threadId,
+            { status: newStatus, updated_at: updatedAt },
+            filter,
+          );
+        } else if (filter === "everyone") {
+          // Task not yet in the "everyone" cache — could be a new task from
+          // another user. Mark as stale so the next render triggers a refetch.
+          queryClient.invalidateQueries({
+            queryKey: KEYS.tasks(locator, "everyone"),
+          });
+        }
+      }
+    },
+  });
 
   return {
     tasks,

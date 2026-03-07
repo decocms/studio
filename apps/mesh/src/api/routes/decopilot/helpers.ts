@@ -170,10 +170,11 @@ export async function toolsFromMCP(
 }
 
 /**
- * Validate that the caller owns the thread and it belongs to the org.
- * Reusable across cancel, attach, and other thread-scoped endpoints.
+ * Validate that a thread exists and belongs to the org.
+ * Does NOT enforce ownership — any authenticated org member can access.
+ * Use this for read-only / observability endpoints (e.g. attach).
  */
-export async function validateThreadOwnership(
+export async function validateThreadAccess(
   c: Context<{ Variables: { meshContext: MeshContext } }>,
 ) {
   const ctx = c.get("meshContext");
@@ -193,8 +194,20 @@ export async function validateThreadOwnership(
   if (!thread || thread.organization_id !== organization.id) {
     throw new HTTPException(404, { message: "Thread not found" });
   }
-  if (thread.created_by !== userId) {
+  return { ctx, organization, thread, threadId, userId };
+}
+
+/**
+ * Validate that the caller owns the thread and it belongs to the org.
+ * Use this for mutating endpoints (e.g. cancel) where only the owner
+ * should be allowed to act.
+ */
+export async function validateThreadOwnership(
+  c: Context<{ Variables: { meshContext: MeshContext } }>,
+) {
+  const result = await validateThreadAccess(c);
+  if (result.thread.created_by !== result.userId) {
     throw new HTTPException(403, { message: "Not authorized" });
   }
-  return { ctx, organization, thread, threadId, userId };
+  return result;
 }

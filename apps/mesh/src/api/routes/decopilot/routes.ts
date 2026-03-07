@@ -42,6 +42,7 @@ import {
 import {
   ensureOrganization,
   toolsFromMCP,
+  validateThreadAccess,
   validateThreadOwnership,
 } from "./helpers";
 import { createMemory } from "./memory";
@@ -649,7 +650,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
   app.get("/:org/decopilot/attach/:threadId", async (c) => {
     try {
-      const { threadId } = await validateThreadOwnership(c);
+      const { threadId } = await validateThreadAccess(c);
 
       const run = runRegistry.getRun(threadId);
       if (!run || run.status !== "running") {
