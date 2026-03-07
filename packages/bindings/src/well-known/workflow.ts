@@ -125,10 +125,22 @@ const JsonSchemaSchema: z.ZodType<JsonSchema> = z.lazy(() =>
     .passthrough(),
 );
 
+/**
+ * Step names that are reserved by the @ref system and cannot be used as step names.
+ * These are intercepted before step lookup in the ref resolver.
+ */
+export const RESERVED_STEP_NAMES = ["input", "item", "index", "ctx"] as const;
+
 export const StepSchema = z.object({
   name: z
     .string()
     .min(1)
+    .refine(
+      (name) => !(RESERVED_STEP_NAMES as readonly string[]).includes(name),
+      {
+        message: `Step name is reserved. Reserved names: ${RESERVED_STEP_NAMES.join(", ")}`,
+      },
+    )
     .describe(
       "Unique identifier for this step. Other steps reference its output as @name.field",
     ),
