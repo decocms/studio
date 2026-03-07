@@ -7,8 +7,8 @@
  *
  * Cross-pod support:
  * The hub delegates broadcasting to an SSEBroadcastStrategy. In single-process
- * mode (LocalSSEBroadcast), events stay in-memory. In multi-pod deployments
- * (NatsSSEBroadcast), events are replicated to all pods via NATS pub/sub.
+ * mode, events stay in-memory. In multi-pod deployments (NatsSSEBroadcast),
+ * events are replicated to all pods via NATS pub/sub.
  *
  * Design goals:
  * - Zero buffering: events are written directly to the stream
@@ -19,10 +19,7 @@
  */
 
 import type { Event } from "../storage/types";
-import {
-  LocalSSEBroadcast,
-  type SSEBroadcastStrategy,
-} from "./sse-broadcast-strategy";
+import type { SSEBroadcastStrategy } from "./sse-broadcast-strategy";
 
 // ============================================================================
 // Types
@@ -69,13 +66,13 @@ const MAX_TOTAL_CONNECTIONS = 500;
  * Memory usage is proportional to connected SSE clients, not event volume.
  *
  * The broadcast strategy controls whether events reach only this process
- * (LocalSSEBroadcast) or all pods (NatsSSEBroadcast).
+ * all pods (NatsSSEBroadcast).
  */
 class SSEHub {
   /** Listeners indexed by organizationId for fast lookup */
   private listeners = new Map<string, Map<string, SSEListener>>();
   private totalCount = 0;
-  private strategy: SSEBroadcastStrategy = new LocalSSEBroadcast();
+  private strategy: SSEBroadcastStrategy | null = null;
   private started = false;
 
   /**
@@ -96,7 +93,7 @@ class SSEHub {
       this.strategy = strategy;
     }
 
-    await this.strategy.start((orgId, event) => this.localEmit(orgId, event));
+    await this.strategy?.start((orgId, event) => this.localEmit(orgId, event));
     this.started = true;
   }
 
@@ -105,7 +102,7 @@ class SSEHub {
    */
   async stop(): Promise<void> {
     if (!this.started) return;
-    await this.strategy.stop();
+    await this.strategy?.stop();
     this.started = false;
   }
 
@@ -163,7 +160,7 @@ class SSEHub {
    * both local delivery and cross-pod replication.
    */
   emit(organizationId: string, event: SSEEvent): void {
-    this.strategy.broadcast(organizationId, event);
+    this.strategy?.broadcast(organizationId, event);
   }
 
   /**

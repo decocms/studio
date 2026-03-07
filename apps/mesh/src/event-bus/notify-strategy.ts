@@ -45,12 +45,10 @@ export interface NotifyStrategy {
  * @example
  * ```ts
  * import { compose } from "./notify-strategy";
- * import { PollingStrategy } from "./polling";
- * import { PostgresNotifyStrategy } from "./postgres-notify";
+ * import { NatsNotifyStrategy } from "./nats-notify";
  *
  * const strategy = compose(
- *   new PollingStrategy(30000),        // Safety net: poll every 30s
- *   new PostgresNotifyStrategy(pool),  // Primary: LISTEN/NOTIFY
+ *   new NatsNotifyStrategy(natsProvider),  // Primary: NATS pub/sub
  * );
  * ```
  */

@@ -33,23 +33,3 @@ export interface SSEBroadcastStrategy {
   /** Stop the strategy and release resources. */
   stop(): Promise<void>;
 }
-
-/**
- * Local-only broadcast — events are emitted to the current process only.
- * Suitable for single-process deployments and local development.
- */
-export class LocalSSEBroadcast implements SSEBroadcastStrategy {
-  private localEmit: LocalEmitFn | null = null;
-
-  async start(localEmit: LocalEmitFn): Promise<void> {
-    this.localEmit = localEmit;
-  }
-
-  broadcast(organizationId: string, event: SSEEvent): void {
-    this.localEmit?.(organizationId, event);
-  }
-
-  async stop(): Promise<void> {
-    this.localEmit = null;
-  }
-}

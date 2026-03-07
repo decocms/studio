@@ -41,23 +41,3 @@ export interface StreamBuffer {
   /** Release resources (clear references, called on shutdown). */
   teardown(): void;
 }
-
-/**
- * No-op stream buffer — late-join disabled, relay is passthrough.
- * Used when NATS/JetStream is not configured.
- */
-export class NoOpStreamBuffer implements StreamBuffer {
-  async init(): Promise<void> {}
-
-  relay(stream: ReadableStream): ReadableStream {
-    return stream;
-  }
-
-  async createReplayStream(): Promise<ReadableStream | null> {
-    return null;
-  }
-
-  purge(): void {}
-
-  teardown(): void {}
-}
