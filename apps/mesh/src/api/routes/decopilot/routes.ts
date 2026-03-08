@@ -8,13 +8,7 @@
 import type { MeshContext } from "@/core/mesh-context";
 import { clientFromConnection, withStreamingSupport } from "@/mcp-clients";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
-import {
-  sanitizeProviderMetadata,
-  createDecopilotStepEvent,
-  createDecopilotFinishEvent,
-  createDecopilotThreadStatusEvent,
-  type ThreadStatus,
-} from "@decocms/mesh-sdk";
+import { sanitizeProviderMetadata } from "@decocms/mesh-sdk";
 import {
   consumeStream,
   createUIMessageStream,
@@ -47,7 +41,6 @@ import {
 } from "./helpers";
 import { createMemory } from "./memory";
 import { ensureModelCompatibility } from "./model-compat";
-import { sseHub } from "@/event-bus";
 import type { CancelBroadcast } from "./cancel-broadcast";
 import type { StreamBuffer } from "./stream-buffer";
 import type { RunRegistry } from "./run-registry";
@@ -134,8 +127,9 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   // ============================================================================
 
   app.post("/:org/decopilot/stream", async (c) => {
-    let failThread: (() => void) | undefined;
+    let runStarted = false;
     let closeClients: (() => void) | undefined;
+    let threadId: string | undefined;
     try {
       const ctx = c.get("meshContext");
 
@@ -191,6 +185,8 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         }),
       ]);
 
+      threadId = mem.thread.id;
+
       if (mem.thread.created_by !== userId) {
         throw new HTTPException(403, {
           message:
@@ -216,32 +212,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         });
       };
 
-      let threadCompleted = false;
-      const completeThread = (status: ThreadStatus) => {
-        if (threadCompleted) return;
-        threadCompleted = true;
-        ctx.storage.threads.update(mem.thread.id, { status }).catch((error) => {
-          console.error(
-            "[decopilot:stream] Error updating thread status",
-            error,
-          );
-        });
-        const runStatus = status === "completed" ? "completed" : "failed";
-        runRegistry.finishRun(mem.thread.id, runStatus, (id) =>
-          streamBuffer.purge(id),
-        );
-        sseHub.emit(
-          organization.id,
-          createDecopilotThreadStatusEvent(mem.thread.id, status),
-        );
-        sseHub.emit(
-          organization.id,
-          createDecopilotFinishEvent(mem.thread.id, status),
-        );
-      };
-
-      failThread = () => completeThread("failed");
-
       if (!modelConnection) {
         throw new Error("Model connection not found");
       }
@@ -250,29 +220,38 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         throw new Error("Agent not found");
       }
 
-      // Mark thread as in_progress at the start of streaming
-      await ctx.storage.threads.update(mem.thread.id, {
-        status: "in_progress",
+      // Dispatch START: marks thread in_progress in DB, emits SSE, registers run
+      await runRegistry.execute({
+        type: "START",
+        threadId: mem.thread.id,
+        orgId: organization.id,
+        userId,
+        abortController: new AbortController(),
       });
-      sseHub.emit(
-        organization.id,
-        createDecopilotThreadStatusEvent(mem.thread.id, "in_progress"),
-      );
+      runStarted = true;
 
-      // Register run so it survives client disconnect; cancel uses run's AbortController
-      const run = runRegistry.startRun(mem.thread.id, organization.id, userId);
-      const abortSignal = run.abortController.signal;
+      const abortSignal = runRegistry.getAbortSignal(mem.thread.id);
+      if (!abortSignal) {
+        // A CANCEL broadcast arrived between execute(START) and getAbortSignal.
+        // The run was torn down before we could attach; treat as an error.
+        await runRegistry.execute({
+          type: "FINISH",
+          threadId: mem.thread.id,
+          threadStatus: "failed",
+        });
+        throw new HTTPException(409, {
+          message: "Run was cancelled immediately after starting",
+        });
+      }
 
       // Purge stale buffered chunks from any previous run on this thread
       streamBuffer.purge(mem.thread.id);
 
       await saveMessagesToThread(requestMessage);
 
-      // Register abort handler early — closeClients is populated inside
-      // execute once MCP connections are established.
+      // Close MCP clients on abort; run completion is handled by onFinish/onError
       abortSignal.addEventListener("abort", () => {
         closeClients?.();
-        failThread?.();
       });
 
       const isGatewayMode = agent.mode !== "passthrough";
@@ -280,8 +259,10 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         models.thinking.limits?.maxOutputTokens ?? DEFAULT_MAX_TOKENS;
 
       let streamFinished = false;
-      let stepCount = 0;
-      let pendingSave: Promise<void> | null = null;
+      // Fire-and-forget promises from onStepFinish (reactor calls + periodic
+      // saves). Accumulated here and flushed in onFinish before the final save
+      // so message ordering is preserved.
+      const pendingOps: Promise<void>[] = [];
 
       // Pre-load conversation with a basic system prompt (no agent-specific
       // instructions). Agent instructions come from the passthrough MCP
@@ -521,10 +502,12 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           streamFinished = true;
           closeClients?.();
 
-          if (pendingSave) await pendingSave;
+          // Flush all fire-and-forget ops accumulated in onStepFinish before
+          // the final save to preserve message ordering.
+          await Promise.allSettled(pendingOps);
           await saveMessagesToThread(responseMessage);
 
-          // Abort listener already called failThread(); skip status update
+          // CANCEL already dispatched FINISH via the abort path; skip
           if (abortSignal.aborted) return;
 
           const threadStatus = resolveThreadStatus(
@@ -536,30 +519,57 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
             }[],
           );
 
-          completeThread(threadStatus);
+          await runRegistry.execute({
+            type: "FINISH",
+            threadId: mem.thread.id,
+            threadStatus,
+          });
         },
         onStepFinish: ({ responseMessage }) => {
-          stepCount++;
-          sseHub.emit(
-            organization.id,
-            createDecopilotStepEvent(mem.thread.id, stepCount),
+          // Sync callback — must not block the agent loop. Dispatch the command
+          // synchronously (to inspect the resulting event), then fire the
+          // reactor as a tracked promise to be flushed in onFinish.
+          const transitions = runRegistry.dispatch({
+            type: "STEP_DONE",
+            threadId: mem.thread.id,
+          });
+          pendingOps.push(
+            runRegistry.react(transitions).catch((e) => {
+              console.error(
+                "[decopilot:stream] onStepFinish reactor failed",
+                e,
+              );
+            }),
           );
-          if (stepCount % 5 === 0) {
-            pendingSave = saveMessagesToThread(responseMessage).finally(() => {
-              pendingSave = null;
-            });
+          const stepEvent = transitions[0]?.event;
+          if (
+            stepEvent?.type === "STEP_COMPLETED" &&
+            stepEvent.stepCount % 5 === 0
+          ) {
+            pendingOps.push(
+              saveMessagesToThread(responseMessage).catch((e) => {
+                console.error("[decopilot:stream] onStepFinish save failed", e);
+              }),
+            );
           }
         },
         onError: (error) => {
           streamFinished = true;
           closeClients?.();
-          if (abortSignal.aborted)
+          if (abortSignal.aborted) {
             return error instanceof Error ? error.message : String(error);
+          }
           console.error("[decopilot] stream error:", error);
 
-          if (mem.thread.id) {
-            failThread?.();
-          }
+          runRegistry
+            .execute({
+              type: "FINISH",
+              threadId: mem.thread.id,
+              threadStatus: "failed",
+            })
+            .catch((e) => {
+              console.error("[decopilot:stream] onError reactor failed", e);
+            });
 
           return error instanceof Error ? error.message : String(error);
         },
@@ -571,8 +581,17 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       });
     } catch (err) {
       closeClients?.();
-      if (failThread) {
-        failThread();
+
+      if (runStarted && threadId) {
+        runRegistry
+          .execute({
+            type: "FINISH",
+            threadId,
+            threadStatus: "failed",
+          })
+          .catch((e) => {
+            console.error("[decopilot:stream] catch-block reactor failed", e);
+          });
       }
 
       console.error("[decopilot:stream] Error", err);
@@ -602,10 +621,14 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   // ============================================================================
 
   app.post("/:org/decopilot/cancel/:threadId", async (c) => {
-    const { threadId, ctx, thread, organization } =
-      await validateThreadOwnership(c);
+    const { threadId, thread, organization } = await validateThreadOwnership(c);
 
-    if (runRegistry.cancelLocal(threadId)) {
+    // Try to cancel locally first
+    const cancelTransitions = await runRegistry.execute({
+      type: "CANCEL",
+      threadId,
+    });
+    if (cancelTransitions.some((t) => t.event.type === "RUN_FAILED")) {
       return c.json({ cancelled: true });
     }
 
@@ -619,24 +642,20 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       console.warn("[decopilot:cancel] Ghost run detected, force-failing", {
         threadId,
       });
-      ctx.storage.threads
-        .forceFailIfInProgress(threadId)
-        .then((updated) => {
-          if (!updated) return;
-          streamBuffer.purge(threadId);
-          sseHub.emit(
-            organization.id,
-            createDecopilotThreadStatusEvent(threadId, "failed"),
-          );
-          sseHub.emit(
-            organization.id,
-            createDecopilotFinishEvent(threadId, "failed"),
-          );
+      runRegistry
+        .execute({
+          type: "FORCE_FAIL",
+          threadId,
+          reason: "ghost",
+          orgId: organization.id,
         })
         .catch((err) => {
           console.error(
             "[decopilot:cancel] Failed to force-fail ghost thread",
-            { threadId, err },
+            {
+              threadId,
+              err,
+            },
           );
         });
     }
@@ -652,8 +671,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
     try {
       const { threadId } = await validateThreadAccess(c);
 
-      const run = runRegistry.getRun(threadId);
-      if (!run || run.status !== "running") {
+      if (!runRegistry.isRunning(threadId)) {
         return c.body(null, 204);
       }
 
