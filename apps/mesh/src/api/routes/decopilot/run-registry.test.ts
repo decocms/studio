@@ -1,4 +1,4 @@
-import { describe, it, expect, mock } from "bun:test";
+import { afterEach, describe, expect, it, mock } from "bun:test";
 import { RunRegistry } from "./run-registry";
 import type { StreamBuffer } from "./stream-buffer";
 import type { RunReactorDeps } from "./run-reactor";
@@ -24,12 +24,24 @@ function makeNoopDeps(): RunReactorDeps {
   };
 }
 
-/** Create a registry backed by no-op mocks. */
-function createRegistry() {
-  return new RunRegistry(makeNoopDeps());
+const createdRegistries: RunRegistry[] = [];
+
+afterEach(() => {
+  for (const r of createdRegistries) r.dispose();
+  createdRegistries.length = 0;
+});
+
+/** Create a registry backed by no-op mocks and register it for cleanup. */
+function createRegistry(
+  deps = makeNoopDeps(),
+  clock?: () => Date,
+): RunRegistry {
+  const r = clock ? new RunRegistry(deps, clock) : new RunRegistry(deps);
+  createdRegistries.push(r);
+  return r;
 }
 
-/** Dispatch a START command for a given thread and return the registry. */
+/** Dispatch a START command for a given thread and return the transitions. */
 function startThread(
   registry: RunRegistry,
   threadId: string,
@@ -43,6 +55,11 @@ function startThread(
     userId,
     abortController: new AbortController(),
   });
+}
+
+/** Flush all immediately-resolved promise microtasks. */
+async function flushMicrotasks(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 // ---------------------------------------------------------------------------
@@ -299,9 +316,9 @@ describe("RunRegistry", () => {
   // stopAll
   // -------------------------------------------------------------------------
   describe("stopAll", () => {
-    it("aborts running entries, calls storage.update for each, and clears the map", () => {
+    it("aborts running entries, triggers reactor side-effects, and marks them not running", async () => {
       const deps = makeNoopDeps();
-      const registry = new RunRegistry(deps);
+      const registry = createRegistry(deps);
 
       startThread(registry, "t1", "org1", "u1");
       startThread(registry, "t2", "org1", "u2");
@@ -319,19 +336,91 @@ describe("RunRegistry", () => {
 
       registry.stopAll();
 
+      // Dispatch is synchronous — aborts and map removals happen immediately
       expect(signalT1.aborted).toBe(true);
       expect(signalT2.aborted).toBe(true);
+      expect(registry.isRunning("t1")).toBe(false);
+      expect(registry.isRunning("t2")).toBe(false);
 
-      expect(deps.storage.update).toHaveBeenCalledTimes(2);
+      // reactAll is fire-and-forget — flush promise microtasks before asserting I/O
+      await flushMicrotasks();
+
       expect(deps.storage.update).toHaveBeenCalledWith("t1", {
         status: "failed",
       });
       expect(deps.storage.update).toHaveBeenCalledWith("t2", {
         status: "failed",
       });
+      expect(deps.streamBuffer.purge).toHaveBeenCalledWith("t1");
+      expect(deps.streamBuffer.purge).toHaveBeenCalledWith("t2");
+      expect(deps.sseHub.emit).toHaveBeenCalledWith(
+        "org1",
+        expect.objectContaining({ type: expect.stringContaining("thread") }),
+      );
+    });
+  });
 
+  // -------------------------------------------------------------------------
+  // reapStaleRuns
+  // -------------------------------------------------------------------------
+  describe("reapStaleRuns", () => {
+    const MAX_RUN_AGE_MS = 30 * 60 * 1000;
+
+    it("reaps a run past MAX_RUN_AGE_MS and triggers reactor side-effects", async () => {
+      const deps = makeNoopDeps();
+      let now = new Date("2024-01-01T00:00:00Z");
+      const registry = createRegistry(deps, () => now);
+
+      startThread(registry, "t1", "org1", "u1");
+      const signal = registry.getAbortSignal("t1")!;
+
+      // Advance time past the threshold
+      now = new Date(now.getTime() + MAX_RUN_AGE_MS + 1);
+
+      (registry as any).reapStaleRuns();
+
+      expect(signal.aborted).toBe(true);
       expect(registry.isRunning("t1")).toBe(false);
-      expect(registry.isRunning("t2")).toBe(false);
+
+      await flushMicrotasks();
+
+      expect(deps.storage.update).toHaveBeenCalledWith("t1", {
+        status: "failed",
+      });
+      expect(deps.streamBuffer.purge).toHaveBeenCalledWith("t1");
+    });
+
+    it("does not reap a run just under MAX_RUN_AGE_MS", () => {
+      const deps = makeNoopDeps();
+      let now = new Date("2024-01-01T00:00:00Z");
+      const registry = createRegistry(deps, () => now);
+
+      startThread(registry, "t1", "org1", "u1");
+
+      // Advance time to just under the threshold
+      now = new Date(now.getTime() + MAX_RUN_AGE_MS - 1);
+
+      (registry as any).reapStaleRuns();
+
+      expect(registry.isRunning("t1")).toBe(true);
+      expect(deps.storage.update).not.toHaveBeenCalled();
+    });
+
+    it("reaps only stale runs when multiple threads are present", async () => {
+      const deps = makeNoopDeps();
+      let now = new Date("2024-01-01T00:00:00Z");
+      const registry = createRegistry(deps, () => now);
+
+      startThread(registry, "old", "org1", "u1");
+
+      // Advance clock, then start a fresh run
+      now = new Date(now.getTime() + MAX_RUN_AGE_MS + 1);
+      startThread(registry, "fresh", "org1", "u2");
+
+      (registry as any).reapStaleRuns();
+
+      expect(registry.isRunning("old")).toBe(false);
+      expect(registry.isRunning("fresh")).toBe(true);
     });
   });
 });

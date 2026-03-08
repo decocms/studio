@@ -1,7 +1,7 @@
 import { describe, it, expect, mock } from "bun:test";
 import { reactAll } from "./run-reactor";
 import type { RunReactorDeps } from "./run-reactor";
-import type { RunEventPair } from "./run-state";
+import type { RunTransition } from "./run-state";
 import type { StreamBuffer } from "./stream-buffer";
 
 // ============================================================================
@@ -47,7 +47,7 @@ describe("reactAll", () => {
   describe("RUN_STARTED", () => {
     it("calls storage.update with in_progress and emits 1 SSE event", async () => {
       const deps = makeDeps();
-      const pairs: RunEventPair[] = [
+      const pairs: RunTransition[] = [
         {
           event: {
             type: "RUN_STARTED",
@@ -72,11 +72,16 @@ describe("reactAll", () => {
   });
 
   describe("STEP_COMPLETED", () => {
-    it("emits 1 SSE step event when orgId is on the state", async () => {
+    it("emits 1 SSE step event using orgId from the event", async () => {
       const deps = makeDeps();
-      const pairs: RunEventPair[] = [
+      const pairs: RunTransition[] = [
         {
-          event: { type: "STEP_COMPLETED", threadId: "t1", stepCount: 3 },
+          event: {
+            type: "STEP_COMPLETED",
+            threadId: "t1",
+            orgId: "org1",
+            stepCount: 3,
+          },
           state: makeRunningState("t1", "org1"),
         },
       ];
@@ -86,26 +91,12 @@ describe("reactAll", () => {
       expect(deps.storage.update).not.toHaveBeenCalled();
       expect(deps.sseHub.emit).toHaveBeenCalledTimes(1);
     });
-
-    it("skips SSE when state is absent (no orgId)", async () => {
-      const deps = makeDeps();
-      const pairs: RunEventPair[] = [
-        {
-          event: { type: "STEP_COMPLETED", threadId: "t1", stepCount: 3 },
-          state: undefined,
-        },
-      ];
-
-      await reactAll(pairs, deps);
-
-      expect(deps.sseHub.emit).not.toHaveBeenCalled();
-    });
   });
 
   describe("RUN_COMPLETED", () => {
     it("calls storage.update(completed), purges buffer, emits 2 SSE events", async () => {
       const deps = makeDeps();
-      const pairs: RunEventPair[] = [
+      const pairs: RunTransition[] = [
         {
           event: {
             type: "RUN_COMPLETED",
@@ -132,7 +123,7 @@ describe("reactAll", () => {
   describe("RUN_REQUIRES_ACTION", () => {
     it("calls storage.update(requires_action), purges buffer, emits 2 SSE events", async () => {
       const deps = makeDeps();
-      const pairs: RunEventPair[] = [
+      const pairs: RunTransition[] = [
         {
           event: {
             type: "RUN_REQUIRES_ACTION",
@@ -159,7 +150,7 @@ describe("reactAll", () => {
     it("error/cancelled/reaped reasons: calls storage.update(failed), purges buffer, emits 2 SSE events", async () => {
       for (const reason of ["error", "cancelled", "reaped"] as const) {
         const deps = makeDeps();
-        const pairs: RunEventPair[] = [
+        const pairs: RunTransition[] = [
           {
             event: {
               type: "RUN_FAILED",
@@ -184,7 +175,7 @@ describe("reactAll", () => {
 
     it("ghost reason: calls forceFailIfInProgress instead of storage.update", async () => {
       const deps = makeDeps();
-      const pairs: RunEventPair[] = [
+      const pairs: RunTransition[] = [
         {
           event: {
             type: "RUN_FAILED",
@@ -209,7 +200,7 @@ describe("reactAll", () => {
   describe("PREVIOUS_RUN_ABORTED", () => {
     it("is a no-op — no storage, buffer, or SSE side effects", async () => {
       const deps = makeDeps();
-      const pairs: RunEventPair[] = [
+      const pairs: RunTransition[] = [
         {
           event: {
             type: "PREVIOUS_RUN_ABORTED",
@@ -237,7 +228,7 @@ describe("reactAll", () => {
         () => Promise.reject(new Error("DB error")),
       );
 
-      const pairs: RunEventPair[] = [
+      const pairs: RunTransition[] = [
         {
           event: {
             type: "RUN_STARTED",
@@ -249,7 +240,12 @@ describe("reactAll", () => {
           state: makeRunningState(),
         },
         {
-          event: { type: "STEP_COMPLETED", threadId: "t1", stepCount: 1 },
+          event: {
+            type: "STEP_COMPLETED",
+            threadId: "t1",
+            orgId: "org1",
+            stepCount: 1,
+          },
           state: makeRunningState(),
         },
       ];

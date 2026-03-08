@@ -1,13 +1,13 @@
 /**
- * Run Reactor — side-effect handler for run lifecycle events
+ * Run Reactor — impure shell of the run lifecycle pipeline
  *
  * Every DB write, SSE emit, and stream buffer purge triggered by a run
- * state transition lives here. The reactor is the only place in the
- * decopilot pipeline that performs I/O in response to run events.
+ * state transition lives here. This is the only layer in the pipeline
+ * that performs I/O; decide() and project() are kept pure.
  *
- * Usage:
- *   const pairs = runRegistry.dispatch(command);
- *   await reactAll(pairs, deps);
+ * Consumed via RunRegistry — callers should not use reactAll directly:
+ *   registry.execute(command)          — dispatch + react (common case)
+ *   registry.react(transitions)        — react only, after inspect-then-react
  */
 
 import type { SSEEvent } from "@/event-bus";
@@ -18,7 +18,7 @@ import {
   createDecopilotThreadStatusEvent,
 } from "@decocms/mesh-sdk";
 import type { StreamBuffer } from "./stream-buffer";
-import type { RunEvent, RunEventPair, RunState } from "./run-state";
+import type { RunEvent, RunTransition } from "./run-state";
 
 // ============================================================================
 // Deps
@@ -51,11 +51,7 @@ async function handleTerminalStatus(
 // react — handle a single event
 // ============================================================================
 
-async function react(
-  event: RunEvent,
-  state: RunState | undefined,
-  deps: RunReactorDeps,
-): Promise<void> {
+async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
   const { storage, streamBuffer, sseHub } = deps;
 
   switch (event.type) {
@@ -68,13 +64,10 @@ async function react(
       return;
 
     case "STEP_COMPLETED":
-      // state is post-projection running state; orgId lives on RunState root
-      if (state?.orgId) {
-        sseHub.emit(
-          state.orgId,
-          createDecopilotStepEvent(event.threadId, event.stepCount),
-        );
-      }
+      sseHub.emit(
+        event.orgId,
+        createDecopilotStepEvent(event.threadId, event.stepCount),
+      );
       return;
 
     case "RUN_COMPLETED":
@@ -120,7 +113,9 @@ async function react(
       // subsequent RUN_STARTED event sets it back to in_progress, so audit
       // continuity is preserved. No additional DB write or SSE event is emitted
       // here intentionally — adding one would require a design decision about
-      // which status/reason to report and is deferred to a follow-up.
+      // which status/reason to report.
+      // TODO: tracked in https://github.com/decocms/mesh/issues — emit a terminal
+      // SSE event and record the interrupted DB row before the new run starts.
       return;
   }
 }
@@ -130,10 +125,10 @@ async function react(
 // ============================================================================
 
 export async function reactAll(
-  pairs: RunEventPair[],
+  transitions: RunTransition[],
   deps: RunReactorDeps,
 ): Promise<void> {
-  for (const { event, state } of pairs) {
-    await react(event, state, deps);
+  for (const { event } of transitions) {
+    await react(event, deps);
   }
 }

@@ -1,12 +1,19 @@
 /**
- * RunRegistry — in-memory event-sourced dispatcher for Decopilot run state
+ * RunRegistry — stateful dispatcher for decopilot run lifecycle
  *
- * Wraps the pure decider + projector into a stateful registry. Tracks all
- * in-flight and recently-finished runs by threadId. A reaper timer evicts
- * runs that have been in the "running" state for longer than MAX_RUN_AGE_MS.
+ * Wraps the pure decide + project functions into a stateful registry. Tracks
+ * all in-flight runs by threadId. A reaper timer evicts runs that have been
+ * in the "running" state for longer than MAX_RUN_AGE_MS.
+ *
+ * Entry points:
+ *   execute(command)           — dispatch + react in one call (common case)
+ *   dispatch(command)          — sync only; use when you need to inspect the
+ *                                resulting transitions before reacting
+ *   react(transitions)         — apply the reactor to already-dispatched
+ *                                transitions; pair with dispatch() above
  */
 
-import type { RunCommand, RunEventPair, RunState } from "./run-state";
+import type { RunCommand, RunTransition, RunState } from "./run-state";
 import { decide } from "./run-decider";
 import { project } from "./run-projector";
 import type { RunReactorDeps } from "./run-reactor";
@@ -32,13 +39,26 @@ export class RunRegistry {
   }
 
   /**
-   * Apply a command: run it through the decider, fold each resulting event
-   * through the projector, and return the (event, state) pairs produced.
+   * Convenience wrapper: dispatch the command, then run the reactor against
+   * all resulting transitions. Returns the transitions for callers that need
+   * to inspect which events were produced.
    */
-  dispatch(command: RunCommand): RunEventPair[] {
+  async execute(command: RunCommand): Promise<RunTransition[]> {
+    const transitions = this.dispatch(command);
+    await this.react(transitions);
+    return transitions;
+  }
+
+  /**
+   * Sync half of the pipeline: run the command through the decider, fold each
+   * resulting event through the projector, and return the transitions produced.
+   * Call react() afterwards to trigger DB/SSE side effects, or use execute()
+   * to do both in one step.
+   */
+  dispatch(command: RunCommand): RunTransition[] {
     const current = this.states.get(command.threadId);
     const events = decide(command, current);
-    const pairs: RunEventPair[] = [];
+    const transitions: RunTransition[] = [];
 
     for (const event of events) {
       const stateBeforeEvent = this.states.get(event.threadId);
@@ -61,10 +81,19 @@ export class RunRegistry {
         this.states.set(event.threadId, newState);
       }
 
-      pairs.push({ event, state: newState });
+      transitions.push({ event, state: newState });
     }
 
-    return pairs;
+    return transitions;
+  }
+
+  /**
+   * Async half of the pipeline: run the reactor against transitions returned
+   * by a prior dispatch() call. Use this when you need to inspect transitions
+   * synchronously before triggering side effects (e.g. onStepFinish).
+   */
+  react(transitions: RunTransition[]): Promise<void> {
+    return reactAll(transitions, this.deps);
   }
 
   /** Returns the AbortSignal for the running thread, or null if not running. */
@@ -82,19 +111,19 @@ export class RunRegistry {
   }
 
   /**
-   * Abort every running entry, persist failure status, and clear the map.
-   * Called during graceful shutdown.
+   * Abort every running entry and trigger the full reactor pipeline for each
+   * (DB update, stream buffer purge, SSE emit). Called during graceful shutdown.
+   * dispatch() is synchronous so state entries are evicted immediately;
+   * react() fires as fire-and-forget.
    */
   stopAll(): void {
     for (const [threadId, state] of this.states) {
       if (state.status.tag === "running") {
-        state.status.abortController.abort();
-        this.deps.storage
-          .update(threadId, { status: "failed" })
-          .catch(() => {});
+        this.execute({ type: "FORCE_FAIL", threadId, reason: "reaped" }).catch(
+          () => {},
+        );
       }
     }
-    this.states.clear();
   }
 
   /** Stop the reaper timer. Call once during server shutdown. */
@@ -115,13 +144,12 @@ export class RunRegistry {
         console.warn(
           `[RunRegistry] Reaping stale run for thread ${threadId} ...`,
         );
-        const pairs = this.dispatch({
+        this.execute({
           type: "FORCE_FAIL",
           threadId,
           reason: "reaped",
-        });
-        reactAll(pairs, this.deps).catch((err) => {
-          console.error("[RunRegistry] Reaper reactAll failed", err);
+        }).catch((err) => {
+          console.error("[RunRegistry] Reaper execute failed", err);
         });
       }
     }
