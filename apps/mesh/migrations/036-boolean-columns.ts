@@ -8,7 +8,7 @@
 import { type Kysely, sql } from "kysely";
 
 export async function up(db: Kysely<unknown>): Promise<void> {
-  // monitoring_logs.is_error: skipped — table is dropped in 037-drop-monitoring-logs
+  // monitoring_logs.is_error: skipped — table is deprecated (no longer written to)
 
   // event_subscriptions.enabled: integer → boolean
   // Must drop default first because PostgreSQL can't auto-cast the default
@@ -29,7 +29,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
 }
 
 export async function down(db: Kysely<unknown>): Promise<void> {
-  // monitoring_logs.is_error: skipped — table handled by 037-drop-monitoring-logs
+  // monitoring_logs.is_error: skipped — table is deprecated (no longer written to)
 
   await db.schema
     .alterTable("event_subscriptions")
