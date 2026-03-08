@@ -35,6 +35,13 @@ export interface RefResolution {
 }
 
 /**
+ * Normalize bracket notation to dot notation: `items[0].x` → `items.0.x`
+ */
+function normalizePath(path: string): string {
+  return path.replace(/\[(\d+)\]/g, ".$1");
+}
+
+/**
  * Check if a value is an @ref string
  */
 export function isAtRef(value: unknown): value is `@${string}` {
@@ -49,9 +56,9 @@ export function parseAtRef(ref: `@${string}`): {
   stepName?: string;
   path?: string;
 } {
-  const refStr = ref.substring(1); // Remove @ prefix
+  const refStr = normalizePath(ref.substring(1)); // Remove @ prefix, normalize brackets
 
-  // ForEach item reference: @item or @item.path
+  // ForEach item reference: @item or @item.path or @item[0].path
   if (refStr === "item" || refStr.startsWith("item.")) {
     const path = refStr.length > 4 ? refStr.substring(5) : "";
     return { type: "item", path };
@@ -62,7 +69,7 @@ export function parseAtRef(ref: `@${string}`): {
     return { type: "index" };
   }
 
-  // Input reference: @input.path.to.value
+  // Input reference: @input.path.to.value or @input[0].path
   if (refStr === "input" || refStr.startsWith("input.")) {
     const path = refStr.length > 5 ? refStr.substring(6) : "";
     return { type: "input", path };
@@ -74,7 +81,7 @@ export function parseAtRef(ref: `@${string}`): {
     return { type: "ctx", path };
   }
 
-  // Step output reference: @stepName.path
+  // Step output reference: @stepName.path or @stepName[0].path
   const parts = refStr.split(".");
   const stepName = parts[0];
   const path = parts.slice(1).join(".");
@@ -92,7 +99,7 @@ export function parseAtRef(ref: `@${string}`): {
 export function getValueByPath(obj: unknown, path: string): unknown {
   if (!path) return obj;
 
-  const keys = path.split(".");
+  const keys = normalizePath(path).split(".");
   let current = obj;
 
   for (let i = 0; i < keys.length; i++) {
@@ -202,17 +209,19 @@ export interface ResolveResult {
 
 /**
  * Regex to match @refs in strings for interpolation.
- * Path segments can be identifiers (a-z, A-Z, _, 0-9 starting with letter/_)
- * or numeric indices (e.g. 0, 1, 42) to support array access like @step.items.0.id
+ * Path segments can be identifiers, numeric indices, or bracket notation:
+ *   @step.items.0.id       (dot-numeric)
+ *   @step.items[0].id      (bracket notation)
+ *   @step.matrix[0][1]     (consecutive brackets)
  */
 const AT_REF_PATTERN =
-  /@([a-zA-Z_][a-zA-Z0-9_]*(?:\.(?:[a-zA-Z_][a-zA-Z0-9_]*|[0-9]+))*)/g;
+  /@([a-zA-Z_][a-zA-Z0-9_]*(?:(?:\.[a-zA-Z_][a-zA-Z0-9_]*|\.[0-9]+|\[[0-9]+\]))*)/g;
 
 /**
  * Regex to match a COMPLETE @ref (entire string is one reference)
  */
 const SINGLE_AT_REF_PATTERN =
-  /^@([a-zA-Z_][a-zA-Z0-9_]*(?:\.(?:[a-zA-Z_][a-zA-Z0-9_]*|[0-9]+))*)$/;
+  /^@([a-zA-Z_][a-zA-Z0-9_]*(?:(?:\.[a-zA-Z_][a-zA-Z0-9_]*|\.[0-9]+|\[[0-9]+\]))*)$/;
 
 /**
  * Check if a value is a COMPLETE @ref string (the entire value is one reference)

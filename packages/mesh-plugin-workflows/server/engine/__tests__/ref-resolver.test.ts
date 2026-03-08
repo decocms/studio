@@ -101,6 +101,32 @@ describe("parseAtRef", () => {
     expect(result.path).toBe("users.0");
   });
 
+  it("parses bracket notation @step.items[0].x", () => {
+    const result = parseAtRef("@myStep.items[0].x");
+    expect(result.type).toBe("step");
+    expect(result.stepName).toBe("myStep");
+    expect(result.path).toBe("items.0.x");
+  });
+
+  it("parses consecutive brackets @step.matrix[0][1]", () => {
+    const result = parseAtRef("@myStep.matrix[0][1]");
+    expect(result.type).toBe("step");
+    expect(result.stepName).toBe("myStep");
+    expect(result.path).toBe("matrix.0.1");
+  });
+
+  it("parses @input with bracket notation @input.users[0]", () => {
+    const result = parseAtRef("@input.users[0]");
+    expect(result.type).toBe("input");
+    expect(result.path).toBe("users.0");
+  });
+
+  it("parses @item with bracket notation @item[0].name", () => {
+    const result = parseAtRef("@item[0].name");
+    expect(result.type).toBe("item");
+    expect(result.path).toBe("0.name");
+  });
+
   it("parses @inputData.field as step type, not input type", () => {
     const result = parseAtRef("@inputData.field");
     expect(result.type).toBe("step");
@@ -191,6 +217,28 @@ describe("getValueByPath", () => {
     const obj = { items: [{ id: "a" }, { id: "b" }] };
     expect(getValueByPath(obj, "items.0.id")).toBe("a");
     expect(getValueByPath(obj, "items.1.id")).toBe("b");
+  });
+
+  it("handles bracket notation items[0].id", () => {
+    const obj = { items: [{ id: "a" }, { id: "b" }] };
+    expect(getValueByPath(obj, "items[0].id")).toBe("a");
+    expect(getValueByPath(obj, "items[1].id")).toBe("b");
+  });
+
+  it("handles consecutive brackets matrix[0][1]", () => {
+    const obj = {
+      matrix: [
+        [1, 2],
+        [3, 4],
+      ],
+    };
+    expect(getValueByPath(obj, "matrix[0][1]")).toBe(2);
+    expect(getValueByPath(obj, "matrix[1][0]")).toBe(3);
+  });
+
+  it("handles mixed dot and bracket notation", () => {
+    const obj = { data: { items: [{ nested: { value: 42 } }] } };
+    expect(getValueByPath(obj, "data.items[0].nested.value")).toBe(42);
   });
 });
 
@@ -285,6 +333,38 @@ describe("resolveRef", () => {
     });
     const result = resolveRef("@item.0.name", ctx);
     expect(result.value).toBe("Alice");
+  });
+
+  it("resolves bracket notation @step.items[0].id", () => {
+    const stepOutputs = new Map<string, unknown>();
+    stepOutputs.set("fetch", { items: [{ id: "first" }, { id: "second" }] });
+    const ctx = makeCtx({ stepOutputs });
+
+    const result = resolveRef("@fetch.items[0].id", ctx);
+    expect(result.value).toBe("first");
+    expect(result.error).toBeUndefined();
+  });
+
+  it("resolves consecutive brackets @step.matrix[1][0]", () => {
+    const stepOutputs = new Map<string, unknown>();
+    stepOutputs.set("data", {
+      matrix: [
+        [1, 2],
+        [3, 4],
+      ],
+    });
+    const ctx = makeCtx({ stepOutputs });
+
+    const result = resolveRef("@data.matrix[1][0]", ctx);
+    expect(result.value).toBe(3);
+  });
+
+  it("resolves @input with bracket notation", () => {
+    const ctx = makeCtx({
+      workflowInput: { users: [{ name: "Alice" }, { name: "Bob" }] },
+    });
+    const result = resolveRef("@input.users[1].name", ctx);
+    expect(result.value).toBe("Bob");
   });
 
   it("returns error for missing input path", () => {
@@ -405,6 +485,31 @@ describe("resolveAllRefs", () => {
     expect(resolved).toEqual({ msg: "First user: Alice" });
   });
 
+  it("resolves direct @ref with bracket notation", () => {
+    const stepOutputs = new Map<string, unknown>();
+    stepOutputs.set("fetch", { items: [{ id: "a" }, { id: "b" }] });
+    const ctx = makeCtx({ stepOutputs });
+
+    const { resolved, errors } = resolveAllRefs(
+      { firstId: "@fetch.items[0].id" },
+      ctx,
+    );
+    expect(resolved).toEqual({ firstId: "a" });
+    expect(errors).toBeUndefined();
+  });
+
+  it("interpolates @refs with bracket notation in strings", () => {
+    const stepOutputs = new Map<string, unknown>();
+    stepOutputs.set("fetch", { users: [{ name: "Alice" }, { name: "Bob" }] });
+    const ctx = makeCtx({ stepOutputs });
+
+    const { resolved } = resolveAllRefs(
+      { msg: "First user: @fetch.users[0].name" },
+      ctx,
+    );
+    expect(resolved).toEqual({ msg: "First user: Alice" });
+  });
+
   it("handles object traversal with mixed refs and literals", () => {
     const stepOutputs = new Map<string, unknown>();
     stepOutputs.set("fetch", { users: [{ name: "Bob" }] });
@@ -479,6 +584,19 @@ describe("extractRefs", () => {
     });
     expect(refs).toContain("@fetch.users.0.name");
     expect(refs).toContain("@fetch.items.2.title");
+  });
+
+  it("extracts @refs with bracket notation", () => {
+    const refs = extractRefs({ first: "@step.items[0].id" });
+    expect(refs).toContain("@step.items[0].id");
+  });
+
+  it("extracts @refs with bracket notation from interpolated strings", () => {
+    const refs = extractRefs({
+      msg: "User: @fetch.users[0].name, Item: @fetch.items[2].title",
+    });
+    expect(refs).toContain("@fetch.users[0].name");
+    expect(refs).toContain("@fetch.items[2].title");
   });
 
   it("extracts real refs from interpolated strings that start with @", () => {
