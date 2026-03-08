@@ -15,7 +15,7 @@ type ResponsePart = {
 };
 
 /**
- * Resolves the thread status from the AI SDK stream result.
+ * Resolves the thread status from the AI SDK stream onFinish reason.
  *
  * @param finishReason - The AI SDK finish reason for the last step
  * @param responseParts - The parts array from the response UIMessage
@@ -24,7 +24,7 @@ type ResponsePart = {
 export function resolveThreadStatus(
   finishReason: string | undefined,
   responseParts: ResponsePart[] = [],
-): ThreadStatus {
+): Exclude<ThreadStatus, "in_progress"> {
   if (finishReason === "stop") {
     const text = responseParts
       .filter((p) => p.type === "text" && p.text)

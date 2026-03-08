@@ -21,15 +21,6 @@ function makeRunningState(overrides?: Partial<RunState>): RunState {
   };
 }
 
-function makeCompletedState(): RunState {
-  return {
-    threadId: "thread1",
-    orgId: "org1",
-    userId: "u1",
-    status: { tag: "completed", stepCount: 3 },
-  };
-}
-
 // ============================================================================
 // START
 // ============================================================================
@@ -86,23 +77,6 @@ describe("START", () => {
       abortController: ac,
     });
   });
-
-  it("completed state → [RUN_STARTED] (restart after completion)", () => {
-    const ac = new AbortController();
-    const events = decide(
-      {
-        type: "START",
-        threadId: "t1",
-        orgId: "org1",
-        userId: "u1",
-        abortController: ac,
-      },
-      makeCompletedState(),
-    );
-
-    expect(events).toHaveLength(1);
-    expect(events[0]!.type).toBe("RUN_STARTED");
-  });
 });
 
 // ============================================================================
@@ -120,6 +94,7 @@ describe("STEP_DONE", () => {
     expect(events[0]).toEqual({
       type: "STEP_COMPLETED",
       threadId: "t1",
+      orgId: "org1",
       stepCount: 4,
     });
   });
@@ -128,12 +103,6 @@ describe("STEP_DONE", () => {
     expect(decide({ type: "STEP_DONE", threadId: "t1" }, undefined)).toEqual(
       [],
     );
-  });
-
-  it("completed state → []", () => {
-    expect(
-      decide({ type: "STEP_DONE", threadId: "t1" }, makeCompletedState()),
-    ).toEqual([]);
   });
 });
 
@@ -195,15 +164,6 @@ describe("FINISH", () => {
       ),
     ).toEqual([]);
   });
-
-  it("completed state → []", () => {
-    expect(
-      decide(
-        { type: "FINISH", threadId: "t1", threadStatus: "completed" },
-        makeCompletedState(),
-      ),
-    ).toEqual([]);
-  });
 });
 
 // ============================================================================
@@ -228,12 +188,6 @@ describe("CANCEL", () => {
 
   it("undefined state → []", () => {
     expect(decide({ type: "CANCEL", threadId: "t1" }, undefined)).toEqual([]);
-  });
-
-  it("completed state → []", () => {
-    expect(
-      decide({ type: "CANCEL", threadId: "t1" }, makeCompletedState()),
-    ).toEqual([]);
   });
 });
 

@@ -67,6 +67,7 @@ import {
 } from "./routes/decopilot/stream-buffer";
 import { NatsStreamBuffer } from "./routes/decopilot/nats-stream-buffer";
 import { RunRegistry } from "./routes/decopilot/run-registry";
+import { type RunReactorDeps, reactAll } from "./routes/decopilot/run-reactor";
 import { SqlThreadStorage } from "../storage/threads";
 
 // Track current event bus instance for cleanup during HMR
@@ -245,8 +246,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   if (currentDecopilotCleanup) currentDecopilotCleanup();
   const threadStorage = new SqlThreadStorage(database.db);
 
-  const runRegistry = new RunRegistry();
-
   const cancelBroadcast: CancelBroadcast = natsProvider
     ? new NatsCancelBroadcast({
         getConnection: () => natsProvider!.getConnection(),
@@ -260,8 +259,21 @@ export async function createApp(options: CreateAppOptions = {}) {
       })
     : new NoOpStreamBuffer();
 
+  const cancelReactorDeps: RunReactorDeps = {
+    storage: threadStorage,
+    streamBuffer,
+    sseHub,
+  };
+
+  const runRegistry = new RunRegistry(cancelReactorDeps);
+
   cancelBroadcast
-    .start((threadId) => runRegistry.cancelLocal(threadId))
+    .start((threadId) => {
+      const pairs = runRegistry.dispatch({ type: "CANCEL", threadId });
+      reactAll(pairs, cancelReactorDeps).catch((err) => {
+        console.error("[Decopilot] CancelBroadcast reactAll failed:", err);
+      });
+    })
     .catch((err) => {
       console.error("[Decopilot] CancelBroadcast start failed:", err);
     });
@@ -273,7 +285,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   });
 
   currentDecopilotCleanup = () => {
-    runRegistry.stopAll(threadStorage);
+    runRegistry.stopAll();
     runRegistry.dispose();
     cancelBroadcast.stop().catch(() => {});
     streamBuffer.teardown();

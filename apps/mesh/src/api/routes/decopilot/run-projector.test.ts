@@ -84,6 +84,7 @@ describe("project", () => {
       const result = project(state, {
         type: "STEP_COMPLETED",
         threadId: "t1",
+        orgId: "org1",
         stepCount: 4,
       });
       expect(result?.status.tag).toBe("running");
@@ -96,24 +97,10 @@ describe("project", () => {
       const result = project(undefined, {
         type: "STEP_COMPLETED",
         threadId: "t1",
+        orgId: "org1",
         stepCount: 4,
       });
       expect(result).toBeUndefined();
-    });
-
-    it("completed state → returns state unchanged", () => {
-      const state: RunState = {
-        threadId: "t1",
-        orgId: "org1",
-        userId: "u1",
-        status: { tag: "completed", stepCount: 5 },
-      };
-      const result = project(state, {
-        type: "STEP_COMPLETED",
-        threadId: "t1",
-        stepCount: 6,
-      });
-      expect(result).toBe(state);
     });
   });
 
