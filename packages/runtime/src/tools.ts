@@ -17,10 +17,12 @@ import { BindingRegistry } from "./bindings.ts";
 import { Event, type EventHandlers } from "./events.ts";
 import type { DefaultEnv } from "./index.ts";
 import { State } from "./state.ts";
+import { type WorkflowDefinition, Workflow } from "./workflows.ts";
 
 // Re-export EventHandlers type and SELF constant for external use
 export { SELF } from "./events.ts";
 export type { EventHandlers } from "./events.ts";
+export type { WorkflowDefinition } from "./workflows.ts";
 
 export const createRuntimeContext = (prev?: AppContext) => {
   const store = State.getStore();
@@ -517,6 +519,7 @@ export interface CreateMCPServerOptions<
           | Promise<CreatedResource[]>
       >
     | ((env: TEnv) => CreatedResource[] | Promise<CreatedResource[]>);
+  workflows?: WorkflowDefinition[];
 }
 
 export type Fetch<TEnv = unknown> = (
@@ -543,6 +546,7 @@ const getEventBus = (
 
 const toolsFor = <TSchema extends ZodTypeAny = never>({
   events,
+  workflows,
   configuration: { state: schema, scopes, onChange } = {},
 }: CreateMCPServerOptions<any, TSchema> = {}): CreatedTool[] => {
   const jsonSchema = schema
@@ -550,7 +554,7 @@ const toolsFor = <TSchema extends ZodTypeAny = never>({
     : { type: "object", properties: {} };
   const busProp = String(events?.bus ?? "EVENT_BUS");
   return [
-    ...(onChange || events
+    ...(onChange || events || workflows?.length
       ? [
           createTool({
             id: "ON_MCP_CONFIGURATION",
@@ -607,6 +611,22 @@ const toolsFor = <TSchema extends ZodTypeAny = never>({
                   );
                 }
               }
+
+              if (workflows?.length) {
+                const meshCtx = input.runtimeContext.env.MESH_REQUEST_CONTEXT;
+                const wfConnectionId = meshCtx?.connectionId;
+                const meshUrl = meshCtx?.meshUrl;
+                const token = meshCtx?.token;
+                if (wfConnectionId && meshUrl) {
+                  await Workflow.sync(
+                    workflows,
+                    meshUrl,
+                    wfConnectionId,
+                    token,
+                  );
+                }
+              }
+
               return Promise.resolve({});
             },
           }),
@@ -652,6 +672,14 @@ const toolsFor = <TSchema extends ZodTypeAny = never>({
           scopes: [
             ...((scopes as string[]) ?? []),
             ...(events ? [`${busProp}::EVENT_SYNC_SUBSCRIPTIONS`] : []),
+            ...(workflows?.length
+              ? [
+                  "SELF::COLLECTION_WORKFLOW_LIST",
+                  "SELF::COLLECTION_WORKFLOW_CREATE",
+                  "SELF::COLLECTION_WORKFLOW_UPDATE",
+                  "SELF::COLLECTION_WORKFLOW_DELETE",
+                ]
+              : []),
           ],
         });
       },

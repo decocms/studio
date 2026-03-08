@@ -28,6 +28,7 @@ export {
   type ResourceExecutionContext,
   type ResourceContents,
   type CreatedResource,
+  type WorkflowDefinition,
 } from "./tools.ts";
 import type { Binding } from "./wrangler.ts";
 export { proxyConnectionForId, BindingOf } from "./bindings.ts";
