@@ -175,8 +175,9 @@ export class SqlMonitoringStorage implements MonitoringStorage {
       countQuery = countQuery.where("tool_name", "=", filters.toolName);
     }
     if (filters.isError !== undefined) {
-      query = query.where("is_error", "=", filters.isError);
-      countQuery = countQuery.where("is_error", "=", filters.isError);
+      const isErrorInt = filters.isError ? 1 : 0;
+      query = query.where("is_error", "=", isErrorInt as never);
+      countQuery = countQuery.where("is_error", "=", isErrorInt as never);
     }
     if (filters.startDate) {
       query = query.where(
@@ -649,7 +650,7 @@ export class SqlMonitoringStorage implements MonitoringStorage {
       tool_name: log.toolName,
       input: JSON.stringify(log.input),
       output: JSON.stringify(log.output),
-      is_error: log.isError,
+      is_error: log.isError ? 1 : 0,
       error_message: log.errorMessage || null,
       duration_ms: log.durationMs,
       timestamp:
@@ -672,7 +673,7 @@ export class SqlMonitoringStorage implements MonitoringStorage {
     tool_name: string;
     input: string | Record<string, unknown>;
     output: string | Record<string, unknown>;
-    is_error: boolean;
+    is_error: boolean | number;
     error_message: string | null;
     duration_ms: number;
     timestamp: string | Date;
@@ -704,7 +705,7 @@ export class SqlMonitoringStorage implements MonitoringStorage {
       toolName: row.tool_name,
       input,
       output,
-      isError: row.is_error,
+      isError: Boolean(row.is_error),
       errorMessage: row.error_message,
       durationMs: row.duration_ms,
       timestamp,
