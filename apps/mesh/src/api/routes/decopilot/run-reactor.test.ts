@@ -1,0 +1,263 @@
+import { describe, it, expect, mock } from "bun:test";
+import { reactAll } from "./run-reactor";
+import type { RunReactorDeps } from "./run-reactor";
+import type { RunEventPair } from "./run-state";
+import type { StreamBuffer } from "./stream-buffer";
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function makeDeps(): RunReactorDeps {
+  return {
+    storage: {
+      update: mock(() => Promise.resolve({} as never)),
+      create: mock(() => Promise.resolve({} as never)),
+      get: mock(() => Promise.resolve(null)),
+      delete: mock(() => Promise.resolve()),
+      list: mock(() => Promise.resolve({ threads: [], total: 0 })),
+      saveMessages: mock(() => Promise.resolve()),
+      listMessages: mock(() => Promise.resolve({ messages: [], total: 0 })),
+      forceFailIfInProgress: mock(() => Promise.resolve(true)),
+    },
+    streamBuffer: { purge: mock(() => {}) } as unknown as StreamBuffer,
+    sseHub: { emit: mock(() => {}) },
+  };
+}
+
+function makeRunningState(threadId = "t1", orgId = "org1") {
+  return {
+    threadId,
+    orgId,
+    userId: "u1",
+    status: {
+      tag: "running" as const,
+      abortController: new AbortController(),
+      stepCount: 2,
+      startedAt: new Date(),
+    },
+  };
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+describe("reactAll", () => {
+  describe("RUN_STARTED", () => {
+    it("calls storage.update with in_progress and emits 1 SSE event", async () => {
+      const deps = makeDeps();
+      const pairs: RunEventPair[] = [
+        {
+          event: {
+            type: "RUN_STARTED",
+            threadId: "t1",
+            orgId: "org1",
+            userId: "u1",
+            abortController: new AbortController(),
+          },
+          state: makeRunningState(),
+        },
+      ];
+
+      await reactAll(pairs, deps);
+
+      expect(deps.storage.update).toHaveBeenCalledTimes(1);
+      expect(deps.storage.update).toHaveBeenCalledWith("t1", {
+        status: "in_progress",
+      });
+      expect(deps.sseHub.emit).toHaveBeenCalledTimes(1);
+      expect(deps.streamBuffer.purge).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("STEP_COMPLETED", () => {
+    it("emits 1 SSE step event when orgId is on the state", async () => {
+      const deps = makeDeps();
+      const pairs: RunEventPair[] = [
+        {
+          event: { type: "STEP_COMPLETED", threadId: "t1", stepCount: 3 },
+          state: makeRunningState("t1", "org1"),
+        },
+      ];
+
+      await reactAll(pairs, deps);
+
+      expect(deps.storage.update).not.toHaveBeenCalled();
+      expect(deps.sseHub.emit).toHaveBeenCalledTimes(1);
+    });
+
+    it("skips SSE when state is absent (no orgId)", async () => {
+      const deps = makeDeps();
+      const pairs: RunEventPair[] = [
+        {
+          event: { type: "STEP_COMPLETED", threadId: "t1", stepCount: 3 },
+          state: undefined,
+        },
+      ];
+
+      await reactAll(pairs, deps);
+
+      expect(deps.sseHub.emit).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("RUN_COMPLETED", () => {
+    it("calls storage.update(completed), purges buffer, emits 2 SSE events", async () => {
+      const deps = makeDeps();
+      const pairs: RunEventPair[] = [
+        {
+          event: {
+            type: "RUN_COMPLETED",
+            threadId: "t1",
+            orgId: "org1",
+            stepCount: 5,
+          },
+          state: undefined, // evicted by projector
+        },
+      ];
+
+      await reactAll(pairs, deps);
+
+      expect(deps.storage.update).toHaveBeenCalledTimes(1);
+      expect(deps.storage.update).toHaveBeenCalledWith("t1", {
+        status: "completed",
+      });
+      expect(deps.streamBuffer.purge).toHaveBeenCalledTimes(1);
+      expect(deps.streamBuffer.purge).toHaveBeenCalledWith("t1");
+      expect(deps.sseHub.emit).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("RUN_REQUIRES_ACTION", () => {
+    it("calls storage.update(requires_action), purges buffer, emits 2 SSE events", async () => {
+      const deps = makeDeps();
+      const pairs: RunEventPair[] = [
+        {
+          event: {
+            type: "RUN_REQUIRES_ACTION",
+            threadId: "t1",
+            orgId: "org1",
+            stepCount: 4,
+          },
+          state: undefined, // evicted by projector
+        },
+      ];
+
+      await reactAll(pairs, deps);
+
+      expect(deps.storage.update).toHaveBeenCalledTimes(1);
+      expect(deps.storage.update).toHaveBeenCalledWith("t1", {
+        status: "requires_action",
+      });
+      expect(deps.streamBuffer.purge).toHaveBeenCalledTimes(1);
+      expect(deps.sseHub.emit).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("RUN_FAILED", () => {
+    it("error/cancelled/reaped reasons: calls storage.update(failed), purges buffer, emits 2 SSE events", async () => {
+      for (const reason of ["error", "cancelled", "reaped"] as const) {
+        const deps = makeDeps();
+        const pairs: RunEventPair[] = [
+          {
+            event: {
+              type: "RUN_FAILED",
+              threadId: "t1",
+              orgId: "org1",
+              reason,
+            },
+            state: undefined,
+          },
+        ];
+
+        await reactAll(pairs, deps);
+
+        expect(deps.storage.update).toHaveBeenCalledWith("t1", {
+          status: "failed",
+        });
+        expect(deps.storage.forceFailIfInProgress).not.toHaveBeenCalled();
+        expect(deps.streamBuffer.purge).toHaveBeenCalledWith("t1");
+        expect(deps.sseHub.emit).toHaveBeenCalledTimes(2);
+      }
+    });
+
+    it("ghost reason: calls forceFailIfInProgress instead of storage.update", async () => {
+      const deps = makeDeps();
+      const pairs: RunEventPair[] = [
+        {
+          event: {
+            type: "RUN_FAILED",
+            threadId: "t1",
+            orgId: "org1",
+            reason: "ghost",
+          },
+          state: undefined,
+        },
+      ];
+
+      await reactAll(pairs, deps);
+
+      expect(deps.storage.forceFailIfInProgress).toHaveBeenCalledTimes(1);
+      expect(deps.storage.forceFailIfInProgress).toHaveBeenCalledWith("t1");
+      expect(deps.storage.update).not.toHaveBeenCalled();
+      expect(deps.streamBuffer.purge).toHaveBeenCalledWith("t1");
+      expect(deps.sseHub.emit).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("PREVIOUS_RUN_ABORTED", () => {
+    it("is a no-op — no storage, buffer, or SSE side effects", async () => {
+      const deps = makeDeps();
+      const pairs: RunEventPair[] = [
+        {
+          event: {
+            type: "PREVIOUS_RUN_ABORTED",
+            threadId: "t1",
+            orgId: "org1",
+          },
+          state: undefined,
+        },
+      ];
+
+      await reactAll(pairs, deps);
+
+      expect(deps.storage.update).not.toHaveBeenCalled();
+      expect(deps.storage.forceFailIfInProgress).not.toHaveBeenCalled();
+      expect(deps.streamBuffer.purge).not.toHaveBeenCalled();
+      expect(deps.sseHub.emit).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("reactAll error propagation", () => {
+    it("stops on first thrown error and does not process subsequent events", async () => {
+      const deps = makeDeps();
+      // Make the first storage.update throw
+      (deps.storage.update as ReturnType<typeof mock>).mockImplementationOnce(
+        () => Promise.reject(new Error("DB error")),
+      );
+
+      const pairs: RunEventPair[] = [
+        {
+          event: {
+            type: "RUN_STARTED",
+            threadId: "t1",
+            orgId: "org1",
+            userId: "u1",
+            abortController: new AbortController(),
+          },
+          state: makeRunningState(),
+        },
+        {
+          event: { type: "STEP_COMPLETED", threadId: "t1", stepCount: 1 },
+          state: makeRunningState(),
+        },
+      ];
+
+      await expect(reactAll(pairs, deps)).rejects.toThrow("DB error");
+
+      // Only the first event was processed
+      expect(deps.storage.update).toHaveBeenCalledTimes(1);
+    });
+  });
+});
