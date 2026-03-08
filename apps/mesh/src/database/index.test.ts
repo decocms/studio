@@ -18,7 +18,7 @@ describe("Database Factory", () => {
   describe("createDatabase", () => {
     it("should create PGlite database from file:// URL", async () => {
       const dbPath = join(tempDir, "test-pglite");
-      const database = createDatabase(`file:${dbPath}`);
+      const database = createDatabase(`file://${dbPath}`);
 
       expect(database).toBeDefined();
       expect(database.type).toBe("pglite");
@@ -33,7 +33,7 @@ describe("Database Factory", () => {
     // while still exercising the same PGlite creation path.
     it("should default to PGlite when given a file: URL", async () => {
       const dbPath = join(tempDir, "default-pglite");
-      const database = createDatabase(`file:${dbPath}`);
+      const database = createDatabase(`file://${dbPath}`);
       expect(database).toBeDefined();
       expect(database.type).toBe("pglite");
       await closeDatabase(database);
@@ -47,7 +47,7 @@ describe("Database Factory", () => {
 
     it("should create directory if not exists for PGlite", async () => {
       const dbPath = join(tempDir, "nested", "dir", "test-pglite");
-      const database = createDatabase(`file:${dbPath}`);
+      const database = createDatabase(`file://${dbPath}`);
 
       expect(database).toBeDefined();
       await closeDatabase(database);
