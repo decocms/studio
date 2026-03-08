@@ -1,6 +1,6 @@
 import type { Step } from "@decocms/bindings/workflow";
 import type { ZodTypeAny } from "zod";
-import type { MCPConnection } from "./connection.ts";
+import { proxyConnectionForId } from "./bindings.ts";
 import { MCPClient } from "./mcp.ts";
 
 /**
@@ -30,11 +30,22 @@ interface WorkflowCollectionItem {
   id: string;
   title: string;
   description: string | null;
-  virtual_mcp_id: string;
+  virtual_mcp_id: string | null;
   created_at: string;
   updated_at: string;
 }
 
+/**
+ * Hand-rolled client interface for the workflow collection tools exposed by
+ * the mesh's /mcp/self endpoint.
+ *
+ * TODO: Replace with a generated client derived from WorkflowBinding in
+ * @decocms/bindings/workflow once that binding covers write operations
+ * (CREATE, UPDATE, DELETE) and COLLECTION_WORKFLOW_EXECUTION_CREATE.
+ * Until then, any rename of a tool or field on the server side requires a
+ * matching change here — the bindings system was designed to prevent exactly
+ * this class of silent drift.
+ */
 interface MeshWorkflowClient {
   COLLECTION_WORKFLOW_LIST: (input: {
     limit?: number;
@@ -97,48 +108,79 @@ function createMeshSelfClient(
   meshUrl: string,
   token?: string,
 ): MeshWorkflowClient {
-  const headers: Record<string, string> = {};
-  if (token) {
-    headers["x-mesh-token"] = token;
-  }
-
-  const connection: MCPConnection = {
-    type: "HTTP",
-    url: new URL("/mcp/self", meshUrl).href,
-    token,
-    headers,
-  };
-
+  const connection = proxyConnectionForId("self", { meshUrl, token });
   return MCPClient.forConnection(connection) as unknown as MeshWorkflowClient;
 }
 
-async function syncWorkflows(
+// I7: Per-connectionId mutex — chains incoming syncs so operations never interleave.
+const syncInFlight = new Map<string, Promise<void>>();
+
+// I4: Fingerprint of the last successfully synced declared set, keyed by connectionId.
+const workflowFingerprints = new Map<string, string>();
+
+function fingerprintWorkflows(declared: WorkflowDefinition[]): string {
+  return JSON.stringify(
+    declared.map((w) => ({
+      title: w.title,
+      description: w.description ?? null,
+      virtual_mcp_id: w.virtual_mcp_id ?? null,
+      steps: w.steps,
+      toolId: w.toolId ?? null,
+    })),
+  );
+}
+
+async function doSyncWorkflows(
   declared: WorkflowDefinition[],
   meshUrl: string,
   connectionId: string,
   token?: string,
+  _clientOverride?: MeshWorkflowClient,
 ): Promise<void> {
-  if (declared.length === 0) return;
-
-  const titles = declared.map((w) => w.title);
-  const uniqueTitles = new Set(titles);
-  if (uniqueTitles.size !== titles.length) {
-    const duplicates = titles.filter((t, i) => titles.indexOf(t) !== i);
+  // I6: Reject any title that slugifies to empty — would produce IDs like "conn_abc::".
+  const emptySlugWf = declared.find((w) => slugify(w.title) === "");
+  if (emptySlugWf !== undefined) {
     console.warn(
-      `[Workflows] Duplicate workflow titles found: ${[...new Set(duplicates)].join(", ")}. Skipping sync.`,
+      `[Workflows] Workflow title "${emptySlugWf.title}" produces an empty ID. Skipping sync.`,
     );
     return;
   }
 
-  const client = createMeshSelfClient(meshUrl, token);
+  if (declared.length > 0) {
+    const slugs = declared.map((w) => slugify(w.title));
+    const uniqueSlugs = new Set(slugs);
+    if (uniqueSlugs.size !== slugs.length) {
+      const duplicateSlugs = new Set(
+        slugs.filter((s, i) => slugs.indexOf(s) !== i),
+      );
+      const collidingTitles = declared
+        .filter((w) => duplicateSlugs.has(slugify(w.title)))
+        .map((w) => w.title);
+      console.warn(
+        `[Workflows] Workflow titles that produce duplicate IDs: ${[...new Set(collidingTitles)].join(", ")}. Skipping sync.`,
+      );
+      return;
+    }
+  }
+
+  // I4: Skip the remote round-trip when the declared set is identical to the last sync.
+  const fingerprint = fingerprintWorkflows(declared);
+  if (workflowFingerprints.get(connectionId) === fingerprint) return;
+
+  const client = _clientOverride ?? createMeshSelfClient(meshUrl, token);
 
   let existing: WorkflowCollectionItem[];
   try {
-    const result = await client.COLLECTION_WORKFLOW_LIST({
-      limit: 1000,
-      offset: 0,
-    });
-    existing = result.items;
+    const allItems: WorkflowCollectionItem[] = [];
+    let offset = 0;
+    const limit = 200;
+    while (true) {
+      const page = await client.COLLECTION_WORKFLOW_LIST({ limit, offset });
+      allItems.push(...page.items);
+      if (!page.hasMore) break;
+      offset += page.items.length;
+    }
+    existing = allItems;
   } catch {
     console.warn(
       "[Workflows] Could not list workflows. The workflows plugin may not be enabled. Skipping sync.",
@@ -151,52 +193,91 @@ async function syncWorkflows(
     existing.filter((w) => w.id.startsWith(prefix)).map((w) => [w.id, w]),
   );
 
-  const declaredIds = new Set<string>();
+  // I5: Build ID→definition map synchronously so declaredIds is ready before
+  // parallelizing — the orphan-delete pass needs the complete set upfront.
+  const declaredEntries = declared.map(
+    (wf) => [workflowId(connectionId, wf.title), wf] as const,
+  );
+  const declaredIds = new Set(declaredEntries.map(([id]) => id));
 
-  for (const wf of declared) {
-    const id = workflowId(connectionId, wf.title);
-    declaredIds.add(id);
-
-    try {
-      if (managed.has(id)) {
-        await client.COLLECTION_WORKFLOW_UPDATE({
-          id,
-          data: {
-            title: wf.title,
-            description: wf.description,
-            steps: wf.steps,
-          },
-        });
-      } else {
-        await client.COLLECTION_WORKFLOW_CREATE({
-          data: {
-            id,
-            title: wf.title,
-            description: wf.description,
-            steps: wf.steps,
-          },
-        });
-      }
-    } catch (error) {
-      console.warn(
-        `[Workflows] Failed to sync workflow "${wf.title}":`,
-        error instanceof Error ? error.message : error,
-      );
-    }
-  }
-
-  for (const [id] of managed) {
-    if (!declaredIds.has(id)) {
+  // I5: Upserts run in parallel — no ordering dependency between workflows.
+  await Promise.all(
+    declaredEntries.map(async ([id, wf]) => {
       try {
-        await client.COLLECTION_WORKFLOW_DELETE({ id });
+        if (managed.has(id)) {
+          await client.COLLECTION_WORKFLOW_UPDATE({
+            id,
+            data: {
+              title: wf.title,
+              description: wf.description,
+              ...(wf.virtual_mcp_id !== undefined && {
+                virtual_mcp_id: wf.virtual_mcp_id,
+              }),
+              steps: wf.steps,
+            },
+          });
+        } else {
+          await client.COLLECTION_WORKFLOW_CREATE({
+            data: {
+              id,
+              title: wf.title,
+              description: wf.description,
+              virtual_mcp_id: wf.virtual_mcp_id,
+              steps: wf.steps,
+            },
+          });
+        }
       } catch (error) {
         console.warn(
-          `[Workflows] Failed to delete orphaned workflow "${id}":`,
+          `[Workflows] Failed to sync workflow "${wf.title}":`,
           error instanceof Error ? error.message : error,
         );
       }
-    }
-  }
+    }),
+  );
+
+  // I5: Deletes run in parallel — orphans are independent of each other.
+  await Promise.all(
+    [...managed.keys()]
+      .filter((id) => !declaredIds.has(id))
+      .map(async (id) => {
+        try {
+          await client.COLLECTION_WORKFLOW_DELETE({ id });
+        } catch (error) {
+          console.warn(
+            `[Workflows] Failed to delete orphaned workflow "${id}":`,
+            error instanceof Error ? error.message : error,
+          );
+        }
+      }),
+  );
+
+  // I4: Record the fingerprint so identical follow-up calls are no-ops.
+  workflowFingerprints.set(connectionId, fingerprint);
+}
+
+async function syncWorkflows(
+  declared: WorkflowDefinition[],
+  meshUrl: string,
+  connectionId: string,
+  token?: string,
+  /** Optional client override — only used in tests to capture payloads. */
+  _clientOverride?: MeshWorkflowClient,
+): Promise<void> {
+  // I7: Chain onto any in-flight sync for this connectionId so concurrent calls
+  // never interleave LIST/CREATE/DELETE operations against the same connection.
+  const previous = syncInFlight.get(connectionId) ?? Promise.resolve();
+  const next = previous
+    .then(() =>
+      doSyncWorkflows(declared, meshUrl, connectionId, token, _clientOverride),
+    )
+    .finally(() => {
+      if (syncInFlight.get(connectionId) === next) {
+        syncInFlight.delete(connectionId);
+      }
+    });
+  syncInFlight.set(connectionId, next);
+  return next;
 }
 
 export const Workflow = {

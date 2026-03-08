@@ -560,6 +560,15 @@ type ResolvedMCPServerOptions<TSchema extends ZodTypeAny = never> = Omit<
   "workflows"
 > & { workflows?: WorkflowDefinition[] };
 
+const getMeshCtx = (input: { runtimeContext: AppContext }) => {
+  const ctx = input.runtimeContext.env.MESH_REQUEST_CONTEXT;
+  return {
+    connectionId: ctx?.connectionId,
+    meshUrl: ctx?.meshUrl,
+    token: ctx?.token,
+  };
+};
+
 const toolsFor = <TSchema extends ZodTypeAny = never>({
   events,
   workflows,
@@ -593,9 +602,7 @@ const toolsFor = <TSchema extends ZodTypeAny = never>({
               });
               const bus = getEventBus(busProp, input.runtimeContext.env);
               if (events && state && bus) {
-                // Get connectionId for SELF subscriptions
-                const connectionId =
-                  input.runtimeContext.env.MESH_REQUEST_CONTEXT?.connectionId;
+                const { connectionId } = getMeshCtx(input);
                 // Sync subscriptions - always call to handle deletions too
                 const subscriptions = Event.subscriptions(
                   events?.handlers ?? ({} as Record<string, never>),
@@ -629,10 +636,11 @@ const toolsFor = <TSchema extends ZodTypeAny = never>({
               }
 
               if (workflows?.length) {
-                const meshCtx = input.runtimeContext.env.MESH_REQUEST_CONTEXT;
-                const wfConnectionId = meshCtx?.connectionId;
-                const meshUrl = meshCtx?.meshUrl;
-                const token = meshCtx?.token;
+                const {
+                  connectionId: wfConnectionId,
+                  meshUrl,
+                  token,
+                } = getMeshCtx(input);
                 if (wfConnectionId && meshUrl) {
                   await Workflow.sync(
                     workflows,
@@ -659,10 +667,8 @@ const toolsFor = <TSchema extends ZodTypeAny = never>({
             outputSchema: OnEventsOutputSchema,
             execute: async (input) => {
               const env = input.runtimeContext.env;
-              // Get state from MESH_REQUEST_CONTEXT - this has the binding values
               const state = env.MESH_REQUEST_CONTEXT?.state as z.infer<TSchema>;
-              // Get connectionId for SELF handlers
-              const connectionId = env.MESH_REQUEST_CONTEXT?.connectionId;
+              const { connectionId } = getMeshCtx(input);
               return Event.execute(
                 events.handlers!,
                 input.context.events,
@@ -745,10 +751,7 @@ const toolsFor = <TSchema extends ZodTypeAny = never>({
                 .describe("ID of the created workflow execution."),
             }),
             execute: async (input) => {
-              const meshCtx = input.runtimeContext.env.MESH_REQUEST_CONTEXT;
-              const connectionId = meshCtx?.connectionId;
-              const meshUrl = meshCtx?.meshUrl;
-              const token = meshCtx?.token;
+              const { connectionId, meshUrl, token } = getMeshCtx(input);
 
               if (!connectionId || !meshUrl) {
                 throw new Error(
