@@ -2,7 +2,8 @@ import type { RunCommand, RunEvent, RunState } from "./run-state.ts";
 
 /**
  * Pure decider: maps (command, current state) → events to apply.
- * No async, no I/O, no side effects.
+ * No async, no I/O, no side effects. Returns [] when the command is invalid
+ * for the current state (idempotent guard).
  */
 export function decide(
   command: RunCommand,
@@ -38,6 +39,7 @@ export function decide(
       const completed: RunEvent = {
         type: "STEP_COMPLETED",
         threadId: command.threadId,
+        orgId: state.orgId,
         stepCount: state.status.stepCount + 1,
       };
 

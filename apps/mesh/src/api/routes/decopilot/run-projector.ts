@@ -1,5 +1,13 @@
 import type { RunEvent, RunState } from "./run-state.ts";
 
+/**
+ * Pure projector: folds an event into the current state to produce the next
+ * state. No I/O, no async, no side effects.
+ *
+ * Returns undefined to evict the run from the registry (terminal states).
+ * Terminal events still carry orgId so the reactor can emit SSE after eviction
+ * — see the comment on RunEvent terminal types in run-state.ts.
+ */
 export function project(
   state: RunState | undefined,
   event: RunEvent,
