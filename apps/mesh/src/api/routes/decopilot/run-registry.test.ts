@@ -1,173 +1,337 @@
 import { describe, it, expect, mock } from "bun:test";
-import type { ThreadStoragePort } from "@/storage/ports";
 import { RunRegistry } from "./run-registry";
+import type { StreamBuffer } from "./stream-buffer";
+import type { RunReactorDeps } from "./run-reactor";
 
-function mockStorage(): ThreadStoragePort {
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function makeNoopDeps(): RunReactorDeps {
   return {
-    update: mock(() => Promise.resolve({} as never)),
-    create: mock(() => Promise.resolve({} as never)),
-    get: mock(() => Promise.resolve(null)),
-    delete: mock(() => Promise.resolve()),
-    list: mock(() => Promise.resolve({ threads: [], total: 0 })),
-    saveMessages: mock(() => Promise.resolve()),
-    listMessages: mock(() => Promise.resolve({ messages: [], total: 0 })),
-    forceFailIfInProgress: mock(() => Promise.resolve(false)),
+    storage: {
+      update: mock(() => Promise.resolve({} as never)),
+      create: mock(() => Promise.resolve({} as never)),
+      get: mock(() => Promise.resolve(null)),
+      delete: mock(() => Promise.resolve()),
+      list: mock(() => Promise.resolve({ threads: [], total: 0 })),
+      saveMessages: mock(() => Promise.resolve()),
+      listMessages: mock(() => Promise.resolve({ messages: [], total: 0 })),
+      forceFailIfInProgress: mock(() => Promise.resolve(false)),
+    },
+    streamBuffer: { purge: mock(() => {}) } as unknown as StreamBuffer,
+    sseHub: { emit: mock(() => {}) },
   };
 }
 
+/** Create a registry backed by no-op mocks. */
+function createRegistry() {
+  return new RunRegistry(makeNoopDeps());
+}
+
+/** Dispatch a START command for a given thread and return the registry. */
+function startThread(
+  registry: RunRegistry,
+  threadId: string,
+  orgId = "org1",
+  userId = "u1",
+) {
+  return registry.dispatch({
+    type: "START",
+    threadId,
+    orgId,
+    userId,
+    abortController: new AbortController(),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
 describe("RunRegistry", () => {
-  function createRegistry() {
-    return new RunRegistry();
-  }
-
-  describe("startRun", () => {
-    it("creates a new run with correct fields and running status", () => {
+  // -------------------------------------------------------------------------
+  // dispatch START
+  // -------------------------------------------------------------------------
+  describe("dispatch START", () => {
+    it("returns a RUN_STARTED pair and marks the thread running", () => {
       const registry = createRegistry();
-      const run = registry.startRun("t1", "org1", "u1");
+      const pairs = startThread(registry, "t1");
 
-      expect(run.threadId).toBe("t1");
-      expect(run.orgId).toBe("org1");
-      expect(run.userId).toBe("u1");
-      expect(run.status).toBe("running");
-      expect(run.abortController).toBeInstanceOf(AbortController);
-      expect(run.abortController.signal.aborted).toBe(false);
-      expect(run.startedAt).toBeInstanceOf(Date);
+      expect(pairs).toHaveLength(1);
+      expect(pairs[0]!.event.type).toBe("RUN_STARTED");
+      expect(pairs[0]!.state?.status.tag).toBe("running");
+      expect(registry.isRunning("t1")).toBe(true);
+      expect(registry.getAbortSignal("t1")).not.toBeNull();
     });
 
-    it("aborts and replaces an existing running entry for the same threadId", () => {
+    it("emits [PREVIOUS_RUN_ABORTED, RUN_STARTED] when thread is already running", () => {
       const registry = createRegistry();
-      const first = registry.startRun("t1", "org1", "u1");
-      const firstAbort = first.abortController;
+      startThread(registry, "t1");
 
-      const second = registry.startRun("t1", "org2", "u2");
+      // Capture the first run's signal before overwriting
+      const firstSignal = registry.getAbortSignal("t1")!;
 
-      expect(firstAbort.signal.aborted).toBe(true);
-      expect(first.status).toBe("failed");
-      expect(second.threadId).toBe("t1");
-      expect(second.orgId).toBe("org2");
-      expect(second.status).toBe("running");
-      expect(registry.getRun("t1")).toBe(second);
-    });
+      const pairs = startThread(registry, "t1");
 
-    it("replaces a non-running entry without aborting", () => {
-      const registry = createRegistry();
-      const first = registry.startRun("t1", "org1", "u1");
-      registry.completeRun("t1", "completed");
-      const firstAbort = first.abortController;
+      expect(pairs).toHaveLength(2);
+      expect(pairs[0]!.event.type).toBe("PREVIOUS_RUN_ABORTED");
+      expect(pairs[1]!.event.type).toBe("RUN_STARTED");
 
-      registry.startRun("t1", "org1", "u1");
+      // Old AbortController must have been aborted
+      expect(firstSignal.aborted).toBe(true);
 
-      expect(firstAbort.signal.aborted).toBe(false);
+      // New signal comes from the fresh AbortController
+      const newSignal = registry.getAbortSignal("t1");
+      expect(newSignal).not.toBeNull();
+      expect(newSignal).not.toBe(firstSignal);
     });
   });
 
-  describe("getRun", () => {
-    it("returns the run for an existing threadId", () => {
+  // -------------------------------------------------------------------------
+  // dispatch CANCEL
+  // -------------------------------------------------------------------------
+  describe("dispatch CANCEL", () => {
+    it("returns RUN_FAILED and stops the run when running", () => {
       const registry = createRegistry();
-      const run = registry.startRun("t1", "org1", "u1");
-      expect(registry.getRun("t1")).toBe(run);
+      startThread(registry, "t1");
+
+      const pairs = registry.dispatch({ type: "CANCEL", threadId: "t1" });
+
+      expect(pairs).toHaveLength(1);
+      expect(pairs[0]!.event.type).toBe("RUN_FAILED");
+      if (pairs[0]!.event.type === "RUN_FAILED") {
+        expect(pairs[0]!.event.reason).toBe("cancelled");
+      }
+      expect(registry.isRunning("t1")).toBe(false);
     });
 
-    it("returns undefined for a non-existent threadId", () => {
+    it("aborts the AbortController on CANCEL", () => {
       const registry = createRegistry();
-      expect(registry.getRun("nope")).toBeUndefined();
-    });
-  });
+      startThread(registry, "t1");
+      const signal = registry.getAbortSignal("t1")!;
 
-  describe("cancelLocal", () => {
-    it("returns true and aborts a running entry", () => {
-      const registry = createRegistry();
-      const run = registry.startRun("t1", "org1", "u1");
-      const result = registry.cancelLocal("t1");
+      registry.dispatch({ type: "CANCEL", threadId: "t1" });
 
-      expect(result).toBe(true);
-      expect(run.status).toBe("failed");
-      expect(run.abortController.signal.aborted).toBe(true);
+      expect(signal.aborted).toBe(true);
     });
 
-    it("returns false for a non-existent threadId", () => {
+    it("returns empty array for a non-running thread", () => {
       const registry = createRegistry();
-      expect(registry.cancelLocal("nope")).toBe(false);
-    });
-
-    it("returns false for a non-running entry", () => {
-      const registry = createRegistry();
-      registry.startRun("t1", "org1", "u1");
-      registry.completeRun("t1", "completed");
-
-      expect(registry.cancelLocal("t1")).toBe(false);
+      const pairs = registry.dispatch({ type: "CANCEL", threadId: "t1" });
+      expect(pairs).toHaveLength(0);
     });
   });
 
-  describe("completeRun", () => {
-    it("sets status and deletes from the map", () => {
+  // -------------------------------------------------------------------------
+  // dispatch FINISH
+  // -------------------------------------------------------------------------
+  describe("dispatch FINISH", () => {
+    it("emits RUN_COMPLETED when threadStatus is 'completed'", () => {
       const registry = createRegistry();
-      const run = registry.startRun("t1", "org1", "u1");
-      registry.completeRun("t1", "completed");
+      startThread(registry, "t1");
 
-      expect(run.status).toBe("completed");
-      expect(registry.getRun("t1")).toBeUndefined();
+      const pairs = registry.dispatch({
+        type: "FINISH",
+        threadId: "t1",
+        threadStatus: "completed",
+      });
+
+      expect(pairs).toHaveLength(1);
+      expect(pairs[0]!.event.type).toBe("RUN_COMPLETED");
+      expect(registry.isRunning("t1")).toBe(false);
     });
 
-    it("is a no-op for a non-existent threadId", () => {
+    it("emits RUN_REQUIRES_ACTION when threadStatus is 'requires_action'", () => {
       const registry = createRegistry();
-      registry.completeRun("no-such-thread", "failed");
-      expect(registry.getRun("no-such-thread")).toBeUndefined();
+      startThread(registry, "t1");
+
+      const pairs = registry.dispatch({
+        type: "FINISH",
+        threadId: "t1",
+        threadStatus: "requires_action",
+      });
+
+      expect(pairs).toHaveLength(1);
+      expect(pairs[0]!.event.type).toBe("RUN_REQUIRES_ACTION");
+      expect(registry.isRunning("t1")).toBe(false);
+    });
+
+    it("emits RUN_FAILED when threadStatus is 'failed'", () => {
+      const registry = createRegistry();
+      startThread(registry, "t1");
+
+      const pairs = registry.dispatch({
+        type: "FINISH",
+        threadId: "t1",
+        threadStatus: "failed",
+      });
+
+      expect(pairs).toHaveLength(1);
+      expect(pairs[0]!.event.type).toBe("RUN_FAILED");
+      expect(registry.isRunning("t1")).toBe(false);
+    });
+
+    it("returns empty array (idempotent) when thread is not running", () => {
+      const registry = createRegistry();
+      const pairs = registry.dispatch({
+        type: "FINISH",
+        threadId: "t1",
+        threadStatus: "completed",
+      });
+      expect(pairs).toHaveLength(0);
     });
   });
 
-  describe("finishRun", () => {
-    it("calls completeRun and invokes onPurge callback", () => {
+  // -------------------------------------------------------------------------
+  // dispatch FORCE_FAIL
+  // -------------------------------------------------------------------------
+  describe("dispatch FORCE_FAIL", () => {
+    it("emits RUN_FAILED with reason 'reaped' when running", () => {
       const registry = createRegistry();
-      registry.startRun("t1", "org1", "u1");
-      const purged: string[] = [];
+      startThread(registry, "t1");
 
-      registry.finishRun("t1", "completed", (id) => purged.push(id));
+      const pairs = registry.dispatch({
+        type: "FORCE_FAIL",
+        threadId: "t1",
+        reason: "reaped",
+      });
 
-      expect(registry.getRun("t1")).toBeUndefined();
-      expect(purged).toEqual(["t1"]);
+      expect(pairs).toHaveLength(1);
+      expect(pairs[0]!.event.type).toBe("RUN_FAILED");
+      if (pairs[0]!.event.type === "RUN_FAILED") {
+        expect(pairs[0]!.event.reason).toBe("reaped");
+      }
+      expect(registry.isRunning("t1")).toBe(false);
     });
 
-    it("works without onPurge callback", () => {
+    it("aborts the AbortController on FORCE_FAIL", () => {
       const registry = createRegistry();
-      const run = registry.startRun("t1", "org1", "u1");
-      registry.finishRun("t1", "failed");
+      startThread(registry, "t1");
+      const signal = registry.getAbortSignal("t1")!;
 
-      expect(run.status).toBe("failed");
-      expect(registry.getRun("t1")).toBeUndefined();
+      registry.dispatch({
+        type: "FORCE_FAIL",
+        threadId: "t1",
+        reason: "reaped",
+      });
+
+      expect(signal.aborted).toBe(true);
     });
 
-    it("is a no-op for non-existent threadId (no throw)", () => {
+    it("emits RUN_FAILED with reason 'ghost' even when no in-memory state exists", () => {
       const registry = createRegistry();
-      const purged: string[] = [];
-      registry.finishRun("no-such-thread", "failed", (id) => purged.push(id));
-      expect(purged).toEqual(["no-such-thread"]);
+
+      const pairs = registry.dispatch({
+        type: "FORCE_FAIL",
+        threadId: "t1",
+        reason: "ghost",
+        orgId: "org1",
+      });
+
+      expect(pairs).toHaveLength(1);
+      expect(pairs[0]!.event.type).toBe("RUN_FAILED");
+      if (pairs[0]!.event.type === "RUN_FAILED") {
+        expect(pairs[0]!.event.reason).toBe("ghost");
+        expect(pairs[0]!.event.orgId).toBe("org1");
+      }
+    });
+
+    it("returns empty array for non-running thread when reason is 'reaped'", () => {
+      const registry = createRegistry();
+      const pairs = registry.dispatch({
+        type: "FORCE_FAIL",
+        threadId: "t1",
+        reason: "reaped",
+      });
+      expect(pairs).toHaveLength(0);
     });
   });
 
+  // -------------------------------------------------------------------------
+  // dispatch STEP_DONE
+  // -------------------------------------------------------------------------
+  describe("dispatch STEP_DONE", () => {
+    it("emits STEP_COMPLETED with incremented stepCount when running", () => {
+      const registry = createRegistry();
+      startThread(registry, "t1");
+
+      const pairs = registry.dispatch({ type: "STEP_DONE", threadId: "t1" });
+
+      expect(pairs).toHaveLength(1);
+      expect(pairs[0]!.event.type).toBe("STEP_COMPLETED");
+      if (pairs[0]!.event.type === "STEP_COMPLETED") {
+        expect(pairs[0]!.event.stepCount).toBe(1);
+      }
+    });
+
+    it("returns empty array when thread is not running", () => {
+      const registry = createRegistry();
+      const pairs = registry.dispatch({ type: "STEP_DONE", threadId: "t1" });
+      expect(pairs).toHaveLength(0);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // getAbortSignal
+  // -------------------------------------------------------------------------
+  describe("getAbortSignal", () => {
+    it("returns null for an unknown threadId", () => {
+      const registry = createRegistry();
+      expect(registry.getAbortSignal("nope")).toBeNull();
+    });
+
+    it("returns null after a run finishes", () => {
+      const registry = createRegistry();
+      startThread(registry, "t1");
+
+      registry.dispatch({
+        type: "FINISH",
+        threadId: "t1",
+        threadStatus: "completed",
+      });
+
+      expect(registry.getAbortSignal("t1")).toBeNull();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // stopAll
+  // -------------------------------------------------------------------------
   describe("stopAll", () => {
-    it("aborts all running entries and clears the map", () => {
-      const registry = createRegistry();
-      const storage = mockStorage();
-      const run1 = registry.startRun("t1", "org1", "u1");
-      const run2 = registry.startRun("t2", "org1", "u2");
+    it("aborts running entries, calls storage.update for each, and clears the map", () => {
+      const deps = makeNoopDeps();
+      const registry = new RunRegistry(deps);
 
-      const completedRun = registry.startRun("t3", "org1", "u3");
-      completedRun.status = "completed" as const;
+      startThread(registry, "t1", "org1", "u1");
+      startThread(registry, "t2", "org1", "u2");
 
-      registry.stopAll(storage);
+      const signalT1 = registry.getAbortSignal("t1")!;
+      const signalT2 = registry.getAbortSignal("t2")!;
 
-      expect(run1.abortController.signal.aborted).toBe(true);
-      expect(run2.abortController.signal.aborted).toBe(true);
-      expect(completedRun.abortController.signal.aborted).toBe(false);
+      // Start a third run and finish it so it is no longer "running"
+      startThread(registry, "t3", "org1", "u3");
+      registry.dispatch({
+        type: "FINISH",
+        threadId: "t3",
+        threadStatus: "completed",
+      });
 
-      expect(storage.update).toHaveBeenCalledTimes(2);
-      expect(storage.update).toHaveBeenCalledWith("t1", { status: "failed" });
-      expect(storage.update).toHaveBeenCalledWith("t2", { status: "failed" });
+      registry.stopAll();
 
-      expect(registry.getRun("t1")).toBeUndefined();
-      expect(registry.getRun("t2")).toBeUndefined();
-      expect(registry.getRun("t3")).toBeUndefined();
+      expect(signalT1.aborted).toBe(true);
+      expect(signalT2.aborted).toBe(true);
+
+      expect(deps.storage.update).toHaveBeenCalledTimes(2);
+      expect(deps.storage.update).toHaveBeenCalledWith("t1", {
+        status: "failed",
+      });
+      expect(deps.storage.update).toHaveBeenCalledWith("t2", {
+        status: "failed",
+      });
+
+      expect(registry.isRunning("t1")).toBe(false);
+      expect(registry.isRunning("t2")).toBe(false);
     });
   });
 });

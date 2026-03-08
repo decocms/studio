@@ -1,121 +1,129 @@
 /**
- * RunRegistry — in-memory registry of active Decopilot runs
+ * RunRegistry — in-memory event-sourced dispatcher for Decopilot run state
  *
- * Tracks running streamText loops by threadId so they survive client disconnect.
- * Cancel is propagated via NATS to the pod that owns the run.
+ * Wraps the pure decider + projector into a stateful registry. Tracks all
+ * in-flight and recently-finished runs by threadId. A reaper timer evicts
+ * runs that have been in the "running" state for longer than MAX_RUN_AGE_MS.
  */
 
-import type { ThreadStoragePort } from "@/storage/ports";
+import type { RunCommand, RunEventPair, RunState } from "./run-state";
+import { decide } from "./run-decider";
+import { project } from "./run-projector";
+import type { RunReactorDeps } from "./run-reactor";
+import { reactAll } from "./run-reactor";
 
-export interface ActiveRun {
-  threadId: string;
-  orgId: string;
-  userId: string;
-  abortController: AbortController;
-  status: "running" | "completed" | "failed";
-  startedAt: Date;
-}
+export type { RunReactorDeps };
 
 const REAP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const MAX_RUN_AGE_MS = 30 * 60 * 1000; // 30 minutes
 
 export class RunRegistry {
-  private readonly runs = new Map<string, ActiveRun>();
+  private readonly states = new Map<string, RunState>();
   private reaperTimer: ReturnType<typeof setInterval> | null = null;
 
-  constructor() {
+  constructor(
+    private readonly deps: RunReactorDeps,
+    private readonly clock: () => Date = () => new Date(),
+  ) {
     this.reaperTimer = setInterval(
       () => this.reapStaleRuns(),
       REAP_INTERVAL_MS,
     );
   }
 
-  private reapStaleRuns(): void {
-    const now = Date.now();
-    for (const [threadId, run] of this.runs) {
+  /**
+   * Apply a command: run it through the decider, fold each resulting event
+   * through the projector, and return the (event, state) pairs produced.
+   */
+  dispatch(command: RunCommand): RunEventPair[] {
+    const current = this.states.get(command.threadId);
+    const events = decide(command, current);
+    const pairs: RunEventPair[] = [];
+
+    for (const event of events) {
+      const stateBeforeEvent = this.states.get(event.threadId);
+
+      // Abort the running controller before projecting it away
       if (
-        run.status === "running" &&
-        now - run.startedAt.getTime() > MAX_RUN_AGE_MS
+        event.type === "PREVIOUS_RUN_ABORTED" ||
+        event.type === "RUN_FAILED"
       ) {
-        console.warn(
-          `[RunRegistry] Reaping stale run for thread ${threadId} (age: ${Math.round((now - run.startedAt.getTime()) / 60_000)}min)`,
-        );
-        run.status = "failed";
-        run.abortController.abort();
-        this.runs.delete(threadId);
+        if (stateBeforeEvent?.status.tag === "running") {
+          stateBeforeEvent.status.abortController.abort();
+        }
       }
-    }
-  }
 
-  startRun(threadId: string, orgId: string, userId: string): ActiveRun {
-    const existing = this.runs.get(threadId);
-    if (existing) {
-      if (existing.status === "running") {
-        existing.abortController.abort();
+      const newState = project(stateBeforeEvent, event, this.clock());
+
+      if (newState === undefined) {
+        this.states.delete(event.threadId);
+      } else {
+        this.states.set(event.threadId, newState);
       }
-      existing.status = "failed";
-      this.runs.delete(threadId);
+
+      pairs.push({ event, state: newState });
     }
-    const run: ActiveRun = {
-      threadId,
-      orgId,
-      userId,
-      abortController: new AbortController(),
-      status: "running",
-      startedAt: new Date(),
-    };
-    this.runs.set(threadId, run);
-    return run;
+
+    return pairs;
   }
 
-  getRun(threadId: string): ActiveRun | undefined {
-    return this.runs.get(threadId);
-  }
-
-  cancelLocal(threadId: string): boolean {
-    const run = this.runs.get(threadId);
-    if (!run || run.status !== "running") return false;
-    run.status = "failed";
-    this.runs.delete(threadId);
-    run.abortController.abort();
-    return true;
-  }
-
-  completeRun(threadId: string, status: "completed" | "failed"): void {
-    const run = this.runs.get(threadId);
-    if (run) {
-      run.status = status;
-      this.runs.delete(threadId);
+  /** Returns the AbortSignal for the running thread, or null if not running. */
+  getAbortSignal(threadId: string): AbortSignal | null {
+    const state = this.states.get(threadId);
+    if (state?.status.tag === "running") {
+      return state.status.abortController.signal;
     }
+    return null;
+  }
+
+  /** Returns true when the thread currently has an active run in progress. */
+  isRunning(threadId: string): boolean {
+    return this.states.get(threadId)?.status.tag === "running";
   }
 
   /**
-   * Finish a run: update status, remove from registry, and purge stream buffer.
-   * Unifies completeRun + purge into a single call to avoid split call sites.
+   * Abort every running entry, persist failure status, and clear the map.
+   * Called during graceful shutdown.
    */
-  finishRun(
-    threadId: string,
-    status: "completed" | "failed",
-    onPurge?: (threadId: string) => void,
-  ): void {
-    this.completeRun(threadId, status);
-    onPurge?.(threadId);
-  }
-
-  stopAll(storage: ThreadStoragePort): void {
-    for (const [threadId, run] of this.runs) {
-      if (run.status === "running") {
-        run.abortController.abort();
-        storage.update(threadId, { status: "failed" }).catch(() => {});
+  stopAll(): void {
+    for (const [threadId, state] of this.states) {
+      if (state.status.tag === "running") {
+        state.status.abortController.abort();
+        this.deps.storage
+          .update(threadId, { status: "failed" })
+          .catch(() => {});
       }
     }
-    this.runs.clear();
+    this.states.clear();
   }
 
+  /** Stop the reaper timer. Call once during server shutdown. */
   dispose(): void {
     if (this.reaperTimer) {
       clearInterval(this.reaperTimer);
       this.reaperTimer = null;
+    }
+  }
+
+  private reapStaleRuns(): void {
+    const now = this.clock().getTime();
+    for (const [threadId, state] of this.states) {
+      if (
+        state.status.tag === "running" &&
+        now - state.status.startedAt.getTime() > MAX_RUN_AGE_MS
+      ) {
+        console.warn(
+          `[RunRegistry] Reaping stale run for thread ${threadId} ...`,
+        );
+        const pairs = this.dispatch({
+          type: "FORCE_FAIL",
+          threadId,
+          reason: "reaped",
+        });
+        reactAll(pairs, this.deps).catch((err) => {
+          console.error("[RunRegistry] Reaper reactAll failed", err);
+        });
+      }
     }
   }
 }
