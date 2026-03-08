@@ -74,13 +74,19 @@ export type RunCommand =
   | {
       type: "FORCE_FAIL";
       threadId: string;
-      reason: "ghost" | "reaped";
+      reason: "ghost";
       /**
-       * Required when reason is "ghost" — the server restarted and there is
-       * no in-memory state to derive orgId from. For all other reasons orgId
-       * is read from the existing RunState.
+       * Required for ghost commands — the server restarted and there is no
+       * in-memory state to derive orgId from.
        */
-      orgId?: string;
+      orgId: string;
+    }
+  | {
+      type: "FORCE_FAIL";
+      threadId: string;
+      reason: "reaped";
+      /** orgId is read from the existing RunState; must not be supplied. */
+      orgId?: never;
     };
 
 // ============================================================================

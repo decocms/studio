@@ -55,11 +55,20 @@ describe("project", () => {
       }
     });
 
-    it("running state (restart) → RunState with new fields from event, stepCount 0", () => {
+    it("running state (restart) → RunState with new identity fields from event, stepCount 0", () => {
       const existing = makeRunningState(5);
-      const event = makeRunStartedEvent();
+      const event: Extract<RunEvent, { type: "RUN_STARTED" }> = {
+        type: "RUN_STARTED",
+        threadId: "t-new",
+        orgId: "org-new",
+        userId: "u-new",
+        abortController: new AbortController(),
+      };
       const result = project(existing, event, new Date());
       expect(result).not.toBeUndefined();
+      expect(result!.threadId).toBe("t-new");
+      expect(result!.orgId).toBe("org-new");
+      expect(result!.userId).toBe("u-new");
       expect(result!.status.tag).toBe("running");
       if (result!.status.tag === "running") {
         expect(result!.status.stepCount).toBe(0);

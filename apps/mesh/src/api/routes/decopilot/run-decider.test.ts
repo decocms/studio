@@ -198,7 +198,7 @@ describe("CANCEL", () => {
 describe("FORCE_FAIL", () => {
   it('running state + reason "ghost" → [RUN_FAILED] with reason "ghost"', () => {
     const events = decide(
-      { type: "FORCE_FAIL", threadId: "t1", reason: "ghost" },
+      { type: "FORCE_FAIL", threadId: "t1", reason: "ghost", orgId: "org1" },
       makeRunningState({ orgId: "org1" }),
     );
 

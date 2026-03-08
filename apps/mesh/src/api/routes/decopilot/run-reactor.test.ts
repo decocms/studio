@@ -195,6 +195,32 @@ describe("reactAll", () => {
       expect(deps.streamBuffer.purge).toHaveBeenCalledWith("t1");
       expect(deps.sseHub.emit).toHaveBeenCalledTimes(2);
     });
+
+    it("ghost reason: no SSE events emitted when forceFailIfInProgress returns false", async () => {
+      const deps = makeDeps();
+      (
+        deps.storage.forceFailIfInProgress as ReturnType<typeof mock>
+      ).mockImplementationOnce(() => Promise.resolve(false));
+
+      const pairs: RunTransition[] = [
+        {
+          event: {
+            type: "RUN_FAILED",
+            threadId: "t1",
+            orgId: "org1",
+            reason: "ghost",
+          },
+          state: undefined,
+        },
+      ];
+
+      await reactAll(pairs, deps);
+
+      expect(deps.storage.forceFailIfInProgress).toHaveBeenCalledTimes(1);
+      expect(deps.storage.update).not.toHaveBeenCalled();
+      expect(deps.streamBuffer.purge).not.toHaveBeenCalled();
+      expect(deps.sseHub.emit).not.toHaveBeenCalled();
+    });
   });
 
   describe("PREVIOUS_RUN_ABORTED", () => {
@@ -241,19 +267,21 @@ describe("reactAll", () => {
         },
         {
           event: {
-            type: "STEP_COMPLETED",
+            type: "RUN_COMPLETED",
             threadId: "t1",
             orgId: "org1",
             stepCount: 1,
           },
-          state: makeRunningState(),
+          state: undefined,
         },
       ];
 
       await expect(reactAll(pairs, deps)).rejects.toThrow("DB error");
 
-      // Only the first event was processed
+      // Only the first event was processed — RUN_COMPLETED would call
+      // storage.update a second time and emit 2 SSE events if it ran.
       expect(deps.storage.update).toHaveBeenCalledTimes(1);
+      expect(deps.sseHub.emit).not.toHaveBeenCalled();
     });
   });
 });

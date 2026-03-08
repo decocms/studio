@@ -102,10 +102,21 @@ export function decide(
     }
 
     case "FORCE_FAIL": {
-      // For ghost runs the server restarted and no in-memory state exists.
-      // Bypass the running-state guard so the reactor can call
-      // forceFailIfInProgress and emit the correct SSE events.
-      if (state?.status.tag !== "running" && command.reason !== "ghost") {
+      if (command.reason === "ghost") {
+        // The server restarted — no in-memory state. orgId is guaranteed on
+        // the command by the discriminated union; fall back to state when
+        // the run happens to still be live (e.g. race on restart).
+        return [
+          {
+            type: "RUN_FAILED",
+            threadId: command.threadId,
+            orgId: state?.orgId ?? command.orgId,
+            reason: command.reason,
+          },
+        ];
+      }
+
+      if (state?.status.tag !== "running") {
         return [];
       }
 
@@ -113,7 +124,7 @@ export function decide(
         {
           type: "RUN_FAILED",
           threadId: command.threadId,
-          orgId: state?.orgId ?? command.orgId ?? "",
+          orgId: state.orgId,
           reason: command.reason,
         },
       ];

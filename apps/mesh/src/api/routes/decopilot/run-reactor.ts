@@ -91,7 +91,10 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
     case "RUN_FAILED": {
       // state is undefined post-projection; orgId is carried on the event
       if (event.reason === "ghost") {
-        await storage.forceFailIfInProgress(event.threadId);
+        const transitioned = await storage.forceFailIfInProgress(
+          event.threadId,
+        );
+        if (!transitioned) return;
       } else {
         await storage.update(event.threadId, { status: "failed" });
       }
