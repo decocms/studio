@@ -28,7 +28,7 @@ describe("Database Factory", () => {
     });
 
     // When no URL is provided, createDatabase() defaults to
-    // file://${homedir()}/deco/db.pglite (DEFAULT_PGLITE_PATH).
+    // file://${homedir()}/deco/system/db.pglite (DEFAULT_PGLITE_PATH).
     // We pass an explicit file: URL to tempDir to keep the test isolated
     // while still exercising the same PGlite creation path.
     it("should default to PGlite when given a file: URL", async () => {

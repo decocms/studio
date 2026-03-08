@@ -15,7 +15,7 @@ describe("cleanupOldMonitoringFiles", () => {
     await rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("should delete directories older than maxAgeDays", async () => {
+  it("should delete directories older than 30 days", async () => {
     const old = new Date();
     old.setUTCDate(old.getUTCDate() - 31);
     const oldPath = join(
@@ -39,7 +39,7 @@ describe("cleanupOldMonitoringFiles", () => {
     await mkdir(newPath, { recursive: true });
     await writeFile(join(newPath, "test.ndjson"), "new-data");
 
-    const deleted = await cleanupOldMonitoringFiles(tmpDir, { maxAgeDays: 30 });
+    const deleted = await cleanupOldMonitoringFiles(tmpDir);
     expect(deleted).toBeGreaterThanOrEqual(1);
 
     const allFiles = await readdir(tmpDir, { recursive: true });
@@ -48,9 +48,7 @@ describe("cleanupOldMonitoringFiles", () => {
   });
 
   it("should handle missing base directory gracefully", async () => {
-    const deleted = await cleanupOldMonitoringFiles("/nonexistent/path", {
-      maxAgeDays: 30,
-    });
+    const deleted = await cleanupOldMonitoringFiles("/nonexistent/path");
     expect(deleted).toBe(0);
   });
 
@@ -66,7 +64,7 @@ describe("cleanupOldMonitoringFiles", () => {
     await mkdir(oldPath, { recursive: true });
     await writeFile(join(oldPath, "test.ndjson"), "old-data");
 
-    const deleted = await cleanupOldMonitoringFiles(tmpDir, { maxAgeDays: 30 });
+    const deleted = await cleanupOldMonitoringFiles(tmpDir);
     expect(deleted).toBeGreaterThanOrEqual(1);
   });
 
@@ -74,12 +72,7 @@ describe("cleanupOldMonitoringFiles", () => {
     await mkdir(join(tmpDir, ".DS_Store"), { recursive: true });
     await mkdir(join(tmpDir, "tmp"), { recursive: true });
 
-    const deleted = await cleanupOldMonitoringFiles(tmpDir, { maxAgeDays: 30 });
-    expect(deleted).toBe(0);
-  });
-
-  it("should validate maxAgeDays is positive", async () => {
-    const deleted = await cleanupOldMonitoringFiles(tmpDir, { maxAgeDays: -1 });
+    const deleted = await cleanupOldMonitoringFiles(tmpDir);
     expect(deleted).toBe(0);
   });
 
@@ -96,7 +89,7 @@ describe("cleanupOldMonitoringFiles", () => {
     await mkdir(boundaryPath, { recursive: true });
     await writeFile(join(boundaryPath, "test.ndjson"), "boundary-data");
 
-    const deleted = await cleanupOldMonitoringFiles(tmpDir, { maxAgeDays: 30 });
+    const deleted = await cleanupOldMonitoringFiles(tmpDir);
     expect(deleted).toBe(0);
   });
 });

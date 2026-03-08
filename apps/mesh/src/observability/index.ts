@@ -26,7 +26,7 @@ import { enableFetchInstrumentation } from "./instrumentations/fetch";
 import { NDJSONSpanExporter } from "../monitoring/ndjson-span-exporter";
 import {
   MONITORING_SPAN_NAME,
-  DEFAULT_MONITORING_DATA_PATH,
+  DEFAULT_MONITORING_URI,
 } from "../monitoring/schema";
 
 import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
@@ -227,17 +227,15 @@ const headSampler = new MonitoringAlwaysSampler(
 
 /**
  * Select trace exporter based on environment.
- * "local" (default): NDJSON files for chdb (embedded ClickHouse) queries
- * "otlp": OTel Collector for cloud deployments
+ *
+ * When CLICKHOUSE_URL is set, we're in a cloud environment — spans are sent
+ * to an OTel Collector via OTLP (which forwards to ClickHouse).
+ * Otherwise, spans are written as NDJSON files to ~/deco/system/monitoring for
+ * local chdb queries.
  */
-const exportMode = process.env.MONITORING_EXPORT_MODE ?? "local";
-const traceExporter =
-  exportMode === "otlp"
-    ? new OTLPTraceExporter()
-    : new NDJSONSpanExporter({
-        basePath:
-          process.env.MONITORING_DATA_PATH ?? DEFAULT_MONITORING_DATA_PATH,
-      });
+const traceExporter = process.env.CLICKHOUSE_URL
+  ? new OTLPTraceExporter()
+  : new NDJSONSpanExporter({ basePath: DEFAULT_MONITORING_URI });
 
 /**
  * Initialize OpenTelemetry SDK

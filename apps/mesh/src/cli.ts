@@ -54,7 +54,7 @@ Options:
 
 Environment Variables:
   PORT                  Port to listen on (default: 3000)
-  DATABASE_URL          Database connection URL (default: file://$HOME/deco/db.pglite)
+  DATABASE_URL          Database connection URL (default: file://$HOME/deco/system/db.pglite)
   NODE_ENV              Set to 'production' for production mode
   BETTER_AUTH_SECRET    Secret for authentication (auto-generated if not set)
   ENCRYPTION_KEY        Key for encrypting secrets (auto-generated if not set)

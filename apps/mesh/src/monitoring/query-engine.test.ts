@@ -86,9 +86,9 @@ describe("createMonitoringEngine", () => {
     expect(source).toContain(".ndjson");
   });
 
-  it("should use DEFAULT_MONITORING_DATA_PATH when no basePath", () => {
+  it("should use DEFAULT_MONITORING_URI when no basePath", () => {
     const { source } = createMonitoringEngine({});
-    expect(source).toContain("deco/monitoring");
+    expect(source).toContain("deco/system/monitoring");
   });
 
   it("should create ClickHouseClientEngine when clickhouseUrl is set", () => {

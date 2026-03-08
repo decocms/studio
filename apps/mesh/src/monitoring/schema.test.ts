@@ -2,7 +2,7 @@ import { describe, it, expect } from "bun:test";
 import {
   MESH_ATTR,
   MONITORING_SPAN_NAME,
-  DEFAULT_MONITORING_DATA_PATH,
+  DEFAULT_MONITORING_URI,
   spanToMonitoringRow,
 } from "./schema";
 
@@ -26,8 +26,8 @@ describe("monitoring schema", () => {
 
   it("should define shared constants", () => {
     expect(MONITORING_SPAN_NAME).toBe("mcp.proxy.callTool");
-    expect(DEFAULT_MONITORING_DATA_PATH).toContain("deco");
-    expect(DEFAULT_MONITORING_DATA_PATH).toContain("monitoring");
+    expect(DEFAULT_MONITORING_URI).toContain("deco");
+    expect(DEFAULT_MONITORING_URI).toContain("monitoring");
   });
 
   it("should convert a span-like object to a monitoring row", () => {

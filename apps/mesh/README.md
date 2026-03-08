@@ -263,21 +263,11 @@ PORT=3000
 # Encryption key for credential vault (auto-generated if not set)
 ENCRYPTION_KEY=your-32-byte-key
 
-# Monitoring export mode (optional - defaults to "local")
-# "local": writes NDJSON files to disk, queried via chdb (embedded ClickHouse)
-# "otlp": sends spans to an OTel Collector via OTLPTraceExporter
-MONITORING_EXPORT_MODE=local
-
-# Local monitoring data path (optional - defaults to ~/deco/monitoring)
-# Only used when MONITORING_EXPORT_MODE=local
-MONITORING_DATA_PATH=~/deco/monitoring
-
 # Remote ClickHouse URL for production monitoring queries (optional)
-# When set, queries go to this ClickHouse instance instead of local chdb
+# When set, spans are exported via OTLP (to an OTel Collector) and queries
+# go to this ClickHouse instance. When unset, spans are written as NDJSON
+# files to ~/deco/system/monitoring and queried locally via chdb.
 CLICKHOUSE_URL=http://localhost:8123
-
-# Monitoring data retention in days (optional - defaults to 30)
-MONITORING_RETENTION_DAYS=30
 ```
 
 ### Auth Configuration

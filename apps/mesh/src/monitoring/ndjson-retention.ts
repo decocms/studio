@@ -1,18 +1,13 @@
 import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-export interface RetentionOptions {
-  maxAgeDays: number;
-}
+const RETENTION_DAYS = 30;
 
 export async function cleanupOldMonitoringFiles(
   basePath: string,
-  options: RetentionOptions,
 ): Promise<number> {
-  if (options.maxAgeDays <= 0) return 0;
-
   const cutoff = new Date();
-  cutoff.setUTCDate(cutoff.getUTCDate() - options.maxAgeDays);
+  cutoff.setUTCDate(cutoff.getUTCDate() - RETENTION_DAYS);
   cutoff.setUTCHours(0, 0, 0, 0);
 
   let deleted = 0;

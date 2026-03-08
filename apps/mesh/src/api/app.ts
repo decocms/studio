@@ -70,7 +70,7 @@ import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { SqlThreadStorage } from "../storage/threads";
 import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
-import { DEFAULT_MONITORING_DATA_PATH } from "../monitoring/schema";
+import { DEFAULT_MONITORING_URI } from "../monitoring/schema";
 
 // Track current event bus instance for cleanup during HMR
 let currentEventBus: EventBus | null = null;
@@ -647,14 +647,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     });
 
   // NDJSON monitoring retention cleanup
-  const monitoringBasePath =
-    process.env.MONITORING_DATA_PATH ?? DEFAULT_MONITORING_DATA_PATH;
-  const retentionDays = Math.max(
-    1,
-    Number(process.env.MONITORING_RETENTION_DAYS) || 30,
-  );
-
-  cleanupOldMonitoringFiles(monitoringBasePath, { maxAgeDays: retentionDays })
+  cleanupOldMonitoringFiles(DEFAULT_MONITORING_URI)
     .then((deleted) => {
       if (deleted > 0)
         console.log(
@@ -667,9 +660,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   const retentionTimer = setInterval(
     () => {
-      cleanupOldMonitoringFiles(monitoringBasePath, {
-        maxAgeDays: retentionDays,
-      }).catch((err) =>
+      cleanupOldMonitoringFiles(DEFAULT_MONITORING_URI).catch((err) =>
         console.error("[monitoring] Retention cleanup failed:", err),
       );
     },

@@ -8,7 +8,7 @@
 
 import { createClient, type ClickHouseClient } from "@clickhouse/client";
 import { resolve } from "node:path";
-import { DEFAULT_MONITORING_DATA_PATH } from "./schema";
+import { DEFAULT_MONITORING_URI } from "./schema";
 
 export interface QueryEngine {
   query(
@@ -116,7 +116,7 @@ export function createMonitoringEngine(config: MonitoringEngineConfig): {
     };
   }
 
-  const basePath = config.basePath ?? DEFAULT_MONITORING_DATA_PATH;
+  const basePath = config.basePath ?? DEFAULT_MONITORING_URI;
   const resolvedPath = resolve(basePath);
   if (/[';]/.test(resolvedPath)) {
     throw new Error(`Invalid monitoring data path: ${resolvedPath}`);
