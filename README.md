@@ -1,5 +1,3 @@
-<img alt="deco Studio Readme Banner" src="https://github.com/user-attachments/assets/e6283421-71ff-478d-8c45-9fb67d484888" />
-
 <h1 align="center">deco Studio</h1>
 
 <p align="center">
