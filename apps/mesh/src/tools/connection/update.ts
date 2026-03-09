@@ -216,7 +216,12 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
       if (finalScopes.length > 0) {
         const stateObj = finalState as Record<string, unknown>;
         injectSelfSentinel(stateObj, finalScopes, organization.id);
-        await validateConfiguration(stateObj, finalScopes, organization.id, ctx);
+        await validateConfiguration(
+          stateObj,
+          finalScopes,
+          organization.id,
+          ctx,
+        );
       }
     }
 
