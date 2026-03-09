@@ -763,15 +763,6 @@ const toolsFor = <TSchema extends ZodTypeAny = never>({
                 start_at_epoch_ms?: number;
               };
 
-              if (
-                ctx.virtual_mcp_id &&
-                wf.virtual_mcp_id &&
-                ctx.virtual_mcp_id !== wf.virtual_mcp_id
-              ) {
-                throw new Error(
-                  `[${id}] Cannot override virtual_mcp_id: workflow is bound to "${wf.virtual_mcp_id}".`,
-                );
-              }
               const virtualMcpId = ctx.virtual_mcp_id ?? wf.virtual_mcp_id;
 
               const collectionId = Workflow.workflowId(connectionId, wf.title);

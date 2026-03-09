@@ -35,6 +35,11 @@ interface WorkflowCollectionItem {
   updated_at: string;
 }
 
+interface DefaultVirtualMCPItem {
+  id: string;
+  title: string;
+}
+
 /**
  * Hand-rolled client interface for the workflow collection tools exposed by
  * the mesh's /mcp/self endpoint.
@@ -82,6 +87,27 @@ interface MeshWorkflowClient {
     input?: Record<string, unknown>;
     start_at_epoch_ms?: number;
   }) => Promise<{ item: { id: string } }>;
+  COLLECTION_VIRTUAL_MCP_LIST: (input: {
+    where?: {
+      operator: "and";
+      conditions: Array<{ field: string[]; operator: string; value: unknown }>;
+    };
+    limit?: number;
+    offset?: number;
+  }) => Promise<{
+    items: DefaultVirtualMCPItem[];
+    totalCount: number;
+    hasMore: boolean;
+  }>;
+  COLLECTION_VIRTUAL_MCP_CREATE: (input: {
+    data: {
+      title: string;
+      connections: Array<{
+        connection_id: string;
+        selected_tools: null;
+      }>;
+    };
+  }) => Promise<{ item: DefaultVirtualMCPItem }>;
 }
 
 function slugify(title: string): string {
@@ -123,11 +149,105 @@ const MAX_FINGERPRINT_CACHE = 500;
 const workflowFingerprints = new Map<string, string>();
 
 function setFingerprint(connectionId: string, fingerprint: string) {
-  if (workflowFingerprints.size >= MAX_FINGERPRINT_CACHE) {
+  if (
+    !workflowFingerprints.has(connectionId) &&
+    workflowFingerprints.size >= MAX_FINGERPRINT_CACHE
+  ) {
     const firstKey = workflowFingerprints.keys().next().value;
     if (firstKey !== undefined) workflowFingerprints.delete(firstKey);
   }
   workflowFingerprints.set(connectionId, fingerprint);
+}
+
+// Derives the title for the auto-generated default Virtual MCP.
+// Embedding the connectionId makes each VMCP identifiable in the UI and
+// uniquely addressable in LIST lookups without relying on the connection_id
+// filter alone (which would match any VMCP that includes this connection).
+function defaultVmcpTitle(connectionId: string): string {
+  return `Workflows Agent (${connectionId})`;
+}
+
+// Cache of connectionId → auto-created default Virtual MCP ID.
+// Capped at the same size as the fingerprint cache.
+const defaultVmcpByConnection = new Map<string, string>();
+
+function setDefaultVmcp(connectionId: string, vmcpId: string) {
+  if (
+    !defaultVmcpByConnection.has(connectionId) &&
+    defaultVmcpByConnection.size >= MAX_FINGERPRINT_CACHE
+  ) {
+    const firstKey = defaultVmcpByConnection.keys().next().value;
+    if (firstKey !== undefined) defaultVmcpByConnection.delete(firstKey);
+  }
+  defaultVmcpByConnection.set(connectionId, vmcpId);
+}
+
+/**
+ * Returns the ID of the "Workflows Agent" Virtual MCP for a connection,
+ * creating one if it does not yet exist.
+ *
+ * Resolution order:
+ *   1. Module-level cache (avoids the round-trip within a process lifetime).
+ *   2. Remote LIST filtered by connection_id + title (survives restarts).
+ *   3. Remote CREATE — only when no matching VMCP is found.
+ *
+ * Any network failure is logged and causes the function to return undefined
+ * so callers continue without a default rather than failing the whole sync.
+ */
+async function resolveDefaultVirtualMcp(
+  connectionId: string,
+  client: MeshWorkflowClient,
+  tag: string,
+): Promise<string | undefined> {
+  const cached = defaultVmcpByConnection.get(connectionId);
+  if (cached) {
+    console.log(`${tag} Using cached default Virtual MCP: ${cached}`);
+    return cached;
+  }
+
+  const title = defaultVmcpTitle(connectionId);
+
+  try {
+    const result = await client.COLLECTION_VIRTUAL_MCP_LIST({
+      where: {
+        operator: "and",
+        conditions: [
+          { field: ["connection_id"], operator: "eq", value: connectionId },
+          { field: ["title"], operator: "eq", value: title },
+        ],
+      },
+      limit: 1,
+    });
+    if (result.items.length > 0) {
+      const vmcpId = result.items[0]!.id;
+      setDefaultVmcp(connectionId, vmcpId);
+      console.log(`${tag} Found existing default Virtual MCP: ${vmcpId}`);
+      return vmcpId;
+    }
+  } catch (err) {
+    console.warn(
+      `${tag} Could not list Virtual MCPs — proceeding without default. Error: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return undefined;
+  }
+
+  try {
+    const created = await client.COLLECTION_VIRTUAL_MCP_CREATE({
+      data: {
+        title,
+        connections: [{ connection_id: connectionId, selected_tools: null }],
+      },
+    });
+    const vmcpId = created.item.id;
+    setDefaultVmcp(connectionId, vmcpId);
+    console.log(`${tag} Created default Virtual MCP: ${vmcpId}`);
+    return vmcpId;
+  } catch (err) {
+    console.warn(
+      `${tag} Could not create default Virtual MCP — proceeding without default. Error: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return undefined;
+  }
 }
 
 function fingerprintWorkflows(declared: WorkflowDefinition[]): string {
@@ -195,6 +315,14 @@ async function doSyncWorkflows(
 
   const client = _clientOverride ?? createMeshSelfClient(meshUrl, token);
 
+  // Resolve (or lazily create) the default Virtual MCP for this connection so
+  // that workflows without an explicit virtual_mcp_id get a sensible default.
+  const defaultVmcpId = await resolveDefaultVirtualMcp(
+    connectionId,
+    client,
+    tag,
+  );
+
   let existing: WorkflowCollectionItem[];
   try {
     const allItems: WorkflowCollectionItem[] = [];
@@ -243,14 +371,17 @@ async function doSyncWorkflows(
       const op = managed.has(id) ? "UPDATE" : "CREATE";
       console.log(`${tag} ${op} "${wf.title}" (id=${id})`);
       try {
+        // Explicit declaration wins; fall back to the auto-resolved default.
+        const resolvedVmcpId = wf.virtual_mcp_id ?? defaultVmcpId;
+
         if (op === "UPDATE") {
           const result = await client.COLLECTION_WORKFLOW_UPDATE({
             id,
             data: {
               title: wf.title,
               description: wf.description,
-              ...(wf.virtual_mcp_id !== undefined && {
-                virtual_mcp_id: wf.virtual_mcp_id,
+              ...(resolvedVmcpId !== undefined && {
+                virtual_mcp_id: resolvedVmcpId,
               }),
               steps: wf.steps,
             },
@@ -270,7 +401,7 @@ async function doSyncWorkflows(
               id,
               title: wf.title,
               description: wf.description,
-              virtual_mcp_id: wf.virtual_mcp_id,
+              virtual_mcp_id: resolvedVmcpId,
               steps: wf.steps,
             },
           });
@@ -362,6 +493,8 @@ export const WORKFLOW_SCOPES = [
   "SELF::COLLECTION_WORKFLOW_UPDATE",
   "SELF::COLLECTION_WORKFLOW_DELETE",
   "SELF::COLLECTION_WORKFLOW_EXECUTION_CREATE",
+  "SELF::COLLECTION_VIRTUAL_MCP_LIST",
+  "SELF::COLLECTION_VIRTUAL_MCP_CREATE",
 ] as const;
 
 export const Workflow = {
@@ -389,12 +522,14 @@ export const Workflow = {
     return result.item.id;
   },
   /**
-   * Clears the cached fingerprint for a connection so the next sync performs
-   * a full remote round-trip. Call this on connection teardown or when you
-   * need to force a re-sync without changing the declared workflow set.
+   * Clears the cached fingerprint and default Virtual MCP ID for a connection
+   * so the next sync performs a full remote round-trip. Call this on connection
+   * teardown or when you need to force a re-sync without changing the declared
+   * workflow set.
    */
   clearFingerprint: (connectionId: string) => {
     workflowFingerprints.delete(connectionId);
+    defaultVmcpByConnection.delete(connectionId);
   },
 };
 
