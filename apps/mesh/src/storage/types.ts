@@ -389,29 +389,6 @@ export interface BetterAuthOrganizationRoleTable {
 }
 
 /**
- * Monitoring Log table definition
- * Tracks all tool calls through the MCP proxy
- */
-export interface MonitoringLogTable {
-  id: string;
-  organization_id: string;
-  connection_id: string;
-  connection_title: string;
-  tool_name: string;
-  input: JsonObject<Record<string, unknown>>; // Redacted JSON
-  output: JsonObject<Record<string, unknown>>; // Redacted JSON
-  is_error: number; // Integer column (SQLite-style boolean: 0/1)
-  error_message: string | null;
-  duration_ms: number;
-  timestamp: ColumnType<Date, Date | string, never>;
-  user_id: string | null;
-  request_id: string;
-  user_agent: string | null; // x-mesh-client header
-  virtual_mcp_id: string | null; // Virtual MCP (Agent) ID if routed through an agent
-  properties: JsonObject<Record<string, string>> | null; // Custom key-value metadata
-}
-
-/**
  * Monitoring Log runtime type
  */
 export interface MonitoringLog {
@@ -611,7 +588,7 @@ export interface EventSubscriptionTable {
   publisher: string | null; // Filter by publisher connection (null = wildcard)
   event_type: string; // Event type pattern to match
   filter: string | null; // Optional JSONPath filter on event data
-  enabled: number; // Integer column (SQLite-style boolean: 0/1)
+  enabled: number; // Integer column (0/1)
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
@@ -912,7 +889,6 @@ export interface Database {
   connections: MCPConnectionTable; // MCP connections (organization-scoped)
   organization_settings: OrganizationSettingsTable; // Organization-level configuration
   api_keys: ApiKeyTable; // Better Auth API keys
-  monitoring_logs: MonitoringLogTable; // Tool call monitoring logs
   monitoring_dashboards: MonitoringDashboardTable; // Custom monitoring dashboards
 
   // OAuth tables (for MCP OAuth server)

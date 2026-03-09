@@ -157,8 +157,9 @@ function extractPGlitePath(connectionString: string): string {
   }
 
   if (connectionString.includes("://")) {
-    const url = new URL(connectionString);
-    return url.pathname;
+    // Strip protocol and resolve to avoid WHATWG URL mis-parsing relative paths
+    const raw = connectionString.replace(/^\w+:\/\//, "");
+    return path.resolve(raw);
   }
 
   return connectionString;
@@ -183,7 +184,7 @@ function createPGliteDatabase(config: DatabaseConfig): PGliteDatabase {
 // URL Parsing
 // ============================================================================
 
-const DEFAULT_PGLITE_PATH = path.join(homedir(), "deco", "db.pglite");
+const DEFAULT_PGLITE_PATH = path.join(homedir(), "deco", "system", "db.pglite");
 
 function parseDatabaseUrl(databaseUrl?: string): DatabaseConfig {
   let url = databaseUrl || getDatabaseUrl();
@@ -202,11 +203,18 @@ function parseDatabaseUrl(databaseUrl?: string): DatabaseConfig {
     case "postgresql":
       return { type: "postgres", connectionString: url };
 
-    case "file":
-      if (!parsed?.pathname) {
+    case "file": {
+      // file:// URLs with relative paths (e.g. "file://./data/mesh") are
+      // mis-parsed by the WHATWG URL spec — the "./" becomes the host and only
+      // the trailing segment ends up in pathname.  Strip the protocol prefix
+      // and resolve relative paths manually to avoid this footgun.
+      const raw = url.replace(/^file:(?:\/\/(?:localhost(?=\/|$))?)?/, "");
+      if (!raw) {
         throw new Error("Invalid database URL: " + url);
       }
-      return { type: "pglite", connectionString: parsed.pathname };
+      const resolved = path.resolve(raw);
+      return { type: "pglite", connectionString: resolved };
+    }
 
     default:
       throw new Error(

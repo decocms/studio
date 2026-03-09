@@ -156,11 +156,50 @@ export interface PropertyFilters {
   propertyInValues?: Record<string, string>;
 }
 
+export type AggregationFunction =
+  | "sum"
+  | "avg"
+  | "min"
+  | "max"
+  | "count"
+  | "count_all"
+  | "last";
+
+export type GroupByColumn =
+  | "connection_id"
+  | "connection_title"
+  | "user_id"
+  | "tool_name"
+  | "virtual_mcp_id";
+
+export interface AggregationParams {
+  organizationId: string;
+  path: string;
+  from: "input" | "output";
+  aggregation: AggregationFunction;
+  groupBy?: string;
+  groupByColumn?: GroupByColumn;
+  interval?: string;
+  limit?: number;
+  filters?: {
+    connectionIds?: string[];
+    virtualMcpIds?: string[];
+    toolNames?: string[];
+    startDate?: Date;
+    endDate?: Date;
+    propertyFilters?: PropertyFilters;
+  };
+}
+
+export interface AggregationResult {
+  value: number | null;
+  groups?: Array<{ key: string; value: number }>;
+  timeseries?: Array<{ timestamp: string; value: number }>;
+}
+
 export interface MonitoringStorage {
-  log(event: MonitoringLog): Promise<void>;
-  logBatch(events: MonitoringLog[]): Promise<void>;
   query(filters: {
-    organizationId?: string;
+    organizationId: string;
     connectionId?: string;
     excludeConnectionIds?: string[];
     virtualMcpId?: string;
@@ -181,6 +220,20 @@ export interface MonitoringStorage {
     errorRate: number;
     avgDurationMs: number;
   }>;
+  aggregate(params: AggregationParams): Promise<AggregationResult>;
+  countMatched(params: {
+    organizationId: string;
+    path: string;
+    from: "input" | "output";
+    filters?: {
+      connectionIds?: string[];
+      toolNames?: string[];
+      virtualMcpIds?: string[];
+      startDate?: Date;
+      endDate?: Date;
+      propertyFilters?: PropertyFilters;
+    };
+  }): Promise<number>;
 }
 
 // ============================================================================

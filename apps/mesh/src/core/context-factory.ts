@@ -16,7 +16,9 @@ import { CredentialVault } from "../encryption/credential-vault";
 import { getBaseUrl } from "./server-constants";
 import { ConnectionStorage } from "../storage/connection";
 import { VirtualMCPStorage } from "../storage/virtual";
-import { SqlMonitoringStorage } from "../storage/monitoring";
+import { ClickHouseMonitoringStorage } from "../storage/monitoring-clickhouse";
+import { createMonitoringEngine } from "../monitoring/query-engine";
+import { DEFAULT_MONITORING_URI } from "../monitoring/schema";
 import { SqlMonitoringDashboardStorage } from "../storage/monitoring-dashboards";
 import { OrganizationSettingsStorage } from "../storage/organization-settings";
 import { ProjectsStorage } from "../storage/projects";
@@ -754,11 +756,21 @@ export async function createMeshContextFactory(
   // Create vault instance for credential encryption
   const vault = new CredentialVault(config.encryption.key);
 
+  // Create monitoring engine (shared across requests)
+  const { engine: monitoringEngine, source: monitoringSource } =
+    createMonitoringEngine({
+      clickhouseUrl: process.env.CLICKHOUSE_URL,
+      basePath: DEFAULT_MONITORING_URI,
+    });
+
   // Create storage adapters once (singleton pattern)
   const storage = {
     connections: new ConnectionStorage(config.db, vault),
     organizationSettings: new OrganizationSettingsStorage(config.db),
-    monitoring: new SqlMonitoringStorage(config.db),
+    monitoring: new ClickHouseMonitoringStorage(
+      monitoringEngine,
+      monitoringSource,
+    ),
     monitoringDashboards: new SqlMonitoringDashboardStorage(config.db),
     virtualMcps: new VirtualMCPStorage(config.db),
     users: new UserStorage(config.db),

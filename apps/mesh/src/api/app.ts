@@ -69,12 +69,17 @@ import { NatsStreamBuffer } from "./routes/decopilot/nats-stream-buffer";
 import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { SqlThreadStorage } from "../storage/threads";
+import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
+import { DEFAULT_MONITORING_URI } from "../monitoring/schema";
 
 // Track current event bus instance for cleanup during HMR
 let currentEventBus: EventBus | null = null;
 
 // Track decopilot strategy cleanup (abort active runs, stop strategies) during HMR
 let currentDecopilotCleanup: (() => void) | null = null;
+
+// Track monitoring retention timer for cleanup during HMR
+let currentRetentionTimer: ReturnType<typeof setInterval> | null = null;
 
 // ============================================================================
 // Deco Store OAuth Helpers
@@ -170,6 +175,12 @@ export interface CreateAppOptions {
 export async function createApp(options: CreateAppOptions = {}) {
   const database = options.database ?? getDb();
 
+  // Clear previous monitoring retention timer (cleanup during HMR)
+  if (currentRetentionTimer) {
+    clearInterval(currentRetentionTimer);
+    currentRetentionTimer = null;
+  }
+
   // Stop any existing event bus worker and SSE hub (cleanup during HMR)
   if (currentEventBus && currentEventBus.isRunning()) {
     console.log("[EventBus] Stopping previous worker (HMR cleanup)");
@@ -217,8 +228,6 @@ export async function createApp(options: CreateAppOptions = {}) {
       toolListCache = new InMemoryToolListCache();
     });
   }
-  setToolListCache(toolListCache);
-
   // Create event bus with a lazy context getter
   // The notify function needs a context, but the context needs the event bus
   // We resolve this by having notify create its own system context
@@ -244,6 +253,10 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Decopilot strategy cleanup on HMR / shutdown
   if (currentDecopilotCleanup) currentDecopilotCleanup();
+
+  // Set tool list cache after cleanup to avoid previous cleanup nulling the new cache
+  setToolListCache(toolListCache);
+
   const threadStorage = new SqlThreadStorage(database.db);
 
   const cancelBroadcast: CancelBroadcast = natsProvider
@@ -643,6 +656,30 @@ export async function createApp(options: CreateAppOptions = {}) {
     .catch((error) => {
       console.error("[EventBus] Error during startup:", error);
     });
+
+  // NDJSON monitoring retention cleanup (skip in ClickHouse mode)
+  if (!process.env.CLICKHOUSE_URL) {
+    cleanupOldMonitoringFiles(DEFAULT_MONITORING_URI)
+      .then((deleted) => {
+        if (deleted > 0)
+          console.log(
+            `[monitoring] Cleaned up ${deleted} old monitoring partitions`,
+          );
+      })
+      .catch((err) =>
+        console.error("[monitoring] Retention cleanup failed:", err),
+      );
+
+    currentRetentionTimer = setInterval(
+      () => {
+        cleanupOldMonitoringFiles(DEFAULT_MONITORING_URI).catch((err) =>
+          console.error("[monitoring] Retention cleanup failed:", err),
+        );
+      },
+      24 * 60 * 60 * 1000,
+    );
+    currentRetentionTimer.unref();
+  }
 
   // Inject MeshContext into requests
   // Skip auth routes, static files, health check, and metrics - they don't need MeshContext

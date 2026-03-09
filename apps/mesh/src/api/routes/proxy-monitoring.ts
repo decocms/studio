@@ -4,6 +4,8 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 import { isDecopilot } from "@decocms/mesh-sdk";
 import type { MeshContext } from "../../core/mesh-context";
+import { enrichMonitoringSpan } from "@/monitoring/enrich";
+import { MONITORING_SPAN_NAME } from "@/monitoring/schema";
 
 type CallToolMiddleware = (
   request: CallToolRequest,
@@ -93,9 +95,7 @@ export function mergeProperties(
  * If the tool result includes a `structuredContent` payload, store ONLY that to
  * avoid duplicating both structured + text output in the database.
  */
-export function formatMonitoringOutput(
-  value: unknown,
-): Record<string, unknown> {
+function formatMonitoringOutput(value: unknown): Record<string, unknown> {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const record = value as Record<string, unknown>;
     const structured = record.structuredContent;
@@ -188,7 +188,7 @@ function extractStreamUsage(text: string): Record<string, unknown> | undefined {
   return undefined;
 }
 
-async function logProxyMonitoringEvent(args: {
+async function emitMonitoringSpan(args: {
   ctx: MeshContext;
   enabled: boolean;
   organizationId?: string;
@@ -233,23 +233,27 @@ async function logProxyMonitoringEvent(args: {
     }
   }
 
-  await ctx.storage.monitoring.log({
+  const span = ctx.tracer.startSpan(MONITORING_SPAN_NAME);
+  enrichMonitoringSpan(span, {
     organizationId,
     connectionId: args.connectionId,
     connectionTitle: args.connectionTitle,
     toolName: args.request.params.name,
-    input: (args.request.params.arguments ?? {}) as Record<string, unknown>,
-    output: args.output,
+    toolArguments: (args.request.params.arguments ?? {}) as Record<
+      string,
+      unknown
+    >,
+    result: args.output,
+    duration: args.durationMs,
     isError: args.isError,
-    errorMessage: args.errorMessage,
-    durationMs: args.durationMs,
-    timestamp: new Date(),
+    errorMessage: args.errorMessage || null,
     userId: ctx.auth.user?.id || ctx.auth.apiKey?.userId || null,
     requestId: ctx.metadata.requestId,
-    userAgent: ctx.metadata.userAgent,
-    virtualMcpId: args.virtualMcpId,
-    properties,
+    userAgent: ctx.metadata.userAgent || null,
+    virtualMcpId: args.virtualMcpId || null,
+    properties: properties || null,
   });
+  span.end();
 }
 
 export interface ProxyMonitoringMiddlewareParams {
@@ -272,7 +276,7 @@ export function createProxyMonitoringMiddleware(
       const result = await next();
       const duration = Date.now() - startTime;
 
-      await logProxyMonitoringEvent({
+      await emitMonitoringSpan({
         ctx,
         enabled,
         connectionId,
@@ -290,7 +294,7 @@ export function createProxyMonitoringMiddleware(
       const err = error as Error;
       const duration = Date.now() - startTime;
 
-      await logProxyMonitoringEvent({
+      await emitMonitoringSpan({
         ctx,
         enabled,
         connectionId,
@@ -366,7 +370,7 @@ export function createProxyStreamableMonitoringMiddleware(
               Object.assign(output, streamUsage);
             }
 
-            await logProxyMonitoringEvent({
+            await emitMonitoringSpan({
               ctx,
               enabled,
               organizationId,
@@ -381,7 +385,7 @@ export function createProxyStreamableMonitoringMiddleware(
             });
           } catch (err) {
             const duration = Date.now() - startTime;
-            await logProxyMonitoringEvent({
+            await emitMonitoringSpan({
               ctx,
               enabled,
               organizationId,
@@ -405,7 +409,7 @@ export function createProxyStreamableMonitoringMiddleware(
       const err = error as Error;
       const duration = Date.now() - startTime;
 
-      await logProxyMonitoringEvent({
+      await emitMonitoringSpan({
         ctx,
         enabled,
         connectionId,
