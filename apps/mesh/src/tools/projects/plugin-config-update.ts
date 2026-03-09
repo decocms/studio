@@ -59,6 +59,14 @@ export const PROJECT_PLUGIN_CONFIG_UPDATE = defineTool({
       throw new Error(`Project not found: ${projectId}`);
     }
 
+    let organizationId = null;
+
+    if (ctx.organization?.id) {
+      organizationId = ctx.organization.id;
+    } else {
+      throw new Error("Organization context is required");
+    }
+
     const connectionExists = connectionId
       ? await ctx.storage.connections.findById(connectionId)
       : null;
@@ -92,6 +100,7 @@ export const PROJECT_PLUGIN_CONFIG_UPDATE = defineTool({
         connectionId,
         settings,
       },
+      organizationId,
     );
 
     return {

@@ -21,7 +21,6 @@ export const PROJECT_GET = defineTool({
   },
   inputSchema: z
     .object({
-      organizationId: z.string().describe("Organization ID"),
       projectId: z
         .string()
         .optional()
@@ -52,7 +51,7 @@ export const PROJECT_GET = defineTool({
       project = await ctx.storage.projects.get(input.projectId);
     } else if (input.slug) {
       project = await ctx.storage.projects.getBySlug(
-        input.organizationId,
+        ctx.organization!.id,
         input.slug,
       );
     }
