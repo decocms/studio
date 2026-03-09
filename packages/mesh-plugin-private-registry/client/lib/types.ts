@@ -29,6 +29,7 @@ export interface RegistryToolMeta {
 
 export interface RegistryMeshMeta {
   verified?: boolean;
+  official?: boolean;
   tags?: string[];
   categories?: string[];
   friendly_name?: string | null;

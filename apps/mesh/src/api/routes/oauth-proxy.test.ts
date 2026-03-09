@@ -727,7 +727,9 @@ describe("Deco-Hosted MCP Detection", () => {
   });
 
   test("DECO_STORE_URL is correct", () => {
-    expect(DECO_STORE_URL).toBe("https://api.decocms.com/mcp/registry");
+    expect(DECO_STORE_URL).toBe(
+      "https://studio.decocms.com/org/deco/registry/mcp",
+    );
   });
 
   describe("isDecoHostedMcp", () => {
@@ -745,9 +747,6 @@ describe("Deco-Hosted MCP Detection", () => {
 
     test("returns false for Deco Store registry (public, no OAuth)", () => {
       expect(isDecoHostedMcp(DECO_STORE_URL)).toBe(false);
-      expect(isDecoHostedMcp("https://api.decocms.com/mcp/registry")).toBe(
-        false,
-      );
     });
 
     test("returns false for non-deco-hosted URLs", () => {
