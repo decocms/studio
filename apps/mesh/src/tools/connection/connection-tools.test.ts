@@ -4,7 +4,10 @@ import {
   closeDatabase,
   type MeshDatabase,
 } from "../../database";
-import { createTestSchema } from "../../storage/test-helpers";
+import {
+  createTestSchema,
+  seedCommonTestFixtures,
+} from "../../storage/test-helpers";
 import { CredentialVault } from "../../encryption/credential-vault";
 import {
   COLLECTION_CONNECTIONS_CREATE,
@@ -42,9 +45,9 @@ describe("Connection Tools", () => {
   let vault: CredentialVault;
 
   beforeAll(async () => {
-    const tempDbPath = `/tmp/test-connection-tools-${Date.now()}.db`;
-    database = createDatabase(`file:${tempDbPath}`);
+    database = createDatabase(":memory:");
     await createTestSchema(database.db);
+    await seedCommonTestFixtures(database.db);
 
     vault = new CredentialVault(CredentialVault.generateKey());
 

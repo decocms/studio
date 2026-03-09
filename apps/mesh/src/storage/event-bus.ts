@@ -6,19 +6,20 @@
  * - Managing subscriptions
  * - Tracking event deliveries
  *
- * Supports both SQLite and PostgreSQL via Kysely.
+ * Supports both PGlite and PostgreSQL via Kysely.
  *
  * Concurrency Safety:
  * - Uses atomic UPDATE with status change to claim deliveries
  * - Multiple workers can safely poll without processing same events
  */
 
-import type { Kysely } from "kysely";
+import type { Kysely, Selectable } from "kysely";
 import type {
   Database,
   Event,
   EventDelivery,
   EventSubscription,
+  EventSubscriptionTable,
   EventStatus,
 } from "./types";
 
@@ -150,11 +151,9 @@ export interface EventBusStorage {
 
   /**
    * Atomically claim pending deliveries for processing.
-   * Uses UPDATE to change status from 'pending' to 'processing',
-   * ensuring only one worker processes each delivery.
-   *
-   * For PostgreSQL: Uses FOR UPDATE SKIP LOCKED for efficient locking
-   * For SQLite: Uses atomic UPDATE with subquery
+   * Uses an atomic UPDATE ... WHERE id IN (subquery) ... RETURNING clause
+   * to change status from 'pending' to 'processing', ensuring only one
+   * worker processes each delivery. Works with both PGlite and PostgreSQL.
    *
    * @param limit - Maximum number of deliveries to claim
    * @returns Claimed deliveries with their events and subscriptions
@@ -288,6 +287,22 @@ export interface EventBusStorage {
 class KyselyEventBusStorage implements EventBusStorage {
   constructor(private db: Kysely<Database>) {}
 
+  private mapRowToSubscription(
+    row: Selectable<EventSubscriptionTable>,
+  ): EventSubscription {
+    return {
+      id: row.id,
+      organizationId: row.organization_id,
+      connectionId: row.connection_id,
+      publisher: row.publisher,
+      eventType: row.event_type,
+      filter: row.filter,
+      enabled: Boolean(row.enabled),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
   async publishEvent(input: CreateEventInput): Promise<Event> {
     const now = new Date().toISOString();
 
@@ -363,17 +378,7 @@ class KyselyEventBusStorage implements EventBusStorage {
 
     // If subscription already exists, return it (idempotent)
     if (existing) {
-      return {
-        id: existing.id,
-        organizationId: existing.organization_id,
-        connectionId: existing.connection_id,
-        publisher: existing.publisher,
-        eventType: existing.event_type,
-        filter: existing.filter,
-        enabled: existing.enabled === 1,
-        createdAt: existing.created_at,
-        updatedAt: existing.updated_at,
-      };
+      return this.mapRowToSubscription(existing);
     }
 
     // Create new subscription
@@ -435,17 +440,7 @@ class KyselyEventBusStorage implements EventBusStorage {
 
     const rows = await query.execute();
 
-    return rows.map((row) => ({
-      id: row.id,
-      organizationId: row.organization_id,
-      connectionId: row.connection_id,
-      publisher: row.publisher,
-      eventType: row.event_type,
-      filter: row.filter,
-      enabled: row.enabled === 1,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    }));
+    return rows.map((row) => this.mapRowToSubscription(row));
   }
 
   async getSubscription(
@@ -461,17 +456,7 @@ class KyselyEventBusStorage implements EventBusStorage {
 
     if (!row) return null;
 
-    return {
-      id: row.id,
-      organizationId: row.organization_id,
-      connectionId: row.connection_id,
-      publisher: row.publisher,
-      eventType: row.event_type,
-      filter: row.filter,
-      enabled: row.enabled === 1,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    };
+    return this.mapRowToSubscription(row);
   }
 
   async getMatchingSubscriptions(event: Event): Promise<EventSubscription[]> {
@@ -481,7 +466,7 @@ class KyselyEventBusStorage implements EventBusStorage {
       .selectFrom("event_subscriptions")
       .selectAll()
       .where("organization_id", "=", event.organizationId)
-      .where("enabled", "=", 1)
+      .where("enabled", "=", 1 as never)
       .where("event_type", "=", event.type)
       .where((eb) =>
         eb.or([
@@ -491,17 +476,7 @@ class KyselyEventBusStorage implements EventBusStorage {
       )
       .execute();
 
-    return rows.map((row) => ({
-      id: row.id,
-      organizationId: row.organization_id,
-      connectionId: row.connection_id,
-      publisher: row.publisher,
-      eventType: row.event_type,
-      filter: row.filter,
-      enabled: row.enabled === 1,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    }));
+    return rows.map((row) => this.mapRowToSubscription(row));
   }
 
   async createDeliveries(
@@ -533,72 +508,33 @@ class KyselyEventBusStorage implements EventBusStorage {
   }
 
   async claimPendingDeliveries(limit: number): Promise<PendingDelivery[]> {
-    // Distributed-safe claiming:
-    // - PostgreSQL: UPDATE ... RETURNING is atomic, returns only the rows we claimed
-    // - SQLite: Falls back to SELECT + UPDATE (safe because SQLite serializes writes)
-
     const now = new Date().toISOString();
-    let claimedIds: string[];
 
-    try {
-      // Atomic claim with RETURNING (PostgreSQL)
-      // The subquery + WHERE status='pending' ensures no double-claiming
-      const result = await this.db
-        .updateTable("event_deliveries")
-        .set({ status: "processing" })
-        .where("id", "in", (eb) =>
-          eb
-            .selectFrom("event_deliveries as d")
-            .innerJoin("event_subscriptions as s", "s.id", "d.subscription_id")
-            .select("d.id")
-            .where("d.status", "=", "pending")
-            .where("s.enabled", "=", 1)
-            .where((inner) =>
-              inner.or([
-                inner("d.next_retry_at", "is", null),
-                inner("d.next_retry_at", "<=", now),
-              ]),
-            )
-            .orderBy("d.created_at", "asc")
-            .limit(limit),
-        )
-        .where("status", "=", "pending")
-        .returning(["id"])
-        .execute();
+    // Atomic claim with RETURNING — works with both PGlite and PostgreSQL
+    const result = await this.db
+      .updateTable("event_deliveries")
+      .set({ status: "processing" })
+      .where("id", "in", (eb) =>
+        eb
+          .selectFrom("event_deliveries as d")
+          .innerJoin("event_subscriptions as s", "s.id", "d.subscription_id")
+          .select("d.id")
+          .where("d.status", "=", "pending")
+          .where("s.enabled", "=", 1 as never)
+          .where((inner) =>
+            inner.or([
+              inner("d.next_retry_at", "is", null),
+              inner("d.next_retry_at", "<=", now),
+            ]),
+          )
+          .orderBy("d.created_at", "asc")
+          .limit(limit),
+      )
+      .where("status", "=", "pending")
+      .returning(["id"])
+      .execute();
 
-      claimedIds = result.map((r) => r.id);
-    } catch {
-      // Fallback for SQLite (no RETURNING support)
-      // SQLite serializes all writes, so simple SELECT + UPDATE is safe
-      const pendingIds = await this.db
-        .selectFrom("event_deliveries as d")
-        .innerJoin("event_subscriptions as s", "s.id", "d.subscription_id")
-        .select(["d.id"])
-        .where("d.status", "=", "pending")
-        .where("s.enabled", "=", 1)
-        .where((eb) =>
-          eb.or([
-            eb("d.next_retry_at", "is", null),
-            eb("d.next_retry_at", "<=", now),
-          ]),
-        )
-        .orderBy("d.created_at", "asc")
-        .limit(limit)
-        .execute();
-
-      if (pendingIds.length === 0) {
-        return [];
-      }
-
-      claimedIds = pendingIds.map((r) => r.id);
-
-      await this.db
-        .updateTable("event_deliveries")
-        .set({ status: "processing" })
-        .where("id", "in", claimedIds)
-        .where("status", "=", "pending")
-        .execute();
-    }
+    const claimedIds = result.map((r) => r.id);
 
     if (claimedIds.length === 0) {
       return [];
@@ -688,7 +624,7 @@ class KyselyEventBusStorage implements EventBusStorage {
         publisher: row.publisher,
         eventType: row.event_type,
         filter: row.filter,
-        enabled: row.enabled === 1,
+        enabled: Boolean(row.enabled),
         createdAt: row.subscription_created_at,
         updatedAt: row.subscription_updated_at,
       },

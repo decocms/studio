@@ -163,7 +163,22 @@ describe("Access Control Integration Tests", () => {
       role,
     };
 
-    // Insert directly into database - using camelCase column names
+    const now = new Date().toISOString();
+
+    // Insert into Better Auth "user" table (FK target for connections.created_by)
+    await database.db
+      .insertInto("user" as any)
+      .values({
+        id: user.id,
+        email: user.email,
+        emailVerified: 0,
+        name: user.name,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .execute();
+
+    // Insert into application "users" table
     await database.db
       .insertInto("users")
       .values({
@@ -171,8 +186,8 @@ describe("Access Control Integration Tests", () => {
         email: user.email,
         name: user.name,
         role: user.role,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: now,
+        updatedAt: now,
       })
       .execute();
 
@@ -190,6 +205,16 @@ describe("Access Control Integration Tests", () => {
       slug: `test-org-${id}`,
       name: `Test Organization ${id}`,
     };
+
+    await database.db
+      .insertInto("organization" as any)
+      .values({
+        id: org.id,
+        name: org.name,
+        slug: org.slug,
+        createdAt: new Date().toISOString(),
+      })
+      .execute();
 
     testOrganizations.set(org.id, org);
     return org;

@@ -4,7 +4,7 @@
  * A simple timer-based polling approach for triggering event processing.
  * The timer fires at regular intervals, triggering the worker to check for pending events.
  *
- * Use this when a pub/sub mechanism is not available (e.g., SQLite, file-based storage).
+ * Use this when a pub/sub mechanism is not available (e.g., PGlite, file-based storage).
  */
 
 import type { NotifyStrategy } from "./notify-strategy";

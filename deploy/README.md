@@ -8,7 +8,7 @@ This is the local version using Docker Compose, to speed up your testing with th
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start---get-started-in-4-steps)
 - [Configuration](#configuration)
-- [Using SQLite (Default)](#using-sqlite-default)
+- [Using PGlite (Default)](#using-pglite-default)
 - [Using PostgreSQL](#using-postgresql)
 - [Authentication Configuration](#authentication-configuration-auth-configjson)
 - [Security](#security)
@@ -19,8 +19,8 @@ This is the local version using Docker Compose, to speed up your testing with th
 
 ## 🎯 Overview
 
-- ✅ **SQLite by default** - Works immediately without additional configuration
-- ✅ **PostgreSQL optional** - Configure via environment variable
+- ✅ **PGlite by default** - Embedded PostgreSQL via WASM, works immediately without additional configuration
+- ✅ **PostgreSQL optional** - Configure via environment variable for production
 - ✅ **Data persistence** - Docker volume to keep data between restarts
 - ✅ **Health checks** - Automatic application health monitoring
 - ✅ **Configuration via variables** - All configurations via `.env`
@@ -80,15 +80,15 @@ Main variables:
 | `BETTER_AUTH_URL` | `http://localhost:3000` | URL for authentication |
 | `BASE_URL` | `http://localhost:3000` | Application base URL |
 | `BETTER_AUTH_SECRET` | **required** | Authentication secret |
-| `DATABASE_URL` | `/app/data/mesh.db` | Database URL (SQLite or PostgreSQL) |
+| `DATABASE_URL` | `file:///app/data/mesh.pglite` | Database URL (PGlite or PostgreSQL) |
 
-## 💾 Using SQLite (Default)
+## 💾 Using PGlite (Default)
 
-SQLite is the default and requires no additional configuration:
+PGlite (embedded PostgreSQL via WASM) is the default and requires no additional configuration:
 
 ```bash
 # .env
-DATABASE_URL=/app/data/mesh.db
+DATABASE_URL=file:///app/data/mesh.pglite
 ```
 
 Data will be persisted in the Docker volume `mesh-data` and kept between restarts.
@@ -96,6 +96,7 @@ Data will be persisted in the Docker volume `mesh-data` and kept between restart
 **Advantages:**
 - ✅ Zero configuration
 - ✅ Works immediately
+- ✅ Full PostgreSQL compatibility
 - ✅ Ideal for development and testing
 
 **Limitations:**
@@ -390,24 +391,23 @@ docker compose up -d
 
 ```bash
 # 1. Backup first
-docker compose exec mesh cp /app/data/mesh.db /app/data/mesh.db.backup
-docker compose cp mesh:/app/data/mesh.db ./backup-$(date +%Y%m%d-%H%M%S).db
+docker compose cp mesh:/app/data/mesh.pglite ./backup-$(date +%Y%m%d-%H%M%S).pglite
 
 # 2. Reset
 docker compose down -v
 docker compose up -d
 ```
 
-#### Method 4: Reset only SQLite (keep other data)
+#### Method 4: Reset only PGlite (keep other data)
 
-If you want to reset only the SQLite database keeping other files:
+If you want to reset only the PGlite database keeping other files:
 
 ```bash
 # Enter container
 docker compose exec mesh sh
 
 # Inside container, remove only the database
-rm /app/data/mesh.db
+rm -rf /app/data/mesh.pglite
 
 # Restart application (will recreate database)
 exit
@@ -460,14 +460,11 @@ docker compose up -d
 
 ## 📦 Backup and Restore
 
-### Backup (SQLite)
+### Backup (PGlite)
 
 ```bash
-# Create backup
-docker compose exec mesh cp /app/data/mesh.db /app/data/mesh.db.backup
-
 # Copy to host
-docker compose cp mesh:/app/data/mesh.db ./backup-$(date +%Y%m%d).db
+docker compose cp mesh:/app/data/mesh.pglite ./backup-$(date +%Y%m%d).pglite
 ```
 
 ### Backup (PostgreSQL)

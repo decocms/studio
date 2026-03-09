@@ -417,84 +417,299 @@ export async function exportCommand(options: ExportOptions): Promise<void> {
     let tableCount = 0;
 
     try {
-      const schemaResponse = await client.callTool({
+      // Query table names from information_schema
+      const tablesResponse = await client.callTool({
         name: "DATABASES_RUN_SQL",
         arguments: {
-          sql: "SELECT type, name, tbl_name, sql FROM sqlite_master WHERE sql IS NOT NULL",
+          sql: `SELECT table_name FROM information_schema.tables
+                WHERE table_schema = current_schema()
+                  AND table_type = 'BASE TABLE'
+                ORDER BY table_name`,
         },
       });
 
-      if (schemaResponse.isError) {
+      if (tablesResponse.isError) {
         console.warn(
-          `⚠️  Failed to fetch database schema: ${schemaResponse.content}`,
+          `⚠️  Failed to fetch database schema: ${tablesResponse.content}`,
         );
       }
 
-      const statements = ((
-        schemaResponse.structuredContent as { result?: SqlStatement[] }
+      const tablesStatements = ((
+        tablesResponse.structuredContent as { result?: SqlStatement[] }
       )?.result ?? []) as SqlStatement[];
-      const rows = statements.flatMap((statement) =>
+      const tableRows = tablesStatements.flatMap((statement) =>
         Array.isArray(statement.results) ? statement.results : [],
       ) as Array<Record<string, unknown>>;
 
-      const tables = rows
-        .map((row) => ({
-          type: String(row.type ?? ""),
-          name: String(row.name ?? ""),
-          tableName: String(row.tbl_name ?? row.name ?? ""),
-          sql: String(row.sql ?? ""),
-        }))
+      const tableNames = tableRows
+        .map((row) => String(row.table_name ?? ""))
         .filter(
-          (entry) =>
-            entry.type.toLowerCase() === "table" &&
-            entry.name &&
-            entry.sql &&
-            !entry.name.startsWith("sqlite_") &&
-            !entry.name.startsWith("mastra_") &&
-            entry.sql.trim().toLowerCase().startsWith("create table"),
+          (name) =>
+            name && !name.startsWith("pg_") && !name.startsWith("mastra_"),
         );
 
-      const indexes = rows
-        .map((row) => ({
-          type: String(row.type ?? ""),
-          name: String(row.name ?? ""),
-          tableName: String(row.tbl_name ?? ""),
-          sql: String(row.sql ?? ""),
-        }))
-        .filter(
-          (entry) =>
-            entry.type.toLowerCase() === "index" &&
-            entry.sql &&
-            !entry.name.startsWith("sqlite_") &&
-            !entry.name.startsWith("mastra_") &&
-            tables.some((table) => table.tableName === entry.tableName),
-        );
+      if (tableNames.length > 0) {
+        // Query column details for all tables
+        const quotedNames = tableNames
+          .map((n) => `'${n.replace(/'/g, "''")}'`)
+          .join(", ");
+        const columnsResponse = await client.callTool({
+          name: "DATABASES_RUN_SQL",
+          arguments: {
+            sql: `SELECT table_name, column_name, data_type, udt_name,
+                         character_maximum_length, numeric_precision, numeric_scale,
+                         datetime_precision, is_nullable, column_default
+                  FROM information_schema.columns
+                  WHERE table_schema = current_schema()
+                    AND table_name IN (${quotedNames})
+                  ORDER BY table_name, ordinal_position`,
+          },
+        });
 
-      const indexesByTable = new Map<
-        string,
-        Array<{ name: string; sql: string }>
-      >();
-      for (const index of indexes) {
-        const collection = indexesByTable.get(index.tableName) ?? [];
-        collection.push({ name: index.name, sql: index.sql });
-        indexesByTable.set(index.tableName, collection);
-      }
+        if (columnsResponse.isError) {
+          console.warn(
+            `⚠️  Failed to fetch column details: ${columnsResponse.content}`,
+          );
+        }
 
-      for (const table of tables) {
-        const safeFilename = `${sanitizeTableFilename(table.tableName || table.name)}.json`;
-        const tablePath = path.join(databaseDir, safeFilename);
-        const payload = {
-          name: table.tableName || table.name,
-          createSql: table.sql,
-          indexes: indexesByTable.get(table.tableName) ?? [],
-        };
-        await fs.writeFile(
-          tablePath,
-          JSON.stringify(payload, null, 2) + "\n",
-          "utf-8",
-        );
-        resourcesByType.database.push(`/${DATABASE_DIR}/${safeFilename}`);
-        tableCount++;
+        const columnsStatements = ((
+          columnsResponse.structuredContent as { result?: SqlStatement[] }
+        )?.result ?? []) as SqlStatement[];
+        const columnRows = columnsStatements.flatMap((statement) =>
+          Array.isArray(statement.results) ? statement.results : [],
+        ) as Array<Record<string, unknown>>;
+
+        // Query table constraints (PRIMARY KEY, UNIQUE, FOREIGN KEY, CHECK)
+        const constraintsResponse = await client.callTool({
+          name: "DATABASES_RUN_SQL",
+          arguments: {
+            sql: `SELECT
+                    tc.table_name,
+                    tc.constraint_name,
+                    tc.constraint_type,
+                    pg_get_constraintdef(pgc.oid) AS constraint_def
+                  FROM information_schema.table_constraints tc
+                  JOIN pg_class pgrel
+                    ON pgrel.relname = tc.table_name
+                   AND pgrel.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = current_schema())
+                  JOIN pg_constraint pgc
+                    ON pgc.conname = tc.constraint_name
+                   AND pgc.conrelid = pgrel.oid
+                  WHERE tc.table_schema = current_schema()
+                    AND tc.table_name IN (${quotedNames})
+                  ORDER BY tc.table_name, tc.constraint_type, tc.constraint_name`,
+          },
+        });
+
+        if (constraintsResponse.isError) {
+          console.warn(
+            `⚠️  Failed to fetch table constraints: ${constraintsResponse.content}`,
+          );
+        }
+
+        const constraintsStatements = ((
+          constraintsResponse.structuredContent as { result?: SqlStatement[] }
+        )?.result ?? []) as SqlStatement[];
+        const constraintRows = constraintsStatements.flatMap((statement) =>
+          Array.isArray(statement.results) ? statement.results : [],
+        ) as Array<Record<string, unknown>>;
+
+        // Query indexes from pg_indexes
+        const indexesResponse = await client.callTool({
+          name: "DATABASES_RUN_SQL",
+          arguments: {
+            sql: `SELECT tablename, indexname, indexdef
+                  FROM pg_indexes
+                  WHERE schemaname = current_schema()
+                    AND tablename IN (${quotedNames})
+                  ORDER BY tablename, indexname`,
+          },
+        });
+
+        if (indexesResponse.isError) {
+          console.warn(
+            `⚠️  Failed to fetch indexes: ${indexesResponse.content}`,
+          );
+        }
+
+        const indexesStatements = ((
+          indexesResponse.structuredContent as { result?: SqlStatement[] }
+        )?.result ?? []) as SqlStatement[];
+        const indexRows = indexesStatements.flatMap((statement) =>
+          Array.isArray(statement.results) ? statement.results : [],
+        ) as Array<Record<string, unknown>>;
+
+        // Group columns by table
+        const columnsByTable = new Map<
+          string,
+          Array<{
+            column_name: string;
+            data_type: string;
+            udt_name: string;
+            character_maximum_length: number | null;
+            numeric_precision: number | null;
+            numeric_scale: number | null;
+            datetime_precision: number | null;
+            is_nullable: string;
+            column_default: string | null;
+          }>
+        >();
+        for (const row of columnRows) {
+          const tableName = String(row.table_name ?? "");
+          const cols = columnsByTable.get(tableName) ?? [];
+          cols.push({
+            column_name: String(row.column_name ?? ""),
+            data_type: String(row.data_type ?? ""),
+            udt_name: String(row.udt_name ?? ""),
+            character_maximum_length:
+              row.character_maximum_length != null
+                ? Number(row.character_maximum_length)
+                : null,
+            numeric_precision:
+              row.numeric_precision != null
+                ? Number(row.numeric_precision)
+                : null,
+            numeric_scale:
+              row.numeric_scale != null ? Number(row.numeric_scale) : null,
+            datetime_precision:
+              row.datetime_precision != null
+                ? Number(row.datetime_precision)
+                : null,
+            is_nullable: String(row.is_nullable ?? "YES"),
+            column_default:
+              row.column_default != null ? String(row.column_default) : null,
+          });
+          columnsByTable.set(tableName, cols);
+        }
+
+        // Group constraints by table (excluding PK constraints that will be inlined)
+        const constraintsByTable = new Map<
+          string,
+          Array<{
+            constraint_name: string;
+            constraint_type: string;
+            constraint_def: string;
+          }>
+        >();
+        // Track which constraints back indexes so we can exclude them
+        const constraintIndexNames = new Set<string>();
+        for (const row of constraintRows) {
+          const tableName = String(row.table_name ?? "");
+          const constraintName = String(row.constraint_name ?? "");
+          const constraintType = String(row.constraint_type ?? "");
+          const constraintDef = String(row.constraint_def ?? "");
+          const constraints = constraintsByTable.get(tableName) ?? [];
+          constraints.push({
+            constraint_name: constraintName,
+            constraint_type: constraintType,
+            constraint_def: constraintDef,
+          });
+          constraintsByTable.set(tableName, constraints);
+          // PostgreSQL auto-creates indexes for PK and UNIQUE constraints
+          if (constraintType === "PRIMARY KEY" || constraintType === "UNIQUE") {
+            constraintIndexNames.add(constraintName);
+          }
+        }
+
+        // Group indexes by table (excluding constraint-backed indexes)
+        const indexesByTable = new Map<
+          string,
+          Array<{ name: string; sql: string }>
+        >();
+        for (const row of indexRows) {
+          const tableName = String(row.tablename ?? "");
+          const indexName = String(row.indexname ?? "");
+          const indexDef = String(row.indexdef ?? "");
+          // Skip auto-generated indexes for PK/UNIQUE constraints
+          if (constraintIndexNames.has(indexName)) {
+            continue;
+          }
+          const collection = indexesByTable.get(tableName) ?? [];
+          collection.push({ name: indexName, sql: indexDef });
+          indexesByTable.set(tableName, collection);
+        }
+
+        // Build CREATE TABLE DDL for each table
+        for (const tableName of tableNames) {
+          const columns = columnsByTable.get(tableName) ?? [];
+          if (columns.length === 0) {
+            continue;
+          }
+
+          const columnDefs = columns.map((col) => {
+            let typeName: string;
+            // Use udt_name for user-defined types (e.g., int4, varchar, text)
+            // which gives the actual PostgreSQL type name
+            const udt = col.udt_name;
+            if (col.data_type === "USER-DEFINED") {
+              typeName = udt;
+            } else if (col.data_type === "ARRAY") {
+              typeName = `${udt.replace(/^_/, "")}[]`;
+            } else if (
+              col.data_type === "character varying" &&
+              col.character_maximum_length != null
+            ) {
+              typeName = `varchar(${col.character_maximum_length})`;
+            } else if (
+              col.data_type === "character" &&
+              col.character_maximum_length != null
+            ) {
+              typeName = `char(${col.character_maximum_length})`;
+            } else if (
+              col.data_type === "numeric" &&
+              col.numeric_precision != null
+            ) {
+              typeName =
+                col.numeric_scale != null
+                  ? `numeric(${col.numeric_precision}, ${col.numeric_scale})`
+                  : `numeric(${col.numeric_precision})`;
+            } else if (
+              col.datetime_precision != null &&
+              col.datetime_precision !== 6 &&
+              /^(timestamp|time|interval)\b/.test(col.data_type)
+            ) {
+              typeName = col.data_type.replace(
+                /^(timestamp|time|interval)/,
+                `$1(${col.datetime_precision})`,
+              );
+            } else {
+              typeName = col.data_type;
+            }
+
+            let def = `  "${col.column_name}" ${typeName}`;
+            if (col.is_nullable === "NO") {
+              def += " NOT NULL";
+            }
+            if (col.column_default != null) {
+              def += ` DEFAULT ${col.column_default}`;
+            }
+            return def;
+          });
+
+          // Add table-level constraints
+          const constraints = constraintsByTable.get(tableName) ?? [];
+          const constraintDefs = constraints.map(
+            (c) => `  CONSTRAINT "${c.constraint_name}" ${c.constraint_def}`,
+          );
+
+          const allDefs = [...columnDefs, ...constraintDefs];
+          const createSql = `CREATE TABLE "${tableName}" (\n${allDefs.join(",\n")}\n)`;
+
+          const safeFilename = `${sanitizeTableFilename(tableName)}.json`;
+          const tablePath = path.join(databaseDir, safeFilename);
+          const payload = {
+            name: tableName,
+            createSql,
+            indexes: indexesByTable.get(tableName) ?? [],
+          };
+          await fs.writeFile(
+            tablePath,
+            JSON.stringify(payload, null, 2) + "\n",
+            "utf-8",
+          );
+          resourcesByType.database.push(`/${DATABASE_DIR}/${safeFilename}`);
+          tableCount++;
+        }
       }
 
       console.log(`   ✅ Exported ${tableCount} tables\n`);

@@ -5,7 +5,7 @@
  *
  * Architecture:
  * - EventBus: Single class handling publish/subscribe and worker management
- * - EventBusStorage: Database operations (unified for SQLite/PostgreSQL via Kysely)
+ * - EventBusStorage: Database operations (unified for PGlite/PostgreSQL via Kysely)
  * - EventBusWorker: Event processing and delivery logic (no internal polling)
  * - NotifyStrategy: Triggers worker processing (selected via NOTIFY_STRATEGY / NATS_URL env vars)
  *   - nats:     NatsNotifyStrategy + polling safety net

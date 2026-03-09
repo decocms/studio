@@ -61,7 +61,7 @@ export interface SubscribeInput {
  * Event bus configuration
  */
 export interface EventBusConfig {
-  /** How often to poll for pending events (ms) - used by SQLite and as fallback for PostgreSQL */
+  /** How often to poll for pending events (ms) - used by PGlite and as fallback for PostgreSQL */
   pollIntervalMs?: number;
   /** Maximum number of events to process per batch */
   batchSize?: number;

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
+import { sql } from "kysely";
 import { createDatabase, closeDatabase, type MeshDatabase } from "../database";
 import { SqlMonitoringStorage } from "./monitoring";
 import { createTestSchema } from "./test-helpers";
@@ -22,15 +23,67 @@ function createTestLog(overrides: Partial<MonitoringLog>): MonitoringLog {
   };
 }
 
+/**
+ * Seed parent records required by FK constraints.
+ * PGlite (PostgreSQL) enforces FK constraints.
+ */
+async function seedTestFixtures(database: MeshDatabase) {
+  const db = database.db;
+  const now = new Date().toISOString();
+
+  // Create test user
+  await sql`
+    INSERT INTO "user" (id, email, "emailVerified", name, "createdAt", "updatedAt")
+    VALUES ('user_test', 'test@test.com', 0, 'Test User', ${now}, ${now})
+    ON CONFLICT (id) DO NOTHING
+  `.execute(db);
+
+  // Create test organizations
+  const orgIds = [
+    "org_test",
+    "org_props",
+    "org_batch",
+    "org_query",
+    "org_propfilter",
+    "org_stats",
+  ];
+  for (const orgId of orgIds) {
+    await sql`
+      INSERT INTO "organization" (id, name, slug, "createdAt")
+      VALUES (${orgId}, ${orgId}, ${orgId}, ${now})
+      ON CONFLICT (id) DO NOTHING
+    `.execute(db);
+  }
+
+  // Create test connections
+  const connIds = [
+    { id: "conn_test", org: "org_test" },
+    { id: "conn_1", org: "org_test" },
+    { id: "conn_2", org: "org_props" },
+    { id: "conn_batch", org: "org_batch" },
+    { id: "conn_a", org: "org_query" },
+    { id: "conn_b", org: "org_query" },
+    { id: "conn_pf", org: "org_propfilter" },
+    { id: "conn_stats", org: "org_stats" },
+  ];
+  for (const conn of connIds) {
+    await sql`
+      INSERT INTO "connections" (id, organization_id, created_by, title, connection_type, connection_url, created_at, updated_at)
+      VALUES (${conn.id}, ${conn.org}, 'user_test', 'Test', 'stdio', 'test://localhost', ${now}, ${now})
+      ON CONFLICT (id) DO NOTHING
+    `.execute(db);
+  }
+}
+
 describe("SqlMonitoringStorage", () => {
   let database: MeshDatabase;
   let storage: SqlMonitoringStorage;
 
   beforeAll(async () => {
-    const tempDbPath = `/tmp/test-monitoring-${Date.now()}.db`;
-    database = createDatabase(`file:${tempDbPath}`);
-    storage = new SqlMonitoringStorage(database.db, database.type);
+    database = createDatabase(":memory:");
+    storage = new SqlMonitoringStorage(database.db);
     await createTestSchema(database.db);
+    await seedTestFixtures(database);
   });
 
   afterAll(async () => {

@@ -615,7 +615,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Context factory only needs the Kysely instance, not the full MeshDatabase
   const factory = await createMeshContextFactory({
     db: database.db,
-    databaseType: database.type,
     auth,
     encryption: {
       key: process.env.ENCRYPTION_KEY || "",

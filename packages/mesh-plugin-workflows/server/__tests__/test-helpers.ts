@@ -1,5 +1,6 @@
 import { Kysely } from "kysely";
-import { BunWorkerDialect } from "kysely-bun-worker";
+import { PGlite } from "@electric-sql/pglite";
+import { KyselyPGlite } from "kysely-pglite";
 import type { WorkflowDatabase } from "../../server/storage/types";
 import { WorkflowExecutionStorage } from "../../server/storage/workflow-execution";
 import { migrations } from "../../server/migrations";
@@ -8,11 +9,13 @@ import { handleWorkflowEvents } from "../../server/events/handler";
 import type { OrchestratorContext } from "../../server/engine/orchestrator";
 import type { Step } from "@decocms/bindings/workflow";
 
-export async function createTestDb(): Promise<Kysely<WorkflowDatabase>> {
+export async function createTestDb(): Promise<{
+  db: Kysely<WorkflowDatabase>;
+  pglite: PGlite;
+}> {
+  const pglite = new PGlite();
   const db = new Kysely<WorkflowDatabase>({
-    dialect: new BunWorkerDialect({
-      url: ":memory:",
-    }),
+    dialect: new KyselyPGlite(pglite).dialect,
   });
 
   // Create stub tables for FK constraints
@@ -36,13 +39,13 @@ export async function createTestDb(): Promise<Kysely<WorkflowDatabase>> {
     if (m.name === "001-workflows") continue;
     if (m.name === "002-fix-bigint-timestamps") continue;
     // Skip heartbeat migrations — 003 adds the column, 004 drops it.
-    // For fresh SQLite test DBs, the column never needs to exist.
+    // For fresh PGlite test DBs, the column never needs to exist.
     if (m.name === "003-heartbeat") continue;
     if (m.name === "004-drop-heartbeat") continue;
     await m.up(db as Kysely<unknown>);
   }
 
-  return db;
+  return { db, pglite };
 }
 
 interface CapturedEvent {

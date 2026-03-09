@@ -166,7 +166,7 @@ Pub/sub system between connections following CloudEvents v1.0 spec:
 - `packages/bindings/src/well-known/event-bus.ts` - EVENT_BUS_BINDING (PUBLISH, SUBSCRIBE, UNSUBSCRIBE, CANCEL, ACK)
 - `packages/bindings/src/well-known/event-subscriber.ts` - EVENT_SUBSCRIBER_BINDING (ON_EVENTS)
 - `apps/mesh/src/event-bus/` - EventBus implementation and worker
-- `apps/mesh/src/event-bus/polling.ts` - Timer-based NotifyStrategy (for SQLite/other)
+- `apps/mesh/src/event-bus/polling.ts` - Timer-based NotifyStrategy (for PGlite/other)
 - `apps/mesh/src/event-bus/postgres-notify.ts` - LISTEN/NOTIFY NotifyStrategy (for PostgreSQL)
 - `apps/mesh/src/storage/event-bus.ts` - Database operations
 - `apps/mesh/src/tools/eventbus/` - MCP tools (publish, subscribe, unsubscribe, list, cancel, ack)
@@ -202,7 +202,7 @@ Subscribers can return batch or per-event results:
 
 #### NotifyStrategy Architecture
 The worker doesn't poll internally - it relies on a NotifyStrategy to trigger processing:
-- `PollingStrategy(intervalMs)` - Timer-based, for SQLite or databases without pub/sub
+- `PollingStrategy(intervalMs)` - Timer-based, for PGlite or databases without pub/sub
 - `PostgresNotifyStrategy(pool)` - Event-based via LISTEN/NOTIFY, no polling
 
 #### Event Bus Configuration (EventBusConfig)
@@ -218,8 +218,8 @@ The worker doesn't poll internally - it relies on a NotifyStrategy to trigger pr
 
 ### Database & Storage
 
-Uses **Kysely ORM** with support for SQLite (default via `kysely-bun-worker`) and PostgreSQL.
-- Database URL: `DATABASE_URL` environment variable (defaults to `file:./data/mesh.db`)
+Uses **Kysely ORM** with support for PGlite (default, embedded PostgreSQL via WASM, using `kysely-pglite` and `@electric-sql/pglite`) and PostgreSQL.
+- Database URL: `DATABASE_URL` environment variable (defaults to `file://$HOME/deco/db.pglite`)
 - Schema types: `apps/mesh/src/storage/types.ts`
 - Operations organized by domain: `apps/mesh/src/storage/`
 - Multi-tenancy: Workspace/project isolation for config, credentials, policies, audit logs

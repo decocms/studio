@@ -21,10 +21,8 @@ const SCRIPT_DIR =
   import.meta.dir || dirname(new URL(import.meta.url).pathname);
 const SERVER_ENTRY_POINT = join(SCRIPT_DIR, "../src/index.ts");
 const CLI_ENTRY_POINT = join(SCRIPT_DIR, "../src/cli.ts");
-const MIGRATE_ENTRY_POINTS = [
-  "kysely-bun-worker",
-  "@jitl/quickjs-wasmfile-release-sync",
-];
+const ALWAYS_INCLUDE = ["@jitl/quickjs-wasmfile-release-sync"];
+const ALWAYS_EXCLUDE = ["kysely-codegen"];
 
 // Parse command line arguments
 function parseArgs() {
@@ -119,7 +117,7 @@ async function pruneNodeModules(): Promise<Set<string>> {
 
   // Resolve migration entry points from mesh app root
   const migrateEntryPointPaths: string[] = [];
-  for (const entryPoint of MIGRATE_ENTRY_POINTS) {
+  for (const entryPoint of ALWAYS_INCLUDE) {
     try {
       const resolved = Bun.resolveSync(entryPoint, MESH_APP_ROOT);
       migrateEntryPointPaths.push(resolved);
@@ -251,11 +249,12 @@ async function buildMigrateScript(packagesToExternalize: Set<string>) {
     "--production",
     "--outfile",
     migrateOutputPath,
-    "--external",
-    "bun:sqlite",
   ];
 
   for (const pkg of packagesToExternalize) {
+    commandsParts.push("--external", pkg);
+  }
+  for (const pkg of ALWAYS_EXCLUDE) {
     commandsParts.push("--external", pkg);
   }
 
@@ -290,11 +289,12 @@ async function buildServerScript(packagesToExternalize: Set<string>) {
     "--production",
     "--outfile",
     serverOutputPath,
-    "--external",
-    "bun:sqlite",
   ];
 
   for (const pkg of packagesToExternalize) {
+    commandsParts.push("--external", pkg);
+  }
+  for (const pkg of ALWAYS_EXCLUDE) {
     commandsParts.push("--external", pkg);
   }
 
@@ -329,11 +329,12 @@ async function buildCliScript(packagesToExternalize: Set<string>) {
     "--production",
     "--outfile",
     cliOutputPath,
-    "--external",
-    "bun:sqlite",
   ];
 
   for (const pkg of packagesToExternalize) {
+    commandsParts.push("--external", pkg);
+  }
+  for (const pkg of ALWAYS_EXCLUDE) {
     commandsParts.push("--external", pkg);
   }
 

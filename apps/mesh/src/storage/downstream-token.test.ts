@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { createDatabase, closeDatabase, type MeshDatabase } from "../database";
-import { createTestSchema } from "./test-helpers";
+import { sql } from "kysely";
+import { createTestSchema, seedCommonTestFixtures } from "./test-helpers";
 import { CredentialVault } from "../encryption/credential-vault";
 import {
   DownstreamTokenStorage,
@@ -14,6 +15,17 @@ describe("DownstreamTokenStorage", () => {
   beforeAll(async () => {
     database = createDatabase(":memory:");
     await createTestSchema(database.db);
+    await seedCommonTestFixtures(database.db);
+
+    // Create test connections required by FK constraints
+    const now = new Date().toISOString();
+    for (const connId of ["c1", "conn_atomic"]) {
+      await sql`
+        INSERT INTO connections (id, organization_id, created_by, title, connection_type, connection_url, status, created_at, updated_at)
+        VALUES (${connId}, 'org_test', 'user_test', ${connId}, 'HTTP', 'https://test.com', 'active', ${now}, ${now})
+        ON CONFLICT (id) DO NOTHING
+      `.execute(database.db);
+    }
 
     const vault = new CredentialVault(CredentialVault.generateKey());
     storage = new DownstreamTokenStorage(database.db, vault);

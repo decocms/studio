@@ -12,15 +12,26 @@ import {
 } from "../../__tests__/test-helpers";
 
 let db: Kysely<WorkflowDatabase>;
+let pglite: { close(): Promise<void> };
 let storage: WorkflowExecutionStorage;
 
 beforeEach(async () => {
-  db = await createTestDb();
+  ({ db, pglite } = await createTestDb());
   storage = new WorkflowExecutionStorage(db);
 });
 
 afterEach(async () => {
   await db.destroy();
+  try {
+    await pglite.close();
+  } catch (error) {
+    if (
+      !(error instanceof Error) ||
+      !error.message.includes("PGlite is closed")
+    ) {
+      throw error;
+    }
+  }
 });
 
 describe("handleWorkflowEvents", () => {

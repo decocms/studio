@@ -34,5 +34,14 @@ jobs:
       - name: Run tests
         run: bun run test
 
+      - name: Build server bundle
+        run: bun run --cwd=apps/mesh build:server
+
+      - name: Verify bundle outputs
+        run: |
+          test -f apps/mesh/dist/server/server.js
+          test -f apps/mesh/dist/server/migrate.js
+          test -f apps/mesh/dist/server/cli.js
+
       - name: Run knip
         run: bun run knip

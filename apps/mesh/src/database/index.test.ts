@@ -16,42 +16,27 @@ describe("Database Factory", () => {
   });
 
   describe("createDatabase", () => {
-    it("should create SQLite database from file:// URL", async () => {
-      const dbPath = join(tempDir, "test-file.db");
+    it("should create PGlite database from file:// URL", async () => {
+      const dbPath = join(tempDir, "test-pglite");
       const database = createDatabase(`file:${dbPath}`);
 
       expect(database).toBeDefined();
-      expect(database.type).toBe("sqlite");
+      expect(database.type).toBe("pglite");
       expect(database.db).toBeDefined();
 
-      // Test that database is functional (will fail without migrations, but db exists)
-      try {
-        await database.db
-          .selectFrom("projects" as never)
-          .selectAll()
-          .execute();
-      } catch (error) {
-        // Expected - table doesn't exist without migrations
-        expect(error).toBeDefined();
-      }
-
       await closeDatabase(database);
     });
 
-    it("should create SQLite database from sqlite:// URL", async () => {
-      const dbPath = join(tempDir, "test-sqlite.db");
-      const database = createDatabase(`sqlite://${dbPath}`);
-
+    // When no URL is provided, createDatabase() defaults to
+    // file://${homedir()}/deco/db.pglite (DEFAULT_PGLITE_PATH).
+    // We pass an explicit file: URL to tempDir to keep the test isolated
+    // while still exercising the same PGlite creation path.
+    it("should default to PGlite when given a file: URL", async () => {
+      const dbPath = join(tempDir, "default-pglite");
+      const database = createDatabase(`file:${dbPath}`);
       expect(database).toBeDefined();
-      expect(database.type).toBe("sqlite");
+      expect(database.type).toBe("pglite");
       await closeDatabase(database);
-    });
-
-    it("should default to SQLite when no URL provided", () => {
-      const database = createDatabase();
-      expect(database).toBeDefined();
-      expect(database.type).toBe("sqlite");
-      // Don't close the default instance as it's a singleton
     });
 
     it("should throw error for unsupported protocol", () => {
@@ -60,19 +45,19 @@ describe("Database Factory", () => {
       );
     });
 
-    it("should create directory if not exists for SQLite", async () => {
-      const dbPath = join(tempDir, "nested", "dir", "test.db");
+    it("should create directory if not exists for PGlite", async () => {
+      const dbPath = join(tempDir, "nested", "dir", "test-pglite");
       const database = createDatabase(`file:${dbPath}`);
 
       expect(database).toBeDefined();
       await closeDatabase(database);
     });
 
-    it("should handle in-memory SQLite database", async () => {
+    it("should handle in-memory PGlite database", async () => {
       const database = createDatabase(":memory:");
 
       expect(database).toBeDefined();
-      expect(database.type).toBe("sqlite");
+      expect(database.type).toBe("pglite");
       await closeDatabase(database);
     });
   });
@@ -80,8 +65,6 @@ describe("Database Factory", () => {
   describe("closeDatabase", () => {
     it("should close database connection", async () => {
       const database = createDatabase(":memory:");
-
-      // Should not throw
       await closeDatabase(database);
       expect(true).toBe(true);
     });
@@ -89,11 +72,8 @@ describe("Database Factory", () => {
 
   describe("PostgreSQL support", () => {
     it("should recognize postgres:// protocol", () => {
-      // Don't actually connect, just check protocol recognition
-      // This will create a Pool but we can check the type
       const database = createDatabase("postgres://user:pass@localhost:5432/db");
       expect(database.type).toBe("postgres");
-      // Note: Pool connection will fail but type detection works
     });
 
     it("should recognize postgresql:// protocol", () => {

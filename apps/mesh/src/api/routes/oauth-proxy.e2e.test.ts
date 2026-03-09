@@ -21,7 +21,10 @@ import {
   closeDatabase,
   type MeshDatabase,
 } from "../../database";
-import { createTestSchema } from "../../storage/test-helpers";
+import {
+  createTestSchema,
+  seedCommonTestFixtures,
+} from "../../storage/test-helpers";
 import { createApp } from "../app";
 import type { EventBus } from "../../event-bus";
 import { auth } from "../../auth";
@@ -29,6 +32,9 @@ import { auth } from "../../auth";
 // =============================================================================
 // Test Data
 // =============================================================================
+
+/** Timeout for tests that make real HTTP requests to external servers */
+const E2E_TIMEOUT = 15_000;
 
 /** MCP servers that support OAuth - all should pass OAuth discovery tests */
 const MCP_SERVERS = [
@@ -101,6 +107,7 @@ describe("MCP OAuth Proxy E2E", () => {
 
     database = createDatabase(":memory:");
     await createTestSchema(database.db);
+    await seedCommonTestFixtures(database.db);
     app = await createApp({ database, eventBus: createMockEventBus() });
 
     const orgId = "org_test";
@@ -178,23 +185,27 @@ describe("MCP OAuth Proxy E2E", () => {
 
   describe("Protected Resource Metadata", () => {
     for (const server of MCP_SERVERS) {
-      test(`${server.name} - discovery and URL rewriting`, async () => {
-        const connectionId = connectionMap.get(server.url)!;
-        const res = await app.request(
-          `/.well-known/oauth-protected-resource/mcp/${connectionId}`,
-        );
+      test(
+        `${server.name} - discovery and URL rewriting`,
+        async () => {
+          const connectionId = connectionMap.get(server.url)!;
+          const res = await app.request(
+            `/.well-known/oauth-protected-resource/mcp/${connectionId}`,
+          );
 
-        expect(res.status).toBe(200);
+          expect(res.status).toBe(200);
 
-        const metadata: ProtectedResourceMetadata = await res.json();
+          const metadata: ProtectedResourceMetadata = await res.json();
 
-        // Must have authorization_servers pointing to our proxy
-        expect(metadata.authorization_servers).toBeDefined();
-        expect(metadata.authorization_servers!.length).toBeGreaterThan(0);
+          // Must have authorization_servers pointing to our proxy
+          expect(metadata.authorization_servers).toBeDefined();
+          expect(metadata.authorization_servers!.length).toBeGreaterThan(0);
 
-        const authServer = metadata.authorization_servers![0];
-        expect(authServer).toContain(`oauth-proxy/${connectionId}`);
-      });
+          const authServer = metadata.authorization_servers![0];
+          expect(authServer).toContain(`oauth-proxy/${connectionId}`);
+        },
+        E2E_TIMEOUT,
+      );
     }
   });
 
@@ -204,28 +215,32 @@ describe("MCP OAuth Proxy E2E", () => {
 
   describe("Auth Server Metadata", () => {
     for (const server of MCP_SERVERS) {
-      test(`${server.name} - discovery and endpoint rewriting`, async () => {
-        const connectionId = connectionMap.get(server.url)!;
-        const res = await app.request(
-          `/.well-known/oauth-authorization-server/oauth-proxy/${connectionId}`,
-        );
+      test(
+        `${server.name} - discovery and endpoint rewriting`,
+        async () => {
+          const connectionId = connectionMap.get(server.url)!;
+          const res = await app.request(
+            `/.well-known/oauth-authorization-server/oauth-proxy/${connectionId}`,
+          );
 
-        expect(res.status).toBe(200);
+          expect(res.status).toBe(200);
 
-        const metadata: AuthServerMetadata = await res.json();
+          const metadata: AuthServerMetadata = await res.json();
 
-        // Must have key OAuth endpoints
-        expect(metadata.authorization_endpoint).toBeDefined();
-        expect(metadata.token_endpoint).toBeDefined();
+          // Must have key OAuth endpoints
+          expect(metadata.authorization_endpoint).toBeDefined();
+          expect(metadata.token_endpoint).toBeDefined();
 
-        // Endpoints must be rewritten to point to our proxy
-        expect(metadata.authorization_endpoint).toContain(
-          `oauth-proxy/${connectionId}`,
-        );
-        expect(metadata.token_endpoint).toContain(
-          `oauth-proxy/${connectionId}`,
-        );
-      });
+          // Endpoints must be rewritten to point to our proxy
+          expect(metadata.authorization_endpoint).toContain(
+            `oauth-proxy/${connectionId}`,
+          );
+          expect(metadata.token_endpoint).toContain(
+            `oauth-proxy/${connectionId}`,
+          );
+        },
+        E2E_TIMEOUT,
+      );
     }
   });
 
@@ -235,53 +250,61 @@ describe("MCP OAuth Proxy E2E", () => {
 
   describe("Authorize Endpoint", () => {
     for (const server of MCP_SERVERS) {
-      test(`${server.name} - must redirect, not proxy HTML`, async () => {
-        const connectionId = connectionMap.get(server.url)!;
-        const res = await app.request(
-          `/oauth-proxy/${connectionId}/authorize?response_type=code&client_id=test&state=test`,
-          { redirect: "manual" },
-        );
+      test(
+        `${server.name} - must redirect, not proxy HTML`,
+        async () => {
+          const connectionId = connectionMap.get(server.url)!;
+          const res = await app.request(
+            `/oauth-proxy/${connectionId}/authorize?response_type=code&client_id=test&state=test`,
+            { redirect: "manual" },
+          );
 
-        // Must be a redirect (302)
-        expect(res.status).toBe(302);
+          // Must be a redirect (302)
+          expect(res.status).toBe(302);
 
-        // Must NOT return HTML (that was the Vercel bug)
-        const contentType = res.headers.get("content-type") || "";
-        expect(contentType.includes("text/html")).toBe(false);
+          // Must NOT return HTML (that was the Vercel bug)
+          const contentType = res.headers.get("content-type") || "";
+          expect(contentType.includes("text/html")).toBe(false);
 
-        // Location header must point to origin's authorize endpoint
-        const location = res.headers.get("location");
-        expect(location).toBeDefined();
-        expect(location).not.toContain("oauth-proxy"); // Should be origin URL
-      });
+          // Location header must point to origin's authorize endpoint
+          const location = res.headers.get("location");
+          expect(location).toBeDefined();
+          expect(location).not.toContain("oauth-proxy"); // Should be origin URL
+        },
+        E2E_TIMEOUT,
+      );
     }
 
     for (const server of MCP_SERVERS) {
-      test(`${server.name} - must rewrite resource param to origin URL`, async () => {
-        const connectionId = connectionMap.get(server.url)!;
-        // Pass a proxy resource URL - this is what clients send
-        const proxyResourceUrl = `http://localhost/mcp/${connectionId}`;
-        const res = await app.request(
-          `/oauth-proxy/${connectionId}/authorize?response_type=code&client_id=test&state=test&resource=${encodeURIComponent(proxyResourceUrl)}`,
-          { redirect: "manual" },
-        );
+      test(
+        `${server.name} - must rewrite resource param to origin URL`,
+        async () => {
+          const connectionId = connectionMap.get(server.url)!;
+          // Pass a proxy resource URL - this is what clients send
+          const proxyResourceUrl = `http://localhost/mcp/${connectionId}`;
+          const res = await app.request(
+            `/oauth-proxy/${connectionId}/authorize?response_type=code&client_id=test&state=test&resource=${encodeURIComponent(proxyResourceUrl)}`,
+            { redirect: "manual" },
+          );
 
-        expect(res.status).toBe(302);
+          expect(res.status).toBe(302);
 
-        const location = res.headers.get("location");
-        expect(location).toBeDefined();
+          const location = res.headers.get("location");
+          expect(location).toBeDefined();
 
-        // Parse the redirect URL and check the resource param
-        const redirectUrl = new URL(location!);
-        const resourceParam = redirectUrl.searchParams.get("resource");
+          // Parse the redirect URL and check the resource param
+          const redirectUrl = new URL(location!);
+          const resourceParam = redirectUrl.searchParams.get("resource");
 
-        // Resource param MUST be rewritten to the origin server URL, not our proxy
-        // This is critical for auth servers like Supabase that validate the resource
-        expect(resourceParam).toBeDefined();
-        expect(resourceParam).toBe(server.url);
-        expect(resourceParam).not.toContain("oauth-proxy");
-        expect(resourceParam).not.toContain(connectionId);
-      });
+          // Resource param MUST be rewritten to the origin server URL, not our proxy
+          // This is critical for auth servers like Supabase that validate the resource
+          expect(resourceParam).toBeDefined();
+          expect(resourceParam).toBe(server.url);
+          expect(resourceParam).not.toContain("oauth-proxy");
+          expect(resourceParam).not.toContain(connectionId);
+        },
+        E2E_TIMEOUT,
+      );
     }
   });
 
@@ -291,40 +314,44 @@ describe("MCP OAuth Proxy E2E", () => {
 
   describe("Non-OAuth Servers", () => {
     for (const server of NO_OAUTH_SERVERS) {
-      test(`${server.name} - returns 401 without WWW-Authenticate`, async () => {
-        const connectionId = connectionMap.get(server.url)!;
+      test(
+        `${server.name} - returns 401 without WWW-Authenticate`,
+        async () => {
+          const connectionId = connectionMap.get(server.url)!;
 
-        // Try to access the MCP endpoint with auth - should get 401 from origin without WWW-Authenticate
-        const res = await app.request(`/mcp/${connectionId}`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-            Authorization: "Bearer test-api-key", // Triggers our mock auth
-          },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            id: 1,
-            method: "initialize",
-            params: {
-              protocolVersion: "2025-06-18",
-              capabilities: {},
-              clientInfo: { name: "test", version: "1.0.0" },
+          // Try to access the MCP endpoint with auth - should get 401 from origin without WWW-Authenticate
+          const res = await app.request(`/mcp/${connectionId}`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+              Authorization: "Bearer test-api-key", // Triggers our mock auth
             },
-          }),
-        });
+            body: JSON.stringify({
+              jsonrpc: "2.0",
+              id: 1,
+              method: "initialize",
+              params: {
+                protocolVersion: "2025-06-18",
+                capabilities: {},
+                clientInfo: { name: "test", version: "1.0.0" },
+              },
+            }),
+          });
 
-        // Should be 401 (from origin, proxied through our system)
-        expect(res.status).toBe(401);
+          // Should be 401 (from origin, proxied through our system)
+          expect(res.status).toBe(401);
 
-        // Should NOT have WWW-Authenticate header (server doesn't support OAuth)
-        const wwwAuth = res.headers.get("WWW-Authenticate");
-        expect(wwwAuth).toBeNull();
+          // Should NOT have WWW-Authenticate header (server doesn't support OAuth)
+          const wwwAuth = res.headers.get("WWW-Authenticate");
+          expect(wwwAuth).toBeNull();
 
-        // Should have JSON error body
-        const body = await res.json();
-        expect(body.error).toBe("unauthorized");
-      });
+          // Should have JSON error body
+          const body = await res.json();
+          expect(body.error).toBe("unauthorized");
+        },
+        E2E_TIMEOUT,
+      );
     }
   });
 });
