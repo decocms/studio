@@ -1,0 +1,52 @@
+{
+  "name": "@deco/cms-sdk",
+  "version": "0.0.1",
+  "description": "SDK for deco Content Management System operations",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./daemon": {
+      "import": "./dist/daemon/index.js",
+      "types": "./dist/daemon/index.d.ts"
+    },
+    "./blocks": {
+      "import": "./dist/blocks/index.js",
+      "types": "./dist/blocks/index.d.ts"
+    },
+    "./schema": {
+      "import": "./dist/schema/index.js",
+      "types": "./dist/schema/index.d.ts"
+    },
+    "./preview": {
+      "import": "./dist/preview/index.js",
+      "types": "./dist/preview/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "biome lint src/",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  },
+  "peerDependencies": {},
+  "publishConfig": {
+    "access": "public"
+  }
+}
+
