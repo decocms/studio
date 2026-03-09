@@ -24,6 +24,19 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Install rag-docs script dependencies
+        run: bun install @pinecone-database/pinecone fast-glob tsx
+
+      - name: Ingest docs to Pinecone
+        run: bunx tsx scripts/ingest-docs-pinecone.ts
+        env:
+          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+          PINECONE_ASSISTANT_NAME: ${{ secrets.PINECONE_ASSISTANT_NAME }}
+          DOCS_DIR: docs/view/src/content/pt-br
+          DELETE_ALL: "true"
+          UPLOAD_DELAY_MS: "2000"
+          CONVERT_MDX: "true"
+
       - name: Deploy
         run: bun run deploy
         working-directory: apps/docs
