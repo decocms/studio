@@ -588,7 +588,7 @@ export interface EventSubscriptionTable {
   publisher: string | null; // Filter by publisher connection (null = wildcard)
   event_type: string; // Event type pattern to match
   filter: string | null; // Optional JSONPath filter on event data
-  enabled: number; // Integer column (SQLite-style boolean: 0/1)
+  enabled: boolean;
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
