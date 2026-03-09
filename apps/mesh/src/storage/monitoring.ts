@@ -583,6 +583,32 @@ export class SqlMonitoringStorage implements MonitoringStorage {
     return sql`to_timestamp(floor(extract(epoch from timestamp::timestamp) / ${bucketSeconds}) * ${bucketSeconds})`;
   }
 
+  async getLastUsedByVirtualMcpIds(
+    organizationId: string,
+    virtualMcpIds: string[],
+  ): Promise<Record<string, string>> {
+    if (virtualMcpIds.length === 0) return {};
+
+    const rows = await this.db
+      .selectFrom("monitoring_logs")
+      .select([
+        "virtual_mcp_id",
+        (eb) => eb.fn.max("timestamp").as("last_used"),
+      ])
+      .where("organization_id", "=", organizationId)
+      .where("virtual_mcp_id", "in", virtualMcpIds)
+      .groupBy("virtual_mcp_id")
+      .execute();
+
+    const result: Record<string, string> = {};
+    for (const row of rows) {
+      if (row.virtual_mcp_id && row.last_used) {
+        result[row.virtual_mcp_id] = String(row.last_used);
+      }
+    }
+    return result;
+  }
+
   // ============================================================================
   // Private Helper Methods
   // ============================================================================

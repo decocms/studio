@@ -18,7 +18,11 @@ import {
 } from "@deco/ui/components/popover.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { isDecopilot, useVirtualMCPs } from "@decocms/mesh-sdk";
+import {
+  isDecopilot,
+  useVirtualMCPs,
+  useAgentLastUsed,
+} from "@decocms/mesh-sdk";
 import { ChevronRight, Users03 } from "@untitledui/icons";
 import { Suspense, useEffect, useRef, useState } from "react";
 
@@ -140,12 +144,29 @@ function AgentsListContent() {
   const virtualMcps = useVirtualMCPs();
   const { selectedVirtualMcp, setVirtualMcpId } = useChatStable();
 
-  // Filter out the default Decopilot agent (it's not a real agent)
-  const agents = virtualMcps
-    .filter(
-      (agent): agent is typeof agent & { id: string } =>
-        agent.id !== null && !isDecopilot(agent.id),
-    )
+  const nonDecopilotAgents = virtualMcps.filter(
+    (agent): agent is typeof agent & { id: string } =>
+      agent.id !== null && !isDecopilot(agent.id),
+  );
+
+  const agentIds = nonDecopilotAgents.map((a) => a.id);
+  const lastUsedMap = useAgentLastUsed(agentIds);
+
+  // Sort by actual last usage (most recent first), then by updated_at as fallback
+  const agents = [...nonDecopilotAgents]
+    .sort((a, b) => {
+      const aUsed = lastUsedMap[a.id];
+      const bUsed = lastUsedMap[b.id];
+      if (aUsed && bUsed)
+        return new Date(bUsed).getTime() - new Date(aUsed).getTime();
+      if (aUsed && !bUsed) return -1;
+      if (!aUsed && bUsed) return 1;
+      const aUpdated = a.updated_at ?? a.created_at;
+      const bUpdated = b.updated_at ?? b.created_at;
+      if (aUpdated && bUpdated)
+        return new Date(bUpdated).getTime() - new Date(aUpdated).getTime();
+      return 0;
+    })
     .slice(0, 6);
 
   // Don't render if no agents

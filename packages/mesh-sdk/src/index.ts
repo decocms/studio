@@ -76,6 +76,7 @@ export {
   useVirtualMCPs,
   useVirtualMCP,
   useVirtualMCPActions,
+  useAgentLastUsed,
   type VirtualMCPFilter,
   type UseVirtualMCPsOptions,
 } from "./hooks";

@@ -15,6 +15,7 @@ import {
   type UseCollectionListOptions,
 } from "./use-collections";
 import { useMCPClient } from "./use-mcp-client";
+import { useMCPToolCallQuery } from "./use-mcp-tools";
 import { SELF_MCP_ALIAS_ID } from "../lib/constants";
 
 /**
@@ -88,4 +89,41 @@ export function useVirtualMCPActions() {
   });
 
   return useCollectionActions<VirtualMCPEntity>(org.id, "VIRTUAL_MCP", client);
+}
+
+interface AgentLastUsedResult {
+  lastUsed: Record<string, string>;
+}
+
+/**
+ * Hook to get last usage timestamps for agents.
+ * Returns a map of virtualMcpId -> ISO timestamp. Missing keys mean never used.
+ *
+ * @param virtualMcpIds - IDs of the agents to check
+ * @returns Record of virtualMcpId to last used timestamp
+ */
+export function useAgentLastUsed(
+  virtualMcpIds: string[],
+): Record<string, string> {
+  const { org } = useProjectContext();
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+  });
+
+  // Sort IDs for stable query key (JSON.stringify order matters for cache)
+  const sortedIds = [...virtualMcpIds].sort();
+
+  const { data } = useMCPToolCallQuery<AgentLastUsedResult>({
+    client,
+    toolName: "MONITORING_AGENT_LAST_USED",
+    toolArguments: { virtualMcpIds: sortedIds },
+    enabled: sortedIds.length > 0,
+    staleTime: 60_000,
+    select: (result) =>
+      ((result as { structuredContent?: unknown }).structuredContent ??
+        result) as AgentLastUsedResult,
+  });
+
+  return data?.lastUsed ?? {};
 }

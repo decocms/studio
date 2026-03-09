@@ -181,6 +181,10 @@ export interface MonitoringStorage {
     errorRate: number;
     avgDurationMs: number;
   }>;
+  getLastUsedByVirtualMcpIds(
+    organizationId: string,
+    virtualMcpIds: string[],
+  ): Promise<Record<string, string>>;
 }
 
 // ============================================================================
