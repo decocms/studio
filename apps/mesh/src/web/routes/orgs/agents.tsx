@@ -20,6 +20,7 @@ import {
   useProjectContext,
   useVirtualMCPs,
   useVirtualMCPActions,
+  useAgentLastUsed,
   type VirtualMCPEntity,
 } from "@decocms/mesh-sdk";
 import {
@@ -154,6 +155,31 @@ function getUniqueCreators(agents: VirtualMCPEntity[]): string[] {
 // ---------------------------------------------------------------------------
 
 type AgentStatusFilter = "ALL" | "active" | "inactive";
+type AgentUsageFilter = "ALL" | "recent" | "stale" | "never";
+
+const STALE_THRESHOLD_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+// ---------------------------------------------------------------------------
+// Last used label
+// ---------------------------------------------------------------------------
+
+function AgentLastUsedLabel({ lastUsed }: { lastUsed: string | undefined }) {
+  return (
+    <div className="flex items-center justify-between w-full">
+      <span className="text-muted-foreground/70">Last used</span>
+      <span
+        className={cn(
+          "shrink-0",
+          lastUsed
+            ? "text-muted-foreground"
+            : "text-muted-foreground/50 italic",
+        )}
+      >
+        {lastUsed ? formatTimeAgo(new Date(lastUsed)) : "Never"}
+      </span>
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Dialog state
@@ -759,6 +785,11 @@ function OrgAgentsContent() {
 
   // Status filter
   const [statusFilter, setStatusFilter] = useState<AgentStatusFilter>("ALL");
+  const [usageFilter, setUsageFilter] = useState<AgentUsageFilter>("ALL");
+
+  // Fetch last-used timestamps for all agents
+  const agentIds = virtualMcps.map((a) => a.id).filter(Boolean);
+  const lastUsedMap = useAgentLastUsed(agentIds);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -777,6 +808,20 @@ function OrgAgentsContent() {
   // Filtered agents
   const filteredAgents = virtualMcps.filter((a) => {
     if (statusFilter !== "ALL" && a.status !== statusFilter) return false;
+    if (usageFilter !== "ALL") {
+      const lastUsed = lastUsedMap[a.id];
+      if (usageFilter === "never" && lastUsed) return false;
+      if (usageFilter === "stale") {
+        if (!lastUsed) return false;
+        const age = Date.now() - new Date(lastUsed).getTime();
+        if (age < STALE_THRESHOLD_MS) return false;
+      }
+      if (usageFilter === "recent") {
+        if (!lastUsed) return false;
+        const age = Date.now() - new Date(lastUsed).getTime();
+        if (age >= STALE_THRESHOLD_MS) return false;
+      }
+    }
     return true;
   });
 
@@ -784,10 +829,12 @@ function OrgAgentsContent() {
   const grouped = groupAgents(filteredAgents);
 
   // Stats
+  const neverUsedCount = virtualMcps.filter((a) => !lastUsedMap[a.id]).length;
   const stats = {
     total: virtualMcps.length,
     active: virtualMcps.filter((a) => a.status === "active").length,
     inactive: virtualMcps.filter((a) => a.status === "inactive").length,
+    neverUsed: neverUsedCount,
   };
 
   // Delete handlers
@@ -911,6 +958,26 @@ function OrgAgentsContent() {
       ),
       cellClassName: "w-32 shrink-0",
       sortable: true,
+    },
+    {
+      id: "last_used",
+      header: "Last used",
+      render: (virtualMcp) => {
+        const ts = lastUsedMap[virtualMcp.id];
+        if (!ts) {
+          return (
+            <span className="text-xs whitespace-nowrap text-muted-foreground/50 italic">
+              Never
+            </span>
+          );
+        }
+        return (
+          <span className="text-xs whitespace-nowrap text-muted-foreground">
+            {formatTimeAgo(new Date(ts))}
+          </span>
+        );
+      },
+      cellClassName: "max-w-24 w-24 shrink-0",
     },
     {
       id: "updated_at",
@@ -1073,6 +1140,7 @@ function OrgAgentsContent() {
                     {stats.total} total
                     {stats.active > 0 && ` · ${stats.active} active`}
                     {stats.inactive > 0 && ` · ${stats.inactive} inactive`}
+                    {stats.neverUsed > 0 && ` · ${stats.neverUsed} never used`}
                   </span>
                 </BreadcrumbPage>
               </BreadcrumbItem>
@@ -1102,6 +1170,18 @@ function OrgAgentsContent() {
                   { id: "ALL", label: "All" },
                   { id: "active", label: "Active" },
                   { id: "inactive", label: "Inactive" },
+                ],
+              },
+              {
+                label: "Usage",
+                value: usageFilter,
+                onChange: (v) =>
+                  setUsageFilter((v as AgentUsageFilter) || "ALL"),
+                options: [
+                  { id: "ALL", label: "All" },
+                  { id: "recent", label: "Recently used" },
+                  { id: "stale", label: "Stale (30+ days)" },
+                  { id: "never", label: "Never used" },
                 ],
               },
             ]}
@@ -1188,18 +1268,23 @@ function OrgAgentsContent() {
                         )}
                         body={<ConnectionStatus status={agent.status} />}
                         footer={
-                          <div className="flex items-center justify-between text-xs text-muted-foreground w-full min-w-0">
-                            <div className="flex-1 min-w-0">
-                              <User
-                                id={agent.updated_by ?? agent.created_by}
-                                size="3xs"
-                              />
+                          <div className="flex flex-col gap-1 text-xs text-muted-foreground w-full min-w-0">
+                            <div className="flex items-center justify-between w-full min-w-0">
+                              <div className="flex-1 min-w-0">
+                                <User
+                                  id={agent.updated_by ?? agent.created_by}
+                                  size="3xs"
+                                />
+                              </div>
+                              <span className="shrink-0 ml-2">
+                                {agent.updated_at
+                                  ? formatTimeAgo(new Date(agent.updated_at))
+                                  : "—"}
+                              </span>
                             </div>
-                            <span className="shrink-0 ml-2">
-                              {agent.updated_at
-                                ? formatTimeAgo(new Date(agent.updated_at))
-                                : "—"}
-                            </span>
+                            <AgentLastUsedLabel
+                              lastUsed={lastUsedMap[agent.id]}
+                            />
                           </div>
                         }
                         headerActions={

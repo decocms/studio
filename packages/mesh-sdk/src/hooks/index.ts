@@ -75,6 +75,7 @@ export {
   useVirtualMCPs,
   useVirtualMCP,
   useVirtualMCPActions,
+  useAgentLastUsed,
   type VirtualMCPFilter,
   type UseVirtualMCPsOptions,
 } from "./use-virtual-mcp";
