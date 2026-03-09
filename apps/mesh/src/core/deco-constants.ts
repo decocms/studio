@@ -8,7 +8,8 @@
 export const DECO_CMS_API_HOST = "api.decocms.com";
 
 /** The Deco Store registry URL (public, no OAuth) */
-export const DECO_STORE_URL = "https://api.decocms.com/mcp/registry";
+export const DECO_STORE_URL =
+  "https://studio.decocms.com/org/deco/registry/mcp";
 
 /** OpenRouter MCP URL (deco-hosted) */
 export const OPENROUTER_MCP_URL = "https://sites-openrouter.decocache.com/mcp";

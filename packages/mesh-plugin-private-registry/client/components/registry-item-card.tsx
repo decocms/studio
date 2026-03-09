@@ -7,7 +7,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
-import { DotsVertical, Globe01, Trash01 } from "@untitledui/icons";
+import {
+  CheckVerified02,
+  DotsVertical,
+  Globe01,
+  Trash01,
+} from "@untitledui/icons";
 import type { RegistryItem } from "../lib/types";
 
 function extractProvider(item: RegistryItem): string {
@@ -31,14 +36,20 @@ interface RegistryItemCardProps {
   item: RegistryItem;
   onEdit: (item: RegistryItem) => void;
   onDelete: (item: RegistryItem) => void;
+  onToggleVerified: (item: RegistryItem) => void;
+  onToggleOfficial: (item: RegistryItem) => void;
 }
 
 export function RegistryItemCard({
   item,
   onEdit,
   onDelete,
+  onToggleVerified,
+  onToggleOfficial,
 }: RegistryItemCardProps) {
   const icon = extractIcon(item);
+  const isVerified = item._meta?.["mcp.mesh"]?.verified === true;
+  const isOfficial = item._meta?.["mcp.mesh"]?.official === true;
   const badges = [...extractTags(item), ...extractCategories(item)];
   const visibleBadges = badges.slice(0, 3);
   const hiddenBadgesCount = Math.max(0, badges.length - visibleBadges.length);
@@ -75,6 +86,18 @@ export function RegistryItemCard({
               ) : (
                 <Badge variant="secondary">Private</Badge>
               )}
+              {isOfficial && (
+                <Badge variant="outline" className="gap-1 text-primary">
+                  <CheckVerified02 size={10} />
+                  Official
+                </Badge>
+              )}
+              {!isOfficial && isVerified && (
+                <Badge variant="outline" className="gap-1 text-success">
+                  <CheckVerified02 size={10} />
+                  Verified
+                </Badge>
+              )}
             </div>
           </div>
         </div>
@@ -88,6 +111,12 @@ export function RegistryItemCard({
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => onEdit(item)}>
               Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onToggleVerified(item)}>
+              {isVerified ? "Unmark as Verified" : "Mark as Verified"}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onToggleOfficial(item)}>
+              {isOfficial ? "Unmark as Official" : "Mark as Official"}
             </DropdownMenuItem>
             <DropdownMenuItem
               variant="destructive"

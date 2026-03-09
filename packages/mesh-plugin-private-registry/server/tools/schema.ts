@@ -52,6 +52,7 @@ const RegistryItemMetaSchema = z
     "mcp.mesh": z
       .object({
         verified: z.boolean().optional(),
+        official: z.boolean().optional(),
         tags: z.array(z.string()).optional(),
         categories: z.array(z.string()).optional(),
         friendly_name: z.string().nullable().optional(),

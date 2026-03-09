@@ -490,6 +490,10 @@ export function RegistryItemDialog({
   const initialTools =
     item?._meta?.["mcp.mesh"]?.tools ?? draftMeta?.tools ?? [];
   const initialIsPublic = item?.is_public ?? draft?.is_public ?? false;
+  const initialIsVerified =
+    item?._meta?.["mcp.mesh"]?.verified ?? draftMeta?.verified ?? false;
+  const initialIsOfficial =
+    item?._meta?.["mcp.mesh"]?.official ?? draftMeta?.official ?? false;
 
   /* ── wizard step ── */
   const [step, setStep] = useState<WizardStep>(1);
@@ -515,6 +519,8 @@ export function RegistryItemDialog({
   const [imageUrl, setImageUrl] = useState(initialImageUrl);
   const [tools, setTools] = useState<RegistryToolMeta[]>(initialTools);
   const [isPublic, setIsPublic] = useState(initialIsPublic);
+  const [isVerified, setIsVerified] = useState(initialIsVerified);
+  const [isOfficial, setIsOfficial] = useState(initialIsOfficial);
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const hasAIConfigured = Boolean(defaultLLMConnectionId && defaultLLMModelId);
 
@@ -537,6 +543,8 @@ export function RegistryItemDialog({
     setImageUrl(initialImageUrl);
     setTools(initialTools);
     setIsPublic(initialIsPublic);
+    setIsVerified(initialIsVerified);
+    setIsOfficial(initialIsOfficial);
     setErrors({});
     resetDiscover();
     lastDiscoveredUrlRef.current = "";
@@ -814,6 +822,8 @@ export function RegistryItemDialog({
       is_public: isPublic,
       _meta: {
         "mcp.mesh": {
+          verified: isVerified,
+          official: isOfficial,
           tags: parsedTags,
           categories: parsedCategories,
           short_description: parsedShortDescription || null,
@@ -1177,6 +1187,40 @@ export function RegistryItemDialog({
           id="registry-is-public"
           checked={isPublic}
           onCheckedChange={setIsPublic}
+        />
+      </div>
+
+      {/* Verified toggle */}
+      <div className="flex items-center justify-between rounded-xl border border-border px-4 py-3">
+        <div className="grid gap-0.5">
+          <Label htmlFor="registry-is-verified" className="text-sm">
+            Verified
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            Curated and approved by deco.
+          </p>
+        </div>
+        <Switch
+          id="registry-is-verified"
+          checked={isVerified}
+          onCheckedChange={setIsVerified}
+        />
+      </div>
+
+      {/* Official toggle */}
+      <div className="flex items-center justify-between rounded-xl border border-border px-4 py-3">
+        <div className="grid gap-0.5">
+          <Label htmlFor="registry-is-official" className="text-sm">
+            Official
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            Made and hosted by the service provider.
+          </p>
+        </div>
+        <Switch
+          id="registry-is-official"
+          checked={isOfficial}
+          onCheckedChange={setIsOfficial}
         />
       </div>
     </div>

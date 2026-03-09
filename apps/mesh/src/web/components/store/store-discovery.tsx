@@ -59,6 +59,13 @@ function isItemVerified(item: RegistryItem): boolean {
 }
 
 /**
+ * Check if an item is official (made and hosted by the service provider)
+ */
+function isItemOfficial(item: RegistryItem): boolean {
+  return item._meta?.["mcp.mesh"]?.official === true;
+}
+
+/**
  * Store discovery content - handles data display and interactions
  */
 function StoreDiscoveryContent({
@@ -120,10 +127,13 @@ function StoreDiscoveryContent({
     !isInitialLoading &&
     Boolean(search);
 
-  // Separate verified and non-verified items
-  const verifiedItems = visibleItems.filter(isItemVerified);
+  // Separate items into official, verified, and all
+  const officialItems = visibleItems.filter(isItemOfficial);
+  const verifiedItems = visibleItems.filter(
+    (item) => isItemVerified(item) && !isItemOfficial(item),
+  );
   const allItems = visibleItems.filter(
-    (item) => !verifiedItems.find((v) => v.id === item.id),
+    (item) => !isItemVerified(item) && !isItemOfficial(item),
   );
 
   const handleItemClick = (item: RegistryItem) => {
@@ -280,6 +290,14 @@ function StoreDiscoveryContent({
                   </div>
                 )}
 
+                {officialItems.length > 0 && (
+                  <MCPServerCardGrid
+                    items={officialItems}
+                    title="Official"
+                    onItemClick={handleItemClick}
+                  />
+                )}
+
                 {verifiedItems.length > 0 && (
                   <MCPServerCardGrid
                     items={verifiedItems}
@@ -291,7 +309,11 @@ function StoreDiscoveryContent({
                 {allItems.length > 0 && (
                   <MCPServerCardGrid
                     items={allItems}
-                    title={verifiedItems.length > 0 ? "All" : ""}
+                    title={
+                      officialItems.length > 0 || verifiedItems.length > 0
+                        ? "All"
+                        : ""
+                    }
                     onItemClick={handleItemClick}
                   />
                 )}

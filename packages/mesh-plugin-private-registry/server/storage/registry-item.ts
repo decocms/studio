@@ -49,6 +49,22 @@ function getMeshMeta(meta?: RegistryItemMeta): MeshRegistryMeta {
   return meta?.["mcp.mesh"] ?? {};
 }
 
+/**
+ * Sort items so official items appear first, then verified, then the rest.
+ * Within each group the original (created_at desc) order is preserved.
+ */
+function sortByOfficialAndVerified(
+  items: PrivateRegistryItemEntity[],
+): PrivateRegistryItemEntity[] {
+  return [...items].sort((a, b) => {
+    const aM = getMeshMeta(a._meta);
+    const bM = getMeshMeta(b._meta);
+    const aScore = (aM.official ? 2 : 0) + (aM.verified ? 1 : 0);
+    const bScore = (bM.official ? 2 : 0) + (bM.verified ? 1 : 0);
+    return bScore - aScore;
+  });
+}
+
 function toCsv(values: string[]): string | null {
   return values.length ? values.join(",") : null;
 }
@@ -300,16 +316,17 @@ export class RegistryItemStorage {
       return matchesTags && matchesCategories && matchesWhere;
     });
 
+    const sorted = sortByOfficialAndVerified(filtered);
     const cursorOffset = decodeCursor(query.cursor);
     const offset = cursorOffset ?? query.offset ?? 0;
     const limit = query.limit ?? 24;
-    const page = filtered.slice(offset, offset + limit);
-    const hasMore = offset + limit < filtered.length;
+    const page = sorted.slice(offset, offset + limit);
+    const hasMore = offset + limit < sorted.length;
     const nextCursor = hasMore ? encodeCursor(offset + limit) : undefined;
 
     return {
       items: page,
-      totalCount: filtered.length,
+      totalCount: sorted.length,
       hasMore,
       nextCursor,
     };
@@ -354,17 +371,17 @@ export class RegistryItemStorage {
       return matchesTags && matchesCategories && matchesWhere;
     });
 
-    // Apply pagination
+    const sorted = sortByOfficialAndVerified(filtered);
     const cursorOffset = decodeCursor(query.cursor);
     const offset = cursorOffset ?? query.offset ?? 0;
     const limit = query.limit ?? 24;
-    const page = filtered.slice(offset, offset + limit);
-    const hasMore = offset + limit < filtered.length;
+    const page = sorted.slice(offset, offset + limit);
+    const hasMore = offset + limit < sorted.length;
     const nextCursor = hasMore ? encodeCursor(offset + limit) : undefined;
 
     return {
       items: page,
-      totalCount: filtered.length,
+      totalCount: sorted.length,
       hasMore,
       nextCursor,
     };

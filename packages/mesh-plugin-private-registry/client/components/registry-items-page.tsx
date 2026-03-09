@@ -154,6 +154,56 @@ export default function RegistryItemsPage() {
     }
   };
 
+  const handleToggleVerified = async (item: RegistryItem) => {
+    const currentVerified = item._meta?.["mcp.mesh"]?.verified === true;
+    try {
+      await updateMutation.mutateAsync({
+        id: item.id,
+        data: {
+          _meta: {
+            ...item._meta,
+            "mcp.mesh": {
+              ...item._meta?.["mcp.mesh"],
+              verified: !currentVerified,
+            },
+          },
+        },
+      });
+      toast.success(
+        currentVerified ? "Removed verified status" : "Marked as verified",
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update item",
+      );
+    }
+  };
+
+  const handleToggleOfficial = async (item: RegistryItem) => {
+    const currentOfficial = item._meta?.["mcp.mesh"]?.official === true;
+    try {
+      await updateMutation.mutateAsync({
+        id: item.id,
+        data: {
+          _meta: {
+            ...item._meta,
+            "mcp.mesh": {
+              ...item._meta?.["mcp.mesh"],
+              official: !currentOfficial,
+            },
+          },
+        },
+      });
+      toast.success(
+        currentOfficial ? "Removed official status" : "Marked as official",
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update item",
+      );
+    }
+  };
+
   const handleDelete = async () => {
     if (!deletingItem) return;
     try {
@@ -363,6 +413,8 @@ export default function RegistryItemsPage() {
                   item={item}
                   onEdit={setEditingItem}
                   onDelete={setDeletingItem}
+                  onToggleVerified={handleToggleVerified}
+                  onToggleOfficial={handleToggleOfficial}
                 />
               ))}
             </div>

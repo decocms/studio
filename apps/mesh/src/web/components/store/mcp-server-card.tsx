@@ -98,6 +98,7 @@ interface MCPServerCardStoreProps extends MCPServerCardBaseProps {
   variant?: "store";
   scopeName: string | null;
   isVerified: boolean;
+  isOfficial: boolean;
   canInstall: boolean;
 }
 
@@ -148,6 +149,9 @@ export function MCPServerCard(props: MCPServerCardProps) {
   const isVerified = !isServer
     ? (props as MCPServerCardStoreProps).isVerified
     : false;
+  const isOfficial = !isServer
+    ? (props as MCPServerCardStoreProps).isOfficial
+    : false;
   const canInstall = !isServer
     ? (props as MCPServerCardStoreProps).canInstall
     : true;
@@ -189,7 +193,13 @@ export function MCPServerCard(props: MCPServerCardProps) {
                     <span className="truncate">{displayName}</span>
 
                     {/* Store variant badges */}
-                    {!isServer && isVerified && (
+                    {!isServer && isOfficial && (
+                      <CheckVerified02
+                        size={16}
+                        className="text-primary shrink-0"
+                      />
+                    )}
+                    {!isServer && !isOfficial && isVerified && (
                       <CheckVerified02
                         size={16}
                         className="text-success shrink-0"
@@ -296,6 +306,7 @@ function extractCardDisplayData(
   const icon =
     server?.icons?.[0]?.src || getGitHubAvatarUrl(server?.repository) || null;
   const isVerified = meshMeta?.verified ?? false;
+  const isOfficial = meshMeta?.official ?? false;
   const hasRemotes = (server?.remotes?.length ?? 0) > 0;
   const hasPackages = (server?.packages?.length ?? 0) > 0;
   const canInstall = hasRemotes || hasPackages;
@@ -340,6 +351,7 @@ function extractCardDisplayData(
     displayName,
     description,
     isVerified,
+    isOfficial,
     canInstall,
   };
 }
