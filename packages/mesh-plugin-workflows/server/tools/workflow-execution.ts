@@ -269,7 +269,7 @@ export const WORKFLOW_EXECUTION_CANCEL: ServerPluginToolDefinition = {
 export const WORKFLOW_EXECUTION_RESUME: ServerPluginToolDefinition = {
   name: "RESUME_EXECUTION",
   description:
-    "Resume a cancelled workflow execution. The execution will be set back to pending and re-queued for processing.",
+    "Resume a cancelled or failed workflow execution. Already-succeeded steps are preserved and their outputs reused; only failed steps are retried.",
   inputSchema: z.object({
     executionId: z.string().describe("The execution ID to resume"),
   }),

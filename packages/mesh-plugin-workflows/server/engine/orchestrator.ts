@@ -2,6 +2,7 @@ import { validateNoCycles, type Step } from "@decocms/bindings/workflow";
 import type {
   WorkflowExecutionStorage,
   ParsedStepResult,
+  ContextStepResult,
 } from "../storage/workflow-execution";
 import { extractRefs, parseAtRef, resolveAllRefs } from "./ref-resolver";
 import { executeCode } from "./code-step";
@@ -74,7 +75,7 @@ function iterationIndex(stepId: string): number {
  * Failed iterations get `null` so downstream steps can correlate by position.
  */
 function buildForEachOutput(
-  iterationResults: ParsedStepResult[],
+  iterationResults: ContextStepResult[],
   totalIterations: number,
 ): unknown[] {
   const output: unknown[] = new Array(totalIterations).fill(null);
@@ -126,7 +127,7 @@ function getReadySteps(
 // ---------------------------------------------------------------------------
 
 function buildStepOutputsMap(
-  stepResults: ParsedStepResult[],
+  stepResults: ContextStepResult[],
 ): Map<string, unknown> {
   const stepOutputs = new Map<string, unknown>();
   for (const result of stepResults) {
@@ -137,7 +138,7 @@ function buildStepOutputsMap(
   return stepOutputs;
 }
 
-function buildOrchestrationSets(stepResults: ParsedStepResult[]): {
+function buildOrchestrationSets(stepResults: ContextStepResult[]): {
   completedStepNames: Set<string>;
   claimedStepNames: Set<string>;
   stepOutputs: Map<string, unknown>;
@@ -569,7 +570,7 @@ async function handleForEachIterationCompletion(
   executionId: string,
   stepName: string,
   step: Step,
-  stepResults: ParsedStepResult[],
+  stepResults: ContextStepResult[],
   workflowInput: Record<string, unknown>,
   isWorkflowRunning: boolean,
 ): Promise<void> {

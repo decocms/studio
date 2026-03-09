@@ -142,16 +142,20 @@ function useIsExecutionCompleted() {
   return item?.completed_at_epoch_ms != null;
 }
 
-function useIsExecutionCancelled() {
+function useIsExecutionResumable() {
   const trackingExecutionId = useTrackingExecutionId();
   const { item } = usePollingWorkflowExecution(trackingExecutionId);
-  return item?.status === "cancelled";
+  return (
+    item?.status === "cancelled" ||
+    item?.status === "error" ||
+    item?.status === "failed"
+  );
 }
 
 function RunWorkflowButton() {
   const isDirty = useIsDirty();
   const isExecutionCompleted = useIsExecutionCompleted();
-  const isExecutionCancelled = useIsExecutionCancelled();
+  const isExecutionResumable = useIsExecutionResumable();
   const trackingExecutionId = useTrackingExecutionId();
   const selectedVirtualMcpId = useSelectedVirtualMcpId();
   const { handleRunWorkflow, isPending, requiresInput, inputSchema } =
@@ -182,7 +186,8 @@ function RunWorkflowButton() {
 
   const isRunning = trackingExecutionIsRunning || isPending;
   const getTooltipMessage = () => {
-    if (isExecutionCancelled) return "Workflow is currently cancelled";
+    if (isExecutionResumable)
+      return "Resume will retry failed steps — succeeded steps are preserved";
     if (isRunning) return "Workflow is currently running";
     if (isDirty) return "Save your changes before running";
     if (hasNoVirtualMcp) return "Select an Agent first";
@@ -194,12 +199,12 @@ function RunWorkflowButton() {
   const tooltipMessage = getTooltipMessage();
 
   const handleClick = async () => {
-    if (requiresInput && inputSchema) {
+    if (requiresInput && inputSchema && !isExecutionResumable) {
       setShowInputDialog(true);
       return;
     }
 
-    if (isExecutionCancelled && trackingExecutionId) {
+    if (isExecutionResumable && trackingExecutionId) {
       await handleResumeWorkflow(trackingExecutionId);
       return;
     }
@@ -216,7 +221,7 @@ function RunWorkflowButton() {
     await handleRunWorkflow(input);
   };
 
-  const buttonLabel = isExecutionCancelled
+  const buttonLabel = isExecutionResumable
     ? "Resume"
     : trackingExecutionId
       ? isExecutionCompleted
@@ -242,12 +247,12 @@ function RunWorkflowButton() {
         !isPending &&
         !isCancelling &&
         !isResuming) ||
-        isExecutionCancelled) && <Play size={14} />}
+        isExecutionResumable) && <Play size={14} />}
       {trackingExecutionIsRunning &&
         !isPending &&
         !isCancelling &&
         !isResuming &&
-        !isExecutionCancelled && <Stop size={14} />}
+        !isExecutionResumable && <Stop size={14} />}
       {(isPending || isCancelling || isResuming) && <Spinner size="xs" />}
       {buttonLabel}
     </Button>

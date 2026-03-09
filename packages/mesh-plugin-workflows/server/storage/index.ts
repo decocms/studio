@@ -15,6 +15,7 @@ export { type ParsedWorkflowCollection } from "./workflow-collection";
 export {
   type ParsedWorkflow,
   type ParsedStepResult,
+  type ContextStepResult,
   type ExecutionContext,
 } from "./workflow-execution";
 

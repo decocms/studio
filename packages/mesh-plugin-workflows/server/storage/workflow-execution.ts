@@ -30,6 +30,16 @@ export interface ParsedStepResult {
   raw_tool_output: unknown;
 }
 
+/**
+ * Slim step result for orchestration — only the fields consumed by the
+ * orchestrator hot path. Excludes raw_tool_output and started_at_epoch_ms
+ * to avoid transferring and parsing potentially large tool response payloads.
+ */
+export type ContextStepResult = Pick<
+  ParsedStepResult,
+  "step_id" | "completed_at_epoch_ms" | "output" | "error"
+>;
+
 export interface ExecutionContext {
   execution: {
     id: string;
@@ -42,7 +52,7 @@ export interface ExecutionContext {
     input: Record<string, unknown> | null;
     virtual_mcp_id: string;
   };
-  stepResults: ParsedStepResult[];
+  stepResults: ContextStepResult[];
 }
 
 function parseWorkflow(row: WorkflowRow): ParsedWorkflow {
@@ -211,46 +221,53 @@ export class WorkflowExecutionStorage {
 
   /**
    * Get execution context in minimal queries for orchestration.
+   * Uses a JOIN and parallel fetch to minimize round trips (hot path).
    */
   async getExecutionContext(
     executionId: string,
   ): Promise<ExecutionContext | null> {
-    const execution = await this.db
-      .selectFrom("workflow_execution")
-      .select(["id", "status", "workflow_id", "deadline_at_epoch_ms"])
-      .where("id", "=", executionId)
-      .executeTakeFirst();
+    const [joined, stepResultRows] = await Promise.all([
+      this.db
+        .selectFrom("workflow_execution as we")
+        .innerJoin("workflow as w", "we.workflow_id", "w.id")
+        .select([
+          "we.id",
+          "we.status",
+          "we.workflow_id",
+          "we.deadline_at_epoch_ms",
+          "w.steps",
+          "w.input",
+          "w.virtual_mcp_id",
+        ])
+        .where("we.id", "=", executionId)
+        .executeTakeFirst(),
+      this.db
+        .selectFrom("workflow_execution_step_result")
+        .select(["step_id", "completed_at_epoch_ms", "output", "error"])
+        .where("execution_id", "=", executionId)
+        .execute(),
+    ]);
 
-    if (!execution) return null;
-
-    const workflowRow = await this.db
-      .selectFrom("workflow")
-      .select(["steps", "input", "virtual_mcp_id"])
-      .where("id", "=", execution.workflow_id)
-      .executeTakeFirst();
-
-    if (!workflowRow) return null;
-
-    const stepResultRows = await this.db
-      .selectFrom("workflow_execution_step_result")
-      .selectAll()
-      .where("execution_id", "=", executionId)
-      .execute();
+    if (!joined) return null;
 
     return {
       execution: {
-        id: execution.id,
-        status: execution.status,
-        workflow_id: execution.workflow_id,
-        deadline_at_epoch_ms: execution.deadline_at_epoch_ms,
+        id: joined.id,
+        status: joined.status,
+        workflow_id: joined.workflow_id,
+        deadline_at_epoch_ms: joined.deadline_at_epoch_ms,
       },
       workflow: {
-        steps: (parseJson(workflowRow.steps) as Step[]) ?? [],
-        input:
-          (parseJson(workflowRow.input) as Record<string, unknown>) ?? null,
-        virtual_mcp_id: workflowRow.virtual_mcp_id,
+        steps: (parseJson(joined.steps) as Step[]) ?? [],
+        input: (parseJson(joined.input) as Record<string, unknown>) ?? null,
+        virtual_mcp_id: joined.virtual_mcp_id,
       },
-      stepResults: stepResultRows.map(parseStepResult),
+      stepResults: stepResultRows.map((row) => ({
+        step_id: row.step_id,
+        completed_at_epoch_ms: row.completed_at_epoch_ms,
+        output: parseJson(row.output),
+        error: parseJson(row.error),
+      })),
     };
   }
 
@@ -340,11 +357,17 @@ export class WorkflowExecutionStorage {
     return this.db.transaction().execute(async (trx) => {
       const now = Date.now();
 
-      // Clear claimed-but-not-completed step results
+      // Clear incomplete and failed step results in one pass; successful results
+      // are preserved and their outputs will be reused by the orchestrator.
       await trx
         .deleteFrom("workflow_execution_step_result")
         .where("execution_id", "=", executionId)
-        .where("completed_at_epoch_ms", "is", null)
+        .where((eb) =>
+          eb.or([
+            eb("completed_at_epoch_ms", "is", null),
+            eb("error", "is not", null),
+          ]),
+        )
         .execute();
 
       const result = await trx
@@ -353,10 +376,13 @@ export class WorkflowExecutionStorage {
           status: "enqueued",
           updated_at: now,
           completed_at_epoch_ms: null,
+          error: null,
         })
         .where("id", "=", executionId)
         .where("organization_id", "=", organizationId)
-        .where("status", "=", "cancelled")
+        .where((eb) =>
+          eb.or([eb("status", "=", "cancelled"), eb("status", "=", "error")]),
+        )
         .returningAll()
         .executeTakeFirst();
 
@@ -622,33 +648,19 @@ export class WorkflowExecutionStorage {
   /**
    * Recover stuck executions after a crash/restart.
    *
-   * Resets all "running" executions back to "enqueued". Does NOT touch
-   * step results — the orchestrator resolves incomplete results when it
-   * re-claims the execution (using started_at_epoch_ms to distinguish
-   * "never started" from "started executing").
+   * Atomically resets all "running" executions back to "enqueued" and returns
+   * them. Does NOT touch step results — the orchestrator resolves incomplete
+   * results when it re-claims the execution (using started_at_epoch_ms to
+   * distinguish "never started" from "started executing").
    */
   async recoverStuckExecutions(): Promise<
     { id: string; organization_id: string }[]
   > {
-    return this.db.transaction().execute(async (trx) => {
-      const running = await trx
-        .selectFrom("workflow_execution")
-        .select(["id", "organization_id"])
-        .where("status", "=", "running")
-        .execute();
-
-      if (running.length === 0) return [];
-
-      const runningIds = running.map((r) => r.id);
-
-      await trx
-        .updateTable("workflow_execution")
-        .set({ status: "enqueued", updated_at: Date.now() })
-        .where("id", "in", runningIds)
-        .where("status", "=", "running")
-        .execute();
-
-      return running;
-    });
+    return this.db
+      .updateTable("workflow_execution")
+      .set({ status: "enqueued", updated_at: Date.now() })
+      .where("status", "=", "running")
+      .returning(["id", "organization_id"])
+      .execute();
   }
 }
