@@ -262,6 +262,12 @@ PORT=3000
 
 # Encryption key for credential vault (auto-generated if not set)
 ENCRYPTION_KEY=your-32-byte-key
+
+# Remote ClickHouse URL for production monitoring queries (optional)
+# When set, spans are exported via OTLP (to an OTel Collector) and queries
+# go to this ClickHouse instance. When unset, spans are written as NDJSON
+# files to ~/deco/system/monitoring and queried locally via chdb.
+CLICKHOUSE_URL=http://localhost:8123
 ```
 
 ### Auth Configuration

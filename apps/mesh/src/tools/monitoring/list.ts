@@ -5,6 +5,7 @@
  */
 
 import { requireOrganization } from "@/core/mesh-context";
+import { flushTraceExporter } from "@/observability";
 import { defineTool } from "../../core/define-tool";
 import { z } from "zod";
 
@@ -101,6 +102,9 @@ export const MONITORING_LOGS_LIST = defineTool({
     limit: z.number().describe("Current limit for pagination"),
   }),
   handler: async (input, ctx) => {
+    // Flush buffered spans so the query sees the latest data (local mode).
+    await flushTraceExporter();
+
     const org = requireOrganization(ctx);
 
     // Build property filters if any are provided

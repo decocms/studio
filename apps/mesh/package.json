@@ -37,9 +37,12 @@
     "prepublishOnly": "bun run build:client && bun run build:server"
   },
   "dependencies": {
+    "@clickhouse/client": "^1.8.1",
     "@electric-sql/pglite": "^0.3.15",
+    "chdb": "^1.6.0",
     "@jitl/quickjs-wasmfile-release-sync": "^0.31.0",
     "@modelcontextprotocol/ext-apps": "^1.1.2",
+    "@opentelemetry/core": "^2.6.0",
     "dompurify": "^3.3.1",
     "kysely": "^0.28.8",
     "kysely-pglite": "^0.6.1",
