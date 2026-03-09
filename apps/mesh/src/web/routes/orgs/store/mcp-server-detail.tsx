@@ -698,6 +698,15 @@ function StoreMCPServerDetailContent() {
     </Breadcrumb>
   );
 
+  const shareUrl = (() => {
+    const url = new URL(
+      `/store/${encodeURIComponent(serverSlug || "")}`,
+      window.location.origin,
+    );
+    if (serverName) url.searchParams.set("serverName", serverName);
+    return url.href;
+  })();
+
   return (
     <div className="flex flex-col h-full border-l border-border">
       {/* Duplicate warning dialog (two steps) */}
@@ -826,7 +835,7 @@ function StoreMCPServerDetailContent() {
       )}
 
       {/* Header */}
-      <MCPServerDetailHeader breadcrumb={breadcrumb} />
+      <MCPServerDetailHeader breadcrumb={breadcrumb} shareUrl={shareUrl} />
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto h-full">
