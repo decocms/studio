@@ -48,11 +48,17 @@ export const ORGANIZATION_GET = defineTool({
       throw new Error("No active organization found");
     }
 
-    // Filter out expired invitations - Better Auth returns all invitations
-    // but acceptInvitation/rejectInvitation will fail for expired ones
+    // Filter to only pending, non-expired invitations.
+    // Better Auth's getFullOrganization joins ALL invitations regardless of
+    // status or expiry. We keep only what the UI should show:
+    // - status must be "pending" (accepted/rejected/cancelled are excluded)
+    // - expiresAt must be a valid future date (null/undefined treated as expired)
     const now = new Date();
     const validInvitations = organization.invitations?.filter(
-      (inv: { expiresAt: string | Date }) => new Date(inv.expiresAt) > now,
+      (inv: { status?: string; expiresAt?: string | Date | null }) =>
+        inv.status === "pending" &&
+        inv.expiresAt != null &&
+        new Date(inv.expiresAt) > now,
     );
 
     // Convert dates to ISO strings for JSON Schema compatibility

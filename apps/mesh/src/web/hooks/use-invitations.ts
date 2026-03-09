@@ -50,6 +50,10 @@ export function useInvitations() {
 
   return useSuspenseQuery({
     queryKey: KEYS.invitations(locator),
+    // Override global staleTime: invitations on the Members page should
+    // always be fresh. A 60-second default cache window can hide newly
+    // created invites when navigating back to the page.
+    staleTime: 0,
     queryFn: async () => {
       const result = (await client.callTool({
         name: "ORGANIZATION_GET",
