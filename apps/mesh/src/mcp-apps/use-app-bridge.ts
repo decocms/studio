@@ -8,10 +8,12 @@ import type {
   McpUiHostContext,
   McpUiMessageRequest,
 } from "@modelcontextprotocol/ext-apps";
+import { getDocumentTheme } from "@modelcontextprotocol/ext-apps";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 // eslint-disable-next-line ban-use-effect/ban-use-effect
 import { useEffect, useRef, useSyncExternalStore } from "react";
+import { readHostStyles } from "./host-styles";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -33,13 +35,6 @@ const INIT_TIMEOUT_MS = 15_000;
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function detectTheme(): "light" | "dark" {
-  if (typeof window === "undefined") return "light";
-  return window.matchMedia?.("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
-}
 
 function detectLocale(): string {
   if (typeof navigator === "undefined") return "en";
@@ -65,7 +60,8 @@ function buildHostContext(
   maxHeight?: number,
 ): McpUiHostContext {
   return {
-    theme: detectTheme(),
+    theme: getDocumentTheme(),
+    styles: readHostStyles(),
     displayMode,
     availableDisplayModes: ["inline", "fullscreen"],
     locale: detectLocale(),
@@ -76,6 +72,37 @@ function buildHostContext(
       containerDimensions: { maxHeight },
     }),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Shared theme observer (singleton) — watches <html> class/data-theme changes
+// and system preference, notifies all BridgeStore instances.
+// ---------------------------------------------------------------------------
+
+type ThemeListener = () => void;
+const themeListeners = new Set<ThemeListener>();
+let observerStarted = false;
+
+function startThemeObserver() {
+  if (observerStarted || typeof document === "undefined") return;
+  observerStarted = true;
+
+  const notify = () => themeListeners.forEach((fn) => fn());
+
+  new MutationObserver(notify).observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class", "data-theme"],
+  });
+
+  window
+    .matchMedia("(prefers-color-scheme: dark)")
+    .addEventListener("change", notify);
+}
+
+function subscribeThemeChange(fn: ThemeListener): () => void {
+  themeListeners.add(fn);
+  startThemeObserver();
+  return () => themeListeners.delete(fn);
 }
 
 // ---------------------------------------------------------------------------
@@ -109,6 +136,7 @@ class BridgeStore {
   private bridge: AppBridge | null = null;
   private timeout: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
+  private unsubTheme: (() => void) | null = null;
 
   // --- observable snapshot (React subscribes to this) ---
   private snapshot: BridgeSnapshot;
@@ -157,6 +185,15 @@ class BridgeStore {
     }
   }
 
+  /** Rebuild and push full host context to the bridge (e.g. on theme change). */
+  private pushHostContext() {
+    if (!this.bridge || this.disposed) return;
+    const { displayMode, maxHeight, toolInfo } = this.config;
+    this.bridge.setHostContext(
+      buildHostContext(displayMode, toolInfo, maxHeight),
+    );
+  }
+
   // ---- snapshot mutations ----
 
   private set(partial: Partial<BridgeSnapshot>) {
@@ -182,6 +219,8 @@ class BridgeStore {
   /** Tear down the current bridge and clear timers. */
   teardown() {
     this.disposed = true;
+    this.unsubTheme?.();
+    this.unsubTheme = null;
     if (this.bridge) {
       this.bridge.teardownResource({}).catch(() => {});
       this.bridge.close();
@@ -227,6 +266,8 @@ class BridgeStore {
       this.startInitTimeout();
       this.registerInitHandler(bridge);
       this.connectTransport(bridge, iframe);
+
+      this.unsubTheme = subscribeThemeChange(() => this.pushHostContext());
     } catch (err) {
       this.clearTimeout();
       console.error("Failed to create AppBridge:", err);
