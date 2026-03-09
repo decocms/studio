@@ -363,6 +363,29 @@ export const withRequest = (req: Request): Context => {
 export { type Exception, type Span };
 
 /**
+ * Flush all buffered trace data to disk.
+ *
+ * In local mode the SDK's BatchSpanProcessor and NDJSONSpanExporter both
+ * buffer spans in memory.  Calling this drains both layers so that
+ * monitoring queries see the most recent data without waiting for the
+ * next timer-based flush (up to 60 s).
+ *
+ * In cloud mode (CLICKHOUSE_URL set) this is effectively a no-op — the
+ * OTLP exporter ships spans to the collector with its own batching.
+ */
+export async function flushTraceExporter(): Promise<void> {
+  // 1. Drain the SDK's BatchSpanProcessor → calls export() on the exporter
+  const provider = trace.getTracerProvider();
+  if ("forceFlush" in provider) {
+    await (provider as { forceFlush(): Promise<void> }).forceFlush();
+  }
+  // 2. Drain the exporter's internal buffer to disk (NDJSONSpanExporter)
+  if ("forceFlush" in traceExporter) {
+    await traceExporter.forceFlush();
+  }
+}
+
+/**
  * Export tracing middleware
  */
 export { tracingMiddleware } from "./middleware";
