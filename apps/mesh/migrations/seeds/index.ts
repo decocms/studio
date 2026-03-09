@@ -9,6 +9,7 @@ import type { Kysely } from "kysely";
 import type { Database } from "../../src/storage/types";
 
 export type { BenchmarkSeedResult } from "./benchmark";
+export type { DemoSeedResult } from "./demo/index";
 
 /**
  * Seed function signature
@@ -20,6 +21,7 @@ export type SeedFunction<T = unknown> = (db: Kysely<Database>) => Promise<T>;
  */
 const seeds = {
   benchmark: () => import("./benchmark").then((m) => m.seed),
+  demo: () => import("./demo").then((m) => m.seed),
 } as const;
 
 export type SeedName = keyof typeof seeds;

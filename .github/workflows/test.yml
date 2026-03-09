@@ -43,5 +43,8 @@ jobs:
           test -f apps/mesh/dist/server/migrate.js
           test -f apps/mesh/dist/server/cli.js
 
+      - name: Test migrations with demo seed
+        run: cd apps/mesh && SEED=demo bun run migrate
+
       - name: Run knip
         run: bun run knip
