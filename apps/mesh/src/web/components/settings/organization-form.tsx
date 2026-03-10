@@ -173,6 +173,7 @@ export function OrganizationForm() {
                   value={field.value}
                   onChange={field.onChange}
                   name={form.watch("name")}
+                  disabled={isSaving}
                 />
               </FormControl>
               <FormMessage />

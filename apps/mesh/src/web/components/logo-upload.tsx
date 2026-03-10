@@ -7,10 +7,12 @@ export function LogoUpload({
   value,
   onChange,
   name,
+  disabled,
 }: {
   value?: string | null;
   onChange: (value: string) => void;
   name?: string;
+  disabled?: boolean;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -62,6 +64,7 @@ export function LogoUpload({
         className="hidden"
         accept="image/*"
         onChange={handleFileChange}
+        disabled={disabled}
       />
 
       {value ? (
@@ -76,6 +79,7 @@ export function LogoUpload({
           <button
             type="button"
             onClick={handleRemove}
+            disabled={disabled}
             className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-destructive-foreground opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
           >
             <X className="h-3 w-3" />
@@ -85,7 +89,8 @@ export function LogoUpload({
         <button
           type="button"
           onClick={handleClick}
-          className="h-20 w-20 rounded-lg border-2 border-dashed border-border hover:border-foreground/50 hover:bg-accent/50 transition-colors flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-foreground"
+          disabled={disabled}
+          className="h-20 w-20 rounded-lg border-2 border-dashed border-border hover:border-foreground/50 hover:bg-accent/50 transition-colors flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:pointer-events-none"
         >
           <Upload01 className="h-5 w-5" />
           <span className="text-xs">Upload</span>
@@ -98,6 +103,7 @@ export function LogoUpload({
           variant="outline"
           size="sm"
           onClick={handleClick}
+          disabled={disabled}
           className="mb-2"
         >
           {value ? "Change Logo" : "Upload Logo"}
@@ -108,6 +114,7 @@ export function LogoUpload({
             variant="ghost"
             size="sm"
             onClick={handleRemove}
+            disabled={disabled}
             className="ml-2"
           >
             Remove

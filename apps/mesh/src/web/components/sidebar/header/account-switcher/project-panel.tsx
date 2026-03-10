@@ -54,7 +54,9 @@ export function UserProjectItems({
           >
             <div
               className="size-6 rounded-md shrink-0 flex items-center justify-center overflow-hidden border border-border/50"
-              style={{ backgroundColor: themeColor }}
+              style={
+                project.ui?.icon ? undefined : { backgroundColor: themeColor }
+              }
             >
               {project.ui?.icon ? (
                 <img

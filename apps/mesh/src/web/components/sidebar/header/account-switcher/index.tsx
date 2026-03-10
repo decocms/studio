@@ -166,10 +166,14 @@ export function MeshAccountSwitcher({
                   "shrink-0 rounded-md flex items-center justify-center border border-border/50 overflow-hidden transition-[width,height] duration-300 ease-[var(--ease-out-quart)]",
                   isCollapsed ? "size-6" : "size-8",
                 )}
-                style={{
-                  backgroundColor:
-                    currentProjectData?.ui?.themeColor ?? "#60a5fa",
-                }}
+                style={
+                  currentProjectData?.ui?.icon
+                    ? undefined
+                    : {
+                        backgroundColor:
+                          currentProjectData?.ui?.themeColor ?? "#60a5fa",
+                      }
+                }
               >
                 {currentProjectData?.ui?.icon ? (
                   <img

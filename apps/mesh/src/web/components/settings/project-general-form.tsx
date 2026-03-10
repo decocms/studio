@@ -180,6 +180,7 @@ export function ProjectGeneralForm() {
                       void form.handleSubmit(onSubmit)();
                     }}
                     name={form.watch("name")}
+                    disabled={mutation.isPending}
                   />
                 </FormControl>
                 <FormMessage />
