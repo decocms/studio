@@ -56,11 +56,6 @@ export class NDJSONLogExporter implements LogRecordExporter {
       );
     }
 
-    if (rows.length === 0) {
-      resultCallback({ code: ExportResultCode.SUCCESS });
-      return;
-    }
-
     this.inner
       .exportRows(rows)
       .then((result) => resultCallback(result))
