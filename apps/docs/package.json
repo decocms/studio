@@ -3,17 +3,10 @@
   "version": "1.0.0",
   "description": "DecoCMS documentation",
   "scripts": {
-    "dev": "concurrently \"bun run dev:client\" \"NODE_ENV=development bun --hot run server/main.ts\"",
-    "dev:client": "astro dev",
-    "dev:tunnel": "deco link -p 3000 -- bun run dev",
-    "build": "bun run build:client && bun run build:server:wrangler",
-    "build:client": "astro build",
+    "dev": "astro dev",
+    "build": "astro build",
     "check": "astro sync > /dev/null 2>&1 && tsc --noEmit",
-    "build:server:bun": "NODE_ENV=production bun build server/main.ts --target=bun --outfile=dist/server/main.js",
-    "build:server:wrangler": "wrangler build && mkdir -p dist/server && mv ./dist/main.js dist/server/main.js",
-    "start": "NODE_ENV=production bun run dist/server/main.js",
-    "deploy": "bun run build && deco deploy ./dist/server -y -f -t $DECO_DEPLOY_TOKEN",
-    "gen": "deco gen --output=shared/deco.gen.ts",
+    "deploy": "bun run build && wrangler pages deploy dist/client --project-name=decocms-docs",
     "astro": "astro"
   },
   "dependencies": {
@@ -25,13 +18,10 @@
     "react": "^19.2.0",
     "react-dom": "^19.1.0",
     "tailwindcss": "^4.0.7",
-    "typescript": "^5.9.3",
-    "@decocms/runtime": "workspace:*"
+    "typescript": "^5.9.3"
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.16",
-    "concurrently": "^9.2.1",
-    "deco-cli": "^0.28.0",
     "typescript": "^5.9.3",
     "wrangler": "^4.40.3"
   },

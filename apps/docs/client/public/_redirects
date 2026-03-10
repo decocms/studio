@@ -1,0 +1,14 @@
+# Root redirects
+/ /2026-03-10/en/mcp-mesh/quickstart 302
+/latest /2026-03-10/en/mcp-mesh/quickstart 302
+/2026-03-10 /2026-03-10/en/mcp-mesh/quickstart 302
+/2025-10-10 /2025-10-10/en/introduction 302
+/en /2026-03-10/en/mcp-mesh/quickstart 302
+/pt-br /2026-03-10/pt-br/mcp-mesh/quickstart 302
+/2026-03-10/en /2026-03-10/en/mcp-mesh/quickstart 302
+/2026-03-10/pt-br /2026-03-10/pt-br/mcp-mesh/quickstart 302
+/2025-10-10/en /2025-10-10/en/introduction 302
+/2025-10-10/pt-br /2025-10-10/pt-br/introduction 302
+
+# Rewrite /latest/* to current version
+/latest/* /2026-03-10/:splat 302

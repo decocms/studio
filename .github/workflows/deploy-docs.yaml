@@ -18,14 +18,16 @@ jobs:
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Install Deco CLI
-        run: bun install -g deco-cli
-
       - name: Install dependencies
         run: bun install
 
-      - name: Deploy
-        run: bun run deploy
+      - name: Build
+        run: bun run build
+        working-directory: apps/docs
+
+      - name: Deploy to Cloudflare Pages
+        run: wrangler pages deploy dist/client --project-name=decocms-docs
         working-directory: apps/docs
         env:
-          DECO_DEPLOY_TOKEN: ${{ secrets.DECO_DEPLOY_TOKEN_DOCS }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
