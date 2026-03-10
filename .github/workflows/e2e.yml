@@ -42,5 +42,10 @@ jobs:
       - name: Create data directory
         run: mkdir -p data
 
+      - name: Start NATS server
+        run: nats-server -a 127.0.0.1 --port 4222 --jetstream --store_dir ./data/nats-jetstream &
+
       - name: Run e2e tests
         run: bun run test:e2e
+        env:
+          NATS_URL: nats://127.0.0.1:4222
