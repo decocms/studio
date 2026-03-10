@@ -8,6 +8,7 @@
  * - CORS support
  */
 
+import { env } from "../env";
 import { DECO_STORE_URL, isDecoHostedMcp } from "@/core/deco-constants";
 import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import { PrometheusSerializer } from "@opentelemetry/exporter-prometheus";
@@ -202,7 +203,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   }
 
   // Create shared NATS provider when NATS_URL is set (must init before event bus)
-  const natsUrl = process.env.NATS_URL;
+  const natsUrl = env.NATS_URL;
   let natsProvider = natsUrl ? createNatsConnectionProvider() : null;
   if (natsProvider) {
     try {
@@ -321,7 +322,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     "*",
     timing({
       enabled: (c) =>
-        process.env.NODE_ENV !== "production" || getCookie(c, "debug") === "1",
+        env.NODE_ENV !== "production" || getCookie(c, "debug") === "1",
     }),
   );
 
@@ -348,7 +349,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     }),
   );
 
-  if (process.env.NODE_ENV === "production") {
+  if (env.NODE_ENV === "production") {
     app.use("*", logger());
   } else {
     app.use("*", devLogger());
@@ -634,7 +635,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     db: database.db,
     auth,
     encryption: {
-      key: process.env.ENCRYPTION_KEY || "",
+      key: env.ENCRYPTION_KEY,
     },
     observability: {
       tracer,
@@ -759,7 +760,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.use("/mcp/self", mcpAuth);
 
   // Dev-only routes (local file storage MCP for testing object-storage plugin)
-  if (process.env.NODE_ENV !== "production") {
+  if (env.NODE_ENV !== "production") {
     // Using require() for synchronous loading to ensure routes are registered
     // before any requests come in. Static imports in dev-only.ts allow knip tracking.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -918,7 +919,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Mount routes from registered server plugins
   // - Public routes are mounted at root level (e.g., /connect/:sessionId)
   // - Authenticated routes are mounted at /api/plugins/:pluginId/*
-  const vault = new CredentialVault(process.env.ENCRYPTION_KEY || "");
+  const vault = new CredentialVault(env.ENCRYPTION_KEY);
 
   // Initialize plugin storage (creates storage instances for all plugins)
   initializePluginStorage(database.db, vault);

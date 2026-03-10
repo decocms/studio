@@ -7,6 +7,7 @@ import {
 } from "@/monitoring/types";
 import { BetterAuthOptions } from "better-auth";
 import { existsSync, readFileSync } from "fs";
+import { env } from "../env";
 
 const DEFAULT_AUTH_CONFIG: Partial<BetterAuthOptions> = {
   emailAndPassword: {
@@ -63,8 +64,8 @@ export interface Config {
 }
 
 // Config paths can be overridden via environment variables for k8s flexibility
-const configPath = process.env.CONFIG_PATH || "./config.json";
-const authConfigPath = process.env.AUTH_CONFIG_PATH || "./auth-config.json";
+const configPath = env.CONFIG_PATH;
+const authConfigPath = env.AUTH_CONFIG_PATH;
 
 /**
  * Load optional configuration from file

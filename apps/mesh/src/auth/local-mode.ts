@@ -9,8 +9,9 @@
 
 import { getDb } from "@/database";
 import { randomBytes } from "crypto";
+import { env } from "../env";
 import { mkdir, writeFile, chmod } from "fs/promises";
-import { homedir, userInfo } from "os";
+import { userInfo } from "os";
 import { join } from "path";
 import { auth } from "./index";
 
@@ -25,8 +26,7 @@ let _cachedPassword: string | null = null;
 export async function getLocalAdminPassword(): Promise<string> {
   if (_cachedPassword) return _cachedPassword;
 
-  const decoHome =
-    process.env.DATA_DIR || process.env.DECOCMS_HOME || join(homedir(), "deco");
+  const decoHome = env.DATA_DIR;
 
   const secretsPath = join(decoHome, "secrets.json");
 
@@ -177,7 +177,7 @@ export async function getLocalAdminUser() {
 }
 
 export function isLocalMode(): boolean {
-  return process.env.MESH_LOCAL_MODE === "true";
+  return env.MESH_LOCAL_MODE;
 }
 
 // Seed readiness gate — local-session waits for this before granting access.

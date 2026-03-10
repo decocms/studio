@@ -22,6 +22,7 @@
  * ```
  */
 
+import { env } from "../env";
 import type { NatsConnectionProvider } from "../nats/connection";
 import type { MeshDatabase } from "../database";
 import { createEventBusStorage } from "../storage/event-bus";
@@ -85,9 +86,7 @@ export { sseHub, type SSEEvent } from "./sse-hub";
 type NotifyStrategyName = "nats" | "postgres" | "polling";
 
 function resolveNotifyStrategy(database: MeshDatabase): NotifyStrategyName {
-  const explicit = process.env.NOTIFY_STRATEGY as
-    | NotifyStrategyName
-    | undefined;
+  const explicit = env.NOTIFY_STRATEGY;
   if (
     explicit === "nats" ||
     explicit === "postgres" ||
@@ -97,7 +96,7 @@ function resolveNotifyStrategy(database: MeshDatabase): NotifyStrategyName {
   }
 
   // Auto-detect
-  if (process.env.NATS_URL) return "nats";
+  if (env.NATS_URL) return "nats";
   if (database.type === "postgres") return "postgres";
   return "polling";
 }
@@ -126,7 +125,7 @@ export function createEventBus(
 
   const strategyName = resolveNotifyStrategy(database);
   const polling = new PollingStrategy(pollIntervalMs);
-  const natsUrl = process.env.NATS_URL;
+  const natsUrl = env.NATS_URL;
 
   let notifyStrategy;
   switch (strategyName) {

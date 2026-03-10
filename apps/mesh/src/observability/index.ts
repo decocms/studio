@@ -26,6 +26,7 @@ import { enableFetchInstrumentation } from "./instrumentations/fetch";
 import { NDJSONLogExporter } from "../monitoring/ndjson-log-exporter";
 import { NDJSONTraceExporter } from "../monitoring/ndjson-trace-exporter";
 import { DEFAULT_LOGS_DIR, DEFAULT_TRACES_DIR } from "../monitoring/schema";
+import { env } from "../env";
 
 import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
 import type { MetricReader } from "@opentelemetry/sdk-metrics";
@@ -195,19 +196,17 @@ const headSampler = new DebugSampler(new RatioSampler(HEAD_SAMPLER_RATIO));
  * When CLICKHOUSE_URL is set, spans are also sent to an OTel Collector
  * via OTLP (which forwards to ClickHouse).
  */
-const traceExporter = process.env.CLICKHOUSE_URL
-  ? new OTLPTraceExporter()
-  : undefined;
+const traceExporter = env.CLICKHOUSE_URL ? new OTLPTraceExporter() : undefined;
 
 // Always create local NDJSON exporters (skip only in tests — they create
 // timers and write to disk, neither of which is needed when running `bun test`).
 const monitoringLogExporter =
-  process.env.NODE_ENV === "test"
+  env.NODE_ENV === "test"
     ? null
     : new NDJSONLogExporter({ basePath: DEFAULT_LOGS_DIR });
 
 const monitoringTraceExporter =
-  process.env.NODE_ENV === "test"
+  env.NODE_ENV === "test"
     ? null
     : new NDJSONTraceExporter({ basePath: DEFAULT_TRACES_DIR });
 
@@ -215,7 +214,7 @@ const monitoringTraceExporter =
  * Initialize OpenTelemetry SDK
  */
 const sdk = new NodeSDK({
-  serviceName: process.env.OTEL_SERVICE_NAME ?? "mesh",
+  serviceName: env.OTEL_SERVICE_NAME,
   traceExporter,
   metricReader: prometheusExporter as unknown as MetricReader,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -231,7 +230,7 @@ const sdk = new NodeSDK({
       : []),
   ],
   logRecordProcessors: [
-    ...(process.env.CLICKHOUSE_URL
+    ...(env.CLICKHOUSE_URL
       ? [new BatchLogRecordProcessor(new OTLPLogExporter())]
       : []),
     ...(monitoringLogExporter

@@ -250,43 +250,10 @@ if (!values["skip-migrations"]) {
   }
 }
 
-// ============================================================================
-// Status
-// ============================================================================
-
-function redactUrl(url: string | undefined): string {
-  if (!url) return "not set";
-  try {
-    const parsed = new URL(url);
-    // Show protocol + host, redact credentials/path details
-    if (parsed.password) {
-      parsed.password = "***";
-    }
-    if (parsed.username && parsed.username.length > 3) {
-      parsed.username = parsed.username.slice(0, 3) + "***";
-    }
-    return parsed.toString();
-  } catch {
-    // Not a parseable URL, redact middle portion
-    if (url.length <= 10) return url;
-    return url.slice(0, 6) + "***" + url.slice(-4);
-  }
-}
-
-const httpUrl = `http://localhost:${values.port || "3000"}`;
-const databaseUrl =
-  process.env.DATABASE_URL || `file://${displayHome}/db.pglite`;
-
 console.log("");
 console.log(
   `${bold}  Mode:       ${localMode ? `\x1b[32mLocal${reset}${bold} (auto-login enabled)` : "Standard (login required)"}${reset}`,
 );
-console.log(`${bold}  Data Dir:   ${dim}${displayHome}/${reset}`);
-console.log(`${bold}  Database:   ${dim}${redactUrl(databaseUrl)}${reset}`);
-console.log(
-  `${bold}  ClickHouse: ${dim}${redactUrl(process.env.CLICKHOUSE_URL)}${reset}`,
-);
-console.log(`${bold}  URL:        ${dim}${httpUrl}${reset}`);
 console.log("");
 
 // ============================================================================
