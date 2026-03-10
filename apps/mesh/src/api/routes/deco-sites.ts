@@ -144,7 +144,7 @@ app.get("/", async (c) => {
   }
 });
 
-const ADMIN_MCP = "https://sites-admin-mcp.decocache.com/api/mcp"
+const ADMIN_MCP = "https://sites-admin-mcp.decocache.com/api/mcp";
 
 /**
  * POST /api/deco-sites/connection
