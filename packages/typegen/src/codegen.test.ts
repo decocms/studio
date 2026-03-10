@@ -81,6 +81,37 @@ describe("generateClientCode", () => {
     expect(output).toContain("TOOL_B:");
   });
 
+  test("inlines extra type aliases from nullable/described properties", async () => {
+    // json-schema-to-typescript can emit helper `export type X = string | null`
+    // declarations when properties have descriptions and nullable types.
+    // These must not appear inside the Tools interface body.
+    const output = await generateClientCode({
+      mcpId: "vmc_test",
+      tools: [
+        {
+          name: "GREP",
+          inputSchema: {
+            type: "object",
+            properties: {
+              query: {
+                type: ["string", "null"],
+                description: "Query to search for",
+              },
+              include: {
+                type: ["string", "null"],
+                description: "Include pattern",
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    expect(output).not.toContain("export type Query");
+    expect(output).not.toContain("export type Include");
+    expect(output).toContain("GREP:");
+  });
+
   test("exports a client const", async () => {
     const output = await generateClientCode({
       mcpId: "vmc_test",

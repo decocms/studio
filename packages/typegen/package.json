@@ -1,6 +1,6 @@
 {
   "name": "@decocms/typegen",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Generate typed TypeScript clients for Mesh Virtual MCPs",
   "license": "MIT",
   "type": "module",

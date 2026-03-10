@@ -29,12 +29,38 @@ async function schemaToTs(schema: object, typeName: string): Promise<string> {
     bannerComment: "",
     additionalProperties: false,
   });
-  // compile() emits `export interface TypeName { ... }` or `export type TypeName = ...`
-  // We only want the body, so strip the export declaration wrapper
-  return raw
+
+  // compile() may emit helper type aliases alongside the primary declaration, e.g.:
+  //   export interface PrimaryInput { query?: Query; }
+  //   export type Query = string | null;
+  // Collect these aliases so we can inline them.
+  const aliases = new Map<string, string>();
+  const aliasRe = /^export\s+type\s+(\w+)\s*=\s*([^{][^;]*);$/gm;
+  for (const m of raw.matchAll(aliasRe)) {
+    if (m[1] !== typeName) aliases.set(m[1], m[2].trim());
+  }
+
+  // Strip the primary declaration header
+  let result = raw
     .replace(/^export\s+(interface|type)\s+\S+\s*(=\s*)?/m, "")
     .replace(/;\s*$/, "")
     .trim();
+
+  // Remove extra type alias declarations (and any preceding JSDoc comments)
+  result = result
+    .replace(
+      /\/\*\*[\s\S]*?\*\/\s*\nexport\s+type\s+\w+\s*=\s*[^{][^;]*;/gm,
+      "",
+    )
+    .replace(/^export\s+type\s+\w+\s*=\s*[^{][^;]*;$/gm, "")
+    .trim();
+
+  // Inline type aliases into the result
+  for (const [name, body] of aliases) {
+    result = result.replace(new RegExp(`\\b${name}\\b`, "g"), body);
+  }
+
+  return result;
 }
 
 export async function generateClientCode(
