@@ -36,47 +36,6 @@ function hashServerUrl(url: string): string {
 }
 
 /**
- * Override origin for OAuth redirect URIs.
- * Set via `setOAuthRedirectOrigin()` when the browser runs behind a proxy
- * (e.g. tokyo.localhost) that external OAuth servers may not accept.
- */
-let _oauthRedirectOrigin: string | null = null;
-
-/**
- * Set a custom origin for OAuth redirect URIs.
- * Call this at app init with the server's internal URL (e.g. http://localhost:3000)
- * so that external OAuth servers accept the redirect URI.
- */
-export function setOAuthRedirectOrigin(origin: string): void {
-  _oauthRedirectOrigin = origin;
-}
-
-/**
- * Get the origin to use for OAuth redirect URIs.
- * Returns the override if set, otherwise falls back to window.location.origin.
- */
-function getOAuthRedirectOrigin(): string {
-  return _oauthRedirectOrigin ?? window.location.origin;
-}
-
-/**
- * Check if we're in a local dev environment (localhost or .localhost subdomain).
- */
-function isLocalDev(): boolean {
-  try {
-    const hostname = window.location.hostname;
-    return (
-      hostname === "localhost" ||
-      hostname.endsWith(".localhost") ||
-      hostname === "127.0.0.1" ||
-      hostname === "::1"
-    );
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Global in-memory store for active OAuth sessions.
  */
 const activeOAuthSessions = new Map<string, McpOAuthProvider>();
@@ -130,7 +89,7 @@ class McpOAuthProvider implements OAuthClientProvider {
   constructor(options: McpOAuthProviderOptions) {
     this.serverUrl = options.serverUrl;
     this._redirectUrl =
-      options.callbackUrl ?? `${getOAuthRedirectOrigin()}/oauth/callback`;
+      options.callbackUrl ?? `${window.location.origin}/oauth/callback`;
     this._windowMode = options.windowMode ?? "popup";
 
     // Build scope string if provided
@@ -433,9 +392,7 @@ export async function authenticateMcp(params: {
 
         // Primary: Listen for postMessage from popup
         const handleMessage = async (event: MessageEvent) => {
-          // In local dev, accept messages from any origin because the popup
-          // runs at localhost:PORT while the opener may be at *.localhost (proxy)
-          if (!isLocalDev() && event.origin !== window.location.origin) return;
+          if (event.origin !== window.location.origin) return;
           if (event.data?.type === "mcp:oauth:callback") {
             await processCallback(event.data);
           }
@@ -542,10 +499,7 @@ function sendCallbackData(
 ): boolean {
   // Try postMessage first (primary method)
   if (window.opener && !window.opener.closed) {
-    // In local dev, use "*" because the popup (localhost:PORT) and opener
-    // (*.localhost proxy) are different origins — targeted postMessage would be silently dropped
-    const targetOrigin = isLocalDev() ? "*" : window.location.origin;
-    window.opener.postMessage(data, targetOrigin);
+    window.opener.postMessage(data, window.location.origin);
     return true;
   }
 

@@ -1,73 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useAuthConfig } from "@/web/providers/auth-config-provider";
 import { SplashScreen } from "@/web/components/splash-screen";
 import { authClient } from "@/web/lib/auth-client";
 import { Navigate, useSearch } from "@tanstack/react-router";
 import { UnifiedAuthForm } from "@/web/components/unified-auth-form";
-
-/**
- * Auto-login for local mode.
- * Calls the local-session endpoint and reloads to pick up the session cookie.
- */
-function AutoLogin({ redirectTo }: { redirectTo: string }) {
-  const [error, setError] = useState<string | null>(null);
-
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      try {
-        let res: Response | undefined;
-        for (let attempt = 0; attempt < 5; attempt++) {
-          res = await fetch("/api/auth/custom/local-session", {
-            method: "POST",
-            credentials: "include",
-          });
-          if (res.ok || res.status < 500) break;
-          await new Promise((r) =>
-            setTimeout(r, Math.min(1000 * 2 ** attempt, 10000)),
-          );
-        }
-        if (!res?.ok) {
-          const data = await res?.json().catch(() => ({}));
-          throw new Error(data?.error || "Auto-login failed");
-        }
-        if (!cancelled) {
-          // Only allow relative paths starting with "/" (not "//") to prevent open redirects
-          const safeRedirect =
-            redirectTo.startsWith("/") && !redirectTo.startsWith("//")
-              ? redirectTo
-              : "/";
-          window.location.href = safeRedirect;
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Auto-login failed");
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [redirectTo]);
-
-  if (error) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <p className="text-destructive mb-2">Auto-login failed: {error}</p>
-          <p className="text-muted-foreground text-sm">
-            Try restarting the server.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  return <SplashScreen />;
-}
 
 /**
  * Build the OAuth authorize URL from search params
@@ -136,8 +72,7 @@ export default function LoginRoute() {
     code_challenge,
     code_challenge_method,
   } = searchParams;
-  const { sso, emailAndPassword, magicLink, socialProviders, localMode } =
-    useAuthConfig();
+  const { sso, emailAndPassword, magicLink, socialProviders } = useAuthConfig();
 
   // Build OAuth authorize URL if this is an OAuth flow
   const oauthAuthorizeUrl = buildOAuthAuthorizeUrl({
@@ -161,11 +96,6 @@ export default function LoginRoute() {
       return <SplashScreen />;
     }
     return <Navigate to={next} />;
-  }
-
-  // Local mode: auto-login without showing any form
-  if (localMode) {
-    return <AutoLogin redirectTo={redirectAfterLogin} />;
   }
 
   if (sso.enabled) {
