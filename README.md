@@ -11,7 +11,7 @@
 <a href="https://decocms.com/studio">decocms.com/studio</a>
 </p>
 
-> **TL;DR:** Hire agents with real skills. Connect your tools with one-click OAuth. Track every token and dollar. Control everything from any browser. Self-host or use the cloud.
+> **TL;DR:** Hire agents. Connect tools. Organize them into projects with a UI that fits the job. Track every token and dollar. Self-host or use the cloud.
 
 ---
 
@@ -19,7 +19,7 @@
 
 Studio is where you hire agents, connect tools, and organize them into projects that actually do things.
 
-You add agents with real skills and connect MCP servers through a web UI — no JSON configs. Then you group them into **projects**: each project gets its own sidebar, shaped by the agents and connections inside it. The UI you see is the UI that's relevant for operating that project.
+Agents come with real skills and battle-tested prompts. Connections give them access to your tools — GitHub, Slack, Postgres, OpenRouter, anything that speaks MCP — set up through a web UI with one-click OAuth. Projects bring agents and connections together around a goal: each project gets its own sidebar and UI, shaped by what's inside it.
 
 Everything is tracked — tokens, costs, errors, latency — per connection, per agent. Install locally and it stays private. Sync to the cloud for remote access, team roles, and shared billing.
 
@@ -66,7 +66,7 @@ bun run dev
 
 ### Agents
 
-Browse and hire specialized AI agents from the built-in store. Each agent comes with battle-tested prompts and knows how to use specific tools. Agents compose — they can call each other — and every action is tracked with cost attribution.
+Browse and hire specialized AI agents from the built-in store. Each agent knows how to use specific tools and comes with battle-tested prompts. Agents compose — they can call each other — and every action is tracked with cost attribution.
 
 ### Connections
 
@@ -80,19 +80,17 @@ As tool surfaces grow, Studio exposes **Virtual MCPs** — one endpoint, differe
 
 ### Projects
 
-Projects are the centerpiece. You gather specific agents and connections around a goal, and the project's UI adapts to what's inside — the sidebar shows the views, actions, and data that are relevant for operating it. Add a content agent and a CMS connection, the sidebar shows content management. Add an analytics agent and a database connection, it shows dashboards and queries.
+Projects bring agents and connections together around a goal. The project's UI adapts to what's inside — add a content agent and a CMS connection, the sidebar shows content management; add an analytics agent and a database, it shows dashboards and queries. The UI you see is the UI that's relevant for operating that project.
 
-Define what done looks like and Studio works backward to derive milestones, assign agents, and verify outcomes. Projects are where agents, tools, and humans collaborate with a UI that fits the job.
+You can also define outcomes declaratively and let Studio work backward to derive milestones, assign agents, and verify results.
 
 ### Observability
 
-See token spend per connection — OpenRouter, Perplexity, Firecrawl, all of it. Latency, errors, bottlenecks. One dashboard.
+Token spend per connection — OpenRouter, Perplexity, Firecrawl, all of it. Latency, errors, bottlenecks. One dashboard.
 
 ### From your laptop to your org
 
-Same mental model everywhere: your agents, your tools, your connections, your projects.
-
-| | What it means |
+| | |
 |---|---|
 | **Local** | `bunx decocms` on your laptop. SQLite. Private. |
 | **Cloud** | Log in to studio.decocms.com. Control local projects from any browser. |
@@ -107,20 +105,20 @@ Same mental model everywhere: your agents, your tools, your connections, your pr
 |---|---|
 | **Agents** | Browse, hire, and compose AI agents with tracked skills and cost attribution |
 | **Connections** | Route MCP traffic through one governed endpoint with auth, proxy, and token vault |
-| **Projects** | Declarative planning — define outcomes, Studio derives milestones and assigns agents |
+| **Projects** | Organize agents and connections around goals with an adaptive UI |
 | **Virtual MCPs** | Compose and expose governed toolsets as new MCP endpoints |
-| **Observability** | Full tracing and metrics — traces, costs, errors, latency per connection |
-| **Access Control** | Fine-grained RBAC via Better Auth — OAuth 2.1 + API keys per workspace/project |
+| **Observability** | Traces, costs, errors, and latency per connection — one dashboard |
+| **Access Control** | RBAC via Better Auth — OAuth 2.1 + API keys per workspace/project |
 | **Multi-tenancy** | Workspace/project isolation for config, credentials, policies, and audit logs |
 | **Event Bus** | Pub/sub between connections with scheduled/cron delivery and at-least-once guarantees |
 | **Bindings** | Capability contracts so tools target interfaces, not specific implementations |
-| **Store** | Discover and install agents, tools, and templates from the marketplace |
+| **Store** | Discover and install agents, tools, and templates |
 
 ---
 
 ## Define Tools
 
-Tools are first-class citizens. Type-safe, audited, observable, and callable via MCP.
+Type-safe, audited, observable, callable via MCP.
 
 ```ts
 import { z } from "zod";
@@ -153,7 +151,7 @@ export const CONNECTION_CREATE = defineTool({
 });
 ```
 
-Every tool call automatically gets: input/output validation, access control checks, audit logging, and OpenTelemetry traces.
+Every tool call gets input/output validation, access control, audit logging, and OpenTelemetry traces automatically.
 
 ---
 
@@ -189,26 +187,15 @@ Every tool call automatically gets: input/output validation, access control chec
 ## Development
 
 ```bash
-# Install dependencies
-bun install
-
-# Run dev server (client + API)
-bun run dev
-
-# Run tests
-bun test
-
-# Type check
-bun run check
-
-# Lint
-bun run lint
-
-# Format
-bun run fmt
+bun install          # Install dependencies
+bun run dev          # Run dev server (client + API)
+bun test             # Run tests
+bun run check        # Type check
+bun run lint         # Lint
+bun run fmt          # Format
 ```
 
-### Studio-specific commands (from `apps/mesh/`)
+### Studio commands (from `apps/mesh/`)
 
 ```bash
 bun run dev:client     # Vite dev server (port 4000)
@@ -216,29 +203,18 @@ bun run dev:server     # Hono server with hot reload
 bun run migrate        # Run database migrations
 ```
 
-### Running with worktrees (subdomain per workspace)
+### Worktrees
 
-`dev:worktree` routes `http://<WORKTREE_SLUG>.localhost` to the dev server via Caddy. Useful for running multiple workspaces in parallel without port conflicts.
-
-**One-time setup:**
+`dev:worktree` routes `http://<WORKTREE_SLUG>.localhost` via Caddy — useful for running multiple workspaces without port conflicts.
 
 ```bash
-brew install caddy
-caddy start
-```
+# One-time setup
+brew install caddy && caddy start
 
-**Start dev server for a worktree:**
-
-```bash
+# Start
 WORKTREE_SLUG=my-feature bun run dev:worktree
-# → http://my-feature.localhost is live
-```
 
-Ports for Hono and Vite are allocated automatically. On exit (Ctrl+C) the route is removed and ports are freed. State is tracked in `~/.worktree-devservers/proxy-map.json`.
-
-**Conductor adapter** (sets `WORKTREE_SLUG` from `CONDUCTOR_WORKSPACE_NAME` automatically):
-
-```bash
+# Conductor adapter (sets WORKTREE_SLUG from CONDUCTOR_WORKSPACE_NAME)
 bun run dev:conductor
 ```
 
@@ -247,21 +223,20 @@ bun run dev:conductor
 ## Deploy Anywhere
 
 ```bash
-# Docker Compose (SQLite)
+# Docker (SQLite)
 docker compose -f deploy/docker-compose.yml up
 
-# Docker Compose (PostgreSQL)
+# Docker (PostgreSQL)
 docker compose -f deploy/docker-compose.postgres.yml up
 
-# Self-host with Bun
-bun run build:client && bun run build:server
-bun run start
+# Bun
+bun run build:client && bun run build:server && bun run start
 
 # Kubernetes
 kubectl apply -f k8s/
 ```
 
-Runs on any infrastructure — Docker, Kubernetes, AWS, GCP, or local Bun/Node runtimes. No vendor lock-in.
+No vendor lock-in. Runs on Docker, Kubernetes, AWS, GCP, or local runtimes.
 
 ---
 
@@ -287,14 +262,13 @@ Runs on any infrastructure — Docker, Kubernetes, AWS, GCP, or local Bun/Node r
 - [ ] Cost analytics and spend caps
 - [ ] Remote access from any browser
 - [ ] Live tracing debugger
-- [ ] Version history for configs
 - [ ] Workflow orchestration with guardrails
 
 ---
 
 ## License
 
-deco Studio ships with a **Sustainable Use License (SUL)**. See [LICENSE.md](./LICENSE.md).
+**Sustainable Use License (SUL)** — see [LICENSE.md](./LICENSE.md).
 
 - Free to self-host for internal use
 - Free for client projects (agencies, SIs)
@@ -306,15 +280,13 @@ Questions? [contact@decocms.com](mailto:contact@decocms.com)
 
 ## Contributing
 
-We welcome contributions! Run the following before submitting a PR:
-
 ```bash
-bun run fmt      # Format code
-bun run lint     # Check linting
-bun test         # Run tests
+bun run fmt      # Format
+bun run lint     # Lint
+bun test         # Test
 ```
 
-See `AGENTS.md` for detailed coding guidelines and conventions.
+See `AGENTS.md` for coding guidelines.
 
 ---
 
