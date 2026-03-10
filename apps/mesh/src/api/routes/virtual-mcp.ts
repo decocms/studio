@@ -22,7 +22,7 @@ import {
   createVirtualClientFrom,
   parseStrategyFromMode,
 } from "../../mcp-clients/virtual-mcp";
-import type { Env } from "../env";
+import type { Env } from "../hono-env";
 
 // Define Hono variables type
 const app = new Hono<Env>();

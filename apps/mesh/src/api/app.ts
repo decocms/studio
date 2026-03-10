@@ -145,7 +145,7 @@ import {
 } from "better-auth/plugins";
 import { MiddlewareHandler } from "hono/types";
 import { getToolsByCategory, MANAGEMENT_TOOLS } from "../tools/registry";
-import { Env } from "./env";
+import { Env } from "./hono-env";
 import { devLogger } from "./utils/dev-logger";
 import { streamSSE } from "hono/streaming";
 import { type SSEEvent, sseHub } from "../event-bus";
