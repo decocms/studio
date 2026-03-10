@@ -108,7 +108,9 @@ export function MCPAppRenderer({
   return (
     <div
       className={cn("relative w-full overflow-hidden rounded-lg", className)}
-      style={{ height: `${height}px` }}
+      style={
+        displayMode !== "fullscreen" ? { height: `${height}px` } : undefined
+      }
     >
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-background z-10">
