@@ -5,14 +5,12 @@ export type ToolApprovalLevel = "none" | "readonly" | "yolo";
 
 interface Preferences {
   devMode: boolean;
-  experimental_projects: boolean;
   toolApprovalLevel: ToolApprovalLevel;
   enableNotifications: boolean;
 }
 
 const DEFAULT_PREFERENCES: Preferences = {
   devMode: false,
-  experimental_projects: false,
   toolApprovalLevel: "none",
   enableNotifications: typeof Notification !== "undefined" ? true : false,
 };

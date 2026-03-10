@@ -15,7 +15,6 @@ import { useProject } from "@/web/hooks/use-project";
 import { SettingsSidebar } from "./sidebar";
 import { AccountProfilePage } from "./pages/account-profile";
 import { AccountPreferencesPage } from "./pages/account-preferences";
-import { AccountExperimentalPage } from "./pages/account-experimental";
 import { OrgGeneralPage } from "./pages/org-general";
 import { ProjectPluginsPage } from "./pages/project-plugins";
 import { OrgBillingPage } from "./pages/org-billing";
@@ -69,8 +68,6 @@ function SettingsContent({ section }: { section: SettingsSection }) {
       return <AccountProfilePage />;
     case "account.preferences":
       return <AccountPreferencesPage />;
-    case "account.experimental":
-      return <AccountExperimentalPage />;
     case "org.general":
       return <OrgGeneralPage />;
     case "org.plugins":

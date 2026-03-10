@@ -1,12 +1,6 @@
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import {
-  Beaker01,
-  Building02,
-  Coins01,
-  Settings01,
-  Zap,
-} from "@untitledui/icons";
+import { Building02, Coins01, Settings01, Zap } from "@untitledui/icons";
 import { authClient } from "@/web/lib/auth-client";
 import { type SettingsSection } from "@/web/hooks/use-settings-modal";
 
@@ -41,11 +35,6 @@ export function SettingsSidebar({
       key: "account.preferences" as SettingsSection,
       label: "Preferences",
       icon: <Settings01 size={14} />,
-    },
-    {
-      key: "account.experimental" as SettingsSection,
-      label: "Experimental",
-      icon: <Beaker01 size={14} />,
     },
   ];
 

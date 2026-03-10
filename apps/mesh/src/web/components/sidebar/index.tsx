@@ -1,6 +1,5 @@
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { useProjectSidebarItems } from "@/web/hooks/use-project-sidebar-items";
-import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import { Locator, useProjectContext } from "@decocms/mesh-sdk";
 import { Suspense } from "react";
 import { NavigationSidebar } from "./navigation";
@@ -21,7 +20,6 @@ interface MeshSidebarProps {
 }
 
 export function MeshSidebar({ onCreateProject }: MeshSidebarProps) {
-  const [preferences] = usePreferences();
   const sidebarSections = useProjectSidebarItems();
   const { locator } = useProjectContext();
   const isOrgAdmin = Locator.isOrgAdminProject(locator);
@@ -36,7 +34,7 @@ export function MeshSidebar({ onCreateProject }: MeshSidebarProps) {
       }
       footer={<SidebarInboxFooter />}
       additionalContent={
-        isOrgAdmin && preferences.experimental_projects ? (
+        isOrgAdmin ? (
           <ErrorBoundary>
             <Suspense fallback={null}>
               <SidebarProjectsSection />

@@ -3,7 +3,6 @@ import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 export type SettingsSection =
   | "account.profile"
   | "account.preferences"
-  | "account.experimental"
   | "org.general"
   | "org.plugins"
   | "org.billing";
@@ -11,7 +10,6 @@ export type SettingsSection =
 const VALID_SECTIONS = new Set<string>([
   "account.profile",
   "account.preferences",
-  "account.experimental",
   "org.general",
   "org.plugins",
   "org.billing",
