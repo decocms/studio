@@ -22,7 +22,7 @@ const envSchema = z
     DATABASE_PG_SSL: zBooleanString,
 
     // Auth & Secrets
-    BETTER_AUTH_SECRET: z.string().min(1),
+    BETTER_AUTH_SECRET: z.string().default(""),
     ENCRYPTION_KEY: z.string().default(""),
     MESH_JWT_SECRET: z.string().optional(),
     MESH_LOCAL_MODE: zBooleanString,
