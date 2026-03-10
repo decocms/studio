@@ -67,7 +67,7 @@ jobs:
 
           # Check if this specific version already exists in npm
           # This works for both stable and prerelease versions (unlike checking 'latest' tag)
-          if npm view @decocms/mesh@$CURRENT_VERSION version >/dev/null 2>&1; then
+          if npm view decocms@$CURRENT_VERSION version >/dev/null 2>&1; then
             echo "version-changed=false" >> $GITHUB_OUTPUT
             echo "⏭️ Version $CURRENT_VERSION already published, skipping publish"
           else
