@@ -183,7 +183,7 @@ if (!process.env.ENCRYPTION_KEY) {
   if (savedSecrets.ENCRYPTION_KEY) {
     process.env.ENCRYPTION_KEY = savedSecrets.ENCRYPTION_KEY;
   } else {
-    savedSecrets.ENCRYPTION_KEY = '';
+    savedSecrets.ENCRYPTION_KEY = "";
     process.env.ENCRYPTION_KEY = savedSecrets.ENCRYPTION_KEY;
     secretsModified = true;
   }
