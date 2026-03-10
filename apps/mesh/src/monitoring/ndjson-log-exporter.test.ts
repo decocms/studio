@@ -80,6 +80,7 @@ describe("NDJSONLogExporter", () => {
     expect(lines.length).toBe(3);
     for (const line of lines) {
       const parsed = JSON.parse(line);
+      expect(parsed.v).toBe(1);
       expect(parsed.id).toBeDefined();
       expect(parsed.tool_name).toBeDefined();
       expect(parsed.organization_id).toBeDefined();

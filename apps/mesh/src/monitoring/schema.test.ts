@@ -1,18 +1,26 @@
 import { describe, it, expect } from "bun:test";
 import {
   MONITORING_SPAN_NAME,
-  DEFAULT_MONITORING_URI,
+  DEFAULT_SYSTEM_DIR,
+  DEFAULT_LOGS_DIR,
+  DEFAULT_TRACES_DIR,
+  DEFAULT_METRICS_DIR,
   MONITORING_LOG_ATTR,
   MONITORING_LOG_TYPE_VALUE,
   logRecordToMonitoringRow,
+  hrTimeToMs,
+  hrTimeToISO,
   type LogRecordInput,
 } from "./schema";
 
 describe("monitoring schema", () => {
   it("should define shared constants", () => {
     expect(MONITORING_SPAN_NAME).toBe("mcp.proxy.callTool");
-    expect(DEFAULT_MONITORING_URI).toContain("deco");
-    expect(DEFAULT_MONITORING_URI).toContain("monitoring");
+    expect(DEFAULT_SYSTEM_DIR).toContain("deco");
+    expect(DEFAULT_SYSTEM_DIR).toContain("system");
+    expect(DEFAULT_LOGS_DIR).toContain("logs");
+    expect(DEFAULT_TRACES_DIR).toContain("traces");
+    expect(DEFAULT_METRICS_DIR).toContain("metrics");
   });
 });
 
@@ -57,6 +65,7 @@ describe("logRecordToMonitoringRow", () => {
     const record = makeLogRecord();
     const row = logRecordToMonitoringRow(record);
 
+    expect(row.v).toBe(1);
     expect(row.id).toBe("log_test_123");
     expect(row.organization_id).toBe("org_test");
     expect(row.connection_id).toBe("conn_test");
@@ -212,5 +221,41 @@ describe("logRecordToMonitoringRow", () => {
 
     const row = logRecordToMonitoringRow(record);
     expect(row.id).toBe("custom_id_abc");
+  });
+});
+
+describe("hrTimeToMs", () => {
+  it("should convert [0, 0] to 0", () => {
+    expect(hrTimeToMs([0, 0])).toBe(0);
+  });
+
+  it("should convert seconds and nanoseconds to milliseconds", () => {
+    expect(hrTimeToMs([1, 500_000_000])).toBe(1500);
+  });
+
+  it("should handle sub-millisecond nanoseconds", () => {
+    expect(hrTimeToMs([0, 1_000_000])).toBe(1);
+    expect(hrTimeToMs([0, 999_999])).toBeCloseTo(0.999999, 5);
+  });
+
+  it("should handle large epoch timestamps", () => {
+    // 2024-03-06T00:00:00Z
+    expect(hrTimeToMs([1709683200, 0])).toBe(1709683200000);
+  });
+});
+
+describe("hrTimeToISO", () => {
+  it("should return epoch ISO for [0, 0]", () => {
+    expect(hrTimeToISO([0, 0])).toBe("1970-01-01T00:00:00.000Z");
+  });
+
+  it("should return correct ISO string", () => {
+    expect(hrTimeToISO([1709683200, 0])).toBe("2024-03-06T00:00:00.000Z");
+  });
+
+  it("should include millisecond precision", () => {
+    expect(hrTimeToISO([1709683200, 500_000_000])).toBe(
+      "2024-03-06T00:00:00.500Z",
+    );
   });
 });

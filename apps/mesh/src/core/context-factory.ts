@@ -18,7 +18,7 @@ import { ConnectionStorage } from "../storage/connection";
 import { VirtualMCPStorage } from "../storage/virtual";
 import { ClickHouseMonitoringStorage } from "../storage/monitoring-clickhouse";
 import { createMonitoringEngine } from "../monitoring/query-engine";
-import { DEFAULT_MONITORING_URI } from "../monitoring/schema";
+import { DEFAULT_LOGS_DIR } from "../monitoring/schema";
 import { SqlMonitoringDashboardStorage } from "../storage/monitoring-dashboards";
 import { OrganizationSettingsStorage } from "../storage/organization-settings";
 import { ProjectsStorage } from "../storage/projects";
@@ -760,7 +760,7 @@ export async function createMeshContextFactory(
   const { engine: monitoringEngine, source: monitoringSource } =
     createMonitoringEngine({
       clickhouseUrl: process.env.CLICKHOUSE_URL,
-      basePath: DEFAULT_MONITORING_URI,
+      basePath: DEFAULT_LOGS_DIR,
     });
 
   // Create storage adapters once (singleton pattern)

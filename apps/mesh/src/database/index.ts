@@ -186,6 +186,7 @@ function createPGliteDatabase(config: DatabaseConfig): PGliteDatabase {
 
 const DEFAULT_PGLITE_PATH = path.join(
   process.env.DECOCMS_HOME || path.join(homedir(), "deco"),
+  "system",
   "db.pglite",
 );
 

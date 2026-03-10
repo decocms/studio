@@ -20,6 +20,7 @@ export function makeTestMonitoringRow(
   overrides: Partial<MonitoringRow> = {},
 ): MonitoringRow {
   return {
+    v: 1,
     id: `log_${Math.random().toString(36).slice(2)}`,
     organization_id: "org_test",
     connection_id: "conn_1",

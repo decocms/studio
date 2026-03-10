@@ -67,7 +67,7 @@ Options:
 Environment Variables:
   PORT                  Port to listen on (default: 3000)
   DECOCMS_HOME          Data directory (default: ~/deco/)
-  DATABASE_URL          Database connection URL (default: ~/deco/db.pglite)
+  DATABASE_URL          Database connection URL (default: ~/deco/system/db.pglite)
   NODE_ENV              Set to 'production' for production mode
   BETTER_AUTH_SECRET    Secret for authentication (auto-generated if not set)
   ENCRYPTION_KEY        Key for encrypting secrets (auto-generated if not set)
@@ -259,7 +259,7 @@ console.log(
   `${bold}  Mode:     ${localMode ? `\x1b[32mLocal${reset}${bold} (auto-login enabled)` : "Standard (login required)"}${reset}`,
 );
 console.log(`${bold}  Home:     ${dim}${displayHome}/${reset}`);
-console.log(`${bold}  Database: ${dim}${displayHome}/db.pglite${reset}`);
+console.log(`${bold}  Database: ${dim}${displayHome}/system/db.pglite${reset}`);
 console.log(`${bold}  URL:      ${dim}${url}${reset}`);
 console.log("");
 

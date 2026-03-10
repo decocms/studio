@@ -70,7 +70,11 @@ import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { SqlThreadStorage } from "../storage/threads";
 import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
-import { DEFAULT_MONITORING_URI } from "../monitoring/schema";
+import {
+  DEFAULT_LOGS_DIR,
+  DEFAULT_TRACES_DIR,
+  DEFAULT_METRICS_DIR,
+} from "../monitoring/schema";
 
 // Track current event bus instance for cleanup during HMR
 let currentEventBus: EventBus | null = null;
@@ -658,23 +662,33 @@ export async function createApp(options: CreateAppOptions = {}) {
     });
 
   // NDJSON monitoring retention cleanup (skip in ClickHouse mode)
+  const SIGNAL_DIRS = [
+    DEFAULT_LOGS_DIR,
+    DEFAULT_TRACES_DIR,
+    DEFAULT_METRICS_DIR,
+  ];
+
   if (!process.env.CLICKHOUSE_URL) {
-    cleanupOldMonitoringFiles(DEFAULT_MONITORING_URI)
-      .then((deleted) => {
-        if (deleted > 0)
-          console.log(
-            `[monitoring] Cleaned up ${deleted} old monitoring partitions`,
-          );
-      })
-      .catch((err) =>
-        console.error("[monitoring] Retention cleanup failed:", err),
-      );
+    for (const dir of SIGNAL_DIRS) {
+      cleanupOldMonitoringFiles(dir)
+        .then((deleted) => {
+          if (deleted > 0)
+            console.log(
+              `[monitoring] Cleaned up ${deleted} old partitions from ${dir}`,
+            );
+        })
+        .catch((err) =>
+          console.error("[monitoring] Retention cleanup failed:", err),
+        );
+    }
 
     currentRetentionTimer = setInterval(
       () => {
-        cleanupOldMonitoringFiles(DEFAULT_MONITORING_URI).catch((err) =>
-          console.error("[monitoring] Retention cleanup failed:", err),
-        );
+        for (const dir of SIGNAL_DIRS) {
+          cleanupOldMonitoringFiles(dir).catch((err) =>
+            console.error("[monitoring] Retention cleanup failed:", err),
+          );
+        }
       },
       24 * 60 * 60 * 1000,
     );
