@@ -22,6 +22,7 @@ function AppRenderer({
   client,
   resourceURI,
   tool,
+  connectionId,
 }: {
   client: ReturnType<typeof useMCPClient>;
   resourceURI: string;
@@ -31,9 +32,11 @@ function AppRenderer({
     inputSchema?: Record<string, unknown>;
     _meta?: Record<string, unknown>;
   };
+  connectionId: string;
 }) {
-  const { sendMessage } = useChatStable();
+  const { sendMessage, setAppContext, clearAppContext } = useChatStable();
   const [, setChatOpen] = useDecoChatOpen();
+  const sourceId = `${connectionId}:${tool.name}`;
   const { data: toolResult } = useMCPToolCall({
     client,
     toolName: tool.name,
@@ -59,6 +62,8 @@ function AppRenderer({
       maxHeight={MCP_APP_DISPLAY_MODES.fullscreen.maxHeight}
       client={client}
       onMessage={handleAppMessage}
+      onUpdateModelContext={(params) => setAppContext(sourceId, params)}
+      onTeardown={() => clearAppContext(sourceId)}
       className="h-full"
     />
   );
@@ -101,7 +106,14 @@ function AppViewContent({
     );
   }
 
-  return <AppRenderer client={client} resourceURI={resourceURI} tool={tool} />;
+  return (
+    <AppRenderer
+      client={client}
+      resourceURI={resourceURI}
+      tool={tool}
+      connectionId={connectionId}
+    />
+  );
 }
 
 export default function ProjectAppView() {

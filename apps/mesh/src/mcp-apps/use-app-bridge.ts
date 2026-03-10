@@ -7,6 +7,7 @@ import type {
   McpUiHostCapabilities,
   McpUiHostContext,
   McpUiMessageRequest,
+  McpUiUpdateModelContextRequest,
 } from "@modelcontextprotocol/ext-apps";
 import { getDocumentTheme } from "@modelcontextprotocol/ext-apps";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -28,6 +29,7 @@ const HOST_CAPABILITIES: McpUiHostCapabilities = {
   logging: {},
   message: {},
   downloadFile: {},
+  updateModelContext: { text: {} },
 };
 
 const INIT_TIMEOUT_MS = 15_000;
@@ -129,6 +131,10 @@ interface BridgeStoreConfig {
   toolInput?: Record<string, unknown>;
   toolResult?: CallToolResult;
   onMessage?: (params: McpUiMessageRequest["params"]) => void;
+  onUpdateModelContext?: (
+    params: McpUiUpdateModelContextRequest["params"],
+  ) => void;
+  onTeardown?: () => void;
 }
 
 class BridgeStore {
@@ -218,6 +224,7 @@ class BridgeStore {
 
   /** Tear down the current bridge and clear timers. */
   teardown() {
+    this.config.onTeardown?.();
     this.disposed = true;
     this.unsubTheme?.();
     this.unsubTheme = null;
@@ -297,6 +304,11 @@ class BridgeStore {
 
     bridge.onmessage = async (params) => {
       this.config.onMessage?.(params);
+      return {};
+    };
+
+    bridge.onupdatemodelcontext = async (params) => {
+      this.config.onUpdateModelContext?.(params);
       return {};
     };
 
@@ -406,6 +418,10 @@ interface UseAppBridgeOptions {
   toolInput?: Record<string, unknown>;
   toolResult?: CallToolResult;
   onMessage?: (params: McpUiMessageRequest["params"]) => void;
+  onUpdateModelContext?: (
+    params: McpUiUpdateModelContextRequest["params"],
+  ) => void;
+  onTeardown?: () => void;
 }
 
 interface UseAppBridgeReturn {

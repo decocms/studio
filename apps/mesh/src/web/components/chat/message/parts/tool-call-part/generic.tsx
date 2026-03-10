@@ -13,7 +13,10 @@ import {
 
 import type { ToolDefinition } from "@decocms/mesh-sdk";
 import { useMCPClient, useProjectContext } from "@decocms/mesh-sdk";
-import type { McpUiMessageRequest } from "@modelcontextprotocol/ext-apps";
+import type {
+  McpUiMessageRequest,
+  McpUiUpdateModelContextRequest,
+} from "@modelcontextprotocol/ext-apps";
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import {
   AlertCircle,
@@ -163,7 +166,8 @@ export function GenericToolCallPart({
         : part.type.replace("tool-", "") || "Tool";
   const friendlyName = getFriendlyToolName(toolName);
 
-  const { selectedVirtualMcp, sendMessage } = useChatStable();
+  const { selectedVirtualMcp, sendMessage, setAppContext, clearAppContext } =
+    useChatStable();
   const { org } = useProjectContext();
   const [, setChatOpen] = useDecoChatOpen();
 
@@ -180,6 +184,7 @@ export function GenericToolCallPart({
       : (selectedVirtualMcp?.id ?? null);
 
   const hasMCPApp = !!uiResourceUri && part.state === "output-available";
+  const sourceId = connectionId ? `${connectionId}:${toolName}` : null;
 
   const handleAppMessage = (params: McpUiMessageRequest["params"]) => {
     const doc = contentBlocksToTiptapDoc(params.content);
@@ -283,6 +288,14 @@ export function GenericToolCallPart({
               toolResult={part.output}
               toolMeta={toolMeta as Record<string, unknown> | undefined}
               onMessage={handleAppMessage}
+              onUpdateModelContext={
+                sourceId
+                  ? (params) => setAppContext(sourceId, params)
+                  : undefined
+              }
+              onTeardown={
+                sourceId ? () => clearAppContext(sourceId) : undefined
+              }
             />
           </Suspense>
         </ErrorBoundary>
@@ -300,6 +313,10 @@ interface MCPAppRendererProps {
   toolResult: unknown;
   toolMeta?: Record<string, unknown>;
   onMessage?: (params: McpUiMessageRequest["params"]) => void;
+  onUpdateModelContext?: (
+    params: McpUiUpdateModelContextRequest["params"],
+  ) => void;
+  onTeardown?: () => void;
 }
 
 function MCPAppRenderer({
@@ -311,6 +328,8 @@ function MCPAppRenderer({
   toolResult,
   toolMeta,
   onMessage,
+  onUpdateModelContext,
+  onTeardown,
 }: MCPAppRendererProps) {
   const client = useMCPClient({ connectionId, orgId });
 
@@ -329,6 +348,8 @@ function MCPAppRenderer({
         toolResult={toolResult as CallToolResult | undefined}
         client={client}
         onMessage={onMessage}
+        onUpdateModelContext={onUpdateModelContext}
+        onTeardown={onTeardown}
       />
     </div>
   );

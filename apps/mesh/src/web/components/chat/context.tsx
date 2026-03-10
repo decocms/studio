@@ -13,6 +13,7 @@ import {
   useProjectContext,
   useVirtualMCPs,
 } from "@decocms/mesh-sdk";
+import type { McpUiUpdateModelContextRequest } from "@modelcontextprotocol/ext-apps";
 import type {
   EmbeddedResource,
   PromptMessage,
@@ -129,6 +130,11 @@ interface ChatStableValue {
 
   sendMessage: (tiptapDoc: Metadata["tiptapDoc"]) => Promise<void>;
   cancelRun: () => Promise<void>;
+  setAppContext: (
+    sourceId: string,
+    params: McpUiUpdateModelContextRequest["params"],
+  ) => void;
+  clearAppContext: (sourceId: string) => void;
 }
 
 /**
@@ -688,6 +694,10 @@ export function ChatProvider({ children }: PropsWithChildren) {
   // Shared ref for tiptapDoc — ChatInput owns the state, others read the ref.
   const tiptapDocRef = useRef<Metadata["tiptapDoc"]>(undefined);
 
+  // App context injected by ext-apps via updateModelContext — stored in a ref
+  // to avoid re-renders (only read at sendMessage time).
+  const appContextsRef = useRef<Record<string, string>>({});
+
   // Keep a live ref to the current toolApprovalLevel so the transport's
   // prepareSendMessagesRequest can read the most-recent value even during
   // auto-sends that have no requestMetadata (e.g. after addToolApprovalResponse).
@@ -904,6 +914,41 @@ export function ChatProvider({ children }: PropsWithChildren) {
     });
   };
 
+  // App context functions
+  const MAX_APP_CONTEXT_LENGTH = 10_000;
+  const MAX_APP_CONTEXT_SOURCES = 10;
+
+  const setAppContext = (
+    sourceId: string,
+    params: McpUiUpdateModelContextRequest["params"],
+  ) => {
+    const textParts: string[] = [];
+    for (const block of params.content ?? []) {
+      if (block.type === "text" && block.text?.trim()) {
+        textParts.push(block.text.trim());
+      }
+    }
+    const text = textParts.join("\n");
+
+    if (!text) {
+      delete appContextsRef.current[sourceId];
+      return;
+    }
+
+    if (text.length > MAX_APP_CONTEXT_LENGTH) return;
+    if (
+      Object.keys(appContextsRef.current).length >= MAX_APP_CONTEXT_SOURCES &&
+      !(sourceId in appContextsRef.current)
+    )
+      return;
+
+    appContextsRef.current[sourceId] = text;
+  };
+
+  const clearAppContext = (sourceId: string) => {
+    delete appContextsRef.current[sourceId];
+  };
+
   // Chat functions
   const sendMessage = async (tiptapDoc: Metadata["tiptapDoc"]) => {
     if (!selectedModel) {
@@ -939,9 +984,21 @@ export function ChatProvider({ children }: PropsWithChildren) {
       },
     };
 
+    // Compose system prompt: route context + app contexts
+    const appContextEntries = Object.entries(appContextsRef.current);
+    const appContextSection =
+      appContextEntries.length > 0
+        ? appContextEntries
+            .map(([source, text]) => `### App Context: ${source}\n${text}`)
+            .join("\n\n")
+        : "";
+    const system = [contextPrompt, appContextSection]
+      .filter(Boolean)
+      .join("\n\n");
+
     const metadata: Metadata = {
       ...messageMetadata,
-      system: contextPrompt,
+      system,
       models: selectedModel,
     };
 
@@ -1033,6 +1090,8 @@ export function ChatProvider({ children }: PropsWithChildren) {
     setSelectedMode,
     sendMessage,
     cancelRun,
+    setAppContext,
+    clearAppContext,
   };
 
   const streamValue: ChatStreamValue = {

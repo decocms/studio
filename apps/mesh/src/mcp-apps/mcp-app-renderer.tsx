@@ -4,6 +4,7 @@ import type {
   McpUiDisplayMode,
   McpUiHostContext,
   McpUiMessageRequest,
+  McpUiUpdateModelContextRequest,
 } from "@modelcontextprotocol/ext-apps";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -46,6 +47,10 @@ interface MCPAppRendererProps {
   maxHeight?: number;
   client: Client;
   onMessage?: (params: McpUiMessageRequest["params"]) => void;
+  onUpdateModelContext?: (
+    params: McpUiUpdateModelContextRequest["params"],
+  ) => void;
+  onTeardown?: () => void;
   className?: string;
 }
 
@@ -63,6 +68,8 @@ export function MCPAppRenderer({
   maxHeight = 600,
   client,
   onMessage,
+  onUpdateModelContext,
+  onTeardown,
   className,
 }: MCPAppRendererProps) {
   const { data } = useMCPReadResource({ client, uri, staleTime: 30_000 });
@@ -77,6 +84,8 @@ export function MCPAppRenderer({
     toolInput,
     toolResult,
     onMessage,
+    onUpdateModelContext,
+    onTeardown,
   });
 
   if (!html) return null;

@@ -187,8 +187,9 @@ function ToolDetailsAuthenticated({
 
   const { org } = useProjectContext();
   const connection = useConnection(connectionId);
-  const { sendMessage } = useChatStable();
+  const { sendMessage, setAppContext, clearAppContext } = useChatStable();
   const [, setChatOpen] = useDecoChatOpen();
+  const sourceId = `${connectionId}:${toolName}`;
 
   const client = useMCPClient({
     connectionId,
@@ -684,6 +685,10 @@ function ToolDetailsAuthenticated({
                   maxHeight={MCP_APP_DISPLAY_MODES.view.maxHeight}
                   client={client}
                   onMessage={handleAppMessage}
+                  onUpdateModelContext={(params) =>
+                    setAppContext(sourceId, params)
+                  }
+                  onTeardown={() => clearAppContext(sourceId)}
                   className="h-full"
                 />
               </Suspense>
