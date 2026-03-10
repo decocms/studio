@@ -53,16 +53,6 @@ export class OrgScopedThreadStorage {
     return this.inner.get(id, this.requireOrg());
   }
 
-  /**
-   * Returns true if a thread with this ID exists in any organization.
-   * Used to distinguish "genuinely new thread" from "thread owned by another org"
-   * when a caller-supplied ID resolves to null under the current org scope.
-   */
-  existsById(id: string): Promise<boolean> {
-    this.requireOrg();
-    return this.inner.existsById(id);
-  }
-
   update(id: string, data: Partial<Thread>): Promise<Thread> {
     return this.inner.update(id, this.requireOrg(), data);
   }
@@ -153,16 +143,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .executeTakeFirst();
 
     return row ? this.threadFromDbRow(row) : null;
-  }
-
-  async existsById(id: string): Promise<boolean> {
-    const row = await this.db
-      .selectFrom("threads")
-      .select("id")
-      .where("id", "=", id)
-      .executeTakeFirst();
-
-    return row !== undefined;
   }
 
   async update(

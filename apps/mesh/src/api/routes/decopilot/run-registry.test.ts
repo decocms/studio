@@ -345,10 +345,10 @@ describe("RunRegistry", () => {
       // reactAll is fire-and-forget — flush promise microtasks before asserting I/O
       await flushMicrotasks();
 
-      expect(deps.storage.update).toHaveBeenCalledWith("t1", {
+      expect(deps.storage.update).toHaveBeenCalledWith("t1", "org1", {
         status: "failed",
       });
-      expect(deps.storage.update).toHaveBeenCalledWith("t2", {
+      expect(deps.storage.update).toHaveBeenCalledWith("t2", "org1", {
         status: "failed",
       });
       expect(deps.streamBuffer.purge).toHaveBeenCalledWith("t1");
@@ -384,7 +384,7 @@ describe("RunRegistry", () => {
 
       await flushMicrotasks();
 
-      expect(deps.storage.update).toHaveBeenCalledWith("t1", {
+      expect(deps.storage.update).toHaveBeenCalledWith("t1", "org1", {
         status: "failed",
       });
       expect(deps.streamBuffer.purge).toHaveBeenCalledWith("t1");
