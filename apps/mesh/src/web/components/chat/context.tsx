@@ -526,6 +526,14 @@ function ModelAutoSelector({
   // Both are handled by the ErrorBoundary + Suspense wrapping this component.
   const models = useModels(firstConnection?.id);
 
+  // Stable refs for callbacks that change reference every render.
+  // Without these, the effect re-fires while the mutation is still pending
+  // (currentConfig still null), causing an infinite update loop.
+  const onAutoSelectRef = useRef(onAutoSelect);
+  onAutoSelectRef.current = onAutoSelect;
+  const isModelAllowedRef = useRef(isModelAllowed);
+  isModelAllowedRef.current = isModelAllowed;
+
   // useEffect is required here: writing localStorage during render would violate
   // React's render-purity requirement. We need a side effect that fires after
   // the component confirms models are available, then calls onAutoSelect once.
@@ -538,7 +546,9 @@ function ModelAutoSelector({
     // selector so auto-selection always picks a model the user can actually use.
     const allowedModels = allowAll
       ? models
-      : models.filter((m) => isModelAllowed(firstConnection.id, m.id));
+      : models.filter((m) =>
+          isModelAllowedRef.current(firstConnection.id, m.id),
+        );
 
     // Prefer Claude Opus 4.6 as default, fall back to Sonnet 4.6, then any
     const preferred =
@@ -548,21 +558,14 @@ function ModelAutoSelector({
       allowedModels.find((m) => m.id.includes("claude-sonnet"));
     const first = preferred ?? allowedModels[0];
     if (!first) return;
-    onAutoSelect({
+    onAutoSelectRef.current({
       id: first.id,
       connectionId: firstConnection.id,
       provider: first.provider ?? undefined,
       capabilities: first.capabilities ?? undefined,
       limits: first.limits ?? undefined,
     });
-  }, [
-    models,
-    currentConfig,
-    firstConnection,
-    onAutoSelect,
-    allowAll,
-    isModelAllowed,
-  ]);
+  }, [models, currentConfig, firstConnection, allowAll]);
 
   return null;
 }
