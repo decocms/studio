@@ -395,6 +395,7 @@ export function useTaskManager() {
   return {
     tasks,
     activeTaskId,
+    setActiveTaskId,
     messages,
     hasNextPage,
     isFetchingNextPage,
