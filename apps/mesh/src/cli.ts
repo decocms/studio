@@ -44,7 +44,7 @@ if (values.help) {
 Deco Studio — Open-source control plane for your AI agents
 
 Usage:
-  deco [options]
+  npx decocms [options]
 
 Options:
   -p, --port <port>     Port to listen on (default: 3000, or PORT env var)
@@ -62,8 +62,8 @@ Environment Variables:
   CONFIG_PATH           Path to full config file (default: ./config.json)
 
 Examples:
-  deco                            # Start with defaults
-  deco -p 8080                    # Start on port 8080
+  npx decocms                     # Start with defaults
+  npx decocms -p 8080             # Start on port 8080
 
 Documentation:
   https://decocms.com/studio
