@@ -224,7 +224,9 @@ class BridgeStore {
 
   /** Tear down the current bridge and clear timers. */
   teardown() {
-    this.config.onTeardown?.();
+    if (this.bridge || this.timeout || this.unsubTheme) {
+      this.config.onTeardown?.();
+    }
     this.disposed = true;
     this.unsubTheme?.();
     this.unsubTheme = null;

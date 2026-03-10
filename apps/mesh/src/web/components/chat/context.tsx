@@ -935,7 +935,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
       return;
     }
 
-    if (text.length > MAX_APP_CONTEXT_LENGTH) return;
+    if (new TextEncoder().encode(text).length > MAX_APP_CONTEXT_LENGTH) return;
     if (
       Object.keys(appContextsRef.current).length >= MAX_APP_CONTEXT_SOURCES &&
       !(sourceId in appContextsRef.current)
