@@ -156,6 +156,7 @@ topologySpreadConstraints:
     labelSelector:
       matchLabels:
         app.kubernetes.io/name: chart-decocms
+        # Should match your Helm release name
         app.kubernetes.io/instance: decocms
 
 # OpenTelemetry configuration (optional)
