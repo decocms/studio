@@ -1,0 +1,393 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "chart-deco-mcp-mesh.fullname" . }}
+  labels:
+    {{- include "chart-deco-mcp-mesh.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  strategy:
+    type: {{ include "chart-deco-mcp-mesh.deploymentStrategy" . }}
+    {{- $strategyType := include "chart-deco-mcp-mesh.deploymentStrategy" . }}
+    {{- if eq $strategyType "RollingUpdate" }}
+    rollingUpdate:
+      {{- if and .Values.strategy .Values.strategy.rollingUpdate }}
+      {{- toYaml .Values.strategy.rollingUpdate | nindent 6 }}
+      {{- else }}
+      maxSurge: 1
+      maxUnavailable: 0
+      {{- end }}
+    {{- end }}
+  selector:
+    matchLabels:
+      {{- include "chart-deco-mcp-mesh.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "chart-deco-mcp-mesh.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- if .Values.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "chart-deco-mcp-mesh.serviceAccountName" . }}
+      securityContext:
+        {{- include "chart-deco-mcp-mesh.podSecurityContext" . | nindent 8 }}
+      {{- if .Values.secret.authConfigSecretName }}
+      initContainers:
+        - name: build-auth-config
+          image: alpine:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              apk add --no-cache jq > /dev/null 2>&1
+              
+              # Read values from Secret volume
+              GOOGLE_CLIENT_ID=$(cat /secrets/googleClientId 2>/dev/null || echo "")
+              GOOGLE_CLIENT_SECRET=$(cat /secrets/googleClientSecret 2>/dev/null || echo "")
+              GITHUB_CLIENT_ID=$(cat /secrets/githubClientId 2>/dev/null || echo "")
+              GITHUB_CLIENT_SECRET=$(cat /secrets/githubClientSecret 2>/dev/null || echo "")
+              RESEND_API_KEY=$(cat /secrets/resendApiKey 2>/dev/null || echo "")
+              
+              # Read base config from ConfigMap (non-sensitive values)
+              BASE_CONFIG=$(cat /base-config/auth-config.json 2>/dev/null || echo "{}")
+              
+              # Merge Secret values into base config - preserve entire structure
+              UPDATED_CONFIG=$(echo "$BASE_CONFIG" | jq --arg gid "$GOOGLE_CLIENT_ID" --arg gsec "$GOOGLE_CLIENT_SECRET" --arg ghid "$GITHUB_CLIENT_ID" --arg ghsec "$GITHUB_CLIENT_SECRET" --arg rkey "$RESEND_API_KEY" '
+                # Update Google OAuth if values provided
+                (if $gid != "" then .socialProviders.google.clientId = $gid else . end) |
+                (if $gsec != "" then .socialProviders.google.clientSecret = $gsec else . end) |
+                # Update GitHub OAuth if values provided
+                (if $ghid != "" then .socialProviders.github.clientId = $ghid else . end) |
+                (if $ghsec != "" then .socialProviders.github.clientSecret = $ghsec else . end) |
+                # Update Resend API Key if provided - this must return the full object
+                (if $rkey != "" then 
+                  .emailProviders = (.emailProviders | map(if .id == "resend-primary" then .config.apiKey = $rkey else . end))
+                else . end)
+              ')
+              
+              # Write merged config to shared volume (compact format)
+              echo "$UPDATED_CONFIG" | jq -c . > /shared/auth-config.json
+              
+              # Verify the output
+              if [ -s /shared/auth-config.json ]; then
+                echo "Auth config built successfully"
+                echo "Verification: socialProviders present: $(echo "$UPDATED_CONFIG" | jq -r 'has("socialProviders")')"
+              else
+                echo "ERROR: Failed to build auth config"
+                exit 1
+              fi
+          volumeMounts:
+            - name: auth-secrets
+              mountPath: /secrets
+              readOnly: true
+            - name: auth-config-base
+              mountPath: /base-config
+              readOnly: true
+            - name: auth-config-shared
+              mountPath: /shared
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.image.repository }}{{- if and .Values.image.tag (hasPrefix "sha256:" .Values.image.tag) }}@{{ .Values.image.tag }}{{- else }}:{{ .Values.image.tag | default .Chart.AppVersion }}{{- end }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.image.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.targetPort | default 3000 }}
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "chart-deco-mcp-mesh.fullname" . }}-config
+                  key: NODE_ENV
+            - name: PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "chart-deco-mcp-mesh.fullname" . }}-config
+                  key: PORT
+            - name: HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "chart-deco-mcp-mesh.fullname" . }}-config
+                  key: HOST
+            - name: BETTER_AUTH_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "chart-deco-mcp-mesh.fullname" . }}-config
+                  key: BETTER_AUTH_URL
+            - name: BETTER_AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "chart-deco-mcp-mesh.secretName" . }}
+                  key: BETTER_AUTH_SECRET
+            - name: CLICKHOUSE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "chart-deco-mcp-mesh.secretName" . }}
+                  key: CLICKHOUSE_URL
+            - name: DATABASE_URL
+              {{- if eq (lower (default "sqlite" .Values.database.engine)) "postgresql" }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "chart-deco-mcp-mesh.secretName" . }}
+                  key: DATABASE_URL
+              {{- else }}
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "chart-deco-mcp-mesh.fullname" . }}-config
+                  key: DATABASE_URL
+              {{- end }}
+            - name: BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "chart-deco-mcp-mesh.fullname" . }}-config
+                  key: BASE_URL
+            {{- if .Values.configMap.meshConfig.DATABASE_PG_SSL }}
+            - name: DATABASE_PG_SSL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "chart-deco-mcp-mesh.fullname" . }}-config
+                  key: DATABASE_PG_SSL
+            {{- end }}
+            {{- if and .Values.configMap.meshConfig.NODE_EXTRA_CA_CERTS .Values.database.caCert }}
+            - name: NODE_EXTRA_CA_CERTS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "chart-deco-mcp-mesh.fullname" . }}-config
+                  key: NODE_EXTRA_CA_CERTS
+            {{- end }}
+            {{- if .Values.configMap.meshConfig.ENABLE_DEBUG_SERVER }}
+            - name: ENABLE_DEBUG_SERVER
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "chart-deco-mcp-mesh.fullname" . }}-config
+                  key: ENABLE_DEBUG_SERVER
+            {{- end }}
+            {{- if .Values.configMap.meshConfig.DEBUG_PORT }}
+            - name: DEBUG_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "chart-deco-mcp-mesh.fullname" . }}-config
+                  key: DEBUG_PORT
+            {{- end }}
+            {{- if .Values.configMap.meshConfig.PRESTOP_HEAP_SNAPSHOT_DIR }}
+            - name: PRESTOP_HEAP_SNAPSHOT_DIR
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "chart-deco-mcp-mesh.fullname" . }}-config
+                  key: PRESTOP_HEAP_SNAPSHOT_DIR
+            {{- end }}
+            {{- if .Values.otel.enabled }}
+            {{- if .Values.otel.protocol }}
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: {{ .Values.otel.protocol | quote }}
+            {{- end }}
+            {{- if .Values.otel.service }}
+            - name: OTEL_SERVICE_NAME
+              value: {{ .Values.otel.service | quote }}
+            {{- end }}
+            {{- if .Values.otel.collector.enabled }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://localhost:4318"
+            {{- else if .Values.otel.endpoint }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.otel.endpoint | quote }}
+            {{- end }}
+            {{- if and .Values.otel.headers (not .Values.otel.collector.enabled) }}
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              value: {{ include "chart-deco-mcp-mesh.otelHeaders" . | quote }}
+            {{- end }}
+            {{- if .Values.otel.attributes }}
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: {{ include "chart-deco-mcp-mesh.otelAttributes" . | quote }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.lifecycle }}
+          lifecycle:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            {{- if .Values.secret.authConfigSecretName }}
+            - name: auth-config-shared
+              mountPath: /app/apps/mesh/auth-config.json
+              subPath: auth-config.json
+              readOnly: true
+            {{- else }}
+            - name: auth-config
+              mountPath: /app/apps/mesh/auth-config.json
+              subPath: auth-config.json
+              readOnly: true
+            {{- end }}
+            - name: data
+              mountPath: /app/data
+            {{- if and (eq (lower (default "sqlite" .Values.database.engine)) "postgresql") .Values.database.caCert }}
+            - name: ca-cert
+              mountPath: /etc/ssl/certs
+              readOnly: true
+            {{- end }}
+          {{- with .Values.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- if and .Values.otel.enabled .Values.otel.collector.enabled }}
+        - name: otel-collector
+          image: "{{ .Values.otel.collector.image.repository }}:{{ .Values.otel.collector.image.tag }}"
+          imagePullPolicy: {{ .Values.otel.collector.image.pullPolicy }}
+          command:
+            - "/otelcol-contrib"
+            - "--config=/etc/otel/config.yaml"
+          ports:
+            - name: otlp-grpc
+              containerPort: 4317
+              protocol: TCP
+            - name: otlp-http
+              containerPort: 4318
+              protocol: TCP
+            - name: health
+              containerPort: 13133
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          {{- with .Values.otel.collector.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: otel-collector-config
+              mountPath: /etc/otel
+              readOnly: true
+      {{- end }}
+      {{- with .Values.extraContainers }}
+      {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        {{- if .Values.secret.authConfigSecretName }}
+        - name: auth-secrets
+          secret:
+            secretName: {{ .Values.secret.authConfigSecretName }}
+        - name: auth-config-base
+          configMap:
+            name: {{ include "chart-deco-mcp-mesh.fullname" . }}-auth-config
+            items:
+              - key: auth-config.json
+                path: auth-config.json
+        - name: auth-config-shared
+          emptyDir: {}
+        {{- else }}
+        - name: auth-config
+          configMap:
+            name: {{ include "chart-deco-mcp-mesh.fullname" . }}-auth-config
+            items:
+              - key: auth-config.json
+                path: auth-config.json
+        {{- end }}
+        {{- if and (eq (lower (default "sqlite" .Values.database.engine)) "postgresql") .Values.database.caCert }}
+        - name: ca-cert
+          configMap:
+            name: {{ include "chart-deco-mcp-mesh.fullname" . }}-ca-cert
+            items:
+              - key: ca-cert.pem
+                path: ca-cert.pem
+        {{- end }}
+        {{- if .Values.persistence.enabled }}
+        - name: data
+          {{- if .Values.persistence.claimName }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.claimName }}
+          {{- else }}
+          persistentVolumeClaim:
+            claimName: {{ include "chart-deco-mcp-mesh.fullname" . }}-data
+          {{- end }}
+        {{- else }}
+        - name: data
+          emptyDir: {}
+        {{- end }}
+        {{- if and .Values.otel.enabled .Values.otel.collector.enabled }}
+        - name: otel-collector-config
+          configMap:
+            name: {{ include "chart-deco-mcp-mesh.fullname" . }}-otel-collector
+            items:
+              - key: config.yaml
+                path: config.yaml
+        {{- end }}
+        {{- with .Values.volumes }}
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if and .Values.topologySpreadConstraints (gt (len .Values.topologySpreadConstraints) 0) }}
+      topologySpreadConstraints:
+        {{- range .Values.topologySpreadConstraints }}
+        - {{- if not .labelSelector }}
+          {{- fail "labelSelector é obrigatório em topologySpreadConstraints. Especifique explicitamente os labels." }}
+          {{- else }}
+          labelSelector:
+            {{- toYaml .labelSelector | nindent 12 }}
+          {{- end }}
+          maxSkew: {{ .maxSkew }}
+          topologyKey: {{ .topologyKey }}
+          whenUnsatisfiable: {{ .whenUnsatisfiable }}
+        {{- end }}
+      {{- end }}

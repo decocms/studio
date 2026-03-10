@@ -1,0 +1,12 @@
+{{- if and (eq (lower (default "sqlite" .Values.database.engine)) "postgresql") .Values.database.caCert }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "chart-deco-mcp-mesh.fullname" . }}-ca-cert
+  labels:
+    {{- include "chart-deco-mcp-mesh.labels" . | nindent 4 }}
+data:
+  ca-cert.pem: |
+{{ .Values.database.caCert | indent 4 }}
+{{- end }}
+
