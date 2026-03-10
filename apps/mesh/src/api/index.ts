@@ -1,5 +1,5 @@
 /**
- * MCP Mesh API Server - Main Entry Point
+ * Deco Studio API Server - Main Entry Point
  *
  * Re-exports createApp and provides a default app instance for production.
  * Tests should import { createApp } from "./app" to avoid side effects.

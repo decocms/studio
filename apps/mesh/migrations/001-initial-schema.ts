@@ -1,7 +1,7 @@
 /**
  * Initial Database Schema
  *
- * Creates all tables for MCP Mesh:
+ * Creates all tables for Deco Studio:
  * - users (managed by Better Auth)
  * - connections (organization-scoped)
  * - api_keys (managed by Better Auth)

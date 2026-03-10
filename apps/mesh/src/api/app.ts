@@ -1,5 +1,5 @@
 /**
- * MCP Mesh API Server
+ * Deco Studio API Server
  *
  * Main Hono application with:
  * - Better Auth integration

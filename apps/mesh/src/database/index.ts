@@ -1,5 +1,5 @@
 /**
- * Database Factory for MCP Mesh
+ * Database Factory for Deco Studio
  *
  * Auto-detects database dialect from DATABASE_URL and returns configured Kysely instance.
  * Supports PGlite (default, local PostgreSQL via WASM) and PostgreSQL (cloud).
@@ -184,11 +184,7 @@ function createPGliteDatabase(config: DatabaseConfig): PGliteDatabase {
 // URL Parsing
 // ============================================================================
 
-const DEFAULT_PGLITE_PATH = path.join(
-  process.env.DECOCMS_HOME || path.join(homedir(), "deco"),
-  "system",
-  "db.pglite",
-);
+const DEFAULT_PGLITE_PATH = path.join(homedir(), "deco", "system", "db.pglite");
 
 function parseDatabaseUrl(databaseUrl?: string): DatabaseConfig {
   let url = databaseUrl || getDatabaseUrl();

@@ -1,6 +1,6 @@
 # Workflows Plugin
 
-Server + client plugin for MCP Mesh that provides workflow creation, management, and execution for platform end-users.
+Server + client plugin for Deco Studio that provides workflow creation, management, and execution for platform end-users.
 
 ## Overview
 

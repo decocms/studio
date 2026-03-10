@@ -164,7 +164,7 @@ function ChatPanelContent() {
                   </h3>
                   <div className="text-muted-foreground text-center text-sm max-w-md">
                     {displayAgent.description ??
-                      "Ask anything about configuring model providers or using MCP Mesh."}
+                      "Ask anything about configuring model providers or using Deco Studio."}
                   </div>
                 </div>
                 <Chat.IceBreakers />

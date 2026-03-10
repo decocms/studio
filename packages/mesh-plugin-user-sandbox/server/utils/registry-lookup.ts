@@ -37,7 +37,7 @@ interface RegistryItem {
     }>;
   };
   _meta?: {
-    /** MCP Mesh metadata - the standard key */
+    /** Deco Studio metadata - the standard key */
     "mcp.mesh"?: {
       friendlyName?: string;
       friendly_name?: string;
@@ -67,7 +67,7 @@ interface MeshContextWithProxy {
   }>;
 }
 
-/** The metadata key used by MCP Mesh registry - must match apps/mesh/src/core/constants.ts */
+/** The metadata key used by Deco Studio registry - must match apps/mesh/src/core/constants.ts */
 const MCP_MESH_KEY = "mcp.mesh" as const;
 
 /** Map remote connection types to standard types */

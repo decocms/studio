@@ -26,7 +26,7 @@ const ToolAnnotationsSchema = z.object({
 type ToolAnnotations = z.infer<typeof ToolAnnotationsSchema>;
 
 /**
- * MCP Mesh virtual tool metadata (internal use)
+ * Deco Studio virtual tool metadata (internal use)
  * Contains the JavaScript code that implements the tool
  */
 const VirtualToolMetaSchema = z.object({

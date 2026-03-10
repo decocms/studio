@@ -1,5 +1,5 @@
 /**
- * Database Types for MCP Mesh
+ * Database Types for Deco Studio
  *
  * These TypeScript interfaces define the database schema using Kysely's type-only approach.
  * The dialect (PGlite or PostgreSQL) is determined at runtime from DATABASE_URL.

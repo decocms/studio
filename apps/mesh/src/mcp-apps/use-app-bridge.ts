@@ -20,7 +20,7 @@ import { readHostStyles } from "./host-styles";
 // Constants
 // ---------------------------------------------------------------------------
 
-const HOST_INFO = { name: "MCP Mesh", version: "1.0.0" } as const;
+const HOST_INFO = { name: "Deco Studio", version: "1.0.0" } as const;
 
 const HOST_CAPABILITIES: McpUiHostCapabilities = {
   openLinks: {},

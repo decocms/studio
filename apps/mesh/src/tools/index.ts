@@ -1,7 +1,7 @@
 /**
  * Tool Registry
  *
- * Central export for all MCP Mesh management tools
+ * Central export for all Deco Studio management tools
  * Types are inferred from ALL_TOOLS - this is the source of truth.
  *
  * Plugin tools are collected at startup and combined with core tools.

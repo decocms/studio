@@ -3,9 +3,9 @@ name: add-mcp-tools
 description: Guide for adding new MCP tools with consistent patterns for schemas, tool definitions, registry updates, and Better Auth integration
 ---
 
-# Adding New MCP Tools to MCP Mesh
+# Adding New MCP Tools to Deco Studio
 
-This guide documents the pattern for adding new MCP tools to the MCP Mesh codebase. Follow this checklist to ensure consistency with existing tools.
+This guide documents the pattern for adding new MCP tools to the Deco Studio codebase. Follow this checklist to ensure consistency with existing tools.
 
 ## Overview
 

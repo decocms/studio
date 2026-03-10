@@ -1,7 +1,7 @@
 /**
  * Event Bus Module
  *
- * Provides a unified event bus for MCP Mesh.
+ * Provides a unified event bus for Deco Studio.
  *
  * Architecture:
  * - EventBus: Single class handling publish/subscribe and worker management

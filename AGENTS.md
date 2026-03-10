@@ -8,7 +8,7 @@ This file provides guidance when working with code in this repository, including
 
 ## Overview
 
-MCP Mesh is an open-source control plane for Model Context Protocol (MCP) traffic. It provides a unified layer for authentication, routing, and observability between MCP clients (Cursor, Claude, VS Code) and MCP servers. The system is built as a monorepo using Bun workspaces with TypeScript, Hono (API), and React 19 (UI).
+Deco Studio is an open-source control plane for Model Context Protocol (MCP) traffic. It provides a unified layer for authentication, routing, and observability between MCP clients (Cursor, Claude, VS Code) and MCP servers. The system is built as a monorepo using Bun workspaces with TypeScript, Hono (API), and React 19 (UI).
 
 ## Commands
 
@@ -114,7 +114,7 @@ export const EXAMPLE_TOOL = defineTool({
 
 ### Project Structure & Module Organization
 
-The workspace is managed via Bun workspaces. The main application lives in `apps/mesh/` and contains the full-stack MCP Mesh implementation (Hono API server + Vite/React client). Documentation site lives in `apps/docs/` (Astro-based).
+The workspace is managed via Bun workspaces. The main application lives in `apps/mesh/` and contains the full-stack Deco Studio implementation (Hono API server + Vite/React client). Documentation site lives in `apps/docs/` (Astro-based).
 
 **apps/mesh/** - Main full-stack application
 - `src/api/` - Hono HTTP routes + MCP proxy routes

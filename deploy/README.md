@@ -1,6 +1,6 @@
-# Docker Compose - Deco MCP Mesh
+# Docker Compose - Deco Studio
 
-This is the local version using Docker Compose, to speed up your testing with the Deco MCP Mesh application directly on your computer or server.
+This is the local version using Docker Compose, to speed up your testing with the Deco Studio application directly on your computer or server.
 
 ## 📋 Table of Contents
 
@@ -51,7 +51,7 @@ docker compose up -d
 open http://localhost:3000
 ```
 
-These configurations are all you need to start testing with MCP-MESH. If you need other options, check the information in the following sections.
+These configurations are all you need to start testing with Deco Studio. If you need other options, check the information in the following sections.
 
 ### 📝 Minimum Configuration
 

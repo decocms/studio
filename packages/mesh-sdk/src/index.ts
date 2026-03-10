@@ -147,7 +147,6 @@ export {
   authenticateMcp,
   handleOAuthCallback,
   isConnectionAuthenticated,
-  setOAuthRedirectOrigin,
   type McpOAuthProviderOptions,
   type OAuthTokenInfo,
   type AuthenticateMcpResult,

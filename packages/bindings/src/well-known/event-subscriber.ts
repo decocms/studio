@@ -3,7 +3,7 @@
  *
  * Defines the interface for MCP connections that can receive events.
  * Any MCP that implements this binding can receive batched CloudEvents
- * from the MCP Mesh event bus.
+ * from the Deco Studio event bus.
  *
  * This binding includes:
  * - ON_EVENTS: Receive a batch of CloudEvents
@@ -34,7 +34,7 @@ export const CloudEventSchema = z.object({
     .describe("Unique identifier for this event (UUID recommended)"),
 
   /**
-   * Source of the event - in MCP Mesh, this is the connection ID of the publisher.
+   * Source of the event - in Deco Studio, this is the connection ID of the publisher.
    * Format: URI-reference identifying the context in which an event happened.
    */
   source: z.string().describe("Connection ID of the event publisher"),

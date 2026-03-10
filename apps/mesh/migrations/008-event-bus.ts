@@ -1,7 +1,7 @@
 /**
  * Event Bus Tables Migration
  *
- * Creates the events and subscriptions tables for the MCP Mesh event bus.
+ * Creates the events and subscriptions tables for the Deco Studio event bus.
  * - events: Stores CloudEvents with delivery status tracking and cron support
  * - event_subscriptions: Links subscriber connections to event type patterns
  * - event_deliveries: Tracks per-subscription delivery status with retry support

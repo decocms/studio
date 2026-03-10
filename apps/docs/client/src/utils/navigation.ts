@@ -85,7 +85,7 @@ export async function getNavigationLinks(
     // Introduction
     "introduction",
 
-    // MCP Mesh section
+    // Deco Studio section
     "mcp-mesh/overview",
     "mcp-mesh/quickstart",
     "mcp-mesh/concepts",

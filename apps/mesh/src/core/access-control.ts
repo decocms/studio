@@ -1,5 +1,5 @@
 /**
- * Access Control for MCP Mesh
+ * Access Control for Deco Studio
  *
  * Uses Better Auth's permission system for authorization.
  * Follows a grant-based model:

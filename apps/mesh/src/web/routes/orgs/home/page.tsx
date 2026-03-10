@@ -49,12 +49,38 @@ function HomeContent() {
   const defaultAgent = getWellKnownDecopilotVirtualMCP(org.id);
   const displayAgent = selectedVirtualMcp ?? defaultAgent;
 
-  // Show empty state when no LLM binding is found — no tasks panel
+  // Show empty state when no LLM binding is found
   if (modelsConnections.length === 0) {
     return (
-      <div className="flex flex-col h-full bg-background items-center justify-center">
-        <Chat.NoLlmBindingEmptyState org={org} />
-      </div>
+      <ResizablePanelGroup direction="horizontal" className="size-full">
+        <ResizablePanel defaultSize={20} minSize={10} id="tasks" order={1}>
+          <TasksPanel />
+        </ResizablePanel>
+        <ResizableHandle className="bg-border/30" />
+        <ResizablePanel
+          defaultSize={showContext ? 50 : 80}
+          minSize={30}
+          id="main"
+          order={2}
+        >
+          <div className="flex flex-col h-full bg-background items-center justify-center">
+            <Chat.NoLlmBindingEmptyState org={org} />
+          </div>
+        </ResizablePanel>
+        {showContext && (
+          <>
+            <ResizableHandle className="bg-border/30" />
+            <ResizablePanel
+              defaultSize={30}
+              minSize={15}
+              id="context"
+              order={3}
+            >
+              <ChatContextPanel onClose={() => setShowContext(false)} />
+            </ResizablePanel>
+          </>
+        )}
+      </ResizablePanelGroup>
     );
   }
 

@@ -2,7 +2,7 @@
  * OpenTelemetry Observability Setup
  *
  * Provides distributed tracing, metrics collection, and logging
- * for the MCP Mesh.
+ * for the Deco Studio.
  */
 
 import {

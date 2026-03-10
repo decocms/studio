@@ -1,5 +1,5 @@
 /**
- * Better Auth Configuration for MCP Mesh
+ * Better Auth Configuration for Deco Studio
  *
  * Provides:
  * - MCP OAuth 2.1 server (via MCP plugin)

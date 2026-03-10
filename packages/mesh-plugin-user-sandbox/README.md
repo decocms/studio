@@ -1,6 +1,6 @@
 # User Sandbox Plugin
 
-Server plugin for MCP Mesh that enables multi-tenant user sandboxing. Lets external apps create embeddable integration flows where their end-users can connect MCPs (like Gmail, Slack, etc.) to get a personal AI agent.
+Server plugin for Deco Studio that enables multi-tenant user sandboxing. Lets external apps create embeddable integration flows where their end-users can connect MCPs (like Gmail, Slack, etc.) to get a personal AI agent.
 
 ## Overview
 
