@@ -11,15 +11,13 @@
 /** The span name used for all monitoring spans. Must match the MonitoringAlwaysSampler. */
 export const MONITORING_SPAN_NAME = "mcp.proxy.callTool";
 
-/** Default base path for monitoring NDJSON files. */
+/** Default base paths for monitoring NDJSON files. */
 import { homedir } from "node:os";
 import { join } from "node:path";
-export const DEFAULT_MONITORING_URI = join(
-  homedir(),
-  "deco",
-  "system",
-  "monitoring",
-);
+export const DEFAULT_SYSTEM_DIR = join(homedir(), "deco", "system");
+export const DEFAULT_LOGS_DIR = join(DEFAULT_SYSTEM_DIR, "logs");
+export const DEFAULT_TRACES_DIR = join(DEFAULT_SYSTEM_DIR, "traces");
+export const DEFAULT_METRICS_DIR = join(DEFAULT_SYSTEM_DIR, "metrics");
 
 /**
  * A single monitoring row written to NDJSON and read by ClickHouse.
@@ -28,6 +26,7 @@ export const DEFAULT_MONITORING_URI = join(
  * Timestamps are ISO 8601 strings for ClickHouse parseDateTimeBestEffort().
  */
 export interface MonitoringRow {
+  v: 1;
   id: string;
   organization_id: string;
   connection_id: string;
@@ -100,6 +99,7 @@ export function logRecordToMonitoringRow(
   const durationMs = a[MONITORING_LOG_ATTR.DURATION_MS];
 
   return {
+    v: 1,
     id: record.id,
     organization_id: getAttr(a, MONITORING_LOG_ATTR.ORGANIZATION_ID),
     connection_id: getAttr(a, MONITORING_LOG_ATTR.CONNECTION_ID),
@@ -120,4 +120,43 @@ export function logRecordToMonitoringRow(
     virtual_mcp_id: getAttrNullable(a, MONITORING_LOG_ATTR.VIRTUAL_MCP_ID),
     properties: getAttrNullable(a, MONITORING_LOG_ATTR.PROPERTIES),
   };
+}
+
+export function hrTimeToMs(hrTime: [number, number]): number {
+  return hrTime[0] * 1000 + hrTime[1] / 1_000_000;
+}
+
+export function hrTimeToISO(hrTime: [number, number]): string {
+  return new Date(hrTimeToMs(hrTime)).toISOString();
+}
+
+export interface TraceRow {
+  v: 1;
+  trace_id: string;
+  span_id: string;
+  parent_span_id: string | null;
+  name: string;
+  kind: number;
+  status: number;
+  status_message: string | null;
+  start_time: string;
+  end_time: string;
+  duration_ms: number;
+  service_name: string;
+  attributes: string;
+  events: string;
+  links: string;
+  resource: string;
+}
+
+export interface MetricRow {
+  v: 1;
+  name: string;
+  description: string;
+  unit: string;
+  type: string;
+  value: number;
+  timestamp: string;
+  attributes: string;
+  resource: string;
 }

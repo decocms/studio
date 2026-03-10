@@ -1,7 +1,10 @@
 import { describe, it, expect } from "bun:test";
 import {
   MONITORING_SPAN_NAME,
-  DEFAULT_MONITORING_URI,
+  DEFAULT_SYSTEM_DIR,
+  DEFAULT_LOGS_DIR,
+  DEFAULT_TRACES_DIR,
+  DEFAULT_METRICS_DIR,
   MONITORING_LOG_ATTR,
   MONITORING_LOG_TYPE_VALUE,
   logRecordToMonitoringRow,
@@ -11,8 +14,11 @@ import {
 describe("monitoring schema", () => {
   it("should define shared constants", () => {
     expect(MONITORING_SPAN_NAME).toBe("mcp.proxy.callTool");
-    expect(DEFAULT_MONITORING_URI).toContain("deco");
-    expect(DEFAULT_MONITORING_URI).toContain("monitoring");
+    expect(DEFAULT_SYSTEM_DIR).toContain("deco");
+    expect(DEFAULT_SYSTEM_DIR).toContain("system");
+    expect(DEFAULT_LOGS_DIR).toContain("logs");
+    expect(DEFAULT_TRACES_DIR).toContain("traces");
+    expect(DEFAULT_METRICS_DIR).toContain("metrics");
   });
 });
 
@@ -57,6 +63,7 @@ describe("logRecordToMonitoringRow", () => {
     const record = makeLogRecord();
     const row = logRecordToMonitoringRow(record);
 
+    expect(row.v).toBe(1);
     expect(row.id).toBe("log_test_123");
     expect(row.organization_id).toBe("org_test");
     expect(row.connection_id).toBe("conn_test");

@@ -24,7 +24,7 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto";
 import { RuntimeNodeInstrumentation } from "@opentelemetry/instrumentation-runtime-node";
 import { enableFetchInstrumentation } from "./instrumentations/fetch";
 import { NDJSONLogExporter } from "../monitoring/ndjson-log-exporter";
-import { DEFAULT_MONITORING_URI } from "../monitoring/schema";
+import { DEFAULT_LOGS_DIR } from "../monitoring/schema";
 
 import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
 import type { MetricReader } from "@opentelemetry/sdk-metrics";
@@ -204,7 +204,7 @@ const traceExporter = process.env.CLICKHOUSE_URL
 const monitoringLogExporter =
   process.env.CLICKHOUSE_URL || process.env.NODE_ENV === "test"
     ? null
-    : new NDJSONLogExporter({ basePath: DEFAULT_MONITORING_URI });
+    : new NDJSONLogExporter({ basePath: DEFAULT_LOGS_DIR });
 
 /**
  * Initialize OpenTelemetry SDK
