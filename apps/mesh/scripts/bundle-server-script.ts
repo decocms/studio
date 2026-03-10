@@ -21,7 +21,10 @@ const SCRIPT_DIR =
   import.meta.dir || dirname(new URL(import.meta.url).pathname);
 const SERVER_ENTRY_POINT = join(SCRIPT_DIR, "../src/index.ts");
 const CLI_ENTRY_POINT = join(SCRIPT_DIR, "../src/cli.ts");
-const ALWAYS_INCLUDE = ["@jitl/quickjs-wasmfile-release-sync", "@electric-sql/pglite"];
+const ALWAYS_INCLUDE = [
+  "@jitl/quickjs-wasmfile-release-sync",
+  "@electric-sql/pglite",
+];
 const ALWAYS_EXCLUDE = ["kysely-codegen"];
 
 // Parse command line arguments
