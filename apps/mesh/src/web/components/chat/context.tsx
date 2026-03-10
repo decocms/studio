@@ -804,9 +804,16 @@ export function ChatProvider({ children }: PropsWithChildren) {
   }) => {
     chatDispatch({ type: "SET_FINISH_REASON", payload: finishReason ?? null });
 
-    const taskId =
-      (message.metadata as Metadata | undefined)?.thread_id ??
-      taskManager.activeTaskId;
+    const serverTaskId = (message.metadata as Metadata | undefined)?.thread_id;
+    const taskId = serverTaskId ?? taskManager.activeTaskId;
+
+    // The server may assign a different thread ID than the client's optimistic
+    // UUID (e.g. when a new thread is created with org-scoped storage). Sync
+    // the active task to the server-assigned ID so subsequent message queries
+    // target the correct thread instead of the empty optimistic one.
+    if (serverTaskId && serverTaskId !== taskManager.activeTaskId) {
+      taskManager.setActiveTaskId(serverTaskId);
+    }
 
     if (isAbort || isDisconnect || isError) {
       // Persist partial messages so the UI doesn't flash back to stale
