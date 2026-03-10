@@ -1,3 +1,6 @@
+# GSD workflow state
+.planning/
+
 # Logs
 logs
 *.log

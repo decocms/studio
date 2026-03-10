@@ -1,17 +1,20 @@
 #!/usr/bin/env bun
 /**
- * MCP Mesh CLI Entry Point
+ * Deco Studio CLI Entry Point
  *
- * This script serves as the bin entry point for bunx @decocms/mesh
- * It runs database migrations and starts the production server.
+ * This script serves as the bin entry point for `deco` / `npx decocms`.
+ * It runs database migrations, seeds the local environment, and starts the server.
  *
  * Usage:
- *   bunx @decocms/mesh
- *   bunx @decocms/mesh --port 8080
- *   bunx @decocms/mesh --help
+ *   deco
+ *   npx decocms --port 8080
+ *   npx decocms --home ~/my-project
+ *   npx decocms --no-local-mode
  */
 
 import { parseArgs } from "util";
+import { homedir } from "os";
+import { join } from "path";
 
 const { values } = parseArgs({
   args: process.argv.slice(2),
@@ -20,6 +23,9 @@ const { values } = parseArgs({
       type: "string",
       short: "p",
       default: process.env.PORT || "3000",
+    },
+    home: {
+      type: "string",
     },
     help: {
       type: "boolean",
@@ -35,26 +41,33 @@ const { values } = parseArgs({
       type: "boolean",
       default: false,
     },
+    "no-local-mode": {
+      type: "boolean",
+      default: false,
+    },
   },
   allowPositionals: true,
 });
 
 if (values.help) {
   console.log(`
-MCP Mesh - Self-hostable MCP Server
+Deco Studio — Open-source control plane for your AI agents
 
 Usage:
-  bunx @decocms/mesh [options]
+  deco [options]
 
 Options:
   -p, --port <port>     Port to listen on (default: 3000, or PORT env var)
+  --home <path>         Data directory (default: ~/deco/, or DECOCMS_HOME env var)
+  --no-local-mode       Disable local mode (require login, no auto-setup)
   -h, --help            Show this help message
   -v, --version         Show version
   --skip-migrations     Skip database migrations on startup
 
 Environment Variables:
   PORT                  Port to listen on (default: 3000)
-  DATABASE_URL          Database connection URL (default: file://$HOME/deco/system/db.pglite)
+  DECOCMS_HOME          Data directory (default: ~/deco/)
+  DATABASE_URL          Database connection URL (default: ~/deco/db.pglite)
   NODE_ENV              Set to 'production' for production mode
   BETTER_AUTH_SECRET    Secret for authentication (auto-generated if not set)
   ENCRYPTION_KEY        Key for encrypting secrets (auto-generated if not set)
@@ -62,21 +75,18 @@ Environment Variables:
   CONFIG_PATH           Path to full config file (default: ./config.json)
 
 Examples:
-  bunx @decocms/mesh                    # Start on port 3000
-  bunx @decocms/mesh -p 8080            # Start on port 8080
-  PORT=9000 bunx @decocms/mesh          # Start on port 9000
+  deco                            # Start with defaults (~/deco/)
+  deco -p 8080                    # Start on port 8080
+  deco --home ~/my-project        # Custom data directory
+  deco --no-local-mode            # Require login (SaaS mode)
 
 Documentation:
-  https://github.com/decocms/mesh
+  https://decocms.com/studio
 `);
   process.exit(0);
 }
 
 if (values.version) {
-  // Try to read version from package.json
-  // When bundled, the path changes depending on context:
-  // - During development: ../package.json (relative to src/)
-  // - When published: ../../package.json (relative to dist/server/)
   const possiblePaths = [
     new URL("../package.json", import.meta.url),
     new URL("../../package.json", import.meta.url),
@@ -96,40 +106,57 @@ if (values.version) {
     }
   }
 
-  console.log(`@decocms/mesh v${version}`);
+  console.log(`Deco Studio v${version}`);
   process.exit(0);
 }
 
-// Set PORT environment variable for the server
+// ============================================================================
+// Resolve data directory
+// ============================================================================
+
+const decoHome =
+  values.home || process.env.DECOCMS_HOME || join(homedir(), "deco");
+process.env.DECOCMS_HOME = decoHome;
 process.env.PORT = values.port;
 
-// Ensure NODE_ENV defaults to production when running via CLI
 if (!process.env.NODE_ENV) {
   process.env.NODE_ENV = "production";
 }
 
-// ANSI color codes
+// Determine if local mode should be active
+const hasCustomAuthConfig =
+  process.env.AUTH_CONFIG_PATH &&
+  process.env.AUTH_CONFIG_PATH !== "./auth-config.json";
+const localMode = !values["no-local-mode"] && !hasCustomAuthConfig;
+process.env.MESH_LOCAL_MODE = localMode ? "true" : "false";
+
+// CLI is the intended local runner — allow local mode even when NODE_ENV=production
+if (localMode) {
+  process.env.MESH_ALLOW_LOCAL_PROD = "true";
+}
+
+// ============================================================================
+// Secrets (auto-generate on first run, persist to ~/deco/secrets.json)
+// ============================================================================
+
 const dim = "\x1b[2m";
 const reset = "\x1b[0m";
 const bold = "\x1b[1m";
 const cyan = "\x1b[36m";
 const yellow = "\x1b[33m";
 
-// Path for storing auto-generated secrets (relative to cwd, alongside database)
-const secretsFilePath = "./data/mesh-dev-only-secrets.json";
-
-// Generate or load secrets if not provided via environment variables
-// This allows users to try the app without setting up environment variables
-// while still persisting sessions across restarts
 const crypto = await import("crypto");
-const { mkdir } = await import("fs/promises");
+const { chmod, mkdir, writeFile } = await import("fs/promises");
+
+const secretsFilePath = join(decoHome, "secrets.json");
+await mkdir(decoHome, { recursive: true, mode: 0o700 });
 
 interface SecretsFile {
   BETTER_AUTH_SECRET?: string;
   ENCRYPTION_KEY?: string;
+  LOCAL_ADMIN_PASSWORD?: string;
 }
 
-// Try to load existing secrets from file
 let savedSecrets: SecretsFile = {};
 try {
   const file = Bun.file(secretsFilePath);
@@ -140,7 +167,6 @@ try {
   // File doesn't exist or is invalid, will create new secrets
 }
 
-// Track which secrets are from file vs env (independently)
 let betterAuthFromFile = false;
 let encryptionKeyFromFile = false;
 let secretsModified = false;
@@ -160,64 +186,85 @@ if (!process.env.ENCRYPTION_KEY) {
   if (savedSecrets.ENCRYPTION_KEY) {
     process.env.ENCRYPTION_KEY = savedSecrets.ENCRYPTION_KEY;
   } else {
-    savedSecrets.ENCRYPTION_KEY = "";
+    savedSecrets.ENCRYPTION_KEY = crypto.randomBytes(32).toString("base64");
     process.env.ENCRYPTION_KEY = savedSecrets.ENCRYPTION_KEY;
     secretsModified = true;
   }
   encryptionKeyFromFile = true;
 }
 
-// Save secrets to file if we generated new ones
+// Generate a per-install local admin password for auto-login
+if (!savedSecrets.LOCAL_ADMIN_PASSWORD) {
+  savedSecrets.LOCAL_ADMIN_PASSWORD = crypto.randomBytes(24).toString("base64");
+  secretsModified = true;
+}
+
 if (secretsModified) {
   try {
-    // Ensure data directory exists
-    await mkdir("./data", { recursive: true });
-    await Bun.write(secretsFilePath, JSON.stringify(savedSecrets, null, 2));
+    await writeFile(secretsFilePath, JSON.stringify(savedSecrets, null, 2), {
+      mode: 0o600,
+    });
+    await chmod(secretsFilePath, 0o600);
   } catch (error) {
-    console.warn(`${yellow}⚠️  Could not save secrets file: ${error}${reset}`);
-  }
-}
-
-console.log("");
-console.log(`${bold}${cyan}MCP Mesh${reset}`);
-console.log(`${dim}Self-hostable MCP Server${reset}`);
-
-// Only show warning for secrets that are actually from file
-if (betterAuthFromFile || encryptionKeyFromFile) {
-  console.log("");
-  console.log(
-    `${yellow}⚠️  Using generated dev-only secrets from: ${secretsFilePath}${reset}`,
-  );
-  console.log(
-    `${dim}   For production, set these environment variables:${reset}`,
-  );
-  if (betterAuthFromFile) {
-    console.log(
-      `${dim}   BETTER_AUTH_SECRET=$(openssl rand -base64 32)${reset}`,
+    console.warn(
+      `${yellow}Warning: Could not save secrets file: ${error}${reset}`,
     );
   }
-  if (encryptionKeyFromFile) {
-    console.log(`${dim}   ENCRYPTION_KEY=$(openssl rand -hex 32)${reset}`);
-  }
 }
 
+// ============================================================================
+// Banner
+// ============================================================================
+
+const displayHome = decoHome.replace(homedir(), "~");
+
+console.log("");
+console.log(`${bold}${cyan}Deco Studio${reset}`);
+console.log(`${dim}Open-source control plane for your AI agents${reset}`);
 console.log("");
 
-// Run migrations unless skipped
+if (betterAuthFromFile || encryptionKeyFromFile) {
+  console.log(
+    `${dim}Using generated secrets from: ${displayHome}/secrets.json${reset}`,
+  );
+  console.log(
+    `${dim}For production, set BETTER_AUTH_SECRET and ENCRYPTION_KEY env vars.${reset}`,
+  );
+  console.log("");
+}
+
+// ============================================================================
+// Database migrations
+// ============================================================================
+
 if (!values["skip-migrations"]) {
   console.log(`${dim}Running database migrations...${reset}`);
   try {
     const { migrateToLatest } = await import("./database/migrate");
-    // Keep database connection open since server will use it
     await migrateToLatest({ keepOpen: true });
     console.log(`${dim}Migrations complete.${reset}`);
-    console.log("");
   } catch (error) {
     console.error("Failed to run migrations:", error);
     process.exit(1);
   }
 }
 
-// Import and start the server
-// We import dynamically to ensure migrations run first
+// ============================================================================
+// Status
+// ============================================================================
+
+const url = `http://localhost:${values.port || "3000"}`;
+console.log("");
+console.log(
+  `${bold}  Mode:     ${localMode ? `\x1b[32mLocal${reset}${bold} (auto-login enabled)` : "Standard (login required)"}${reset}`,
+);
+console.log(`${bold}  Home:     ${dim}${displayHome}/${reset}`);
+console.log(`${bold}  Database: ${dim}${displayHome}/db.pglite${reset}`);
+console.log(`${bold}  URL:      ${dim}${url}${reset}`);
+console.log("");
+
+// ============================================================================
+// Start server
+// ============================================================================
+
 await import("./index");

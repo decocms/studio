@@ -14,13 +14,13 @@ import type {
 } from "../types";
 
 // Import from sibling mesh package (internal imports)
-import { createApp } from "@decocms/mesh/src/api/app";
-import { createDatabase, closeDatabase } from "@decocms/mesh/src/database";
-import type { EventBus } from "@decocms/mesh/src/event-bus";
-import { migrateToLatest } from "@decocms/mesh/src/database/migrate";
-import type { BenchmarkSeedResult } from "@decocms/mesh/migrations/seeds";
-import { auth } from "@decocms/mesh/src/auth";
-import type { Permission } from "@decocms/mesh/src/storage/types";
+import { createApp } from "decocms/src/api/app";
+import { createDatabase, closeDatabase } from "decocms/src/database";
+import type { EventBus } from "decocms/src/event-bus";
+import { migrateToLatest } from "decocms/src/database/migrate";
+import type { BenchmarkSeedResult } from "decocms/migrations/seeds";
+import { auth } from "decocms/src/auth";
+import type { Permission } from "decocms/src/storage/types";
 
 /**
  * Create a no-op mock event bus for benchmark testing

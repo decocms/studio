@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -11,7 +13,7 @@ import {
 } from "@decocms/mesh-sdk";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import { authClient } from "@/web/lib/auth-client";
-import { useDecoChatOpen } from "@/web/hooks/use-deco-chat-open";
+import { authenticateConnection } from "@/web/lib/authenticate-connection";
 
 interface NoLlmBindingEmptyStateProps {
   title?: string;
@@ -29,10 +31,11 @@ export function NoLlmBindingEmptyState({
   org,
 }: NoLlmBindingEmptyStateProps) {
   const actions = useConnectionActions();
-  const [, setDecoChatOpen] = useDecoChatOpen();
   const navigate = useNavigate();
   const { data: session } = authClient.useSession();
   const allConnections = useConnections();
+  const queryClient = useQueryClient();
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
 
   const userId = session?.user?.id ?? "";
 
@@ -50,45 +53,49 @@ export function NoLlmBindingEmptyState({
       return;
     }
 
+    setIsAuthenticating(true);
     try {
       // Check if OpenRouter already exists
       const existingConnection = allConnections?.find(
         (conn) => conn.connection_url === OPENROUTER_MCP_URL,
       );
 
-      if (existingConnection) {
-        setDecoChatOpen(false);
-        navigate({
-          to: "/$org/$project/mcps/$connectionId",
-          params: {
-            org: org.slug,
-            project: ORG_ADMIN_PROJECT_SLUG,
-            connectionId: existingConnection.id,
-          },
+      const connectionId = existingConnection?.id ?? null;
+
+      if (!connectionId) {
+        // Create new OpenRouter connection
+        const connectionData = getWellKnownOpenRouterConnection({
+          id: generatePrefixedId("conn"),
         });
-        return;
+
+        const result = await actions.create.mutateAsync(connectionData);
+
+        // Immediately trigger OAuth auth — opens popup, stays on Home
+        const success = await authenticateConnection(
+          result.id,
+          actions,
+          queryClient,
+        );
+        if (success) {
+          toast.success("OpenRouter connected successfully");
+        }
+      } else {
+        // Connection exists but may not be authenticated — trigger auth
+        const success = await authenticateConnection(
+          connectionId,
+          actions,
+          queryClient,
+        );
+        if (success) {
+          toast.success("OpenRouter authenticated successfully");
+        }
       }
-
-      // Create new OpenRouter connection
-      const connectionData = getWellKnownOpenRouterConnection({
-        id: generatePrefixedId("conn"),
-      });
-
-      const result = await actions.create.mutateAsync(connectionData);
-
-      setDecoChatOpen(false);
-      navigate({
-        to: "/$org/$project/mcps/$connectionId",
-        params: {
-          org: org.slug,
-          project: ORG_ADMIN_PROJECT_SLUG,
-          connectionId: result.id,
-        },
-      });
     } catch (error) {
       toast.error(
         `Failed to connect OpenRouter: ${error instanceof Error ? error.message : String(error)}`,
       );
+    } finally {
+      setIsAuthenticating(false);
     }
   };
 
@@ -111,14 +118,16 @@ export function NoLlmBindingEmptyState({
           <Button
             variant="outline"
             onClick={handleInstallOpenRouter}
-            disabled={actions.create.isPending}
+            disabled={actions.create.isPending || isAuthenticating}
           >
             <img
               src={OPENROUTER_ICON_URL}
               alt="OpenRouter"
               className="size-4"
             />
-            {actions.create.isPending ? "Installing..." : "Install OpenRouter"}
+            {actions.create.isPending || isAuthenticating
+              ? "Connecting..."
+              : "Install OpenRouter"}
           </Button>
           <Button variant="outline" onClick={handleInstallMcpServer}>
             Install Connection

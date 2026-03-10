@@ -20,6 +20,9 @@
   "scripts": {
     "link": "deco link -p 3000 -e BASE_URL -- bun run dev",
     "dev": "bun run --env-file=.env --cwd=apps/mesh dev",
+    "dev:local": "bun run --cwd=apps/mesh dev:local",
+    "dev:local:worktree": "bun run scripts/dev-local-worktree.ts",
+    "dev:local:conductor": "WORKTREE_SLUG=$CONDUCTOR_WORKSPACE_NAME bun run dev:local:worktree",
     "dev:worktree": "bun run scripts/dev-worktree.ts",
     "dev:conductor": "WORKTREE_SLUG=$CONDUCTOR_WORKSPACE_NAME bun run dev:worktree",
     "fmt": "biome format --write",

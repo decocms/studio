@@ -1,7 +1,7 @@
 {
-  "name": "@decocms/mesh",
+  "name": "decocms",
   "version": "2.156.0",
-  "description": "MCP Mesh - Self-hostable MCP Gateway for managing AI connections and tools",
+  "description": "Deco Studio — Self-hostable MCP Gateway for managing AI connections and tools",
   "author": "Deco team",
   "license": "MIT",
   "homepage": "https://github.com/decocms/studio",
@@ -15,13 +15,14 @@
   },
   "type": "module",
   "bin": {
-    "mesh": "./dist/server/cli.js"
+    "deco": "./dist/server/cli.js"
   },
   "files": [
     "dist/**/*"
   ],
   "scripts": {
     "dev": "bun run migrate && concurrently \"bun run dev:client\" \"bun run dev:server\"",
+    "dev:local": "MESH_LOCAL_MODE=true bun run dev",
     "dev:client": "bun --bun vite dev",
     "dev:server": "NODE_ENV=development bun --env-file=.env --hot run src/index.ts",
     "build:client": "bun --bun vite build",
