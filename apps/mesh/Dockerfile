@@ -15,7 +15,7 @@ USER bunuser
 WORKDIR /app/apps/mesh
 
 # Install the package locally during build (cached in image layer)
-RUN bun add @decocms/mesh@${MESH_VERSION}
+RUN bun add decocms@${MESH_VERSION}
 
 # Expose the default port
 EXPOSE 3000
@@ -26,4 +26,4 @@ ENV DATABASE_URL=file:/app/data/mesh.db
 
 # The CLI handles migrations automatically on startup
 # Use --skip-migrations if you want to manage migrations separately
-CMD ["bun", "run", "mesh"]
+CMD ["bun", "run", "deco"]
