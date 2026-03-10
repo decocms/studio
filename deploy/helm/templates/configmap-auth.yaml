@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "chart-deco-mcp-mesh.fullname" . }}-auth-config
+  labels:
+    {{- include "chart-deco-mcp-mesh.labels" . | nindent 4 }}
+data:
+  auth-config.json: |
+{{- $authConfig := .Values.configMap.authConfig | deepCopy }}
+{{- if .Values.secret.authConfigSecretName }}
+{{- $authSecrets := lookup "v1" "Secret" .Release.Namespace .Values.secret.authConfigSecretName }}
+{{- if $authSecrets }}
+{{- if $authSecrets.data }}
+{{- /* Google OAuth - clientId and clientSecret from Secret only if empty in values.yaml */}}
+{{- if hasKey $authConfig.socialProviders "google" }}
+{{- $googleClientId := index $authConfig.socialProviders.google "clientId" | default "" }}
+{{- $googleClientSecret := index $authConfig.socialProviders.google "clientSecret" | default "" }}
+{{- if and $authSecrets.data.googleClientId (eq $googleClientId "") }}
+{{- $_ := set $authConfig.socialProviders.google "clientId" (b64dec $authSecrets.data.googleClientId) }}
+{{- end }}
+{{- if and $authSecrets.data.googleClientSecret (eq $googleClientSecret "") }}
+{{- $_ := set $authConfig.socialProviders.google "clientSecret" (b64dec $authSecrets.data.googleClientSecret) }}
+{{- end }}
+{{- end }}
+{{- /* GitHub OAuth - clientId and clientSecret from Secret only if empty in values.yaml */}}
+{{- if hasKey $authConfig.socialProviders "github" }}
+{{- $githubClientId := index $authConfig.socialProviders.github "clientId" | default "" }}
+{{- $githubClientSecret := index $authConfig.socialProviders.github "clientSecret" | default "" }}
+{{- if and $authSecrets.data.githubClientId (eq $githubClientId "") }}
+{{- $_ := set $authConfig.socialProviders.github "clientId" (b64dec $authSecrets.data.githubClientId) }}
+{{- end }}
+{{- if and $authSecrets.data.githubClientSecret (eq $githubClientSecret "") }}
+{{- $_ := set $authConfig.socialProviders.github "clientSecret" (b64dec $authSecrets.data.githubClientSecret) }}
+{{- end }}
+{{- end }}
+{{- /* Resend API Key from Secret only if empty in values.yaml */}}
+{{- if $authSecrets.data.resendApiKey }}
+{{- range $authConfig.emailProviders }}
+{{- if and (eq .id "resend-primary") (hasKey .config "apiKey") }}
+{{- $resendApiKey := index .config "apiKey" | default "" }}
+{{- if eq $resendApiKey "" }}
+{{- $_ := set .config "apiKey" (b64dec $authSecrets.data.resendApiKey) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{ $authConfig | toJson | indent 4 }}

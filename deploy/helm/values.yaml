@@ -1,0 +1,211 @@
+# Default values for chart-deco-mcp-mesh.
+# The value below is only considered if autoscaling is disabled.
+replicaCount: 1
+
+strategy:
+  # type: ""  # Leave empty for auto-detection:
+  #   - RollingUpdate: if database.engine=postgresql OR persistence.distributed=true OR accessMode=ReadWriteMany
+  #   - Recreate: if SQLite with ReadWriteOnce (default)
+  # rollingUpdate:
+  #   maxSurge: 1
+  #   maxUnavailable: 0
+
+image:
+  repository: ghcr.io/decocms/studio/mesh
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 3000
+
+resources:
+  requests:
+    memory: "300Mi"
+    cpu: "250m"
+  limits:
+    memory: "600Mi"
+    cpu: "500m"
+
+database:
+  engine: sqlite # sqlite | postgresql
+  url: ""        # Required when engine=postgresql
+  caCert: ""     # Optional: Specify existing CA certificate in PEM format
+
+persistence:
+  enabled: true
+  accessMode: ReadWriteOnce
+  storageClass: "gp3"  # Empty string applies default storage class.
+  size: 10Gi
+  claimName: ""  # Optional: Specify existing PVC name
+  distributed: false  # Mark as true if storage offers ReadWriteMany
+
+autoscaling:
+  enabled: false
+  minReplicas: 3
+  maxReplicas: 6
+  #targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+configMap:
+  meshConfig:
+    NODE_ENV: "production"
+    PORT: "3000"
+    HOST: "0.0.0.0"
+    BETTER_AUTH_URL: "http://localhost:8080"
+    BASE_URL: "http://localhost:8080"
+    # PRESTOP_HEAP_SNAPSHOT_DIR: ""  # Optional: Directory for heap snapshots during preStop hook
+  
+  authConfig:
+    emailAndPassword:
+      enabled: true
+
+
+secret:
+  # secretName: ""  # If defined, uses this existing secret (does not create new secret)
+  # Generate secret with the following command: openssl rand -base64 32
+  BETTER_AUTH_SECRET: "define_your_secret_with_command_above"
+
+volumes: []
+# - name: foo
+#   secret:
+#     secretName: mysecret
+#     optional: false
+
+extraContainers: []
+# - name: cloudsql-proxy
+#   image: gcr.io/cloudsql-docker/gce-proxy:1.33.1
+#   args:
+#     - "/cloud_sql_proxy"
+#     - "-instances=PROJECT:REGION:INSTANCE=tcp:5432"
+
+volumeMounts: []
+# - name: foo
+#   mountPath: "/etc/foo"
+#   readOnly: true
+
+podSecurityContext:
+  fsGroup: 1001
+  fsGroupChangePolicy: "OnRootMismatch"
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+readinessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 4
+
+# Optional lifecycle hooks (preStop, postStart)
+# lifecycle:
+#   preStop:
+#     exec:
+#       command:
+#         - /bin/sh
+#         - -c
+#         - "wget -q -O - http://localhost:9229/prestop-hook || true"
+
+nodeSelector:
+  kubernetes.io/arch: amd64
+
+tolerations: []
+# Example:
+# tolerations:
+#   - key: "env"
+#     operator: "Equal"
+#     value: "dev"
+#     effect: "NoSchedule"
+
+affinity: {}
+# Example:
+# affinity:
+#   podAntiAffinity:
+#     preferredDuringSchedulingIgnoredDuringExecution:
+#       - weight: 100
+#         podAffinityTerm:
+#           labelSelector:
+#             matchLabels:
+#               app.kubernetes.io/name: chart-deco-mcp-mesh
+#           topologyKey: kubernetes.io/hostname
+
+# Topology Spread Constraints (optional - leave empty [] to disable)
+# IMPORTANT: labelSelector is required when topologySpreadConstraints is configured
+#topologySpreadConstraints: []
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: chart-deco-mcp-mesh
+        app.kubernetes.io/instance: deco-mcp-mesh
+
+# OpenTelemetry configuration (optional)
+otel:
+  enabled: false
+  protocol: "http/protobuf"  # http/protobuf | grpc
+  service: ""                # OTEL_SERVICE_NAME
+  endpoint: ""               # Remote OTLP endpoint (direct export OR collector fan-out target)
+  headers: {}                # OTEL_EXPORTER_OTLP_HEADERS (key=value format)
+  # headers:
+  #   authorization: "Bearer your-token"
+  #   x-custom-header: "value"
+  attributes: {}             # OTEL_RESOURCE_ATTRIBUTES (key=value format)
+  # attributes:
+  #   deployment.environment: "production"
+  #   service.namespace: "my-namespace"
+
+  # OTel Collector sidecar — when enabled, app exports to localhost:4318
+  collector:
+    enabled: false
+    image:
+      repository: otel/opentelemetry-collector-contrib
+      tag: "0.115.1"
+      pullPolicy: IfNotPresent
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
+      limits:
+        memory: "256Mi"
+        cpu: "250m"
+
+  # S3 exporter (requires collector.enabled: true)
+  s3:
+    enabled: false
+    bucket: ""               # Required when enabled
+    region: "us-east-1"
+    prefix: "otel"
+    filePrefix: "otel"
+    marshaler: "otlp_json"   # otlp_json | sumo_ic
+    compression: "none"      # none | gzip
+    roleArn: ""              # IRSA role ARN — adds eks.amazonaws.com/role-arn to ServiceAccount
+
+# Additional environment variables (merged with existing envs)
+env: []
+# env:
+#   - name: MY_CUSTOM_VAR
+#     value: "my-value"
+#   - name: MY_SECRET_VAR
+#     valueFrom:
+#       secretKeyRef:
+#         name: my-secret
+#         key: my-key

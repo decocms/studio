@@ -1,0 +1,21 @@
+{{- if .Values.persistence.enabled -}}
+{{- if not .Values.persistence.claimName }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "chart-deco-mcp-mesh.fullname" . }}-data
+  labels:
+    {{- include "chart-deco-mcp-mesh.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size }}
+  {{- if .Values.persistence.storageClass }}
+  storageClassName: {{ .Values.persistence.storageClass }}
+  {{- else }}
+  storageClassName: ""  # Use default storage class
+  {{- end }}
+{{- end }}
+{{- end }}
