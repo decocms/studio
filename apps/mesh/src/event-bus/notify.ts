@@ -21,6 +21,7 @@ import {
   dangerouslyCreateSuperUserMCPProxy,
   toServerClient,
 } from "../api/routes/proxy";
+import { PermanentDeliveryError, isAuthError } from "./errors";
 import type { NotifySubscriberFn } from "./interface";
 
 /**
@@ -51,18 +52,6 @@ function orgIdFromSelfConnection(connectionId: string): string {
  *
  * @returns NotifySubscriberFn callback
  */
-export function isAuthError(message: string): boolean {
-  const lower = message.toLowerCase();
-  return (
-    lower.includes("401") ||
-    lower.includes("unauthorized") ||
-    lower.includes("invalid_token") ||
-    lower.includes("invalid api key") ||
-    lower.includes("api key required") ||
-    lower.includes("api-key required")
-  );
-}
-
 export function createNotifySubscriber(): NotifySubscriberFn {
   return async (connectionId, events) => {
     try {
@@ -157,10 +146,13 @@ export function createNotifySubscriber(): NotifySubscriberFn {
         errorMessage,
       );
 
+      if (isAuthError(error)) {
+        throw new PermanentDeliveryError(errorMessage);
+      }
+
       return {
         success: false,
         error: errorMessage,
-        permanent: isAuthError(errorMessage),
       };
     }
   };

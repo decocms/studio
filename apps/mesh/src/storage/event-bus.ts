@@ -167,6 +167,16 @@ export interface EventBusStorage {
   markDeliveriesDelivered(deliveryIds: string[]): Promise<void>;
 
   /**
+   * Mark deliveries as permanently failed with no retry.
+   * Used for non-transient errors (e.g. auth failures) where retrying
+   * with the same credentials is guaranteed to fail.
+   */
+  markDeliveriesPermanentlyFailed(
+    deliveryIds: string[],
+    error: string,
+  ): Promise<void>;
+
+  /**
    * Mark deliveries as failed with error message (batch)
    * Implements exponential backoff for retries
    *
@@ -641,6 +651,23 @@ class KyselyEventBusStorage implements EventBusStorage {
       .set({
         status: "delivered",
         delivered_at: now,
+      })
+      .where("id", "in", deliveryIds)
+      .execute();
+  }
+
+  async markDeliveriesPermanentlyFailed(
+    deliveryIds: string[],
+    error: string,
+  ): Promise<void> {
+    if (deliveryIds.length === 0) return;
+
+    await this.db
+      .updateTable("event_deliveries")
+      .set({
+        status: "failed",
+        last_error: error,
+        next_retry_at: null,
       })
       .where("id", "in", deliveryIds)
       .execute();
