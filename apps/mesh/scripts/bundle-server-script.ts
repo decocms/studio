@@ -370,6 +370,47 @@ async function copyRootReadme() {
   }
 }
 
+async function copyPgliteWasm() {
+  console.log("📄 Copying PGlite WASM files...");
+
+  // PGlite uses `new URL('./emscripten-module.wasm', import.meta.url)` at runtime.
+  // When bun bundles pglite into cli.js / server.js, that URL resolves relative to
+  // the bundle output directory (dist/server/), so the WASM must live there too.
+  const pgliteWasmNames = ["emscripten-module.wasm", "postgres.wasm"];
+
+  for (const wasmName of pgliteWasmNames) {
+    let sourcePath: string | undefined;
+
+    // Search in the workspace root node_modules first, then mesh app node_modules
+    for (const base of [WORKSPACE_ROOT, MESH_APP_ROOT]) {
+      const candidate = join(base, "node_modules/@electric-sql/pglite/dist", wasmName);
+      if (existsSync(candidate)) {
+        sourcePath = candidate;
+        break;
+      }
+      // Some pglite versions put the WASM at the package root or in dist/
+      const candidate2 = join(base, "node_modules/@electric-sql/pglite", wasmName);
+      if (existsSync(candidate2)) {
+        sourcePath = candidate2;
+        break;
+      }
+    }
+
+    if (!sourcePath) {
+      console.warn(`⚠️  PGlite WASM not found: ${wasmName}, skipping...`);
+      continue;
+    }
+
+    const destPath = join(OUTPUT_DIR, wasmName);
+    try {
+      await cp(sourcePath, destPath);
+      console.log(`✅ Copied ${wasmName} to ${destPath}`);
+    } catch (error) {
+      console.warn(`⚠️  Failed to copy ${wasmName}: ${error}`);
+    }
+  }
+}
+
 async function main() {
   // Prune node_modules to only include required dependencies for both scripts
   const packagesToExternalize = await pruneNodeModules();
@@ -379,6 +420,9 @@ async function main() {
   await buildServerScript(packagesToExternalize);
   await buildCliScript(packagesToExternalize);
 
+  // Copy PGlite WASM files alongside the bundles so emscripten can find them
+  await copyPgliteWasm();
+
   // Copy root README.md to dist folder
   await copyRootReadme();
 
@@ -387,6 +431,7 @@ async function main() {
   console.log(`   - migrate.js`);
   console.log(`   - server.js`);
   console.log(`   - cli.js`);
+  console.log(`   - *.wasm (PGlite)`);
   console.log(`   - node_modules/`);
   console.log(`   - ../README.md`);
 }
