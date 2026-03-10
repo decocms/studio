@@ -9,7 +9,7 @@
  *   deco
  *   npx decocms --port 8080
  *   npx decocms --home ~/my-project
- *   npx decocms --no-local-mode
+ *   npx decocms --local-mode
  */
 
 import { parseArgs } from "util";
@@ -41,7 +41,7 @@ const { values } = parseArgs({
       type: "boolean",
       default: false,
     },
-    "no-local-mode": {
+    "local-mode": {
       type: "boolean",
       default: false,
     },
@@ -59,7 +59,7 @@ Usage:
 Options:
   -p, --port <port>     Port to listen on (default: 3000, or PORT env var)
   --home <path>         Data directory (default: ~/deco/, or DECOCMS_HOME env var)
-  --no-local-mode       Disable local mode (require login, no auto-setup)
+  --local-mode          Enable local mode (auto-login, no auth required)
   -h, --help            Show this help message
   -v, --version         Show version
   --skip-migrations     Skip database migrations on startup
@@ -78,7 +78,7 @@ Examples:
   deco                            # Start with defaults (~/deco/)
   deco -p 8080                    # Start on port 8080
   deco --home ~/my-project        # Custom data directory
-  deco --no-local-mode            # Require login (SaaS mode)
+  deco --local-mode               # Enable auto-login (local dev)
 
 Documentation:
   https://decocms.com/studio
@@ -123,11 +123,8 @@ if (!process.env.NODE_ENV) {
   process.env.NODE_ENV = "production";
 }
 
-// Determine if local mode should be active
-const hasCustomAuthConfig =
-  process.env.AUTH_CONFIG_PATH &&
-  process.env.AUTH_CONFIG_PATH !== "./auth-config.json";
-const localMode = !values["no-local-mode"] && !hasCustomAuthConfig;
+// Determine if local mode should be active (opt-in only)
+const localMode = values["local-mode"] === true;
 process.env.MESH_LOCAL_MODE = localMode ? "true" : "false";
 
 // CLI is the intended local runner — allow local mode even when NODE_ENV=production
