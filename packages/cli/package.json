@@ -7,7 +7,7 @@
   "homepage": "https://github.com/decocms/admin",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/decocms/mesh.git",
+    "url": "git+https://github.com/decocms/studio.git",
     "directory": "packages/cli"
   },
   "bugs": {

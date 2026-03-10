@@ -24,7 +24,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/decocms/mesh.git",
+    "url": "git+https://github.com/decocms/studio.git",
     "directory": "packages/create-deco"
   },
   "publishConfig": {

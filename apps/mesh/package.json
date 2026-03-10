@@ -4,14 +4,14 @@
   "description": "MCP Mesh - Self-hostable MCP Gateway for managing AI connections and tools",
   "author": "Deco team",
   "license": "MIT",
-  "homepage": "https://github.com/decocms/mesh",
+  "homepage": "https://github.com/decocms/studio",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/decocms/mesh.git",
+    "url": "git+https://github.com/decocms/studio.git",
     "directory": "apps/mesh"
   },
   "bugs": {
-    "url": "https://github.com/decocms/mesh/issues"
+    "url": "https://github.com/decocms/studio/issues"
   },
   "type": "module",
   "bin": {
