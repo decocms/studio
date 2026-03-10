@@ -36,10 +36,12 @@
     "better-auth:migrate": "bunx --bun @better-auth/cli migrate -y --config src/auth/index.ts",
     "prepublishOnly": "bun run build:client && bun run build:server"
   },
+  "optionalDependencies": {
+    "chdb": "^1.6.0"
+  },
   "dependencies": {
     "@clickhouse/client": "^1.8.1",
     "@electric-sql/pglite": "^0.3.15",
-    "chdb": "^1.6.0",
     "@jitl/quickjs-wasmfile-release-sync": "^0.31.0",
     "@modelcontextprotocol/ext-apps": "^1.1.2",
     "@opentelemetry/core": "^2.6.0",

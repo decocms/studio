@@ -1075,8 +1075,76 @@ function MonitoringLogsTableContent({
 
 function MonitoringLogsTableSkeleton() {
   return (
-    <div className="flex-1 flex items-center justify-center">
-      <div className="text-muted-foreground">Loading logs...</div>
+    <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 overflow-auto">
+        <div className="min-w-[600px] md:min-w-0 bg-background">
+          <Table className="w-full border-collapse">
+            <TableHeader className="border-b-0 z-20">
+              <TableRow className="h-9 hover:bg-transparent border-b border-border">
+                <TableHead className="w-10 md:w-12 px-2 md:px-4" />
+                <TableHead className="w-5" />
+                <TableHead className="pr-2 md:pr-4">
+                  <div className="h-3 w-24 rounded bg-muted animate-pulse" />
+                </TableHead>
+                <TableHead className="w-24 md:w-32 px-2 md:px-3">
+                  <div className="h-3 w-12 rounded bg-muted animate-pulse" />
+                </TableHead>
+                <TableHead className="w-20 md:w-24 px-2 md:px-3">
+                  <div className="h-3 w-16 rounded bg-muted animate-pulse" />
+                </TableHead>
+                <TableHead className="w-20 md:w-24 px-2 md:px-3">
+                  <div className="h-3 w-10 rounded bg-muted animate-pulse" />
+                </TableHead>
+                <TableHead className="w-20 md:w-28 px-2 md:px-3">
+                  <div className="h-3 w-10 rounded bg-muted animate-pulse" />
+                </TableHead>
+                <TableHead className="w-16 md:w-20 px-2 md:px-3">
+                  <div className="h-3 w-10 rounded bg-muted animate-pulse ml-auto" />
+                </TableHead>
+                <TableHead className="w-16 md:w-24 px-2 md:px-3 pr-3 md:pr-5">
+                  <div className="h-3 w-12 rounded bg-muted animate-pulse ml-auto" />
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {Array.from({ length: 8 }).map((_, i) => (
+                <TableRow key={i} className="h-12 border-b border-border">
+                  <td className="px-2 md:px-4">
+                    <div className="size-4 rounded bg-muted animate-pulse" />
+                  </td>
+                  <td>
+                    <div className="size-5 rounded bg-muted animate-pulse" />
+                  </td>
+                  <td className="pr-2 md:pr-4">
+                    <div className="space-y-1">
+                      <div className="h-3.5 w-32 rounded bg-muted animate-pulse" />
+                      <div className="h-2.5 w-20 rounded bg-muted animate-pulse" />
+                    </div>
+                  </td>
+                  <td className="px-2 md:px-3">
+                    <div className="h-3 w-16 rounded bg-muted animate-pulse" />
+                  </td>
+                  <td className="px-2 md:px-3">
+                    <div className="h-3 w-14 rounded bg-muted animate-pulse" />
+                  </td>
+                  <td className="px-2 md:px-3">
+                    <div className="h-3 w-16 rounded bg-muted animate-pulse" />
+                  </td>
+                  <td className="px-2 md:px-3">
+                    <div className="h-3 w-14 rounded bg-muted animate-pulse" />
+                  </td>
+                  <td className="px-2 md:px-3">
+                    <div className="h-3 w-10 rounded bg-muted animate-pulse ml-auto" />
+                  </td>
+                  <td className="px-2 md:px-3 pr-3 md:pr-5">
+                    <div className="h-5 w-14 rounded-full bg-muted animate-pulse ml-auto" />
+                  </td>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1090,7 +1158,7 @@ const MonitoringLogsTable = Object.assign(MonitoringLogsTableContent, {
 // ============================================================================
 
 interface MonitoringDashboardContentProps {
-  tab: "logs" | "dashboards";
+  tab: "overview" | "audit" | "dashboards";
   dateRange: DateRange;
   displayDateRange: DateRange;
   connectionIds: string[];
@@ -1107,7 +1175,7 @@ interface MonitoringDashboardContentProps {
   onUpdateFilters: (updates: Partial<MonitoringSearchParams>) => void;
   onTimeRangeChange: (range: TimeRangeValue) => void;
   onStreamingToggle: () => void;
-  onTabChange: (tab: "logs" | "dashboards") => void;
+  onTabChange: (tab: "overview" | "audit" | "dashboards") => void;
 }
 
 function MonitoringDashboardContent({
@@ -1225,7 +1293,8 @@ function MonitoringDashboardContent({
   };
 
   const tabs = [
-    { id: "logs" as const, label: "Connections" },
+    { id: "overview" as const, label: "Overview" },
+    { id: "audit" as const, label: "Audit" },
     { id: "dashboards" as const, label: "Dashboards" },
   ];
 
@@ -1241,7 +1310,7 @@ function MonitoringDashboardContent({
             </BreadcrumbList>
           </Breadcrumb>
         </Page.Header.Left>
-        {tab === "logs" && (
+        {(tab === "overview" || tab === "audit") && (
           <Page.Header.Right>
             <div className="flex flex-wrap items-center gap-2">
               {/* Filters Button */}
@@ -1293,37 +1362,16 @@ function MonitoringDashboardContent({
         <CollectionTabs
           tabs={tabs}
           activeTab={tab}
-          onTabChange={(tabId) => onTabChange(tabId as "logs" | "dashboards")}
+          onTabChange={(tabId) =>
+            onTabChange(tabId as "overview" | "audit" | "dashboards")
+          }
         />
       </div>
 
       {tab === "dashboards" ? (
         <DashboardsTab />
-      ) : (
+      ) : tab === "audit" ? (
         <div className="flex-1 flex flex-col overflow-auto md:overflow-hidden">
-          {/* Top Tools Chart */}
-          <div className="border-b border-border relative z-10">
-            <ErrorBoundary fallback={null}>
-              <Suspense fallback={<TopTools.Skeleton />}>
-                <TopTools.Content
-                  metricsMode={topChartMetric}
-                  dateRange={analyticsDateRange}
-                />
-              </Suspense>
-            </ErrorBoundary>
-          </div>
-
-          {/* Stats with Connection Leaderboards */}
-          <MonitoringStats
-            displayDateRange={displayDateRange}
-            connectionIds={connectionIds}
-            logs={allLogs}
-            total={total}
-            connections={allConnections}
-            selectedMetric={topChartMetric}
-            onMetricSelect={setTopChartMetric}
-          />
-
           {/* Search Bar */}
           <CollectionSearch
             value={searchQuery}
@@ -1356,6 +1404,31 @@ function MonitoringDashboardContent({
             />
           </div>
         </div>
+      ) : (
+        <div className="flex-1 flex flex-col overflow-auto md:overflow-hidden">
+          {/* Top Tools Chart */}
+          <div className="border-b border-border relative z-10">
+            <ErrorBoundary fallback={null}>
+              <Suspense fallback={<TopTools.Skeleton />}>
+                <TopTools.Content
+                  metricsMode={topChartMetric}
+                  dateRange={analyticsDateRange}
+                />
+              </Suspense>
+            </ErrorBoundary>
+          </div>
+
+          {/* Stats with Connection Leaderboards */}
+          <MonitoringStats
+            displayDateRange={displayDateRange}
+            connectionIds={connectionIds}
+            logs={allLogs}
+            total={total}
+            connections={allConnections}
+            selectedMetric={topChartMetric}
+            onMetricSelect={setTopChartMetric}
+          />
+        </div>
       )}
     </>
   );
@@ -1369,7 +1442,7 @@ export default function MonitoringDashboard() {
   });
 
   const {
-    tab = "logs",
+    tab = "overview",
     from,
     to,
     connectionId: connectionIds = [],
@@ -1466,20 +1539,51 @@ export default function MonitoringDashboard() {
             <>
               <Page.Header>
                 <Page.Header.Left>
-                  <h1 className="text-sm font-medium text-foreground">
-                    Monitoring
-                  </h1>
+                  <Breadcrumb>
+                    <BreadcrumbList>
+                      <BreadcrumbItem>
+                        <BreadcrumbPage>Monitoring</BreadcrumbPage>
+                      </BreadcrumbItem>
+                    </BreadcrumbList>
+                  </Breadcrumb>
                 </Page.Header.Left>
               </Page.Header>
-              <Page.Content>
+
+              {/* Tabs */}
+              <div className="px-5 py-3 border-b border-border">
+                <CollectionTabs
+                  tabs={[
+                    { id: "overview", label: "Overview" },
+                    { id: "audit", label: "Audit" },
+                    { id: "dashboards", label: "Dashboards" },
+                  ]}
+                  activeTab={tab}
+                  onTabChange={(tabId) =>
+                    updateFilters({
+                      tab: tabId as "overview" | "audit" | "dashboards",
+                    })
+                  }
+                />
+              </div>
+
+              {tab === "audit" ? (
+                <div className="flex-1 flex flex-col overflow-auto md:overflow-hidden">
+                  <MonitoringLogsTable.Skeleton />
+                </div>
+              ) : tab === "dashboards" ? (
+                <div className="flex-1 flex items-center justify-center">
+                  <div className="text-muted-foreground">
+                    Loading dashboards...
+                  </div>
+                </div>
+              ) : (
                 <div className="flex-1 flex flex-col overflow-auto md:overflow-hidden">
                   <div className="border-b border-border">
                     <TopTools.Skeleton />
                   </div>
                   <MonitoringStats.Skeleton />
-                  <MonitoringLogsTable.Skeleton />
                 </div>
-              </Page.Content>
+              )}
             </>
           }
         >

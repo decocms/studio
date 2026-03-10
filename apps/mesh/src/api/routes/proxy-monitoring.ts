@@ -3,8 +3,9 @@ import type {
   CallToolResult,
 } from "@modelcontextprotocol/sdk/types.js";
 import { isDecopilot } from "@decocms/mesh-sdk";
+import { trace, context } from "@opentelemetry/api";
 import type { MeshContext } from "../../core/mesh-context";
-import { enrichMonitoringSpan } from "@/monitoring/enrich";
+import { emitMonitoringLog } from "../../monitoring/emit";
 import { MONITORING_SPAN_NAME } from "@/monitoring/schema";
 
 type CallToolMiddleware = (
@@ -233,26 +234,33 @@ async function emitMonitoringSpan(args: {
     }
   }
 
+  // Create a short-lived span for trace correlation
   const span = ctx.tracer.startSpan(MONITORING_SPAN_NAME);
-  enrichMonitoringSpan(span, {
-    organizationId,
-    connectionId: args.connectionId,
-    connectionTitle: args.connectionTitle,
-    toolName: args.request.params.name,
-    toolArguments: (args.request.params.arguments ?? {}) as Record<
-      string,
-      unknown
-    >,
-    result: args.output,
-    duration: args.durationMs,
-    isError: args.isError,
-    errorMessage: args.errorMessage || null,
-    userId: ctx.auth.user?.id || ctx.auth.apiKey?.userId || null,
-    requestId: ctx.metadata.requestId,
-    userAgent: ctx.metadata.userAgent || null,
-    virtualMcpId: args.virtualMcpId || null,
-    properties: properties || null,
-  });
+  const spanCtx = trace.setSpan(context.active(), span);
+
+  emitMonitoringLog(
+    {
+      organizationId,
+      connectionId: args.connectionId,
+      connectionTitle: args.connectionTitle,
+      toolName: args.request.params.name,
+      toolArguments: (args.request.params.arguments ?? {}) as Record<
+        string,
+        unknown
+      >,
+      result: args.output,
+      duration: args.durationMs,
+      isError: args.isError,
+      errorMessage: args.errorMessage || null,
+      userId: ctx.auth.user?.id || ctx.auth.apiKey?.userId || null,
+      requestId: ctx.metadata.requestId,
+      userAgent: ctx.metadata.userAgent || null,
+      virtualMcpId: args.virtualMcpId || null,
+      properties: properties || null,
+    },
+    spanCtx,
+  );
+
   span.end();
 }
 

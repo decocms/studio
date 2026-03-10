@@ -6,6 +6,7 @@
  */
 
 import type { MeshContext } from "@/core/mesh-context";
+import { trace, context } from "@opentelemetry/api";
 import type { Span } from "@opentelemetry/api";
 import type {
   JSONRPCMessage,
@@ -16,7 +17,7 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 import { WrapperTransport } from "./compose";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { enrichMonitoringSpan } from "@/monitoring/enrich";
+import { emitMonitoringLog } from "@/monitoring/emit";
 import {
   extractCallToolErrorMessage,
   extractMetaProperties,
@@ -173,24 +174,29 @@ export class MonitoringTransport extends WrapperTransport {
       const metaProps = extractMetaProperties(toolArguments);
       const properties = mergeProperties(ctx.metadata.properties, metaProps);
 
-      enrichMonitoringSpan(span, {
-        organizationId: ctx.organization?.id ?? "",
-        connectionId,
-        connectionTitle: this.options.connectionTitle,
-        toolName,
-        toolArguments,
-        result: callToolResult,
-        duration,
-        isError: Boolean(isError),
-        errorMessage: extractCallToolErrorMessage(callToolResult) || null,
-        userId: ctx.auth.user?.id || ctx.auth.apiKey?.userId || null,
-        requestId: ctx.metadata.requestId,
-        userAgent: ctx.metadata.userAgent || null,
-        virtualMcpId: this.options.virtualMcpId || null,
-        properties: properties || null,
-      });
+      const spanCtx = trace.setSpan(context.active(), span);
 
-      // MUST end after enrichment — span snapshot freezes on end()
+      emitMonitoringLog(
+        {
+          organizationId: ctx.organization?.id ?? "",
+          connectionId,
+          connectionTitle: this.options.connectionTitle,
+          toolName,
+          toolArguments,
+          result: callToolResult,
+          duration,
+          isError: Boolean(isError),
+          errorMessage: extractCallToolErrorMessage(callToolResult) || null,
+          userId: ctx.auth.user?.id || ctx.auth.apiKey?.userId || null,
+          requestId: ctx.metadata.requestId,
+          userAgent: ctx.metadata.userAgent || null,
+          virtualMcpId: this.options.virtualMcpId || null,
+          properties: properties || null,
+        },
+        spanCtx,
+      );
+
+      // Keep span.end() — still needed for tracing
       span.end();
     }
   }

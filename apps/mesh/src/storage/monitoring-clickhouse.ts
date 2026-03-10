@@ -4,7 +4,7 @@
  * Implements MonitoringStorage using ClickHouse SQL via QueryEngine.
  * Local dev uses chdb (embedded ClickHouse) to query NDJSON files on disk.
  *
- * Writes flow through the OTel pipeline (NDJSONSpanExporter).
+ * Writes flow through the OTel pipeline (NDJSONLogExporter).
  * This adapter is read-only — it queries NDJSON files on disk.
  */
 

@@ -42,5 +42,8 @@
   "workspaces": [
     "apps/*",
     "packages/*"
+  ],
+  "trustedDependencies": [
+    "chdb"
   ]
 }

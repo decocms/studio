@@ -6,7 +6,6 @@
  * - ClickHouseClientEngine: production, uses @clickhouse/client over HTTP
  */
 
-import { createClient, type ClickHouseClient } from "@clickhouse/client";
 import { resolve } from "node:path";
 import { DEFAULT_MONITORING_URI } from "./schema";
 
@@ -54,19 +53,25 @@ export class ChdbEngine implements QueryEngine {
 /**
  * ClickHouse client engine for production monitoring queries.
  * Uses @clickhouse/client to query a remote ClickHouse instance over HTTP.
+ * The import is dynamic to avoid loading the package when not needed.
  */
 export class ClickHouseClientEngine implements QueryEngine {
-  private client: ClickHouseClient;
+  private client: unknown;
+  private initPromise: Promise<void>;
 
   constructor(url: string) {
-    this.client = createClient({ url });
+    this.initPromise = import("@clickhouse/client").then(({ createClient }) => {
+      this.client = createClient({ url });
+    });
   }
 
   async query(
     sql: string,
     params?: Record<string, unknown>,
   ): Promise<Record<string, unknown>[]> {
-    const result = await this.client.query({
+    await this.initPromise;
+    const client = this.client as import("@clickhouse/client").ClickHouseClient;
+    const result = await client.query({
       query: sql,
       query_params: params,
       format: "JSONEachRow",
@@ -75,7 +80,9 @@ export class ClickHouseClientEngine implements QueryEngine {
   }
 
   async destroy(): Promise<void> {
-    await this.client.close();
+    await this.initPromise;
+    const client = this.client as import("@clickhouse/client").ClickHouseClient;
+    await client.close();
   }
 }
 
@@ -100,7 +107,17 @@ export interface MonitoringEngineConfig {
  * without the native module). Monitoring queries return empty results.
  */
 class NoopEngine implements QueryEngine {
+  private warned = false;
+
   async query(): Promise<Record<string, unknown>[]> {
+    if (!this.warned) {
+      this.warned = true;
+      console.warn(
+        "\n⚠️  WARNING: Monitoring query skipped — chdb native module is not available.\n" +
+          "   Monitoring data exists on disk but cannot be queried.\n" +
+          "   Fix: run `bun add chdb` in apps/mesh/ to install the native module.\n",
+      );
+    }
     return [];
   }
 }
@@ -127,9 +144,11 @@ export function createMonitoringEngine(config: MonitoringEngineConfig): {
       engine: new ChdbEngine(),
       source: `file('${resolvedPath}/**/*.ndjson', 'JSONEachRow')`,
     };
-  } catch {
+  } catch (err) {
     console.warn(
-      "chdb not available — monitoring queries will return empty results",
+      "\n⚠️  WARNING: chdb native module failed to load — monitoring will return empty results.\n" +
+        `   Error: ${err instanceof Error ? err.message : err}\n` +
+        "   Fix: run `bun add chdb` in apps/mesh/ to reinstall the native module.\n",
     );
     return {
       engine: new NoopEngine(),

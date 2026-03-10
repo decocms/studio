@@ -1,16 +1,16 @@
 /**
- * Integration test: Span creation -> NDJSON write -> chdb (embedded ClickHouse) query
+ * Integration test: Log record creation -> NDJSON write -> chdb (embedded ClickHouse) query
  */
 import { describe, it, expect, afterAll } from "bun:test";
-import { NDJSONSpanExporter } from "./ndjson-span-exporter";
+import { NDJSONLogExporter } from "./ndjson-log-exporter";
 import { ClickHouseMonitoringStorage } from "../storage/monitoring-clickhouse";
 import { createMonitoringEngine } from "./query-engine";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ExportResultCode } from "@opentelemetry/core";
-import { MESH_ATTR } from "./schema";
-import { makeTestMonitoringSpan, findNDJSONFiles } from "./test-utils";
+import { MONITORING_LOG_ATTR } from "./schema";
+import { makeTestMonitoringLogRecord, findNDJSONFiles } from "./test-utils";
 
 let chdbAvailable = false;
 try {
@@ -27,45 +27,45 @@ describe.skipIf(!chdbAvailable)("Monitoring Pipeline Integration", () => {
     if (tmpDir) await rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("should write spans to NDJSON and query them via chdb", async () => {
+  it("should write log records to NDJSON and query them via chdb", async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "pipeline-integration-"));
 
-    // 1. Create exporter and write spans
-    const exporter = new NDJSONSpanExporter({
+    // 1. Create exporter and write log records
+    const exporter = new NDJSONLogExporter({
       basePath: tmpDir,
       flushThreshold: 5,
       flushIntervalMs: 0,
     });
 
-    const spans = [
-      makeTestMonitoringSpan({
-        [MESH_ATTR.TOOL_NAME]: "TOOL_X",
-        [MESH_ATTR.ORGANIZATION_ID]: "org_int",
-        [MESH_ATTR.TOOL_OUTPUT]: '{"tokens": 42, "model": "claude"}',
+    const records = [
+      makeTestMonitoringLogRecord({
+        [MONITORING_LOG_ATTR.TOOL_NAME]: "TOOL_X",
+        [MONITORING_LOG_ATTR.ORGANIZATION_ID]: "org_int",
+        [MONITORING_LOG_ATTR.OUTPUT]: '{"tokens": 42, "model": "claude"}',
       }),
-      makeTestMonitoringSpan({
-        [MESH_ATTR.TOOL_NAME]: "TOOL_X",
-        [MESH_ATTR.ORGANIZATION_ID]: "org_int",
-        [MESH_ATTR.TOOL_OUTPUT]: '{"tokens": 42, "model": "claude"}',
+      makeTestMonitoringLogRecord({
+        [MONITORING_LOG_ATTR.TOOL_NAME]: "TOOL_X",
+        [MONITORING_LOG_ATTR.ORGANIZATION_ID]: "org_int",
+        [MONITORING_LOG_ATTR.OUTPUT]: '{"tokens": 42, "model": "claude"}',
       }),
-      makeTestMonitoringSpan({
-        [MESH_ATTR.TOOL_NAME]: "TOOL_Y",
-        [MESH_ATTR.ORGANIZATION_ID]: "org_int",
-        [MESH_ATTR.TOOL_OUTPUT]: '{"tokens": 42, "model": "claude"}',
+      makeTestMonitoringLogRecord({
+        [MONITORING_LOG_ATTR.TOOL_NAME]: "TOOL_Y",
+        [MONITORING_LOG_ATTR.ORGANIZATION_ID]: "org_int",
+        [MONITORING_LOG_ATTR.OUTPUT]: '{"tokens": 42, "model": "claude"}',
       }),
-      makeTestMonitoringSpan({
-        [MESH_ATTR.TOOL_NAME]: "TOOL_X",
-        [MESH_ATTR.ORGANIZATION_ID]: "org_int",
-        [MESH_ATTR.TOOL_OUTPUT]: '{"tokens": 42, "model": "claude"}',
+      makeTestMonitoringLogRecord({
+        [MONITORING_LOG_ATTR.TOOL_NAME]: "TOOL_X",
+        [MONITORING_LOG_ATTR.ORGANIZATION_ID]: "org_int",
+        [MONITORING_LOG_ATTR.OUTPUT]: '{"tokens": 42, "model": "claude"}',
       }),
-      makeTestMonitoringSpan({
-        [MESH_ATTR.TOOL_NAME]: "TOOL_Z",
-        [MESH_ATTR.ORGANIZATION_ID]: "org_other",
+      makeTestMonitoringLogRecord({
+        [MONITORING_LOG_ATTR.TOOL_NAME]: "TOOL_Z",
+        [MONITORING_LOG_ATTR.ORGANIZATION_ID]: "org_other",
       }),
     ];
 
     const result = await new Promise<{ code: number }>((resolve) => {
-      exporter.export(spans as any, resolve);
+      exporter.export(records as any, resolve);
     });
     expect(result.code).toBe(ExportResultCode.SUCCESS);
     await exporter.shutdown();

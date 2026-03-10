@@ -397,8 +397,8 @@ function TopToolsSkeleton() {
         </div>
       }
     >
-      <div className="flex flex-col gap-2 w-full h-full">
-        <div className="flex-1 min-h-0 max-h-[140px] w-full rounded bg-muted animate-pulse" />
+      <div className="flex flex-col gap-2 w-full">
+        <div className="h-[140px] w-full rounded bg-muted animate-pulse" />
       </div>
     </HomeGridCell>
   );

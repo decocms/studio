@@ -1,9 +1,16 @@
-import { describe, it, expect, vi } from "bun:test";
-import { MonitoringTransport } from "./monitoring";
-import { MESH_ATTR } from "@/monitoring/schema";
+import { describe, it, expect, vi, mock, beforeEach } from "bun:test";
 import type { MeshContext } from "@/core/mesh-context";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
+
+// Mock emitMonitoringLog before importing MonitoringTransport
+const mockEmitMonitoringLog = vi.fn();
+mock.module("@/monitoring/emit", () => ({
+  emitMonitoringLog: mockEmitMonitoringLog,
+}));
+
+// Import after mock setup
+const { MonitoringTransport } = await import("./monitoring");
 
 function createMockSpan() {
   const attrs: Record<string, unknown> = {};
@@ -84,16 +91,17 @@ function createMockTransportAndCtx() {
   };
 }
 
-describe("MonitoringTransport span enrichment", () => {
-  it("should set mesh.* span attributes on tool call response", async () => {
-    const { transport, simulateResponse, mockSpan } =
-      createMockTransportAndCtx();
+describe("MonitoringTransport emitMonitoringLog", () => {
+  beforeEach(() => {
+    mockEmitMonitoringLog.mockReset();
+  });
 
-    // Wire up message callbacks
+  it("should call emitMonitoringLog on tool call response", async () => {
+    const { transport, simulateResponse } = createMockTransportAndCtx();
+
     transport.onmessage = vi.fn();
     await transport.start();
 
-    // Send a tools/call request
     await transport.send({
       jsonrpc: "2.0",
       id: 1,
@@ -101,7 +109,6 @@ describe("MonitoringTransport span enrichment", () => {
       params: { name: "MY_TOOL", arguments: { query: "hello" } },
     } as any);
 
-    // Simulate response from inner transport
     simulateResponse({
       jsonrpc: "2.0",
       id: 1,
@@ -111,28 +118,21 @@ describe("MonitoringTransport span enrichment", () => {
       },
     } as any);
 
-    const attrs = mockSpan.getAttrs();
-    expect(attrs[MESH_ATTR.ORGANIZATION_ID]).toBe("org_test");
-    expect(attrs[MESH_ATTR.CONNECTION_ID]).toBe("conn_1");
-    expect(attrs[MESH_ATTR.CONNECTION_TITLE]).toBe("Test Server");
-    expect(attrs[MESH_ATTR.TOOL_NAME]).toBe("MY_TOOL");
-    expect(attrs[MESH_ATTR.TOOL_IS_ERROR]).toBe(false);
-    expect(attrs[MESH_ATTR.USER_ID]).toBe("user_1");
-    expect(attrs[MESH_ATTR.REQUEST_ID]).toBe("req_1");
-    expect(attrs[MESH_ATTR.USER_AGENT]).toBe("test/1.0");
+    expect(mockEmitMonitoringLog).toHaveBeenCalledTimes(1);
+
+    const [params] = mockEmitMonitoringLog.mock.calls[0]!;
+    expect(params.organizationId).toBe("org_test");
+    expect(params.connectionId).toBe("conn_1");
+    expect(params.connectionTitle).toBe("Test Server");
+    expect(params.toolName).toBe("MY_TOOL");
+    expect(params.isError).toBe(false);
+    expect(params.userId).toBe("user_1");
+    expect(params.requestId).toBe("req_1");
+    expect(params.userAgent).toBe("test/1.0");
   });
 
-  it("should call span.end() AFTER enrichMonitoringSpan", async () => {
-    const { transport, simulateResponse, mockSpan } =
-      createMockTransportAndCtx();
-
-    // Patch span.end to capture whether attrs were set first
-    let attrsAtEnd: Record<string, unknown> = {};
-    const originalEnd = mockSpan.span.end;
-    mockSpan.span.end = () => {
-      attrsAtEnd = { ...mockSpan.getAttrs() };
-      originalEnd.call(mockSpan.span);
-    };
+  it("should pass context (spanCtx) as second argument to emitMonitoringLog", async () => {
+    const { transport, simulateResponse } = createMockTransportAndCtx();
 
     transport.onmessage = vi.fn();
     await transport.start();
@@ -150,9 +150,63 @@ describe("MonitoringTransport span enrichment", () => {
       result: { content: [], isError: false },
     } as any);
 
+    expect(mockEmitMonitoringLog).toHaveBeenCalledTimes(1);
+    // Second argument should be the OTel context (not undefined)
+    const contextArg = mockEmitMonitoringLog.mock.calls[0]![1];
+    expect(contextArg).toBeDefined();
+  });
+
+  it("should call span.end() AFTER emitMonitoringLog", async () => {
+    const { transport, simulateResponse, mockSpan } =
+      createMockTransportAndCtx();
+
+    let emitCalledBeforeEnd = false;
+    mockEmitMonitoringLog.mockImplementation(() => {
+      // At the time emitMonitoringLog is called, span should NOT be ended yet
+      emitCalledBeforeEnd = !mockSpan.isEnded();
+    });
+
+    transport.onmessage = vi.fn();
+    await transport.start();
+
+    await transport.send({
+      jsonrpc: "2.0",
+      id: 3,
+      method: "tools/call",
+      params: { name: "TOOL_C", arguments: {} },
+    } as any);
+
+    simulateResponse({
+      jsonrpc: "2.0",
+      id: 3,
+      result: { content: [], isError: false },
+    } as any);
+
     // Span must have been ended
     expect(mockSpan.isEnded()).toBe(true);
-    // And attrs were set BEFORE end() was called
-    expect(attrsAtEnd[MESH_ATTR.TOOL_NAME]).toBe("TOOL_B");
+    // And emitMonitoringLog was called BEFORE end()
+    expect(emitCalledBeforeEnd).toBe(true);
+  });
+
+  it("should not call emitMonitoringLog for non-tool-call methods", async () => {
+    const { transport, simulateResponse } = createMockTransportAndCtx();
+
+    transport.onmessage = vi.fn();
+    await transport.start();
+
+    await transport.send({
+      jsonrpc: "2.0",
+      id: 10,
+      method: "tools/list",
+      params: {},
+    } as any);
+
+    simulateResponse({
+      jsonrpc: "2.0",
+      id: 10,
+      result: { tools: [] },
+    } as any);
+
+    expect(mockEmitMonitoringLog).not.toHaveBeenCalled();
   });
 });
