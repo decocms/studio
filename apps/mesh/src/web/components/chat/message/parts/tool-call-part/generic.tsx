@@ -1,5 +1,6 @@
 "use client";
 
+import { contentBlocksToTiptapDoc } from "@/mcp-apps/content-blocks.ts";
 import { MCPAppRenderer as MCPAppIframeRenderer } from "@/mcp-apps/mcp-app-renderer.tsx";
 import { getUIResourceUri } from "@/mcp-apps/types.ts";
 import { useChatStable } from "@/web/components/chat/context.tsx";
@@ -12,6 +13,7 @@ import {
 
 import type { ToolDefinition } from "@decocms/mesh-sdk";
 import { useMCPClient, useProjectContext } from "@decocms/mesh-sdk";
+import type { McpUiMessageRequest } from "@modelcontextprotocol/ext-apps";
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import {
   AlertCircle,
@@ -26,6 +28,7 @@ import type { DynamicToolUIPart, ToolUIPart } from "ai";
 import type React from "react";
 import { Suspense } from "react";
 import { ErrorBoundary } from "@/web/components/error-boundary.tsx";
+import { useDecoChatOpen } from "@/web/hooks/use-deco-chat-open.ts";
 import { getToolPartErrorText, safeStringify } from "../utils.ts";
 import { ToolCallShell } from "./common.tsx";
 import { getEffectiveState, getFriendlyToolName } from "./utils.tsx";
@@ -160,8 +163,9 @@ export function GenericToolCallPart({
         : part.type.replace("tool-", "") || "Tool";
   const friendlyName = getFriendlyToolName(toolName);
 
-  const { selectedVirtualMcp } = useChatStable();
+  const { selectedVirtualMcp, sendMessage } = useChatStable();
   const { org } = useProjectContext();
+  const [, setChatOpen] = useDecoChatOpen();
 
   const uiResourceUri = getUIResourceUri(toolMeta);
 
@@ -176,6 +180,14 @@ export function GenericToolCallPart({
       : (selectedVirtualMcp?.id ?? null);
 
   const hasMCPApp = !!uiResourceUri && part.state === "output-available";
+
+  const handleAppMessage = (params: McpUiMessageRequest["params"]) => {
+    const doc = contentBlocksToTiptapDoc(params.content);
+    if (doc.content.length > 0) {
+      setChatOpen(true);
+      sendMessage(doc);
+    }
+  };
 
   // Compute state-dependent props
   // Cancelled = explicitly denied OR stale approval (conversation moved on)
@@ -270,6 +282,7 @@ export function GenericToolCallPart({
               toolInput={part.input}
               toolResult={part.output}
               toolMeta={toolMeta as Record<string, unknown> | undefined}
+              onMessage={handleAppMessage}
             />
           </Suspense>
         </ErrorBoundary>
@@ -286,6 +299,7 @@ interface MCPAppRendererProps {
   toolInput: unknown;
   toolResult: unknown;
   toolMeta?: Record<string, unknown>;
+  onMessage?: (params: McpUiMessageRequest["params"]) => void;
 }
 
 function MCPAppRenderer({
@@ -296,6 +310,7 @@ function MCPAppRenderer({
   toolInput,
   toolResult,
   toolMeta,
+  onMessage,
 }: MCPAppRendererProps) {
   const client = useMCPClient({ connectionId, orgId });
 
@@ -313,6 +328,7 @@ function MCPAppRenderer({
         toolInput={toolInput as Record<string, unknown> | undefined}
         toolResult={toolResult as CallToolResult | undefined}
         client={client}
+        onMessage={onMessage}
       />
     </div>
   );

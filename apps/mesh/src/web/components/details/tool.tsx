@@ -42,7 +42,8 @@ import {
   Play,
   StopCircle,
 } from "@untitledui/icons";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
+import type { McpUiMessageRequest } from "@modelcontextprotocol/ext-apps";
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
 import { ViewLayout } from "./layout";
@@ -58,8 +59,11 @@ import {
   useMCPToolsListQuery,
   useProjectContext,
 } from "@decocms/mesh-sdk";
+import { contentBlocksToTiptapDoc } from "@/mcp-apps/content-blocks.ts";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { ToolAnnotationBadges } from "@/web/components/tools/tools-list.tsx";
+import { useChatStable } from "@/web/components/chat/context.tsx";
+import { useDecoChatOpen } from "@/web/hooks/use-deco-chat-open.ts";
 import { MonacoCodeEditor } from "./workflow/components/monaco-editor";
 
 export interface ToolDetailsViewProps {
@@ -183,6 +187,8 @@ function ToolDetailsAuthenticated({
 
   const { org } = useProjectContext();
   const connection = useConnection(connectionId);
+  const { sendMessage } = useChatStable();
+  const [, setChatOpen] = useDecoChatOpen();
 
   const client = useMCPClient({
     connectionId,
@@ -194,6 +200,14 @@ function ToolDetailsAuthenticated({
   // Find the tool definition
   const tool = toolsQuery.data?.tools?.find((t) => t.name === toolName);
   const uiResourceUri = getUIResourceUri(tool?._meta);
+
+  const handleAppMessage = (params: McpUiMessageRequest["params"]) => {
+    const doc = contentBlocksToTiptapDoc(params.content);
+    if (doc.content.length > 0) {
+      setChatOpen(true);
+      sendMessage(doc);
+    }
+  };
 
   const [resultView, setResultView] = useState<"ui" | "json">("json");
   const [hasSetDefaultView, setHasSetDefaultView] = useState(false);
@@ -659,7 +673,7 @@ function ToolDetailsAuthenticated({
                   toolInfo={
                     tool
                       ? {
-                          tool: tool as import("@modelcontextprotocol/sdk/types.js").Tool,
+                          tool: tool as Tool,
                         }
                       : undefined
                   }
@@ -669,6 +683,7 @@ function ToolDetailsAuthenticated({
                   minHeight={MCP_APP_DISPLAY_MODES.view.minHeight}
                   maxHeight={MCP_APP_DISPLAY_MODES.view.maxHeight}
                   client={client}
+                  onMessage={handleAppMessage}
                   className="h-full"
                 />
               </Suspense>

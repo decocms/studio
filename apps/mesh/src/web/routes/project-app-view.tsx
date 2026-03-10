@@ -6,10 +6,14 @@ import {
   useConnection,
   useMCPToolCall,
 } from "@decocms/mesh-sdk";
+import type { McpUiMessageRequest } from "@modelcontextprotocol/ext-apps";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { contentBlocksToTiptapDoc } from "@/mcp-apps/content-blocks.ts";
 import { MCPAppRenderer } from "@/mcp-apps/mcp-app-renderer.tsx";
 import { getUIResourceUri, MCP_APP_DISPLAY_MODES } from "@/mcp-apps/types.ts";
+import { useChatStable } from "@/web/components/chat/context.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary.tsx";
+import { useDecoChatOpen } from "@/web/hooks/use-deco-chat-open.ts";
 import { Page } from "@/web/components/page/index.tsx";
 
 const EMPTY_TOOL_INPUT: Record<string, unknown> = {};
@@ -28,11 +32,21 @@ function AppRenderer({
     _meta?: Record<string, unknown>;
   };
 }) {
+  const { sendMessage } = useChatStable();
+  const [, setChatOpen] = useDecoChatOpen();
   const { data: toolResult } = useMCPToolCall({
     client,
     toolName: tool.name,
     toolArguments: EMPTY_TOOL_INPUT,
   });
+
+  const handleAppMessage = (params: McpUiMessageRequest["params"]) => {
+    const doc = contentBlocksToTiptapDoc(params.content);
+    if (doc.content.length > 0) {
+      setChatOpen(true);
+      sendMessage(doc);
+    }
+  };
 
   return (
     <MCPAppRenderer
@@ -44,6 +58,7 @@ function AppRenderer({
       minHeight={MCP_APP_DISPLAY_MODES.fullscreen.minHeight}
       maxHeight={MCP_APP_DISPLAY_MODES.fullscreen.maxHeight}
       client={client}
+      onMessage={handleAppMessage}
       className="h-full"
     />
   );
