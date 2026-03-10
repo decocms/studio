@@ -191,7 +191,7 @@ export async function validateThreadAccess(
     throw new HTTPException(400, { message: "Invalid thread ID" });
   }
   const thread = await ctx.storage.threads.get(threadId);
-  if (!thread || thread.organization_id !== organization.id) {
+  if (!thread) {
     throw new HTTPException(404, { message: "Thread not found" });
   }
   return { ctx, organization, thread, threadId, userId };

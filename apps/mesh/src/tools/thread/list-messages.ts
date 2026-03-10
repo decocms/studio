@@ -57,7 +57,7 @@ export const COLLECTION_THREAD_MESSAGES_LIST = defineTool({
   outputSchema: ListMessagesOutputSchema,
 
   handler: async (input, ctx) => {
-    const organization = requireOrganization(ctx);
+    requireOrganization(ctx);
 
     await ctx.access.check();
 
@@ -65,18 +65,6 @@ export const COLLECTION_THREAD_MESSAGES_LIST = defineTool({
     const threadId = extractThreadIdFromWhere(input.where);
     if (!threadId) {
       throw new Error("thread_id filter is required in where clause");
-    }
-
-    // Verify the thread exists and belongs to the organization
-    const thread = await ctx.storage.threads.get(threadId);
-
-    // Return empty when thread doesn't exist (e.g. new chat before first message)
-    if (!thread || thread.organization_id !== organization.id) {
-      return {
-        items: [],
-        totalCount: 0,
-        hasMore: false,
-      };
     }
 
     const offset = input.offset ?? 0;

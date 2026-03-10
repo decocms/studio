@@ -28,23 +28,15 @@ export const COLLECTION_THREADS_DELETE = defineTool({
 
   handler: async (input, ctx) => {
     requireAuth(ctx);
-    const organization = requireOrganization(ctx);
+    requireOrganization(ctx);
 
     await ctx.access.check();
 
-    // Fetch thread before deleting to return the entity
     const thread = await ctx.storage.threads.get(input.id);
     if (!thread) {
       throw new Error(`Thread not found: ${input.id}`);
     }
 
-    // Verify it belongs to the current organization
-    // Use same error message as "not found" to prevent ID enumeration
-    if (thread.organization_id !== organization.id) {
-      throw new Error(`Thread not found: ${input.id}`);
-    }
-
-    // Delete thread
     await ctx.storage.threads.delete(input.id);
 
     return {

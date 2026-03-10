@@ -222,7 +222,7 @@ export interface RequestMetadata {
 // Forward declare storage types
 import type { createMCPProxy } from "@/api/routes/proxy";
 import type { BetterAuthInstance } from "@/auth";
-import { SqlThreadStorage } from "@/storage/threads";
+import type { OrgScopedThreadStorage } from "@/storage/threads";
 import type { EventBus } from "../event-bus/interface";
 import type { ConnectionStorage } from "../storage/connection";
 import type { MonitoringStorage } from "../storage/ports";
@@ -257,7 +257,7 @@ export interface MeshStorage {
   monitoringDashboards: SqlMonitoringDashboardStorage;
   virtualMcps: VirtualMCPStorage;
   users: UserStorage;
-  threads: SqlThreadStorage;
+  threads: OrgScopedThreadStorage;
   tags: TagStorage;
   projects: ProjectsStorage;
   projectConnections: ProjectConnectionsStorage;

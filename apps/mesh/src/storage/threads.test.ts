@@ -65,9 +65,12 @@ describe("SqlThreadStorage", () => {
         },
       ];
 
-      await storage.saveMessages(messages);
+      await storage.saveMessages(messages, "org_1");
 
-      const { messages: loaded } = await storage.listMessages(thread.id);
+      const { messages: loaded } = await storage.listMessages(
+        thread.id,
+        "org_1",
+      );
       expect(loaded).toHaveLength(2);
       expect(loaded[0]!.id).toBe("msg_1");
       expect(loaded[1]!.id).toBe("msg_2");
@@ -90,7 +93,7 @@ describe("SqlThreadStorage", () => {
         },
       ];
 
-      await storage.saveMessages(initial);
+      await storage.saveMessages(initial, "org_1");
 
       const updated: ThreadMessage[] = [
         {
@@ -112,9 +115,12 @@ describe("SqlThreadStorage", () => {
         },
       ];
 
-      await storage.saveMessages(updated);
+      await storage.saveMessages(updated, "org_1");
 
-      const { messages: loaded } = await storage.listMessages(thread.id);
+      const { messages: loaded } = await storage.listMessages(
+        thread.id,
+        "org_1",
+      );
       expect(loaded).toHaveLength(1);
       expect(loaded[0]!.id).toBe("msg_upsert");
       expect(loaded[0]!.parts).toHaveLength(2);
@@ -151,9 +157,11 @@ describe("SqlThreadStorage", () => {
         organization_id: "org_1",
         created_by: "user_1",
       });
-      const updated = await storage.update(thread.id, { status: "failed" });
+      const updated = await storage.update(thread.id, "org_1", {
+        status: "failed",
+      });
       expect(updated.status).toBe("failed");
-      const loaded = await storage.get(thread.id);
+      const loaded = await storage.get(thread.id, "org_1");
       expect(loaded?.status).toBe("failed");
     });
   });

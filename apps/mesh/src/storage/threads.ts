@@ -16,6 +16,67 @@ function toIsoString(v: Date | string): string {
 }
 
 // ============================================================================
+// Org-Scoped Thread Storage (repository pattern)
+// ============================================================================
+
+/**
+ * Organization-scoped thread storage wrapper.
+ * Bakes organizationId into the instance — callers never pass org.
+ * Use for per-request context where org is known at construction.
+ */
+export class OrgScopedThreadStorage {
+  constructor(
+    private inner: SqlThreadStorage,
+    private organizationId: string,
+  ) {}
+
+  create(data: Partial<Thread>): Promise<Thread> {
+    return this.inner.create({
+      ...data,
+      organization_id: this.organizationId,
+    });
+  }
+
+  get(id: string): Promise<Thread | null> {
+    return this.inner.get(id, this.organizationId);
+  }
+
+  update(id: string, data: Partial<Thread>): Promise<Thread> {
+    return this.inner.update(id, this.organizationId, data);
+  }
+
+  forceFailIfInProgress(id: string): Promise<boolean> {
+    return this.inner.forceFailIfInProgress(id, this.organizationId);
+  }
+
+  delete(id: string): Promise<void> {
+    return this.inner.delete(id, this.organizationId);
+  }
+
+  list(
+    createdBy?: string,
+    options?: { limit?: number; offset?: number },
+  ): Promise<{ threads: Thread[]; total: number }> {
+    return this.inner.list(this.organizationId, createdBy, options);
+  }
+
+  saveMessages(data: ThreadMessage[]): Promise<void> {
+    return this.inner.saveMessages(data, this.organizationId);
+  }
+
+  listMessages(
+    threadId: string,
+    options?: {
+      limit?: number;
+      offset?: number;
+      sort?: "asc" | "desc";
+    },
+  ): Promise<{ messages: ThreadMessage[]; total: number }> {
+    return this.inner.listMessages(threadId, this.organizationId, options);
+  }
+}
+
+// ============================================================================
 // Thread Storage Implementation
 // ============================================================================
 
@@ -61,17 +122,22 @@ export class SqlThreadStorage implements ThreadStoragePort {
     return this.threadFromDbRow(result);
   }
 
-  async get(id: string): Promise<Thread | null> {
+  async get(id: string, organizationId: string): Promise<Thread | null> {
     const row = await this.db
       .selectFrom("threads")
       .selectAll()
       .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
       .executeTakeFirst();
 
     return row ? this.threadFromDbRow(row) : null;
   }
 
-  async update(id: string, data: Partial<Thread>): Promise<Thread> {
+  async update(
+    id: string,
+    organizationId: string,
+    data: Partial<Thread>,
+  ): Promise<Thread> {
     const now = new Date().toISOString();
 
     const updateData: Record<string, unknown> = {
@@ -98,9 +164,10 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .updateTable("threads")
       .set(updateData)
       .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
       .execute();
 
-    const thread = await this.get(id);
+    const thread = await this.get(id, organizationId);
     if (!thread) {
       throw new Error("Thread not found after update");
     }
@@ -108,20 +175,28 @@ export class SqlThreadStorage implements ThreadStoragePort {
     return thread;
   }
 
-  async forceFailIfInProgress(id: string): Promise<boolean> {
+  async forceFailIfInProgress(
+    id: string,
+    organizationId: string,
+  ): Promise<boolean> {
     const now = new Date().toISOString();
     const result = await this.db
       .updateTable("threads")
       .set({ status: "failed", updated_at: now })
       .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
       .where("status", "=", "in_progress")
       .executeTakeFirst();
 
     return (result.numUpdatedRows ?? BigInt(0)) > BigInt(0);
   }
 
-  async delete(id: string): Promise<void> {
-    await this.db.deleteFrom("threads").where("id", "=", id).execute();
+  async delete(id: string, organizationId: string): Promise<void> {
+    await this.db
+      .deleteFrom("threads")
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .execute();
   }
 
   async list(
@@ -171,11 +246,18 @@ export class SqlThreadStorage implements ThreadStoragePort {
    * Inserts new messages; updates existing rows (by id) with parts, metadata, role, updated_at.
    * PostgreSQL only.
    */
-  async saveMessages(data: ThreadMessage[]): Promise<void> {
+  async saveMessages(
+    data: ThreadMessage[],
+    organizationId: string,
+  ): Promise<void> {
     const now = new Date().toISOString();
     const threadId = data[0]?.thread_id;
     if (!threadId) {
       throw new Error("thread_id is required when creating multiple messages");
+    }
+    const thread = await this.get(threadId, organizationId);
+    if (!thread) {
+      throw new Error("Thread not found or access denied");
     }
     // Deduplicate by id - PostgreSQL ON CONFLICT cannot affect same row twice in one INSERT.
     // Also detect duplicate ids with conflicting thread_ids to reject corrupt batches early.
@@ -224,18 +306,24 @@ export class SqlThreadStorage implements ThreadStoragePort {
         .updateTable("threads")
         .set({ updated_at: now })
         .where("id", "=", threadId)
+        .where("organization_id", "=", organizationId)
         .execute();
     });
   }
 
   async listMessages(
     threadId: string,
+    organizationId: string,
     options?: {
       limit?: number;
       offset?: number;
       sort?: "asc" | "desc";
     },
   ): Promise<{ messages: ThreadMessage[]; total: number }> {
+    const thread = await this.get(threadId, organizationId);
+    if (!thread) {
+      return { messages: [], total: 0 };
+    }
     const sort = options?.sort ?? "asc";
     // Order by created_at first, then by id as a tiebreaker for stable ordering
     // when messages have identical timestamps (e.g., batched inserts).

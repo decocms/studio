@@ -5,8 +5,8 @@
  * Wraps the thread storage for conversation-focused operations.
  */
 
+import type { OrgScopedThreadStorage } from "@/storage/threads";
 import type { Thread, ThreadMessage } from "@/storage/types";
-import type { ThreadStoragePort } from "@/storage/ports";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 
 /**
@@ -39,12 +39,12 @@ export class Memory {
   readonly thread: Thread;
   readonly organization_id: string;
 
-  private storage: ThreadStoragePort;
+  private storage: OrgScopedThreadStorage;
   private defaultWindowSize: number;
 
   constructor(config: {
     thread: Thread;
-    storage: ThreadStoragePort;
+    storage: OrgScopedThreadStorage;
     defaultWindowSize?: number;
   }) {
     this.thread = config.thread;
@@ -78,7 +78,7 @@ export class Memory {
  * Create or get a thread, returning a Memory instance
  */
 export async function createMemory(
-  storage: ThreadStoragePort,
+  storage: OrgScopedThreadStorage,
   config: MemoryConfig,
 ): Promise<Memory> {
   const { thread_id, organization_id, userId, defaultWindowSize } = config;
@@ -96,11 +96,11 @@ export async function createMemory(
     // Try to get existing thread
     const existing = await storage.get(thread_id);
 
-    if (!existing || existing.organization_id !== organization_id) {
+    if (!existing) {
       // Thread not found or belongs to different org - create new
-      // Use fresh ID if thread exists in different org (avoid conflicts)
+      // Use fresh ID to avoid conflicts when thread exists in another org
       thread = await storage.create({
-        id: existing ? generatePrefixedId("thrd") : thread_id,
+        id: generatePrefixedId("thrd"),
         organization_id,
         created_by: userId,
       });

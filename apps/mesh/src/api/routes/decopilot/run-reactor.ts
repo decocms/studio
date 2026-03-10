@@ -41,7 +41,7 @@ async function handleTerminalStatus(
   deps: RunReactorDeps,
 ): Promise<void> {
   const { storage, streamBuffer, sseHub } = deps;
-  await storage.update(threadId, { status });
+  await storage.update(threadId, orgId, { status });
   streamBuffer.purge(threadId);
   sseHub.emit(orgId, createDecopilotThreadStatusEvent(threadId, status));
   sseHub.emit(orgId, createDecopilotFinishEvent(threadId, status));
@@ -56,7 +56,9 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
 
   switch (event.type) {
     case "RUN_STARTED":
-      await storage.update(event.threadId, { status: "in_progress" });
+      await storage.update(event.threadId, event.orgId, {
+        status: "in_progress",
+      });
       sseHub.emit(
         event.orgId,
         createDecopilotThreadStatusEvent(event.threadId, "in_progress"),
@@ -93,10 +95,11 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
       if (event.reason === "ghost") {
         const transitioned = await storage.forceFailIfInProgress(
           event.threadId,
+          event.orgId,
         );
         if (!transitioned) return;
       } else {
-        await storage.update(event.threadId, { status: "failed" });
+        await storage.update(event.threadId, event.orgId, { status: "failed" });
       }
       streamBuffer.purge(event.threadId);
       sseHub.emit(

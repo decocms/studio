@@ -391,7 +391,7 @@ function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
 import { createMCPProxy } from "@/api/routes/proxy";
 import { ConnectionEntity } from "@/tools/connection/schema";
 import { BUILTIN_ROLES } from "../auth/roles";
-import { SqlThreadStorage } from "@/storage/threads";
+import { OrgScopedThreadStorage, SqlThreadStorage } from "@/storage/threads";
 import { createClientPool } from "@/mcp-clients/outbound/client-pool";
 
 /**
@@ -764,7 +764,8 @@ export async function createMeshContextFactory(
     });
 
   // Create storage adapters once (singleton pattern)
-  const storage = {
+  const threadDb = new SqlThreadStorage(config.db);
+  const baseStorage = {
     connections: new ConnectionStorage(config.db, vault),
     organizationSettings: new OrganizationSettingsStorage(config.db),
     monitoring: new ClickHouseMonitoringStorage(
@@ -774,7 +775,6 @@ export async function createMeshContextFactory(
     monitoringDashboards: new SqlMonitoringDashboardStorage(config.db),
     virtualMcps: new VirtualMCPStorage(config.db),
     users: new UserStorage(config.db),
-    threads: new SqlThreadStorage(config.db),
     tags: new TagStorage(config.db),
     projects: new ProjectsStorage(config.db),
     projectConnections: new ProjectConnectionsStorage(config.db),
@@ -842,6 +842,11 @@ export async function createMeshContextFactory(
       authResult.role, // Role from session (for built-in role bypass)
       "self", // Default connectionId for management APIs (matches permission resource key)
     );
+
+    const storage = {
+      ...baseStorage,
+      threads: new OrgScopedThreadStorage(threadDb, organization?.id ?? ""),
+    };
 
     const ctx: MeshContext = {
       timings,

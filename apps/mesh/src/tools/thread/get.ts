@@ -34,14 +34,13 @@ export const COLLECTION_THREADS_GET = defineTool({
 
   handler: async (input, ctx) => {
     requireAuth(ctx);
-    const organization = requireOrganization(ctx);
+    requireOrganization(ctx);
 
     await ctx.access.check();
 
     const thread = await ctx.storage.threads.get(input.id);
 
-    // Verify thread exists and belongs to the current organization
-    if (!thread || thread.organization_id !== organization.id) {
+    if (!thread) {
       return { item: null };
     }
 

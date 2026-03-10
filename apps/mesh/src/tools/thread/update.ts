@@ -44,7 +44,7 @@ export const COLLECTION_THREADS_UPDATE = defineTool({
 
   handler: async (input, ctx) => {
     requireAuth(ctx);
-    const organization = requireOrganization(ctx);
+    requireOrganization(ctx);
 
     await ctx.access.check();
 
@@ -55,11 +55,8 @@ export const COLLECTION_THREADS_UPDATE = defineTool({
 
     const { id, data } = input;
 
-    // First fetch the thread to verify ownership before updating
     const existing = await ctx.storage.threads.get(id);
-
-    // Verify it exists and belongs to the current organization
-    if (!existing || existing.organization_id !== organization.id) {
+    if (!existing) {
       throw new Error("Thread not found in organization");
     }
 

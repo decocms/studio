@@ -49,16 +49,15 @@ export const COLLECTION_THREADS_LIST = defineTool({
     if (!userId) {
       throw new Error("User ID required to list threads");
     }
-    const organization = requireOrganization(ctx);
+    requireOrganization(ctx);
     const offset = input.offset ?? 0;
     const limit = input.limit ?? 100;
 
     const createdBy = input.where?.created_by;
-    const { threads, total } = await ctx.storage.threads.list(
-      organization.id,
-      createdBy,
-      { limit, offset },
-    );
+    const { threads, total } = await ctx.storage.threads.list(createdBy, {
+      limit,
+      offset,
+    });
 
     const hasMore = offset + limit < total;
 
