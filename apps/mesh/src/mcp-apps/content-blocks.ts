@@ -1,11 +1,12 @@
 import type { McpUiMessageRequest } from "@modelcontextprotocol/ext-apps";
 import type { JSONContent } from "@tiptap/core";
+import type { TiptapDoc } from "@/web/components/chat/types.ts";
 
 type AppContentBlock = McpUiMessageRequest["params"]["content"][number];
 
-interface TiptapDoc {
-  type: "doc";
-  content: JSONContent[];
+/** Approximate decoded byte size from a base64 string length. */
+function base64ByteSize(encoded: string): number {
+  return Math.ceil((encoded.length * 3) / 4);
 }
 
 export function contentBlocksToTiptapDoc(
@@ -35,7 +36,7 @@ export function contentBlocksToTiptapDoc(
                   id: crypto.randomUUID(),
                   name: `${block.type}.${block.mimeType.split("/")[1] ?? "bin"}`,
                   mimeType: block.mimeType,
-                  size: block.data.length,
+                  size: base64ByteSize(block.data),
                   data: block.data,
                 },
               },
@@ -60,7 +61,7 @@ export function contentBlocksToTiptapDoc(
                   id: crypto.randomUUID(),
                   name: String(res.uri),
                   mimeType: res.mimeType ?? "application/octet-stream",
-                  size: res.blob.length,
+                  size: base64ByteSize(res.blob),
                   data: res.blob,
                 },
               },
