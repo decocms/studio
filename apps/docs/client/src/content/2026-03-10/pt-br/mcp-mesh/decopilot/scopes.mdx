@@ -1,0 +1,85 @@
+---
+title: Escopos
+description: Entendendo como o decopilot se adapta a diferentes contextos e o que esta disponivel em cada nivel
+icon: Target
+---
+
+import Callout from "../../../../../components/ui/Callout.astro";
+
+<Callout type="info">
+  Esta pagina documenta a **arquitetura planejada** para os escopos do decopilot. A implementacao esta em desenvolvimento.
+</Callout>
+
+## O que e Escopo?
+
+**Escopo** e o contexto de trabalho atual do decopilot — ele determina quais instrucoes, ferramentas e recursos estao disponiveis enquanto voce trabalha.
+
+O escopo vincula o contexto da sua tarefa atual a um MCP (Model Context Protocol server) de onde ferramentas, recursos e prompts sao obtidos. O decopilot se adapta automaticamente com base na visao em que voce esta, alternando entre contextos de organizacao e projeto.
+
+## Tres Tipos de Escopo
+
+**Escopo de Organizacao**: Trabalhe na infraestrutura de toda a organizacao, conexoes e gestao de equipe.
+
+**Escopo de Projeto**: Trabalho diario de desenvolvimento com ferramentas e recursos especificos do projeto.
+
+**Escopo de Agente**: Tarefas focadas e especializadas com capacidades delimitadas (revisoes de seguranca, analise de codigo, testes).
+
+## Como o Escopo e Determinado
+
+O escopo e determinado por **dois fatores simples**:
+
+1. **Em qual visao voce esta**: Visao de organizacao ou visao de projeto
+2. **Selecao de agente**: Se voce tem um agente selecionado no canto inferior esquerdo do chat
+
+**Ao visualizar a organizacao**:
+- Nenhum agente selecionado -> **Escopo de organizacao**
+- Agente selecionado -> **Escopo de agente**
+
+**Ao visualizar um projeto**:
+- Nenhum agente selecionado -> **Escopo de projeto**
+- Agente selecionado -> **Escopo de agente**
+
+Cada escopo e completamente isolado — nao ha heranca entre escopos. Quando voce seleciona um agente, voce tem acesso apenas as ferramentas e recursos especificos daquele agente.
+
+## Escopo e Subtarefas
+
+[Subtarefas](/pt-br/mcp-mesh/decopilot/tasks-and-spawning) podem rodar em escopos diferentes da sua tarefa principal — isso possibilita a colaboracao entre agentes.
+
+**Exemplo**: Enquanto trabalha no escopo de projeto em atendimento de pedidos, voce pode criar multiplos agentes:
+- **Agente de Inventario** - Avalia disponibilidade de estoque
+- **Agente de Envio** - Planeja logistica
+- **Agente de Atendimento ao Cliente** - Prepara estrategia de suporte
+
+Sua tarefa principal coordena a estrategia enquanto cada agente lida com trabalho especializado em isolamento.
+
+<Callout type="tip">
+Comece no escopo de projeto para a maioria dos trabalhos. Mude para agentes quando precisar de capacidades especializadas ou execucao paralela.
+</Callout>
+
+## Alternando Escopos
+
+Use o seletor de agentes no canto inferior esquerdo do chat para alternar entre escopos:
+
+**Exemplo de fluxo de trabalho**:
+```
+Projeto (sem agente) -> implementando funcionalidades
+  |
+Selecionar agente de seguranca -> escopo de agente para revisao de seguranca
+  |
+Desselecionar agente -> de volta ao escopo de projeto
+```
+
+Quando voce alterna, o decopilot ajusta automaticamente as ferramentas e o contexto disponiveis.
+
+## Pontos Chave
+
+- **O escopo se ajusta automaticamente** com base na visao em que voce esta e se um agente esta selecionado
+- **Tres tipos de escopo** fornecem diferentes capacidades: organizacao, projeto e agente
+- **Cada escopo e isolado** com suas proprias ferramentas e recursos
+- **Agentes sao focados** em tarefas especializadas para manter a clareza
+
+Entender o escopo ajuda voce a trabalhar efetivamente com o decopilot — voce sabera o que esta disponivel e como organizar seu trabalho.
+
+---
+
+**Proximos passos**: Explore [Ferramentas](/pt-br/mcp-mesh/decopilot/tools) para ver o que o decopilot pode fazer, ou confira [Tarefas](/pt-br/mcp-mesh/decopilot/tasks-and-spawning) para entender a organizacao de tarefas.

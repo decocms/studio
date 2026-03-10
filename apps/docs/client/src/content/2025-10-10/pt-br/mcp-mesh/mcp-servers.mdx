@@ -1,0 +1,37 @@
+---
+title: Conexões
+description: Registre MCP servers upstream, armazene credenciais e faça proxy de requisições com segurança
+icon: Server
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+
+## O que é uma conexão?
+
+Uma **Conexão** no Mesh é um endpoint MCP upstream configurado (tipicamente HTTP). O Mesh armazena sua configuração e (opcionalmente) credenciais, e pode então fazer proxy de requisições MCP para ele.
+
+## Na interface
+
+Vá em **Connections** para:
+
+- ver as conexões conectadas
+- criar uma nova conexão (**Create Connection**)
+- buscar e gerenciar conexões existentes
+
+## Fazendo proxy para uma única conexão
+
+Uma vez que você tenha o ID da conexão, clientes podem chamar tools via:
+
+- `POST /mcp/:connectionId`
+
+O Mesh vai:
+
+1. autenticar o chamador
+2. autorizar a tool call
+3. descriptografar credenciais (se necessário)
+4. encaminhar a requisição MCP para o servidor upstream
+5. registrar um evento de monitoring
+
+<Callout type="info">
+  Se você precisa de um único endpoint agregado para múltiplas conexões, use [Agents](/latest/pt-br/mcp-mesh/mcp-gateways).
+</Callout>

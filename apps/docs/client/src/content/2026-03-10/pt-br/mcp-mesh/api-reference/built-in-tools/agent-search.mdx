@@ -1,0 +1,59 @@
+---
+title: agent_search
+description: Pesquisar agentes configurados na organização
+icon: Bot
+---
+
+## Visão Geral
+
+Pesquisa agentes configurados na organização. Retorna metadados dos agentes incluindo propósito e capacidades.
+
+## Disponibilidade
+
+- **Tarefas**: ✓ Disponível
+- **Subtarefas**: ✗ Não disponível
+
+## Assinatura
+
+```typescript
+agent_search(search_term?: string)
+```
+
+## Parâmetros
+
+| Parâmetro | Tipo | Obrigatório | Descrição |
+|-----------|------|----------|-------------|
+| `search_term` | `string` | Opcional | Termo de busca para filtrar agentes. Busca vazia retorna todos os agentes disponíveis. |
+
+## Retorno
+
+Array de definições de agentes com:
+- **agent_id**: Identificador único do agente
+- **name**: Nome legível do agente
+- **purpose**: Para que o agente foi projetado
+- **capabilities**: Lista de capacidades que o agente possui
+
+## Comportamento
+
+- Retorna agentes configurados na organização
+- Busca vazia retorna todos os agentes disponíveis
+- Metadados do agente incluem propósito e capacidades
+- Use com `subtask_run` para delegar trabalho a agentes específicos
+
+## Exemplo de Uso
+
+```typescript
+// Pesquisar todos os agentes
+agent_search()
+
+// Pesquisar agentes de deploy
+agent_search("deploy")
+
+// Pesquisar agentes de code review
+agent_search("review")
+```
+
+## Relacionados
+
+- [**subtask_run**](/pt-br/mcp-mesh/api-reference/built-in-tools/subtask-run) - Criar subtarefa com agente específico
+- [Visão Geral das Ferramentas Integradas](/pt-br/mcp-mesh/api-reference/built-in-tools)

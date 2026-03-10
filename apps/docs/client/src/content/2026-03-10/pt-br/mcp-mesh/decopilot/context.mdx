@@ -1,0 +1,150 @@
+---
+title: Contexto
+description: Entendendo janelas de contexto e como o decopilot mantém seu workspace focado e eficiente
+icon: FileText
+---
+
+import Callout from "../../../../../components/ui/Callout.astro";
+
+<Callout type="info">
+  Esta pagina documenta a **arquitetura planejada** para o contexto do decopilot. A implementacao esta em desenvolvimento.
+</Callout>
+
+Todo [modelo](https://code.claude.com/docs/en/how-claude-code-works#models) de IA trabalha dentro de uma janela de contexto fixa — pense nela como a "memoria de trabalho" do modelo para sua conversa. Gerenciar esse espaco de forma eficiente e essencial para fluxos de trabalho produtivos com o decopilot.
+
+O decopilot equilibra automaticamente o que entra na sua janela de contexto: instrucoes do seu [escopo](/pt-br/mcp-mesh/decopilot/overview#scopes) atual, [ferramentas](/pt-br/mcp-mesh/concepts#tools) disponiveis, historico de conversa e mais. Janelas de contexto maiores significam que voce pode realizar trabalhos mais complexos em uma unica sessao antes de precisar atualizar.
+
+## Entendendo os Slots de Contexto
+
+O decopilot organiza sua janela de contexto em slots distintos, cada um servindo a um proposito especifico:
+
+1. **Prompt do sistema** - Comportamento e capacidades centrais do decopilot
+2. **Instrucoes de escopo** - Diretrizes do seu escopo atual (organizacao, projeto ou agente especifico)
+3. **Ferramentas integradas** - Operacoes essenciais do decopilot sempre disponiveis
+4. **Ferramentas habilitadas** - [Ferramentas](/pt-br/mcp-mesh/concepts#tools) adicionais que voce ativou durante sua sessao
+5. **Historico de conversa** - Suas mensagens recentes e respostas do decopilot
+6. **Buffer de compactificacao** - Contexto de conversa anterior resumido
+
+Este sistema de slots garante que o contexto mais importante permaneca disponivel enquanto gerencia o espaco de forma eficiente.
+
+## Saude do Contexto: A Regra 40/80
+
+Sua janela de contexto funciona melhor quando nao esta muito cheia. Veja o que observar:
+
+- **Abaixo de 40%**: Desempenho otimo — bastante espaco para raciocinio complexo e conversas longas
+- **40-80%**: O contexto comeca a degradar — ainda funcional, mas se aproximando dos limites
+- **Acima de 80%**: Hora de renovar — o decopilot compactifica automaticamente seu historico de conversa
+
+Quando seu contexto atinge 80% da capacidade, o decopilot limpa automaticamente o slot de historico de conversa e o compactifica no buffer. Este processo resume sua conversa preservando o contexto importante, dando espaco para continuar trabalhando.
+
+<Callout type="tip">
+Voce pode acionar a compactificacao manualmente a qualquer momento usando o comando `/compact` — util quando voce quer liberar espaco antes de iniciar uma nova fase de trabalho.
+</Callout>
+
+## Mantendo o Contexto Enxuto
+
+A melhor forma de trabalhar eficientemente e evitar preencher seu contexto desnecessariamente. Aqui estao duas tecnicas chave:
+
+### Compactificacao
+
+A compactificacao resume o historico de conversa mais antigo preservando informacoes chave. Pense nisso como consolidar suas anotacoes — voce mantem as decisoes e resultados importantes, mas remove a exploracao que levou ate eles.
+
+**Quando compactar:**
+- Aciona automaticamente em 80% da capacidade do contexto
+- Manualmente via comando `/compact` antes de iniciar trabalho complexo
+- Apos completar uma tarefa importante, mas antes de passar para a proxima
+
+### Subtarefas
+
+Usar subtarefas para trabalhos especificos mantem seu contexto principal limpo. As subtarefas rodam em seu proprio espaco de contexto isolado e retornam apenas um resumo dos resultados para sua conversa principal. Voce pode opcionalmente criar [agentes](/pt-br/mcp-mesh/agents) — especialistas em campos especificos — em subtarefas para trazer expertise de dominio ao trabalho isolado.
+
+**Exemplo apenas com subtarefa:**
+
+```
+Voce: "Criar subtarefa para analisar rupturas de estoque"
+  |
+  v
+Decopilot cria subtarefa
+  |
+  v
+Subtarefa analisa inventario (contexto isolado)
+  |
+  v
+Retorna: "3 SKUs criticos precisam reposicao, 5 podem esperar..."
+  |
+  v
+Contexto principal: Ve apenas o resumo
+```
+
+**Exemplo com agente especialista:**
+
+```
+Voce: "Usar especialista em inventario para analisar rupturas de estoque"
+  |
+  v
+Decopilot busca agentes
+  |
+  v
+Encontra: "Otimizador de Inventario" e "Analista de Cadeia de Suprimentos"
+  |
+  v
+Decopilot: "Qual agente voce prefere?"
+  |
+  v
+Voce: "Otimizador de Inventario"
+  |
+  v
+Cria Otimizador de Inventario como subtarefa
+  |
+  v
+Especialista preve demanda, otimiza reposicoes (contexto isolado)
+  |
+  v
+Retorna: "Repor 500 unidades SKU-123 do fornecedor B..."
+  |
+  v
+Contexto principal: Ve apenas o resumo
+```
+
+Este padrao e especialmente poderoso para:
+- Tarefas de pesquisa e exploracao
+- Executar testes e analisar resultados
+- Revisoes de codigo e varreduras de seguranca
+- Qualquer trabalho que gere muita saida que voce nao precisa ver em detalhes
+
+Veja [Agentes](/pt-br/mcp-mesh/agents) para mais sobre como agentes fornecem contexto novo e focado para tarefas especificas.
+
+## Como os Escopos Afetam o Contexto
+
+Cada [escopo](/pt-br/mcp-mesh/decopilot/scopes) tem acesso apenas as suas proprias ferramentas e recursos. Quando voce troca de escopo, as ferramentas disponiveis atraves do `tool_search` mudam para corresponder ao MCP virtual daquele escopo, e as instrucoes que carregam no slot de instrucoes de escopo mudam — organizacao, projeto ou agente especifico. Veja [Escopos](/pt-br/mcp-mesh/decopilot/scopes) para detalhes.
+
+## Dicas Praticas
+
+Aqui estao formas praticas de manter seu contexto saudavel e produtivo:
+
+**Monitore a saude do seu contexto** - Preste atencao em quao cheio esta seu contexto. Quando atingir 40%, considere finalizar a fase atual de trabalho ou compactar.
+
+**Use `/compact` estrategicamente** - Compacte manualmente antes de iniciar trabalho novo e complexo, apos completar tarefas importantes ou ao alternar entre diferentes areas de foco.
+
+**Crie agentes para trabalho pesado** - Pesquisa, testes, revisoes de codigo e qualquer trabalho que gere saida detalhada devem acontecer em agentes criados. Mantenha resumos, nao detalhes, no seu contexto principal.
+
+**Habilite ferramentas seletivamente** - Nao habilite todas as ferramentas disponiveis "por precaucao". Habilite ferramentas do seu escopo atual conforme precisar delas para tarefas especificas.
+
+**Trabalhe no escopo certo** - Use o escopo de organizacao para trabalho entre projetos, escopo de projeto para desenvolvimento focado, e deixe os agentes lidarem com trabalho especifico com contexto novo.
+
+**Pense de forma modular** - Divida trabalho complexo em fases. Complete uma fase, compacte ou crie agentes para a proxima. Isso mantem cada fase focada e seu contexto gerenciavel.
+
+## Por Que o Contexto Importa
+
+Boa gestao de contexto nao e apenas sobre ficar dentro dos limites — e sobre manter qualidade. Quando o contexto esta limpo e focado:
+
+- O decopilot raciocina mais claramente sobre seu problema especifico
+- As conversas permanecem no rumo sem se perder em detalhes acumulados
+- Fluxos de trabalho complexos com multiplas etapas permanecem gerenciaveis
+- Voce gasta mais tempo progredindo e menos tempo reiniciando o contexto
+
+Ao entender como o contexto funciona e usar as ferramentas disponiveis — compactificacao, criacao de agentes, habilitacao seletiva de ferramentas — voce pode trabalhar de forma mais eficaz com o decopilot em projetos de qualquer complexidade.
+
+---
+
+**Proximos passos**: Aprenda sobre [Escopos](/pt-br/mcp-mesh/decopilot/overview#scopes) para entender como o contexto muda em diferentes niveis, ou explore [Agentes](/pt-br/mcp-mesh/agents) para ver como o isolamento de contexto novo funciona na pratica.

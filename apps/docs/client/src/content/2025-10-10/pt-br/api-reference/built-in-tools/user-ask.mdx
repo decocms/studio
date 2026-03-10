@@ -1,0 +1,398 @@
+---
+title: user_ask
+description: Ferramenta interativa de entrada do usuário para coletar respostas durante a execução do agente
+icon: MessageCircle
+---
+
+import Callout from "../../../../../components/ui/Callout.astro";
+
+A ferramenta integrada `user_ask` permite que agentes pausem a execução e solicitem entrada dos usuários de forma interativa. Ela suporta três tipos de entrada: texto livre, seleção de múltipla escolha e confirmação sim/não.
+
+<Callout type="info">
+  **Ferramenta do lado do cliente**: `user_ask` não tem execução no servidor. A chamada da ferramenta é transmitida ao cliente, renderiza um componente de UI interativo e retorna a resposta do usuário para continuar o fluxo do agente.
+</Callout>
+
+## Tipos de Entrada
+
+### text
+
+Entrada de texto livre para perguntas abertas.
+
+```typescript
+{
+  prompt: "What is your preferred contact email?",
+  type: "text",
+  default: "user@example.com" // opcional
+}
+```
+
+**Casos de uso:**
+- Coletar nomes, emails ou descrições
+- Solicitar valores ou parâmetros personalizados
+- Obter feedback ou anotações do usuário
+
+### choice
+
+Seleção de múltipla escolha a partir de uma lista de opções.
+
+```typescript
+{
+  prompt: "Select your preferred deployment environment",
+  type: "choice",
+  options: ["development", "staging", "production"],
+  default: "staging" // opcional
+}
+```
+
+**Validação:**
+- O array `options` é obrigatório
+- Deve conter pelo menos 2 itens
+- `default` deve corresponder a uma das opções, se fornecido
+
+**Casos de uso:**
+- Selecionar entre categorias predefinidas
+- Escolher opções de configuração
+- Escolher de uma lista de recursos disponíveis
+
+### confirm
+
+Confirmação Sim/Não para decisões binárias.
+
+```typescript
+{
+  prompt: "Do you want to proceed with database migration?",
+  type: "confirm",
+  default: "yes" // opcional: "yes" ou "no"
+}
+```
+
+**Casos de uso:**
+- Confirmar operações destrutivas
+- Aprovar próximos passos em um workflow
+- Validar suposições antes de prosseguir
+
+## Schema de Saída
+
+Todos os tipos de entrada retornam a mesma estrutura de saída:
+
+```typescript
+{
+  response: string
+}
+```
+
+**Valores de resposta por tipo:**
+- **text**: Entrada de texto livre do usuário como string
+- **choice**: A opção selecionada do array `options`
+- **confirm**: `"yes"` ou `"no"`
+
+## Exemplos
+
+### Exemplo 1: Entrada de Texto
+
+**Solicitação do agente:**
+```typescript
+{
+  prompt: "What domain name should we use for the production deployment?",
+  type: "text",
+  default: "app.example.com"
+}
+```
+
+**Resposta do usuário:**
+```typescript
+{
+  response: "production.myapp.io"
+}
+```
+
+### Exemplo 2: Entrada de Escolha
+
+**Solicitação do agente:**
+```typescript
+{
+  prompt: "Which authentication provider should we configure?",
+  type: "choice",
+  options: ["GitHub", "Google", "Microsoft", "Email"],
+  default: "GitHub"
+}
+```
+
+**Resposta do usuário:**
+```typescript
+{
+  response: "Google"
+}
+```
+
+### Exemplo 3: Entrada de Confirmação
+
+**Solicitação do agente:**
+```typescript
+{
+  prompt: "This will delete all test data. Continue?",
+  type: "confirm",
+  default: "no"
+}
+```
+
+**Resposta do usuário:**
+```typescript
+{
+  response: "yes"
+}
+```
+
+### Exemplo 4: Workflow Multi-Etapas
+
+Agentes podem encadear múltiplas chamadas `user_ask` para construir workflows complexos:
+
+```typescript
+// Passo 1: Confirmar operação
+{
+  prompt: "Ready to deploy the application?",
+  type: "confirm"
+}
+// Resposta: { response: "yes" }
+
+// Passo 2: Selecionar ambiente
+{
+  prompt: "Select target environment",
+  type: "choice",
+  options: ["staging", "production"]
+}
+// Resposta: { response: "production" }
+
+// Passo 3: Obter detalhes de confirmação
+{
+  prompt: "Enter your approval ticket number",
+  type: "text"
+}
+// Resposta: { response: "TICKET-12345" }
+```
+
+## Comportamento
+
+### Fluxo de Execução
+
+1. **Agente invoca a ferramenta**: O agente chama `user_ask` com parâmetros de entrada
+2. **Streaming para o cliente**: A chamada da ferramenta é transmitida ao cliente conforme é gerada
+3. **UI renderiza o prompt**: O cliente exibe um componente de entrada interativo
+4. **Usuário responde**: O usuário fornece a entrada através da UI
+5. **Resposta retorna**: A resposta do usuário é enviada de volta ao agente
+6. **Agente continua**: A execução continua com a entrada do usuário
+
+### Comportamento Bloqueante
+
+<Callout type="warning">
+  A execução do agente **bloqueia** enquanto aguarda a entrada do usuário. A chamada da ferramenta não será concluída até que o usuário forneça uma resposta.
+</Callout>
+
+Esse comportamento bloqueante é intencional e permite que agentes:
+- Solicitem esclarecimentos durante a tarefa
+- Confirmem operações destrutivas antes da execução
+- Coletem parâmetros ausentes sob demanda
+
+### Streaming
+
+Chamadas de ferramentas são transmitidas progressivamente conforme o agente as gera:
+
+1. **`input-streaming`**: Os parâmetros da ferramenta estão sendo gerados
+2. **`input-available`**: Entrada completa recebida, aguardando resposta do usuário (este é o estado padrão após input-streaming ser concluído e antes da saída estar disponível)
+3. **`output-available`**: O usuário respondeu, saída pronta
+
+A UI é atualizada em tempo real conforme a chamada da ferramenta é transmitida, fornecendo feedback imediato aos usuários. O componente verifica estados explícitos (`input-streaming` e `output-available`) e renderiza o prompt interativo para qualquer outro estado onde a entrada esteja completa.
+
+## Renderização da UI
+
+O cliente renderiza diferentes componentes de UI baseado no tipo de entrada:
+
+### Entrada de Texto
+
+Renderiza um campo de entrada de texto com o valor padrão pré-preenchido, se fornecido.
+
+**Recursos:**
+- Campo de entrada de linha única
+- Texto placeholder: "Type your response..."
+- Valor padrão pré-preenchido no campo de entrada, se fornecido
+- Botão de envio ou tecla Enter para confirmar
+
+### Entrada de Escolha
+
+Renderiza todas as opções como uma pilha vertical de botões com contorno.
+
+**Recursos:**
+- Cada opção aparece como um botão clicável com contorno
+- As opções são exibidas em uma pilha vertical
+- Clicar em qualquer opção envia imediatamente essa escolha
+- Nenhum botão de envio explícito é necessário
+
+### Entrada de Confirmação
+
+Renderiza dois botões proeminentes: Sim e Não.
+
+**Recursos:**
+- Distinção visual clara entre ações Sim/Não
+- Opção padrão destacada, se fornecida
+- Atalhos de teclado (Y/N) para resposta rápida
+
+<Callout type="tip">
+  A UI foca automaticamente o elemento de entrada quando renderizado, permitindo que os usuários respondam imediatamente sem clicar.
+</Callout>
+
+## Tratamento de Erros
+
+### Regras de Validação
+
+**Validação do tipo choice:**
+```typescript
+// ✅ Válido
+{ type: "choice", options: ["A", "B"] }
+
+// ❌ Inválido: options ausente
+{ type: "choice" }
+
+// ❌ Inválido: menos de 2 opções
+{ type: "choice", options: ["A"] }
+```
+
+**Validação do valor padrão:**
+```typescript
+// ✅ Válido: default corresponde a uma opção
+{ type: "choice", options: ["A", "B", "C"], default: "B" }
+
+// ⚠️ Aviso: default não corresponde (será ignorado)
+{ type: "choice", options: ["A", "B", "C"], default: "D" }
+```
+
+### Mensagens de Erro
+
+| Erro | Causa | Resolução |
+|------|-------|-----------|
+| `Options array with at least 2 items required for 'choice' type` | Tipo `choice` usado sem `options` válido | Forneça um array `options` com 2+ itens |
+| `Invalid input type` | Valor desconhecido para o campo `type` | Use `"text"`, `"choice"` ou `"confirm"` |
+| `Prompt is required` | Campo `prompt` ausente ou vazio | Forneça uma string não vazia para `prompt` |
+
+## Melhores Práticas
+
+### 1. Forneça Prompts Claros
+
+Escreva prompts que comuniquem claramente qual entrada é necessária e por quê.
+
+```typescript
+// ✅ Bom: específico e acionável
+{
+  prompt: "Enter the API endpoint URL for the production environment",
+  type: "text"
+}
+
+// ❌ Ruim: vago e pouco claro
+{
+  prompt: "URL?",
+  type: "text"
+}
+```
+
+### 2. Use Tipos de Entrada Apropriados
+
+Escolha o tipo de entrada que melhor corresponde à resposta esperada.
+
+```typescript
+// ✅ Bom: decisão binária usa confirm
+{
+  prompt: "Enable debug logging?",
+  type: "confirm"
+}
+
+// ❌ Ruim: decisão binária usa text
+{
+  prompt: "Enable debug logging? (yes/no)",
+  type: "text"
+}
+```
+
+### 3. Forneça Padrões Sensatos
+
+Valores padrão ajudam os usuários a responder rapidamente e reduzem a fricção.
+
+```typescript
+// ✅ Bom: padrão comum pré-selecionado
+{
+  prompt: "Select log level",
+  type: "choice",
+  options: ["debug", "info", "warn", "error"],
+  default: "info"
+}
+
+// ⚠️ Aceitável mas menos útil: sem padrão
+{
+  prompt: "Select log level",
+  type: "choice",
+  options: ["debug", "info", "warn", "error"]
+}
+```
+
+### 4. Limite as Opções de Escolha
+
+Mantenha o número de opções gerenciável para uma melhor UX.
+
+```typescript
+// ✅ Bom: conjunto focado de opções
+{
+  prompt: "Select deployment region",
+  type: "choice",
+  options: ["us-east", "us-west", "eu-central", "ap-southeast"]
+}
+
+// ⚠️ Aceitável mas considere paginação ou busca para conjuntos maiores
+{
+  prompt: "Select deployment region",
+  type: "choice",
+  options: [...50 regions...]
+}
+```
+
+## Detalhes Técnicos
+
+### Framework
+
+`user_ask` é implementado usando o **AI SDK** (pacote `ai`) em vez do `defineTool()` do MCP:
+
+```typescript
+import { tool, zodSchema } from "ai";
+
+export const userAskTool = tool({
+  description: "Ask the user a question and wait for their response...",
+  inputSchema: zodSchema(UserAskInputSchema),
+  outputSchema: zodSchema(UserAskOutputSchema),
+  // SEM função execute - apenas do lado do cliente
+});
+```
+
+Este design permite que a ferramenta seja tratada inteiramente no lado do cliente, sem lógica de execução no servidor.
+
+### Protocolo
+
+Chamadas de ferramentas seguem o protocolo padrão de chamada de ferramenta do AI SDK:
+
+1. Agente gera chamada de ferramenta com `toolCallId`
+2. Chamada de ferramenta é transmitida ao cliente via SSE
+3. Cliente renderiza UI baseada na entrada da ferramenta
+4. Usuário fornece resposta
+5. Cliente envia resultado da ferramenta de volta ao agente
+6. Agente processa resultado e continua
+
+### Localização da Implementação
+
+**Definição no servidor:**
+- `/apps/mesh/src/api/routes/decopilot/built-in-tools/user-ask.ts`
+
+**UI no cliente:**
+- `/apps/mesh/src/web/components/chat/highlight.tsx`
+
+**Definições de tipos:**
+- `/apps/mesh/src/web/components/chat/types.ts` (UserAskToolPart)
+
+<Callout type="info">
+  Ferramentas integradas são automaticamente registradas na API do Decopilot e disponíveis em todas as sessões de chat sem configuração adicional.
+</Callout>

@@ -1,0 +1,65 @@
+---
+title: Quickstart
+description: Comece a usar o serviço gerenciado do deco CMS em 5 minutos
+icon: Rocket
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+
+## Comece em 5 Minutos
+
+A forma mais rápida de experimentar o deco CMS é através do nosso serviço gerenciado em **mesh-admin.decocms.com**. Você estará funcionando com sua primeira conexão MCP em minutos.
+
+### Passo 1: Cadastre-se
+
+Acesse [mesh-admin.decocms.com](https://mesh-admin.decocms.com) e crie sua conta usando:
+- Email e senha
+- GitHub OAuth
+- Google OAuth
+
+### Passo 2: Crie Sua Primeira Organização
+
+Após fazer login, você será solicitado a criar uma organização. Este é o limite de tenant de nível superior onde você gerenciará conexões, agentes e membros da equipe.
+
+Escolha um nome para a organização (ex: "Loja Acme" ou "Meu Ecommerce") e clique em **Create Organization**.
+
+### Passo 3: Adicione uma Conexão da Store
+
+Conexões são servidores MCP que você deseja usar. O deco CMS vem com uma loja integrada de integrações populares:
+
+1. Navegue até **Connections** na barra lateral
+2. Clique em **Add from Store**
+3. Navegue pelas conexões disponíveis (Shopify, Stripe, WooCommerce, BigCommerce, etc.)
+4. Selecione uma conexão e clique em **Install**
+5. Forneça as credenciais necessárias:
+   - Para conexões OAuth: Siga o fluxo OAuth para autorizar
+   - Para conexões com API key: Cole sua API key
+
+Sua conexão agora está registrada e as credenciais estão criptografadas no vault do deco CMS.
+
+### Passo 4: Comece a Usar o Chat
+
+Uma vez que você conectou pelo menos um servidor MCP, pode começar a usar a interface de chat integrada:
+
+1. Navegue até **Chat** na barra lateral
+2. Suas ferramentas conectadas estão automaticamente disponíveis para o assistente de IA
+3. Tente fazer perguntas ou solicitar ações que usem suas conexões:
+   - "Mostre os pedidos de hoje do Shopify"
+   - "Qual é meu estoque atual para o produto SKU-12345?"
+   - "Liste as transações de pagamento que falharam recentemente no Stripe"
+   - "Crie um reembolso para o pedido #1234"
+   - "Atualize a quantidade em estoque do produto 'Fone Wireless' para 150 unidades"
+   - "Gere um relatório de vendas dos últimos 30 dias"
+   - "Envie lembretes de carrinho abandonado para clientes da semana passada"
+
+A IA invocará automaticamente as ferramentas corretas das suas conexões para atender suas solicitações.
+
+<Callout type="success">
+  Parabéns! Você configurou com sucesso seu primeiro control plane MCP. A partir daqui, você pode adicionar mais conexões, criar agentes especializados para diferentes fluxos de trabalho, convidar membros da equipe e monitorar todas as invocações de ferramentas na aba **Monitoring**.
+</Callout>
+
+## Próximos Passos
+
+- **[Aprenda os conceitos principais](/pt-br/mcp-mesh/concepts)** - Entenda conexões, MCPs virtuais, projetos e agentes
+- **[Conecte seu cliente MCP](/pt-br/mcp-mesh/agents)** - Use suas conexões com Claude Desktop, Cursor ou agentes de IA personalizados
+- **[Monitore invocações de ferramentas](/pt-br/mcp-mesh/monitoring)** - Rastreie uso, depure problemas e audite atividades

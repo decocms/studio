@@ -1,0 +1,101 @@
+---
+title: Agentes
+description: MCPs virtuais de propósito único projetados para tarefas específicas
+icon: Bot
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+
+<Callout type="info">
+  Esta página documenta a **arquitetura planejada** para agentes no deco CMS. A implementação está em desenvolvimento.
+</Callout>
+
+## O que são Agentes?
+
+**Agentes** são MCPs virtuais de propósito único otimizados para tarefas específicas. Enquanto [Projetos](/pt-br/mcp-mesh/projects) fornecem ambientes de trabalho de uso geral, agentes focam especificamente em realizar uma coisa bem feita.
+
+Agentes fornecem:
+
+- **Capacidades focadas** - Ferramentas curadas para tarefas específicas
+- **Contexto específico da tarefa** - Recursos e diretrizes adaptados ao propósito do agente
+- **Design de propósito único** - Objetivo claro sem complexidade desnecessária
+
+Agentes são configurações disponíveis em toda a organização, acessíveis na barra lateral na seção **Agents**. Cada agente pode ser iniciado em qualquer escopo (tarefas, subtarefas, projetos) com contexto de execução limpo, fornecendo um espaço de trabalho focado para sua tarefa específica.
+
+A distinção principal: projetos organizam capacidades para contextos de trabalho amplos, enquanto agentes otimizam para execução de propósito único.
+
+## Como os Agentes Funcionam
+
+Agentes seguem o mesmo padrão das habilidades padrão de agente (arquivos `SKILL.md`), tornando-os familiares e fáceis de entender:
+
+**Como habilidades SKILL.md:**
+- **Descrição** - Breve explicação do que o agente faz e quando usá-lo (como o campo `description:` no `SKILL.md`)
+- **Instruções** - Diretrizes detalhadas de como o agente opera (como o corpo de um arquivo `SKILL.md`)
+
+**Mais capacidades de MCP Virtual:**
+- **Nome** - Identifica o agente (ex: "Agente de Deploy", "Agente de Pesquisa")
+- **Ferramentas** - Ações que o agente pode executar (selecione de [conexões](/pt-br/mcp-mesh/connections) ou defina inline)
+- **Recursos** - Contexto adicional e documentação
+- **Prompts** - Templates de fluxo de trabalho
+
+[decopilot](/pt-br/mcp-mesh/decopilot/overview) usa o campo **descrição** para entender quando iniciar cada agente — assim como usa descrições de habilidades para saber quando invocá-las. Isso torna os agentes descobríveis e automaticamente disponíveis quando relevantes para a tarefa em questão.
+
+Como agentes são [MCPs Virtuais](/pt-br/mcp-mesh/virtual-mcps), você pode compô-los a partir de conexões existentes, definir capacidades inline ou combinar ambas as abordagens.
+
+## Exemplo: Agente de Fulfillment de Pedidos
+
+Um agente de fulfillment de pedidos pode agregar ferramentas do Shopify para gestão de pedidos, ferramentas do ShipStation para geração de etiquetas de envio e ferramentas do Slack para notificações da equipe de fulfillment. O agente lida com o fulfillment de pedidos com um conjunto focado de ferramentas — buscar pedidos pendentes, verificar estoque, gerar etiquetas de envio, enviar notificações de rastreamento — tudo dentro do seu escopo de propósito único.
+
+## Agentes Integrados
+
+O deco CMS inclui agentes integrados para operações comuns do mesh. Esses agentes usam o **Management MCP** — um MCP autorreferencial que expõe capacidades de gerenciamento do mesh através do protocolo MCP.
+
+Agentes integrados disponíveis prontos para uso:
+
+- **Gerenciamento de Agentes** - Criar, editar e excluir agentes
+- **Gerenciamento de Conexões** - Gerenciar conexões de servidores MCP
+- **Gerenciamento de Permissões** - Controlar acesso e autorização
+- **MCP Store** - Navegar e instalar MCPs da loja
+- **Gerenciamento de Usuários** - Convidar e gerenciar membros da organização
+
+Esses agentes operam no nível da organização e utilizam ferramentas do Management MCP para configuração da plataforma.
+
+## Princípios de Design de Agentes
+
+**Foco em propósito único**: Cada agente deve fazer uma coisa bem. Escopo restrito melhora clareza, confiabilidade e manutenibilidade.
+
+**Descrição clara**: Escreva descrições que ajudem o decopilot a entender quando iniciar o agente. Use o padrão `[Verbo] + [Objeto] + [Contexto]`:
+- "Processar pedidos de clientes e gerar etiquetas de envio"
+- "Analisar dados de vendas para otimização de estoque"
+- "Processar reembolsos e devoluções de clientes"
+
+**Instruções detalhadas**: Forneça diretrizes claras no campo de instruções — assim como faria em um arquivo `SKILL.md`. Inclua restrições, etapas do fluxo de trabalho e diretrizes comportamentais.
+
+**Seleção de ferramentas**: Escolha ferramentas alinhadas com a descrição do agente. Um agente de atendimento ao cliente precisa de ferramentas de consulta de pedidos e reembolso; um agente de estoque precisa de ferramentas de verificação de estoque e alertas. Acesso muito amplo a ferramentas dilui o foco.
+
+**Bom**: "Agente de Fulfillment de Pedidos" (processa e envia pedidos)
+**Muito amplo**: "Agente de Operações de Ecommerce" (fulfillment, atendimento ao cliente, estoque, marketing, analytics...)
+
+## Usando Agentes
+
+Agentes podem ser usados de várias formas:
+
+- **Iniciados pelo decopilot** - Agentes criados sob demanda com contexto limpo para tarefas específicas
+- **Agentes integrados** - Agentes pré-configurados para operações do mesh, prontos imediatamente
+- **Agentes personalizados** - Agentes específicos de domínio para os fluxos de trabalho únicos da sua equipe
+
+Ao trabalhar com um agente, você verá apenas as ferramentas, recursos e prompts configurados para o propósito específico daquele agente. Essa visão focada ajuda você a manter o foco sem distrações.
+
+## Resumo dos Benefícios
+
+Agentes fornecem capacidades focadas com vantagens claras:
+
+- **Capacidades focadas** - Design de propósito único garante clareza e confiabilidade
+- **Contexto limpo** - Agentes iniciados começam com contexto limpo para sua tarefa
+- **Padrões reutilizáveis** - Defina uma vez, use em projetos e fluxos de trabalho
+- **Operações integradas** - Agentes pré-configurados para tarefas comuns do mesh
+- **Gerenciamento autorreferencial** - O Management MCP permite que agentes gerenciem o próprio mesh
+
+---
+
+**Próximos passos**: Aprenda sobre [MCPs Virtuais](/pt-br/mcp-mesh/virtual-mcps) para entender a fundação, ou explore o [decopilot](/pt-br/mcp-mesh/decopilot/overview) para ver como agentes são iniciados dinamicamente.

@@ -1,0 +1,157 @@
+---
+title: MCPs Virtuais
+description: Remixe conexões em pacotes reutilizáveis — selecione ferramentas e contexto de múltiplas fontes, adicione lógica personalizada e crie MCPs sob medida para seus fluxos de trabalho
+icon: Waypoints
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+
+## O que são MCPs Virtuais?
+
+No deco CMS, um **MCP Virtual** é um pacote reutilizável de capacidades — [ferramentas, recursos e prompts](/pt-br/mcp-mesh/concepts#primitivas-do-protocolo-mcp) — remixados de múltiplas [conexões](/pt-br/mcp-mesh/connections).
+
+Em vez de dar ao seu agente de IA acesso a tudo de cada conexão, você **compõe MCPs virtuais** que expõem exatamente o que é necessário para cada caso de uso. Você pode:
+
+- **Remixar conexões**: Selecionar ferramentas e contexto específicos de cada conexão
+- **Combinar múltiplas fontes**: Empacotar Shopify + sistemas de estoque + bancos de dados em um único MCP unificado
+- **Adicionar lógica personalizada**: Estender com ferramentas, prompts e recursos inline
+- **Atualizar dinamicamente**: Alterar o que está incluído sem reconfigurar seus agentes
+
+MCPs Virtuais são a **espinha dorsal do deco CMS** — sustentando [Projetos](/pt-br/mcp-mesh/projects), [Agentes](/pt-br/mcp-mesh/agents) e limites organizacionais de como capacidades são empacotadas e compostas.
+
+## Como MCPs Virtuais Funcionam
+
+MCPs Virtuais são construídos **remixando conexões** — selecionando capacidades de MCPs externos — e opcionalmente **estendendo com ferramentas, prompts e recursos personalizados**.
+
+### Remix de Conexões
+
+**Remixar** permite selecionar e combinar ferramentas, recursos e prompts de múltiplas [conexões](/pt-br/mcp-mesh/connections).
+
+Uma **conexão** é como você conecta um servidor MCP externo ao deco CMS (veja [Conexões](/pt-br/mcp-mesh/connections) para detalhes). Uma vez que você tem conexões configuradas, o remix funciona assim:
+
+1. **Selecione capacidades específicas** de cada conexão — ferramentas, recursos, prompts
+2. **Combine-as** em um único pacote de MCP virtual
+3. **Seu agente recebe** acesso agregado a todas as capacidades selecionadas em um só lugar
+
+**Exemplo**: Um MCP virtual "operações-de-fulfillment" pode remixar:
+- **Conexão Shopify**: Ferramentas de gestão de pedidos + catálogo de produtos
+- **Conexão ShipStation**: Ferramentas de geração de etiquetas de envio e rastreamento
+- **Conexão provedor de email**: Ferramentas de confirmação de pedido e notificação de envio
+
+Seu agente de IA usa este único MCP virtual para orquestrar todo o processo de fulfillment de pedidos nos três sistemas.
+
+### Estender com Capacidades Inline
+
+**Criação inline** permite definir ferramentas, recursos e prompts diretamente dentro de um MCP virtual — estendendo o que as conexões fornecem.
+
+Ferramentas inline podem **chamar qualquer conexão MCP** disponível na sua instância do deco CMS, permitindo padrões poderosos como orquestração, validação e controle de funcionalidades.
+
+Ferramentas inline podem chamar outras ferramentas usando `callTool(connectionId:TOOL_NAME, params)`, permitindo orquestração, validação e controle de funcionalidades em toda sua infraestrutura MCP.
+
+Esta abordagem de remix é perfeita para:
+
+- **Prompts personalizados** que guiam agentes através de fluxos de trabalho específicos da equipe
+- **Recursos de contexto** como diretrizes, documentação ou conhecimento de domínio
+- **Ferramentas de orquestração** que compõem ferramentas de múltiplas conexões em operações de nível mais alto
+- **Controle de funcionalidades e validação** que envolvem ferramentas de conexão com lógica de autorização (veja [Autorização e Papéis](/pt-br/mcp-mesh/user-management))
+
+#### Caso de Uso: Controle de Funcionalidades
+
+Ferramentas inline são ideais para **controle de funcionalidades** — envolver ferramentas de conexão com validação, autorização ou comportamento personalizado.
+
+**Exemplo**: Uma ferramenta de banco de dados somente leitura que valida queries antes de chamar a conexão subjacente, bloqueando operações perigosas como `DROP`, `DELETE` ou `UPDATE`.
+
+#### Caso de Uso: Orquestração
+
+Ferramentas inline podem coordenar múltiplas conexões em uma única operação.
+
+**Exemplo**: Uma ferramenta de fulfillment de pedidos que verifica estoque (conexão do armazém), cria etiqueta de envio (conexão ShipStation), envia confirmação do pedido (conexão SendGrid) e atualiza status do pedido (conexão Shopify) — tudo em um fluxo de trabalho coordenado.
+
+Esses padrões permitem **aplicação de autorização**, **validação de entrada**, **logging de auditoria** (veja [Monitoramento](/pt-br/mcp-mesh/monitoring)) e **orquestração de fluxos de trabalho** em toda sua infraestrutura MCP.
+
+### Combinar Ambas as Abordagens
+
+O verdadeiro poder vem de combinar ambas as abordagens — remixar capacidades de conexões e estendê-las com definições inline.
+
+**Exemplo**: Um MCP virtual "assistente-atendimento-cliente" que combina:
+- **Ferramentas da conexão Shopify**: Consulta de pedidos, processamento de reembolsos
+- **Recursos da conexão Shopify**: Catálogo de produtos e políticas de devolução
+- **Prompts inline**: Templates personalizados de comunicação com clientes
+- **Recursos inline**: Diretrizes de atendimento ao cliente e respostas de FAQ
+
+Um MCP virtual, múltiplas fontes (conexões + definições inline), experiência unificada para o agente.
+
+## Namespacing e Prevenção de Colisões
+
+Ao agregar capacidades de múltiplas conexões, o deco CMS usa **namespacing baseado em conexão** para evitar colisões. Cada conexão recebe um ID único, e todas as capacidades daquela conexão são prefixadas com este ID.
+
+### Ferramentas e Prompts
+
+Ferramentas e prompts usam o formato: `connection_id::CAPABILITY_NAME`
+
+- **Separador de namespace**: `::` (dois-pontos duplo) entre o ID da conexão e o nome da capacidade
+- **Limite de 64 caracteres**: O nome completo com namespace não pode exceder 64 caracteres
+
+**Exemplo**: Duas conexões Shopify podem expor uma ferramenta `GET_ORDERS`:
+- `shopify_store_a_456::GET_ORDERS` (Conta da Loja A)
+- `shopify_store_b_789::GET_ORDERS` (Conta da Loja B)
+
+Isso garante que capacidades permaneçam distintas mesmo quando múltiplas conexões expõem ferramentas com o mesmo nome.
+
+### Recursos
+
+Recursos usam namespacing baseado em URI, **exceto para protocolos conhecidos**.
+
+**Protocolos personalizados** (como `store://`, `inventory://`) recebem namespace com o ID da conexão e são URL-encoded:
+- Original: `store://my-brand/products/catalog.json`
+- Com namespace: `shopify_conn_123://store%3A%2F%2Fmy-brand%2Fproducts%2Fcatalog.json`
+
+**Protocolos conhecidos** (como `http://`, `https://`, `ws://`) **NÃO recebem namespace** e permanecem inalterados.
+
+**Reescrita automática de conteúdo**: Quando recursos são lidos através de um MCP virtual, o deco CMS automaticamente reescreve links internos de recursos para usar o formato com namespace. Isso garante que recursos possam referenciar uns aos outros corretamente.
+
+<Callout type="info">
+Ferramentas e prompts usam o formato `connection_id::CAPABILITY_NAME` (máx. 64 caracteres). Recursos usam `connection_id://encodedUri` para protocolos personalizados, ou permanecem inalterados para protocolos conhecidos.
+</Callout>
+
+## Funcionalidades Sustentadas por MCPs Virtuais
+
+MCPs Virtuais fornecem a **capacidade fundamental** que sustenta funcionalidades especializadas em todo o deco CMS. Todas herdam [capacidades completas de monitoramento](/pt-br/mcp-mesh/monitoring) para trilhas de auditoria e observabilidade.
+
+**Compatibilidade com Clientes MCP**: MCPs Virtuais podem ser chamados por qualquer cliente compatível com MCP — incluindo Cursor, Claude Code, extensões do VS Code e qualquer aplicação que implemente o Model Context Protocol. Isso torna seus pacotes de capacidades compostos universalmente acessíveis em todo o ecossistema de ferramentas de IA.
+
+**Funcionalidades especializadas construídas sobre MCPs virtuais:**
+
+- **[Agentes](/pt-br/mcp-mesh/agents)**: Pacotes de capacidades de propósito único otimizados para tarefas específicas
+- **[Projetos](/pt-br/mcp-mesh/projects)**: Pacotes de capacidades escopados por equipe para limites organizacionais
+
+## Casos de Uso e Benefícios
+
+MCPs Virtuais transformam conexões MCP fragmentadas em pacotes de capacidades unificados e reutilizáveis:
+
+**Aplicações do mundo real:**
+- **Operações de Fulfillment de Pedidos**: Empacote Shopify (pedidos) + ShipStation (envio) + provedor de email (notificações) em um único MCP de fulfillment
+- **Hub de Atendimento ao Cliente**: Remixe ferramentas do Shopify com prompts inline de atendimento e diretrizes de política de devolução
+- **Gestão de Estoque**: Combine APIs de armazém + ferramentas de estoque do Shopify com fluxos de trabalho inline de alerta de estoque
+- **Gestão de Loja Multi-Marca**: Compartilhe acesso a uma conexão MCP do Shopify com sua equipe enquanto filtra operações específicas por marca — dando aos gerentes acesso escopado aos produtos e pedidos da sua marca sem expor outras marcas
+- **Analytics de Ecommerce**: Empacote Shopify, Google Analytics e Stripe para rastreamento de vendas e conversão de ponta a ponta
+
+**Principais benefícios:**
+- **Remix seletivo**: Escolha exatamente quais ferramentas, recursos e prompts incluir de cada conexão
+- **Extensões inline**: Adicione lógica personalizada de orquestração, validação e controle de funcionalidades
+- **Atualizações dinâmicas**: Modifique o que está incluído sem reconfigurar agentes
+- **Base para especialização**: Bloco de construção para [Projetos](/pt-br/mcp-mesh/projects) e [Agentes](/pt-br/mcp-mesh/agents)
+
+---
+
+## Próximos Passos
+
+<Callout type="info">
+Comece com [Conexões](/pt-br/mcp-mesh/connections) para entender como conectar servidores MCP externos primeiro.
+</Callout>
+
+**Pronto para construir?** Siga o [Quickstart](/pt-br/mcp-mesh/quickstart) para configuração passo a passo.
+
+**Construindo para equipes?** Aprenda sobre [Projetos](/pt-br/mcp-mesh/projects) para MCPs virtuais escopados por equipe, ou [Agentes](/pt-br/mcp-mesh/agents) para pacotes de capacidades de propósito único.
+
+**Precisa de controles de autorização?** Veja [Autorização e Papéis](/pt-br/mcp-mesh/user-management) para proteger acesso a MCPs virtuais com controle de funcionalidades e políticas.

@@ -1,0 +1,161 @@
+---
+title: Conceitos
+description: Os conceitos fundamentais que sustentam o deco CMS
+icon: BookOpen
+---
+
+## Entidades Principais
+
+- **Organização**: o limite de tenant de nível superior. Tudo (conexões, agentes, projetos, logs) é escopado por organização.
+- **Membros**: usuários convidados para uma organização com papéis e permissões específicos.
+- **Conexão**: um endpoint MCP upstream configurado (geralmente HTTP), opcionalmente com credenciais armazenadas. Veja [Conexões](/pt-br/mcp-mesh/connections).
+- **MCP Virtual**: agrega ferramentas/recursos/prompts de servidores conectados em um único MCP. Veja [MCPs Virtuais](/pt-br/mcp-mesh/virtual-mcps).
+- **Agente**: MCPs Virtuais de propósito único otimizados para tarefas específicas. Veja [Agentes](/pt-br/mcp-mesh/agents).
+- **Projeto**: MCPs Virtuais para organizar ferramentas, recursos, prompts e configurações específicas de projeto. Veja [Projetos](/pt-br/mcp-mesh/projects).
+
+## Entendendo Agentes vs. Projetos
+
+Tanto agentes quanto projetos são MCPs Virtuais, mas servem propósitos diferentes no seu fluxo de trabalho:
+
+**Projetos** são unidades organizacionais de uso geral para trabalho contínuo:
+- **Escopo amplo** - Cobrem múltiplos fluxos de trabalho e capacidades dentro de um contexto de trabalho
+- **Longa duração** - Evoluem ao longo do tempo conforme o trabalho progride
+- **Colaboração em equipe** - Espaço de trabalho compartilhado para membros da equipe
+- **Exemplo** - Projeto "Migração de Loja Multi-Marca" com ferramentas de sincronização de estoque, gestão de pedidos e migração de dados de clientes
+- **Quando usar** - Organizando trabalho por linha de produto, cliente, equipe ou iniciativa
+
+**Agentes** são configurações em toda a organização que podem ser iniciados em qualquer contexto:
+- **Escopo restrito** - Objetivo claro e focado com conjunto curado de ferramentas
+- **Específico para tarefas** - Projetados para operações ou fluxos de trabalho particulares
+- **Estado de execução limpo** - Cada instância começa com contexto limpo em tarefas, subtarefas ou projetos
+- **Exemplo** - "Agente de Processamento de Reembolsos" que apenas processa reembolsos e autorizações de devolução de clientes
+- **Quando usar** - Operações focadas, gerenciamento integrado do mesh ou fluxos de trabalho especializados
+
+Ambos seguem a mesma arquitetura de MCP Virtual, mas seus princípios de design diferem: projetos organizam capacidades para contextos de trabalho amplos, enquanto agentes são configurações reutilizáveis que podem ser instanciadas sob demanda com estado de execução limpo.
+
+## Primitivas do Protocolo MCP
+
+O deco CMS é totalmente compatível com o [MCP](https://modelcontextprotocol.io/). O Model Context Protocol define três primitivas principais:
+
+- **[Ferramentas](https://modelcontextprotocol.io/docs/concepts/tools)**: Funções executáveis expostas por servidores MCP que permitem que agentes de IA executem ações (criar arquivos, consultar bancos de dados, chamar APIs, etc.).
+- **[Recursos](https://modelcontextprotocol.io/docs/concepts/resources)**: Fontes de dados somente leitura com URIs (como `org://`, `project://`, `agent://`) que fornecem contexto para agentes de IA.
+- **[Prompts](https://modelcontextprotocol.io/docs/concepts/prompts)**: Templates reutilizáveis com variáveis para fluxos de trabalho e operações comuns.
+
+O deco CMS trabalha exclusivamente com clientes e servidores compatíveis com MCP, fornecendo uma camada de protocolo padrão para comunicação de agentes de IA. Para a arquitetura completa do protocolo, veja a [documentação do Model Context Protocol](https://modelcontextprotocol.io/docs/concepts/architecture).
+
+## Capacidades da Plataforma
+
+### Gerenciamento de Usuários e Controle de Acesso
+
+O deco CMS fornece gerenciamento de usuários no nível da organização com permissões granulares:
+
+- **Organizações multi-usuário** - Convide membros da equipe e gerencie seu acesso
+- **Permissões baseadas em papéis** - Controle o que os usuários podem ver e fazer dentro da organização
+- **Gerenciamento de API keys** - Gere API keys escopadas para acesso programático
+- **Permissões por conexão** - Restrinja acesso a ferramentas por conexão (ex: acesso somente leitura ao GitHub)
+
+Veja [Gerenciamento de Usuários](/pt-br/mcp-mesh/user-management) para detalhes sobre como gerenciar acesso da equipe.
+
+### Segurança e Gerenciamento de Credenciais
+
+- **Vault de Credenciais**: Credenciais de conexão são criptografadas em repouso e só são descriptografadas no momento da requisição
+- **Menor privilégio**: API keys e permissões são escopadas para ferramentas específicas
+- **Logs de auditoria**: Toda invocação de ferramenta é registrada com identidade do chamador, entradas e saídas
+- **Zero trust**: Todas as requisições são autenticadas e autorizadas, independente da origem
+
+### Monitoramento Integrado
+
+O deco CMS inclui monitoramento de primeira classe para todo o tráfego MCP:
+
+- **Logs de invocação de ferramentas**: Veja cada chamada de ferramenta com entradas, saídas, timing e chamador
+- **Rastreamento de requisições**: Siga requisições através de múltiplos servidores MCP
+- **Replay e debug**: Reproduza invocações passadas de ferramentas para entender o comportamento
+- **Analytics de uso**: Entenda quais ferramentas e capacidades estão sendo utilizadas
+
+Veja [Monitoramento](/pt-br/mcp-mesh/monitoring) para detalhes.
+
+## Como a Plataforma Funciona
+
+O deco CMS fica entre clientes MCP e servidores MCP, fornecendo uma camada de controle unificada:
+
+```
+┌─────────┐                    ┌──────────┐                  ┌────────────┐
+│ Cliente  │ ──[autenticar]────▶│ deco CMS │ ──[com creds]──▶│ Servidor   │
+│ (Cursor)│                    │          │                  │ MCP(GitHub)│
+└─────────┘ ◀──[resposta]──────└──────────┘ ◀─[resposta]─────└────────────┘
+                                     │
+                                     └──▶ [log de auditoria]
+```
+
+### Fluxo de Requisição
+
+1. **Cliente se autentica** no deco CMS (sessão OAuth ou API key)
+2. **Cliente faz requisição** para uma Conexão, Agente, Projeto ou o Management MCP
+3. **deco CMS autoriza** a requisição contra as permissões do cliente
+4. **deco CMS carrega credenciais** do vault criptografado para a(s) Conexão(ões) alvo
+5. **deco CMS faz proxy** da requisição do protocolo MCP para o(s) servidor(es) upstream
+6. **deco CMS registra** a invocação para monitoramento e auditoria
+7. **deco CMS retorna** a resposta para o cliente
+
+Este fluxo garante que clientes nunca lidam com credenciais diretamente, todo acesso é autorizado consistentemente e toda operação é observável.
+
+## Padrões Arquiteturais
+
+### Multi-Tenancy Através de Organizações
+
+Organizações fornecem o limite de isolamento de nível superior. Tudo no deco CMS é **escopado por organização**:
+
+- Conexões, MCPs Virtuais, Projetos e Agentes são específicos da organização
+- Credenciais armazenadas em vaults isolados por organização
+- Membros, papéis e permissões são escopados por organização
+- Logs de monitoramento e trilhas de auditoria isolados por organização
+
+Este modelo de multi-tenancy permite que provedores SaaS atendam múltiplos clientes, empresas separem departamentos e agências isolem organizações de clientes.
+
+### Composição ao Invés de Configuração
+
+O deco CMS segue um **modelo de composição** ao invés de exigir configuração complexa:
+
+**Conecte** servidores MCP individuais (GitHub, Slack, bancos de dados)
+↓
+**Componha-os** em MCPs Virtuais com superfícies curadas de ferramentas
+↓
+**Organize** em Projetos (para equipes) e Agentes (para tarefas específicas)
+↓
+**Exponha** através de um único endpoint compatível com MCP
+
+Este padrão permite construir capacidades complexas a partir de componentes simples e reutilizáveis sem mudanças de infraestrutura ou deploys.
+
+## Decisões de Design
+
+### Por que MCPs Virtuais São Editáveis
+
+Servidores MCP tradicionais expõem um conjunto fixo de ferramentas definidas em seu código. Os MCPs Virtuais do deco CMS são **editáveis em tempo de execução** porque são configuração, não código. Isso permite:
+
+- **Superfícies dinâmicas de ferramentas**: Adicione ou remova ferramentas sem deploys
+- **Criação de recursos**: Gere documentação e contexto dinamicamente
+- **Evolução de prompts**: Atualize templates com base em padrões de uso
+- **Fluxos de trabalho sem código**: Não-desenvolvedores podem compor capacidades
+
+Essa editabilidade é o motivo pelo qual Projetos e Agentes são MCPs Virtuais — eles precisam evoluir conforme o trabalho progride.
+
+### Por que o Monitoramento é Integrado
+
+Em deploys MCP tradicionais, observabilidade é uma preocupação secundária — cada cliente registra logs independentemente (ou não registra), cada servidor MCP tem sua própria estratégia de logging, e não há visão unificada do uso de ferramentas. O deco CMS torna o monitoramento **de primeira classe** registrando toda invocação de ferramenta que passa pela plataforma.
+
+Este monitoramento integrado permite:
+- **Debugging**: Rastreie falhas através de múltiplos servidores MCP
+- **Visibilidade de custos**: Veja quais ferramentas são caras ou lentas
+- **Padrões de uso**: Entenda quais capacidades as equipes realmente usam
+- **Auditoria de segurança**: Rastreie quem acessou o quê, quando e por quê
+
+### Por que o Protocolo MCP
+
+O deco CMS poderia ter inventado seu próprio protocolo para comunicação agente-ferramenta, mas construir sobre o MCP fornece:
+
+- **Compatibilidade com o ecossistema**: Funciona com qualquer cliente (Claude Desktop, Cursor) e servidor compatível com MCP
+- **Semântica padrão**: Ferramentas, Recursos e Prompts têm significados bem definidos
+- **Especificação aberta**: MCP é neutro em relação a fornecedores e evolui através de contribuições da comunidade
+- **Efeitos de rede**: Conforme o ecossistema MCP cresce, usuários do deco CMS se beneficiam automaticamente
+
+Ao ser nativo MCP, o deco CMS se torna infraestrutura para o ecossistema mais amplo, não um silo proprietário.

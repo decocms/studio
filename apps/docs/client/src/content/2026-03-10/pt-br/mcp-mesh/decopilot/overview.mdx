@@ -1,0 +1,124 @@
+---
+title: Visao Geral
+description: O assistente de IA agentico que roda no deco CMS, operando atraves de arquitetura MCP distribuida
+icon: Sparkles
+---
+
+import Callout from "../../../../../components/ui/Callout.astro";
+
+<Callout type="info">
+  Esta pagina documenta a **arquitetura planejada** para o decopilot. A implementacao esta em desenvolvimento.
+</Callout>
+
+## O que e o decopilot?
+
+**decopilot** e um assistente de IA agentico que orquestra trabalho em toda a sua stack — desde Shopify e sistemas de inventario ate e-mail, plataformas de atendimento ao cliente e servicos personalizados. Diferente de assistentes de IA tradicionais confinados a editores de codigo, o decopilot opera atraves do Model Context Protocol, dando-lhe alcance nas aplicacoes produtivas onde o trabalho real acontece.
+
+Voce interage atraves de uma **interface de chat**. Inicie uma conversa e o decopilot trabalha autonomamente em segundo plano. Continue com outras tarefas — quando o decopilot precisar da sua contribuicao, voce recebera uma notificacao. Este design com humano no loop mantem voce no controle enquanto permite que a IA lide com a coordenacao entre multiplos servicos.
+
+O poder vem dos **[MCPs virtuais](/pt-br/mcp-mesh/virtual-mcps)** — o decopilot pode criar e modificar suas proprias capacidades dinamicamente enquanto trabalha, adaptando-se as suas necessidades em tempo real. Esta base programavel faz do decopilot nao apenas um usuario de ferramentas, mas um construtor de ferramentas.
+
+<Callout type="tip" title="Novo no decopilot?">
+Comece com o guia de [Inicio Rapido](/pt-br/mcp-mesh/decopilot/quickstart) para ver o decopilot em acao com fluxos de trabalho praticos.
+</Callout>
+
+## O Loop Agentico
+
+O decopilot segue o mesmo padrao comprovado de loop agentico do [Claude Code](https://code.claude.com/docs/en/how-claude-code-works#the-agentic-loop): **coletar contexto -> executar acao -> verificar resultados**. Este ciclo roda continuamente enquanto voce trabalha, com o decopilot se adaptando com base no que aprende.
+
+A diferenca chave e onde este loop opera. Enquanto o Claude Code trabalha com sistemas de arquivos locais e comandos de terminal, o decopilot orquestra **servidores MCP distribuidos** via HTTP. Em vez de ler arquivos locais, o decopilot consulta Shopify, sistemas de inventario, plataformas de atendimento ao cliente, bancos de dados e seus servidores MCP personalizados — tudo atraves do protocolo MCP padronizado.
+
+Cada fase usa ferramentas MCP:
+- **Coletar contexto**: Ler de servidores MCP conectados para entender o estado atual
+- **Executar acao**: Executar ferramentas em multiplos servicos em um fluxo de trabalho coordenado
+- **Verificar resultados**: Checar resultados, criar agentes especializados para revisao, adaptar abordagem
+
+A natureza distribuida significa que o decopilot pode orquestrar fluxos de trabalho complexos abrangendo multiplos servicos em um unico loop — processando pedidos no Shopify, gerenciando inventario entre armazens e enviando notificacoes aos clientes, tudo enquanto opera em MCPs virtuais editaveis.
+
+## Modelos
+
+Diferente de solucoes como o [Claude Code](https://code.claude.com/docs/en/how-claude-code-works#models) que estao vinculadas a um unico provedor, o decopilot e **multi-modelo** — funciona com varios provedores de modelos de IA para entender sua arquitetura, raciocinar sobre orquestracao MCP e coordenar fluxos de trabalho distribuidos.
+
+Voce pode usar:
+- **Modelos Anthropic**: Claude Sonnet lida bem com a maioria das tarefas de orquestracao, enquanto o Opus oferece raciocinio mais forte para fluxos de trabalho complexos com multiplos servicos
+- **Outros provedores**: OpenAI, Google e outros provedores de modelos comerciais
+- **Modelos livres e de codigo aberto**: Modelos auto-hospedados via APIs compativeis
+
+A escolha do modelo afeta a qualidade do raciocinio, velocidade e custo. Configure qual modelo o decopilot usa com base nas suas necessidades — modelos mais fortes para coordenacao complexa, modelos mais rapidos para operacoes simples ou modelos de codigo aberto para controle total e privacidade.
+
+Quando esta documentacao diz "decopilot escolhe" ou "decopilot decide", e o modelo fazendo o raciocinio — selecionando quais servidores MCP consultar, quais ferramentas habilitar e como coordenar trabalho entre sistemas distribuidos.
+
+## Contexto
+
+O contexto e critico no decopilot. Seu historico de conversa, definicoes de ferramentas, recursos e configuracoes de servidores MCP competem por espaco na janela limitada de tokens do modelo. Quanto mais servidores MCP voce conecta e ferramentas habilita, mais contexto voce consome.
+
+Quando o decopilot inicia uma tarefa, ele carrega contexto com base no seu escopo atual — instrucoes no nivel de organizacao, diretrizes especificas do projeto e instrucoes de agente sao todas organizadas de acordo com os niveis de escopo descritos acima. Recursos e ferramentas sao carregados estrategicamente para manter o uso de contexto sob controle.
+
+O decopilot gerencia o contexto atraves de:
+- **Filtragem estrategica de ferramentas**: Apenas ferramentas habilitadas consomem contexto. Use o padrao descobrir -> habilitar -> usar para manter o overhead baixo.
+- **Criacao de agentes para isolamento**: Crie agentes com contexto novo para trabalho focado. Eles retornam resumos em vez do historico completo de conversa.
+- **Slots de tokens reservados**: O decopilot reserva slots para certas operacoes, garantindo espaco para trabalho critico mesmo quando o contexto esta cheio.
+
+Voce sempre pode verificar seu uso atual de contexto na interface do decopilot para entender o que esta consumindo espaco e quando criar um agente para trabalho complexo. Veja [Contexto](/pt-br/mcp-mesh/decopilot/context) para orcamentos de tokens, estrategias de otimizacao e exemplos praticos.
+
+## Tarefas
+
+Enquanto voce trabalha, o decopilot pode delegar trabalho especializado a **[agentes](/pt-br/mcp-mesh/agents)** — assistentes focados otimizados para tarefas especificas como suporte ao cliente, pesquisa ou analise de dados. Quando voce cria um agente, ele recebe seu proprio contexto novo para trabalhar independentemente e depois reporta com um resumo.
+
+Isso permite lidar com trabalho complexo em paralelo. Por exemplo, crie um agente de suporte para responder uma pergunta de cliente sobre compatibilidade de produto enquanto voce continua construindo o fluxo de checkout. O agente trabalha separadamente com contexto limpo, evitando que sua conversa principal fique sobrecarregada com detalhes de suporte.
+
+Saiba mais sobre quando criar agentes e padroes de criacao em [Tarefas](/pt-br/mcp-mesh/decopilot/tasks-and-spawning).
+
+## Escopos
+
+O decopilot sempre opera dentro de um **escopo** — o contexto de MCP virtual que determina quais ferramentas, recursos e instrucoes estao disponiveis. Os escopos permitem que voce trabalhe em diferentes niveis de foco, desde operacoes em toda a organizacao ate tarefas especificas de projeto ate trabalho individual de agente.
+
+Seu escopo atual e determinado por onde voce esta na interface do deco CMS, e o decopilot carrega automaticamente as capacidades apropriadas para aquele contexto. Os tres niveis de escopo sao:
+
+- **Escopo de organizacao**: O nivel padrao com [conexoes](/pt-br/mcp-mesh/connections) de toda a organizacao, recursos e [agentes](/pt-br/mcp-mesh/agents). Sempre disponivel como base.
+- **Escopo de projeto**: Adiciona ferramentas, recursos e prompts especificos do projeto a partir do [MCP virtual do projeto](/pt-br/mcp-mesh/virtual-mcps). Herda o escopo de organizacao.
+- **Escopo de agente**: Adiciona instrucoes especializadas e ferramentas delimitadas ao trabalhar com um [agente](/pt-br/mcp-mesh/agents) especifico. Herda o escopo de organizacao ou projeto.
+
+### Como os Escopos se Sobrepoe
+
+Os escopos se sobrepoe naturalmente conforme voce navega:
+
+- **Escopo de organizacao sozinho**: Acesso a capacidades de toda a organizacao
+- **Organizacao + Escopo de projeto**: Acesso as capacidades da organizacao mais contexto especifico do projeto
+- **Organizacao + Escopo de agente**: Acesso as capacidades da organizacao mais instrucoes especificas do agente
+
+Esta abordagem em camadas significa que voce nunca fica preso a uma visao restrita — ferramentas no nivel de organizacao permanecem disponiveis mesmo ao trabalhar em contextos focados de projeto ou agente. Veja [Contexto](/pt-br/mcp-mesh/decopilot/context#scope-specific-context-loading) para detalhes tecnicos sobre qual contexto carrega em cada nivel de escopo, e [Tarefas](/pt-br/mcp-mesh/decopilot/tasks-and-spawning) para entender como agentes criados criam escopos de tarefa isolados com contexto novo.
+
+## Ferramentas Integradas
+
+O decopilot vem com ferramentas integradas que habilitam operacoes em nivel meta:
+- **`agent_spawn`**: Criar tarefas filhas com agentes especializados
+- **`agent_search`**: Descobrir agentes disponiveis na sua organizacao
+- **`tools_search`**: Encontrar ferramentas no MCP virtual do escopo atual
+- **`tool_enable`**: Ativar ferramentas no escopo atual antes do uso
+- **`resource_read` / `resource_edit`**: Gerenciar documentacao e recursos do projeto
+- **`prompt_read` / `prompt_edit`**: Criar templates de prompt reutilizaveis
+
+Estas ferramentas integradas estao sempre disponiveis e fornecem a base para trabalhar com MCPs virtuais. Alem delas, voce descobre e habilita ferramentas dos seus servidores MCP conectados (Shopify, sistemas de inventario, plataformas de atendimento ao cliente, etc.) conforme necessario.
+
+Veja [Ferramentas](/pt-br/mcp-mesh/decopilot/tools) para especificacoes completas, padroes de uso e exemplos de coordenacao de ferramentas entre multiplos servicos.
+
+## Proximos Passos
+
+Pronto para aprender mais? Explore estes guias para entender como o decopilot funciona:
+
+**[Inicio Rapido](/pt-br/mcp-mesh/decopilot/quickstart)**: Veja o decopilot em acao com fluxos de trabalho passo a passo. Comece aqui para exemplos praticos.
+
+**[Contexto](/pt-br/mcp-mesh/decopilot/context)**: Aprenda estrategias para gerenciar uso de tokens, quando criar agentes e como otimizar o contexto.
+
+**[Tarefas](/pt-br/mcp-mesh/decopilot/tasks-and-spawning)**: Entenda ciclos de vida de tarefas, selecao de agentes e padroes para execucao paralela.
+
+**[Ferramentas](/pt-br/mcp-mesh/decopilot/tools)**: Referencia completa para ferramentas integradas e trabalho com ferramentas de MCPs virtuais alvo.
+
+**[Escopos](/pt-br/mcp-mesh/decopilot/scopes)**: Mergulho profundo em roteamento baseado em escopo e como contextos de organizacao/projeto/agente funcionam.
+
+**[Arquitetura](/pt-br/mcp-mesh/decopilot/architecture)**: Detalhes de implementacao tecnica e padroes de coordenacao distribuida.
+
+---
+
+O decopilot traz padroes agenticos comprovados para a orquestracao MCP. Ao coordenar trabalho entre servidores MCP distribuidos enquanto opera em MCPs virtuais editaveis, o decopilot permite fluxos de trabalho complexos que abrangem multiplos servicos — tudo atraves do protocolo MCP padronizado. Este e o assistente agentico que roda no deco CMS.

@@ -1,0 +1,69 @@
+---
+title: Projetos
+description: Unidades organizacionais para gerenciar ferramentas, recursos e prompts escopados a contextos de trabalho específicos
+icon: FolderTree
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+
+<Callout type="info">
+  Esta página documenta a **arquitetura planejada** para projetos no deco CMS. A implementação está em desenvolvimento.
+</Callout>
+
+## O que são Projetos?
+
+**Projetos** são unidades organizacionais que utilizam [MCPs Virtuais](/pt-br/mcp-mesh/virtual-mcps) para gerenciar ferramentas, recursos e prompts dentro de um contexto de trabalho específico. Use projetos para isolar capacidades por produto, cliente, equipe ou iniciativa.
+
+Projetos fornecem:
+
+- **Organização do trabalho** - Agrupe capacidades por linha de produto, cliente ou iniciativa
+- **Isolamento de escopo** - Cada projeto opera com seu próprio conjunto de ferramentas e credenciais
+- **Configuração contextual** - Diretrizes, documentação e fluxos de trabalho específicos do projeto
+- **Limites de equipe** - Combine sua estrutura organizacional com limites técnicos
+
+Projetos estão disponíveis na barra lateral na seção **Projects**, onde cada um opera como um espaço de trabalho independente.
+
+## Como Projetos Funcionam
+
+Crie um projeto e configure-o remixando capacidades:
+
+1. **Nome** - Identifica o projeto (ex: "Reescrita do App Mobile", "Portal Cliente XYZ")
+2. **Descrição** - Explica o propósito, escopo e objetivos do projeto para sua equipe
+3. **Instruções** - Diretrizes de como agentes de IA devem trabalhar neste projeto (como `CLAUDE.md` ou `AGENTS.md`)
+4. **Ferramentas** - Ações que agentes podem executar neste projeto (selecione de [conexões](/pt-br/mcp-mesh/connections) ou crie inline)
+5. **Recursos** - Informações extras para habilidades detalhadas que o agente pode precisar (documentação, diretrizes, conhecimento de domínio)
+6. **Prompts** - Como os usuários devem usar este projeto (fluxos de trabalho detalhados que combinam ferramentas e recursos para atingir objetivos específicos)
+
+Como projetos são [MCPs Virtuais](/pt-br/mcp-mesh/virtual-mcps), você tem composabilidade total — remixe capacidades externas com definições personalizadas para construir exatamente o que sua equipe precisa.
+
+## Exemplo: Projeto de Vitrine Multi-Marca
+
+Um projeto de vitrine multi-marca pode agregar ferramentas do Shopify para gestão de catálogo de produtos, ferramentas do Stripe para processamento de pagamentos, ferramentas de analytics para rastreamento de conversão e diretrizes específicas da marca como recursos. Agentes de IA trabalhando neste projeto gerenciam listagens de produtos, processam pedidos, analisam desempenho de vendas e seguem padrões da marca — tudo dentro do escopo isolado do projeto. Cada marca recebe seu próprio projeto com credenciais isoladas e configuração específica da marca.
+
+## Isolamento de Escopo
+
+Projetos impõem limites através de roteamento. Quando agentes de IA se conectam a um projeto, eles:
+
+- Acessam apenas ferramentas configuradas para aquele projeto
+- Veem recursos e diretrizes específicos do projeto
+- Operam dentro de credenciais e permissões isoladas
+
+O Projeto A não pode acessar ferramentas ou credenciais do Projeto B. Capacidades no nível da organização permanecem disponíveis em todos os projetos.
+
+## Casos de Uso
+
+- **Lojas multi-marca** - Um projeto por marca com catálogos de produtos e credenciais isolados
+- **Operações de marketplace** - Projetos separados para gestão de fornecedores, fulfillment e atendimento ao cliente com conjuntos de ferramentas distintos
+- **Campanhas sazonais** - Projetos temporários para vendas de feriados com ferramentas curadas de marketing e estoque
+- **Portais B2B** - Projetos como limites de tenant para contas de clientes atacadistas com preços e catálogos personalizados
+
+## Por que Usar Projetos?
+
+- **Limites claros** - Previna contaminação cruzada de ferramentas e credenciais entre iniciativas
+- **Trabalho organizado** - Combine escopo técnico com estrutura organizacional
+- **Ferramentas flexíveis** - Adicione ou remova capacidades sem mudanças de infraestrutura
+- **Padrões familiares** - Convenção `.claude/` (projeto) e `~/.claude/` (global)
+
+---
+
+**Próximos passos**: Aprenda sobre [MCPs Virtuais](/pt-br/mcp-mesh/virtual-mcps) para entender como projetos agregam capacidades, ou veja [Autorização e Papéis](/pt-br/mcp-mesh/user-management) para controle de acesso.

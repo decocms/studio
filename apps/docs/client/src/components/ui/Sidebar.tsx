@@ -5,6 +5,7 @@ import { Icon } from "../../components/atoms/Icon";
 import { Select } from "../../components/atoms/Select";
 import { LanguageSelector } from "./LanguageSelector";
 import { ThemeToggle } from "./ThemeToggle";
+import { versions, VERSION_IDS, LATEST_VERSION } from "../../config/versions";
 
 // GitHub Stars Component
 function GitHubStars() {
@@ -15,7 +16,7 @@ function GitHubStars() {
     const fetchStars = async () => {
       try {
         const response = await fetch(
-          "https://api.github.com/repos/decocms/mesh",
+          "https://api.github.com/repos/decocms/studio",
         );
         if (response.ok) {
           const data = await response.json();
@@ -70,7 +71,7 @@ function VersionSelector({
 
     const handlePopState = () => {
       const params = new URLSearchParams(window.location.search);
-      const version = params.get("version") || "latest";
+      const version = params.get("version") || LATEST_VERSION.id;
       setCurrentVersion(version);
       onVersionChange(version);
     };
@@ -81,20 +82,7 @@ function VersionSelector({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty deps - only setup listener once
 
-  const versions = [
-    {
-      id: "latest",
-      label: "Latest (Stable)",
-      shortLabel: "Stable",
-      description: "Current production docs",
-    },
-    {
-      id: "draft",
-      label: "Draft",
-      shortLabel: "Draft",
-      description: "In-progress documentation",
-    },
-  ];
+  const versionOptions = versions;
 
   const handleVersionChange = (newVersion: string) => {
     if (newVersion === currentVersion) return;
@@ -105,15 +93,16 @@ function VersionSelector({
 
   if (inline) {
     return (
-      <div className="relative">
+      <div className="relative flex-1">
         <select
           value={currentVersion}
           onChange={(e) => handleVersionChange(e.target.value)}
-          className="h-8 pl-2 pr-6 text-xs bg-transparent border border-border rounded-md text-muted-foreground appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
+          className="w-full h-8 pl-2 pr-6 text-xs bg-transparent border border-border rounded-md text-muted-foreground appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
         >
-          {versions.map((v) => (
+          {versionOptions.map((v) => (
             <option key={v.id} value={v.id}>
               {v.shortLabel}
+              {v.isLatest ? " (latest)" : ""}
             </option>
           ))}
         </select>
@@ -134,13 +123,13 @@ function VersionSelector({
         Documentation Version
       </label>
       <Select
-        options={versions.map((v) => ({ value: v.id, label: v.label }))}
+        options={versionOptions.map((v) => ({ value: v.id, label: v.label }))}
         value={currentVersion}
         icon="BookOpen"
         onChange={(e) => handleVersionChange(e.target.value)}
       />
       <p className="text-xs text-muted mt-1">
-        {versions.find((v) => v.id === currentVersion)?.description}
+        {versionOptions.find((v) => v.id === currentVersion)?.description}
       </p>
     </div>
   );
@@ -437,7 +426,7 @@ export default function Sidebar({
       setCurrentPath(path);
       // Keep version in sync with the URL (e.g. after browser back/forward)
       const urlVersion = path.split("/")[1];
-      if (urlVersion === "latest" || urlVersion === "draft") {
+      if (VERSION_IDS.includes(urlVersion)) {
         setVersion(urlVersion);
       }
       // Restore scroll after React finishes re-rendering (rAF fires after paint)
@@ -456,15 +445,10 @@ export default function Sidebar({
   }, []);
 
   // Handle version change by navigating to the new version's root page
-  const versionRoots: Record<string, string> = {
-    latest: "introduction",
-    draft: "mcp-mesh/quickstart",
-  };
+  const versionRoots = Object.fromEntries(versions.map((v) => [v.id, v.root]));
   const handleVersionChange = (newVersion: string) => {
     const root = versionRoots[newVersion] ?? "mcp-mesh/quickstart";
-    // Draft is English-only; fall back to "en" when switching to it
-    const targetLocale = newVersion === "draft" ? "en" : locale;
-    navigate(`/${newVersion}/${targetLocale}/${root}`);
+    navigate(`/${newVersion}/${locale}/${root}`);
   };
 
   // Initialize with default state (same on server and client for hydration match)
@@ -569,16 +553,7 @@ export default function Sidebar({
       <div className="hidden lg:flex items-center justify-between px-4 lg:px-6 py-3 shrink-0 border-b border-border">
         <Logo width={67} height={28} />
         <div className="flex items-center gap-1.5">
-          <VersionSelector
-            currentVersion={version}
-            onVersionChange={handleVersionChange}
-            inline
-          />
-          <LanguageSelector
-            locale={locale}
-            compact
-            disabled={version === "draft"}
-          />
+          <LanguageSelector locale={locale} compact />
           <ThemeToggle />
         </div>
       </div>
@@ -599,8 +574,18 @@ export default function Sidebar({
       {/* Footer */}
       <div className="px-4 lg:px-8 py-4 border-t border-border shrink-0">
         <div className="space-y-2">
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">
+              Version
+            </label>
+            <VersionSelector
+              currentVersion={version}
+              onVersionChange={handleVersionChange}
+              inline
+            />
+          </div>
           <a
-            href="https://github.com/deco-cx/chat"
+            href="https://github.com/decocms/studio"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-foreground hover:bg-muted hover:text-foreground transition-colors"

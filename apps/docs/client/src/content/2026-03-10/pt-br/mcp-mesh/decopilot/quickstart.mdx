@@ -1,0 +1,468 @@
+---
+title: Inicio Rapido
+description: Aprenda a trabalhar com o decopilot atraves de exemplos praticos de e-commerce
+icon: Rocket
+---
+
+import Callout from "../../../../../components/ui/Callout.astro";
+
+Este guia mostra como usar o decopilot para tarefas comuns de e-commerce. Comecaremos de forma simples e progressivamente introduziremos recursos como subtarefas, agentes, gestao de contexto e escopos conforme voce precisar.
+
+<Callout type="info" title="Aprendizado Progressivo">
+Cada secao se baseia na anterior. Sinta-se a vontade para pular adiante se voce ja estiver familiarizado com os conceitos basicos.
+</Callout>
+
+## Pre-requisitos
+
+Antes de comecar, voce vai precisar de:
+
+- **Acesso a uma organizacao deco CMS** com pelo menos um projeto
+- **Integracoes conectadas** como Shopify, GitHub ou outros servidores MCP (recomendado, mas nao obrigatorio)
+- **Familiaridade basica** com sua plataforma de e-commerce
+
+Se voce ainda nao configurou integracoes, veja [Conexoes](/pt-br/mcp-mesh/connections).
+
+## 1. Requisicoes Simples
+
+Basta pedir ao decopilot o que voce precisa em linguagem natural. Nos bastidores, o decopilot segue um fluxo de tres etapas:
+
+1. **Buscar** - Descobre quais ferramentas estao disponiveis para sua requisicao
+2. **Habilitar** - Ativa as ferramentas especificas que precisa
+3. **Executar** - Usa essas ferramentas para realizar sua tarefa
+
+Voce nao precisa dizer ao decopilot quais ferramentas usar — ele descobre isso automaticamente com base no que voce pede.
+
+### Exemplo: Verificar Inventario
+
+```
+Voce -> "Verificar niveis de inventario para produtos abaixo de 20 unidades"
+     |
+Decopilot busca ferramentas de inventario
+     |
+Decopilot habilita ferramentas de inventario
+     |
+Decopilot consulta seu sistema de inventario
+     |
+Voce <- "Encontrados 8 produtos com estoque baixo:
+       . SKU-2847: 12 unidades (Wireless Headphones)
+       . SKU-1923: 8 unidades (Phone Case - Black)
+       . SKU-4156: 15 unidades (Laptop Stand)
+       . SKU-3891: 5 unidades (USB-C Cable 2m)
+       . SKU-5672: 18 unidades (Water Bottle)
+       . SKU-7234: 9 unidades (Desk Lamp)
+       . SKU-8901: 14 unidades (Keyboard - Mechanical)
+       . SKU-4523: 7 unidades (Mouse Pad - Large)"
+```
+
+O decopilot descobre e habilita automaticamente as ferramentas que precisa — voce nao precisa dizer quais ferramentas usar.
+
+### Exemplo: Atualizar Descricoes de Produtos
+
+```
+Voce -> "Atualizar descricoes da colecao de verao
+       para enfatizar tecidos respiraveis e protecao UV"
+     |
+Decopilot busca ferramentas de gestao de produtos
+     |
+Decopilot habilita ferramentas necessarias
+     |
+Decopilot identifica produtos da colecao de verao
+     |
+Decopilot atualiza 24 descricoes de produtos
+     |
+Voce <- "Atualizados 24 produtos na colecao Verao 2026:
+       Adicionadas mencoes a 'tecido respiravel'
+       Destacada protecao solar UPF 50+
+       Enfatizados materiais leves
+
+       Preview: example.com/products/summer-dress-azure"
+```
+
+### Exemplo: Encontrar Conteudo Faltante
+
+```
+Voce -> "Encontrar produtos sem imagens ou descricoes"
+     |
+Decopilot busca ferramentas de auditoria de conteudo
+     |
+Decopilot habilita ferramentas e escaneia catalogo
+     |
+Voce <- "Encontrados 12 produtos com conteudo faltante:
+
+       Imagens faltantes (5):
+       . SKU-8821: Ceramic Mug Set
+       . SKU-9234: Garden Tool Kit
+       . SKU-7755: Yoga Mat - Purple
+       . SKU-6543: Plant Hanger - Macrame
+       . SKU-8192: Candle - Lavender
+
+       Descricoes faltantes (7):
+       . SKU-3421: Travel Backpack
+       . SKU-5667: Stainless Steel Thermos
+       . SKU-2198: Notebook - Dotted
+       . SKU-4456: Pen Set - Gel
+       . SKU-9981: Desk Organizer
+       . SKU-7722: Wall Clock - Wooden
+       . SKU-3388: Picture Frame - 8x10"
+```
+
+**Ponto chave:** Para tarefas diretas, apenas descreva o que voce quer. O decopilot descobre e habilita automaticamente as ferramentas certas e executa sua requisicao.
+
+---
+
+## 2. Usando Subtarefas para Trabalho Pesado
+
+Quando tarefas envolvem analisar muitos dados ou fazer pesquisa complexa, use **subtarefas**. Subtarefas rodam em contexto isolado e retornam apenas um resumo — mantendo sua conversa principal limpa e focada.
+
+### Quando Usar Subtarefas
+
+- Analisar dados de muitos produtos ou pedidos
+- Tarefas de pesquisa (precos de concorrentes, analise de tendencias)
+- Auditorias de qualidade (verificar consistencia de dados, encontrar erros)
+- Qualquer trabalho que gere saida detalhada que voce nao precisa ver por completo
+
+### Exemplo: Analisar Rupturas de Estoque
+
+```
+Voce -> "Executar uma subtarefa para analisar potenciais rupturas
+       de estoque em todos os armazens para os proximos 30 dias"
+     |
+Subtarefa inicia com contexto novo
+     |
+Subtarefa busca ferramentas de inventario e analytics
+     |
+Subtarefa habilita ferramentas necessarias
+     |
+Subtarefa analisa:
+  . 547 SKUs em 3 armazens
+  . Dados historicos de vendas
+  . Tendencias sazonais
+  . Prazos de entrega de fornecedores
+     |
+Voce <- "Analise de Ruptura de Estoque Completa
+
+       CRITICO (acao imediata necessaria):
+       . SKU-2847 Wireless Headphones
+         Atual: 12 unidades | Ruptura projetada: 18 Fev
+         Recomendacao: Pedir 200 unidades do Fornecedor A
+
+       . SKU-7234 Desk Lamp
+         Atual: 9 unidades | Ruptura projetada: 15 Fev
+         Recomendacao: Pedir 150 unidades do Fornecedor B
+
+       ALTA PRIORIDADE (pedir dentro de 1 semana):
+       . SKU-8901 Mechanical Keyboard - 14 unidades
+       . SKU-4156 Laptop Stand - 15 unidades
+       . SKU-1923 Phone Case Black - 8 unidades
+
+       MODERADO (monitorar de perto):
+       . 8 SKUs adicionais sinalizados
+
+       Analise completa salva no historico de subtarefas."
+```
+
+### Exemplo: Pesquisar Precos de Concorrentes
+
+```
+Voce -> "Executar uma subtarefa: pesquisar precos de concorrentes
+       para nossos 20 produtos mais vendidos"
+     |
+Subtarefa busca ferramentas de pesquisa web e precos
+     |
+Subtarefa habilita ferramentas e analisa sites concorrentes
+     |
+Voce <- "Resumo da Analise de Precos:
+
+       ACIMA DO PRECO (considerar reducao):
+       . Wireless Headphones: Nosso $79 vs media $65
+       . Laptop Stand: Nosso $45 vs media $35
+
+       COMPETITIVO (manter):
+       . Phone Cases: Nosso $18 vs media $17
+       . USB Cables: Nosso $12 vs media $13
+
+       ABAIXO DO PRECO (oportunidade de aumento):
+       . Mechanical Keyboard: Nosso $89 vs media $110
+       . Desk Lamp: Nosso $32 vs media $42
+
+       Detalhamento completo de concorrentes no historico de subtarefas."
+```
+
+**Ponto chave:** Use subtarefas quando precisar de analise ou pesquisa, mas quiser ver apenas o resumo acionavel. Os detalhes completos ficam salvos no historico de tarefas caso precise depois.
+
+Saiba mais: [Tarefas e Subtarefas](/pt-br/mcp-mesh/decopilot/tasks-and-spawning)
+
+---
+
+## 3. Trabalhando com Agentes Especialistas
+
+**Agentes** sao especialistas com expertise focada em dominios especificos. Quando voce precisa de analise especializada ou conhecimento de dominio, use um agente — eles rodam em subtarefas com ferramentas e instrucoes adaptadas a sua area.
+
+### Tipos de Agentes Disponiveis
+
+Agentes comuns para equipes de e-commerce:
+- **Especialista em Inventario** - Previsao de demanda, otimizacao de estoque, coordenacao de fornecedores
+- **Logistica e Envio** - Otimizacao de rotas, selecao de transportadoras, agendamento de entregas
+- **Atendimento ao Cliente** - Estrategia de suporte, planejamento de comunicacao, resolucao de problemas
+- **Especialista em Conteudo** - Otimizacao de SEO, refinamento de copy, consistencia de marca
+- **Analista de Precos** - Analise de mercado, posicionamento competitivo, estrategia de promocoes
+
+### Exemplo: Previsao de Demanda
+
+```
+Voce -> "Usar o Especialista em Inventario para prever
+       a demanda para o lancamento da colecao de inverno"
+     |
+Decopilot busca agentes
+     |
+Decopilot -> "Encontrados 2 agentes:
+             . Especialista em Inventario (recomendado)
+             . Analista de Cadeia de Suprimentos
+
+             Qual voce prefere?"
+     |
+Voce -> "Especialista em Inventario"
+     |
+Agente e criado em subtarefa com escopo especializado
+     |
+Agente busca ferramentas de previsao e inventario
+     |
+Agente habilita ferramentas especificas do dominio
+     |
+Agente analisa com expertise especializada
+     |
+Voce <- "Previsao de Demanda da Colecao de Inverno
+
+       ALTA DEMANDA (estocar bastante):
+       . Cachecois de La: 850-1100 unidades
+       . Botas Termicas: 650-800 unidades
+       . Jaquetas de Fleece: 920-1200 unidades
+
+       DEMANDA MODERADA:
+       . Luvas de Inverno: 400-550 unidades
+       . Leggings Termicas: 350-480 unidades
+
+       RECOMENDACOES ESTRATEGICAS:
+       Pedir 70% do volume previsto adiantado
+       Agendar segundo envio para meio da temporada
+       Monitorar vendas semanalmente
+       Planejar vendas relampago se inventario exceder 40% apos Semana 4
+
+       Modelo de previsao detalhado no historico do agente."
+```
+
+### Exemplo: Otimizacao de Envio
+
+```
+Voce -> "Usar Agente de Envio para otimizar rotas
+       de entrega para pedidos de feriado"
+     |
+Agente e criado com escopo de logistica e envio
+     |
+Agente busca ferramentas de roteamento e transportadoras
+     |
+Agente habilita ferramentas especializadas de logistica
+     |
+Agente analisa otimizacao de entregas
+     |
+Voce <- "Estrategia de Envio para Feriados
+
+       OTIMIZACAO DE ROTAS:
+       . Costa Oeste: Usar Transportadora A (2 dias) - economiza $3,20/pedido
+       . Costa Leste: Usar Transportadora B (prioritario) - economiza $1,80/pedido
+       . Centro-Oeste: Dividir entre A e B baseado no peso
+
+       ECONOMIA DE CUSTOS: $8.400/mes projetados
+
+       RECOMENDACOES DE TRANSPORTADORAS:
+       Negociar desconto por volume com Transportadora A (15%)
+       Configurar coletas de fim de semana com Transportadora B
+       Reservar capacidade extra com Transportadora C para dias de pico
+
+       Plano de implementacao no historico do agente."
+```
+
+**Ponto chave:** Agentes trazem conhecimento especializado para tarefas complexas. Eles analisam com expertise de dominio e retornam recomendacoes estrategicas.
+
+Saiba mais: [Agentes](/pt-br/mcp-mesh/agents)
+
+---
+
+## 4. Gerenciando Contexto para Fluxos de Trabalho Longos
+
+Ao trabalhar em projetos complexos ao longo de varios dias, o **contexto** importa. Seu historico de conversa usa memoria de trabalho — mante-lo limpo ajuda o decopilot a permanecer focado e produtivo.
+
+### A Regra 40/80
+
+- **Abaixo de 40%** - Bastante espaco, trabalhe livremente
+- **40-80%** - Contexto enchendo, considere compactar
+- **Acima de 80%** - Compactificacao automatica e acionada
+
+### Quando Compactar
+
+Use o comando `/compact` para resumir sua conversa antes de:
+- Iniciar uma nova fase importante do projeto
+- Comecar trabalho complexo com multiplas etapas
+- Alternar entre diferentes areas de foco
+
+### Exemplo: Preparacao de Lancamento de Produto
+
+```
+Dia 1:
+Voce -> "Vamos planejar o lancamento da Colecao de Primavera"
+     |
+[Discussao de estrategia, cronograma, SKUs...]
+     |
+Contexto: 25% cheio
+     |
+     |
+Dia 2:
+Voce -> "Executar /compact"
+     |
+Decopilot resume o trabalho anterior
+     |
+Contexto: 15% cheio (compactado)
+     |
+Voce -> "Agora criar conteudo de anuncio de lancamento"
+     |
+[Contexto novo para nova fase...]
+```
+
+### Usando Subtarefas para Gerenciar Contexto
+
+Lembre-se: Subtarefas mantem sua conversa principal enxuta. Quando voce cria uma subtarefa para analise, apenas o resumo volta — nao o trabalho detalhado.
+
+```
+Voce -> "Executar subtarefa: auditar qualidade dos dados
+       de produtos em todo o catalogo"
+     |
+Subtarefa analisa 1.200 produtos
+(gera 15.000 tokens de descobertas detalhadas)
+     |
+Voce <- "Resumo da Auditoria de Qualidade (450 tokens)
+
+       PROBLEMAS CRITICOS: 23 produtos
+       ALTA PRIORIDADE: 87 produtos
+       MEDIA PRIORIDADE: 156 produtos
+       APROVADOS: 934 produtos
+
+       [Resumo dos principais problemas...]"
+```
+
+A subtarefa usou 15.000 tokens de contexto — mas sua conversa principal ve apenas 450 tokens. Isso mantem sua memoria de trabalho focada no que importa.
+
+**Ponto chave:** Use `/compact` antes de fases importantes de trabalho e use subtarefas para manter trabalho detalhado isolado. Isso mantem a qualidade e produtividade da conversa.
+
+Saiba mais: [Gestao de Contexto](/pt-br/mcp-mesh/decopilot/context)
+
+---
+
+## 5. Alternando Escopos para Diferentes Trabalhos
+
+**Escopos** determinam quais ferramentas e recursos estao disponiveis. Alterne escopos com base no que voce esta trabalhando.
+
+### Tres Tipos de Escopo
+
+**Escopo de Organizacao**
+- Configurar integracoes (Shopify, GitHub, Slack)
+- Gerenciar acesso e permissoes da equipe
+- Configuracoes de toda a organizacao
+
+**Escopo de Projeto**
+- Trabalho diario em funcionalidades
+- Gestao de produtos
+- Atualizacoes de conteudo e campanhas
+
+**Escopo de Agente**
+- Tarefas especializadas com ferramentas focadas
+- Expertise de dominio (inventario, envio, etc.)
+- Trabalho de analise isolado
+
+### Como Alternar Escopos
+
+Use o **seletor de agentes** no canto inferior esquerdo do chat:
+- Nenhum agente selecionado = Escopo de Organizacao ou Projeto (depende da visao atual)
+- Agente selecionado = Escopo de Agente
+
+### Exemplo: Fluxo de Trabalho com Multiplos Escopos
+
+```
+Escopo de Organizacao (sem agente):
+Voce -> "Conectar nossa loja Shopify ao decopilot"
+     |
+Decopilot busca ferramentas de conexao
+     |
+Decopilot habilita ferramentas OAuth
+     |
+Decopilot guia pela configuracao OAuth
+     |
+Voce <- "Shopify conectado com sucesso
+       Loja: mystore.myshopify.com
+       Produtos: 1.247 disponiveis"
+     |
+     |
+Mudar para Escopo de Projeto (navegar ate o projeto):
+Voce -> "Atualizar todos os produtos de verao com novas descricoes"
+     |
+Decopilot busca ferramentas especificas do projeto
+     |
+Decopilot habilita ferramentas de gestao de produtos
+     |
+Decopilot atualiza produtos
+     |
+Voce <- "Atualizados 24 produtos na colecao Verao 2026"
+     |
+     |
+Mudar para Escopo de Agente (selecionar Especialista em Inventario):
+Voce -> "Analisar demanda para estes produtos de verao"
+     |
+Agente busca ferramentas especializadas de inventario
+     |
+Agente habilita ferramentas de previsao
+     |
+Agente analisa demanda
+     |
+Voce <- "Previsao de Demanda: [analise especializada...]"
+```
+
+**Ponto chave:** Alterne escopos com base na sua tarefa. Organizacao para configuracao, projeto para trabalho diario, agentes para analise especializada.
+
+Saiba mais: [Escopos](/pt-br/mcp-mesh/decopilot/scopes)
+
+---
+
+## Juntando Tudo
+
+Voce aprendeu o fluxo de trabalho principal do decopilot:
+
+1. **Requisicoes simples** - Apenas peca o que precisa
+2. **Subtarefas** - Isole trabalho complexo, receba resumos
+3. **Agentes** - Traga especialistas para expertise de dominio
+4. **Contexto** - Use `/compact` e subtarefas para manter o foco
+5. **Escopos** - Alterne contextos para diferentes tipos de trabalho
+
+### Referencia Rapida
+
+**Quando usar o que:**
+- Tarefa basica -> Apenas peca ao decopilot
+- Analise complexa -> Execute uma subtarefa
+- Precisa de expertise -> Use um agente especialista
+- Projeto longo -> Compacte regularmente, use subtarefas
+- Trabalho de configuracao -> Escopo de organizacao
+- Trabalho diario -> Escopo de projeto
+- Tarefa especializada -> Escopo de agente
+
+### Comece a Experimentar
+
+A melhor forma de aprender e tentar. Comece com requisicoes simples e progressivamente use subtarefas e agentes conforme suas necessidades se tornam mais complexas.
+
+**Proximos passos:**
+- [Ferramentas](/pt-br/mcp-mesh/decopilot/tools) - Veja o que o decopilot pode fazer
+- [Tarefas](/pt-br/mcp-mesh/decopilot/tasks-and-spawning) - Mergulho profundo em subtarefas
+- [Contexto](/pt-br/mcp-mesh/decopilot/context) - Otimize seu fluxo de trabalho
+- [Agentes](/pt-br/mcp-mesh/agents) - Aprenda sobre especialistas
+- [Arquitetura](/pt-br/mcp-mesh/decopilot/architecture) - Detalhes tecnicos
+
+---
+
+Pronto para comecar? Abra o decopilot na sua organizacao deco CMS e comece com uma requisicao simples. O sistema agentico vai guia-lo a partir dai.

@@ -1,0 +1,57 @@
+---
+title: tool_search
+description: Pesquisar ferramentas disponíveis no escopo atual
+icon: Search
+---
+
+## Visão Geral
+
+Pesquisa ferramentas disponíveis no escopo atual (organização, projeto ou agente). Retorna ferramentas apenas do MCP virtual do escopo atual.
+
+## Disponibilidade
+
+- **Tarefas**: ✓ Disponível
+- **Subtarefas**: ✓ Disponível
+
+## Assinatura
+
+```typescript
+tool_search(search_term?: string)
+```
+
+## Parâmetros
+
+| Parâmetro | Tipo | Obrigatório | Descrição |
+|-----------|------|----------|-------------|
+| `search_term` | `string` | Opcional | Termo de busca para filtrar ferramentas. Busca vazia retorna todas as ferramentas disponíveis. |
+
+## Retorno
+
+Array de definições de ferramentas com:
+- **name**: Identificador da ferramenta
+- **description**: O que a ferramenta faz
+- **source**: De onde a ferramenta vem (conexão/servidor)
+
+## Comportamento
+
+- Retorna ferramentas apenas do MCP virtual do escopo atual
+- Busca vazia retorna todas as ferramentas disponíveis no escopo atual
+- Ferramentas devem ser habilitadas via `tool_enable` antes de serem invocadas
+
+## Exemplo de Uso
+
+```typescript
+// Pesquisar todas as ferramentas
+tool_search()
+
+// Pesquisar ferramentas relacionadas a pedidos
+tool_search("order")
+
+// Pesquisar ferramentas de inventário
+tool_search("inventory")
+```
+
+## Relacionados
+
+- [**tool_enable**](/pt-br/mcp-mesh/api-reference/built-in-tools/tool-enable) - Ativar ferramentas descobertas
+- [Visão Geral das Ferramentas Integradas](/pt-br/mcp-mesh/api-reference/built-in-tools)

@@ -1,0 +1,112 @@
+---
+title: Ferramentas
+description: Entendendo como o decopilot descobre e habilita capacidades para manter o foco no que importa
+icon: Wrench
+---
+
+import Callout from "../../../../../components/ui/Callout.astro";
+
+<Callout type="info">
+  Esta pagina documenta a **arquitetura planejada** para as ferramentas do decopilot. A especificacao serve como guia de implementacao para o modulo decopilot.
+</Callout>
+
+## Visao Geral
+
+O decopilot usa dois tipos de ferramentas: **ferramentas integradas** para descobrir capacidades e gerenciar trabalho, e **ferramentas de escopo** do [escopo](/pt-br/mcp-mesh/decopilot/scopes) atual para acoes especificas de dominio. As ferramentas sao descobertas com `tool_search` e ativadas sob demanda com `tool_enable`, mantendo a execucao focada e prevenindo sobrecarga de ferramentas.
+
+## Referencia de Ferramentas
+
+### Ferramentas Integradas
+
+Todas as ferramentas integradas estao disponiveis em todos os escopos. A disponibilidade varia entre tarefas e subtarefas.
+
+| Ferramenta | Tarefa | Subtarefa | Descricao |
+|------------|:------:|:---------:|-----------|
+| **Descoberta** |
+| `tool_search` | ✓ | ✓ | Buscar ferramentas no escopo atual |
+| `tool_enable` | ✓ | ✓ | Ativar uma ferramenta para uso na tarefa atual |
+| `agent_search` | ✓ | ✓ | Encontrar agentes configurados na organizacao |
+| **Execucao** |
+| `subtask_run` | ✓ | ✗ | Criar subtarefa com contexto novo, opcionalmente especificando um agente |
+| `user_ask` | ✓ | ✗ | Pedir entrada ou esclarecimento ao usuario |
+| **Contexto** |
+| `resource_read` | ✓ | ✓ | Ler documentacao/diretrizes do escopo atual (suporta intervalos de linhas) |
+| `prompt_read` | ✓ | ✓ | Ler templates de prompt do escopo atual |
+
+### Ferramentas de Escopo
+
+As ferramentas de escopo vem do escopo atual — capacidades especificas de dominio como Shopify, sistemas de inventario ou ferramentas de envio. Sao descobertas via `tool_search` e habilitadas via `tool_enable`.
+
+**Exemplo**: Um projeto com conexoes Shopify e ShipStation pode expor:
+- `GET_ORDERS` - Buscar pedidos de clientes
+- `UPDATE_INVENTORY` - Atualizar niveis de estoque de produtos
+- `CREATE_SHIPPING_LABEL` - Gerar etiquetas de envio
+- `GET_PRODUCTS` - Listar catalogo de produtos
+
+A disponibilidade de ferramentas de escopo em tarefas vs subtarefas depende da configuracao da ferramenta.
+
+#### Anotacoes de Ferramentas
+
+Todas as ferramentas (tanto integradas quanto de escopo) usam [anotacoes padrao do MCP](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/f385c94cbd5857ac17b611edc823a37606bdb1cc/schema/2025-03-26/schema.ts#L737) para declarar suas capacidades e restricoes:
+
+- **`readOnlyHint`** - A ferramenta nao modifica seu ambiente (padrao: false)
+- **`destructiveHint`** - A ferramenta pode realizar atualizacoes destrutivas vs. apenas aditivas (padrao: true, so relevante quando `readOnlyHint` e false)
+- **`idempotentHint`** - Chamar repetidamente com os mesmos argumentos nao tem efeito adicional (padrao: false, so relevante quando `readOnlyHint` e false)
+- **`openWorldHint`** - A ferramenta pode interagir com entidades externas; false significa dominio fechado (padrao: true)
+
+Essas anotacoes permitem que o decopilot respeite restricoes de ferramentas automaticamente. Por exemplo, um agente somente leitura ira apenas descobrir e habilitar ferramentas marcadas como `readOnlyHint: true`, garantindo que nunca execute acoes destrutivas.
+
+## Entendendo a Disponibilidade
+
+### Tarefas vs Subtarefas
+
+**Tarefas** sao iniciadas pelo usuario e sao de nivel superior. Elas tem acesso completo a todas as ferramentas integradas, podem criar subtarefas e podem fazer perguntas ao usuario.
+
+**Subtarefas** sao criadas pelo decopilot para trabalho paralelo, execucao especializada ou contexto isolado. Elas tem acesso restrito:
+- **Nao podem criar subtarefas adicionais** - Previne delegacao infinita
+- **Nao podem fazer perguntas ao usuario** - Subtarefas rodam autonomamente sem bloqueio
+
+Essas restricoes garantem que as subtarefas completem independentemente e nao criem dependencias bloqueantes.
+
+## Fluxo de Descoberta de Ferramentas
+
+O decopilot inicia cada tarefa apenas com ferramentas integradas e depois descobre e habilita capacidades conforme necessario:
+
+1. **Explorar** - Usar `tool_search` para ver o que esta disponivel no escopo atual
+2. **Habilitar** - Usar `tool_enable` para ativar ferramentas especificas para a tarefa
+3. **Executar** - Usar ferramentas habilitadas para realizar o trabalho
+4. **Delegar** - Criar subtarefas via `subtask_run` para trabalho paralelo ou especializado
+
+Este padrao de descobrir-e-habilitar garante que o decopilot escolha deliberadamente seu conjunto de ferramentas em vez de ser sobrecarregado por todas as capacidades disponiveis.
+
+## Fluxos de Trabalho Comuns
+
+### Descobrir-Habilitar-Executar
+
+O padrao mais comum para usar ferramentas de escopo:
+
+1. Buscar capacidades com `tool_search`
+2. Habilitar ferramentas especificas com `tool_enable`
+3. Usar ferramentas habilitadas para realizar o trabalho
+
+### Delegar a Especialistas
+
+Para trabalho que requer expertise especializada:
+
+1. Buscar agentes com `agent_search`
+2. Criar uma subtarefa com `subtask_run` e agente especifico
+3. Continuar a tarefa principal enquanto a subtarefa roda em paralelo
+
+### Execucao Orientada por Contexto
+
+Para tarefas que requerem conhecimento de dominio:
+
+1. Ler recursos relevantes com `resource_read`
+2. Ler templates de fluxo de trabalho com `prompt_read`
+3. Usar o contexto para informar a selecao e execucao de ferramentas
+
+---
+
+**Proximos passos**: Aprenda sobre [Tarefas e Criacao](/pt-br/mcp-mesh/decopilot/tasks-and-spawning) para entender como o decopilot gerencia trabalho, ou explore [Contexto](/pt-br/mcp-mesh/decopilot/context) para ver como recursos e prompts fornecem orientacao.
+
+Para documentacao tecnica de ferramentas, veja [Referencia de Ferramentas Integradas](/pt-br/mcp-mesh/api-reference/built-in-tools).

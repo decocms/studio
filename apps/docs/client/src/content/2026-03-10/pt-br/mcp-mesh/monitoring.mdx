@@ -1,0 +1,139 @@
+---
+title: Monitoramento
+description: Por que a observabilidade é integrada ao control plane e como ela viabiliza operações MCP em produção
+icon: Activity
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+
+## Observabilidade como Infraestrutura
+
+O deco CMS trata o monitoramento como **infraestrutura, não como algo secundário**. Toda invocação de ferramenta que passa pelo control plane cria um log de monitoramento — não há como desabilitar isso, e é assim por design.
+
+<Callout type="tip">
+**Toda chamada de ferramenta é monitorada pelo deco CMS.** Seja uma consulta simples ao GitHub ou uma operação complexa de banco de dados, toda invocação de ferramenta MCP cria uma entrada de log estruturada com detalhes completos de requisição/resposta, timing, atribuição e informações de erro. Isso acontece automaticamente — sem configuração necessária.
+</Callout>
+
+Deploys MCP tradicionais têm observabilidade fragmentada: cada cliente registra logs independentemente (ou não registra), cada servidor MCP tem sua própria estratégia de logging, e não há visão unificada do que aconteceu no sistema. O deco CMS resolve isso registrando logs **no nível do control plane**, criando uma única fonte de verdade para todo o tráfego MCP.
+
+## Por que o Monitoramento é de Primeira Classe
+
+### O Problema de Sistemas Distribuídos
+
+Deploys MCP são inerentemente sistemas distribuídos:
+- **Múltiplos clientes**: Cursor, Claude Desktop, agentes personalizados
+- **Múltiplos servidores MCP**: GitHub, Slack, bancos de dados, ferramentas personalizadas
+- **Múltiplas operações**: Um único fluxo de trabalho de usuário pode invocar 10+ ferramentas em 5 servidores MCP
+
+Quando algo quebra, você precisa reconstruir o que aconteceu neste sistema distribuído. Sem monitoramento centralizado, você está correlacionando logs de fontes diferentes com formatos, timestamps e níveis de detalhe diferentes — se esses logs sequer existem.
+
+### Logging no Control Plane Resolve Isso
+
+Ao registrar logs no control plane (deco CMS), o monitoramento se torna:
+
+**Centralizado**: Um lugar para ver todas as invocações de ferramentas em todos os clientes e servidores MCP.
+
+**Consistente**: Toda entrada de log segue o mesmo schema com o mesmo nível de detalhe.
+
+**Completo**: Nenhuma invocação pode burlar o monitoramento — se passou pelo deco CMS, está registrado.
+
+**Correlacionado**: O contexto da requisição conecta operações relacionadas, permitindo rastreamento distribuído entre múltiplas invocações de ferramentas.
+
+## O que é Registrado
+
+Toda invocação de ferramenta cria um log de monitoramento com:
+
+### Identidade e Atribuição
+- **Chamador**: Qual usuário ou API key fez a requisição
+- **Organização**: A qual tenant a requisição pertence
+- **Conexão**: Qual servidor MCP upstream foi invocado
+- **Agente/Projeto**: Se acessado através de um MCP Virtual, qual
+
+### Detalhes da Operação
+- **Nome da ferramenta**: A ferramenta específica que foi invocada
+- **Argumentos de entrada**: Quais parâmetros foram enviados (normalizados e sanitizados)
+- **Resultados de saída**: O que a ferramenta retornou
+- **Timestamp**: Quando a invocação ocorreu
+
+### Performance e Status
+- **Duração**: Quanto tempo a operação levou (milissegundos)
+- **Status**: Sucesso ou falha
+- **Detalhes do erro**: Se falhou, o que deu errado
+- **Status HTTP**: O código de resposta HTTP subjacente (se aplicável)
+
+Este logging abrangente permite múltiplos casos de uso além de debugging.
+
+## Casos de Uso Habilitados pelo Monitoramento
+
+### Debugging de Falhas em Produção
+
+Quando uma invocação de ferramenta falha, os logs de monitoramento fornecem:
+- **Entradas exatas**: Quais argumentos foram passados (para verificar correção)
+- **Mensagens de erro**: O que o servidor MCP retornou
+- **Contexto de timing**: Quando a falha ocorreu e quanto tempo levou
+- **Atribuição**: Qual usuário/agente fez a requisição
+
+Esta informação está disponível imediatamente na interface do deco CMS, sem necessidade de SSH em servidores ou buscar em arquivos de log.
+
+### Segurança e Conformidade
+
+O monitoramento cria uma **trilha de auditoria imutável** de toda atividade MCP:
+- Quem acessou quais ferramentas, quando
+- Quais dados foram lidos ou modificados
+- Quais credenciais foram usadas
+- Tentativas de autorização que falharam
+
+Para indústrias regulamentadas (finanças, saúde), esta trilha de auditoria é essencial para conformidade. Para qualquer sistema em produção, é essencial para resposta a incidentes de segurança.
+
+### Análise de Custo e Performance
+
+Dados de monitoramento revelam:
+- **Operações caras**: Quais ferramentas são mais lentas ou consomem mais recursos
+- **Padrões de uso**: Quais ferramentas são realmente usadas (vs. quais estão apenas configuradas)
+- **Gargalos**: Onde picos de latência ocorrem
+- **Oportunidades de otimização**: Quais MCPs Virtuais poderiam se beneficiar de filtragem ou cache
+
+Esta visibilidade permite decisões baseadas em dados sobre otimização da infraestrutura MCP.
+
+### Análise de Comportamento
+
+Entendendo como as equipes realmente usam as capacidades MCP:
+- **Adoção de ferramentas**: Quais conexões são mais valiosas
+- **Padrões de fluxo de trabalho**: Sequências comuns de invocações de ferramentas
+- **Eficácia dos agentes**: Como a seleção de ferramentas dos agentes evolui ao longo do tempo
+- **Fricção do usuário**: Onde erros ou retentativas acontecem com mais frequência
+
+Isso informa decisões de produto sobre quais capacidades priorizar ou melhorar.
+
+## Monitoramento como Loop de Feedback
+
+O monitoramento do deco CMS não é apenas logging passivo — ele cria um loop de feedback que melhora a plataforma:
+
+**Padrões de erro** → Melhores políticas de autorização ou verificações de saúde de conexão
+
+**Dados de performance** → Estratégias de filtragem de MCPs Virtuais ou políticas de cache
+
+**Analytics de uso** → Recomendações de quais ferramentas adicionar ou depreciar
+
+**Eventos de segurança** → Respostas automatizadas ou controles de acesso aprimorados
+
+Este loop de feedback só é possível com monitoramento centralizado e estruturado.
+
+## Privacidade e Tratamento de Dados
+
+<Callout type="info">
+Logs de monitoramento incluem entradas e saídas de ferramentas por padrão. Para operações sensíveis (ex: consultar dados de clientes), considere:
+- Usar API keys com restrições de escopo apropriadas
+- Implementar políticas de logging no nível da conexão
+- Utilizar controles de retenção de dados no nível da organização
+
+O deco CMS fornece a infraestrutura de observabilidade; sua organização define as políticas de privacidade.
+</Callout>
+
+## Filosofia de Monitoramento
+
+Sistemas tradicionais tratam monitoramento como "bom ter" — algo que você adiciona depois de construir a funcionalidade principal. O deco CMS inverte isso:
+
+**Monitoramento não é opcional**. É como o control plane opera. Sem logs de monitoramento, você não pode debugar, auditar, otimizar ou proteger tráfego MCP em escala.
+
+Ao tornar a observabilidade infraestrutura de primeira classe, o deco CMS permite que equipes operem MCP em produção com a mesma confiança que têm em outros sistemas críticos.

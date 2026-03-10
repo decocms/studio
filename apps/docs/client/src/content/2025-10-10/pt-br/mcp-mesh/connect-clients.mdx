@@ -1,0 +1,29 @@
+---
+title: Conectar Clientes MCP
+description: Como Cursor/Claude/clientes customizados autenticam no Mesh e consomem tools via MCP
+icon: PlugZap
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+
+## Opções de cliente
+
+Existem duas formas comuns de conectar clientes ao Mesh:
+
+- **OAuth (recomendado para clientes interativos)**: suporta fluxos OAuth padrão, consentimento e acesso por organização.
+- **API Keys (recomendado para servidores/agentes)**: chaves com escopo e permissões explícitas de tools.
+
+## Endpoints que você vai usar
+
+- **Management MCP**: `POST /mcp`
+- **Proxy de connection**: `POST /mcp/:connectionId`
+- **Agent (servidor virtual)**: `POST /mcp/gateway/:gatewayId` (ou omita `:gatewayId` para usar o Agent padrão da org com headers)
+
+<Callout type="tip">
+  Se o seu objetivo é ter uma "URL MCP única" com uma superfície de tools curada, use **Agents**. Se você quer um pipe direto para um MCP upstream, use **Proxy de connection**.
+</Callout>
+
+## Notas rápidas sobre autenticação
+
+- **OAuth** é ideal quando você quer identidade por usuário e login via navegador.
+- **API keys** são ideais para automação e acesso servidor-a-servidor (menor fricção para começar).

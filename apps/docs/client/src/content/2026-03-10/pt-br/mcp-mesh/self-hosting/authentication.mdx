@@ -1,0 +1,29 @@
+---
+title: Autenticação
+description: Métodos de autenticação suportados e como configurá-los para self-hosting
+icon: ShieldCheck
+---
+
+import Callout from "../../../../../components/ui/Callout.astro";
+
+## O que é suportado
+
+O deco CMS usa Better Auth e suporta:
+
+- **Email/senha**
+- **Magic link**
+- **Provedores sociais** (ex.: Google, GitHub)
+- **SAML SSO** (para organizações enterprise)
+
+## Configurar autenticação (self-hosting)
+
+Implantações self-hosted carregam um arquivo `auth-config.json` na inicialização (consulte seus guias de deploy para detalhes de montagem).
+
+<Callout type="warning">
+  Mantenha os secrets dos provedores fora do Git. Em produção, use gerenciamento de Secrets (Kubernetes Secrets, External Secrets Operator, etc.).
+</Callout>
+
+## Variáveis de ambiente principais
+
+- `BETTER_AUTH_SECRET` (obrigatório)
+- `BETTER_AUTH_URL` / `BASE_URL` (recomendado definir explicitamente em produção)

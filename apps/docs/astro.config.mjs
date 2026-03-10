@@ -42,7 +42,7 @@ export default defineConfig({
     port: 4000,
   },
   redirects: {
-    "/": "/latest/en/introduction",
+    "/": "/2026-03-10/en/mcp-mesh/quickstart",
   },
   outDir: "dist/client/",
   srcDir: "client/src",

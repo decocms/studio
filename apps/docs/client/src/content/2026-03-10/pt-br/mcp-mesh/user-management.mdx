@@ -1,0 +1,92 @@
+---
+title: Gerenciamento de Usuários
+description: Controle quem pode acessar sua organização e o que cada pessoa pode fazer
+icon: Users
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+
+## Como funciona o controle de acesso
+
+O deco CMS ajuda você a gerenciar quem pode fazer o quê na sua organização. Pense nisso como gerenciar o acesso a um Google Drive compartilhado ou uma organização Slack — você decide quem faz parte da sua equipe e o que cada um pode fazer.
+
+Existem duas formas principais de controlar o acesso:
+
+- **Papéis de membros da equipe** — O que as pessoas na sua organização podem fazer (visualizar, editar, gerenciar configurações, etc.)
+- **Permissões de API key** — O que sistemas automatizados ou ferramentas externas podem fazer quando se conectam à sua organização
+
+## Papéis da equipe
+
+Ao criar uma organização, você recebe automaticamente três papéis para atribuir aos membros da equipe:
+
+- **Owner**: Controle total sobre tudo, incluindo excluir a organização ou remover membros da equipe
+- **Admin**: Pode gerenciar operações do dia a dia como adicionar conexões, criar agentes e convidar usuários
+- **User**: Acesso básico para visualizar e usar conexões existentes (ideal para membros da equipe que só precisam trabalhar com o que já está configurado)
+
+### Criando papéis personalizados
+
+Precisa de algo mais específico? Você pode criar papéis personalizados adaptados às necessidades da sua equipe.
+
+**Exemplo**: Crie um papel "Desenvolvedor" que pode gerenciar conexões e agentes mas não pode excluir nada, ou um papel "Visualizador" que só pode ver o que está configurado sem fazer alterações.
+
+Para criar um papel personalizado:
+
+1. Vá em **Members** na sua organização
+2. Clique em **Manage Roles**
+3. Clique em **Create Role**
+4. Dê um nome (como "Desenvolvedor" ou "Equipe de Suporte")
+5. Selecione quais ações este papel deve poder executar
+
+<Callout type="tip">
+  **Dica**: Comece com a menor quantidade de acesso necessária e adicione mais permissões conforme necessário. É mais fácil conceder mais acesso depois do que lidar com alterações ou exclusões acidentais.
+</Callout>
+
+## Permissões de API key
+
+API keys permitem que ferramentas externas ou sistemas automatizados acessem sua organização sem exigir que alguém faça login. Ao criar uma API key, você escolhe exatamente o que ela pode fazer.
+
+**Exemplos de casos de uso**:
+- Um sistema de monitoramento que só precisa ler o status das conexões
+- Um script de deploy que precisa criar novas conexões
+- Uma integração de terceiros que deve acessar apenas agentes específicos
+
+**Boa prática**: Dê a cada API key apenas as permissões que ela realmente precisa. Se um script apenas lê dados, não dê permissão para excluir coisas.
+
+## Onde gerenciar o acesso
+
+Você trabalhará com essas configurações em alguns lugares diferentes:
+
+- **Página de Members**: Convide colegas, atribua papéis e crie papéis personalizados
+- **Página de API Keys**: Crie chaves para ferramentas automatizadas e defina suas permissões
+- **Página de Agents**: Controle quais ferramentas e conexões cada agente pode acessar (útil para limitar o que assistentes de IA ou automações podem fazer)
+
+## Exemplos práticos
+
+### Dar acesso de admin a um membro da equipe
+
+**Quando**: Você quer que alguém ajude a gerenciar conexões e convidar novos membros
+
+1. Vá em **Members**
+2. Encontre o nome da pessoa
+3. Clique no papel atual (provavelmente "User")
+4. Selecione **Admin**
+
+### Criar uma API key para uma ferramenta de monitoramento
+
+**Quando**: Você tem um sistema que precisa verificar se suas conexões estão funcionando
+
+1. Vá em **API Keys**
+2. Clique em **Create API Key**
+3. Dê um nome como "Monitor de Status"
+4. Selecione apenas a permissão "View Connections"
+5. Copie a chave e use na sua ferramenta de monitoramento
+
+### Configurar um papel "Analista Somente Leitura"
+
+**Quando**: Você tem membros da equipe que precisam ver configurações mas não devem alterar nada
+
+1. Vá em **Members** → **Manage Roles**
+2. Clique em **Create Role**
+3. Nomeie como "Analista Somente Leitura"
+4. Selecione apenas permissões de visualização (sem criar, atualizar ou excluir)
+5. Atribua este papel aos membros apropriados da equipe

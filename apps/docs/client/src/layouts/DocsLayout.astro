@@ -19,7 +19,7 @@ const pathSegments = currentPath.split("/").filter((segment) => segment !== "");
 // Use Astro.params.locale when available (versioned routes: /[version]/[locale]/...)
 // fallback to pathSegments[0] for legacy routes (/[locale]/...)
 const locale = (Astro.params.locale as string) || pathSegments[0] || "en";
-const version = (Astro.params.version as string) || "latest";
+const version = (Astro.params.version as string) || "2026-03-10";
 const localeIndex = pathSegments.indexOf(locale);
 const pagePath =
   localeIndex >= 0

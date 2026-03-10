@@ -1,0 +1,68 @@
+---
+title: tool_enable
+description: Habilitar uma ferramenta para uso na tarefa atual
+icon: ToggleRight
+---
+
+## Visão Geral
+
+Habilita uma ferramenta para uso na tarefa atual. Só é possível habilitar ferramentas que existem no MCP virtual do escopo atual. A ferramenta permanece habilitada apenas durante a tarefa.
+
+## Disponibilidade
+
+- **Tarefas**: ✓ Disponível
+- **Subtarefas**: ✓ Disponível
+
+## Assinatura
+
+```typescript
+tool_enable(tool_name: string)
+```
+
+## Parâmetros
+
+| Parâmetro | Tipo | Obrigatório | Descrição |
+|-----------|------|----------|-------------|
+| `tool_name` | `string` | Obrigatório | Nome da ferramenta a ser habilitada |
+
+## Retorno
+
+Status de sucesso e confirmação de habilitação.
+
+## Comportamento
+
+- Só é possível habilitar ferramentas que existem no MCP virtual do escopo atual
+- A ferramenta permanece habilitada apenas durante a tarefa
+- Deve ser chamada antes de invocar as ferramentas alvo
+- Ferramentas são descobertas via `tool_search` primeiro
+
+## Exemplo de Uso
+
+```typescript
+// Habilitar uma ferramenta do Shopify
+tool_enable("GET_ORDERS")
+
+// Habilitar uma ferramenta de inventário
+tool_enable("UPDATE_STOCK_LEVELS")
+
+// Habilitar uma ferramenta de envio
+tool_enable("CREATE_SHIPPING_LABEL")
+```
+
+## Padrão de Fluxo de Trabalho
+
+```typescript
+// 1. Descobrir ferramentas disponíveis
+const tools = tool_search("order")
+
+// 2. Habilitar ferramenta específica
+tool_enable("GET_ORDERS")
+
+// 3. Usar a ferramenta habilitada
+GET_ORDERS({ status: "pending", limit: 50 })
+```
+
+## Relacionados
+
+- [**tool_search**](/pt-br/mcp-mesh/api-reference/built-in-tools/tool-search) - Descobrir ferramentas disponíveis
+- [Visão Geral das Ferramentas Integradas](/pt-br/mcp-mesh/api-reference/built-in-tools)

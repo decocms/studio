@@ -1,0 +1,326 @@
+---
+title: Construindo Tools
+description: Construa tools em TypeScript com total type safety
+icon: Wrench
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+
+Tools são funções tipadas que agents, workflows e views podem chamar. Este guia mostra como construir tools usando TypeScript para máximo controle e extensibilidade.
+
+<Callout type="tip">
+  **Não é desenvolvedor?** Veja [Criando Tools](/pt-br/no-code-guides/creating-tools) para criar tools via chat.
+</Callout>
+
+## Anatomia de um Tool
+
+Todo tool requer quatro componentes:
+
+1. **ID** - Identificador único seguindo padrão `RECURSO_ACAO` (ex: `EMAIL_SEND`, `CUSTOMER_FETCH`)
+2. **Descrição** - Diz aos agents quando e como usar o tool
+3. **Schemas** - Schemas Zod para validação de input e tipagem de output
+4. **Execute** - A lógica de implementação
+
+
+## Exemplo Básico
+
+```typescript
+import { createTool } from "@deco/workers-runtime";
+import { z } from "zod";
+
+const createOrderConfirmationTool = (env: Env) =>
+  createTool({
+    id: "ORDER_CONFIRMATION_SEND",
+    description: "Send order confirmation email to customer. Use after successful order placement.",
+    inputSchema: z.object({
+      customerEmail: z.string().email(),
+      orderNumber: z.string(),
+      orderTotal: z.number().positive(),
+      items: z.array(z.object({
+        name: z.string(),
+        quantity: z.number(),
+        price: z.number(),
+      })),
+    }),
+    outputSchema: z.object({
+      success: z.boolean(),
+      messageId: z.string().optional(),
+      sentAt: z.string(),
+    }),
+    execute: async ({ context }) => {
+      const response = await env["sendgrid"].SEND_EMAIL({
+        to: context.customerEmail,
+        subject: `Order Confirmation - #${context.orderNumber}`,
+        body: `Thank you for your order! Total: $${context.orderTotal}`,
+      });
+      return {
+        success: true,
+        messageId: response.id,
+        sentAt: new Date().toISOString(),
+      };
+    },
+  });
+```
+
+**Pontos-chave:**
+- Use `context` para acessar input validado
+- Retorne dados que correspondam ao seu `outputSchema`
+- Acesse integrações via `env["integration-id"]` onde `integration-id` é o ID do app no seu workspace
+
+## Padrões Comuns
+
+### Chamadas de API Externa
+
+```typescript
+const createInventoryCheckTool = (env: Env) =>
+  createTool({
+    id: "PRODUCT_INVENTORY_CHECK",
+    description: "Check product inventory levels across warehouses using inventory API",
+    inputSchema: z.object({
+      sku: z.string().min(1),
+      warehouseIds: z.array(z.string()).optional(),
+    }),
+    outputSchema: z.object({
+      sku: z.string(),
+      totalQuantity: z.number(),
+      locations: z.array(z.object({
+        warehouseId: z.string(),
+        quantity: z.number(),
+        reserved: z.number(),
+      })),
+      lowStock: z.boolean(),
+    }),
+    execute: async ({ context }) => {
+      const response = await fetch(
+        `https://api.inventory-system.com/v1/products/${context.sku}/stock`,
+        {
+          headers: { "Authorization": `Bearer ${env.INVENTORY_API_KEY}` }
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Inventory API error: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const totalQuantity = data.locations.reduce((sum, loc) => sum + loc.quantity, 0);
+
+      return {
+        sku: context.sku,
+        totalQuantity,
+        locations: data.locations,
+        lowStock: totalQuantity < 10,
+      };
+    },
+  });
+```
+
+### Usando Integrações
+
+Chame integrações instaladas através do environment:
+
+```typescript
+const createOrderNotificationTool = (env: Env) =>
+  createTool({
+    id: "ORDER_NOTIFICATION_SEND",
+    description: "Send order status notification to fulfillment team via Slack",
+    inputSchema: z.object({
+      orderNumber: z.string(),
+      status: z.enum(["pending", "processing", "shipped", "delivered"]),
+      customerName: z.string(),
+      totalAmount: z.number(),
+    }),
+    outputSchema: z.object({
+      sent: z.boolean(),
+      timestamp: z.string(),
+      channel: z.string(),
+    }),
+    execute: async ({ context }) => {
+      const message = `🛒 Order #${context.orderNumber} - ${context.status.toUpperCase()}\n` +
+                     `Customer: ${context.customerName}\n` +
+                     `Amount: $${context.totalAmount}`;
+
+      const result = await env["slack"].POST_MESSAGE({
+        channel: "#order-fulfillment",
+        text: message,
+      });
+
+      return {
+        sent: true,
+        timestamp: result.ts,
+        channel: "#order-fulfillment",
+      };
+    },
+  });
+```
+
+Instale integrações de **Apps** no seu workspace. Os tools de cada integração estão disponíveis em `env["integration-id"]` onde o ID é mostrado na seção Apps (ex: `env["shopify"]`, `env["slack"]`, `env["stripe"]`).
+
+### Operações de Banco de Dados
+
+Todo workspace inclui SQLite integrado com Drizzle ORM:
+
+```typescript
+import { getDb } from "./db";
+import { customers } from "./schema";
+
+const createCustomerTool = (env: Env) =>
+  createTool({
+    id: "CUSTOMER_CREATE",
+    description: "Create a new customer in the ecommerce database with loyalty tier",
+    inputSchema: z.object({
+      name: z.string().min(1),
+      email: z.string().email(),
+      phone: z.string().optional(),
+      shippingAddress: z.object({
+        street: z.string(),
+        city: z.string(),
+        state: z.string().length(2),
+        zipCode: z.string(),
+      }),
+      loyaltyTier: z.enum(["bronze", "silver", "gold", "platinum"]).default("bronze"),
+    }),
+    outputSchema: z.object({
+      id: z.number(),
+      email: z.string(),
+      loyaltyTier: z.string(),
+      createdAt: z.date(),
+    }),
+    execute: async ({ context }) => {
+      const db = await getDb(env);
+      const [result] = await db
+        .insert(customers)
+        .values({
+          name: context.name,
+          email: context.email,
+          phone: context.phone,
+          shippingAddress: JSON.stringify(context.shippingAddress),
+          loyaltyTier: context.loyaltyTier,
+        })
+        .returning();
+
+      return {
+        id: result.id,
+        email: result.email,
+        loyaltyTier: result.loyaltyTier,
+        createdAt: result.createdAt,
+      };
+    },
+  });
+```
+
+Cada projeto obtém armazenamento SQLite isolado no D1 do Cloudflare. Sem necessidade de credenciais.
+
+## Registrando Tools
+
+Adicione tools em `server/main.ts`:
+
+```typescript
+import { withRuntime } from "@deco/workers-runtime";
+import { createOrderConfirmationTool } from "./tools/notifications";
+import { createInventoryCheckTool } from "./tools/inventory";
+import { createCustomerTool } from "./tools/customers";
+import { createOrderNotificationTool } from "./tools/fulfillment";
+
+const { Workflow, ...runtime } = withRuntime<Env>({
+  tools: [
+    createOrderConfirmationTool,
+    createInventoryCheckTool,
+    createCustomerTool,
+    createOrderNotificationTool,
+    // Adicione mais tools aqui
+  ],
+  workflows: [],
+  views: [],
+});
+
+export { Workflow };
+export default runtime;
+```
+
+Após registro, execute `npm run gen:self` para gerar tipos para seu frontend.
+
+## Testando Tools
+
+Inicie seu servidor dev e teste de duas maneiras:
+
+**1. Via Admin UI:**
+1. `npm run dev`
+2. Copie URL de preview
+3. **Admin → Apps → Adicionar Integração** (cole URL + `/mcp`)
+4. Teste tools através da interface auto-gerada
+
+**2. Via Código:**
+```typescript
+// No seu componente React
+import { client } from "./lib/rpc";
+
+const result = await client.tools.ORDER_CONFIRMATION_SEND({
+  customerEmail: "customer@example.com",
+  orderNumber: "ORD-12345",
+  orderTotal: 299.99,
+  items: [
+    { name: "Wireless Headphones", quantity: 1, price: 299.99 }
+  ],
+});
+```
+
+Tools estão imediatamente disponíveis via RPC tipado, sem necessidade de camada de API.
+
+## Melhores Práticas
+
+**Responsabilidade Única**
+```
+✅ ORDER_CONFIRMATION_SEND, CUSTOMER_CREATE, PRODUCT_INVENTORY_CHECK
+❌ CUSTOMER_CREATE_AND_EMAIL_AND_SYNC_INVENTORY
+```
+
+**Nomes Descritivos** - Siga o padrão `RECURSO_ACAO`:
+```
+✅ ORDER_TOTAL_CALCULATE, PRODUCT_PRICE_UPDATE, CART_ABANDONED_SEND
+❌ calculateTotal, updatePrice, sendCart
+```
+
+**Tipagem Forte** - Schemas Zod fornecem validação em runtime e tipos em compile-time:
+```typescript
+inputSchema: z.object({
+  email: z.string().email(),        // Validação de email
+  amount: z.number().positive(),    // Deve ser > 0
+  tier: z.enum(["A", "B", "C"]),   // Apenas estes valores
+})
+```
+
+**Tratamento de Erros**
+```typescript
+execute: async ({ context }) => {
+  try {
+    const result = await api.call(context);
+    return result;
+  } catch (error) {
+    throw new Error(`Failed to process: ${error.message}`);
+  }
+}
+```
+
+## Organizando Tools
+
+Agrupe tools relacionados em arquivos:
+
+```
+server/tools/
+├── index.ts          # Exporta todos os tools
+├── customers.ts      # CUSTOMER_CREATE, CUSTOMER_FETCH, CUSTOMER_UPDATE
+├── orders.ts         # ORDER_CREATE, ORDER_UPDATE, ORDER_CANCEL
+├── inventory.ts      # PRODUCT_INVENTORY_CHECK, INVENTORY_UPDATE
+├── notifications.ts  # ORDER_CONFIRMATION_SEND, SHIPPING_NOTIFICATION_SEND
+└── payments.ts       # PAYMENT_PROCESS, REFUND_CREATE, TRANSACTION_VERIFY
+```
+
+Exporte de `index.ts`:
+```typescript
+export { createCustomerTool, createCustomerFetchTool } from "./customers";
+export { createOrderTool, createOrderUpdateTool } from "./orders";
+export { createInventoryCheckTool } from "./inventory";
+export { createOrderConfirmationTool } from "./notifications";
+export { createPaymentTool } from "./payments";
+```

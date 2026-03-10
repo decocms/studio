@@ -1,0 +1,114 @@
+---
+title: Para Desenvolvedores
+description: Configure seu ambiente de desenvolvimento local e implante seu primeiro servidor MCP
+icon: Code
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+
+## Pré-requisitos
+
+- **Node.js** v24+ ([download](https://nodejs.org))
+- **Git**
+- **Editor de código** ([Cursor](https://cursor.com) recomendado)
+- **Básico de TypeScript** ([docs](https://www.typescriptlang.org/docs/))
+
+## Configuração Inicial
+
+### Crie Seu Primeiro App
+
+```bash
+npm create deco@latest
+cd <nome-do-seu-app>
+npm install
+deco login
+```
+
+Abre o navegador para autenticação. Você pode criar uma nova conta se não tiver uma.
+
+### Desenvolvimento Local
+
+```bash
+npm run dev
+```
+
+Inicia servidor local na porta 8787 com hot reload habilitado. A URL de preview é acessível de qualquer lugar agora.
+
+### Estrutura do Projeto
+
+O servidor serve ambos:
+- App MCP em `/mcp`
+- View frontend React em `/`
+
+### Teste Seu Servidor MCP
+
+1. Vá para [admin.decocms.com](https://admin.decocms.com)
+2. **Adicionar Integração** → **Integração Customizada**
+3. Cole URL de preview + `/mcp`
+4. Salve e teste os tools padrão que vêm do modelo
+
+### Deploy
+
+Quando estiver pronto para compartilhar seu MCP:
+
+```bash
+npm run deploy
+```
+
+Isso constrói e implanta seu app MCP no Cloudflare Workers, tornando-o disponível no registro privado da sua organização.
+
+## Entendendo o Fluxo de Trabalho Atual
+
+Como você já sabe, existem duas maneiras de construir apps de IA usando deco:
+1. **Plataforma/UI** - Construa em [admin.decocms.com](https://admin.decocms.com)
+2. **CLI** - Construa localmente com TypeScript
+
+Esses fluxos funcionam separadamente no momento e a transição entre eles ainda não é totalmente integrada.
+
+### Conectando UI e Código
+
+Enquanto trabalhamos em uma integração perfeita, você tem duas opções:
+
+**1. Resources do Workspace (deconfig pull/push)**
+
+Trabalhe com todos os resources de um workspace:
+
+```bash
+# Baixe todos os resources do workspace inteiro
+deco deconfig pull -w <workspace> --path <path>
+
+# Edite localmente no seu IDE
+
+# Envie mudanças de volta ao workspace
+deco deconfig push -w <workspace> --path <path>
+```
+
+**Nota:** Se você não está dentro de uma pasta de projeto deco ou não inicializou a CLI no seu editor, você precisará instalá-la globalmente usando `npm i -g deco-cli@latest` para ter acesso aos comandos deco
+
+**2. Projeto Único (export/import)**
+
+Trabalhe com um projeto específico dentro de uma organização:
+
+```bash
+# Exporte um projeto único (tools, views, workflows, agents, schemas)
+deco project export --org <org> --project <project> --out ./my-project
+
+# Edite localmente no seu IDE
+
+# Importe de volta para a mesma ou diferente organização
+deco project import --from ./my-project --org <org>
+```
+
+**Casos de uso:**
+- **Workspace pull/push:** Sincronização rápida de todos os resources do workspace para iteração
+- **Project export/import:** Mover projetos específicos entre organizações ou arquivá-los
+
+<Callout type="info">
+  **No que estamos trabalhando:** Sincronização nativa com Git entre UI e código.
+</Callout>
+
+**Obter Ajuda:** [Discord](https://decocms.com/discord)
+
+**Não é desenvolvedor?** Veja [Para AI Builders](/pt-br/getting-started/ai-builders) para workflow sem código.
+
+

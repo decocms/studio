@@ -1,0 +1,61 @@
+---
+title: Ferramentas Integradas
+description: Ferramentas principais fornecidas pelo decopilot para descobrir capacidades e gerenciar trabalho
+icon: Wrench
+---
+
+import Callout from "../../../../../components/ui/Callout.astro";
+
+## Visão Geral
+
+O Decopilot fornece ferramentas integradas que estão sempre disponíveis (sujeitas a restrições de tarefas/subtarefas). Essas ferramentas permitem a descoberta de capacidades, gerenciamento de trabalho e acesso ao contexto.
+
+## Categorias de Ferramentas
+
+### Descoberta e Habilitação
+
+Ferramentas para descobrir e ativar capacidades:
+
+- [**tool_search**](/pt-br/mcp-mesh/api-reference/built-in-tools/tool-search) - Pesquisar ferramentas no escopo atual
+- [**tool_enable**](/pt-br/mcp-mesh/api-reference/built-in-tools/tool-enable) - Ativar uma ferramenta para uso na tarefa atual
+
+### Gerenciamento de Agentes
+
+Ferramentas para trabalhar com agentes:
+
+- [**agent_search**](/pt-br/mcp-mesh/api-reference/built-in-tools/agent-search) - Encontrar agentes configurados na organização
+
+### Gerenciamento de Tarefas
+
+Ferramentas para criar e gerenciar trabalho:
+
+- [**subtask_run**](/pt-br/mcp-mesh/api-reference/built-in-tools/subtask-run) - Criar subtarefa com contexto isolado
+
+### Interação com o Usuário
+
+Ferramentas para coletar entrada do usuário:
+
+- [**user_ask**](/pt-br/mcp-mesh/api-reference/built-in-tools/user-ask) - Perguntar ao usuário por entrada ou esclarecimento
+
+### Acesso ao Contexto
+
+Ferramentas para ler recursos e prompts:
+
+- [**resource_read**](/pt-br/mcp-mesh/api-reference/built-in-tools/resource-read) - Ler documentação/diretrizes do escopo atual
+- [**prompt_read**](/pt-br/mcp-mesh/api-reference/built-in-tools/prompt-read) - Ler templates de prompt do escopo atual
+
+## Matriz de Disponibilidade
+
+| Ferramenta | Tarefa | Subtarefa | Descrição |
+|------|:----:|:-------:|-------------|
+| `tool_search` | ✓ | ✓ | Pesquisar ferramentas no escopo atual |
+| `tool_enable` | ✓ | ✓ | Ativar uma ferramenta para uso na tarefa atual |
+| `agent_search` | ✓ | ✗ | Encontrar agentes configurados na organização |
+| `subtask_run` | ✓ | ✗ | Criar subtarefa com contexto limpo |
+| `user_ask` | ✓ | ✗ | Perguntar ao usuário por entrada ou esclarecimento |
+| `resource_read` | ✓ | ✓ | Ler documentação/diretrizes do escopo atual |
+| `prompt_read` | ✓ | ✓ | Ler templates de prompt do escopo atual |
+
+<Callout type="info">
+  **Tarefas** são iniciadas pelo usuário e têm acesso completo a todas as ferramentas integradas. **Subtarefas** são criadas pelo decopilot e têm acesso restrito para evitar delegação infinita e bloqueio de interações com o usuário.
+</Callout>

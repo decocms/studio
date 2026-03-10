@@ -1,0 +1,326 @@
+---
+title: Endpoint de Proxy de Conexão
+description: Conectar clientes MCP diretamente a servidores MCP upstream através do deco CMS
+icon: Network
+---
+
+import Callout from "../../../../../components/ui/Callout.astro";
+
+## Visão Geral
+
+O endpoint de **Proxy de Conexão** (`/mcp/:connectionId`) permite que clientes MCP (como Cursor, Claude Desktop ou aplicações customizadas) se conectem diretamente a um servidor MCP upstream específico através do deco CMS. Este endpoint atua como um proxy seguro e observável que gerencia autenticação, autorização, gerenciamento de credenciais e monitoramento.
+
+## Endpoint
+
+```
+POST https://sua-instancia-mesh.com/mcp/:connectionId
+```
+
+### Parâmetros de Caminho
+
+| Parâmetro | Tipo | Obrigatório | Descrição |
+|-----------|------|----------|-------------|
+| `connectionId` | `string` (UUID) | Obrigatório | O identificador único da conexão para onde as requisições serão encaminhadas |
+
+## Autenticação
+
+O Proxy de Conexão requer autenticação usando um dos métodos:
+
+- **Token OAuth Bearer**: `Authorization: Bearer <token>`
+- **Chave de API**: `Authorization: Bearer <api_key>`
+
+Quando não autenticado, o endpoint retorna uma resposta `401` com um cabeçalho `WWW-Authenticate` contendo metadados de descoberta OAuth:
+
+```http
+HTTP/1.1 401 Unauthorized
+WWW-Authenticate: Bearer realm="mcp",resource_metadata="https://sua-instancia-mesh.com/mcp/:connectionId/.well-known/oauth-protected-resource"
+```
+
+<Callout type="info">
+  Clientes com suporte a OAuth 2.1 podem usar a URL de metadados do recurso para descobrir endpoints de autorização e completar o fluxo OAuth automaticamente.
+</Callout>
+
+## Como Funciona
+
+Quando um cliente envia uma requisição MCP através do Proxy de Conexão:
+
+1. **Autenticação**: o deco CMS verifica as credenciais do cliente (token OAuth ou chave de API)
+2. **Busca da Conexão**: o deco CMS recupera a configuração da conexão e verifica se está ativa
+3. **Autorização**: o deco CMS verifica se o cliente tem permissão para invocar a ferramenta solicitada
+4. **Injeção de Credenciais**: o deco CMS descriptografa credenciais armazenadas e as injeta na requisição upstream
+5. **Encaminhamento da Requisição**: o deco CMS encaminha a requisição MCP ao servidor upstream
+6. **Monitoramento**: o deco CMS registra métricas (duração, status, erros) para observabilidade
+7. **Retorno da Resposta**: o deco CMS retorna a resposta do servidor upstream ao cliente
+
+## Formato da Requisição
+
+O Proxy de Conexão aceita requisições do protocolo MCP padrão. O corpo da requisição deve ser uma mensagem JSON-RPC 2.0 seguindo a especificação MCP.
+
+### Exemplo: Listar Ferramentas
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/list"
+}
+```
+
+### Exemplo: Chamar Ferramenta
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "github_create_issue",
+    "arguments": {
+      "repo": "myorg/myrepo",
+      "title": "Bug report",
+      "body": "Description of the bug"
+    }
+  }
+}
+```
+
+## Formato da Resposta
+
+Respostas seguem o formato padrão do protocolo MCP:
+
+### Resposta de Sucesso
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Issue created successfully: #123"
+      }
+    ]
+  }
+}
+```
+
+### Resposta de Erro
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "error": {
+    "code": -32603,
+    "message": "Tool execution failed"
+  }
+}
+```
+
+## Autorização
+
+O Proxy de Conexão aplica autorização granular usando o sistema de permissões do deco CMS:
+
+- **Permissões por Ferramenta**: Usuários devem ter permissão explícita para cada ferramenta que invocam
+- **Escopo de Conexão**: Permissões são limitadas à conexão específica
+- **Baseado em Funções**: Permissões são herdadas das funções do usuário e configurações da organização
+
+### Formato de Permissão
+
+Permissões são armazenadas no formato:
+
+```json
+{
+  "<connectionId>": ["tool_name_1", "tool_name_2"]
+}
+```
+
+### Ferramentas Públicas
+
+Ferramentas podem ser marcadas como públicas usando metadados:
+
+```json
+{
+  "_meta": {
+    "mcp.mesh": {
+      "public_tool": true
+    }
+  }
+}
+```
+
+Ferramentas públicas permitem acesso não autenticado e ignoram verificações de autorização.
+
+## Respostas de Erro
+
+| Código de Status | Descrição | Cenário de Exemplo |
+|-------------|-------------|------------------|
+| `401` | Não Autorizado | Token OAuth ou chave de API válida não fornecidos |
+| `403` | Proibido | Usuário não tem permissão para invocar a ferramenta solicitada |
+| `404` | Não Encontrado | ID da conexão não existe ou usuário não tem acesso |
+| `500` | Erro Interno do Servidor | Erro inesperado durante o processamento da requisição |
+| `503` | Serviço Indisponível | Conexão está inativa ou servidor upstream está inacessível |
+
+## Suporte a Streaming
+
+O Proxy de Conexão suporta **respostas de ferramentas com streaming** para conexões baseadas em HTTP:
+
+### Endpoint de Ferramenta com Streaming
+
+```
+POST https://sua-instancia-mesh.com/mcp/:connectionId/call-tool/:toolName
+```
+
+Este endpoint permite que ferramentas transmitam respostas de volta ao cliente, útil para operações de longa duração ou grandes transferências de dados.
+
+<Callout type="warning">
+  Streaming é suportado apenas para conexões HTTP. Conexões STDIO e VIRTUAL utilizam chamadas de ferramenta regulares.
+</Callout>
+
+## Monitoramento e Observabilidade
+
+Cada requisição através do Proxy de Conexão gera:
+
+### Métricas
+
+- **Histogramas de Duração**: `connection.proxy.duration` e `connection.proxy.streamable.duration`
+- **Contadores de Requisições**: `connection.proxy.requests` e `connection.proxy.streamable.requests`
+- **Contadores de Erros**: `connection.proxy.errors` e `connection.proxy.streamable.errors`
+
+Todas as métricas incluem labels:
+- `connection.id`: O UUID da conexão
+- `tool.name`: A ferramenta sendo invocada
+- `status`: sucesso ou erro
+
+### Traces
+
+Spans do OpenTelemetry são criados para:
+- `mcp.proxy.callTool`: Invocações regulares de ferramentas
+- `mcp.proxy.callStreamableTool`: Invocações de ferramentas com streaming
+
+Traces incluem atributos:
+- `connection.id`: Identificador da conexão
+- `tool.name`: Nome da ferramenta
+- `request.id`: Identificador único da requisição
+
+## Opções de Configuração
+
+Conexões podem ser configuradas com:
+
+### Configurações de Timeout
+
+O timeout padrão para chamadas de ferramentas é de **5 minutos** (300.000ms). Isso pode ser ajustado por conexão baseado nas características de execução das ferramentas.
+
+### Cabeçalhos Customizados
+
+Conexões podem incluir cabeçalhos HTTP customizados para autenticação ou roteamento:
+
+```json
+{
+  "connection_headers": {
+    "headers": {
+      "X-Custom-Header": "value"
+    }
+  }
+}
+```
+
+## Casos de Uso
+
+### Acesso MCP Direto
+
+Conectar Cursor ou Claude Desktop diretamente a um MCP upstream específico:
+
+**Configuração do Cursor:**
+```json
+{
+  "mcpServers": {
+    "github-production": {
+      "url": "https://mesh.example.com/mcp/conn_abc123",
+      "headers": {
+        "Authorization": "Bearer YOUR_API_KEY"
+      }
+    }
+  }
+}
+```
+
+### Clientes Específicos de Ferramentas
+
+Construir clientes customizados que precisam de acesso às ferramentas de um servidor MCP específico sem composição de MCP Virtual:
+
+```typescript
+const response = await fetch('https://mesh.example.com/mcp/conn_abc123', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer YOUR_API_KEY'
+  },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/call',
+    params: {
+      name: 'database_query',
+      arguments: { query: 'SELECT * FROM users LIMIT 10' }
+    }
+  })
+});
+```
+
+### Isolamento Multi-Tenant
+
+Cada conexão é limitada à organização, fornecendo isolamento natural de tenants:
+
+```
+Organização A → conn_123 (GitHub Org A) → GitHub Tools (apenas Org A)
+Organização B → conn_456 (GitHub Org B) → GitHub Tools (apenas Org B)
+```
+
+## Estados de Conexão
+
+Conexões possuem um campo `status` que afeta o comportamento do proxy:
+
+- **`active`**: Conexão está pronta para encaminhar requisições
+- **`inactive`**: Conexão está desabilitada; proxy retorna erro `503`
+- **`error`**: Conexão tem problemas de configuração; proxy pode falhar
+
+## Considerações de Segurança
+
+### Tratamento de Credenciais
+
+- **Criptografadas em Repouso**: Credenciais são armazenadas criptografadas usando AES-256-GCM
+- **Descriptografadas Just-in-Time**: Credenciais só são descriptografadas ao encaminhar requisições
+- **Nunca Expostas aos Clientes**: Clientes nunca recebem credenciais upstream
+
+### Validação de Requisições
+
+- **Validação de Schema**: Argumentos de ferramentas são validados contra schemas de entrada
+- **Limite de Taxa**: (Planejado) Limites de taxa por conexão e por usuário
+- **Log de Auditoria**: Todas as invocações de ferramentas são registradas com identidade do usuário
+
+### Segurança de Rede
+
+- **TLS Obrigatório**: Todas as conexões com servidores upstream usam HTTPS
+- **Validação de Certificado**: Certificados SSL são validados por padrão
+- **Cabeçalhos de Proxy**: Servidores upstream recebem requisições autenticadas com credenciais
+
+## Comparação com Outros Endpoints
+
+| Endpoint | Caso de Uso | Ferramentas Disponíveis |
+|----------|----------|-----------------|
+| `/mcp/:connectionId` | Acesso direto a um MCP upstream | Todas as ferramentas apenas daquela conexão |
+| `/mcp/gateway/:agentId` | Superfície curada de ferramentas (agente/MCP virtual) | Ferramentas de múltiplas conexões, compostas |
+| `/mcp/self` | Operações de gerenciamento | Apenas ferramentas de gerenciamento do deco CMS |
+
+<Callout type="tip">
+  Para a maioria dos casos de uso em produção, use **Agentes** (`/mcp/gateway/:agentId`) ao invés de proxies de conexão direta. Agentes fornecem melhor controle sobre exposição de ferramentas, suportam contexto e recursos, e permitem composição de múltiplas conexões.
+</Callout>
+
+## Relacionados
+
+- [**Conexões**](/pt-br/mcp-mesh/connections) - Entendendo a abstração de Conexão
+- [**MCPs Virtuais**](/pt-br/mcp-mesh/virtual-mcps) - Compor múltiplas conexões em agentes
+- [**Chaves de API**](/pt-br/mcp-mesh/api-keys) - Configuração de autenticação
+- [**Monitoramento**](/pt-br/mcp-mesh/monitoring) - Observabilidade e métricas

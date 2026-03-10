@@ -1,0 +1,70 @@
+---
+title: Visão Geral
+description: Plataforma MCP para equipes - conecte uma vez, orquestre em qualquer lugar, audite tudo
+icon: Info
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+
+![deco](https://assets.decocache.com/mcp/9a3facd8-1199-4635-becc-bdc3f5ee7ab1/deco-banner-capy.png)
+
+## MCP é o padrão para acesso a ferramentas de IA. Em escala, você precisa de mais do que conexões — precisa de trilhas de auditoria, controles de acesso e logging unificado.
+
+**deco CMS é a plataforma de gerenciamento de contexto que faz o MCP funcionar para equipes.**
+
+É o control plane para tráfego MCP — registre cada servidor MCP uma vez com credenciais centralizadas, e ele se torna disponível (com controles de acesso e logging de auditoria adequados) em todos os seus projetos, agentes e fluxos de trabalho.
+
+### O Problema
+
+Conforme agentes de IA se tornam infraestrutura essencial, gerenciar seu acesso cria desafios críticos:
+
+- **Proliferação de conexões**: Cada funcionário configura manualmente conexões MCP em seu laptop
+- **Sem trilhas de auditoria**: Ações de agentes invisíveis para sistemas de logging e conformidade
+- **Segurança fragmentada**: Sem controle centralizado sobre quem acessa o quê
+
+Em escala empresarial, equipes ou abandonam a integração MCP interna, operam com permissões perigosamente amplas ou gastam meses construindo infraestrutura personalizada.
+
+### Como o deco CMS Resolve
+
+**Conecte**: Registre cada servidor MCP uma vez. Credenciais armazenadas com segurança no vault, disponíveis em toda a organização. Atualize API keys uma vez, não em cada máquina.
+
+**Orquestre**: Controle de acesso granular com RBAC. Controle quem usa quais ferramentas, quando e como. Trilha de auditoria completa mostrando identidade do chamador, nome da ferramenta, entrada/saída e timing.
+
+**Remixe**: Combine e filtre MCPs em MCPs Virtuais em tempo de execução — sem deploy de código. Crie versões somente leitura, agregue ferramentas de múltiplas fontes ou construa coleções de ferramentas específicas por papel.
+
+### Principais Funcionalidades
+
+- **Autenticação centralizada**: SSO/OAuth 2.1, API keys, vault de credenciais criptografado
+- **Logging de auditoria unificado**: Toda requisição MCP registrada com contexto completo
+- **MCPs Virtuais**: Superfícies de ferramentas editáveis em tempo de execução sem deploy de código
+- **decopilot**: Orquestração integrada para fluxos de trabalho agênticos multi-etapas
+- **Agnóstico de modelo**: Funciona com Claude, OpenAI ou qualquer provedor de IA
+
+### Para Quem É
+
+- **Empresas** gerenciando acesso de agentes de IA a sistemas internos (GitHub, Slack, bancos de dados, APIs)
+- **Equipes** executando fluxos de trabalho agênticos que precisam de orquestração, logging e controle de acesso
+- **Equipes de segurança** que precisam de trilhas de auditoria e relatórios de conformidade para sistemas de IA
+
+## Começando
+
+Escolha seu caminho:
+
+**Quickstart** - Coloque sua primeira conexão funcionando em 5 minutos
+→ [Guia de Quickstart](./quickstart)
+
+**Conceitos Principais** - Entenda conexões, MCPs virtuais, autorização e monitoramento
+→ [Conceitos](./concepts)
+
+**Self-Host** - Faça deploy com Docker Compose ou Kubernetes
+→ [Guia de Self-Hosting](./self-hosting/quickstart)
+
+## Links Oficiais
+
+- **deco CMS**: [decocms.com](https://www.decocms.com/)
+- **deco CMS (Control Plane)**: [decocms.com/mesh](https://www.decocms.com/mesh)
+- **Repositório GitHub**: [github.com/decocms/studio](https://github.com/decocms/studio)
+
+<Callout type="info">
+  Se você nos conhece de antes como **deco.cx** (plataforma de CMS headless + storefront), visite [deco.cx](https://www.decocms.com/use-case/deco-cx). Essa documentação está em [docs.deco.cx](https://docs.deco.cx/en/getting-started/overview).
+</Callout>

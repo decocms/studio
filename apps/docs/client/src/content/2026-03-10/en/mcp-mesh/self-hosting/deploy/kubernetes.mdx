@@ -1,0 +1,490 @@
+---
+title: "Kubernetes"
+description: Deploy deco CMS on Kubernetes using Helm
+icon: Rocket
+---
+
+import Callout from "../../../../../../components/ui/Callout.astro";
+
+This guide explains how to deploy deco CMS on Kubernetes using the Helm chart.
+
+Learn more: [the deco CMS product page](https://www.decocms.com/mesh)
+
+Helm chart source: [decocms/helm-chart-deco-mcp-mesh](https://github.com/decocms/helm-chart-deco-mcp-mesh)
+
+## Overview
+
+This Helm chart encapsulates all Kubernetes resources necessary to run the application:
+
+- **Deployment**: Main application with security configurations
+- **Service**: Internal application exposure
+- **ConfigMap**: Non-sensitive configurations
+- **Secret**: Sensitive data (authentication)
+- **PersistentVolumeClaim**: Persistent storage for database
+- **ServiceAccount**: Service account for the pod
+- **HorizontalPodAutoscaler**: Automatic autoscaling (optional)
+
+### Main Features
+
+- ✅ **Parameterizable**: All configurations via `values.yaml`
+- ✅ **Reusable**: Deploy to multiple environments with different values
+- ✅ **Flexible**: Support for additional volumes, tolerations, affinity
+- ✅ **Observable**: Health checks, standardized labels
+- ✅ **Scalable**: Optional HPA for autoscaling
+
+### Architecture
+
+![Infrastructure](https://raw.githubusercontent.com/deco CMS/helm-chart-deco-mcp-mesh/main/img/mcp-mesh-infra-arch.jpg)
+
+## Prerequisites
+
+- Kubernetes 1.32+
+- Helm 3.0+
+- `kubectl` configured to access the cluster
+- StorageClass configured (for PVC)
+
+## Quick Start
+
+The simplest way to get the application up and running on k8s:
+
+```bash
+# 1. Generate a secure secret for authentication
+SECRET=$(openssl rand -base64 32)
+
+# 2. Install the chart with the generated secret
+helm install deco-mcp-mesh . \
+  --namespace deco-mcp-mesh \
+  --create-namespace \
+  --set secret.BETTER_AUTH_SECRET="$SECRET"
+
+# 3. Wait for pods to be ready
+kubectl wait --for=condition=ready pod \
+  -l app.kubernetes.io/instance=deco-mcp-mesh \
+  -n deco-mcp-mesh \
+  --timeout=300s
+
+# 4. Access via port-forward
+kubectl port-forward svc/deco-mcp-mesh 8080:80 -n deco-mcp-mesh
+```
+
+The application will be available at `http://localhost:8080`.
+
+<Callout type="warning">
+  **Important for Production:** This configuration uses SQLite and is suitable only for development/testing. For production environments, configure:
+
+  - **PostgreSQL** as the database engine (`database.engine: postgresql`)
+  - **Autoscaling** enabled (`autoscaling.enabled: true`) with appropriate values
+  - **Distributed persistence** (`persistence.distributed: true`) or PostgreSQL to allow multiple replicas
+
+  See the Configuration section below for more details on production configuration.
+</Callout>
+
+## Installation
+
+### Basic Installation
+
+```bash
+# Preparing necessary parameters
+# Adjust values.yaml with desired configurations to run in your environment
+
+# Install with default values
+helm install deco-mcp-mesh . --namespace deco-mcp-mesh --create-namespace
+
+# Install with custom values
+helm install deco-mcp-mesh . -f my-values.yaml -n deco-mcp-mesh --create-namespace
+```
+
+### Verify Installation
+
+```bash
+# View release status
+helm status deco-mcp-mesh -n deco-mcp-mesh
+
+# View created resources
+kubectl get all -l app.kubernetes.io/instance=deco-mcp-mesh -n deco-mcp-mesh
+
+# View logs
+kubectl logs -l app.kubernetes.io/instance=deco-mcp-mesh -n deco-mcp-mesh
+```
+
+### Using External Secrets
+
+To keep sensitive values out of your `values.yaml` file (useful for GitOps workflows like ArgoCD), you can create Secrets manually and reference them in your values file.
+
+#### Step 1: Create Secrets Manually
+
+Edit `examples/secrets-example.yaml` with your actual values and apply it:
+
+```bash
+# Edit the file with your real values
+# Then apply the Secrets
+kubectl apply -f examples/secrets-example.yaml -n deco-mcp-mesh
+```
+
+The Secrets file contains:
+- **Main Secret** (`deco-mcp-mesh-secrets`): Contains `BETTER_AUTH_SECRET` and `DATABASE_URL`
+- **Auth Config Secret** (`deco-mcp-mesh-auth-secrets`): Contains OAuth client IDs/secrets and API keys
+
+#### Step 2: Configure values.yaml to Use Secrets
+
+```yaml
+secret:
+  # Reference the existing Secret created manually
+  secretName: "deco-mcp-mesh-secrets"
+  
+  # Reference the authConfig Secret
+  authConfigSecretName: "deco-mcp-mesh-auth-secrets"
+
+database:
+  engine: postgresql
+  # Leave url empty when using Secret - value comes from DATABASE_URL in Secret
+  url: ""
+
+configMap:
+  authConfig:
+    socialProviders:
+      google:
+        # Leave empty when using Secret - values come from Secret
+        clientId: ""
+        clientSecret: ""
+      github:
+        clientId: ""
+        clientSecret: ""
+    emailProviders:
+      - id: "resend-primary"
+        provider: "resend"
+        config:
+          apiKey: ""  # Leave empty when using Secret
+          fromEmail: "noreply@decocms.com"
+```
+
+#### Step 3: Install/Upgrade
+
+```bash
+# Install with values that reference external Secrets
+helm install deco-mcp-mesh . -f values-custom.yaml -n deco-mcp-mesh --create-namespace
+
+# Or upgrade existing release
+helm upgrade deco-mcp-mesh . -f values-custom.yaml -n deco-mcp-mesh
+```
+
+**Note**: When `secret.secretName` is defined, the chart will use the existing Secret instead of creating a new one. Values defined in `values.yaml` take precedence over Secret values (for backward compatibility).
+
+### Uninstall
+
+```bash
+helm uninstall deco-mcp-mesh -n deco-mcp-mesh
+```
+
+## Configuration
+
+### Main Values
+
+The main configurable values are in `values.yaml`.
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `replicaCount` | Number of replicas | `3` |
+| `image.repository` | Image repository | `ghcr.io/decocms/mesh/mesh` |
+| `image.tag` | Image tag | `latest` |
+| `service.type` | Service type | `ClusterIP` |
+| `persistence.enabled` | Enable PVC | `true` |
+| `persistence.distributed` | PVC supports ReadWriteMany | `true` |
+| `persistence.accessMode` | PVC access mode | `ReadWriteMany` |
+| `persistence.storageClass` | PVC StorageClass | `efs` |
+| `autoscaling.enabled` | Enable HPA | `false` |
+| `database.engine` | Database (`sqlite`/`postgresql`) | `sqlite` |
+| `database.url` | Database URL when PostgreSQL | `""` |
+| `database.caCert` | CA certificate for SSL validation (managed databases) | `""` |
+
+### Customizing Values
+
+Create a `custom-values.yaml` file:
+
+```yaml
+replicaCount: 2
+
+image:
+  tag: "v1.2.3" # Example
+
+service:
+  type: LoadBalancer
+  port: 80
+
+database:
+  engine: postgresql
+  url: "postgresql://mesh_user:mesh_password@mesh.example.com:5432/mesh_db"  
+  caCert: |
+    -----BEGIN CERTIFICATE-----
+    aaaaaaaabbbbbbcccccccccddddddd
+    aaaaaaaabbbbbbcccccccccddddddd
+    -----END CERTIFICATE-----
+
+resources:
+  requests:
+    memory: "300Mi"
+    cpu: "250m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+
+persistence:
+  size: 10Gi
+  storageClass: "gp3"
+```
+
+Install with custom values:
+
+```bash
+helm install deco-mcp-mesh . -f custom-values.yaml -n deco-mcp-mesh --create-namespace
+```
+
+## Chart Structure
+
+```
+chart-deco-mcp-mesh/
+├── Chart.yaml              # Chart metadata
+├── values.yaml             # Default values
+├── templates/              # Kubernetes templates
+│   ├── _helpers.tpl        # Helper functions
+│   ├── deployment.yaml     # Application deployment
+│   ├── service.yaml        # Service
+│   ├── configmap.yaml      # Main ConfigMap
+│   ├── configmap-auth.yaml # Authentication ConfigMap
+│   ├── secret.yaml         # Secret
+│   ├── pvc.yaml            # PersistentVolumeClaim
+│   ├── serviceaccount.yaml # ServiceAccount
+│   ├── hpa.yaml            # HorizontalPodAutoscaler
+│   └── NOTES.txt           # Post-installation messages
+└── README.md               # This file
+```
+
+## Templates and Functionality
+
+This section explains how the chart behaves at render/runtime. For the full sources, see the chart repository: [decocms/helm-chart-deco-mcp-mesh](https://github.com/decocms/helm-chart-deco-mcp-mesh).
+
+### `_helpers.tpl` (naming + labels)
+
+- **`name`**: uses `nameOverride` (or chart name) and truncates to 63 chars.
+- **`fullname`**: uses `fullnameOverride` if set; otherwise uses **only** `.Release.Name` (important when choosing a release name).
+- **Labels/selectorLabels**: standard Helm/K8s labels used across templates.
+
+### `deployment.yaml` (pods)
+
+- **HPA vs replicas**: when `autoscaling.enabled: true`, the deployment does **not** set `replicas` (HPA controls it).
+- **Strategy auto-detection** (when `strategy.type` is unset):
+  - **RollingUpdate** when using PostgreSQL or distributed storage
+  - **Recreate** for SQLite with single-writer storage (the safe default)
+- **Persistence**:
+  - `persistence.enabled: true` → mounts a PVC at `/app/data`
+  - `persistence.enabled: false` → uses `emptyDir` (data is ephemeral)
+
+### `service.yaml` (exposure)
+
+- Uses `service.type` (`ClusterIP`, `NodePort`, `LoadBalancer`) and standard selectors.
+- Optional `sessionAffinity` if configured.
+
+### `configmap*.yaml` and `secret.yaml` (config + secrets)
+
+- Non-sensitive runtime config goes to **ConfigMap**.
+- Sensitive values go to **Secret**.
+- `secret.secretName` supports “bring your own Secret” (External Secrets Operator, etc.).
+
+### `pvc.yaml` (storage)
+
+- Creates a PVC only when `persistence.enabled: true` **and** `persistence.claimName` is empty.
+- If `persistence.claimName` is set, the chart **references** an existing PVC.
+
+### `hpa.yaml` (autoscaling)
+
+- Rendered only when `autoscaling.enabled: true`.
+
+## Configurable Values
+
+The full list lives in `values.yaml`; below are the most important knobs.
+
+### Image
+
+```yaml
+image:
+  repository: ghcr.io/decocms/mesh/mesh
+  pullPolicy: Always # Always, IfNotPresent, Never
+  tag: "latest"
+```
+
+### Replicas, scaling, and strategy
+
+```yaml
+replicaCount: 3 # Ignored if autoscaling.enabled: true
+
+autoscaling:
+  enabled: false
+  minReplicas: 3
+  maxReplicas: 6
+  targetMemoryUtilizationPercentage: 80
+
+strategy:
+  # type: "" # leave empty for auto-detection
+```
+
+**Scalability restriction**:
+
+- Use `replicaCount > 1` or `autoscaling.enabled: true` only when you have **PostgreSQL** (`database.engine: postgresql`) or **distributed storage** (`persistence.distributed: true` / `accessMode: ReadWriteMany`).
+
+### Persistence
+
+```yaml
+persistence:
+  enabled: true
+  storageClass: "efs"
+  accessMode: ReadWriteMany
+  size: 10Gi
+  claimName: "" # if set, uses an existing PVC
+  distributed: true
+```
+
+### Database (SQLite vs PostgreSQL)
+
+```yaml
+database:
+  engine: sqlite # sqlite | postgresql
+  url: "" # required when engine=postgresql
+  caCert: "" # optional CA cert for managed Postgres SSL validation
+```
+
+### Service
+
+```yaml
+service:
+  type: ClusterIP # ClusterIP, NodePort, LoadBalancer
+  port: 80
+  targetPort: 3000
+```
+
+### Resources
+
+```yaml
+resources:
+  requests:
+    memory: "300Mi"
+    cpu: "250m"
+  limits:
+    memory: "600Mi"
+    cpu: "500m"
+```
+
+## Usage Examples
+
+### Example 1: Basic deploy
+
+```bash
+helm install deco-mcp-mesh . -n deco-mcp-mesh --create-namespace
+```
+
+### Example 2: Deploy with custom values
+
+```bash
+helm install deco-mcp-mesh . -f production-values.yaml -n deco-mcp-mesh --create-namespace
+```
+
+### Example 3: Deploy with autoscaling
+
+```bash
+helm install deco-mcp-mesh . -f autoscaling-values.yaml -n deco-mcp-mesh --create-namespace
+```
+
+### Example 4: Deploy with existing Secret
+
+```bash
+helm install deco-mcp-mesh . -f existing-secret-values.yaml -n deco-mcp-mesh --create-namespace
+```
+
+## Maintenance and Updates
+
+### Update Values
+
+```bash
+# Edit values.yaml or create new file
+vim custom-values.yaml
+
+# Update release
+helm upgrade deco-mcp-mesh . -f custom-values.yaml -n deco-mcp-mesh
+
+# View history
+helm history deco-mcp-mesh -n deco-mcp-mesh
+
+# Rollback
+helm rollback deco-mcp-mesh -n deco-mcp-mesh
+```
+
+### Update Image
+
+```bash
+# Option 1: Update values and upgrade
+helm upgrade deco-mcp-mesh . \
+  --set image.tag=v1.2.3 \
+  -n deco-mcp-mesh
+
+# Option 2: If pullPolicy=Always, restart
+kubectl rollout restart deployment/deco-mcp-mesh -n deco-mcp-mesh
+```
+
+### Update ConfigMap/Secret
+
+```bash
+# Edit values.yaml
+vim values.yaml
+
+# Apply changes
+helm upgrade deco-mcp-mesh . -n deco-mcp-mesh
+
+# Restart pods to pick up changes
+kubectl rollout restart deployment/deco-mcp-mesh -n deco-mcp-mesh
+```
+
+### Verify Changes Before Applying
+
+```bash
+# Render manifests locally
+helm template deco-mcp-mesh . -n deco-mcp-mesh
+
+# If you use helm-diff
+helm diff upgrade deco-mcp-mesh . -n deco-mcp-mesh
+```
+
+### Database Backup (SQLite)
+
+```bash
+POD=$(kubectl get pod -l app.kubernetes.io/instance=deco-mcp-mesh -n deco-mcp-mesh -o jsonpath='{.items[0].metadata.name}')
+kubectl cp deco-mcp-mesh/$POD:/app/data/mesh.db ./backup-$(date +%Y%m%d).db
+```
+
+## Security
+
+<Callout type="warning">
+  **Do not commit secrets to Git.** Prefer External Secrets Operator (or similar) or pass secrets at install time.
+</Callout>
+
+Examples:
+
+```bash
+helm install deco-mcp-mesh . \
+  --set secret.BETTER_AUTH_SECRET="$(openssl rand -base64 32)" \
+  -n deco-mcp-mesh --create-namespace
+```
+
+## Monitoring
+
+```bash
+# View all resources for the release
+kubectl get all -l app.kubernetes.io/instance=deco-mcp-mesh -n deco-mcp-mesh
+
+# Logs
+kubectl logs -l app.kubernetes.io/instance=deco-mcp-mesh -n deco-mcp-mesh
+
+# Metrics (if metrics-server is installed)
+kubectl top pods -l app.kubernetes.io/instance=deco-mcp-mesh -n deco-mcp-mesh
+```
+
+
+

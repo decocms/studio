@@ -1,0 +1,70 @@
+---
+title: Overview
+description: MCP platform for teams - connect once, orchestrate everywhere, audit everything
+icon: Info
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+
+![deco](https://assets.decocache.com/mcp/9a3facd8-1199-4635-becc-bdc3f5ee7ab1/deco-banner-capy.png)
+
+## MCP is the standard for AI tool access. At scale, you need more than connections—you need audit trails, access controls, and unified logging.
+
+**deco CMS is the context management platform that makes MCP work for teams.**
+
+It's the control plane for MCP traffic—register each MCP server once with centralized credentials, and it becomes available (with proper access controls and audit logging) across all your projects, agents, and workflows.
+
+### The Problem
+
+As AI agents become core infrastructure, managing their access creates critical challenges:
+
+- **Connection sprawl**: Every employee manually configures MCP connections on their laptop
+- **No audit trails**: Agent actions invisible to logging and compliance systems
+- **Fragmented security**: No centralized control over who accesses what
+
+At enterprise scale, teams either abandon internal MCP integration, operate with dangerously broad permissions, or spend months building custom infrastructure.
+
+### How deco CMS Solves It
+
+**Connect**: Register each MCP server once. Credentials stored securely in the vault, available across your organization. Update API keys once, not on every machine.
+
+**Orchestrate**: Fine-grained access control with RBAC. Control who uses which tools, when, and how. Complete audit trail showing caller identity, tool name, input/output, and timing.
+
+**Remix**: Combine and filter MCPs into Virtual MCPs at runtime—no code deployment. Create read-only versions, aggregate tools from multiple sources, or build role-specific tool collections.
+
+### Key Features
+
+- **Centralized authentication**: SSO/OAuth 2.1, API keys, encrypted credential vault
+- **Unified audit logging**: Every MCP request logged with full context
+- **Virtual MCPs**: Runtime-editable tool surfaces without deploying code
+- **decopilot**: Built-in orchestration for multi-step agentic workflows
+- **Model-agnostic**: Works with Claude, OpenAI, or any AI provider
+
+### Who It's For
+
+- **Enterprises** managing AI agent access to internal systems (GitHub, Slack, databases, APIs)
+- **Teams** running agentic workflows who need orchestration, logging, and access control
+- **Security teams** requiring audit trails and compliance reporting for AI systems
+
+## Getting Started
+
+Choose your path:
+
+**Quickstart** - Get your first connection running in 5 minutes
+→ [Quickstart Guide](./quickstart)
+
+**Core Concepts** - Understand connections, virtual MCPs, authorization, and monitoring
+→ [Concepts](./concepts)
+
+**Self-Host** - Deploy with Docker Compose or Kubernetes
+→ [Self-Hosting Guide](./self-hosting/quickstart)
+
+## Official Links
+
+- **deco CMS**: [decocms.com](https://www.decocms.com/)
+- **deco CMS (Control Plane)**: [decocms.com/mesh](https://www.decocms.com/mesh)
+- **GitHub Repository**: [github.com/decocms/studio](https://github.com/decocms/studio)
+
+<Callout type="info">
+  If you know us from before as **deco.cx** (headless CMS + storefront platform), visit [deco.cx](https://www.decocms.com/use-case/deco-cx). Those docs are at [docs.deco.cx](https://docs.deco.cx/en/getting-started/overview).
+</Callout>

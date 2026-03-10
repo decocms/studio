@@ -4,10 +4,10 @@ export const siteConfig = {
   url: "https://your-domain.com",
   ogImage: "https://your-domain.com/og.jpg",
   links: {
-    github: "https://github.com/decocms/mesh",
+    github: "https://github.com/decocms/studio",
   },
   // GitHub repository URL for edit links
-  githubRepo: "https://github.com/decocms/mesh",
+  githubRepo: "https://github.com/decocms/studio",
   // GitHub branch name (usually 'main' or 'master')
   githubBranch: "main",
 } as const;

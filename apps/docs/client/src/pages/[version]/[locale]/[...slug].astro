@@ -5,6 +5,8 @@ import DocsLayout from "../../../layouts/DocsLayout.astro";
 import { getCollection } from "astro:content";
 import RenderDocument from "../../../components/ui/RenderDocument.astro";
 
+import { VERSION_IDS, LATEST_VERSION } from "../../../config/versions";
+
 const version = Astro.params.version;
 const lang = Astro.params.locale;
 const t = useTranslations(lang as keyof typeof ui);
@@ -12,39 +14,70 @@ const t = useTranslations(lang as keyof typeof ui);
 export async function getStaticPaths() {
   const allDocs = await getCollection("docs");
 
-  const versions = ["latest", "draft"];
-
-  return versions.flatMap((version) => [
-    // Root version paths
+  return [
+    // "latest" alias paths — redirect to actual version
     ...Object.keys(languages).map((locale) => ({
-      params: { version, locale },
-      props: { doc: null, version },
+      params: { version: "latest", locale },
+      props: { doc: null, version: "latest" },
     })),
-    // Legacy path redirects
-    ...Object.keys(languages).flatMap((locale) => [
-      {
-        params: { version, locale, slug: "getting-started/context-engineers" },
-        props: { doc: null, version },
-      },
-    ]),
-    // All docs filtered by version
+    // "latest" alias for all latest docs (so /latest/en/... redirects to /2026-03-10/en/...)
     ...allDocs
-      .filter((doc) => doc.id.startsWith(`${version}/`))
+      .filter((doc) => doc.id.startsWith(`${LATEST_VERSION.id}/`))
       .map((doc) => {
         const parts = doc.id.split("/");
         const locale = parts[1];
         const slug = parts.slice(2).join("/");
-
         return {
-          params: { version, locale, slug },
-          props: { doc, version },
+          params: { version: "latest", locale, slug },
+          props: { doc: null, version: "latest" },
         };
       }),
-  ]);
+
+    // Actual versioned paths
+    ...VERSION_IDS.flatMap((version) => [
+      // Root version paths
+      ...Object.keys(languages).map((locale) => ({
+        params: { version, locale },
+        props: { doc: null, version },
+      })),
+      // Legacy path redirects
+      ...Object.keys(languages).flatMap((locale) => [
+        {
+          params: {
+            version,
+            locale,
+            slug: "getting-started/context-engineers",
+          },
+          props: { doc: null, version },
+        },
+      ]),
+      // All docs filtered by version
+      ...allDocs
+        .filter((doc) => doc.id.startsWith(`${version}/`))
+        .map((doc) => {
+          const parts = doc.id.split("/");
+          const locale = parts[1];
+          const slug = parts.slice(2).join("/");
+
+          return {
+            params: { version, locale, slug },
+            props: { doc, version },
+          };
+        }),
+    ]),
+  ];
 }
 
 const { doc, version: propVersion } = Astro.props;
 const slug = Astro.params.slug;
+
+// Redirect "latest" alias to actual version
+if (version === "latest") {
+  const target = slug
+    ? `/${LATEST_VERSION.id}/${lang}/${slug}`
+    : `/${LATEST_VERSION.id}/${lang}/mcp-mesh/quickstart`;
+  return Astro.redirect(target);
+}
 
 // Legacy redirects
 if (slug === "getting-started/context-engineers") {

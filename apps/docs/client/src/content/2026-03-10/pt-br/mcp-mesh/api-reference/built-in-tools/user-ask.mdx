@@ -1,0 +1,136 @@
+---
+title: user_ask
+description: Perguntar ao usuário para obter entrada ou esclarecimento
+icon: MessageCircle
+---
+
+import Callout from "../../../../../../components/ui/Callout.astro";
+
+## Visão Geral
+
+Faz uma pergunta ao usuário para obter entrada ou esclarecimento. Suporta entrada de texto, múltipla escolha ou confirmação. O status da tarefa muda para "Aguardando Entrada" até o usuário responder.
+
+## Disponibilidade
+
+- **Tarefas**: ✓ Disponível
+- **Subtarefas**: ✗ Não disponível (previne bloqueio)
+
+<Callout type="warning">
+  **Restrição**: Esta ferramenta está disponível apenas em tarefas, não em subtarefas. Subtarefas executam de forma autônoma sem bloquear aguardando entrada do usuário.
+</Callout>
+
+## Assinatura
+
+```typescript
+user_ask(
+  question: string,
+  options?: UserAskOptions
+)
+
+type UserAskOptions = {
+  type?: "text" | "choice" | "confirm"
+  choices?: string[]
+  default?: string | boolean
+}
+```
+
+## Parâmetros
+
+| Parâmetro | Tipo | Obrigatório | Descrição |
+|-----------|------|----------|-------------|
+| `question` | `string` | Obrigatório | A pergunta a fazer ao usuário |
+| `options` | `UserAskOptions` | Opcional | Opções para a pergunta |
+| `options.type` | `"text" \| "choice" \| "confirm"` | Opcional | Tipo de entrada esperada (padrão: "text") |
+| `options.choices` | `string[]` | Opcional | Escolhas disponíveis (obrigatório para `type: "choice"`) |
+| `options.default` | `string \| boolean` | Opcional | Valor padrão |
+
+## Retorno
+
+Resposta do usuário como string ou booleano (dependendo do tipo de pergunta).
+
+## Comportamento
+
+- O status da tarefa muda para "Aguardando Entrada" até o usuário responder
+- Bloqueia a execução da tarefa até o usuário fornecer a resposta
+- Disponível apenas em tarefas (não em subtarefas) para evitar bloqueio de trabalho autônomo
+
+## Exemplo de Uso
+
+### Entrada de Texto
+
+```typescript
+const apiKey = user_ask("What is your GitHub API key?")
+```
+
+### Múltipla Escolha
+
+```typescript
+const environment = user_ask(
+  "Which environment should I deploy to?",
+  {
+    type: "choice",
+    choices: ["staging", "production"],
+    default: "staging"
+  }
+)
+```
+
+### Confirmação
+
+```typescript
+const proceed = user_ask(
+  "This will delete all data. Are you sure?",
+  {
+    type: "confirm",
+    default: false
+  }
+)
+
+if (proceed) {
+  // Executar ação destrutiva
+}
+```
+
+### Esclarecimento Durante Execução
+
+```typescript
+// Coletar requisitos
+const features = user_ask("Which features should I enable? (comma-separated)")
+
+// Usar a entrada
+const featureList = features.split(",").map(f => f.trim())
+```
+
+## Casos de Uso
+
+### Coletar Informações Faltantes
+
+```typescript
+const dbUrl = user_ask("What is the database connection string?")
+```
+
+### Confirmar Ações Destrutivas
+
+```typescript
+const confirmed = user_ask(
+  "This will overwrite existing files. Continue?",
+  { type: "confirm" }
+)
+```
+
+### Obter Preferências do Usuário
+
+```typescript
+const style = user_ask(
+  "Which code style do you prefer?",
+  {
+    type: "choice",
+    choices: ["functional", "object-oriented"],
+    default: "functional"
+  }
+)
+```
+
+## Relacionados
+
+- [Visão Geral das Ferramentas Integradas](/pt-br/mcp-mesh/api-reference/built-in-tools)

@@ -1,0 +1,100 @@
+---
+title: subtask_run
+description: Criar uma subtarefa com contexto isolado
+icon: GitBranch
+---
+
+import Callout from "../../../../../../components/ui/Callout.astro";
+
+## Visão Geral
+
+Cria uma subtarefa com contexto isolado. Opcionalmente especifique um agente para usar na subtarefa. A subtarefa executa até a conclusão e então retorna os resultados.
+
+## Disponibilidade
+
+- **Tarefas**: ✓ Disponível
+- **Subtarefas**: ✗ Não disponível (previne delegação infinita)
+
+<Callout type="warning">
+  **Restrição**: Esta ferramenta está disponível apenas em tarefas, não em subtarefas. Isso previne cadeias de delegação infinita e garante que subtarefas sejam concluídas de forma independente.
+</Callout>
+
+## Assinatura
+
+```typescript
+subtask_run(prompt: string, agent_id?: string)
+```
+
+## Parâmetros
+
+| Parâmetro | Tipo | Obrigatório | Descrição |
+|-----------|------|----------|-------------|
+| `prompt` | `string` | Obrigatório | A descrição da tarefa para a subtarefa |
+| `agent_id` | `string` | Opcional | Agente específico para usar na subtarefa |
+
+## Retorno
+
+Resultados da subtarefa e status de conclusão.
+
+## Comportamento
+
+- Cria uma subtarefa com contexto isolado
+- Se `agent_id` for omitido, a subtarefa usa as capacidades do escopo atual
+- Se `agent_id` for especificado, a subtarefa usa as capacidades daquele agente
+- A subtarefa executa até a conclusão e então retorna os resultados
+- Subtarefas não podem criar subtarefas adicionais (previne delegação infinita)
+- Subtarefas não podem fazer perguntas ao usuário (previne bloqueio)
+
+## Exemplo de Uso
+
+```typescript
+// Criar subtarefa com escopo atual
+subtask_run("Analyze the error logs and identify the root cause")
+
+// Criar subtarefa com agente específico
+subtask_run(
+  "Review the pull request for code quality issues",
+  "code-review-agent"
+)
+
+// Subtarefas paralelas para trabalho independente
+subtask_run("Deploy to staging environment")
+subtask_run("Run integration tests")
+```
+
+## Casos de Uso
+
+### Execução Paralela
+
+Crie múltiplas subtarefas para trabalho independente que pode ser executado em paralelo:
+
+```typescript
+subtask_run("Analyze inventory levels across all warehouses")
+subtask_run("Fetch pending customer orders from Shopify")
+subtask_run("Check shipping carrier delivery status")
+```
+
+### Execução Especializada
+
+Delegue trabalho a agentes especializados:
+
+```typescript
+// Usar pesquisa de agentes para encontrar especialistas
+const agents = agent_search("code review")
+
+// Criar subtarefa com especialista
+subtask_run("Review this pull request", agents[0].agent_id)
+```
+
+### Contexto Isolado
+
+Crie contexto isolado para trabalho focado sem poluir a tarefa principal:
+
+```typescript
+subtask_run("Generate a detailed technical report on the performance bottlenecks")
+```
+
+## Relacionados
+
+- [**agent_search**](/pt-br/mcp-mesh/api-reference/built-in-tools/agent-search) - Encontrar agentes para subtarefas
+- [Visão Geral das Ferramentas Integradas](/pt-br/mcp-mesh/api-reference/built-in-tools)

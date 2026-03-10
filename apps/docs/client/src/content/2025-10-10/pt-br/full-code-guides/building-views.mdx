@@ -1,0 +1,278 @@
+---
+title: Construindo Views
+description: Crie interfaces React customizadas com RPC tipado para seu backend
+icon: Globe
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+
+Views são interfaces React customizadas para seus tools e workflows. Diferente de web apps tradicionais, não há camada de REST API, seu frontend chama tools do backend diretamente via RPC tipado.
+
+## Stack
+
+- **React 19** - Biblioteca UI
+- **Tailwind v4** - CSS utility-first (configurado em `tailwind.config.js`)
+- **TanStack Router** - Roteamento type-safe
+- **Vite** - Bundler rápido com hot reload
+
+Tudo configurado pronto para uso em `/view`.
+
+## Chamando Tools do React
+
+O cliente RPC (`src/lib/rpc.ts`) conecta sua UI aos tools do backend com total type safety:
+
+```tsx
+import { client } from "../lib/rpc";
+import { useState } from "react";
+
+function CustomerForm() {
+  const [status, setStatus] = useState("");
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+
+    const result = await client.tools.CUSTOMER_CREATE({
+      name: formData.get("name") as string,
+      email: formData.get("email") as string,
+      city: formData.get("city") as string,
+      state: formData.get("state") as string,
+    });
+
+    setStatus(`Cliente criado com ID: ${result.id}`);
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <input name="name" placeholder="Nome" required />
+      <input name="email" type="email" placeholder="Email" required />
+      <input name="city" placeholder="Cidade" required />
+      <input name="state" placeholder="Estado" maxLength={2} required />
+      <button type="submit">Criar Cliente</button>
+      {status && <p>{status}</p>}
+    </form>
+  );
+}
+```
+
+**Benefícios principais:**
+- **Type safety** - TypeScript conhece todas as assinaturas de tools
+- **Sem camada de API** - Chamadas de função diretas
+- **Auto-complete** - IDE sugere tools disponíveis
+
+Execute `npm run gen:self` após adicionar tools para atualizar tipos.
+
+## Adicionando Rotas
+
+TanStack Router provê roteamento type-safe. Para adicionar uma nova página:
+
+1. Crie `/view/src/routes/minha-pagina.tsx`:
+```tsx
+import { createRoute } from "@tanstack/react-router";
+import { rootRoute } from "../main";
+
+export const minhaPaginaRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/minha-pagina",
+  component: MinhaPagina,
+});
+
+function MinhaPagina() {
+  return <div>Conteúdo da Minha Página</div>;
+}
+```
+
+2. Registre em `/view/src/main.tsx`:
+```tsx
+import { minhaPaginaRoute } from "./routes/minha-pagina";
+
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  minhaPaginaRoute, // Adicione sua rota
+]);
+```
+
+3. Navegue usando `Link`:
+```tsx
+import { Link } from "@tanstack/react-router";
+
+<Link to="/minha-pagina">Ir para Minha Página</Link>
+```
+
+## Estilização com Tailwind
+
+Tailwind v4 está configurado por padrão. Use classes utilitárias:
+
+```tsx
+<div className="flex flex-col gap-4 p-6 bg-white rounded-lg shadow-md">
+  <h1 className="text-2xl font-bold text-gray-900">Título</h1>
+  <p className="text-gray-600">Texto de descrição</p>
+  <button className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+    Clique aqui
+  </button>
+</div>
+```
+
+Use `src/components/ui/` para componentes reutilizáveis (botões, formulários, etc.). Você pode integrar qualquer sistema de design React ou biblioteca de componentes conforme necessário.
+
+## Tokens de Tema
+
+Views herdam automaticamente o tema do seu workspace através de propriedades CSS customizadas. Em vez de codificar cores diretamente, use tokens de tema para branding consistente:
+
+**Tokens principais:**
+```css
+--background          /* Fundo da página */
+--foreground          /* Cor de texto primária */
+--card                /* Fundo de cards/painéis */
+--primary             /* Cor primária da marca (CTAs) */
+--destructive         /* Estados de exclusão/erro */
+--success             /* Estados de sucesso/confirmação */
+--warning             /* Estados de aviso/cautela */
+--border              /* Bordas e divisores */
+--radius              /* Raio de borda */
+```
+
+**Exemplo de uso:**
+```tsx
+<button
+  className="px-4 py-2 rounded-[var(--radius)]"
+  style={{
+    backgroundColor: 'var(--primary)',
+    color: 'var(--primary-foreground)'
+  }}
+>
+  Ação Primária
+</button>
+
+<div
+  className="p-4 border"
+  style={{
+    backgroundColor: 'var(--card)',
+    borderColor: 'var(--border)',
+    borderRadius: 'var(--radius)'
+  }}
+>
+  Conteúdo do card
+</div>
+```
+
+**Tokens semânticos para estados:**
+```tsx
+{/* Estado de sucesso */}
+<span style={{
+  backgroundColor: 'var(--success)',
+  color: 'var(--success-foreground)'
+}}>
+  Ativo
+</span>
+
+{/* Estado de aviso */}
+<span style={{
+  backgroundColor: 'var(--warning)',
+  color: 'var(--warning-foreground)'
+}}>
+  Pendente
+</span>
+
+{/* Estado destrutivo */}
+<button style={{
+  backgroundColor: 'var(--destructive)',
+  color: 'var(--destructive-foreground)'
+}}>
+  Deletar
+</button>
+```
+
+**Por que usar tokens de tema?**
+- Views combinam automaticamente com o branding do workspace
+- Mudanças de tema não exigem atualizações de código
+- Sistema de design consistente em todas as views
+- Significado semântico (primary vs destructive) já integrado
+
+## Workflow de Desenvolvimento
+
+**Hot reload para frontend:**
+```bash
+npm run dev
+```
+
+Edite componentes React → atualização instantânea no navegador (sem necessidade de refresh).
+
+**Mudanças no backend:**
+Edite tools/workflows → Worker reinicia → atualize a página para ver mudanças.
+
+**Atualizações de tipos:**
+Após adicionar/modificar tools:
+```bash
+npm run gen:self
+```
+
+Seu `client` é atualizado com novos métodos e tipos.
+
+<Callout type="info">
+  **TypeScript previne erros:** Se você chamar um tool que não existe, o compilador captura antes do runtime.
+</Callout>
+
+## Padrões Comuns
+
+**Estados de loading:**
+```tsx
+const [loading, setLoading] = useState(false);
+
+const handleAction = async () => {
+  setLoading(true);
+  try {
+    await client.tools.MY_TOOL(data);
+  } finally {
+    setLoading(false);
+  }
+};
+```
+
+**Tratamento de erros:**
+```tsx
+try {
+  await client.tools.MY_TOOL(data);
+} catch (error) {
+  console.error("Tool falhou:", error);
+  setError(error.message);
+}
+```
+
+**Atualizações otimistas:**
+```tsx
+// Atualize UI imediatamente
+setItems([...items, newItem]);
+
+// Sincronize com backend
+client.tools.ITEM_CREATE(newItem)
+  .catch(() => {
+    // Reverta se falhar
+    setItems(items);
+  });
+```
+
+## Gerenciamento de Estado
+
+Para apps simples, o `useState` e `useEffect` nativos do React são suficientes. Para necessidades de estado complexas, você pode adicionar:
+
+- **React Context** - Nativo, bom para estado global simples
+- **Zustand** - Biblioteca leve de gerenciamento de estado
+- **React Query** - Para estado do servidor e cache
+
+Como o cliente RPC retorna promises, você pode usar React Query para cache e refetch automáticos:
+
+```tsx
+import { useQuery } from "@tanstack/react-query";
+
+const { data, isLoading } = useQuery({
+  queryKey: ["customers"],
+  queryFn: () => client.tools.CUSTOMERS_LIST(),
+});
+```
+
+<Callout type="info">
+  O template não inclui gerenciamento de estado global por padrão. Adicione apenas se seu app precisar.
+</Callout>
+
+**Lembre-se:** Views e tools compartilham os mesmos tipos. Sem contratos de API, sem código de integração, apenas TypeScript.

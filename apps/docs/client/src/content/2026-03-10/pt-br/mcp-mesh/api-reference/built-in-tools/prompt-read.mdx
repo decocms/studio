@@ -1,0 +1,175 @@
+---
+title: prompt_read
+description: Ler um template de prompt do escopo atual
+icon: MessageSquare
+---
+
+## Visão Geral
+
+Lê um template de prompt do escopo atual. Suporta herança de escopo como recursos (projeto herda da organização, agente herda do projeto+organização). Templates de prompt fornecem instruções e fluxos de trabalho reutilizáveis.
+
+## Disponibilidade
+
+- **Tarefas**: ✓ Disponível
+- **Subtarefas**: ✓ Disponível
+
+## Assinatura
+
+```typescript
+prompt_read(
+  prompt_name: string,
+  options?: RangeOptions
+)
+
+type RangeOptions = {
+  lineStart?: number
+  lineEnd?: number
+}
+```
+
+## Parâmetros
+
+| Parâmetro | Tipo | Obrigatório | Descrição |
+|-----------|------|----------|-------------|
+| `prompt_name` | `string` | Obrigatório | Nome do template de prompt |
+| `options` | `RangeOptions` | Opcional | Opções de intervalo de linhas |
+| `options.lineStart` | `number` | Opcional | Número da linha inicial (padrão: 0) |
+| `options.lineEnd` | `number` | Opcional | Número da linha final (padrão: 20) |
+
+## Retorno
+
+Conteúdo e metadados do template de prompt:
+- **content**: Texto do template de prompt
+- **name**: Nome do template de prompt
+- **metadata**: Informações adicionais do prompt
+
+## Comportamento
+
+- Suporta herança de escopo (mesmo que `resource_read`):
+  - Prompts do projeto herdam de prompts da organização
+  - Prompts do agente herdam de prompts do projeto + organização
+- Defina `options.lineStart` e `options.lineEnd` como 0 para ler o prompt inteiro
+- Comportamento padrão (sem opções) lê as primeiras 20 linhas (linhas 0-20)
+- Números de linha começam em zero
+
+## Exemplo de Uso
+
+### Ler Prompt Inteiro
+
+```typescript
+// Ler prompt completo de code review
+prompt_read("code-review-workflow", { lineStart: 0, lineEnd: 0 })
+```
+
+### Ler Linhas Específicas
+
+```typescript
+// Ler linhas 5-15 do prompt de deploy
+prompt_read("deployment-steps", { lineStart: 5, lineEnd: 15 })
+```
+
+### Ler Início do Prompt
+
+```typescript
+// Ler primeiras 20 linhas (padrão)
+prompt_read("bug-fix-workflow")
+```
+
+### Templates de Fluxo de Trabalho
+
+```typescript
+// Ler fluxo de desenvolvimento de features
+prompt_read("feature-workflow", { lineStart: 0, lineEnd: 0 })
+
+// Ler fluxo de triagem de bugs
+prompt_read("bug-triage", { lineStart: 0, lineEnd: 0 })
+
+// Ler checklist de code review
+prompt_read("review-checklist", { lineStart: 0, lineEnd: 0 })
+```
+
+## Casos de Uso
+
+### Execução de Fluxos de Trabalho
+
+Seguir fluxos de trabalho padronizados:
+
+```typescript
+// Ler fluxo de deploy
+const workflow = prompt_read("deploy-to-production", { lineStart: 0, lineEnd: 0 })
+
+// Executar cada passo do fluxo
+// ... lógica de execução do fluxo
+```
+
+### Reutilização de Templates
+
+Usar templates de prompt para execução consistente de tarefas:
+
+```typescript
+// Ler template de correção de bug
+const template = prompt_read("bug-fix-template", { lineStart: 0, lineEnd: 0 })
+
+// Aplicar estrutura do template ao bug atual
+// ... lógica de correção de bug
+```
+
+### Instruções Específicas de Domínio
+
+Acessar instruções especializadas:
+
+```typescript
+// Ler prompt de revisão de segurança
+const securityPrompt = prompt_read("security-review", { lineStart: 0, lineEnd: 0 })
+
+// Realizar revisão de segurança usando o prompt
+// ... lógica de revisão de segurança
+```
+
+## Herança de Escopo
+
+Prompts seguem hierarquia de escopo (mesmo que recursos):
+
+1. **Escopo do agente**: Herda do projeto + organização
+2. **Escopo do projeto**: Herda da organização
+3. **Escopo da organização**: Nível base de prompts
+
+Ao ler um prompt, o sistema busca do mais específico (agente) para o menos específico (organização).
+
+## Formato de Template de Prompt
+
+Templates de prompt geralmente incluem:
+- **Instruções**: Orientação passo a passo
+- **Contexto**: Informações de base necessárias
+- **Exemplos**: Entradas/saídas de exemplo
+- **Checklist**: Itens a verificar
+
+Estrutura de exemplo de template de prompt:
+
+```markdown
+# Feature Development Workflow
+
+## Instructions
+1. Review the feature requirements
+2. Design the implementation approach
+3. Write tests first (TDD)
+4. Implement the feature
+5. Run all tests
+6. Create pull request
+
+## Context
+- Follow the coding standards in coding-guidelines.md
+- Ensure test coverage > 80%
+- Document public APIs
+
+## Checklist
+- [ ] Tests written and passing
+- [ ] Documentation updated
+- [ ] No breaking changes
+```
+
+## Relacionados
+
+- [**resource_read**](/pt-br/mcp-mesh/api-reference/built-in-tools/resource-read) - Ler recursos de documentação
+- [Documentação de Contexto](/pt-br/mcp-mesh/decopilot/context)
+- [Visão Geral das Ferramentas Integradas](/pt-br/mcp-mesh/api-reference/built-in-tools)

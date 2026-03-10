@@ -7,16 +7,20 @@ interface Env {
   };
 }
 
+const LATEST = "2026-03-10";
+const PREVIOUS = "2025-10-10";
+
 const rootRedirects: Record<string, string> = {
-  "/": "/latest/en/mcp-mesh/quickstart",
-  "/latest": "/latest/en/mcp-mesh/quickstart",
-  "/draft": "/draft/en/mcp-mesh/quickstart",
-  "/en": "/latest/en/mcp-mesh/quickstart",
-  "/pt-br": "/latest/pt-br/mcp-mesh/quickstart",
-  "/latest/en": "/latest/en/mcp-mesh/quickstart",
-  "/latest/pt-br": "/latest/pt-br/mcp-mesh/quickstart",
-  "/draft/en": "/draft/en/mcp-mesh/quickstart",
-  "/draft/pt-br": "/draft/pt-br/mcp-mesh/quickstart",
+  "/": `/${LATEST}/en/mcp-mesh/quickstart`,
+  "/latest": `/${LATEST}/en/mcp-mesh/quickstart`,
+  [`/${LATEST}`]: `/${LATEST}/en/mcp-mesh/quickstart`,
+  [`/${PREVIOUS}`]: `/${PREVIOUS}/en/introduction`,
+  "/en": `/${LATEST}/en/mcp-mesh/quickstart`,
+  "/pt-br": `/${LATEST}/pt-br/mcp-mesh/quickstart`,
+  [`/${LATEST}/en`]: `/${LATEST}/en/mcp-mesh/quickstart`,
+  [`/${LATEST}/pt-br`]: `/${LATEST}/pt-br/mcp-mesh/quickstart`,
+  [`/${PREVIOUS}/en`]: `/${PREVIOUS}/en/introduction`,
+  [`/${PREVIOUS}/pt-br`]: `/${PREVIOUS}/pt-br/introduction`,
 };
 
 const runtime = withRuntime<Env>({
@@ -27,6 +31,12 @@ const runtime = withRuntime<Env>({
         new URL(rootRedirects[url.pathname], req.url),
         302,
       );
+    }
+
+    // Redirect /latest/* to actual latest version
+    if (url.pathname.startsWith("/latest/") || url.pathname === "/latest") {
+      const newPath = `${url.pathname.replace(/^\/latest/, `/${LATEST}`)}${url.search}`;
+      return Response.redirect(new URL(newPath, req.url), 302);
     }
 
     const assetsHandler =

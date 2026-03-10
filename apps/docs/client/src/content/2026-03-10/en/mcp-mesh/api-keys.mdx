@@ -1,0 +1,79 @@
+---
+title: API Keys
+description: Create scoped API keys to access management tools, proxies, and agents
+icon: KeyRound
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+
+## What are API Keys?
+
+API keys let external systems connect to deco CMS without needing a user to log in. They're simple tokens you can use in scripts, automation tools, or any system that needs to access deco CMS programmatically.
+
+<Callout type="warning">
+  API keys are for **external systems connecting to deco CMS**. To connect deco CMS to upstream MCP servers, see [Connections](/en/mcp-mesh/connections).
+</Callout>
+
+## When to Use API Keys vs OAuth
+
+**OAuth** (Recommended for most users)
+- Use with Cursor, Claude Desktop, VS Code
+- Login with your browser
+- Easiest setup
+
+**API Keys**
+- Use for scripts and automation
+- No browser login needed
+- Better for servers and CI/CD
+
+## Creating an API Key
+
+1. Open the **deco CMS Dashboard**
+2. Go to **Settings** → **API Keys**
+3. Click **Create API Key**
+4. Give it a name (like "My Automation Script")
+5. Assign [roles and permissions](/en/mcp-mesh/user-management)
+6. **Copy the key immediately**
+
+<Callout type="error">
+  You can only see the API key once. Copy it now and store it somewhere safe like a password manager.
+</Callout>
+
+## Using Your API Key
+
+Add the API key to your MCP client configuration:
+
+```json
+{
+  "mcpServers": {
+    "deco": {
+      "url": "https://mesh.decocms.com/mcp/agent/your-agent-id",
+      "transport": "http",
+      "headers": {
+        "Authorization": "Bearer mcp_key_abc123..."
+      }
+    }
+  }
+}
+```
+
+## Security Best Practices
+
+<Callout type="warning">
+  Treat API keys like passwords. Never share them or commit them to code repositories.
+</Callout>
+
+**Give minimum permissions**: Only grant what's actually needed.
+
+**Create separate keys**: Use one key per tool or script—easier to manage if something goes wrong.
+
+**Store securely**: Keep keys in a password manager or secrets manager, never in plain text files.
+
+**Rotate regularly**: Create new keys every few months and delete old ones.
+
+**Monitor usage**: Check the dashboard regularly for unusual activity.
+
+<Callout type="tip">
+  Combine API keys with [Agents](/en/mcp-mesh/agents) to control exactly which tools your scripts can access.
+</Callout>
+

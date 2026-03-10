@@ -2,8 +2,9 @@
 import { getCollection } from "astro:content";
 import { ui } from "../../i18n/ui";
 import SidebarComponent from "./Sidebar";
+import { LATEST_VERSION } from "../../config/versions";
 
-const version = Astro.params.version || "latest";
+const version = Astro.params.version || LATEST_VERSION.id;
 const locale = Astro.params.locale;
 
 const allDocs = await getCollection("docs");
@@ -74,23 +75,9 @@ function buildTree(docs: any[]): TreeNode[] {
 
           // Version-aware ordering
           const mcpMeshOrder =
-            version === "latest"
+            version === LATEST_VERSION.id
               ? [
-                  // Latest version (origin/main structure)
-                  "overview",
-                  "quickstart",
-                  "concepts",
-                  "connect-clients",
-                  "authentication",
-                  "authorization-and-roles",
-                  "mcp-servers",
-                  "mcp-gateways",
-                  "api-keys",
-                  "monitoring",
-                  "api-reference",
-                ]
-              : [
-                  // Draft version structure
+                  // Latest version structure
                   "quickstart",
                   "overview",
                   "concepts",
@@ -101,6 +88,20 @@ function buildTree(docs: any[]): TreeNode[] {
                   "monitoring",
                   "api-keys",
                   "user-management",
+                  "api-reference",
+                ]
+              : [
+                  // Previous version structure
+                  "overview",
+                  "quickstart",
+                  "concepts",
+                  "connect-clients",
+                  "authentication",
+                  "authorization-and-roles",
+                  "mcp-servers",
+                  "mcp-gateways",
+                  "api-keys",
+                  "monitoring",
                   "api-reference",
                 ];
 
@@ -212,9 +213,9 @@ function buildTree(docs: any[]): TreeNode[] {
         if (rootPath === "mcp-mesh" && parentPath === "deploy") {
           // Version-aware deploy file names
           const deployOrder =
-            version === "latest"
-              ? ["local-docker-compose", "kubernetes-helm-chart"]
-              : ["docker-compose", "kubernetes"];
+            version === LATEST_VERSION.id
+              ? ["docker-compose", "kubernetes"]
+              : ["local-docker-compose", "kubernetes-helm-chart"];
           const aIndex = deployOrder.indexOf(a.name);
           const bIndex = deployOrder.indexOf(b.name);
           if (aIndex !== -1 && bIndex !== -1) {

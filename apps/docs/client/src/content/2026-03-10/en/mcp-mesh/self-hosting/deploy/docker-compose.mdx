@@ -1,0 +1,481 @@
+---
+title: "Docker Compose"
+description: Deploy deco CMS locally using Docker Compose for testing and development
+icon: Container
+---
+
+import Callout from "../../../../../../components/ui/Callout.astro";
+
+This guide covers deploying the deco CMS locally using Docker Compose for quick testing and development.
+
+Learn more: [the deco CMS product page](https://www.decocms.com/mesh)
+
+Source (Docker Compose + README): [decocms/mesh/deploy](https://github.com/decocms/mesh/tree/main/deploy)
+
+## Overview
+
+- **SQLite by default** - Works immediately without additional configuration
+- **PostgreSQL optional** - Configure via environment variable
+- **Data persistence** - Docker volume to keep data between restarts
+- **Health checks** - Automatic application health monitoring
+- **Configuration via variables** - All configurations via `.env`
+
+## Prerequisites
+
+- Docker 20.10+
+- Docker Compose 2.0+
+- (Optional) PostgreSQL if you want to use external database
+
+## Quick Start
+
+The fastest way to test the application:
+
+```bash
+# 1. Configure environment variables
+# Edit .env and configure BETTER_AUTH_SECRET (required)
+# Generate a secret: openssl rand -base64 32
+cp conf-examples/env.example .env
+
+# 2. Configure authentication
+cp conf-examples/auth-config.json.example auth-config.json
+
+# 3. Start the application
+docker compose up -d
+
+# 4. Access
+open http://localhost:3000
+```
+
+<Callout type="tip">
+  These configurations are all you need to start testing with deco CMS. If you need other options, check the sections below.
+</Callout>
+
+### Minimum Configuration
+
+The `.env` file needs at least:
+
+```bash
+BETTER_AUTH_SECRET=your_generated_secret_here
+```
+
+All other variables have default values that work for local testing.
+
+## Configuration
+
+### Environment Variables
+
+The `.env` file contains all configurations.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `IMAGE_REPOSITORY` | `ghcr.io/decocms/mesh/mesh` | Image repository |
+| `IMAGE_TAG` | `latest` | Image tag |
+| `PORT` | `3000` | Port exposed on host |
+| `NODE_ENV` | `production` | Node.js environment |
+| `BETTER_AUTH_URL` | `http://localhost:3000` | URL for authentication |
+| `BASE_URL` | `http://localhost:3000` | Application base URL |
+| `BETTER_AUTH_SECRET` | **required** | Authentication secret |
+| `DATABASE_URL` | `/app/data/mesh.db` | Database URL (SQLite or PostgreSQL) |
+
+## Using SQLite (Default)
+
+SQLite is the default and requires no additional configuration:
+
+```bash
+# .env
+DATABASE_URL=/app/data/mesh.db
+```
+
+Data will be persisted in the Docker volume `mesh-data` and kept between restarts.
+
+**Advantages:**
+- ✅ Zero configuration
+- ✅ Works immediately
+- ✅ Ideal for development and testing
+
+**Limitations:**
+- ⚠️ Only 1 instance (not horizontally scalable)
+- ⚠️ Limited performance for large data volumes
+
+## Using PostgreSQL
+
+To use PostgreSQL, you have two options:
+
+### Option 1: Use docker-compose.postgres.yml (Recommended)
+
+There is already a `docker-compose.postgres.yml` file ready to use.
+
+Configure in `.env`:
+
+```bash
+POSTGRES_USER=mesh_user
+POSTGRES_PASSWORD=secure_password_here
+POSTGRES_DB=mesh_db
+```
+
+Start with PostgreSQL included:
+
+```bash
+docker compose -f docker-compose.postgres.yml up -d
+```
+
+The `DATABASE_URL` will be configured automatically, but you can specify it if needed:
+
+```bash
+DATABASE_URL=postgresql://mesh_user:secure_password_here@postgres:5432/mesh_db
+```
+
+### Option 2: External PostgreSQL
+
+If you already have a PostgreSQL running (local or remote):
+
+```bash
+# .env
+DATABASE_URL=postgresql://user:password@host:5432/database_name
+```
+
+**Example with local PostgreSQL:**
+
+```bash
+DATABASE_URL=postgresql://postgres:password@host.docker.internal:5432/mesh_db
+```
+
+**Example with remote PostgreSQL:**
+
+```bash
+DATABASE_URL=postgresql://user:password@db.example.com:5432/mesh_db
+```
+
+<Callout type="info">
+  **Note:** `localhost` inside the container refers to the container itself.
+
+  - If you’re using the included PostgreSQL from `docker-compose.postgres.yml`, the host should be the service name: `postgres`.
+  - If you’re connecting to PostgreSQL running on your machine, use `host.docker.internal` (Docker Desktop) or your machine’s LAN IP.
+</Callout>
+
+**PostgreSQL Advantages:**
+- ✅ Supports multiple instances (horizontal scalability)
+- ✅ Better performance for large volumes
+- ✅ Advanced features (backups, replication, etc.)
+
+## Authentication Configuration
+
+### Location in Container
+
+The `auth-config.json` file is mounted at the path:
+
+```
+/app/apps/mesh/auth-config.json
+```
+
+### How it Works in Docker Compose
+
+#### Local File
+
+The `auth-config.json` file must exist in the root folder, alongside docker-compose to start the stack:
+
+```yaml
+volumes:
+  - ./auth-config.json:/app/apps/mesh/auth-config.json:ro
+```
+
+#### Mount in Container
+
+- **Source**: `./auth-config.json` (file in root, alongside docker-compose)
+- **Destination**: `/app/apps/mesh/auth-config.json` (inside container)
+- **Mode**: `ro` (read-only)
+
+#### When it's Loaded
+
+The deco CMS application loads this file on startup to configure:
+
+- Email/Password authentication
+- Social providers (Google, GitHub)
+- SAML providers
+- Email providers (Resend, etc.)
+- Magic link configuration
+
+### Available Example Files
+
+There are two example files in the `conf-examples/` folder:
+
+#### Simple Configuration
+
+Use this file when you only need basic email and password authentication:
+
+```json
+{
+  "emailAndPassword": {
+    "enabled": true
+  }
+}
+```
+
+**When to use:**
+- Only email/password authentication
+- Don't need SSO or social login
+- Don't need to send emails (invites, magic links, etc.)
+
+#### Complete Configuration (SSO + Email)
+
+Use this file when you need advanced features like SSO, social login and email sending:
+
+```json
+{
+  "emailAndPassword": {
+    "enabled": true
+  },
+  "socialProviders": {
+    "google": {
+      "clientId": "",
+      "clientSecret": ""
+    },
+    "github": {
+      "clientId": "",
+      "clientSecret": ""
+    }
+  },
+  "saml": {
+    "enabled": false,
+    "providers": []
+  },
+  "emailProviders": [
+    {
+      "id": "resend-primary",
+      "provider": "resend",
+      "config": {
+        "apiKey": "",
+        "fromEmail": "noreply@example.com"
+      }
+    }
+  ],
+  "inviteEmailProviderId": "resend-primary",
+  "magicLinkConfig": {
+    "enabled": true,
+    "emailProviderId": "resend-primary"
+  }
+}
+```
+
+**When to use:**
+- Need SSO (SAML)
+- Need social login (Google, GitHub)
+- Need to send emails (invites, magic links, etc.)
+- Need magic links for passwordless authentication
+
+### Complete Reference Structure
+
+The complete structure of the `auth-config.json` file includes:
+
+- **emailAndPassword**: Basic email/password authentication
+- **socialProviders**: Social providers (Google, GitHub)
+- **saml**: SAML configuration for enterprise SSO
+- **emailProviders**: Email provider configuration (Resend, etc.)
+- **inviteEmailProviderId**: Email provider ID for sending invites
+- **magicLinkConfig**: Magic link configuration (authentication via link sent by email)
+
+### How to Edit
+
+1. **Edit the file locally**:
+
+```bash
+# Open your file editor with the file and make edits
+vim auth-config.json
+```
+
+2. **Restart the container** to load the changes:
+
+```bash
+docker compose restart mesh
+```
+
+3. **Or recreate the container**:
+
+```bash
+docker compose up -d --force-recreate mesh
+```
+
+<Callout type="warning">
+  The file must be valid JSON. If the file doesn't exist, Docker Compose will fail to start. Don't commit secrets (clientSecret, apiKey) in the file in production.
+</Callout>
+
+## Security
+
+### Generate BETTER_AUTH_SECRET
+
+<Callout type="warning">
+  Always generate a secure secret in production!
+</Callout>
+
+```bash
+# Generate secure secret (32+ characters)
+openssl rand -base64 32
+
+# Add to .env
+BETTER_AUTH_SECRET=your_generated_secret_here
+```
+
+### Protect .env file
+
+```bash
+# Don't commit .env to Git
+echo ".env" >> .gitignore
+
+# Set restrictive permissions
+chmod 600 .env
+```
+
+## Monitoring
+
+### Logs
+
+```bash
+# View logs in real time
+docker compose logs -f mesh
+
+# View last 100 lines
+docker compose logs --tail=100 mesh
+
+# View logs since a timestamp
+docker compose logs --since 2024-01-01T00:00:00 mesh
+```
+
+### Container Status
+
+```bash
+# View status
+docker compose ps
+
+# View details
+docker compose ps -a
+
+# View resource usage
+docker stats deco-mcp-mesh
+```
+
+### Reset Volume (Delete Data)
+
+To completely reset data and start from scratch:
+
+#### Method 1: Use Docker Compose (Recommended)
+
+```bash
+# Stop containers and remove volumes
+docker compose down -v
+
+# Restart with empty volume
+docker compose up -d
+```
+
+The `-v` flag removes the named volumes defined in `docker-compose.yml`.
+
+#### Method 2: Reset specific volume
+
+```bash
+# Stop only the service
+docker compose stop mesh
+
+# Remove specific volume
+docker volume rm docker_mesh-data
+
+# Or if in another directory:
+docker volume rm helm-chart-deco-mcp-mesh_mesh-data
+
+# Restart (will create new empty volume)
+docker compose up -d
+```
+
+#### Method 3: Backup before resetting
+
+```bash
+# 1. Backup first
+docker compose exec mesh cp /app/data/mesh.db /app/data/mesh.db.backup
+docker compose cp mesh:/app/data/mesh.db ./backup-$(date +%Y%m%d-%H%M%S).db
+
+# 2. Reset
+docker compose down -v
+docker compose up -d
+```
+
+#### Method 4: Reset only SQLite (keep other data)
+
+If you want to reset only the SQLite database keeping other files:
+
+```bash
+# Enter container
+docker compose exec mesh sh
+
+# Inside container, remove only the database
+rm /app/data/mesh.db
+
+# Restart application (will recreate database)
+exit
+docker compose restart mesh
+```
+
+#### Verify volumes
+
+```bash
+# List volumes
+docker volume ls | grep mesh
+
+# View volume details
+docker volume inspect docker_mesh-data
+
+# View used size
+docker system df -v
+```
+
+<Callout type="warning">
+  `docker compose down -v` **permanently deletes all data**. Make a backup first if you have important data. Volumes are not automatically removed when you run `docker compose down` (without `-v`).
+</Callout>
+
+## Updating
+
+### Update Image
+
+```bash
+# Stop application
+docker compose down
+
+# Update image
+docker compose pull
+
+# Restart
+docker compose up -d
+```
+
+### Update to specific version
+
+```bash
+# Edit .env
+IMAGE_TAG=0.1.24
+
+# Update
+docker compose pull
+docker compose up -d
+```
+
+## Backup and Restore
+
+### Backup (SQLite)
+
+```bash
+# Create backup
+docker compose exec mesh cp /app/data/mesh.db /app/data/mesh.db.backup
+
+# Copy to host
+docker compose cp mesh:/app/data/mesh.db ./backup-$(date +%Y%m%d).db
+```
+
+### Backup (PostgreSQL)
+
+```bash
+# Database backup
+docker compose exec postgres pg_dump -U mesh_user mesh_db > backup-$(date +%Y%m%d).sql
+
+# Restore
+docker compose exec -T postgres psql -U mesh_user mesh_db < backup-20240101.sql
+```
+
+

@@ -1,0 +1,143 @@
+---
+title: Conexões
+description: Como o deco CMS se conecta a servidores MCP upstream e como clientes se conectam ao deco CMS
+icon: Network
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+
+## O que são Conexões?
+
+**Conexões** representam a ponte entre o deco CMS e servidores MCP externos. Uma Conexão é o relacionamento registrado do deco CMS com um servidor MCP upstream — seja GitHub, Slack, um banco de dados ou sua implementação MCP personalizada.
+
+## Conectando a Servidores MCP Upstream
+
+### Por que Conexões Existem
+
+A abstração de Conexão resolve um problema crítico: **separar a configuração da conexão do uso**. Em vez de cada cliente (Cursor, Claude Desktop, agentes personalizados) gerenciar suas próprias credenciais e endpoints para cada servidor MCP, o deco CMS centraliza isso uma única vez.
+
+#### O Problema Sem Conexões
+
+Sem uma camada centralizada de conexão:
+- Todo cliente precisa armazenar e gerenciar credenciais para cada servidor MCP que utiliza
+- Rotação de credenciais significa atualizar todos os clientes
+- Sem trilha de auditoria unificada de quais ferramentas foram acessadas e por quem
+- Políticas de autorização divergem entre diferentes clientes
+- Sem forma de revogar temporariamente o acesso a um servidor MCP sem atualizar todos os clientes
+
+#### Como Conexões Resolvem Isso
+
+Conexões fornecem:
+
+**Gerenciamento centralizado de credenciais**: Armazene credenciais uma vez no vault criptografado do deco CMS. Clientes se autenticam no deco CMS, não em servidores MCP individuais.
+
+**Autorização unificada**: Defina quem pode acessar quais ferramentas através do sistema de permissões do deco CMS, em vez de gerenciar acesso por servidor MCP.
+
+**Rotação de credenciais sem atualizar clientes**: Atualize credenciais no deco CMS; todos os clientes automaticamente usam as novas credenciais sem reconfiguração.
+
+**Observabilidade completa**: Toda invocação de ferramenta passa pelo deco CMS, criando uma trilha de auditoria unificada em todos os servidores MCP.
+
+**Tratamento seguro de credenciais**: Credenciais são criptografadas em repouso e só são descriptografadas no momento da requisição, nunca expostas aos clientes.
+
+### Princípios de Design
+
+#### 1. Conexões são Somente Leitura do Ponto de Vista do Cliente
+
+Clientes interagem com ferramentas expostas por Conexões, mas não podem modificar a configuração da Conexão em si. Essa separação garante:
+- Credenciais permanecem protegidas
+- Mudanças de configuração requerem autorização apropriada
+- Trilhas de auditoria permanecem confiáveis
+
+#### 2. Conexões se Compõem em MCPs Virtuais
+
+Conexões são os blocos de construção para [MCPs Virtuais](/pt-br/mcp-mesh/virtual-mcps). Você conecta servidores MCP individuais (GitHub, Slack, bancos de dados), e depois os compõe em MCPs Virtuais que expõem superfícies de ferramentas curadas.
+
+```
+Conexão GitHub     ──┐
+Conexão Slack      ──┼──▶ MCP Virtual (Projeto) ──▶ Clientes
+Conexão Banco de Dados──┘
+```
+
+Este modelo de composição mantém servidores MCP externos isolados e seguros enquanto permite superfícies de ferramentas flexíveis e dinâmicas através de MCPs Virtuais.
+
+#### 3. Conexões são Escopadas por Organização
+
+Todas as Conexões pertencem a uma organização. Esse escopo garante:
+- Isolamento claro de tenants
+- Gerenciamento de credenciais em toda a organização
+- Políticas de acesso consistentes entre projetos e agentes
+
+### Como Conexões Funcionam
+
+Quando um cliente invoca uma ferramenta através do deco CMS:
+
+1. **Cliente se autentica** no deco CMS (OAuth ou API key)
+2. **Verificação de autorização**: deco CMS verifica se o cliente tem permissão para invocar a ferramenta solicitada
+3. **Carregamento de credenciais**: deco CMS descriptografa as credenciais armazenadas para a Conexão alvo
+4. **Proxy da requisição**: deco CMS encaminha a requisição MCP para o servidor upstream com as credenciais
+5. **Monitoramento**: deco CMS registra a invocação (ferramenta, duração, status, erros)
+6. **Retorno da resposta**: deco CMS retorna a resposta do servidor MCP para o cliente
+
+Este fluxo garante que credenciais nunca saiam do perímetro seguro do deco CMS enquanto permite invocação transparente de ferramentas.
+
+### Tipos de Conexão
+
+Conexões tipicamente se dividem em três categorias:
+
+**MCPs de Integração SaaS**: Serviços como GitHub, Slack, Notion, Google Drive — sistemas externos com sua própria autenticação (geralmente OAuth).
+
+**MCPs de Infraestrutura**: Conexões de banco de dados, clusters Kubernetes, APIs de provedores cloud — sistemas que requerem credenciais sensíveis.
+
+**MCPs Personalizados**: Seus próprios servidores MCP expondo ferramentas e operações específicas do domínio.
+
+Todos os tipos de conexão seguem o mesmo padrão: registre uma vez no deco CMS, use em qualquer lugar através de MCPs Virtuais e agentes.
+
+### Conexões vs. Acesso Direto
+
+**Acesso Direto** (cliente → servidor MCP):
+- Simples para cenários de cliente único e servidor único
+- Credenciais gerenciadas por cliente
+- Sem observabilidade unificada
+- Lógica de autorização duplicada
+
+**Através de Conexões** (cliente → deco CMS → servidor MCP):
+- Gerenciamento centralizado de credenciais
+- Autorização e observabilidade unificadas
+- Rotação de credenciais sem atualizar clientes
+- Base para MCPs Virtuais e composição
+
+Para uso em produção, Conexões fornecem as capacidades de control plane necessárias para operar tráfego MCP em escala.
+
+---
+
+## Conectando Clientes MCP ao deco CMS
+
+Uma vez que você configurou as conexões upstream, você precisa conectar seus clientes MCP (Cursor, Claude Desktop, agentes personalizados) ao deco CMS para consumir as ferramentas.
+
+### Opções de Autenticação de Cliente
+
+Existem duas formas comuns de conectar clientes ao deco CMS:
+
+- **OAuth (recomendado para clientes interativos)**: suporta fluxos OAuth padrão, consentimento e acesso com conhecimento de organização.
+- **API Keys (recomendado para servidores/agentes)**: chaves escopadas com permissões explícitas de ferramentas.
+
+### Endpoints
+
+Dependendo do seu caso de uso, você se conectará a um destes endpoints:
+
+- **Management MCP**: `POST /mcp` - Acesso a ferramentas de gerenciamento do deco CMS (criar conexões, projetos, agentes)
+- **Proxy de conexão**: `POST /mcp/:connectionId` - Acesso direto a uma conexão upstream específica
+- **Agente (servidor virtual)**: `POST /mcp/agent/:agentId` - Acesso a uma superfície curada de ferramentas através de um agente
+
+<Callout type="tip">
+  Se seu objetivo é uma "URL MCP única" para uma superfície curada de ferramentas, use **Agentes**. Se você quer um pipe direto para um MCP upstream, use **Proxy de conexão**.
+</Callout>
+
+### Notas Rápidas sobre Autenticação
+
+- **OAuth** é ideal quando você quer identidade por usuário e login via navegador.
+- **API keys** são ideais para automação e acesso servidor-a-servidor (menor fricção para começar).
+
+<Callout type="info">
+  Conexões são a base para [MCPs Virtuais](/pt-br/mcp-mesh/virtual-mcps), [Projetos](/pt-br/mcp-mesh/projects) e [Agentes](/pt-br/mcp-mesh/agents) — você conecta servidores MCP individuais primeiro, e depois os compõe em abstrações de nível mais alto.
+</Callout>

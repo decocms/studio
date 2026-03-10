@@ -1,0 +1,36 @@
+---
+title: Referência da API
+description: Os endpoints HTTP principais expostos pelo Mesh para MCP, agents, OAuth e operação
+icon: Code
+---
+
+## Endpoints MCP
+
+### Management MCP
+
+- `POST /mcp`
+
+Este endpoint expõe **management tools** via MCP (orgs, connections, agents, API keys, monitoring, event bus).
+
+### Proxy de connection
+
+- `POST /mcp/:connectionId`
+
+Faz proxy de requisições MCP para uma única connection upstream.
+
+### Agent (servidor virtual)
+
+- `POST /mcp/gateway/:gatewayId`
+- `POST /mcp/gateway` (Agent padrão; requer `x-org-id` ou `x-org-slug`)
+
+Agrega tools/resources/prompts de múltiplas conexões.
+
+## Descoberta OAuth
+
+- `GET /.well-known/oauth-protected-resource`
+- `GET /.well-known/oauth-authorization-server`
+
+## Operação
+
+- `GET /health`
+- `GET /metrics`

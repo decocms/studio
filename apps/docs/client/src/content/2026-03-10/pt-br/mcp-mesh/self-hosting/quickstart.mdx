@@ -1,0 +1,109 @@
+---
+title: Início Rápido
+description: Execute o Mesh localmente ou faça deploy na sua infraestrutura
+icon: Rocket
+---
+
+import Callout from "../../../../../components/ui/Callout.astro";
+
+## 1) Executar o deco CMS
+
+Escolha uma opção:
+
+### Opção A: setup local com um comando (npx)
+
+```bash
+npx @decocms/mesh
+```
+
+### Opção B: setup local com Docker Compose
+
+```bash
+# 1. Configurar variáveis de ambiente
+# Edite .env e configure BETTER_AUTH_SECRET (obrigatório)
+# Gere um secret: openssl rand -base64 32
+cp conf-examples/env.example .env
+
+# 2. Configurar autenticação
+cp conf-examples/auth-config.json.example auth-config.json
+
+# 3. Iniciar a aplicação
+docker compose up -d
+
+# 4. Acessar
+open http://localhost:3000
+```
+
+**Mais detalhes:** [Local: Docker Compose](/pt-br/mcp-mesh/self-hosting/deploy/docker-compose)
+
+### Opção C: executar a partir do código-fonte
+
+```bash
+git clone https://github.com/decocms/studio.git
+cd studio
+bun install
+bun run dev
+```
+
+### Opção D: deploy no Kubernetes (Helm)
+
+```bash
+# 1. Gerar um secret seguro para autenticação
+SECRET=$(openssl rand -base64 32)
+
+# 2. Instalar o chart com o secret gerado
+helm install deco-mcp-mesh . \
+  --namespace deco-mcp-mesh \
+  --create-namespace \
+  --set secret.BETTER_AUTH_SECRET="$SECRET"
+
+# 3. Aguardar os pods estarem prontos
+kubectl wait --for=condition=ready pod \
+  -l app.kubernetes.io/instance=deco-mcp-mesh \
+  -n deco-mcp-mesh \
+  --timeout=300s
+
+# 4. Acessar via port-forward
+kubectl port-forward svc/deco-mcp-mesh 8080:80 -n deco-mcp-mesh
+```
+
+A aplicação estará disponível em `http://localhost:8080`.
+
+**Mais detalhes:** [Kubernetes: Helm Chart](/pt-br/mcp-mesh/self-hosting/deploy/kubernetes)
+
+## 2) Criar uma Conexão
+
+Ao abrir uma nova organização, o deco CMS vai solicitar que você:
+
+- **Navegue pela Store** ou
+- **Crie uma Conexão** diretamente - forneça a URL do MCP (endpoint HTTP) e quaisquer credenciais necessárias
+
+A **Store** é um catálogo de Conexões que você pode conectar. Por padrão, a Store aponta para o **registro oficial de MCPs**.
+
+## 3) Criar uma organização e convidar membros
+
+- Vá para **Membros**
+- Convide colegas de equipe
+- Atribua funções (Admin/Usuário) conforme necessário
+
+## 4) Criar um Agente (servidor virtual)
+
+- Vá para **Agentes**
+- Clique em **Criar Agente**
+- Escolha **Incluir** (apenas conexões/ferramentas selecionadas) ou **Excluir** (tudo exceto as exclusões)
+
+## 5) Gerar uma chave de API para um cliente
+
+Crie uma chave de API com as permissões mínimas de ferramentas necessárias (veja [Chaves de API](/pt-br/mcp-mesh/api-keys)).
+
+## 6) Verificar monitoramento
+
+Use o **Monitoramento** para confirmar:
+
+- invocações de ferramentas estão sendo registradas
+- latência + taxas de erro aparecem
+- filtros (intervalo de tempo, nome da ferramenta, conexão, agente) funcionam como esperado
+
+<Callout type="tip">
+  O teste de fumaça mais rápido é chamar uma ferramenta através de um endpoint de agente (assim você exercita agregação + proxy + monitoramento).
+</Callout>

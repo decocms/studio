@@ -1,0 +1,78 @@
+---
+title: API Keys
+description: Crie API keys escopadas para acessar ferramentas de gerenciamento, proxies e agentes
+icon: KeyRound
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+
+## O que são API Keys?
+
+API keys permitem que sistemas externos se conectem ao deco CMS sem precisar que um usuário faça login. São tokens simples que você pode usar em scripts, ferramentas de automação ou qualquer sistema que precise acessar o deco CMS programaticamente.
+
+<Callout type="warning">
+  API keys são para **sistemas externos se conectando ao deco CMS**. Para conectar o deco CMS a servidores MCP upstream, veja [Conexões](/pt-br/mcp-mesh/connections).
+</Callout>
+
+## Quando Usar API Keys vs OAuth
+
+**OAuth** (Recomendado para a maioria dos usuários)
+- Use com Cursor, Claude Desktop, VS Code
+- Login pelo navegador
+- Configuração mais fácil
+
+**API Keys**
+- Use para scripts e automação
+- Sem necessidade de login no navegador
+- Melhor para servidores e CI/CD
+
+## Criando uma API Key
+
+1. Abra o **Painel do deco CMS**
+2. Vá em **Settings** → **API Keys**
+3. Clique em **Create API Key**
+4. Dê um nome (como "Meu Script de Automação")
+5. Atribua [papéis e permissões](/pt-br/mcp-mesh/user-management)
+6. **Copie a chave imediatamente**
+
+<Callout type="error">
+  Você só pode ver a API key uma vez. Copie agora e armazene em um lugar seguro como um gerenciador de senhas.
+</Callout>
+
+## Usando Sua API Key
+
+Adicione a API key na configuração do seu cliente MCP:
+
+```json
+{
+  "mcpServers": {
+    "deco": {
+      "url": "https://mesh.decocms.com/mcp/agent/your-agent-id",
+      "transport": "http",
+      "headers": {
+        "Authorization": "Bearer mcp_key_abc123..."
+      }
+    }
+  }
+}
+```
+
+## Boas Práticas de Segurança
+
+<Callout type="warning">
+  Trate API keys como senhas. Nunca compartilhe ou faça commit em repositórios de código.
+</Callout>
+
+**Conceda permissões mínimas**: Dê apenas o que é realmente necessário.
+
+**Crie chaves separadas**: Use uma chave por ferramenta ou script — mais fácil de gerenciar se algo der errado.
+
+**Armazene com segurança**: Mantenha chaves em um gerenciador de senhas ou gerenciador de segredos, nunca em arquivos de texto simples.
+
+**Faça rotação regularmente**: Crie novas chaves a cada poucos meses e exclua as antigas.
+
+**Monitore o uso**: Verifique o painel regularmente para atividades incomuns.
+
+<Callout type="tip">
+  Combine API keys com [Agentes](/pt-br/mcp-mesh/agents) para controlar exatamente quais ferramentas seus scripts podem acessar.
+</Callout>

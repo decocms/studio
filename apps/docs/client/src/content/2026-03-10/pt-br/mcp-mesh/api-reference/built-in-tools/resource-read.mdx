@@ -1,0 +1,143 @@
+---
+title: resource_read
+description: Ler um recurso do escopo atual
+icon: FileText
+---
+
+## Visão Geral
+
+Lê um recurso do escopo atual. Suporta herança de escopo (projeto herda da organização, agente herda do projeto+organização). Recursos podem ser documentação, diretrizes, trechos de código ou qualquer informação contextual.
+
+## Disponibilidade
+
+- **Tarefas**: ✓ Disponível
+- **Subtarefas**: ✓ Disponível
+
+## Assinatura
+
+```typescript
+resource_read(
+  resource_uri: string,
+  options?: RangeOptions
+)
+
+type RangeOptions = {
+  lineStart?: number
+  lineEnd?: number
+}
+```
+
+## Parâmetros
+
+| Parâmetro | Tipo | Obrigatório | Descrição |
+|-----------|------|----------|-------------|
+| `resource_uri` | `string` | Obrigatório | Identificador URI do recurso |
+| `options` | `RangeOptions` | Opcional | Opções de intervalo de linhas |
+| `options.lineStart` | `number` | Opcional | Número da linha inicial (padrão: 0) |
+| `options.lineEnd` | `number` | Opcional | Número da linha final (padrão: 20) |
+
+## Retorno
+
+Conteúdo e metadados do recurso:
+- **content**: Conteúdo de texto do recurso
+- **uri**: URI do recurso
+- **metadata**: Informações adicionais do recurso
+
+## Comportamento
+
+- Suporta herança de escopo:
+  - Recursos do projeto herdam de recursos da organização
+  - Recursos do agente herdam de recursos do projeto + organização
+- Defina `options.lineStart` e `options.lineEnd` como 0 para ler o recurso inteiro
+- Comportamento padrão (sem opções) lê as primeiras 20 linhas (linhas 0-20)
+- Números de linha começam em zero
+
+## Exemplo de Uso
+
+### Ler Recurso Inteiro
+
+```typescript
+// Ler documento completo de diretrizes de código
+resource_read("coding-guidelines.md", { lineStart: 0, lineEnd: 0 })
+```
+
+### Ler Linhas Específicas
+
+```typescript
+// Ler linhas 10-30 da documentação da API
+resource_read("api-docs.md", { lineStart: 10, lineEnd: 30 })
+```
+
+### Ler Início do Recurso
+
+```typescript
+// Ler primeiras 20 linhas (padrão)
+resource_read("onboarding-guide.md")
+```
+
+### Tipos de Recursos
+
+```typescript
+// Ler padrões de código
+resource_read("standards/typescript-style.md", { lineStart: 0, lineEnd: 0 })
+
+// Ler procedimentos de deploy
+resource_read("procedures/deployment-checklist.md", { lineStart: 0, lineEnd: 0 })
+
+// Ler documentação de API
+resource_read("docs/rest-api-reference.md", { lineStart: 0, lineEnd: 0 })
+```
+
+## Casos de Uso
+
+### Execução Baseada em Contexto
+
+Ler diretrizes antes de executar trabalho:
+
+```typescript
+// Ler padrões de código
+const standards = resource_read("coding-standards.md", { lineStart: 0, lineEnd: 0 })
+
+// Aplicar padrões ao gerar código
+// ... lógica de geração de código
+```
+
+### Referência de Documentação
+
+Acessar documentação de referência durante a tarefa:
+
+```typescript
+// Ler docs da API
+const apiDocs = resource_read("api-reference.md", { lineStart: 0, lineEnd: 0 })
+
+// Usar docs para fazer chamadas corretas à API
+// ... lógica de chamada de API
+```
+
+### Conformidade com Procedimentos
+
+Seguir procedimentos documentados:
+
+```typescript
+// Ler checklist de deploy
+const checklist = resource_read("deployment-checklist.md", { lineStart: 0, lineEnd: 0 })
+
+// Seguir cada passo do checklist
+// ... lógica de deploy
+```
+
+## Herança de Escopo
+
+Recursos seguem hierarquia de escopo:
+
+1. **Escopo do agente**: Herda do projeto + organização
+2. **Escopo do projeto**: Herda da organização
+3. **Escopo da organização**: Nível base de recursos
+
+Ao ler um recurso, o sistema busca do mais específico (agente) para o menos específico (organização).
+
+## Relacionados
+
+- [**prompt_read**](/pt-br/mcp-mesh/api-reference/built-in-tools/prompt-read) - Ler templates de prompt
+- [Documentação de Contexto](/pt-br/mcp-mesh/decopilot/context)
+- [Visão Geral das Ferramentas Integradas](/pt-br/mcp-mesh/api-reference/built-in-tools)

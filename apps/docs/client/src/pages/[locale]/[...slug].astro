@@ -4,6 +4,7 @@ import { ui, languages } from "../../i18n/ui";
 import DocsLayout from "../../layouts/DocsLayout.astro";
 import { getCollection } from "astro:content";
 import RenderDocument from "../../components/ui/RenderDocument.astro";
+import { LATEST_VERSION } from "../../config/versions";
 
 const lang = Astro.params.locale;
 const t = useTranslations(lang as keyof typeof ui);
@@ -27,7 +28,7 @@ export async function getStaticPaths() {
     // Legacy redirect paths: generate /en/... and /pt-br/... for all latest docs
     // so old production URLs get redirected to /latest/en/... equivalents
     ...allDocs
-      .filter((doc) => doc.id.split("/")[0] === "latest")
+      .filter((doc) => doc.id.split("/")[0] === LATEST_VERSION.id)
       .map((doc) => {
         const parts = doc.id.split("/");
         const locale = parts[1];
@@ -53,9 +54,9 @@ if (slug === "getting-started/context-engineers") {
 // If a slug is present, preserve it so legacy /en/... URLs redirect to /latest/en/...
 if (!doc) {
   if (slug) {
-    return Astro.redirect(`/latest/${lang}/${slug}`);
+    return Astro.redirect(`/${LATEST_VERSION.id}/${lang}/${slug}`);
   }
-  return Astro.redirect(`/latest/${lang}/introduction`);
+  return Astro.redirect(`/${LATEST_VERSION.id}/${lang}/mcp-mesh/quickstart`);
 }
 ---
 

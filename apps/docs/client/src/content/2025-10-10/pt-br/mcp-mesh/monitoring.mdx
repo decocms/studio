@@ -1,0 +1,32 @@
+---
+title: Monitoring
+description: Inspecione tool calls, erros e latência entre conexões e agents
+icon: Activity
+---
+
+## O que é registrado
+
+O Mesh registra logs de monitoring para tool calls proxied, incluindo:
+
+- nome da tool
+- atribuição de connection / agent
+- identidade do usuário (user ID ou usuário da API key)
+- duração e status de erro
+- inputs e output (normalizados)
+
+## Na interface
+
+Vá em **Monitoring** para:
+
+- ver volume de tool calls, erros e latência
+- filtrar por tool/connection/agent/status
+- acompanhar logs em tempo real via **Streaming**
+- detalhar chamadas individuais
+
+## Por que isso importa
+
+Monitoring é a base para:
+
+- depurar tool calls com falha
+- verificar permissões e seleção de agent
+- acompanhar regressões de latência e picos de erro

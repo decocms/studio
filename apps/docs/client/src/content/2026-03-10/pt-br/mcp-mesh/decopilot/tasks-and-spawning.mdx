@@ -1,0 +1,191 @@
+---
+title: Tarefas
+description: Entendendo como tarefas e subtarefas mantem seu trabalho organizado e o contexto eficiente
+icon: Layers
+---
+
+import Callout from "../../../../../components/ui/Callout.astro";
+
+<Callout type="info">
+  Esta pagina documenta a **arquitetura planejada** para tarefas no decopilot. A implementacao esta em desenvolvimento.
+</Callout>
+
+## O que sao Tarefas?
+
+Uma **tarefa** e sua conversa com o decopilot. E onde o trabalho acontece — onde voce conversa, o decopilot usa ferramentas e o contexto se acumula conforme voce progride.
+
+As tarefas sao acessiveis em todo o deco CMS:
+- **Pagina inicial** - A interface de chat da sua organizacao mostra a tarefa atual
+- **Barra lateral** - Clique no icone de chat para abrir o painel lateral e continuar sua tarefa
+- **Historico de tarefas** - Navegue por tarefas anteriores para revisar trabalhos passados
+
+Toda tarefa tem um [escopo](/pt-br/mcp-mesh/decopilot/scopes) (organizacao, projeto ou agente) que determina quais instrucoes carregam no contexto. Voce pode alternar escopos a qualquer momento usando o botao na parte inferior da entrada de chat — alterne entre trabalho de toda a organizacao, foco especifico do projeto ou escopos especializados de agente conforme necessario.
+
+Pense nas tarefas como workspaces persistentes onde o contexto se acumula naturalmente conforme voce trabalha.
+
+## Estados de Tarefas e Monitoramento
+
+As tarefas passam por diferentes estados conforme o trabalho progride. Entender esses estados ajuda voce a gerenciar o trabalho e saber quando as tarefas precisam da sua atencao.
+
+### Visao Geral dos Status de Tarefas
+
+Toda tarefa tem um dos quatro status:
+
+- **Em Progresso** - Trabalho ativo acontecendo, agente esta executando ou aguardando proxima mensagem
+- **Requer Acao** - Pausada, aguardando sua entrada (aprovacao de ferramenta ou resposta a pergunta)
+- **Sucesso** - Trabalho concluido com sucesso
+- **Falha** - Algo deu errado ou a tarefa expirou
+
+### Quando Tarefas Requerem Atencao
+
+As tarefas pausam e transitam para o status "Requer Acao" quando:
+
+**Aprovacao de ferramenta necessaria** - Algumas ferramentas requerem aprovacao explicita do usuario antes da execucao. A tarefa pausa ate voce revisar e aprovar ou negar a chamada da ferramenta.
+
+**Pergunta do agente** - Quando o decopilot precisa de esclarecimento ou decisoes, ele faz perguntas usando a ferramenta `user_ask`. A tarefa aguarda sua resposta.
+
+Voce pode ver todas as tarefas que requerem atencao clicando no **icone de tarefas** na barra lateral do deco CMS. Esta visao mostra tarefas agrupadas por status — permitindo identificar rapidamente quais tarefas precisam da sua contribuicao.
+
+### Timeout de Tarefas
+
+As tarefas expiram automaticamente apos **30 minutos de inatividade**. Quando isso acontece:
+
+- A tarefa transita de "Em Progresso" para o status "Falha"
+- Voce vera o timeout registrado no historico de tarefas
+- Voce pode reiniciar o trabalho criando uma nova tarefa
+
+Os timeouts evitam que tarefas fiquem em limbo indefinidamente. Se voce esta trabalhando em algo que naturalmente leva mais tempo, basta enviar uma mensagem ou interagir com a tarefa periodicamente para mante-la ativa.
+
+### Visualizando Progresso de Subtarefas
+
+As subtarefas aparecem na interface de chat enquanto sao executadas. Voce pode ver:
+
+- Status e progresso da subtarefa
+- Ferramentas sendo usadas
+- Raciocinio do agente (se habilitado)
+
+Porem, as **entradas sao desabilitadas** durante a execucao da subtarefa — voce nao pode interagir com uma subtarefa diretamente. As subtarefas rodam autonomamente e retornam resumos para a tarefa pai quando completam.
+
+## O que sao Subtarefas?
+
+Uma **subtarefa** e uma conversa separada que se ramifica da sua tarefa principal para lidar com trabalho focado. A diferenca chave: subtarefas comecam com [contexto](/pt-br/mcp-mesh/decopilot/context) novo — elas nao herdam seu historico de conversa acumulado.
+
+Isso torna as subtarefas perfeitas para trabalho intensivo que, de outra forma, encheria sua janela de contexto principal.
+
+### Como Subtarefas Funcionam
+
+Quando voce cria uma subtarefa:
+
+1. **Inicio novo** - A subtarefa comeca com contexto limpo (apenas instrucoes de escopo e prompt do sistema)
+2. **Execucao independente** - A subtarefa e uma tarefa regular com ferramentas integradas restritas (sem `subtask_run` ou `user_ask`)
+3. **Retorno de resumo** - A tarefa pai recebe apenas um resumo conciso (200-500 tokens)
+4. **Detalhes completos preservados** - A conversa completa da subtarefa e salva no historico de tarefas
+
+A tarefa pai ve apenas o resumo — mantendo sua conversa principal enxuta — enquanto os detalhes completos permanecem acessiveis no historico da subtarefa.
+
+### Diferencas Principais
+
+| Caracteristica | Tarefa Principal | Subtarefa |
+|----------------|-----------------|-----------|
+| Contexto | Historico acumulado | Inicio novo e limpo |
+| Ferramentas disponiveis | Todas as ferramentas integradas + ferramentas do escopo atual | Mesmo, mas sem `subtask_run` ou `user_ask` |
+| Visibilidade dos resultados | Conversa completa | Apenas resumo para o pai |
+| Interacao com usuario | Pode fazer perguntas (`user_ask`) | Nao pode fazer perguntas |
+
+As subtarefas nao podem criar subtarefas adicionais (previne aninhamento infinito) e nao podem fazer perguntas ao usuario (rodam autonomamente).
+
+## Quando Usar Subtarefas
+
+As subtarefas brilham quando voce precisa de trabalho focado que poluiria sua conversa principal.
+
+### Pesquisa e Analise
+
+Mergulhos profundos em dados, exploracao de opcoes ou investigacao de problemas funcionam bem em subtarefas.
+
+**Exemplo**: Voce esta planejando compras de inventario e precisa de analise de demanda. Crie uma subtarefa para pesquisar tendencias de vendas, padroes sazonais e comportamento de concorrentes — e receba de volta apenas a recomendacao, nao as dezenas de pontos de dados analisados.
+
+### Calculos Complexos
+
+Trabalho de processamento numerico que gera saida detalhada pertence a subtarefas.
+
+**Exemplo**: Calcular rotas de envio otimas entre multiplos armazens. A subtarefa analisa distancias, trafego, horarios de transportadoras — voce recebe apenas o plano de rotas, nao os detalhes do calculo.
+
+### Verificacoes de Qualidade e Revisoes
+
+Auditorias, validacao e trabalho de revisao se beneficiam de contexto isolado.
+
+**Exemplo**: Antes de transferir 500 SKUs entre armazens, crie uma subtarefa com um agente "Auditor de Inventario" para verificar niveis de estoque. Receba um resumo dos problemas encontrados e transferencias validadas — mantenha o trabalho detalhado de auditoria fora da sua tarefa principal.
+
+### Trabalho Paralelo
+
+Quando voce tem operacoes independentes que podem rodar simultaneamente, crie multiplas subtarefas.
+
+**Exemplo**: Relatorios mensais entre departamentos — crie subtarefas separadas para analise de vestuario, eletronicos e artigos para casa. Todas rodam em paralelo, os resumos voltam para sua tarefa principal para sintese.
+
+## Trabalhando com Escopos de Agente
+
+As subtarefas podem rodar em [escopos de agente](/pt-br/mcp-mesh/agents) diferentes da sua tarefa principal — e assim que agentes especializados colaboram.
+
+**Exemplo**: Sua tarefa principal esta no escopo de organizacao trabalhando em atendimento de pedidos. Voce cria subtarefas usando:
+- **Agente de Inventario** - Avalia disponibilidade de estoque
+- **Agente de Envio** - Planeja logistica e roteamento
+- **Agente de Atendimento ao Cliente** - Prepara estrategias de suporte
+
+Cada agente traz expertise especializada. Sua tarefa principal coordena a estrategia geral enquanto os agentes lidam com detalhes especificos do dominio em isolamento.
+
+Este padrao mantem o trabalho especializado contido enquanto permite que voce se beneficie da expertise dos agentes.
+
+## Padroes Comuns
+
+### Padrao 1: Execucao Paralela
+
+Crie multiplas subtarefas para trabalho independente que pode rodar simultaneamente.
+
+**Quando usar**: Relatorios mensais, analise multi-departamental, validacoes independentes
+
+**Beneficio**: Execucao mais rapida, contextos isolados previnem contaminacao cruzada
+
+### Padrao 2: Delegacao Sequencial
+
+Encadeie subtarefas onde cada etapa se baseia nos resultados anteriores.
+
+**Quando usar**: Fluxos de trabalho multi-etapa, refinamento progressivo, pipelines de decisao
+
+**Beneficio**: Progressao clara, subtarefas focadas, resultados constroem em direcao a um resultado abrangente
+
+### Padrao 3: Colaboracao de Especialistas
+
+Use diferentes escopos de agente para subtarefas que requerem conhecimento especializado.
+
+**Quando usar**: Trabalho multifuncional, expertise de dominio necessaria, estrategias coordenadas
+
+**Beneficio**: Aproveite agentes especializados, integre insights de multiplos dominios
+
+## Dicas Praticas
+
+**Delegue o trabalho pesado** - Pesquisa, calculos e analise devem acontecer em subtarefas. Mantenha resumos na sua tarefa principal, nao detalhes extensos.
+
+**Combine o escopo com o trabalho** - Use agentes especializados para tarefas de dominio, escopo de organizacao para trabalho geral. O escopo certo traz instrucoes e contexto relevantes.
+
+**Trabalhe em paralelo** - Subtarefas independentes podem rodar simultaneamente. Nao espere se a proxima subtarefa nao depende da anterior.
+
+**Nomeie claramente** - Dê prompts descritivos ao criar: "Analisar tendencias de demanda de vestuario do Q4" em vez de "Fazer analise". Isso ajuda ao revisar o historico de tarefas.
+
+**Revise detalhes completos quando necessario** - A conversa completa da subtarefa fica no historico de tarefas. Se voce precisar de dados brutos ou analise detalhada, abra a subtarefa pelo historico.
+
+**Observe sinais de poluicao** - Quando sua tarefa principal parecer pesada ou com contexto cheio, crie subtarefas para a proxima fase de trabalho.
+
+## Beneficios de Contexto
+
+As subtarefas sao poderosas para gerenciar sua [janela de contexto](/pt-br/mcp-mesh/decopilot/context):
+
+- **Tarefa principal permanece enxuta** - Apenas resumos se acumulam, nao detalhes de analise
+- **Contexto novo para complexidade** - Subtarefas comecam limpas, ideal para trabalho profundo
+- **Produtividade mais longa** - Evite compactificacao prematura na tarefa principal
+- **Execucao focada** - Cada subtarefa aborda uma coisa sem bagagem
+
+Ao manter trabalho intensivo em subtarefas, sua tarefa principal permanece focada e produtiva ao longo de sessoes mais longas.
+
+---
+
+**Proximos passos**: Aprenda sobre [Contexto](/pt-br/mcp-mesh/decopilot/context) para entender como as tarefas gerenciam sua memoria de trabalho, explore [Ferramentas](/pt-br/mcp-mesh/decopilot/tools) para ver o que o decopilot pode fazer, ou confira [Agentes](/pt-br/mcp-mesh/agents) para escopos especializados que voce pode usar com subtarefas.

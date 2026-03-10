@@ -1,0 +1,241 @@
+---
+title: Criando Tools
+description: Funções que agents, workflows e views usam para tomar ação
+icon: Wrench
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+
+
+## Entendendo Tools
+Tools são funções que executam ações específicas - são os "verbos" da sua aplicação de IA.
+
+Cada tool:
+- **Faz uma coisa bem** - Realizar operação CRUD, salvar no banco, chamar uma API
+- **Tem inputs bem definidos** - Parâmetros que o tool aceita
+- **Retorna output estruturado** - Formato de dados previsível
+- **Pode ser chamado por** - Agents, workflows, views e outros tools
+
+**De onde vêm os tools:**
+- **Integrações** - Instale apps da store (Gmail, Slack, Notion, etc.) para obter tools pré-construídos que aparecem automaticamente no seu workspace
+- **Tools customizados** - Construa os seus usando deco chat ou escreva TypeScript manualmente
+
+**Estratégia:** Comece navegando pelas integrações disponíveis na deco store. A maioria das necessidades comuns já está coberta. Construa tools customizados apenas para requisitos específicos que ainda não existem.
+
+## Criando Tools com Deco Chat
+
+A maneira mais fácil de criar tools é descrevendo o que você precisa:
+
+**Exemplos de prompts:**
+```
+Preciso de um tool que verifique se um produto está em estoque em todos os armazéns
+
+Crie um tool para calcular descontos baseado no nível de fidelidade do cliente
+
+Me ajude a construir um tool que recomende produtos baseado no histórico de compras do cliente
+
+Quero validar endereços de email de clientes e enviar códigos de desconto de boas-vindas
+```
+
+**O que acontece em seguida:**
+1. Deco chat faz perguntas esclarecedoras (Quais inputs? O que deve retornar?)
+2. Sugere um schema baseado nas suas necessidades
+3. Cria o tool usando `@TOOLS_CREATE`
+4. Você testa e itera juntos
+
+**Refine conforme avança:**
+```
+Adicione validação para garantir que o cliente tem uma conta de fidelidade válida
+
+Inclua um parâmetro de total mínimo do pedido com padrão de R$250
+
+Altere o output para também retornar a data de expiração do desconto
+```
+
+Esta abordagem conversacional significa que você começa com uma ideia vaga e itera em direção a exatamente o que precisa.
+
+<Callout type="info">
+  As seções abaixo explicam a mecânica se você quiser entender como tools funcionam.
+</Callout>
+
+---
+
+## O Que Acontece Por Baixo dos Panos?
+
+Quando você cria um tool (seja via deco chat ou clicando no ícone de código para escrever TypeScript), estes são os componentes principais sendo definidos:
+
+### 1. Nome do Tool
+
+Tools seguem o padrão `RECURSO_ACAO` com `MAIUSCULAS_COM_UNDERSCORES`:
+
+**Exemplos:**
+- `PRODUCT_INVENTORY_CHECK` - Verificar níveis de estoque do produto
+- `ORDER_CONFIRMATION_SEND` - Enviar email de confirmação de pedido
+- `CART_DISCOUNT_APPLY` - Aplicar desconto ao carrinho de compras
+
+```
+Bom: CUSTOMER_LOYALTY_UPDATE, PRODUCT_PRICE_CALCULATE
+Ruim: updateLoyalty, calculate-product-price
+```
+
+**Por que isso importa:** Agents usam nomes de tools para decidir quando usá-los. Nomes descritivos = melhores decisões.
+
+### 2. Descrição
+
+Diz aos agents e workflows o que o tool faz e quando usá-lo:
+```
+Bom: "Verificar estoque do produto em todos os armazéns e calcular estoque disponível.
+Retorna quantidade total, detalhamento por localização e status de alerta de estoque baixo."
+
+Ruim: "Verifica estoque"
+```
+
+Quanto melhor a descrição, melhor os agents entendem quando usá-lo.
+
+### 3. Input Schema
+
+Define quais parâmetros o tool aceita:
+- Campos **obrigatórios** vs **opcionais**
+- **Valores padrão** onde faz sentido
+- Regras de **validação** (formato de email, URL, intervalos numéricos)
+- **Tipos** (string, number, boolean, etc.)
+
+Mantenha simples, se você precisa de 10+ parâmetros, considere quebrar em tools menores.
+
+### 4. Output Schema
+
+Define o que o tool retorna:
+- **Estrutura** - Quais campos são retornados
+- **Tipos** - Tipos de dados para cada campo
+- **Indicador de sucesso/falha**
+- **Detalhes de erro** quando falhas ocorrem
+
+Este schema é crítico para:
+- **Workflows** - Podem referenciar campos de output específicos em próximos passos
+- **Agents** - Sabem quais dados receberam e como usá-los
+- **Composabilidade** - Outros tools podem consumir este output
+
+### 5. Lógica do Tool
+
+A implementação real, o que o tool faz:
+
+**Padrões comuns:**
+- **Encadear tools existentes** - Compor tools de integrações instaladas
+- **Chamadas de API** - Buscar dados de serviços externos
+- **Operações de banco de dados** - Consultar ou modificar dados
+- **Transformações** - Processar e formatar dados
+
+Quando você pede ao deco chat para criar um tool, ele lida com tudo isso para você. Quando você escreve TypeScript, você define isso explicitamente.
+
+### 6. Testes
+
+Uma vez criado, teste seu tool de duas maneiras:
+
+**Via UI:**
+deco CMS gera automaticamente um formulário baseado no seu input schema. Preencha os campos e execute o tool para ver resultados.
+
+**Via chat:**
+```
+@PRODUCT_INVENTORY_CHECK sku="SKU-12345"
+@ORDER_CONFIRMATION_SEND customerEmail="cliente@exemplo.com" orderNumber="ORD-789"
+```
+
+Itere até funcionar como esperado.
+
+## Descobrindo Tools Existentes
+
+Antes de criar um tool, verifique o que já existe:
+
+**Navegue pelos tools do workspace:**
+- Vá para **Tools** na barra lateral para ver todos os tools disponíveis
+- Use a busca para encontrar ações específicas (ex: "email", "cliente")
+
+**Navegue pelos tools de integração:**
+- Visite **Apps**
+- Verifique integrações instaladas para tools pré-construídos
+- Navegue pela **Store** para descobrir novas integrações
+- Cada integração mostra quais tools ela fornece
+- Instale e configure a integração para adicionar esses tools ao seu workspace
+
+**Adicione integrações customizadas:**
+
+Se você construiu seu próprio servidor MCP ou quer conectar a um app customizado:
+
+1. Clique em **Adicionar Custom** na seção Apps
+2. Preencha os detalhes da conexão:
+   - **Nome** - Um nome amigável para este app (ex: "Minha API de Vendas")
+   - **Descrição** - O que este app faz (opcional)
+   - **Tipo** - Como conectar (geralmente HTTP para apps web)
+   - **URL** - O endereço web onde seu app está hospedado (ex: `https://example.com/mcp`)
+   - **Token** - Uma senha ou chave para acessar seu app com segurança (opcional)
+3. Clique em **Adicionar** para conectar
+
+Uma vez conectado, quaisquer tools que seu app customizado forneça aparecerão automaticamente no seu workspace e podem ser usados por agents, workflows e views.
+
+<Callout type="info">
+  **Para usuários não técnicos:** Você normalmente receberá a URL e o token de quem construiu o app customizado. Basta copiar e colar esses valores no formulário.
+</Callout>
+
+## Gerenciando Tools
+
+**Atualizando tools:**
+
+Peça ao deco chat para fazer mudanças ou edite TypeScript diretamente:
+
+```
+Atualize PRODUCT_INVENTORY_CHECK para também retornar o limite de reposição do produto
+Atualize ORDER_CONFIRMATION_SEND para incluir data estimada de entrega
+```
+
+**Outras ações:**
+
+Passe o mouse sobre qualquer card de tool e clique em **...** para:
+- Duplicar o tool
+- Deletar o tool (nota: isso afeta agents, workflows ou views que o utilizam)
+- Ver detalhes do tool
+
+## Grupos de Tools
+
+Organize tools relacionados para descoberta mais fácil:
+
+**Exemplos:**
+- **Gerenciamento de Clientes** - `CUSTOMER_CREATE`, `CUSTOMER_FETCH`, `CUSTOMER_UPDATE`, `CUSTOMER_LOYALTY_UPDATE`
+- **Processamento de Pedidos** - `ORDER_CREATE`, `ORDER_UPDATE`, `ORDER_CANCEL`, `ORDER_REFUND`
+- **Inventário** - `PRODUCT_INVENTORY_CHECK`, `INVENTORY_UPDATE`, `INVENTORY_ALERT_CREATE`
+- **Notificações** - `ORDER_CONFIRMATION_SEND`, `SHIPPING_NOTIFICATION_SEND`, `CART_ABANDONED_SEND`
+
+## Princípios de Composição
+
+### Construa Pequeno, Componha Grande
+
+Não construa tools monolíticos:
+```
+❌ ORDER_CREATE_AND_EMAIL_AND_UPDATE_INVENTORY_AND_NOTIFY
+
+✅ ORDER_CREATE → INVENTORY_UPDATE → ORDER_CONFIRMATION_SEND → ORDER_NOTIFICATION_SEND
+   (Quatro tools simples compostos em um workflow)
+```
+
+### Schemas Permitem Automação
+
+Schemas claros de input/output permitem que:
+- Agents saibam quando e como usar o tool
+- Workflows mapeiem automaticamente dados entre passos
+- Views gerem formulários automaticamente
+- Erros sejam capturados antes do runtime
+
+<Callout type="warning">
+  Tools que deletam dados, cobram pagamentos ou chamam APIs caras devem ter permissões restritas. Configure controles de acesso para limitar quem pode usar tools sensíveis.
+</Callout>
+
+## Erros Comuns
+
+**Evite estas armadilhas:**
+
+1. **Tools muito complexos** - Se um tool precisa de 10+ parâmetros, quebre em tools menores
+2. **Descrições vagas** - Agents não conseguem usar tools que não entendem
+3. **Falta de tratamento de erros** - Sempre retorne mensagens de erro claras
+4. **Sem validação** - Valide inputs antes de processar
+5. **Nomes confusos** - Use o padrão `RECURSO_ACAO` consistentemente
+
+---

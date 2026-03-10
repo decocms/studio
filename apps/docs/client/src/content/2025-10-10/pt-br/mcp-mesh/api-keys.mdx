@@ -1,0 +1,25 @@
+---
+title: API Keys
+description: Crie API keys com escopo para acessar tools de gerenciamento, proxies e agents
+icon: KeyRound
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+
+## Para que servem as API keys?
+
+API keys são a forma mais simples de dar acesso ao Mesh para um agente/app sem um fluxo de login interativo. As chaves são:
+
+- **com escopo** (permissões explícitas)
+- **revogáveis**
+- **auditáveis** (chamadas aparecem no Monitoring)
+
+## Boas práticas
+
+- **Menor privilégio**: conceda apenas as permissões de tools que você precisa.
+- **Chaves separadas por workload**: uma chave por app/agente facilita a rotação.
+- **Use agents para controle de superfície**: combine permissões de API key com um agent curado.
+
+<Callout type="warning">
+  Trate API keys como secrets de produção. Armazene-as em um gerenciador de secrets e faça rotação regularmente.
+</Callout>
