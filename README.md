@@ -11,41 +11,37 @@
 <a href="https://decocms.com/studio">decocms.com/studio</a>
 </p>
 
-> **TL;DR:**
-> - Browse and hire specialized AI agents with battle-tested prompts
-> - Connect tools via web UI with one-click OAuth — no JSON configs
-> - Full observability — traces, costs, errors, latency per connection
-> - RBAC, policies, and audit trails at the control plane
-> - Self-host with Docker, Bun/Node, Kubernetes, or run locally
+> **TL;DR:** Hire agents with real skills. Connect your tools with one-click OAuth. Track every token and dollar. Control everything from any browser. Self-host or use the cloud.
 
 ---
 
 ## What is deco Studio?
 
-**deco Studio** is an open-source control plane for AI agents. It gives you one place to hire agents, connect tools, manage projects, and track every token and dollar — from your laptop or from any browser.
+Studio is where you manage your AI agents, tools, and projects — all from one place.
 
-MCP connections are a core capability, but Studio goes beyond routing: it adds agents with real skills, declarative project planning, cost attribution, and a web UI you can access from anywhere.
+Instead of wiring up MCP servers one by one across every client, you connect them once in Studio and get a single endpoint that any client can use. But connections are just the start: Studio adds agents that know how to use those tools, projects with declarative planning, per-connection cost tracking, and a web dashboard you can access from anywhere.
 
 Install locally and everything stays private. Optionally sync to the cloud for remote access, team roles, and shared billing.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         MCP Clients                             │
+│                           Clients                               │
 │         Cursor · Claude · VS Code · Custom Agents               │
 └───────────────────────────┬─────────────────────────────────────┘
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                        DECO STUDIO                              │
-│    Agents · MCP Mesh · Projects · Observability · Token Vault   │
+│  Agents · Connections · Projects · Observability · Token Vault  │
 └───────────────────────────┬─────────────────────────────────────┘
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Tools & MCP Servers                           │
+│                     Tools & MCP Servers                          │
 │      GitHub · Slack · Postgres · OpenRouter · Your APIs         │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
 ---
 
 ## Quick Start
@@ -66,39 +62,56 @@ bun run dev
 
 ---
 
-## Agents
+## What you get
+
+### Agents
 
 Browse and hire specialized AI agents from the built-in store. Each agent comes with battle-tested prompts and knows how to use specific tools. Agents compose — they can call each other — and every action is tracked with cost attribution.
 
----
+### Connections
 
-## Tool Connections
+Set up MCP connections through a web UI with one-click OAuth. No JSON configs. Monitor latency, errors, and costs per connection. Share tools across your team without sharing credentials.
 
-Set up MCP connections through a web UI with one-click OAuth. Monitor latency, errors, and costs per connection. Share tools across your team without sharing credentials.
+As tool surfaces grow, Studio exposes **Virtual MCPs** — one endpoint, different strategies for which tools to surface:
 
-As tool surfaces grow, Studio models runtime strategies as **Virtual MCPs**: one endpoint, different ways of exposing tools.
+- **Full-context:** expose everything (simple, deterministic, good for small toolsets)
+- **Smart selection:** narrow the toolset before execution
+- **Code execution:** load tools on demand in a sandbox
 
-- Full-context: expose everything (simple and deterministic for small toolsets)
-- Smart selection: narrow the toolset before execution
-- Code execution: load tools on demand and run code in a sandbox
+### Projects
 
-Virtual MCPs are configurable and extensible.
+Define what done looks like. Studio works backward to derive milestones, assign agents, and verify outcomes.
+
+### Observability
+
+See token spend per connection — OpenRouter, Perplexity, Firecrawl, all of it. Latency, errors, bottlenecks. One dashboard.
+
+### From your laptop to your org
+
+Same mental model everywhere: your agents, your tools, your connections, your projects.
+
+| | What it means |
+|---|---|
+| **Local** | `bunx decocms` on your laptop. SQLite. Private. |
+| **Cloud** | Log in to studio.decocms.com. Control local projects from any browser. |
+| **Team** | Invite people. Roles. Shared connections. Cost attribution. |
+| **Enterprise** | Self-hosted. Your infra. Your rules. |
 
 ---
 
 ## Core Capabilities
 
 | Capability | What it does |
-|-------|-------------|
+|---|---|
 | **Agents** | Browse, hire, and compose AI agents with tracked skills and cost attribution |
-| **MCP Mesh** | Route all MCP traffic through one governed endpoint with auth, proxy, and token vault |
+| **Connections** | Route MCP traffic through one governed endpoint with auth, proxy, and token vault |
 | **Projects** | Declarative planning — define outcomes, Studio derives milestones and assigns agents |
-| **Virtual MCPs** | Compose and expose governed toolsets as new MCP servers |
+| **Virtual MCPs** | Compose and expose governed toolsets as new MCP endpoints |
 | **Observability** | Full tracing and metrics — traces, costs, errors, latency per connection |
-| **AccessControl** | Fine-grained RBAC via Better Auth — OAuth 2.1 + API keys per workspace/project |
+| **Access Control** | Fine-grained RBAC via Better Auth — OAuth 2.1 + API keys per workspace/project |
 | **Multi-tenancy** | Workspace/project isolation for config, credentials, policies, and audit logs |
 | **Event Bus** | Pub/sub between connections with scheduled/cron delivery and at-least-once guarantees |
-| **Bindings** | Capability contracts so apps target interfaces instead of specific MCP implementations |
+| **Bindings** | Capability contracts so tools target interfaces, not specific implementations |
 | **Store** | Discover and install agents, tools, and templates from the marketplace |
 
 ---
@@ -253,7 +266,7 @@ Runs on any infrastructure — Docker, Kubernetes, AWS, GCP, or local Bun/Node r
 ## Tech Stack
 
 | Layer | Tech |
-|-------|------|
+|---|---|
 | Runtime | Bun / Node |
 | Language | TypeScript + Zod |
 | Framework | Hono (API) + Vite + React 19 |
