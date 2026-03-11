@@ -24,12 +24,17 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto";
 import { RuntimeNodeInstrumentation } from "@opentelemetry/instrumentation-runtime-node";
 import { enableFetchInstrumentation } from "./instrumentations/fetch";
 import { NDJSONLogExporter } from "../monitoring/ndjson-log-exporter";
+import { NDJSONMetricExporter } from "../monitoring/ndjson-metric-exporter";
 import { NDJSONTraceExporter } from "../monitoring/ndjson-trace-exporter";
-import { DEFAULT_LOGS_DIR, DEFAULT_TRACES_DIR } from "../monitoring/schema";
+import {
+  DEFAULT_LOGS_DIR,
+  DEFAULT_METRICS_DIR,
+  DEFAULT_TRACES_DIR,
+} from "../monitoring/schema";
 import { env } from "../env";
 
 import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
-import type { MetricReader } from "@opentelemetry/sdk-metrics";
+import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import {
   BatchSpanProcessor,
@@ -210,13 +215,28 @@ const monitoringTraceExporter =
     ? null
     : new NDJSONTraceExporter({ basePath: DEFAULT_TRACES_DIR });
 
+const monitoringMetricExporter =
+  env.NODE_ENV === "test"
+    ? null
+    : new NDJSONMetricExporter({ basePath: DEFAULT_METRICS_DIR });
+
+const monitoringMetricReader = monitoringMetricExporter
+  ? new PeriodicExportingMetricReader({
+      exporter: monitoringMetricExporter,
+      exportIntervalMillis: 60_000,
+    })
+  : null;
+
 /**
  * Initialize OpenTelemetry SDK
  */
 const sdk = new NodeSDK({
   serviceName: env.OTEL_SERVICE_NAME,
   traceExporter,
-  metricReader: prometheusExporter as unknown as MetricReader,
+  metricReaders: [
+    prometheusExporter,
+    ...(monitoringMetricReader ? [monitoringMetricReader] : []),
+  ],
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sampler: headSampler,
   spanProcessors: [
@@ -367,7 +387,7 @@ export { type Exception, type Span };
  *
  * In cloud mode (CLICKHOUSE_URL set) this flushes the OTLP exporters.
  */
-export async function flushTraceExporter(): Promise<void> {
+export async function flushMonitoringData(): Promise<void> {
   // 1. Flush log provider (drains BatchLogRecordProcessor → export())
   const logProvider = logs.getLoggerProvider();
   if ("forceFlush" in logProvider) {
@@ -385,6 +405,14 @@ export async function flushTraceExporter(): Promise<void> {
   // 4. Flush NDJSONTraceExporter's internal write buffer
   if (monitoringTraceExporter) {
     await monitoringTraceExporter.forceFlush();
+  }
+  // 5. Flush metric reader (drains PeriodicExportingMetricReader → export())
+  if (monitoringMetricReader) {
+    await monitoringMetricReader.forceFlush();
+  }
+  // 6. Flush NDJSONMetricExporter's internal write buffer
+  if (monitoringMetricExporter) {
+    await monitoringMetricExporter.forceFlush();
   }
 }
 
