@@ -268,7 +268,7 @@ describe("defineTool", () => {
 
       await expect(tool.execute({}, ctx)).rejects.toThrow("Test error");
       expect(ctx.meter.createCounter).toHaveBeenCalledWith(
-        "tool.execution.errors",
+        "tool.execution.count",
         expect.any(Object),
       );
     });

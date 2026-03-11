@@ -178,6 +178,7 @@ export function defineTool<
                   "tool.name": definition.name,
                   "organization.id": ctx.organization?.id ?? "system",
                   status: "success",
+                  "error.type": "",
                 });
 
                 const counter = ctx.meter.createCounter(
@@ -188,7 +189,9 @@ export function defineTool<
                 );
                 counter.add(1, {
                   "tool.name": definition.name,
+                  "organization.id": ctx.organization?.id ?? "system",
                   status: "success",
+                  "error.type": "",
                 });
 
                 // Mark span as successful
@@ -196,16 +199,34 @@ export function defineTool<
 
                 return output;
               } catch (error) {
-                // Record error metrics
-                const errorCounter = ctx.meter.createCounter(
-                  "tool.execution.errors",
+                const duration = Date.now() - startTime;
+
+                // Record error count (same metric name as success for consistent aggregation)
+                const counter = ctx.meter.createCounter(
+                  "tool.execution.count",
                   {
-                    description: "Number of tool execution errors",
+                    description: "Number of tool executions",
                   },
                 );
-                errorCounter.add(1, {
+                counter.add(1, {
                   "tool.name": definition.name,
+                  "organization.id": ctx.organization?.id ?? "system",
+                  status: "error",
                   "error.type": (error as Error).constructor.name,
+                });
+
+                // Record error duration
+                const histogram = ctx.meter.createHistogram(
+                  "tool.execution.duration",
+                  {
+                    description: "Duration of tool executions in milliseconds",
+                    unit: "ms",
+                  },
+                );
+                histogram.record(duration, {
+                  "tool.name": definition.name,
+                  "organization.id": ctx.organization?.id ?? "system",
+                  status: "error",
                 });
 
                 // Mark span as error
