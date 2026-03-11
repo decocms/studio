@@ -74,10 +74,41 @@ function parseModelTitle(model: { title: string; modelId: string }): {
 
 export const CLAUDE_CODE_CONNECTION_ID = "claude-code";
 
+/** Claude Code model variants available in the selector */
+const CLAUDE_CODE_MODELS = [
+  {
+    id: "claude-code:opus",
+    title: "Opus",
+    description: "Most capable",
+    tier: "smarter" as const,
+    limits: { contextWindow: 200_000, maxOutputTokens: 32_768 },
+  },
+  {
+    id: "claude-code:sonnet",
+    title: "Sonnet",
+    description: "Fast & capable",
+    tier: "faster" as const,
+    limits: { contextWindow: 200_000, maxOutputTokens: 32_768 },
+  },
+  {
+    id: "claude-code:haiku",
+    title: "Haiku",
+    description: "Fastest",
+    tier: "cheaper" as const,
+    limits: { contextWindow: 200_000, maxOutputTokens: 32_768 },
+  },
+];
+
 export function isClaudeCodeModel(
   model: { connectionId?: string } | null | undefined,
 ): boolean {
   return model?.connectionId === CLAUDE_CODE_CONNECTION_ID;
+}
+
+/** Get display name for a Claude Code model id */
+function claudeCodeDisplayName(modelId: string): string {
+  const m = CLAUDE_CODE_MODELS.find((m) => m.id === modelId);
+  return m ? `Claude Code ${m.title}` : "Claude Code";
 }
 
 // ============================================================================
@@ -1042,13 +1073,17 @@ function ModelSelectorInner({
     setHoveredModel(null);
   };
 
-  const handleClaudeCodeSelect = () => {
+  const handleClaudeCodeSelect = (modelId: string) => {
+    const variant = CLAUDE_CODE_MODELS.find((m) => m.id === modelId);
     setSelectedModel({
-      modelId: "claude-code",
-      title: "Claude Code",
+      modelId,
+      title: variant ? `Claude Code ${variant.title}` : "Claude Code",
       providerId: "claude-code",
       capabilities: ["text", "tools"],
-      limits: { contextWindow: 200_000, maxOutputTokens: 32_768 },
+      limits: variant?.limits ?? {
+        contextWindow: 200_000,
+        maxOutputTokens: 32_768,
+      },
       keyId: "claude-code",
     } as AiProviderModel);
     setSearchTerm("");
@@ -1145,20 +1180,34 @@ function ModelSelectorInner({
 
         {showClaudeCode && (
           <div className="border-b border-border">
-            <button
-              type="button"
-              onClick={handleClaudeCodeSelect}
-              className={cn(
-                "flex items-center gap-2 w-full min-h-8 py-3 px-4 text-left cursor-pointer rounded-none",
-                "hover:bg-accent",
-              )}
-            >
-              <TerminalSquare className="size-5 shrink-0 text-muted-foreground" />
-              <span className="text-sm flex-1">Claude Code</span>
+            <div className="flex items-center gap-2 px-4 pt-2.5 pb-1">
+              <TerminalSquare className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="text-xs font-medium text-muted-foreground">
+                Claude Code
+              </span>
               <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-primary/10 text-primary font-medium">
                 Local
               </span>
-            </button>
+            </div>
+            {CLAUDE_CODE_MODELS.map((variant) => (
+              <button
+                key={variant.id}
+                type="button"
+                onClick={() => handleClaudeCodeSelect(variant.id)}
+                className={cn(
+                  "flex items-center gap-2 w-full min-h-8 py-2 px-4 text-left cursor-pointer",
+                  "hover:bg-accent",
+                  selectedModel?.thinking?.id === variant.id &&
+                    isClaudeCodeModel(selectedModel) &&
+                    "bg-accent/50",
+                )}
+              >
+                <span className="text-sm flex-1">{variant.title}</span>
+                <span className="text-xs text-muted-foreground">
+                  {variant.description}
+                </span>
+              </button>
+            ))}
           </div>
         )}
         <ErrorBoundary
