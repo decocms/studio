@@ -9,15 +9,13 @@ import { useCurrentEditor, type Editor } from "@tiptap/react";
 import { useEffect, useRef, type ChangeEvent } from "react";
 import { Attachment01 } from "@untitledui/icons";
 import { toast } from "sonner";
-import {
-  modelSupportsFiles,
-  type SelectedModelState,
-} from "../../select-model";
+import { modelSupportsFiles } from "../../select-model";
 import { insertFile, type FileAttrs } from "./node.tsx";
+import { AiProviderModel } from "@/web/hooks/collections/use-llm.ts";
 
 interface FileUploaderProps {
   editor: Editor;
-  selectedModel: SelectedModelState | null;
+  selectedModel: AiProviderModel | null;
 }
 
 /**
@@ -25,7 +23,7 @@ interface FileUploaderProps {
  */
 async function processFile(
   editor: Editor,
-  selectedModel: SelectedModelState | null,
+  selectedModel: AiProviderModel | null,
   file: File,
   position: number,
 ): Promise<void> {
@@ -168,7 +166,7 @@ export function FileUploader({ editor, selectedModel }: FileUploaderProps) {
  * Uses EditorContext to access the editor instance and processFile to handle file uploads.
  */
 interface FileUploadButtonProps {
-  selectedModel: SelectedModelState | null;
+  selectedModel: AiProviderModel | null;
   isStreaming: boolean;
 }
 

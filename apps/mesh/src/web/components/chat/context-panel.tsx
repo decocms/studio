@@ -160,7 +160,7 @@ export function ChatContextPanel({
     messages,
     tasks,
     activeTaskId,
-    selectedModel,
+    model,
     selectedVirtualMcp,
     virtualMcps,
   } = useChat();
@@ -180,7 +180,7 @@ export function ChatContextPanel({
     }>,
   );
 
-  const contextWindow = selectedModel?.thinking?.limits?.contextWindow ?? null;
+  const contextWindow = model?.limits?.contextWindow ?? null;
 
   const usagePct =
     contextWindow && contextWindow > 0
@@ -260,9 +260,7 @@ export function ChatContextPanel({
       }),
   );
 
-  const modelLabel = selectedModel?.thinking?.id
-    ? formatModelId(selectedModel.thinking.id)
-    : "—";
+  const modelLabel = model?.modelId ? formatModelId(model.modelId) : "—";
 
   const agentTitle = selectedVirtualMcp?.title ?? "Decopilot";
 

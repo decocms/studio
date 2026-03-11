@@ -6,7 +6,6 @@
  */
 
 import type { MeshContext } from "@/core/mesh-context";
-import { clientFromConnection, withStreamingSupport } from "@/mcp-clients";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
 import { sanitizeProviderMetadata } from "@decocms/mesh-sdk";
 import {
@@ -49,7 +48,6 @@ import {
   fetchModelPermissions,
   parseModelsToMap,
 } from "./model-permissions";
-import { createModelProviderFromClient } from "./model-provider";
 import { StreamRequestSchema } from "./schemas";
 import { resolveThreadStatus } from "./status";
 import { genTitle } from "./title-generator";
@@ -161,7 +159,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       if (
         !checkModelPermission(
           allowedModels,
-          models.connectionId,
+          models.credentialId,
           models.thinking.id,
         )
       ) {
@@ -174,9 +172,12 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       const resolvedThreadId = thread_id ?? memoryConfig?.thread_id;
 
       // Get connection entities and create/load memory in parallel
-      const [virtualMcp, modelConnection, mem] = await Promise.all([
+      const [virtualMcp, providerKey, mem] = await Promise.all([
         ctx.storage.virtualMcps.findById(agent.id, organization.id),
-        ctx.storage.connections.findById(models.connectionId, organization.id),
+        ctx.storage.aiProviderKeys.findById(
+          models.credentialId,
+          organization.id,
+        ),
         createMemory(ctx.storage.threads, {
           organization_id: organization.id,
           thread_id: resolvedThreadId,
@@ -211,10 +212,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           console.error("[decopilot:stream] Error saving messages", error);
         });
       };
-
-      if (!modelConnection) {
-        throw new Error("Model connection not found");
-      }
 
       if (!virtualMcp) {
         throw new Error("Agent not found");
@@ -282,33 +279,17 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           // Create MCP client connections inside execute so the SSE
           // response headers are flushed to the client before this
           // potentially slow I/O, preventing Cloudflare 524 timeouts.
-          const [modelClient, passthroughClient, strategyClient] =
-            await Promise.all([
-              clientFromConnection(modelConnection, ctx, false),
-              createVirtualClientFrom(virtualMcp, ctx, "passthrough"),
-              isGatewayMode
-                ? createVirtualClientFrom(virtualMcp, ctx, agent.mode)
-                : Promise.resolve(null),
-            ]);
+          const [passthroughClient, strategyClient] = await Promise.all([
+            createVirtualClientFrom(virtualMcp, ctx, "passthrough"),
+            isGatewayMode
+              ? createVirtualClientFrom(virtualMcp, ctx, agent.mode)
+              : Promise.resolve(null),
+          ]);
 
           closeClients = () => {
-            modelClient.close().catch(() => {});
             passthroughClient.close().catch(() => {});
             strategyClient?.close().catch(() => {});
           };
-
-          const streamableModelClient = withStreamingSupport(
-            modelClient,
-            models.connectionId,
-            modelConnection,
-            ctx,
-            { superUser: false },
-          );
-
-          const modelProvider = await createModelProviderFromClient(
-            streamableModelClient,
-            models,
-          );
 
           // Enrich the pre-loaded messages with agent-specific instructions
           // from the virtual MCP now that the client is available.
@@ -337,12 +318,20 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
               )
             : {};
 
+          const provider = await ctx.aiProviders.activate(
+            providerKey.id,
+            organization.id,
+          );
+
           const builtInTools = await getBuiltInTools(
             writer,
             {
-              modelProvider,
+              provider,
               organization,
-              models,
+              models: {
+                credentialId: providerKey.id,
+                thinking: models.thinking,
+              },
               toolApprovalLevel,
               toolOutputMap,
             },
@@ -378,7 +367,9 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           if (shouldGenerateTitle) {
             genTitle({
               abortSignal,
-              model: modelProvider.fastModel ?? modelProvider.thinkingModel,
+              model: provider.aiSdk.languageModel(
+                models.fast?.id ?? models.thinking.id,
+              ),
               userMessage: JSON.stringify(processedMessages[0]?.content),
             })
               .then(async (title) => {
@@ -413,7 +404,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           let lastProviderMetadata: Record<string, unknown> | undefined;
 
           const result = streamText({
-            model: modelProvider.thinkingModel,
+            model: provider.aiSdk.languageModel(models.thinking.id),
             system: processedSystemMessages,
             messages: processedMessages,
             tools,
@@ -436,8 +427,21 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
                 return {
                   agent: { id: agent.id ?? null, mode: agent.mode },
                   models: {
-                    connectionId: models.connectionId,
-                    thinking: models.thinking,
+                    modelId: models.thinking.id,
+                    title: models.thinking.title,
+                    capabilities: models.thinking.capabilities
+                      ? Object.entries(models.thinking.capabilities)
+                          .map(([key, value]) => (value ? key : ""))
+                          .filter(Boolean)
+                      : undefined,
+                    limits: models.thinking.limits
+                      ? {
+                          contextWindow:
+                            models.thinking.limits.contextWindow ?? 0,
+                          maxOutputTokens:
+                            models.thinking.limits.maxOutputTokens ?? 0,
+                        }
+                      : undefined,
                   },
                   created_at: new Date(),
                   thread_id: mem.thread.id,

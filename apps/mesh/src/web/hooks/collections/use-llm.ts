@@ -82,11 +82,11 @@ export function useAiProviders() {
 export interface AiProviderModel {
   modelId: string;
   title: string;
-  description: string | null;
-  logo: string | null;
-  capabilities: string[];
-  limits: { contextWindow: number; maxOutputTokens: number } | null;
-  costs: { input: number; output: number } | null;
+  description?: string;
+  logo?: string;
+  capabilities?: string[];
+  limits?: { contextWindow: number; maxOutputTokens: number };
+  costs?: { input: number; output: number };
 }
 
 /** Shape returned by AI_PROVIDER_KEY_LIST. */

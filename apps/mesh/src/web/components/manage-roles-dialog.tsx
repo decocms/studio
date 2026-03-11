@@ -13,8 +13,9 @@ import { authClient } from "@/web/lib/auth-client";
 import { KEYS } from "@/web/lib/query-keys";
 import { useConnections, useProjectContext } from "@decocms/mesh-sdk";
 import {
+  AiProviderKey,
+  useAiProviderKeyList,
   useLLMsFromConnection,
-  useModelConnections,
   type LLM,
 } from "@/web/hooks/collections/use-llm";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
@@ -416,7 +417,7 @@ function ConnectionModelsSection({
   searchQuery,
   readOnly,
 }: {
-  connection: { id: string; title: string; icon: string | null };
+  connection: AiProviderKey;
   selectedModels: string[];
   allowAllModels: boolean;
   onToggleModel: (connectionId: string, modelId: string) => void;
@@ -453,19 +454,11 @@ function ConnectionModelsSection({
       {/* Connection header with toggle-all for this connection */}
       <div className="flex items-center justify-between px-4 py-2">
         <div className="flex items-center gap-2">
-          {connection.icon ? (
-            <img
-              src={connection.icon}
-              alt={connection.title}
-              className="w-4 h-4 rounded"
-            />
-          ) : (
-            <div className="w-4 h-4 rounded bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
-              {connection.title.slice(0, 1).toUpperCase()}
-            </div>
-          )}
+          <div className="w-4 h-4 rounded bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
+            {connection.label.slice(0, 1).toUpperCase()}
+          </div>
           <h4 className="text-sm font-medium text-muted-foreground/75">
-            {connection.title}
+            {connection.label}
           </h4>
         </div>
         {!readOnly && !allowAllModels && (
@@ -556,7 +549,8 @@ function ModelsPermissionsTab({
 }: ModelsPermissionsTabProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const deferredSearchQuery = useDeferredValue(searchQuery);
-  const modelConnections = useModelConnections();
+
+  const allModelsConnections = useAiProviderKeyList();
 
   // Toggle a single model for a connection
   const toggleModel = (connectionId: string, modelId: string) => {
@@ -654,12 +648,12 @@ function ModelsPermissionsTab({
 
       {/* Models list grouped by connection */}
       <div className="flex-1 overflow-auto">
-        {modelConnections.length === 0 ? (
+        {allModelsConnections.length === 0 ? (
           <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
             No LLM connections configured
           </div>
         ) : (
-          modelConnections.map((conn) => (
+          allModelsConnections.map((conn) => (
             <Suspense
               key={conn.id}
               fallback={<ConnectionModelsSectionFallback />}

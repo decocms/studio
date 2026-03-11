@@ -111,4 +111,20 @@ export class AIProviderKeyStorage {
       .where("organization_id", "=", organizationId)
       .execute();
   }
+
+  async findById(
+    keyId: string,
+    organizationId: string,
+  ): Promise<ProviderKeyInfo> {
+    const row = await this.db
+      .selectFrom("ai_provider_keys")
+      .where("id", "=", keyId)
+      .where("organization_id", "=", organizationId)
+      .selectAll()
+      .executeTakeFirst();
+    if (!row) {
+      throw new Error("Provider key not found");
+    }
+    return this.rowToKeyInfo(row);
+  }
 }

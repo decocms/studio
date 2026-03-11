@@ -15,7 +15,7 @@ export const anthropicAdapter: ProviderAdapter = {
     logo: "https://anthropic.com/favicon.ico",
   },
 
-  connectionMethod: "api-key",
+  supportedMethods: ["api-key"],
 
   create(apiKey): MeshProvider & TokenCounter {
     const aiSdk = createAnthropic({ apiKey });

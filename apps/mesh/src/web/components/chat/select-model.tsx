@@ -30,7 +30,6 @@ import {
 import { Suspense, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { ORG_ADMIN_PROJECT_SLUG, useProjectContext } from "@decocms/mesh-sdk";
-import type { ChatModelsConfig } from "./types";
 import {
   useAiProviderKeyList,
   useAiProviderModels,
@@ -468,7 +467,7 @@ function ConnectionModelList({
   onModelSelect,
 }: {
   keyId: string | undefined;
-  selectedModel?: SelectedModelState;
+  selectedModel?: AiProviderModel | null;
   onModelSelect: (model: AiProviderModel) => void;
   onHover: (model: AiProviderModel) => void;
 }) {
@@ -536,20 +535,10 @@ function SelectedModelDisplay({
   );
 }
 
-export type SelectedModelState = ChatModelsConfig;
-
 export function modelSupportsFiles(
-  selectedModel: SelectedModelState | null | undefined,
+  selectedModel: AiProviderModel | null | undefined,
 ): boolean {
-  return selectedModel?.thinking?.capabilities?.vision === true;
-}
-
-export interface ModelChangePayload {
-  id: string;
-  connectionId: string;
-  provider?: string;
-  capabilities?: string[];
-  limits?: { contextWindow?: number; maxOutputTokens?: number };
+  return selectedModel?.capabilities?.includes("vision") === true;
 }
 
 // ============================================================================
@@ -614,7 +603,7 @@ function ModelSelectorContent({
   onClose,
 }: {
   selectedModel?: AiProviderModel | null;
-  onModelChange: (model: ModelChangePayload) => void;
+  onModelChange: (model: AiProviderModel) => void;
   onClose: () => void;
 }) {
   const [hoveredModel, setHoveredModel] = useState<AiProviderModel | null>(
@@ -644,10 +633,13 @@ function ModelSelectorContent({
   const handleModelSelect = (model: AiProviderModel) => {
     if (!selectedKeyId) return;
     onModelChange({
-      id: model.modelId,
-      connectionId: selectedKeyId,
-      capabilities: model.capabilities,
-      limits: model.limits ?? undefined,
+      modelId: model.modelId,
+      title: model.title,
+      description: model.description,
+      logo: model.logo,
+      capabilities: model.capabilities ?? [],
+      limits: model.limits ?? { contextWindow: 0, maxOutputTokens: 0 },
+      costs: model.costs ?? { input: 0, output: 0 },
     });
     setSearchTerm("");
     onClose();
@@ -760,7 +752,7 @@ function ModelSelectorContent({
 
 export interface ModelSelectorProps {
   selectedModel?: AiProviderModel | null;
-  onModelChange: (model: ModelChangePayload) => void;
+  onModelChange: (model: AiProviderModel) => void;
   variant?: "borderless" | "bordered";
   className?: string;
   placeholder?: string;
@@ -818,9 +810,6 @@ export function ModelSelector({
   const [open, setOpen] = useState(false);
   const currentModel = selectedModel;
 
-  if (!currentModel) {
-    return null;
-  }
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>

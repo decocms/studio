@@ -91,6 +91,7 @@ export interface MeshContextConfig {
     meter: Meter;
   };
   eventBus: EventBus;
+  modelListCache?: ModelListCache;
 }
 
 // ============================================================================
@@ -397,6 +398,7 @@ import { createClientPool } from "@/mcp-clients/outbound/client-pool";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
 import { AIProviderFactory } from "@/ai-providers/factory";
+import type { ModelListCache } from "@/ai-providers/model-list-cache";
 
 /**
  * Fetch role permissions from the database
@@ -863,7 +865,10 @@ export async function createMeshContextFactory(
       threads: new OrgScopedThreadStorage(threadDb, organization?.id),
     };
 
-    const aiProviderFactory = new AIProviderFactory(storage.aiProviderKeys);
+    const aiProviderFactory = new AIProviderFactory(
+      storage.aiProviderKeys,
+      config.modelListCache,
+    );
 
     const ctx: MeshContext = {
       timings,

@@ -52,13 +52,14 @@ export type ChatMessage = UIMessage<
 
 export interface ModelInfo {
   id: string;
+  title: string;
   capabilities?: { vision?: boolean; text?: boolean; tools?: boolean };
   provider?: string | null;
   limits?: { contextWindow?: number; maxOutputTokens?: number };
 }
 
 export interface ModelsConfig {
-  connectionId: string;
+  credentialId: string;
   thinking: ModelInfo;
   coding?: ModelInfo;
   fast?: ModelInfo;
@@ -81,8 +82,8 @@ export interface ModelProvider {
   /** Fast model - cheap model for simple tasks */
   readonly fastModel?: LanguageModelV2;
 
-  /** Connection ID that provides these models */
-  readonly connectionId: string;
+  /** Provider key ID that provides these models */
+  readonly providerKeyId: string;
 }
 
 // ============================================================================

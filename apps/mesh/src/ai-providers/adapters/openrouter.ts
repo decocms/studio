@@ -15,7 +15,6 @@ export const openrouterAdapter: ProviderAdapter = {
     logo: "https://openrouter.ai/favicon.ico",
   },
 
-  connectionMethod: "oauth-pkce",
   supportedMethods: ["oauth-pkce", "api-key"],
 
   getOAuthUrl({ callbackUrl, codeChallenge, codeChallengeMethod }) {

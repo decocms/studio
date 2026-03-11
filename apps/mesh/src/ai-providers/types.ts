@@ -55,17 +55,11 @@ export interface OAuthPkceResult {
 
 export interface ProviderAdapter {
   readonly info: ProviderInfo;
-  /** Primary connection method. */
-  readonly connectionMethod: ConnectionMethod;
-  /**
-   * All connection methods supported by this provider.
-   * Defaults to [connectionMethod] when not specified.
-   * Use when a provider supports multiple methods (e.g. OAuth + manual API key).
-   */
-  readonly supportedMethods?: ConnectionMethod[];
+  // All connection methods supported by this provider.
+  readonly supportedMethods: ConnectionMethod[];
   create(apiKey: string): MeshProvider;
 
-  // Only defined when "oauth-pkce" is in supportedMethods (or connectionMethod)
+  // Only defined when "oauth-pkce" is in supportedMethods
   getOAuthUrl?(params: OAuthPkceParams): string;
   exchangeOAuthCode?(params: {
     code: string;

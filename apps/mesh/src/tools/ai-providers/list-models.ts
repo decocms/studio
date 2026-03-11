@@ -19,14 +19,14 @@ export const AI_PROVIDERS_LIST_MODELS = defineTool({
         capabilities: z.array(z.string()),
         limits: z
           .object({
-            contextWindow: z.number(),
-            maxOutputTokens: z.number(),
+            contextWindow: z.coerce.number(),
+            maxOutputTokens: z.coerce.number(),
           })
           .nullable(),
         costs: z
           .object({
-            input: z.number(),
-            output: z.number(),
+            input: z.coerce.number(),
+            output: z.coerce.number(),
           })
           .nullable(),
       }),
@@ -37,8 +37,7 @@ export const AI_PROVIDERS_LIST_MODELS = defineTool({
     const org = requireOrganization(ctx);
     await ctx.access.check();
 
-    const provider = await ctx.aiProviders.activate(input.keyId, org.id);
-    const models = await provider.listModels();
+    const models = await ctx.aiProviders.listModels(input.keyId, org.id);
     return { models };
   },
 });

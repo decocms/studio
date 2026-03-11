@@ -29,7 +29,7 @@ export const AI_PROVIDER_OAUTH_EXCHANGE = defineTool({
 
     const adapter = PROVIDERS[input.providerId];
     if (
-      adapter.connectionMethod !== "oauth-pkce" ||
+      !adapter.supportedMethods.includes("oauth-pkce") ||
       !adapter.exchangeOAuthCode
     ) {
       throw new Error(

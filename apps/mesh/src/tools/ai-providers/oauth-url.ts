@@ -38,7 +38,10 @@ export const AI_PROVIDER_OAUTH_URL = defineTool({
     await ctx.access.check();
 
     const adapter = PROVIDERS[input.providerId];
-    if (adapter.connectionMethod !== "oauth-pkce" || !adapter.getOAuthUrl) {
+    if (
+      !adapter.supportedMethods.includes("oauth-pkce") ||
+      !adapter.getOAuthUrl
+    ) {
       throw new Error(
         `Provider ${input.providerId} does not support OAuth PKCE`,
       );

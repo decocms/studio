@@ -26,8 +26,6 @@ import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { VirtualMCPSelector } from "@/web/components/chat/select-virtual-mcp";
-import type { ChatModelsConfig } from "@/web/components/chat/types";
-import { ModelChangePayload, ModelSelector } from "@/web/components/chat";
 
 interface McpConfigurationFormProps {
   formKey: string;
@@ -359,16 +357,6 @@ function CustomObjectFieldTemplate(props: ObjectFieldTemplateProps) {
       formContext?.onFieldChange(fieldKey, newFieldData);
     };
 
-    const handleModelChange = (model: ModelChangePayload) => {
-      formContext?.onFieldChange(fieldKey, {
-        __type: bindingType,
-        value: {
-          id: model.id,
-          connectionId: model.connectionId,
-        },
-      });
-    };
-
     const formatTitle = (str: string) =>
       str
         .toLowerCase()
@@ -397,43 +385,6 @@ function CustomObjectFieldTemplate(props: ObjectFieldTemplateProps) {
             onVirtualMcpChange={handleBindingChange}
             variant="bordered"
             placeholder="Select Agent"
-            className="w-[200px] shrink-0"
-          />
-        </div>
-      );
-    }
-
-    if (bindingType === "@deco/language-model") {
-      const fieldData = formContextFieldData ?? formData;
-      const valueObj = (fieldData as { value?: unknown })?.value;
-      const selectedModel =
-        valueObj &&
-        typeof valueObj === "object" &&
-        "connectionId" in valueObj &&
-        "id" in valueObj
-          ? ({
-              connectionId: (valueObj as { connectionId: string }).connectionId,
-              thinking: { id: (valueObj as { id: string }).id },
-            } satisfies ChatModelsConfig)
-          : undefined;
-
-      return (
-        <div className="flex items-center gap-3 justify-between">
-          <div className="flex-1 min-w-0">
-            <label className="text-sm font-medium truncate block">
-              {displayTitle}
-            </label>
-            {description && (
-              <p className="text-xs text-muted-foreground truncate">
-                {description}
-              </p>
-            )}
-          </div>
-          <ModelSelector
-            selectedModel={selectedModel}
-            onModelChange={handleModelChange}
-            variant="bordered"
-            placeholder="Select Language Model"
             className="w-[200px] shrink-0"
           />
         </div>

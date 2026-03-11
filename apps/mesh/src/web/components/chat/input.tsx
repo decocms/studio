@@ -311,7 +311,7 @@ export function ChatInput({
     virtualMcps,
     selectedVirtualMcp,
     setVirtualMcpId,
-    selectedModel,
+    model,
     setSelectedModel,
     selectedMode,
     setSelectedMode,
@@ -346,7 +346,7 @@ export function ChatInput({
     tiptapDocRef.current = undefined;
   }
 
-  const contextWindow = selectedModel?.thinking.limits?.contextWindow;
+  const contextWindow = model?.limits?.contextWindow;
 
   const tiptapRef = useRef<TiptapInputHandle | null>(null);
   const usage = calculateUsageStats(messages);
@@ -357,8 +357,7 @@ export function ChatInput({
   const lastTotalTokens =
     (lastUsage?.totalTokens ?? 0) - (lastUsage?.reasoningTokens ?? 0);
 
-  const canSubmit =
-    !isStreaming && !!selectedModel && !isTiptapDocEmpty(tiptapDoc);
+  const canSubmit = !isStreaming && !!model && !isTiptapDocEmpty(tiptapDoc);
 
   const showStopOrCancel = isStreaming || isRunInProgress;
 
@@ -477,7 +476,7 @@ export function ChatInput({
             key={activeTaskId}
             tiptapDoc={tiptapDoc}
             setTiptapDoc={setTiptapDoc}
-            selectedModel={selectedModel}
+            selectedModel={model}
             isStreaming={isStreaming}
             onSubmit={handleSubmit}
           >
@@ -491,7 +490,7 @@ export function ChatInput({
                 {/* Input Area with Tiptap */}
                 <TiptapInput
                   ref={tiptapRef}
-                  selectedModel={selectedModel}
+                  selectedModel={model}
                   isStreaming={isStreaming}
                   selectedVirtualMcp={selectedVirtualMcp}
                 />
@@ -522,7 +521,7 @@ export function ChatInput({
                     />
                   )}
                   <FileUploadButton
-                    selectedModel={selectedModel}
+                    selectedModel={model}
                     isStreaming={isStreaming}
                   />
                   <ModeSelector
@@ -543,7 +542,7 @@ export function ChatInput({
                 {/* Right Actions (model, send) */}
                 <div className="flex items-center gap-1.5">
                   <ModelSelector
-                    selectedModel={selectedModel ?? undefined}
+                    selectedModel={model ?? null}
                     onModelChange={setSelectedModel}
                     placeholder="Model"
                     variant="borderless"

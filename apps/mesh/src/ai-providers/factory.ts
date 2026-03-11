@@ -1,9 +1,13 @@
 import type { AIProviderKeyStorage } from "../storage/ai-provider-keys";
-import type { MeshProvider } from "./types";
+import type { ModelListCache } from "./model-list-cache";
+import type { MeshProvider, ModelInfo } from "./types";
 import { PROVIDERS } from "./registry";
 
 export class AIProviderFactory {
-  constructor(private storage: AIProviderKeyStorage) {}
+  constructor(
+    private storage: AIProviderKeyStorage,
+    private cache?: ModelListCache,
+  ) {}
 
   async activate(keyId: string, organizationId: string): Promise<MeshProvider> {
     const { keyInfo, apiKey } = await this.storage.resolve(
@@ -12,5 +16,30 @@ export class AIProviderFactory {
     );
     const adapter = PROVIDERS[keyInfo.providerId];
     return adapter.create(apiKey);
+  }
+
+  async listModels(
+    keyId: string,
+    organizationId: string,
+  ): Promise<ModelInfo[]> {
+    const { keyInfo, apiKey } = await this.storage.resolve(
+      keyId,
+      organizationId,
+    );
+    const providerId = keyInfo.providerId;
+
+    if (this.cache) {
+      const cached = await this.cache.get(providerId);
+      if (cached) return cached;
+    }
+
+    const provider = PROVIDERS[providerId].create(apiKey);
+    const models = await provider.listModels();
+
+    if (this.cache) {
+      await this.cache.set(providerId, models);
+    }
+
+    return models;
   }
 }

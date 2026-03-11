@@ -10,7 +10,6 @@ import { DecoChatSkeleton } from "./skeleton";
 export type { ToolSelectionStrategy } from "@/mcp-clients/virtual-mcp/types";
 export { useChat } from "./context";
 export { ModelSelector } from "./select-model";
-export type { ModelChangePayload, SelectedModelState } from "./select-model";
 export type { VirtualMCPInfo } from "./select-virtual-mcp";
 export type { ChatMessage, ChatStatus } from "./types.ts";
 

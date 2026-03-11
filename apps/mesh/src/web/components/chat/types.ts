@@ -1,4 +1,5 @@
 import type { ChatMessage } from "@/api/routes/decopilot/types";
+import { AiProviderModel } from "@/web/hooks/collections/use-llm";
 export type { ChatMessage };
 import type { UseChatHelpers } from "@ai-sdk/react";
 import type { JSONContent } from "@tiptap/core";
@@ -13,14 +14,6 @@ export interface ChatModelInfo {
   provider?: string | null;
   limits?: { contextWindow?: number; maxOutputTokens?: number };
 }
-
-export interface ChatModelsConfig {
-  connectionId: string;
-  thinking: ChatModelInfo;
-  coding?: ChatModelInfo;
-  fast?: ChatModelInfo;
-}
-
 export interface ChatAgentConfig {
   id: string | null;
   mode: "passthrough" | "smart_tool_selection" | "code_execution";
@@ -55,7 +48,12 @@ export type TiptapNode = JSONContent;
 export interface Metadata {
   reasoning_start_at?: string | Date;
   reasoning_end_at?: string | Date;
-  models?: ChatModelsConfig;
+  models?: {
+    credentialId: string;
+    thinking: AiProviderModel;
+    coding?: AiProviderModel;
+    fast?: AiProviderModel;
+  };
   agent?: ChatAgentConfig;
   user?: ChatUserConfig;
   created_at?: string | Date;

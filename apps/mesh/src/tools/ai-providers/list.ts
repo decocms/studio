@@ -15,7 +15,6 @@ export const AI_PROVIDERS_LIST = defineTool({
         name: z.string(),
         description: z.string(),
         logo: z.string().optional(),
-        connectionMethod: z.enum(["api-key", "oauth-pkce"]),
         supportedMethods: z.array(z.enum(["api-key", "oauth-pkce"])),
       }),
     ),
@@ -28,8 +27,7 @@ export const AI_PROVIDERS_LIST = defineTool({
 
     const providers = Object.values(PROVIDERS).map((adapter) => ({
       ...adapter.info,
-      connectionMethod: adapter.connectionMethod,
-      supportedMethods: adapter.supportedMethods ?? [adapter.connectionMethod],
+      supportedMethods: adapter.supportedMethods,
     }));
     return { providers };
   },

@@ -34,6 +34,7 @@ const ProviderSchema = z
 
 const ModelInfoSchema = z.object({
   id: z.string(),
+  title: z.string(),
   capabilities: z
     .object({
       vision: z.boolean().optional(),
@@ -52,7 +53,7 @@ const ModelInfoSchema = z.object({
 
 const ModelsSchema = z
   .object({
-    connectionId: z.string(),
+    credentialId: z.string(),
     thinking: ModelInfoSchema.describe("Backbone model for the agentic loop"),
     coding: ModelInfoSchema.optional().describe("Good coding model"),
     fast: ModelInfoSchema.optional().describe("Cheap model for simple tasks"),
