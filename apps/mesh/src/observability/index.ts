@@ -377,14 +377,14 @@ export async function flushTraceExporter(): Promise<void> {
   if (monitoringLogExporter) {
     await monitoringLogExporter.forceFlush();
   }
-  // 3. Flush NDJSONTraceExporter's internal write buffer
-  if (monitoringTraceExporter) {
-    await monitoringTraceExporter.forceFlush();
-  }
-  // 4. Flush trace provider (for cloud OTLP exporter)
+  // 3. Flush trace provider (drains BatchSpanProcessor → export())
   const provider = trace.getTracerProvider();
   if ("forceFlush" in provider) {
     await (provider as { forceFlush(): Promise<void> }).forceFlush();
+  }
+  // 4. Flush NDJSONTraceExporter's internal write buffer
+  if (monitoringTraceExporter) {
+    await monitoringTraceExporter.forceFlush();
   }
 }
 
