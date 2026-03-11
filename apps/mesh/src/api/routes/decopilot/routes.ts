@@ -125,24 +125,28 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         throw new HTTPException(401, { message: "User ID is required" });
       }
 
-      // 2. Check model permissions
-      const allowedModels = await fetchModelPermissions(
-        ctx.db,
-        organization.id,
-        ctx.auth.user?.role,
-      );
+      const isClaudeCode = models.connectionId === "claude-code";
 
-      if (
-        allowedModels !== undefined &&
-        !checkModelPermission(
-          allowedModels,
-          models.credentialId,
-          models.thinking.id,
-        )
-      ) {
-        throw new HTTPException(403, {
-          message: "Model not allowed for your role",
-        });
+      // 2. Check model permissions (skip for Claude Code — uses local auth)
+      if (!isClaudeCode) {
+        const allowedModels = await fetchModelPermissions(
+          ctx.db,
+          organization.id,
+          ctx.auth.user?.role,
+        );
+
+        if (
+          allowedModels !== undefined &&
+          !checkModelPermission(
+            allowedModels,
+            models.credentialId,
+            models.thinking.id,
+          )
+        ) {
+          throw new HTTPException(403, {
+            message: "Model not allowed for your role",
+          });
+        }
       }
 
       const windowSize = memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE;

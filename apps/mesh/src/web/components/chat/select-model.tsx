@@ -28,6 +28,7 @@ import {
   SearchMd,
   Settings01,
   Stars01,
+  TerminalSquare,
   Tool01,
 } from "@untitledui/icons";
 import {
@@ -45,6 +46,8 @@ import {
   useAiProviderModels,
   useAiProviders,
 } from "../../hooks/collections/use-llm";
+import { useAllowedModels } from "../../hooks/use-allowed-models";
+import { useAuthConfig } from "../../providers/auth-config-provider";
 import { ErrorBoundary } from "../error-boundary";
 import { useChat } from "./context";
 import { getProviderLogo } from "@/web/utils/ai-providers-logos";
@@ -63,6 +66,18 @@ function parseModelTitle(model: { title: string; modelId: string }): {
       ? model.title.split(": ").slice(1).join(": ")
       : model.title,
   };
+}
+
+// ============================================================================
+// Claude Code Constants
+// ============================================================================
+
+export const CLAUDE_CODE_CONNECTION_ID = "claude-code";
+
+export function isClaudeCodeModel(
+  model: { connectionId?: string } | null | undefined,
+): boolean {
+  return model?.connectionId === CLAUDE_CODE_CONNECTION_ID;
 }
 
 // ============================================================================
@@ -1019,9 +1034,25 @@ function ModelSelectorInner({
   );
   const { open: openSettings } = useSettingsModal();
 
+  const authConfig = useAuthConfig();
+  const showClaudeCode = authConfig.claudeCodeAvailable;
+
   const handleKeyChange = (keyId: string) => {
     onCredentialChange(keyId);
     setHoveredModel(null);
+  };
+
+  const handleClaudeCodeSelect = () => {
+    setSelectedModel({
+      modelId: "claude-code",
+      title: "Claude Code",
+      providerId: "claude-code",
+      capabilities: ["text", "tools"],
+      limits: { contextWindow: 200_000, maxOutputTokens: 32_768 },
+      keyId: "claude-code",
+    } as AiProviderModel);
+    setSearchTerm("");
+    onClose();
   };
 
   const handleModelSelect = (model: AiProviderModel) => {
@@ -1112,6 +1143,24 @@ function ModelSelectorInner({
           </label>
         </div>
 
+        {showClaudeCode && (
+          <div className="border-b border-border">
+            <button
+              type="button"
+              onClick={handleClaudeCodeSelect}
+              className={cn(
+                "flex items-center gap-2 w-full min-h-8 py-3 px-4 text-left cursor-pointer rounded-none",
+                "hover:bg-accent",
+              )}
+            >
+              <TerminalSquare className="size-5 shrink-0 text-muted-foreground" />
+              <span className="text-sm flex-1">Claude Code</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-primary/10 text-primary font-medium">
+                Local
+              </span>
+            </button>
+          </div>
+        )}
         <ErrorBoundary
           key={credentialId}
           fallback={({ error, resetError }) => (
@@ -1153,7 +1202,7 @@ function ModelSelectorInner({
               Manage API keys
             </button>
           </div>
-        )}
+        )
       </div>
 
       <div className="hidden md:flex md:flex-col md:w-[320px] md:shrink-0 p-3">

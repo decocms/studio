@@ -28,6 +28,7 @@ const ProviderEnum = z.enum([
   "openrouter",
   "openai-compatible",
   "deco",
+  "claude-code",
 ]);
 
 const ProviderSchema = ProviderEnum.optional().nullable();
