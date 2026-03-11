@@ -1749,7 +1749,6 @@ function OrgMcpsContent() {
       status: "inactive",
     });
 
-    closeCreateDialog();
     form.reset();
     navigate({
       to: "/$org/$project/mcps/$connectionId",

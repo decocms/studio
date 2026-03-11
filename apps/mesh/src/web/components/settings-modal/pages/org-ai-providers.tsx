@@ -387,8 +387,8 @@ export function ProviderCard({
             />
           )}
           <div>
-            <h3 className="font-medium text-sm">{provider.name}</h3>
-            <p className="text-xs text-muted-foreground line-clamp-1">
+            <h3 className="font-medium text-base">{provider.name}</h3>
+            <p className="text-sm text-muted-foreground line-clamp-1">
               {provider.description}
             </p>
           </div>
@@ -431,20 +431,20 @@ export function ProviderCard({
           <KeyList keys={keys} onDelete={deleteKey} isDeleting={isDeleting} />
         </div>
       ) : (
-        <div className="mt-2 flex flex-col gap-2">
+        <div className="mt-2 flex flex-wrap gap-2">
           {supportsOAuth && (
             <Button
               variant="outline"
-              className="w-full justify-center"
+              size="sm"
               onClick={handleConnectOAuth}
               disabled={isOAuthPending || isConnectFormOpen}
             >
               {isOAuthPending ? (
-                "Waiting for authorization..."
+                "Authorizing..."
               ) : (
                 <>
                   {provider.logo && (
-                    <img src={provider.logo} className="size-4 mr-2" />
+                    <img src={provider.logo} className="size-3.5 mr-1.5" />
                   )}
                   OAuth
                 </>
@@ -454,12 +454,12 @@ export function ProviderCard({
           {supportsApiKey && (
             <Button
               variant={supportsOAuth ? "ghost" : "outline"}
-              className="w-full justify-center"
+              size="sm"
               onClick={() => setIsConnectFormOpen(true)}
               disabled={isOAuthPending || isConnectFormOpen}
             >
-              <Plus size={14} className="mr-2" />
-              {supportsOAuth ? "Add API key manually" : "Add API Key"}
+              <Plus size={13} className="mr-1.5" />
+              {supportsOAuth ? "Add manually" : "Add key"}
             </Button>
           )}
         </div>

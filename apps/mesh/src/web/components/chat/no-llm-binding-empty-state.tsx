@@ -16,7 +16,7 @@ function ProviderList() {
   const providers: AiProvider[] = aiProviders?.providers ?? [];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
       {providers.map((provider) => (
         <ProviderCard
           key={provider.id}
@@ -38,19 +38,19 @@ export function NoLlmBindingEmptyState({
   description = "Keys are stored encrypted in the vault.",
 }: NoLlmBindingEmptyStateProps = {}) {
   return (
-    <div className="flex flex-col items-center gap-6 w-full max-w-lg">
-      <div className="flex flex-col items-center gap-3 text-center">
-        <div className="flex items-center justify-center size-10 rounded-xl bg-muted border border-border/60">
-          <CpuChip01 size={18} className="text-muted-foreground" />
+    <div className="flex flex-col items-center gap-8 w-full max-w-2xl px-4">
+      <div className="flex flex-col items-center gap-4 text-center">
+        <div className="flex items-center justify-center size-14 rounded-2xl bg-muted border border-border/60">
+          <CpuChip01 size={24} className="text-muted-foreground" />
         </div>
-        <div className="space-y-1">
-          <p className="text-sm font-semibold text-foreground">{title}</p>
-          <p className="text-xs text-muted-foreground">{description}</p>
+        <div className="space-y-1.5">
+          <p className="text-lg font-semibold text-foreground">{title}</p>
+          <p className="text-sm text-muted-foreground">{description}</p>
         </div>
       </div>
       <Suspense
         fallback={
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
             <Skeleton className="h-32 w-full rounded-lg" />
             <Skeleton className="h-32 w-full rounded-lg" />
           </div>
