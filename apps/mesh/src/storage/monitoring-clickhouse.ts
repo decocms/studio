@@ -100,7 +100,7 @@ function intervalToSQL(interval: string): string {
     d: "DAY",
   };
   const sqlUnit = unitMap[unit];
-  return `toStartOfInterval(parseDateTimeBestEffort(timestamp), INTERVAL ${amount} ${sqlUnit})`;
+  return `toStartOfInterval(parseDateTime64BestEffort(toString(timestamp)), INTERVAL ${amount} ${sqlUnit})`;
 }
 
 // ---------------------------------------------------------------------------
@@ -229,11 +229,11 @@ function buildCommonFilterClauses(filters?: {
 }
 
 function tsGte(date: Date): string {
-  return `parseDateTimeBestEffort(timestamp) >= parseDateTimeBestEffort('${date.toISOString()}')`;
+  return `parseDateTime64BestEffort(toString(timestamp)) >= parseDateTime64BestEffort('${date.toISOString()}')`;
 }
 
 function tsLte(date: Date): string {
-  return `parseDateTimeBestEffort(timestamp) <= parseDateTimeBestEffort('${date.toISOString()}')`;
+  return `parseDateTime64BestEffort(toString(timestamp)) <= parseDateTime64BestEffort('${date.toISOString()}')`;
 }
 
 // ---------------------------------------------------------------------------
