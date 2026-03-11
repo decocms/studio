@@ -122,6 +122,8 @@ interface ChatStableValue {
   ) => void;
   clearAppContext: (sourceId: string) => void;
   allModelsConnections: ReturnType<typeof useAiProviderKeyList>;
+  credentialId: string | null;
+  setCredentialId: (credentialId: string | null) => void;
 }
 
 /**
@@ -140,6 +142,35 @@ interface ChatStreamValue extends ChatFromUseChat {
 }
 
 type ChatContextValue = ChatStableValue & ChatStreamValue;
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function toMetadataModelInfo(
+  model: AiProviderModel,
+): import("./types").MetadataModelInfo {
+  const caps = model.capabilities;
+  const capabilities =
+    caps && caps.length > 0
+      ? {
+          vision: caps.includes("vision") || undefined,
+          text: caps.includes("text") || undefined,
+          tools: caps.includes("tools") || undefined,
+        }
+      : undefined;
+  return {
+    id: model.modelId,
+    title: model.title,
+    capabilities,
+    limits: model.limits
+      ? {
+          contextWindow: model.limits.contextWindow,
+          maxOutputTokens: model.limits.maxOutputTokens ?? undefined,
+        }
+      : undefined,
+  };
+}
 
 // ============================================================================
 // Implementation
@@ -563,6 +594,10 @@ export function ChatProvider({ children }: PropsWithChildren) {
 
   const { locator, org } = useProjectContext();
   const queryClient = useQueryClient();
+  const keys = useAiProviderKeyList();
+  const [selectedKeyId, setSelectedKeyId] = useState<string | null>(
+    keys[0]?.id ?? null,
+  );
 
   // Unified task manager hook handles all task state and operations
   const taskManager = useTaskManager();
@@ -804,6 +839,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
       capabilities: model.capabilities,
       limits: model.limits,
       costs: model.costs,
+      keyId: model.keyId,
     });
   };
 
@@ -893,10 +929,9 @@ export function ChatProvider({ children }: PropsWithChildren) {
       ...messageMetadata,
       system,
       models: {
-        credentialId:
-          allModelsConnections.find((m) => m.id === model.modelId)?.id ?? "",
-        thinking: model,
-        fast: model,
+        credentialId: model.keyId ?? "",
+        thinking: toMetadataModelInfo(model),
+        fast: toMetadataModelInfo(model),
       },
     };
 
@@ -990,6 +1025,8 @@ export function ChatProvider({ children }: PropsWithChildren) {
     setAppContext,
     clearAppContext,
     allModelsConnections,
+    credentialId: selectedKeyId,
+    setCredentialId: setSelectedKeyId,
   };
 
   const streamValue: ChatStreamValue = {

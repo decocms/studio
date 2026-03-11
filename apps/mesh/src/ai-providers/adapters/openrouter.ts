@@ -75,12 +75,14 @@ export const openrouterAdapter: ProviderAdapter = {
           description: m.description,
           logo: null,
           capabilities: [
-            ...m.architecture.input_modalities,
-            ...m.architecture.output_modalities,
+            ...new Set([
+              ...m.architecture.input_modalities,
+              ...m.architecture.output_modalities,
+            ]),
           ],
           limits: {
             contextWindow: m.context_length ?? 0,
-            maxOutputTokens: m.top_provider.max_completion_tokens ?? 0,
+            maxOutputTokens: m.top_provider.max_completion_tokens || null,
           },
           costs: {
             input: m.pricing.prompt ?? 0,

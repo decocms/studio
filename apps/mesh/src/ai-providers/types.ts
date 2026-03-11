@@ -14,7 +14,7 @@ export interface ModelInfo {
   description: string | null;
   logo: string | null;
   capabilities: string[];
-  limits: { contextWindow: number; maxOutputTokens: number } | null;
+  limits: { contextWindow: number; maxOutputTokens: number | null } | null;
   costs: { input: number; output: number } | null;
 }
 

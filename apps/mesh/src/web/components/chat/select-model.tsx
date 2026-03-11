@@ -28,8 +28,6 @@ import {
   Tool01,
 } from "@untitledui/icons";
 import { Suspense, useRef, useState, type ReactNode } from "react";
-import { useNavigate } from "@tanstack/react-router";
-import { ORG_ADMIN_PROJECT_SLUG, useProjectContext } from "@decocms/mesh-sdk";
 import {
   useAiProviderKeyList,
   useAiProviderModels,
@@ -37,6 +35,7 @@ import {
   type AiProviderModel,
 } from "../../hooks/collections/use-llm";
 import { ErrorBoundary } from "../error-boundary";
+import { useChat } from "./context";
 
 // ============================================================================
 // Contextual annotations (absolute thresholds, not relative to model list)
@@ -213,7 +212,7 @@ function ModelDetailsPanel({
       {/* Capabilities */}
       {model.capabilities && model.capabilities.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 pb-4 border-b border-border">
-          {model.capabilities.map((capability) => (
+          {[...new Set(model.capabilities)].map((capability) => (
             <CapabilityBadge key={capability} capability={capability} />
           ))}
         </div>
@@ -379,27 +378,12 @@ function ModelItemContent({
 function ModelListErrorFallback({
   error,
   onRetry,
-  connectionId,
-  orgSlug,
 }: {
   error: Error | null;
   onRetry: () => void;
-  connectionId: string | null;
+  credentialId: string | undefined;
   orgSlug?: string;
 }) {
-  const navigate = useNavigate();
-  const handleConfigure = () => {
-    if (!connectionId || !orgSlug) return;
-    navigate({
-      to: "/$org/$project/mcps/$connectionId",
-      params: {
-        org: orgSlug,
-        project: ORG_ADMIN_PROJECT_SLUG,
-        connectionId,
-      },
-    });
-  };
-
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-3 px-4 py-8 text-center">
       <div className="bg-destructive/10 p-2 rounded-full">
@@ -424,17 +408,6 @@ function ModelListErrorFallback({
           <RefreshCcw01 className="size-3.5" />
           Retry
         </Button>
-        {connectionId && orgSlug && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleConfigure}
-            className="gap-1.5"
-          >
-            <Settings01 className="size-3.5" />
-            Configure
-          </Button>
-        )}
       </div>
     </div>
   );
@@ -475,15 +448,18 @@ function ConnectionModelList({
 
   return (
     <div className="flex-1 overflow-y-auto p-2">
-      {allModels.map((m) => (
-        <div
-          key={m.modelId}
-          onClick={() => onModelSelect(m)}
-          className="cursor-pointer"
-        >
-          <ModelItemContent model={m} onHover={onHover} />
-        </div>
-      ))}
+      {allModels.map((m, i) => {
+        const key = m.modelId + i;
+        return (
+          <div
+            key={key}
+            onClick={() => onModelSelect(m)}
+            className="cursor-pointer"
+          >
+            <ModelItemContent model={m} onHover={onHover} />
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -613,33 +589,25 @@ function ModelSelectorContent({
   const [managing, setManaging] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const aiProviders = useAiProviders();
+  const { credentialId, setCredentialId } = useChat();
   const keys = useAiProviderKeyList();
 
   const providerMap = Object.fromEntries(
     (aiProviders?.providers ?? []).map((p) => [p.id, p]),
   );
 
-  const { org } = useProjectContext();
-
-  const [selectedKeyId, setSelectedKeyId] = useState<string | null>(
-    keys[0]?.id ?? null,
-  );
-
   const handleKeyChange = (keyId: string) => {
-    setSelectedKeyId(keyId);
+    setCredentialId(keyId);
     setHoveredModel(null);
   };
 
   const handleModelSelect = (model: AiProviderModel) => {
-    if (!selectedKeyId) return;
+    const credential = credentialId;
+    if (!credential) return;
     onModelChange({
-      modelId: model.modelId,
-      title: model.title,
-      description: model.description,
-      logo: model.logo,
+      ...model,
       capabilities: model.capabilities ?? [],
-      limits: model.limits ?? { contextWindow: 0, maxOutputTokens: 0 },
-      costs: model.costs ?? { input: 0, output: 0 },
+      keyId: credential,
     });
     setSearchTerm("");
     onClose();
@@ -663,7 +631,7 @@ function ModelSelectorContent({
             />
             {keys.length > 0 && (
               <Select
-                value={selectedKeyId ?? ""}
+                value={credentialId ?? ""}
                 onValueChange={handleKeyChange}
               >
                 <SelectTrigger
@@ -707,19 +675,18 @@ function ModelSelectorContent({
         </div>
 
         <ErrorBoundary
-          key={selectedKeyId}
+          key={credentialId}
           fallback={({ error, resetError }) => (
             <ModelListErrorFallback
               error={error}
               onRetry={resetError}
-              connectionId={selectedKeyId}
-              orgSlug={org.slug}
+              credentialId={credentialId ?? undefined}
             />
           )}
         >
           <Suspense fallback={<ModelListSkeleton />}>
             <ConnectionModelList
-              keyId={selectedKeyId ?? undefined}
+              keyId={credentialId ?? undefined}
               onHover={setHoveredModel}
               onModelSelect={handleModelSelect}
             />

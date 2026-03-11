@@ -12,8 +12,12 @@ import {
   useMCPClient,
   useMCPClientOptional,
   useProjectContext,
+  type AiProviderModel as BaseAiProviderModel,
+  type AiProviderKey,
   type UseCollectionListOptions,
 } from "@decocms/mesh-sdk";
+
+export type { AiProviderKey };
 import { z } from "zod";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { KEYS } from "../../lib/query-keys";
@@ -78,24 +82,10 @@ export function useAiProviders() {
   return data;
 }
 
-/** Shape returned by AI_PROVIDERS_LIST_MODELS — matches the tool output schema. */
-export interface AiProviderModel {
-  modelId: string;
-  title: string;
-  description?: string;
-  logo?: string;
-  capabilities?: string[];
-  limits?: { contextWindow: number; maxOutputTokens: number };
-  costs?: { input: number; output: number };
-}
-
-/** Shape returned by AI_PROVIDER_KEY_LIST. */
-export interface AiProviderKey {
-  id: string;
-  providerId: string;
-  label: string;
-  createdBy: string;
-  createdAt: string;
+/** Shape returned by AI_PROVIDERS_LIST_MODELS — extends the shared base with client-side keyId. */
+export interface AiProviderModel extends BaseAiProviderModel {
+  /** Key ID used to fetch this model — populated client-side on model selection. */
+  keyId?: string;
 }
 
 export function useAiProviderKeyList() {

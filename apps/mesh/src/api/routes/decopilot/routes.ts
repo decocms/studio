@@ -253,7 +253,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
       const isGatewayMode = agent.mode !== "passthrough";
       const maxOutputTokens =
-        models.thinking.limits?.maxOutputTokens ?? DEFAULT_MAX_TOKENS;
+        models.thinking.limits?.maxOutputTokens || DEFAULT_MAX_TOKENS;
 
       let streamFinished = false;
       // Fire-and-forget promises from onStepFinish (reactor calls + periodic
@@ -427,21 +427,13 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
                 return {
                   agent: { id: agent.id ?? null, mode: agent.mode },
                   models: {
-                    modelId: models.thinking.id,
-                    title: models.thinking.title,
-                    capabilities: models.thinking.capabilities
-                      ? Object.entries(models.thinking.capabilities)
-                          .map(([key, value]) => (value ? key : ""))
-                          .filter(Boolean)
-                      : undefined,
-                    limits: models.thinking.limits
-                      ? {
-                          contextWindow:
-                            models.thinking.limits.contextWindow ?? 0,
-                          maxOutputTokens:
-                            models.thinking.limits.maxOutputTokens ?? 0,
-                        }
-                      : undefined,
+                    credentialId: models.credentialId,
+                    thinking: {
+                      id: models.thinking.id,
+                      title: models.thinking.title,
+                      capabilities: models.thinking.capabilities,
+                      limits: models.thinking.limits,
+                    },
                   },
                   created_at: new Date(),
                   thread_id: mem.thread.id,

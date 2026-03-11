@@ -20,7 +20,7 @@ export const AI_PROVIDERS_LIST_MODELS = defineTool({
         limits: z
           .object({
             contextWindow: z.coerce.number(),
-            maxOutputTokens: z.coerce.number(),
+            maxOutputTokens: z.coerce.number().nullable(),
           })
           .nullable(),
         costs: z

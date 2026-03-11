@@ -1,5 +1,4 @@
 import type { ChatMessage } from "@/api/routes/decopilot/types";
-import { AiProviderModel } from "@/web/hooks/collections/use-llm";
 export type { ChatMessage };
 import type { UseChatHelpers } from "@ai-sdk/react";
 import type { JSONContent } from "@tiptap/core";
@@ -45,14 +44,22 @@ export type TiptapNode = JSONContent;
 // Metadata Types
 // ============================================================================
 
+/** Model info shape aligned with the backend StreamRequestSchema */
+export interface MetadataModelInfo {
+  id: string;
+  title: string;
+  capabilities?: { vision?: boolean; text?: boolean; tools?: boolean };
+  limits?: { contextWindow?: number; maxOutputTokens?: number };
+}
+
 export interface Metadata {
   reasoning_start_at?: string | Date;
   reasoning_end_at?: string | Date;
   models?: {
     credentialId: string;
-    thinking: AiProviderModel;
-    coding?: AiProviderModel;
-    fast?: AiProviderModel;
+    thinking: MetadataModelInfo;
+    coding?: MetadataModelInfo;
+    fast?: MetadataModelInfo;
   };
   agent?: ChatAgentConfig;
   user?: ChatUserConfig;

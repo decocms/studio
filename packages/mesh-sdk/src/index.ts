@@ -82,6 +82,12 @@ export {
 
 // Types
 export {
+  // AI Provider types
+  type AiProviderModel,
+  type AiProviderModelLimits,
+  type AiProviderModelCosts,
+  type AiProviderKey,
+  // Connection types
   ConnectionEntitySchema,
   ConnectionCreateDataSchema,
   ConnectionUpdateDataSchema,
