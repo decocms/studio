@@ -15,20 +15,9 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import { Container } from "@untitledui/icons";
 import { Line, LineChart, XAxis } from "recharts";
-import { useMonitoringLogs } from "./hooks";
-import type { BaseMonitoringLog } from "./index";
+import { useMonitoringTopTools } from "./hooks";
 
 export type TopChartMetric = "calls" | "latency-avg" | "latency-p95" | "errors";
-
-function toolPercentile(values: number[], p: number): number {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const idx = Math.max(
-    0,
-    Math.min(sorted.length - 1, Math.ceil(p * sorted.length) - 1),
-  );
-  return Math.round(sorted[idx] ?? 0);
-}
 
 interface BucketData {
   t: string;
@@ -37,90 +26,118 @@ interface BucketData {
   [key: string]: string | number;
 }
 
-/**
- * Build per-tool bucketed data for calls, latency, and errors.
- * Returns separate bucket arrays so the chart can switch between them.
- */
+function floorToInterval(date: Date, interval: "1m" | "1h" | "1d"): Date {
+  const result = new Date(date);
+  if (interval === "1d") {
+    result.setHours(0, 0, 0, 0);
+    return result;
+  }
+  if (interval === "1h") {
+    result.setMinutes(0, 0, 0);
+    return result;
+  }
+  result.setSeconds(0, 0);
+  return result;
+}
+
+function addInterval(date: Date, interval: "1m" | "1h" | "1d"): Date {
+  const result = new Date(date);
+  if (interval === "1d") {
+    result.setDate(result.getDate() + 1);
+    return result;
+  }
+  if (interval === "1h") {
+    result.setHours(result.getHours() + 1);
+    return result;
+  }
+  result.setMinutes(result.getMinutes() + 1);
+  return result;
+}
+
+function formatBucketLabel(date: Date, interval: "1m" | "1h" | "1d"): string {
+  if (interval === "1d") {
+    return date.toLocaleDateString([], { month: "short", day: "numeric" });
+  }
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 function buildToolBuckets(
-  logs: BaseMonitoringLog[],
+  topTools: Array<{ toolName: string; connectionId: string | null }>,
+  timeseries: Array<{
+    timestamp: string;
+    toolName: string;
+    calls: number;
+    errors: number;
+    avg: number;
+    p95: number;
+  }>,
   start: Date,
   end: Date,
-  topN: number = 10,
+  interval: "1m" | "1h" | "1d",
 ): {
   callsBuckets: BucketData[];
   latencyAvgBuckets: BucketData[];
   latencyP95Buckets: BucketData[];
   errorsBuckets: BucketData[];
-  topTools: Array<{ name: string; connectionId?: string }>;
   chartConfig: Record<string, { label: string; color: string }>;
   toolColors: Map<string, string>;
 } {
-  const bucketCount = 24;
-  const startMs = start.getTime();
-  const endMs = end.getTime();
-  const bucketSizeMs = (endMs - startMs) / bucketCount;
-
-  // Find top N tools by call count
-  const toolData = new Map<string, { count: number; connectionId?: string }>();
-  for (const log of logs) {
-    const tool = log.toolName || "Unknown";
-    const existing = toolData.get(tool);
-    toolData.set(tool, {
-      count: (existing?.count ?? 0) + 1,
-      connectionId: existing?.connectionId || log.connectionId,
-    });
-  }
-
-  const topTools = [...toolData.entries()]
-    .sort((a, b) => b[1].count - a[1].count)
-    .slice(0, topN)
-    .map(([name, data]) => ({ name, connectionId: data.connectionId }));
-
-  const toolNames = topTools.map((t) => t.name);
-
-  // Intermediate structure to accumulate per-tool per-bucket data
-  const rawBuckets: Array<{
-    t: string;
-    ts: number;
-    label: string;
-    tools: Map<string, { calls: number; errors: number; durations: number[] }>;
-  }> = [];
-
-  for (let i = 0; i < bucketCount; i++) {
-    const d = new Date(startMs + i * bucketSizeMs);
-    const tools = new Map<
-      string,
-      { calls: number; errors: number; durations: number[] }
-    >();
-    for (const name of toolNames) {
-      tools.set(name, { calls: 0, errors: 0, durations: [] });
+  const toolNames = topTools.map((tool) => tool.toolName);
+  const bucketMap = new Map<
+    string,
+    {
+      t: string;
+      ts: number;
+      label: string;
+      tools: Map<
+        string,
+        { calls: number; errors: number; avg: number; p95: number }
+      >;
     }
-    rawBuckets.push({
-      t: d.toISOString(),
-      ts: d.getTime(),
-      label: d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      tools,
+  >();
+
+  const alignedStart = floorToInterval(start, interval);
+  const alignedEnd = floorToInterval(end, interval);
+
+  for (
+    let bucketDate = new Date(alignedStart);
+    bucketDate.getTime() <= alignedEnd.getTime();
+    bucketDate = addInterval(bucketDate, interval)
+  ) {
+    bucketMap.set(String(bucketDate.getTime()), {
+      t: bucketDate.toISOString(),
+      ts: bucketDate.getTime(),
+      label: formatBucketLabel(bucketDate, interval),
+      tools: new Map(),
     });
   }
 
-  // Populate
-  for (const log of logs) {
-    const ts = new Date(log.timestamp).getTime();
-    const rawIdx = Math.floor((ts - startMs) / bucketSizeMs);
-    const idx = Math.max(0, Math.min(bucketCount - 1, rawIdx));
-    const bucket = rawBuckets[idx];
-    if (!bucket) continue;
+  for (const point of timeseries) {
+    const normalizedTimestamp = point.timestamp.includes("T")
+      ? point.timestamp
+      : point.timestamp.replace(" ", "T");
+    const bucketDate = floorToInterval(new Date(normalizedTimestamp), interval);
+    const timestampKey = String(bucketDate.getTime());
+    let bucket = bucketMap.get(timestampKey);
+    if (!bucket) {
+      bucket = {
+        t: bucketDate.toISOString(),
+        ts: bucketDate.getTime(),
+        label: formatBucketLabel(bucketDate, interval),
+        tools: new Map(),
+      };
+      bucketMap.set(timestampKey, bucket);
+    }
 
-    const tool = log.toolName || "Unknown";
-    const entry = bucket.tools.get(tool);
-    if (!entry) continue;
-
-    entry.calls += 1;
-    if (log.isError) entry.errors += 1;
-    if (Number.isFinite(log.durationMs)) entry.durations.push(log.durationMs);
+    bucket.tools.set(point.toolName, {
+      calls: point.calls,
+      errors: point.errors,
+      avg: point.avg,
+      p95: point.p95,
+    });
   }
 
-  // Build final bucket arrays
+  const rawBuckets = [...bucketMap.values()].sort((a, b) => a.ts - b.ts);
   const callsBuckets: BucketData[] = [];
   const latencyAvgBuckets: BucketData[] = [];
   const latencyP95Buckets: BucketData[] = [];
@@ -134,17 +151,16 @@ function buildToolBuckets(
     const errors: BucketData = { ...base };
 
     for (const name of toolNames) {
-      const entry = raw.tools.get(name)!;
+      const entry = raw.tools.get(name) ?? {
+        calls: 0,
+        errors: 0,
+        avg: 0,
+        p95: 0,
+      };
       calls[name] = entry.calls;
       errors[name] = entry.errors;
-      latAvg[name] =
-        entry.durations.length > 0
-          ? Math.round(
-              entry.durations.reduce((a, b) => a + b, 0) /
-                entry.durations.length,
-            )
-          : 0;
-      latP95[name] = toolPercentile(entry.durations, 0.95);
+      latAvg[name] = Math.round(entry.avg);
+      latP95[name] = Math.round(entry.p95);
     }
 
     callsBuckets.push(calls);
@@ -159,8 +175,8 @@ function buildToolBuckets(
   topTools.forEach((tool, i) => {
     const colorNum = (i % 5) + 1;
     const colorVar = `var(--chart-${colorNum})`;
-    toolColors.set(tool.name, colorVar);
-    chartConfig[tool.name] = { label: tool.name, color: colorVar };
+    toolColors.set(tool.toolName, colorVar);
+    chartConfig[tool.toolName] = { label: tool.toolName, color: colorVar };
   });
 
   return {
@@ -168,7 +184,6 @@ function buildToolBuckets(
     latencyAvgBuckets,
     latencyP95Buckets,
     errorsBuckets,
-    topTools,
     chartConfig,
     toolColors,
   };
@@ -193,31 +208,75 @@ function formatTooltipValue(value: number, metric: TopChartMetric): string {
 interface TopToolsContentProps {
   metricsMode: TopChartMetric;
   dateRange?: { startDate: string; endDate: string };
+  connectionIds?: string[];
+  excludeConnectionIds?: string[];
+  toolName?: string;
+  status?: "success" | "error";
+  isStreaming?: boolean;
+  streamingRefetchInterval?: number;
 }
 
 function TopToolsContent({
   metricsMode,
   dateRange: externalDateRange,
+  connectionIds,
+  excludeConnectionIds,
+  toolName,
+  status,
+  isStreaming,
+  streamingRefetchInterval,
 }: TopToolsContentProps) {
   const { org } = useProjectContext();
   const navigate = useNavigate();
   const connections = useConnections() ?? [];
 
-  const { data: logsData, dateRange } = useMonitoringLogs(externalDateRange);
+  const dateRange = externalDateRange;
+  if (!dateRange) {
+    throw new Error("TopTools requires an explicit date range");
+  }
 
-  const logs = logsData?.logs ?? [];
   const start = new Date(dateRange.startDate);
   const end = new Date(dateRange.endDate);
+  const durationMs = end.getTime() - start.getTime();
+  const interval =
+    durationMs <= 60 * 60 * 1000
+      ? "1m"
+      : durationMs <= 25 * 60 * 60 * 1000
+        ? "1h"
+        : "1d";
+
+  const { data: metricData } = useMonitoringTopTools(
+    {
+      interval,
+      startDate: dateRange.startDate,
+      endDate: dateRange.endDate,
+      topN: 10,
+      connectionIds: connectionIds?.length ? connectionIds : undefined,
+      excludeConnectionIds,
+      toolNames: toolName ? [toolName] : undefined,
+      status,
+    },
+    {
+      refetchInterval: isStreaming ? streamingRefetchInterval : false,
+    },
+  );
+
+  const topTools = metricData?.topTools ?? [];
 
   const {
     callsBuckets,
     latencyAvgBuckets,
     latencyP95Buckets,
     errorsBuckets,
-    topTools,
     chartConfig,
     toolColors,
-  } = buildToolBuckets(logs, start, end, 10);
+  } = buildToolBuckets(
+    topTools,
+    metricData?.topToolsTimeseries ?? [],
+    start,
+    end,
+    interval,
+  );
 
   const buckets =
     metricsMode === "latency-avg"
@@ -248,16 +307,16 @@ function TopToolsContent({
             {topTools.slice(0, 3).map((tool) => {
               const connection = connectionMap.get(tool.connectionId || "");
               return (
-                <div key={tool.name} className="flex items-center gap-1">
+                <div key={tool.toolName} className="flex items-center gap-1">
                   <IntegrationIcon
                     icon={connection?.icon || null}
-                    name={tool.name}
+                    name={tool.toolName}
                     size="xs"
                     fallbackIcon={<Container />}
                     className="shrink-0 size-4! min-w-4! aspect-square rounded-sm"
                   />
                   <span className="text-[10px] text-foreground truncate max-w-32">
-                    {tool.name}
+                    {tool.toolName}
                   </span>
                 </div>
               );
@@ -325,7 +384,7 @@ function TopToolsContent({
                                 : undefined;
                             if (!value || value === 0) return null;
                             const tool = topTools.find(
-                              (t) => t.name === dataKey,
+                              (t) => t.toolName === dataKey,
                             );
                             const connection = connectionMap.get(
                               tool?.connectionId || "",
@@ -362,10 +421,10 @@ function TopToolsContent({
               />
               {topTools.map((tool) => (
                 <Line
-                  key={tool.name}
+                  key={tool.toolName}
                   type="monotone"
-                  dataKey={tool.name}
-                  stroke={toolColors.get(tool.name)}
+                  dataKey={tool.toolName}
+                  stroke={toolColors.get(tool.toolName)}
                   strokeWidth={2}
                   animationDuration={200}
                   dot={false}

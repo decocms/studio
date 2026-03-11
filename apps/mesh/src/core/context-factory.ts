@@ -19,7 +19,7 @@ import { ConnectionStorage } from "../storage/connection";
 import { VirtualMCPStorage } from "../storage/virtual";
 import { ClickHouseMonitoringStorage } from "../storage/monitoring-clickhouse";
 import { createMonitoringEngine } from "../monitoring/query-engine";
-import { DEFAULT_LOGS_DIR } from "../monitoring/schema";
+import { DEFAULT_LOGS_DIR, DEFAULT_METRICS_DIR } from "../monitoring/schema";
 import { SqlMonitoringDashboardStorage } from "../storage/monitoring-dashboards";
 import { OrganizationSettingsStorage } from "../storage/organization-settings";
 import { ProjectsStorage } from "../storage/projects";
@@ -757,12 +757,19 @@ export async function createMeshContextFactory(
   // Create vault instance for credential encryption
   const vault = new CredentialVault(config.encryption.key);
 
-  // Create monitoring engine (shared across requests)
+  // Create monitoring engines (shared across requests)
   const { engine: monitoringEngine, source: monitoringSource } =
     createMonitoringEngine({
       clickhouseUrl: env.CLICKHOUSE_URL,
       basePath: DEFAULT_LOGS_DIR,
     });
+  const { engine: metricEngine, source: metricSource } = createMonitoringEngine(
+    {
+      clickhouseUrl: env.CLICKHOUSE_URL,
+      basePath: DEFAULT_METRICS_DIR,
+      tableName: "monitoring_metrics",
+    },
+  );
 
   // Create storage adapters once (singleton pattern)
   const threadDb = new SqlThreadStorage(config.db);
@@ -772,6 +779,8 @@ export async function createMeshContextFactory(
     monitoring: new ClickHouseMonitoringStorage(
       monitoringEngine,
       monitoringSource,
+      metricEngine,
+      metricSource,
     ),
     monitoringDashboards: new SqlMonitoringDashboardStorage(config.db),
     virtualMcps: new VirtualMCPStorage(config.db),

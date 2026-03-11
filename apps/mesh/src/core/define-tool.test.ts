@@ -216,8 +216,8 @@ describe("defineTool", () => {
     });
   });
 
-  describe("metrics", () => {
-    it("should record duration histogram on success", async () => {
+  describe("monitoring metrics", () => {
+    it("does not record tool execution metrics on success", async () => {
       const tool = defineTool({
         name: "METRIC_TOOL",
         description: "Test tool",
@@ -229,13 +229,10 @@ describe("defineTool", () => {
       const ctx = createMockContext();
       await tool.execute({}, ctx);
 
-      expect(ctx.meter.createHistogram).toHaveBeenCalledWith(
-        "tool.execution.duration",
-        expect.any(Object),
-      );
+      expect(ctx.meter.createHistogram).not.toHaveBeenCalled();
     });
 
-    it("should increment execution counter on success", async () => {
+    it("does not record tool execution counters on success", async () => {
       const tool = defineTool({
         name: "COUNTER_TOOL",
         description: "Test tool",
@@ -247,13 +244,10 @@ describe("defineTool", () => {
       const ctx = createMockContext();
       await tool.execute({}, ctx);
 
-      expect(ctx.meter.createCounter).toHaveBeenCalledWith(
-        "tool.execution.count",
-        expect.any(Object),
-      );
+      expect(ctx.meter.createCounter).not.toHaveBeenCalled();
     });
 
-    it("should record error metrics on failure", async () => {
+    it("does not record tool execution metrics on failure", async () => {
       const tool = defineTool({
         name: "ERROR_TOOL",
         description: "Test tool",
@@ -267,10 +261,8 @@ describe("defineTool", () => {
       const ctx = createMockContext();
 
       await expect(tool.execute({}, ctx)).rejects.toThrow("Test error");
-      expect(ctx.meter.createCounter).toHaveBeenCalledWith(
-        "tool.execution.errors",
-        expect.any(Object),
-      );
+      expect(ctx.meter.createCounter).not.toHaveBeenCalled();
+      expect(ctx.meter.createHistogram).not.toHaveBeenCalled();
     });
   });
 

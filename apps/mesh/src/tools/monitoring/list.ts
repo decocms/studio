@@ -5,7 +5,7 @@
  */
 
 import { requireOrganization } from "@/core/mesh-context";
-import { flushTraceExporter } from "@/observability";
+import { flushMonitoringData } from "@/observability";
 import { defineTool } from "../../core/define-tool";
 import { z } from "zod";
 
@@ -103,7 +103,7 @@ export const MONITORING_LOGS_LIST = defineTool({
   }),
   handler: async (input, ctx) => {
     // Flush buffered spans so the query sees the latest data (local mode).
-    await flushTraceExporter();
+    await flushMonitoringData();
 
     const org = requireOrganization(ctx);
 

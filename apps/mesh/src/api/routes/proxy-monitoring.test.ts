@@ -32,6 +32,10 @@ function createMockCtx(overrides?: {
   const hasPropertiesOverride = overrides && "properties" in overrides;
 
   const spans: ReturnType<typeof createMockSpan>[] = [];
+  const recordHistogram = vi.fn();
+  const addCounter = vi.fn();
+  const createHistogram = vi.fn(() => ({ record: recordHistogram }));
+  const createCounter = vi.fn(() => ({ add: addCounter }));
 
   const ctx = {
     organization: { id: "org_1" },
@@ -52,14 +56,18 @@ function createMockCtx(overrides?: {
         return s;
       },
     },
+    meter: {
+      createHistogram,
+      createCounter,
+    },
   } as unknown as MeshContext;
 
-  return { ctx, spans };
+  return { ctx, spans, createHistogram, createCounter };
 }
 
 describe("proxy monitoring middleware", () => {
   it("creates and ends a correlation span for CallToolResult", async () => {
-    const { ctx, spans } = createMockCtx();
+    const { ctx, spans, createHistogram, createCounter } = createMockCtx();
 
     const middleware = createProxyMonitoringMiddleware({
       ctx,
@@ -84,6 +92,14 @@ describe("proxy monitoring middleware", () => {
     expect(result.isError).toBe(true);
     expect(spans.length).toBe(1);
     expect(spans[0]!._isEnded()).toBe(true);
+    expect(createHistogram).toHaveBeenCalledWith(
+      "tool.execution.duration",
+      expect.any(Object),
+    );
+    expect(createCounter).toHaveBeenCalledWith(
+      "tool.execution.count",
+      expect.any(Object),
+    );
   });
 
   it("creates and ends a correlation span for streamable Response", async () => {
