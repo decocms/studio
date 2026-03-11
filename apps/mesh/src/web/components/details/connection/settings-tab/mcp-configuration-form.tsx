@@ -3,7 +3,10 @@ import {
   useConnections,
   useProjectContext,
 } from "@decocms/mesh-sdk";
-import { useBindingConnections } from "@/web/hooks/use-binding";
+import {
+  useBindingConnections,
+  resolveBindingType,
+} from "@/web/hooks/use-binding";
 import { useBindingSchemaFromRegistry } from "@/web/hooks/use-binding-schema-from-registry";
 import { useInstallFromRegistry } from "@/web/hooks/use-install-from-registry";
 import { Loading01, Plus } from "@untitledui/icons";
@@ -100,7 +103,13 @@ interface BindingFieldWithDynamicSchemaProps {
 }
 
 /**
- * Wrapper component that handles dynamic binding schema resolution from registry.
+ * Resolves the binding filter for BindingSelector.
+ *
+ * Resolution order:
+ * 1. Builtin binding: "@deco/event-bus" → "EVENT_BUS" (matched by tool capabilities)
+ * 2. Dynamic registry: "@scope/app" → fetch tools from registry
+ * 3. Inline schema: [{ name: "TOOL", inputSchema: {...} }] → used directly
+ * 4. String passthrough: well-known name like "LLMS" → passed through
  */
 function BindingFieldWithDynamicSchema({
   bindingSchema,
@@ -111,8 +120,11 @@ function BindingFieldWithDynamicSchema({
   onAddNew,
   className,
 }: BindingFieldWithDynamicSchemaProps) {
+  const builtinBinding = resolveBindingType(bindingType);
+
   const bindingSchemaIsDynamic = isDynamicBindingSchema(bindingSchema);
-  const bindingTypeIsDynamic = isDynamicBindingSchema(bindingType);
+  const bindingTypeIsDynamic =
+    !builtinBinding && isDynamicBindingSchema(bindingType);
   const needsDynamicResolution = bindingSchemaIsDynamic || bindingTypeIsDynamic;
 
   const dynamicAppName = bindingSchemaIsDynamic
@@ -125,9 +137,8 @@ function BindingFieldWithDynamicSchema({
     useBindingSchemaFromRegistry(dynamicAppName);
 
   const resolvedBinding = (() => {
-    if (needsDynamicResolution) {
-      return registrySchema;
-    }
+    if (builtinBinding) return builtinBinding;
+    if (needsDynamicResolution) return registrySchema;
     if (Array.isArray(bindingSchema)) {
       return bindingSchema as Array<{
         name: string;
@@ -135,9 +146,7 @@ function BindingFieldWithDynamicSchema({
         outputSchema?: Record<string, unknown>;
       }>;
     }
-    if (typeof bindingSchema === "string") {
-      return bindingSchema;
-    }
+    if (typeof bindingSchema === "string") return bindingSchema;
     return undefined;
   })();
 
@@ -200,9 +209,14 @@ function BindingSelector({
   const connections = (() => {
     let result = filteredConnections;
 
-    const hasBindingSchema = Array.isArray(binding) && binding.length > 0;
+    // When we already have a binding-based filter (builtin name or schema array),
+    // connections are matched by tool capabilities. The app-name fallback below
+    // only kicks in when no binding filter is available (e.g., unknown registry types).
+    const hasBindingFilter =
+      (typeof binding === "string" && binding.length > 0) ||
+      (Array.isArray(binding) && binding.length > 0);
 
-    if (parsedBindingType && !hasBindingSchema) {
+    if (parsedBindingType && !hasBindingFilter) {
       result = result.filter((conn) => {
         const connAppName = conn.app_name;
         const connScopeName = (conn.metadata as Record<string, unknown> | null)

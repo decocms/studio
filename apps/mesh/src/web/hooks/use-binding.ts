@@ -7,6 +7,7 @@ import {
 import { ASSISTANTS_BINDING } from "@decocms/bindings/assistant";
 import { LANGUAGE_MODEL_BINDING } from "@decocms/bindings/llm";
 import { MCP_BINDING } from "@decocms/bindings/mcp";
+import { EVENT_BUS_BINDING } from "@decocms/bindings";
 import { convertJsonSchemaToZod } from "zod-from-json-schema";
 import type { ConnectionEntity } from "@/tools/connection/schema";
 import {
@@ -16,7 +17,8 @@ import {
 import { AI_GATEWAY_BILLING_BINDING } from "@decocms/bindings/ai-gateway";
 
 /**
- * Map of well-known binding names to their definitions
+ * Map of well-known binding names to their Binder definitions.
+ * Used by useBindingConnections to filter connections by tool capabilities.
  */
 const BUILTIN_BINDINGS: Record<string, Binder> = {
   LLMS: LANGUAGE_MODEL_BINDING,
@@ -25,7 +27,38 @@ const BUILTIN_BINDINGS: Record<string, Binder> = {
   ASSISTANTS: ASSISTANTS_BINDING,
   MCP: MCP_BINDING,
   AI_GATEWAY_BILLING: AI_GATEWAY_BILLING_BINDING,
+  EVENT_BUS: EVENT_BUS_BINDING,
 };
+
+/**
+ * Maps `@deco/` binding type identifiers (from MCP_CONFIGURATION stateSchema `__type.const`)
+ * to BUILTIN_BINDINGS keys.
+ *
+ * When a binding field declares `__type: "@deco/event-bus"`, we resolve it to the
+ * builtin "EVENT_BUS" binding and match connections by their tools instead of
+ * falling back to app-name matching (which doesn't work for built-in bindings
+ * like the Mesh MCP).
+ */
+const BINDING_TYPE_TO_BUILTIN: Record<string, string> = {
+  "@deco/event-bus": "EVENT_BUS",
+  "@deco/llm": "LLMS",
+};
+
+/**
+ * Resolves a `@deco/` binding type identifier to a builtin binding name.
+ * Returns undefined if the type is not a well-known builtin.
+ *
+ * @example
+ * resolveBindingType("@deco/event-bus") // "EVENT_BUS"
+ * resolveBindingType("@deco/llm")       // "LLMS"
+ * resolveBindingType("@deco/unknown")   // undefined
+ */
+export function resolveBindingType(
+  bindingType: string | undefined,
+): string | undefined {
+  if (!bindingType) return undefined;
+  return BINDING_TYPE_TO_BUILTIN[bindingType];
+}
 
 /**
  * Simplified binding definition format (JSON Schema based)
