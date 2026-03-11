@@ -76,6 +76,9 @@ function redactUrl(url: string | undefined): string {
     if (parsed.password) parsed.password = "***";
     if (parsed.username && parsed.username.length > 3)
       parsed.username = parsed.username.slice(0, 3) + "***";
+    parsed.pathname = "/";
+    parsed.search = "";
+    parsed.hash = "";
     return parsed.toString();
   } catch {
     if (url.length <= 10) return url;
