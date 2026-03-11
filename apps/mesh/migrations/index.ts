@@ -35,6 +35,8 @@ import * as migration033threadstatus from "./033-thread-status.ts";
 import * as migration034monitoringdashboards from "./034-monitoring-dashboards.ts";
 import * as migration035projectconnections from "./035-project-connections.ts";
 import * as migration036updateregistryurl from "./036-update-registry-url.ts";
+import * as migration037aiproviderkeyss from "./037-ai-provider-keys.ts";
+import * as migration038oauthpkcestatess from "./038-oauth-pkce-states.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -82,6 +84,8 @@ const migrations: Record<string, Migration> = {
   "034-monitoring-dashboards": migration034monitoringdashboards,
   "035-project-connections": migration035projectconnections,
   "036-update-registry-url": migration036updateregistryurl,
+  "037-ai-provider-keys": migration037aiproviderkeyss,
+  "038-oauth-pkce-states": migration038oauthpkcestatess,
 };
 
 export default migrations;

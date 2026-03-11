@@ -640,11 +640,6 @@ export const LanguageModelInputSchema = z.object({
   callOptions: LanguageModelCallOptionsSchema,
 });
 
-/**
- * Model entity schema for AI models (Collection Entity)
- * Extends BaseCollectionEntitySchema with model-specific fields
- * Base schema already includes: id, title, created_at, updated_at, created_by, updated_by
- */
 export const ModelCollectionEntitySchema = BaseCollectionEntitySchema.extend({
   // Model-specific fields
   logo: z.string().nullable(),

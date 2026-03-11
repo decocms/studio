@@ -6,6 +6,7 @@ import { isDecopilot } from "@decocms/mesh-sdk";
 import { trace, context } from "@opentelemetry/api";
 import type { MeshContext } from "../../core/mesh-context";
 import { emitMonitoringLog } from "../../monitoring/emit";
+import { recordToolExecutionMetrics } from "../../monitoring/record-tool-execution-metrics";
 import { MONITORING_SPAN_NAME } from "@/monitoring/schema";
 
 type CallToolMiddleware = (
@@ -280,9 +281,23 @@ export function createProxyMonitoringMiddleware(
   return async (request, next) => {
     const startTime = Date.now();
 
+    const organizationId = ctx.organization?.id;
+
     try {
       const result = await next();
       const duration = Date.now() - startTime;
+
+      if (enabled && organizationId && !isDecopilot(connectionId)) {
+        recordToolExecutionMetrics({
+          ctx,
+          organizationId,
+          connectionId,
+          toolName: request.params.name,
+          durationMs: duration,
+          isError: Boolean(result.isError),
+          errorType: result.isError ? "Error" : "",
+        });
+      }
 
       await emitMonitoringSpan({
         ctx,
@@ -301,6 +316,18 @@ export function createProxyMonitoringMiddleware(
     } catch (error) {
       const err = error as Error;
       const duration = Date.now() - startTime;
+
+      if (enabled && organizationId && !isDecopilot(connectionId)) {
+        recordToolExecutionMetrics({
+          ctx,
+          organizationId,
+          connectionId,
+          toolName: request.params.name,
+          durationMs: duration,
+          isError: true,
+          errorType: "Error",
+        });
+      }
 
       await emitMonitoringSpan({
         ctx,
@@ -378,6 +405,18 @@ export function createProxyStreamableMonitoringMiddleware(
               Object.assign(output, streamUsage);
             }
 
+            if (!isDecopilot(connectionId)) {
+              recordToolExecutionMetrics({
+                ctx,
+                organizationId,
+                connectionId,
+                toolName: request.params.name,
+                durationMs: duration,
+                isError,
+                errorType: isError ? "Error" : "",
+              });
+            }
+
             await emitMonitoringSpan({
               ctx,
               enabled,
@@ -416,6 +455,19 @@ export function createProxyStreamableMonitoringMiddleware(
     } catch (error) {
       const err = error as Error;
       const duration = Date.now() - startTime;
+      const organizationId = ctx.organization?.id;
+
+      if (enabled && organizationId && !isDecopilot(connectionId)) {
+        recordToolExecutionMetrics({
+          ctx,
+          organizationId,
+          connectionId,
+          toolName: request.params.name,
+          durationMs: duration,
+          isError: true,
+          errorType: "Error",
+        });
+      }
 
       await emitMonitoringSpan({
         ctx,

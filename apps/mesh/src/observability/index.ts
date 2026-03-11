@@ -24,12 +24,17 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto";
 import { RuntimeNodeInstrumentation } from "@opentelemetry/instrumentation-runtime-node";
 import { enableFetchInstrumentation } from "./instrumentations/fetch";
 import { NDJSONLogExporter } from "../monitoring/ndjson-log-exporter";
+import { NDJSONMetricExporter } from "../monitoring/ndjson-metric-exporter";
 import { NDJSONTraceExporter } from "../monitoring/ndjson-trace-exporter";
-import { DEFAULT_LOGS_DIR, DEFAULT_TRACES_DIR } from "../monitoring/schema";
+import {
+  DEFAULT_LOGS_DIR,
+  DEFAULT_METRICS_DIR,
+  DEFAULT_TRACES_DIR,
+} from "../monitoring/schema";
 import { env } from "../env";
 
 import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
-import type { MetricReader } from "@opentelemetry/sdk-metrics";
+import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import {
   BatchSpanProcessor,
@@ -210,13 +215,28 @@ const monitoringTraceExporter =
     ? null
     : new NDJSONTraceExporter({ basePath: DEFAULT_TRACES_DIR });
 
+const monitoringMetricExporter =
+  env.NODE_ENV === "test"
+    ? null
+    : new NDJSONMetricExporter({ basePath: DEFAULT_METRICS_DIR });
+
+const monitoringMetricReader = monitoringMetricExporter
+  ? new PeriodicExportingMetricReader({
+      exporter: monitoringMetricExporter,
+      exportIntervalMillis: 60_000,
+    })
+  : null;
+
 /**
  * Initialize OpenTelemetry SDK
  */
 const sdk = new NodeSDK({
   serviceName: env.OTEL_SERVICE_NAME,
   traceExporter,
-  metricReader: prometheusExporter as unknown as MetricReader,
+  metricReaders: [
+    prometheusExporter,
+    ...(monitoringMetricReader ? [monitoringMetricReader] : []),
+  ],
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sampler: headSampler,
   spanProcessors: [
@@ -367,24 +387,47 @@ export { type Exception, type Span };
  *
  * In cloud mode (CLICKHOUSE_URL set) this flushes the OTLP exporters.
  */
-export async function flushTraceExporter(): Promise<void> {
-  // 1. Flush log provider (drains BatchLogRecordProcessor → export())
-  const logProvider = logs.getLoggerProvider();
-  if ("forceFlush" in logProvider) {
-    await (logProvider as { forceFlush(): Promise<void> }).forceFlush();
-  }
-  // 2. Flush NDJSONLogExporter's internal write buffer
-  if (monitoringLogExporter) {
-    await monitoringLogExporter.forceFlush();
-  }
-  // 3. Flush trace provider (drains BatchSpanProcessor → export())
-  const provider = trace.getTracerProvider();
-  if ("forceFlush" in provider) {
-    await (provider as { forceFlush(): Promise<void> }).forceFlush();
-  }
-  // 4. Flush NDJSONTraceExporter's internal write buffer
-  if (monitoringTraceExporter) {
-    await monitoringTraceExporter.forceFlush();
+export async function flushMonitoringData(): Promise<void> {
+  // Flush logs, traces, and metrics in parallel (each pair is independent).
+  // Within each pair the SDK processor must flush before the NDJSON exporter.
+  // Use allSettled so one rejection doesn't prevent the other flushes from completing.
+  const results = await Promise.allSettled([
+    // Logs
+    (async () => {
+      const logProvider = logs.getLoggerProvider();
+      if ("forceFlush" in logProvider) {
+        await (logProvider as { forceFlush(): Promise<void> }).forceFlush();
+      }
+      if (monitoringLogExporter) {
+        await monitoringLogExporter.forceFlush();
+      }
+    })(),
+    // Traces
+    (async () => {
+      const provider = trace.getTracerProvider();
+      if ("forceFlush" in provider) {
+        await (provider as { forceFlush(): Promise<void> }).forceFlush();
+      }
+      if (monitoringTraceExporter) {
+        await monitoringTraceExporter.forceFlush();
+      }
+    })(),
+    // Metrics
+    (async () => {
+      if (monitoringMetricReader) {
+        await monitoringMetricReader.forceFlush();
+      }
+      if (monitoringMetricExporter) {
+        await monitoringMetricExporter.forceFlush();
+      }
+    })(),
+  ]);
+
+  const rejected = results.find(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+  if (rejected) {
+    throw rejected.reason;
   }
 }
 

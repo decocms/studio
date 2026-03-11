@@ -156,6 +156,7 @@ function makeStorage(
     markDeliveriesPermanentlyFailed: mock(() => Promise.resolve()),
     scheduleRetryWithoutAttemptIncrement: mock(() => Promise.resolve()),
     resetStuckDeliveries: mock(() => Promise.resolve(0)),
+    findOrphanedCronEvents: mock(() => Promise.resolve([])),
     updateEventStatus: mock(() => Promise.resolve()),
     getMatchingSubscriptions: mock(() => Promise.resolve([])),
     createDeliveries: mock(() => Promise.resolve()),

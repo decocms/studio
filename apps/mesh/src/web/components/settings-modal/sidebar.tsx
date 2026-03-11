@@ -1,6 +1,12 @@
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { Building02, Coins01, Settings01, Zap } from "@untitledui/icons";
+import {
+  Building02,
+  Coins01,
+  Settings01,
+  Zap,
+  CpuChip01,
+} from "@untitledui/icons";
 import { authClient } from "@/web/lib/auth-client";
 import { type SettingsSection } from "@/web/hooks/use-settings-modal";
 
@@ -48,6 +54,11 @@ export function SettingsSidebar({
       key: "org.plugins" as SettingsSection,
       label: "Features",
       icon: <Zap size={14} />,
+    },
+    {
+      key: "org.ai-providers" as SettingsSection,
+      label: "AI Providers",
+      icon: <CpuChip01 size={14} />,
     },
     {
       key: "org.billing" as SettingsSection,

@@ -128,7 +128,7 @@ export class EventBusWorker {
 
   /**
    * Start the worker
-   * Resets any stuck deliveries from previous crashes
+   * Resets any stuck deliveries from previous crashes and recovers orphaned cron events.
    */
   async start(): Promise<void> {
     if (this.running) return;
@@ -138,6 +138,22 @@ export class EventBusWorker {
     if (resetCount > 0) {
       console.log(
         `[EventBus] Reset ${resetCount} stuck deliveries from previous shutdown`,
+      );
+    }
+
+    // Recover orphaned cron events: "delivered" with no pending future deliveries.
+    // This happens when the process crashes between updateEventStatus and
+    // scheduleNextCronDelivery, leaving the cron dead with no future runs scheduled.
+    const orphanedCrons = await this.storage.findOrphanedCronEvents();
+    for (const event of orphanedCrons) {
+      await this.scheduleNextCronDelivery(event);
+      console.log(
+        `[EventBus] Recovered orphaned cron event ${event.id} (${event.type}, cron: ${event.cron})`,
+      );
+    }
+    if (orphanedCrons.length > 0) {
+      console.log(
+        `[EventBus] Recovered ${orphanedCrons.length} orphaned cron event(s)`,
       );
     }
 

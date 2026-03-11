@@ -1,4 +1,8 @@
-import { Dialog, DialogContent } from "@deco/ui/components/dialog.tsx";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@deco/ui/components/dialog.tsx";
 import { X } from "@untitledui/icons";
 import { Suspense } from "react";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
@@ -18,6 +22,7 @@ import { AccountPreferencesPage } from "./pages/account-preferences";
 import { OrgGeneralPage } from "./pages/org-general";
 import { ProjectPluginsPage } from "./pages/project-plugins";
 import { OrgBillingPage } from "./pages/org-billing";
+import { OrgAiProvidersPage } from "./pages/org-ai-providers";
 
 function ContentSkeleton() {
   return (
@@ -76,6 +81,8 @@ function SettingsContent({ section }: { section: SettingsSection }) {
           <ProjectPluginsPage />
         </ProjectContextWrapper>
       );
+    case "org.ai-providers":
+      return <OrgAiProvidersPage />;
     case "org.billing":
       return <OrgBillingPage />;
     default:
@@ -92,6 +99,7 @@ export function SettingsModal() {
         className="sm:max-w-[1100px] h-[85vh] p-0 overflow-hidden flex flex-col gap-0"
         closeButtonClassName="hidden"
       >
+        <DialogTitle className="sr-only">Settings</DialogTitle>
         <div className="flex flex-1 min-h-0 overflow-hidden">
           {/* Left sidebar */}
           <Suspense

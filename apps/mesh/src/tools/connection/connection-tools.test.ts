@@ -88,6 +88,8 @@ describe("Connection Tools", () => {
         projectConnections: null as never,
         projectPluginConfigs: null as never,
         monitoringDashboards: null as never,
+        aiProviderKeys: null as never,
+        oauthPkceStates: null as never,
       },
       vault,
       authInstance: null as never,
@@ -130,6 +132,7 @@ describe("Connection Tools", () => {
         stop: vi.fn(),
         isRunning: vi.fn().mockReturnValue(false),
       } as unknown as EventBus,
+      aiProviders: null as never,
       createMCPProxy: vi.fn().mockResolvedValue({}),
       getOrCreateClient: vi.fn().mockResolvedValue({}),
     };

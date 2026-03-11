@@ -215,6 +215,29 @@ export interface ApiKey {
   updatedAt: Date | string;
 }
 
+export interface AIProviderKeyTable {
+  id: string;
+  organization_id: string;
+  provider_id: string; // ProviderId — enforced at app level, not DB level
+  label: string;
+  encrypted_api_key: string;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string, never>;
+}
+
+/**
+ * Short-lived PKCE state table — stores codeVerifier server-side during OAuth flow.
+ * Records expire after 10 minutes and are deleted on consumption (single-use).
+ */
+export interface OAuthPkceStateTable {
+  id: string; // state token (UUID), returned as stateToken to client
+  organization_id: string; // scoped to the org that initiated the flow
+  user_id: string; // scoped to the user that initiated the flow
+  code_verifier: string; // PKCE verifier — never leaves the server
+  expires_at: ColumnType<Date, Date | string, never>;
+  created_at: ColumnType<Date, Date | string, never>;
+}
+
 /**
 // ============================================================================
 // OAuth Table Definitions (for MCP OAuth server)
@@ -588,7 +611,7 @@ export interface EventSubscriptionTable {
   publisher: string | null; // Filter by publisher connection (null = wildcard)
   event_type: string; // Event type pattern to match
   filter: string | null; // Optional JSONPath filter on event data
-  enabled: number; // Integer column (0/1)
+  enabled: number; // Integer column (0/1);
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
@@ -921,4 +944,10 @@ export interface Database {
   projects: ProjectTable;
   project_connections: ProjectConnectionTable;
   project_plugin_configs: ProjectPluginConfigTable;
+
+  // AI Provider keys tables
+  ai_provider_keys: AIProviderKeyTable;
+
+  // OAuth PKCE state table (short-lived, server-side verifier storage)
+  oauth_pkce_states: OAuthPkceStateTable;
 }

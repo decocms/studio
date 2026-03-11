@@ -1,8 +1,9 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { mkdtemp, rm, mkdir } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { ChdbEngine } from "../monitoring/query-engine";
+import type { MetricRow } from "../monitoring/schema";
 import {
   makeTestMonitoringRow,
   writeTestNDJSON,
@@ -23,11 +24,19 @@ describe.skipIf(!chdbAvailable)("ClickHouseMonitoringStorage", () => {
   beforeAll(async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "monitoring-ch-test-"));
     const dataDir = join(tmpDir, "2026", "03", "06", "12");
+    const metricsDir = join(tmpDir, "metrics", "2026", "03", "06", "12");
     await mkdir(dataDir, { recursive: true });
+    await mkdir(metricsDir, { recursive: true });
     engine = new ChdbEngine();
 
-    const source = `file('${tmpDir}/**/*.ndjson', 'JSONEachRow')`;
-    storage = new ClickHouseMonitoringStorage(engine, source);
+    const source = `file('${dataDir}/*.ndjson', 'JSONEachRow')`;
+    const metricSource = `file('${metricsDir}/*.ndjson', 'JSONEachRow')`;
+    storage = new ClickHouseMonitoringStorage(
+      engine,
+      source,
+      engine,
+      metricSource,
+    );
 
     const rows = [
       makeTestMonitoringRow({
@@ -97,6 +106,148 @@ describe.skipIf(!chdbAvailable)("ClickHouseMonitoringStorage", () => {
     ];
 
     await writeTestNDJSON(dataDir, rows);
+
+    const metricRows: MetricRow[] = [
+      {
+        v: 1,
+        name: "tool.execution.count",
+        type: "sum",
+        unit: "1",
+        timestamp: "2026-03-05T12:00:00.000Z",
+        organization_id: "org_test",
+        connection_id: "conn_1",
+        tool_name: "TOOL_A",
+        status: "success",
+        error_type: "",
+        value: 2,
+        hist_count: 0,
+        hist_sum: 0,
+        hist_min: 0,
+        hist_max: 0,
+        hist_boundaries: "[]",
+        hist_bucket_counts: "[]",
+      },
+      {
+        v: 1,
+        name: "tool.execution.count",
+        type: "sum",
+        unit: "1",
+        timestamp: "2026-03-05T12:00:00.000Z",
+        organization_id: "org_test",
+        connection_id: "conn_1",
+        tool_name: "TOOL_A",
+        status: "error",
+        error_type: "Error",
+        value: 1,
+        hist_count: 0,
+        hist_sum: 0,
+        hist_min: 0,
+        hist_max: 0,
+        hist_boundaries: "[]",
+        hist_bucket_counts: "[]",
+      },
+      {
+        v: 1,
+        name: "tool.execution.duration",
+        type: "histogram",
+        unit: "ms",
+        timestamp: "2026-03-05T12:00:00.000Z",
+        organization_id: "org_test",
+        connection_id: "conn_1",
+        tool_name: "TOOL_A",
+        status: "success",
+        error_type: "",
+        value: 2,
+        hist_count: 2,
+        hist_sum: 400,
+        hist_min: 100,
+        hist_max: 300,
+        hist_boundaries: "[100,250,500]",
+        hist_bucket_counts: "[1,0,1,0]",
+      },
+      {
+        v: 1,
+        name: "tool.execution.duration",
+        type: "histogram",
+        unit: "ms",
+        timestamp: "2026-03-05T12:00:00.000Z",
+        organization_id: "org_test",
+        connection_id: "conn_1",
+        tool_name: "TOOL_A",
+        status: "error",
+        error_type: "Error",
+        value: 1,
+        hist_count: 1,
+        hist_sum: 200,
+        hist_min: 200,
+        hist_max: 200,
+        hist_boundaries: "[100,250,500]",
+        hist_bucket_counts: "[0,1,0,0]",
+      },
+      {
+        v: 1,
+        name: "tool.execution.count",
+        type: "sum",
+        unit: "1",
+        timestamp: "2026-03-05T12:00:00.000Z",
+        organization_id: "org_test",
+        connection_id: "conn_2",
+        tool_name: "TOOL_B",
+        status: "success",
+        error_type: "",
+        value: 1,
+        hist_count: 0,
+        hist_sum: 0,
+        hist_min: 0,
+        hist_max: 0,
+        hist_boundaries: "[]",
+        hist_bucket_counts: "[]",
+      },
+      {
+        v: 1,
+        name: "tool.execution.duration",
+        type: "histogram",
+        unit: "ms",
+        timestamp: "2026-03-05T12:00:00.000Z",
+        organization_id: "org_test",
+        connection_id: "conn_2",
+        tool_name: "TOOL_B",
+        status: "success",
+        error_type: "",
+        value: 1,
+        hist_count: 1,
+        hist_sum: 50,
+        hist_min: 50,
+        hist_max: 50,
+        hist_boundaries: "[100,250,500]",
+        hist_bucket_counts: "[1,0,0,0]",
+      },
+      {
+        v: 1,
+        name: "tool.execution.count",
+        type: "sum",
+        unit: "1",
+        timestamp: "2026-03-05T12:00:00.000Z",
+        organization_id: "org_other",
+        connection_id: "conn_3",
+        tool_name: "TOOL_C",
+        status: "success",
+        error_type: "",
+        value: 1,
+        hist_count: 0,
+        hist_sum: 0,
+        hist_min: 0,
+        hist_max: 0,
+        hist_boundaries: "[]",
+        hist_bucket_counts: "[]",
+      },
+    ];
+
+    const metricContent =
+      metricRows.map((row) => JSON.stringify(row)).join("\n") + "\n";
+    await writeFile(join(metricsDir, "metrics.ndjson"), metricContent, {
+      mode: 0o600,
+    });
   });
 
   afterAll(async () => {
@@ -206,6 +357,92 @@ describe.skipIf(!chdbAvailable)("ClickHouseMonitoringStorage", () => {
       expect(stats.totalCalls).toBe(4);
       expect(stats.errorRate).toBeCloseTo(0.25, 2);
       expect(stats.avgDurationMs).toBeCloseTo(162.5, 1);
+    });
+  });
+
+  describe("queryMetricTimeseries", () => {
+    test("returns overview metrics with per-connection breakdown", async () => {
+      const stats = await storage.queryMetricTimeseries({
+        organizationId: "org_test",
+        interval: "1h",
+      });
+
+      expect(stats.totalCalls).toBe(4);
+      expect(stats.totalErrors).toBe(1);
+      expect(stats.avgDurationMs).toBeCloseTo(162.5, 1);
+      expect(stats.connectionBreakdown).toHaveLength(2);
+
+      const conn1 = stats.connectionBreakdown.find(
+        (item) => item.connectionId === "conn_1",
+      );
+      const conn2 = stats.connectionBreakdown.find(
+        (item) => item.connectionId === "conn_2",
+      );
+
+      expect(conn1).toEqual(
+        expect.objectContaining({
+          connectionId: "conn_1",
+          calls: 3,
+          errors: 1,
+          avgDurationMs: 200,
+        }),
+      );
+      expect(conn1?.errorRate).toBeCloseTo(33.33, 2);
+
+      expect(conn2).toEqual(
+        expect.objectContaining({
+          connectionId: "conn_2",
+          calls: 1,
+          errors: 0,
+          errorRate: 0,
+          avgDurationMs: 50,
+        }),
+      );
+    });
+  });
+
+  describe("queryMetricTopToolsTimeseries", () => {
+    test("returns top tools and their metric timeseries", async () => {
+      const result = await storage.queryMetricTopToolsTimeseries({
+        organizationId: "org_test",
+        interval: "1h",
+        topN: 10,
+      });
+
+      expect(result.topTools).toEqual([
+        {
+          toolName: "TOOL_A",
+          connectionId: "conn_1",
+          calls: 3,
+        },
+        {
+          toolName: "TOOL_B",
+          connectionId: "conn_2",
+          calls: 1,
+        },
+      ]);
+
+      const toolA = result.timeseries.find((row) => row.toolName === "TOOL_A");
+      const toolB = result.timeseries.find((row) => row.toolName === "TOOL_B");
+
+      expect(toolA).toEqual(
+        expect.objectContaining({
+          toolName: "TOOL_A",
+          calls: 3,
+          errors: 1,
+          avg: 200,
+        }),
+      );
+      expect(toolA?.p95).toBeGreaterThan(0);
+
+      expect(toolB).toEqual(
+        expect.objectContaining({
+          toolName: "TOOL_B",
+          calls: 1,
+          errors: 0,
+          avg: 50,
+        }),
+      );
     });
   });
 

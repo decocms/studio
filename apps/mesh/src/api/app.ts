@@ -61,6 +61,11 @@ import {
   setToolListCache,
   type ToolListCache,
 } from "../mcp-clients/tool-list-cache";
+import {
+  InMemoryModelListCache,
+  JetStreamKVModelListCache,
+  type ModelListCache,
+} from "../ai-providers/model-list-cache";
 import { NatsCancelBroadcast } from "./routes/decopilot/nats-cancel-broadcast";
 import {
   NoOpStreamBuffer,
@@ -233,9 +238,23 @@ export async function createApp(options: CreateAppOptions = {}) {
       toolListCache = new InMemoryToolListCache();
     });
   }
-  // Create event bus with a lazy context getter
-  // The notify function needs a context, but the context needs the event bus
-  // We resolve this by having notify create its own system context
+  // Create model list cache (same pattern as tool list cache)
+  let modelListCache: ModelListCache = natsProvider
+    ? new JetStreamKVModelListCache({
+        getJetStream: () => natsProvider!.getJetStream(),
+        getConnection: () => natsProvider!.getConnection(),
+      })
+    : new InMemoryModelListCache();
+  if (modelListCache instanceof JetStreamKVModelListCache) {
+    await modelListCache.init().catch((err) => {
+      console.warn(
+        "[ModelListCache] KV init failed, falling back to in-memory cache:",
+        err,
+      );
+      modelListCache = new InMemoryModelListCache();
+    });
+  }
+
   let eventBus: EventBus;
 
   if (options.eventBus) {
@@ -307,6 +326,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     cancelBroadcast.stop().catch(() => {});
     streamBuffer.teardown();
     toolListCache.teardown();
+    modelListCache.teardown();
     setToolListCache(null);
     natsProvider?.drain().catch(() => {});
   };
@@ -642,6 +662,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       meter,
     },
     eventBus,
+    modelListCache,
   });
   ContextFactory.set(factory);
 

@@ -12,7 +12,6 @@ lerna-debug.log*
 
 package-lock.json
 deno.lock
-bun.lock
 
 node_modules
 dist

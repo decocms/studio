@@ -19,7 +19,7 @@ import { ConnectionStorage } from "../storage/connection";
 import { VirtualMCPStorage } from "../storage/virtual";
 import { ClickHouseMonitoringStorage } from "../storage/monitoring-clickhouse";
 import { createMonitoringEngine } from "../monitoring/query-engine";
-import { DEFAULT_LOGS_DIR } from "../monitoring/schema";
+import { DEFAULT_LOGS_DIR, DEFAULT_METRICS_DIR } from "../monitoring/schema";
 import { SqlMonitoringDashboardStorage } from "../storage/monitoring-dashboards";
 import { OrganizationSettingsStorage } from "../storage/organization-settings";
 import { ProjectsStorage } from "../storage/projects";
@@ -91,6 +91,7 @@ export interface MeshContextConfig {
     meter: Meter;
   };
   eventBus: EventBus;
+  modelListCache?: ModelListCache;
 }
 
 // ============================================================================
@@ -394,6 +395,10 @@ import { ConnectionEntity } from "@/tools/connection/schema";
 import { BUILTIN_ROLES } from "../auth/roles";
 import { OrgScopedThreadStorage, SqlThreadStorage } from "@/storage/threads";
 import { createClientPool } from "@/mcp-clients/outbound/client-pool";
+import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
+import { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
+import { AIProviderFactory } from "@/ai-providers/factory";
+import type { ModelListCache } from "@/ai-providers/model-list-cache";
 
 /**
  * Fetch role permissions from the database
@@ -757,12 +762,19 @@ export async function createMeshContextFactory(
   // Create vault instance for credential encryption
   const vault = new CredentialVault(config.encryption.key);
 
-  // Create monitoring engine (shared across requests)
+  // Create monitoring engines (shared across requests)
   const { engine: monitoringEngine, source: monitoringSource } =
     createMonitoringEngine({
       clickhouseUrl: env.CLICKHOUSE_URL,
       basePath: DEFAULT_LOGS_DIR,
     });
+  const { engine: metricEngine, source: metricSource } = createMonitoringEngine(
+    {
+      clickhouseUrl: env.CLICKHOUSE_URL,
+      basePath: DEFAULT_METRICS_DIR,
+      tableName: "monitoring_metrics",
+    },
+  );
 
   // Create storage adapters once (singleton pattern)
   const threadDb = new SqlThreadStorage(config.db);
@@ -772,6 +784,8 @@ export async function createMeshContextFactory(
     monitoring: new ClickHouseMonitoringStorage(
       monitoringEngine,
       monitoringSource,
+      metricEngine,
+      metricSource,
     ),
     monitoringDashboards: new SqlMonitoringDashboardStorage(config.db),
     virtualMcps: new VirtualMCPStorage(config.db),
@@ -780,6 +794,8 @@ export async function createMeshContextFactory(
     projects: new ProjectsStorage(config.db),
     projectConnections: new ProjectConnectionsStorage(config.db),
     projectPluginConfigs: new ProjectPluginConfigsStorage(config.db),
+    aiProviderKeys: new AIProviderKeyStorage(config.db, vault),
+    oauthPkceStates: new OAuthPkceStateStorage(config.db),
     // Note: Organizations, teams, members, roles managed by Better Auth organization plugin
     // Note: Policies handled by Better Auth permissions directly
     // Note: API keys (tokens) managed by Better Auth API Key plugin
@@ -849,6 +865,11 @@ export async function createMeshContextFactory(
       threads: new OrgScopedThreadStorage(threadDb, organization?.id),
     };
 
+    const aiProviderFactory = new AIProviderFactory(
+      storage.aiProviderKeys,
+      config.modelListCache,
+    );
+
     const ctx: MeshContext = {
       timings,
       auth: meshAuth,
@@ -884,6 +905,7 @@ export async function createMeshContextFactory(
         ),
       },
       eventBus: config.eventBus,
+      aiProviders: aiProviderFactory,
       createMCPProxy: async (conn: string | ConnectionEntity) => {
         return await createMCPProxy(conn, ctx);
       },

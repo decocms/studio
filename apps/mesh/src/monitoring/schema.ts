@@ -152,11 +152,19 @@ export interface TraceRow {
 export interface MetricRow {
   v: 1;
   name: string;
-  description: string;
+  type: "sum" | "histogram";
   unit: string;
-  type: string;
-  value: number;
   timestamp: string;
-  attributes: string;
-  resource: string;
+  organization_id: string;
+  connection_id: string;
+  tool_name: string;
+  status: string;
+  error_type: string;
+  value: number;
+  hist_count: number;
+  hist_sum: number;
+  hist_min: number;
+  hist_max: number;
+  hist_boundaries: string;
+  hist_bucket_counts: string;
 }

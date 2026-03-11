@@ -231,6 +231,16 @@ export interface EventBusStorage {
   ): Promise<Event | null>;
 
   /**
+   * Find cron events that are "delivered" but have no pending or processing
+   * future deliveries. These are orphaned events caused by a crash between
+   * updateEventStatus and scheduleNextCronDelivery. Called on worker startup
+   * to self-heal alongside resetStuckDeliveries.
+   *
+   * @returns List of orphaned cron events to reschedule
+   */
+  findOrphanedCronEvents(): Promise<Event[]>;
+
+  /**
    * Cancel a recurring event (sets status to 'failed' to stop future deliveries)
    * Only the publisher can cancel their own events.
    *
@@ -403,7 +413,7 @@ class KyselyEventBusStorage implements EventBusStorage {
         publisher: input.publisher ?? null,
         event_type: input.eventType,
         filter: input.filter ?? null,
-        enabled: 1,
+        enabled: 1 as never, // PGLite boolean
         created_at: now,
         updated_at: now,
       })
@@ -416,7 +426,7 @@ class KyselyEventBusStorage implements EventBusStorage {
       publisher: input.publisher ?? null,
       eventType: input.eventType,
       filter: input.filter ?? null,
-      enabled: true,
+      enabled: 1 as never, // PGLite boolean
       createdAt: now,
       updatedAt: now,
     };
@@ -856,6 +866,52 @@ class KyselyEventBusStorage implements EventBusStorage {
     };
   }
 
+  async findOrphanedCronEvents(): Promise<Event[]> {
+    // Cron events in "delivered" state with no pending/processing future deliveries.
+    // These were orphaned by a crash between updateEventStatus and
+    // scheduleNextCronDelivery and need to be rescheduled on startup.
+    const rows = await this.db
+      .selectFrom("events")
+      .selectAll()
+      .where("cron", "is not", null)
+      .where("status", "=", "delivered")
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom("event_deliveries")
+              .select("id")
+              .whereRef("event_deliveries.event_id", "=", "events.id")
+              .where("event_deliveries.status", "in", [
+                "pending",
+                "processing",
+              ]),
+          ),
+        ),
+      )
+      .execute();
+
+    return rows.map((row) => ({
+      id: row.id,
+      organizationId: row.organization_id,
+      type: row.type,
+      source: row.source,
+      specversion: row.specversion,
+      subject: row.subject,
+      time: row.time,
+      datacontenttype: row.datacontenttype,
+      dataschema: row.dataschema,
+      data: row.data ? JSON.parse(row.data as string) : null,
+      cron: row.cron,
+      status: row.status as EventStatus,
+      attempts: row.attempts,
+      lastError: row.last_error,
+      nextRetryAt: row.next_retry_at,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+  }
+
   async cancelEvent(
     eventId: string,
     organizationId: string,
@@ -1026,7 +1082,7 @@ class KyselyEventBusStorage implements EventBusStorage {
           event_type: desiredSub.eventType,
           publisher: desiredSub.publisher ?? null,
           filter: desiredSub.filter ?? null,
-          enabled: 1,
+          enabled: 1 as never, // PGLite boolean
           created_at: now,
           updated_at: now,
         });

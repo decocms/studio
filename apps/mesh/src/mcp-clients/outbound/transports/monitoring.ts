@@ -18,6 +18,7 @@ import type {
 import { WrapperTransport } from "./compose";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { emitMonitoringLog } from "@/monitoring/emit";
+import { recordToolExecutionMetrics } from "@/monitoring/record-tool-execution-metrics";
 import {
   extractCallToolErrorMessage,
   extractMetaProperties,
@@ -128,6 +129,7 @@ export class MonitoringTransport extends WrapperTransport {
       return;
     }
 
+    const organizationId = ctx.organization?.id ?? "";
     const isError = "error" in response;
     const result = isError ? response.error : response.result;
 
@@ -144,9 +146,10 @@ export class MonitoringTransport extends WrapperTransport {
         }
       : (result as CallToolResult);
 
-    // Record OpenTelemetry metrics
+    // Record connection-level OpenTelemetry metrics
     ctx.meter.createHistogram("connection.proxy.duration").record(duration, {
       "connection.id": connectionId,
+      "organization.id": organizationId,
       "tool.name": toolName,
       status: isError ? "error" : "success",
     });
@@ -154,14 +157,28 @@ export class MonitoringTransport extends WrapperTransport {
     if (isError) {
       ctx.meter.createCounter("connection.proxy.errors").add(1, {
         "connection.id": connectionId,
+        "organization.id": organizationId,
         "tool.name": toolName,
         error: response.error?.message,
       });
     } else {
       ctx.meter.createCounter("connection.proxy.requests").add(1, {
         "connection.id": connectionId,
+        "organization.id": organizationId,
         "tool.name": toolName,
         status: "success",
+      });
+    }
+
+    if (organizationId) {
+      recordToolExecutionMetrics({
+        ctx,
+        organizationId,
+        connectionId,
+        toolName,
+        durationMs: duration,
+        isError,
+        errorType: isError ? "RemoteError" : "",
       });
     }
 

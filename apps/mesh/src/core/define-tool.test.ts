@@ -54,6 +54,8 @@ const createMockContext = (): MeshContext => ({
     projectConnections: null as never,
     projectPluginConfigs: null as never,
     monitoringDashboards: null as never,
+    aiProviderKeys: null as never,
+    oauthPkceStates: null as never,
   },
   vault: null as never,
   authInstance: null as never,
@@ -113,6 +115,7 @@ const createMockContext = (): MeshContext => ({
     stop: vi.fn(),
     isRunning: vi.fn().mockReturnValue(false),
   } as unknown as EventBus,
+  aiProviders: null as never,
   createMCPProxy: vi.fn().mockResolvedValue({}),
   getOrCreateClient: vi.fn().mockResolvedValue({}),
 });
@@ -216,8 +219,8 @@ describe("defineTool", () => {
     });
   });
 
-  describe("metrics", () => {
-    it("should record duration histogram on success", async () => {
+  describe("monitoring metrics", () => {
+    it("does not record tool execution metrics on success", async () => {
       const tool = defineTool({
         name: "METRIC_TOOL",
         description: "Test tool",
@@ -229,13 +232,10 @@ describe("defineTool", () => {
       const ctx = createMockContext();
       await tool.execute({}, ctx);
 
-      expect(ctx.meter.createHistogram).toHaveBeenCalledWith(
-        "tool.execution.duration",
-        expect.any(Object),
-      );
+      expect(ctx.meter.createHistogram).not.toHaveBeenCalled();
     });
 
-    it("should increment execution counter on success", async () => {
+    it("does not record tool execution counters on success", async () => {
       const tool = defineTool({
         name: "COUNTER_TOOL",
         description: "Test tool",
@@ -247,13 +247,10 @@ describe("defineTool", () => {
       const ctx = createMockContext();
       await tool.execute({}, ctx);
 
-      expect(ctx.meter.createCounter).toHaveBeenCalledWith(
-        "tool.execution.count",
-        expect.any(Object),
-      );
+      expect(ctx.meter.createCounter).not.toHaveBeenCalled();
     });
 
-    it("should record error metrics on failure", async () => {
+    it("does not record tool execution metrics on failure", async () => {
       const tool = defineTool({
         name: "ERROR_TOOL",
         description: "Test tool",
@@ -267,10 +264,8 @@ describe("defineTool", () => {
       const ctx = createMockContext();
 
       await expect(tool.execute({}, ctx)).rejects.toThrow("Test error");
-      expect(ctx.meter.createCounter).toHaveBeenCalledWith(
-        "tool.execution.errors",
-        expect.any(Object),
-      );
+      expect(ctx.meter.createCounter).not.toHaveBeenCalled();
+      expect(ctx.meter.createHistogram).not.toHaveBeenCalled();
     });
   });
 

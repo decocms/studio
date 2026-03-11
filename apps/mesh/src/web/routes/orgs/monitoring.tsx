@@ -18,11 +18,11 @@ import { MONITORING_CONFIG } from "@/web/components/monitoring/config.ts";
 import { LogRow } from "@/web/components/monitoring/log-row.tsx";
 import {
   MonitoringStatsRowSkeleton,
-  calculateStats,
   KPIChart,
   type DateRange,
   type MonitoringStatsData,
 } from "@/web/components/monitoring/monitoring-stats-row.tsx";
+import { useMonitoringStats } from "@/web/components/monitoring/hooks.ts";
 import { DashboardsTab } from "@/web/components/monitoring/dashboards-tab";
 import { useInfiniteScroll } from "@/web/hooks/use-infinite-scroll.ts";
 import { useMembers } from "@/web/hooks/use-members";
@@ -110,66 +110,132 @@ import {
 interface MonitoringStatsProps {
   displayDateRange: DateRange;
   connectionIds: string[];
-  logs: MonitoringLogsResponse["logs"];
-  total?: number;
+  excludeConnectionIds?: string[];
+  toolName?: string;
+  status?: "success" | "error";
   connections: ReturnType<typeof useConnections>;
+  isStreaming: boolean;
   selectedMetric: TopChartMetric;
   onMetricSelect: (metric: TopChartMetric) => void;
 }
 
-interface ServerMetric {
-  connectionId: string;
-  requests: number;
-  errors: number;
-  errorRate: number;
-  avgLatencyMs: number;
+/**
+ * Determine the appropriate interval for timeseries queries based on date range.
+ */
+function getIntervalFromRange(range: DateRange): "1m" | "1h" | "1d" {
+  const durationMs = range.endDate.getTime() - range.startDate.getTime();
+  const ONE_HOUR = 60 * 60 * 1000;
+  const HOURS_25 = 25 * ONE_HOUR;
+
+  if (durationMs <= ONE_HOUR) return "1m";
+  if (durationMs <= HOURS_25) return "1h";
+  return "1d";
 }
 
-function aggregateServerMetrics(
-  logs: Array<{
-    connectionId: string;
-    isError: boolean;
-    durationMs: number;
-  }>,
-): Map<string, ServerMetric> {
-  const metrics = new Map<
-    string,
-    { requests: number; errors: number; totalLatency: number }
-  >();
-
-  for (const log of logs) {
-    if (!log.connectionId) continue;
-    const existing = metrics.get(log.connectionId) ?? {
-      requests: 0,
-      errors: 0,
-      totalLatency: 0,
-    };
-    metrics.set(log.connectionId, {
-      requests: existing.requests + 1,
-      errors: existing.errors + (log.isError ? 1 : 0),
-      totalLatency: existing.totalLatency + log.durationMs,
-    });
+/**
+ * Format a timestamp label based on the interval.
+ */
+function formatTimestampLabel(
+  timestamp: string,
+  interval: "1m" | "1h" | "1d",
+): string {
+  const date = new Date(timestamp);
+  if (interval === "1d") {
+    return date.toLocaleDateString([], { month: "short", day: "numeric" });
   }
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
 
-  const result = new Map<string, ServerMetric>();
-  for (const [connectionId, data] of metrics) {
-    result.set(connectionId, {
-      connectionId,
-      requests: data.requests,
-      errors: data.errors,
-      errorRate: data.requests > 0 ? (data.errors / data.requests) * 100 : 0,
-      avgLatencyMs: data.requests > 0 ? data.totalLatency / data.requests : 0,
-    });
+function floorToInterval(date: Date, interval: "1m" | "1h" | "1d"): Date {
+  const result = new Date(date);
+  if (interval === "1d") {
+    result.setHours(0, 0, 0, 0);
+    return result;
   }
+  if (interval === "1h") {
+    result.setMinutes(0, 0, 0);
+    return result;
+  }
+  result.setSeconds(0, 0);
   return result;
+}
+
+function addInterval(date: Date, interval: "1m" | "1h" | "1d"): Date {
+  const result = new Date(date);
+  if (interval === "1d") {
+    result.setDate(result.getDate() + 1);
+    return result;
+  }
+  if (interval === "1h") {
+    result.setHours(result.getHours() + 1);
+    return result;
+  }
+  result.setMinutes(result.getMinutes() + 1);
+  return result;
+}
+
+function buildFilledStatsData(
+  points: Array<{
+    timestamp: string;
+    calls: number;
+    errors: number;
+    errorRate: number;
+    avg: number;
+    p50: number;
+    p95: number;
+  }>,
+  range: DateRange,
+  interval: "1m" | "1h" | "1d",
+): MonitoringStatsData["data"] {
+  const pointMap = new Map(
+    points.map((point) => [
+      floorToInterval(new Date(point.timestamp), interval).getTime(),
+      point,
+    ]),
+  );
+
+  const alignedStart = floorToInterval(range.startDate, interval);
+  const alignedEnd = floorToInterval(range.endDate, interval);
+  const data: MonitoringStatsData["data"] = [];
+
+  for (
+    let bucketDate = new Date(alignedStart);
+    bucketDate.getTime() <= alignedEnd.getTime();
+    bucketDate = addInterval(bucketDate, interval)
+  ) {
+    const ts = bucketDate.getTime();
+    const point = pointMap.get(ts);
+
+    data.push({
+      t: bucketDate.toISOString(),
+      ts,
+      label: formatTimestampLabel(bucketDate.toISOString(), interval),
+      calls: point?.calls ?? 0,
+      errors: point?.errors ?? 0,
+      errorRate: point?.errorRate ?? 0,
+      avg: point?.avg ?? 0,
+      p50: point?.p50 ?? 0,
+      p95: point?.p95 ?? 0,
+    });
+  }
+
+  return data;
+}
+
+interface ConnectionMetric {
+  connectionId: string;
+  calls: number;
+  errors: number;
+  errorRate: number;
+  avgDurationMs: number;
 }
 
 type LeaderboardMode = "requests" | "errors" | "latency";
 
-function getMetricValue(m: ServerMetric, mode: LeaderboardMode): number {
-  if (mode === "requests") return m.requests;
+function getMetricValue(m: ConnectionMetric, mode: LeaderboardMode): number {
+  if (mode === "requests") return m.calls;
   if (mode === "errors") return m.errorRate;
-  return m.avgLatencyMs;
+  return m.avgDurationMs;
 }
 
 function formatDuration(ms: number): string {
@@ -177,10 +243,10 @@ function formatDuration(ms: number): string {
   return `${Math.round(ms)}ms`;
 }
 
-function formatMetric(m: ServerMetric, mode: LeaderboardMode): string {
-  if (mode === "requests") return m.requests.toLocaleString();
+function formatMetric(m: ConnectionMetric, mode: LeaderboardMode): string {
+  if (mode === "requests") return m.calls.toLocaleString();
   if (mode === "errors") return `${m.errorRate.toFixed(1)}%`;
-  return formatDuration(m.avgLatencyMs);
+  return formatDuration(m.avgDurationMs);
 }
 
 type StatKPIConfig = {
@@ -292,17 +358,19 @@ const STAT_KPI_CONFIG: StatKPIConfig[] = [
 ];
 
 function ConnectionLeaderboard({
-  logs,
+  metrics,
   connections,
   mode,
   barColor,
 }: {
-  logs: MonitoringLogsResponse["logs"];
+  metrics: ConnectionMetric[];
   connections: ReturnType<typeof useConnections>;
   mode: LeaderboardMode;
   barColor: string;
 }) {
-  const metricsMap = aggregateServerMetrics(logs);
+  const metricsMap = new Map(
+    metrics.map((metric) => [metric.connectionId, metric]),
+  );
   const allConnections = connections ?? [];
 
   const ranked = allConnections
@@ -356,19 +424,51 @@ function ConnectionLeaderboard({
 function MonitoringStatsContent({
   displayDateRange,
   connectionIds,
-  logs: allLogs,
-  total,
+  excludeConnectionIds,
+  toolName,
+  status,
   connections,
+  isStreaming,
   selectedMetric,
   onMetricSelect,
 }: MonitoringStatsProps) {
-  let logs = allLogs;
-  if (connectionIds.length > 1) {
-    logs = logs.filter((log) => connectionIds.includes(log.connectionId));
-  }
+  const interval = getIntervalFromRange(displayDateRange);
+  const { data: serverStats } = useMonitoringStats(
+    {
+      interval,
+      startDate: displayDateRange.startDate.toISOString(),
+      endDate: displayDateRange.endDate.toISOString(),
+      connectionIds: connectionIds.length > 0 ? connectionIds : undefined,
+      excludeConnectionIds,
+      toolNames: toolName ? [toolName] : undefined,
+      status,
+    },
+    {
+      refetchInterval: isStreaming
+        ? MONITORING_CONFIG.streamingRefetchInterval
+        : false,
+    },
+  );
 
-  const totalCalls = connectionIds.length > 1 ? undefined : total;
-  const stats = calculateStats(logs, displayDateRange, undefined, totalCalls);
+  const stats: MonitoringStatsData = serverStats
+    ? {
+        totalCalls: serverStats.totalCalls,
+        totalErrors: serverStats.totalErrors,
+        avgDurationMs: serverStats.avgDurationMs,
+        p95DurationMs: serverStats.p95DurationMs,
+        data: buildFilledStatsData(
+          serverStats.timeseries,
+          displayDateRange,
+          interval,
+        ),
+      }
+    : {
+        totalCalls: 0,
+        totalErrors: 0,
+        avgDurationMs: 0,
+        p95DurationMs: 0,
+        data: [],
+      };
 
   return (
     <div className="grid grid-cols-3 gap-[0.5px] bg-border flex-shrink-0 border-b border-border">
@@ -420,7 +520,7 @@ function MonitoringStatsContent({
                   chartHeight="h-[30px] md:h-[40px]"
                 />
                 <ConnectionLeaderboard
-                  logs={logs}
+                  metrics={serverStats?.connectionBreakdown ?? []}
                   connections={connections}
                   mode={leaderboardMode}
                   barColor={barColor}
@@ -1153,6 +1253,119 @@ const MonitoringLogsTable = Object.assign(MonitoringLogsTableContent, {
   Skeleton: MonitoringLogsTableSkeleton,
 });
 
+interface AuditTabContentProps {
+  client: ReturnType<typeof useMCPClient>;
+  locator: ReturnType<typeof useProjectContext>["locator"];
+  baseParams: Record<string, unknown>;
+  pageSize: number;
+  isStreaming: boolean;
+  streamingRefetchInterval: number;
+  connectionIds: string[];
+  virtualMcpIds: string[];
+  tool: string;
+  status: string;
+  searchQuery: string;
+  onUpdateFilters: (updates: Partial<MonitoringSearchParams>) => void;
+  allConnections: ReturnType<typeof useConnections>;
+  allVirtualMcps: ReturnType<typeof useVirtualMCPs>;
+  membersData: ReturnType<typeof useMembers>["data"];
+}
+
+function AuditTabContent({
+  client,
+  locator,
+  baseParams,
+  pageSize,
+  isStreaming,
+  streamingRefetchInterval,
+  connectionIds,
+  virtualMcpIds,
+  tool,
+  status,
+  searchQuery,
+  onUpdateFilters,
+  allConnections,
+  allVirtualMcps,
+  membersData,
+}: AuditTabContentProps) {
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage } =
+    useSuspenseInfiniteQuery({
+      queryKey: KEYS.monitoringLogsInfinite(
+        locator,
+        JSON.stringify(baseParams),
+      ),
+      queryFn: async ({ pageParam = 0 }) => {
+        if (!client) {
+          throw new Error("MCP client is not available");
+        }
+        const result = (await client.callTool({
+          name: "MONITORING_LOGS_LIST",
+          arguments: {
+            ...baseParams,
+            limit: pageSize,
+            offset: pageParam,
+          },
+        })) as { structuredContent?: unknown };
+        return (result.structuredContent ?? result) as MonitoringLogsResponse;
+      },
+      initialPageParam: 0,
+      getNextPageParam: (lastPage, allPages) => {
+        // If we got fewer logs than pageSize, there are no more pages
+        if ((lastPage?.logs?.length ?? 0) < pageSize) {
+          return undefined;
+        }
+        // Otherwise, return the next offset
+        return allPages.length * pageSize;
+      },
+      staleTime: 0,
+      refetchInterval: isStreaming ? streamingRefetchInterval : false,
+    });
+
+  const allLogs = data.pages.flatMap((page) => page.logs ?? []);
+
+  const handleLoadMore = () => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  };
+
+  return (
+    <div className="flex-1 flex flex-col overflow-auto md:overflow-hidden">
+      {/* Search Bar */}
+      <CollectionSearch
+        value={searchQuery}
+        onChange={(value) => onUpdateFilters({ search: value })}
+        placeholder="Search by tool name, connection, or error..."
+        className="border-t"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            onUpdateFilters({ search: "" });
+            (event.target as HTMLInputElement).blur();
+          }
+        }}
+      />
+
+      {/* Logs Table */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <MonitoringLogsTable
+          connectionIds={connectionIds}
+          virtualMcpIds={virtualMcpIds}
+          tool={tool}
+          status={status}
+          search={searchQuery}
+          logs={allLogs}
+          hasMore={hasNextPage ?? false}
+          onLoadMore={handleLoadMore}
+          isLoadingMore={isFetchingNextPage}
+          connections={allConnections}
+          virtualMcps={allVirtualMcps}
+          membersData={membersData}
+        />
+      </div>
+    </div>
+  );
+}
+
 // ============================================================================
 // Main Dashboard Component
 // ============================================================================
@@ -1237,51 +1450,6 @@ function MonitoringDashboardContent({
     isError:
       status === "errors" ? true : status === "success" ? false : undefined,
     ...propertyApiParams,
-  };
-
-  // Use React Query's infinite query for automatic accumulation
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage } =
-    useSuspenseInfiniteQuery({
-      queryKey: KEYS.monitoringLogsInfinite(
-        locator,
-        JSON.stringify(baseParams),
-      ),
-      queryFn: async ({ pageParam = 0 }) => {
-        if (!client) {
-          throw new Error("MCP client is not available");
-        }
-        const result = (await client.callTool({
-          name: "MONITORING_LOGS_LIST",
-          arguments: {
-            ...baseParams,
-            limit: pageSize,
-            offset: pageParam,
-          },
-        })) as { structuredContent?: unknown };
-        return (result.structuredContent ?? result) as MonitoringLogsResponse;
-      },
-      initialPageParam: 0,
-      getNextPageParam: (lastPage, allPages) => {
-        // If we got fewer logs than pageSize, there are no more pages
-        if ((lastPage?.logs?.length ?? 0) < pageSize) {
-          return undefined;
-        }
-        // Otherwise, return the next offset
-        return allPages.length * pageSize;
-      },
-      staleTime: 0,
-      refetchInterval: isStreaming ? streamingRefetchInterval : false,
-    });
-
-  // Flatten all pages into a single array
-  const allLogs = data?.pages.flatMap((page) => page?.logs ?? []) ?? [];
-  const total = data?.pages[0]?.total;
-
-  // Handler for loading more
-  const handleLoadMore = () => {
-    if (hasNextPage && !isFetchingNextPage) {
-      fetchNextPage();
-    }
   };
 
   const [topChartMetric, setTopChartMetric] = useState<TopChartMetric>("calls");
@@ -1371,39 +1539,23 @@ function MonitoringDashboardContent({
       {tab === "dashboards" ? (
         <DashboardsTab />
       ) : tab === "audit" ? (
-        <div className="flex-1 flex flex-col overflow-auto md:overflow-hidden">
-          {/* Search Bar */}
-          <CollectionSearch
-            value={searchQuery}
-            onChange={(value) => onUpdateFilters({ search: value })}
-            placeholder="Search by tool name, connection, or error..."
-            className="border-t"
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                onUpdateFilters({ search: "" });
-                (event.target as HTMLInputElement).blur();
-              }
-            }}
-          />
-
-          {/* Logs Table */}
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <MonitoringLogsTable
-              connectionIds={connectionIds}
-              virtualMcpIds={virtualMcpIds}
-              tool={tool}
-              status={status}
-              search={searchQuery}
-              logs={allLogs}
-              hasMore={hasNextPage ?? false}
-              onLoadMore={handleLoadMore}
-              isLoadingMore={isFetchingNextPage}
-              connections={allConnections}
-              virtualMcps={allVirtualMcps}
-              membersData={membersData}
-            />
-          </div>
-        </div>
+        <AuditTabContent
+          client={client}
+          locator={locator}
+          baseParams={baseParams}
+          pageSize={pageSize}
+          isStreaming={isStreaming}
+          streamingRefetchInterval={streamingRefetchInterval}
+          connectionIds={connectionIds}
+          virtualMcpIds={virtualMcpIds}
+          tool={tool}
+          status={status}
+          searchQuery={searchQuery}
+          onUpdateFilters={onUpdateFilters}
+          allConnections={allConnections}
+          allVirtualMcps={allVirtualMcps}
+          membersData={membersData}
+        />
       ) : (
         <div className="flex-1 flex flex-col overflow-auto md:overflow-hidden">
           {/* Top Tools Chart */}
@@ -1413,6 +1565,18 @@ function MonitoringDashboardContent({
                 <TopTools.Content
                   metricsMode={topChartMetric}
                   dateRange={analyticsDateRange}
+                  connectionIds={connectionIds}
+                  excludeConnectionIds={excludeConnectionIds}
+                  toolName={tool || undefined}
+                  status={
+                    status === "errors"
+                      ? "error"
+                      : status === "success"
+                        ? "success"
+                        : undefined
+                  }
+                  isStreaming={isStreaming}
+                  streamingRefetchInterval={streamingRefetchInterval}
                 />
               </Suspense>
             </ErrorBoundary>
@@ -1422,9 +1586,17 @@ function MonitoringDashboardContent({
           <MonitoringStats
             displayDateRange={displayDateRange}
             connectionIds={connectionIds}
-            logs={allLogs}
-            total={total}
+            excludeConnectionIds={excludeConnectionIds}
+            toolName={tool || undefined}
+            status={
+              status === "errors"
+                ? "error"
+                : status === "success"
+                  ? "success"
+                  : undefined
+            }
             connections={allConnections}
+            isStreaming={isStreaming}
             selectedMetric={topChartMetric}
             onMetricSelect={setTopChartMetric}
           />

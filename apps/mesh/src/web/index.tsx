@@ -112,6 +112,14 @@ const oauthCallbackRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/oauth-callback.tsx")),
 });
 
+const oauthCallbackAiProviderRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/oauth/callback/ai-provider",
+  component: lazyRouteComponent(
+    () => import("./routes/oauth-callback-ai-provider.tsx"),
+  ),
+});
+
 // ============================================
 // SHELL LAYOUT (authenticated wrapper)
 // ============================================
@@ -551,6 +559,7 @@ const routeTree = rootRoute.addChildren([
   resetPasswordRoute,
   betterAuthRoutes,
   oauthCallbackRoute,
+  oauthCallbackAiProviderRoute,
   connectRoute,
   storeInviteRoute,
 ]);
