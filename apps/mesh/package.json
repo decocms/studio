@@ -42,7 +42,6 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.58",
-    "@ai-sdk/openai": "^3.0.41",
     "@anthropic-ai/sdk": "^0.78.0",
     "@clickhouse/client": "^1.8.1",
     "@electric-sql/pglite": "^0.3.15",
