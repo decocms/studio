@@ -39,6 +39,10 @@ function createMockSpan() {
 
 function createMockTransportAndCtx() {
   const mockSpan = createMockSpan();
+  const recordHistogram = vi.fn();
+  const addCounter = vi.fn();
+  const createHistogram = vi.fn(() => ({ record: recordHistogram }));
+  const createCounter = vi.fn(() => ({ add: addCounter }));
 
   // Mock inner transport that captures onmessage for simulating responses
   let innerOnMessage: ((msg: JSONRPCMessage) => void) | undefined;
@@ -69,8 +73,8 @@ function createMockTransportAndCtx() {
       startSpan: () => mockSpan.span,
     },
     meter: {
-      createHistogram: () => ({ record: vi.fn() }),
-      createCounter: () => ({ add: vi.fn() }),
+      createHistogram,
+      createCounter,
     },
   } as unknown as MeshContext;
 
@@ -85,6 +89,10 @@ function createMockTransportAndCtx() {
     innerTransport,
     ctx,
     mockSpan,
+    recordHistogram,
+    addCounter,
+    createHistogram,
+    createCounter,
     simulateResponse: (msg: JSONRPCMessage) => {
       innerOnMessage?.(msg);
     },
@@ -97,7 +105,8 @@ describe("MonitoringTransport emitMonitoringLog", () => {
   });
 
   it("should call emitMonitoringLog on tool call response", async () => {
-    const { transport, simulateResponse } = createMockTransportAndCtx();
+    const { transport, simulateResponse, createHistogram, createCounter } =
+      createMockTransportAndCtx();
 
     transport.onmessage = vi.fn();
     await transport.start();
@@ -129,6 +138,14 @@ describe("MonitoringTransport emitMonitoringLog", () => {
     expect(params.userId).toBe("user_1");
     expect(params.requestId).toBe("req_1");
     expect(params.userAgent).toBe("test/1.0");
+    expect(createHistogram).toHaveBeenCalledWith(
+      "tool.execution.duration",
+      expect.any(Object),
+    );
+    expect(createCounter).toHaveBeenCalledWith(
+      "tool.execution.count",
+      expect.any(Object),
+    );
   });
 
   it("should pass context (spanCtx) as second argument to emitMonitoringLog", async () => {

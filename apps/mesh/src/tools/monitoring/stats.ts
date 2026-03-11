@@ -37,11 +37,34 @@ export const MONITORING_STATS = defineTool({
       .describe(
         "Bucket interval for timeseries data. When provided, returns timeseries array.",
       ),
+    connectionIds: z
+      .array(z.string())
+      .max(100)
+      .optional()
+      .describe("Filter by specific connection IDs (max 100)"),
+    excludeConnectionIds: z
+      .array(z.string())
+      .max(100)
+      .optional()
+      .describe("Exclude specific connection IDs (max 100)"),
     toolNames: z
       .array(z.string())
       .max(100)
       .optional()
       .describe("Filter by specific tool names (max 100)"),
+    status: z
+      .enum(["success", "error"])
+      .optional()
+      .describe("Filter metrics by execution status"),
+    topN: z
+      .number()
+      .int()
+      .min(1)
+      .max(20)
+      .optional()
+      .describe(
+        "When provided with interval, also return top tools and their timeseries",
+      ),
   }),
   outputSchema: z.object({
     totalCalls: z.number().describe("Total number of tool calls"),
@@ -63,6 +86,41 @@ export const MONITORING_STATS = defineTool({
       .number()
       .optional()
       .describe("95th percentile duration in milliseconds"),
+    connectionBreakdown: z
+      .array(
+        z.object({
+          connectionId: z.string(),
+          calls: z.number(),
+          errors: z.number(),
+          errorRate: z.number(),
+          avgDurationMs: z.number(),
+        }),
+      )
+      .optional()
+      .describe("Per-connection metric breakdown"),
+    topTools: z
+      .array(
+        z.object({
+          toolName: z.string(),
+          connectionId: z.string().nullable(),
+          calls: z.number(),
+        }),
+      )
+      .optional()
+      .describe("Top tools ranked by calls"),
+    topToolsTimeseries: z
+      .array(
+        z.object({
+          timestamp: z.string(),
+          toolName: z.string(),
+          calls: z.number(),
+          errors: z.number(),
+          avg: z.number(),
+          p95: z.number(),
+        }),
+      )
+      .optional()
+      .describe("Per-tool metric timeseries for the top tools"),
     timeseries: z
       .array(
         z.object({
@@ -84,13 +142,43 @@ export const MONITORING_STATS = defineTool({
     await flushMonitoringData();
 
     if (input.interval) {
-      return ctx.storage.monitoring.queryMetricTimeseries({
+      const stats = await ctx.storage.monitoring.queryMetricTimeseries({
         organizationId: org.id,
         interval: input.interval,
         startDate: input.startDate ? new Date(input.startDate) : undefined,
         endDate: input.endDate ? new Date(input.endDate) : undefined,
-        filters: { toolNames: input.toolNames },
+        filters: {
+          connectionIds: input.connectionIds,
+          excludeConnectionIds: input.excludeConnectionIds,
+          toolNames: input.toolNames,
+          status: input.status,
+        },
       });
+
+      if (!input.topN) {
+        return stats;
+      }
+
+      const topTools =
+        await ctx.storage.monitoring.queryMetricTopToolsTimeseries({
+          organizationId: org.id,
+          interval: input.interval,
+          startDate: input.startDate ? new Date(input.startDate) : undefined,
+          endDate: input.endDate ? new Date(input.endDate) : undefined,
+          topN: input.topN,
+          filters: {
+            connectionIds: input.connectionIds,
+            excludeConnectionIds: input.excludeConnectionIds,
+            toolNames: input.toolNames,
+            status: input.status,
+          },
+        });
+
+      return {
+        ...stats,
+        topTools: topTools.topTools,
+        topToolsTimeseries: topTools.timeseries,
+      };
     }
 
     // Backward-compatible path

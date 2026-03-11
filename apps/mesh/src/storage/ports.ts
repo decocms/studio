@@ -247,7 +247,10 @@ export interface MonitoringStorage {
     startDate?: Date;
     endDate?: Date;
     filters?: {
+      connectionIds?: string[];
+      excludeConnectionIds?: string[];
       toolNames?: string[];
+      status?: "success" | "error";
     };
   }): Promise<{
     totalCalls: number;
@@ -255,6 +258,13 @@ export interface MonitoringStorage {
     avgDurationMs: number;
     p50DurationMs: number;
     p95DurationMs: number;
+    connectionBreakdown: Array<{
+      connectionId: string;
+      calls: number;
+      errors: number;
+      errorRate: number;
+      avgDurationMs: number;
+    }>;
     timeseries: Array<{
       timestamp: string;
       calls: number;
@@ -262,6 +272,33 @@ export interface MonitoringStorage {
       errorRate: number;
       avg: number;
       p50: number;
+      p95: number;
+    }>;
+  }>;
+  queryMetricTopToolsTimeseries(params: {
+    organizationId: string;
+    interval: string;
+    startDate?: Date;
+    endDate?: Date;
+    topN?: number;
+    filters?: {
+      connectionIds?: string[];
+      excludeConnectionIds?: string[];
+      toolNames?: string[];
+      status?: "success" | "error";
+    };
+  }): Promise<{
+    topTools: Array<{
+      toolName: string;
+      connectionId: string | null;
+      calls: number;
+    }>;
+    timeseries: Array<{
+      timestamp: string;
+      toolName: string;
+      calls: number;
+      errors: number;
+      avg: number;
       p95: number;
     }>;
   }>;

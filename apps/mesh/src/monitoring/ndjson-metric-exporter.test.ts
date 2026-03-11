@@ -76,6 +76,7 @@ describe("NDJSONMetricExporter", () => {
             endTime: HR_TIME,
             attributes: {
               "organization.id": "org-123",
+              "connection.id": "conn-123",
               "tool.name": "my_tool",
               status: "ok",
               "error.type": "",
@@ -103,6 +104,7 @@ describe("NDJSONMetricExporter", () => {
       unit: "1",
       timestamp: EXPECTED_TIMESTAMP,
       organization_id: "org-123",
+      connection_id: "conn-123",
       tool_name: "my_tool",
       status: "ok",
       error_type: "",
@@ -135,6 +137,7 @@ describe("NDJSONMetricExporter", () => {
             endTime: HR_TIME,
             attributes: {
               "organization.id": "org-456",
+              "connection.id": "conn-456",
               "tool.name": "slow_tool",
               status: "error",
               "error.type": "timeout",
@@ -170,6 +173,7 @@ describe("NDJSONMetricExporter", () => {
       unit: "ms",
       timestamp: EXPECTED_TIMESTAMP,
       organization_id: "org-456",
+      connection_id: "conn-456",
       tool_name: "slow_tool",
       status: "error",
       error_type: "timeout",
@@ -202,6 +206,7 @@ describe("NDJSONMetricExporter", () => {
             endTime: HR_TIME,
             attributes: {
               "organization.id": "org-789",
+              "connection.id": "conn-789",
               "tool.name": "idle_tool",
               status: "ok",
               "error.type": "",
@@ -256,6 +261,7 @@ describe("NDJSONMetricExporter", () => {
             endTime: HR_TIME,
             attributes: {
               "organization.id": "org-abc",
+              "connection.id": "conn-abc",
               "tool.name": "test_tool",
               status: "ok",
               "error.type": "",

@@ -509,7 +509,10 @@ export class ClickHouseMonitoringStorage implements MonitoringStorage {
     startDate?: Date;
     endDate?: Date;
     filters?: {
+      connectionIds?: string[];
+      excludeConnectionIds?: string[];
       toolNames?: string[];
+      status?: "success" | "error";
     };
   }): Promise<{
     totalCalls: number;
@@ -517,6 +520,13 @@ export class ClickHouseMonitoringStorage implements MonitoringStorage {
     avgDurationMs: number;
     p50DurationMs: number;
     p95DurationMs: number;
+    connectionBreakdown: Array<{
+      connectionId: string;
+      calls: number;
+      errors: number;
+      errorRate: number;
+      avgDurationMs: number;
+    }>;
     timeseries: Array<{
       timestamp: string;
       calls: number;
@@ -533,6 +543,7 @@ export class ClickHouseMonitoringStorage implements MonitoringStorage {
       avgDurationMs: 0,
       p50DurationMs: 0,
       p95DurationMs: 0,
+      connectionBreakdown: [],
       timeseries: [],
     };
 
@@ -560,9 +571,23 @@ export class ClickHouseMonitoringStorage implements MonitoringStorage {
           .join(",");
         where.push(`tool_name IN (${names})`);
       }
-      // Note: status filter is NOT added to the WHERE clause because it would
-      // prevent error counting (errors have status='error', so filtering to
-      // status='ok' would make error aggregation always return 0).
+      if (params.filters?.connectionIds?.length) {
+        const ids = params.filters.connectionIds
+          .slice(0, 100)
+          .map((id) => `'${esc(id)}'`)
+          .join(",");
+        where.push(`connection_id IN (${ids})`);
+      }
+      if (params.filters?.excludeConnectionIds?.length) {
+        const ids = params.filters.excludeConnectionIds
+          .slice(0, 100)
+          .map((id) => `'${esc(id)}'`)
+          .join(",");
+        where.push(`connection_id NOT IN (${ids})`);
+      }
+      if (params.filters?.status) {
+        where.push(`status = '${esc(params.filters.status)}'`);
+      }
 
       const whereClause = where.join(" AND ");
 
@@ -582,8 +607,40 @@ LIMIT 10000`;
 
       const rows = await this.metricEngine.query(sql);
 
+      const breakdownSql = `SELECT
+  connection_id,
+  sumIf(value, name = 'tool.execution.count') AS calls,
+  sumIf(value, name = 'tool.execution.count' AND status = 'error') AS errors,
+  sumIf(hist_sum, name = 'tool.execution.duration') AS total_hist_sum,
+  sumIf(hist_count, name = 'tool.execution.duration') AS total_hist_count
+FROM ${this.metricSource}
+WHERE ${whereClause} AND connection_id != ''
+GROUP BY connection_id
+ORDER BY calls DESC
+LIMIT 1000`;
+
+      const connectionBreakdownRows =
+        await this.metricEngine.query(breakdownSql);
+
       if (rows.length === 0) {
-        return emptyResult;
+        return {
+          ...emptyResult,
+          connectionBreakdown: connectionBreakdownRows.map((row) => {
+            const calls = Number(row.calls ?? 0);
+            const errors = Number(row.errors ?? 0);
+            const totalHistSum = Number(row.total_hist_sum ?? 0);
+            const totalHistCount = Number(row.total_hist_count ?? 0);
+
+            return {
+              connectionId: String(row.connection_id ?? ""),
+              calls,
+              errors,
+              errorRate: calls > 0 ? (errors / calls) * 100 : 0,
+              avgDurationMs:
+                totalHistCount > 0 ? totalHistSum / totalHistCount : 0,
+            };
+          }),
+        };
       }
 
       // Accumulate totals across all buckets
@@ -661,10 +718,187 @@ LIMIT 10000`;
           globalCounts,
           0.95,
         ),
+        connectionBreakdown: connectionBreakdownRows.map((row) => {
+          const calls = Number(row.calls ?? 0);
+          const errors = Number(row.errors ?? 0);
+          const totalHistSum = Number(row.total_hist_sum ?? 0);
+          const totalHistCount = Number(row.total_hist_count ?? 0);
+
+          return {
+            connectionId: String(row.connection_id ?? ""),
+            calls,
+            errors,
+            errorRate: calls > 0 ? (errors / calls) * 100 : 0,
+            avgDurationMs:
+              totalHistCount > 0 ? totalHistSum / totalHistCount : 0,
+          };
+        }),
         timeseries,
       };
     } catch (err) {
       console.error("queryMetricTimeseries failed:", err);
+      return emptyResult;
+    }
+  }
+
+  async queryMetricTopToolsTimeseries(params: {
+    organizationId: string;
+    interval: string;
+    startDate?: Date;
+    endDate?: Date;
+    topN?: number;
+    filters?: {
+      connectionIds?: string[];
+      excludeConnectionIds?: string[];
+      toolNames?: string[];
+      status?: "success" | "error";
+    };
+  }): Promise<{
+    topTools: Array<{
+      toolName: string;
+      connectionId: string | null;
+      calls: number;
+    }>;
+    timeseries: Array<{
+      timestamp: string;
+      toolName: string;
+      calls: number;
+      errors: number;
+      avg: number;
+      p95: number;
+    }>;
+  }> {
+    const emptyResult = {
+      topTools: [],
+      timeseries: [],
+    };
+
+    try {
+      if (!params.organizationId) {
+        throw new Error("organizationId is required");
+      }
+
+      const bucketExpr = intervalToSQL(params.interval);
+      const where: string[] = [
+        `organization_id = '${esc(params.organizationId)}'`,
+      ];
+
+      if (params.startDate) {
+        where.push(tsGte(params.startDate));
+      }
+      if (params.endDate) {
+        where.push(tsLte(params.endDate));
+      }
+      if (params.filters?.toolNames?.length) {
+        const names = params.filters.toolNames
+          .slice(0, 100)
+          .map((n) => `'${esc(n)}'`)
+          .join(",");
+        where.push(`tool_name IN (${names})`);
+      }
+      if (params.filters?.connectionIds?.length) {
+        const ids = params.filters.connectionIds
+          .slice(0, 100)
+          .map((id) => `'${esc(id)}'`)
+          .join(",");
+        where.push(`connection_id IN (${ids})`);
+      }
+      if (params.filters?.excludeConnectionIds?.length) {
+        const ids = params.filters.excludeConnectionIds
+          .slice(0, 100)
+          .map((id) => `'${esc(id)}'`)
+          .join(",");
+        where.push(`connection_id NOT IN (${ids})`);
+      }
+      if (params.filters?.status) {
+        where.push(`status = '${esc(params.filters.status)}'`);
+      }
+
+      const whereClause = where.join(" AND ");
+      const topN = Math.min(Math.max(1, Math.floor(params.topN ?? 10)), 20);
+
+      const topToolsSql = `SELECT
+  tool_name,
+  argMax(connection_id, connection_calls) AS connection_id,
+  sum(connection_calls) AS calls
+FROM (
+  SELECT
+    tool_name,
+    connection_id,
+    sumIf(value, name = 'tool.execution.count') AS connection_calls
+  FROM ${this.metricSource}
+  WHERE ${whereClause} AND tool_name != ''
+  GROUP BY tool_name, connection_id
+)
+GROUP BY tool_name
+ORDER BY calls DESC
+LIMIT ${topN}`;
+
+      const topToolRows = await this.metricEngine.query(topToolsSql);
+
+      if (topToolRows.length === 0) {
+        return emptyResult;
+      }
+
+      const topToolNames = topToolRows
+        .map((row) => String(row.tool_name ?? ""))
+        .filter(Boolean);
+      const toolNamesSql = topToolNames
+        .map((name) => `'${esc(name)}'`)
+        .join(",");
+
+      const timeseriesSql = `SELECT
+  ${bucketExpr} AS bucket,
+  tool_name,
+  sumIf(value, name = 'tool.execution.count') AS calls,
+  sumIf(value, name = 'tool.execution.count' AND status = 'error') AS errors,
+  sumIf(hist_sum, name = 'tool.execution.duration') AS total_hist_sum,
+  sumIf(hist_count, name = 'tool.execution.duration') AS total_hist_count,
+  groupArrayIf(hist_boundaries, name = 'tool.execution.duration') AS boundaries_arr,
+  groupArrayIf(hist_bucket_counts, name = 'tool.execution.duration') AS bucket_counts_arr
+FROM ${this.metricSource}
+WHERE ${whereClause} AND tool_name IN (${toolNamesSql})
+GROUP BY bucket, tool_name
+ORDER BY bucket ASC, tool_name ASC
+LIMIT 20000`;
+
+      const rows = await this.metricEngine.query(timeseriesSql);
+
+      return {
+        topTools: topToolRows.map((row) => ({
+          toolName: String(row.tool_name ?? ""),
+          connectionId:
+            row.connection_id != null ? String(row.connection_id) : null,
+          calls: Number(row.calls ?? 0),
+        })),
+        timeseries: rows.map((row) => {
+          const calls = Number(row.calls ?? 0);
+          const errors = Number(row.errors ?? 0);
+          const histSum = Number(row.total_hist_sum ?? 0);
+          const histCount = Number(row.total_hist_count ?? 0);
+          const boundariesArr = parseGroupedArrays(row.boundaries_arr);
+          const bucketCountsArr = parseGroupedArrays(row.bucket_counts_arr);
+          const { boundaries, counts } = mergeHistogramBuckets(
+            boundariesArr,
+            bucketCountsArr,
+          );
+
+          return {
+            timestamp: String(row.bucket ?? ""),
+            toolName: String(row.tool_name ?? ""),
+            calls,
+            errors,
+            avg: histCount > 0 ? histSum / histCount : 0,
+            p95: computePercentileFromHistogramBuckets(
+              boundaries,
+              counts,
+              0.95,
+            ),
+          };
+        }),
+      };
+    } catch (err) {
+      console.error("queryMetricTopToolsTimeseries failed:", err);
       return emptyResult;
     }
   }

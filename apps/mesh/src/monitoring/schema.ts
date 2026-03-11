@@ -156,6 +156,7 @@ export interface MetricRow {
   unit: string;
   timestamp: string;
   organization_id: string;
+  connection_id: string;
   tool_name: string;
   status: string;
   error_type: string;

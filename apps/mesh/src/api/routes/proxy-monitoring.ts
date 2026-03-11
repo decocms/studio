@@ -6,6 +6,7 @@ import { isDecopilot } from "@decocms/mesh-sdk";
 import { trace, context } from "@opentelemetry/api";
 import type { MeshContext } from "../../core/mesh-context";
 import { emitMonitoringLog } from "../../monitoring/emit";
+import { recordToolExecutionMetrics } from "../../monitoring/record-tool-execution-metrics";
 import { MONITORING_SPAN_NAME } from "@/monitoring/schema";
 
 type CallToolMiddleware = (
@@ -208,6 +209,16 @@ async function emitMonitoringSpan(args: {
 
   // Skip monitoring for decopilot connections (they don't exist in the database)
   if (isDecopilot(args.connectionId)) return;
+
+  recordToolExecutionMetrics({
+    ctx,
+    organizationId,
+    connectionId: args.connectionId,
+    toolName: args.request.params.name,
+    durationMs: args.durationMs,
+    isError: args.isError,
+    errorType: args.isError ? "Error" : "",
+  });
 
   // Extract properties from _meta.properties in tool arguments
   const metaProperties = extractMetaProperties(
