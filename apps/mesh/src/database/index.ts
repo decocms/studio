@@ -180,8 +180,10 @@ function clearStalePGliteLock(dataDir: string): void {
         try {
           process.kill(pid, 0);
           return true;
-        } catch {
-          return false;
+        } catch (err) {
+          // EPERM means the process exists but we cannot signal it — treat as alive.
+          // Only ESRCH means no such process, i.e. genuinely stale.
+          return (err as NodeJS.ErrnoException).code === "EPERM";
         }
       })();
 
