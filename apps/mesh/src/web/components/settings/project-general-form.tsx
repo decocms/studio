@@ -20,12 +20,14 @@ import {
   FormLabel,
   FormMessage,
 } from "@deco/ui/components/form.tsx";
+import { LogoUpload } from "@/web/components/logo-upload";
 import { toast } from "sonner";
 
 const formSchema = z.object({
   name: z.string().min(1, "Name is required").max(200, "Name is too long"),
   description: z.string().max(1000, "Description is too long").nullable(),
   themeColor: z.string().nullable(),
+  logo: z.string().nullable().optional(),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -57,6 +59,7 @@ export function ProjectGeneralForm() {
       name: project.name ?? "",
       description: project.description ?? "",
       themeColor: project.ui?.themeColor ?? "#60a5fa",
+      logo: project.ui?.icon ?? "",
     },
   });
 
@@ -72,7 +75,7 @@ export function ProjectGeneralForm() {
             themeColor: data.themeColor || null,
             banner: project.ui?.banner ?? null,
             bannerColor: project.ui?.bannerColor ?? null,
-            icon: project.ui?.icon ?? null,
+            icon: data.logo || null,
           },
         },
       })) as { structuredContent?: unknown };
@@ -155,6 +158,28 @@ export function ProjectGeneralForm() {
                     {...field}
                     value={field.value ?? ""}
                     onBlur={() => saveOnBlur(field.onBlur)}
+                    disabled={mutation.isPending}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="logo"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Logo</FormLabel>
+                <FormControl>
+                  <LogoUpload
+                    value={field.value}
+                    onChange={(value) => {
+                      field.onChange(value);
+                      void form.handleSubmit(onSubmit)();
+                    }}
+                    name={form.watch("name")}
                     disabled={mutation.isPending}
                   />
                 </FormControl>
