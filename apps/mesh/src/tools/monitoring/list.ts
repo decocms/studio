@@ -139,13 +139,35 @@ export const MONITORING_LOGS_LIST = defineTool({
     const result = await ctx.storage.monitoring.query(filters);
 
     return {
-      logs: result.logs.map((log) => ({
-        ...log,
-        timestamp:
-          log.timestamp instanceof Date
-            ? log.timestamp.toISOString()
-            : log.timestamp,
-      })),
+      logs: result.logs.map((log) => {
+        // Strip redundant MCP content wrapper from output to reduce payload size
+        const output = log.output;
+        let cleanOutput = output;
+        if (
+          output &&
+          typeof output === "object" &&
+          "structuredContent" in output
+        ) {
+          const { content, ...rest } = output as Record<string, unknown>;
+          cleanOutput = rest;
+        } else if (
+          output &&
+          typeof output === "object" &&
+          "content" in output &&
+          Array.isArray((output as Record<string, unknown>).content)
+        ) {
+          const { content, ...rest } = output as Record<string, unknown>;
+          cleanOutput = Object.keys(rest).length > 0 ? rest : output;
+        }
+        return {
+          ...log,
+          output: cleanOutput,
+          timestamp:
+            log.timestamp instanceof Date
+              ? log.timestamp.toISOString()
+              : log.timestamp,
+        };
+      }),
       total: result.total,
       offset: input.offset,
       limit: input.limit,

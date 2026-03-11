@@ -130,10 +130,13 @@ function toMonitoringLog(row: Record<string, unknown>): MonitoringLog {
       row.is_error === 1 || row.is_error === true || row.is_error === "1",
     errorMessage: row.error_message != null ? String(row.error_message) : null,
     durationMs: Number(row.duration_ms ?? 0),
-    timestamp:
-      row.timestamp instanceof Date
-        ? row.timestamp.toISOString()
-        : String(row.timestamp ?? ""),
+    timestamp: (() => {
+      if (row.timestamp instanceof Date) return row.timestamp.toISOString();
+      const str = String(row.timestamp ?? "");
+      // chdb returns "YYYY-MM-DD HH:MM:SS.nnnnnnnnn" — convert to ISO 8601
+      const d = new Date(str.includes("T") ? str : str.replace(" ", "T") + "Z");
+      return Number.isNaN(d.getTime()) ? str : d.toISOString();
+    })(),
     userId: row.user_id != null ? String(row.user_id) : null,
     requestId: String(row.request_id ?? ""),
     userAgent: row.user_agent != null ? String(row.user_agent) : null,
