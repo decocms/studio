@@ -585,9 +585,10 @@ export class ClickHouseMonitoringStorage implements MonitoringStorage {
           .join(",");
         where.push(`connection_id NOT IN (${ids})`);
       }
-      if (params.filters?.status) {
-        where.push(`status = '${esc(params.filters.status)}'`);
-      }
+      // NOTE: status is intentionally NOT added to the WHERE clause here.
+      // The errors and errorRate aggregations use sumIf(... AND status = 'error'),
+      // which would always return 0 if WHERE already filters to status = 'success'
+      // (and conversely, errorRate would always be 100% when filtering to 'error').
 
       const whereClause = where.join(" AND ");
 
@@ -809,9 +810,9 @@ LIMIT 1000`;
           .join(",");
         where.push(`connection_id NOT IN (${ids})`);
       }
-      if (params.filters?.status) {
-        where.push(`status = '${esc(params.filters.status)}'`);
-      }
+      // NOTE: status is intentionally NOT added to the WHERE clause here.
+      // The errors aggregation uses sumIf(... AND status = 'error'),
+      // which would always return 0 if WHERE already filters to status = 'success'.
 
       const whereClause = where.join(" AND ");
       const topN = Math.min(Math.max(1, Math.floor(params.topN ?? 10)), 20);

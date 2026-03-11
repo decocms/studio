@@ -28,7 +28,7 @@ interface MonitoringTopToolsParams extends MonitoringMetricFilters {
   interval: "1m" | "1h" | "1d";
   startDate: string;
   endDate: string;
-  topN?: number;
+  topN: number;
 }
 
 function getLast24HoursDateRange() {
