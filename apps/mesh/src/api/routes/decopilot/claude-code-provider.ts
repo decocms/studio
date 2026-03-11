@@ -61,6 +61,28 @@ function extractSystemPrompt(messages: ChatMessage[]): string {
   return systemParts.join("\n\n");
 }
 
+/** Claude Code model variants that can be selected in the UI */
+export const CLAUDE_CODE_MODELS = [
+  {
+    id: "claude-code:opus",
+    sdkModel: "claude-opus-4-6",
+    title: "Claude Code Opus",
+    tier: "smarter" as const,
+  },
+  {
+    id: "claude-code:sonnet",
+    sdkModel: "claude-sonnet-4-6",
+    title: "Claude Code Sonnet",
+    tier: "faster" as const,
+  },
+  {
+    id: "claude-code:haiku",
+    sdkModel: "claude-haiku-4-5",
+    title: "Claude Code Haiku",
+    tier: "cheaper" as const,
+  },
+] as const;
+
 export interface ClaudeCodeStreamOptions {
   messages: ChatMessage[];
   abortController?: AbortController;
@@ -69,6 +91,8 @@ export interface ClaudeCodeStreamOptions {
   agentMode?: string;
   threadId: string;
   connectionId: string;
+  /** SDK model identifier, e.g. "claude-sonnet-4-6" */
+  model?: string;
 }
 
 /**
@@ -97,9 +121,16 @@ export async function streamClaudeCode(
 
   const abortController = opts.abortController ?? new AbortController();
 
+  // Resolve SDK model name from the model id (e.g. "claude-code:sonnet" → "claude-sonnet-4-6")
+  const sdkModel = opts.model
+    ? (CLAUDE_CODE_MODELS.find((m) => m.id === opts.model)?.sdkModel ??
+      opts.model)
+    : undefined;
+
   const queryOpts: Parameters<typeof queryFn>[0]["options"] = {
     maxTurns: 1,
     abortController,
+    model: sdkModel,
     systemPrompt: systemPrompt || undefined,
     permissionMode: "bypassPermissions" as const,
     allowDangerouslySkipPermissions: true,
@@ -141,14 +172,18 @@ export async function streamClaudeCode(
       },
       models: {
         connectionId: opts.connectionId,
-        thinking: { id: "claude-code", provider: "claude-code" },
+        thinking: {
+          id: opts.model ?? "claude-code",
+          provider: "claude-code",
+        },
       },
       created_at: new Date(),
       thread_id: opts.threadId,
     },
   });
 
-  // Start a text part
+  // Start a step + text part (AI SDK expects step markers for status tracking)
+  writer.write({ type: "start-step" });
   writer.write({ type: "text-start", id: textPartId });
 
   let totalCostUsd = 0;
@@ -262,8 +297,9 @@ export async function streamClaudeCode(
     });
   }
 
-  // End the text part
+  // End the text part + step
   writer.write({ type: "text-end", id: textPartId });
+  writer.write({ type: "finish-step" });
 
   writer.write({
     type: "finish",
