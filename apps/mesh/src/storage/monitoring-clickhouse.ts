@@ -602,8 +602,7 @@ export class ClickHouseMonitoringStorage implements MonitoringStorage {
 FROM ${this.metricSource}
 WHERE ${whereClause}
 GROUP BY bucket
-ORDER BY bucket ASC
-LIMIT 10000`;
+ORDER BY bucket ASC`;
 
       const rows = await this.metricEngine.query(sql);
 
@@ -859,8 +858,7 @@ LIMIT ${topN}`;
 FROM ${this.metricSource}
 WHERE ${whereClause} AND tool_name IN (${toolNamesSql})
 GROUP BY bucket, tool_name
-ORDER BY bucket ASC, tool_name ASC
-LIMIT 20000`;
+ORDER BY bucket ASC, tool_name ASC`;
 
       const rows = await this.metricEngine.query(timeseriesSql);
 
