@@ -6,13 +6,14 @@ import type {
   OpenRouterModel,
   ProviderAdapter,
 } from "../types";
+import { OPENROUTER_ICON_URL } from "@/core/deco-constants";
 
 export const openrouterAdapter: ProviderAdapter = {
   info: {
     id: "openrouter",
     name: "OpenRouter",
     description: "Unified API for multiple AI providers",
-    logo: "https://openrouter.ai/favicon.ico",
+    logo: OPENROUTER_ICON_URL,
   },
 
   supportedMethods: ["oauth-pkce", "api-key"],

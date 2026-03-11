@@ -11,9 +11,6 @@ export const DECO_CMS_API_HOST = "api.decocms.com";
 export const DECO_STORE_URL =
   "https://studio.decocms.com/org/deco/registry/mcp";
 
-/** OpenRouter MCP URL (deco-hosted) */
-export const OPENROUTER_MCP_URL = "https://sites-openrouter.decocache.com/mcp";
-
 /** OpenRouter icon URL */
 export const OPENROUTER_ICON_URL =
   "https://assets.decocache.com/decocms/b2e2f64f-6025-45f7-9e8c-3b3ebdd073d8/openrouter_logojpg.jpg";
