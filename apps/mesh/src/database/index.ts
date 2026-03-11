@@ -12,13 +12,13 @@
  */
 
 import { existsSync, mkdirSync } from "fs";
-import { homedir } from "os";
 import { type Dialect, Kysely, LogEvent, PostgresDialect } from "kysely";
 import { PGlite } from "@electric-sql/pglite";
 import { KyselyPGlite } from "kysely-pglite";
 import * as path from "path";
 import { Pool } from "pg";
 import type { Database as DatabaseSchema } from "../storage/types";
+import { env } from "../env";
 import { meter } from "../observability";
 
 // ============================================================================
@@ -114,7 +114,7 @@ function createPostgresDatabase(config: DatabaseConfig): PostgresDatabase {
   const pool = new Pool({
     connectionString: config.connectionString,
     max: config.options?.maxConnections || 10,
-    ssl: process.env.DATABASE_PG_SSL === "true" ? true : false,
+    ssl: env.DATABASE_PG_SSL,
     ...defaultPoolOptions,
   });
 
@@ -137,7 +137,7 @@ function ensurePGliteDirectory(dataDir: string): string {
     try {
       mkdirSync(dataDir, { recursive: true, mode: 0o700 });
     } catch (error) {
-      if (process.env.NODE_ENV === "production") {
+      if (env.NODE_ENV === "production") {
         throw new Error(`Failed to create PGlite data directory: ${dataDir}`, {
           cause: error,
         });
@@ -184,11 +184,7 @@ function createPGliteDatabase(config: DatabaseConfig): PGliteDatabase {
 // URL Parsing
 // ============================================================================
 
-const DEFAULT_PGLITE_PATH = path.join(
-  process.env.DECOCMS_HOME || path.join(homedir(), "deco"),
-  "system",
-  "db.pglite",
-);
+// DATABASE_URL default is now derived from DATA_DIR in env.ts
 
 function parseDatabaseUrl(databaseUrl?: string): DatabaseConfig {
   let url = databaseUrl || getDatabaseUrl();
@@ -233,9 +229,7 @@ function parseDatabaseUrl(databaseUrl?: string): DatabaseConfig {
 // ============================================================================
 
 export function getDatabaseUrl(): string {
-  const databaseUrl =
-    process.env.DATABASE_URL || `file://${DEFAULT_PGLITE_PATH}`;
-  return databaseUrl;
+  return env.DATABASE_URL;
 }
 
 /**
@@ -251,7 +245,7 @@ export function getDbDialect(databaseUrl?: string): Dialect {
       pool: new Pool({
         connectionString: config.connectionString,
         max: config.options?.maxConnections || 10,
-        ssl: process.env.DATABASE_PG_SSL === "true" ? true : false,
+        ssl: env.DATABASE_PG_SSL,
         ...defaultPoolOptions,
       }),
     });

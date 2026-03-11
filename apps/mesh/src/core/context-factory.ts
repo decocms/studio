@@ -13,6 +13,7 @@ import type { Meter, Tracer } from "@opentelemetry/api";
 import type { Kysely } from "kysely";
 import { verifyMeshToken } from "../auth/jwt";
 import { CredentialVault } from "../encryption/credential-vault";
+import { env } from "../env";
 import { getBaseUrl } from "./server-constants";
 import { ConnectionStorage } from "../storage/connection";
 import { VirtualMCPStorage } from "../storage/virtual";
@@ -759,7 +760,7 @@ export async function createMeshContextFactory(
   // Create monitoring engine (shared across requests)
   const { engine: monitoringEngine, source: monitoringSource } =
     createMonitoringEngine({
-      clickhouseUrl: process.env.CLICKHOUSE_URL,
+      clickhouseUrl: env.CLICKHOUSE_URL,
       basePath: DEFAULT_LOGS_DIR,
     });
 
@@ -830,7 +831,7 @@ export async function createMeshContextFactory(
 
     // Derive base URL from request or fallback to configured base URL
     const baseUrl = req
-      ? (process.env.BASE_URL ?? `${new URL(req.url).origin}`)
+      ? (env.BASE_URL ?? `${new URL(req.url).origin}`)
       : getBaseUrl();
 
     // Create AccessControl instance with bound auth client

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import {
   MONITORING_SPAN_NAME,
-  DEFAULT_SYSTEM_DIR,
+  DATA_DIR,
   DEFAULT_LOGS_DIR,
   DEFAULT_TRACES_DIR,
   DEFAULT_METRICS_DIR,
@@ -16,8 +16,7 @@ import {
 describe("monitoring schema", () => {
   it("should define shared constants", () => {
     expect(MONITORING_SPAN_NAME).toBe("mcp.proxy.callTool");
-    expect(DEFAULT_SYSTEM_DIR).toContain("deco");
-    expect(DEFAULT_SYSTEM_DIR).toContain("system");
+    expect(DATA_DIR).toContain("deco");
     expect(DEFAULT_LOGS_DIR).toContain("logs");
     expect(DEFAULT_TRACES_DIR).toContain("traces");
     expect(DEFAULT_METRICS_DIR).toContain("metrics");

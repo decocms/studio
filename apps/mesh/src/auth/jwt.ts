@@ -11,6 +11,7 @@
 
 import { decodeJwt, type JWTPayload, jwtVerify, SignJWT } from "jose";
 import { randomBytes } from "crypto";
+import { env } from "../env";
 import { authConfig } from "./index";
 
 // JWT signing secret - loaded from env or generated
@@ -25,9 +26,7 @@ function getSecret(): Uint8Array {
   }
 
   const envSecret =
-    process.env.MESH_JWT_SECRET ??
-    authConfig.jwt?.secret ??
-    process.env.BETTER_AUTH_SECRET;
+    env.MESH_JWT_SECRET ?? authConfig.jwt?.secret ?? env.BETTER_AUTH_SECRET;
   if (envSecret) {
     jwtSecret = new TextEncoder().encode(envSecret);
   } else {

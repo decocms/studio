@@ -24,12 +24,15 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto";
 import { RuntimeNodeInstrumentation } from "@opentelemetry/instrumentation-runtime-node";
 import { enableFetchInstrumentation } from "./instrumentations/fetch";
 import { NDJSONLogExporter } from "../monitoring/ndjson-log-exporter";
-import { DEFAULT_LOGS_DIR } from "../monitoring/schema";
+import { NDJSONTraceExporter } from "../monitoring/ndjson-trace-exporter";
+import { DEFAULT_LOGS_DIR, DEFAULT_TRACES_DIR } from "../monitoring/schema";
+import { env } from "../env";
 
 import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
 import type { MetricReader } from "@opentelemetry/sdk-metrics";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import {
+  BatchSpanProcessor,
   SamplingDecision,
   SamplingResult,
 } from "@opentelemetry/sdk-trace-base";
@@ -190,33 +193,44 @@ const headSampler = new DebugSampler(new RatioSampler(HEAD_SAMPLER_RATIO));
 /**
  * Select trace exporter based on environment.
  *
- * When CLICKHOUSE_URL is set, we're in a cloud environment — spans are sent
- * to an OTel Collector via OTLP (which forwards to ClickHouse).
- * Otherwise, no span exporter is needed — monitoring data flows through
- * OTel log records via NDJSONLogExporter.
+ * When CLICKHOUSE_URL is set, spans are also sent to an OTel Collector
+ * via OTLP (which forwards to ClickHouse).
  */
-const traceExporter = process.env.CLICKHOUSE_URL
-  ? new OTLPTraceExporter()
-  : undefined;
+const traceExporter = env.CLICKHOUSE_URL ? new OTLPTraceExporter() : undefined;
 
-// Skip NDJSONLogExporter during tests — it creates timers and writes to disk,
-// neither of which is needed when running `bun test`.
+// Always create local NDJSON exporters (skip only in tests — they create
+// timers and write to disk, neither of which is needed when running `bun test`).
 const monitoringLogExporter =
-  process.env.CLICKHOUSE_URL || process.env.NODE_ENV === "test"
+  env.NODE_ENV === "test"
     ? null
     : new NDJSONLogExporter({ basePath: DEFAULT_LOGS_DIR });
+
+const monitoringTraceExporter =
+  env.NODE_ENV === "test"
+    ? null
+    : new NDJSONTraceExporter({ basePath: DEFAULT_TRACES_DIR });
 
 /**
  * Initialize OpenTelemetry SDK
  */
 const sdk = new NodeSDK({
-  serviceName: process.env.OTEL_SERVICE_NAME ?? "mesh",
+  serviceName: env.OTEL_SERVICE_NAME,
   traceExporter,
   metricReader: prometheusExporter as unknown as MetricReader,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sampler: headSampler,
+  spanProcessors: [
+    ...(monitoringTraceExporter
+      ? [
+          new BatchSpanProcessor(monitoringTraceExporter, {
+            scheduledDelayMillis: 60_000,
+            maxExportBatchSize: 1000,
+          }),
+        ]
+      : []),
+  ],
   logRecordProcessors: [
-    ...(process.env.CLICKHOUSE_URL
+    ...(env.CLICKHOUSE_URL
       ? [new BatchLogRecordProcessor(new OTLPLogExporter())]
       : []),
     ...(monitoringLogExporter
@@ -363,10 +377,14 @@ export async function flushTraceExporter(): Promise<void> {
   if (monitoringLogExporter) {
     await monitoringLogExporter.forceFlush();
   }
-  // 3. Flush trace provider (for cloud OTLP exporter)
+  // 3. Flush trace provider (drains BatchSpanProcessor → export())
   const provider = trace.getTracerProvider();
   if ("forceFlush" in provider) {
     await (provider as { forceFlush(): Promise<void> }).forceFlush();
+  }
+  // 4. Flush NDJSONTraceExporter's internal write buffer
+  if (monitoringTraceExporter) {
+    await monitoringTraceExporter.forceFlush();
   }
 }
 

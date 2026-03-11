@@ -13,7 +13,7 @@ import {
   reqCorrelationId,
   setCorrelationIdHeader,
 } from "./index";
-import type { Env } from "../api/env";
+import type { Env } from "../api/hono-env";
 
 /**
  * Tracing middleware that creates a span for each request

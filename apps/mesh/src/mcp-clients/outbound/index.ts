@@ -5,6 +5,7 @@
  * (STDIO, HTTP, Websocket, SSE).
  */
 
+import { env } from "../../env";
 import type { MeshContext } from "@/core/mesh-context";
 import {
   type ConnectionEntity,
@@ -51,10 +52,7 @@ export async function createOutboundClient(
   switch (connection.connection_type) {
     case "STDIO": {
       // Block STDIO connections in production unless explicitly allowed
-      if (
-        process.env.NODE_ENV === "production" &&
-        process.env.UNSAFE_ALLOW_STDIO_TRANSPORT !== "true"
-      ) {
+      if (env.NODE_ENV === "production" && !env.UNSAFE_ALLOW_STDIO_TRANSPORT) {
         throw new Error(
           "STDIO connections are disabled in production. Set UNSAFE_ALLOW_STDIO_TRANSPORT=true to enable.",
         );

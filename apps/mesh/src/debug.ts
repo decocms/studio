@@ -14,6 +14,7 @@
 import v8 from "node:v8";
 import { rename, mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { env } from "./env";
 
 export interface DebugServerConfig {
   port: number;
@@ -72,7 +73,7 @@ export function startDebugServer(config: DebugServerConfig) {
 
       // GET /prestop-hook - save heap snapshot if PRESTOP_HEAP_SNAPSHOT_DIR is set
       if (url.pathname === "/prestop-hook") {
-        const directory = process.env.PRESTOP_HEAP_SNAPSHOT_DIR;
+        const directory = env.PRESTOP_HEAP_SNAPSHOT_DIR;
 
         if (!directory) {
           return Response.json({
@@ -85,8 +86,7 @@ export function startDebugServer(config: DebugServerConfig) {
           await mkdir(directory, { recursive: true });
 
           const snapshotPath = v8.writeHeapSnapshot();
-          const podName =
-            process.env.HOSTNAME ?? process.env.POD_NAME ?? "unknown";
+          const podName = env.HOSTNAME ?? env.POD_NAME ?? "unknown";
           const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
           const filename = `${podName}-${timestamp}.heapsnapshot`;
           const destPath = join(directory, filename);

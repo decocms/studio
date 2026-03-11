@@ -97,7 +97,7 @@ describe("createMonitoringEngine", () => {
 
   it("should use DEFAULT_LOGS_DIR when no basePath", () => {
     const { source } = createMonitoringEngine({});
-    expect(source).toContain("deco/system/logs");
+    expect(source).toContain("deco/logs");
   });
 
   it("should create ClickHouseClientEngine when clickhouseUrl is set", () => {

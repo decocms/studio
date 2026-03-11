@@ -15,6 +15,7 @@ import { Hono } from "hono";
 import { createHmac } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { env } from "../../env";
 
 // Base directory for dev assets (relative to cwd)
 const DEV_ASSETS_BASE_DIR = "./data/assets";
@@ -62,7 +63,7 @@ function verifySignature(
   method: "GET" | "PUT",
   signature: string,
 ): boolean {
-  const secret = process.env.ENCRYPTION_KEY || "dev-secret";
+  const secret = env.ENCRYPTION_KEY || "dev-secret";
   const data = `${orgId}:${key}:${expires}:${method}`;
   const expectedSignature = createHmac("sha256", secret)
     .update(data)

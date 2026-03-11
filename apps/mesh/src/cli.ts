@@ -58,7 +58,7 @@ Usage:
 
 Options:
   -p, --port <port>     Port to listen on (default: 3000, or PORT env var)
-  --home <path>         Data directory (default: ~/deco/, or DECOCMS_HOME env var)
+  --home <path>         Data directory (default: ~/deco/, or DATA_DIR env var)
   --local-mode          Enable local mode (auto-login, no auth required)
   -h, --help            Show this help message
   -v, --version         Show version
@@ -66,8 +66,8 @@ Options:
 
 Environment Variables:
   PORT                  Port to listen on (default: 3000)
-  DECOCMS_HOME          Data directory (default: ~/deco/)
-  DATABASE_URL          Database connection URL (default: ~/deco/system/db.pglite)
+  DATA_DIR              Data directory (default: ~/deco/)
+  DATABASE_URL          Database connection URL (default: file://$HOME/deco/db.pglite)
   NODE_ENV              Set to 'production' for production mode
   BETTER_AUTH_SECRET    Secret for authentication (auto-generated if not set)
   ENCRYPTION_KEY        Key for encrypting secrets (auto-generated if not set)
@@ -115,8 +115,12 @@ if (values.version) {
 // ============================================================================
 
 const decoHome =
-  values.home || process.env.DECOCMS_HOME || join(homedir(), "deco");
+  values.home ||
+  process.env.DATA_DIR ||
+  process.env.DECOCMS_HOME ||
+  join(homedir(), "deco");
 process.env.DECOCMS_HOME = decoHome;
+process.env.DATA_DIR = decoHome;
 process.env.PORT = values.port;
 
 if (!process.env.NODE_ENV) {
@@ -246,18 +250,10 @@ if (!values["skip-migrations"]) {
   }
 }
 
-// ============================================================================
-// Status
-// ============================================================================
-
-const url = `http://localhost:${values.port || "3000"}`;
 console.log("");
 console.log(
-  `${bold}  Mode:     ${localMode ? `\x1b[32mLocal${reset}${bold} (auto-login enabled)` : "Standard (login required)"}${reset}`,
+  `${bold}  Mode:       ${localMode ? `\x1b[32mLocal${reset}${bold} (auto-login enabled)` : "Standard (login required)"}${reset}`,
 );
-console.log(`${bold}  Home:     ${dim}${displayHome}/${reset}`);
-console.log(`${bold}  Database: ${dim}${displayHome}/system/db.pglite${reset}`);
-console.log(`${bold}  URL:      ${dim}${url}${reset}`);
 console.log("");
 
 // ============================================================================
