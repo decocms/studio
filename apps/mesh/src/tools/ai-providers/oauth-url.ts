@@ -21,7 +21,7 @@ export const AI_PROVIDER_OAUTH_URL = defineTool({
       .refine(
         (url) => {
           const base = env.BASE_URL ?? `http://localhost:${env.PORT}`;
-          return url.startsWith(base);
+          return new URL(url).origin === new URL(base).origin;
         },
         { message: "callbackUrl must be on the same origin as BASE_URL" },
       ),

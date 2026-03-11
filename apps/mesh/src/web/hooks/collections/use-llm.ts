@@ -132,3 +132,25 @@ export function useAiProviderModels(keyId: string | undefined) {
   });
   return data?.models ?? [];
 }
+
+export function useSuspenseAiProviderModels(keyId: string) {
+  const { locator, org } = useProjectContext();
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+  });
+
+  const { data } = useSuspenseQuery({
+    queryKey: KEYS.aiProviderModels(locator, keyId),
+    queryFn: async () => {
+      const result = (await client.callTool({
+        name: "AI_PROVIDERS_LIST_MODELS",
+        arguments: { keyId },
+      })) as {
+        structuredContent?: { models: AiProviderModel[] };
+      };
+      return result.structuredContent ?? null;
+    },
+  });
+  return data?.models ?? [];
+}

@@ -436,19 +436,29 @@ function ModelListSkeleton() {
 
 function ConnectionModelList({
   keyId,
+  searchTerm,
   onHover,
   onModelSelect,
 }: {
   keyId: string | undefined;
+  searchTerm: string;
   selectedModel?: AiProviderModel | null;
   onModelSelect: (model: AiProviderModel) => void;
   onHover: (model: AiProviderModel) => void;
 }) {
   const allModels = useAiProviderModels(keyId);
+  const normalizedSearch = searchTerm.toLowerCase().trim();
+  const filteredModels = normalizedSearch
+    ? allModels.filter(
+        (m) =>
+          m.title.toLowerCase().includes(normalizedSearch) ||
+          m.modelId.toLowerCase().includes(normalizedSearch),
+      )
+    : allModels;
 
   return (
     <div className="flex-1 overflow-y-auto p-2">
-      {allModels.map((m, i) => {
+      {filteredModels.map((m, i) => {
         const key = m.modelId + i;
         return (
           <div
@@ -680,6 +690,7 @@ function ModelSelectorContent({ onClose }: { onClose: () => void }) {
           <Suspense fallback={<ModelListSkeleton />}>
             <ConnectionModelList
               keyId={credentialId ?? undefined}
+              searchTerm={searchTerm}
               onHover={setHoveredModel}
               onModelSelect={handleModelSelect}
             />

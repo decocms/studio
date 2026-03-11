@@ -640,10 +640,17 @@ export function ChatProvider({ children }: PropsWithChildren) {
 
   // Model state — filter out connections where the user's role allows no models
   const allModelsConnections = keys;
-  const [model, setModel] = useLocalStorage<AiProviderModel | null>(
+  const [storedModel, setModel] = useLocalStorage<AiProviderModel | null>(
     LOCALSTORAGE_KEYS.chatSelectedModel(locator),
     null,
   );
+
+  // Guard against stale localStorage entries that predate the current schema.
+  // If required fields are missing the stored value is unusable — treat as null.
+  const model =
+    storedModel && typeof storedModel.modelId === "string" && storedModel.title
+      ? storedModel
+      : null;
 
   // Mode state
   const [selectedMode, setSelectedMode] =

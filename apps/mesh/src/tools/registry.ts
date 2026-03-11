@@ -724,6 +724,7 @@ export function getToolsByCategory() {
     "Code Execution": [],
     Tags: [],
     Projects: [],
+    "AI Providers": [],
   };
 
   for (const tool of MANAGEMENT_TOOLS) {

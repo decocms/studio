@@ -301,10 +301,7 @@ export function ProviderCard({
         if (stateToken === oauthStateToken) {
           exchangeOAuth({ code, stateToken });
         } else {
-          console.error("State token mismatch", {
-            expected: oauthStateToken,
-            received: stateToken,
-          });
+          console.error("State token mismatch");
           toast.error("Security check failed: State token mismatch");
           setIsOAuthPending(false);
           setOauthStateToken(null);

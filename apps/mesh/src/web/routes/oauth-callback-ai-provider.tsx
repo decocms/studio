@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Loading01 } from "@untitledui/icons";
 
 export default function AiProviderOAuthCallback() {
@@ -8,12 +8,10 @@ export default function AiProviderOAuthCallback() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const hasSentRef = useRef(false);
 
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect
-  useEffect(() => {
-    if (hasSentRef.current) return;
+  if (!hasSentRef.current) {
     hasSentRef.current = true;
 
-    const processCallback = () => {
+    queueMicrotask(() => {
       try {
         const params = new URLSearchParams(window.location.search);
         const code = params.get("code");
@@ -38,10 +36,8 @@ export default function AiProviderOAuthCallback() {
         setErrorMessage(err instanceof Error ? err.message : String(err));
         setStatus("error");
       }
-    };
-
-    processCallback();
-  }, []);
+    });
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center p-8 bg-background">

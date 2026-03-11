@@ -15,8 +15,7 @@ import { useConnections, useProjectContext } from "@decocms/mesh-sdk";
 import {
   AiProviderKey,
   useAiProviderKeyList,
-  useLLMsFromConnection,
-  type LLM,
+  useSuspenseAiProviderModels,
 } from "@/web/hooks/collections/use-llm";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { Badge } from "@deco/ui/components/badge.tsx";
@@ -421,12 +420,20 @@ function ConnectionModelsSection({
   selectedModels: string[];
   allowAllModels: boolean;
   onToggleModel: (connectionId: string, modelId: string) => void;
-  onToggleConnectionAll: (connectionId: string, models: LLM[]) => void;
+  onToggleConnectionAll: (
+    connectionId: string,
+    models: { id: string }[],
+  ) => void;
   allConnectionModelsSelected: boolean;
   searchQuery: string;
   readOnly: boolean;
 }) {
-  const models = useLLMsFromConnection(connection.id, { pageSize: 999 });
+  const rawModels = useSuspenseAiProviderModels(connection.id);
+  const models = rawModels.map((m) => ({
+    ...m,
+    id: m.modelId,
+    provider: connection.label,
+  }));
 
   // Filter models by search query
   const filteredModels = searchQuery.trim()
@@ -570,7 +577,10 @@ function ModelsPermissionsTab({
   };
 
   // Toggle all models for a connection
-  const toggleConnectionAll = (connectionId: string, models: LLM[]) => {
+  const toggleConnectionAll = (
+    connectionId: string,
+    models: { id: string }[],
+  ) => {
     const current = modelSet[connectionId] ?? [];
     const allModelIds = models.map((m) => m.id);
     const allSelected =
