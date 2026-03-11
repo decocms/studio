@@ -8,9 +8,7 @@
 import type { ModelCollectionEntitySchema } from "@decocms/bindings/llm";
 import {
   SELF_MCP_ALIAS_ID,
-  useCollectionList,
   useMCPClient,
-  useMCPClientOptional,
   useProjectContext,
   type AiProviderModel as BaseAiProviderModel,
   type AiProviderKey,
@@ -29,26 +27,6 @@ export type LLM = z.infer<typeof ModelCollectionEntitySchema>;
  * Options for useLLMsFromConnection hook
  */
 export type UseLLMsOptions = UseCollectionListOptions<LLM>;
-
-/**
- * Hook to get all LLM models from a specific connection
- *
- * @param connectionId - The ID of the connection to fetch LLMs from
- * @param options - Filter and configuration options
- * @returns Suspense query result with LLMs
- */
-export function useLLMsFromConnection(
-  connectionId: string | undefined,
-  options: UseLLMsOptions = {},
-) {
-  const { org } = useProjectContext();
-  const client = useMCPClientOptional({
-    connectionId,
-    orgId: org.id,
-  });
-  const scopeKey = connectionId ?? "no-connection";
-  return useCollectionList<LLM>(scopeKey, "LLM", client, options);
-}
 
 export function useAiProviders() {
   const { locator, org } = useProjectContext();
