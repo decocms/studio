@@ -103,7 +103,6 @@ jobs:
         run: bun run check:ci
 
   test:
-    needs: setup
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -117,15 +116,8 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Restore dependencies
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            node_modules
-            apps/*/node_modules
-            packages/*/node_modules
-            ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+      - name: Install dependencies
+        run: bun install
 
       - name: Run tests (shard ${{ matrix.shard }}/${{ matrix.total_shards }})
         run: |
