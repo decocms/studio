@@ -15,7 +15,7 @@ import {
 
 export type { AiProviderKey };
 
-import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { KEYS } from "../../lib/query-keys";
 
 export function useAiProviders() {
@@ -74,49 +74,4 @@ export function useAiProviderKeyList() {
     },
   });
   return data?.keys ?? [];
-}
-
-export function useAiProviderModels(keyId: string | undefined) {
-  const { locator, org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-  });
-
-  const { data } = useQuery({
-    queryKey: KEYS.aiProviderModels(locator, keyId ?? ""),
-    enabled: !!keyId,
-    queryFn: async () => {
-      const result = (await client.callTool({
-        name: "AI_PROVIDERS_LIST_MODELS",
-        arguments: { keyId },
-      })) as {
-        structuredContent?: { models: AiProviderModel[] };
-      };
-      return result.structuredContent ?? null;
-    },
-  });
-  return data?.models ?? [];
-}
-
-export function useSuspenseAiProviderModels(keyId: string) {
-  const { locator, org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-  });
-
-  const { data } = useSuspenseQuery({
-    queryKey: KEYS.aiProviderModels(locator, keyId),
-    queryFn: async () => {
-      const result = (await client.callTool({
-        name: "AI_PROVIDERS_LIST_MODELS",
-        arguments: { keyId },
-      })) as {
-        structuredContent?: { models: AiProviderModel[] };
-      };
-      return result.structuredContent ?? null;
-    },
-  });
-  return data?.models ?? [];
 }

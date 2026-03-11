@@ -214,7 +214,7 @@ export type AiProvider = {
   supportedMethods: ("api-key" | "oauth-pkce")[];
 };
 
-export function ProviderCard({
+function ProviderCard({
   provider,
   keys,
 }: {
