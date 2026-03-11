@@ -83,22 +83,99 @@ function redactUrl(url: string | undefined): string {
   }
 }
 
-console.log(
-  "Mesh configuration:",
-  JSON.stringify(
-    {
-      NODE_ENV: env.NODE_ENV,
-      PORT: env.PORT,
-      BASE_URL: env.BASE_URL ?? `http://localhost:${env.PORT}`,
-      DATA_DIR: env.DATA_DIR,
-      DATABASE_URL: redactUrl(env.DATABASE_URL),
-      CLICKHOUSE_URL: redactUrl(env.CLICKHOUSE_URL),
-      NATS_URL: redactUrl(env.NATS_URL),
-      OTEL_SERVICE_NAME: env.OTEL_SERVICE_NAME,
-      MESH_LOCAL_MODE: env.MESH_LOCAL_MODE,
-      NOTIFY_STRATEGY: env.NOTIFY_STRATEGY ?? "auto",
-    },
-    null,
-    2,
-  ),
-);
+const dim = (s: string) => `\x1b[2m${s}\x1b[22m`;
+const green = (s: string) => `\x1b[32m${s}\x1b[39m`;
+const yellow = (s: string) => `\x1b[33m${s}\x1b[39m`;
+const cyan = (s: string) => `\x1b[36m${s}\x1b[39m`;
+
+const SECRET_KEYS = new Set([
+  "BETTER_AUTH_SECRET",
+  "ENCRYPTION_KEY",
+  "MESH_JWT_SECRET",
+]);
+const URL_KEYS = new Set(["DATABASE_URL", "CLICKHOUSE_URL", "NATS_URL"]);
+
+function formatValue(key: string, raw: unknown): string {
+  if (SECRET_KEYS.has(key)) {
+    return raw ? dim("●●●●●●") : dim("not set");
+  }
+  if (URL_KEYS.has(key)) {
+    const redacted = redactUrl(raw as string | undefined);
+    return redacted === "not set" ? dim(redacted) : cyan(redacted);
+  }
+  if (raw === undefined || raw === null || raw === "") return dim("not set");
+  const str = String(raw);
+  if (str === "true") return green(str);
+  if (str === "false") return yellow(str);
+  try {
+    new URL(str);
+    return cyan(str);
+  } catch {
+    return str;
+  }
+}
+
+function logConfiguration(e: Env) {
+  const KEY_WIDTH = 32;
+  const RULE_WIDTH = 42;
+  const lines: string[] = [];
+
+  const section = (title: string) => {
+    lines.push("");
+    lines.push(
+      `  ${dim(`── ${title} ${"─".repeat(Math.max(0, RULE_WIDTH - title.length - 4))}`)}`,
+    );
+  };
+
+  const row = (key: string, value: unknown) => {
+    lines.push(`  ${dim(key.padEnd(KEY_WIDTH))}${formatValue(key, value)}`);
+  };
+
+  lines.push("");
+  lines.push("  Mesh Configuration");
+
+  section("Core");
+  row("NODE_ENV", e.NODE_ENV);
+  row("PORT", e.PORT);
+  row("BASE_URL", e.BASE_URL ?? `http://localhost:${e.PORT}`);
+  row("DATA_DIR", e.DATA_DIR);
+
+  section("Database");
+  row("DATABASE_URL", e.DATABASE_URL);
+  row("DATABASE_PG_SSL", e.DATABASE_PG_SSL);
+
+  section("Auth & Secrets");
+  row("BETTER_AUTH_SECRET", e.BETTER_AUTH_SECRET);
+  row("ENCRYPTION_KEY", e.ENCRYPTION_KEY);
+  row("MESH_JWT_SECRET", e.MESH_JWT_SECRET);
+  row("MESH_LOCAL_MODE", e.MESH_LOCAL_MODE);
+  row("MESH_ALLOW_LOCAL_PROD", e.MESH_ALLOW_LOCAL_PROD);
+  row("DISABLE_RATE_LIMIT", e.DISABLE_RATE_LIMIT);
+
+  section("Observability");
+  row("CLICKHOUSE_URL", e.CLICKHOUSE_URL);
+  row("OTEL_SERVICE_NAME", e.OTEL_SERVICE_NAME);
+
+  section("Event Bus & Networking");
+  row("NATS_URL", e.NATS_URL);
+  row("NOTIFY_STRATEGY", e.NOTIFY_STRATEGY ?? "auto");
+
+  section("Config Files");
+  row("CONFIG_PATH", e.CONFIG_PATH);
+  row("AUTH_CONFIG_PATH", e.AUTH_CONFIG_PATH);
+
+  section("Transport");
+  row("UNSAFE_ALLOW_STDIO_TRANSPORT", e.UNSAFE_ALLOW_STDIO_TRANSPORT);
+
+  section("Debug / K8s");
+  row("DEBUG_PORT", e.DEBUG_PORT);
+  row("ENABLE_DEBUG_SERVER", e.ENABLE_DEBUG_SERVER);
+  row("PRESTOP_HEAP_SNAPSHOT_DIR", e.PRESTOP_HEAP_SNAPSHOT_DIR);
+  row("POD_NAME", e.POD_NAME);
+  row("HOSTNAME", e.HOSTNAME);
+
+  lines.push("");
+  console.log(lines.join("\n"));
+}
+
+logConfiguration(env);
