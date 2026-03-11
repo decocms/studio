@@ -11,7 +11,7 @@
  * - For PGlite: the PGlite instance (for lifecycle management)
  */
 
-import { existsSync, mkdirSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "fs";
 import { type Dialect, Kysely, LogEvent, PostgresDialect } from "kysely";
 import { PGlite } from "@electric-sql/pglite";
 import { KyselyPGlite } from "kysely-pglite";
@@ -165,8 +165,44 @@ function extractPGlitePath(connectionString: string): string {
   return connectionString;
 }
 
+function clearStalePGliteLock(dataDir: string): void {
+  const pidFile = path.join(dataDir, "postmaster.pid");
+  if (!existsSync(pidFile)) return;
+
+  try {
+    const raw = readFileSync(pidFile, "utf8").trim();
+    const pid = parseInt(raw.split("\n")[0] ?? "", 10);
+
+    // Negative or NaN PID is always stale
+    const isAlive =
+      pid > 0 &&
+      (() => {
+        try {
+          process.kill(pid, 0);
+          return true;
+        } catch (err) {
+          // EPERM means the process exists but we cannot signal it — treat as alive.
+          // Only ESRCH means no such process, i.e. genuinely stale.
+          return (err as NodeJS.ErrnoException).code === "EPERM";
+        }
+      })();
+
+    if (!isAlive) {
+      rmSync(pidFile);
+      console.warn(
+        `Removed stale PGlite lock file (PID ${pid} not running): ${pidFile}`,
+      );
+    }
+  } catch {
+    // If we can't read/parse the pid file, leave it alone
+  }
+}
+
 function createPGliteInstance(dataDir: string): PGlite {
   const resolvedDir = ensurePGliteDirectory(dataDir);
+  if (resolvedDir !== ":memory:") {
+    clearStalePGliteLock(resolvedDir);
+  }
   return new PGlite(resolvedDir === ":memory:" ? undefined : resolvedDir);
 }
 
