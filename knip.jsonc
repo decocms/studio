@@ -22,15 +22,7 @@
         // Dev-only module loaded via require() - needs explicit entry
         "src/api/routes/dev-only.ts"
       ],
-      "ignore": [
-        "src/api/index.ts",
-        // Called from routes.ts in the next PR; unused here by design
-        "src/monitoring/emit-llm-call.ts",
-        "src/monitoring/record-llm-call-metrics.ts",
-        // Wired into MeshContext in the next PR (context-factory.ts); unused here by design
-        "src/storage/ai-provider-keys.ts",
-        "src/storage/oauth-pkce-states.ts"
-      ]
+      "ignore": ["src/api/index.ts"]
     },
     "packages/mesh-sdk": {
       "ignoreDependencies": ["sonner"]
@@ -42,10 +34,6 @@
   "ignoreDependencies": ["@types/*"],
   // TODO(@camudo): Remove this config once I fix all unused type exports
   "ignoreIssues": {
-    "**/*": ["types"],
-    // MONITORING_LOG_TYPE_LLM_CALL and DECOPILOT_CONNECTION_ID are consumed by
-    // emit-llm-call.ts / record-llm-call-metrics.ts, which are in the ignore
-    // list until routes.ts wires them up in the next PR.
-    "apps/mesh/src/monitoring/schema.ts": ["exports"]
+    "**/*": ["types"]
   }
 }
