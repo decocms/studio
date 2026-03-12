@@ -341,18 +341,24 @@ function TopToolsContent({
               margin={{ left: 8, right: 8, top: 5, bottom: 5 }}
             >
               <XAxis
-                dataKey="label"
+                dataKey="t"
                 axisLine={false}
                 tickLine={false}
                 tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-                ticks={
-                  buckets.length <= 10
-                    ? buckets.map((b) => b.label)
-                    : Array.from({ length: 10 }, (_, i) => {
-                        const idx = Math.round((i * (buckets.length - 1)) / 9);
-                        return buckets[idx]!.label;
-                      })
-                }
+                ticks={Array.from(
+                  { length: Math.min(10, buckets.length) },
+                  (_, i) => {
+                    const idx =
+                      buckets.length <= 10
+                        ? i
+                        : Math.round((i * (buckets.length - 1)) / 9);
+                    return buckets[idx]!.t;
+                  },
+                )}
+                tickFormatter={(t) => {
+                  const b = buckets.find((b) => b.t === t);
+                  return b?.label ?? "";
+                }}
               />
               <ChartTooltip
                 content={({ active, payload }) => {
