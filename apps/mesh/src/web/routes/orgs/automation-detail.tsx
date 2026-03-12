@@ -25,6 +25,7 @@ import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ChevronRight, Plus, Trash01 } from "@untitledui/icons";
 import { useState } from "react";
+import { useParams } from "@tanstack/react-router";
 import { formatTimeAgo } from "@/web/lib/format-time";
 
 // ============================================================================
@@ -374,8 +375,8 @@ function RunHistoryTab({ entries }: RunHistoryTabProps) {
             className={cn(
               "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium",
               entry.status === "success"
-                ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+                ? "bg-green-500/15 text-green-700"
+                : "bg-red-500/15 text-red-700",
             )}
           >
             {entry.status === "success" ? "Success" : "Failed"}
@@ -402,8 +403,13 @@ const TABS = [
 ];
 
 export default function AutomationDetail() {
-  const [title, setTitle] = useState("Daily Standup Summary");
-  const [active, setActive] = useState(true);
+  const { automationId } = useParams({ strict: false }) as {
+    automationId: string;
+  };
+  const isNew = automationId === "new";
+
+  const [title, setTitle] = useState(isNew ? "" : "Daily Standup Summary");
+  const [active, setActive] = useState(!isNew);
   const [activeTab, setActiveTab] = useState<"settings" | "run-history">(
     "settings",
   );
@@ -412,7 +418,7 @@ export default function AutomationDetail() {
   const [selectedModel, setSelectedModel] = useState<
     SelectedModelState | undefined
   >(undefined);
-  const [tools, setTools] = useState<AutomationTool[]>(MOCK_TOOLS);
+  const [tools, setTools] = useState<AutomationTool[]>(isNew ? [] : MOCK_TOOLS);
   const [toolSheetOpen, setToolSheetOpen] = useState(false);
 
   const toolSet: Record<string, string[]> = {};
@@ -463,7 +469,7 @@ export default function AutomationDetail() {
           <Input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="border-none shadow-none focus-visible:ring-0 text-sm font-medium p-0 h-auto bg-transparent"
+            className="border-none shadow-none focus-visible:ring-0 text-sm font-medium p-0 h-auto bg-transparent w-auto max-w-xs"
           />
         </Page.Header.Left>
         <Page.Header.Right>

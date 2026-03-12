@@ -101,6 +101,7 @@ export default function AutomationsPage() {
       <Page.Content>
         {automations.length === 0 ? (
           <EmptyState
+            image={<Zap size={36} className="text-muted-foreground" />}
             title="No automations yet"
             description="Create your first automation to get started."
             actions={
@@ -115,7 +116,7 @@ export default function AutomationsPage() {
               <button
                 key={automation.id}
                 type="button"
-                className="flex items-center gap-3 px-4 py-3 hover:bg-accent/50 transition-colors text-left w-full"
+                className="flex items-center gap-3 px-4 py-3 hover:bg-accent/50 transition-colors text-left w-full cursor-pointer"
                 onClick={() => handleAutomationClick(automation)}
               >
                 {/* Status dot */}

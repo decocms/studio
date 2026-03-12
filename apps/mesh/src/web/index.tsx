@@ -472,11 +472,6 @@ const automationDetailRoute = createRoute({
   component: lazyRouteComponent(
     () => import("./routes/orgs/automation-detail.tsx"),
   ),
-  validateSearch: z.lazy(() =>
-    z.object({
-      tab: z.string().optional(),
-    }),
-  ),
 });
 
 // Pinned App View (available for all projects)
