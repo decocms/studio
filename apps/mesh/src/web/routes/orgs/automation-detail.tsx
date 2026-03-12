@@ -348,14 +348,14 @@ function TriggerRow({
       return;
     }
     try {
-      await removeTrigger.mutateAsync({
-        trigger_id: trigger.id,
-        automation_id: automationId,
-      });
       await addTrigger.mutateAsync({
         automation_id: automationId,
         type: "cron",
         cron_expression: trimmed,
+      });
+      await removeTrigger.mutateAsync({
+        trigger_id: trigger.id,
+        automation_id: automationId,
       });
       toast.success("Trigger updated");
       setEditing(false);
@@ -497,7 +497,7 @@ function SettingsTab({
       ?.tiptapDoc ?? undefined;
   const [tiptapDoc, setTiptapDoc] =
     useState<Metadata["tiptapDoc"]>(initialTiptapDoc);
-  const [savedDoc] = useState(initialTiptapDoc);
+  const [savedDoc, setSavedDoc] = useState(initialTiptapDoc);
 
   const form = useForm<SettingsFormData>({
     defaultValues: {
@@ -535,6 +535,7 @@ function SettingsTab({
         tool_approval_level: "none",
       });
       form.reset(values);
+      setSavedDoc(tiptapDoc);
       toast.success("Automation saved");
     } catch {
       toast.error("Failed to save automation");
@@ -816,7 +817,11 @@ export default function AutomationDetailPage() {
         </Button>
       </ViewActions>
 
-      <SettingsTab automationId={automationId} automation={automation} />
+      <SettingsTab
+        key={automationId}
+        automationId={automationId}
+        automation={automation}
+      />
 
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>

@@ -25,7 +25,9 @@ function fileAttrsToParts(
   // Text files: decode base64 and return as text part
   if (mimeType.startsWith("text/")) {
     try {
-      const decodedText = atob(data);
+      const decodedText = new TextDecoder().decode(
+        Uint8Array.from(atob(data), (c) => c.charCodeAt(0)),
+      );
       return [
         {
           type: "text",

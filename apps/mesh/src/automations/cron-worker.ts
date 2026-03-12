@@ -106,19 +106,12 @@ export class AutomationCronWorker {
 
   private async scheduleNextRun(trigger: AutomationTrigger): Promise<void> {
     if (!trigger.cron_expression) return;
-    try {
-      const cron = new Cron(trigger.cron_expression);
-      const nextRun = cron.nextRun();
-      if (nextRun) {
-        await this.storage.updateTriggerNextRunAt(
-          trigger.id,
-          nextRun.toISOString(),
-        );
-      }
-    } catch (err) {
-      console.error(
-        `[AutomationCron] Failed to compute next run for trigger ${trigger.id}:`,
-        err,
+    const cron = new Cron(trigger.cron_expression);
+    const nextRun = cron.nextRun();
+    if (nextRun) {
+      await this.storage.updateTriggerNextRunAt(
+        trigger.id,
+        nextRun.toISOString(),
       );
     }
   }

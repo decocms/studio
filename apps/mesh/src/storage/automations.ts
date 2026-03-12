@@ -454,7 +454,12 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         "a.updated_at as a_updated_at",
       ])
       .where("t.type", "=", "cron")
-      .where(sql<SqlBool>`t.next_run_at <= ${now}`)
+      .where((eb) =>
+        eb.or([
+          eb(sql`t.next_run_at`, "<=", now),
+          eb("t.next_run_at", "is", null),
+        ]),
+      )
       .where("a.active", "=", true)
       .execute();
 

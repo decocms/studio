@@ -103,18 +103,27 @@ export class EventTriggerEngine {
   ): boolean {
     if (!triggerParams) return true;
 
-    let parsed: Record<string, string>;
+    let parsed: unknown;
     try {
       parsed = JSON.parse(triggerParams);
     } catch {
       return false;
     }
 
-    if (Object.keys(parsed).length === 0) return true;
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
+      return false;
+    }
+
+    const params = parsed as Record<string, string>;
+    if (Object.keys(params).length === 0) return true;
     if (typeof eventData !== "object" || eventData === null) return false;
 
     const data = eventData as Record<string, unknown>;
-    return Object.entries(parsed).every(([key, value]) => data[key] === value);
+    return Object.entries(params).every(([key, value]) => data[key] === value);
   }
 
   /**
@@ -123,7 +132,7 @@ export class EventTriggerEngine {
   private buildContextMessages(
     eventData: unknown,
   ): Array<{ role: string; content: string }> {
-    let serialized = JSON.stringify(eventData, null, 2);
+    let serialized = JSON.stringify(eventData, null, 2) ?? "null";
     if (serialized.length > EventTriggerEngine.MAX_EVENT_PAYLOAD_BYTES) {
       serialized =
         serialized.slice(0, EventTriggerEngine.MAX_EVENT_PAYLOAD_BYTES) +

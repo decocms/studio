@@ -203,18 +203,14 @@ export function TiptapInput({
       />
 
       {/* Render prompts dropdown menu (includes dialog) */}
-      {virtualMcpId ? (
-        <Suspense fallback={null}>
-          <PromptsMention editor={editor} virtualMcpId={virtualMcpId} />
-        </Suspense>
-      ) : null}
+      <Suspense fallback={null}>
+        <PromptsMention editor={editor} virtualMcpId={virtualMcpId ?? null} />
+      </Suspense>
 
       {/* Render resources dropdown menu */}
-      {virtualMcpId ? (
-        <Suspense fallback={null}>
-          <ResourcesMention editor={editor} virtualMcpId={virtualMcpId} />
-        </Suspense>
-      ) : null}
+      <Suspense fallback={null}>
+        <ResourcesMention editor={editor} virtualMcpId={virtualMcpId ?? null} />
+      </Suspense>
 
       {/* Render file upload handler */}
       {showFileUploader && selectedModel ? (

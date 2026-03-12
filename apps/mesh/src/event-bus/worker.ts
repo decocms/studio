@@ -366,6 +366,8 @@ export class EventBusWorker {
       }> = [];
 
       for (const pending of pendingDeliveries) {
+        // Skip retried deliveries to avoid re-triggering automations
+        if (pending.delivery.attempts > 0) continue;
         if (!seenIds.has(pending.event.id)) {
           seenIds.add(pending.event.id);
           uniqueEvents.push({

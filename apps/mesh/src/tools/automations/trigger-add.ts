@@ -69,9 +69,10 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
 
       // Compute initial next_run_at
       const nextRun = cron.nextRun();
-      if (nextRun) {
-        nextRunAt = nextRun.toISOString();
+      if (!nextRun) {
+        throw new Error("Cron expression has no future runs");
       }
+      nextRunAt = nextRun.toISOString();
     }
 
     if (input.type === "event") {

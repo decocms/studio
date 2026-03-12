@@ -100,29 +100,28 @@ export async function fireAutomation(opts: {
     );
     if (!threadId) return { skipped: "concurrency_limit" };
 
-    // 3. Build request
-    const request = buildStreamRequest(automation, triggerId, threadId);
-    if (contextMessages) {
-      request.messages = [
-        ...request.messages,
-        ...contextMessages.map((m) => ({
-          id: crypto.randomUUID(),
-          role: m.role as "user" | "assistant" | "system",
-          parts: [{ type: "text" as const, text: m.content }],
-        })),
-      ];
-    }
-
-    // 4. Fire with timeout
+    // 3. Build request & fire with timeout
     const abortController = new AbortController();
     const timeout = setTimeout(
       () => abortController.abort(),
       config.runTimeoutMs,
     );
-    request.abortSignal = abortController.signal;
 
     let runError: string | undefined;
     try {
+      const request = buildStreamRequest(automation, triggerId, threadId);
+      if (contextMessages) {
+        request.messages = [
+          ...request.messages,
+          ...contextMessages.map((m) => ({
+            id: crypto.randomUUID(),
+            role: m.role as "user" | "assistant" | "system",
+            parts: [{ type: "text" as const, text: m.content }],
+          })),
+        ];
+      }
+      request.abortSignal = abortController.signal;
+
       const result = await streamCoreFn(request, ctx, {
         runRegistry: deps.runRegistry,
         streamBuffer: undefined,
@@ -135,7 +134,14 @@ export async function fireAutomation(opts: {
         `[Automation] Run failed for automation ${automation.id}:`,
         err,
       );
-      await storage.markRunFailed(threadId);
+      try {
+        await storage.markRunFailed(threadId);
+      } catch (markErr) {
+        console.error(
+          `[Automation] Failed to mark run as failed for thread ${threadId}:`,
+          markErr,
+        );
+      }
     } finally {
       clearTimeout(timeout);
     }
