@@ -194,6 +194,22 @@ interface LlmBucket {
   p95: number;
 }
 
+/**
+ * Find the index of the nearest display bucket for a given timestamp.
+ */
+function findNearestBucket(ts: number, bucketTimestamps: number[]): number {
+  let nearest = 0;
+  let minDist = Math.abs(ts - bucketTimestamps[0]!);
+  for (let i = 1; i < bucketTimestamps.length; i++) {
+    const dist = Math.abs(ts - bucketTimestamps[i]!);
+    if (dist < minDist) {
+      minDist = dist;
+      nearest = i;
+    }
+  }
+  return nearest;
+}
+
 function buildLlmBuckets(
   timeseries: Array<{
     timestamp: string;
@@ -213,43 +229,41 @@ function buildLlmBuckets(
   const endMs = end.getTime();
   const step = (endMs - startMs) / (BUCKET_COUNT - 1);
 
-  // Index server points by timestamp
-  const serverPoints = timeseries.map((p) => ({
-    ts: new Date(p.timestamp).getTime(),
-    ...p,
-  }));
-
+  // Create empty display buckets
   const buckets: LlmBucket[] = [];
+  const bucketTimestamps: number[] = [];
   for (let i = 0; i < BUCKET_COUNT; i++) {
     const ts = Math.round(startMs + i * step);
-    const date = new Date(ts);
-    const halfStep = step / 2;
-
-    let calls = 0;
-    let errors = 0;
-    let avg = 0;
-    let p95 = 0;
-    let count = 0;
-
-    for (const sp of serverPoints) {
-      if (Math.abs(sp.ts - ts) <= halfStep) {
-        calls += sp.calls;
-        errors += sp.errors;
-        avg += sp.avg;
-        p95 = Math.max(p95, sp.p95);
-        count++;
-      }
-    }
-
+    bucketTimestamps.push(ts);
     buckets.push({
-      t: date.toISOString(),
+      t: new Date(ts).toISOString(),
       ts,
-      label: formatBucketLabel(date, interval),
-      calls,
-      errors,
-      avg: count > 0 ? avg / count : 0,
-      p95,
+      label: formatBucketLabel(new Date(ts), interval),
+      calls: 0,
+      errors: 0,
+      avg: 0,
+      p95: 0,
     });
+  }
+
+  // Assign each server point to its nearest display bucket
+  const counts = new Array(BUCKET_COUNT).fill(0);
+  for (const point of timeseries) {
+    const pointTs = new Date(point.timestamp).getTime();
+    const idx = findNearestBucket(pointTs, bucketTimestamps);
+    const bucket = buckets[idx]!;
+    bucket.calls += point.calls;
+    bucket.errors += point.errors;
+    bucket.avg += point.avg;
+    bucket.p95 = Math.max(bucket.p95, point.p95);
+    counts[idx]++;
+  }
+
+  // Average out the avg field
+  for (let i = 0; i < BUCKET_COUNT; i++) {
+    if (counts[i]! > 0) {
+      buckets[i]!.avg = buckets[i]!.avg / counts[i]!;
+    }
   }
 
   return buckets;

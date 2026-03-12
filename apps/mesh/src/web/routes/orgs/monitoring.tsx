@@ -184,54 +184,61 @@ function buildFilledStatsData(
     ]),
   );
 
-  // Always generate exactly 10 display buckets
+  // Always generate exactly 20 display buckets
   const BUCKET_COUNT = 20;
   const startMs = range.startDate.getTime();
   const endMs = range.endDate.getTime();
   const step = (endMs - startMs) / (BUCKET_COUNT - 1);
   const data: MonitoringStatsData["data"] = [];
-
-  // Collect all server point timestamps for nearest-bucket matching
-  const serverTimestamps = [...pointMap.keys()].sort((a, b) => a - b);
+  const bucketTimestamps: number[] = [];
 
   for (let i = 0; i < BUCKET_COUNT; i++) {
     const ts = Math.round(startMs + i * step);
-    const date = new Date(ts);
+    bucketTimestamps.push(ts);
+    data.push({
+      t: new Date(ts).toISOString(),
+      ts,
+      label: formatTimestampLabel(new Date(ts).toISOString(), interval),
+      calls: 0,
+      errors: 0,
+      errorRate: 0,
+      avg: 0,
+      p50: 0,
+      p95: 0,
+    });
+  }
 
-    // Find all server points closest to this display bucket
-    const halfStep = step / 2;
-    let calls = 0;
-    let errors = 0;
-    let errorRate = 0;
-    let avg = 0;
-    let p50 = 0;
-    let p95 = 0;
-    let count = 0;
-
-    for (const serverTs of serverTimestamps) {
-      if (Math.abs(serverTs - ts) <= halfStep) {
-        const point = pointMap.get(serverTs)!;
-        calls += point.calls;
-        errors += point.errors;
-        errorRate += point.errorRate;
-        avg += point.avg;
-        p50 += point.p50;
-        p95 = Math.max(p95, point.p95);
-        count++;
+  // Assign each server point to its nearest display bucket
+  const counts = new Array(BUCKET_COUNT).fill(0);
+  for (const [serverTs, point] of pointMap) {
+    // Find nearest bucket
+    let nearest = 0;
+    let minDist = Math.abs(serverTs - bucketTimestamps[0]!);
+    for (let i = 1; i < bucketTimestamps.length; i++) {
+      const dist = Math.abs(serverTs - bucketTimestamps[i]!);
+      if (dist < minDist) {
+        minDist = dist;
+        nearest = i;
       }
     }
 
-    data.push({
-      t: date.toISOString(),
-      ts,
-      label: formatTimestampLabel(date.toISOString(), interval),
-      calls,
-      errors,
-      errorRate: count > 0 ? errorRate / count : 0,
-      avg: count > 0 ? avg / count : 0,
-      p50: count > 0 ? p50 / count : 0,
-      p95,
-    });
+    const bucket = data[nearest]!;
+    bucket.calls += point.calls;
+    bucket.errors += point.errors;
+    bucket.errorRate += point.errorRate;
+    bucket.avg += point.avg;
+    bucket.p50 += point.p50;
+    bucket.p95 = Math.max(bucket.p95, point.p95);
+    counts[nearest]++;
+  }
+
+  // Average out rate/latency fields
+  for (let i = 0; i < BUCKET_COUNT; i++) {
+    if (counts[i]! > 0) {
+      data[i]!.errorRate = data[i]!.errorRate / counts[i]!;
+      data[i]!.avg = data[i]!.avg / counts[i]!;
+      data[i]!.p50 = data[i]!.p50 / counts[i]!;
+    }
   }
 
   return data;
