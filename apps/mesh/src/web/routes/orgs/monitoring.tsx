@@ -589,7 +589,7 @@ function LlmStatsContent({ displayDateRange, isStreaming }: LlmStatsProps) {
     {
       id: "llm-calls",
       dataKey: "calls" as const,
-      colorNum: 2,
+      colorNum: 1,
       renderTitle: () => (
         <div className="flex flex-col gap-0.5 md:gap-1">
           <p className="text-xs md:text-sm text-muted-foreground">LLM Calls</p>
@@ -602,7 +602,7 @@ function LlmStatsContent({ displayDateRange, isStreaming }: LlmStatsProps) {
     {
       id: "llm-latency",
       dataKey: "avg" as const,
-      colorNum: 5,
+      colorNum: 4,
       renderTitle: () => (
         <div className="flex flex-col gap-0.5 md:gap-1">
           <p className="text-xs md:text-sm text-muted-foreground">
