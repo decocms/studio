@@ -1,6 +1,10 @@
 import z from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/mesh-context";
+import {
+  checkKeyPermission,
+  fetchModelPermissions,
+} from "@/api/routes/decopilot/model-permissions";
 
 export const AI_PROVIDER_KEY_DELETE = defineTool({
   name: "AI_PROVIDER_KEY_DELETE",
@@ -15,6 +19,15 @@ export const AI_PROVIDER_KEY_DELETE = defineTool({
     requireAuth(ctx);
     const org = requireOrganization(ctx);
     await ctx.access.check();
+
+    const allowedModels = await fetchModelPermissions(
+      ctx.db,
+      org.id,
+      ctx.auth.user?.role,
+    );
+    if (!checkKeyPermission(allowedModels, input.keyId)) {
+      throw new Error("Access denied: insufficient permissions for this key");
+    }
 
     await ctx.storage.aiProviderKeys.delete(input.keyId, org.id);
 

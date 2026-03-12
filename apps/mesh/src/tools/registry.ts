@@ -30,7 +30,8 @@ export type ToolCategory =
   | "Event Bus"
   | "Code Execution"
   | "Tags"
-  | "Projects";
+  | "Projects"
+  | "AI Providers";
 
 /**
  * All tool names - keep in sync with ALL_TOOLS in index.ts
@@ -112,6 +113,15 @@ const ALL_TOOL_NAMES = [
   "TAGS_DELETE",
   "MEMBER_TAGS_GET",
   "MEMBER_TAGS_SET",
+  // AI Provider tools
+  "AI_PROVIDERS_LIST",
+  "AI_PROVIDERS_LIST_MODELS",
+  "AI_PROVIDERS_ACTIVE",
+  "AI_PROVIDER_KEY_CREATE",
+  "AI_PROVIDER_KEY_DELETE",
+  "AI_PROVIDER_KEY_LIST",
+  "AI_PROVIDER_OAUTH_URL",
+  "AI_PROVIDER_OAUTH_EXCHANGE",
   // Project tools
   "PROJECT_LIST",
   "PROJECT_GET",
@@ -502,6 +512,48 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Set member tags",
     category: "Tags",
   },
+  // AI Provider tools
+  {
+    name: "AI_PROVIDERS_LIST",
+    description: "List available AI providers",
+    category: "AI Providers",
+  },
+  {
+    name: "AI_PROVIDERS_LIST_MODELS",
+    description: "List models for an AI provider key",
+    category: "AI Providers",
+  },
+  {
+    name: "AI_PROVIDERS_ACTIVE",
+    description: "List active AI provider keys with models",
+    category: "AI Providers",
+  },
+  {
+    name: "AI_PROVIDER_KEY_CREATE",
+    description: "Store an AI provider API key",
+    category: "AI Providers",
+  },
+  {
+    name: "AI_PROVIDER_KEY_DELETE",
+    description: "Delete a stored AI provider API key",
+    category: "AI Providers",
+    dangerous: true,
+  },
+  {
+    name: "AI_PROVIDER_KEY_LIST",
+    description: "List stored AI provider API keys",
+    category: "AI Providers",
+  },
+  {
+    name: "AI_PROVIDER_OAUTH_URL",
+    description: "Get OAuth authorization URL for an AI provider",
+    category: "AI Providers",
+  },
+  {
+    name: "AI_PROVIDER_OAUTH_EXCHANGE",
+    description: "Exchange OAuth code for an AI provider API key",
+    category: "AI Providers",
+  },
   // Project tools
   {
     name: "PROJECT_LIST",
@@ -640,6 +692,14 @@ const TOOL_LABELS: Record<ToolName, string> = {
   PROJECT_CONNECTION_ADD: "Add project connection",
   PROJECT_CONNECTION_REMOVE: "Remove project connection",
   PROJECT_PINNED_VIEWS_UPDATE: "Update pinned views",
+  AI_PROVIDERS_LIST: "List AI providers",
+  AI_PROVIDERS_LIST_MODELS: "List AI provider models",
+  AI_PROVIDERS_ACTIVE: "List active AI providers",
+  AI_PROVIDER_KEY_CREATE: "Store AI provider key",
+  AI_PROVIDER_KEY_DELETE: "Delete AI provider key",
+  AI_PROVIDER_KEY_LIST: "List AI provider keys",
+  AI_PROVIDER_OAUTH_URL: "Get AI provider OAuth URL",
+  AI_PROVIDER_OAUTH_EXCHANGE: "Exchange AI provider OAuth code",
 };
 
 // ============================================================================
@@ -663,6 +723,7 @@ export function getToolsByCategory() {
     "Code Execution": [],
     Tags: [],
     Projects: [],
+    "AI Providers": [],
   };
 
   for (const tool of MANAGEMENT_TOOLS) {

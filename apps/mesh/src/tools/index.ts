@@ -15,6 +15,7 @@ import {
 } from "@/core/plugin-loader";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import * as AIProviderTools from "./ai-providers";
 import * as ApiKeyTools from "./apiKeys";
 import * as CodeExecutionTools from "./code-execution";
 import * as ConnectionTools from "./connection";
@@ -119,6 +120,16 @@ const CORE_TOOLS = [
   TagTools.TAGS_DELETE,
   TagTools.MEMBER_TAGS_GET,
   TagTools.MEMBER_TAGS_SET,
+
+  // AI Provider tools
+  AIProviderTools.AI_PROVIDERS_LIST,
+  AIProviderTools.AI_PROVIDERS_LIST_MODELS,
+  AIProviderTools.AI_PROVIDERS_ACTIVE,
+  AIProviderTools.AI_PROVIDER_KEY_CREATE,
+  AIProviderTools.AI_PROVIDER_KEY_DELETE,
+  AIProviderTools.AI_PROVIDER_KEY_LIST,
+  AIProviderTools.AI_PROVIDER_OAUTH_URL,
+  AIProviderTools.AI_PROVIDER_OAUTH_EXCHANGE,
 
   // Project tools
   ProjectTools.PROJECT_LIST,
