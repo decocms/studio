@@ -24,6 +24,8 @@ const CLI_ENTRY_POINT = join(SCRIPT_DIR, "../src/cli.ts");
 const ALWAYS_INCLUDE = [
   "@jitl/quickjs-wasmfile-release-sync",
   "@electric-sql/pglite",
+  "@duckdb/node-api",
+  "@duckdb/node-bindings",
 ];
 const ALWAYS_EXCLUDE = ["kysely-codegen"];
 
