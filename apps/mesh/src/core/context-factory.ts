@@ -91,6 +91,7 @@ export interface MeshContextConfig {
     meter: Meter;
   };
   eventBus: EventBus;
+  modelListCache?: ModelListCache;
 }
 
 // ============================================================================
@@ -394,6 +395,10 @@ import { ConnectionEntity } from "@/tools/connection/schema";
 import { BUILTIN_ROLES } from "../auth/roles";
 import { OrgScopedThreadStorage, SqlThreadStorage } from "@/storage/threads";
 import { createClientPool } from "@/mcp-clients/outbound/client-pool";
+import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
+import { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
+import { AIProviderFactory } from "@/ai-providers/factory";
+import type { ModelListCache } from "@/ai-providers/model-list-cache";
 
 /**
  * Fetch role permissions from the database
@@ -789,11 +794,18 @@ export async function createMeshContextFactory(
     projects: new ProjectsStorage(config.db),
     projectConnections: new ProjectConnectionsStorage(config.db),
     projectPluginConfigs: new ProjectPluginConfigsStorage(config.db),
+    aiProviderKeys: new AIProviderKeyStorage(config.db, vault),
+    oauthPkceStates: new OAuthPkceStateStorage(config.db),
     // Note: Organizations, teams, members, roles managed by Better Auth organization plugin
     // Note: Policies handled by Better Auth permissions directly
     // Note: API keys (tokens) managed by Better Auth API Key plugin
     // Note: Token revocation handled by Better Auth (deleteApiKey)
   };
+
+  const aiProviderFactory = new AIProviderFactory(
+    baseStorage.aiProviderKeys,
+    config.modelListCache,
+  );
 
   // Return factory function
   return async (
@@ -893,6 +905,7 @@ export async function createMeshContextFactory(
         ),
       },
       eventBus: config.eventBus,
+      aiProviders: aiProviderFactory,
       createMCPProxy: async (conn: string | ConnectionEntity) => {
         return await createMCPProxy(conn, ctx);
       },

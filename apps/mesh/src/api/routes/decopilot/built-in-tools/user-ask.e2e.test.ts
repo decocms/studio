@@ -20,11 +20,11 @@ import {
 } from "./user-ask";
 
 const mockParams: BuiltinToolParams = {
-  modelProvider: { thinkingModel: {} as never } as never,
+  provider: { aiSdk: {} as never } as never,
   organization: { id: "org_test" } as never,
   models: {
-    connectionId: "conn_test",
-    thinking: { id: "model_test" },
+    credentialId: "aik_test",
+    thinking: { id: "model_test", title: "Test Model" },
   } as never,
   toolOutputMap: new Map(),
 };

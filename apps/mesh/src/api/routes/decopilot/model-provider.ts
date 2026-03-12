@@ -30,6 +30,6 @@ export async function createModelProviderFromClient(
     fastModel: config.fast
       ? llmProvider.languageModel(config.fast.id)
       : undefined,
-    connectionId: config.connectionId,
+    providerKeyId: config.credentialId,
   };
 }

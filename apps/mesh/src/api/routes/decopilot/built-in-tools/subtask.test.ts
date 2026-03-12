@@ -14,11 +14,11 @@ import {
 } from "./subtask";
 
 const mockParams: BuiltinToolParams = {
-  modelProvider: { thinkingModel: {} as never } as never,
+  provider: { aiSdk: {} as never } as never,
   organization: { id: "org_test" } as never,
   models: {
-    connectionId: "conn_test",
-    thinking: { id: "model_test", limits: {} },
+    credentialId: "aik_test",
+    thinking: { id: "model_test", title: "Test Model", limits: {} },
   } as never,
   toolOutputMap: new Map(),
 };
