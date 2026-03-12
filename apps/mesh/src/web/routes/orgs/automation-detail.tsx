@@ -593,7 +593,7 @@ function SettingsTab({
 
 function RunHistoryTab(_props: { automationId: string }) {
   return (
-    <div className="p-6">
+    <div className="h-full flex items-center">
       <EmptyState
         title="No run history"
         description="Run history will appear here when the automation has been triggered."

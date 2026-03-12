@@ -133,7 +133,8 @@ export default function AutomationsPage() {
             />
           </div>
         ) : !automations || automations.length === 0 ? (
-          <EmptyState
+          <div className="flex items-center h-full">
+            <EmptyState
             title="No automations yet"
             description="Automations run tasks on a schedule or in response to events."
             actions={
@@ -151,6 +152,8 @@ export default function AutomationsPage() {
               </Button>
             }
           />
+          </div>
+          
         ) : (
           <div className="p-4">
             <UITable>
