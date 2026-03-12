@@ -35,6 +35,7 @@ export default function AiProviderOAuthCallback() {
         console.error("OAuth callback error:", err);
         setErrorMessage(err instanceof Error ? err.message : String(err));
         setStatus("error");
+        setTimeout(() => window.close(), 3000);
       }
     });
   }

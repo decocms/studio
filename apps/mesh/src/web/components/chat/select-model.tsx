@@ -663,6 +663,9 @@ function ManageModelItem({
   // Local state gives instant visual feedback; parent shortlistSet updates
   // asynchronously via startTransition so it never blocks the checkbox.
   const [checked, setChecked] = useState(isChecked);
+  if (checked !== isChecked) {
+    setChecked(isChecked);
+  }
   const logo = getProviderLogo(model);
 
   return (

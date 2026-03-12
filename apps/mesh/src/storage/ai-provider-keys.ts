@@ -111,11 +111,15 @@ export class AIProviderKeyStorage {
   }
 
   async delete(keyId: string, organizationId: string): Promise<void> {
-    await this.db
+    const result = await this.db
       .deleteFrom("ai_provider_keys")
       .where("id", "=", keyId)
       .where("organization_id", "=", organizationId)
-      .execute();
+      .executeTakeFirst();
+
+    if (!result.numDeletedRows) {
+      throw new Error(`AI provider key ${keyId} not found`);
+    }
   }
 
   async findById(

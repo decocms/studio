@@ -52,7 +52,7 @@ function ChatPanelContent() {
     });
   };
 
-  if (aiProviders?.providers.length === 0) {
+  if (aiProviders?.providers?.length === 0) {
     const title = "No model provider connected";
     const description =
       "Connect to a model provider to unlock AI-powered features.";

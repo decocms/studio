@@ -22,7 +22,17 @@ export function recordLlmCallMetrics(params: {
   inputTokens?: number;
   outputTokens?: number;
 }): void {
-  const { ctx, organizationId, modelId, durationMs, isError } = params;
+  const {
+    ctx,
+    organizationId,
+    agentId,
+    modelId,
+    credentialId,
+    durationMs,
+    isError,
+    inputTokens,
+    outputTokens,
+  } = params;
 
   if (!organizationId || !modelId) return;
 
@@ -32,6 +42,8 @@ export function recordLlmCallMetrics(params: {
     "connection.id": DECOPILOT_CONNECTION_ID,
     "tool.name": modelId,
     "organization.id": organizationId,
+    "agent.id": agentId,
+    "credential.id": credentialId,
     status: isError ? "error" : "success",
     "error.type": isError ? params.errorType || "Error" : "",
   };
@@ -48,4 +60,13 @@ export function recordLlmCallMetrics(params: {
       description: "Number of tool executions",
     })
     .add(1, attributes);
+
+  if (inputTokens != null || outputTokens != null) {
+    const tokenAttributes = { ...attributes };
+    ctx.meter
+      .createCounter("tool.execution.tokens", {
+        description: "Number of tokens used by LLM calls",
+      })
+      .add((inputTokens ?? 0) + (outputTokens ?? 0), tokenAttributes);
+  }
 }

@@ -100,11 +100,13 @@ export function MessageStatsBar({ usage, duration }: MessageStatsBarProps) {
       {hasDuration && (hasCost || hasTokens) && (
         <span className="text-muted-foreground/40 select-none">·</span>
       )}
-      {hasCost ? (
+      {(hasCost || hasTokens) && (
         <Tooltip>
           <TooltipTrigger asChild>
             <span className="tabular-nums text-sm font-mono text-muted-foreground cursor-default [@media(hover:hover)]:hover:text-foreground transition-colors select-none">
-              ${usage!.cost.toFixed(4)}
+              {hasCost
+                ? `$${usage!.cost.toFixed(4)}`
+                : `${usage!.totalTokens.toLocaleString()} tok`}
             </span>
           </TooltipTrigger>
           <TooltipContent side="top" className="font-mono text-[11px]">
@@ -131,38 +133,7 @@ export function MessageStatsBar({ usage, duration }: MessageStatsBarProps) {
             </div>
           </TooltipContent>
         </Tooltip>
-      ) : hasTokens ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="tabular-nums text-sm font-mono text-muted-foreground cursor-default [@media(hover:hover)]:hover:text-foreground transition-colors select-none">
-              {usage!.totalTokens.toLocaleString()} tok
-            </span>
-          </TooltipTrigger>
-          <TooltipContent side="top" className="font-mono text-[11px]">
-            <p className="opacity-60 text-[10px] mb-1">tokens</p>
-            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
-              <span className="opacity-60">in</span>
-              <span className="text-right tabular-nums">
-                {(usage!.inputTokens ?? 0).toLocaleString()}
-              </span>
-              <span className="opacity-60">out</span>
-              <span className="text-right tabular-nums">
-                {(
-                  (usage!.outputTokens ?? 0) - (usage?.reasoningTokens ?? 0)
-                ).toLocaleString()}
-              </span>
-              {(usage?.reasoningTokens ?? 0) > 0 && (
-                <>
-                  <span className="opacity-60">think</span>
-                  <span className="text-right tabular-nums">
-                    {usage!.reasoningTokens!.toLocaleString()}
-                  </span>
-                </>
-              )}
-            </div>
-          </TooltipContent>
-        </Tooltip>
-      ) : null}
+      )}
     </div>
   );
 }

@@ -1,6 +1,10 @@
 import z from "zod";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth, requireOrganization } from "../../core/mesh-context";
+import {
+  requireAuth,
+  requireOrganization,
+  getUserId,
+} from "../../core/mesh-context";
 import { PROVIDER_IDS } from "../../ai-providers/provider-ids";
 import { PROVIDERS } from "../../ai-providers/registry";
 import { providerKeyOutputSchema } from "./key-create";
@@ -33,10 +37,13 @@ export const AI_PROVIDER_OAUTH_EXCHANGE = defineTool({
       );
     }
 
+    const userId = getUserId(ctx);
+    if (!userId) throw new Error("Unable to determine user ID");
+
     const codeVerifier = await ctx.storage.oauthPkceStates.consume(
       input.stateToken,
       org.id,
-      ctx.auth.user!.id,
+      userId,
     );
 
     const { apiKey } = await adapter.exchangeOAuthCode({
@@ -50,7 +57,7 @@ export const AI_PROVIDER_OAUTH_EXCHANGE = defineTool({
       label: input.label,
       apiKey,
       organizationId: org.id,
-      createdBy: ctx.auth.user!.id,
+      createdBy: userId,
     });
 
     return {
