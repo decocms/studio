@@ -119,7 +119,9 @@ function buildToolBuckets(
       bucket.tools.set(point.toolName, {
         calls: existing.calls + point.calls,
         errors: existing.errors + point.errors,
-        avg: (existing.avg + point.avg) / 2,
+        avg:
+          (existing.avg * existing.calls + point.avg * point.calls) /
+          (existing.calls + point.calls),
         p95: Math.max(existing.p95, point.p95),
       });
     } else {
@@ -435,7 +437,7 @@ function TopToolsContent({
         }
         onTitleClick={handleTitleClick}
       >
-        {llmBuckets.length === 0 ? (
+        {(llmData?.timeseries?.length ?? 0) === 0 ? (
           <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
             No AI activity in this time range
           </div>
