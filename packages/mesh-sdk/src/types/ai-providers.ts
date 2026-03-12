@@ -30,7 +30,7 @@ export interface AiProviderModelCosts {
 }
 
 export interface AiProviderModel {
-  providerId: string;
+  providerId: ProviderId;
   modelId: string;
   title: string;
   description: string | null;
@@ -44,7 +44,7 @@ export interface AiProviderModel {
 
 export interface AiProviderKey {
   id: string;
-  providerId: string;
+  providerId: ProviderId;
   label: string;
   createdBy: string;
   createdAt: string;

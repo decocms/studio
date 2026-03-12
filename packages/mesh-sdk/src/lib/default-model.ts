@@ -35,12 +35,12 @@ export const DEFAULT_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> =
  */
 export function selectDefaultModel(
   models: AiProviderModel[],
-  providerId: string,
+  providerId: ProviderId,
   keyId?: string,
 ): AiProviderModel | null {
   if (models.length === 0) return null;
 
-  const candidates = DEFAULT_MODEL_PREFERENCES[providerId as ProviderId] ?? [];
+  const candidates = DEFAULT_MODEL_PREFERENCES[providerId] ?? [];
 
   const withKey = (model: AiProviderModel): AiProviderModel =>
     keyId !== undefined ? { ...model, keyId } : model;
