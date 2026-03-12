@@ -62,7 +62,7 @@ function extractSystemPrompt(messages: ChatMessage[]): string {
 }
 
 /** Claude Code model variants that can be selected in the UI */
-export const CLAUDE_CODE_MODELS = [
+const CLAUDE_CODE_MODELS = [
   {
     id: "claude-code:opus",
     sdkModel: "claude-opus-4-6",
