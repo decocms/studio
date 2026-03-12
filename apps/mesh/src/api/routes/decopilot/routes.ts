@@ -6,6 +6,7 @@
  */
 
 import type { MeshContext } from "@/core/mesh-context";
+import { clientFromConnection, withStreamingSupport } from "@/mcp-clients";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
 import { sanitizeProviderMetadata } from "@decocms/mesh-sdk";
 import {
@@ -48,6 +49,10 @@ import {
   fetchModelPermissions,
   parseModelsToMap,
 } from "./model-permissions";
+import {
+  createModelProviderFromClient,
+  wrapLegacyProvider,
+} from "./model-provider";
 import { StreamRequestSchema } from "./schemas";
 import { resolveThreadStatus } from "./status";
 import { genTitle } from "./title-generator";
@@ -158,13 +163,12 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         ctx.auth.user?.role,
       );
 
+      // credentialId for new path, connectionId for legacy path
+      const modelSourceId = models.credentialId ?? models.connectionId ?? "";
+
       if (
         allowedModels !== undefined &&
-        !checkModelPermission(
-          allowedModels,
-          models.credentialId,
-          models.thinking.id,
-        )
+        !checkModelPermission(allowedModels, modelSourceId, models.thinking.id)
       ) {
         throw new HTTPException(403, {
           message: "Model not allowed for your role",
@@ -175,8 +179,15 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       const resolvedThreadId = thread_id ?? memoryConfig?.thread_id;
 
       // Get connection entities and create/load memory in parallel
-      const [virtualMcp, mem] = await Promise.all([
+      const [virtualMcp, modelConnection, mem] = await Promise.all([
         ctx.storage.virtualMcps.findById(agent.id, organization.id),
+        // Legacy path only: fetch MCP connection for model routing
+        models.connectionId
+          ? ctx.storage.connections.findById(
+              models.connectionId,
+              organization.id,
+            )
+          : Promise.resolve(null),
         createMemory(ctx.storage.threads, {
           organization_id: organization.id,
           thread_id: resolvedThreadId,
@@ -211,6 +222,10 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           console.error("[decopilot:stream] Error saving messages", error);
         });
       };
+
+      if (models.connectionId && !modelConnection) {
+        throw new Error("Model connection not found");
+      }
 
       if (!virtualMcp) {
         throw new Error("Agent not found");
@@ -278,14 +293,20 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           // Create MCP client connections inside execute so the SSE
           // response headers are flushed to the client before this
           // potentially slow I/O, preventing Cloudflare 524 timeouts.
-          const [passthroughClient, strategyClient] = await Promise.all([
-            createVirtualClientFrom(virtualMcp, ctx, "passthrough"),
-            isGatewayMode
-              ? createVirtualClientFrom(virtualMcp, ctx, agent.mode)
-              : Promise.resolve(null),
-          ]);
+          const [modelClient, passthroughClient, strategyClient] =
+            await Promise.all([
+              // Legacy path: create MCP model client
+              modelConnection
+                ? clientFromConnection(modelConnection, ctx, false)
+                : Promise.resolve(null),
+              createVirtualClientFrom(virtualMcp, ctx, "passthrough"),
+              isGatewayMode
+                ? createVirtualClientFrom(virtualMcp, ctx, agent.mode)
+                : Promise.resolve(null),
+            ]);
 
           closeClients = () => {
+            modelClient?.close().catch(() => {});
             passthroughClient.close().catch(() => {});
             strategyClient?.close().catch(() => {});
           };
@@ -317,10 +338,25 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
               )
             : {};
 
-          const provider = await ctx.aiProviders.activate(
-            models.credentialId,
-            organization.id,
-          );
+          // Resolve provider: new AI-key path or legacy MCP-connection path
+          const provider = models.credentialId
+            ? await ctx.aiProviders.activate(
+                models.credentialId,
+                organization.id,
+              )
+            : wrapLegacyProvider(
+                await createModelProviderFromClient(
+                  withStreamingSupport(
+                    modelClient!,
+                    models.connectionId!,
+                    modelConnection!,
+                    ctx,
+                    { superUser: false },
+                  ),
+                  models,
+                ),
+                models,
+              );
 
           const builtInTools = await getBuiltInTools(
             writer,
@@ -328,7 +364,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
               provider,
               organization,
               models: {
-                credentialId: models.credentialId,
+                credentialId: modelSourceId,
                 thinking: models.thinking,
               },
               toolApprovalLevel,
@@ -429,7 +465,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
                 agentId: agent.id,
                 modelId: models.thinking.id,
                 modelTitle: models.thinking.title ?? models.thinking.id,
-                credentialId: models.credentialId,
+                credentialId: modelSourceId,
                 threadId: mem.thread.id,
                 durationMs,
                 isError: false,
@@ -466,7 +502,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
                 return {
                   agent: { id: agent.id ?? null, mode: agent.mode },
                   models: {
-                    credentialId: models.credentialId,
+                    credentialId: modelSourceId,
                     thinking: {
                       id: models.thinking.id,
                       title: models.thinking.title,
@@ -607,7 +643,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
               agentId: agent.id,
               modelId: models.thinking.id,
               modelTitle: models.thinking.title ?? models.thinking.id,
-              credentialId: models.credentialId,
+              credentialId: modelSourceId,
               threadId: mem.thread.id,
               durationMs,
               isError: true,

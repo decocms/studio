@@ -52,14 +52,17 @@ export type ChatMessage = UIMessage<
 
 export interface ModelInfo {
   id: string;
-  title: string;
+  title?: string;
   capabilities?: { vision?: boolean; text?: boolean; tools?: boolean };
   provider?: string | null;
   limits?: { contextWindow?: number; maxOutputTokens?: number };
 }
 
 export interface ModelsConfig {
-  credentialId: string;
+  /** AI provider key ID — new path */
+  credentialId?: string;
+  /** MCP connection ID — legacy path, kept for backward compat until UI ships */
+  connectionId?: string;
   thinking: ModelInfo;
   coding?: ModelInfo;
   fast?: ModelInfo;

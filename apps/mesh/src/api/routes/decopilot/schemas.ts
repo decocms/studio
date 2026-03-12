@@ -33,7 +33,8 @@ const ProviderSchema = ProviderEnum.optional().nullable();
 
 const ModelInfoSchema = z.object({
   id: z.string(),
-  title: z.string(),
+  // Optional for backward compat with legacy clients that don't send title
+  title: z.string().optional(),
   capabilities: z
     .object({
       vision: z.boolean().optional(),
@@ -55,14 +56,21 @@ const ThinkingModelSchema = ModelInfoSchema.extend({
 
 const ModelsSchema = z
   .object({
-    credentialId: z.string(),
+    // New AI-provider-key path
+    credentialId: z.string().optional(),
+    // Legacy MCP-connection path (kept for backward compat until UI ships)
+    connectionId: z.string().optional(),
     thinking: ThinkingModelSchema.describe(
       "Backbone model for the agentic loop",
     ),
     coding: ModelInfoSchema.optional().describe("Good coding model"),
     fast: ModelInfoSchema.optional().describe("Cheap model for simple tasks"),
   })
-  .loose();
+  .loose()
+  .refine((d) => !!(d.credentialId || d.connectionId), {
+    message: "Either credentialId or connectionId is required",
+    path: ["credentialId"],
+  });
 
 export const StreamRequestSchema = z.object({
   messages: z
