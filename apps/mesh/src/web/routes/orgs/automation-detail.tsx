@@ -81,6 +81,12 @@ import {
 import { useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { toast } from "sonner";
+import type { Metadata } from "@/web/components/chat/types.ts";
+import {
+  TiptapProvider,
+  TiptapInput,
+} from "@/web/components/chat/tiptap/input.tsx";
+import { tiptapDocToMessages } from "@/web/components/chat/derive-parts.ts";
 
 // ============================================================================
 // Types
@@ -486,6 +492,13 @@ function SettingsTab({
 
   const [agentPopoverOpen, setAgentPopoverOpen] = useState(false);
 
+  const initialTiptapDoc =
+    (automation.messages?.[0] as { metadata?: Metadata } | undefined)?.metadata
+      ?.tiptapDoc ?? undefined;
+  const [tiptapDoc, setTiptapDoc] =
+    useState<Metadata["tiptapDoc"]>(initialTiptapDoc);
+  const [savedDoc] = useState(initialTiptapDoc);
+
   const form = useForm<SettingsFormData>({
     defaultValues: {
       name: automation.name,
@@ -517,6 +530,7 @@ function SettingsTab({
           connectionId: values.model_connection_id,
           thinking: { id: values.model_id },
         },
+        messages: tiptapDocToMessages(tiptapDoc),
         temperature: 0,
         tool_approval_level: "none",
       });
@@ -529,6 +543,7 @@ function SettingsTab({
 
   const handleUndo = () => {
     form.reset();
+    setTiptapDoc(savedDoc);
   };
 
   const handleModelChange = (payload: ModelChangePayload) => {
@@ -549,7 +564,11 @@ function SettingsTab({
         <SaveActions
           onSave={handleSave}
           onUndo={handleUndo}
-          isDirty={form.formState.isDirty}
+          isDirty={
+            form.formState.isDirty ||
+            JSON.stringify(tiptapDoc ?? null) !==
+              JSON.stringify(savedDoc ?? null)
+          }
           isSaving={updateMutation.isPending}
         />
       </ViewActions>
@@ -617,6 +636,17 @@ function SettingsTab({
             variant="bordered"
           />
         </div>
+
+        {/* Messages Editor */}
+        <TiptapProvider
+          tiptapDoc={tiptapDoc}
+          setTiptapDoc={setTiptapDoc}
+          placeholder="What should this automation do?"
+        >
+          <div className="rounded-lg border border-border min-h-[120px] flex flex-col">
+            <TiptapInput virtualMcpId={watchAgentId || null} />
+          </div>
+        </TiptapProvider>
 
         {/* Triggers Section */}
         <div className="flex flex-col gap-3 border-t border-border pt-6">
