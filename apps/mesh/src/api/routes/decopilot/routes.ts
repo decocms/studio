@@ -208,9 +208,9 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
     const { spawn } = await import("node:child_process");
 
-    // Check if mesh-studio MCP server is configured in Claude Code
+    // Check if deco-studio MCP server is configured in Claude Code
     const connected = await new Promise<boolean>((resolve) => {
-      const proc = spawn("claude", ["mcp", "get", "mesh-studio"], {
+      const proc = spawn("claude", ["mcp", "get", "deco-studio"], {
         stdio: "ignore",
       });
       const timeout = setTimeout(() => {
@@ -309,7 +309,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       (resolve) => {
         const proc = spawn(
           "claude",
-          ["mcp", "add-json", "mesh-studio", mcpConfig, "--scope", "user"],
+          ["mcp", "add-json", "deco-studio", mcpConfig, "--scope", "user"],
           { stdio: ["ignore", "ignore", "pipe"] },
         );
         let stderr = "";
@@ -350,7 +350,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
     const result = await new Promise<{ ok: boolean }>((resolve) => {
       const proc = spawn(
         "claude",
-        ["mcp", "remove", "mesh-studio", "--scope", "user"],
+        ["mcp", "remove", "deco-studio", "--scope", "user"],
         { stdio: "ignore" },
       );
       const timeout = setTimeout(() => {
