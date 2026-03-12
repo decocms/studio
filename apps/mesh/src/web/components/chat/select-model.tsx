@@ -1279,7 +1279,7 @@ function ModelSelectorInner({
               Manage API keys
             </button>
           </div>
-        )
+        )}
       </div>
 
       <div className="hidden md:flex md:flex-col md:w-[320px] md:shrink-0 p-3">
