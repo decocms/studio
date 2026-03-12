@@ -30,6 +30,8 @@ import type { RegistryItem } from "./types";
 interface StoreDiscoveryProps {
   registryId: string;
   storePrivateOnly?: boolean;
+  connectedAppNames?: Set<string>;
+  onConnectedItemClick?: (item: RegistryItem) => void;
 }
 
 /**
@@ -73,11 +75,15 @@ function StoreDiscoveryContent({
   listToolName,
   filtersToolName,
   storePrivateOnly,
+  connectedAppNames,
+  onConnectedItemClick,
 }: {
   registryId: string;
   listToolName: string;
   filtersToolName?: string;
   storePrivateOnly?: boolean;
+  connectedAppNames?: Set<string>;
+  onConnectedItemClick?: (item: RegistryItem) => void;
 }) {
   const [search, setSearch] = useState("");
   // Debounce search for server-side query (300ms delay to rate-limit API calls)
@@ -295,6 +301,8 @@ function StoreDiscoveryContent({
                     items={officialItems}
                     title="Official"
                     onItemClick={handleItemClick}
+                    connectedAppNames={connectedAppNames}
+                    onConnectedItemClick={onConnectedItemClick}
                   />
                 )}
 
@@ -303,6 +311,8 @@ function StoreDiscoveryContent({
                     items={verifiedItems}
                     title="Verified"
                     onItemClick={handleItemClick}
+                    connectedAppNames={connectedAppNames}
+                    onConnectedItemClick={onConnectedItemClick}
                   />
                 )}
 
@@ -315,6 +325,8 @@ function StoreDiscoveryContent({
                         : ""
                     }
                     onItemClick={handleItemClick}
+                    connectedAppNames={connectedAppNames}
+                    onConnectedItemClick={onConnectedItemClick}
                   />
                 )}
 
@@ -343,6 +355,8 @@ function StoreDiscoveryContent({
 export function StoreDiscovery({
   registryId,
   storePrivateOnly,
+  connectedAppNames,
+  onConnectedItemClick,
 }: StoreDiscoveryProps) {
   const registryConnection = useConnection(registryId);
 
@@ -374,6 +388,8 @@ export function StoreDiscovery({
       listToolName={listToolName}
       filtersToolName={filtersToolName || undefined}
       storePrivateOnly={storePrivateOnly}
+      connectedAppNames={connectedAppNames}
+      onConnectedItemClick={onConnectedItemClick}
     />
   );
 }
