@@ -345,8 +345,7 @@ function TopToolsContent({
                 axisLine={false}
                 tickLine={false}
                 tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-                interval="preserveStartEnd"
-                minTickGap={60}
+                interval={Math.max(0, Math.ceil(buckets.length / 10) - 1)}
               />
               <ChartTooltip
                 content={({ active, payload }) => {
