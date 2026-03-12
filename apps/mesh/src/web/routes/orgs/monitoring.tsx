@@ -163,20 +163,6 @@ function floorToInterval(date: Date, interval: "1m" | "1h" | "1d"): Date {
   return result;
 }
 
-function addInterval(date: Date, interval: "1m" | "1h" | "1d"): Date {
-  const result = new Date(date);
-  if (interval === "1d") {
-    result.setDate(result.getDate() + 1);
-    return result;
-  }
-  if (interval === "1h") {
-    result.setHours(result.getHours() + 1);
-    return result;
-  }
-  result.setMinutes(result.getMinutes() + 1);
-  return result;
-}
-
 function buildFilledStatsData(
   points: Array<{
     timestamp: string;
@@ -190,6 +176,7 @@ function buildFilledStatsData(
   range: DateRange,
   interval: "1m" | "1h" | "1d",
 ): MonitoringStatsData["data"] {
+  // Map server points by their floored timestamp
   const pointMap = new Map(
     points.map((point) => [
       floorToInterval(new Date(point.timestamp), interval).getTime(),
@@ -197,29 +184,61 @@ function buildFilledStatsData(
     ]),
   );
 
-  const alignedStart = floorToInterval(range.startDate, interval);
-  const alignedEnd = floorToInterval(range.endDate, interval);
+  // Always generate exactly 20 display buckets
+  const BUCKET_COUNT = 20;
+  const startMs = range.startDate.getTime();
+  const endMs = range.endDate.getTime();
+  const step = (endMs - startMs) / (BUCKET_COUNT - 1);
   const data: MonitoringStatsData["data"] = [];
+  const bucketTimestamps: number[] = [];
 
-  for (
-    let bucketDate = new Date(alignedStart);
-    bucketDate.getTime() <= alignedEnd.getTime();
-    bucketDate = addInterval(bucketDate, interval)
-  ) {
-    const ts = bucketDate.getTime();
-    const point = pointMap.get(ts);
-
+  for (let i = 0; i < BUCKET_COUNT; i++) {
+    const ts = Math.round(startMs + i * step);
+    bucketTimestamps.push(ts);
     data.push({
-      t: bucketDate.toISOString(),
+      t: new Date(ts).toISOString(),
       ts,
-      label: formatTimestampLabel(bucketDate.toISOString(), interval),
-      calls: point?.calls ?? 0,
-      errors: point?.errors ?? 0,
-      errorRate: point?.errorRate ?? 0,
-      avg: point?.avg ?? 0,
-      p50: point?.p50 ?? 0,
-      p95: point?.p95 ?? 0,
+      label: formatTimestampLabel(new Date(ts).toISOString(), interval),
+      calls: 0,
+      errors: 0,
+      errorRate: 0,
+      avg: 0,
+      p50: 0,
+      p95: 0,
     });
+  }
+
+  // Assign each server point to its nearest display bucket
+  const counts = new Array(BUCKET_COUNT).fill(0);
+  for (const [serverTs, point] of pointMap) {
+    // Find nearest bucket
+    let nearest = 0;
+    let minDist = Math.abs(serverTs - bucketTimestamps[0]!);
+    for (let i = 1; i < bucketTimestamps.length; i++) {
+      const dist = Math.abs(serverTs - bucketTimestamps[i]!);
+      if (dist < minDist) {
+        minDist = dist;
+        nearest = i;
+      }
+    }
+
+    const bucket = data[nearest]!;
+    bucket.calls += point.calls;
+    bucket.errors += point.errors;
+    bucket.errorRate += point.errorRate;
+    bucket.avg += point.avg;
+    bucket.p50 += point.p50;
+    bucket.p95 = Math.max(bucket.p95, point.p95);
+    counts[nearest]++;
+  }
+
+  // Average out rate/latency fields
+  for (let i = 0; i < BUCKET_COUNT; i++) {
+    if (counts[i]! > 0) {
+      data[i]!.errorRate = data[i]!.errorRate / counts[i]!;
+      data[i]!.avg = data[i]!.avg / counts[i]!;
+      data[i]!.p50 = data[i]!.p50 / counts[i]!;
+    }
   }
 
   return data;
@@ -474,65 +493,72 @@ function MonitoringStatsContent({
       };
 
   return (
-    <div className="grid grid-cols-3 gap-[0.5px] bg-border flex-shrink-0 border-b border-border">
-      {STAT_KPI_CONFIG.map((config) => {
-        const {
-          id,
-          dataKey,
-          colorNum,
-          barColor,
-          leaderboardMode,
-          chartMetrics,
-          renderTitle,
-          getNextMetric,
-        } = config;
-        const isSelected = chartMetrics.includes(selectedMetric);
-        const handleClick = () => {
-          if (isSelected) {
-            // Already selected — cycle sub-metrics
-            onMetricSelect(getNextMetric(selectedMetric));
-          } else {
-            // First click — select the first metric for this card
-            onMetricSelect(chartMetrics[0]!);
-          }
-        };
-        return (
-          <div
-            key={id}
-            className="bg-background relative cursor-pointer"
-            onClick={handleClick}
-          >
-            {isSelected && (
-              <div
-                className="absolute top-0 left-0 right-0 h-0.5 z-10"
-                style={{
-                  backgroundColor: `var(--chart-${colorNum})`,
-                }}
-              />
-            )}
-            <HomeGridCell title={renderTitle(stats, selectedMetric)}>
-              <div className="flex flex-col w-full">
-                <KPIChart
-                  data={stats.data}
-                  dataKey={
-                    typeof dataKey === "function"
-                      ? dataKey(selectedMetric)
-                      : dataKey
-                  }
-                  colorNum={colorNum}
-                  chartHeight="h-[30px] md:h-[40px]"
+    <div className="border-b border-border">
+      <div className="px-5 py-2 bg-muted/30 border-b border-border">
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Tool Calls
+        </span>
+      </div>
+      <div className="grid grid-cols-3 gap-[0.5px] bg-border flex-shrink-0">
+        {STAT_KPI_CONFIG.map((config) => {
+          const {
+            id,
+            dataKey,
+            colorNum,
+            barColor,
+            leaderboardMode,
+            chartMetrics,
+            renderTitle,
+            getNextMetric,
+          } = config;
+          const isSelected = chartMetrics.includes(selectedMetric);
+          const handleClick = () => {
+            if (isSelected) {
+              // Already selected — cycle sub-metrics
+              onMetricSelect(getNextMetric(selectedMetric));
+            } else {
+              // First click — select the first metric for this card
+              onMetricSelect(chartMetrics[0]!);
+            }
+          };
+          return (
+            <div
+              key={id}
+              className="bg-background relative cursor-pointer"
+              onClick={handleClick}
+            >
+              {isSelected && (
+                <div
+                  className="absolute top-0 left-0 right-0 h-0.5 z-10"
+                  style={{
+                    backgroundColor: `var(--chart-${colorNum})`,
+                  }}
                 />
-                <ConnectionLeaderboard
-                  metrics={serverStats?.connectionBreakdown ?? []}
-                  connections={connections}
-                  mode={leaderboardMode}
-                  barColor={barColor}
-                />
-              </div>
-            </HomeGridCell>
-          </div>
-        );
-      })}
+              )}
+              <HomeGridCell title={renderTitle(stats, selectedMetric)}>
+                <div className="flex flex-col w-full">
+                  <KPIChart
+                    data={stats.data}
+                    dataKey={
+                      typeof dataKey === "function"
+                        ? dataKey(selectedMetric)
+                        : dataKey
+                    }
+                    colorNum={colorNum}
+                    chartHeight="h-[30px] md:h-[40px]"
+                  />
+                  <ConnectionLeaderboard
+                    metrics={serverStats?.connectionBreakdown ?? []}
+                    connections={connections}
+                    mode={leaderboardMode}
+                    barColor={barColor}
+                  />
+                </div>
+              </HomeGridCell>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -548,9 +574,52 @@ const MonitoringStats = Object.assign(MonitoringStatsContent, {
 interface LlmStatsProps {
   displayDateRange: DateRange;
   isStreaming: boolean;
+  selectedMetric: TopChartMetric;
+  onMetricSelect: (metric: TopChartMetric) => void;
 }
 
-function LlmStatsContent({ displayDateRange, isStreaming }: LlmStatsProps) {
+function ModelLeaderboard({
+  topTools,
+  barColor,
+}: {
+  topTools: Array<{ toolName: string; calls: number }>;
+  barColor: string;
+}) {
+  if (topTools.length === 0) return null;
+
+  const maxValue = topTools[0]?.calls ?? 1;
+
+  return (
+    <div className="space-y-1.5 mt-2">
+      {topTools.map(({ toolName, calls }) => {
+        const pct = maxValue > 0 ? Math.min((calls / maxValue) * 100, 100) : 0;
+        return (
+          <div key={toolName} className="flex items-center gap-1.5">
+            <span className="text-[10px] text-foreground truncate min-w-0 w-24">
+              {toolName}
+            </span>
+            <div className="relative h-1.5 bg-muted/50 overflow-hidden flex-1">
+              <div
+                className={cn("h-full", barColor)}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <span className="text-[10px] tabular-nums shrink-0 text-foreground">
+              {calls.toLocaleString()}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function LlmStatsContent({
+  displayDateRange,
+  isStreaming,
+  selectedMetric,
+  onMetricSelect,
+}: LlmStatsProps) {
   const interval = getIntervalFromRange(displayDateRange);
   const { data: serverStats } = useMonitoringLlmStats(
     {
@@ -585,14 +654,18 @@ function LlmStatsContent({ displayDateRange, isStreaming }: LlmStatsProps) {
         data: [],
       };
 
+  const topTools = serverStats?.topTools ?? [];
+
   const llmKpiConfigs = [
     {
       id: "llm-calls",
       dataKey: "calls" as const,
       colorNum: 1,
+      barColor: "bg-chart-1",
+      chartMetric: "llm-calls" as TopChartMetric,
       renderTitle: () => (
         <div className="flex flex-col gap-0.5 md:gap-1">
-          <p className="text-xs md:text-sm text-muted-foreground">LLM Calls</p>
+          <p className="text-xs md:text-sm text-muted-foreground">AI Usage</p>
           <p className="text-sm md:text-lg font-medium">
             {stats.totalCalls.toLocaleString()}
           </p>
@@ -603,11 +676,11 @@ function LlmStatsContent({ displayDateRange, isStreaming }: LlmStatsProps) {
       id: "llm-latency",
       dataKey: "avg" as const,
       colorNum: 4,
+      barColor: "bg-chart-4",
+      chartMetric: "llm-latency-avg" as TopChartMetric,
       renderTitle: () => (
         <div className="flex flex-col gap-0.5 md:gap-1">
-          <p className="text-xs md:text-sm text-muted-foreground">
-            LLM Latency
-          </p>
+          <p className="text-xs md:text-sm text-muted-foreground">AI Latency</p>
           <div className="flex items-baseline gap-3">
             <div>
               <span className="text-sm md:text-lg font-medium">
@@ -633,9 +706,11 @@ function LlmStatsContent({ displayDateRange, isStreaming }: LlmStatsProps) {
       id: "llm-errors",
       dataKey: "errors" as const,
       colorNum: 3,
+      barColor: "bg-chart-3",
+      chartMetric: "llm-errors" as TopChartMetric,
       renderTitle: () => (
         <div className="flex flex-col gap-0.5 md:gap-1">
-          <p className="text-xs md:text-sm text-muted-foreground">LLM Errors</p>
+          <p className="text-xs md:text-sm text-muted-foreground">AI Errors</p>
           <p className="text-sm md:text-lg font-medium">
             {stats.totalErrors.toLocaleString()}
           </p>
@@ -648,26 +723,86 @@ function LlmStatsContent({ displayDateRange, isStreaming }: LlmStatsProps) {
     <div className="border-b border-border">
       <div className="px-5 py-2 bg-muted/30 border-b border-border">
         <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          LLM Calls (Decopilot)
+          AI Usage
         </span>
       </div>
       <div className="grid grid-cols-3 gap-[0.5px] bg-border flex-shrink-0">
-        {llmKpiConfigs.map(({ id, dataKey, colorNum, renderTitle }) => (
-          <div key={id} className="bg-background">
-            <HomeGridCell title={renderTitle()}>
-              <KPIChart
-                data={stats.data}
-                dataKey={dataKey}
-                colorNum={colorNum}
-                chartHeight="h-[30px] md:h-[40px]"
-              />
-            </HomeGridCell>
-          </div>
+        {llmKpiConfigs.map(
+          ({ id, dataKey, colorNum, barColor, chartMetric, renderTitle }) => {
+            const isSelected = selectedMetric === chartMetric;
+            return (
+              <div
+                key={id}
+                className="bg-background relative cursor-pointer"
+                onClick={() => onMetricSelect(chartMetric)}
+              >
+                {isSelected && (
+                  <div
+                    className="absolute top-0 left-0 right-0 h-0.5 z-10"
+                    style={{
+                      backgroundColor: `var(--chart-${colorNum})`,
+                    }}
+                  />
+                )}
+                <HomeGridCell title={renderTitle()}>
+                  <div className="flex flex-col w-full">
+                    <KPIChart
+                      data={stats.data}
+                      dataKey={dataKey}
+                      colorNum={colorNum}
+                      chartHeight="h-[30px] md:h-[40px]"
+                    />
+                    <ModelLeaderboard topTools={topTools} barColor={barColor} />
+                  </div>
+                </HomeGridCell>
+              </div>
+            );
+          },
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LlmStatsSkeleton() {
+  return (
+    <div className="border-b border-border">
+      <div className="px-5 py-2 bg-muted/30 border-b border-border">
+        <div className="h-3 w-16 rounded bg-muted animate-pulse" />
+      </div>
+      <div className="grid grid-cols-3 gap-[0.5px] bg-border flex-shrink-0">
+        {[...Array(3)].map((_, i) => (
+          <HomeGridCell
+            key={i}
+            title={
+              <div className="flex flex-col gap-0.5 md:gap-1">
+                <div className="h-4 w-16 rounded bg-muted animate-pulse" />
+                <div className="h-5 md:h-6 w-12 rounded bg-muted animate-pulse" />
+              </div>
+            }
+          >
+            <div className="flex flex-col w-full">
+              <div className="h-[30px] md:h-[40px] w-full rounded bg-muted animate-pulse" />
+              <div className="space-y-1.5 mt-2">
+                {Array.from({ length: 3 }).map((_, j) => (
+                  <div key={j} className="flex items-center gap-1.5">
+                    <div className="h-2.5 w-24 rounded bg-muted animate-pulse" />
+                    <div className="h-1.5 flex-1 bg-muted animate-pulse" />
+                    <div className="h-2.5 w-8 rounded bg-muted animate-pulse shrink-0" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </HomeGridCell>
         ))}
       </div>
     </div>
   );
 }
+
+const LlmStats = Object.assign(LlmStatsContent, {
+  Skeleton: LlmStatsSkeleton,
+});
 
 // ============================================================================
 // Filters Popover Component
@@ -1570,11 +1705,17 @@ function MonitoringDashboardContent({
     ? [WellKnownOrgMCPId.SELF(org.id)]
     : undefined;
 
+  const [aiOnly, setAiOnly] = useState(false);
+
   // Base params for filtering (without pagination)
   const baseParams = {
     startDate: dateRange.startDate.toISOString(),
     endDate: dateRange.endDate.toISOString(),
-    connectionId: connectionIds.length === 1 ? connectionIds[0] : undefined,
+    connectionId: aiOnly
+      ? "decopilot"
+      : connectionIds.length === 1
+        ? connectionIds[0]
+        : undefined,
     excludeConnectionIds,
     virtualMcpId: virtualMcpIds.length === 1 ? virtualMcpIds[0] : undefined,
     toolName: tool || undefined,
@@ -1625,6 +1766,18 @@ function MonitoringDashboardContent({
                 activeFiltersCount={activeFiltersCount}
                 onUpdateFilters={onUpdateFilters}
               />
+
+              {/* AI Only Toggle (Audit tab only) */}
+              {tab === "audit" && (
+                <Button
+                  variant={aiOnly ? "secondary" : "outline"}
+                  size="sm"
+                  className="h-7 px-2 sm:px-3 text-xs"
+                  onClick={() => setAiOnly(!aiOnly)}
+                >
+                  AI Usage
+                </Button>
+              )}
 
               {/* Streaming Toggle */}
               <Button
@@ -1733,9 +1886,11 @@ function MonitoringDashboardContent({
           />
 
           {/* LLM Call Stats */}
-          <LlmStatsContent
+          <LlmStats
             displayDateRange={displayDateRange}
             isStreaming={isStreaming}
+            selectedMetric={topChartMetric}
+            onMetricSelect={setTopChartMetric}
           />
         </div>
       )}
@@ -1891,6 +2046,7 @@ export default function MonitoringDashboard() {
                     <TopTools.Skeleton />
                   </div>
                   <MonitoringStats.Skeleton />
+                  <LlmStats.Skeleton />
                 </div>
               )}
             </>

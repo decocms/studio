@@ -15,43 +15,23 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import { Container } from "@untitledui/icons";
 import { Line, LineChart, XAxis } from "recharts";
-import { useMonitoringTopTools } from "./hooks";
+import { useMonitoringLlmStats, useMonitoringTopTools } from "./hooks";
 
-export type TopChartMetric = "calls" | "latency-avg" | "latency-p95" | "errors";
+export type TopChartMetric =
+  | "calls"
+  | "latency-avg"
+  | "latency-p95"
+  | "errors"
+  | "llm-calls"
+  | "llm-latency-avg"
+  | "llm-latency-p95"
+  | "llm-errors";
 
 interface BucketData {
   t: string;
   ts: number;
   label: string;
   [key: string]: string | number;
-}
-
-function floorToInterval(date: Date, interval: "1m" | "1h" | "1d"): Date {
-  const result = new Date(date);
-  if (interval === "1d") {
-    result.setHours(0, 0, 0, 0);
-    return result;
-  }
-  if (interval === "1h") {
-    result.setMinutes(0, 0, 0);
-    return result;
-  }
-  result.setSeconds(0, 0);
-  return result;
-}
-
-function addInterval(date: Date, interval: "1m" | "1h" | "1d"): Date {
-  const result = new Date(date);
-  if (interval === "1d") {
-    result.setDate(result.getDate() + 1);
-    return result;
-  }
-  if (interval === "1h") {
-    result.setHours(result.getHours() + 1);
-    return result;
-  }
-  result.setMinutes(result.getMinutes() + 1);
-  return result;
 }
 
 function formatBucketLabel(date: Date, interval: "1m" | "1h" | "1d"): string {
@@ -96,45 +76,62 @@ function buildToolBuckets(
     }
   >();
 
-  const alignedStart = floorToInterval(start, interval);
-  const alignedEnd = floorToInterval(end, interval);
+  // Always create exactly 10 display buckets spanning the full range
+  const BUCKET_COUNT = 20;
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+  const step = (endMs - startMs) / (BUCKET_COUNT - 1);
 
-  for (
-    let bucketDate = new Date(alignedStart);
-    bucketDate.getTime() <= alignedEnd.getTime();
-    bucketDate = addInterval(bucketDate, interval)
-  ) {
-    bucketMap.set(String(bucketDate.getTime()), {
-      t: bucketDate.toISOString(),
-      ts: bucketDate.getTime(),
-      label: formatBucketLabel(bucketDate, interval),
+  for (let i = 0; i < BUCKET_COUNT; i++) {
+    const ts = Math.round(startMs + i * step);
+    const date = new Date(ts);
+    bucketMap.set(String(ts), {
+      t: date.toISOString(),
+      ts,
+      label: formatBucketLabel(date, interval),
       tools: new Map(),
     });
   }
 
+  // Map server data points into the nearest display bucket
+  const bucketKeys = [...bucketMap.keys()].map(Number).sort((a, b) => a - b);
   for (const point of timeseries) {
     const normalizedTimestamp = point.timestamp.includes("T")
       ? point.timestamp
       : point.timestamp.replace(" ", "T");
-    const bucketDate = floorToInterval(new Date(normalizedTimestamp), interval);
-    const timestampKey = String(bucketDate.getTime());
-    let bucket = bucketMap.get(timestampKey);
-    if (!bucket) {
-      bucket = {
-        t: bucketDate.toISOString(),
-        ts: bucketDate.getTime(),
-        label: formatBucketLabel(bucketDate, interval),
-        tools: new Map(),
-      };
-      bucketMap.set(timestampKey, bucket);
+    const pointTs = new Date(normalizedTimestamp).getTime();
+
+    // Find nearest bucket
+    let nearest = bucketKeys[0]!;
+    let minDist = Math.abs(pointTs - nearest);
+    for (const key of bucketKeys) {
+      const dist = Math.abs(pointTs - key);
+      if (dist < minDist) {
+        minDist = dist;
+        nearest = key;
+      }
     }
 
-    bucket.tools.set(point.toolName, {
-      calls: point.calls,
-      errors: point.errors,
-      avg: point.avg,
-      p95: point.p95,
-    });
+    const bucket = bucketMap.get(String(nearest))!;
+    const existing = bucket.tools.get(point.toolName);
+    if (existing) {
+      // Aggregate into same bucket
+      bucket.tools.set(point.toolName, {
+        calls: existing.calls + point.calls,
+        errors: existing.errors + point.errors,
+        avg:
+          (existing.avg * existing.calls + point.avg * point.calls) /
+          (existing.calls + point.calls),
+        p95: Math.max(existing.p95, point.p95),
+      });
+    } else {
+      bucket.tools.set(point.toolName, {
+        calls: point.calls,
+        errors: point.errors,
+        avg: point.avg,
+        p95: point.p95,
+      });
+    }
   }
 
   const rawBuckets = [...bucketMap.values()].sort((a, b) => a.ts - b.ts);
@@ -189,15 +186,113 @@ function buildToolBuckets(
   };
 }
 
+interface LlmBucket {
+  t: string;
+  ts: number;
+  label: string;
+  calls: number;
+  errors: number;
+  avg: number;
+  p95: number;
+}
+
+/**
+ * Find the index of the nearest display bucket for a given timestamp.
+ */
+function findNearestBucket(ts: number, bucketTimestamps: number[]): number {
+  let nearest = 0;
+  let minDist = Math.abs(ts - bucketTimestamps[0]!);
+  for (let i = 1; i < bucketTimestamps.length; i++) {
+    const dist = Math.abs(ts - bucketTimestamps[i]!);
+    if (dist < minDist) {
+      minDist = dist;
+      nearest = i;
+    }
+  }
+  return nearest;
+}
+
+function buildLlmBuckets(
+  timeseries: Array<{
+    timestamp: string;
+    calls: number;
+    errors: number;
+    errorRate: number;
+    avg: number;
+    p50: number;
+    p95: number;
+  }>,
+  start: Date,
+  end: Date,
+  interval: "1m" | "1h" | "1d",
+): LlmBucket[] {
+  const BUCKET_COUNT = 20;
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+  const step = (endMs - startMs) / (BUCKET_COUNT - 1);
+
+  // Create empty display buckets
+  const buckets: LlmBucket[] = [];
+  const bucketTimestamps: number[] = [];
+  for (let i = 0; i < BUCKET_COUNT; i++) {
+    const ts = Math.round(startMs + i * step);
+    bucketTimestamps.push(ts);
+    buckets.push({
+      t: new Date(ts).toISOString(),
+      ts,
+      label: formatBucketLabel(new Date(ts), interval),
+      calls: 0,
+      errors: 0,
+      avg: 0,
+      p95: 0,
+    });
+  }
+
+  // Assign each server point to its nearest display bucket
+  const counts = new Array(BUCKET_COUNT).fill(0);
+  for (const point of timeseries) {
+    const pointTs = new Date(point.timestamp).getTime();
+    const idx = findNearestBucket(pointTs, bucketTimestamps);
+    const bucket = buckets[idx]!;
+    bucket.calls += point.calls;
+    bucket.errors += point.errors;
+    bucket.avg += point.avg;
+    bucket.p95 = Math.max(bucket.p95, point.p95);
+    counts[idx]++;
+  }
+
+  // Average out the avg field
+  for (let i = 0; i < BUCKET_COUNT; i++) {
+    if (counts[i]! > 0) {
+      buckets[i]!.avg = buckets[i]!.avg / counts[i]!;
+    }
+  }
+
+  return buckets;
+}
+
 const METRIC_LABELS: Record<TopChartMetric, string> = {
   calls: "Top Tools — Calls",
-  "latency-avg": "Top Tools — Avg Latency",
+  "latency-avg": "Top Tools — Average Latency",
   "latency-p95": "Top Tools — P95 Latency",
   errors: "Top Tools — Errors",
+  "llm-calls": "AI Usage",
+  "llm-latency-avg": "AI Latency",
+  "llm-latency-p95": "AI P95 Latency",
+  "llm-errors": "AI Errors",
 };
 
+function isLlmMetric(metric: TopChartMetric): boolean {
+  return metric.startsWith("llm-");
+}
+
 function formatTooltipValue(value: number, metric: TopChartMetric): string {
-  if (metric === "latency-avg" || metric === "latency-p95") {
+  if (
+    metric === "latency-avg" ||
+    metric === "latency-p95" ||
+    metric === "llm-latency-avg" ||
+    metric === "llm-latency-p95"
+  ) {
     return value >= 10000
       ? `${(value / 1000).toFixed(1)}s`
       : `${Math.round(value)}ms`;
@@ -245,6 +340,8 @@ function TopToolsContent({
         ? "1h"
         : "1d";
 
+  const isLlm = isLlmMetric(metricsMode);
+
   const { data: metricData } = useMonitoringTopTools(
     {
       interval,
@@ -261,6 +358,17 @@ function TopToolsContent({
     },
   );
 
+  const { data: llmData } = useMonitoringLlmStats(
+    {
+      interval,
+      startDate: dateRange.startDate,
+      endDate: dateRange.endDate,
+    },
+    {
+      refetchInterval: isStreaming ? streamingRefetchInterval : false,
+    },
+  );
+
   const topTools = metricData?.topTools ?? [];
 
   const {
@@ -268,7 +376,7 @@ function TopToolsContent({
     latencyAvgBuckets,
     latencyP95Buckets,
     errorsBuckets,
-    chartConfig,
+    chartConfig: toolChartConfig,
     toolColors,
   } = buildToolBuckets(
     topTools,
@@ -278,7 +386,24 @@ function TopToolsContent({
     interval,
   );
 
-  const buckets =
+  // Build LLM aggregate buckets
+  const llmBuckets = buildLlmBuckets(
+    llmData?.timeseries ?? [],
+    start,
+    end,
+    interval,
+  );
+
+  const llmDataKey =
+    metricsMode === "llm-latency-avg"
+      ? "avg"
+      : metricsMode === "llm-latency-p95"
+        ? "p95"
+        : metricsMode === "llm-errors"
+          ? "errors"
+          : "calls";
+
+  const toolBuckets =
     metricsMode === "latency-avg"
       ? latencyAvgBuckets
       : metricsMode === "latency-p95"
@@ -295,6 +420,86 @@ function TopToolsContent({
       params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
     });
   };
+
+  if (isLlm) {
+    const llmChartConfig = {
+      [llmDataKey]: { label: llmDataKey, color: "var(--chart-1)" },
+    };
+
+    return (
+      <HomeGridCell
+        title={
+          <div className="flex flex-col gap-1.5">
+            <p className="text-sm text-muted-foreground">
+              {METRIC_LABELS[metricsMode]}
+            </p>
+          </div>
+        }
+        onTitleClick={handleTitleClick}
+      >
+        {(llmData?.timeseries?.length ?? 0) === 0 ? (
+          <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+            No AI activity in this time range
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2 w-full h-full">
+            <ChartContainer
+              className="flex-1 min-h-0 max-h-[140px] w-full"
+              config={llmChartConfig}
+            >
+              <LineChart
+                data={llmBuckets}
+                margin={{ left: 8, right: 8, top: 5, bottom: 5 }}
+              >
+                <XAxis
+                  dataKey="label"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                />
+                <ChartTooltip
+                  content={({ active, payload }) => {
+                    if (!active || !payload || payload.length === 0)
+                      return null;
+                    const timeLabel =
+                      payload[0] &&
+                      typeof payload[0] === "object" &&
+                      "payload" in payload[0]
+                        ? ((payload[0] as { payload?: { label?: string } })
+                            .payload?.label ?? "")
+                        : "";
+                    const value =
+                      typeof payload[0]?.value === "number"
+                        ? payload[0].value
+                        : 0;
+                    return (
+                      <div className="rounded-lg border bg-background p-2 shadow-sm">
+                        <div className="mb-1.5 text-xs text-muted-foreground">
+                          {timeLabel}
+                        </div>
+                        <div className="text-xs font-medium">
+                          {formatTooltipValue(value, metricsMode)}
+                        </div>
+                      </div>
+                    );
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey={llmDataKey}
+                  stroke="var(--chart-1)"
+                  strokeWidth={2}
+                  animationDuration={200}
+                  dot={false}
+                  activeDot={{ r: 4 }}
+                />
+              </LineChart>
+            </ChartContainer>
+          </div>
+        )}
+      </HomeGridCell>
+    );
+  }
 
   return (
     <HomeGridCell
@@ -334,10 +539,10 @@ function TopToolsContent({
         <div className="flex flex-col gap-2 w-full h-full">
           <ChartContainer
             className="flex-1 min-h-0 max-h-[140px] w-full"
-            config={chartConfig}
+            config={toolChartConfig}
           >
             <LineChart
-              data={buckets}
+              data={toolBuckets}
               margin={{ left: 8, right: 8, top: 5, bottom: 5 }}
             >
               <XAxis
@@ -345,8 +550,6 @@ function TopToolsContent({
                 axisLine={false}
                 tickLine={false}
                 tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-                interval="preserveStartEnd"
-                minTickGap={60}
               />
               <ChartTooltip
                 content={({ active, payload }) => {
