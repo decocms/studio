@@ -17,6 +17,7 @@ const BASE_THREAD: Thread = {
   updated_by: null,
   hidden: null,
   status: "completed",
+  trigger_id: null,
 };
 
 const NOW = new Date("2025-01-01T01:00:00.000Z").getTime(); // 1hr after base

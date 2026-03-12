@@ -78,3 +78,6 @@ studio-demo/
 # Playwright
 apps/mesh/test-results/
 apps/mesh/playwright-report/
+
+# Generated docs
+docs/

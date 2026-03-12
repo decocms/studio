@@ -60,6 +60,16 @@ export class EventBus implements IEventBus {
     this.worker = new EventBusWorker(this.storage, options.config);
   }
 
+  /**
+   * Set the event trigger engine on the underlying worker.
+   * Allows automations to react to processed events.
+   */
+  setEventTriggerEngine(
+    engine: Parameters<EventBusWorker["setEventTriggerEngine"]>[0],
+  ): void {
+    this.worker.setEventTriggerEngine(engine);
+  }
+
   async publish(
     organizationId: string,
     sourceConnectionId: string,

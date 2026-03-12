@@ -24,6 +24,9 @@ export interface MemoryConfig {
 
   /** Default window size for pruning */
   defaultWindowSize?: number;
+
+  /** Optional trigger ID for automation-created threads */
+  triggerId?: string;
 }
 
 /**
@@ -81,7 +84,8 @@ export async function createMemory(
   storage: OrgScopedThreadStorage,
   config: MemoryConfig,
 ): Promise<Memory> {
-  const { thread_id, organization_id, userId, defaultWindowSize } = config;
+  const { thread_id, organization_id, userId, defaultWindowSize, triggerId } =
+    config;
 
   let thread: Thread;
 
@@ -91,6 +95,7 @@ export async function createMemory(
       id: generatePrefixedId("thrd"),
       organization_id,
       created_by: userId,
+      trigger_id: triggerId ?? null,
     });
   } else {
     // Try to get existing thread scoped to this org
@@ -107,6 +112,7 @@ export async function createMemory(
         id: generatePrefixedId("thrd"),
         organization_id,
         created_by: userId,
+        trigger_id: triggerId ?? null,
       });
     }
   }

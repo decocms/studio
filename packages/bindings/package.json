@@ -31,7 +31,8 @@
     "./plugins": "./src/core/plugins.ts",
     "./plugin-router": "./src/core/plugin-router.tsx",
     "./ai-gateway": "./src/well-known/ai-gateway.ts",
-    "./server-plugin": "./src/core/server-plugin.ts"
+    "./server-plugin": "./src/core/server-plugin.ts",
+    "./trigger": "./src/well-known/trigger.ts"
   },
   "engines": {
     "node": ">=24.0.0"

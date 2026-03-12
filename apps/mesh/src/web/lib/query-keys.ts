@@ -214,6 +214,12 @@ export const KEYS = {
   memberTags: (locator: string, memberId: string) =>
     [locator, "member-tags", memberId] as const,
 
+  // Automations (scoped by organization)
+  automations: (organizationId: string) =>
+    ["automations", organizationId] as const,
+  automation: (organizationId: string, id: string) =>
+    ["automation", organizationId, id] as const,
+
   // Projects (scoped by organization)
   projects: (organizationId: string) => ["projects", organizationId] as const,
   project: (organizationId: string, slug: string) =>

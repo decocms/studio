@@ -81,9 +81,19 @@ import {
   DEFAULT_TRACES_DIR,
   DEFAULT_METRICS_DIR,
 } from "../monitoring/schema";
+import {
+  AutomationCronWorker,
+  EventTriggerEngine,
+  Semaphore,
+} from "../automations";
+import { streamCore } from "./routes/decopilot/stream-core";
+import { createAutomationsStorage } from "../storage/automations";
 
 // Track current event bus instance for cleanup during HMR
 let currentEventBus: EventBus | null = null;
+
+// Track automation cron worker for cleanup during HMR
+let currentCronWorkerCleanup: (() => void) | null = null;
 
 // Track decopilot strategy cleanup (abort active runs, stop strategies) during HMR
 let currentDecopilotCleanup: (() => void) | null = null;
@@ -682,6 +692,120 @@ export async function createApp(options: CreateAppOptions = {}) {
     .catch((error) => {
       console.error("[EventBus] Error during startup:", error);
     });
+
+  // ============================================================================
+  // Automation Cron Worker
+  // ============================================================================
+
+  // Cleanup previous cron worker (HMR)
+  if (currentCronWorkerCleanup) {
+    currentCronWorkerCleanup();
+    currentCronWorkerCleanup = null;
+  }
+
+  const automationsStorage = createAutomationsStorage(database.db);
+  const automationSemaphore = new Semaphore(10); // max 10 concurrent runs globally
+
+  /**
+   * MeshContextFactory for automations.
+   * Verifies the user is still an active member of the organization,
+   * then returns a MeshContext scoped to that org/user.
+   * Returns null when the user is no longer in the org.
+   */
+  const automationContextFactory = async (
+    orgId: string,
+    userId: string,
+  ): Promise<MeshContext | null> => {
+    // Verify org membership
+    const membership = await database.db
+      .selectFrom("member")
+      .innerJoin("organization", "organization.id", "member.organizationId")
+      .select([
+        "member.role",
+        "organization.id as orgId",
+        "organization.slug as orgSlug",
+        "organization.name as orgName",
+      ])
+      .where("member.userId", "=", userId)
+      .where("member.organizationId", "=", orgId)
+      .executeTakeFirst();
+
+    if (!membership) return null;
+
+    // Create a base context (unauthenticated) and override auth/org fields
+    const ctx = await ContextFactory.create();
+    ctx.auth.user = { id: userId, role: membership.role };
+    ctx.organization = {
+      id: membership.orgId,
+      slug: membership.orgSlug,
+      name: membership.orgName,
+    };
+    return ctx;
+  };
+
+  const cronWorker = new AutomationCronWorker(
+    automationsStorage,
+    streamCore,
+    automationContextFactory,
+    {
+      maxConcurrentPerAutomation: 3,
+      runTimeoutMs: 5 * 60 * 1000, // 5 minutes
+    },
+    automationSemaphore,
+    { runRegistry, cancelBroadcast },
+  );
+
+  // Start cron worker and poll every 5 seconds
+  const cronPollIntervalMs = 5_000;
+  let cronTimer: ReturnType<typeof setInterval> | null = null;
+
+  Promise.resolve(cronWorker.start())
+    .then(() => {
+      console.log("[AutomationCron] Worker started");
+      cronTimer = setInterval(() => {
+        cronWorker.processNow().catch((err) => {
+          console.error("[AutomationCron] Error processing:", err);
+        });
+      }, cronPollIntervalMs);
+    })
+    .catch((error) => {
+      console.error("[AutomationCron] Error during startup:", error);
+    });
+
+  currentCronWorkerCleanup = () => {
+    if (cronTimer) {
+      clearInterval(cronTimer);
+      cronTimer = null;
+    }
+    cronWorker.stop().catch(() => {});
+  };
+
+  // ============================================================================
+  // Event Trigger Engine — wire automations into the event bus
+  // ============================================================================
+
+  const eventTriggerEngine = new EventTriggerEngine(
+    automationsStorage,
+    streamCore,
+    automationContextFactory,
+    {
+      maxConcurrentPerAutomation: 3,
+      runTimeoutMs: 5 * 60 * 1000, // 5 minutes
+    },
+    automationSemaphore,
+    { runRegistry, cancelBroadcast },
+  );
+
+  // Inject into the event bus worker so processed events trigger automations.
+  // The cast is needed because the EventBus interface doesn't expose this
+  // integration point — it lives on the concrete implementation only.
+  if ("setEventTriggerEngine" in eventBus) {
+    (
+      eventBus as unknown as {
+        setEventTriggerEngine: (engine: EventTriggerEngine) => void;
+      }
+    ).setEventTriggerEngine(eventTriggerEngine);
+  }
 
   // NDJSON monitoring retention cleanup (always — local files are always written)
   const SIGNAL_DIRS = [

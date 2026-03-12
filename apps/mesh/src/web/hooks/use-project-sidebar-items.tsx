@@ -15,6 +15,7 @@ import {
   Folder,
   Home02,
   LayoutLeft,
+  RefreshCcw01,
   Settings01,
   Users03,
 } from "@untitledui/icons";
@@ -138,6 +139,18 @@ export function useProjectSidebarItems(): SidebarSection[] {
     onClick: () =>
       navigate({
         to: "/$org/$project/agents",
+        params: { org, project: ORG_ADMIN_PROJECT_SLUG },
+      }),
+  };
+
+  const automationsItem: NavigationSidebarItem = {
+    key: "automations",
+    label: "Automations",
+    icon: <RefreshCcw01 />,
+    isActive: isActiveRoute("automations"),
+    onClick: () =>
+      navigate({
+        to: "/$org/$project/automations",
         params: { org, project: ORG_ADMIN_PROJECT_SLUG },
       }),
   };
@@ -282,7 +295,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
         group: {
           id: "build",
           label: "Build",
-          items: [agentsItem, connectionsItem, storeItem],
+          items: [agentsItem, automationsItem, connectionsItem, storeItem],
           defaultExpanded: true,
         },
       },

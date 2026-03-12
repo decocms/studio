@@ -234,6 +234,7 @@ import type { VirtualMCPStorage } from "../storage/virtual";
 import type { ProjectsStorage } from "../storage/projects";
 import type { ProjectConnectionsStorage } from "../storage/project-connections";
 import type { ProjectPluginConfigsStorage } from "../storage/project-plugin-configs";
+import type { AutomationsStorage } from "../storage/automations";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
@@ -267,6 +268,7 @@ export interface MeshStorage {
   projectPluginConfigs: ProjectPluginConfigsStorage;
   aiProviderKeys: AIProviderKeyStorage;
   oauthPkceStates: OAuthPkceStateStorage;
+  automations: AutomationsStorage;
 }
 
 // ============================================================================

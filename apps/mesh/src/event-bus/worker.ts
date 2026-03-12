@@ -112,6 +112,16 @@ export class EventBusWorker {
   private processing = false;
   private pendingNotify = false;
   private config: Required<EventBusConfig>;
+  private eventTriggerEngine?: {
+    notifyEvents(
+      events: Array<{
+        source: string;
+        type: string;
+        data: unknown;
+        organizationId: string;
+      }>,
+    ): void;
+  };
 
   constructor(
     private storage: EventBusStorage,
@@ -124,6 +134,14 @@ export class EventBusWorker {
       ...DEFAULT_EVENT_BUS_CONFIG,
       ...config,
     };
+  }
+
+  /**
+   * Set the event trigger engine for automation firing.
+   * Called once during app startup to wire automations into the event bus.
+   */
+  setEventTriggerEngine(engine: EventBusWorker["eventTriggerEngine"]): void {
+    this.eventTriggerEngine = engine;
   }
 
   /**
@@ -333,6 +351,34 @@ export class EventBusWorker {
           `[EventBus] Failed to update event status ${eventId}:`,
           error,
         );
+      }
+    }
+
+    // Notify the event trigger engine (fire-and-forget) so automations can react.
+    // Deduplicate events by ID before notifying.
+    if (this.eventTriggerEngine) {
+      const seenIds = new Set<string>();
+      const uniqueEvents: Array<{
+        source: string;
+        type: string;
+        data: unknown;
+        organizationId: string;
+      }> = [];
+
+      for (const pending of pendingDeliveries) {
+        if (!seenIds.has(pending.event.id)) {
+          seenIds.add(pending.event.id);
+          uniqueEvents.push({
+            source: pending.event.source,
+            type: pending.event.type,
+            data: pending.event.data,
+            organizationId: pending.event.organizationId,
+          });
+        }
+      }
+
+      if (uniqueEvents.length > 0) {
+        this.eventTriggerEngine.notifyEvents(uniqueEvents);
       }
     }
   }

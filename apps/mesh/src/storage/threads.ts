@@ -119,6 +119,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
       title: data.title,
       description: data.description ?? null,
       status: data.status ?? "completed",
+      trigger_id: data.trigger_id ?? null,
       created_at: now,
       updated_at: now,
       created_by: data.created_by,
@@ -379,6 +380,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
     title: string;
     description: string | null;
     status: string;
+    trigger_id?: string | null;
     created_at: Date | string;
     updated_at: Date | string;
     created_by: string;
@@ -391,6 +393,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
       title: row.title,
       description: row.description,
       status: row.status as ThreadStatus,
+      trigger_id: row.trigger_id ?? null,
       created_at: toIsoString(row.created_at),
       updated_at: toIsoString(row.updated_at),
       created_by: row.created_by,

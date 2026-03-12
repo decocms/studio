@@ -28,6 +28,7 @@ import * as OrganizationTools from "./organization";
 import * as ProjectTools from "./projects";
 import * as TagTools from "./tags";
 import * as ThreadTools from "./thread";
+import * as AutomationTools from "./automations";
 import * as UserTools from "./user";
 import * as AiProvidersTools from "./ai-providers";
 import { ToolName } from "./registry";
@@ -119,6 +120,15 @@ const CORE_TOOLS = [
   TagTools.TAGS_DELETE,
   TagTools.MEMBER_TAGS_GET,
   TagTools.MEMBER_TAGS_SET,
+
+  // Automation tools
+  AutomationTools.AUTOMATION_CREATE,
+  AutomationTools.AUTOMATION_GET,
+  AutomationTools.AUTOMATION_LIST,
+  AutomationTools.AUTOMATION_UPDATE,
+  AutomationTools.AUTOMATION_DELETE,
+  AutomationTools.AUTOMATION_TRIGGER_ADD,
+  AutomationTools.AUTOMATION_TRIGGER_REMOVE,
 
   // Project tools
   ProjectTools.PROJECT_LIST,
