@@ -64,11 +64,6 @@ export const openrouterAdapter: ProviderAdapter = {
 
       async listModels(): Promise<ModelInfo[]> {
         const mapV1Model = (m: OpenRouterAPIModel): ModelInfo => {
-          if (m.id !== m.canonical_slug) {
-            console.log(
-              `[openrouter] id/canonical_slug mismatch: id="${m.id}" canonical_slug="${m.canonical_slug}"`,
-            );
-          }
           return {
             providerId: "openrouter",
             modelId: m.id,
