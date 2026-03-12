@@ -322,11 +322,12 @@ export const auth = betterAuth({
   // Load optional configuration from file
   ...authConfig,
 
-  // emailAndPassword only enabled in local mode for auto-login.
-  // In production/non-local mode, OTP is the primary auth method.
+  // emailAndPassword: only enabled in local mode (for auto-login) or when
+  // explicitly configured. DEFAULT_AUTH_CONFIG has enabled:true for TS inference,
+  // but we override here to disable unless in local mode or explicitly enabled.
   emailAndPassword: {
-    enabled: isLocalMode(),
     ...authConfig.emailAndPassword,
+    enabled: isLocalMode(),
   },
 
   // Disable rate limiting in development (set DISABLE_RATE_LIMIT=true)

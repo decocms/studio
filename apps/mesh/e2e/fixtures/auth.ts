@@ -9,12 +9,12 @@ function generateTestUser() {
   return {
     name: `Test User ${suffix}`,
     email: `test-${suffix}@playwright.local`,
-    password: "Playwright123!",
   };
 }
 
 /**
- * Signs up a new user via the login page form.
+ * Signs up a new user via the OTP email flow on the login page.
+ * Uses a dev-only test endpoint to retrieve the OTP from the database.
  * Returns the user credentials and waits for the home page to load.
  */
 export async function signUp(page: Page) {
@@ -22,15 +22,30 @@ export async function signUp(page: Page) {
 
   await page.goto("/login");
 
-  // Wait for the name input — the form is in sign-up mode by default in a fresh context.
-  // The button has aria-hidden when the form is empty, so fill fields first then click.
-  await page.getByPlaceholder("Your name").waitFor({ state: "visible" });
-  await page.getByPlaceholder("Your name").fill(user.name);
+  // Enter email and submit
+  await page.getByPlaceholder("you@example.com").waitFor({ state: "visible" });
   await page.getByPlaceholder("you@example.com").fill(user.email);
-  await page.getByPlaceholder("••••••••").fill(user.password);
+  await page.getByRole("button", { name: "Continue with email" }).click();
 
-  // Button becomes aria-visible once canSubmit is true (all fields filled)
-  await page.getByRole("button", { name: "Continue" }).click();
+  // Wait for OTP view to appear
+  await page.getByPlaceholder("Enter verification code").waitFor({
+    state: "visible",
+    timeout: 10_000,
+  });
+
+  // Retrieve OTP from the dev-only test endpoint
+  const baseURL = `http://localhost:${process.env.PORT || "3000"}`;
+  const otpResponse = await fetch(
+    `${baseURL}/api/auth/custom/test/latest-otp?email=${encodeURIComponent(user.email)}&type=sign-in`,
+  );
+  const otpData = await otpResponse.json();
+  if (!otpData.success || !otpData.otp) {
+    throw new Error(`Failed to get OTP: ${otpData.error || "unknown error"}`);
+  }
+
+  // Enter OTP and verify
+  await page.getByPlaceholder("Enter verification code").fill(otpData.otp);
+  await page.getByRole("button", { name: "Verify" }).click();
 
   // Wait for redirect away from /login — org is auto-created on signup
   await page.waitForURL((url) => !url.pathname.startsWith("/login"), {

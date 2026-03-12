@@ -181,4 +181,60 @@ app.post("/local-session", async (c) => {
   }
 });
 
+/**
+ * Development-only endpoint to retrieve the latest OTP for a given email.
+ * Used by e2e tests to complete the OTP sign-in flow.
+ *
+ * Route: GET /api/auth/custom/test/latest-otp?email=...&type=sign-in
+ */
+app.get("/test/latest-otp", async (c) => {
+  if (env.NODE_ENV === "production") {
+    return c.json(
+      { success: false, error: "Not available in production" },
+      403,
+    );
+  }
+
+  const email = c.req.query("email");
+  const type = c.req.query("type") || "sign-in";
+
+  if (!email) {
+    return c.json({ success: false, error: "email parameter required" }, 400);
+  }
+
+  try {
+    const { getDb } = await import("@/database");
+    const { sql } = await import("kysely");
+    const db = getDb();
+    const identifier = `${type}-otp-${email}`;
+
+    // Use raw SQL since 'verification' table is managed by Better Auth
+    // and not in the Kysely schema types.
+    const result = await sql<{ value: string }>`
+      SELECT value FROM verification
+      WHERE identifier = ${identifier}
+      ORDER BY "createdAt" DESC
+      LIMIT 1
+    `.execute(db.db);
+
+    const row = result.rows[0];
+    if (!row) {
+      return c.json({ success: false, error: "No OTP found" }, 404);
+    }
+
+    // Value format is "otp:attemptCount"
+    const otp = String(row.value).split(":")[0];
+
+    return c.json({ success: true, otp });
+  } catch (error) {
+    return c.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to get OTP",
+      },
+      500,
+    );
+  }
+});
+
 export default app;

@@ -11,6 +11,10 @@ import { existsSync, readFileSync } from "fs";
 import { env } from "../env";
 
 const DEFAULT_AUTH_CONFIG: Config["auth"] = {
+  // emailAndPassword must be `enabled: true` here for Better Auth's type
+  // inference to correctly resolve all plugin API methods. The actual runtime
+  // enablement is controlled by isLocalMode() in auth/index.ts, which
+  // overrides this value after the config spread.
   emailAndPassword: {
     enabled: true,
   },
