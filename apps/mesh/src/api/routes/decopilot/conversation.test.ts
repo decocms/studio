@@ -36,8 +36,12 @@ describe("processConversation", () => {
       const { originalMessages } = await processConversation(allMessages, {
         windowSize: 50,
         models: {
-          connectionId: "c1",
-          thinking: { id: "m1", capabilities: { text: true } },
+          credentialId: "aik_c1",
+          thinking: {
+            id: "m1",
+            title: "Model 1",
+            capabilities: { text: true },
+          },
         },
       });
 
@@ -66,8 +70,12 @@ describe("processConversation", () => {
       const { originalMessages } = await processConversation(allMessages, {
         windowSize: 50,
         models: {
-          connectionId: "c1",
-          thinking: { id: "m1", capabilities: { text: true } },
+          credentialId: "aik_c1",
+          thinking: {
+            id: "m1",
+            title: "Model 1",
+            capabilities: { text: true },
+          },
         },
       });
 
@@ -89,8 +97,12 @@ describe("processConversation", () => {
       const { originalMessages } = await processConversation(allMessages, {
         windowSize: 50,
         models: {
-          connectionId: "c1",
-          thinking: { id: "m1", capabilities: { text: true } },
+          credentialId: "aik_c1",
+          thinking: {
+            id: "m1",
+            title: "Model 1",
+            capabilities: { text: true },
+          },
         },
       });
 

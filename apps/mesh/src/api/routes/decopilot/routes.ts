@@ -49,12 +49,16 @@ import {
   fetchModelPermissions,
   parseModelsToMap,
 } from "./model-permissions";
-import { createModelProviderFromClient } from "./model-provider";
+import {
+  createModelProviderFromClient,
+  wrapLegacyProvider,
+} from "./model-provider";
 import { StreamRequestSchema } from "./schemas";
 import { resolveThreadStatus } from "./status";
 import { genTitle } from "./title-generator";
 import type { ChatMessage } from "./types";
 import { ThreadMessage } from "@/storage/types";
+import { monitorLlmCall } from "@/monitoring/emit-llm-call";
 
 // ============================================================================
 // Request Validation
@@ -130,6 +134,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
     let runStarted = false;
     let closeClients: (() => void) | undefined;
     let threadId: string | undefined;
+    let llmCallStartTime: number | undefined;
     try {
       const ctx = c.get("meshContext");
 
@@ -158,12 +163,12 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         ctx.auth.user?.role,
       );
 
+      // credentialId for new path, connectionId for legacy path
+      const modelSourceId = models.credentialId ?? models.connectionId ?? "";
+
       if (
-        !checkModelPermission(
-          allowedModels,
-          models.connectionId,
-          models.thinking.id,
-        )
+        allowedModels !== undefined &&
+        !checkModelPermission(allowedModels, modelSourceId, models.thinking.id)
       ) {
         throw new HTTPException(403, {
           message: "Model not allowed for your role",
@@ -173,10 +178,19 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       const windowSize = memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE;
       const resolvedThreadId = thread_id ?? memoryConfig?.thread_id;
 
+      // credentialId → new AI-provider-key path; connectionId → legacy MCP path
+      const isLegacyPath = !models.credentialId && !!models.connectionId;
+
       // Get connection entities and create/load memory in parallel
       const [virtualMcp, modelConnection, mem] = await Promise.all([
         ctx.storage.virtualMcps.findById(agent.id, organization.id),
-        ctx.storage.connections.findById(models.connectionId, organization.id),
+        // Legacy path only: fetch MCP connection for model routing
+        isLegacyPath
+          ? ctx.storage.connections.findById(
+              models.connectionId!,
+              organization.id,
+            )
+          : Promise.resolve(null),
         createMemory(ctx.storage.threads, {
           organization_id: organization.id,
           thread_id: resolvedThreadId,
@@ -212,7 +226,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         });
       };
 
-      if (!modelConnection) {
+      if (isLegacyPath && !modelConnection) {
         throw new Error("Model connection not found");
       }
 
@@ -256,7 +270,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
       const isGatewayMode = agent.mode !== "passthrough";
       const maxOutputTokens =
-        models.thinking.limits?.maxOutputTokens ?? DEFAULT_MAX_TOKENS;
+        models.thinking.limits?.maxOutputTokens || DEFAULT_MAX_TOKENS;
 
       let streamFinished = false;
       // Fire-and-forget promises from onStepFinish (reactor calls + periodic
@@ -284,7 +298,10 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           // potentially slow I/O, preventing Cloudflare 524 timeouts.
           const [modelClient, passthroughClient, strategyClient] =
             await Promise.all([
-              clientFromConnection(modelConnection, ctx, false),
+              // Legacy path: create MCP model client
+              modelConnection
+                ? clientFromConnection(modelConnection, ctx, false)
+                : Promise.resolve(null),
               createVirtualClientFrom(virtualMcp, ctx, "passthrough"),
               isGatewayMode
                 ? createVirtualClientFrom(virtualMcp, ctx, agent.mode)
@@ -292,23 +309,10 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
             ]);
 
           closeClients = () => {
-            modelClient.close().catch(() => {});
+            modelClient?.close().catch(() => {});
             passthroughClient.close().catch(() => {});
             strategyClient?.close().catch(() => {});
           };
-
-          const streamableModelClient = withStreamingSupport(
-            modelClient,
-            models.connectionId,
-            modelConnection,
-            ctx,
-            { superUser: false },
-          );
-
-          const modelProvider = await createModelProviderFromClient(
-            streamableModelClient,
-            models,
-          );
 
           // Enrich the pre-loaded messages with agent-specific instructions
           // from the virtual MCP now that the client is available.
@@ -337,12 +341,35 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
               )
             : {};
 
+          // Resolve provider: new AI-key path or legacy MCP-connection path
+          const provider = !isLegacyPath
+            ? await ctx.aiProviders.activate(
+                models.credentialId!,
+                organization.id,
+              )
+            : wrapLegacyProvider(
+                await createModelProviderFromClient(
+                  withStreamingSupport(
+                    modelClient!,
+                    models.connectionId!,
+                    modelConnection!,
+                    ctx,
+                    { superUser: false },
+                  ),
+                  models,
+                ),
+                models,
+              );
+
           const builtInTools = await getBuiltInTools(
             writer,
             {
-              modelProvider,
+              provider,
               organization,
-              models,
+              models: {
+                credentialId: modelSourceId,
+                thinking: models.thinking,
+              },
               toolApprovalLevel,
               toolOutputMap,
             },
@@ -378,7 +405,9 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           if (shouldGenerateTitle) {
             genTitle({
               abortSignal,
-              model: modelProvider.fastModel ?? modelProvider.thinkingModel,
+              model: provider.aiSdk.languageModel(
+                models.fast?.id ?? models.thinking.id,
+              ),
               userMessage: JSON.stringify(processedMessages[0]?.content),
             })
               .then(async (title) => {
@@ -412,8 +441,10 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           let reasoningStartAt: Date | null = null;
           let lastProviderMetadata: Record<string, unknown> | undefined;
 
+          llmCallStartTime = Date.now();
+
           const result = streamText({
-            model: modelProvider.thinkingModel,
+            model: provider.aiSdk.languageModel(models.thinking.id),
             system: processedSystemMessages,
             messages: processedMessages,
             tools,
@@ -422,6 +453,43 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
             maxOutputTokens,
             abortSignal,
             stopWhen: stepCountIs(PARENT_STEP_LIMIT),
+            onFinish: async ({
+              usage,
+              totalUsage,
+              finishReason,
+              request,
+              response,
+            }) => {
+              if (abortSignal.aborted) return;
+              const durationMs = Date.now() - (llmCallStartTime ?? Date.now());
+              monitorLlmCall({
+                ctx,
+                organizationId: organization.id,
+                agentId: agent.id,
+                modelId: models.thinking.id,
+                modelTitle: models.thinking.title ?? models.thinking.id,
+                credentialId: modelSourceId,
+                threadId: mem.thread.id,
+                durationMs,
+                isError: false,
+                finishReason,
+                usage: {
+                  inputTokens: usage.inputTokens ?? 0,
+                  outputTokens: usage.outputTokens ?? 0,
+                  totalTokens: usage.totalTokens ?? 0,
+                },
+                totalUsage: {
+                  inputTokens: totalUsage.inputTokens ?? 0,
+                  outputTokens: totalUsage.outputTokens ?? 0,
+                  totalTokens: totalUsage.totalTokens ?? 0,
+                },
+                request,
+                response,
+                userId: userId ?? null,
+                requestId: ctx.metadata.requestId,
+                userAgent: ctx.metadata.userAgent ?? null,
+              });
+            },
             onError: async (error) => {
               console.error("[decopilot:stream] Error", error);
               throw error;
@@ -433,12 +501,19 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
             generateMessageId,
             messageMetadata: ({ part }) => {
               if (part.type === "start") {
+                // models cast: ChatModelsConfig still uses connectionId (PR5 will align)
                 return {
                   agent: { id: agent.id ?? null, mode: agent.mode },
                   models: {
-                    connectionId: models.connectionId,
-                    thinking: models.thinking,
-                  },
+                    credentialId: modelSourceId,
+                    thinking: {
+                      id: models.thinking.id,
+                      title: models.thinking.title,
+                      provider: models.thinking.provider ?? undefined,
+                      capabilities: models.thinking.capabilities,
+                      limits: models.thinking.limits,
+                    },
+                  } as never,
                   created_at: new Date(),
                   thread_id: mem.thread.id,
                 };
@@ -459,7 +534,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
               }
 
               if (part.type === "finish") {
-                const provider = models.thinking.provider;
+                const thinkingProvider = models.thinking.provider;
                 const totalUsage = part.totalUsage;
                 const providerMeta =
                   lastProviderMetadata ??
@@ -472,11 +547,13 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
                       reasoningTokens: totalUsage.reasoningTokens ?? undefined,
                       totalTokens: totalUsage.totalTokens ?? 0,
                       providerMetadata: sanitizeProviderMetadata(
-                        provider && providerMeta
+                        thinkingProvider && providerMeta
                           ? {
                               ...providerMeta,
-                              [provider]: {
-                                ...((providerMeta[provider] as object) ?? {}),
+                              [thinkingProvider]: {
+                                ...((providerMeta[
+                                  thinkingProvider
+                                ] as object) ?? {}),
                                 reasoning_details: undefined,
                               },
                             }
@@ -560,6 +637,26 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
             return error instanceof Error ? error.message : String(error);
           }
           console.error("[decopilot] stream error:", error);
+
+          if (llmCallStartTime !== undefined) {
+            const durationMs = Date.now() - llmCallStartTime;
+            monitorLlmCall({
+              ctx,
+              organizationId: organization.id,
+              agentId: agent.id,
+              modelId: models.thinking.id,
+              modelTitle: models.thinking.title ?? models.thinking.id,
+              credentialId: modelSourceId,
+              threadId: mem.thread.id,
+              durationMs,
+              isError: true,
+              errorMessage:
+                error instanceof Error ? error.message : String(error),
+              userId: userId ?? null,
+              requestId: ctx.metadata.requestId,
+              userAgent: ctx.metadata.userAgent ?? null,
+            });
+          }
 
           runRegistry
             .execute({

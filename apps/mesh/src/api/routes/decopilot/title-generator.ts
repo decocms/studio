@@ -4,7 +4,7 @@
  * Generates conversation titles in the background using LLM.
  */
 
-import type { LanguageModelV2 } from "@ai-sdk/provider";
+import type { LanguageModelV3 } from "@ai-sdk/provider";
 import { generateText } from "ai";
 
 import { TITLE_GENERATOR_PROMPT } from "./constants";
@@ -16,7 +16,7 @@ const TITLE_TIMEOUT_MS = 2500;
 
 export async function genTitle(config: {
   abortSignal: AbortSignal;
-  model: LanguageModelV2;
+  model: LanguageModelV3;
   userMessage: string;
 }): Promise<string | null> {
   const { abortSignal, model, userMessage } = config;

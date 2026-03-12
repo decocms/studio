@@ -23,7 +23,8 @@ import {
   SUBAGENT_STEP_LIMIT,
 } from "../constants";
 import { toolsFromMCP } from "../helpers";
-import type { ModelProvider, ModelsConfig } from "../types";
+import type { ModelsConfig } from "../types";
+import { MeshProvider } from "@/ai-providers/types";
 
 export const SubtaskInputSchema = z.object({
   prompt: z
@@ -57,7 +58,7 @@ const SUBTASK_DESCRIPTION =
   "IMPORTANT: Every subtask call starts FRESH — no conversation history, no prior runs. Even if you call it multiple times, each run is isolated. Always include full context in the prompt; never use continuation phrases like 'continue' or 'as before'.";
 
 export interface SubtaskParams {
-  modelProvider: ModelProvider;
+  provider: MeshProvider;
   organization: OrganizationScope;
   models: ModelsConfig;
   needsApproval?: boolean;
@@ -102,7 +103,7 @@ export function createSubtaskTool(
   params: SubtaskParams,
   ctx: MeshContext,
 ) {
-  const { modelProvider, organization, models, needsApproval } = params;
+  const { provider, organization, models, needsApproval } = params;
 
   return tool({
     description: SUBTASK_DESCRIPTION,
@@ -157,7 +158,7 @@ export function createSubtaskTool(
       let accumulatedUsage: UsageStats = emptyUsageStats();
 
       const result = streamText({
-        model: modelProvider.thinkingModel,
+        model: provider.aiSdk.languageModel(models.thinking.id),
         system: systemPrompt,
         prompt,
         tools: subagentTools,

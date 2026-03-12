@@ -19,21 +19,22 @@ const MemoryConfigSchema = z.object({
   thread_id: z.string(),
 });
 
-const ProviderSchema = z
-  .enum([
-    "openai",
-    "anthropic",
-    "google",
-    "xai",
-    "deepseek",
-    "openrouter",
-    "openai-compatible",
-  ])
-  .optional()
-  .nullable();
+const ProviderEnum = z.enum([
+  "openai",
+  "anthropic",
+  "google",
+  "xai",
+  "deepseek",
+  "openrouter",
+  "openai-compatible",
+]);
+
+const ProviderSchema = ProviderEnum.optional().nullable();
 
 const ModelInfoSchema = z.object({
   id: z.string(),
+  // Optional for backward compat with legacy clients that don't send title
+  title: z.string().optional(),
   capabilities: z
     .object({
       vision: z.boolean().optional(),
@@ -41,7 +42,6 @@ const ModelInfoSchema = z.object({
       tools: z.boolean().optional(),
     })
     .optional(),
-  provider: ProviderSchema,
   limits: z
     .object({
       contextWindow: z.number().optional(),
@@ -50,14 +50,27 @@ const ModelInfoSchema = z.object({
     .optional(),
 });
 
+const ThinkingModelSchema = ModelInfoSchema.extend({
+  provider: ProviderSchema,
+});
+
 const ModelsSchema = z
   .object({
-    connectionId: z.string(),
-    thinking: ModelInfoSchema.describe("Backbone model for the agentic loop"),
+    // New AI-provider-key path
+    credentialId: z.string().optional(),
+    // Legacy MCP-connection path (kept for backward compat until UI ships)
+    connectionId: z.string().optional(),
+    thinking: ThinkingModelSchema.describe(
+      "Backbone model for the agentic loop",
+    ),
     coding: ModelInfoSchema.optional().describe("Good coding model"),
     fast: ModelInfoSchema.optional().describe("Cheap model for simple tasks"),
   })
-  .loose();
+  .loose()
+  .refine((d) => !!(d.credentialId || d.connectionId), {
+    message: "Either credentialId or connectionId is required",
+    path: ["credentialId"],
+  });
 
 export const StreamRequestSchema = z.object({
   messages: z

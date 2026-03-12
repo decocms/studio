@@ -236,6 +236,9 @@ import type { ProjectConnectionsStorage } from "../storage/project-connections";
 import type { ProjectPluginConfigsStorage } from "../storage/project-plugin-configs";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
+import type { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
+import { AIProviderFactory } from "@/ai-providers/factory";
 
 // Better Auth instance type - flexible for testing
 // In production, this is the actual Better Auth instance
@@ -262,6 +265,8 @@ export interface MeshStorage {
   projects: ProjectsStorage;
   projectConnections: ProjectConnectionsStorage;
   projectPluginConfigs: ProjectPluginConfigsStorage;
+  aiProviderKeys: AIProviderKeyStorage;
+  oauthPkceStates: OAuthPkceStateStorage;
 }
 
 // ============================================================================
@@ -321,6 +326,9 @@ export interface MeshContext {
   // Event bus for publishing and subscribing to events
   eventBus: EventBus;
 
+  // AI Provider factory
+  aiProviders: AIProviderFactory;
+
   // Utility for creating MCP Proxies
   createMCPProxy: (
     conn: Parameters<typeof createMCPProxy>[0],
@@ -331,6 +339,8 @@ export interface MeshContext {
     transport: T,
     key: string,
   ) => Promise<Client>;
+
+  // AI Provider keys storage
 }
 
 // ============================================================================
