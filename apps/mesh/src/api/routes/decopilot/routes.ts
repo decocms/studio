@@ -208,29 +208,68 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
     const { spawn } = await import("node:child_process");
 
-    // Check Claude Code: `claude mcp get mesh-studio` exits 0 if configured
-    const claudeCode = await new Promise<boolean>((resolve) => {
+    // Check if mesh-studio MCP server is configured in Claude Code
+    const connected = await new Promise<boolean>((resolve) => {
       const proc = spawn("claude", ["mcp", "get", "mesh-studio"], {
         stdio: "ignore",
       });
-      proc.on("close", (code) => resolve(code === 0));
-      proc.on("error", () => resolve(false));
+      const timeout = setTimeout(() => {
+        proc.kill();
+        resolve(false);
+      }, 5000);
+      proc.on("close", (code) => {
+        clearTimeout(timeout);
+        resolve(code === 0);
+      });
+      proc.on("error", () => {
+        clearTimeout(timeout);
+        resolve(false);
+      });
     });
 
-    // Check Cursor: read ~/.cursor/mcp.json
-    let cursor = false;
-    try {
-      const os = await import("node:os");
-      const path = await import("node:path");
-      const fs = await import("node:fs");
-      const configPath = path.join(os.homedir(), ".cursor", "mcp.json");
-      const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-      cursor = !!config?.mcpServers?.["mesh-studio"];
-    } catch {
-      // File doesn't exist or parse error
+    // Get Claude Code auth info (email, org, subscription)
+    let auth: {
+      email?: string;
+      orgName?: string;
+      subscriptionType?: string;
+    } | null = null;
+    if (connected) {
+      try {
+        const authInfo = await new Promise<string>((resolve, reject) => {
+          const proc = spawn("claude", ["auth", "status"], {
+            stdio: ["ignore", "pipe", "ignore"],
+          });
+          let stdout = "";
+          const timeout = setTimeout(() => {
+            proc.kill();
+            reject(new Error("timeout"));
+          }, 5000);
+          proc.stdout.on("data", (chunk: Buffer) => {
+            stdout += chunk.toString();
+          });
+          proc.on("close", () => {
+            clearTimeout(timeout);
+            resolve(stdout);
+          });
+          proc.on("error", (err) => {
+            clearTimeout(timeout);
+            reject(err);
+          });
+        });
+        const parsed = JSON.parse(authInfo);
+        if (parsed.loggedIn) {
+          auth = {
+            email: parsed.email,
+            orgName: parsed.orgName,
+            subscriptionType: parsed.subscriptionType,
+          };
+        }
+      } catch {
+        // Auth info not available
+      }
     }
 
-    return c.json({ "claude-code": claudeCode, cursor });
+    return c.json({ connected, auth });
   });
 
   app.post("/:org/decopilot/connect-studio", async (c) => {
@@ -241,21 +280,13 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       throw new HTTPException(401, { message: "Authentication required" });
     }
 
-    const body = await c.req.json<{ target: "claude-code" | "cursor" }>();
-    const target = body.target;
-    if (target !== "claude-code" && target !== "cursor") {
-      throw new HTTPException(400, {
-        message: "target must be 'claude-code' or 'cursor'",
-      });
-    }
-
     // Create API key for the MCP endpoint
     const apiKey = await ctx.boundAuth.apiKey.create({
-      name: `studio-connect-${target}`,
+      name: "studio-connect-claude-code",
       permissions: { "*": ["*"] },
       metadata: {
         internal: true,
-        target,
+        target: "claude-code",
         organization: organization.id,
       },
     });
@@ -268,61 +299,80 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       headers: {
         Authorization: `Bearer ${apiKey.key}`,
         "x-org-id": organization.id,
-        "x-mesh-client": target === "claude-code" ? "Claude Code" : "Cursor",
+        "x-mesh-client": "Claude Code",
       },
     });
 
     const { spawn } = await import("node:child_process");
 
-    if (target === "claude-code") {
-      // Use `claude mcp add-json` CLI to register globally
-      const result = await new Promise<{ ok: boolean; stderr: string }>(
-        (resolve) => {
-          const proc = spawn(
-            "claude",
-            ["mcp", "add-json", "mesh-studio", mcpConfig, "--scope", "user"],
-            { stdio: ["ignore", "ignore", "pipe"] },
-          );
-          let stderr = "";
-          proc.stderr.on("data", (chunk: Buffer) => {
-            stderr += chunk.toString();
-          });
-          proc.on("close", (code) => resolve({ ok: code === 0, stderr }));
-          proc.on("error", (err) =>
-            resolve({ ok: false, stderr: err.message }),
-          );
-        },
-      );
-      if (!result.ok) {
-        throw new HTTPException(500, {
-          message: `claude mcp add-json failed: ${result.stderr}`,
+    const result = await new Promise<{ ok: boolean; stderr: string }>(
+      (resolve) => {
+        const proc = spawn(
+          "claude",
+          ["mcp", "add-json", "mesh-studio", mcpConfig, "--scope", "user"],
+          { stdio: ["ignore", "ignore", "pipe"] },
+        );
+        let stderr = "";
+        const timeout = setTimeout(() => {
+          proc.kill();
+          resolve({ ok: false, stderr: "timeout" });
+        }, 10000);
+        proc.stderr.on("data", (chunk: Buffer) => {
+          stderr += chunk.toString();
         });
-      }
-    } else {
-      // Cursor has no CLI — write directly to ~/.cursor/mcp.json
-      const os = await import("node:os");
-      const fs = await import("node:fs");
-      const path = await import("node:path");
-      const cursorDir = path.join(os.homedir(), ".cursor");
-      if (!fs.existsSync(cursorDir)) {
-        fs.mkdirSync(cursorDir, { recursive: true });
-      }
-      const configPath = path.join(cursorDir, "mcp.json");
-      let config: Record<string, unknown> = {};
-      try {
-        config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-      } catch {
-        // File doesn't exist yet
-      }
-      if (!config.mcpServers || typeof config.mcpServers !== "object") {
-        config.mcpServers = {};
-      }
-      (config.mcpServers as Record<string, unknown>)["mesh-studio"] =
-        JSON.parse(mcpConfig);
-      fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
+        proc.on("close", (code) => {
+          clearTimeout(timeout);
+          resolve({ ok: code === 0, stderr });
+        });
+        proc.on("error", (err) => {
+          clearTimeout(timeout);
+          resolve({ ok: false, stderr: err.message });
+        });
+      },
+    );
+    if (!result.ok) {
+      throw new HTTPException(500, {
+        message: `Failed to register MCP server`,
+      });
     }
 
-    return c.json({ success: true, target });
+    return c.json({ success: true });
+  });
+
+  app.delete("/:org/decopilot/connect-studio", async (c) => {
+    const ctx = c.get("meshContext");
+    if (!ctx.auth?.user?.id) {
+      throw new HTTPException(401, { message: "Authentication required" });
+    }
+
+    const { spawn } = await import("node:child_process");
+
+    const result = await new Promise<{ ok: boolean }>((resolve) => {
+      const proc = spawn(
+        "claude",
+        ["mcp", "remove", "mesh-studio", "--scope", "user"],
+        { stdio: "ignore" },
+      );
+      const timeout = setTimeout(() => {
+        proc.kill();
+        resolve({ ok: false });
+      }, 5000);
+      proc.on("close", (code) => {
+        clearTimeout(timeout);
+        resolve({ ok: code === 0 });
+      });
+      proc.on("error", () => {
+        clearTimeout(timeout);
+        resolve({ ok: false });
+      });
+    });
+    if (!result.ok) {
+      throw new HTTPException(500, {
+        message: "Failed to remove MCP server",
+      });
+    }
+
+    return c.json({ success: true });
   });
 
   // ============================================================================
