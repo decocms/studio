@@ -35,6 +35,7 @@ import { createAccessControl, Role } from "@decocms/better-auth/plugins/access";
 import { getDatabaseUrl, getDbDialect } from "../database";
 import { createEmailSender, findEmailProvider } from "./email-providers";
 import { createEmailOTPConfig } from "./email-otp";
+import { isLocalMode } from "./local-mode";
 import { createMagicLinkConfig } from "./magic-link";
 import { seedOrgDb } from "./org";
 import { ADMIN_ROLES } from "./roles";
@@ -321,9 +322,10 @@ export const auth = betterAuth({
   // Load optional configuration from file
   ...authConfig,
 
-  // emailAndPassword kept enabled for local mode auto-login
+  // emailAndPassword only enabled in local mode for auto-login.
+  // In production/non-local mode, OTP is the primary auth method.
   emailAndPassword: {
-    enabled: true,
+    enabled: isLocalMode(),
     ...authConfig.emailAndPassword,
   },
 

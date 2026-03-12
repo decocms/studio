@@ -7,6 +7,8 @@ import {
 
 type BetterAuthEmailOTPConfig = Parameters<typeof emailOTP>[0];
 
+const MIN_OTP_LENGTH = 6;
+
 export const createEmailOTPConfig = (
   config: EmailOTPConfig,
   emailProviders?: EmailProviderConfig[],
@@ -18,14 +20,20 @@ export const createEmailOTPConfig = (
 
   const sendEmail = provider ? createEmailSender(provider) : undefined;
 
+  const isProduction = process.env.NODE_ENV === "production";
+
+  if (!sendEmail && isProduction) {
+    console.warn(
+      "[email-otp] No email provider configured. OTP codes will NOT be logged in production.",
+    );
+  }
+
+  const otpLength = Math.max(config.otpLength ?? 6, MIN_OTP_LENGTH);
+
   return {
     sendVerificationOTP: async ({ email, otp, type }) => {
       const subject =
-        type === "sign-in"
-          ? "Your sign-in code"
-          : type === "forget-password"
-            ? "Your password reset code"
-            : "Verify your email";
+        type === "sign-in" ? "Your sign-in code" : "Verify your email";
 
       if (sendEmail) {
         await sendEmail({
@@ -38,12 +46,12 @@ export const createEmailOTPConfig = (
             <p>If you didn't request this, you can safely ignore this email.</p>
           `,
         });
-      } else {
-        // Log OTP to console when no email provider is configured (dev mode)
+      } else if (!isProduction) {
+        // Only log OTP to console in non-production environments
         console.log(`[email-otp] ${subject} for ${email}: ${otp}`);
       }
     },
-    otpLength: config.otpLength ?? 6,
+    otpLength,
     expiresIn: config.expiresIn ?? 300,
   };
 };

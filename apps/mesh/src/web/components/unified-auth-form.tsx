@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useAuthConfig } from "@/web/providers/auth-config-provider";
 import { authClient } from "@/web/lib/auth-client";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
+
+const RESEND_COOLDOWN_SECONDS = 60;
 
 interface UnifiedAuthFormProps {
   /**
@@ -22,8 +24,25 @@ export function UnifiedAuthForm({ redirectUrl }: UnifiedAuthFormProps) {
   const [otp, setOtp] = useState("");
   const [view, setView] = useState<FormView>("email");
   const [emailError, setEmailError] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const isOtpView = view === "otp";
+
+  const startResendCooldown = () => {
+    setResendCooldown(RESEND_COOLDOWN_SECONDS);
+    if (cooldownRef.current) clearInterval(cooldownRef.current);
+    cooldownRef.current = setInterval(() => {
+      setResendCooldown((prev) => {
+        if (prev <= 1) {
+          if (cooldownRef.current) clearInterval(cooldownRef.current);
+          cooldownRef.current = null;
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
 
   // Send OTP to email
   const sendOtpMutation = useMutation({
@@ -39,6 +58,7 @@ export function UnifiedAuthForm({ redirectUrl }: UnifiedAuthFormProps) {
     },
     onSuccess: () => {
       setView("otp");
+      startResendCooldown();
     },
   });
 
@@ -56,8 +76,15 @@ export function UnifiedAuthForm({ redirectUrl }: UnifiedAuthFormProps) {
     },
     onSuccess: () => {
       globalThis.localStorage?.setItem("hasLoggedIn", "true");
-      if (redirectUrl) {
+      // Validate redirectUrl is a safe relative path
+      if (
+        redirectUrl &&
+        redirectUrl.startsWith("/") &&
+        !redirectUrl.startsWith("//")
+      ) {
         window.location.href = redirectUrl;
+      } else {
+        window.location.href = "/";
       }
     },
   });
@@ -87,6 +114,9 @@ export function UnifiedAuthForm({ redirectUrl }: UnifiedAuthFormProps) {
     verifyOtpMutation.mutate({ email, otp });
   };
 
+  const isLoading = sendOtpMutation.isPending || verifyOtpMutation.isPending;
+  const otpError = sendOtpMutation.error || verifyOtpMutation.error;
+
   const handleInputChange =
     (setter: (value: string) => void) =>
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -107,9 +137,6 @@ export function UnifiedAuthForm({ redirectUrl }: UnifiedAuthFormProps) {
     sendOtpMutation.reset();
     verifyOtpMutation.reset();
   };
-
-  const isLoading = sendOtpMutation.isPending || verifyOtpMutation.isPending;
-  const otpError = sendOtpMutation.error || verifyOtpMutation.error;
 
   const canSubmit = isOtpView ? otp.trim().length > 0 : email.trim().length > 0;
 
@@ -221,7 +248,7 @@ export function UnifiedAuthForm({ redirectUrl }: UnifiedAuthFormProps) {
             </label>
             <Input
               type="text"
-              placeholder="Enter 6-digit code"
+              placeholder="Enter verification code"
               value={otp}
               onChange={handleInputChange(setOtp)}
               required
@@ -229,7 +256,6 @@ export function UnifiedAuthForm({ redirectUrl }: UnifiedAuthFormProps) {
               autoFocus
               inputMode="numeric"
               pattern="[0-9]*"
-              maxLength={6}
             />
           </div>
 
@@ -252,11 +278,16 @@ export function UnifiedAuthForm({ redirectUrl }: UnifiedAuthFormProps) {
             </button>
             <button
               type="button"
-              onClick={() => sendOtpMutation.mutate({ email })}
-              disabled={isLoading}
-              className="text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => {
+                sendOtpMutation.mutate({ email });
+                startResendCooldown();
+              }}
+              disabled={isLoading || resendCooldown > 0}
+              className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
             >
-              Resend code
+              {resendCooldown > 0
+                ? `Resend code (${resendCooldown}s)`
+                : "Resend code"}
             </button>
           </div>
         </form>
