@@ -298,8 +298,8 @@ export function useProjectSidebarItems(): SidebarSection[] {
           id: "build",
           label: "Build",
           items: [
-            agentsItem,
             ...(preferences.experimentalAutomations ? [automationsItem] : []),
+            agentsItem,
             connectionsItem,
             storeItem,
           ],
