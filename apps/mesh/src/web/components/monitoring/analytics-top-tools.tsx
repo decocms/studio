@@ -26,34 +26,6 @@ interface BucketData {
   [key: string]: string | number;
 }
 
-function floorToInterval(date: Date, interval: "1m" | "1h" | "1d"): Date {
-  const result = new Date(date);
-  if (interval === "1d") {
-    result.setHours(0, 0, 0, 0);
-    return result;
-  }
-  if (interval === "1h") {
-    result.setMinutes(0, 0, 0);
-    return result;
-  }
-  result.setSeconds(0, 0);
-  return result;
-}
-
-function addInterval(date: Date, interval: "1m" | "1h" | "1d"): Date {
-  const result = new Date(date);
-  if (interval === "1d") {
-    result.setDate(result.getDate() + 1);
-    return result;
-  }
-  if (interval === "1h") {
-    result.setHours(result.getHours() + 1);
-    return result;
-  }
-  result.setMinutes(result.getMinutes() + 1);
-  return result;
-}
-
 function formatBucketLabel(date: Date, interval: "1m" | "1h" | "1d"): string {
   if (interval === "1d") {
     return date.toLocaleDateString([], { month: "short", day: "numeric" });
@@ -96,45 +68,60 @@ function buildToolBuckets(
     }
   >();
 
-  const alignedStart = floorToInterval(start, interval);
-  const alignedEnd = floorToInterval(end, interval);
+  // Always create exactly 10 display buckets spanning the full range
+  const BUCKET_COUNT = 10;
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+  const step = (endMs - startMs) / (BUCKET_COUNT - 1);
 
-  for (
-    let bucketDate = new Date(alignedStart);
-    bucketDate.getTime() <= alignedEnd.getTime();
-    bucketDate = addInterval(bucketDate, interval)
-  ) {
-    bucketMap.set(String(bucketDate.getTime()), {
-      t: bucketDate.toISOString(),
-      ts: bucketDate.getTime(),
-      label: formatBucketLabel(bucketDate, interval),
+  for (let i = 0; i < BUCKET_COUNT; i++) {
+    const ts = Math.round(startMs + i * step);
+    const date = new Date(ts);
+    bucketMap.set(String(ts), {
+      t: date.toISOString(),
+      ts,
+      label: formatBucketLabel(date, interval),
       tools: new Map(),
     });
   }
 
+  // Map server data points into the nearest display bucket
+  const bucketKeys = [...bucketMap.keys()].map(Number).sort((a, b) => a - b);
   for (const point of timeseries) {
     const normalizedTimestamp = point.timestamp.includes("T")
       ? point.timestamp
       : point.timestamp.replace(" ", "T");
-    const bucketDate = floorToInterval(new Date(normalizedTimestamp), interval);
-    const timestampKey = String(bucketDate.getTime());
-    let bucket = bucketMap.get(timestampKey);
-    if (!bucket) {
-      bucket = {
-        t: bucketDate.toISOString(),
-        ts: bucketDate.getTime(),
-        label: formatBucketLabel(bucketDate, interval),
-        tools: new Map(),
-      };
-      bucketMap.set(timestampKey, bucket);
+    const pointTs = new Date(normalizedTimestamp).getTime();
+
+    // Find nearest bucket
+    let nearest = bucketKeys[0]!;
+    let minDist = Math.abs(pointTs - nearest);
+    for (const key of bucketKeys) {
+      const dist = Math.abs(pointTs - key);
+      if (dist < minDist) {
+        minDist = dist;
+        nearest = key;
+      }
     }
 
-    bucket.tools.set(point.toolName, {
-      calls: point.calls,
-      errors: point.errors,
-      avg: point.avg,
-      p95: point.p95,
-    });
+    const bucket = bucketMap.get(String(nearest))!;
+    const existing = bucket.tools.get(point.toolName);
+    if (existing) {
+      // Aggregate into same bucket
+      bucket.tools.set(point.toolName, {
+        calls: existing.calls + point.calls,
+        errors: existing.errors + point.errors,
+        avg: (existing.avg + point.avg) / 2,
+        p95: Math.max(existing.p95, point.p95),
+      });
+    } else {
+      bucket.tools.set(point.toolName, {
+        calls: point.calls,
+        errors: point.errors,
+        avg: point.avg,
+        p95: point.p95,
+      });
+    }
   }
 
   const rawBuckets = [...bucketMap.values()].sort((a, b) => a.ts - b.ts);
@@ -287,15 +274,6 @@ function TopToolsContent({
           ? errorsBuckets
           : callsBuckets;
 
-  // Thin buckets to ~10 points so the X-axis always shows ~10 ticks
-  const chartBuckets =
-    buckets.length <= 10
-      ? buckets
-      : Array.from({ length: 10 }, (_, i) => {
-          const idx = Math.round((i * (buckets.length - 1)) / 9);
-          return buckets[idx]!;
-        });
-
   const connectionMap = new Map(connections.map((c) => [c.id, c]));
 
   const handleTitleClick = () => {
@@ -346,7 +324,7 @@ function TopToolsContent({
             config={chartConfig}
           >
             <LineChart
-              data={chartBuckets}
+              data={buckets}
               margin={{ left: 8, right: 8, top: 5, bottom: 5 }}
             >
               <XAxis
