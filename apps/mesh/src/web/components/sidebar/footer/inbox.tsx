@@ -12,7 +12,7 @@ import {
   SidebarMenu,
   SidebarMenuItem,
 } from "@deco/ui/components/sidebar.tsx";
-import { Check, Coins01, Inbox01, XClose } from "@untitledui/icons";
+import { Check, Coins01, Inbox01, Link01, XClose } from "@untitledui/icons";
 import { AuthUIContext } from "@daveyplate/better-auth-ui";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Component, Suspense, useContext, useState } from "react";
@@ -20,12 +20,14 @@ import type { ErrorInfo, ReactNode } from "react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  SELF_MCP_ALIAS_ID,
+  useConnections,
   useMCPClient,
   useMCPToolCallQuery,
   useProjectContext,
 } from "@decocms/mesh-sdk";
-import { useAiProviderKeyList } from "@/web/hooks/collections/use-llm";
+import { ConnectStudioModal } from "@/web/components/connect-studio-modal";
+import { connectionImplementsBinding } from "@/web/hooks/use-binding";
+import { AI_GATEWAY_BILLING_BINDING } from "@decocms/bindings/ai-gateway";
 
 interface Invitation {
   id: string;
@@ -152,35 +154,89 @@ class SilentErrorBoundary extends Component<
   }
 }
 
-function creditColor(balanceDollars: number): string {
-  if (balanceDollars <= 1) return "text-destructive";
-  if (balanceDollars <= 5) return "text-amber-500 dark:text-amber-400";
+type LimitPeriod = "daily" | "weekly" | "monthly";
+
+interface GatewayUsageResult {
+  billing: { mode: "prepaid" | "postpaid"; limitPeriod: LimitPeriod | null };
+  limit: { remaining: number | null; total: number | null };
+  usage: { total: number; daily: number; weekly: number; monthly: number };
+}
+
+const CHIP_PERIOD_KEY = "gateway-chip-period";
+
+function getChipPeriod(): LimitPeriod {
+  try {
+    const stored = localStorage.getItem(CHIP_PERIOD_KEY);
+    if (stored === "daily" || stored === "weekly" || stored === "monthly")
+      return stored;
+  } catch {
+    // ignore
+  }
+  return "daily";
+}
+
+function prepaidColor(remaining: number, total: number | null): string {
+  if (!total || total <= 0) return "text-foreground/70";
+  const pct = remaining / total;
+  if (pct <= 0.05) return "text-destructive";
+  if (pct <= 0.2) return "text-amber-500 dark:text-amber-400";
   return "text-foreground/70";
 }
 
-function CreditChip() {
+function postpaidUsedColor(percentUsed: number): string {
+  if (percentUsed >= 90) return "text-destructive";
+  if (percentUsed >= 70) return "text-amber-500 dark:text-amber-400";
+  return "text-foreground/70";
+}
+
+function CreditChip({ connectionId }: { connectionId: string }) {
   const { open } = useSettingsModal();
   const { org } = useProjectContext();
 
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-  });
+  const client = useMCPClient({ connectionId, orgId: org.id });
 
-  const { data, isPending, isError } = useMCPToolCallQuery<
-    { balanceCents: number } | undefined
-  >({
+  const { data } = useMCPToolCallQuery<GatewayUsageResult | undefined>({
     client,
-    toolName: "AI_PROVIDER_CREDITS",
-    toolArguments: { providerId: "deco" },
+    toolName: "GATEWAY_USAGE",
+    toolArguments: {},
     staleTime: 60_000,
     select: (result) =>
-      (result as { structuredContent?: { balanceCents: number } })
-        .structuredContent,
+      (result as { structuredContent?: GatewayUsageResult }).structuredContent,
   });
 
-  const balanceDollars =
-    data?.balanceCents != null ? data.balanceCents / 100 : null;
+  const billingMode = data?.billing.mode ?? "prepaid";
+  const limitTotal = data?.limit.total ?? null;
+  const limitRemaining = data?.limit.remaining ?? 0;
+  const usage = data?.usage ?? { total: 0, daily: 0, weekly: 0, monthly: 0 };
+
+  let label: string;
+  let value: string;
+  let valueColor: string;
+
+  if (billingMode === "prepaid") {
+    label = "Credits";
+    value = `$${limitRemaining.toFixed(2)}`;
+    valueColor = prepaidColor(limitRemaining, limitTotal);
+  } else if (limitTotal != null && limitTotal > 0) {
+    const used = limitTotal - limitRemaining;
+    const pct = Math.min(100, Math.round((used / limitTotal) * 100));
+    label = "Usage";
+    value = `${pct}%`;
+    valueColor = postpaidUsedColor(pct);
+  } else {
+    const chipPeriod = getChipPeriod();
+    const periodUsage =
+      chipPeriod === "daily"
+        ? usage.daily
+        : chipPeriod === "weekly"
+          ? usage.weekly
+          : usage.monthly;
+    const periodSuffix =
+      chipPeriod === "daily" ? "/day" : chipPeriod === "weekly" ? "/wk" : "/mo";
+    label = "Usage";
+    value = `$${periodUsage.toFixed(2)}${periodSuffix}`;
+    valueColor = "text-foreground/70";
+  }
 
   return (
     <button
@@ -190,37 +246,32 @@ function CreditChip() {
     >
       <div className="flex items-center gap-1.5">
         <Coins01 size={13} className="text-muted-foreground/60 shrink-0" />
-        <span className="text-xs text-muted-foreground">Credits</span>
+        <span className="text-xs text-muted-foreground">{label}</span>
       </div>
-      {isPending || isError || balanceDollars == null ? (
-        <span className="text-xs font-medium tabular-nums text-muted-foreground/40">
-          —
-        </span>
-      ) : (
-        <span
-          className={cn(
-            "text-xs font-medium tabular-nums",
-            creditColor(balanceDollars),
-          )}
-        >
-          ${balanceDollars.toFixed(2)}
-        </span>
-      )}
+      <span className={cn("text-xs font-medium tabular-nums", valueColor)}>
+        {value}
+      </span>
     </button>
   );
 }
 
 function CreditChipConditional() {
-  const keys = useAiProviderKeyList();
-  const hasDecoKey = keys.some((k) => k.providerId === "deco");
+  const connections = useConnections();
 
-  if (!hasDecoKey) return null;
+  const gatewayConnection = connections.find((c) =>
+    connectionImplementsBinding(c, AI_GATEWAY_BILLING_BINDING),
+  );
 
-  return <CreditChip />;
+  if (!gatewayConnection?.id) {
+    return null;
+  }
+
+  return <CreditChip connectionId={gatewayConnection.id} />;
 }
 
 export function SidebarInboxFooter() {
   const pendingInvitations = usePendingInvitations();
+  const [connectOpen, setConnectOpen] = useState(false);
 
   return (
     <SidebarFooter className="px-3.5 pb-3 group-data-[collapsible=icon]:px-2">
@@ -229,13 +280,25 @@ export function SidebarInboxFooter() {
           <CreditChipConditional />
         </Suspense>
       </SilentErrorBoundary>
+      <div className="group-data-[collapsible=icon]:hidden">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full h-8 gap-1.5 px-2 text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent text-xs justify-start"
+          onClick={() => setConnectOpen(true)}
+        >
+          <Link01 size={14} />
+          <span>Connect Studio</span>
+        </Button>
+        <ConnectStudioModal open={connectOpen} onOpenChange={setConnectOpen} />
+      </div>
       <SidebarMenu>
         <SidebarMenuItem>
           <div className="flex items-center w-full gap-1">
             <div className="flex-1 min-w-0">
               <MeshUserMenu />
             </div>
-            <div className="group-data-[collapsible=icon]:hidden">
+            <div className="flex items-center gap-0.5 group-data-[collapsible=icon]:hidden">
               <Popover>
                 <div className="relative">
                   <PopoverTrigger asChild>

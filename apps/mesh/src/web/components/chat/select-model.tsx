@@ -1206,6 +1206,22 @@ function ModelSelectorInner({
                 key={variant.id}
                 type="button"
                 onClick={() => handleClaudeCodeSelect(variant.id)}
+                onMouseEnter={() =>
+                  setHoveredModel({
+                    id: variant.id,
+                    title: `Claude Code: ${variant.title}`,
+                    logo: null,
+                    description: variant.description,
+                    capabilities: ["text", "tools"],
+                    limits: variant.limits,
+                    costs: null,
+                    provider: null,
+                    created_at: "",
+                    updated_at: "",
+                    created_by: "",
+                    updated_by: "",
+                  })
+                }
                 className={cn(
                   "flex items-center gap-2 w-full min-h-8 py-2 px-4 text-left cursor-pointer",
                   "hover:bg-accent",

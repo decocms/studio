@@ -87,6 +87,7 @@ export interface ClaudeCodeStreamOptions {
   messages: ChatMessage[];
   abortController?: AbortController;
   mcpEndpoint?: string;
+  mcpHeaders?: Record<string, string>;
   agentId?: string;
   agentMode?: string;
   threadId: string;
@@ -113,12 +114,6 @@ export async function streamClaudeCode(
   const prompt = messagesToPrompt(opts.messages);
   const systemPrompt = extractSystemPrompt(opts.messages);
 
-  console.log("[claude-code] Starting stream", {
-    promptLength: prompt.length,
-    promptPreview: prompt.slice(0, 200),
-    hasSystemPrompt: !!systemPrompt,
-  });
-
   const abortController = opts.abortController ?? new AbortController();
 
   // Resolve SDK model name from the model id (e.g. "claude-code:sonnet" → "claude-sonnet-4-6")
@@ -141,8 +136,9 @@ export async function streamClaudeCode(
   if (opts.mcpEndpoint) {
     queryOpts.mcpServers = {
       mesh: {
-        type: "sse" as const,
+        type: "http" as const,
         url: opts.mcpEndpoint,
+        headers: opts.mcpHeaders,
       },
     };
     // Allow more turns when tools are available
@@ -192,12 +188,6 @@ export async function streamClaudeCode(
   try {
     for await (const message of conversation) {
       if (abortController.signal.aborted) break;
-
-      console.log(
-        "[claude-code] Message:",
-        message.type,
-        "subtype" in message ? (message as { subtype?: string }).subtype : "",
-      );
 
       switch (message.type) {
         case "stream_event": {
