@@ -129,6 +129,8 @@ export async function streamClaudeCode(
     systemPrompt: systemPrompt || undefined,
     permissionMode: "bypassPermissions" as const,
     allowDangerouslySkipPermissions: true,
+    // Enable streaming events so we get thinking_delta + text_delta in real-time
+    includePartialMessages: true,
     tools: [],
   };
 
@@ -202,6 +204,16 @@ export async function streamClaudeCode(
     for await (const message of conversation) {
       if (abortController.signal.aborted) break;
 
+      const msg = message as Record<string, unknown>;
+      console.log(
+        "[claude-code] SDK message:",
+        msg.type,
+        msg.subtype ?? "",
+        msg.type === "stream_event"
+          ? (msg.event as { type?: string })?.type
+          : "",
+      );
+
       switch (message.type) {
         case "stream_event": {
           // Only handle main thread events (no subagent)
@@ -267,6 +279,26 @@ export async function streamClaudeCode(
           break;
         }
 
+        // Tool use summary — emit as reasoning so user sees tool activity
+        case "tool_use_summary": {
+          if ((msg as { parent_tool_use_id?: string }).parent_tool_use_id) {
+            break;
+          }
+          const toolName = (msg as { tool_name?: string }).tool_name ?? "tool";
+
+          // Show tool activity as reasoning
+          if (!reasoningPartId) {
+            reasoningPartId = generateMessageId();
+            writer.write({ type: "reasoning-start", id: reasoningPartId });
+          }
+          writer.write({
+            type: "reasoning-delta",
+            delta: `\nUsing tool: ${toolName}\n`,
+            id: reasoningPartId,
+          });
+          break;
+        }
+
         case "result": {
           if (message.subtype === "success") {
             totalCostUsd =
@@ -321,26 +353,42 @@ export async function streamClaudeCode(
             break;
           }
 
-          // If we already streamed via stream_event deltas, skip the full
-          // assistant message to avoid duplicate text.
-          if (streamedText) break;
-
-          // Fallback: extract text content from the full assistant message
+          // Extract content from the full assistant message
           const content = (
             message as {
-              message?: { content?: { type: string; text?: string }[] };
+              message?: {
+                content?: {
+                  type: string;
+                  text?: string;
+                  thinking?: string;
+                }[];
+              };
             }
           )?.message?.content;
-          if (Array.isArray(content)) {
-            for (const block of content) {
-              if (block.type === "text" && block.text) {
-                ensureTextStarted();
-                writer.write({
-                  type: "text-delta",
-                  delta: block.text,
-                  id: textPartId,
-                });
+          if (!Array.isArray(content)) break;
+
+          for (const block of content) {
+            // Stream thinking content as reasoning
+            if (block.type === "thinking" && block.thinking) {
+              if (!reasoningPartId) {
+                reasoningPartId = generateMessageId();
+                writer.write({ type: "reasoning-start", id: reasoningPartId });
               }
+              writer.write({
+                type: "reasoning-delta",
+                delta: block.thinking,
+                id: reasoningPartId,
+              });
+            }
+
+            // Stream text content (skip if already streamed via stream_event)
+            if (block.type === "text" && block.text && !streamedText) {
+              ensureTextStarted();
+              writer.write({
+                type: "text-delta",
+                delta: block.text,
+                id: textPartId,
+              });
             }
           }
           break;

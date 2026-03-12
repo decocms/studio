@@ -197,66 +197,54 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   });
 
   // ============================================================================
-  // Connect Studio — check + register MCP server in Claude Code / Cursor
+  // Connect Studio — check + register MCP servers in Claude Code
   // ============================================================================
 
-  app.get("/:org/decopilot/connect-studio/status", async (c) => {
-    const ctx = c.get("meshContext");
-    if (!ctx.auth?.user?.id) {
-      throw new HTTPException(401, { message: "Authentication required" });
-    }
-
+  // Helper: run a CLI command and return { ok, stdout, stderr }
+  async function runCli(
+    cmd: string,
+    args: string[],
+    timeoutMs = 5000,
+  ): Promise<{ ok: boolean; stdout: string; stderr: string }> {
     const { spawn } = await import("node:child_process");
-
-    // Check if deco-studio MCP server is configured in Claude Code
-    const connected = await new Promise<boolean>((resolve) => {
-      const proc = spawn("claude", ["mcp", "get", "deco-studio"], {
-        stdio: "ignore",
+    return new Promise((resolve) => {
+      const proc = spawn(cmd, args, {
+        stdio: ["ignore", "pipe", "pipe"],
       });
-      const timeout = setTimeout(() => {
+      let stdout = "";
+      let stderr = "";
+      const timer = setTimeout(() => {
         proc.kill();
-        resolve(false);
-      }, 5000);
-      proc.on("close", (code) => {
-        clearTimeout(timeout);
-        resolve(code === 0);
+        resolve({ ok: false, stdout, stderr: "timeout" });
+      }, timeoutMs);
+      proc.stdout.on("data", (chunk: Buffer) => {
+        stdout += chunk.toString();
       });
-      proc.on("error", () => {
-        clearTimeout(timeout);
-        resolve(false);
+      proc.stderr.on("data", (chunk: Buffer) => {
+        stderr += chunk.toString();
+      });
+      proc.on("close", (code) => {
+        clearTimeout(timer);
+        resolve({ ok: code === 0, stdout, stderr });
+      });
+      proc.on("error", (err) => {
+        clearTimeout(timer);
+        resolve({ ok: false, stdout, stderr: err.message });
       });
     });
+  }
 
-    // Get Claude Code auth info (email, org, subscription)
-    let auth: {
-      email?: string;
-      orgName?: string;
-      subscriptionType?: string;
-    } | null = null;
+  async function getClaudeStatus() {
+    const { ok: connected } = await runCli("claude", [
+      "mcp",
+      "get",
+      "deco-studio",
+    ]);
+    let auth: Record<string, string | undefined> | null = null;
     if (connected) {
       try {
-        const authInfo = await new Promise<string>((resolve, reject) => {
-          const proc = spawn("claude", ["auth", "status"], {
-            stdio: ["ignore", "pipe", "ignore"],
-          });
-          let stdout = "";
-          const timeout = setTimeout(() => {
-            proc.kill();
-            reject(new Error("timeout"));
-          }, 5000);
-          proc.stdout.on("data", (chunk: Buffer) => {
-            stdout += chunk.toString();
-          });
-          proc.on("close", () => {
-            clearTimeout(timeout);
-            resolve(stdout);
-          });
-          proc.on("error", (err) => {
-            clearTimeout(timeout);
-            reject(err);
-          });
-        });
-        const parsed = JSON.parse(authInfo);
+        const { stdout } = await runCli("claude", ["auth", "status"]);
+        const parsed = JSON.parse(stdout);
         if (parsed.loggedIn) {
           auth = {
             email: parsed.email,
@@ -268,8 +256,44 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         // Auth info not available
       }
     }
+    return { connected, auth };
+  }
 
-    return c.json({ connected, auth });
+  async function getGithubStatus() {
+    const { ok, stdout } = await runCli("gh", ["auth", "status", "--json"]);
+    if (!ok) return { connected: false, auth: null };
+    try {
+      const parsed = JSON.parse(stdout);
+      // Also check if the MCP is registered in Claude Code
+      const { ok: mcpRegistered } = await runCli("claude", [
+        "mcp",
+        "get",
+        "github",
+      ]);
+      return {
+        connected: mcpRegistered,
+        auth: {
+          user: parsed.user ?? parsed.login,
+          host: parsed.host ?? "github.com",
+        },
+      };
+    } catch {
+      return { connected: false, auth: null };
+    }
+  }
+
+  app.get("/:org/decopilot/connect-studio/status", async (c) => {
+    const ctx = c.get("meshContext");
+    if (!ctx.auth?.user?.id) {
+      throw new HTTPException(401, { message: "Authentication required" });
+    }
+
+    const [claude, github] = await Promise.all([
+      getClaudeStatus(),
+      getGithubStatus(),
+    ]);
+
+    return c.json({ claude, github });
   });
 
   app.post("/:org/decopilot/connect-studio", async (c) => {
@@ -280,63 +304,78 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       throw new HTTPException(401, { message: "Authentication required" });
     }
 
-    // Create API key for the MCP endpoint
-    const apiKey = await ctx.boundAuth.apiKey.create({
-      name: "studio-connect-claude-code",
-      permissions: { "*": ["*"] },
-      metadata: {
-        internal: true,
-        target: "claude-code",
-        organization: organization.id,
-      },
-    });
+    const body = await c.req.json().catch(() => ({}));
+    const target = (body as { target?: string }).target;
 
-    const serverPort = process.env.PORT || "3000";
-    const origin = `http://localhost:${serverPort}`;
-    const mcpConfig = JSON.stringify({
-      type: "http",
-      url: `${origin}/mcp`,
-      headers: {
-        Authorization: `Bearer ${apiKey.key}`,
-        "x-org-id": organization.id,
-        "x-mesh-client": "Claude Code",
-      },
-    });
-
-    const { spawn } = await import("node:child_process");
-
-    const result = await new Promise<{ ok: boolean; stderr: string }>(
-      (resolve) => {
-        const proc = spawn(
-          "claude",
-          ["mcp", "add-json", "deco-studio", mcpConfig, "--scope", "user"],
-          { stdio: ["ignore", "ignore", "pipe"] },
-        );
-        let stderr = "";
-        const timeout = setTimeout(() => {
-          proc.kill();
-          resolve({ ok: false, stderr: "timeout" });
-        }, 10000);
-        proc.stderr.on("data", (chunk: Buffer) => {
-          stderr += chunk.toString();
-        });
-        proc.on("close", (code) => {
-          clearTimeout(timeout);
-          resolve({ ok: code === 0, stderr });
-        });
-        proc.on("error", (err) => {
-          clearTimeout(timeout);
-          resolve({ ok: false, stderr: err.message });
-        });
-      },
-    );
-    if (!result.ok) {
-      throw new HTTPException(500, {
-        message: `Failed to register MCP server`,
+    if (target === "claude-code") {
+      // Create API key for the MCP endpoint
+      const apiKey = await ctx.boundAuth.apiKey.create({
+        name: "studio-connect-claude-code",
+        permissions: { "*": ["*"] },
+        metadata: {
+          internal: true,
+          target: "claude-code",
+          organization: organization.id,
+        },
       });
+
+      const serverPort = process.env.PORT || "3000";
+      const origin = `http://localhost:${serverPort}`;
+      const mcpConfig = JSON.stringify({
+        type: "http",
+        url: `${origin}/mcp`,
+        headers: {
+          Authorization: `Bearer ${apiKey.key}`,
+          "x-org-id": organization.id,
+          "x-mesh-client": "Claude Code",
+        },
+      });
+
+      const result = await runCli(
+        "claude",
+        ["mcp", "add-json", "deco-studio", mcpConfig, "--scope", "user"],
+        10000,
+      );
+      if (!result.ok) {
+        throw new HTTPException(500, {
+          message: "Failed to register deco-studio MCP",
+        });
+      }
+      return c.json({ success: true });
     }
 
-    return c.json({ success: true });
+    if (target === "github") {
+      // Get token from local gh CLI
+      const { ok, stdout: token } = await runCli("gh", ["auth", "token"]);
+      if (!ok || !token.trim()) {
+        throw new HTTPException(400, {
+          message:
+            "GitHub CLI not authenticated. Run `gh auth login` in your terminal.",
+        });
+      }
+
+      const mcpConfig = JSON.stringify({
+        type: "http",
+        url: "https://api.githubcopilot.com/mcp/",
+        headers: {
+          Authorization: `Bearer ${token.trim()}`,
+        },
+      });
+
+      const result = await runCli(
+        "claude",
+        ["mcp", "add-json", "github", mcpConfig, "--scope", "user"],
+        10000,
+      );
+      if (!result.ok) {
+        throw new HTTPException(500, {
+          message: "Failed to register GitHub MCP",
+        });
+      }
+      return c.json({ success: true });
+    }
+
+    throw new HTTPException(400, { message: `Unknown target: ${target}` });
   });
 
   app.delete("/:org/decopilot/connect-studio", async (c) => {
@@ -345,33 +384,30 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       throw new HTTPException(401, { message: "Authentication required" });
     }
 
-    const { spawn } = await import("node:child_process");
+    const body = await c.req.json().catch(() => ({}));
+    const target = (body as { target?: string }).target;
 
-    const result = await new Promise<{ ok: boolean }>((resolve) => {
-      const proc = spawn(
-        "claude",
-        ["mcp", "remove", "deco-studio", "--scope", "user"],
-        { stdio: "ignore" },
-      );
-      const timeout = setTimeout(() => {
-        proc.kill();
-        resolve({ ok: false });
-      }, 5000);
-      proc.on("close", (code) => {
-        clearTimeout(timeout);
-        resolve({ ok: code === 0 });
-      });
-      proc.on("error", () => {
-        clearTimeout(timeout);
-        resolve({ ok: false });
-      });
-    });
-    if (!result.ok) {
-      throw new HTTPException(500, {
-        message: "Failed to remove MCP server",
-      });
+    let mcpName: string;
+    if (target === "claude-code") {
+      mcpName = "deco-studio";
+    } else if (target === "github") {
+      mcpName = "github";
+    } else {
+      throw new HTTPException(400, { message: `Unknown target: ${target}` });
     }
 
+    const result = await runCli("claude", [
+      "mcp",
+      "remove",
+      mcpName,
+      "--scope",
+      "user",
+    ]);
+    if (!result.ok) {
+      throw new HTTPException(500, {
+        message: `Failed to remove ${mcpName} MCP`,
+      });
+    }
     return c.json({ success: true });
   });
 

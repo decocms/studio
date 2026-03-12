@@ -13,18 +13,21 @@ import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { cn } from "@deco/ui/lib/utils.ts";
 
-interface ConnectStatus {
+interface ConnectionStatus {
   connected: boolean;
-  auth: {
-    email?: string;
-    orgName?: string;
-    subscriptionType?: string;
-  } | null;
+  auth: Record<string, string | undefined> | null;
 }
 
-function useConnectStatus(org: { slug: string }) {
-  return useQuery<ConnectStatus>({
-    queryKey: ["connect-studio-status", org.slug],
+interface ConnectStudioStatus {
+  claude: ConnectionStatus;
+  github: ConnectionStatus;
+}
+
+const CONNECT_STUDIO_QK = "connect-studio-status";
+
+function useConnectStudioStatus(org: { slug: string }) {
+  return useQuery<ConnectStudioStatus>({
+    queryKey: [CONNECT_STUDIO_QK, org.slug],
     queryFn: async () => {
       const res = await fetch(
         `/api/${org.slug}/decopilot/connect-studio/status`,
@@ -35,40 +38,42 @@ function useConnectStatus(org: { slug: string }) {
   });
 }
 
-export function ConnectStudioModal({
-  open,
-  onOpenChange,
+function ConnectionCard({
+  target,
+  logo,
+  name,
+  status,
+  isLoading,
+  orgSlug,
 }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  target: string;
+  logo: React.ReactNode;
+  name: string;
+  status: ConnectionStatus | undefined;
+  isLoading: boolean;
+  orgSlug: string;
 }) {
-  const { org } = useProjectContext();
-  const {
-    data: status,
-    isLoading,
-    refetch,
-    isRefetching,
-  } = useConnectStatus(org);
   const queryClient = useQueryClient();
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
 
+  const connected = status?.connected ?? false;
+  const auth = status?.auth;
+
   const handleConnect = async () => {
     setConnecting(true);
     try {
-      const res = await fetch(`/api/${org.slug}/decopilot/connect-studio`, {
+      const res = await fetch(`/api/${orgSlug}/decopilot/connect-studio`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target: "claude-code" }),
+        body: JSON.stringify({ target }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Failed" }));
         throw new Error(err.error ?? "Failed to connect");
       }
-      toast.success("Connected to Claude Code!");
-      queryClient.invalidateQueries({
-        queryKey: ["connect-studio-status", org.slug],
-      });
+      toast.success(`Connected ${name}!`);
+      queryClient.invalidateQueries({ queryKey: [CONNECT_STUDIO_QK] });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to connect");
     } finally {
@@ -79,17 +84,17 @@ export function ConnectStudioModal({
   const handleDisconnect = async () => {
     setDisconnecting(true);
     try {
-      const res = await fetch(`/api/${org.slug}/decopilot/connect-studio`, {
+      const res = await fetch(`/api/${orgSlug}/decopilot/connect-studio`, {
         method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Failed" }));
         throw new Error(err.error ?? "Failed to disconnect");
       }
-      toast.success("Disconnected from Claude Code");
-      queryClient.invalidateQueries({
-        queryKey: ["connect-studio-status", org.slug],
-      });
+      toast.success(`Disconnected ${name}`);
+      queryClient.invalidateQueries({ queryKey: [CONNECT_STUDIO_QK] });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to disconnect");
     } finally {
@@ -97,8 +102,107 @@ export function ConnectStudioModal({
     }
   };
 
-  const connected = status?.connected ?? false;
-  const auth = status?.auth;
+  const authLine = auth
+    ? Object.values(auth).filter(Boolean).join(" — ")
+    : null;
+
+  return (
+    <div
+      className={cn(
+        "rounded-lg border px-4 py-3",
+        connected ? "border-green-200 bg-green-50" : "border-border",
+      )}
+    >
+      <div className="flex items-center gap-3">
+        <div className="h-5 w-5 shrink-0 flex items-center justify-center">
+          {logo}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">{name}</span>
+            {connected && (
+              <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
+                <Check size={12} />
+                Connected
+              </span>
+            )}
+          </div>
+          {authLine && (
+            <p className="text-xs text-muted-foreground truncate">{authLine}</p>
+          )}
+        </div>
+        {isLoading && (
+          <Loading01
+            size={16}
+            className="animate-spin text-muted-foreground shrink-0"
+          />
+        )}
+      </div>
+
+      <div className="flex gap-2 mt-2.5">
+        {!connected ? (
+          <Button
+            size="sm"
+            className="flex-1"
+            onClick={handleConnect}
+            disabled={connecting || isLoading}
+          >
+            {connecting ? (
+              <Loading01 size={14} className="animate-spin mr-1.5" />
+            ) : null}
+            Connect
+          </Button>
+        ) : (
+          <>
+            <Button
+              variant="outline"
+              size="icon"
+              className="shrink-0 h-8 w-8"
+              onClick={() =>
+                queryClient.invalidateQueries({
+                  queryKey: [CONNECT_STUDIO_QK],
+                })
+              }
+            >
+              <RefreshCw01 size={14} />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 text-destructive hover:text-destructive"
+              onClick={handleDisconnect}
+              disabled={disconnecting}
+            >
+              {disconnecting ? (
+                <Loading01 size={14} className="animate-spin mr-1.5" />
+              ) : (
+                <LinkBroken02 size={14} className="mr-1.5" />
+              )}
+              Disconnect
+            </Button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const GITHUB_SVG = (
+  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
+    <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" />
+  </svg>
+);
+
+export function ConnectStudioModal({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { org } = useProjectContext();
+  const { data: status, isLoading } = useConnectStudioStatus(org);
+  const queryClient = useQueryClient();
 
   return (
     <Dialog
@@ -107,7 +211,7 @@ export function ConnectStudioModal({
         onOpenChange(v);
         if (v) {
           queryClient.invalidateQueries({
-            queryKey: ["connect-studio-status", org.slug],
+            queryKey: [CONNECT_STUDIO_QK, org.slug],
           });
         }
       }}
@@ -116,93 +220,36 @@ export function ConnectStudioModal({
         <DialogHeader>
           <DialogTitle>Connect Studio</DialogTitle>
           <DialogDescription>
-            Install all your studio tools into Claude Code.
+            Install studio tools into your local dev environment.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-3 pt-1">
-          <div
-            className={cn(
-              "flex items-center gap-3 rounded-lg border px-4 py-3",
-              connected ? "border-green-200 bg-green-50" : "border-border",
-            )}
-          >
-            <img
-              src="/logos/Claude Code.svg"
-              alt="Claude Code"
-              className="h-5 w-5 shrink-0"
-              style={{
-                filter:
-                  "brightness(0) saturate(100%) invert(55%) sepia(31%) saturate(1264%) hue-rotate(331deg) brightness(92%) contrast(86%)",
-              }}
-            />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">Claude Code</span>
-                {connected && (
-                  <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
-                    <Check size={12} />
-                    Connected
-                  </span>
-                )}
-              </div>
-              {auth && (
-                <p className="text-xs text-muted-foreground truncate">
-                  {auth.email}
-                  {auth.orgName ? ` — ${auth.orgName}` : ""}
-                  {auth.subscriptionType ? ` (${auth.subscriptionType})` : ""}
-                </p>
-              )}
-            </div>
-            {isLoading && (
-              <Loading01
-                size={16}
-                className="animate-spin text-muted-foreground shrink-0"
+          <ConnectionCard
+            target="claude-code"
+            name="Claude Code"
+            logo={
+              <img
+                src="/logos/Claude Code.svg"
+                alt="Claude Code"
+                className="h-5 w-5"
+                style={{
+                  filter:
+                    "brightness(0) saturate(100%) invert(55%) sepia(31%) saturate(1264%) hue-rotate(331deg) brightness(92%) contrast(86%)",
+                }}
               />
-            )}
-          </div>
-
-          <div className="flex gap-2">
-            {!connected ? (
-              <Button
-                className="flex-1"
-                onClick={handleConnect}
-                disabled={connecting || isLoading}
-              >
-                {connecting ? (
-                  <Loading01 size={14} className="animate-spin mr-1.5" />
-                ) : null}
-                Connect
-              </Button>
-            ) : (
-              <>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="shrink-0"
-                  onClick={() => refetch()}
-                  disabled={isRefetching}
-                >
-                  <RefreshCw01
-                    size={14}
-                    className={cn(isRefetching && "animate-spin")}
-                  />
-                </Button>
-                <Button
-                  variant="outline"
-                  className="flex-1 text-destructive hover:text-destructive"
-                  onClick={handleDisconnect}
-                  disabled={disconnecting}
-                >
-                  {disconnecting ? (
-                    <Loading01 size={14} className="animate-spin mr-1.5" />
-                  ) : (
-                    <LinkBroken02 size={14} className="mr-1.5" />
-                  )}
-                  Disconnect
-                </Button>
-              </>
-            )}
-          </div>
+            }
+            status={status?.claude}
+            isLoading={isLoading}
+            orgSlug={org.slug}
+          />
+          <ConnectionCard
+            target="github"
+            name="GitHub"
+            logo={GITHUB_SVG}
+            status={status?.github}
+            isLoading={isLoading}
+            orgSlug={org.slug}
+          />
         </div>
       </DialogContent>
     </Dialog>
