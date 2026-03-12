@@ -79,5 +79,5 @@ studio-demo/
 apps/mesh/test-results/
 apps/mesh/playwright-report/
 
-# Generated docs
-docs/
+# Generated docs (root-level only, not apps/docs/)
+/docs
