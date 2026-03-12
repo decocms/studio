@@ -1470,16 +1470,11 @@ function AuditTabContent({
   allVirtualMcps,
   membersData,
 }: AuditTabContentProps) {
-  const [aiOnly, setAiOnly] = useState(false);
-  const effectiveParams = aiOnly
-    ? { ...baseParams, connectionId: "decopilot" }
-    : baseParams;
-
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useSuspenseInfiniteQuery({
       queryKey: KEYS.monitoringLogsInfinite(
         locator,
-        JSON.stringify(effectiveParams),
+        JSON.stringify(baseParams),
       ),
       queryFn: async ({ pageParam = 0 }) => {
         if (!client) {
@@ -1488,7 +1483,7 @@ function AuditTabContent({
         const result = (await client.callTool({
           name: "MONITORING_LOGS_LIST",
           arguments: {
-            ...effectiveParams,
+            ...baseParams,
             limit: pageSize,
             offset: pageParam,
           },
@@ -1518,31 +1513,19 @@ function AuditTabContent({
 
   return (
     <div className="flex-1 flex flex-col overflow-auto md:overflow-hidden">
-      {/* Search Bar + AI Filter */}
-      <div className="flex items-center gap-2 border-t border-border">
-        <CollectionSearch
-          value={searchQuery}
-          onChange={(value) => onUpdateFilters({ search: value })}
-          placeholder="Search by tool name, connection, or error..."
-          className="flex-1 border-t-0"
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              onUpdateFilters({ search: "" });
-              (event.target as HTMLInputElement).blur();
-            }
-          }}
-        />
-        <div className="flex items-center gap-1.5 pr-3">
-          <Button
-            variant={aiOnly ? "secondary" : "outline"}
-            size="sm"
-            className="h-7 px-2.5 text-xs"
-            onClick={() => setAiOnly(!aiOnly)}
-          >
-            AI Only
-          </Button>
-        </div>
-      </div>
+      {/* Search Bar */}
+      <CollectionSearch
+        value={searchQuery}
+        onChange={(value) => onUpdateFilters({ search: value })}
+        placeholder="Search by tool name, connection, or error..."
+        className="border-t"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            onUpdateFilters({ search: "" });
+            (event.target as HTMLInputElement).blur();
+          }
+        }}
+      />
 
       {/* Logs Table */}
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -1638,11 +1621,17 @@ function MonitoringDashboardContent({
     ? [WellKnownOrgMCPId.SELF(org.id)]
     : undefined;
 
+  const [aiOnly, setAiOnly] = useState(false);
+
   // Base params for filtering (without pagination)
   const baseParams = {
     startDate: dateRange.startDate.toISOString(),
     endDate: dateRange.endDate.toISOString(),
-    connectionId: connectionIds.length === 1 ? connectionIds[0] : undefined,
+    connectionId: aiOnly
+      ? "decopilot"
+      : connectionIds.length === 1
+        ? connectionIds[0]
+        : undefined,
     excludeConnectionIds,
     virtualMcpId: virtualMcpIds.length === 1 ? virtualMcpIds[0] : undefined,
     toolName: tool || undefined,
@@ -1693,6 +1682,18 @@ function MonitoringDashboardContent({
                 activeFiltersCount={activeFiltersCount}
                 onUpdateFilters={onUpdateFilters}
               />
+
+              {/* AI Only Toggle (Audit tab only) */}
+              {tab === "audit" && (
+                <Button
+                  variant={aiOnly ? "secondary" : "outline"}
+                  size="sm"
+                  className="h-7 px-2 sm:px-3 text-xs"
+                  onClick={() => setAiOnly(!aiOnly)}
+                >
+                  AI Only
+                </Button>
+              )}
 
               {/* Streaming Toggle */}
               <Button
