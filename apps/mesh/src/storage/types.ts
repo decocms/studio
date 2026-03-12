@@ -14,7 +14,7 @@
 import type { ColumnType } from "kysely";
 import type { OAuthConfig, ToolDefinition } from "../tools/connection/schema";
 import type { ChatMessage } from "../api/routes/decopilot/types";
-import { ThreadStatus } from "@decocms/mesh-sdk";
+import { ThreadStatus, type ProviderId } from "@decocms/mesh-sdk";
 
 // ============================================================================
 // Type Utilities
@@ -213,6 +213,39 @@ export interface ApiKey {
   metadata: Record<string, unknown> | null;
   createdAt: Date | string;
   updatedAt: Date | string;
+}
+
+export interface AIProviderKeyTable {
+  id: string;
+  organization_id: string;
+  provider_id: string; // ProviderId — enforced at app level, not DB level
+  label: string;
+  encrypted_api_key: string;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string, never>;
+}
+
+/** Public DTO for an AI provider key — never exposes the encrypted key. */
+export interface ProviderKeyInfo {
+  id: string;
+  providerId: ProviderId;
+  label: string;
+  organizationId: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+/**
+ * Short-lived PKCE state table — stores codeVerifier server-side during OAuth flow.
+ * Records expire after 10 minutes and are deleted on consumption (single-use).
+ */
+export interface OAuthPkceStateTable {
+  id: string; // state token (UUID), returned as stateToken to client
+  organization_id: string; // scoped to the org that initiated the flow
+  user_id: string; // scoped to the user that initiated the flow
+  code_verifier: string; // PKCE verifier — never leaves the server
+  expires_at: ColumnType<Date, Date | string, never>;
+  created_at: ColumnType<Date, Date | string, never>;
 }
 
 /**
@@ -588,7 +621,7 @@ export interface EventSubscriptionTable {
   publisher: string | null; // Filter by publisher connection (null = wildcard)
   event_type: string; // Event type pattern to match
   filter: string | null; // Optional JSONPath filter on event data
-  enabled: number; // Integer column (0/1)
+  enabled: number; // Integer column (0/1);
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
@@ -921,4 +954,10 @@ export interface Database {
   projects: ProjectTable;
   project_connections: ProjectConnectionTable;
   project_plugin_configs: ProjectPluginConfigTable;
+
+  // AI Provider keys tables
+  ai_provider_keys: AIProviderKeyTable;
+
+  // OAuth PKCE state table (short-lived, server-side verifier storage)
+  oauth_pkce_states: OAuthPkceStateTable;
 }
