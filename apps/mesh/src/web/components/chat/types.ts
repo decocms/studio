@@ -48,6 +48,7 @@ export type TiptapNode = JSONContent;
 export interface MetadataModelInfo {
   id: string;
   title: string;
+  provider?: string;
   capabilities?: { vision?: boolean; text?: boolean; tools?: boolean };
   limits?: { contextWindow?: number; maxOutputTokens?: number };
 }

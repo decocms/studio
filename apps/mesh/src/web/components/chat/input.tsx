@@ -312,6 +312,7 @@ export function ChatInput({
     selectedVirtualMcp,
     setVirtualMcpId,
     model,
+    isModelsLoading,
     selectedMode,
     setSelectedMode,
     messages,
@@ -356,7 +357,8 @@ export function ChatInput({
   const lastTotalTokens =
     (lastUsage?.totalTokens ?? 0) - (lastUsage?.reasoningTokens ?? 0);
 
-  const canSubmit = !isStreaming && !!model && !isTiptapDocEmpty(tiptapDoc);
+  const canSubmit =
+    !isStreaming && !!model && !isModelsLoading && !isTiptapDocEmpty(tiptapDoc);
 
   const showStopOrCancel = isStreaming || isRunInProgress;
 

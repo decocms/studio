@@ -111,6 +111,7 @@ interface ChatStableValue {
   setVirtualMcpId: (virtualMcpId: string | null) => void;
 
   model: AiProviderModel | null;
+  isModelsLoading: boolean;
   setSelectedModel: (model: AiProviderModel) => void;
 
   selectedMode: ToolSelectionStrategy;
@@ -164,6 +165,7 @@ function toMetadataModelInfo(
   return {
     id: model.modelId,
     title: model.title,
+    provider: model.providerId,
     capabilities,
     limits: model.limits
       ? {
@@ -650,7 +652,8 @@ export function ChatProvider({ children }: PropsWithChildren) {
   // Load models for the effective key so we can auto-select a default.
   // useAiProviderModels uses a regular useQuery (non-suspending), so this
   // returns [] until data arrives — no blocking, no useEffect needed.
-  const defaultKeyModels = useAiProviderModels(effectiveKeyId ?? undefined);
+  const { models: defaultKeyModels, isLoading: isModelsQueryLoading } =
+    useAiProviderModels(effectiveKeyId ?? undefined);
   const effectiveProviderId =
     keys.find((k) => k.id === effectiveKeyId)?.providerId ?? "";
   const defaultModel = selectDefaultModel(
@@ -662,10 +665,15 @@ export function ChatProvider({ children }: PropsWithChildren) {
   // Guard against stale localStorage entries that predate the current schema.
   // If required fields are missing the stored value is unusable — fall back to
   // the provider-aware default, then null.
-  const model =
-    storedModel && typeof storedModel.modelId === "string" && storedModel.title
-      ? storedModel
-      : defaultModel;
+  const hasValidStoredModel =
+    !!storedModel &&
+    typeof storedModel.modelId === "string" &&
+    !!storedModel.title;
+  const model = hasValidStoredModel ? storedModel! : defaultModel;
+
+  // Only treat models as "loading" when we have no stored model to show yet.
+  // If a valid stored model exists we render it immediately; no spinner needed.
+  const isModelsLoading = !hasValidStoredModel && isModelsQueryLoading;
 
   // Mode state
   const [selectedMode, setSelectedMode] =
@@ -1046,6 +1054,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
     selectedVirtualMcp,
     setVirtualMcpId,
     model,
+    isModelsLoading,
     setSelectedModel,
     selectedMode,
     setSelectedMode,

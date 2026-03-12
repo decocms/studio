@@ -27,13 +27,21 @@ export class AIProviderFactory {
       organizationId,
     );
     const providerId = keyInfo.providerId;
-    if (this.cache) {
-      const cached = await this.cache.get(organizationId, providerId);
-      if (cached) return cached.map((m) => ({ ...m, providerId }));
-    }
+    // if (this.cache) {
+    //   const cached = await this.cache.get(organizationId, providerId);
+    //   if (cached) return cached.map((m) => ({ ...m, providerId }));
+    // }
 
     const provider = PROVIDERS[providerId].create(apiKey);
-    const models = await provider.listModels();
+    const rawModels = await provider.listModels();
+
+    // Providers occasionally return duplicate modelIds — keep first occurrence
+    const seen = new Set<string>();
+    const models = rawModels.filter((m) => {
+      if (seen.has(m.modelId)) return false;
+      seen.add(m.modelId);
+      return true;
+    });
 
     if (this.cache) {
       await this.cache.set(

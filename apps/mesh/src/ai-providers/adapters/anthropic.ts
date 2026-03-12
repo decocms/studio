@@ -29,6 +29,7 @@ export const anthropicAdapter: ProviderAdapter = {
         const res = await nativeClient.models.list();
         return res.data.map((m: { id: string; display_name: string }) => ({
           modelId: m.id,
+          providerId: "anthropic",
           title: m.display_name,
           description: null,
           logo: null,

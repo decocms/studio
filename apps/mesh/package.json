@@ -49,6 +49,7 @@
     "@modelcontextprotocol/ext-apps": "^1.1.2",
     "@openrouter/ai-sdk-provider": "^2.2.5",
     "@opentelemetry/core": "^2.6.0",
+    "@tanstack/react-virtual": "^3.13.21",
     "dompurify": "^3.3.1",
     "kysely": "^0.28.8",
     "kysely-pglite": "^0.6.1",

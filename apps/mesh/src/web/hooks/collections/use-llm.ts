@@ -76,7 +76,7 @@ export function useAiProviderKeyList() {
       })) as {
         structuredContent?: { keys: AiProviderKey[] };
       };
-      return result.structuredContent;
+      return result.structuredContent ?? null;
     },
   });
   return data?.keys ?? [];
@@ -89,7 +89,7 @@ export function useAiProviderModels(keyId: string | undefined) {
     orgId: org.id,
   });
 
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: KEYS.aiProviderModels(locator, keyId ?? ""),
     enabled: !!keyId,
     queryFn: async () => {
@@ -102,7 +102,7 @@ export function useAiProviderModels(keyId: string | undefined) {
       return result.structuredContent ?? null;
     },
   });
-  return data?.models ?? [];
+  return { models: data?.models ?? [], isLoading: !!keyId && isLoading };
 }
 
 export function useSuspenseAiProviderModels(keyId: string) {

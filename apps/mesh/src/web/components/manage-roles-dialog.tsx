@@ -3,6 +3,7 @@ import {
   getToolsByCategory,
   type ToolName,
 } from "@/tools/registry";
+import { DEFAULT_LOGO, PROVIDER_LOGOS } from "@/web/utils/ai-providers-logos";
 import { ToolSetSelector } from "@/web/components/tool-set-selector.tsx";
 import { useMembers } from "@/web/hooks/use-members";
 import {
@@ -394,6 +395,11 @@ function OrgPermissionsTab({
 // Models Permissions Tab
 // ============================================================================
 
+const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
+  anthropic: "Anthropic",
+  openrouter: "OpenRouter",
+};
+
 interface ModelsPermissionsTabProps {
   allowAllModels: boolean;
   modelSet: Record<string, string[]>;
@@ -419,21 +425,20 @@ function ConnectionModelsSection({
   connection: AiProviderKey;
   selectedModels: string[];
   allowAllModels: boolean;
-  onToggleModel: (connectionId: string, modelId: string) => void;
-  onToggleConnectionAll: (
-    connectionId: string,
-    models: { id: string }[],
-  ) => void;
+  onToggleModel: (providerId: string, modelId: string) => void;
+  onToggleConnectionAll: (providerId: string, models: { id: string }[]) => void;
   allConnectionModelsSelected: boolean;
   searchQuery: string;
   readOnly: boolean;
 }) {
   const rawModels = useSuspenseAiProviderModels(connection.id);
-  const models = rawModels.map((m) => ({
-    ...m,
-    id: m.modelId,
-    provider: connection.label,
-  }));
+  const models = rawModels
+    .filter((m, i, arr) => arr.findIndex((x) => x.modelId === m.modelId) === i)
+    .map((m) => ({
+      ...m,
+      id: m.modelId,
+      provider: connection.label,
+    }));
 
   // Filter models by search query
   const filteredModels = searchQuery.trim()
@@ -461,17 +466,27 @@ function ConnectionModelsSection({
       {/* Connection header with toggle-all for this connection */}
       <div className="flex items-center justify-between px-4 py-2">
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
-            {connection.label.slice(0, 1).toUpperCase()}
+          <img
+            src={PROVIDER_LOGOS[connection.providerId] ?? DEFAULT_LOGO}
+            alt={connection.providerId}
+            className="w-4 h-4 rounded-sm"
+          />
+          <div className="flex flex-col">
+            <h4 className="text-sm font-medium text-muted-foreground/75">
+              {PROVIDER_DISPLAY_NAMES[connection.providerId] ??
+                connection.providerId}
+            </h4>
+            <span className="text-xs text-muted-foreground/50">
+              {connection.label}
+            </span>
           </div>
-          <h4 className="text-sm font-medium text-muted-foreground/75">
-            {connection.label}
-          </h4>
         </div>
         {!readOnly && !allowAllModels && (
           <Switch
             checked={allSelected}
-            onCheckedChange={() => onToggleConnectionAll(connection.id, models)}
+            onCheckedChange={() =>
+              onToggleConnectionAll(connection.providerId, models)
+            }
           />
         )}
       </div>
@@ -492,7 +507,7 @@ function ConnectionModelsSection({
               )}
               onClick={() => {
                 if (readOnly || allowAllModels) return;
-                onToggleModel(connection.id, model.id);
+                onToggleModel(connection.providerId, model.id);
               }}
             >
               <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -525,7 +540,7 @@ function ConnectionModelsSection({
                     disabled={readOnly || allowAllModels}
                     onCheckedChange={() => {
                       if (readOnly || allowAllModels) return;
-                      onToggleModel(connection.id, model.id);
+                      onToggleModel(connection.providerId, model.id);
                     }}
                   />
                 )}
@@ -670,13 +685,13 @@ function ModelsPermissionsTab({
             >
               <ConnectionModelsSection
                 connection={conn}
-                selectedModels={modelSet[conn.id] ?? []}
+                selectedModels={modelSet[conn.providerId] ?? []}
                 allowAllModels={allowAllModels}
                 onToggleModel={toggleModel}
                 onToggleConnectionAll={toggleConnectionAll}
-                allConnectionModelsSelected={(modelSet[conn.id] ?? []).includes(
-                  "*",
-                )}
+                allConnectionModelsSelected={(
+                  modelSet[conn.providerId] ?? []
+                ).includes("*")}
                 searchQuery={deferredSearchQuery}
                 readOnly={readOnly}
               />
@@ -1150,7 +1165,7 @@ export function ManageRolesDialog({
       }
     }
 
-    // Build modelSet from "models" key (composite connectionId:modelId strings)
+    // Build modelSet from "models" key (composite providerId:modelId strings)
     const modelsEntries = permission["models"] || [];
     const hasAllModels =
       modelsEntries.length === 0 || modelsEntries.includes("*:*");
@@ -1159,12 +1174,12 @@ export function ManageRolesDialog({
       for (const entry of modelsEntries) {
         const colonIdx = entry.indexOf(":");
         if (colonIdx === -1) continue;
-        const connId = entry.slice(0, colonIdx);
+        const providerId = entry.slice(0, colonIdx);
         const modelId = entry.slice(colonIdx + 1);
-        if (!modelSet[connId]) {
-          modelSet[connId] = [];
+        if (!modelSet[providerId]) {
+          modelSet[providerId] = [];
         }
-        modelSet[connId].push(modelId);
+        modelSet[providerId].push(modelId);
       }
     }
 
@@ -1323,15 +1338,15 @@ export function ManageRolesDialog({
       }
     }
 
-    // Add model permissions as composite "connectionId:modelId" strings
+    // Add model permissions as composite "providerId:modelId" strings
     if (role.allowAllModels) {
       permission["models"] = ["*:*"];
     } else {
       const modelEntries: string[] = [];
-      for (const [connectionId, models] of Object.entries(role.modelSet)) {
+      for (const [providerId, models] of Object.entries(role.modelSet)) {
         if (models.length > 0) {
           for (const modelId of models) {
-            modelEntries.push(`${connectionId}:${modelId}`);
+            modelEntries.push(`${providerId}:${modelId}`);
           }
         }
       }

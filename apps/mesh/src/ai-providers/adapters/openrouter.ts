@@ -3,10 +3,11 @@ import type {
   MeshProvider,
   ModelInfo,
   OAuthPkceResult,
-  OpenRouterModel,
+  OpenRouterFrontendModel,
+  OpenRouterAPIModel,
   ProviderAdapter,
 } from "../types";
-import { OPENROUTER_ICON_URL } from "@/core/deco-constants";
+import { OPENROUTER_ICON_URL } from "@/web/utils/ai-providers-logos";
 
 export const openrouterAdapter: ProviderAdapter = {
   info: {
@@ -61,19 +62,32 @@ export const openrouterAdapter: ProviderAdapter = {
       aiSdk,
 
       async listModels(): Promise<ModelInfo[]> {
-        const res = await fetch("https://openrouter.ai/api/v1/models", {
-          headers,
-          signal: AbortSignal.timeout(30_000),
+        const mapFrontendModel = (m: OpenRouterFrontendModel): ModelInfo => ({
+          providerId: "openrouter",
+          modelId: m.slug,
+          title: m.name,
+          description: m.description ?? null,
+          logo: null,
+          capabilities: [
+            ...new Set([...m.input_modalities, ...m.output_modalities]),
+          ],
+          limits: {
+            contextWindow: m.context_length ?? 0,
+            maxOutputTokens: m.endpoint?.max_completion_tokens ?? null,
+          },
+          costs: m.endpoint?.pricing
+            ? {
+                input: Number(m.endpoint.pricing.prompt ?? 0),
+                output: Number(m.endpoint.pricing.completion ?? 0),
+              }
+            : null,
         });
-        if (!res.ok) {
-          throw new Error(`OpenRouter listModels failed: ${res.status}`);
-        }
-        const data = await res.json();
-        console.log({ data: data.data[6] });
-        return data.data.map((m: OpenRouterModel) => ({
+
+        const mapV1Model = (m: OpenRouterAPIModel): ModelInfo => ({
+          providerId: "openrouter",
           modelId: m.canonical_slug,
           title: m.name,
-          description: m.description,
+          description: m.description ?? null,
           logo: null,
           capabilities: [
             ...new Set([
@@ -89,7 +103,33 @@ export const openrouterAdapter: ProviderAdapter = {
             input: m.pricing.prompt ?? 0,
             output: m.pricing.completion ?? 0,
           },
-        }));
+        });
+
+        try {
+          const res = await fetch(
+            "https://openrouter.ai/api/frontend/models/find?order=most-popular",
+            { signal: AbortSignal.timeout(15_000) },
+          );
+          if (!res.ok) throw new Error(`status ${res.status}`);
+          const data = await res.json();
+          const models: OpenRouterFrontendModel[] = data.data.models;
+          if (!Array.isArray(models) || models.length === 0) {
+            console.log("unexpected response shape");
+            throw new Error("unexpected response shape");
+          }
+          return models.map(mapFrontendModel);
+        } catch {
+          console.log("fallback to v1");
+          const res = await fetch("https://openrouter.ai/api/v1/models", {
+            headers,
+            signal: AbortSignal.timeout(30_000),
+          });
+          if (!res.ok) {
+            throw new Error(`OpenRouter listModels failed: ${res.status}`);
+          }
+          const data = await res.json();
+          return data.data.map(mapV1Model);
+        }
       },
     };
   },

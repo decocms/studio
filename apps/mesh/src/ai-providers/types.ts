@@ -69,7 +69,7 @@ export interface ProviderAdapter {
   }): Promise<OAuthPkceResult>;
 }
 
-export interface OpenRouterModel {
+export interface OpenRouterAPIModel {
   id: string;
   canonical_slug: string;
   name: string;
@@ -94,4 +94,20 @@ export interface OpenRouterModel {
   };
   supported_parameters: string[];
   description: string;
+}
+
+export interface OpenRouterFrontendModel {
+  slug: string;
+  name: string;
+  description: string;
+  context_length: number;
+  input_modalities: string[];
+  output_modalities: string[];
+  endpoint: {
+    pricing?: {
+      prompt?: number | string;
+      completion?: number | string;
+    };
+    max_completion_tokens?: number | null;
+  } | null;
 }

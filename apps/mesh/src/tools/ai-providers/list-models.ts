@@ -1,6 +1,10 @@
 import z from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/mesh-context";
+import {
+  checkModelPermission,
+  fetchModelPermissions,
+} from "@/api/routes/decopilot/model-permissions";
 
 export const AI_PROVIDERS_LIST_MODELS = defineTool({
   name: "AI_PROVIDERS_LIST_MODELS",
@@ -38,7 +42,18 @@ export const AI_PROVIDERS_LIST_MODELS = defineTool({
     const org = requireOrganization(ctx);
     await ctx.access.check();
 
+    const allowedModels = await fetchModelPermissions(
+      ctx.db,
+      org.id,
+      ctx.auth.user?.role,
+    );
+
     const models = await ctx.aiProviders.listModels(input.keyId, org.id);
-    return { models };
+
+    const filtered = models.filter((m) =>
+      checkModelPermission(allowedModels, m.providerId, m.modelId),
+    );
+
+    return { models: filtered };
   },
 });

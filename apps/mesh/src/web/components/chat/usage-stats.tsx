@@ -31,7 +31,7 @@ export function MessageUsageStats({ usage }: UsageStatsProps) {
           className="text-muted-foreground hover:text-foreground pl-1! h-6 gap-1 whitespace-nowrap shrink-0"
         >
           <Activity size={12} />
-          <span className="text-[10px] font-mono tabular-nums">
+          <span className="text-sm font-mono tabular-nums">
             {totalTokens.toLocaleString()}
           </span>
         </Button>
@@ -69,8 +69,9 @@ interface MessageStatsBarProps {
 export function MessageStatsBar({ usage, duration }: MessageStatsBarProps) {
   const hasDuration = duration != null && duration > 0;
   const hasCost = usage != null && (usage.cost ?? 0) > 0;
+  const hasTokens = usage != null && (usage.totalTokens ?? 0) > 0;
 
-  if (!hasDuration && !hasCost) return null;
+  if (!hasDuration && !hasCost && !hasTokens) return null;
 
   const durationSecs = hasDuration ? (duration! / 1000).toFixed(1) : null;
 
@@ -96,10 +97,10 @@ export function MessageStatsBar({ usage, duration }: MessageStatsBarProps) {
           </TooltipContent>
         </Tooltip>
       )}
-      {hasDuration && hasCost && (
+      {hasDuration && (hasCost || hasTokens) && (
         <span className="text-muted-foreground/40 select-none">·</span>
       )}
-      {hasCost && (
+      {hasCost ? (
         <Tooltip>
           <TooltipTrigger asChild>
             <span className="tabular-nums text-sm font-mono text-muted-foreground cursor-default [@media(hover:hover)]:hover:text-foreground transition-colors select-none">
@@ -130,7 +131,38 @@ export function MessageStatsBar({ usage, duration }: MessageStatsBarProps) {
             </div>
           </TooltipContent>
         </Tooltip>
-      )}
+      ) : hasTokens ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="tabular-nums text-sm font-mono text-muted-foreground cursor-default [@media(hover:hover)]:hover:text-foreground transition-colors select-none">
+              {usage!.totalTokens.toLocaleString()} tok
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="font-mono text-[11px]">
+            <p className="opacity-60 text-[10px] mb-1">tokens</p>
+            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+              <span className="opacity-60">in</span>
+              <span className="text-right tabular-nums">
+                {(usage!.inputTokens ?? 0).toLocaleString()}
+              </span>
+              <span className="opacity-60">out</span>
+              <span className="text-right tabular-nums">
+                {(
+                  (usage!.outputTokens ?? 0) - (usage?.reasoningTokens ?? 0)
+                ).toLocaleString()}
+              </span>
+              {(usage?.reasoningTokens ?? 0) > 0 && (
+                <>
+                  <span className="opacity-60">think</span>
+                  <span className="text-right tabular-nums">
+                    {usage!.reasoningTokens!.toLocaleString()}
+                  </span>
+                </>
+              )}
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      ) : null}
     </div>
   );
 }

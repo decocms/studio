@@ -55,5 +55,5 @@ export function selectDefaultModel(
     if (partial) return withKey(partial);
   }
 
-  return withKey(models[0]);
+  return withKey(models[0] as AiProviderModel);
 }

@@ -157,9 +157,10 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       );
 
       if (
+        allowedModels !== undefined &&
         !checkModelPermission(
           allowedModels,
-          models.credentialId,
+          models.thinking.provider,
           models.thinking.id,
         )
       ) {

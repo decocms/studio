@@ -1,6 +1,28 @@
 export const DEFAULT_LOGO =
   "https://assets.decocache.com/decocms/bc2ca488-2bae-4aac-8d3e-ead262dad764/agent.png";
 
+/** OpenRouter icon URL */
+export const OPENROUTER_ICON_URL =
+  "https://assets.decocache.com/decocms/b2e2f64f-6025-45f7-9e8c-3b3ebdd073d8/openrouter_logojpg.jpg";
+
+/** Anthropic icon URL */
+const ANTHROPIC_ICON_URL =
+  "https://assets.decocache.com/decocms/4fa4f3ed-1bf3-4e5a-8d05-4f3787df5966/anthropic-icon-tdvkiqisswbrmtkiygb0ia.webp";
+
+export function getProviderLogo(model: {
+  providerId: string;
+  modelId: string;
+}): string {
+  const upstreamProvider = model.modelId.includes("/")
+    ? model.modelId.split("/")[0]
+    : null;
+  return (
+    (upstreamProvider && PROVIDER_LOGOS[upstreamProvider]) ||
+    PROVIDER_LOGOS[model.providerId] ||
+    DEFAULT_LOGO
+  );
+}
+
 export const PROVIDER_LOGOS: Record<string, string> = {
   "aion-labs":
     "https://assets.decocache.com/decocms/6da18da8-0160-4b85-8bca-84eefffebe12/images-(6).png",
@@ -15,8 +37,7 @@ export const PROVIDER_LOGOS: Record<string, string> = {
     "https://assets.decocache.com/decocms/76eaa620-ce73-43d6-8817-272c1d498b53/images-(19).png",
   amazon:
     "https://assets.decocache.com/decocms/31e7b260-6cf0-4753-bb32-bd062b15c5f1/Amazon_icon.png",
-  anthropic:
-    "https://assets.decocache.com/decocms/4fa4f3ed-1bf3-4e5a-8d05-4f3787df5966/anthropic-icon-tdvkiqisswbrmtkiygb0ia.webp",
+  anthropic: ANTHROPIC_ICON_URL,
   "anthracite-org": DEFAULT_LOGO,
   "arcee-ai":
     "https://assets.decocache.com/decocms/ee325839-6acc-48dc-8cf7-8bab74698015/126496414.png",
@@ -74,8 +95,7 @@ export const PROVIDER_LOGOS: Record<string, string> = {
     "https://assets.decocache.com/decocms/fb2d0c32-85f1-410a-87f4-9731dfafd248/images-(2).jpeg",
   openai:
     "https://assets.decocache.com/webdraw/15dc381c-23b4-4f6b-9ceb-9690f77a7cf5/openai.svg",
-  openrouter:
-    "https://assets.decocache.com/decocms/a75e4eb2-8c95-4cd3-a2f8-c49b21feab5e/openrouter.png",
+  openrouter: OPENROUTER_ICON_URL,
   perplexity:
     "https://assets.decocache.com/decocms/3a134746-f370-4089-a3c9-fe545be0441c/images-(15).png",
   "prime-intellect": DEFAULT_LOGO,

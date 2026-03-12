@@ -19,18 +19,17 @@ const MemoryConfigSchema = z.object({
   thread_id: z.string(),
 });
 
-const ProviderSchema = z
-  .enum([
-    "openai",
-    "anthropic",
-    "google",
-    "xai",
-    "deepseek",
-    "openrouter",
-    "openai-compatible",
-  ])
-  .optional()
-  .nullable();
+const ProviderEnum = z.enum([
+  "openai",
+  "anthropic",
+  "google",
+  "xai",
+  "deepseek",
+  "openrouter",
+  "openai-compatible",
+]);
+
+const ProviderSchema = ProviderEnum.optional().nullable();
 
 const ModelInfoSchema = z.object({
   id: z.string(),
@@ -51,10 +50,17 @@ const ModelInfoSchema = z.object({
     .optional(),
 });
 
+// thinking model must always carry provider — it drives permission checks and metadata
+const ThinkingModelSchema = ModelInfoSchema.extend({
+  provider: ProviderEnum,
+});
+
 const ModelsSchema = z
   .object({
     credentialId: z.string(),
-    thinking: ModelInfoSchema.describe("Backbone model for the agentic loop"),
+    thinking: ThinkingModelSchema.describe(
+      "Backbone model for the agentic loop",
+    ),
     coding: ModelInfoSchema.optional().describe("Good coding model"),
     fast: ModelInfoSchema.optional().describe("Cheap model for simple tasks"),
   })

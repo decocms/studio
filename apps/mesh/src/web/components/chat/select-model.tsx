@@ -1,4 +1,5 @@
 import { Button } from "@deco/ui/components/button.tsx";
+import { Checkbox } from "@deco/ui/components/checkbox.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import {
   Dialog,
@@ -18,25 +19,197 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import {
   AlertTriangle,
   AlignLeft,
+  ArrowLeft,
   ChevronDown,
   ChevronSelectorVertical,
   Image01,
+  Key01,
   RefreshCcw01,
   SearchMd,
   Settings01,
   Stars01,
   Tool01,
 } from "@untitledui/icons";
-import { Suspense, useRef, useState, type ReactNode } from "react";
 import {
+  type ReactNode,
+  startTransition,
+  Suspense,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import {
+  type AiProviderModel,
   useAiProviderKeyList,
   useAiProviderModels,
   useAiProviders,
-  type AiProviderModel,
 } from "../../hooks/collections/use-llm";
 import { ErrorBoundary } from "../error-boundary";
 import { useChat } from "./context";
-import { DEFAULT_LOGO, PROVIDER_LOGOS } from "@/web/utils/ai-providers-logos";
+import { getProviderLogo } from "@/web/utils/ai-providers-logos";
+import { useSettingsModal } from "@/web/hooks/use-settings-modal";
+
+// ============================================================================
+// Tier Classification
+// ============================================================================
+
+const TIER_IDS = ["smarter", "faster", "cheaper"] as const;
+type TierId = (typeof TIER_IDS)[number];
+
+const TIER_LABELS: Record<TierId, string> = {
+  smarter: "Smarter",
+  faster: "Faster",
+  cheaper: "Cheaper",
+};
+
+const TIER_PATTERNS: Array<{ tier: TierId; prefixes: string[] }> = [
+  {
+    tier: "smarter",
+    prefixes: [
+      "anthropic/claude-4.6-opus",
+      "anthropic/claude-opus-4.6",
+      "anthropic/claude-sonnet-4.6",
+      "anthropic/claude-4.6-sonnet",
+      "openai/gpt-5.3-codex",
+      "google/gemini-3-pro",
+      "google/gemini-2.5-pro",
+      "cohere/command-r-plus",
+      "cohere/command-a",
+    ],
+  },
+  {
+    tier: "faster",
+    prefixes: [
+      "anthropic/claude-haiku-4.5",
+      "anthropic/claude-4.5-haiku",
+      "google/gemini-3-flash",
+      "openai/gpt-5.1-codex-mini",
+      "x-ai/grok-code-fast",
+      "x-ai/grok-3",
+      "mistralai/mistral-large",
+      "mistralai/codestral",
+      "mistralai/mistral-medium",
+      "qwen/qwen-plus",
+      "qwen/qwen-turbo",
+      "qwen/qwen3-235b",
+      "minimax/minimax-m1",
+    ],
+  },
+  {
+    tier: "cheaper",
+    prefixes: [
+      "google/gemini-2.5-flash-lite",
+      "google/gemini-2.5-flash",
+      "google/gemini-2.0-flash",
+      "deepseek/deepseek-v3",
+      "openai/gpt-oss-120b",
+      "mistralai/mistral-small",
+      "mistralai/pixtral",
+      "qwen/qwen-long",
+      "cohere/command-r",
+    ],
+  },
+];
+
+// Sort rules longest-prefix-first for specificity
+const SORTED_TIER_RULES = TIER_PATTERNS.flatMap(({ tier, prefixes }) =>
+  prefixes.map((prefix) => ({ tier, prefix })),
+).sort((a, b) => b.prefix.length - a.prefix.length);
+
+// Only exact matches (no named sub-variants); date suffixes (digits) are fine
+const EXACT_ONLY_PREFIXES = new Set(["google/gemini-2.5-pro"]);
+
+const tierCache = new Map<string, TierId | null>();
+
+function classifyModel(modelId: string): TierId | null {
+  const cached = tierCache.get(modelId);
+  if (cached !== undefined) return cached;
+
+  let result: TierId | null = null;
+  if (modelId.endsWith(":free")) {
+    result = "cheaper";
+  } else {
+    outer: for (const { tier, prefix } of SORTED_TIER_RULES) {
+      if (modelId.startsWith(prefix)) {
+        if (EXACT_ONLY_PREFIXES.has(prefix) && modelId.length > prefix.length) {
+          const nextChar = modelId[prefix.length];
+          if (nextChar === "-") {
+            const charAfterHyphen = modelId[prefix.length + 1];
+            if (!charAfterHyphen || !/\d/.test(charAfterHyphen)) continue outer;
+          }
+        }
+        result = tier;
+        break;
+      }
+    }
+  }
+
+  tierCache.set(modelId, result);
+  return result;
+}
+
+function groupByTier(
+  models: AiProviderModel[],
+): Record<TierId | "other", AiProviderModel[]> {
+  const groups: Record<TierId | "other", AiProviderModel[]> = {
+    smarter: [],
+    faster: [],
+    cheaper: [],
+    other: [],
+  };
+  for (const m of models) {
+    const tier = classifyModel(m.modelId);
+    groups[tier ?? "other"].push(m);
+  }
+  for (const key of Object.keys(groups) as Array<TierId | "other">) {
+    groups[key].sort((a, b) => a.title.localeCompare(b.title));
+  }
+  return groups;
+}
+
+// ============================================================================
+// Model Shortlist (localStorage)
+// ============================================================================
+
+const SHORTLIST_KEY_PREFIX = "mesh:model-shortlist:";
+
+const DEFAULT_SHORTLIST = new Set([
+  // Smarter
+  "anthropic/claude-4.6-opus-20260205",
+  "anthropic/claude-opus-4.6",
+  "anthropic/claude-sonnet-4.6",
+  "anthropic/claude-4.6-sonnet",
+  "anthropic/claude-sonnet-4.6:extended",
+  "openai/gpt-5.3-codex",
+  "google/gemini-3-pro-preview",
+  "google/gemini-2.5-pro",
+  // Faster
+  "anthropic/claude-haiku-4.5",
+  "anthropic/claude-haiku-4.5-20251001",
+  "anthropic/claude-4.5-haiku",
+  "google/gemini-3-flash-preview",
+  "openai/gpt-5.1-codex-mini",
+  "x-ai/grok-code-fast-1",
+  // Cheaper
+  "google/gemini-2.5-flash",
+  "deepseek/deepseek-v3.2",
+  "google/gemini-2.5-flash-lite",
+  "openai/gpt-oss-120b:free",
+]);
+
+function readShortlist(keyId: string): Set<string> | null {
+  try {
+    const raw = localStorage.getItem(SHORTLIST_KEY_PREFIX + keyId);
+    return raw ? new Set(JSON.parse(raw)) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeShortlist(keyId: string, ids: Set<string>) {
+  localStorage.setItem(SHORTLIST_KEY_PREFIX + keyId, JSON.stringify([...ids]));
+}
 
 // ============================================================================
 // Contextual annotations (absolute thresholds, not relative to model list)
@@ -48,16 +221,19 @@ function getContextLevel(tokens: number): {
   label: string;
   description: string;
 } {
-  if (tokens < 32_000)
+  if (tokens < 32_000) {
     return { level: 1, label: "Small", description: "Short conversations" };
-  if (tokens < 200_000)
+  }
+  if (tokens < 200_000) {
     return { level: 2, label: "Medium", description: "Good for most tasks" };
-  if (tokens < 500_000)
+  }
+  if (tokens < 500_000) {
     return {
       level: 3,
       label: "Large",
       description: "Long projects & research",
     };
+  }
   return { level: 4, label: "Very large", description: "Massive files & data" };
 }
 
@@ -352,11 +528,7 @@ function ModelItemContent({
     ? model.title.split(": ")[0]
     : model.modelId.split("/")[0];
 
-  const maybeProviderId = model.modelId.split("/")[0] ?? undefined;
-  const maybeLogo = maybeProviderId
-    ? PROVIDER_LOGOS[maybeProviderId]
-    : undefined;
-  const providerLogo = maybeLogo ?? DEFAULT_LOGO;
+  const providerLogo = getProviderLogo(model);
 
   return (
     <div
@@ -439,42 +611,255 @@ function ModelListSkeleton() {
 // ConnectionModelList — browse + manage modes
 // ============================================================================
 
+function ModelTierSection({
+  label,
+  models,
+  onSelect,
+  onHover,
+}: {
+  label: string;
+  models: AiProviderModel[];
+  onSelect: (m: AiProviderModel) => void;
+  onHover: (m: AiProviderModel) => void;
+}) {
+  if (models.length === 0) return null;
+  return (
+    <div>
+      <div className="text-xs font-medium text-muted-foreground px-3 pt-3 pb-1">
+        {label}
+      </div>
+      {models.map((m) => (
+        <div
+          key={m.modelId}
+          onClick={() => onSelect(m)}
+          className="cursor-pointer"
+        >
+          <ModelItemContent model={m} onHover={onHover} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Each row is its own component so the React Compiler can memoize them
+// individually — only the toggled item re-renders, not all 500.
+function ManageModelItem({
+  model,
+  isChecked,
+  onToggle,
+  onHover,
+}: {
+  model: AiProviderModel;
+  isChecked: boolean;
+  onToggle: (modelId: string) => void;
+  onHover: (m: AiProviderModel) => void;
+}) {
+  // Local state gives instant visual feedback; parent shortlistSet updates
+  // asynchronously via startTransition so it never blocks the checkbox.
+  const [checked, setChecked] = useState(isChecked);
+  const logo = getProviderLogo(model);
+
+  return (
+    <label
+      className="flex items-center gap-3 min-h-8 py-2.5 px-3 hover:bg-accent cursor-pointer rounded-lg"
+      onMouseEnter={() => onHover(model)}
+    >
+      <Checkbox
+        checked={checked}
+        onCheckedChange={() => {
+          setChecked((v) => !v);
+          onToggle(model.modelId);
+        }}
+      />
+      <img
+        src={logo}
+        className="w-5 h-5 shrink-0 rounded-sm"
+        alt={model.title}
+      />
+      <span className="text-sm text-foreground flex-1 min-w-0 line-clamp-1">
+        {model.title}
+      </span>
+    </label>
+  );
+}
+
+type ManageVirtualItem =
+  | { type: "header"; label: string }
+  | { type: "model"; model: AiProviderModel };
+
+function buildManageItems(
+  grouped: Record<TierId | "other", AiProviderModel[]>,
+): ManageVirtualItem[] {
+  const items: ManageVirtualItem[] = [];
+  for (const tierId of TIER_IDS) {
+    if (grouped[tierId].length > 0) {
+      items.push({ type: "header", label: TIER_LABELS[tierId] });
+      for (const m of grouped[tierId]) items.push({ type: "model", model: m });
+    }
+  }
+  if (grouped.other.length > 0) {
+    items.push({ type: "header", label: "Other" });
+    for (const m of grouped.other) items.push({ type: "model", model: m });
+  }
+  return items;
+}
+
+function VirtualManageList({
+  items,
+  shortlistSet,
+  onToggle,
+  onHover,
+}: {
+  items: ManageVirtualItem[];
+  shortlistSet: Set<string>;
+  onToggle: (modelId: string) => void;
+  onHover: (m: AiProviderModel) => void;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: (i) => (items[i]?.type === "header" ? 36 : 44),
+    overscan: 6,
+  });
+
+  return (
+    <div ref={scrollRef} className="flex-1 overflow-y-auto">
+      <div className="relative" style={{ height: virtualizer.getTotalSize() }}>
+        {virtualizer.getVirtualItems().map((vItem) => {
+          const item = items[vItem.index];
+          if (!item) return null;
+          return (
+            <div
+              key={vItem.key}
+              data-index={vItem.index}
+              ref={virtualizer.measureElement}
+              className="absolute left-0 right-0 top-0 px-0.5"
+              style={{ transform: `translateY(${vItem.start}px)` }}
+            >
+              {item.type === "header" ? (
+                <div className="text-xs font-medium text-muted-foreground px-3 pt-3 pb-1">
+                  {item.label}
+                </div>
+              ) : (
+                <ManageModelItem
+                  model={item.model}
+                  isChecked={shortlistSet.has(item.model.modelId)}
+                  onToggle={onToggle}
+                  onHover={onHover}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function ConnectionModelList({
   keyId,
   searchTerm,
   onHover,
   onModelSelect,
+  managing,
+  onToggleManage,
 }: {
   keyId: string | undefined;
   searchTerm: string;
-  selectedModel?: AiProviderModel | null;
   onModelSelect: (model: AiProviderModel) => void;
   onHover: (model: AiProviderModel) => void;
+  managing: boolean;
+  onToggleManage: () => void;
 }) {
-  const allModels = useAiProviderModels(keyId);
+  const { models: allModels } = useAiProviderModels(keyId);
+  const [shortlistSet, setShortlistSet] = useState<Set<string>>(
+    () => (keyId ? readShortlist(keyId) : null) ?? DEFAULT_SHORTLIST,
+  );
+  const [, startShortlistTransition] = useTransition();
+
+  const handleToggle = (modelId: string) => {
+    if (!keyId) return;
+    // Deferred: ManageModelItem's local state already gave instant feedback,
+    // so this heavier reconciliation can happen in a transition.
+    startShortlistTransition(() => {
+      setShortlistSet((current) => {
+        const next = new Set(current);
+        if (next.has(modelId)) {
+          next.delete(modelId);
+        } else {
+          next.add(modelId);
+        }
+        writeShortlist(keyId, next);
+        return next;
+      });
+    });
+  };
+
   const normalizedSearch = searchTerm.toLowerCase().trim();
-  const filteredModels = normalizedSearch
-    ? allModels.filter(
-        (m) =>
-          m.title.toLowerCase().includes(normalizedSearch) ||
-          m.modelId.toLowerCase().includes(normalizedSearch),
-      )
-    : allModels;
+  const filterModels = (models: AiProviderModel[]) =>
+    normalizedSearch
+      ? models.filter(
+          (m) =>
+            m.title.toLowerCase().includes(normalizedSearch) ||
+            m.modelId.toLowerCase().includes(normalizedSearch),
+        )
+      : models;
+
+  if (managing) {
+    const grouped = groupByTier(filterModels(allModels));
+    const flatItems = buildManageItems(grouped);
+    const selectedCount = allModels.filter((m) =>
+      shortlistSet.has(m.modelId),
+    ).length;
+
+    return (
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+          <button
+            type="button"
+            onClick={onToggleManage}
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground cursor-pointer"
+          >
+            <ArrowLeft size={14} />
+            Back
+          </button>
+          <span className="text-xs text-muted-foreground">
+            {selectedCount} selected
+          </span>
+        </div>
+        <VirtualManageList
+          items={flatItems}
+          shortlistSet={shortlistSet}
+          onToggle={handleToggle}
+          onHover={onHover}
+        />
+      </div>
+    );
+  }
+
+  // Browse mode: show shortlisted models (fall back to all if none match)
+  const shortlisted = allModels.filter((m) => shortlistSet.has(m.modelId));
+  const browseable = shortlisted.length > 0 ? shortlisted : allModels;
+  const grouped = groupByTier(filterModels(browseable));
 
   return (
-    <div className="flex-1 overflow-y-auto p-2">
-      {filteredModels.map((m, i) => {
-        const key = m.modelId + i;
-        return (
-          <div
-            key={key}
-            onClick={() => onModelSelect(m)}
-            className="cursor-pointer"
-          >
-            <ModelItemContent model={m} onHover={onHover} />
-          </div>
-        );
-      })}
+    <div className="flex-1 overflow-y-auto px-0.5 pt-1">
+      {TIER_IDS.map((tierId) => (
+        <ModelTierSection
+          key={tierId}
+          label={TIER_LABELS[tierId]}
+          models={grouped[tierId]}
+          onSelect={onModelSelect}
+          onHover={onHover}
+        />
+      ))}
+      <ModelTierSection
+        label="Other"
+        models={grouped.other}
+        onSelect={onModelSelect}
+        onHover={onHover}
+      />
     </div>
   );
 }
@@ -486,10 +871,21 @@ function ConnectionModelList({
 function SelectedModelDisplay({
   model,
   placeholder = "Select model",
+  isLoading = false,
 }: {
   model: AiProviderModel | null;
   placeholder?: string;
+  isLoading?: boolean;
 }) {
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-1.5">
+        <Skeleton className="w-5 h-5 rounded-sm shrink-0" />
+        <Skeleton className="w-16 h-3 hidden md:block" />
+      </div>
+    );
+  }
+
   if (!model) {
     return (
       <div className="flex items-center gap-1.5">
@@ -506,7 +902,7 @@ function SelectedModelDisplay({
     ? model.title.split(": ").slice(1).join(": ")
     : model.title;
 
-  const providerLogo = PROVIDER_LOGOS[model.providerId] ?? DEFAULT_LOGO;
+  const providerLogo = getProviderLogo(model);
 
   return (
     <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
@@ -607,6 +1003,7 @@ function ModelSelectorContent({ onClose }: { onClose: () => void }) {
   const providerMap = Object.fromEntries(
     (aiProviders?.providers ?? []).map((p) => [p.id, p]),
   );
+  const { open: openSettings } = useSettingsModal();
 
   const handleKeyChange = (keyId: string) => {
     setCredentialId(keyId);
@@ -635,7 +1032,7 @@ function ModelSelectorContent({ onClose }: { onClose: () => void }) {
               }
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="flex-1 border-0 shadow-none focus-visible:ring-0 px-0 h-full text-sm placeholder:text-muted-foreground/50 bg-transparent"
+              className="flex-1 min-w-0 border-0 shadow-none focus-visible:ring-0 px-0 h-full text-sm placeholder:text-muted-foreground/50 bg-transparent"
             />
             {keys.length > 0 && (
               <Select
@@ -644,10 +1041,30 @@ function ModelSelectorContent({ onClose }: { onClose: () => void }) {
               >
                 <SelectTrigger
                   size="sm"
-                  className="w-auto min-w-[140px] h-8 shrink-0 [&>svg:last-child]:hidden"
+                  className="w-auto h-8 shrink-0 gap-1 px-2 [&>svg:last-child]:hidden"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <SelectValue placeholder="Select key" />
+                  <SelectValue placeholder="Key">
+                    {(() => {
+                      const key = keys.find((k) => k.id === credentialId);
+                      const provider = key
+                        ? providerMap[key.providerId]
+                        : undefined;
+                      return provider?.logo ? (
+                        <img
+                          src={provider.logo}
+                          alt={provider.name}
+                          className="w-4 h-4 rounded"
+                        />
+                      ) : (
+                        <div className="w-4 h-4 rounded bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
+                          {(provider?.name ?? key?.providerId ?? "?")
+                            .slice(0, 1)
+                            .toUpperCase()}
+                        </div>
+                      );
+                    })()}
+                  </SelectValue>
                   <ChevronSelectorVertical className="size-4 opacity-50 shrink-0 pointer-events-none" />
                 </SelectTrigger>
                 <SelectContent>
@@ -698,18 +1115,29 @@ function ModelSelectorContent({ onClose }: { onClose: () => void }) {
               searchTerm={searchTerm}
               onHover={setHoveredModel}
               onModelSelect={handleModelSelect}
+              managing={managing}
+              onToggleManage={() => setManaging((v) => !v)}
             />
           </Suspense>
         </ErrorBoundary>
         {!managing && (
-          <div className="border-t border-border">
+          <div className="border-t border-border flex">
             <button
               type="button"
-              onClick={() => setManaging(true)}
-              className="flex items-center gap-2 w-full px-4 py-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent cursor-pointer"
+              onClick={() => startTransition(() => setManaging(true))}
+              className="flex items-center gap-2 flex-1 px-4 py-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent cursor-pointer"
             >
               <Settings01 className="size-3.5 shrink-0" />
               Manage models
+            </button>
+            <div className="w-px bg-border shrink-0" />
+            <button
+              type="button"
+              onClick={() => openSettings("org.ai-providers")}
+              className="flex items-center gap-2 flex-1 px-4 py-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent cursor-pointer"
+            >
+              <Key01 className="size-3.5 shrink-0" />
+              Manage API keys
             </button>
           </div>
         )}
@@ -738,7 +1166,7 @@ export function ModelSelector({
   placeholder = "Select model",
 }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
-  const { model } = useChat();
+  const { model, isModelsLoading } = useChat();
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -752,7 +1180,11 @@ export function ModelSelector({
             className,
           )}
         >
-          <SelectedModelDisplay model={model} placeholder={placeholder} />
+          <SelectedModelDisplay
+            model={model}
+            placeholder={placeholder}
+            isLoading={isModelsLoading}
+          />
         </Button>
       </DialogTrigger>
       <DialogContent
