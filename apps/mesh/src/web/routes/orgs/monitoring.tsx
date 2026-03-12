@@ -626,7 +626,7 @@ function LlmStatsContent({
       chartMetric: "llm-calls" as TopChartMetric,
       renderTitle: () => (
         <div className="flex flex-col gap-0.5 md:gap-1">
-          <p className="text-xs md:text-sm text-muted-foreground">LLM Calls</p>
+          <p className="text-xs md:text-sm text-muted-foreground">AI Usage</p>
           <p className="text-sm md:text-lg font-medium">
             {stats.totalCalls.toLocaleString()}
           </p>
@@ -640,9 +640,7 @@ function LlmStatsContent({
       chartMetric: "llm-latency-avg" as TopChartMetric,
       renderTitle: () => (
         <div className="flex flex-col gap-0.5 md:gap-1">
-          <p className="text-xs md:text-sm text-muted-foreground">
-            LLM Latency
-          </p>
+          <p className="text-xs md:text-sm text-muted-foreground">AI Latency</p>
           <div className="flex items-baseline gap-3">
             <div>
               <span className="text-sm md:text-lg font-medium">
@@ -671,7 +669,7 @@ function LlmStatsContent({
       chartMetric: "llm-errors" as TopChartMetric,
       renderTitle: () => (
         <div className="flex flex-col gap-0.5 md:gap-1">
-          <p className="text-xs md:text-sm text-muted-foreground">LLM Errors</p>
+          <p className="text-xs md:text-sm text-muted-foreground">AI Errors</p>
           <p className="text-sm md:text-lg font-medium">
             {stats.totalErrors.toLocaleString()}
           </p>
@@ -684,7 +682,7 @@ function LlmStatsContent({
     <div className="border-b border-border">
       <div className="px-5 py-2 bg-muted/30 border-b border-border">
         <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          LLM Calls
+          AI Usage
         </span>
       </div>
       <div className="grid grid-cols-3 gap-[0.5px] bg-border flex-shrink-0">

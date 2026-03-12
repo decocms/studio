@@ -274,10 +274,10 @@ const METRIC_LABELS: Record<TopChartMetric, string> = {
   "latency-avg": "Top Tools — Average Latency",
   "latency-p95": "Top Tools — P95 Latency",
   errors: "Top Tools — Errors",
-  "llm-calls": "LLM Provider — Calls",
-  "llm-latency-avg": "LLM Provider — Latency",
-  "llm-latency-p95": "LLM Provider — P95 Latency",
-  "llm-errors": "LLM Provider — Errors",
+  "llm-calls": "AI Usage",
+  "llm-latency-avg": "AI Latency",
+  "llm-latency-p95": "AI P95 Latency",
+  "llm-errors": "AI Errors",
 };
 
 function isLlmMetric(metric: TopChartMetric): boolean {
@@ -437,7 +437,7 @@ function TopToolsContent({
       >
         {llmBuckets.length === 0 ? (
           <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
-            No LLM activity in this time range
+            No AI activity in this time range
           </div>
         ) : (
           <div className="flex flex-col gap-2 w-full h-full">
