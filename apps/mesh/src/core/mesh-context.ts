@@ -240,6 +240,7 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import type { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
 import { AIProviderFactory } from "@/ai-providers/factory";
+import type { FireAutomationResult } from "../automations/fire";
 
 // Better Auth instance type - flexible for testing
 // In production, this is the actual Better Auth instance
@@ -343,6 +344,13 @@ export interface MeshContext {
   ) => Promise<Client>;
 
   // AI Provider keys storage
+
+  // Automation runner — fires an automation manually (wired in app.ts)
+  automationRunner?: (
+    automationId: string,
+    orgId: string,
+    userId: string,
+  ) => Promise<FireAutomationResult>;
 }
 
 // ============================================================================

@@ -20,6 +20,7 @@ import {
   useAutomationDelete,
   useAutomationTriggerAdd,
   useAutomationTriggerRemove,
+  useAutomationRun,
   type AutomationTrigger,
 } from "@/web/hooks/use-automations";
 import {
@@ -71,6 +72,7 @@ import {
   Clock,
   Edit05,
   Loading01,
+  Play,
   Plus,
   SearchMd,
   Trash01,
@@ -686,7 +688,23 @@ export default function AutomationDetailPage() {
 
   const { data: automation, isLoading } = useAutomationDetail(automationId);
   const deleteMutation = useAutomationDelete();
+  const runMutation = useAutomationRun();
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const handleRun = async () => {
+    try {
+      const result = await runMutation.mutateAsync(automationId);
+      if (result.skipped) {
+        toast.info(`Run skipped: ${result.skipped}`);
+      } else if (result.error) {
+        toast.error(`Run failed: ${result.error}`);
+      } else {
+        toast.success("Automation run started");
+      }
+    } catch {
+      toast.error("Failed to run automation");
+    }
+  };
 
   const handleDelete = async () => {
     try {
@@ -743,6 +761,20 @@ export default function AutomationDetailPage() {
   return (
     <ViewLayout breadcrumb={breadcrumb}>
       <ViewActions>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7"
+          onClick={handleRun}
+          disabled={runMutation.isPending}
+        >
+          {runMutation.isPending ? (
+            <Loading01 size={14} className="animate-spin" />
+          ) : (
+            <Play size={14} />
+          )}
+          Run Now
+        </Button>
         <Button
           variant="ghost"
           size="sm"

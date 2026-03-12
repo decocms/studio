@@ -88,6 +88,7 @@ import {
   EventTriggerEngine,
   Semaphore,
 } from "../automations";
+import { fireAutomation } from "../automations/fire";
 import { streamCore } from "./routes/decopilot/stream-core";
 import { createAutomationsStorage } from "../storage/automations";
 
@@ -764,6 +765,25 @@ export async function createApp(options: CreateAppOptions = {}) {
     return ctx;
   };
 
+  const automationRunner: MeshContext["automationRunner"] = async (
+    automationId,
+    orgId,
+    _userId,
+  ) => {
+    const automation = await automationsStorage.findById(automationId, orgId);
+    if (!automation) throw new Error("Automation not found");
+    return fireAutomation({
+      automation,
+      triggerId: null,
+      storage: automationsStorage,
+      streamCoreFn: streamCore,
+      meshContextFactory: automationContextFactory,
+      config: { maxConcurrentPerAutomation: 3, runTimeoutMs: 5 * 60 * 1000 },
+      globalSemaphore: automationSemaphore,
+      deps: { runRegistry, cancelBroadcast },
+    });
+  };
+
   const cronWorker = new AutomationCronWorker(
     automationsStorage,
     streamCore,
@@ -879,6 +899,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     };
 
     const meshCtx = await ContextFactory.create(c.req.raw, { timings });
+    meshCtx.automationRunner = automationRunner;
     c.set("meshContext", meshCtx);
 
     return next();

@@ -87,7 +87,7 @@ export interface AutomationsStorage {
   countInProgressRuns(automationId: string): Promise<number>;
   tryAcquireRunSlot(
     automationId: string,
-    triggerId: string,
+    triggerId: string | null,
     maxConcurrent: number,
   ): Promise<string | null>;
   markRunFailed(threadId: string): Promise<void>;
@@ -491,7 +491,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
 
   async tryAcquireRunSlot(
     automationId: string,
-    triggerId: string,
+    triggerId: string | null,
     maxConcurrent: number,
   ): Promise<string | null> {
     return await this.db.transaction().execute(async (trx) => {

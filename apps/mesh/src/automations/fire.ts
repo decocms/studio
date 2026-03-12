@@ -55,7 +55,7 @@ export type FireAutomationResult =
 
 export async function fireAutomation(opts: {
   automation: Automation;
-  triggerId: string;
+  triggerId: string | null;
   contextMessages?: Array<{ role: string; content: string }>;
   storage: AutomationsStorage;
   streamCoreFn: StreamCoreFn;

@@ -129,6 +129,7 @@ const CORE_TOOLS = [
   AutomationTools.AUTOMATION_DELETE,
   AutomationTools.AUTOMATION_TRIGGER_ADD,
   AutomationTools.AUTOMATION_TRIGGER_REMOVE,
+  AutomationTools.AUTOMATION_RUN,
 
   // Project tools
   ProjectTools.PROJECT_LIST,

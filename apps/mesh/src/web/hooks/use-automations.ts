@@ -217,6 +217,35 @@ export function useAutomationTriggerAdd() {
   });
 }
 
+export function useAutomationRun() {
+  const { org } = useProjectContext();
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+  });
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const result = (await client.callTool({
+        name: "AUTOMATION_RUN",
+        arguments: { id },
+      })) as { structuredContent?: unknown };
+      return (result.structuredContent ?? result) as {
+        threadId?: string;
+        error?: string;
+        skipped?: string;
+      };
+    },
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: KEYS.automations(org.id) });
+      queryClient.invalidateQueries({
+        queryKey: KEYS.automation(org.id, id),
+      });
+    },
+  });
+}
+
 export function useAutomationTriggerRemove() {
   const { org } = useProjectContext();
   const client = useMCPClient({

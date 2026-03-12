@@ -10,7 +10,7 @@ import type { Automation } from "@/storage/types";
 
 export function buildStreamRequest(
   automation: Automation,
-  triggerId: string,
+  triggerId: string | null,
   threadId: string,
 ): StreamCoreInput {
   return {
@@ -24,7 +24,7 @@ export function buildStreamRequest(
       | "yolo",
     organizationId: automation.organization_id,
     userId: automation.created_by,
-    triggerId,
+    triggerId: triggerId ?? undefined,
     threadId,
   };
 }

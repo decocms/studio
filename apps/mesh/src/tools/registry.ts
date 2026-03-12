@@ -122,6 +122,7 @@ const ALL_TOOL_NAMES = [
   "AUTOMATION_DELETE",
   "AUTOMATION_TRIGGER_ADD",
   "AUTOMATION_TRIGGER_REMOVE",
+  "AUTOMATION_RUN",
   // Project tools
   "PROJECT_LIST",
   "PROJECT_GET",
@@ -559,6 +560,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Remove trigger from automation",
     category: "Automations",
   },
+  {
+    name: "AUTOMATION_RUN",
+    description: "Manually trigger an automation run",
+    category: "Automations",
+  },
   // Project tools
   {
     name: "PROJECT_LIST",
@@ -745,6 +751,7 @@ const TOOL_LABELS: Record<ToolName, string> = {
   AUTOMATION_DELETE: "Delete automation",
   AUTOMATION_TRIGGER_ADD: "Add trigger",
   AUTOMATION_TRIGGER_REMOVE: "Remove trigger",
+  AUTOMATION_RUN: "Run automation",
 
   AI_PROVIDERS_LIST: "List AI providers",
   AI_PROVIDERS_LIST_MODELS: "List AI models",
