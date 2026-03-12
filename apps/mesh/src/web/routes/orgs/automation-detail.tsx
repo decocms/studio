@@ -25,6 +25,7 @@ import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ChevronRight, Plus, Trash01 } from "@untitledui/icons";
 import { useState } from "react";
+import { formatTimeAgo } from "@/web/lib/format-time";
 
 // ============================================================================
 // Types
@@ -105,6 +106,13 @@ function TriggersSection({ triggers, onTriggersChange }: TriggersSectionProps) {
     opt.label.toLowerCase().includes(search.toLowerCase()),
   );
 
+  const groupedFiltered = filtered.reduce<
+    Record<string, typeof TRIGGER_OPTIONS>
+  >((acc, opt) => {
+    (acc[opt.group] ??= []).push(opt);
+    return acc;
+  }, {});
+
   const handleAddTrigger = (opt: (typeof TRIGGER_OPTIONS)[number]) => {
     onTriggersChange([
       ...triggers,
@@ -153,6 +161,7 @@ function TriggersSection({ triggers, onTriggersChange }: TriggersSectionProps) {
             <PopoverContent className="w-64 p-0" align="start">
               <div className="p-2 border-b border-border">
                 <input
+                  autoFocus
                   className="w-full text-sm outline-none bg-transparent placeholder:text-muted-foreground"
                   placeholder="Search triggers..."
                   value={search}
@@ -160,12 +169,12 @@ function TriggersSection({ triggers, onTriggersChange }: TriggersSectionProps) {
                 />
               </div>
               <div className="p-1">
-                {filtered.length > 0 && (
-                  <>
+                {Object.entries(groupedFiltered).map(([group, opts]) => (
+                  <div key={group}>
                     <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
-                      Scheduled
+                      {group}
                     </div>
-                    {filtered.map((opt) => (
+                    {opts.map((opt) => (
                       <button
                         key={opt.id}
                         type="button"
@@ -179,8 +188,8 @@ function TriggersSection({ triggers, onTriggersChange }: TriggersSectionProps) {
                         />
                       </button>
                     ))}
-                  </>
-                )}
+                  </div>
+                ))}
                 {filtered.length === 0 && (
                   <div className="px-2 py-3 text-sm text-muted-foreground text-center">
                     No triggers found
@@ -372,7 +381,7 @@ function RunHistoryTab({ entries }: RunHistoryTabProps) {
             {entry.status === "success" ? "Success" : "Failed"}
           </span>
           <span className="text-sm flex-1">
-            {entry.startedAt.toLocaleString()}
+            {formatTimeAgo(entry.startedAt)}
           </span>
           <span className="text-sm text-muted-foreground">
             {(entry.durationMs / 1000).toFixed(1)}s
@@ -408,9 +417,7 @@ export default function AutomationDetail() {
 
   const toolSet: Record<string, string[]> = {};
   for (const t of tools) {
-    if (!toolSet[t.connectionId]) toolSet[t.connectionId] = [];
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    toolSet[t.connectionId]!.push(t.toolName);
+    (toolSet[t.connectionId] ??= []).push(t.toolName);
   }
 
   const handleToolSetChange = (newToolSet: Record<string, string[]>) => {
