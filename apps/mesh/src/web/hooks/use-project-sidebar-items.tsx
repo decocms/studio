@@ -257,7 +257,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
   if (isOrgAdminProject) {
     // Org-admin sidebar layout:
     // - Home, Tasks (if enabled), Projects (if enabled) (top-level)
-    // - Build group: Agents, Connections
+    // - Build group: Agents, Automations, Connections
     // - Manage group: Monitor, Members, Settings
     // - Plugin items / groups
     const settingsItem: NavigationSidebarItem = {
