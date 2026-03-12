@@ -26,7 +26,7 @@ function VirtualMCPListItem({
 }) {
   return (
     <Link
-      to="/$org/$project/agents/$agentId"
+      to="/$org/$project/agents/$agentId/"
       params={{ org, project: ORG_ADMIN_PROJECT_SLUG, agentId: virtualMcp.id }}
       className="flex items-center gap-3 p-2 pr-1 rounded-lg hover:bg-muted/50 transition-colors group"
     >
@@ -82,7 +82,7 @@ function CreateVirtualMCPButton({
     });
 
     navigate({
-      to: "/$org/$project/agents/$agentId",
+      to: "/$org/$project/agents/$agentId/",
       params: { org, project: ORG_ADMIN_PROJECT_SLUG, agentId: result.id },
     });
   };

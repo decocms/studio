@@ -52,6 +52,128 @@ export interface MonitoringLogsResponse {
 }
 
 // ============================================================================
+// Bucket Logic
+// ============================================================================
+
+function percentile(values: number[], p: number) {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const idx = Math.max(
+    0,
+    Math.min(sorted.length - 1, Math.ceil(p * sorted.length) - 1),
+  );
+  return sorted[idx] ?? 0;
+}
+
+function formatBucketLabel(date: Date, rangeDurationMs: number) {
+  const HOURS_25 = 25 * 60 * 60 * 1000;
+  if (rangeDurationMs <= HOURS_25) {
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+  return date.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+function calculateBucketCount(startMs: number, endMs: number): number {
+  const ONE_MINUTE = 60 * 1000;
+  const ONE_HOUR = 60 * ONE_MINUTE;
+  const HOURS_25 = 25 * ONE_HOUR;
+  const ONE_DAY = 24 * ONE_HOUR;
+  const totalRange = endMs - startMs;
+  if (totalRange <= ONE_HOUR) {
+    return Math.max(1, Math.min(60, Math.ceil(totalRange / ONE_MINUTE)));
+  } else if (totalRange <= HOURS_25) {
+    return Math.max(1, Math.min(25, Math.ceil(totalRange / ONE_HOUR)));
+  } else {
+    return Math.max(1, Math.min(31, Math.ceil(totalRange / ONE_DAY)));
+  }
+}
+
+function buildBuckets(
+  logs: MonitoringLog[],
+  start: Date,
+  end: Date,
+  overrideBucketCount?: number,
+): BucketPoint[] {
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+  const totalRange = Math.max(1, endMs - startMs);
+  const bucketCount =
+    overrideBucketCount ?? calculateBucketCount(startMs, endMs);
+  const bucketSizeMs = Math.max(1, Math.floor(totalRange / bucketCount));
+  const buckets: Array<{
+    t: string;
+    ts: number;
+    label: string;
+    calls: number;
+    errors: number;
+    durations: number[];
+  }> = [];
+  for (let i = 0; i < bucketCount; i++) {
+    const d = new Date(startMs + i * bucketSizeMs);
+    buckets.push({
+      t: d.toISOString(),
+      ts: d.getTime(),
+      label: formatBucketLabel(d, totalRange),
+      calls: 0,
+      errors: 0,
+      durations: [],
+    });
+  }
+  for (const log of logs) {
+    const ts = new Date(log.timestamp).getTime();
+    const rawIdx = Math.floor((ts - startMs) / bucketSizeMs);
+    const idx = Math.max(0, Math.min(bucketCount - 1, rawIdx));
+    const bucket = buckets[idx];
+    if (!bucket) continue;
+    bucket.calls += 1;
+    if (log.isError) bucket.errors += 1;
+    if (Number.isFinite(log.durationMs)) bucket.durations.push(log.durationMs);
+  }
+  return buckets.map((b) => ({
+    t: b.t,
+    ts: b.ts,
+    label: b.label,
+    calls: b.calls,
+    errors: b.errors,
+    errorRate: b.calls > 0 ? (b.errors / b.calls) * 100 : 0,
+    avg: Math.round(
+      b.durations.length > 0
+        ? b.durations.reduce((a, c) => a + c, 0) / b.durations.length
+        : 0,
+    ),
+    p50: Math.round(percentile(b.durations, 0.5)),
+    p95: Math.round(percentile(b.durations, 0.95)),
+  }));
+}
+
+// ============================================================================
+// Stats Calculation
+// ============================================================================
+
+export function calculateStats(
+  logs: MonitoringLog[],
+  dateRange: DateRange,
+  bucketCount?: number,
+  overrideTotalCalls?: number,
+): MonitoringStatsData {
+  const totalCalls = overrideTotalCalls ?? logs.length;
+  const totalErrors = logs.filter((log) => log.isError).length;
+  const durations = logs.map((log) => log.durationMs);
+  const avgDurationMs =
+    durations.length > 0
+      ? durations.reduce((sum, d) => sum + d, 0) / durations.length
+      : 0;
+  const p95DurationMs = percentile(durations, 0.95);
+  const data = buildBuckets(
+    logs,
+    dateRange.startDate,
+    dateRange.endDate,
+    bucketCount,
+  );
+  return { totalCalls, totalErrors, avgDurationMs, p95DurationMs, data };
+}
+
+// ============================================================================
 // Stats Data
 // ============================================================================
 

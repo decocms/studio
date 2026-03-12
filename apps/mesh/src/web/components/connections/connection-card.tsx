@@ -15,6 +15,7 @@ export interface ConnectionCardProps {
   connection: ConnectionCardData;
   onClick?: () => void;
   headerActions?: React.ReactNode;
+  headerActionsAlwaysVisible?: boolean;
   body?: React.ReactNode;
   footer?: React.ReactNode;
   className?: string;
@@ -26,6 +27,7 @@ export function ConnectionCard({
   connection,
   onClick,
   headerActions,
+  headerActionsAlwaysVisible = false,
   body,
   footer,
   className,
@@ -39,7 +41,7 @@ export function ConnectionCard({
   return (
     <Card
       className={cn(
-        "cursor-pointer transition-colors group overflow-hidden flex flex-col",
+        "cursor-pointer transition-colors group overflow-hidden flex flex-col h-full",
         onClick && "hover:bg-muted/50",
         className,
       )}
@@ -59,12 +61,12 @@ export function ConnectionCard({
             />
             {/* Header Actions container */}
             <div className="relative">
-              {/* Header Actions: hidden by default, visible on hover */}
               {headerActions && (
                 <div
                   className={cn(
                     "transition-opacity",
-                    "opacity-0 group-hover:opacity-100",
+                    !headerActionsAlwaysVisible &&
+                      "opacity-0 group-hover:opacity-100",
                   )}
                   onClick={(e) => e.stopPropagation()}
                 >

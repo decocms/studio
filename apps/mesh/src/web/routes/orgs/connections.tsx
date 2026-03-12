@@ -26,6 +26,7 @@ import {
   extractItemsFromResponse,
   findListToolName,
 } from "@/web/utils/registry-utils";
+import { slugify } from "@/web/utils/slugify";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -208,19 +209,6 @@ function getUniqueCreators(connections: ConnectionEntity[]): string[] {
 type ConnectionTypeFilter = "ALL" | "HTTP" | "SSE" | "Websocket" | "STDIO";
 
 type ConnectionStatusFilter = "ALL" | "active" | "inactive" | "error";
-
-function countByStatus(connections: ConnectionEntity[]) {
-  let active = 0;
-  let inactive = 0;
-  let error = 0;
-  for (const c of connections) {
-    if (c.connection_type === "VIRTUAL") continue;
-    if (c.status === "active") active++;
-    else if (c.status === "error") error++;
-    else inactive++;
-  }
-  return { active, inactive, error, total: active + inactive + error };
-}
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -527,20 +515,17 @@ function dialogReducer(_state: DialogState, action: DialogAction): DialogState {
 
 function ConnectionGroupCard({
   group,
-  onNavigate,
-  onDelete,
+  onOpen,
   selectionMode,
   selectedIds,
   onToggleSelect,
 }: {
   group: ConnectionGroup;
-  onNavigate: (id: string) => void;
-  onDelete: (connection: ConnectionEntity) => void;
+  onOpen: () => void;
   selectionMode: boolean;
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
 }) {
-  const [dialogOpen, setDialogOpen] = useState(false);
   const allSelected = group.connections.every((c) => selectedIds.has(c.id));
   const someSelected = group.connections.some((c) => selectedIds.has(c.id));
   const creators = getUniqueCreators(group.connections);
@@ -573,7 +558,7 @@ function ConnectionGroupCard({
                   }
                 }
               })()
-            : setDialogOpen(true)
+            : onOpen()
         }
         className={cn(
           selectionMode && allSelected && "ring-2 ring-primary",
@@ -630,101 +615,6 @@ function ConnectionGroupCard({
           </div>
         }
       />
-
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg p-0 gap-0">
-          <DialogHeader className="px-6 pt-6 pb-4">
-            <div className="flex items-center gap-3">
-              <IntegrationIcon
-                icon={group.icon}
-                name={group.title}
-                size="md"
-                className="shrink-0 shadow-sm"
-                fallbackIcon={<Container />}
-              />
-              <div>
-                <DialogTitle>
-                  {group.title}
-                  <Badge
-                    variant="secondary"
-                    className="ml-2 text-xs tabular-nums"
-                  >
-                    x{group.connections.length}
-                  </Badge>
-                </DialogTitle>
-                <DialogDescription>
-                  {group.connections.length} installed instances
-                </DialogDescription>
-              </div>
-            </div>
-          </DialogHeader>
-          <div className="divide-y max-h-80 overflow-auto">
-            {group.connections.map((c) => (
-              <div
-                key={c.id}
-                className="flex items-center gap-3 px-6 py-3 hover:bg-muted/30 cursor-pointer transition-colors"
-                onClick={() => {
-                  setDialogOpen(false);
-                  onNavigate(c.id);
-                }}
-              >
-                <IntegrationIcon
-                  icon={c.icon}
-                  name={c.title}
-                  size="sm"
-                  className="shrink-0"
-                  fallbackIcon={<Container />}
-                />
-                <div className="flex-1 min-w-0 flex items-center gap-2">
-                  <span className="text-sm font-medium text-foreground truncate">
-                    {c.title}
-                  </span>
-                  <ConnectionStatus status={c.status} />
-                </div>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0">
-                  <User id={c.created_by} size="3xs" />
-                  <span>
-                    {c.created_at ? formatTimeAgo(new Date(c.created_at)) : "—"}
-                  </span>
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <DotsVertical size={16} />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="end"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <DropdownMenuItem
-                      onClick={() => {
-                        setDialogOpen(false);
-                        onNavigate(c.id);
-                      }}
-                    >
-                      <Eye size={16} />
-                      Open
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onClick={() => onDelete(c)}
-                    >
-                      <Trash01 size={16} />
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }
@@ -1275,6 +1165,18 @@ function OrgMcpsContent() {
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [addToAgentOpen, setAddToAgentOpen] = useState(false);
 
+  // Tab state
+  type ConnectionTab = "connected" | "all" | "built-by-me" | "needs-config";
+  const [activeTab, setActiveTab] = useState<ConnectionTab>("connected");
+
+  // App modal state (instances + tools)
+  const [appModal, setAppModal] = useState<{
+    appName: string;
+    appIcon?: string | null;
+    appDescription?: string | null;
+    instances: ConnectionEntity[];
+  } | null>(null);
+
   // Type & status filters
   const [typeFilter, setTypeFilter] = useState<ConnectionTypeFilter>("ALL");
   const [statusFilter, setStatusFilter] =
@@ -1291,8 +1193,15 @@ function OrgMcpsContent() {
     return true;
   });
 
-  const stats = countByStatus(connections);
-  const grouped = groupConnections(nonVirtualConnections);
+  // Tab-filtered connections
+  const currentUserId = session?.user?.id;
+  const tabFilteredConnections = nonVirtualConnections.filter((c) => {
+    if (activeTab === "built-by-me") return c.created_by === currentUserId;
+    if (activeTab === "needs-config") return c.status === "error";
+    return true;
+  });
+
+  const grouped = groupConnections(tabFilteredConnections);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -1308,8 +1217,13 @@ function OrgMcpsContent() {
     setSelectedIds(new Set());
   };
 
-  // Optional registry lookup: use first available registry connection as a name/description source
-  const registryConnection = useRegistryConnections(connections)[0];
+  // Optional registry lookup: support multiple registries, let user pick on "All" tab
+  const registryConnections = useRegistryConnections(connections);
+  const [selectedRegistryId, setSelectedRegistryId] = useState<string>("");
+  const registryConnection =
+    (selectedRegistryId
+      ? registryConnections.find((r) => r.id === selectedRegistryId)
+      : undefined) ?? registryConnections[0];
   const registryId = registryConnection?.id ?? "";
   const registryListToolName = findListToolName(registryConnection?.tools);
   const registryClient = useMCPClient({
@@ -1328,6 +1242,70 @@ function OrgMcpsContent() {
   const registryItems = extractItemsFromResponse<RegistryItem>(
     registryListResults ?? [],
   );
+
+  // "All" tab: catalog items from registry that aren't already installed
+  const connectedAppNames = new Set(
+    connections
+      .filter((c) => c.connection_type !== "VIRTUAL" && c.app_name)
+      .map((c) => c.app_name as string),
+  );
+
+  const searchLower = listState.search.toLowerCase();
+  const catalogOnlyItems =
+    activeTab === "all"
+      ? registryItems.filter((item) => {
+          const appName = item.server?.name || item.name || item.id || "";
+          if (connectedAppNames.has(appName)) return false;
+          if (!searchLower) return true;
+          const meshMeta = item._meta?.["mcp.mesh"] as
+            | Record<string, string>
+            | undefined;
+          const title = [
+            meshMeta?.friendly_name,
+            item.server?.name,
+            item.server?.title,
+            item.name,
+            item.title,
+            item.id,
+          ]
+            .filter(Boolean)
+            .join(" ");
+          const desc = [
+            meshMeta?.short_description,
+            meshMeta?.mesh_description,
+            item.server?.description,
+            item.description,
+          ]
+            .filter(Boolean)
+            .join(" ");
+          return (
+            title.toLowerCase().includes(searchLower) ||
+            desc.toLowerCase().includes(searchLower)
+          );
+        })
+      : [];
+
+  const navigateToCatalogItem = (item: RegistryItem) => {
+    const serverSlug = slugify(
+      item.name || item.title || item.server?.title || "",
+    );
+    const idIsScoped = typeof item.id === "string" && item.id.includes("/");
+    const serverNameIsScoped =
+      typeof item.server?.name === "string" && item.server.name.includes("/");
+    const serverName =
+      idIsScoped && !serverNameIsScoped
+        ? item.id
+        : item.server?.name || item.id || "";
+    navigate({
+      to: "/$org/$project/store/$appName",
+      params: {
+        org: org.slug,
+        project: ORG_ADMIN_PROJECT_SLUG,
+        appName: serverSlug,
+      },
+      search: { registryId, serverName },
+    });
+  };
 
   // Create dialog state is derived from search params
   const isCreating = search.action === "create";
@@ -2052,773 +2030,797 @@ function OrgMcpsContent() {
   );
 
   return (
-    <Page>
-      <Dialog
-        open={isCreating || dialogState.mode === "editing"}
-        onOpenChange={handleDialogClose}
-      >
-        <DialogContent className="sm:max-w-[525px]">
-          <DialogHeader>
-            <DialogTitle>
-              {editingConnection ? "Edit Connection" : "Create Connection"}
-            </DialogTitle>
-            <DialogDescription>
-              {editingConnection
-                ? "Update the connection details below."
-                : "Create a custom connection in your organization. Fill in the details below."}
-            </DialogDescription>
-          </DialogHeader>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)}>
-              <div className="grid gap-4 py-4">
-                <FormField
-                  control={form.control}
-                  name="ui_type"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Type *</FormLabel>
-                      <Select
-                        value={field.value}
-                        onValueChange={field.onChange}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="HTTP">
-                            <span className="flex items-center gap-2">
-                              <Globe02 className="w-4 h-4" />
-                              HTTP
-                            </span>
-                          </SelectItem>
-                          <SelectItem value="SSE">
-                            <span className="flex items-center gap-2">
-                              <Globe02 className="w-4 h-4" />
-                              SSE
-                            </span>
-                          </SelectItem>
-                          <SelectItem value="Websocket">
-                            <span className="flex items-center gap-2">
-                              <Globe02 className="w-4 h-4" />
-                              Websocket
-                            </span>
-                          </SelectItem>
-                          {stdioEnabled && (
-                            <>
-                              <SelectItem value="NPX">
-                                <span className="flex items-center gap-2">
-                                  <Container className="w-4 h-4" />
-                                  NPX Package
-                                </span>
-                              </SelectItem>
-                              <SelectItem value="STDIO">
-                                <span className="flex items-center gap-2">
-                                  <Terminal className="w-4 h-4" />
-                                  Custom Command
-                                </span>
-                              </SelectItem>
-                            </>
-                          )}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* NPX-specific fields */}
-                {uiType === "NPX" && (
-                  <>
-                    <FormField
-                      control={form.control}
-                      name="npx_package"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>NPM Package *</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="@perplexity-ai/mcp-server"
-                              {...field}
-                              value={field.value ?? ""}
-                              onPaste={(e) => {
-                                const pasted = e.clipboardData.getData("text");
-                                if (!pasted) return;
-                                e.preventDefault();
-                                form.setValue("npx_package", pasted.trim(), {
-                                  shouldDirty: true,
-                                });
-                                applyInferenceFromInput(pasted);
-                              }}
-                              onBlur={(e) => {
-                                applyInferenceFromInput(e.target.value);
-                                field.onBlur();
-                              }}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </>
-                )}
-
-                {/* STDIO/Custom Command fields */}
-                {uiType === "STDIO" && (
-                  <>
-                    <div className="grid grid-cols-2 gap-4 items-start">
-                      <FormField
-                        control={form.control}
-                        name="stdio_command"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Command *</FormLabel>
-                            <FormControl>
-                              <Input
-                                placeholder="node, bun, python..."
-                                {...field}
-                                value={field.value ?? ""}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={form.control}
-                        name="stdio_args"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Arguments</FormLabel>
-                            <FormControl>
-                              <Input
-                                placeholder="arg1 arg2 --flag value"
-                                {...field}
-                                value={field.value ?? ""}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-
-                    <FormField
-                      control={form.control}
-                      name="stdio_cwd"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Working Directory</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="/path/to/project (optional)"
-                              {...field}
-                              value={field.value ?? ""}
-                            />
-                          </FormControl>
-                          <p className="text-xs text-muted-foreground">
-                            Directory where the command will be executed
-                          </p>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </>
-                )}
-
-                {/* Shared: Environment Variables for NPX and STDIO */}
-                {(uiType === "NPX" || uiType === "STDIO") && (
+    <>
+      <Page>
+        <Dialog
+          open={isCreating || dialogState.mode === "editing"}
+          onOpenChange={handleDialogClose}
+        >
+          <DialogContent className="sm:max-w-[525px]">
+            <DialogHeader>
+              <DialogTitle>
+                {editingConnection ? "Edit Connection" : "Create Connection"}
+              </DialogTitle>
+              <DialogDescription>
+                {editingConnection
+                  ? "Update the connection details below."
+                  : "Create a custom connection in your organization. Fill in the details below."}
+              </DialogDescription>
+            </DialogHeader>
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)}>
+                <div className="grid gap-4 py-4">
                   <FormField
                     control={form.control}
-                    name="env_vars"
+                    name="ui_type"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Environment Variables</FormLabel>
+                        <FormLabel>Type *</FormLabel>
+                        <Select
+                          value={field.value}
+                          onValueChange={field.onChange}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="HTTP">
+                              <span className="flex items-center gap-2">
+                                <Globe02 className="w-4 h-4" />
+                                HTTP
+                              </span>
+                            </SelectItem>
+                            <SelectItem value="SSE">
+                              <span className="flex items-center gap-2">
+                                <Globe02 className="w-4 h-4" />
+                                SSE
+                              </span>
+                            </SelectItem>
+                            <SelectItem value="Websocket">
+                              <span className="flex items-center gap-2">
+                                <Globe02 className="w-4 h-4" />
+                                Websocket
+                              </span>
+                            </SelectItem>
+                            {stdioEnabled && (
+                              <>
+                                <SelectItem value="NPX">
+                                  <span className="flex items-center gap-2">
+                                    <Container className="w-4 h-4" />
+                                    NPX Package
+                                  </span>
+                                </SelectItem>
+                                <SelectItem value="STDIO">
+                                  <span className="flex items-center gap-2">
+                                    <Terminal className="w-4 h-4" />
+                                    Custom Command
+                                  </span>
+                                </SelectItem>
+                              </>
+                            )}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* NPX-specific fields */}
+                  {uiType === "NPX" && (
+                    <>
+                      <FormField
+                        control={form.control}
+                        name="npx_package"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>NPM Package *</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="@perplexity-ai/mcp-server"
+                                {...field}
+                                value={field.value ?? ""}
+                                onPaste={(e) => {
+                                  const pasted =
+                                    e.clipboardData.getData("text");
+                                  if (!pasted) return;
+                                  e.preventDefault();
+                                  form.setValue("npx_package", pasted.trim(), {
+                                    shouldDirty: true,
+                                  });
+                                  applyInferenceFromInput(pasted);
+                                }}
+                                onBlur={(e) => {
+                                  applyInferenceFromInput(e.target.value);
+                                  field.onBlur();
+                                }}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </>
+                  )}
+
+                  {/* STDIO/Custom Command fields */}
+                  {uiType === "STDIO" && (
+                    <>
+                      <div className="grid grid-cols-2 gap-4 items-start">
+                        <FormField
+                          control={form.control}
+                          name="stdio_command"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Command *</FormLabel>
+                              <FormControl>
+                                <Input
+                                  placeholder="node, bun, python..."
+                                  {...field}
+                                  value={field.value ?? ""}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={form.control}
+                          name="stdio_args"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Arguments</FormLabel>
+                              <FormControl>
+                                <Input
+                                  placeholder="arg1 arg2 --flag value"
+                                  {...field}
+                                  value={field.value ?? ""}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      <FormField
+                        control={form.control}
+                        name="stdio_cwd"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Working Directory</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="/path/to/project (optional)"
+                                {...field}
+                                value={field.value ?? ""}
+                              />
+                            </FormControl>
+                            <p className="text-xs text-muted-foreground">
+                              Directory where the command will be executed
+                            </p>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </>
+                  )}
+
+                  {/* Shared: Environment Variables for NPX and STDIO */}
+                  {(uiType === "NPX" || uiType === "STDIO") && (
+                    <FormField
+                      control={form.control}
+                      name="env_vars"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Environment Variables</FormLabel>
+                          <FormControl>
+                            <EnvVarsEditor
+                              value={field.value ?? []}
+                              onChange={field.onChange}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
+
+                  {/* HTTP/SSE/Websocket fields */}
+                  {uiType !== "NPX" && uiType !== "STDIO" && (
+                    <>
+                      <FormField
+                        control={form.control}
+                        name="connection_url"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>URL *</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="https://example.com/mcp"
+                                {...field}
+                                value={field.value ?? ""}
+                                onPaste={(e) => {
+                                  const pasted =
+                                    e.clipboardData.getData("text");
+                                  if (!pasted) return;
+                                  e.preventDefault();
+                                  form.setValue(
+                                    "connection_url",
+                                    pasted.trim(),
+                                    {
+                                      shouldDirty: true,
+                                    },
+                                  );
+                                  applyInferenceFromInput(pasted);
+                                }}
+                                onBlur={(e) => {
+                                  applyInferenceFromInput(e.target.value);
+                                  field.onBlur();
+                                }}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="connection_token"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>
+                              {providerHint?.token?.label ?? "Token (optional)"}
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                type="password"
+                                placeholder={
+                                  providerHint?.token?.placeholder ??
+                                  "Bearer token or API key"
+                                }
+                                {...field}
+                                value={field.value ?? ""}
+                              />
+                            </FormControl>
+                            {providerHint?.token?.helperText && (
+                              <p className="text-xs text-muted-foreground">
+                                {providerHint.token.helperText}
+                                {providerHint.id === "github" && (
+                                  <>
+                                    {" "}
+                                    ·{" "}
+                                    <a
+                                      className="text-foreground underline underline-offset-4 hover:text-foreground/80"
+                                      href="https://github.com/settings/personal-access-tokens"
+                                      target="_blank"
+                                      rel="noreferrer"
+                                    >
+                                      Open GitHub PAT settings
+                                    </a>
+                                  </>
+                                )}
+                              </p>
+                            )}
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </>
+                  )}
+
+                  {/* Name/description come after connection mode/inputs so we can infer them */}
+                  <FormField
+                    control={form.control}
+                    name="title"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Name *</FormLabel>
                         <FormControl>
-                          <EnvVarsEditor
-                            value={field.value ?? []}
-                            onChange={field.onChange}
+                          <Input placeholder="My Connection" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="description"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Description</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            placeholder="A brief description of this connection"
+                            rows={3}
+                            {...field}
+                            value={field.value ?? ""}
                           />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
+                </div>
+
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => handleDialogClose(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={form.formState.isSubmitting}
+                    className="min-w-40"
+                  >
+                    {form.formState.isSubmitting
+                      ? "Saving..."
+                      : editingConnection
+                        ? "Update Connection"
+                        : "Create Connection"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog
+          open={dialogState.mode === "deleting"}
+          onOpenChange={(open) => !open && dispatch({ type: "close" })}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Connection?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action cannot be undone. This will permanently delete{" "}
+                <span className="font-medium text-foreground">
+                  {dialogState.mode === "deleting" &&
+                    dialogState.connection.title}
+                </span>
+                .
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmDelete}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Force Delete Confirmation Dialog */}
+        <AlertDialog
+          open={dialogState.mode === "force-deleting"}
+          onOpenChange={(open) => !open && dispatch({ type: "close" })}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Connection Used by Agents</AlertDialogTitle>
+              <AlertDialogDescription asChild>
+                <div>
+                  <p>
+                    The connection{" "}
+                    <span className="font-medium text-foreground">
+                      {dialogState.mode === "force-deleting" &&
+                        dialogState.connection.title}
+                    </span>{" "}
+                    is currently used by the following agent(s):{" "}
+                    <span className="font-medium text-foreground">
+                      {dialogState.mode === "force-deleting" &&
+                        dialogState.agentNames}
+                    </span>
+                    .
+                  </p>
+                  <p className="mt-2">
+                    Deleting this connection will remove it from those agents,
+                    which may impact existing workflows that depend on them.
+                  </p>
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmForceDelete}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete Anyway
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Bulk action dialogs */}
+        <BulkDeleteDialog
+          open={bulkDeleteOpen}
+          onOpenChange={setBulkDeleteOpen}
+          count={selectedIds.size}
+          onConfirm={handleBulkDelete}
+        />
+        <AddToAgentDialog
+          open={addToAgentOpen}
+          onOpenChange={setAddToAgentOpen}
+          agents={agents}
+          onConfirm={handleAddToAgent}
+        />
+
+        {/* Page Header */}
+        <Page.Header>
+          <Page.Header.Left>
+            <Breadcrumb>
+              <BreadcrumbList>
+                <BreadcrumbItem>
+                  <BreadcrumbPage>Connections</BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
+          </Page.Header.Left>
+          <Page.Header.Right>
+            <CollectionDisplayButton
+              viewMode={listState.viewMode}
+              onViewModeChange={listState.setViewMode}
+              sortKey={listState.sortKey}
+              sortDirection={listState.sortDirection}
+              onSort={listState.handleSort}
+              sortOptions={[
+                { id: "title", label: "Name" },
+                { id: "description", label: "Description" },
+                { id: "connection_type", label: "Type" },
+                { id: "updated_by", label: "Updated by" },
+                { id: "updated_at", label: "Updated" },
+              ]}
+              filters={[
+                {
+                  label: "Type",
+                  value: typeFilter,
+                  onChange: (v) =>
+                    setTypeFilter((v as ConnectionTypeFilter) || "ALL"),
+                  options: [
+                    { id: "ALL", label: "All" },
+                    { id: "HTTP", label: "HTTP" },
+                    { id: "SSE", label: "SSE" },
+                    { id: "Websocket", label: "WebSocket" },
+                    { id: "STDIO", label: "STDIO" },
+                  ],
+                },
+                {
+                  label: "Status",
+                  value: statusFilter,
+                  onChange: (v) =>
+                    setStatusFilter((v as ConnectionStatusFilter) || "ALL"),
+                  options: [
+                    { id: "ALL", label: "All" },
+                    { id: "active", label: "Active" },
+                    { id: "inactive", label: "Inactive" },
+                    { id: "error", label: "Error" },
+                  ],
+                },
+              ]}
+            />
+            {ctaButton}
+          </Page.Header.Right>
+        </Page.Header>
+
+        {/* Search + Tabs */}
+        <div className="flex flex-col gap-0">
+          <div className="px-5">
+            <CollectionSearch
+              value={listState.search}
+              onChange={listState.setSearch}
+              placeholder="Search for a Connection..."
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  listState.setSearch("");
+                  (event.target as HTMLInputElement).blur();
+                }
+              }}
+            />
+          </div>
+          <div className="flex items-center justify-between px-5 py-3 border-b border-border">
+            <CollectionTabs
+              tabs={[
+                { id: "connected", label: "Connected" },
+                { id: "all", label: "All" },
+                { id: "built-by-me", label: "Built by me" },
+                { id: "needs-config", label: "Needs configuration" },
+              ]}
+              activeTab={activeTab}
+              onTabChange={(id) => setActiveTab(id as ConnectionTab)}
+            />
+            {registryConnections.length > 0 && (
+              <div
+                className={cn(
+                  activeTab !== "all" && "invisible pointer-events-none",
                 )}
-
-                {/* HTTP/SSE/Websocket fields */}
-                {uiType !== "NPX" && uiType !== "STDIO" && (
-                  <>
-                    <FormField
-                      control={form.control}
-                      name="connection_url"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>URL *</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="https://example.com/mcp"
-                              {...field}
-                              value={field.value ?? ""}
-                              onPaste={(e) => {
-                                const pasted = e.clipboardData.getData("text");
-                                if (!pasted) return;
-                                e.preventDefault();
-                                form.setValue("connection_url", pasted.trim(), {
-                                  shouldDirty: true,
-                                });
-                                applyInferenceFromInput(pasted);
-                              }}
-                              onBlur={(e) => {
-                                applyInferenceFromInput(e.target.value);
-                                field.onBlur();
-                              }}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="connection_token"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>
-                            {providerHint?.token?.label ?? "Token (optional)"}
-                          </FormLabel>
-                          <FormControl>
-                            <Input
-                              type="password"
-                              placeholder={
-                                providerHint?.token?.placeholder ??
-                                "Bearer token or API key"
-                              }
-                              {...field}
-                              value={field.value ?? ""}
-                            />
-                          </FormControl>
-                          {providerHint?.token?.helperText && (
-                            <p className="text-xs text-muted-foreground">
-                              {providerHint.token.helperText}
-                              {providerHint.id === "github" && (
-                                <>
-                                  {" "}
-                                  ·{" "}
-                                  <a
-                                    className="text-foreground underline underline-offset-4 hover:text-foreground/80"
-                                    href="https://github.com/settings/personal-access-tokens"
-                                    target="_blank"
-                                    rel="noreferrer"
-                                  >
-                                    Open GitHub PAT settings
-                                  </a>
-                                </>
-                              )}
-                            </p>
-                          )}
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </>
-                )}
-
-                {/* Name/description come after connection mode/inputs so we can infer them */}
-                <FormField
-                  control={form.control}
-                  name="title"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Name *</FormLabel>
-                      <FormControl>
-                        <Input placeholder="My Connection" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="description"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Description</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          placeholder="A brief description of this connection"
-                          rows={3}
-                          {...field}
-                          value={field.value ?? ""}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => handleDialogClose(false)}
+              >
+                <Select
+                  value={selectedRegistryId || registryConnections[0]?.id || ""}
+                  onValueChange={setSelectedRegistryId}
                 >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={form.formState.isSubmitting}
-                  className="min-w-40"
-                >
-                  {form.formState.isSubmitting
-                    ? "Saving..."
-                    : editingConnection
-                      ? "Update Connection"
-                      : "Create Connection"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog
-        open={dialogState.mode === "deleting"}
-        onOpenChange={(open) => !open && dispatch({ type: "close" })}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Connection?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete{" "}
-              <span className="font-medium text-foreground">
-                {dialogState.mode === "deleting" &&
-                  dialogState.connection.title}
-              </span>
-              .
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Force Delete Confirmation Dialog */}
-      <AlertDialog
-        open={dialogState.mode === "force-deleting"}
-        onOpenChange={(open) => !open && dispatch({ type: "close" })}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Connection Used by Agents</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div>
-                <p>
-                  The connection{" "}
-                  <span className="font-medium text-foreground">
-                    {dialogState.mode === "force-deleting" &&
-                      dialogState.connection.title}
-                  </span>{" "}
-                  is currently used by the following agent(s):{" "}
-                  <span className="font-medium text-foreground">
-                    {dialogState.mode === "force-deleting" &&
-                      dialogState.agentNames}
-                  </span>
-                  .
-                </p>
-                <p className="mt-2">
-                  Deleting this connection will remove it from those agents,
-                  which may impact existing workflows that depend on them.
-                </p>
+                  <SelectTrigger className="h-7 w-auto gap-1.5 text-sm border-input">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent align="end">
+                    {registryConnections.map((rc) => (
+                      <SelectItem key={rc.id} value={rc.id}>
+                        {rc.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmForceDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Delete Anyway
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Bulk action dialogs */}
-      <BulkDeleteDialog
-        open={bulkDeleteOpen}
-        onOpenChange={setBulkDeleteOpen}
-        count={selectedIds.size}
-        onConfirm={handleBulkDelete}
-      />
-      <AddToAgentDialog
-        open={addToAgentOpen}
-        onOpenChange={setAddToAgentOpen}
-        agents={agents}
-        onConfirm={handleAddToAgent}
-      />
-
-      {/* Page Header */}
-      <Page.Header>
-        <Page.Header.Left>
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <BreadcrumbPage className="flex items-center gap-2">
-                  Connections
-                  <span className="text-xs font-normal text-muted-foreground tabular-nums">
-                    {stats.total} total
-                    {stats.active > 0 && ` · ${stats.active} active`}
-                    {stats.error > 0 && ` · ${stats.error} errors`}
-                  </span>
-                </BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-        </Page.Header.Left>
-        <Page.Header.Right>
-          <CollectionDisplayButton
-            viewMode={listState.viewMode}
-            onViewModeChange={listState.setViewMode}
-            sortKey={listState.sortKey}
-            sortDirection={listState.sortDirection}
-            onSort={listState.handleSort}
-            sortOptions={[
-              { id: "title", label: "Name" },
-              { id: "description", label: "Description" },
-              { id: "connection_type", label: "Type" },
-              { id: "updated_by", label: "Updated by" },
-              { id: "updated_at", label: "Updated" },
-            ]}
-            filters={[
-              {
-                label: "Type",
-                value: typeFilter,
-                onChange: (v) =>
-                  setTypeFilter((v as ConnectionTypeFilter) || "ALL"),
-                options: [
-                  { id: "ALL", label: "All" },
-                  { id: "HTTP", label: "HTTP" },
-                  { id: "SSE", label: "SSE" },
-                  { id: "Websocket", label: "WebSocket" },
-                  { id: "STDIO", label: "STDIO" },
-                ],
-              },
-              {
-                label: "Status",
-                value: statusFilter,
-                onChange: (v) =>
-                  setStatusFilter((v as ConnectionStatusFilter) || "ALL"),
-                options: [
-                  { id: "ALL", label: "All" },
-                  { id: "active", label: "Active" },
-                  { id: "inactive", label: "Inactive" },
-                  { id: "error", label: "Error" },
-                ],
-              },
-            ]}
-          />
-          {ctaButton}
-        </Page.Header.Right>
-      </Page.Header>
-
-      {/* Search */}
-      <div className="flex items-center gap-3 px-5 pb-0">
-        <div className="flex-1">
-          <CollectionSearch
-            value={listState.search}
-            onChange={listState.setSearch}
-            placeholder="Search for a Connection..."
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                listState.setSearch("");
-                (event.target as HTMLInputElement).blur();
-              }
-            }}
-          />
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* Content: Cards or Table */}
-      <Page.Content>
-        {listState.viewMode === "cards" ? (
-          <div className="flex-1 overflow-auto p-5">
-            {nonVirtualConnections.length === 0 ? (
-              <EmptyState
-                image={
-                  <img
-                    src="/emptystate-mcp.svg"
-                    alt=""
-                    width={336}
-                    height={320}
-                    aria-hidden="true"
-                  />
-                }
-                title="No Connections found"
-                description={
-                  listState.search
-                    ? `No Connections match "${listState.search}"`
-                    : "Create a connection to get started."
-                }
-                actions={
-                  !listState.search && (
-                    <Button
-                      variant="outline"
-                      onClick={() =>
-                        navigate({
-                          to: "/$org/$project/store",
-                          params: {
-                            org: org.slug,
-                            project: ORG_ADMIN_PROJECT_SLUG,
-                          },
-                        })
-                      }
-                    >
-                      Browse Store
-                    </Button>
-                  )
-                }
-              />
-            ) : (
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
-                {grouped.map((item) => {
-                  if (item.type === "group") {
+        {/* Content: Cards or Table */}
+        <Page.Content>
+          {listState.viewMode === "cards" ? (
+            <div className="flex-1 overflow-auto p-5">
+              {tabFilteredConnections.length === 0 ? (
+                <EmptyState
+                  image={
+                    <img
+                      src="/emptystate-mcp.svg"
+                      alt=""
+                      width={336}
+                      height={320}
+                      aria-hidden="true"
+                    />
+                  }
+                  title="No Connections found"
+                  description={
+                    listState.search
+                      ? `No Connections match "${listState.search}"`
+                      : "Create a connection to get started."
+                  }
+                />
+              ) : (
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
+                  {grouped.map((item) => {
+                    if (item.type === "group") {
+                      return (
+                        <ConnectionGroupCard
+                          key={item.key}
+                          group={item}
+                          onOpen={() =>
+                            setAppModal({
+                              appName: item.title,
+                              appIcon: item.icon,
+                              instances: item.connections,
+                            })
+                          }
+                          selectionMode={selectionMode}
+                          selectedIds={selectedIds}
+                          onToggleSelect={toggleSelect}
+                        />
+                      );
+                    }
+
+                    const connection = item.connection;
                     return (
-                      <ConnectionGroupCard
-                        key={item.key}
-                        group={item}
-                        onNavigate={(id) =>
-                          navigate({
+                      <div key={connection.id} className="relative">
+                        {selectionMode && (
+                          <div className="absolute top-3 left-3 z-10">
+                            <Checkbox
+                              checked={selectedIds.has(connection.id)}
+                              onCheckedChange={() =>
+                                toggleSelect(connection.id)
+                              }
+                            />
+                          </div>
+                        )}
+                        <ConnectionCard
+                          connection={connection}
+                          fallbackIcon={<Container />}
+                          onClick={() =>
+                            selectionMode
+                              ? toggleSelect(connection.id)
+                              : setAppModal({
+                                  appName:
+                                    connection.app_name || connection.title,
+                                  appIcon: connection.icon,
+                                  appDescription: connection.description,
+                                  instances: [connection],
+                                })
+                          }
+                          className={cn(
+                            selectionMode &&
+                              selectedIds.has(connection.id) &&
+                              "ring-2 ring-primary",
+                          )}
+                          headerActions={
+                            !selectionMode ? (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <DotsVertical size={20} />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent
+                                  align="end"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <DropdownMenuItem
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      navigate({
+                                        to: "/$org/$project/mcps/$connectionId",
+                                        params: {
+                                          org: org.slug,
+                                          project: ORG_ADMIN_PROJECT_SLUG,
+                                          connectionId: connection.id,
+                                        },
+                                      });
+                                    }}
+                                  >
+                                    <Eye size={16} />
+                                    Open
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    variant="destructive"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      dispatch({ type: "delete", connection });
+                                    }}
+                                  >
+                                    <Trash01 size={16} />
+                                    Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            ) : undefined
+                          }
+                        />
+                      </div>
+                    );
+                  })}
+                  {/* Catalog items (uninstalled) — only on "All" tab */}
+                  {catalogOnlyItems.map((item) => {
+                    const title =
+                      item.server?.name ||
+                      item.name ||
+                      item.title ||
+                      item.id ||
+                      "";
+                    const description =
+                      item.server?.description || item.description || null;
+                    const icon = item.server?.icons?.[0]?.src || null;
+                    return (
+                      <ConnectionCard
+                        key={`catalog-${item.id}`}
+                        connection={{ title, description, icon }}
+                        fallbackIcon={<Container />}
+                        onClick={() => navigateToCatalogItem(item)}
+                        headerActionsAlwaysVisible
+                        headerActions={
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="h-7 px-3 rounded-lg text-sm font-medium"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigateToCatalogItem(item);
+                            }}
+                          >
+                            Connect
+                          </Button>
+                        }
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="h-full flex flex-col overflow-hidden">
+              <div className="flex-1 overflow-auto min-w-0">
+                <div className="min-w-[1000px]">
+                  <GroupedConnectionTable
+                    columns={columns}
+                    grouped={grouped}
+                    sortKey={listState.sortKey}
+                    sortDirection={listState.sortDirection}
+                    onSort={listState.handleSort}
+                    onRowClick={(connection) =>
+                      selectionMode
+                        ? toggleSelect(connection.id)
+                        : navigate({
                             to: "/$org/$project/mcps/$connectionId",
                             params: {
                               org: org.slug,
                               project: ORG_ADMIN_PROJECT_SLUG,
-                              connectionId: id,
+                              connectionId: connection.id,
                             },
                           })
-                        }
-                        onDelete={(c) =>
-                          dispatch({ type: "delete", connection: c })
-                        }
-                        selectionMode={selectionMode}
-                        selectedIds={selectedIds}
-                        onToggleSelect={toggleSelect}
-                      />
-                    );
-                  }
-
-                  const connection = item.connection;
-                  return (
-                    <div key={connection.id} className="relative">
-                      {selectionMode && (
-                        <div className="absolute top-3 left-3 z-10">
-                          <Checkbox
-                            checked={selectedIds.has(connection.id)}
-                            onCheckedChange={() => toggleSelect(connection.id)}
-                          />
-                        </div>
-                      )}
-                      <ConnectionCard
-                        connection={connection}
-                        fallbackIcon={<Container />}
-                        onClick={() =>
-                          selectionMode
-                            ? toggleSelect(connection.id)
-                            : navigate({
-                                to: "/$org/$project/mcps/$connectionId",
-                                params: {
-                                  org: org.slug,
-                                  project: ORG_ADMIN_PROJECT_SLUG,
-                                  connectionId: connection.id,
-                                },
-                              })
-                        }
-                        className={cn(
-                          selectionMode &&
-                            selectedIds.has(connection.id) &&
-                            "ring-2 ring-primary",
-                        )}
-                        headerActions={
-                          !selectionMode ? (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-8 w-8 p-0"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <DotsVertical size={20} />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent
-                                align="end"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <DropdownMenuItem
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    navigate({
-                                      to: "/$org/$project/mcps/$connectionId",
-                                      params: {
-                                        org: org.slug,
-                                        project: ORG_ADMIN_PROJECT_SLUG,
-                                        connectionId: connection.id,
-                                      },
-                                    });
-                                  }}
-                                >
-                                  <Eye size={16} />
-                                  Open
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  variant="destructive"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    dispatch({ type: "delete", connection });
-                                  }}
-                                >
-                                  <Trash01 size={16} />
-                                  Delete
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          ) : undefined
-                        }
-                        body={<ConnectionStatus status={connection.status} />}
-                        footer={
-                          <div className="flex items-center justify-between text-xs text-muted-foreground w-full min-w-0">
-                            <div className="flex-1 min-w-0">
-                              <User
-                                id={
-                                  connection.updated_by ?? connection.created_by
-                                }
-                                size="3xs"
-                              />
-                            </div>
-                            <span className="shrink-0 ml-2">
-                              {connection.updated_at
-                                ? formatTimeAgo(new Date(connection.updated_at))
-                                : "—"}
-                            </span>
-                          </div>
-                        }
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="h-full flex flex-col overflow-hidden">
-            <div className="flex-1 overflow-auto min-w-0">
-              <div className="min-w-[1000px]">
-                <GroupedConnectionTable
-                  columns={columns}
-                  grouped={grouped}
-                  sortKey={listState.sortKey}
-                  sortDirection={listState.sortDirection}
-                  onSort={listState.handleSort}
-                  onRowClick={(connection) =>
-                    selectionMode
-                      ? toggleSelect(connection.id)
-                      : navigate({
-                          to: "/$org/$project/mcps/$connectionId",
-                          params: {
-                            org: org.slug,
-                            project: ORG_ADMIN_PROJECT_SLUG,
-                            connectionId: connection.id,
-                          },
-                        })
-                  }
-                  selectionMode={selectionMode}
-                  selectedIds={selectedIds}
-                  onToggleSelect={toggleSelect}
-                  emptyState={
-                    listState.search ? (
-                      <EmptyState
-                        image={
-                          <img
-                            src="/emptystate-mcp.svg"
-                            alt=""
-                            width={400}
-                            height={178}
-                            aria-hidden="true"
-                          />
-                        }
-                        title="No Connections found"
-                        description={`No Connections match "${listState.search}"`}
-                      />
-                    ) : (
-                      <EmptyState
-                        image={
-                          <img
-                            src="/emptystate-mcp.svg"
-                            alt=""
-                            width={400}
-                            height={178}
-                            aria-hidden="true"
-                          />
-                        }
-                        title="No Connections found"
-                        description="Create a connection to get started."
-                        actions={
-                          <Button
-                            variant="outline"
-                            onClick={() =>
-                              navigate({
-                                to: "/$org/$project/store",
-                                params: {
-                                  org: org.slug,
-                                  project: ORG_ADMIN_PROJECT_SLUG,
-                                },
-                              })
-                            }
-                          >
-                            Browse Store
-                          </Button>
-                        }
-                      />
-                    )
-                  }
-                />
+                    }
+                    selectionMode={selectionMode}
+                    selectedIds={selectedIds}
+                    onToggleSelect={toggleSelect}
+                    emptyState={
+                      listState.search ? (
+                        <EmptyState
+                          image={
+                            <img
+                              src="/emptystate-mcp.svg"
+                              alt=""
+                              width={400}
+                              height={178}
+                              aria-hidden="true"
+                            />
+                          }
+                          title="No Connections found"
+                          description={`No Connections match "${listState.search}"`}
+                        />
+                      ) : (
+                        <EmptyState
+                          image={
+                            <img
+                              src="/emptystate-mcp.svg"
+                              alt=""
+                              width={400}
+                              height={178}
+                              aria-hidden="true"
+                            />
+                          }
+                          title="No Connections found"
+                          description="Create a connection to get started."
+                        />
+                      )
+                    }
+                  />
+                </div>
               </div>
             </div>
-          </div>
-        )}
-      </Page.Content>
+          )}
+        </Page.Content>
 
-      {/* Floating bulk action bar */}
-      {selectionMode && (
-        <BulkActionBar
-          count={selectedIds.size}
-          total={nonVirtualConnections.length}
-          onSelectAll={() => {
-            setSelectedIds(new Set(nonVirtualConnections.map((c) => c.id)));
-          }}
-          onDeselectAll={() => setSelectedIds(new Set())}
-          onDelete={() => setBulkDeleteOpen(true)}
-          onAddToAgent={() => setAddToAgentOpen(true)}
-          onToggleStatus={handleBulkToggleStatus}
-          onCancel={exitSelectionMode}
+        {/* Floating bulk action bar */}
+        {selectionMode && (
+          <BulkActionBar
+            count={selectedIds.size}
+            total={tabFilteredConnections.length}
+            onSelectAll={() => {
+              setSelectedIds(new Set(tabFilteredConnections.map((c) => c.id)));
+            }}
+            onDeselectAll={() => setSelectedIds(new Set())}
+            onDelete={() => setBulkDeleteOpen(true)}
+            onAddToAgent={() => setAddToAgentOpen(true)}
+            onToggleStatus={handleBulkToggleStatus}
+            onCancel={exitSelectionMode}
+          />
+        )}
+      </Page>
+
+      {appModal && (
+        <ConnectionInstancesModal
+          open={true}
+          onClose={() => setAppModal(null)}
+          appName={appModal.appName}
+          appIcon={appModal.appIcon}
+          appDescription={appModal.appDescription}
+          instances={appModal.instances}
         />
       )}
-    </Page>
+    </>
   );
 }
 
