@@ -30,7 +30,6 @@ import * as ProjectTools from "./projects";
 import * as TagTools from "./tags";
 import * as ThreadTools from "./thread";
 import * as UserTools from "./user";
-import * as AiProvidersTools from "./ai-providers";
 import { ToolName } from "./registry";
 // Core tools - always available
 const CORE_TOOLS = [
@@ -143,16 +142,6 @@ const CORE_TOOLS = [
   ProjectTools.PROJECT_CONNECTION_ADD,
   ProjectTools.PROJECT_CONNECTION_REMOVE,
   ProjectTools.PROJECT_PINNED_VIEWS_UPDATE,
-
-  // Ai providers tools
-  AiProvidersTools.AI_PROVIDERS_LIST,
-  AiProvidersTools.AI_PROVIDERS_LIST_MODELS,
-  AiProvidersTools.AI_PROVIDERS_ACTIVE,
-  AiProvidersTools.AI_PROVIDER_KEY_CREATE,
-  AiProvidersTools.AI_PROVIDER_KEY_DELETE,
-  AiProvidersTools.AI_PROVIDER_KEY_LIST,
-  AiProvidersTools.AI_PROVIDER_OAUTH_URL,
-  AiProvidersTools.AI_PROVIDER_OAUTH_EXCHANGE,
 ] as const satisfies { name: ToolName }[];
 
 // Plugin tools - collected at startup, gated by org settings at runtime
