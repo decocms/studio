@@ -178,12 +178,25 @@ export async function streamClaudeCode(
     },
   });
 
-  // Start a step + text part (AI SDK expects step markers for status tracking)
   writer.write({ type: "start-step" });
-  writer.write({ type: "text-start", id: textPartId });
+
+  // Track content block types by index so we route deltas correctly
+  const blockTypes = new Map<number, string>();
+  let reasoningPartId: string | null = null;
+  let textStarted = false;
+  // Track which content we've already streamed via stream_event so we
+  // don't duplicate it when the assistant message arrives.
+  let streamedText = false;
 
   let totalCostUsd = 0;
   let usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+
+  const ensureTextStarted = () => {
+    if (!textStarted) {
+      writer.write({ type: "text-start", id: textPartId });
+      textStarted = true;
+    }
+  };
 
   try {
     for await (const message of conversation) {
@@ -194,15 +207,48 @@ export async function streamClaudeCode(
           // Only handle main thread events (no subagent)
           if (message.parent_tool_use_id) break;
 
-          const event = message.event;
+          const event = message.event as {
+            type: string;
+            index?: number;
+            content_block?: { type: string; name?: string; id?: string };
+            delta?: {
+              type: string;
+              text?: string;
+              thinking?: string;
+              partial_json?: string;
+            };
+          };
 
-          if (
-            event.type === "content_block_delta" &&
-            "delta" in event &&
-            event.delta
-          ) {
-            const delta = event.delta as { type: string; text?: string };
-            if (delta.type === "text_delta" && delta.text) {
+          // Track block types so we know how to route deltas
+          if (event.type === "content_block_start" && event.content_block) {
+            const idx = event.index ?? 0;
+            blockTypes.set(idx, event.content_block.type);
+
+            if (event.content_block.type === "thinking") {
+              reasoningPartId = generateMessageId();
+              writer.write({
+                type: "reasoning-start",
+                id: reasoningPartId,
+              });
+            }
+          }
+
+          if (event.type === "content_block_delta" && event.delta) {
+            const delta = event.delta;
+
+            if (
+              delta.type === "thinking_delta" &&
+              delta.thinking &&
+              reasoningPartId
+            ) {
+              writer.write({
+                type: "reasoning-delta",
+                delta: delta.thinking,
+                id: reasoningPartId,
+              });
+            } else if (delta.type === "text_delta" && delta.text) {
+              ensureTextStarted();
+              streamedText = true;
               writer.write({
                 type: "text-delta",
                 delta: delta.text,
@@ -210,13 +256,26 @@ export async function streamClaudeCode(
               });
             }
           }
+
+          if (event.type === "content_block_stop") {
+            const idx = event.index ?? 0;
+            if (blockTypes.get(idx) === "thinking" && reasoningPartId) {
+              writer.write({ type: "reasoning-end", id: reasoningPartId });
+              reasoningPartId = null;
+            }
+          }
           break;
         }
 
         case "result": {
           if (message.subtype === "success") {
-            totalCostUsd = message.total_cost_usd ?? 0;
-            const u = message.usage;
+            totalCostUsd =
+              (message as { total_cost_usd?: number }).total_cost_usd ?? 0;
+            const u = (
+              message as {
+                usage?: { input_tokens?: number; output_tokens?: number };
+              }
+            ).usage;
             if (u) {
               usage = {
                 inputTokens: u.input_tokens ?? 0,
@@ -225,9 +284,9 @@ export async function streamClaudeCode(
               };
             }
           } else {
-            // Error result
             const errors = (message as { errors?: string[] }).errors ?? [];
             if (errors.length > 0) {
+              ensureTextStarted();
               writer.write({
                 type: "error",
                 errorText: errors.join("; "),
@@ -239,10 +298,13 @@ export async function streamClaudeCode(
 
         case "assistant": {
           // Only handle main thread messages (no subagent)
-          if (message.parent_tool_use_id) break;
+          if ((message as { parent_tool_use_id?: string }).parent_tool_use_id) {
+            break;
+          }
 
           // Handle errors
-          if (message.error) {
+          if ((message as { error?: string }).error) {
+            const errorCode = (message as { error: string }).error;
             const errorMessages: Record<string, string> = {
               authentication_failed:
                 "Claude Code is not authenticated. Run `claude login` in your terminal.",
@@ -250,22 +312,29 @@ export async function streamClaudeCode(
                 "Claude Code billing error. Check your subscription.",
               rate_limit: "Claude Code rate limited. Please try again shortly.",
             };
+            ensureTextStarted();
             writer.write({
               type: "error",
               errorText:
-                errorMessages[message.error] ??
-                `Claude Code error: ${message.error}`,
+                errorMessages[errorCode] ?? `Claude Code error: ${errorCode}`,
             });
             break;
           }
 
-          // Extract text content from the full assistant message
+          // If we already streamed via stream_event deltas, skip the full
+          // assistant message to avoid duplicate text.
+          if (streamedText) break;
+
+          // Fallback: extract text content from the full assistant message
           const content = (
-            message.message as { content?: { type: string; text?: string }[] }
-          )?.content;
+            message as {
+              message?: { content?: { type: string; text?: string }[] };
+            }
+          )?.message?.content;
           if (Array.isArray(content)) {
             for (const block of content) {
               if (block.type === "text" && block.text) {
+                ensureTextStarted();
                 writer.write({
                   type: "text-delta",
                   delta: block.text,
@@ -280,6 +349,7 @@ export async function streamClaudeCode(
     }
   } catch (err) {
     console.error("[claude-code] Stream error:", err);
+    ensureTextStarted();
     writer.write({
       type: "error",
       errorText:
@@ -287,7 +357,13 @@ export async function streamClaudeCode(
     });
   }
 
-  // End the text part + step
+  // Close any open reasoning block
+  if (reasoningPartId) {
+    writer.write({ type: "reasoning-end", id: reasoningPartId });
+  }
+
+  // Ensure text part is opened before closing it
+  ensureTextStarted();
   writer.write({ type: "text-end", id: textPartId });
   writer.write({ type: "finish-step" });
 
