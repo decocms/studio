@@ -1,6 +1,7 @@
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import { CollectionDisplayButton } from "@/web/components/collections/collection-display-button.tsx";
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
+import { CollectionTabs } from "@/web/components/collections/collection-tabs.tsx";
 import { type TableColumn } from "@/web/components/collections/collection-table.tsx";
 import {
   Table as UITable,
@@ -11,11 +12,13 @@ import {
   TableRow,
 } from "@deco/ui/components/table.tsx";
 import { ConnectionCard } from "@/web/components/connections/connection-card.tsx";
+import { ConnectionInstancesModal } from "@/web/components/connections/connection-instances-modal.tsx";
 import { ConnectionStatus } from "@/web/components/connections/connection-status.tsx";
 import { EmptyState } from "@/web/components/empty-state.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { Page } from "@/web/components/page";
+import { StoreDiscovery } from "@/web/components/store";
 import type { RegistryItem } from "@/web/components/store/types";
 import { User } from "@/web/components/user/user.tsx";
 import { useRegistryConnections } from "@/web/hooks/use-binding";
@@ -1275,6 +1278,17 @@ function OrgMcpsContent() {
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [addToAgentOpen, setAddToAgentOpen] = useState(false);
 
+  // Tab state
+  type ConnectionTab = "connected" | "all" | "built-by-me" | "needs-config";
+  const [activeTab, setActiveTab] = useState<ConnectionTab>("connected");
+
+  // ConnectionInstancesModal state
+  const [instancesModal, setInstancesModal] = useState<{
+    open: boolean;
+    appName: string;
+    instances: ConnectionEntity[];
+  }>({ open: false, appName: "", instances: [] });
+
   // Type & status filters
   const [typeFilter, setTypeFilter] = useState<ConnectionTypeFilter>("ALL");
   const [statusFilter, setStatusFilter] =
@@ -1292,7 +1306,23 @@ function OrgMcpsContent() {
   });
 
   const stats = countByStatus(connections);
-  const grouped = groupConnections(nonVirtualConnections);
+
+  // Tab-filtered connections
+  const currentUserId = session?.user?.id;
+  const tabFilteredConnections = nonVirtualConnections.filter((c) => {
+    if (activeTab === "connected") return true;
+    if (activeTab === "built-by-me") return c.created_by === currentUserId;
+    if (activeTab === "needs-config") return c.status === "error";
+    return true;
+  });
+
+  // connectedAppNames: set of app_name values for connected items (for StoreDiscovery)
+  const connectedAppNames = new Set(
+    connections
+      .filter((c) => c.connection_type !== "VIRTUAL" && c.app_name)
+      .map((c) => c.app_name as string),
+  );
+  const grouped = groupConnections(tabFilteredConnections);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -2478,54 +2508,56 @@ function OrgMcpsContent() {
           </Breadcrumb>
         </Page.Header.Left>
         <Page.Header.Right>
-          <CollectionDisplayButton
-            viewMode={listState.viewMode}
-            onViewModeChange={listState.setViewMode}
-            sortKey={listState.sortKey}
-            sortDirection={listState.sortDirection}
-            onSort={listState.handleSort}
-            sortOptions={[
-              { id: "title", label: "Name" },
-              { id: "description", label: "Description" },
-              { id: "connection_type", label: "Type" },
-              { id: "updated_by", label: "Updated by" },
-              { id: "updated_at", label: "Updated" },
-            ]}
-            filters={[
-              {
-                label: "Type",
-                value: typeFilter,
-                onChange: (v) =>
-                  setTypeFilter((v as ConnectionTypeFilter) || "ALL"),
-                options: [
-                  { id: "ALL", label: "All" },
-                  { id: "HTTP", label: "HTTP" },
-                  { id: "SSE", label: "SSE" },
-                  { id: "Websocket", label: "WebSocket" },
-                  { id: "STDIO", label: "STDIO" },
-                ],
-              },
-              {
-                label: "Status",
-                value: statusFilter,
-                onChange: (v) =>
-                  setStatusFilter((v as ConnectionStatusFilter) || "ALL"),
-                options: [
-                  { id: "ALL", label: "All" },
-                  { id: "active", label: "Active" },
-                  { id: "inactive", label: "Inactive" },
-                  { id: "error", label: "Error" },
-                ],
-              },
-            ]}
-          />
+          {activeTab !== "all" && (
+            <CollectionDisplayButton
+              viewMode={listState.viewMode}
+              onViewModeChange={listState.setViewMode}
+              sortKey={listState.sortKey}
+              sortDirection={listState.sortDirection}
+              onSort={listState.handleSort}
+              sortOptions={[
+                { id: "title", label: "Name" },
+                { id: "description", label: "Description" },
+                { id: "connection_type", label: "Type" },
+                { id: "updated_by", label: "Updated by" },
+                { id: "updated_at", label: "Updated" },
+              ]}
+              filters={[
+                {
+                  label: "Type",
+                  value: typeFilter,
+                  onChange: (v) =>
+                    setTypeFilter((v as ConnectionTypeFilter) || "ALL"),
+                  options: [
+                    { id: "ALL", label: "All" },
+                    { id: "HTTP", label: "HTTP" },
+                    { id: "SSE", label: "SSE" },
+                    { id: "Websocket", label: "WebSocket" },
+                    { id: "STDIO", label: "STDIO" },
+                  ],
+                },
+                {
+                  label: "Status",
+                  value: statusFilter,
+                  onChange: (v) =>
+                    setStatusFilter((v as ConnectionStatusFilter) || "ALL"),
+                  options: [
+                    { id: "ALL", label: "All" },
+                    { id: "active", label: "Active" },
+                    { id: "inactive", label: "Inactive" },
+                    { id: "error", label: "Error" },
+                  ],
+                },
+              ]}
+            />
+          )}
           {ctaButton}
         </Page.Header.Right>
       </Page.Header>
 
-      {/* Search */}
-      <div className="flex items-center gap-3 px-5 pb-0">
-        <div className="flex-1">
+      {/* Search + Tabs */}
+      <div className="flex flex-col gap-2 px-5 pb-0">
+        {activeTab !== "all" && (
           <CollectionSearch
             value={listState.search}
             onChange={listState.setSearch}
@@ -2537,14 +2569,47 @@ function OrgMcpsContent() {
               }
             }}
           />
-        </div>
+        )}
+        <CollectionTabs
+          tabs={[
+            { id: "connected", label: "Connected", count: stats.total },
+            { id: "all", label: "All" },
+            {
+              id: "built-by-me",
+              label: "Built by me",
+              count: nonVirtualConnections.filter(
+                (c) => c.created_by === currentUserId,
+              ).length,
+            },
+            {
+              id: "needs-config",
+              label: "Needs configuration",
+              count: stats.error > 0 ? stats.error : undefined,
+            },
+          ]}
+          activeTab={activeTab}
+          onTabChange={(id) => setActiveTab(id as ConnectionTab)}
+        />
       </div>
 
       {/* Content: Cards or Table */}
       <Page.Content>
-        {listState.viewMode === "cards" ? (
+        {activeTab === "all" ? (
+          <StoreDiscovery
+            registryId={registryId}
+            connectedAppNames={connectedAppNames}
+            onConnectedItemClick={(item) => {
+              const appName = item.server?.name || item.name || item.id || "";
+              const instances = connections.filter(
+                (c) =>
+                  c.connection_type !== "VIRTUAL" && c.app_name === appName,
+              );
+              setInstancesModal({ open: true, appName, instances });
+            }}
+          />
+        ) : listState.viewMode === "cards" ? (
           <div className="flex-1 overflow-auto p-5">
-            {nonVirtualConnections.length === 0 ? (
+            {tabFilteredConnections.length === 0 ? (
               <EmptyState
                 image={
                   <img
@@ -2756,13 +2821,23 @@ function OrgMcpsContent() {
         )}
       </Page.Content>
 
+      {/* ConnectionInstancesModal */}
+      <ConnectionInstancesModal
+        open={instancesModal.open}
+        onClose={() =>
+          setInstancesModal({ open: false, appName: "", instances: [] })
+        }
+        appName={instancesModal.appName}
+        instances={instancesModal.instances}
+      />
+
       {/* Floating bulk action bar */}
       {selectionMode && (
         <BulkActionBar
           count={selectedIds.size}
-          total={nonVirtualConnections.length}
+          total={tabFilteredConnections.length}
           onSelectAll={() => {
-            setSelectedIds(new Set(nonVirtualConnections.map((c) => c.id)));
+            setSelectedIds(new Set(tabFilteredConnections.map((c) => c.id)));
           }}
           onDeselectAll={() => setSelectedIds(new Set())}
           onDelete={() => setBulkDeleteOpen(true)}
