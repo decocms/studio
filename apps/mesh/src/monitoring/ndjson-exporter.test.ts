@@ -78,6 +78,43 @@ describe("NDJSONExporter", () => {
     expect(result.code).toBe(ExportResultCode.FAILED);
   });
 
+  it("should partition rows by key into separate subdirectories", async () => {
+    const partitioned = new NDJSONExporter<TestRow & { org: string }>({
+      basePath: tmpDir,
+      flushThreshold: 4,
+      flushIntervalMs: 60_000,
+      partitionKey: (row) => row.org,
+    });
+
+    const rows = [
+      { v: 1 as const, id: "1", value: "a", org: "org_a" },
+      { v: 1 as const, id: "2", value: "b", org: "org_b" },
+      { v: 1 as const, id: "3", value: "c", org: "org_a" },
+      { v: 1 as const, id: "4", value: "d", org: "org_b" },
+    ];
+
+    const result = await partitioned.exportRows(rows);
+    expect(result.code).toBe(ExportResultCode.SUCCESS);
+
+    const files = await findNDJSONFiles(tmpDir);
+    expect(files.length).toBe(2);
+
+    const orgAFiles = files.filter((f) => f.includes("/org_a/"));
+    const orgBFiles = files.filter((f) => f.includes("/org_b/"));
+    expect(orgAFiles.length).toBe(1);
+    expect(orgBFiles.length).toBe(1);
+
+    const orgAContent = await readFile(orgAFiles[0]!, "utf-8");
+    const orgALines = orgAContent
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+    expect(orgALines.length).toBe(2);
+    expect(orgALines.every((r: any) => r.org === "org_a")).toBe(true);
+
+    await partitioned.shutdown();
+  });
+
   it("should flush via forceFlush()", async () => {
     await exporter.exportRows([{ v: 1, id: "1", value: "a" }]);
 

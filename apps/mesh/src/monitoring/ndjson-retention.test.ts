@@ -76,6 +76,41 @@ describe("cleanupOldMonitoringFiles", () => {
     expect(deleted).toBe(0);
   });
 
+  it("should clean up old files inside org subdirectories", async () => {
+    const old = new Date();
+    old.setUTCDate(old.getUTCDate() - 31);
+
+    const oldPath = join(
+      tmpDir,
+      "org_abc",
+      String(old.getUTCFullYear()),
+      String(old.getUTCMonth() + 1).padStart(2, "0"),
+      String(old.getUTCDate()).padStart(2, "0"),
+      "00",
+    );
+    await mkdir(oldPath, { recursive: true });
+    await writeFile(join(oldPath, "test.ndjson"), "old-data");
+
+    const now = new Date();
+    const newPath = join(
+      tmpDir,
+      "org_abc",
+      String(now.getUTCFullYear()),
+      String(now.getUTCMonth() + 1).padStart(2, "0"),
+      String(now.getUTCDate()).padStart(2, "0"),
+      String(now.getUTCHours()).padStart(2, "0"),
+    );
+    await mkdir(newPath, { recursive: true });
+    await writeFile(join(newPath, "test.ndjson"), "new-data");
+
+    const deleted = await cleanupOldMonitoringFiles(tmpDir);
+    expect(deleted).toBeGreaterThanOrEqual(1);
+
+    const allFiles = await readdir(tmpDir, { recursive: true });
+    const ndjsonFiles = allFiles.filter((f) => f.endsWith(".ndjson"));
+    expect(ndjsonFiles.length).toBe(1);
+  });
+
   it("should not delete directories within the retention cutoff boundary", async () => {
     const boundary = new Date();
     boundary.setUTCDate(boundary.getUTCDate() - 30);

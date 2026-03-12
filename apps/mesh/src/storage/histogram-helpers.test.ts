@@ -3,7 +3,7 @@ import {
   parseGroupedArrays,
   mergeHistogramBuckets,
   computePercentileFromHistogramBuckets,
-} from "./monitoring-clickhouse";
+} from "./monitoring-sql";
 
 describe("parseGroupedArrays", () => {
   it("returns empty array for falsy input", () => {

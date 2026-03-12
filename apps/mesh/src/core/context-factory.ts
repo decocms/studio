@@ -17,8 +17,13 @@ import { env } from "../env";
 import { getBaseUrl } from "./server-constants";
 import { ConnectionStorage } from "../storage/connection";
 import { VirtualMCPStorage } from "../storage/virtual";
-import { ClickHouseMonitoringStorage } from "../storage/monitoring-clickhouse";
+import {
+  SqlMonitoringStorage,
+  type SqlDialect,
+} from "../storage/monitoring-sql";
 import { createMonitoringEngine } from "../monitoring/query-engine";
+import { ClickHouseClientEngine } from "../monitoring/query-engine";
+import type { QueryEngine } from "../monitoring/query-engine";
 import { DEFAULT_LOGS_DIR, DEFAULT_METRICS_DIR } from "../monitoring/schema";
 import { SqlMonitoringDashboardStorage } from "../storage/monitoring-dashboards";
 import { OrganizationSettingsStorage } from "../storage/organization-settings";
@@ -763,29 +768,51 @@ export async function createMeshContextFactory(
   const vault = new CredentialVault(config.encryption.key);
 
   // Create monitoring engines (shared across requests)
-  const { engine: monitoringEngine, source: monitoringSource } =
-    createMonitoringEngine({
-      clickhouseUrl: env.CLICKHOUSE_URL,
+  const isClickHouse = !!env.CLICKHOUSE_URL;
+  const dialect: SqlDialect = isClickHouse ? "clickhouse" : "duckdb";
+
+  let monitoringEngine: QueryEngine;
+  let metricEngine: QueryEngine;
+
+  if (isClickHouse) {
+    monitoringEngine = new ClickHouseClientEngine(env.CLICKHOUSE_URL!);
+    metricEngine = new ClickHouseClientEngine(env.CLICKHOUSE_URL!);
+  } else {
+    const { engine: me } = await createMonitoringEngine({
       basePath: DEFAULT_LOGS_DIR,
     });
-  const { engine: metricEngine, source: metricSource } = createMonitoringEngine(
-    {
-      clickhouseUrl: env.CLICKHOUSE_URL,
+    const { engine: metricE } = await createMonitoringEngine({
       basePath: DEFAULT_METRICS_DIR,
-      tableName: "monitoring_metrics",
-    },
-  );
+    });
+    monitoringEngine = me;
+    metricEngine = metricE;
+  }
+
+  const { resolve } = await import("node:path");
+  const logsBasePath = resolve(DEFAULT_LOGS_DIR);
+  const metricsBasePath = resolve(DEFAULT_METRICS_DIR);
+
+  const logSourceFactory = isClickHouse
+    ? (_orgId: string) => "monitoring_logs"
+    : (orgId: string) =>
+        `read_ndjson('${logsBasePath}/${orgId}/**/*.ndjson', auto_detect=true)`;
+
+  const metricSourceFactory = isClickHouse
+    ? (_orgId: string) => "monitoring_metrics"
+    : (orgId: string) =>
+        `read_ndjson('${metricsBasePath}/${orgId}/**/*.ndjson', auto_detect=true)`;
 
   // Create storage adapters once (singleton pattern)
   const threadDb = new SqlThreadStorage(config.db);
   const baseStorage = {
     connections: new ConnectionStorage(config.db, vault),
     organizationSettings: new OrganizationSettingsStorage(config.db),
-    monitoring: new ClickHouseMonitoringStorage(
+    monitoring: new SqlMonitoringStorage(
       monitoringEngine,
-      monitoringSource,
+      logSourceFactory,
       metricEngine,
-      metricSource,
+      metricSourceFactory,
+      dialect,
     ),
     monitoringDashboards: new SqlMonitoringDashboardStorage(config.db),
     virtualMcps: new VirtualMCPStorage(config.db),

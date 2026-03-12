@@ -1,16 +1,16 @@
 /**
- * ClickHouseMonitoringStorage
+ * SqlMonitoringStorage
  *
- * Implements MonitoringStorage using ClickHouse SQL via QueryEngine.
- * Local dev uses chdb (embedded ClickHouse) to query NDJSON files on disk.
+ * Implements MonitoringStorage using SQL via QueryEngine.
+ * Supports two SQL dialects:
+ * - "clickhouse": ClickHouse SQL for production (remote ClickHouse instance)
+ * - "duckdb": DuckDB SQL for local dev (embedded DuckDB querying NDJSON files)
  *
  * Writes flow through the OTel pipeline (NDJSONLogExporter).
- * This adapter is read-only — it queries NDJSON files on disk.
+ * This adapter is read-only — it queries NDJSON files on disk or a ClickHouse table.
  */
 
 import type { QueryEngine } from "../monitoring/query-engine";
-import { createMonitoringEngine } from "../monitoring/query-engine";
-import { DEFAULT_METRICS_DIR } from "../monitoring/schema";
 import type { MonitoringLog } from "./types";
 import type {
   AggregationParams,
@@ -19,6 +19,12 @@ import type {
   MonitoringStorage,
   PropertyFilters,
 } from "./ports";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export type SqlDialect = "clickhouse" | "duckdb";
 
 // ---------------------------------------------------------------------------
 // Validation helpers
@@ -94,7 +100,7 @@ function parseInterval(interval: string): { amount: number; unit: string } {
   return { amount, unit };
 }
 
-function intervalToSQL(interval: string): string {
+function intervalToSQL(interval: string, dialect: SqlDialect): string {
   const { amount, unit } = parseInterval(interval);
   const unitMap: Record<string, string> = {
     m: "MINUTE",
@@ -102,7 +108,38 @@ function intervalToSQL(interval: string): string {
     d: "DAY",
   };
   const sqlUnit = unitMap[unit];
+  if (dialect === "duckdb") {
+    return `time_bucket(INTERVAL '${amount} ${sqlUnit}', CAST(timestamp AS TIMESTAMP))`;
+  }
   return `toStartOfInterval(parseDateTime64BestEffort(toString(timestamp)), INTERVAL ${amount} ${sqlUnit})`;
+}
+
+// ---------------------------------------------------------------------------
+// Dialect-aware JSON extraction helpers
+// ---------------------------------------------------------------------------
+
+function jsonExtractString(
+  col: string,
+  jsonPath: string,
+  dialect: SqlDialect,
+): string {
+  if (dialect === "duckdb") {
+    return `json_extract_string(${col}, '${jsonPath}')`;
+  }
+  const chKeys = jsonPathToChKeys(jsonPath);
+  return `JSONExtractString(${col}, ${chKeys})`;
+}
+
+function jsonExtractFloat(
+  col: string,
+  jsonPath: string,
+  dialect: SqlDialect,
+): string {
+  if (dialect === "duckdb") {
+    return `CAST(json_extract_string(${col}, '${jsonPath}') AS DOUBLE)`;
+  }
+  const chKeys = jsonPathToChKeys(jsonPath);
+  return `JSONExtractFloat(${col}, ${chKeys})`;
 }
 
 // ---------------------------------------------------------------------------
@@ -129,7 +166,10 @@ function toMonitoringLog(row: Record<string, unknown>): MonitoringLog {
     input: safeJsonParse(row.input),
     output: safeJsonParse(row.output),
     isError:
-      row.is_error === 1 || row.is_error === true || row.is_error === "1",
+      row.is_error === 1 ||
+      row.is_error === true ||
+      row.is_error === "1" ||
+      (typeof row.is_error === "bigint" && row.is_error === 1n),
     errorMessage: row.error_message != null ? String(row.error_message) : null,
     durationMs: Number(row.duration_ms ?? 0),
     timestamp: (() => {
@@ -151,26 +191,39 @@ function toMonitoringLog(row: Record<string, unknown>): MonitoringLog {
 }
 
 // ---------------------------------------------------------------------------
-// Property filter SQL builder (ClickHouse syntax)
+// Property filter SQL builder (dialect-aware)
 // ---------------------------------------------------------------------------
 
-function buildPropertyFilterClauses(filters: PropertyFilters): string[] {
+function buildPropertyFilterClauses(
+  filters: PropertyFilters,
+  dialect: SqlDialect,
+): string[] {
   const clauses: string[] = [];
 
   if (filters.properties) {
     for (const [key, value] of Object.entries(filters.properties)) {
       const k = esc(key);
       const v = esc(value);
-      clauses.push(`JSONExtractString(properties, '${k}') = '${v}'`);
+      if (dialect === "duckdb") {
+        clauses.push(`json_extract_string(properties, '$.${k}') = '${v}'`);
+      } else {
+        clauses.push(`JSONExtractString(properties, '${k}') = '${v}'`);
+      }
     }
   }
 
   if (filters.propertyKeys) {
     for (const key of filters.propertyKeys) {
       const k = esc(key);
-      clauses.push(
-        `JSONExtractString(properties, '${k}') IS NOT NULL AND JSONExtractString(properties, '${k}') != ''`,
-      );
+      if (dialect === "duckdb") {
+        clauses.push(
+          `json_extract_string(properties, '$.${k}') IS NOT NULL AND json_extract_string(properties, '$.${k}') != ''`,
+        );
+      } else {
+        clauses.push(
+          `JSONExtractString(properties, '${k}') IS NOT NULL AND JSONExtractString(properties, '${k}') != ''`,
+        );
+      }
     }
   }
 
@@ -178,7 +231,11 @@ function buildPropertyFilterClauses(filters: PropertyFilters): string[] {
     for (const [key, pattern] of Object.entries(filters.propertyPatterns)) {
       const k = esc(key);
       const p = esc(pattern);
-      clauses.push(`JSONExtractString(properties, '${k}') ILIKE '${p}'`);
+      if (dialect === "duckdb") {
+        clauses.push(`json_extract_string(properties, '$.${k}') ILIKE '${p}'`);
+      } else {
+        clauses.push(`JSONExtractString(properties, '${k}') ILIKE '${p}'`);
+      }
     }
   }
 
@@ -186,9 +243,15 @@ function buildPropertyFilterClauses(filters: PropertyFilters): string[] {
     for (const [key, value] of Object.entries(filters.propertyInValues)) {
       const k = esc(key);
       const v = esc(value);
-      clauses.push(
-        `has(splitByChar(',', JSONExtractString(properties, '${k}')), '${v}')`,
-      );
+      if (dialect === "duckdb") {
+        clauses.push(
+          `list_contains(string_split(json_extract_string(properties, '$.${k}'), ','), '${v}')`,
+        );
+      } else {
+        clauses.push(
+          `has(splitByChar(',', JSONExtractString(properties, '${k}')), '${v}')`,
+        );
+      }
     }
   }
 
@@ -196,17 +259,20 @@ function buildPropertyFilterClauses(filters: PropertyFilters): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// Timestamp filter helper (ClickHouse syntax)
+// Timestamp filter helper (dialect-aware)
 // ---------------------------------------------------------------------------
 
-function buildCommonFilterClauses(filters?: {
-  connectionIds?: string[];
-  toolNames?: string[];
-  virtualMcpIds?: string[];
-  startDate?: Date;
-  endDate?: Date;
-  propertyFilters?: PropertyFilters;
-}): string[] {
+function buildCommonFilterClauses(
+  dialect: SqlDialect,
+  filters?: {
+    connectionIds?: string[];
+    toolNames?: string[];
+    virtualMcpIds?: string[];
+    startDate?: Date;
+    endDate?: Date;
+    propertyFilters?: PropertyFilters;
+  },
+): string[] {
   if (!filters) return [];
   const clauses: string[] = [];
   if (filters.connectionIds?.length) {
@@ -222,50 +288,45 @@ function buildCommonFilterClauses(filters?: {
     clauses.push(`virtual_mcp_id IN (${ids})`);
   }
   if (filters.startDate) {
-    clauses.push(tsGte(filters.startDate));
+    clauses.push(tsGte(filters.startDate, dialect));
   }
   if (filters.endDate) {
-    clauses.push(tsLte(filters.endDate));
+    clauses.push(tsLte(filters.endDate, dialect));
   }
   if (filters.propertyFilters) {
-    clauses.push(...buildPropertyFilterClauses(filters.propertyFilters));
+    clauses.push(
+      ...buildPropertyFilterClauses(filters.propertyFilters, dialect),
+    );
   }
   return clauses;
 }
 
-function tsGte(date: Date): string {
+function tsGte(date: Date, dialect: SqlDialect): string {
+  if (dialect === "duckdb") {
+    return `CAST(timestamp AS TIMESTAMP) >= TIMESTAMP '${date.toISOString()}'`;
+  }
   return `parseDateTime64BestEffort(toString(timestamp)) >= parseDateTime64BestEffort('${date.toISOString()}')`;
 }
 
-function tsLte(date: Date): string {
+function tsLte(date: Date, dialect: SqlDialect): string {
+  if (dialect === "duckdb") {
+    return `CAST(timestamp AS TIMESTAMP) <= TIMESTAMP '${date.toISOString()}'`;
+  }
   return `parseDateTime64BestEffort(toString(timestamp)) <= parseDateTime64BestEffort('${date.toISOString()}')`;
 }
 
 // ---------------------------------------------------------------------------
-// ClickHouseMonitoringStorage
+// SqlMonitoringStorage
 // ---------------------------------------------------------------------------
 
-export class ClickHouseMonitoringStorage implements MonitoringStorage {
-  private metricEngine: QueryEngine;
-  private metricSource: string;
-
+export class SqlMonitoringStorage implements MonitoringStorage {
   constructor(
     private engine: QueryEngine,
-    private source: string,
-    metricEngine?: QueryEngine,
-    metricSource?: string,
-  ) {
-    if (metricEngine && metricSource) {
-      this.metricEngine = metricEngine;
-      this.metricSource = metricSource;
-    } else {
-      const { engine: me, source: ms } = createMonitoringEngine({
-        basePath: DEFAULT_METRICS_DIR,
-      });
-      this.metricEngine = me;
-      this.metricSource = ms;
-    }
-  }
+    private sourceFactory: (organizationId: string) => string,
+    private metricEngine: QueryEngine,
+    private metricSourceFactory: (organizationId: string) => string,
+    private dialect: SqlDialect = "clickhouse",
+  ) {}
 
   async query(filters: {
     organizationId: string;
@@ -283,6 +344,8 @@ export class ClickHouseMonitoringStorage implements MonitoringStorage {
     if (!filters.organizationId) {
       throw new Error("organizationId is required");
     }
+
+    const source = this.sourceFactory(filters.organizationId);
 
     const where: string[] = [
       `organization_id = '${esc(filters.organizationId)}'`,
@@ -307,13 +370,15 @@ export class ClickHouseMonitoringStorage implements MonitoringStorage {
       where.push(`is_error = ${filters.isError ? 1 : 0}`);
     }
     if (filters.startDate) {
-      where.push(tsGte(filters.startDate));
+      where.push(tsGte(filters.startDate, this.dialect));
     }
     if (filters.endDate) {
-      where.push(tsLte(filters.endDate));
+      where.push(tsLte(filters.endDate, this.dialect));
     }
     if (filters.propertyFilters) {
-      where.push(...buildPropertyFilterClauses(filters.propertyFilters));
+      where.push(
+        ...buildPropertyFilterClauses(filters.propertyFilters, this.dialect),
+      );
     }
 
     const MAX_LIMIT = 1000;
@@ -323,7 +388,7 @@ export class ClickHouseMonitoringStorage implements MonitoringStorage {
     );
     const offset = Math.max(0, Math.floor(filters.offset ?? 0));
 
-    const sql = `SELECT *, count(*) OVER () AS _total FROM ${this.source} WHERE ${where.join(" AND ")} ORDER BY timestamp DESC LIMIT ${limit} OFFSET ${offset}`;
+    const sql = `SELECT *, count(*) OVER () AS _total FROM ${source} WHERE ${where.join(" AND ")} ORDER BY timestamp DESC LIMIT ${limit} OFFSET ${offset}`;
 
     const rows = await this.engine.query(sql);
 
@@ -350,18 +415,20 @@ export class ClickHouseMonitoringStorage implements MonitoringStorage {
       throw new Error("organizationId is required");
     }
 
+    const source = this.sourceFactory(filters.organizationId);
+
     const where: string[] = [
       `organization_id = '${esc(filters.organizationId)}'`,
     ];
 
     if (filters.startDate) {
-      where.push(tsGte(filters.startDate));
+      where.push(tsGte(filters.startDate, this.dialect));
     }
     if (filters.endDate) {
-      where.push(tsLte(filters.endDate));
+      where.push(tsLte(filters.endDate, this.dialect));
     }
 
-    const sql = `SELECT count(*) AS total_calls, coalesce(sum(CASE WHEN is_error = 1 THEN 1.0 ELSE 0.0 END) / NULLIF(count(*), 0), 0) AS error_rate, coalesce(avg(duration_ms), 0) AS avg_duration_ms FROM ${this.source} WHERE ${where.join(" AND ")}`;
+    const sql = `SELECT count(*) AS total_calls, coalesce(sum(CASE WHEN is_error = 1 THEN 1.0 ELSE 0.0 END) / NULLIF(count(*), 0), 0) AS error_rate, coalesce(avg(duration_ms), 0) AS avg_duration_ms FROM ${source} WHERE ${where.join(" AND ")}`;
 
     const rows = await this.engine.query(sql);
     const row = rows[0] ?? {};
@@ -378,15 +445,15 @@ export class ClickHouseMonitoringStorage implements MonitoringStorage {
       throw new Error("organizationId is required");
     }
 
+    const source = this.sourceFactory(params.organizationId);
     const jsonPath = validateJsonPath(params.path);
     const sourceCol = params.from === "input" ? "input" : "output";
-    const chKeys = jsonPathToChKeys(jsonPath);
 
-    // Build the value expression using ClickHouse JSONExtract functions
+    // Build the value expression using dialect-aware JSON extraction
     const valueExpr =
       params.aggregation === "count" || params.aggregation === "count_all"
         ? "1"
-        : `JSONExtractFloat(${sourceCol}, ${chKeys})`;
+        : jsonExtractFloat(sourceCol, jsonPath, this.dialect);
 
     // Build aggregation expression
     const aggExpr = buildAggExpr(params.aggregation, valueExpr);
@@ -398,17 +465,19 @@ export class ClickHouseMonitoringStorage implements MonitoringStorage {
 
     // For count (not count_all), only count rows where the path exists and is non-null
     if (params.aggregation === "count") {
-      where.push(`JSONExtractString(${sourceCol}, ${chKeys}) IS NOT NULL`);
-      where.push(`JSONExtractString(${sourceCol}, ${chKeys}) != ''`);
+      const extractExpr = jsonExtractString(sourceCol, jsonPath, this.dialect);
+      where.push(`${extractExpr} IS NOT NULL`);
+      where.push(`${extractExpr} != ''`);
     }
 
     // Exclude count_all from null filtering — it counts all rows
     if (params.aggregation !== "count" && params.aggregation !== "count_all") {
-      where.push(`JSONExtractString(${sourceCol}, ${chKeys}) IS NOT NULL`);
-      where.push(`JSONExtractString(${sourceCol}, ${chKeys}) != ''`);
+      const extractExpr = jsonExtractString(sourceCol, jsonPath, this.dialect);
+      where.push(`${extractExpr} IS NOT NULL`);
+      where.push(`${extractExpr} != ''`);
     }
 
-    where.push(...buildCommonFilterClauses(params.filters));
+    where.push(...buildCommonFilterClauses(this.dialect, params.filters));
 
     const whereClause = where.join(" AND ");
 
@@ -420,7 +489,7 @@ export class ClickHouseMonitoringStorage implements MonitoringStorage {
     // --- groupByColumn (takes priority) ---
     if (params.groupByColumn) {
       const col = validateGroupByColumn(params.groupByColumn);
-      const sql = `SELECT ${col} AS group_key, ${aggExpr} AS value FROM ${this.source} WHERE ${whereClause} GROUP BY ${col} ORDER BY value DESC LIMIT ${rowLimit}`;
+      const sql = `SELECT ${col} AS group_key, ${aggExpr} AS value FROM ${source} WHERE ${whereClause} GROUP BY ${col} ORDER BY value DESC LIMIT ${rowLimit}`;
       const rows = await this.engine.query(sql);
       return {
         value: null,
@@ -435,9 +504,12 @@ export class ClickHouseMonitoringStorage implements MonitoringStorage {
     if (params.groupBy) {
       const groupPath = validateJsonPath(params.groupBy);
       const groupSourceCol = params.from === "input" ? "input" : "output";
-      const groupChKeys = jsonPathToChKeys(groupPath);
-      const groupExpr = `JSONExtractString(${groupSourceCol}, ${groupChKeys})`;
-      const sql = `SELECT ${groupExpr} AS group_key, ${aggExpr} AS value FROM ${this.source} WHERE ${whereClause} AND ${groupExpr} != '' GROUP BY ${groupExpr} ORDER BY value DESC LIMIT ${rowLimit}`;
+      const groupExpr = jsonExtractString(
+        groupSourceCol,
+        groupPath,
+        this.dialect,
+      );
+      const sql = `SELECT ${groupExpr} AS group_key, ${aggExpr} AS value FROM ${source} WHERE ${whereClause} AND ${groupExpr} != '' GROUP BY ${groupExpr} ORDER BY value DESC LIMIT ${rowLimit}`;
       const rows = await this.engine.query(sql);
       return {
         value: null,
@@ -450,8 +522,8 @@ export class ClickHouseMonitoringStorage implements MonitoringStorage {
 
     // --- interval (timeseries) ---
     if (params.interval) {
-      const bucketExpr = intervalToSQL(params.interval);
-      const sql = `SELECT ${bucketExpr} AS bucket, ${aggExpr} AS value FROM ${this.source} WHERE ${whereClause} GROUP BY bucket ORDER BY bucket ASC LIMIT ${rowLimit}`;
+      const bucketExpr = intervalToSQL(params.interval, this.dialect);
+      const sql = `SELECT ${bucketExpr} AS bucket, ${aggExpr} AS value FROM ${source} WHERE ${whereClause} GROUP BY bucket ORDER BY bucket ASC LIMIT ${rowLimit}`;
       const rows = await this.engine.query(sql);
       return {
         value: null,
@@ -463,7 +535,7 @@ export class ClickHouseMonitoringStorage implements MonitoringStorage {
     }
 
     // --- simple aggregation ---
-    const sql = `SELECT ${aggExpr} AS value FROM ${this.source} WHERE ${whereClause}`;
+    const sql = `SELECT ${aggExpr} AS value FROM ${source} WHERE ${whereClause}`;
     const rows = await this.engine.query(sql);
     return {
       value: Number(rows[0]?.value ?? 0),
@@ -487,19 +559,20 @@ export class ClickHouseMonitoringStorage implements MonitoringStorage {
       throw new Error("organizationId is required");
     }
 
+    const source = this.sourceFactory(params.organizationId);
     const jsonPath = validateJsonPath(params.path);
     const sourceCol = params.from === "input" ? "input" : "output";
-    const chKeys = jsonPathToChKeys(jsonPath);
+    const extractExpr = jsonExtractString(sourceCol, jsonPath, this.dialect);
 
     const where: string[] = [
       `organization_id = '${esc(params.organizationId)}'`,
-      `JSONExtractString(${sourceCol}, ${chKeys}) IS NOT NULL`,
-      `JSONExtractString(${sourceCol}, ${chKeys}) != ''`,
+      `${extractExpr} IS NOT NULL`,
+      `${extractExpr} != ''`,
     ];
 
-    where.push(...buildCommonFilterClauses(params.filters));
+    where.push(...buildCommonFilterClauses(this.dialect, params.filters));
 
-    const sql = `SELECT count(*) AS cnt FROM ${this.source} WHERE ${where.join(" AND ")}`;
+    const sql = `SELECT count(*) AS cnt FROM ${source} WHERE ${where.join(" AND ")}`;
     const rows = await this.engine.query(sql);
     return Number(rows[0]?.cnt ?? 0);
   }
@@ -552,17 +625,18 @@ export class ClickHouseMonitoringStorage implements MonitoringStorage {
         throw new Error("organizationId is required");
       }
 
-      const bucketExpr = intervalToSQL(params.interval);
+      const metricSource = this.metricSourceFactory(params.organizationId);
+      const bucketExpr = intervalToSQL(params.interval, this.dialect);
 
       const where: string[] = [
         `organization_id = '${esc(params.organizationId)}'`,
       ];
 
       if (params.startDate) {
-        where.push(tsGte(params.startDate));
+        where.push(tsGte(params.startDate, this.dialect));
       }
       if (params.endDate) {
-        where.push(tsLte(params.endDate));
+        where.push(tsLte(params.endDate, this.dialect));
       }
       if (params.filters?.toolNames?.length) {
         const names = params.filters.toolNames
@@ -586,13 +660,28 @@ export class ClickHouseMonitoringStorage implements MonitoringStorage {
         where.push(`connection_id NOT IN (${ids})`);
       }
       // NOTE: status is intentionally NOT added to the WHERE clause here.
-      // The errors and errorRate aggregations use sumIf(... AND status = 'error'),
+      // The errors and errorRate aggregations use sumIf/SUM FILTER (WHERE ...),
       // which would always return 0 if WHERE already filters to status = 'success'
       // (and conversely, errorRate would always be 100% when filtering to 'error').
 
       const whereClause = where.join(" AND ");
 
-      const sql = `SELECT
+      let sql: string;
+      if (this.dialect === "duckdb") {
+        sql = `SELECT
+  ${bucketExpr} AS bucket,
+  SUM(value) FILTER (WHERE name = 'tool.execution.count') AS calls,
+  SUM(value) FILTER (WHERE name = 'tool.execution.count' AND status = 'error') AS errors,
+  SUM(hist_sum) FILTER (WHERE name = 'tool.execution.duration') AS total_hist_sum,
+  SUM(hist_count) FILTER (WHERE name = 'tool.execution.duration') AS total_hist_count,
+  LIST(hist_boundaries) FILTER (WHERE name = 'tool.execution.duration') AS boundaries_arr,
+  LIST(hist_bucket_counts) FILTER (WHERE name = 'tool.execution.duration') AS bucket_counts_arr
+FROM ${metricSource}
+WHERE ${whereClause}
+GROUP BY bucket
+ORDER BY bucket ASC`;
+      } else {
+        sql = `SELECT
   ${bucketExpr} AS bucket,
   sumIf(value, name = 'tool.execution.count') AS calls,
   sumIf(value, name = 'tool.execution.count' AND status = 'error') AS errors,
@@ -600,24 +689,40 @@ export class ClickHouseMonitoringStorage implements MonitoringStorage {
   sumIf(hist_count, name = 'tool.execution.duration') AS total_hist_count,
   groupArrayIf(hist_boundaries, name = 'tool.execution.duration') AS boundaries_arr,
   groupArrayIf(hist_bucket_counts, name = 'tool.execution.duration') AS bucket_counts_arr
-FROM ${this.metricSource}
+FROM ${metricSource}
 WHERE ${whereClause}
 GROUP BY bucket
 ORDER BY bucket ASC`;
+      }
 
       const rows = await this.metricEngine.query(sql);
 
-      const breakdownSql = `SELECT
+      let breakdownSql: string;
+      if (this.dialect === "duckdb") {
+        breakdownSql = `SELECT
+  connection_id,
+  SUM(value) FILTER (WHERE name = 'tool.execution.count') AS calls,
+  SUM(value) FILTER (WHERE name = 'tool.execution.count' AND status = 'error') AS errors,
+  SUM(hist_sum) FILTER (WHERE name = 'tool.execution.duration') AS total_hist_sum,
+  SUM(hist_count) FILTER (WHERE name = 'tool.execution.duration') AS total_hist_count
+FROM ${metricSource}
+WHERE ${whereClause} AND connection_id != ''
+GROUP BY connection_id
+ORDER BY calls DESC
+LIMIT 1000`;
+      } else {
+        breakdownSql = `SELECT
   connection_id,
   sumIf(value, name = 'tool.execution.count') AS calls,
   sumIf(value, name = 'tool.execution.count' AND status = 'error') AS errors,
   sumIf(hist_sum, name = 'tool.execution.duration') AS total_hist_sum,
   sumIf(hist_count, name = 'tool.execution.duration') AS total_hist_count
-FROM ${this.metricSource}
+FROM ${metricSource}
 WHERE ${whereClause} AND connection_id != ''
 GROUP BY connection_id
 ORDER BY calls DESC
 LIMIT 1000`;
+      }
 
       const connectionBreakdownRows =
         await this.metricEngine.query(breakdownSql);
@@ -778,16 +883,17 @@ LIMIT 1000`;
         throw new Error("organizationId is required");
       }
 
-      const bucketExpr = intervalToSQL(params.interval);
+      const metricSource = this.metricSourceFactory(params.organizationId);
+      const bucketExpr = intervalToSQL(params.interval, this.dialect);
       const where: string[] = [
         `organization_id = '${esc(params.organizationId)}'`,
       ];
 
       if (params.startDate) {
-        where.push(tsGte(params.startDate));
+        where.push(tsGte(params.startDate, this.dialect));
       }
       if (params.endDate) {
-        where.push(tsLte(params.endDate));
+        where.push(tsLte(params.endDate, this.dialect));
       }
       if (params.filters?.toolNames?.length) {
         const names = params.filters.toolNames
@@ -811,13 +917,32 @@ LIMIT 1000`;
         where.push(`connection_id NOT IN (${ids})`);
       }
       // NOTE: status is intentionally NOT added to the WHERE clause here.
-      // The errors aggregation uses sumIf(... AND status = 'error'),
+      // The errors aggregation uses SUM FILTER (WHERE ...)/sumIf(... AND status = 'error'),
       // which would always return 0 if WHERE already filters to status = 'success'.
 
       const whereClause = where.join(" AND ");
       const topN = Math.min(Math.max(1, Math.floor(params.topN ?? 10)), 20);
 
-      const topToolsSql = `SELECT
+      let topToolsSql: string;
+      if (this.dialect === "duckdb") {
+        topToolsSql = `SELECT
+  tool_name,
+  argMax(connection_id, connection_calls) AS connection_id,
+  sum(connection_calls) AS calls
+FROM (
+  SELECT
+    tool_name,
+    connection_id,
+    SUM(value) FILTER (WHERE name = 'tool.execution.count') AS connection_calls
+  FROM ${metricSource}
+  WHERE ${whereClause} AND tool_name != ''
+  GROUP BY tool_name, connection_id
+)
+GROUP BY tool_name
+ORDER BY calls DESC
+LIMIT ${topN}`;
+      } else {
+        topToolsSql = `SELECT
   tool_name,
   argMax(connection_id, connection_calls) AS connection_id,
   sum(connection_calls) AS calls
@@ -826,13 +951,14 @@ FROM (
     tool_name,
     connection_id,
     sumIf(value, name = 'tool.execution.count') AS connection_calls
-  FROM ${this.metricSource}
+  FROM ${metricSource}
   WHERE ${whereClause} AND tool_name != ''
   GROUP BY tool_name, connection_id
 )
 GROUP BY tool_name
 ORDER BY calls DESC
 LIMIT ${topN}`;
+      }
 
       const topToolRows = await this.metricEngine.query(topToolsSql);
 
@@ -847,7 +973,23 @@ LIMIT ${topN}`;
         .map((name) => `'${esc(name)}'`)
         .join(",");
 
-      const timeseriesSql = `SELECT
+      let timeseriesSql: string;
+      if (this.dialect === "duckdb") {
+        timeseriesSql = `SELECT
+  ${bucketExpr} AS bucket,
+  tool_name,
+  SUM(value) FILTER (WHERE name = 'tool.execution.count') AS calls,
+  SUM(value) FILTER (WHERE name = 'tool.execution.count' AND status = 'error') AS errors,
+  SUM(hist_sum) FILTER (WHERE name = 'tool.execution.duration') AS total_hist_sum,
+  SUM(hist_count) FILTER (WHERE name = 'tool.execution.duration') AS total_hist_count,
+  LIST(hist_boundaries) FILTER (WHERE name = 'tool.execution.duration') AS boundaries_arr,
+  LIST(hist_bucket_counts) FILTER (WHERE name = 'tool.execution.duration') AS bucket_counts_arr
+FROM ${metricSource}
+WHERE ${whereClause} AND tool_name IN (${toolNamesSql})
+GROUP BY bucket, tool_name
+ORDER BY bucket ASC, tool_name ASC`;
+      } else {
+        timeseriesSql = `SELECT
   ${bucketExpr} AS bucket,
   tool_name,
   sumIf(value, name = 'tool.execution.count') AS calls,
@@ -856,10 +998,11 @@ LIMIT ${topN}`;
   sumIf(hist_count, name = 'tool.execution.duration') AS total_hist_count,
   groupArrayIf(hist_boundaries, name = 'tool.execution.duration') AS boundaries_arr,
   groupArrayIf(hist_bucket_counts, name = 'tool.execution.duration') AS bucket_counts_arr
-FROM ${this.metricSource}
+FROM ${metricSource}
 WHERE ${whereClause} AND tool_name IN (${toolNamesSql})
 GROUP BY bucket, tool_name
 ORDER BY bucket ASC, tool_name ASC`;
+      }
 
       const rows = await this.metricEngine.query(timeseriesSql);
 
@@ -908,8 +1051,8 @@ ORDER BY bucket ASC, tool_name ASC`;
 // ---------------------------------------------------------------------------
 
 /**
- * Parse grouped array results from ClickHouse.
- * groupArrayIf returns an array of JSON strings (each being a serialized array).
+ * Parse grouped array results from ClickHouse/DuckDB.
+ * groupArrayIf/LIST returns an array of JSON strings (each being a serialized array).
  */
 export function parseGroupedArrays(val: unknown): number[][] {
   if (!val) return [];

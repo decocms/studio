@@ -16,7 +16,10 @@ export class NDJSONMetricExporter implements PushMetricExporter {
   private inner: NDJSONExporter<MetricRow>;
 
   constructor(options: NDJSONMetricExporterOptions) {
-    this.inner = new NDJSONExporter<MetricRow>(options);
+    this.inner = new NDJSONExporter<MetricRow>({
+      ...options,
+      partitionKey: (row) => row.organization_id,
+    });
   }
 
   selectAggregationTemporality(

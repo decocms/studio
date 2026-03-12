@@ -1,6 +1,6 @@
 /**
  * Shared test utilities for monitoring tests.
- * Used by ndjson-log-exporter.test.ts, monitoring-clickhouse.test.ts,
+ * Used by ndjson-log-exporter.test.ts, monitoring-sql.test.ts,
  * and pipeline.integration.test.ts.
  */
 
@@ -14,7 +14,7 @@ import {
 } from "./schema";
 
 /**
- * Creates a MonitoringRow for testing ClickHouseMonitoringStorage queries.
+ * Creates a MonitoringRow for testing SqlMonitoringStorage queries.
  */
 export function makeTestMonitoringRow(
   overrides: Partial<MonitoringRow> = {},

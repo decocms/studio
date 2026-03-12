@@ -1,9 +1,9 @@
 /**
- * Integration test: Log record creation -> NDJSON write -> chdb (embedded ClickHouse) query
+ * Integration test: Log record creation -> NDJSON write -> DuckDB query
  */
 import { describe, it, expect, afterAll } from "bun:test";
 import { NDJSONLogExporter } from "./ndjson-log-exporter";
-import { ClickHouseMonitoringStorage } from "../storage/monitoring-clickhouse";
+import { SqlMonitoringStorage } from "../storage/monitoring-sql";
 import { createMonitoringEngine } from "./query-engine";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -12,13 +12,13 @@ import { ExportResultCode } from "@opentelemetry/core";
 import { MONITORING_LOG_ATTR } from "./schema";
 import { makeTestMonitoringLogRecord, findNDJSONFiles } from "./test-utils";
 
-let chdbAvailable = false;
+let duckdbAvailable = false;
 try {
-  require("chdb");
-  chdbAvailable = true;
+  require("@duckdb/node-api");
+  duckdbAvailable = true;
 } catch {}
 
-describe.skipIf(!chdbAvailable)("Monitoring Pipeline Integration", () => {
+describe.skipIf(!duckdbAvailable)("Monitoring Pipeline Integration", () => {
   let tmpDir: string;
   let engineToDestroy: { destroy?: () => void | Promise<void> } | null = null;
 
@@ -27,7 +27,7 @@ describe.skipIf(!chdbAvailable)("Monitoring Pipeline Integration", () => {
     if (tmpDir) await rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("should write log records to NDJSON and query them via chdb", async () => {
+  it("should write log records to NDJSON and query them via DuckDB", async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "pipeline-integration-"));
 
     // 1. Create exporter and write log records
@@ -80,10 +80,19 @@ describe.skipIf(!chdbAvailable)("Monitoring Pipeline Integration", () => {
       JSON.parse(line); // Should not throw
     }
 
-    // 3. Query via ClickHouseMonitoringStorage (chdb engine for local NDJSON)
-    const { engine, source } = createMonitoringEngine({ basePath: tmpDir });
+    // 3. Query via SqlMonitoringStorage (DuckDB engine for local NDJSON)
+    const { engine, source } = await createMonitoringEngine({
+      basePath: tmpDir,
+    });
     engineToDestroy = engine;
-    const storage = new ClickHouseMonitoringStorage(engine, source);
+    const sourceFactory = (_orgId: string) => source;
+    const storage = new SqlMonitoringStorage(
+      engine,
+      sourceFactory,
+      engine,
+      sourceFactory,
+      "duckdb",
+    );
 
     // Basic query
     const queryResult = await storage.query({ organizationId: "org_int" });

@@ -3,8 +3,6 @@
   "version": "2.164.1",
   "description": "Deco Studio — Self-hostable MCP Gateway for managing AI connections and tools",
   "author": "Deco team",
-  "license": "MIT",
-  "homepage": "https://github.com/decocms/studio",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/decocms/studio.git",
@@ -39,7 +37,7 @@
     "prepublishOnly": "bun run build:client && bun run build:server"
   },
   "optionalDependencies": {
-    "chdb": "^1.6.0"
+    "@duckdb/node-api": "^1.5.0-r.1"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.58",
@@ -154,7 +152,7 @@
     "zod-from-json-schema": "^0.5.2",
     "zustand": "^5.0.9"
   },
-  "module": "src/index.ts",
+  "homepage": "https://github.com/decocms/studio",
   "keywords": [
     "mcp",
     "model-context-protocol",
@@ -164,6 +162,7 @@
     "mesh",
     "tools"
   ],
+  "license": "MIT",
   "publishConfig": {
     "access": "public"
   }

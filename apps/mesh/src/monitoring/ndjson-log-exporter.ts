@@ -18,7 +18,10 @@ export class NDJSONLogExporter implements LogRecordExporter {
   private inner: NDJSONExporter<MonitoringRow>;
 
   constructor(options: NDJSONLogExporterOptions) {
-    this.inner = new NDJSONExporter<MonitoringRow>(options);
+    this.inner = new NDJSONExporter<MonitoringRow>({
+      ...options,
+      partitionKey: (row) => row.organization_id,
+    });
   }
 
   export(

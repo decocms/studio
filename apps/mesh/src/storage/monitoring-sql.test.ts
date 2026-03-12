@@ -2,24 +2,24 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { ChdbEngine } from "../monitoring/query-engine";
+import { DuckDBEngine } from "../monitoring/query-engine";
 import type { MetricRow } from "../monitoring/schema";
 import {
   makeTestMonitoringRow,
   writeTestNDJSON,
 } from "../monitoring/test-utils";
-import { ClickHouseMonitoringStorage } from "./monitoring-clickhouse";
+import { SqlMonitoringStorage } from "./monitoring-sql";
 
-let chdbAvailable = false;
+let duckdbAvailable = false;
 try {
-  require("chdb");
-  chdbAvailable = true;
+  require("@duckdb/node-api");
+  duckdbAvailable = true;
 } catch {}
 
-describe.skipIf(!chdbAvailable)("ClickHouseMonitoringStorage", () => {
+describe.skipIf(!duckdbAvailable)("SqlMonitoringStorage", () => {
   let tmpDir: string;
-  let engine: ChdbEngine;
-  let storage: ClickHouseMonitoringStorage;
+  let engine: DuckDBEngine;
+  let storage: SqlMonitoringStorage;
 
   beforeAll(async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "monitoring-ch-test-"));
@@ -27,15 +27,18 @@ describe.skipIf(!chdbAvailable)("ClickHouseMonitoringStorage", () => {
     const metricsDir = join(tmpDir, "metrics", "2026", "03", "06", "12");
     await mkdir(dataDir, { recursive: true });
     await mkdir(metricsDir, { recursive: true });
-    engine = new ChdbEngine();
+    engine = new DuckDBEngine();
 
-    const source = `file('${dataDir}/*.ndjson', 'JSONEachRow')`;
-    const metricSource = `file('${metricsDir}/*.ndjson', 'JSONEachRow')`;
-    storage = new ClickHouseMonitoringStorage(
+    const sourceFactory = (_orgId: string) =>
+      `read_ndjson('${dataDir}/*.ndjson', auto_detect=true)`;
+    const metricSourceFactory = (_orgId: string) =>
+      `read_ndjson('${metricsDir}/*.ndjson', auto_detect=true)`;
+    storage = new SqlMonitoringStorage(
       engine,
-      source,
+      sourceFactory,
       engine,
-      metricSource,
+      metricSourceFactory,
+      "duckdb",
     );
 
     const rows = [

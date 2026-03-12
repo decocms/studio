@@ -3,7 +3,7 @@
  *
  * Single source of truth for:
  * - mesh.monitoring.* OTel log attribute keys (used by emit + NDJSONLogExporter)
- * - MonitoringRow type (used by NDJSONLogExporter + ClickHouseMonitoringStorage)
+ * - MonitoringRow type (used by NDJSONLogExporter + SqlMonitoringStorage)
  * - Log-record-to-row conversion (used by NDJSONLogExporter)
  * - Shared constants (span name, default data path)
  */

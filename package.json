@@ -47,7 +47,8 @@
     "packages/*"
   ],
   "trustedDependencies": [
-    "chdb"
+    "@duckdb/node-api",
+    "@duckdb/node-bindings"
   ],
   "overrides": {
     "fast-xml-parser": "5.4.2"

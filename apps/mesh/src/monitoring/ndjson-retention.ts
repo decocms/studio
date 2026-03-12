@@ -13,42 +13,68 @@ export async function cleanupOldMonitoringFiles(
   let deleted = 0;
 
   try {
-    const years = await safeReaddir(basePath);
-    for (const year of years) {
-      if (!/^\d{4}$/.test(year)) continue;
-      const yearPath = join(basePath, year);
-      const months = await safeReaddir(yearPath);
-
-      for (const month of months) {
-        if (!/^\d{2}$/.test(month)) continue;
-        const monthPath = join(yearPath, month);
-        const days = await safeReaddir(monthPath);
-
-        for (const day of days) {
-          if (!/^\d{2}$/.test(day)) continue;
-          const dirDate = new Date(`${year}-${month}-${day}T00:00:00Z`);
-          if (isNaN(dirDate.getTime())) continue;
-
-          if (dirDate < cutoff) {
-            const dayPath = join(monthPath, day);
-            await rm(dayPath, { recursive: true, force: true });
-            deleted++;
-          }
+    const topLevel = await safeReaddir(basePath);
+    for (const entry of topLevel) {
+      if (/^\d{4}$/.test(entry)) {
+        // Legacy non-sharded: basePath/YYYY/MM/DD/HH/
+        deleted += await cleanupYearDir(basePath, entry, cutoff);
+      } else if (!entry.startsWith(".")) {
+        // Org-sharded: basePath/<org_id>/YYYY/MM/DD/HH/
+        const orgPath = join(basePath, entry);
+        const years = await safeReaddir(orgPath);
+        for (const year of years) {
+          if (!/^\d{4}$/.test(year)) continue;
+          deleted += await cleanupYearDir(orgPath, year, cutoff);
         }
-
-        const remaining = await safeReaddir(monthPath);
+        // Clean up empty org directory
+        const remaining = await safeReaddir(orgPath);
         if (remaining.length === 0) {
-          await rm(monthPath, { recursive: true, force: true });
+          await rm(orgPath, { recursive: true, force: true });
         }
-      }
-
-      const remainingMonths = await safeReaddir(yearPath);
-      if (remainingMonths.length === 0) {
-        await rm(yearPath, { recursive: true, force: true });
       }
     }
   } catch (err) {
     console.warn("monitoring retention cleanup failed:", err);
+  }
+
+  return deleted;
+}
+
+async function cleanupYearDir(
+  parentPath: string,
+  year: string,
+  cutoff: Date,
+): Promise<number> {
+  let deleted = 0;
+  const yearPath = join(parentPath, year);
+  const months = await safeReaddir(yearPath);
+
+  for (const month of months) {
+    if (!/^\d{2}$/.test(month)) continue;
+    const monthPath = join(yearPath, month);
+    const days = await safeReaddir(monthPath);
+
+    for (const day of days) {
+      if (!/^\d{2}$/.test(day)) continue;
+      const dirDate = new Date(`${year}-${month}-${day}T00:00:00Z`);
+      if (isNaN(dirDate.getTime())) continue;
+
+      if (dirDate < cutoff) {
+        const dayPath = join(monthPath, day);
+        await rm(dayPath, { recursive: true, force: true });
+        deleted++;
+      }
+    }
+
+    const remaining = await safeReaddir(monthPath);
+    if (remaining.length === 0) {
+      await rm(monthPath, { recursive: true, force: true });
+    }
+  }
+
+  const remainingMonths = await safeReaddir(yearPath);
+  if (remainingMonths.length === 0) {
+    await rm(yearPath, { recursive: true, force: true });
   }
 
   return deleted;
