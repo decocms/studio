@@ -155,6 +155,11 @@ export function useMonitoringLlmStats(
       errorRate: number;
       avgDurationMs: number;
     }>;
+    topTools: Array<{
+      toolName: string;
+      connectionId: string | null;
+      calls: number;
+    }>;
     timeseries: Array<{
       timestamp: string;
       calls: number;
@@ -169,6 +174,8 @@ export function useMonitoringLlmStats(
     toolName: "MONITORING_STATS",
     toolArguments: {
       ...params,
+      connectionIds: ["decopilot"],
+      topN: 5,
     },
     staleTime: 30_000,
     ...queryOptions,

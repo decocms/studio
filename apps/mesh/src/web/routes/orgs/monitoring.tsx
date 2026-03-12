@@ -578,6 +578,42 @@ interface LlmStatsProps {
   onMetricSelect: (metric: TopChartMetric) => void;
 }
 
+function ModelLeaderboard({
+  topTools,
+  barColor,
+}: {
+  topTools: Array<{ toolName: string; calls: number }>;
+  barColor: string;
+}) {
+  if (topTools.length === 0) return null;
+
+  const maxValue = topTools[0]?.calls ?? 1;
+
+  return (
+    <div className="space-y-1.5 mt-2">
+      {topTools.map(({ toolName, calls }) => {
+        const pct = maxValue > 0 ? Math.min((calls / maxValue) * 100, 100) : 0;
+        return (
+          <div key={toolName} className="flex items-center gap-1.5">
+            <span className="text-[10px] text-foreground truncate min-w-0 w-24">
+              {toolName}
+            </span>
+            <div className="relative h-1.5 bg-muted/50 overflow-hidden flex-1">
+              <div
+                className={cn("h-full", barColor)}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <span className="text-[10px] tabular-nums shrink-0 text-foreground">
+              {calls.toLocaleString()}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function LlmStatsContent({
   displayDateRange,
   isStreaming,
@@ -618,11 +654,14 @@ function LlmStatsContent({
         data: [],
       };
 
+  const topTools = serverStats?.topTools ?? [];
+
   const llmKpiConfigs = [
     {
       id: "llm-calls",
       dataKey: "calls" as const,
       colorNum: 1,
+      barColor: "bg-chart-1",
       chartMetric: "llm-calls" as TopChartMetric,
       renderTitle: () => (
         <div className="flex flex-col gap-0.5 md:gap-1">
@@ -637,6 +676,7 @@ function LlmStatsContent({
       id: "llm-latency",
       dataKey: "avg" as const,
       colorNum: 4,
+      barColor: "bg-chart-4",
       chartMetric: "llm-latency-avg" as TopChartMetric,
       renderTitle: () => (
         <div className="flex flex-col gap-0.5 md:gap-1">
@@ -666,6 +706,7 @@ function LlmStatsContent({
       id: "llm-errors",
       dataKey: "errors" as const,
       colorNum: 3,
+      barColor: "bg-chart-3",
       chartMetric: "llm-errors" as TopChartMetric,
       renderTitle: () => (
         <div className="flex flex-col gap-0.5 md:gap-1">
@@ -687,7 +728,7 @@ function LlmStatsContent({
       </div>
       <div className="grid grid-cols-3 gap-[0.5px] bg-border flex-shrink-0">
         {llmKpiConfigs.map(
-          ({ id, dataKey, colorNum, chartMetric, renderTitle }) => {
+          ({ id, dataKey, colorNum, barColor, chartMetric, renderTitle }) => {
             const isSelected = selectedMetric === chartMetric;
             return (
               <div
@@ -704,12 +745,15 @@ function LlmStatsContent({
                   />
                 )}
                 <HomeGridCell title={renderTitle()}>
-                  <KPIChart
-                    data={stats.data}
-                    dataKey={dataKey}
-                    colorNum={colorNum}
-                    chartHeight="h-[30px] md:h-[40px]"
-                  />
+                  <div className="flex flex-col w-full">
+                    <KPIChart
+                      data={stats.data}
+                      dataKey={dataKey}
+                      colorNum={colorNum}
+                      chartHeight="h-[30px] md:h-[40px]"
+                    />
+                    <ModelLeaderboard topTools={topTools} barColor={barColor} />
+                  </div>
                 </HomeGridCell>
               </div>
             );
