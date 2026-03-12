@@ -2,14 +2,7 @@ import { Suspense, useState, useEffect } from "react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
-import {
-  Trash01,
-  Plus,
-  Key01,
-  Eye,
-  EyeOff,
-  AlertCircle,
-} from "@untitledui/icons";
+import { Trash01, Key01, Eye, EyeOff, AlertCircle } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Card } from "@deco/ui/components/card.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
@@ -68,33 +61,36 @@ function KeyList({
               added {formatDistanceToNow(new Date(key.createdAt))} ago
             </span>
           </div>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                disabled={isDeleting}
-              >
-                <Trash01 size={14} />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-2" align="end">
-              <div className="flex flex-col gap-2">
-                <p className="text-xs font-medium">Delete this key?</p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="destructive"
-                    size="xs"
-                    onClick={() => onDelete(key.id)}
-                    disabled={isDeleting}
-                  >
-                    Delete
-                  </Button>
+          {/* Stop propagation so trash click doesn't trigger card's onClick */}
+          <div onClick={(e) => e.stopPropagation()}>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                  disabled={isDeleting}
+                >
+                  <Trash01 size={14} />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-2" align="end">
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs font-medium">Delete this key?</p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="destructive"
+                      size="xs"
+                      onClick={() => onDelete(key.id)}
+                      disabled={isDeleting}
+                    >
+                      Delete
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            </PopoverContent>
-          </Popover>
+              </PopoverContent>
+            </Popover>
+          </div>
         </div>
       ))}
     </div>
@@ -148,7 +144,7 @@ function ConnectApiKeyForm({
   });
 
   return (
-    <div className="mt-4 p-4 border rounded-md bg-muted/30 space-y-3">
+    <div className="space-y-3">
       <div className="space-y-1">
         <label className="text-xs font-medium text-muted-foreground">
           Label
@@ -329,6 +325,15 @@ export function ProviderCard({
   const supportsOAuth = provider.supportedMethods.includes("oauth-pkce");
   const supportsApiKey = provider.supportedMethods.includes("api-key");
 
+  const handleCardClick = () => {
+    if (isConnectFormOpen || isOAuthPending) return;
+    if (supportsOAuth) {
+      handleConnectOAuth();
+    } else if (supportsApiKey) {
+      setIsConnectFormOpen(true);
+    }
+  };
+
   const handleConnectOAuth = async () => {
     try {
       setIsOAuthPending(true);
@@ -359,117 +364,75 @@ export function ProviderCard({
   };
 
   return (
-    <Card
-      className={cn(
-        "p-4 flex flex-col gap-3",
-        isActive && "border-primary/20 relative",
-      )}
+    <Popover
+      open={isConnectFormOpen}
+      onOpenChange={(open) => {
+        if (!open) setIsConnectFormOpen(false);
+      }}
     >
-      {isActive && (
-        <div className="absolute top-4 right-4 w-2 h-2 rounded-full bg-green-500" />
-      )}
-
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          {provider.logo ? (
-            <img
-              src={provider.logo}
-              alt={provider.name}
-              className="size-8 rounded-md object-contain"
-            />
-          ) : (
-            <Avatar
-              fallback={provider.name.charAt(0)}
-              className="size-8 bg-primary/10 text-primary"
-            />
+      <PopoverTrigger asChild>
+        <Card
+          className={cn(
+            "p-4 flex flex-col gap-3 transition-colors relative",
+            isActive && "border-primary/20",
+            !isOAuthPending && "cursor-pointer hover:bg-muted/30",
+            isOAuthPending && "cursor-wait",
           )}
-          <div>
-            <h3 className="font-medium text-base">{provider.name}</h3>
-            <p className="text-sm text-muted-foreground line-clamp-1">
-              {provider.description}
-            </p>
-          </div>
-        </div>
-      </div>
+          onClick={handleCardClick}
+        >
+          {isActive && (
+            <div className="absolute top-4 right-4 w-2 h-2 rounded-full bg-green-500" />
+          )}
 
-      {isActive ? (
-        <div className="mt-1">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-medium text-muted-foreground">
-              {keys.length} key{keys.length !== 1 ? "s" : ""} configured
-            </p>
-            <div className="flex items-center gap-1">
-              {supportsOAuth && (
-                <Button
-                  variant="outline"
-                  size="xs"
-                  onClick={handleConnectOAuth}
-                  disabled={isOAuthPending || isConnectFormOpen}
-                >
-                  {provider.logo && (
-                    <img src={provider.logo} className="size-3 mr-1" />
-                  )}
-                  OAuth
-                </Button>
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              {provider.logo ? (
+                <img
+                  src={provider.logo}
+                  alt={provider.name}
+                  className="size-8 rounded-md object-contain"
+                />
+              ) : (
+                <Avatar
+                  fallback={provider.name.charAt(0)}
+                  className="size-8 bg-primary/10 text-primary"
+                />
               )}
-              {supportsApiKey && (
-                <Button
-                  variant="outline"
-                  size="xs"
-                  onClick={() => setIsConnectFormOpen(true)}
-                  disabled={isOAuthPending || isConnectFormOpen}
-                >
-                  <Plus size={14} className="mr-1" />
-                  Add Key
-                </Button>
-              )}
+              <div>
+                <h3 className="font-medium text-base">{provider.name}</h3>
+                <p className="text-sm text-muted-foreground line-clamp-1">
+                  {isOAuthPending ? "Authorizing..." : provider.description}
+                </p>
+              </div>
             </div>
           </div>
-          <KeyList keys={keys} onDelete={deleteKey} isDeleting={isDeleting} />
-        </div>
-      ) : (
-        <div className="mt-2 flex flex-wrap gap-2">
-          {supportsOAuth && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleConnectOAuth}
-              disabled={isOAuthPending || isConnectFormOpen}
-            >
-              {isOAuthPending ? (
-                "Authorizing..."
-              ) : (
-                <>
-                  {provider.logo && (
-                    <img src={provider.logo} className="size-3.5 mr-1.5" />
-                  )}
-                  OAuth
-                </>
-              )}
-            </Button>
-          )}
-          {supportsApiKey && (
-            <Button
-              variant={supportsOAuth ? "ghost" : "outline"}
-              size="sm"
-              onClick={() => setIsConnectFormOpen(true)}
-              disabled={isOAuthPending || isConnectFormOpen}
-            >
-              <Plus size={13} className="mr-1.5" />
-              {supportsOAuth ? "Add manually" : "Add key"}
-            </Button>
-          )}
-        </div>
-      )}
 
-      {isConnectFormOpen && (
+          {isActive && (
+            <div className="mt-1">
+              <p className="text-xs font-medium text-muted-foreground">
+                {keys.length} key{keys.length !== 1 ? "s" : ""} configured
+              </p>
+              <KeyList
+                keys={keys}
+                onDelete={deleteKey}
+                isDeleting={isDeleting}
+              />
+            </div>
+          )}
+        </Card>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-72 p-4"
+        align="start"
+        onInteractOutside={() => setIsConnectFormOpen(false)}
+      >
         <ConnectApiKeyForm
           providerId={provider.id}
           onCancel={() => setIsConnectFormOpen(false)}
           onSuccess={() => setIsConnectFormOpen(false)}
         />
-      )}
-    </Card>
+      </PopoverContent>
+    </Popover>
   );
 }
 
