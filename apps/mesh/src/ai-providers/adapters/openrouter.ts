@@ -1,9 +1,9 @@
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import type { ModelCapability } from "@decocms/mesh-sdk";
 import type {
   MeshProvider,
   ModelInfo,
   OAuthPkceResult,
-  OpenRouterFrontendModel,
   OpenRouterAPIModel,
   ProviderAdapter,
 } from "../types";
@@ -62,74 +62,72 @@ export const openrouterAdapter: ProviderAdapter = {
       aiSdk,
 
       async listModels(): Promise<ModelInfo[]> {
-        const mapFrontendModel = (m: OpenRouterFrontendModel): ModelInfo => ({
-          providerId: "openrouter",
-          modelId: m.slug,
-          title: m.name,
-          description: m.description ?? null,
-          logo: null,
-          capabilities: [
-            ...new Set([...m.input_modalities, ...m.output_modalities]),
-          ],
-          limits: {
-            contextWindow: m.context_length ?? 0,
-            maxOutputTokens: m.endpoint?.max_completion_tokens ?? null,
-          },
-          costs: m.endpoint?.pricing
-            ? {
-                input: Number(m.endpoint.pricing.prompt ?? 0),
-                output: Number(m.endpoint.pricing.completion ?? 0),
-              }
-            : null,
-        });
-
-        const mapV1Model = (m: OpenRouterAPIModel): ModelInfo => ({
-          providerId: "openrouter",
-          modelId: m.canonical_slug,
-          title: m.name,
-          description: m.description ?? null,
-          logo: null,
-          capabilities: [
-            ...new Set([
-              ...m.architecture.input_modalities,
-              ...m.architecture.output_modalities,
-            ]),
-          ],
-          limits: {
-            contextWindow: m.context_length ?? 0,
-            maxOutputTokens: m.top_provider.max_completion_tokens || null,
-          },
-          costs: {
-            input: m.pricing.prompt ?? 0,
-            output: m.pricing.completion ?? 0,
-          },
-        });
-
-        try {
-          const res = await fetch(
-            "https://openrouter.ai/api/frontend/models/find?order=most-popular",
-            { signal: AbortSignal.timeout(15_000) },
-          );
-          if (!res.ok) throw new Error(`status ${res.status}`);
-          const data = await res.json();
-          const models: OpenRouterFrontendModel[] = data.data.models;
-          if (!Array.isArray(models) || models.length === 0) {
-            console.log("unexpected response shape");
-            throw new Error("unexpected response shape");
+        const mapV1Model = (m: OpenRouterAPIModel): ModelInfo => {
+          if (m.id !== m.canonical_slug) {
+            console.log(
+              `[openrouter] id/canonical_slug mismatch: id="${m.id}" canonical_slug="${m.canonical_slug}"`,
+            );
           }
-          return models.map(mapFrontendModel);
-        } catch {
-          console.log("fallback to v1");
-          const res = await fetch("https://openrouter.ai/api/v1/models", {
-            headers,
-            signal: AbortSignal.timeout(30_000),
-          });
-          if (!res.ok) {
-            throw new Error(`OpenRouter listModels failed: ${res.status}`);
-          }
-          const data = await res.json();
-          return data.data.map(mapV1Model);
-        }
+          return {
+            providerId: "openrouter",
+            modelId: m.id,
+            title: m.name,
+            description: m.description ?? null,
+            logo: null,
+            capabilities: [
+              ...new Set([
+                ...m.architecture.input_modalities,
+                ...m.architecture.output_modalities,
+                ...(m.supported_parameters?.includes("tools")
+                  ? (["tools"] as const)
+                  : []),
+              ]),
+            ] as ModelCapability[],
+            limits: {
+              contextWindow: m.context_length ?? 0,
+              maxOutputTokens: m.top_provider.max_completion_tokens || null,
+            },
+            costs: {
+              input: m.pricing.prompt ?? 0,
+              output: m.pricing.completion ?? 0,
+            },
+          };
+        };
+
+        // v1 is the authoritative source — has supported_parameters, canonical slugs, etc.
+        const res = await fetch("https://openrouter.ai/api/v1/models", {
+          headers,
+          signal: AbortSignal.timeout(30_000),
+        });
+        if (!res.ok)
+          throw new Error(`OpenRouter listModels failed: ${res.status}`);
+        const { data }: { data: OpenRouterAPIModel[] } = await res.json();
+        const models = data.map(mapV1Model);
+
+        // Best-effort: use frontend popular order for sorting. Falls back to v1 default order.
+        // try {
+        //   const frontendRes = await fetch(
+        //     "https://openrouter.ai/api/frontend/models/find?order=most-popular",
+        //     { signal: AbortSignal.timeout(10_000) },
+        //   );
+        //   if (frontendRes.ok) {
+        //     const frontendData = await frontendRes.json();
+        //     const slugOrder = new Map<string, number>(
+        //       (frontendData.data?.models as { slug: string }[] ?? []).map(
+        //         (m, i) => [m.slug, i] as const,
+        //       ),
+        //     );
+        //     if (slugOrder.size > 0) {
+        //       models.sort(
+        //         (a, b) =>
+        //           (slugOrder.get(a.modelId) ?? Infinity) -
+        //           (slugOrder.get(b.modelId) ?? Infinity),
+        //       );
+        //     }
+        //   }
+        // } catch { /* best-effort — v1 order is fine */ }
+
+        return models;
       },
     };
   },

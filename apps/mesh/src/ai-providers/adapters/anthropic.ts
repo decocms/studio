@@ -33,10 +33,7 @@ export const anthropicAdapter: ProviderAdapter = {
           title: m.display_name,
           description: null,
           logo: null,
-          capabilities:
-            m.id.includes("claude-3") || m.id.includes("claude-4")
-              ? ["text", "vision"]
-              : ["text"],
+          capabilities: [],
           limits: null,
           costs: null,
         }));

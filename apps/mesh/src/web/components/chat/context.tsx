@@ -33,7 +33,6 @@ import {
   useDeferredValue,
   useReducer,
   useRef,
-  useState,
   useSyncExternalStore,
 } from "react";
 import { useDecopilotEvents } from "../../hooks/use-decopilot-events";
@@ -159,7 +158,6 @@ function toMetadataModelInfo(
       ? {
           vision: caps.includes("vision") || undefined,
           text: caps.includes("text") || undefined,
-          tools: caps.includes("tools") || undefined,
         }
       : undefined;
   return {
@@ -599,8 +597,9 @@ export function ChatProvider({ children }: PropsWithChildren) {
   const { locator, org } = useProjectContext();
   const queryClient = useQueryClient();
   const keys = useAiProviderKeyList();
-  const [selectedKeyId, setSelectedKeyId] = useState<string | null>(
-    keys[0]?.id ?? null,
+  const [selectedKeyId, setSelectedKeyId] = useLocalStorage<string | null>(
+    LOCALSTORAGE_KEYS.chatSelectedKeyId(locator),
+    null,
   );
   const effectiveKeyId = keys.some((k) => k.id === selectedKeyId)
     ? selectedKeyId

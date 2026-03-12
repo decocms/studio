@@ -27,7 +27,9 @@ export {
 
 export {
   PROVIDER_IDS,
+  MODEL_CAPABILITIES,
   type ProviderId,
+  type ModelCapability,
   type AiProviderModel,
   type AiProviderModelLimits,
   type AiProviderModelCosts,

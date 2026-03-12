@@ -925,7 +925,10 @@ function SelectedModelDisplay({
 export function modelSupportsFiles(
   selectedModel: AiProviderModel | null | undefined,
 ): boolean {
-  return selectedModel?.capabilities?.includes("vision") === true;
+  return (
+    selectedModel?.capabilities?.includes("vision") === true ||
+    selectedModel?.capabilities?.includes("image") === true
+  );
 }
 
 // ============================================================================

@@ -1,4 +1,5 @@
 import { ProviderV3 } from "@ai-sdk/provider";
+import type { ModelCapability } from "@decocms/mesh-sdk";
 import type { ProviderId } from "./provider-ids";
 
 export interface ProviderInfo {
@@ -14,7 +15,7 @@ export interface ModelInfo {
   title: string;
   description: string | null;
   logo: string | null;
-  capabilities: string[];
+  capabilities: ModelCapability[];
   limits: { contextWindow: number; maxOutputTokens: number | null } | null;
   costs: { input: number; output: number } | null;
 }
@@ -94,20 +95,4 @@ export interface OpenRouterAPIModel {
   };
   supported_parameters: string[];
   description: string;
-}
-
-export interface OpenRouterFrontendModel {
-  slug: string;
-  name: string;
-  description: string;
-  context_length: number;
-  input_modalities: string[];
-  output_modalities: string[];
-  endpoint: {
-    pricing?: {
-      prompt?: number | string;
-      completion?: number | string;
-    };
-    max_completion_tokens?: number | null;
-  } | null;
 }
