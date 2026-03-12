@@ -421,11 +421,57 @@ const agentsRoute = createRoute({
   ),
 });
 
+// Agent Detail Layout (parent route - renders Outlet)
 const agentDetailRoute = createRoute({
   getParentRoute: () => projectLayout,
   path: "/agents/$agentId",
   beforeLoad: orgAdminGuard,
   component: lazyRouteComponent(() => import("./routes/orgs/agent-detail.tsx")),
+});
+
+// Agent Chat (index sub-route)
+const agentChatRoute = createRoute({
+  getParentRoute: () => agentDetailRoute,
+  path: "/",
+  component: lazyRouteComponent(() => import("./routes/orgs/agent-chat.tsx")),
+});
+
+// Agent Tasks sub-route
+const agentTasksRoute = createRoute({
+  getParentRoute: () => agentDetailRoute,
+  path: "/tasks",
+  component: lazyRouteComponent(() => import("./routes/orgs/agent-tasks.tsx")),
+});
+
+// Agent Settings sub-route
+const agentSettingsRoute = createRoute({
+  getParentRoute: () => agentDetailRoute,
+  path: "/settings",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/agent-settings.tsx"),
+  ),
+});
+
+// Automations
+const automationsRoute = createRoute({
+  getParentRoute: () => projectLayout,
+  path: "/automations",
+  beforeLoad: orgAdminGuard,
+  component: lazyRouteComponent(() => import("./routes/orgs/automations.tsx")),
+  validateSearch: z.lazy(() =>
+    z.object({
+      action: z.enum(["create"]).optional(),
+    }),
+  ),
+});
+
+const automationDetailRoute = createRoute({
+  getParentRoute: () => projectLayout,
+  path: "/automations/$automationId",
+  beforeLoad: orgAdminGuard,
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/automation-detail.tsx"),
+  ),
   validateSearch: z.lazy(() =>
     z.object({
       tab: z.string().optional(),
@@ -516,6 +562,12 @@ const projectSettingsWithChildren = projectSettingsLayout.addChildren([
   projectSettingsDangerRoute,
 ]);
 
+const agentDetailWithChildren = agentDetailRoute.addChildren([
+  agentChatRoute,
+  agentTasksRoute,
+  agentSettingsRoute,
+]);
+
 const projectRoutes = [
   projectHomeRoute,
   tasksRoute,
@@ -531,7 +583,9 @@ const projectRoutes = [
   dashboardEditRoute,
   storeRouteWithChildren,
   agentsRoute,
-  agentDetailRoute,
+  agentDetailWithChildren,
+  automationsRoute,
+  automationDetailRoute,
   workflowsRoute,
   projectAppViewRoute,
   pluginLayoutWithChildren,
