@@ -7,12 +7,14 @@ interface Preferences {
   devMode: boolean;
   toolApprovalLevel: ToolApprovalLevel;
   enableNotifications: boolean;
+  experimentalAutomations: boolean;
 }
 
 const DEFAULT_PREFERENCES: Preferences = {
   devMode: false,
   toolApprovalLevel: "none",
   enableNotifications: typeof Notification !== "undefined" ? true : false,
+  experimentalAutomations: false,
 };
 
 export function usePreferences() {

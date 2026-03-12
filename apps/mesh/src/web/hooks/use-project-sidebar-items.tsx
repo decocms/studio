@@ -20,12 +20,14 @@ import {
   Users03,
 } from "@untitledui/icons";
 import { pluginRootSidebarItems, pluginSidebarGroups } from "../index.tsx";
+import { usePreferences } from "./use-preferences.ts";
 import { useProject } from "./use-project";
 
 export function useProjectSidebarItems(): SidebarSection[] {
   const { locator, org: orgContext } = useProjectContext();
   const navigate = useNavigate();
   const routerState = useRouterState();
+  const [preferences] = usePreferences();
   const { org, project } = Locator.parse(locator);
   const isOrgAdminProject = Locator.isOrgAdminProject(locator);
 
@@ -295,7 +297,12 @@ export function useProjectSidebarItems(): SidebarSection[] {
         group: {
           id: "build",
           label: "Build",
-          items: [agentsItem, automationsItem, connectionsItem, storeItem],
+          items: [
+            agentsItem,
+            ...(preferences.experimentalAutomations ? [automationsItem] : []),
+            connectionsItem,
+            storeItem,
+          ],
           defaultExpanded: true,
         },
       },
