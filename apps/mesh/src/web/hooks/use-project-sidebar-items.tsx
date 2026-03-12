@@ -6,6 +6,7 @@ import type {
 } from "@/web/components/sidebar/types";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import {
+  ArrowLeft,
   BarChart10,
   Building02,
   CheckDone01,
@@ -15,6 +16,7 @@ import {
   Folder,
   Home02,
   LayoutLeft,
+  MessageChatSquare,
   RefreshCcw01,
   Settings01,
   Users03,
@@ -269,6 +271,87 @@ export function useProjectSidebarItems(): SidebarSection[] {
         }
       : null;
 
+  // Detect agent context: when pathname is under /$org/$project/agents/$agentId
+  const agentIdMatch = pathname.match(/\/agents\/([^/]+)/);
+  const inAgentContext = !!agentIdMatch;
+  const currentAgentId = agentIdMatch?.[1];
+
+  if (isOrgAdminProject && inAgentContext && currentAgentId) {
+    const agentBasePath = `${basePath}/agents/${currentAgentId}`;
+
+    const backItem: NavigationSidebarItem = {
+      key: "back-to-agents",
+      label: "Agents",
+      icon: <ArrowLeft />,
+      isActive: false,
+      onClick: () =>
+        navigate({
+          to: "/$org/$project/agents",
+          params: { org, project: ORG_ADMIN_PROJECT_SLUG },
+        }),
+    };
+
+    const agentChatItem: NavigationSidebarItem = {
+      key: "agent-chat",
+      label: "Chat",
+      icon: <MessageChatSquare />,
+      isActive:
+        pathname === agentBasePath ||
+        pathname === `${agentBasePath}/` ||
+        (!pathname.startsWith(`${agentBasePath}/tasks`) &&
+          !pathname.startsWith(`${agentBasePath}/settings`) &&
+          pathname.startsWith(`${agentBasePath}`)),
+      onClick: () =>
+        navigate({
+          to: "/$org/$project/agents/$agentId/",
+          params: {
+            org,
+            project: ORG_ADMIN_PROJECT_SLUG,
+            agentId: currentAgentId,
+          },
+        }),
+    };
+
+    const agentTasksItem: NavigationSidebarItem = {
+      key: "agent-tasks",
+      label: "Tasks",
+      icon: <CheckDone01 />,
+      isActive: pathname.startsWith(`${agentBasePath}/tasks`),
+      onClick: () =>
+        navigate({
+          to: "/$org/$project/agents/$agentId/tasks",
+          params: {
+            org,
+            project: ORG_ADMIN_PROJECT_SLUG,
+            agentId: currentAgentId,
+          },
+        }),
+    };
+
+    const agentSettingsItem: NavigationSidebarItem = {
+      key: "agent-settings",
+      label: "Settings",
+      icon: <Settings01 />,
+      isActive: pathname.startsWith(`${agentBasePath}/settings`),
+      onClick: () =>
+        navigate({
+          to: "/$org/$project/agents/$agentId/settings",
+          params: {
+            org,
+            project: ORG_ADMIN_PROJECT_SLUG,
+            agentId: currentAgentId,
+          },
+        }),
+    };
+
+    return [
+      {
+        type: "items",
+        items: [backItem, agentChatItem, agentTasksItem, agentSettingsItem],
+      },
+    ];
+  }
+
   if (isOrgAdminProject) {
     // Org-admin sidebar layout:
     // - Home, Tasks (if enabled), Projects (if enabled) (top-level)
@@ -301,7 +384,6 @@ export function useProjectSidebarItems(): SidebarSection[] {
             ...(preferences.experimentalAutomations ? [automationsItem] : []),
             agentsItem,
             connectionsItem,
-            storeItem,
           ],
           defaultExpanded: true,
         },

@@ -2,6 +2,7 @@ import { generatePrefixedId } from "@/shared/utils/generate-id";
 import { CollectionDisplayButton } from "@/web/components/collections/collection-display-button.tsx";
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
 import { type TableColumn } from "@/web/components/collections/collection-table.tsx";
+import { CollectionTabs } from "@/web/components/collections/collection-tabs.tsx";
 import {
   Table as UITable,
   TableBody,
@@ -11,6 +12,7 @@ import {
   TableRow,
 } from "@deco/ui/components/table.tsx";
 import { ConnectionCard } from "@/web/components/connections/connection-card.tsx";
+import { ConnectionInstancesModal } from "@/web/components/connections/connection-instances-modal.tsx";
 import { ConnectionStatus } from "@/web/components/connections/connection-status.tsx";
 import { EmptyState } from "@/web/components/empty-state.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary";
@@ -2004,19 +2006,7 @@ function OrgMcpsContent() {
             <CheckSquare size={14} />
             Select
           </Button>
-          <Button
-            variant="outline"
-            onClick={() =>
-              navigate({
-                to: "/$org/$project/store",
-                params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
-              })
-            }
-            size="sm"
-            className="h-7 px-3 rounded-lg text-sm font-medium"
-          >
-            Browse Store
-          </Button>
+
           <Button
             onClick={openCreateDialog}
             size="sm"
