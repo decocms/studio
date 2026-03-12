@@ -474,65 +474,72 @@ function MonitoringStatsContent({
       };
 
   return (
-    <div className="grid grid-cols-3 gap-[0.5px] bg-border flex-shrink-0 border-b border-border">
-      {STAT_KPI_CONFIG.map((config) => {
-        const {
-          id,
-          dataKey,
-          colorNum,
-          barColor,
-          leaderboardMode,
-          chartMetrics,
-          renderTitle,
-          getNextMetric,
-        } = config;
-        const isSelected = chartMetrics.includes(selectedMetric);
-        const handleClick = () => {
-          if (isSelected) {
-            // Already selected — cycle sub-metrics
-            onMetricSelect(getNextMetric(selectedMetric));
-          } else {
-            // First click — select the first metric for this card
-            onMetricSelect(chartMetrics[0]!);
-          }
-        };
-        return (
-          <div
-            key={id}
-            className="bg-background relative cursor-pointer"
-            onClick={handleClick}
-          >
-            {isSelected && (
-              <div
-                className="absolute top-0 left-0 right-0 h-0.5 z-10"
-                style={{
-                  backgroundColor: `var(--chart-${colorNum})`,
-                }}
-              />
-            )}
-            <HomeGridCell title={renderTitle(stats, selectedMetric)}>
-              <div className="flex flex-col w-full">
-                <KPIChart
-                  data={stats.data}
-                  dataKey={
-                    typeof dataKey === "function"
-                      ? dataKey(selectedMetric)
-                      : dataKey
-                  }
-                  colorNum={colorNum}
-                  chartHeight="h-[30px] md:h-[40px]"
+    <div className="border-b border-border">
+      <div className="px-5 py-2 bg-muted/30 border-b border-border">
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Tool Calls
+        </span>
+      </div>
+      <div className="grid grid-cols-3 gap-[0.5px] bg-border flex-shrink-0">
+        {STAT_KPI_CONFIG.map((config) => {
+          const {
+            id,
+            dataKey,
+            colorNum,
+            barColor,
+            leaderboardMode,
+            chartMetrics,
+            renderTitle,
+            getNextMetric,
+          } = config;
+          const isSelected = chartMetrics.includes(selectedMetric);
+          const handleClick = () => {
+            if (isSelected) {
+              // Already selected — cycle sub-metrics
+              onMetricSelect(getNextMetric(selectedMetric));
+            } else {
+              // First click — select the first metric for this card
+              onMetricSelect(chartMetrics[0]!);
+            }
+          };
+          return (
+            <div
+              key={id}
+              className="bg-background relative cursor-pointer"
+              onClick={handleClick}
+            >
+              {isSelected && (
+                <div
+                  className="absolute top-0 left-0 right-0 h-0.5 z-10"
+                  style={{
+                    backgroundColor: `var(--chart-${colorNum})`,
+                  }}
                 />
-                <ConnectionLeaderboard
-                  metrics={serverStats?.connectionBreakdown ?? []}
-                  connections={connections}
-                  mode={leaderboardMode}
-                  barColor={barColor}
-                />
-              </div>
-            </HomeGridCell>
-          </div>
-        );
-      })}
+              )}
+              <HomeGridCell title={renderTitle(stats, selectedMetric)}>
+                <div className="flex flex-col w-full">
+                  <KPIChart
+                    data={stats.data}
+                    dataKey={
+                      typeof dataKey === "function"
+                        ? dataKey(selectedMetric)
+                        : dataKey
+                    }
+                    colorNum={colorNum}
+                    chartHeight="h-[30px] md:h-[40px]"
+                  />
+                  <ConnectionLeaderboard
+                    metrics={serverStats?.connectionBreakdown ?? []}
+                    connections={connections}
+                    mode={leaderboardMode}
+                    barColor={barColor}
+                  />
+                </div>
+              </HomeGridCell>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -648,7 +655,7 @@ function LlmStatsContent({ displayDateRange, isStreaming }: LlmStatsProps) {
     <div className="border-b border-border">
       <div className="px-5 py-2 bg-muted/30 border-b border-border">
         <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          LLM Calls (Decopilot)
+          LLM Calls
         </span>
       </div>
       <div className="grid grid-cols-3 gap-[0.5px] bg-border flex-shrink-0">
