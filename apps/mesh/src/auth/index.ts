@@ -13,10 +13,11 @@ import { env } from "../env";
 import { getToolsByCategory } from "@/tools/registry";
 import { sso } from "@better-auth/sso";
 import { organization } from "@decocms/better-auth/plugins";
-import { betterAuth, BetterAuthOptions } from "better-auth";
+import { betterAuth } from "better-auth";
 import {
   admin as adminPlugin,
   apiKey,
+  emailOTP,
   jwt,
   magicLink,
   mcp,
@@ -33,6 +34,7 @@ import { getBaseUrl } from "@/core/server-constants";
 import { createAccessControl, Role } from "@decocms/better-auth/plugins/access";
 import { getDatabaseUrl, getDbDialect } from "../database";
 import { createEmailSender, findEmailProvider } from "./email-providers";
+import { createEmailOTPConfig } from "./email-otp";
 import { createMagicLinkConfig } from "./magic-link";
 import { seedOrgDb } from "./org";
 import { ADMIN_ROLES } from "./roles";
@@ -138,42 +140,6 @@ if (
           <h2>You've been invited!</h2>
           <p>${inviterName} has invited you to join <strong>${data.organization.name}</strong>.</p>
           <p><a href="${acceptUrl}">Click here to accept the invitation</a></p>
-        `,
-      });
-    };
-  }
-}
-
-// Configure password reset emails if provider is set
-let sendResetPassword:
-  | NonNullable<BetterAuthOptions["emailAndPassword"]>["sendResetPassword"]
-  | undefined = undefined;
-
-export let resetPasswordEnabled = false;
-
-if (
-  authConfig.resetPasswordEmailProviderId &&
-  authConfig.emailProviders &&
-  authConfig.emailProviders.length > 0
-) {
-  const resetProvider = findEmailProvider(
-    authConfig.emailProviders,
-    authConfig.resetPasswordEmailProviderId,
-  );
-
-  if (resetProvider) {
-    const sendEmail = createEmailSender(resetProvider);
-    resetPasswordEnabled = true;
-
-    sendResetPassword = async ({ user, url }) => {
-      await sendEmail({
-        to: user.email,
-        subject: "Reset your password",
-        html: `
-          <h2>Reset your password</h2>
-          <p>Click the link below to reset your password:</p>
-          <p><a href="${url}">Reset password</a></p>
-          <p>If you didn't request this, you can safely ignore this email.</p>
         `,
       });
     };
@@ -302,13 +268,29 @@ const plugins = [
         ),
       ]
     : []),
+
+  ...(authConfig.emailOTPConfig?.enabled
+    ? [
+        emailOTP(
+          createEmailOTPConfig(
+            authConfig.emailOTPConfig,
+            authConfig.emailProviders,
+          ),
+        ),
+      ]
+    : []),
 ];
 
 const databaseUrl = getDatabaseUrl();
 
-// Get dialect without creating the full Kysely instance
-// Better Auth can use the dialect directly
-const database = getDbDialect(databaseUrl);
+// Get dialect with explicit type hint so Better Auth uses correct date handling.
+// Without `type`, Better Auth defaults to "sqlite" for PGlite dialects,
+// which causes date comparison issues (e.g., OTP expiry checks fail).
+const dialect = getDbDialect(databaseUrl);
+const database = {
+  dialect,
+  type: "postgres" as const,
+};
 
 /**
  * Better Auth instance with MCP, API Key, and Admin plugins
@@ -339,10 +321,10 @@ export const auth = betterAuth({
   // Load optional configuration from file
   ...authConfig,
 
+  // emailAndPassword kept enabled for local mode auto-login
   emailAndPassword: {
     enabled: true,
     ...authConfig.emailAndPassword,
-    ...(sendResetPassword ? { sendResetPassword } : {}),
   },
 
   // Disable rate limiting in development (set DISABLE_RATE_LIMIT=true)

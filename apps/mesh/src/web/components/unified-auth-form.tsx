@@ -14,76 +14,51 @@ interface UnifiedAuthFormProps {
   redirectUrl?: string | null;
 }
 
-type FormView = "signIn" | "signUp" | "forgotPassword";
+type FormView = "email" | "otp";
 
 export function UnifiedAuthForm({ redirectUrl }: UnifiedAuthFormProps) {
-  const { emailAndPassword, resetPassword } = useAuthConfig();
+  const { emailOTP } = useAuthConfig();
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
-  const [view, setView] = useState<FormView>(() => {
-    const hasLoggedIn = globalThis.localStorage?.getItem("hasLoggedIn");
-    return hasLoggedIn !== "true" ? "signUp" : "signIn";
-  });
+  const [otp, setOtp] = useState("");
+  const [view, setView] = useState<FormView>("email");
   const [emailError, setEmailError] = useState("");
-  const [resetEmailSent, setResetEmailSent] = useState(false);
 
-  const isSignUp = view === "signUp";
-  const isForgotPassword = view === "forgotPassword";
+  const isOtpView = view === "otp";
 
-  const emailPasswordMutation = useMutation({
-    mutationFn: async ({
-      email,
-      password,
-      name,
-    }: {
-      email: string;
-      password: string;
-      name?: string;
-    }) => {
-      try {
-        if (isSignUp) {
-          const result = await authClient.signUp.email({
-            email,
-            password,
-            name: name || "",
-          });
-          if (result.error) {
-            throw new Error(result.error.message || "Sign up failed");
-          }
-          return result;
-        } else {
-          const result = await authClient.signIn.email({ email, password });
-          if (result.error) {
-            throw new Error(result.error.message || "Sign in failed");
-          }
-          return result;
-        }
-      } catch (err) {
-        throw err instanceof Error ? err : new Error("Authentication failed");
+  // Send OTP to email
+  const sendOtpMutation = useMutation({
+    mutationFn: async ({ email }: { email: string }) => {
+      const result = await authClient.emailOtp.sendVerificationOtp({
+        email,
+        type: "sign-in",
+      });
+      if (result.error) {
+        throw new Error(result.error.message || "Failed to send code");
       }
+      return result;
+    },
+    onSuccess: () => {
+      setView("otp");
+    },
+  });
+
+  // Verify OTP and sign in
+  const verifyOtpMutation = useMutation({
+    mutationFn: async ({ email, otp }: { email: string; otp: string }) => {
+      const result = await authClient.signIn.emailOtp({
+        email,
+        otp,
+      });
+      if (result.error) {
+        throw new Error(result.error.message || "Invalid code");
+      }
+      return result;
     },
     onSuccess: () => {
       globalThis.localStorage?.setItem("hasLoggedIn", "true");
       if (redirectUrl) {
         window.location.href = redirectUrl;
       }
-    },
-  });
-
-  const forgotPasswordMutation = useMutation({
-    mutationFn: async ({ email }: { email: string }) => {
-      const result = await authClient.requestPasswordReset({
-        email,
-        redirectTo: "/reset-password",
-      });
-      if (result.error) {
-        throw new Error(result.error.message || "Failed to send reset email");
-      }
-      return result;
-    },
-    onSuccess: () => {
-      setResetEmailSent(true);
     },
   });
 
@@ -98,78 +73,50 @@ export function UnifiedAuthForm({ redirectUrl }: UnifiedAuthFormProps) {
     }
   };
 
-  const handleEmailPassword = (e: React.FormEvent) => {
+  const handleOtpSend = (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!validateEmail(email)) {
       setEmailError("Invalid email address");
       return;
     }
-
-    emailPasswordMutation.mutate({ email, password, name });
+    sendOtpMutation.mutate({ email });
   };
 
-  const handleForgotPassword = (e: React.FormEvent) => {
+  const handleOtpVerify = (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!validateEmail(email)) {
-      setEmailError("Invalid email address");
-      return;
-    }
-
-    forgotPasswordMutation.mutate({ email });
+    verifyOtpMutation.mutate({ email, otp });
   };
 
   const handleInputChange =
     (setter: (value: string) => void) =>
     (e: React.ChangeEvent<HTMLInputElement>) => {
       setter(e.target.value);
-      if (error) {
-        emailPasswordMutation.reset();
-      }
-      if (forgotPasswordError) {
-        forgotPasswordMutation.reset();
+      if (otpError) {
+        sendOtpMutation.reset();
+        verifyOtpMutation.reset();
       }
       if (setter === setEmail && emailError) {
         setEmailError("");
       }
     };
 
-  const switchView = (newView: FormView) => {
-    setView(newView);
-    setName("");
+  const switchToEmail = () => {
+    setView("email");
+    setOtp("");
     setEmailError("");
-    setResetEmailSent(false);
-    emailPasswordMutation.reset();
-    forgotPasswordMutation.reset();
+    sendOtpMutation.reset();
+    verifyOtpMutation.reset();
   };
 
-  const isLoading =
-    emailPasswordMutation.isPending || forgotPasswordMutation.isPending;
-  const error = emailPasswordMutation.error;
-  const forgotPasswordError = forgotPasswordMutation.error;
+  const isLoading = sendOtpMutation.isPending || verifyOtpMutation.isPending;
+  const otpError = sendOtpMutation.error || verifyOtpMutation.error;
 
-  const canSubmit = isSignUp
-    ? email.trim() && password.trim() && name.trim()
-    : isForgotPassword
-      ? email.trim()
-      : email.trim() && password.trim();
+  const canSubmit = isOtpView ? otp.trim().length > 0 : email.trim().length > 0;
 
   const getErrorMessage = (error: Error | null) => {
     if (!error) return null;
 
     const errorMessage = error.message.toLowerCase();
-
-    if (errorMessage.includes("unauthorized") || errorMessage.includes("401")) {
-      return "Invalid email or password. Please try again.";
-    }
-
-    if (
-      errorMessage.includes("already exists") ||
-      errorMessage.includes("409")
-    ) {
-      return "An account with this email already exists. Try signing in instead.";
-    }
 
     if (errorMessage.includes("network") || errorMessage.includes("fetch")) {
       return "Network error. Please check your connection and try again.";
@@ -179,16 +126,23 @@ export function UnifiedAuthForm({ redirectUrl }: UnifiedAuthFormProps) {
       return "Too many attempts. Please wait a moment and try again.";
     }
 
+    if (
+      errorMessage.includes("invalid") &&
+      (errorMessage.includes("otp") || errorMessage.includes("code"))
+    ) {
+      return "Invalid verification code. Please try again.";
+    }
+
     return error.message || "An error occurred. Please try again.";
   };
 
-  const displayError = error || forgotPasswordError;
+  const headerText = isOtpView
+    ? "Enter verification code"
+    : "Sign in with email";
 
-  const headerText = isForgotPassword
-    ? "Reset your password"
-    : isSignUp
-      ? "Create your account"
-      : "Login or signup below";
+  if (!emailOTP.enabled) {
+    return null;
+  }
 
   return (
     <div className="mx-auto w-full min-w-[400px] max-w-md grid gap-6 bg-card p-10 border border-primary-foreground/20">
@@ -203,22 +157,15 @@ export function UnifiedAuthForm({ redirectUrl }: UnifiedAuthFormProps) {
       </div>
 
       {/* Error message */}
-      {displayError && (
+      {otpError && (
         <div className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive text-center">
-          {getErrorMessage(displayError)}
+          {getErrorMessage(otpError)}
         </div>
       )}
 
-      {/* Success message for forgot password */}
-      {resetEmailSent && (
-        <div className="rounded-xl bg-emerald-500/10 p-3 text-sm text-emerald-600 dark:text-emerald-400 text-center">
-          Check your email for a password reset link.
-        </div>
-      )}
-
-      {/* Forgot Password Form */}
-      {isForgotPassword && emailAndPassword.enabled && !resetEmailSent && (
-        <form onSubmit={handleForgotPassword} className="grid gap-4">
+      {/* Email Step */}
+      {!isOtpView && (
+        <form onSubmit={handleOtpSend} className="grid gap-4">
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">
               Email
@@ -236,86 +183,6 @@ export function UnifiedAuthForm({ redirectUrl }: UnifiedAuthFormProps) {
             {emailError && (
               <p className="text-xs text-destructive mt-1.5">{emailError}</p>
             )}
-          </div>
-
-          <Button
-            type="submit"
-            disabled={isLoading || !canSubmit}
-            className="w-full font-semibold"
-            size="lg"
-          >
-            {isLoading ? "Sending..." : "Send reset link"}
-          </Button>
-        </form>
-      )}
-
-      {/* Email & Password Form */}
-      {!isForgotPassword && emailAndPassword.enabled && (
-        <form onSubmit={handleEmailPassword} className="grid gap-4">
-          <div
-            className={cn(
-              "overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.075,0.82,0.165,1)]",
-              isSignUp
-                ? "max-h-[200px] opacity-100 translate-y-0"
-                : "max-h-0 opacity-0 -translate-y-2",
-            )}
-          >
-            <div className={cn("p-1", !isSignUp && "pointer-events-none")}>
-              <label className="block text-sm font-medium text-foreground mb-2">
-                Name
-              </label>
-              <Input
-                type="text"
-                placeholder="Your name"
-                value={name}
-                onChange={handleInputChange(setName)}
-                required
-                disabled={isLoading || !isSignUp}
-                aria-hidden={!isSignUp}
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              Email
-            </label>
-            <Input
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={handleInputChange(setEmail)}
-              onBlur={handleEmailBlur}
-              required
-              disabled={isLoading}
-              aria-invalid={!!emailError}
-            />
-            {emailError && (
-              <p className="text-xs text-destructive mt-1.5">{emailError}</p>
-            )}
-          </div>
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-sm font-medium text-foreground">
-                Password
-              </label>
-              {!isSignUp && resetPassword.enabled && (
-                <button
-                  type="button"
-                  onClick={() => switchView("forgotPassword")}
-                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Forgot password?
-                </button>
-              )}
-            </div>
-            <Input
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={handleInputChange(setPassword)}
-              required
-              disabled={isLoading}
-            />
           </div>
 
           <div
@@ -330,47 +197,70 @@ export function UnifiedAuthForm({ redirectUrl }: UnifiedAuthFormProps) {
               <Button
                 type="submit"
                 disabled={isLoading || !canSubmit}
-                className={cn("w-full font-semibold")}
+                className="w-full font-semibold"
                 size="lg"
                 aria-hidden={!canSubmit}
               >
-                {isLoading
-                  ? isSignUp
-                    ? "Creating account..."
-                    : "Signing in..."
-                  : "Continue"}
+                {isLoading ? "Sending code..." : "Continue with email"}
               </Button>
             </div>
           </div>
         </form>
       )}
 
-      {/* View toggle links */}
-      <div className="text-center">
-        {isForgotPassword ? (
+      {/* OTP Verification Step */}
+      {isOtpView && (
+        <form onSubmit={handleOtpVerify} className="grid gap-4">
+          <div className="text-center text-sm text-muted-foreground">
+            We sent a code to{" "}
+            <span className="font-medium text-foreground">{email}</span>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">
+              Verification code
+            </label>
+            <Input
+              type="text"
+              placeholder="Enter 6-digit code"
+              value={otp}
+              onChange={handleInputChange(setOtp)}
+              required
+              disabled={isLoading}
+              autoFocus
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={6}
+            />
+          </div>
+
           <Button
-            type="button"
-            variant="link"
-            onClick={() => switchView("signIn")}
-            disabled={isLoading}
-            className="text-sm text-muted-foreground hover:text-foreground"
+            type="submit"
+            disabled={isLoading || !canSubmit}
+            className="w-full font-semibold"
+            size="lg"
           >
-            Back to sign in
+            {isLoading ? "Verifying..." : "Verify"}
           </Button>
-        ) : (
-          <Button
-            type="button"
-            variant="link"
-            onClick={() => switchView(isSignUp ? "signIn" : "signUp")}
-            disabled={isLoading}
-            className="text-sm text-muted-foreground hover:text-foreground"
-          >
-            {isSignUp
-              ? "Already have an account? Sign in"
-              : "Don't have an account? Sign up"}
-          </Button>
-        )}
-      </div>
+
+          <div className="flex justify-between text-xs">
+            <button
+              type="button"
+              onClick={switchToEmail}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Use a different email
+            </button>
+            <button
+              type="button"
+              onClick={() => sendOtpMutation.mutate({ email })}
+              disabled={isLoading}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Resend code
+            </button>
+          </div>
+        </form>
+      )}
 
       {/* Terms */}
       <div className="flex justify-between text-xs text-muted-foreground pt-4">

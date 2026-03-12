@@ -1,4 +1,5 @@
 import { EmailProviderConfig } from "@/auth/email-providers";
+import { EmailOTPConfig } from "@/auth/email-otp";
 import { MagicLinkConfig } from "@/auth/magic-link";
 import { SSOConfig } from "@/auth/sso";
 import {
@@ -9,8 +10,11 @@ import { BetterAuthOptions } from "better-auth";
 import { existsSync, readFileSync } from "fs";
 import { env } from "../env";
 
-const DEFAULT_AUTH_CONFIG: Partial<BetterAuthOptions> = {
+const DEFAULT_AUTH_CONFIG: Config["auth"] = {
   emailAndPassword: {
+    enabled: true,
+  },
+  emailOTPConfig: {
     enabled: true,
   },
 };
@@ -45,9 +49,9 @@ export interface Config {
   auth: Partial<BetterAuthOptions> & {
     ssoConfig?: SSOConfig;
     magicLinkConfig?: MagicLinkConfig;
+    emailOTPConfig?: EmailOTPConfig;
     emailProviders?: EmailProviderConfig[];
     inviteEmailProviderId?: string;
-    resetPasswordEmailProviderId?: string;
     jwt?: { secret?: string };
   };
   monitoring?: Partial<MonitoringConfig>;

@@ -8,7 +8,7 @@
 import { Hono } from "hono";
 import { getConnInfo } from "hono/bun";
 import { env } from "../../env";
-import { authConfig, resetPasswordEnabled } from "../../auth";
+import { authConfig } from "../../auth";
 import { KNOWN_OAUTH_PROVIDERS, OAuthProvider } from "@/auth/oauth-providers";
 import {
   getLocalAdminUser,
@@ -19,10 +19,10 @@ import {
 const app = new Hono();
 
 export type AuthConfig = {
-  emailAndPassword: {
+  magicLink: {
     enabled: boolean;
   };
-  magicLink: {
+  emailOTP: {
     enabled: boolean;
   };
   socialProviders: {
@@ -31,9 +31,6 @@ export type AuthConfig = {
       name: string;
       icon?: string;
     }[];
-  };
-  resetPassword: {
-    enabled: boolean;
   };
   sso:
     | {
@@ -76,14 +73,11 @@ app.get("/config", async (c) => {
       env.NODE_ENV !== "production" || env.UNSAFE_ALLOW_STDIO_TRANSPORT;
 
     const config: AuthConfig = {
-      emailAndPassword: {
-        enabled: authConfig.emailAndPassword?.enabled ?? false,
-      },
       magicLink: {
         enabled: authConfig.magicLinkConfig?.enabled ?? false,
       },
-      resetPassword: {
-        enabled: resetPasswordEnabled,
+      emailOTP: {
+        enabled: authConfig.emailOTPConfig?.enabled ?? false,
       },
       socialProviders: {
         enabled: hasSocialProviders,

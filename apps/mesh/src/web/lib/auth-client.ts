@@ -3,6 +3,7 @@ import {
   organizationClient,
   adminClient,
   magicLinkClient,
+  emailOTPClient,
 } from "better-auth/client/plugins";
 import { ssoClient } from "@better-auth/sso/client";
 
@@ -16,5 +17,6 @@ export const authClient = createAuthClient({
     adminClient(),
     ssoClient(),
     magicLinkClient(),
+    emailOTPClient(),
   ],
 });
