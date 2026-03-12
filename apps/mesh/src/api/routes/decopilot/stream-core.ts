@@ -7,7 +7,6 @@
  */
 
 import type { MeshContext } from "@/core/mesh-context";
-import { clientFromConnection, withStreamingSupport } from "@/mcp-clients";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
 import { sanitizeProviderMetadata } from "@decocms/mesh-sdk";
 import { createUIMessageStream, stepCountIs, streamText } from "ai";
@@ -29,7 +28,6 @@ import {
   checkModelPermission,
   fetchModelPermissions,
 } from "./model-permissions";
-import { createModelProviderFromClient } from "./model-provider";
 import type { RunRegistry } from "./run-registry";
 import { resolveThreadStatus } from "./status";
 import type { StreamBuffer } from "./stream-buffer";
@@ -98,7 +96,7 @@ export async function streamCore(
     if (
       !checkModelPermission(
         allowedModels,
-        input.models.connectionId,
+        input.models.credentialId,
         input.models.thinking.id,
       )
     ) {
@@ -108,12 +106,9 @@ export async function streamCore(
     const windowSize = input.windowSize ?? DEFAULT_WINDOW_SIZE;
 
     // 2. Load entities and create/load memory in parallel
-    const [virtualMcp, modelConnection, mem] = await Promise.all([
+    const [virtualMcp, provider, mem] = await Promise.all([
       ctx.storage.virtualMcps.findById(input.agent.id, input.organizationId),
-      ctx.storage.connections.findById(
-        input.models.connectionId,
-        input.organizationId,
-      ),
+      ctx.aiProviders.activate(input.models.credentialId, input.organizationId),
       createMemory(ctx.storage.threads, {
         organization_id: input.organizationId,
         thread_id: input.threadId,
@@ -148,10 +143,6 @@ export async function streamCore(
         console.error("[decopilot:stream] Error saving messages", error);
       });
     };
-
-    if (!modelConnection) {
-      throw new Error("Model connection not found");
-    }
 
     if (!virtualMcp) {
       throw new Error("Agent not found");
@@ -234,33 +225,17 @@ export async function streamCore(
     const uiStream = createUIMessageStream({
       originalMessages: allMessages,
       execute: async ({ writer }) => {
-        const [modelClient, passthroughClient, strategyClient] =
-          await Promise.all([
-            clientFromConnection(modelConnection, ctx, false),
-            createVirtualClientFrom(virtualMcp, ctx, "passthrough"),
-            isGatewayMode
-              ? createVirtualClientFrom(virtualMcp, ctx, input.agent.mode)
-              : Promise.resolve(null),
-          ]);
+        const [passthroughClient, strategyClient] = await Promise.all([
+          createVirtualClientFrom(virtualMcp, ctx, "passthrough"),
+          isGatewayMode
+            ? createVirtualClientFrom(virtualMcp, ctx, input.agent.mode)
+            : Promise.resolve(null),
+        ]);
 
         closeClients = () => {
-          modelClient.close().catch(() => {});
           passthroughClient.close().catch(() => {});
           strategyClient?.close().catch(() => {});
         };
-
-        const streamableModelClient = withStreamingSupport(
-          modelClient,
-          input.models.connectionId,
-          modelConnection,
-          ctx,
-          { superUser: false },
-        );
-
-        const modelProvider = await createModelProviderFromClient(
-          streamableModelClient,
-          input.models,
-        );
 
         // Enrich with agent-specific instructions
         const serverInstructions = passthroughClient.getInstructions();
@@ -291,7 +266,7 @@ export async function streamCore(
         const builtInTools = await getBuiltInTools(
           writer,
           {
-            modelProvider,
+            provider,
             organization,
             models: input.models,
             toolApprovalLevel: input.toolApprovalLevel,
@@ -329,7 +304,9 @@ export async function streamCore(
         if (shouldGenerateTitle) {
           genTitle({
             abortSignal: registrySignal,
-            model: modelProvider.fastModel ?? modelProvider.thinkingModel,
+            model: provider.aiSdk.languageModel(
+              input.models.fast?.id ?? input.models.thinking.id,
+            ),
             userMessage: JSON.stringify(processedMessages[0]?.content),
           })
             .then(async (title) => {
@@ -364,7 +341,7 @@ export async function streamCore(
         let lastProviderMetadata: Record<string, unknown> | undefined;
 
         const result = streamText({
-          model: modelProvider.thinkingModel,
+          model: provider.aiSdk.languageModel(input.models.thinking.id),
           system: processedSystemMessages,
           messages: processedMessages,
           tools,
@@ -390,8 +367,11 @@ export async function streamCore(
                   mode: input.agent.mode,
                 },
                 models: {
-                  connectionId: input.models.connectionId,
-                  thinking: input.models.thinking,
+                  credentialId: input.models.credentialId,
+                  thinking: {
+                    ...input.models.thinking,
+                    provider: input.models.thinking.provider ?? undefined,
+                  },
                 },
                 created_at: new Date(),
                 thread_id: mem.thread.id,

@@ -9,10 +9,16 @@ import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { ViewActions, ViewLayout } from "@/web/components/details/layout";
 import { SaveActions } from "@/web/components/save-actions";
 import {
-  ModelSelector,
-  type ModelChangePayload,
-  type SelectedModelState,
-} from "@/web/components/chat/select-model.tsx";
+  useAiProviderKeyList,
+  useAiProviderModels,
+} from "@/web/hooks/collections/use-llm.ts";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@deco/ui/components/select.tsx";
 import { VirtualMCPPopoverContent } from "@/web/components/chat/select-virtual-mcp.tsx";
 import {
   useAutomationDetail,
@@ -477,6 +483,61 @@ function TriggerRow({
 }
 
 // ============================================================================
+// Standalone Model Picker (no chat context dependency)
+// ============================================================================
+
+function AutomationModelPicker({
+  connectionId,
+  modelId,
+  onConnectionChange,
+  onModelChange,
+}: {
+  connectionId: string;
+  modelId: string;
+  onConnectionChange: (id: string) => void;
+  onModelChange: (id: string) => void;
+}) {
+  const keys = useAiProviderKeyList();
+  const { models } = useAiProviderModels(connectionId || undefined);
+
+  return (
+    <div className="flex items-center gap-2">
+      <Select
+        value={connectionId || ""}
+        onValueChange={(value) => {
+          onConnectionChange(value);
+          onModelChange("");
+        }}
+      >
+        <SelectTrigger size="sm" className="w-[160px]">
+          <SelectValue placeholder="API Key" />
+        </SelectTrigger>
+        <SelectContent>
+          {keys.map((key) => (
+            <SelectItem key={key.id} value={key.id}>
+              {key.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select value={modelId || ""} onValueChange={onModelChange}>
+        <SelectTrigger size="sm" className="w-[220px]">
+          <SelectValue placeholder="Model" />
+        </SelectTrigger>
+        <SelectContent>
+          {models.map((m) => (
+            <SelectItem key={m.modelId} value={m.modelId}>
+              {m.title}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+// ============================================================================
 // Settings Tab
 // ============================================================================
 
@@ -546,18 +607,6 @@ function SettingsTab({
     form.reset();
     setTiptapDoc(savedDoc);
   };
-
-  const handleModelChange = (payload: ModelChangePayload) => {
-    form.setValue("model_connection_id", payload.connectionId, {
-      shouldDirty: true,
-    });
-    form.setValue("model_id", payload.id, { shouldDirty: true });
-  };
-
-  const selectedModel: SelectedModelState | undefined =
-    watchConnectionId && watchModelId
-      ? { connectionId: watchConnectionId, thinking: { id: watchModelId } }
-      : undefined;
 
   return (
     <>
@@ -631,10 +680,15 @@ function SettingsTab({
             </PopoverContent>
           </Popover>
 
-          <ModelSelector
-            selectedModel={selectedModel}
-            onModelChange={handleModelChange}
-            variant="bordered"
+          <AutomationModelPicker
+            connectionId={watchConnectionId}
+            modelId={watchModelId}
+            onConnectionChange={(id) =>
+              form.setValue("model_connection_id", id, { shouldDirty: true })
+            }
+            onModelChange={(id) =>
+              form.setValue("model_id", id, { shouldDirty: true })
+            }
           />
         </div>
 

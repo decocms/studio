@@ -10,7 +10,6 @@ import {
 import StarterKit from "@tiptap/starter-kit";
 import type { Ref } from "react";
 import { Suspense, useEffect, useImperativeHandle, useRef } from "react";
-import type { VirtualMCPInfo } from "../select-virtual-mcp";
 import type { Metadata } from "../types.ts";
 import { FileNode, FileUploader } from "./file";
 import { MentionNode } from "./mention";

@@ -50,8 +50,7 @@ import { KEYS } from "../../lib/query-keys";
 import { LOCALSTORAGE_KEYS } from "../../lib/localstorage-keys";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import { useTaskManager, type Task, type TaskOwnerFilter } from "./task";
-import type { FileAttrs } from "./tiptap/file/node.tsx";
-import type { ChatMessage, ChatModelsConfig, Metadata } from "./types.ts";
+import type { ChatMessage, Metadata } from "./types.ts";
 import { derivePartsFromTiptapDoc } from "./derive-parts";
 import {
   chatStateReducer,
@@ -226,12 +225,6 @@ const createModelsTransport = (
       };
     },
   });
-
-/**
- * Find an item by id in an array, or return the first item, or null
- */
-const findOrFirst = <T extends { id: string }>(array?: T[], id?: string) =>
-  array?.find((item) => item.id === id) ?? array?.[0] ?? null;
 
 const ChatStableContext = createContext<ChatStableValue | null>(null);
 const ChatStreamContext = createContext<ChatStreamValue | null>(null);
@@ -430,7 +423,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
   const { models: defaultKeyModels, isLoading: isModelsQueryLoading } =
     useAiProviderModels(effectiveKeyId ?? undefined);
   const effectiveProviderId =
-    keys.find((k) => k.id === effectiveKeyId)?.providerId ?? "";
+    keys.find((k) => k.id === effectiveKeyId)?.providerId ?? "anthropic";
   const defaultModel = selectDefaultModel(
     defaultKeyModels,
     effectiveProviderId,
