@@ -271,13 +271,13 @@ function buildLlmBuckets(
 
 const METRIC_LABELS: Record<TopChartMetric, string> = {
   calls: "Top Tools — Calls",
-  "latency-avg": "Top Tools — Avg Latency",
+  "latency-avg": "Top Tools — Average Latency",
   "latency-p95": "Top Tools — P95 Latency",
   errors: "Top Tools — Errors",
-  "llm-calls": "LLM — Calls",
-  "llm-latency-avg": "LLM — Avg Latency",
-  "llm-latency-p95": "LLM — P95 Latency",
-  "llm-errors": "LLM — Errors",
+  "llm-calls": "LLM Provider — Calls",
+  "llm-latency-avg": "LLM Provider — Latency",
+  "llm-latency-p95": "LLM Provider — P95 Latency",
+  "llm-errors": "LLM Provider — Errors",
 };
 
 function isLlmMetric(metric: TopChartMetric): boolean {
