@@ -3,15 +3,16 @@ import { ExportResultCode } from "@opentelemetry/core";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-export interface NDJSONExporterOptions {
+export interface NDJSONExporterOptions<T = unknown> {
   basePath: string;
   flushThreshold?: number;
   flushIntervalMs?: number;
   maxBufferBytes?: number;
+  partitionKey?: (row: T) => string;
 }
 
 export class NDJSONExporter<T> {
-  private bufferStrings: string[] = [];
+  private bufferItems: Array<{ partition: string; json: string }> = [];
   private bufferBytes = 0;
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   private flushQueue: Promise<void> = Promise.resolve();
@@ -20,11 +21,13 @@ export class NDJSONExporter<T> {
   private maxBufferBytes: number;
   private isShutdown = false;
   private knownDirs = new Set<string>();
+  private partitionKey?: (row: T) => string;
 
-  constructor(options: NDJSONExporterOptions) {
+  constructor(options: NDJSONExporterOptions<T>) {
     this.basePath = options.basePath;
     this.flushThreshold = options.flushThreshold ?? 1000;
     this.maxBufferBytes = options.maxBufferBytes ?? 10 * 1024 * 1024;
+    this.partitionKey = options.partitionKey;
 
     const intervalMs = options.flushIntervalMs ?? 60_000;
     if (intervalMs > 0 && intervalMs < 60_000 * 60) {
@@ -50,12 +53,13 @@ export class NDJSONExporter<T> {
 
     for (const row of rows) {
       const json = JSON.stringify(row);
-      this.bufferStrings.push(json);
+      const partition = this.partitionKey ? this.partitionKey(row) : "";
+      this.bufferItems.push({ partition, json });
       this.bufferBytes += Buffer.byteLength(json, "utf8") + 1;
     }
 
     if (
-      this.bufferStrings.length >= this.flushThreshold ||
+      this.bufferItems.length >= this.flushThreshold ||
       this.bufferBytes >= this.maxBufferBytes
     ) {
       return this.flush()
@@ -80,7 +84,7 @@ export class NDJSONExporter<T> {
     } catch {
       /* flush() already restored buffer */
     }
-    if (this.bufferStrings.length > 0) {
+    if (this.bufferItems.length > 0) {
       await this.flush();
     }
   }
@@ -91,7 +95,7 @@ export class NDJSONExporter<T> {
     } catch {
       /* flush() already restored buffer */
     }
-    if (this.bufferStrings.length > 0) {
+    if (this.bufferItems.length > 0) {
       await this.flush();
     }
   }
@@ -104,35 +108,54 @@ export class NDJSONExporter<T> {
   }
 
   private async doFlush(): Promise<void> {
-    if (this.bufferStrings.length === 0) return;
+    if (this.bufferItems.length === 0) return;
 
-    const strings = this.bufferStrings;
-    this.bufferStrings = [];
+    const items = this.bufferItems;
+    this.bufferItems = [];
     this.bufferBytes = 0;
 
     try {
-      await this.writeNDJSON(strings);
+      const groups = new Map<string, string[]>();
+      for (const item of items) {
+        let group = groups.get(item.partition);
+        if (!group) {
+          group = [];
+          groups.set(item.partition, group);
+        }
+        group.push(item.json);
+      }
+
+      await Promise.all(
+        Array.from(groups.entries()).map(([partition, strings]) =>
+          this.writeNDJSON(strings, partition),
+        ),
+      );
     } catch (err) {
-      // Prepend restored strings, then recalculate bytes for the entire
+      // Prepend restored items, then recalculate bytes for the entire
       // merged buffer (includes rows added by concurrent exportRows calls).
-      this.bufferStrings = strings.concat(this.bufferStrings);
+      this.bufferItems = items.concat(this.bufferItems);
       this.bufferBytes = 0;
-      for (const s of this.bufferStrings) {
-        this.bufferBytes += Buffer.byteLength(s, "utf8") + 1;
+      for (const item of this.bufferItems) {
+        this.bufferBytes += Buffer.byteLength(item.json, "utf8") + 1;
       }
       throw err;
     }
   }
 
-  private async writeNDJSON(strings: string[]): Promise<void> {
+  private async writeNDJSON(
+    strings: string[],
+    partition: string,
+  ): Promise<void> {
     const now = new Date();
-    const dir = join(
-      this.basePath,
+    const timeParts = [
       String(now.getUTCFullYear()),
       String(now.getUTCMonth() + 1).padStart(2, "0"),
       String(now.getUTCDate()).padStart(2, "0"),
       String(now.getUTCHours()).padStart(2, "0"),
-    );
+    ];
+    const dir = partition
+      ? join(this.basePath, partition, ...timeParts)
+      : join(this.basePath, ...timeParts);
 
     if (!this.knownDirs.has(dir)) {
       await mkdir(dir, { recursive: true, mode: 0o700 });
