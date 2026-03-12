@@ -345,7 +345,14 @@ function TopToolsContent({
                 axisLine={false}
                 tickLine={false}
                 tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-                interval={Math.max(0, Math.ceil(buckets.length / 10) - 1)}
+                ticks={
+                  buckets.length <= 10
+                    ? buckets.map((b) => b.label)
+                    : Array.from({ length: 10 }, (_, i) => {
+                        const idx = Math.round((i * (buckets.length - 1)) / 9);
+                        return buckets[idx]!.label;
+                      })
+                }
               />
               <ChartTooltip
                 content={({ active, payload }) => {
