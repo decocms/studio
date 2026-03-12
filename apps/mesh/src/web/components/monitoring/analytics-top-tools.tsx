@@ -15,9 +15,17 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import { Container } from "@untitledui/icons";
 import { Line, LineChart, XAxis } from "recharts";
-import { useMonitoringTopTools } from "./hooks";
+import { useMonitoringLlmStats, useMonitoringTopTools } from "./hooks";
 
-export type TopChartMetric = "calls" | "latency-avg" | "latency-p95" | "errors";
+export type TopChartMetric =
+  | "calls"
+  | "latency-avg"
+  | "latency-p95"
+  | "errors"
+  | "llm-calls"
+  | "llm-latency-avg"
+  | "llm-latency-p95"
+  | "llm-errors";
 
 interface BucketData {
   t: string;
@@ -176,15 +184,99 @@ function buildToolBuckets(
   };
 }
 
+interface LlmBucket {
+  t: string;
+  ts: number;
+  label: string;
+  calls: number;
+  errors: number;
+  avg: number;
+  p95: number;
+}
+
+function buildLlmBuckets(
+  timeseries: Array<{
+    timestamp: string;
+    calls: number;
+    errors: number;
+    errorRate: number;
+    avg: number;
+    p50: number;
+    p95: number;
+  }>,
+  start: Date,
+  end: Date,
+  interval: "1m" | "1h" | "1d",
+): LlmBucket[] {
+  const BUCKET_COUNT = 20;
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+  const step = (endMs - startMs) / (BUCKET_COUNT - 1);
+
+  // Index server points by timestamp
+  const serverPoints = timeseries.map((p) => ({
+    ts: new Date(p.timestamp).getTime(),
+    ...p,
+  }));
+
+  const buckets: LlmBucket[] = [];
+  for (let i = 0; i < BUCKET_COUNT; i++) {
+    const ts = Math.round(startMs + i * step);
+    const date = new Date(ts);
+    const halfStep = step / 2;
+
+    let calls = 0;
+    let errors = 0;
+    let avg = 0;
+    let p95 = 0;
+    let count = 0;
+
+    for (const sp of serverPoints) {
+      if (Math.abs(sp.ts - ts) <= halfStep) {
+        calls += sp.calls;
+        errors += sp.errors;
+        avg += sp.avg;
+        p95 = Math.max(p95, sp.p95);
+        count++;
+      }
+    }
+
+    buckets.push({
+      t: date.toISOString(),
+      ts,
+      label: formatBucketLabel(date, interval),
+      calls,
+      errors,
+      avg: count > 0 ? avg / count : 0,
+      p95,
+    });
+  }
+
+  return buckets;
+}
+
 const METRIC_LABELS: Record<TopChartMetric, string> = {
   calls: "Top Tools — Calls",
   "latency-avg": "Top Tools — Avg Latency",
   "latency-p95": "Top Tools — P95 Latency",
   errors: "Top Tools — Errors",
+  "llm-calls": "LLM — Calls",
+  "llm-latency-avg": "LLM — Avg Latency",
+  "llm-latency-p95": "LLM — P95 Latency",
+  "llm-errors": "LLM — Errors",
 };
 
+function isLlmMetric(metric: TopChartMetric): boolean {
+  return metric.startsWith("llm-");
+}
+
 function formatTooltipValue(value: number, metric: TopChartMetric): string {
-  if (metric === "latency-avg" || metric === "latency-p95") {
+  if (
+    metric === "latency-avg" ||
+    metric === "latency-p95" ||
+    metric === "llm-latency-avg" ||
+    metric === "llm-latency-p95"
+  ) {
     return value >= 10000
       ? `${(value / 1000).toFixed(1)}s`
       : `${Math.round(value)}ms`;
@@ -232,6 +324,8 @@ function TopToolsContent({
         ? "1h"
         : "1d";
 
+  const isLlm = isLlmMetric(metricsMode);
+
   const { data: metricData } = useMonitoringTopTools(
     {
       interval,
@@ -248,6 +342,17 @@ function TopToolsContent({
     },
   );
 
+  const { data: llmData } = useMonitoringLlmStats(
+    {
+      interval,
+      startDate: dateRange.startDate,
+      endDate: dateRange.endDate,
+    },
+    {
+      refetchInterval: isStreaming ? streamingRefetchInterval : false,
+    },
+  );
+
   const topTools = metricData?.topTools ?? [];
 
   const {
@@ -255,7 +360,7 @@ function TopToolsContent({
     latencyAvgBuckets,
     latencyP95Buckets,
     errorsBuckets,
-    chartConfig,
+    chartConfig: toolChartConfig,
     toolColors,
   } = buildToolBuckets(
     topTools,
@@ -265,7 +370,24 @@ function TopToolsContent({
     interval,
   );
 
-  const buckets =
+  // Build LLM aggregate buckets
+  const llmBuckets = buildLlmBuckets(
+    llmData?.timeseries ?? [],
+    start,
+    end,
+    interval,
+  );
+
+  const llmDataKey =
+    metricsMode === "llm-latency-avg"
+      ? "avg"
+      : metricsMode === "llm-latency-p95"
+        ? "p95"
+        : metricsMode === "llm-errors"
+          ? "errors"
+          : "calls";
+
+  const toolBuckets =
     metricsMode === "latency-avg"
       ? latencyAvgBuckets
       : metricsMode === "latency-p95"
@@ -282,6 +404,86 @@ function TopToolsContent({
       params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
     });
   };
+
+  if (isLlm) {
+    const llmChartConfig = {
+      [llmDataKey]: { label: llmDataKey, color: "var(--chart-1)" },
+    };
+
+    return (
+      <HomeGridCell
+        title={
+          <div className="flex flex-col gap-1.5">
+            <p className="text-sm text-muted-foreground">
+              {METRIC_LABELS[metricsMode]}
+            </p>
+          </div>
+        }
+        onTitleClick={handleTitleClick}
+      >
+        {llmBuckets.length === 0 ? (
+          <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+            No LLM activity in this time range
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2 w-full h-full">
+            <ChartContainer
+              className="flex-1 min-h-0 max-h-[140px] w-full"
+              config={llmChartConfig}
+            >
+              <LineChart
+                data={llmBuckets}
+                margin={{ left: 8, right: 8, top: 5, bottom: 5 }}
+              >
+                <XAxis
+                  dataKey="label"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                />
+                <ChartTooltip
+                  content={({ active, payload }) => {
+                    if (!active || !payload || payload.length === 0)
+                      return null;
+                    const timeLabel =
+                      payload[0] &&
+                      typeof payload[0] === "object" &&
+                      "payload" in payload[0]
+                        ? ((payload[0] as { payload?: { label?: string } })
+                            .payload?.label ?? "")
+                        : "";
+                    const value =
+                      typeof payload[0]?.value === "number"
+                        ? payload[0].value
+                        : 0;
+                    return (
+                      <div className="rounded-lg border bg-background p-2 shadow-sm">
+                        <div className="mb-1.5 text-xs text-muted-foreground">
+                          {timeLabel}
+                        </div>
+                        <div className="text-xs font-medium">
+                          {formatTooltipValue(value, metricsMode)}
+                        </div>
+                      </div>
+                    );
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey={llmDataKey}
+                  stroke="var(--chart-1)"
+                  strokeWidth={2}
+                  animationDuration={200}
+                  dot={false}
+                  activeDot={{ r: 4 }}
+                />
+              </LineChart>
+            </ChartContainer>
+          </div>
+        )}
+      </HomeGridCell>
+    );
+  }
 
   return (
     <HomeGridCell
@@ -321,10 +523,10 @@ function TopToolsContent({
         <div className="flex flex-col gap-2 w-full h-full">
           <ChartContainer
             className="flex-1 min-h-0 max-h-[140px] w-full"
-            config={chartConfig}
+            config={toolChartConfig}
           >
             <LineChart
-              data={buckets}
+              data={toolBuckets}
               margin={{ left: 8, right: 8, top: 5, bottom: 5 }}
             >
               <XAxis

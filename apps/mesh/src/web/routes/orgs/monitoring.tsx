@@ -616,7 +616,7 @@ function LlmStatsContent({
       id: "llm-calls",
       dataKey: "calls" as const,
       colorNum: 1,
-      chartMetric: "calls" as TopChartMetric,
+      chartMetric: "llm-calls" as TopChartMetric,
       renderTitle: () => (
         <div className="flex flex-col gap-0.5 md:gap-1">
           <p className="text-xs md:text-sm text-muted-foreground">LLM Calls</p>
@@ -630,7 +630,7 @@ function LlmStatsContent({
       id: "llm-latency",
       dataKey: "avg" as const,
       colorNum: 4,
-      chartMetric: "latency-avg" as TopChartMetric,
+      chartMetric: "llm-latency-avg" as TopChartMetric,
       renderTitle: () => (
         <div className="flex flex-col gap-0.5 md:gap-1">
           <p className="text-xs md:text-sm text-muted-foreground">
@@ -661,7 +661,7 @@ function LlmStatsContent({
       id: "llm-errors",
       dataKey: "errors" as const,
       colorNum: 3,
-      chartMetric: "errors" as TopChartMetric,
+      chartMetric: "llm-errors" as TopChartMetric,
       renderTitle: () => (
         <div className="flex flex-col gap-0.5 md:gap-1">
           <p className="text-xs md:text-sm text-muted-foreground">LLM Errors</p>
