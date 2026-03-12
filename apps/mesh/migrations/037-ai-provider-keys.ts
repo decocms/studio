@@ -4,7 +4,9 @@ export async function up(db: Kysely<unknown>): Promise<void> {
   await db.schema
     .createTable("ai_provider_keys")
     .addColumn("id", "text", (col) => col.primaryKey())
-    .addColumn("organization_id", "text", (col) => col.notNull())
+    .addColumn("organization_id", "text", (col) =>
+      col.notNull().references("organization.id").onDelete("cascade"),
+    )
     .addColumn("provider_id", "text", (col) => col.notNull())
     .addColumn("label", "text", (col) => col.notNull())
     .addColumn("encrypted_api_key", "text", (col) => col.notNull())

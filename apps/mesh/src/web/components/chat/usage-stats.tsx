@@ -31,7 +31,7 @@ export function MessageUsageStats({ usage }: UsageStatsProps) {
           className="text-muted-foreground hover:text-foreground pl-1! h-6 gap-1 whitespace-nowrap shrink-0"
         >
           <Activity size={12} />
-          <span className="text-[10px] font-mono tabular-nums">
+          <span className="text-sm font-mono tabular-nums">
             {totalTokens.toLocaleString()}
           </span>
         </Button>
@@ -69,8 +69,9 @@ interface MessageStatsBarProps {
 export function MessageStatsBar({ usage, duration }: MessageStatsBarProps) {
   const hasDuration = duration != null && duration > 0;
   const hasCost = usage != null && (usage.cost ?? 0) > 0;
+  const hasTokens = usage != null && (usage.totalTokens ?? 0) > 0;
 
-  if (!hasDuration && !hasCost) return null;
+  if (!hasDuration && !hasCost && !hasTokens) return null;
 
   const durationSecs = hasDuration ? (duration! / 1000).toFixed(1) : null;
 
@@ -96,14 +97,16 @@ export function MessageStatsBar({ usage, duration }: MessageStatsBarProps) {
           </TooltipContent>
         </Tooltip>
       )}
-      {hasDuration && hasCost && (
+      {hasDuration && (hasCost || hasTokens) && (
         <span className="text-muted-foreground/40 select-none">·</span>
       )}
-      {hasCost && (
+      {(hasCost || hasTokens) && (
         <Tooltip>
           <TooltipTrigger asChild>
             <span className="tabular-nums text-sm font-mono text-muted-foreground cursor-default [@media(hover:hover)]:hover:text-foreground transition-colors select-none">
-              ${usage!.cost.toFixed(4)}
+              {hasCost
+                ? `$${usage!.cost.toFixed(4)}`
+                : `${usage!.totalTokens.toLocaleString()} tok`}
             </span>
           </TooltipTrigger>
           <TooltipContent side="top" className="font-mono text-[11px]">

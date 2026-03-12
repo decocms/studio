@@ -11,11 +11,12 @@ import { toolNeedsApproval, type ToolApprovalLevel } from "../helpers";
 import { createAgentSearchTool } from "./agent-search";
 import { createSubtaskTool } from "./subtask";
 import { userAskTool } from "./user-ask";
-import type { ModelProvider, ModelsConfig } from "../types";
+import type { ModelsConfig } from "../types";
 import { createReadToolOutputTool } from "./read-tool-output";
+import { MeshProvider } from "@/ai-providers/types";
 
 export interface BuiltinToolParams {
-  modelProvider: ModelProvider;
+  provider: MeshProvider;
   organization: OrganizationScope;
   models: ModelsConfig;
   toolApprovalLevel?: ToolApprovalLevel;
@@ -33,7 +34,7 @@ export function getBuiltInTools(
   ctx: MeshContext,
 ) {
   const {
-    modelProvider,
+    provider,
     organization,
     models,
     toolApprovalLevel = "none",
@@ -44,7 +45,7 @@ export function getBuiltInTools(
     subtask: createSubtaskTool(
       writer,
       {
-        modelProvider,
+        provider,
         organization,
         models,
         needsApproval: toolNeedsApproval(toolApprovalLevel, false),

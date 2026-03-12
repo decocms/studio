@@ -311,9 +311,8 @@ export function ChatInput({
     virtualMcps,
     selectedVirtualMcp,
     setVirtualMcpId,
-    modelsConnections,
-    selectedModel,
-    setSelectedModel,
+    model,
+    isModelsLoading,
     selectedMode,
     setSelectedMode,
     messages,
@@ -347,7 +346,7 @@ export function ChatInput({
     tiptapDocRef.current = undefined;
   }
 
-  const contextWindow = selectedModel?.thinking.limits?.contextWindow;
+  const contextWindow = model?.limits?.contextWindow;
 
   const tiptapRef = useRef<TiptapInputHandle | null>(null);
   const usage = calculateUsageStats(messages);
@@ -359,7 +358,7 @@ export function ChatInput({
     (lastUsage?.totalTokens ?? 0) - (lastUsage?.reasoningTokens ?? 0);
 
   const canSubmit =
-    !isStreaming && !!selectedModel && !isTiptapDocEmpty(tiptapDoc);
+    !isStreaming && !!model && !isModelsLoading && !isTiptapDocEmpty(tiptapDoc);
 
   const showStopOrCancel = isStreaming || isRunInProgress;
 
@@ -478,7 +477,7 @@ export function ChatInput({
             key={activeTaskId}
             tiptapDoc={tiptapDoc}
             setTiptapDoc={setTiptapDoc}
-            selectedModel={selectedModel}
+            selectedModel={model}
             isStreaming={isStreaming}
             onSubmit={handleSubmit}
           >
@@ -492,7 +491,7 @@ export function ChatInput({
                 {/* Input Area with Tiptap */}
                 <TiptapInput
                   ref={tiptapRef}
-                  selectedModel={selectedModel}
+                  selectedModel={model}
                   isStreaming={isStreaming}
                   selectedVirtualMcp={selectedVirtualMcp}
                 />
@@ -523,7 +522,7 @@ export function ChatInput({
                     />
                   )}
                   <FileUploadButton
-                    selectedModel={selectedModel}
+                    selectedModel={model}
                     isStreaming={isStreaming}
                   />
                   <ModeSelector
@@ -543,13 +542,7 @@ export function ChatInput({
 
                 {/* Right Actions (model, send) */}
                 <div className="flex items-center gap-1.5">
-                  <ModelSelector
-                    selectedModel={selectedModel ?? undefined}
-                    onModelChange={setSelectedModel}
-                    modelsConnections={modelsConnections}
-                    placeholder="Model"
-                    variant="borderless"
-                  />
+                  <ModelSelector placeholder="Model" variant="borderless" />
 
                   <Button
                     type={showStopOrCancel ? "button" : "submit"}

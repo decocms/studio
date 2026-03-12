@@ -34,7 +34,7 @@ function HomeContent() {
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
   const {
-    modelsConnections,
+    allModelsConnections,
     isChatEmpty,
     activeTaskId,
     tasks,
@@ -50,10 +50,10 @@ function HomeContent() {
   const displayAgent = selectedVirtualMcp ?? defaultAgent;
 
   // Show empty state when no LLM binding is found — no tasks panel
-  if (modelsConnections.length === 0) {
+  if (allModelsConnections.length === 0) {
     return (
       <div className="flex flex-col h-full bg-background items-center justify-center">
-        <Chat.NoLlmBindingEmptyState org={org} />
+        <Chat.NoLlmBindingEmptyState />
       </div>
     );
   }

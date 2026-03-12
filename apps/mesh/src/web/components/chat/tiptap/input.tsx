@@ -10,13 +10,13 @@ import {
 import StarterKit from "@tiptap/starter-kit";
 import type { Ref } from "react";
 import { Suspense, useEffect, useImperativeHandle, useRef } from "react";
-import type { SelectedModelState } from "../select-model";
 import type { VirtualMCPInfo } from "../select-virtual-mcp";
 import type { Metadata } from "../types.ts";
 import { FileNode, FileUploader } from "./file";
 import { MentionNode } from "./mention";
 import { PromptsMention } from "./mention-prompts.tsx";
 import { ResourcesMention } from "./mention-resources.tsx";
+import { AiProviderModel } from "@/web/hooks/collections/use-llm.ts";
 
 const GLOBAL_EXTENSIONS = [
   StarterKit.configure({
@@ -41,7 +41,7 @@ export interface TiptapInputHandle {
 interface TiptapProviderProps {
   tiptapDoc: Metadata["tiptapDoc"];
   setTiptapDoc: (doc: Metadata["tiptapDoc"]) => void;
-  selectedModel: SelectedModelState | null;
+  selectedModel: AiProviderModel | null;
   isStreaming: boolean;
   onSubmit?: () => void;
   children: React.ReactNode;
@@ -127,7 +127,7 @@ export function TiptapProvider({
 }
 
 interface TiptapInputProps {
-  selectedModel: SelectedModelState | null;
+  selectedModel: AiProviderModel | null;
   isStreaming: boolean;
   selectedVirtualMcp: VirtualMCPInfo | null;
   ref?: Ref<TiptapInputHandle>;

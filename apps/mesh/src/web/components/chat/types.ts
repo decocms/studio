@@ -13,14 +13,6 @@ export interface ChatModelInfo {
   provider?: string | null;
   limits?: { contextWindow?: number; maxOutputTokens?: number };
 }
-
-export interface ChatModelsConfig {
-  connectionId: string;
-  thinking: ChatModelInfo;
-  coding?: ChatModelInfo;
-  fast?: ChatModelInfo;
-}
-
 export interface ChatAgentConfig {
   id: string | null;
   mode: "passthrough" | "smart_tool_selection" | "code_execution";
@@ -52,10 +44,24 @@ export type TiptapNode = JSONContent;
 // Metadata Types
 // ============================================================================
 
+/** Model info shape aligned with the backend StreamRequestSchema */
+export interface MetadataModelInfo {
+  id: string;
+  title: string;
+  provider?: string;
+  capabilities?: { vision?: boolean; text?: boolean; tools?: boolean };
+  limits?: { contextWindow?: number; maxOutputTokens?: number };
+}
+
 export interface Metadata {
   reasoning_start_at?: string | Date;
   reasoning_end_at?: string | Date;
-  models?: ChatModelsConfig;
+  models?: {
+    credentialId: string;
+    thinking: MetadataModelInfo;
+    coding?: MetadataModelInfo;
+    fast?: MetadataModelInfo;
+  };
   agent?: ChatAgentConfig;
   user?: ChatUserConfig;
   created_at?: string | Date;

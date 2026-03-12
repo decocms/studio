@@ -22,13 +22,14 @@ import { ChatContextPanel } from "./context-panel";
 import { TaskListContent } from "./tasks-panel";
 
 import { EditableTaskTitle } from "./editable-task-title";
+import { useAiProviders } from "@/web/hooks/collections/use-llm";
 
 function ChatPanelContent() {
   const { org } = useProjectContext();
   const [, setOpen] = useDecoChatOpen();
+  const aiProviders = useAiProviders();
   const {
     selectedVirtualMcp,
-    modelsConnections,
     isChatEmpty,
     activeTaskId,
     createTask,
@@ -51,7 +52,7 @@ function ChatPanelContent() {
     });
   };
 
-  if (modelsConnections.length === 0) {
+  if (aiProviders?.providers?.length === 0) {
     const title = "No model provider connected";
     const description =
       "Connect to a model provider to unlock AI-powered features.";
@@ -80,7 +81,6 @@ function ChatPanelContent() {
             <Chat.NoLlmBindingEmptyState
               title={title}
               description={description}
-              org={org}
             />
           </Chat.EmptyState>
         </Chat.Main>

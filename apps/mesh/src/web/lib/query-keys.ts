@@ -233,4 +233,14 @@ export const KEYS = {
   // Project connection details (with tools, for sidebar)
   projectConnectionDetails: (projectId: string, connectionIds: string[]) =>
     ["project-connections", projectId, "details", connectionIds] as const,
+
+  // AI providers (static registry — staleTime: Infinity recommended)
+  aiProviders: (locator: string) => ["ai-providers", locator] as const,
+
+  // AI provider models (scoped by keyId)
+  aiProviderModels: (locator: string, keyId: string) =>
+    ["ai-provider-models", locator, keyId] as const,
+
+  // AI provider stored keys (scoped by locator)
+  aiProviderKeys: (locator: string) => ["ai-provider-keys", locator] as const,
 } as const;

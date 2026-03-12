@@ -172,7 +172,6 @@ export function useMonitoringLlmStats(
     toolName: "MONITORING_STATS",
     toolArguments: {
       ...params,
-      connectionIds: [DECOPILOT_CONNECTION_ID],
     },
     staleTime: 30_000,
     ...queryOptions,

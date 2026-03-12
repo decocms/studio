@@ -20,7 +20,7 @@ import {
 } from "./user-ask";
 
 const mockParams: BuiltinToolParams = {
-  modelProvider: { thinkingModel: {} as never } as never,
+  provider: { thinkingModel: {} as never } as never,
   organization: { id: "org_test" } as never,
   models: {
     connectionId: "conn_test",

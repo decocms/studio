@@ -36,8 +36,8 @@ describe("processConversation", () => {
       const { originalMessages } = await processConversation(allMessages, {
         windowSize: 50,
         models: {
-          connectionId: "c1",
-          thinking: { id: "m1", capabilities: { text: true } },
+          credentialId: "c1",
+          thinking: { id: "m1", title: "m1", capabilities: { text: true } },
         },
       });
 
@@ -66,8 +66,8 @@ describe("processConversation", () => {
       const { originalMessages } = await processConversation(allMessages, {
         windowSize: 50,
         models: {
-          connectionId: "c1",
-          thinking: { id: "m1", capabilities: { text: true } },
+          credentialId: "c1",
+          thinking: { id: "m1", title: "m1", capabilities: { text: true } },
         },
       });
 
@@ -89,8 +89,8 @@ describe("processConversation", () => {
       const { originalMessages } = await processConversation(allMessages, {
         windowSize: 50,
         models: {
-          connectionId: "c1",
-          thinking: { id: "m1", capabilities: { text: true } },
+          credentialId: "c1",
+          thinking: { id: "m1", title: "m1", capabilities: { text: true } },
         },
       });
 

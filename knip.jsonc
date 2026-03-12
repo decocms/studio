@@ -22,7 +22,12 @@
         // Dev-only module loaded via require() - needs explicit entry
         "src/api/routes/dev-only.ts"
       ],
-      "ignore": ["src/api/index.ts"]
+      "ignore": [
+        "src/api/index.ts",
+        // Wired into MeshContext in the next PR (context-factory.ts); unused here by design
+        "src/storage/ai-provider-keys.ts",
+        "src/storage/oauth-pkce-states.ts"
+      ]
     },
     "packages/mesh-sdk": {
       "ignoreDependencies": ["sonner"]

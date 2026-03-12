@@ -1,139 +1,63 @@
-import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
-import { toast } from "sonner";
-import { Button } from "@deco/ui/components/button.tsx";
-import { EmptyState } from "../empty-state";
-import { OPENROUTER_ICON_URL, OPENROUTER_MCP_URL } from "@/core/deco-constants";
+import { Suspense } from "react";
+import { CpuChip01 } from "@untitledui/icons";
+import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import {
-  getWellKnownOpenRouterConnection,
-  ORG_ADMIN_PROJECT_SLUG,
-  useConnectionActions,
-  useConnections,
-} from "@decocms/mesh-sdk";
-import { generatePrefixedId } from "@/shared/utils/generate-id";
-import { authClient } from "@/web/lib/auth-client";
-import { authenticateConnection } from "@/web/lib/authenticate-connection";
+  ProviderCard,
+  type AiProvider,
+} from "../settings-modal/pages/org-ai-providers";
+import {
+  useAiProviders,
+  useAiProviderKeyList,
+} from "@/web/hooks/collections/use-llm";
+
+function ProviderList() {
+  const aiProviders = useAiProviders();
+  const allKeys = useAiProviderKeyList();
+  const providers: AiProvider[] = aiProviders?.providers ?? [];
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+      {providers.map((provider) => (
+        <ProviderCard
+          key={provider.id}
+          provider={provider}
+          keys={allKeys.filter((k) => k.providerId === provider.id)}
+        />
+      ))}
+    </div>
+  );
+}
 
 interface NoLlmBindingEmptyStateProps {
   title?: string;
   description?: string;
-  org: { slug: string; id: string };
 }
 
-/**
- * Empty state component shown when no LLM binding is available.
- * Includes OpenRouter installation logic and UI.
- */
 export function NoLlmBindingEmptyState({
-  title = "No model provider connected",
-  description = "Connect to a model provider to unlock AI-powered features.",
-  org,
-}: NoLlmBindingEmptyStateProps) {
-  const actions = useConnectionActions();
-  const navigate = useNavigate();
-  const { data: session } = authClient.useSession();
-  const allConnections = useConnections();
-  const queryClient = useQueryClient();
-  const [isAuthenticating, setIsAuthenticating] = useState(false);
-
-  const userId = session?.user?.id ?? "";
-
-  const handleInstallMcpServer = () => {
-    navigate({
-      to: "/$org/$project/mcps",
-      params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
-      search: { action: "create" },
-    });
-  };
-
-  const handleInstallOpenRouter = async () => {
-    if (!org.id || !userId) {
-      toast.error("Not authenticated");
-      return;
-    }
-
-    setIsAuthenticating(true);
-    try {
-      // Check if OpenRouter already exists
-      const existingConnection = allConnections?.find(
-        (conn) => conn.connection_url === OPENROUTER_MCP_URL,
-      );
-
-      const connectionId = existingConnection?.id ?? null;
-
-      if (!connectionId) {
-        // Create new OpenRouter connection
-        const connectionData = getWellKnownOpenRouterConnection({
-          id: generatePrefixedId("conn"),
-        });
-
-        const result = await actions.create.mutateAsync(connectionData);
-
-        // Immediately trigger OAuth auth — opens popup, stays on Home
-        const success = await authenticateConnection(
-          result.id,
-          actions,
-          queryClient,
-        );
-        if (success) {
-          toast.success("OpenRouter connected successfully");
-        }
-      } else {
-        // Connection exists but may not be authenticated — trigger auth
-        const success = await authenticateConnection(
-          connectionId,
-          actions,
-          queryClient,
-        );
-        if (success) {
-          toast.success("OpenRouter authenticated successfully");
-        }
-      }
-    } catch (error) {
-      toast.error(
-        `Failed to connect OpenRouter: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    } finally {
-      setIsAuthenticating(false);
-    }
-  };
-
+  title = "Connect an AI provider",
+  description = "Keys are stored encrypted in the vault.",
+}: NoLlmBindingEmptyStateProps = {}) {
   return (
-    <EmptyState
-      image={
-        <img
-          src="/empty-state-openrouter.svg"
-          alt=""
-          width={336}
-          height={320}
-          aria-hidden="true"
-          className="w-xs h-auto mask-radial-[100%_100%] mask-radial-from-20% mask-radial-to-50% mask-radial-at-center"
-        />
-      }
-      title={title}
-      description={description}
-      actions={
-        <>
-          <Button
-            variant="outline"
-            onClick={handleInstallOpenRouter}
-            disabled={actions.create.isPending || isAuthenticating}
-          >
-            <img
-              src={OPENROUTER_ICON_URL}
-              alt="OpenRouter"
-              className="size-4"
-            />
-            {actions.create.isPending || isAuthenticating
-              ? "Connecting..."
-              : "Install OpenRouter"}
-          </Button>
-          <Button variant="outline" onClick={handleInstallMcpServer}>
-            Install Connection
-          </Button>
-        </>
-      }
-    />
+    <div className="flex flex-col items-center gap-8 w-full max-w-2xl px-4">
+      <div className="flex flex-col items-center gap-4 text-center">
+        <div className="flex items-center justify-center size-14 rounded-2xl bg-muted border border-border/60">
+          <CpuChip01 size={24} className="text-muted-foreground" />
+        </div>
+        <div className="space-y-1.5">
+          <p className="text-lg font-semibold text-foreground">{title}</p>
+          <p className="text-sm text-muted-foreground">{description}</p>
+        </div>
+      </div>
+      <Suspense
+        fallback={
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+            <Skeleton className="h-32 w-full rounded-lg" />
+            <Skeleton className="h-32 w-full rounded-lg" />
+          </div>
+        }
+      >
+        <ProviderList />
+      </Suspense>
+    </div>
   );
 }

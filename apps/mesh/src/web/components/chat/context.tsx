@@ -31,7 +31,6 @@ import {
   Suspense,
   useContext,
   useDeferredValue,
-  useEffect,
   useReducer,
   useRef,
   useSyncExternalStore,
@@ -39,8 +38,12 @@ import {
 import { useDecopilotEvents } from "../../hooks/use-decopilot-events";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { useModelConnections } from "../../hooks/collections/use-llm";
-import { useAllowedModels } from "../../hooks/use-allowed-models";
+import {
+  AiProviderModel,
+  useAiProviderKeyList,
+  useAiProviderModels,
+} from "../../hooks/collections/use-llm";
+import { selectDefaultModel } from "@decocms/mesh-sdk";
 import { useContext as useContextHook } from "../../hooks/use-context";
 import { useInvalidateCollectionsOnToolCall } from "../../hooks/use-invalidate-collections-on-tool-call";
 import { useLocalStorage } from "../../hooks/use-local-storage";
@@ -50,11 +53,10 @@ import { usePreferences } from "../../hooks/use-preferences";
 import { authClient } from "../../lib/auth-client";
 import { KEYS } from "../../lib/query-keys";
 import { LOCALSTORAGE_KEYS } from "../../lib/localstorage-keys";
-import { type ModelChangePayload, useModels } from "./select-model";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import { useTaskManager, type Task, type TaskOwnerFilter } from "./task";
 import type { FileAttrs } from "./tiptap/file/node.tsx";
-import type { ChatMessage, ChatModelsConfig, Metadata } from "./types.ts";
+import type { ChatMessage, Metadata } from "./types.ts";
 import {
   chatStateReducer,
   initialChatState,
@@ -66,20 +68,6 @@ import {
 // ============================================================================
 
 export type { ChatState, ChatStateAction };
-
-/**
- * Shape persisted in localStorage for the selected model.
- * Capabilities are stored so modelSupportsFiles works on reload
- * without a live fetch. Limits are stored so the API route gets
- * the correct maxOutputTokens on reload without a fresh model fetch.
- */
-interface StoredModelState {
-  id: string;
-  connectionId: string;
-  provider?: string;
-  capabilities?: string[];
-  limits?: { contextWindow?: number; maxOutputTokens?: number };
-}
 
 /** Fields from useChat we pass through directly (typed via UseChatHelpers) */
 type ChatFromUseChat = Pick<
@@ -121,10 +109,9 @@ interface ChatStableValue {
   selectedVirtualMcp: VirtualMCPInfo | null;
   setVirtualMcpId: (virtualMcpId: string | null) => void;
 
-  modelsConnections: ReturnType<typeof useModelConnections>;
-  selectedModel: ChatModelsConfig | null;
-  setSelectedModel: (model: ModelChangePayload) => void;
-
+  model: AiProviderModel | null;
+  isModelsLoading: boolean;
+  setSelectedModel: (model: AiProviderModel) => void;
   selectedMode: ToolSelectionStrategy;
   setSelectedMode: (mode: ToolSelectionStrategy) => void;
 
@@ -135,6 +122,9 @@ interface ChatStableValue {
     params: McpUiUpdateModelContextRequest["params"],
   ) => void;
   clearAppContext: (sourceId: string) => void;
+  allModelsConnections: ReturnType<typeof useAiProviderKeyList>;
+  credentialId: string | null;
+  setCredentialId: (credentialId: string | null) => void;
 }
 
 /**
@@ -153,6 +143,35 @@ interface ChatStreamValue extends ChatFromUseChat {
 }
 
 type ChatContextValue = ChatStableValue & ChatStreamValue;
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function toMetadataModelInfo(
+  model: AiProviderModel,
+): import("./types").MetadataModelInfo {
+  const caps = model.capabilities;
+  const capabilities =
+    caps && caps.length > 0
+      ? {
+          vision: caps.includes("vision") || undefined,
+          text: caps.includes("text") || undefined,
+        }
+      : undefined;
+  return {
+    id: model.modelId,
+    title: model.title,
+    provider: model.providerId,
+    capabilities,
+    limits: model.limits
+      ? {
+          contextWindow: model.limits.contextWindow,
+          maxOutputTokens: model.limits.maxOutputTokens ?? undefined,
+        }
+      : undefined,
+  };
+}
 
 // ============================================================================
 // Implementation
@@ -211,66 +230,6 @@ const createModelsTransport = (
       };
     },
   });
-
-/**
- * Find an item by id in an array, or return the first item, or null
- */
-const findOrFirst = <T extends { id: string }>(array?: T[], id?: string) =>
-  array?.find((item) => item.id === id) ?? array?.[0] ?? null;
-
-/**
- * Hook to manage model selection state.
- * Builds ChatModelsConfig from localStorage only — no model fetching here.
- * Auto-selection is handled by ModelAutoSelector rendered in ChatProvider.
- */
-const useModelState = (
-  locator: ProjectLocator,
-  modelsConnections: ReturnType<typeof useModelConnections>,
-) => {
-  const [modelState, setModelState] = useLocalStorage<StoredModelState | null>(
-    LOCALSTORAGE_KEYS.chatSelectedModel(locator),
-    null,
-  );
-
-  // Validate stored connectionId is still in the available connections list.
-  // Falls back to first connection when stored one is gone.
-  const modelsConnection = findOrFirst(
-    modelsConnections,
-    modelState?.connectionId,
-  );
-
-  // Reconstruct ChatModelsConfig from stored state — no fetch needed.
-  // Note: `fast` (cheapest model) is intentionally not computed here since we no
-  // longer fetch the full model list in this hook. It remains undefined until the
-  // user explicitly picks a model. The fast field is advisory; it falls back to
-  // `thinking` when absent.
-  const selectedModelsConfig: ChatModelsConfig | null =
-    modelState && modelsConnection
-      ? {
-          connectionId: modelsConnection.id,
-          thinking: {
-            id: modelState.id,
-            provider: modelState.provider,
-            capabilities: modelState.capabilities
-              ? {
-                  vision: modelState.capabilities.includes("vision")
-                    ? true
-                    : undefined,
-                  text: modelState.capabilities.includes("text")
-                    ? true
-                    : undefined,
-                  tools: modelState.capabilities.includes("tools")
-                    ? true
-                    : undefined,
-                }
-              : undefined,
-            limits: modelState.limits,
-          },
-        }
-      : null;
-
-  return [selectedModelsConfig, setModelState] as const;
-};
 
 /**
  * Converts resource contents to UI message parts
@@ -500,76 +459,6 @@ function derivePartsFromTiptapDoc(
 const ChatStableContext = createContext<ChatStableValue | null>(null);
 const ChatStreamContext = createContext<ChatStreamValue | null>(null);
 
-/**
- * Silent child component that auto-selects the first available model when
- * none is stored. Wrapped in ErrorBoundary + Suspense inside ChatProvider so
- * any MCP error (e.g. 401 from Gemini) is contained here and never propagates
- * to the parent provider or the page.
- *
- * Renders null — purely a behavior component.
- */
-function ModelAutoSelector({
-  modelsConnections,
-  currentConfig,
-  onAutoSelect,
-  allowAll,
-  isModelAllowed,
-}: {
-  modelsConnections: ReturnType<typeof useModelConnections>;
-  currentConfig: ChatModelsConfig | null;
-  onAutoSelect: (state: StoredModelState) => void;
-  allowAll: boolean;
-  isModelAllowed: (connectionId: string, modelId: string) => boolean;
-}) {
-  const firstConnection = modelsConnections[0];
-  // This call may suspend (loading) or throw (MCP error).
-  // Both are handled by the ErrorBoundary + Suspense wrapping this component.
-  const models = useModels(firstConnection?.id);
-
-  // Stable refs for callbacks that change reference every render.
-  // Without these, the effect re-fires while the mutation is still pending
-  // (currentConfig still null), causing an infinite update loop.
-  const onAutoSelectRef = useRef(onAutoSelect);
-  onAutoSelectRef.current = onAutoSelect;
-  const isModelAllowedRef = useRef(isModelAllowed);
-  isModelAllowedRef.current = isModelAllowed;
-
-  // useEffect is required here: writing localStorage during render would violate
-  // React's render-purity requirement. We need a side effect that fires after
-  // the component confirms models are available, then calls onAutoSelect once.
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect
-  useEffect(() => {
-    // Only auto-select when there is no stored model config yet.
-    if (currentConfig || !firstConnection || models.length === 0) return;
-
-    // Filter models through the same permission check used in the manual
-    // selector so auto-selection always picks a model the user can actually use.
-    const allowedModels = allowAll
-      ? models
-      : models.filter((m) =>
-          isModelAllowedRef.current(firstConnection.id, m.id),
-        );
-
-    // Prefer Claude Opus 4.6 as default, fall back to Sonnet 4.6, then any
-    const preferred =
-      allowedModels.find((m) => m.id.includes("claude-4.6-opus")) ??
-      allowedModels.find((m) => m.id.includes("claude-opus-4.6")) ??
-      allowedModels.find((m) => m.id.includes("claude-sonnet-4.6")) ??
-      allowedModels.find((m) => m.id.includes("claude-sonnet"));
-    const first = preferred ?? allowedModels[0];
-    if (!first) return;
-    onAutoSelectRef.current({
-      id: first.id,
-      connectionId: firstConnection.id,
-      provider: first.provider ?? undefined,
-      capabilities: first.capabilities ?? undefined,
-      limits: first.limits ?? undefined,
-    });
-  }, [models, currentConfig, firstConnection, allowAll]);
-
-  return null;
-}
-
 const SAFETY_NET_POLL_MS = 30_000;
 const getSnapshot = () => 0;
 
@@ -706,6 +595,14 @@ export function ChatProvider({ children }: PropsWithChildren) {
 
   const { locator, org } = useProjectContext();
   const queryClient = useQueryClient();
+  const keys = useAiProviderKeyList();
+  const [selectedKeyId, setSelectedKeyId] = useLocalStorage<string | null>(
+    LOCALSTORAGE_KEYS.chatSelectedKeyId(locator),
+    null,
+  );
+  const effectiveKeyId = keys.some((k) => k.id === selectedKeyId)
+    ? selectedKeyId
+    : (keys[0]?.id ?? null);
 
   // Unified task manager hook handles all task state and operations
   const taskManager = useTaskManager();
@@ -744,12 +641,37 @@ export function ChatProvider({ children }: PropsWithChildren) {
   >(`${locator}:selected-virtual-mcp-id`, null);
 
   // Model state — filter out connections where the user's role allows no models
-  const allModelsConnections = useModelConnections();
-  const { hasConnectionModels, isModelAllowed, allowAll } = useAllowedModels();
-  const modelsConnections = allModelsConnections.filter((conn) =>
-    hasConnectionModels(conn.id),
+  const allModelsConnections = keys;
+  const [storedModel, setModel] = useLocalStorage<AiProviderModel | null>(
+    LOCALSTORAGE_KEYS.chatSelectedModel(locator),
+    null,
   );
-  const [selectedModel, setModel] = useModelState(locator, modelsConnections);
+
+  // Load models for the effective key so we can auto-select a default.
+  // useAiProviderModels uses a regular useQuery (non-suspending), so this
+  // returns [] until data arrives — no blocking, no useEffect needed.
+  const { models: defaultKeyModels, isLoading: isModelsQueryLoading } =
+    useAiProviderModels(effectiveKeyId ?? undefined);
+  const effectiveProviderId =
+    keys.find((k) => k.id === effectiveKeyId)?.providerId ?? "";
+  const defaultModel = selectDefaultModel(
+    defaultKeyModels,
+    effectiveProviderId,
+    effectiveKeyId ?? undefined,
+  );
+
+  // Guard against stale localStorage entries that predate the current schema.
+  // If required fields are missing the stored value is unusable — fall back to
+  // the provider-aware default, then null.
+  const hasValidStoredModel =
+    !!storedModel &&
+    typeof storedModel.modelId === "string" &&
+    !!storedModel.title;
+  const model = hasValidStoredModel ? storedModel! : defaultModel;
+
+  // Only treat models as "loading" when we have no stored model to show yet.
+  // If a valid stored model exists we render it immediately; no spinner needed.
+  const isModelsLoading = !hasValidStoredModel && isModelsQueryLoading;
 
   // Mode state
   const [selectedMode, setSelectedMode] =
@@ -942,13 +864,17 @@ export function ChatProvider({ children }: PropsWithChildren) {
   };
 
   // Model functions
-  const setSelectedModel = (model: ModelChangePayload) => {
+  const setSelectedModel = (model: AiProviderModel) => {
     setModel({
-      id: model.id,
-      connectionId: model.connectionId,
-      provider: model.provider,
+      modelId: model.modelId,
+      title: model.title,
+      description: model.description,
+      logo: model.logo,
+      providerId: model.providerId,
       capabilities: model.capabilities,
       limits: model.limits,
+      costs: model.costs,
+      keyId: model.keyId,
     });
   };
 
@@ -989,7 +915,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
 
   // Chat functions
   const sendMessage = async (tiptapDoc: Metadata["tiptapDoc"]) => {
-    if (!selectedModel) {
+    if (!model) {
       toast.error("No model configured");
       return;
     }
@@ -1037,7 +963,11 @@ export function ChatProvider({ children }: PropsWithChildren) {
     const metadata: Metadata = {
       ...messageMetadata,
       system,
-      models: selectedModel,
+      models: {
+        credentialId: model.keyId ?? effectiveKeyId ?? "",
+        thinking: toMetadataModelInfo(model),
+        fast: toMetadataModelInfo(model),
+      },
     };
 
     const userMessage: ChatMessage = {
@@ -1121,8 +1051,8 @@ export function ChatProvider({ children }: PropsWithChildren) {
     virtualMcps,
     selectedVirtualMcp,
     setVirtualMcpId,
-    modelsConnections,
-    selectedModel,
+    model,
+    isModelsLoading,
     setSelectedModel,
     selectedMode,
     setSelectedMode,
@@ -1130,6 +1060,9 @@ export function ChatProvider({ children }: PropsWithChildren) {
     cancelRun,
     setAppContext,
     clearAppContext,
+    allModelsConnections,
+    credentialId: effectiveKeyId,
+    setCredentialId: setSelectedKeyId,
   };
 
   const streamValue: ChatStreamValue = {
@@ -1154,13 +1087,6 @@ export function ChatProvider({ children }: PropsWithChildren) {
       <ChatStreamContext.Provider value={streamValue}>
         <ErrorBoundary fallback={null}>
           <Suspense fallback={null}>
-            <ModelAutoSelector
-              modelsConnections={modelsConnections}
-              currentConfig={selectedModel}
-              onAutoSelect={setModel}
-              allowAll={allowAll}
-              isModelAllowed={isModelAllowed}
-            />
             <TaskStreamManager
               key={taskManager.activeTaskId}
               taskId={taskManager.activeTaskId}

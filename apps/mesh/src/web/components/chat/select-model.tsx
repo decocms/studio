@@ -23,26 +23,50 @@ import {
   ChevronDown,
   ChevronSelectorVertical,
   Image01,
+  Key01,
   RefreshCcw01,
   SearchMd,
   Settings01,
   Stars01,
   Tool01,
 } from "@untitledui/icons";
-import { Suspense, useEffect, useRef, useState, type ReactNode } from "react";
-import { useNavigate } from "@tanstack/react-router";
-import { ORG_ADMIN_PROJECT_SLUG, useProjectContext } from "@decocms/mesh-sdk";
-import type { ChatModelsConfig } from "./types";
 import {
-  useLLMsFromConnection,
-  useModelConnections,
-  type LLM,
+  type ReactNode,
+  startTransition,
+  Suspense,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import {
+  type AiProviderModel,
+  useAiProviderKeyList,
+  useAiProviderModels,
+  useAiProviders,
 } from "../../hooks/collections/use-llm";
-import { useAllowedModels } from "../../hooks/use-allowed-models";
 import { ErrorBoundary } from "../error-boundary";
+import { useChat } from "./context";
+import { getProviderLogo } from "@/web/utils/ai-providers-logos";
+import { useSettingsModal } from "@/web/hooks/use-settings-modal";
+
+function parseModelTitle(model: { title: string; modelId: string }): {
+  provider: string;
+  displayName: string;
+} {
+  const hasPrefix = model.title.includes(": ");
+  return {
+    provider: hasPrefix
+      ? (model.title.split(": ")[0] ?? "")
+      : (model.modelId.split("/")[0] ?? ""),
+    displayName: hasPrefix
+      ? model.title.split(": ").slice(1).join(": ")
+      : model.title,
+  };
+}
 
 // ============================================================================
-// Tier Classification System
+// Tier Classification
 // ============================================================================
 
 const TIER_IDS = ["smarter", "faster", "cheaper"] as const;
@@ -103,35 +127,69 @@ const TIER_PATTERNS: Array<{ tier: TierId; prefixes: string[] }> = [
   },
 ];
 
-const FREE_SUFFIX = ":free";
-
+// Sort rules longest-prefix-first for specificity
 const SORTED_TIER_RULES = TIER_PATTERNS.flatMap(({ tier, prefixes }) =>
   prefixes.map((prefix) => ({ tier, prefix })),
 ).sort((a, b) => b.prefix.length - a.prefix.length);
 
-// Some prefixes should only match exactly (no sub-variants)
-// e.g. "google/gemini-2.5-pro" should NOT match "google/gemini-2.5-pro-preview-05-06"
+// Only exact matches (no named sub-variants); date suffixes (digits) are fine
 const EXACT_ONLY_PREFIXES = new Set(["google/gemini-2.5-pro"]);
 
+const tierCache = new Map<string, TierId | null>();
+
 function classifyModel(modelId: string): TierId | null {
-  if (modelId.endsWith(FREE_SUFFIX)) return "cheaper";
-  for (const { tier, prefix } of SORTED_TIER_RULES) {
-    if (modelId.startsWith(prefix)) {
-      // For exact-only prefixes, skip named sub-variants (e.g. -preview) but allow date suffixes (e.g. -20250601)
-      if (EXACT_ONLY_PREFIXES.has(prefix) && modelId.length > prefix.length) {
-        const nextChar = modelId[prefix.length];
-        if (nextChar === "-") {
-          const charAfterHyphen = modelId[prefix.length + 1];
-          if (!charAfterHyphen || !/\d/.test(charAfterHyphen)) continue;
+  const cached = tierCache.get(modelId);
+  if (cached !== undefined) return cached;
+
+  let result: TierId | null = null;
+  if (modelId.endsWith(":free")) {
+    result = "cheaper";
+  } else {
+    outer: for (const { tier, prefix } of SORTED_TIER_RULES) {
+      if (modelId.startsWith(prefix)) {
+        if (EXACT_ONLY_PREFIXES.has(prefix) && modelId.length > prefix.length) {
+          const nextChar = modelId[prefix.length];
+          if (nextChar === "-") {
+            const charAfterHyphen = modelId[prefix.length + 1];
+            if (!charAfterHyphen || !/\d/.test(charAfterHyphen)) continue outer;
+          }
         }
+        result = tier;
+        break;
       }
-      return tier;
     }
   }
-  return null;
+
+  tierCache.set(modelId, result);
+  return result;
 }
 
-const DEFAULT_SHORTLIST = [
+function groupByTier(
+  models: AiProviderModel[],
+): Record<TierId | "other", AiProviderModel[]> {
+  const groups: Record<TierId | "other", AiProviderModel[]> = {
+    smarter: [],
+    faster: [],
+    cheaper: [],
+    other: [],
+  };
+  for (const m of models) {
+    const tier = classifyModel(m.modelId);
+    groups[tier ?? "other"].push(m);
+  }
+  for (const key of Object.keys(groups) as Array<TierId | "other">) {
+    groups[key].sort((a, b) => a.title.localeCompare(b.title));
+  }
+  return groups;
+}
+
+// ============================================================================
+// Model Shortlist (localStorage)
+// ============================================================================
+
+const SHORTLIST_KEY_PREFIX = "mesh:model-shortlist:";
+
+const DEFAULT_SHORTLIST = new Set([
   // Smarter
   "anthropic/claude-4.6-opus-20260205",
   "anthropic/claude-opus-4.6",
@@ -153,56 +211,19 @@ const DEFAULT_SHORTLIST = [
   "deepseek/deepseek-v3.2",
   "google/gemini-2.5-flash-lite",
   "openai/gpt-oss-120b:free",
-];
-const defaultShortlistSet = new Set(DEFAULT_SHORTLIST);
+]);
 
-const priorityMap = new Map<string, number>();
-DEFAULT_SHORTLIST.forEach((id, i) => priorityMap.set(id, i));
-
-// ============================================================================
-// localStorage Shortlist Helpers
-// ============================================================================
-
-const SHORTLIST_KEY_PREFIX = "mesh:model-shortlist:";
-
-function getShortlist(connectionId: string): string[] | null {
+function readShortlist(keyId: string): Set<string> | null {
   try {
-    const raw = localStorage.getItem(SHORTLIST_KEY_PREFIX + connectionId);
-    return raw ? JSON.parse(raw) : null;
+    const raw = localStorage.getItem(SHORTLIST_KEY_PREFIX + keyId);
+    return raw ? new Set(JSON.parse(raw)) : null;
   } catch {
     return null;
   }
 }
 
-function setShortlist(connectionId: string, ids: string[]) {
-  localStorage.setItem(
-    SHORTLIST_KEY_PREFIX + connectionId,
-    JSON.stringify(ids),
-  );
-}
-
-// ============================================================================
-// useModels Hook
-// ============================================================================
-
-export function useModels(connectionId: string | undefined): LLM[] {
-  const models = useLLMsFromConnection(connectionId ?? undefined, {
-    pageSize: 999,
-  });
-
-  const filteredModels = models.filter(
-    (m) => m.limits?.contextWindow && m.limits?.maxOutputTokens,
-  );
-
-  return filteredModels.sort((a, b) => {
-    const aPriority = priorityMap.get(a.id);
-    const bPriority = priorityMap.get(b.id);
-    if (aPriority !== undefined && bPriority !== undefined)
-      return aPriority - bPriority;
-    if (aPriority !== undefined) return -1;
-    if (bPriority !== undefined) return 1;
-    return a.title.localeCompare(b.title);
-  });
+function writeShortlist(keyId: string, ids: Set<string>) {
+  localStorage.setItem(SHORTLIST_KEY_PREFIX + keyId, JSON.stringify([...ids]));
 }
 
 // ============================================================================
@@ -215,16 +236,19 @@ function getContextLevel(tokens: number): {
   label: string;
   description: string;
 } {
-  if (tokens < 32_000)
+  if (tokens < 32_000) {
     return { level: 1, label: "Small", description: "Short conversations" };
-  if (tokens < 200_000)
+  }
+  if (tokens < 200_000) {
     return { level: 2, label: "Medium", description: "Good for most tasks" };
-  if (tokens < 500_000)
+  }
+  if (tokens < 500_000) {
     return {
       level: 3,
       label: "Large",
       description: "Long projects & research",
     };
+  }
   return { level: 4, label: "Very large", description: "Massive files & data" };
 }
 
@@ -291,7 +315,7 @@ function ModelDetailsPanel({
   model,
   compact = false,
 }: {
-  model: LLM | null;
+  model: AiProviderModel | null;
   compact?: boolean;
 }) {
   if (!model) {
@@ -307,12 +331,8 @@ function ModelDetailsPanel({
   const outputCostPerM =
     model.costs?.output != null ? model.costs.output * 1_000_000 : null;
 
-  const providerLabel = model.title.includes(": ")
-    ? model.title.split(": ")[0]
-    : (model.provider ?? model.id.split("/")[0]);
-  const modelName = model.title.includes(": ")
-    ? model.title.split(": ").slice(1).join(": ")
-    : model.title;
+  const { provider: providerLabel, displayName: modelName } =
+    parseModelTitle(model);
 
   if (compact) {
     return (
@@ -372,13 +392,15 @@ function ModelDetailsPanel({
             {modelName}
           </p>
         </div>
-        <p className="text-xs text-muted-foreground/50 font-mono">{model.id}</p>
+        <p className="text-xs text-muted-foreground/50 font-mono">
+          {model.modelId}
+        </p>
       </div>
 
       {/* Capabilities */}
       {model.capabilities && model.capabilities.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 pb-4 border-b border-border">
-          {model.capabilities.map((capability) => (
+          {[...new Set(model.capabilities)].map((capability) => (
             <CapabilityBadge key={capability} capability={capability} />
           ))}
         </div>
@@ -507,28 +529,23 @@ function ModelItemContent({
   model,
   onHover,
 }: {
-  model: LLM;
-  onHover: (model: LLM) => void;
+  model: AiProviderModel;
+  onHover: (model: AiProviderModel) => void;
 }) {
-  const displayName = model.title.includes(": ")
-    ? model.title.split(": ").slice(1).join(": ")
-    : model.title;
-  const provider = model.title.includes(": ")
-    ? model.title.split(": ")[0]
-    : (model.provider ?? model.id.split("/")[0]);
+  const { displayName, provider } = parseModelTitle(model);
+
+  const providerLogo = getProviderLogo(model);
 
   return (
     <div
       className="flex items-center gap-2.5 py-2 px-3 hover:bg-accent cursor-pointer rounded-lg"
       onMouseEnter={() => onHover(model)}
     >
-      {model.logo && (
-        <img
-          src={model.logo}
-          className="w-4 h-4 shrink-0 rounded-sm"
-          alt={model.title}
-        />
-      )}
+      <img
+        src={providerLogo}
+        className="w-4 h-4 shrink-0 rounded-sm"
+        alt={model.title}
+      />
       <div className="flex flex-col flex-1 min-w-0">
         <span className="text-sm text-foreground leading-tight truncate">
           {displayName}
@@ -544,27 +561,12 @@ function ModelItemContent({
 function ModelListErrorFallback({
   error,
   onRetry,
-  connectionId,
-  orgSlug,
 }: {
   error: Error | null;
   onRetry: () => void;
-  connectionId: string | null;
+  credentialId: string | undefined;
   orgSlug?: string;
 }) {
-  const navigate = useNavigate();
-  const handleConfigure = () => {
-    if (!connectionId || !orgSlug) return;
-    navigate({
-      to: "/$org/$project/mcps/$connectionId",
-      params: {
-        org: orgSlug,
-        project: ORG_ADMIN_PROJECT_SLUG,
-        connectionId,
-      },
-    });
-  };
-
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-3 px-4 py-8 text-center">
       <div className="bg-destructive/10 p-2 rounded-full">
@@ -589,17 +591,6 @@ function ModelListErrorFallback({
           <RefreshCcw01 className="size-3.5" />
           Retry
         </Button>
-        {connectionId && orgSlug && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleConfigure}
-            className="gap-1.5"
-          >
-            <Settings01 className="size-3.5" />
-            Configure
-          </Button>
-        )}
       </div>
     </div>
   );
@@ -626,129 +617,210 @@ function ModelListSkeleton() {
 // ConnectionModelList — browse + manage modes
 // ============================================================================
 
-function ConnectionModelList({
-  connectionId,
-  allowAll,
-  isModelAllowed,
-  searchTerm,
-  selectedModel,
-  onModelSelect,
+function ModelTierSection({
+  label,
+  models,
+  onSelect,
   onHover,
+}: {
+  label: string;
+  models: AiProviderModel[];
+  onSelect: (m: AiProviderModel) => void;
+  onHover: (m: AiProviderModel) => void;
+}) {
+  if (models.length === 0) return null;
+  return (
+    <div>
+      <div className="text-xs font-medium text-muted-foreground px-3 pt-3 pb-1">
+        {label}
+      </div>
+      {models.map((m) => (
+        <div
+          key={m.modelId}
+          onClick={() => onSelect(m)}
+          className="cursor-pointer"
+        >
+          <ModelItemContent model={m} onHover={onHover} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Each row is its own component so the React Compiler can memoize them
+// individually — only the toggled item re-renders, not all 500.
+function ManageModelItem({
+  model,
+  isChecked,
+  onToggle,
+  onHover,
+}: {
+  model: AiProviderModel;
+  isChecked: boolean;
+  onToggle: (modelId: string) => void;
+  onHover: (m: AiProviderModel) => void;
+}) {
+  // Local state gives instant visual feedback; parent shortlistSet updates
+  // asynchronously via startTransition so it never blocks the checkbox.
+  const [checked, setChecked] = useState(isChecked);
+  if (checked !== isChecked) {
+    setChecked(isChecked);
+  }
+  const logo = getProviderLogo(model);
+
+  return (
+    <label
+      className="flex items-center gap-3 min-h-8 py-2.5 px-3 hover:bg-accent cursor-pointer rounded-lg"
+      onMouseEnter={() => onHover(model)}
+    >
+      <Checkbox
+        checked={checked}
+        onCheckedChange={() => {
+          setChecked((v) => !v);
+          onToggle(model.modelId);
+        }}
+      />
+      <img
+        src={logo}
+        className="w-5 h-5 shrink-0 rounded-sm"
+        alt={model.title}
+      />
+      <span className="text-sm text-foreground flex-1 min-w-0 line-clamp-1">
+        {model.title}
+      </span>
+    </label>
+  );
+}
+
+type ManageVirtualItem =
+  | { type: "header"; label: string }
+  | { type: "model"; model: AiProviderModel };
+
+function buildManageItems(
+  grouped: Record<TierId | "other", AiProviderModel[]>,
+): ManageVirtualItem[] {
+  const items: ManageVirtualItem[] = [];
+  for (const tierId of TIER_IDS) {
+    if (grouped[tierId].length > 0) {
+      items.push({ type: "header", label: TIER_LABELS[tierId] });
+      for (const m of grouped[tierId]) items.push({ type: "model", model: m });
+    }
+  }
+  if (grouped.other.length > 0) {
+    items.push({ type: "header", label: "Other" });
+    for (const m of grouped.other) items.push({ type: "model", model: m });
+  }
+  return items;
+}
+
+function VirtualManageList({
+  items,
+  shortlistSet,
+  onToggle,
+  onHover,
+}: {
+  items: ManageVirtualItem[];
+  shortlistSet: Set<string>;
+  onToggle: (modelId: string) => void;
+  onHover: (m: AiProviderModel) => void;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: (i) => (items[i]?.type === "header" ? 36 : 44),
+    overscan: 6,
+  });
+
+  return (
+    <div ref={scrollRef} className="flex-1 overflow-y-auto">
+      <div className="relative" style={{ height: virtualizer.getTotalSize() }}>
+        {virtualizer.getVirtualItems().map((vItem) => {
+          const item = items[vItem.index];
+          if (!item) return null;
+          return (
+            <div
+              key={vItem.key}
+              data-index={vItem.index}
+              ref={virtualizer.measureElement}
+              className="absolute left-0 right-0 top-0 px-0.5"
+              style={{ transform: `translateY(${vItem.start}px)` }}
+            >
+              {item.type === "header" ? (
+                <div className="text-xs font-medium text-muted-foreground px-3 pt-3 pb-1">
+                  {item.label}
+                </div>
+              ) : (
+                <ManageModelItem
+                  model={item.model}
+                  isChecked={shortlistSet.has(item.model.modelId)}
+                  onToggle={onToggle}
+                  onHover={onHover}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ConnectionModelList({
+  keyId,
+  searchTerm,
+  onHover,
+  onModelSelect,
   managing,
   onToggleManage,
-  allModelsRef,
-  onSelectedModelResolved,
 }: {
-  connectionId: string | null;
-  allowAll: boolean;
-  isModelAllowed: (connectionId: string, modelId: string) => boolean;
+  keyId: string | undefined;
   searchTerm: string;
-  selectedModel?: SelectedModelState;
-  onModelSelect: (model: LLM) => void;
-  onHover: (model: LLM) => void;
+  onModelSelect: (model: AiProviderModel) => void;
+  onHover: (model: AiProviderModel) => void;
   managing: boolean;
   onToggleManage: () => void;
-  allModelsRef: React.RefObject<LLM[]>;
-  onSelectedModelResolved: (model: LLM | null) => void;
 }) {
-  const allModels = useModels(connectionId ?? undefined);
-  allModelsRef.current = allModels;
+  const { models: allModels } = useAiProviderModels(keyId);
+  const [shortlistSet, setShortlistSet] = useState<Set<string>>(
+    () => (keyId ? readShortlist(keyId) : null) ?? DEFAULT_SHORTLIST,
+  );
+  const [, startShortlistTransition] = useTransition();
 
-  // Resolve the selected model for the details panel default
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect
-  useEffect(() => {
-    if (selectedModel && allModels.length > 0) {
-      const found =
-        allModels.find((m) => m.id === selectedModel.thinking.id) ?? null;
-      if (found) {
-        onSelectedModelResolved(found);
-      }
-    }
-  }, [selectedModel, allModels, onSelectedModelResolved]);
-
-  const models = allowAll
-    ? allModels
-    : allModels.filter(
-        (m) => connectionId && isModelAllowed(connectionId, m.id),
-      );
-
-  const [shortlistVersion, setShortlistVersion] = useState(0);
-  void shortlistVersion;
-
-  const shortlist = connectionId ? getShortlist(connectionId) : null;
-  const shortlistSet = shortlist ? new Set(shortlist) : defaultShortlistSet;
-
-  const groupByTier = (list: LLM[]) => {
-    const groups: Record<TierId | "other", LLM[]> = {
-      smarter: [],
-      faster: [],
-      cheaper: [],
-      other: [],
-    };
-    for (const m of list) {
-      const tier = classifyModel(m.id);
-      groups[tier ?? "other"].push(m);
-    }
-    // Sort each group alphabetically by title
-    for (const key of Object.keys(groups)) {
-      groups[key as TierId | "other"].sort((a, b) =>
-        a.title.localeCompare(b.title),
-      );
-    }
-    return groups;
+  const handleToggle = (modelId: string) => {
+    if (!keyId) return;
+    // Deferred: ManageModelItem's local state already gave instant feedback,
+    // so this heavier reconciliation can happen in a transition.
+    startShortlistTransition(() => {
+      setShortlistSet((current) => {
+        const next = new Set(current);
+        if (next.has(modelId)) {
+          next.delete(modelId);
+        } else {
+          next.add(modelId);
+        }
+        writeShortlist(keyId, next);
+        return next;
+      });
+    });
   };
 
-  if (managing) {
-    const displayModels = searchTerm.trim()
-      ? models.filter((model) => {
-          const search = searchTerm.toLowerCase();
-          return (
-            model.title.toLowerCase().includes(search) ||
-            model.provider?.toLowerCase().includes(search)
-          );
-        })
+  const normalizedSearch = searchTerm.toLowerCase().trim();
+  const filterModels = (models: AiProviderModel[]) =>
+    normalizedSearch
+      ? models.filter(
+          (m) =>
+            m.title.toLowerCase().includes(normalizedSearch) ||
+            m.modelId.toLowerCase().includes(normalizedSearch),
+        )
       : models;
 
-    const grouped = groupByTier(displayModels);
-
-    const handleToggle = (modelId: string) => {
-      if (!connectionId) return;
-      const current = shortlist ?? [...defaultShortlistSet];
-      const next = current.includes(modelId)
-        ? current.filter((id) => id !== modelId)
-        : [...current, modelId];
-      setShortlist(connectionId, next);
-      setShortlistVersion((v) => v + 1);
-    };
-
-    const renderManageSection = (label: string, items: LLM[]) => {
-      if (items.length === 0) return null;
-      return (
-        <div key={label}>
-          <div className="text-xs font-medium text-muted-foreground px-3 pt-3 pb-1">
-            {label}
-          </div>
-          {items.map((m) => (
-            <label
-              key={m.id}
-              className="flex items-center gap-3 min-h-8 py-2.5 px-3 hover:bg-accent cursor-pointer rounded-lg"
-              onMouseEnter={() => onHover(m)}
-            >
-              <Checkbox
-                checked={shortlistSet.has(m.id)}
-                onCheckedChange={() => handleToggle(m.id)}
-              />
-              {m.logo && (
-                <img src={m.logo} className="w-5 h-5 shrink-0" alt={m.title} />
-              )}
-              <span className="text-sm text-foreground flex-1 min-w-0 line-clamp-1">
-                {m.title}
-              </span>
-            </label>
-          ))}
-        </div>
-      );
-    };
+  if (managing) {
+    const grouped = groupByTier(filterModels(allModels));
+    const flatItems = buildManageItems(grouped);
+    const selectedCount = allModels.filter((m) =>
+      shortlistSet.has(m.modelId),
+    ).length;
 
     return (
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -762,108 +834,41 @@ function ConnectionModelList({
             Back
           </button>
           <span className="text-xs text-muted-foreground">
-            {models.filter((m) => shortlistSet.has(m.id)).length} selected
+            {selectedCount} selected
           </span>
         </div>
-        <div className="flex-1 overflow-y-auto px-0.5 pt-1">
-          {TIER_IDS.map((tierId) =>
-            renderManageSection(TIER_LABELS[tierId], grouped[tierId]),
-          )}
-          {renderManageSection("Other", grouped.other)}
-        </div>
+        <VirtualManageList
+          items={flatItems}
+          shortlistSet={shortlistSet}
+          onToggle={handleToggle}
+          onHover={onHover}
+        />
       </div>
     );
   }
 
-  // --- Browse mode ---
-  // If no allowed models match the shortlist, skip it and show all allowed models
-  const shortlistedCandidates = models.filter((m) => shortlistSet.has(m.id));
-  const shortlistedModels =
-    shortlistedCandidates.length > 0 ? shortlistedCandidates : models;
-
-  const filteredModels = searchTerm.trim()
-    ? shortlistedModels.filter((model) => {
-        const search = searchTerm.toLowerCase();
-        return (
-          model.title.toLowerCase().includes(search) ||
-          model.provider?.toLowerCase().includes(search) ||
-          model.description?.toLowerCase().includes(search)
-        );
-      })
-    : shortlistedModels;
-
-  if (filteredModels.length === 0) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center py-8 gap-3">
-        <p className="text-sm text-muted-foreground">No models found</p>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onToggleManage}
-          className="gap-1.5"
-        >
-          <Settings01 className="size-3.5" />
-          Manage models
-        </Button>
-      </div>
-    );
-  }
-
-  if (searchTerm.trim().length > 0) {
-    return (
-      <div className="flex-1 overflow-y-auto p-2">
-        {filteredModels.map((m) => {
-          const isSelected = m.id === selectedModel?.thinking.id;
-          return (
-            <div
-              key={m.id}
-              onClick={() => onModelSelect(m)}
-              className={cn("rounded-lg mb-1", isSelected && "bg-accent/50")}
-            >
-              <ModelItemContent model={m} onHover={onHover} />
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
-
-  const grouped = groupByTier(filteredModels);
-
-  const renderBrowseSection = (label: string, items: LLM[]) => {
-    if (items.length === 0) return null;
-    return (
-      <div key={label}>
-        <div className="text-xs font-medium text-muted-foreground px-3 pt-3 pb-1">
-          {label}
-        </div>
-        {items.map((m) => {
-          const isSelected = m.id === selectedModel?.thinking.id;
-          return (
-            <div
-              key={m.id}
-              onClick={() => onModelSelect(m)}
-              className={cn("rounded-lg mb-1", isSelected && "bg-accent/50")}
-            >
-              <ModelItemContent model={m} onHover={onHover} />
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
+  // Browse mode: show shortlisted models (fall back to all if none match)
+  const shortlisted = allModels.filter((m) => shortlistSet.has(m.modelId));
+  const browseable = shortlisted.length > 0 ? shortlisted : allModels;
+  const grouped = groupByTier(filterModels(browseable));
 
   return (
-    <div className="flex-1 overflow-y-auto p-2">
-      {TIER_IDS.map((tierId) =>
-        renderBrowseSection(TIER_LABELS[tierId], grouped[tierId]),
-      )}
-      {grouped.other.length > 0 && (
-        <>
-          <div className="mx-3 my-2 border-t border-border" />
-          {renderBrowseSection("Other", grouped.other)}
-        </>
-      )}
+    <div className="flex-1 overflow-y-auto px-0.5 pt-1">
+      {TIER_IDS.map((tierId) => (
+        <ModelTierSection
+          key={tierId}
+          label={TIER_LABELS[tierId]}
+          models={grouped[tierId]}
+          onSelect={onModelSelect}
+          onHover={onHover}
+        />
+      ))}
+      <ModelTierSection
+        label="Other"
+        models={grouped.other}
+        onSelect={onModelSelect}
+        onHover={onHover}
+      />
     </div>
   );
 }
@@ -875,10 +880,21 @@ function ConnectionModelList({
 function SelectedModelDisplay({
   model,
   placeholder = "Select model",
+  isLoading = false,
 }: {
-  model: LLM | undefined;
+  model: AiProviderModel | null;
   placeholder?: string;
+  isLoading?: boolean;
 }) {
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-1.5">
+        <Skeleton className="w-5 h-5 rounded-sm shrink-0" />
+        <Skeleton className="w-16 h-3 hidden md:block" />
+      </div>
+    );
+  }
+
   if (!model) {
     return (
       <div className="flex items-center gap-1.5">
@@ -891,20 +907,18 @@ function SelectedModelDisplay({
     );
   }
 
-  const displayName = model.title.includes(": ")
-    ? model.title.split(": ").slice(1).join(": ")
-    : model.title;
+  const { displayName } = parseModelTitle(model);
+
+  const providerLogo = getProviderLogo(model);
 
   return (
     <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
-      {model.logo && (
-        <img
-          src={model.logo}
-          className="w-5 h-5 shrink-0 rounded-sm"
-          alt={model.title}
-        />
-      )}
-      <span className="text-sm text-muted-foreground truncate whitespace-nowrap hidden md:inline">
+      <img
+        src={providerLogo}
+        className="w-5 h-5 shrink-0 rounded-sm"
+        alt={model.title}
+      />
+      <span className="text-sm truncate whitespace-nowrap hidden md:inline text-muted-foreground">
         {displayName}
       </span>
       <ChevronDown
@@ -915,20 +929,13 @@ function SelectedModelDisplay({
   );
 }
 
-export type SelectedModelState = ChatModelsConfig;
-
 export function modelSupportsFiles(
-  selectedModel: SelectedModelState | null | undefined,
+  selectedModel: AiProviderModel | null | undefined,
 ): boolean {
-  return selectedModel?.thinking?.capabilities?.vision === true;
-}
-
-export interface ModelChangePayload {
-  id: string;
-  connectionId: string;
-  provider?: string;
-  capabilities?: string[];
-  limits?: { contextWindow?: number; maxOutputTokens?: number };
+  return (
+    selectedModel?.capabilities?.includes("vision") === true ||
+    selectedModel?.capabilities?.includes("image") === true
+  );
 }
 
 // ============================================================================
@@ -987,64 +994,36 @@ function ModelSelectorContentFallback() {
   );
 }
 
-function ModelSelectorContent({
-  selectedModel,
-  onModelChange,
-  onClose,
-  modelsConnections: modelsConnectionsProp,
-}: {
-  selectedModel?: SelectedModelState;
-  onModelChange: (model: ModelChangePayload) => void;
-  onClose: () => void;
-  modelsConnections?: ReturnType<typeof useModelConnections>;
-}) {
-  const [hoveredModel, setHoveredModel] = useState<LLM | null>(null);
+function ModelSelectorContent({ onClose }: { onClose: () => void }) {
+  const [hoveredModel, setHoveredModel] = useState<AiProviderModel | null>(
+    null,
+  );
   const [searchTerm, setSearchTerm] = useState("");
   const [managing, setManaging] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const allModelsRef = useRef<LLM[]>([]);
+  const aiProviders = useAiProviders();
+  const {
+    credentialId,
+    setCredentialId,
+    model: selectedModel,
+    setSelectedModel,
+  } = useChat();
+  const keys = useAiProviderKeyList();
 
-  // The resolved selected model — set by ConnectionModelList once models load
-  const [resolvedSelectedModel, setResolvedSelectedModel] =
-    useState<LLM | null>(null);
+  const providerMap = Object.fromEntries(
+    (aiProviders?.providers ?? []).map((p) => [p.id, p]),
+  );
+  const { open: openSettings } = useSettingsModal();
 
-  const { org } = useProjectContext();
-
-  const modelsConnectionsFromHook = useModelConnections();
-  const allModelsConnections =
-    modelsConnectionsProp ?? modelsConnectionsFromHook;
-
-  const { isModelAllowed, allowAll, hasConnectionModels } = useAllowedModels();
-
-  const modelsConnections = allowAll
-    ? allModelsConnections
-    : allModelsConnections.filter((conn) => hasConnectionModels(conn.id));
-
-  const [selectedConnectionId, setSelectedConnectionId] = useState<
-    string | null
-  >(selectedModel?.connectionId ?? modelsConnections[0]?.id ?? null);
-
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect
-  useEffect(() => {
-    setTimeout(() => {
-      searchInputRef.current?.focus();
-    }, 0);
-  }, []);
-
-  const handleConnectionChange = (connectionId: string) => {
-    setSelectedConnectionId(connectionId);
+  const handleKeyChange = (keyId: string) => {
+    setCredentialId(keyId);
     setHoveredModel(null);
   };
 
-  const handleModelSelect = (model: LLM) => {
-    if (!selectedConnectionId) return;
-    onModelChange({
-      id: model.id,
-      connectionId: selectedConnectionId,
-      provider: model.provider ?? undefined,
-      capabilities: model.capabilities,
-      limits: model.limits ?? undefined,
-    });
+  const handleModelSelect = (model: AiProviderModel) => {
+    const credential = credentialId;
+    if (!credential) return;
+    setSelectedModel({ ...model, keyId: credential });
     setSearchTerm("");
     onClose();
   };
@@ -1063,40 +1042,67 @@ function ModelSelectorContent({
               }
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="flex-1 border-0 shadow-none focus-visible:ring-0 px-0 h-full text-sm placeholder:text-muted-foreground/50 bg-transparent"
+              className="flex-1 min-w-0 border-0 shadow-none focus-visible:ring-0 px-0 h-full text-sm placeholder:text-muted-foreground/50 bg-transparent"
             />
-            {modelsConnections.length > 0 && (
+            {keys.length > 0 && (
               <Select
-                value={selectedConnectionId ?? ""}
-                onValueChange={handleConnectionChange}
+                value={credentialId ?? ""}
+                onValueChange={handleKeyChange}
               >
                 <SelectTrigger
                   size="sm"
-                  className="w-auto min-w-[140px] h-8 shrink-0 [&>svg:last-child]:hidden"
+                  className="w-auto h-8 shrink-0 gap-1 px-2 [&>svg:last-child]:hidden"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <SelectValue placeholder="Select connection" />
+                  <SelectValue placeholder="Key">
+                    {(() => {
+                      const key = keys.find((k) => k.id === credentialId);
+                      const provider = key
+                        ? providerMap[key.providerId]
+                        : undefined;
+                      return provider?.logo ? (
+                        <img
+                          src={provider.logo}
+                          alt={provider.name}
+                          className="w-4 h-4 rounded"
+                        />
+                      ) : (
+                        <div className="w-4 h-4 rounded bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
+                          {(provider?.name ?? key?.providerId ?? "?")
+                            .slice(0, 1)
+                            .toUpperCase()}
+                        </div>
+                      );
+                    })()}
+                  </SelectValue>
                   <ChevronSelectorVertical className="size-4 opacity-50 shrink-0 pointer-events-none" />
                 </SelectTrigger>
                 <SelectContent>
-                  {modelsConnections.map((conn) => (
-                    <SelectItem key={conn.id} value={conn.id}>
-                      <div className="flex items-center gap-2">
-                        {conn.icon ? (
-                          <img
-                            src={conn.icon}
-                            alt={conn.title}
-                            className="w-4 h-4 rounded"
-                          />
-                        ) : (
-                          <div className="w-4 h-4 rounded bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
-                            {conn.title.slice(0, 1).toUpperCase()}
-                          </div>
-                        )}
-                        <span>{conn.title}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
+                  {keys.map((key) => {
+                    const provider = providerMap[key.providerId];
+                    return (
+                      <SelectItem key={key.id} value={key.id}>
+                        <div className="flex items-center gap-2">
+                          {provider?.logo ? (
+                            <img
+                              src={provider.logo}
+                              alt={provider.name}
+                              className="w-4 h-4 rounded"
+                            />
+                          ) : (
+                            <div className="w-4 h-4 rounded bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
+                              {(provider?.name ?? key.providerId)
+                                .slice(0, 1)
+                                .toUpperCase()}
+                            </div>
+                          )}
+                          <span>
+                            {provider?.name ?? key.providerId} — {key.label}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             )}
@@ -1104,48 +1110,51 @@ function ModelSelectorContent({
         </div>
 
         <ErrorBoundary
-          key={selectedConnectionId}
+          key={credentialId}
           fallback={({ error, resetError }) => (
             <ModelListErrorFallback
               error={error}
               onRetry={resetError}
-              connectionId={selectedConnectionId}
-              orgSlug={org.slug}
+              credentialId={credentialId ?? undefined}
             />
           )}
         >
           <Suspense fallback={<ModelListSkeleton />}>
             <ConnectionModelList
-              connectionId={selectedConnectionId}
-              allowAll={allowAll}
-              isModelAllowed={isModelAllowed}
+              keyId={credentialId ?? undefined}
               searchTerm={searchTerm}
-              selectedModel={selectedModel}
-              onModelSelect={handleModelSelect}
               onHover={setHoveredModel}
+              onModelSelect={handleModelSelect}
               managing={managing}
               onToggleManage={() => setManaging((v) => !v)}
-              allModelsRef={allModelsRef}
-              onSelectedModelResolved={setResolvedSelectedModel}
             />
           </Suspense>
         </ErrorBoundary>
         {!managing && (
-          <div className="border-t border-border">
+          <div className="border-t border-border flex">
             <button
               type="button"
-              onClick={() => setManaging(true)}
-              className="flex items-center gap-2 w-full px-4 py-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent cursor-pointer"
+              onClick={() => startTransition(() => setManaging(true))}
+              className="flex items-center gap-2 flex-1 px-4 py-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent cursor-pointer"
             >
               <Settings01 className="size-3.5 shrink-0" />
               Manage models
+            </button>
+            <div className="w-px bg-border shrink-0" />
+            <button
+              type="button"
+              onClick={() => openSettings("org.ai-providers")}
+              className="flex items-center gap-2 flex-1 px-4 py-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent cursor-pointer"
+            >
+              <Key01 className="size-3.5 shrink-0" />
+              Manage API keys
             </button>
           </div>
         )}
       </div>
 
       <div className="hidden md:flex md:flex-col md:w-[320px] md:shrink-0 p-3">
-        <ModelDetailsPanel model={hoveredModel ?? resolvedSelectedModel} />
+        <ModelDetailsPanel model={hoveredModel ?? selectedModel ?? null} />
       </div>
     </div>
   );
@@ -1156,69 +1165,18 @@ function ModelSelectorContent({
 // ============================================================================
 
 export interface ModelSelectorProps {
-  selectedModel?: SelectedModelState;
-  onModelChange: (model: ModelChangePayload) => void;
-  modelsConnections?: ReturnType<typeof useModelConnections>;
   variant?: "borderless" | "bordered";
   className?: string;
   placeholder?: string;
 }
 
-function ResolvedModelDisplay({
-  selectedModel,
-  placeholder,
-}: {
-  selectedModel?: SelectedModelState;
-  placeholder: string;
-}) {
-  const connectionId = selectedModel?.connectionId ?? undefined;
-  const models = useModels(connectionId);
-  const currentModel = selectedModel
-    ? models.find((m) => m.id === selectedModel.thinking.id)
-    : undefined;
-  return (
-    <SelectedModelDisplay model={currentModel} placeholder={placeholder} />
-  );
-}
-
-function FallbackModelDisplay({
-  selectedModel,
-  placeholder,
-}: {
-  selectedModel?: SelectedModelState;
-  placeholder: string;
-}) {
-  if (!selectedModel) {
-    return <SelectedModelDisplay model={undefined} placeholder={placeholder} />;
-  }
-  const id = selectedModel.thinking.id;
-  const shortName = id.split("/").pop() ?? id;
-  return (
-    <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
-      <span className="text-sm text-muted-foreground truncate whitespace-nowrap hidden md:inline">
-        {shortName}
-      </span>
-      <ChevronDown
-        size={14}
-        className="text-muted-foreground opacity-50 shrink-0 hidden md:inline"
-      />
-    </div>
-  );
-}
-
 export function ModelSelector({
-  selectedModel,
-  onModelChange,
-  modelsConnections: modelsConnectionsProp,
   variant = "borderless",
   className,
   placeholder = "Select model",
 }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
-  const modelsConnectionsFromHook = useModelConnections();
-  const modelsConnections = modelsConnectionsProp ?? modelsConnectionsFromHook;
-
-  if (modelsConnections.length === 0) return null;
+  const { model, isModelsLoading } = useChat();
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -1232,28 +1190,11 @@ export function ModelSelector({
             className,
           )}
         >
-          <ErrorBoundary
-            fallback={
-              <FallbackModelDisplay
-                selectedModel={selectedModel}
-                placeholder={placeholder}
-              />
-            }
-          >
-            <Suspense
-              fallback={
-                <SelectedModelDisplay
-                  model={undefined}
-                  placeholder={placeholder}
-                />
-              }
-            >
-              <ResolvedModelDisplay
-                selectedModel={selectedModel}
-                placeholder={placeholder}
-              />
-            </Suspense>
-          </ErrorBoundary>
+          <SelectedModelDisplay
+            model={model}
+            placeholder={placeholder}
+            isLoading={isModelsLoading}
+          />
         </Button>
       </DialogTrigger>
       <DialogContent
@@ -1262,12 +1203,7 @@ export function ModelSelector({
       >
         <DialogTitle className="sr-only">Select model</DialogTitle>
         <Suspense fallback={<ModelSelectorContentFallback />}>
-          <ModelSelectorContent
-            selectedModel={selectedModel}
-            onModelChange={onModelChange}
-            onClose={() => setOpen(false)}
-            modelsConnections={modelsConnections}
-          />
+          <ModelSelectorContent onClose={() => setOpen(false)} />
         </Suspense>
       </DialogContent>
     </Dialog>

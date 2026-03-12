@@ -19,21 +19,21 @@ const MemoryConfigSchema = z.object({
   thread_id: z.string(),
 });
 
-const ProviderSchema = z
-  .enum([
-    "openai",
-    "anthropic",
-    "google",
-    "xai",
-    "deepseek",
-    "openrouter",
-    "openai-compatible",
-  ])
-  .optional()
-  .nullable();
+const ProviderEnum = z.enum([
+  "openai",
+  "anthropic",
+  "google",
+  "xai",
+  "deepseek",
+  "openrouter",
+  "openai-compatible",
+]);
+
+const ProviderSchema = ProviderEnum.optional().nullable();
 
 const ModelInfoSchema = z.object({
   id: z.string(),
+  title: z.string(),
   capabilities: z
     .object({
       vision: z.boolean().optional(),
@@ -50,10 +50,16 @@ const ModelInfoSchema = z.object({
     .optional(),
 });
 
+const ThinkingModelSchema = ModelInfoSchema.extend({
+  provider: ProviderSchema,
+});
+
 const ModelsSchema = z
   .object({
-    connectionId: z.string(),
-    thinking: ModelInfoSchema.describe("Backbone model for the agentic loop"),
+    credentialId: z.string(),
+    thinking: ThinkingModelSchema.describe(
+      "Backbone model for the agentic loop",
+    ),
     coding: ModelInfoSchema.optional().describe("Good coding model"),
     fast: ModelInfoSchema.optional().describe("Cheap model for simple tasks"),
   })

@@ -81,6 +81,10 @@ export const MONITORING_LOG_ATTR = {
 } as const;
 
 export const MONITORING_LOG_TYPE_VALUE = "tool_call";
+export const MONITORING_LOG_TYPE_LLM_CALL = "llm_call";
+
+/** Connection ID used for all LLM calls emitted by Decopilot. */
+export const DECOPILOT_CONNECTION_ID = "decopilot";
 
 /** Minimal log-record-like input for conversion. */
 export interface LogRecordInput {

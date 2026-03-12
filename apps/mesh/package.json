@@ -1,19 +1,54 @@
 {
   "name": "decocms",
-  "version": "2.163.1",
+  "version": "2.164.0",
+  "description": "Deco Studio — Self-hostable MCP Gateway for managing AI connections and tools",
   "author": "Deco team",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/decocms/studio.git",
     "directory": "apps/mesh"
   },
-  "module": "src/index.ts",
+  "bugs": {
+    "url": "https://github.com/decocms/studio/issues"
+  },
+  "type": "module",
+  "bin": {
+    "deco": "./dist/server/cli.js"
+  },
+  "files": [
+    "dist/**/*"
+  ],
+  "scripts": {
+    "dev": "bun run migrate && concurrently \"bun run dev:client\" \"bun run dev:server\"",
+    "dev:servers": "concurrently \"bun run dev:client\" \"bun run dev:server\"",
+    "dev:local": "MESH_LOCAL_MODE=true bun run dev",
+    "dev:client": "bun --bun vite dev",
+    "dev:server": "NODE_ENV=development bun --env-file=.env --hot run src/index.ts",
+    "build:client": "bun --bun vite build",
+    "build:server": "bun run scripts/bundle-server-script.ts --dist ./dist/server",
+    "db:migrate": "bun run ./dist/server/migrate.js",
+    "check": "tsc --noEmit",
+    "start": "bun run ./dist/server/server.js",
+    "migrate": "bun run src/database/migrate.ts",
+    "test": "bun test",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "better-auth:migrate": "bunx --bun @better-auth/cli migrate -y --config src/auth/index.ts",
+    "prepublishOnly": "bun run build:client && bun run build:server"
+  },
+  "optionalDependencies": {
+    "@duckdb/node-api": "^1.5.0-r.1"
+  },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.58",
+    "@anthropic-ai/sdk": "^0.78.0",
     "@clickhouse/client": "^1.8.1",
     "@electric-sql/pglite": "^0.3.15",
     "@jitl/quickjs-wasmfile-release-sync": "^0.31.0",
     "@modelcontextprotocol/ext-apps": "^1.1.2",
+    "@openrouter/ai-sdk-provider": "^2.2.5",
     "@opentelemetry/core": "^2.6.0",
+    "@tanstack/react-virtual": "^3.13.21",
     "dompurify": "^3.3.1",
     "kysely": "^0.28.8",
     "kysely-pglite": "^0.6.1",
@@ -117,16 +152,6 @@
     "zod-from-json-schema": "^0.5.2",
     "zustand": "^5.0.9"
   },
-  "bin": {
-    "deco": "./dist/server/cli.js"
-  },
-  "bugs": {
-    "url": "https://github.com/decocms/studio/issues"
-  },
-  "description": "Deco Studio — Self-hostable MCP Gateway for managing AI connections and tools",
-  "files": [
-    "dist/**/*"
-  ],
   "homepage": "https://github.com/decocms/studio",
   "keywords": [
     "mcp",
@@ -140,26 +165,5 @@
   "license": "MIT",
   "publishConfig": {
     "access": "public"
-  },
-  "scripts": {
-    "dev": "bun run migrate && concurrently \"bun run dev:client\" \"bun run dev:server\"",
-    "dev:local": "MESH_LOCAL_MODE=true bun run dev",
-    "dev:client": "bun --bun vite dev",
-    "dev:server": "NODE_ENV=development bun --env-file=.env --hot run src/index.ts",
-    "build:client": "bun --bun vite build",
-    "build:server": "bun run scripts/bundle-server-script.ts --dist ./dist/server",
-    "db:migrate": "bun run ./dist/server/migrate.js",
-    "check": "tsc --noEmit",
-    "start": "bun run ./dist/server/server.js",
-    "migrate": "bun run src/database/migrate.ts",
-    "test": "bun test",
-    "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui",
-    "better-auth:migrate": "bunx --bun @better-auth/cli migrate -y --config src/auth/index.ts",
-    "prepublishOnly": "bun run build:client && bun run build:server"
-  },
-  "optionalDependencies": {
-    "@duckdb/node-api": "^1.5.0-r.1"
-  },
-  "type": "module"
+  }
 }

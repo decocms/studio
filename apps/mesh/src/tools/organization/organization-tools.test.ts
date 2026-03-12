@@ -196,6 +196,8 @@ const createMockContext = (
       projectConnections: null as never,
       projectPluginConfigs: null as never,
       monitoringDashboards: null as never,
+      aiProviderKeys: null as never,
+      oauthPkceStates: null as never,
     },
     vault: null as never,
     authInstance: authInstance as unknown as BetterAuthInstance,
@@ -228,6 +230,7 @@ const createMockContext = (
       requestId: "req_123",
       timestamp: new Date(),
     },
+    aiProviders: null as never,
     createMCPProxy: vi.fn().mockResolvedValue({}),
     getOrCreateClient: vi.fn().mockResolvedValue({}),
   };

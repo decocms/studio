@@ -3,6 +3,7 @@ import {
   getToolsByCategory,
   type ToolName,
 } from "@/tools/registry";
+import { DEFAULT_LOGO, PROVIDER_LOGOS } from "@/web/utils/ai-providers-logos";
 import { ToolSetSelector } from "@/web/components/tool-set-selector.tsx";
 import { useMembers } from "@/web/hooks/use-members";
 import {
@@ -13,9 +14,9 @@ import { authClient } from "@/web/lib/auth-client";
 import { KEYS } from "@/web/lib/query-keys";
 import { useConnections, useProjectContext } from "@decocms/mesh-sdk";
 import {
-  useLLMsFromConnection,
-  useModelConnections,
-  type LLM,
+  AiProviderKey,
+  useAiProviderKeyList,
+  useSuspenseAiProviderModels,
 } from "@/web/hooks/collections/use-llm";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { Badge } from "@deco/ui/components/badge.tsx";
@@ -394,6 +395,11 @@ function OrgPermissionsTab({
 // Models Permissions Tab
 // ============================================================================
 
+const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
+  anthropic: "Anthropic",
+  openrouter: "OpenRouter",
+};
+
 interface ModelsPermissionsTabProps {
   allowAllModels: boolean;
   modelSet: Record<string, string[]>;
@@ -406,6 +412,8 @@ interface ModelsPermissionsTabProps {
  * Inner component per connection that fetches and displays models.
  * Wrapped in Suspense by the parent.
  */
+const MODELS_PAGE_SIZE = 30;
+
 function ConnectionModelsSection({
   connection,
   selectedModels,
@@ -416,16 +424,24 @@ function ConnectionModelsSection({
   searchQuery,
   readOnly,
 }: {
-  connection: { id: string; title: string; icon: string | null };
+  connection: AiProviderKey;
   selectedModels: string[];
   allowAllModels: boolean;
-  onToggleModel: (connectionId: string, modelId: string) => void;
-  onToggleConnectionAll: (connectionId: string, models: LLM[]) => void;
+  onToggleModel: (keyId: string, modelId: string) => void;
+  onToggleConnectionAll: (keyId: string, models: { id: string }[]) => void;
   allConnectionModelsSelected: boolean;
   searchQuery: string;
   readOnly: boolean;
 }) {
-  const models = useLLMsFromConnection(connection.id, { pageSize: 999 });
+  const [visibleCount, setVisibleCount] = useState(MODELS_PAGE_SIZE);
+  const rawModels = useSuspenseAiProviderModels(connection.id);
+  const models = rawModels
+    .filter((m, i, arr) => arr.findIndex((x) => x.modelId === m.modelId) === i)
+    .map((m) => ({
+      ...m,
+      id: m.modelId,
+      provider: connection.label,
+    }));
 
   // Filter models by search query
   const filteredModels = searchQuery.trim()
@@ -438,6 +454,9 @@ function ConnectionModelsSection({
     : models;
 
   if (filteredModels.length === 0) return null;
+
+  const visibleModels = filteredModels.slice(0, visibleCount);
+  const hasMore = filteredModels.length > visibleCount;
 
   // Check if all filtered models in this connection are selected
   const allSelected =
@@ -453,20 +472,20 @@ function ConnectionModelsSection({
       {/* Connection header with toggle-all for this connection */}
       <div className="flex items-center justify-between px-4 py-2">
         <div className="flex items-center gap-2">
-          {connection.icon ? (
-            <img
-              src={connection.icon}
-              alt={connection.title}
-              className="w-4 h-4 rounded"
-            />
-          ) : (
-            <div className="w-4 h-4 rounded bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
-              {connection.title.slice(0, 1).toUpperCase()}
-            </div>
-          )}
-          <h4 className="text-sm font-medium text-muted-foreground/75">
-            {connection.title}
-          </h4>
+          <img
+            src={PROVIDER_LOGOS[connection.providerId] ?? DEFAULT_LOGO}
+            alt={connection.providerId}
+            className="w-4 h-4 rounded-sm"
+          />
+          <div className="flex flex-col">
+            <h4 className="text-sm font-medium text-muted-foreground/75">
+              {PROVIDER_DISPLAY_NAMES[connection.providerId] ??
+                connection.providerId}
+            </h4>
+            <span className="text-xs text-muted-foreground/50">
+              {connection.label}
+            </span>
+          </div>
         </div>
         {!readOnly && !allowAllModels && (
           <Switch
@@ -477,7 +496,7 @@ function ConnectionModelsSection({
       </div>
       {/* Model list */}
       <div className="space-y-1">
-        {filteredModels.map((model) => {
+        {visibleModels.map((model) => {
           const isEnabled =
             allowAllModels ||
             selectedModels.includes("*") ||
@@ -533,6 +552,15 @@ function ConnectionModelsSection({
             </div>
           );
         })}
+        {hasMore && (
+          <button
+            type="button"
+            className="w-full px-4 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+            onClick={() => setVisibleCount((c) => c + MODELS_PAGE_SIZE)}
+          >
+            Show more ({filteredModels.length - visibleCount} remaining)
+          </button>
+        )}
       </div>
     </div>
   );
@@ -556,7 +584,8 @@ function ModelsPermissionsTab({
 }: ModelsPermissionsTabProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const deferredSearchQuery = useDeferredValue(searchQuery);
-  const modelConnections = useModelConnections();
+
+  const allModelsConnections = useAiProviderKeyList();
 
   // Toggle a single model for a connection
   const toggleModel = (connectionId: string, modelId: string) => {
@@ -576,7 +605,10 @@ function ModelsPermissionsTab({
   };
 
   // Toggle all models for a connection
-  const toggleConnectionAll = (connectionId: string, models: LLM[]) => {
+  const toggleConnectionAll = (
+    connectionId: string,
+    models: { id: string }[],
+  ) => {
     const current = modelSet[connectionId] ?? [];
     const allModelIds = models.map((m) => m.id);
     const allSelected =
@@ -654,12 +686,12 @@ function ModelsPermissionsTab({
 
       {/* Models list grouped by connection */}
       <div className="flex-1 overflow-auto">
-        {modelConnections.length === 0 ? (
+        {allModelsConnections.length === 0 ? (
           <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
             No LLM connections configured
           </div>
         ) : (
-          modelConnections.map((conn) => (
+          allModelsConnections.map((conn) => (
             <Suspense
               key={conn.id}
               fallback={<ConnectionModelsSectionFallback />}
@@ -1146,7 +1178,7 @@ export function ManageRolesDialog({
       }
     }
 
-    // Build modelSet from "models" key (composite connectionId:modelId strings)
+    // Build modelSet from "models" key (composite keyId:modelId strings)
     const modelsEntries = permission["models"] || [];
     const hasAllModels =
       modelsEntries.length === 0 || modelsEntries.includes("*:*");
@@ -1155,12 +1187,12 @@ export function ManageRolesDialog({
       for (const entry of modelsEntries) {
         const colonIdx = entry.indexOf(":");
         if (colonIdx === -1) continue;
-        const connId = entry.slice(0, colonIdx);
+        const keyId = entry.slice(0, colonIdx);
         const modelId = entry.slice(colonIdx + 1);
-        if (!modelSet[connId]) {
-          modelSet[connId] = [];
+        if (!modelSet[keyId]) {
+          modelSet[keyId] = [];
         }
-        modelSet[connId].push(modelId);
+        modelSet[keyId].push(modelId);
       }
     }
 
@@ -1319,15 +1351,15 @@ export function ManageRolesDialog({
       }
     }
 
-    // Add model permissions as composite "connectionId:modelId" strings
+    // Add model permissions as composite "keyId:modelId" strings
     if (role.allowAllModels) {
       permission["models"] = ["*:*"];
     } else {
       const modelEntries: string[] = [];
-      for (const [connectionId, models] of Object.entries(role.modelSet)) {
+      for (const [keyId, models] of Object.entries(role.modelSet)) {
         if (models.length > 0) {
           for (const modelId of models) {
-            modelEntries.push(`${connectionId}:${modelId}`);
+            modelEntries.push(`${keyId}:${modelId}`);
           }
         }
       }
@@ -1776,9 +1808,10 @@ export function ManageRolesDialog({
               </Button>
             </div>
 
-            {/* Tab Content */}
+            {/* Tab Content — unmount eagerly when dialog closes to avoid
+                tearing down hundreds of DOM nodes during the close animation */}
             <div className="flex-1 overflow-hidden min-h-0">
-              {activeTab === "mcp" && !viewingBuiltinRole && (
+              {open && activeTab === "mcp" && !viewingBuiltinRole && (
                 <ToolSetSelector
                   toolSet={form.watch("toolSet")}
                   onToolSetChange={(newToolSet) =>
@@ -1786,7 +1819,7 @@ export function ManageRolesDialog({
                   }
                 />
               )}
-              {activeTab === "org" && (
+              {open && activeTab === "org" && (
                 <OrgPermissionsTab
                   allowAllStaticPermissions={form.watch(
                     "allowAllStaticPermissions",
@@ -1805,7 +1838,7 @@ export function ManageRolesDialog({
                   readOnly={!!viewingBuiltinRole}
                 />
               )}
-              {activeTab === "models" && (
+              {open && activeTab === "models" && (
                 <ModelsPermissionsTab
                   allowAllModels={form.watch("allowAllModels")}
                   modelSet={form.watch("modelSet")}
@@ -1822,7 +1855,7 @@ export function ManageRolesDialog({
                   readOnly={!!viewingBuiltinRole}
                 />
               )}
-              {activeTab === "members" && (
+              {open && activeTab === "members" && (
                 <MembersTab
                   memberIds={form.watch("memberIds")}
                   onMemberIdsChange={(newMemberIds) =>

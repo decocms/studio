@@ -20,19 +20,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Cache dependencies
-        id: cache-deps
-        uses: actions/cache@v4
-        with:
-          path: |
-            node_modules
-            apps/*/node_modules
-            packages/*/node_modules
-            ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-
       - name: Install dependencies
-        if: steps.cache-deps.outputs.cache-hit != 'true'
         run: bun install
         working-directory: .
 
@@ -57,6 +45,9 @@ jobs:
 
       - name: Create data directory
         run: mkdir -p data
+
+      - name: Run database migrations
+        run: bun run migrate
 
       - name: Run e2e tests
         run: bun run test:e2e

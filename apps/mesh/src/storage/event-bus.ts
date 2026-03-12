@@ -413,7 +413,7 @@ class KyselyEventBusStorage implements EventBusStorage {
         publisher: input.publisher ?? null,
         event_type: input.eventType,
         filter: input.filter ?? null,
-        enabled: 1,
+        enabled: 1 as never, // PGLite boolean
         created_at: now,
         updated_at: now,
       })
@@ -426,7 +426,7 @@ class KyselyEventBusStorage implements EventBusStorage {
       publisher: input.publisher ?? null,
       eventType: input.eventType,
       filter: input.filter ?? null,
-      enabled: true,
+      enabled: 1 as never, // PGLite boolean
       createdAt: now,
       updatedAt: now,
     };
@@ -1082,7 +1082,7 @@ class KyselyEventBusStorage implements EventBusStorage {
           event_type: desiredSub.eventType,
           publisher: desiredSub.publisher ?? null,
           filter: desiredSub.filter ?? null,
-          enabled: 1,
+          enabled: 1 as never, // PGLite boolean
           created_at: now,
           updated_at: now,
         });
