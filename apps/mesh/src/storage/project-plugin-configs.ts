@@ -135,6 +135,17 @@ export class ProjectPluginConfigsStorage
     return (result.numDeletedRows ?? 0n) > 0n;
   }
 
+  async listByConnectionId(
+    connectionId: string,
+  ): Promise<ProjectPluginConfig[]> {
+    const rows = await this.db
+      .selectFrom("project_plugin_configs")
+      .selectAll()
+      .where("connection_id", "=", connectionId)
+      .execute();
+    return rows.map((row) => this.parseRow(row));
+  }
+
   /**
    * Get bound connections for multiple projects (for list display)
    * Returns a map of project ID to array of connection summaries

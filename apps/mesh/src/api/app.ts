@@ -43,6 +43,8 @@ import oauthProxyRoutes, {
 } from "./routes/oauth-proxy";
 import openaiCompatRoutes from "./routes/openai-compat";
 import proxyRoutes from "./routes/proxy";
+import { isLocalMode } from "../auth/local-mode";
+import localDevProjectRoutes from "./routes/local-dev-project";
 import publicConfigRoutes from "./routes/public-config";
 import selfRoutes from "./routes/self";
 import { shouldSkipMeshContext, SYSTEM_PATHS } from "./utils/paths";
@@ -920,6 +922,13 @@ export async function createApp(options: CreateAppOptions = {}) {
 
     return next();
   });
+
+  // ============================================================================
+  // Local Dev Routes (local mode only, needs MeshContext)
+  // ============================================================================
+  if (isLocalMode()) {
+    app.route("/api/local-dev", localDevProjectRoutes);
+  }
 
   // Get all management tools (for OAuth consent UI)
   app.get("/api/tools/management", (c) => {

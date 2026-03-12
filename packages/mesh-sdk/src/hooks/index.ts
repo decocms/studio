@@ -78,3 +78,6 @@ export {
   type VirtualMCPFilter,
   type UseVirtualMCPsOptions,
 } from "./use-virtual-mcp";
+
+// Chat bridge
+export { ChatBridgeProvider, useChatBridge } from "./use-chat-bridge";

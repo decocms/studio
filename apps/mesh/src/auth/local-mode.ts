@@ -15,14 +15,14 @@ import { userInfo } from "os";
 import { join } from "path";
 import { auth } from "./index";
 
+let _cachedPassword: string | undefined;
+
 /**
  * Get the per-install local admin password from secrets.json.
  *
  * Reads from DECOCMS_HOME (set by CLI) or the default ~/deco directory.
  * Throws if no password is found — never falls back to a hardcoded credential.
  */
-let _cachedPassword: string | null = null;
-
 export async function getLocalAdminPassword(): Promise<string> {
   if (_cachedPassword) return _cachedPassword;
 

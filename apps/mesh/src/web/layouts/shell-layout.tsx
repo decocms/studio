@@ -1,11 +1,14 @@
 import { useState } from "react";
-import { Chat } from "@/web/components/chat/index";
+import { Chat, useChat } from "@/web/components/chat/index";
 import { ChatPanel } from "@/web/components/chat/side-panel-chat";
 import { CreateProjectDialog } from "@/web/components/create-project-dialog";
+import { GitPanel } from "@/web/components/git-panel";
 import { MeshSidebar } from "@/web/components/sidebar";
 import { SplashScreen } from "@/web/components/splash-screen";
 import { MeshUserMenu } from "@/web/components/user-menu.tsx";
 import { useDecoChatOpen } from "@/web/hooks/use-deco-chat-open";
+import { useGitPanel } from "@/web/hooks/use-git-panel";
+import { useProjectBash } from "@/web/hooks/use-project-bash";
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
 import RequiredAuthLayout from "@/web/layouts/required-auth-layout";
 import { authClient } from "@/web/lib/auth-client";
@@ -22,6 +25,7 @@ import {
 } from "@deco/ui/components/sidebar.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
 import {
+  ChatBridgeProvider,
   ORG_ADMIN_PROJECT_SLUG,
   ProjectContextProvider,
   ProjectContextProviderProps,
@@ -77,6 +81,28 @@ function PersistentSidebarProvider({ children }: PropsWithChildren) {
   );
 }
 
+/**
+ * Git panel overlay — slides in from the right as a fixed-width panel.
+ * Rendered inside ProjectContextProvider so it has access to connections.
+ */
+/**
+ * The git panel content — only renders internals when connection is available.
+ */
+function GitPanelContent({ onClose }: { onClose: () => void }) {
+  const { client, connectionId, connectionUrl } = useProjectBash();
+
+  if (!client || !connectionId) return null;
+
+  return (
+    <GitPanel
+      client={client}
+      connectionId={connectionId}
+      connectionUrl={connectionUrl}
+      onClose={onClose}
+    />
+  );
+}
+
 function ShellLayoutInner({
   isHomeRoute,
   onCreateProject,
@@ -85,11 +111,11 @@ function ShellLayoutInner({
   onCreateProject: () => void;
 }) {
   const [chatOpen] = useDecoChatOpen();
+  const [gitPanelOpen, setGitPanelOpen] = useGitPanel();
   const [chatPanelWidth] = useLocalStorage(
     LOCALSTORAGE_KEYS.decoChatPanelWidth(),
     30,
   );
-
   return (
     <SidebarLayout
       className="flex-1 bg-sidebar"
@@ -113,8 +139,7 @@ function ShellLayoutInner({
           className="h-full"
           style={{ overflow: "visible" }}
         >
-          {/* overflow:visible overrides the library's inline overflow:hidden
-              so the card's thin border-l at x=0 isn't clipped at the boundary */}
+          {/* Main content card */}
           <ResizablePanel
             className="min-w-0 flex flex-col"
             style={{ overflow: "visible" }}
@@ -125,7 +150,7 @@ function ShellLayoutInner({
                 "border-t border-l border-sidebar-border",
                 "rounded-tl-[0.75rem]",
                 "transition-[border-radius] duration-200 ease-[var(--ease-out-quart)]",
-                chatOpen && "rounded-tr-[0.75rem] border-r",
+                (chatOpen || gitPanelOpen) && "rounded-tr-[0.75rem] border-r",
               )}
             >
               <div className="flex-1 overflow-hidden">
@@ -134,7 +159,26 @@ function ShellLayoutInner({
             </div>
           </ResizablePanel>
 
-          {/* Chat card — separate floating card, no shared border with main content */}
+          {/* Git panel card — slides in/out */}
+          <ResizableHandle className="bg-sidebar" />
+          <ResizablePanel
+            defaultSize={25}
+            minSize={gitPanelOpen ? 20 : 0}
+            className={cn(
+              "transition-[max-width] duration-200 ease-[var(--ease-out-quart)] overflow-hidden",
+              gitPanelOpen ? "max-w-[480px] bg-sidebar" : "max-w-0",
+            )}
+          >
+            <div className="h-full pl-1.5 pb-1.5">
+              <div className="h-full bg-background rounded-[0.75rem] overflow-hidden border border-sidebar-border shadow-sm">
+                <Suspense>
+                  <GitPanelContent onClose={() => setGitPanelOpen(false)} />
+                </Suspense>
+              </div>
+            </div>
+          </ResizablePanel>
+
+          {/* Chat card — slides in/out */}
           {!isHomeRoute && (
             <>
               <ResizableHandle className="bg-sidebar" />
@@ -157,6 +201,33 @@ function ShellLayoutInner({
         </ResizablePanelGroup>
       </SidebarInset>
     </SidebarLayout>
+  );
+}
+
+/**
+ * Bridges the chat context to packages via ChatBridgeProvider.
+ * Must be rendered inside Chat.Provider.
+ */
+function ChatBridgeWrapper({ children }: PropsWithChildren) {
+  const { sendMessage } = useChat();
+  const [, setChatOpen] = useDecoChatOpen();
+
+  const handleSend = (text: string) => {
+    const doc = {
+      type: "doc" as const,
+      content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+    };
+    setChatOpen(true);
+    void sendMessage(doc);
+  };
+
+  return (
+    <ChatBridgeProvider
+      sendMessage={handleSend}
+      openChat={() => setChatOpen(true)}
+    >
+      {children}
+    </ChatBridgeProvider>
   );
 }
 
@@ -192,7 +263,6 @@ function ShellLayoutContent() {
 
       return {
         org: data,
-        // Project slug comes from URL param, actual project data is fetched in project-layout
         project: {
           slug: projectSlug,
           isOrgAdmin: projectSlug === ORG_ADMIN_PROJECT_SLUG,
@@ -218,16 +288,13 @@ function ShellLayoutContent() {
     );
   }
 
-  // If org parameter exists but organization is invalid/doesn't exist, redirect to home
   if (!projectContext.org) {
-    // Prevent infinite redirect loop - only redirect if not already at home
     if (window.location.pathname !== "/") {
       window.location.href = "/";
     }
     return null;
   }
 
-  // Update project context with current project slug from URL
   const contextWithCurrentProject = {
     ...projectContext,
     project: {
@@ -242,15 +309,16 @@ function ShellLayoutContent() {
       <PersistentSidebarProvider>
         <div className="flex flex-col h-screen overflow-hidden">
           <Chat.Provider>
-            <ShellLayoutInner
-              isHomeRoute={isHomeRoute}
-              onCreateProject={() => setCreateProjectDialogOpen(true)}
-            />
+            <ChatBridgeWrapper>
+              <ShellLayoutInner
+                isHomeRoute={isHomeRoute}
+                onCreateProject={() => setCreateProjectDialogOpen(true)}
+              />
+            </ChatBridgeWrapper>
           </Chat.Provider>
         </div>
       </PersistentSidebarProvider>
 
-      {/* Create Project Dialog */}
       <CreateProjectDialog
         open={createProjectDialogOpen}
         onOpenChange={setCreateProjectDialogOpen}

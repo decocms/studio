@@ -78,6 +78,9 @@ export {
   useVirtualMCPActions,
   type VirtualMCPFilter,
   type UseVirtualMCPsOptions,
+  // Chat bridge
+  ChatBridgeProvider,
+  useChatBridge,
 } from "./hooks";
 
 // Types

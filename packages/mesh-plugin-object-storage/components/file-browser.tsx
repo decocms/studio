@@ -51,6 +51,7 @@ interface FileRowProps {
   showFullPath?: boolean;
   onSelect: (selected: boolean) => void;
   onNavigate: (path: string) => void;
+  onViewFile: (key: string) => void;
   onDownload: (key: string) => void;
   onDelete: (key: string) => void;
 }
@@ -61,6 +62,7 @@ function FileRow({
   showFullPath = false,
   onSelect,
   onNavigate,
+  onViewFile,
   onDownload,
   onDelete,
 }: FileRowProps) {
@@ -76,11 +78,10 @@ function FileRow({
 
       <button
         type="button"
-        onClick={() => (item.isFolder ? onNavigate(item.key) : undefined)}
-        className={cn(
-          "flex items-center gap-2 flex-1 min-w-0 text-left",
-          item.isFolder && "cursor-pointer hover:text-primary",
-        )}
+        onClick={() =>
+          item.isFolder ? onNavigate(item.key) : onViewFile(item.key)
+        }
+        className="flex items-center gap-2 flex-1 min-w-0 text-left cursor-pointer hover:text-primary"
       >
         {item.isFolder ? (
           <Folder size={18} className="text-amber-500 shrink-0" />
@@ -173,6 +174,10 @@ export default function FileBrowser() {
   const navigate = objectStorageRouter.useNavigate();
 
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+
+  const viewFile = (key: string) => {
+    navigate({ to: "/viewer", search: { key } });
+  };
 
   const setPrefix = (newPath: string) => {
     setSelectedKeys(new Set()); // Clear selection when navigating folders
@@ -579,6 +584,7 @@ export default function FileBrowser() {
                 showFullPath={flat}
                 onSelect={(selected) => handleSelect(item.key, selected)}
                 onNavigate={setPrefix}
+                onViewFile={viewFile}
                 onDownload={handleDownload}
                 onDelete={(key) => deleteMutation.mutate([key])}
               />

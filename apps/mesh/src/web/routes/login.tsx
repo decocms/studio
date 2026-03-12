@@ -123,11 +123,27 @@ function RunSSO({
   return <SplashScreen />;
 }
 
+/**
+ * Validate that a URL targets localhost only (prevents open redirect attacks).
+ */
+function isLocalhostUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === "http:" &&
+      (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1")
+    );
+  } catch {
+    return false;
+  }
+}
+
 export default function LoginRoute() {
   const session = authClient.useSession();
   const searchParams = useSearch({ from: "/login" });
   const {
     next = "/",
+    redirectTo,
     client_id,
     redirect_uri,
     response_type,
@@ -150,14 +166,23 @@ export default function LoginRoute() {
     code_challenge_method,
   });
 
+  // CLI auth callback URL (deco link) — only allow localhost targets
+  const cliCallbackUrl =
+    redirectTo && isLocalhostUrl(redirectTo) ? redirectTo : null;
+
   // Determine where to redirect after login
-  // If OAuth flow, redirect to authorize endpoint; otherwise use `next` param
-  const redirectAfterLogin = oauthAuthorizeUrl || next;
+  // Priority: OAuth flow > CLI callback > next param
+  const redirectAfterLogin = oauthAuthorizeUrl || cliCallbackUrl || next;
 
   if (session.data) {
     // If OAuth flow, redirect to authorize endpoint to complete the flow
     if (oauthAuthorizeUrl) {
       window.location.href = oauthAuthorizeUrl;
+      return <SplashScreen />;
+    }
+    // If CLI auth flow, redirect browser to CLI's local callback server
+    if (cliCallbackUrl) {
+      window.location.href = cliCallbackUrl;
       return <SplashScreen />;
     }
     return <Navigate to={next} />;
@@ -198,7 +223,7 @@ export default function LoginRoute() {
           <div className="absolute left-0 top-1/2 -translate-y-1/2 w-px h-screen bg-brand-foreground/15" />
           <div className="absolute right-0 top-1/2 -translate-y-1/2 w-px h-screen bg-brand-foreground/15" />
 
-          <UnifiedAuthForm redirectUrl={oauthAuthorizeUrl} />
+          <UnifiedAuthForm redirectUrl={oauthAuthorizeUrl || cliCallbackUrl} />
         </div>
       </main>
     );

@@ -263,7 +263,7 @@ export function MeshAccountSwitcher({
 
           <DropdownMenuSeparator />
 
-          {/* Footer actions — equal weight */}
+          {/* Footer actions */}
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className="gap-2.5">
               <Building02

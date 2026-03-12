@@ -27,6 +27,11 @@ export type PublicConfig = {
    * (e.g. tokyo.localhost) that external OAuth servers may not accept.
    */
   internalUrl?: string;
+  /**
+   * Whether the server is running in local mode (via CLI).
+   * Used to show local-only features like "Add Project > From Folder".
+   */
+  localMode?: boolean;
 };
 
 /**
@@ -42,6 +47,7 @@ app.get("/", (c) => {
     theme: getThemeConfig(),
     // Only expose internalUrl in local mode — production uses the public URL directly
     ...(isLocalMode() && { internalUrl: getInternalUrl() }),
+    localMode: isLocalMode(),
   };
 
   return c.json({ success: true, config });

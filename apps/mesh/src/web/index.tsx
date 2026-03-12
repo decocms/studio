@@ -51,6 +51,8 @@ const loginRoute = createRoute({
     z.object({
       // Regular login redirect
       next: z.string().optional(),
+      // CLI auth callback URL (deco link)
+      redirectTo: z.string().optional(),
       // OAuth flow params (passed by Better Auth MCP plugin)
       client_id: z.string().optional(),
       redirect_uri: z.string().optional(),

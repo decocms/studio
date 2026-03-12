@@ -12,7 +12,7 @@
  */
 
 import { Hono } from "hono";
-import { createHmac } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { env } from "../../env";
@@ -39,9 +39,7 @@ function getOrgAssetsDir(orgId: string): string {
  * Sanitize a file key to prevent directory traversal
  */
 function sanitizeKey(key: string): string {
-  // Remove leading slashes and normalize path
-  const normalized = key.replace(/^\/+/, "").replace(/\.\./g, "");
-  return normalized;
+  return key.replace(/^\/+/, "");
 }
 
 /**
@@ -68,7 +66,9 @@ function verifySignature(
   const expectedSignature = createHmac("sha256", secret)
     .update(data)
     .digest("hex");
-  return signature === expectedSignature;
+  const expected = Buffer.from(expectedSignature, "hex");
+  const actual = Buffer.from(signature, "hex");
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
 /**

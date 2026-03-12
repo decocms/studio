@@ -1,3 +1,5 @@
+// oxlint-disable-next-line ban-use-effect/ban-use-effect
+import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 function safeParse<T>(value: string): T | undefined {
@@ -53,6 +55,22 @@ export function useLocalStorage<T>(
     staleTime: Infinity, // localStorage doesn't change unless we update it
     gcTime: Infinity, // Keep in cache indefinitely
   });
+
+  // Listen for external storage changes (e.g. from plugin components)
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    const qk = ["localStorage", key] as const;
+    const handler = (e: StorageEvent) => {
+      if (e.key === key && e.newValue !== null) {
+        const parsed = safeParse<T>(e.newValue);
+        if (parsed !== undefined) {
+          queryClientInstance.setQueryData(qk, parsed);
+        }
+      }
+    };
+    window.addEventListener("storage", handler);
+    return () => window.removeEventListener("storage", handler);
+  }, [key, queryClientInstance]);
 
   // Mutation to write to localStorage
   const mutation = useMutation({

@@ -7,6 +7,7 @@ import {
   useParams,
   useSearch,
   useLocation,
+  useRouteContext,
   Link as TanStackLink,
   type AnyRoute,
   type RouteIds,
@@ -123,11 +124,17 @@ export function createPluginRouter<TRoutes extends AnyRoute | AnyRoute[]>(
      */
     useNavigate: () => {
       const navigate = useNavigate();
-      const { org, project, pluginId } = useParams({ strict: false }) as {
+      const params = useParams({ strict: false }) as {
         org: string;
         project: string;
-        pluginId: string;
+        pluginId?: string;
       };
+      const routeContext = useRouteContext({ strict: false }) as {
+        pluginId?: string;
+      };
+      const org = params.org;
+      const project = params.project;
+      const pluginId = params.pluginId ?? routeContext?.pluginId ?? "";
 
       return <TTo extends TRouteId>(
         options: Omit<NavigateOptions, "to" | "params"> & {
@@ -171,11 +178,17 @@ export function createPluginRouter<TRoutes extends AnyRoute | AnyRoute[]>(
         children?: ReactNode;
       },
     ) {
-      const { org, project, pluginId } = useParams({ strict: false }) as {
+      const linkParams = useParams({ strict: false }) as {
         org: string;
         project: string;
-        pluginId: string;
+        pluginId?: string;
       };
+      const linkRouteContext = useRouteContext({ strict: false }) as {
+        pluginId?: string;
+      };
+      const org = linkParams.org;
+      const project = linkParams.project;
+      const pluginId = linkParams.pluginId ?? linkRouteContext?.pluginId ?? "";
 
       const to = prependBasePath(props.to as string, org, project, pluginId);
 

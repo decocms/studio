@@ -260,4 +260,11 @@ export const KEYS = {
 
   // AI provider stored keys (scoped by locator)
   aiProviderKeys: (locator: string) => ["ai-provider-keys", locator] as const,
+
+  // Git panel (scoped by connection)
+  gitBranch: (connId: string) => ["git", "branch", connId] as const,
+  gitBranchList: (connId: string) => ["git", "branchList", connId] as const,
+  gitStatus: (connId: string) => ["git", "status", connId] as const,
+  gitDiff: (connId: string) => ["git", "diff", connId] as const,
+  gitLog: (connId: string) => ["git", "log", connId] as const,
 } as const;

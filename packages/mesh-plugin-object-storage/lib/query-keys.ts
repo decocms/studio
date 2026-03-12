@@ -20,4 +20,6 @@ export const KEYS = {
     ["object-storage", "metadata", connectionId, key] as const,
   imagePreview: (connectionId: string, key: string) =>
     ["object-storage", "image-preview", connectionId, key] as const,
+  fileContent: (connectionId: string, key: string) =>
+    ["object-storage", "file-content", connectionId, key] as const,
 } as const;
