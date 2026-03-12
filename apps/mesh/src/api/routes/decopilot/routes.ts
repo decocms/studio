@@ -178,13 +178,16 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       const windowSize = memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE;
       const resolvedThreadId = thread_id ?? memoryConfig?.thread_id;
 
+      // credentialId → new AI-provider-key path; connectionId → legacy MCP path
+      const isLegacyPath = !models.credentialId && !!models.connectionId;
+
       // Get connection entities and create/load memory in parallel
       const [virtualMcp, modelConnection, mem] = await Promise.all([
         ctx.storage.virtualMcps.findById(agent.id, organization.id),
         // Legacy path only: fetch MCP connection for model routing
-        models.connectionId
+        isLegacyPath
           ? ctx.storage.connections.findById(
-              models.connectionId,
+              models.connectionId!,
               organization.id,
             )
           : Promise.resolve(null),
@@ -223,7 +226,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         });
       };
 
-      if (models.connectionId && !modelConnection) {
+      if (isLegacyPath && !modelConnection) {
         throw new Error("Model connection not found");
       }
 
@@ -339,9 +342,9 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
             : {};
 
           // Resolve provider: new AI-key path or legacy MCP-connection path
-          const provider = models.credentialId
+          const provider = !isLegacyPath
             ? await ctx.aiProviders.activate(
-                models.credentialId,
+                models.credentialId!,
                 organization.id,
               )
             : wrapLegacyProvider(
