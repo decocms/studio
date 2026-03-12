@@ -652,13 +652,17 @@ export function ChatProvider({ children }: PropsWithChildren) {
   // returns [] until data arrives — no blocking, no useEffect needed.
   const { models: defaultKeyModels, isLoading: isModelsQueryLoading } =
     useAiProviderModels(effectiveKeyId ?? undefined);
-  const effectiveProviderId =
-    keys.find((k) => k.id === effectiveKeyId)?.providerId ?? "";
-  const defaultModel = selectDefaultModel(
-    defaultKeyModels,
-    effectiveProviderId,
-    effectiveKeyId ?? undefined,
-  );
+  const effectiveProviderId = keys.find(
+    (k) => k.id === effectiveKeyId,
+  )?.providerId;
+  const defaultModel =
+    effectiveProviderId != null
+      ? selectDefaultModel(
+          defaultKeyModels,
+          effectiveProviderId,
+          effectiveKeyId ?? undefined,
+        )
+      : null;
 
   // Guard against stale localStorage entries that predate the current schema.
   // If required fields are missing the stored value is unusable — fall back to

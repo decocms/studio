@@ -2,7 +2,7 @@ export const DEFAULT_LOGO =
   "https://assets.decocache.com/decocms/bc2ca488-2bae-4aac-8d3e-ead262dad764/agent.png";
 
 /** OpenRouter icon URL */
-export const OPENROUTER_ICON_URL =
+const OPENROUTER_ICON_URL =
   "https://assets.decocache.com/decocms/b2e2f64f-6025-45f7-9e8c-3b3ebdd073d8/openrouter_logojpg.jpg";
 
 /** Anthropic icon URL */
