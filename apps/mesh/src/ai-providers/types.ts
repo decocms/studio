@@ -1,6 +1,7 @@
 import { ProviderV3 } from "@ai-sdk/provider";
 import type { ModelCapability } from "@decocms/mesh-sdk";
 import type { ProviderId } from "./provider-ids";
+export type { ProviderKeyInfo } from "../storage/types";
 
 export interface ProviderInfo {
   id: ProviderId;
@@ -10,7 +11,7 @@ export interface ProviderInfo {
 }
 
 export interface ModelInfo {
-  providerId: string;
+  providerId: ProviderId;
   modelId: string;
   title: string;
   description: string | null;
@@ -18,15 +19,6 @@ export interface ModelInfo {
   capabilities: ModelCapability[];
   limits: { contextWindow: number; maxOutputTokens: number | null } | null;
   costs: { input: number; output: number } | null;
-}
-
-export interface ProviderKeyInfo {
-  id: string;
-  providerId: ProviderId;
-  label: string;
-  organizationId: string;
-  createdBy: string;
-  createdAt: string;
 }
 
 export interface TokenCounter {

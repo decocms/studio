@@ -14,7 +14,7 @@
 import type { ColumnType } from "kysely";
 import type { OAuthConfig, ToolDefinition } from "../tools/connection/schema";
 import type { ChatMessage } from "../api/routes/decopilot/types";
-import { ThreadStatus } from "@decocms/mesh-sdk";
+import { ThreadStatus, type ProviderId } from "@decocms/mesh-sdk";
 
 // ============================================================================
 // Type Utilities
@@ -223,6 +223,16 @@ export interface AIProviderKeyTable {
   encrypted_api_key: string;
   created_by: string;
   created_at: ColumnType<Date, Date | string, never>;
+}
+
+/** Public DTO for an AI provider key — never exposes the encrypted key. */
+export interface ProviderKeyInfo {
+  id: string;
+  providerId: ProviderId;
+  label: string;
+  organizationId: string;
+  createdBy: string;
+  createdAt: string;
 }
 
 /**

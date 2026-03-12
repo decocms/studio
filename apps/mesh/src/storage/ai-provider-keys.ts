@@ -1,8 +1,7 @@
 import type { Kysely } from "kysely";
 import type { CredentialVault } from "../encryption/credential-vault";
-import type { Database } from "./types";
-import type { ProviderId } from "../ai-providers/provider-ids";
-import type { ProviderKeyInfo } from "../ai-providers/types";
+import type { Database, ProviderKeyInfo } from "./types";
+import type { ProviderId } from "@decocms/mesh-sdk";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 
 export class AIProviderKeyStorage {

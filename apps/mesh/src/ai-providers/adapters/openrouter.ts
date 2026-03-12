@@ -7,7 +7,8 @@ import type {
   OpenRouterAPIModel,
   ProviderAdapter,
 } from "../types";
-import { OPENROUTER_ICON_URL } from "@/web/utils/ai-providers-logos";
+const OPENROUTER_ICON_URL =
+  "https://assets.decocache.com/decocms/b2e2f64f-6025-45f7-9e8c-3b3ebdd073d8/openrouter_logojpg.jpg";
 
 export const openrouterAdapter: ProviderAdapter = {
   info: {
