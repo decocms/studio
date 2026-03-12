@@ -7,7 +7,6 @@ import type {
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   BarChart10,
-  Building02,
   CheckDone01,
   Container,
   Dataflow03,
@@ -114,18 +113,6 @@ export function useProjectSidebarItems(): SidebarSection[] {
     onClick: () =>
       navigate({
         to: "/$org/$project/projects",
-        params: { org, project: ORG_ADMIN_PROJECT_SLUG },
-      }),
-  };
-
-  const storeItem: NavigationSidebarItem = {
-    key: "store",
-    label: "Store",
-    icon: <Building02 />,
-    isActive: isActiveRoute("store"),
-    onClick: () =>
-      navigate({
-        to: "/$org/$project/store",
         params: { org, project: ORG_ADMIN_PROJECT_SLUG },
       }),
   };
@@ -282,7 +269,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
         group: {
           id: "build",
           label: "Build",
-          items: [agentsItem, connectionsItem, storeItem],
+          items: [agentsItem, connectionsItem],
           defaultExpanded: true,
         },
       },
