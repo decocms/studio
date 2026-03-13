@@ -114,14 +114,26 @@ export async function getRequestAuthHeaders(): Promise<Record<string, string>> {
     throw new Error("Session not found. Please login again.");
   }
 
-  // Extract tokens from session
   const { access_token, refresh_token } = session;
 
   if (!access_token || !refresh_token) {
     throw new Error("Session expired. Please login again.");
   }
 
-  // Create Supabase client (no cookies needed for this local op)
+  const REFRESH_BUFFER_SECONDS = 60;
+  let needsRefresh = true;
+  try {
+    const { exp } = decodeJwt(access_token);
+    needsRefresh = !exp ||
+      exp <= Math.floor(Date.now() / 1000) + REFRESH_BUFFER_SECONDS;
+  } catch {
+    needsRefresh = true;
+  }
+
+  if (!needsRefresh) {
+    return { Authorization: `Bearer ${access_token}` };
+  }
+
   const { client: supabase, responseHeaders } = createClient();
 
   const { data, error } = await supabase.auth.setSession({
