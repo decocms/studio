@@ -57,13 +57,6 @@ export const COLLECTION_THREADS_LIST = defineTool({
     const triggerIds = input.where?.trigger_ids;
     const createdBy = input.where?.created_by;
 
-    if (triggerIds?.length) {
-      console.log(
-        `[COLLECTION_THREADS_LIST] Querying by trigger_ids:`,
-        triggerIds,
-      );
-    }
-
     const { threads, total } = triggerIds?.length
       ? await ctx.storage.threads.listByTriggerIds(triggerIds, {
           limit,
@@ -73,18 +66,6 @@ export const COLLECTION_THREADS_LIST = defineTool({
           limit,
           offset,
         });
-
-    if (triggerIds?.length) {
-      console.log(
-        `[COLLECTION_THREADS_LIST] Found ${threads.length} thread(s) (total=${total}) for trigger_ids`,
-        threads.map((t) => ({
-          id: t.id,
-          title: t.title,
-          status: t.status,
-          trigger_id: t.trigger_id,
-        })),
-      );
-    }
 
     const hasMore = offset + limit < total;
 
