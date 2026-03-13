@@ -3,7 +3,7 @@ import { siteConfig } from "../../config/site";
 const { title, description } = Astro.props;
 const formattedTitle = title ? `${title} - deco Studio` : "deco Studio";
 const metaDescription = description || siteConfig.description;
-const ogImage = new URL(siteConfig.ogImage, Astro.site ?? Astro.url).href;
+const ogImage = siteConfig.ogImage;
 ---
 
 <title>{formattedTitle}</title>
