@@ -52,6 +52,10 @@ export interface ServerFromClientOptions {
    * Server instructions. If not provided, uses client.getInstructions()
    */
   instructions?: string;
+  /**
+   * Timeout for tool calls in milliseconds. If not provided, uses the MCP SDK default (60s).
+   */
+  toolCallTimeoutMs?: number;
 }
 
 /**
@@ -86,8 +90,12 @@ export function createServerFromClient(
     client.listTools(),
   );
 
+  const toolCallOptions = options?.toolCallTimeoutMs
+    ? { timeout: options.toolCallTimeoutMs }
+    : undefined;
+
   server.server.setRequestHandler(CallToolRequestSchema, (request) =>
-    client.callTool(request.params),
+    client.callTool(request.params, undefined, toolCallOptions),
   );
 
   // Resources handlers (only if capabilities include resources)
