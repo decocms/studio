@@ -41,7 +41,7 @@ jobs:
 
       - name: Write CI auth config
         run: |
-          echo '{"emailAndPassword":{"enabled":true},"socialProviders":{},"saml":{"enabled":false,"providers":[]},"emailProviders":[],"magicLinkConfig":{"enabled":false}}' > auth-config.json
+          echo '{"emailAndPassword":{"enabled":true},"emailOTPConfig":{"enabled":true},"socialProviders":{},"saml":{"enabled":false,"providers":[]},"emailProviders":[],"magicLinkConfig":{"enabled":false}}' > auth-config.json
 
       - name: Create data directory
         run: mkdir -p data

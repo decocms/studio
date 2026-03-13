@@ -1,7 +1,4 @@
 {
-  "emailAndPassword": {
-    "enabled": true
-  },
   "socialProviders": {
     "google": {
       "clientId": "your-google-client-id",
@@ -35,9 +32,14 @@
     }
   ],
   "inviteEmailProviderId": "resend-primary",
-  "resetPasswordEmailProviderId": "resend-primary",
   "magicLinkConfig": {
-    "enabled": true,
+    "enabled": false,
     "emailProviderId": "resend-primary"
+  },
+  "emailOTPConfig": {
+    "enabled": true,
+    "emailProviderId": "resend-primary",
+    "otpLength": 6,
+    "expiresIn": 300
   }
 }

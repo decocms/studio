@@ -136,8 +136,7 @@ export default function LoginRoute() {
     code_challenge,
     code_challenge_method,
   } = searchParams;
-  const { sso, emailAndPassword, magicLink, socialProviders, localMode } =
-    useAuthConfig();
+  const { sso, emailOTP, localMode } = useAuthConfig();
 
   // Build OAuth authorize URL if this is an OAuth flow
   const oauthAuthorizeUrl = buildOAuthAuthorizeUrl({
@@ -174,12 +173,8 @@ export default function LoginRoute() {
     );
   }
 
-  // Render unified auth form if any standard auth method is enabled
-  if (
-    emailAndPassword.enabled ||
-    magicLink.enabled ||
-    socialProviders.enabled
-  ) {
+  // Render unified auth form when email OTP is enabled
+  if (emailOTP.enabled) {
     return (
       <main className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-brand to-brand/75 p-4">
         <div

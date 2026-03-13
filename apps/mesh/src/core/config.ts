@@ -1,4 +1,5 @@
 import { EmailProviderConfig } from "@/auth/email-providers";
+import { EmailOTPConfig } from "@/auth/email-otp";
 import { MagicLinkConfig } from "@/auth/magic-link";
 import { SSOConfig } from "@/auth/sso";
 import {
@@ -9,8 +10,15 @@ import { BetterAuthOptions } from "better-auth";
 import { existsSync, readFileSync } from "fs";
 import { env } from "../env";
 
-const DEFAULT_AUTH_CONFIG: Partial<BetterAuthOptions> = {
+const DEFAULT_AUTH_CONFIG: Config["auth"] = {
+  // emailAndPassword must be `enabled: true` here for Better Auth's type
+  // inference to correctly resolve all plugin API methods. The actual runtime
+  // enablement is controlled by isLocalMode() in auth/index.ts, which
+  // overrides this value after the config spread.
   emailAndPassword: {
+    enabled: true,
+  },
+  emailOTPConfig: {
     enabled: true,
   },
 };
@@ -45,9 +53,9 @@ export interface Config {
   auth: Partial<BetterAuthOptions> & {
     ssoConfig?: SSOConfig;
     magicLinkConfig?: MagicLinkConfig;
+    emailOTPConfig?: EmailOTPConfig;
     emailProviders?: EmailProviderConfig[];
     inviteEmailProviderId?: string;
-    resetPasswordEmailProviderId?: string;
     jwt?: { secret?: string };
   };
   monitoring?: Partial<MonitoringConfig>;
@@ -96,7 +104,7 @@ function loadConfig(): Config {
     try {
       const content = readFileSync(authConfigPath, "utf-8");
       return {
-        auth: JSON.parse(content),
+        auth: { ...DEFAULT_AUTH_CONFIG, ...JSON.parse(content) },
         monitoring: DEFAULT_MONITORING_CONFIG,
       };
     } catch {
