@@ -561,7 +561,7 @@ function SettingsTab({
   const selectedModel: AiProviderModel | null =
     models.find((m) => m.modelId === watchModelId) ?? null;
 
-  const handleSave = async () => {
+  const handleSave = async (): Promise<boolean> => {
     const values = form.getValues();
     try {
       const coercedCredentialId =
@@ -593,8 +593,10 @@ function SettingsTab({
       });
       setSavedDoc(tiptapDoc);
       toast.success("Automation saved");
+      return true;
     } catch {
       toast.error("Failed to save automation");
+      return false;
     }
   };
 
@@ -609,7 +611,8 @@ function SettingsTab({
 
   const handleRunClick = async () => {
     if (isDirty) {
-      await handleSave();
+      const saved = await handleSave();
+      if (!saved) return;
     }
 
     if (!tiptapDoc) {
@@ -622,8 +625,8 @@ function SettingsTab({
     // Set agent and model to match current form values
     setVirtualMcpId(values.agent_id || null);
     setSelectedMode("passthrough");
-    if (selectedModel) {
-      setSelectedModel(selectedModel);
+    if (selectedModel && watchConnectionId) {
+      setSelectedModel({ ...selectedModel, keyId: watchConnectionId });
     }
 
     // Open chat and create a new thread

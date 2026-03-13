@@ -238,6 +238,9 @@ class ChatStore {
 
     // Delegate to taskManager's createTask if available (handles cache + prefill)
     if (this.createTaskFn) {
+      if (this.state.status !== "ready") {
+        this.stop();
+      }
       const newThreadId = this.createTaskFn();
       this.state = {
         ...this.state,

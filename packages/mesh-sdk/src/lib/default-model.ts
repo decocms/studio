@@ -12,6 +12,7 @@ export const DEFAULT_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> =
     anthropic: ["claude-sonnet-4-6", "claude-sonnet", "claude"],
     openrouter: [
       "anthropic/claude-opus-4.6",
+      "anthropic/claude-4.6-opus",
       "anthropic/claude-sonnet-4-6",
       "anthropic/claude-sonnet",
       "anthropic/claude",
