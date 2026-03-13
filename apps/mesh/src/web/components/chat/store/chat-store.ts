@@ -19,6 +19,7 @@ import { derivePartsFromTiptapDoc } from "../derive-parts";
 import type { VirtualMCPInfo } from "../select-virtual-mcp";
 import type { Task } from "../task/types";
 import type { TaskOwnerFilter } from "../task/use-task-manager";
+import type { ToolApprovalLevel } from "../../../hooks/use-preferences";
 import type { ChatMessage, Metadata, MetadataModelInfo } from "../types";
 import {
   readActiveThreadId,
@@ -80,11 +81,14 @@ const MAX_APP_CONTEXT_SOURCES = 10;
 class ChatStore {
   private state: ChatStoreState;
   private listeners = new Set<() => void>();
+  private deferredNotifyScheduled = false;
   private chatBridge: ChatBridgeMethods | null = null;
 
   // External deps injected from React
   private contextPrompt = "";
-  private toolApprovalLevel: string | undefined;
+  private toolApprovalLevel: ToolApprovalLevel | undefined;
+  /** One-shot override from sendMessage params; consumed and cleared by the transport. */
+  private _toolApprovalOverride: ToolApprovalLevel | undefined;
   private showNotification:
     | ((opts: { tag: string; title: string; body: string }) => void)
     | null = null;
@@ -149,6 +153,22 @@ class ChatStore {
     }
   }
 
+  /**
+   * Update state immediately (so getSnapshot() returns fresh data) but defer
+   * listener notifications to a microtask.  This is safe to call during
+   * another component's render because the synchronous useSyncExternalStore
+   * listener callbacks are postponed, avoiding "cannot update component while
+   * rendering another" warnings.
+   */
+  private notifyDeferred(): void {
+    if (this.deferredNotifyScheduled) return;
+    this.deferredNotifyScheduled = true;
+    queueMicrotask(() => {
+      this.deferredNotifyScheduled = false;
+      this.notify();
+    });
+  }
+
   // ---- Lifecycle ----
 
   init(ctx: {
@@ -199,7 +219,7 @@ class ChatStore {
     this.contextPrompt = prompt;
   }
 
-  setToolApprovalLevel(level: string | undefined): void {
+  setToolApprovalLevel(level: ToolApprovalLevel | undefined): void {
     this.toolApprovalLevel = level;
   }
 
@@ -251,6 +271,8 @@ class ChatStore {
         },
       };
       writeActiveThreadId(this.state.locator, newThreadId);
+      // Clear AI SDK's internal messages so old thread messages don't leak
+      this.chatBridge?.setMessages([]);
       this.notify();
       return newThreadId;
     }
@@ -262,6 +284,8 @@ class ChatStore {
       activeThreadId: newThreadId,
     };
     writeActiveThreadId(this.state.locator, newThreadId);
+    // Clear AI SDK's internal messages so old thread messages don't leak
+    this.chatBridge?.setMessages([]);
     this.notify();
     return newThreadId;
   }
@@ -289,6 +313,9 @@ class ChatStore {
       finishReason: null,
     };
     writeActiveThreadId(this.state.locator, threadId);
+    // Sync AI SDK with the new thread's messages (or empty) to prevent leaking
+    const threadMessages = this.state.threadMessages[threadId] ?? [];
+    this.chatBridge?.setMessages(threadMessages);
     this.notify();
   }
 
@@ -480,8 +507,8 @@ class ChatStore {
     if (params.model) this.setModel(params.model);
     if (params.agent !== undefined) this.setAgent(params.agent);
     if (params.mode) this.setMode(params.mode);
-    if (params.toolApprovalLevel)
-      this.setToolApprovalLevel(params.toolApprovalLevel);
+    // Use a one-shot override so automation-level approval doesn't leak into later messages
+    this._toolApprovalOverride = params.toolApprovalLevel;
 
     // Sync server-sourced messages into useAIChat before sending
     const existingMessages =
@@ -596,13 +623,13 @@ class ChatStore {
         [this.state.activeThreadId]: messages,
       },
     };
-    this.notify();
+    this.notifyDeferred();
   }
 
   onStatusChange(status: "ready" | "submitted" | "streaming" | "error"): void {
     if (this.state.status === status) return;
     this.state = { ...this.state, status };
-    this.notify();
+    this.notifyDeferred();
   }
 
   onFinish(payload: FinishPayload): void {
@@ -769,12 +796,16 @@ class ChatStore {
           thread_id: metadata.thread_id ?? lastMsgMeta.thread_id,
         };
 
+        const effectiveApproval =
+          store._toolApprovalOverride ?? store.toolApprovalLevel;
+        store._toolApprovalOverride = undefined;
+
         return {
           body: {
             messages: allMessages,
             ...mergedMetadata,
-            ...(store.toolApprovalLevel && {
-              toolApprovalLevel: store.toolApprovalLevel,
+            ...(effectiveApproval && {
+              toolApprovalLevel: effectiveApproval,
             }),
           },
         };
