@@ -1,0 +1,107 @@
+---
+title: Automations
+description: Unattended AI agent runs triggered by schedules or events
+icon: Zap
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+
+<Callout type="info">
+  Automations is an experimental feature. Enable it in **Settings → Account → Preferences → experimentalAutomations**.
+</Callout>
+
+## What Are Automations?
+
+Automations are **unattended agent runs** — AI agents that execute on a schedule or in response to events, without a human in the loop. Each automation configures:
+
+- **Agent** — which [Virtual MCP](/en/mcp-mesh/virtual-mcps) (agent) to run
+- **Messages** — the prompt/instructions the agent receives each run
+- **Model** — which AI model and credentials to use
+- **Triggers** — when the automation fires (cron schedule, connection event, or manual)
+
+Automations run in **passthrough mode**, meaning all tool calls are auto-approved. This is what makes them unattended — but it also means you should scope agent tools carefully.
+
+**Automations vs Decopilot**: [Decopilot](/en/mcp-mesh/decopilot/overview) is interactive — a human converses with the agent and approves actions. Automations are fire-and-forget: the agent runs, completes its task, and the result appears in [Monitoring](/en/mcp-mesh/monitoring).
+
+## When to Use Automations
+
+- **Scheduled tasks** — daily reports, periodic data syncs, cleanup jobs
+- **Event-driven workflows** — new order → fulfillment, new ticket → triage, deployment → notification
+- **Any workflow that should run without human approval**
+
+## Creating an Automation
+
+1. Navigate to **Automations** in the sidebar
+2. Click **New Automation**
+3. Choose an [agent](/en/mcp-mesh/agents) — the Virtual MCP that will execute
+4. Write the prompt/messages — what the agent should do each run
+5. Select a model and credentials
+6. Set temperature (default 0.5)
+7. Add one or more triggers (cron or event)
+8. Activate the automation
+
+## Triggers
+
+### Cron Triggers
+
+Cron triggers run the automation on a recurring schedule using standard cron expression syntax. All times are in **UTC**.
+
+| Expression | Schedule |
+|---|---|
+| `0 9 * * *` | Daily at 9:00 AM UTC |
+| `0 */6 * * *` | Every 6 hours |
+| `0 9 * * 1` | Every Monday at 9:00 AM UTC |
+| `*/5 * * * *` | Every 5 minutes |
+
+**Minimum interval**: 60 seconds. Expressions that resolve to intervals shorter than 60 seconds are rejected.
+
+**Crash-safe scheduling**: The system records `last_run_at` for each trigger. If the server restarts, missed runs are detected and fired on the next poll cycle (every 30 seconds).
+
+### Event Triggers
+
+Event triggers fire the automation when a connected MCP server publishes a matching event.
+
+- The connection must implement `TRIGGER_CONFIGURE` (so the mesh can register/unregister interest in events)
+- You specify the **connection**, **event type**, and optional **params** for filtering
+- **Fail-atomic**: if configuring the trigger on the connection fails, the trigger is not created
+- When the automation is deactivated or deleted, event triggers are disabled on their connections (best-effort)
+
+**Param filtering**: If you specify params, only events whose data contains all matching key-value pairs will fire the automation. Extra fields in the event data are ignored.
+
+## Running and Testing
+
+- Use the **AUTOMATION_RUN** tool or the UI to manually trigger a run at any time
+- Each run creates a thread visible in [Monitoring](/en/mcp-mesh/monitoring)
+- Runs that error are marked as failed in the thread
+
+## Safety and Limits
+
+<Callout type="warning">
+  Automations run in passthrough mode — all tool calls are auto-approved. Scope your agent's tools carefully to prevent unintended actions.
+</Callout>
+
+- **Per-automation concurrency**: Maximum 3 concurrent runs per automation. Additional triggers are skipped until a slot opens.
+- **Global concurrency**: Maximum 10 concurrent automation runs across the entire system.
+- **Run timeout**: Each run is capped at 5 minutes.
+- **Recursion prevention**: Event trigger chains are limited to a depth of 3. If an automation's actions trigger events that fire other automations, the chain stops after 3 levels.
+- **Payload limit**: Event data is capped at 1 MB. Larger payloads are truncated to mitigate prompt injection risks.
+- **Creator validation**: If the automation's creator leaves the organization, the automation is automatically deactivated.
+
+## Automation MCP Tools
+
+These tools are available for managing automations programmatically via the MCP interface:
+
+| Tool | Description |
+|---|---|
+| `AUTOMATION_CREATE` | Create a new automation with agent, messages, model, and triggers |
+| `AUTOMATION_GET` | Get a single automation by ID with full configuration |
+| `AUTOMATION_LIST` | List all automations in the current organization |
+| `AUTOMATION_UPDATE` | Update automation fields (partial update supported) |
+| `AUTOMATION_DELETE` | Delete an automation and disable its event triggers |
+| `AUTOMATION_TRIGGER_ADD` | Add a cron or event trigger to an automation |
+| `AUTOMATION_TRIGGER_REMOVE` | Remove a trigger from an automation |
+| `AUTOMATION_RUN` | Manually trigger an automation run |
+
+---
+
+**Next steps**: Learn about [Agents](/en/mcp-mesh/agents) to understand how to design the Virtual MCPs that automations execute, or explore [Monitoring](/en/mcp-mesh/monitoring) to track automation runs.

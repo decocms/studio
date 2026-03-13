@@ -1,0 +1,107 @@
+---
+title: Automações
+description: Execuções autônomas de agentes IA disparadas por agendamentos ou eventos
+icon: Zap
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+
+<Callout type="info">
+  Automações é um recurso experimental. Ative em **Configurações → Conta → Preferências → experimentalAutomations**.
+</Callout>
+
+## O Que São Automações?
+
+Automações são **execuções autônomas de agentes** — agentes de IA que executam em um agendamento ou em resposta a eventos, sem intervenção humana. Cada automação configura:
+
+- **Agente** — qual [MCP Virtual](/pt-br/mcp-mesh/virtual-mcps) (agente) executar
+- **Mensagens** — o prompt/instruções que o agente recebe em cada execução
+- **Modelo** — qual modelo de IA e credenciais usar
+- **Gatilhos** — quando a automação dispara (agendamento cron, evento de conexão ou manual)
+
+Automações executam em **modo passthrough**, o que significa que todas as chamadas de ferramentas são auto-aprovadas. É isso que as torna autônomas — mas também significa que você deve definir cuidadosamente o escopo das ferramentas do agente.
+
+**Automações vs Decopilot**: O [Decopilot](/pt-br/mcp-mesh/decopilot/overview) é interativo — um humano conversa com o agente e aprova ações. Automações são disparar-e-esquecer: o agente executa, completa sua tarefa, e o resultado aparece no [Monitoramento](/pt-br/mcp-mesh/monitoring).
+
+## Quando Usar Automações
+
+- **Tarefas agendadas** — relatórios diários, sincronizações periódicas, tarefas de limpeza
+- **Fluxos orientados a eventos** — novo pedido → processamento, novo ticket → triagem, deploy → notificação
+- **Qualquer fluxo que deve executar sem aprovação humana**
+
+## Criando uma Automação
+
+1. Navegue até **Automações** na barra lateral
+2. Clique em **Nova Automação**
+3. Escolha um [agente](/pt-br/mcp-mesh/agents) — o MCP Virtual que será executado
+4. Escreva o prompt/mensagens — o que o agente deve fazer em cada execução
+5. Selecione um modelo e credenciais
+6. Defina a temperatura (padrão 0.5)
+7. Adicione um ou mais gatilhos (cron ou evento)
+8. Ative a automação
+
+## Gatilhos
+
+### Gatilhos Cron
+
+Gatilhos cron executam a automação em um agendamento recorrente usando sintaxe padrão de expressão cron. Todos os horários são em **UTC**.
+
+| Expressão | Agendamento |
+|---|---|
+| `0 9 * * *` | Diariamente às 9:00 UTC |
+| `0 */6 * * *` | A cada 6 horas |
+| `0 9 * * 1` | Toda segunda-feira às 9:00 UTC |
+| `*/5 * * * *` | A cada 5 minutos |
+
+**Intervalo mínimo**: 60 segundos. Expressões que resultam em intervalos menores que 60 segundos são rejeitadas.
+
+**Agendamento à prova de falhas**: O sistema registra `last_run_at` para cada gatilho. Se o servidor reiniciar, execuções perdidas são detectadas e disparadas no próximo ciclo de verificação (a cada 30 segundos).
+
+### Gatilhos de Evento
+
+Gatilhos de evento disparam a automação quando um servidor MCP conectado publica um evento correspondente.
+
+- A conexão deve implementar `TRIGGER_CONFIGURE` (para que o mesh possa registrar/desregistrar interesse em eventos)
+- Você especifica a **conexão**, **tipo de evento** e **parâmetros** opcionais para filtragem
+- **Fail-atomic**: se a configuração do gatilho na conexão falhar, o gatilho não é criado
+- Quando a automação é desativada ou excluída, os gatilhos de evento são desabilitados nas conexões (melhor esforço)
+
+**Filtragem por parâmetros**: Se você especificar parâmetros, apenas eventos cujos dados contenham todos os pares chave-valor correspondentes dispararão a automação. Campos extras nos dados do evento são ignorados.
+
+## Executando e Testando
+
+- Use a ferramenta **AUTOMATION_RUN** ou a interface para disparar uma execução manualmente a qualquer momento
+- Cada execução cria um thread visível no [Monitoramento](/pt-br/mcp-mesh/monitoring)
+- Execuções com erro são marcadas como falhas no thread
+
+## Segurança e Limites
+
+<Callout type="warning">
+  Automações executam em modo passthrough — todas as chamadas de ferramentas são auto-aprovadas. Defina cuidadosamente o escopo das ferramentas do seu agente para prevenir ações indesejadas.
+</Callout>
+
+- **Concorrência por automação**: Máximo de 3 execuções simultâneas por automação. Gatilhos adicionais são ignorados até que um slot abra.
+- **Concorrência global**: Máximo de 10 execuções simultâneas de automação em todo o sistema.
+- **Timeout de execução**: Cada execução é limitada a 5 minutos.
+- **Prevenção de recursão**: Cadeias de gatilhos de evento são limitadas a uma profundidade de 3. Se as ações de uma automação disparam eventos que ativam outras automações, a cadeia para após 3 níveis.
+- **Limite de payload**: Dados de evento são limitados a 1 MB. Payloads maiores são truncados para mitigar riscos de injeção de prompt.
+- **Validação do criador**: Se o criador da automação sair da organização, a automação é automaticamente desativada.
+
+## Ferramentas MCP de Automação
+
+Estas ferramentas estão disponíveis para gerenciar automações programaticamente via interface MCP:
+
+| Ferramenta | Descrição |
+|---|---|
+| `AUTOMATION_CREATE` | Criar uma nova automação com agente, mensagens, modelo e gatilhos |
+| `AUTOMATION_GET` | Obter uma automação por ID com configuração completa |
+| `AUTOMATION_LIST` | Listar todas as automações na organização atual |
+| `AUTOMATION_UPDATE` | Atualizar campos da automação (atualização parcial suportada) |
+| `AUTOMATION_DELETE` | Excluir uma automação e desabilitar seus gatilhos de evento |
+| `AUTOMATION_TRIGGER_ADD` | Adicionar um gatilho cron ou evento a uma automação |
+| `AUTOMATION_TRIGGER_REMOVE` | Remover um gatilho de uma automação |
+| `AUTOMATION_RUN` | Disparar manualmente uma execução de automação |
+
+---
+
+**Próximos passos**: Aprenda sobre [Agentes](/pt-br/mcp-mesh/agents) para entender como projetar os MCPs Virtuais que as automações executam, ou explore o [Monitoramento](/pt-br/mcp-mesh/monitoring) para acompanhar execuções de automações.
