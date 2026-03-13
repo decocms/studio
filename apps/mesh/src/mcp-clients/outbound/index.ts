@@ -7,6 +7,7 @@
 
 import { env } from "../../env";
 import type { MeshContext } from "@/core/mesh-context";
+import { getInternalUrl } from "@/core/server-constants";
 import {
   type ConnectionEntity,
   isStdioParameters,
@@ -42,6 +43,32 @@ export async function createOutboundClient(
   superUser = false,
 ): Promise<Client> {
   const connectionId = connection.id;
+
+  // Self connections (e.g. "orgId_self") use a loopback URL to reach this server.
+  // The DB may store a proxy hostname (e.g. las-vegas.localhost) which is
+  // unresolvable from the server's own runtime. Always rewrite the origin
+  // to localhost:PORT so loopback calls succeed.
+  if (connectionId.endsWith("_self") && connection.connection_url) {
+    const internalUrl = getInternalUrl();
+    try {
+      const stored = new URL(connection.connection_url);
+      const internal = new URL(internalUrl);
+      if (
+        stored.hostname !== internal.hostname ||
+        stored.port !== internal.port
+      ) {
+        stored.hostname = internal.hostname;
+        stored.port = internal.port;
+        stored.protocol = internal.protocol;
+        connection = {
+          ...connection,
+          connection_url: stored.toString().replace(/\/$/, ""),
+        };
+      }
+    } catch {
+      // Malformed URL — leave as-is
+    }
+  }
 
   // Extract virtualMcpId if request is routed through a Virtual MCP (agent)
   const virtualMcpId =
