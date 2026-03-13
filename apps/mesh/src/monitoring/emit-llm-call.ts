@@ -83,6 +83,7 @@ function emitLlmCallLog(params: EmitLlmCallLogParams): void {
 
     emitMonitoringLog(
       {
+        type: MONITORING_LOG_TYPE_LLM_CALL,
         organizationId: params.organizationId,
         connectionId: DECOPILOT_CONNECTION_ID,
         connectionTitle: DECOPILOT_CONNECTION_TITLE,
