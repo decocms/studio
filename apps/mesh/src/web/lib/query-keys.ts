@@ -219,8 +219,17 @@ export const KEYS = {
     ["automations", organizationId] as const,
   automation: (organizationId: string, id: string) =>
     ["automation", organizationId, id] as const,
-  automationRuns: (organizationId: string, automationId: string) =>
-    ["automation-runs", organizationId, automationId] as const,
+  automationRuns: (
+    organizationId: string,
+    automationId: string,
+    triggerIds?: string[],
+  ) =>
+    [
+      "automation-runs",
+      organizationId,
+      automationId,
+      ...(triggerIds ?? []),
+    ] as const,
 
   // Projects (scoped by organization)
   projects: (organizationId: string) => ["projects", organizationId] as const,

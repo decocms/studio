@@ -73,7 +73,7 @@ import {
   Trash01,
   XClose,
 } from "@untitledui/icons";
-import { useRef, useState, useTransition } from "react";
+import { useRef, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -522,8 +522,11 @@ function SettingsTab({
       active: automation.active,
       agent_id: automation.agent?.id ?? "",
       model_connection_id:
-        automation.models?.credentialId || chatCredentialId || "",
-      model_id: automation.models?.thinking?.id || chatModel?.modelId || "",
+        automation.models?.connectionId ||
+        (!automation.models?.thinking?.id ? chatCredentialId || "" : ""),
+      model_id:
+        automation.models?.thinking?.id ||
+        (!automation.models?.connectionId ? chatModel?.modelId || "" : ""),
     },
   });
 
@@ -719,7 +722,7 @@ function useAutomationRuns(
   });
 
   return useQuery({
-    queryKey: KEYS.automationRuns(orgId, automationId),
+    queryKey: KEYS.automationRuns(orgId, automationId, triggerIds),
     queryFn: async () => {
       if (!client) throw new Error("MCP client not available");
       const result = (await client.callTool({
@@ -764,15 +767,21 @@ function RunHistorySection({
       if (existingRun) {
         // Update status in cache
         queryClient.setQueryData(
-          KEYS.automationRuns(org.id, automationId),
+          KEYS.automationRuns(org.id, automationId, triggerIds),
           cached.map((r) =>
-            r.id === threadId ? { ...r, status: event.data.status } : r,
+            r.id === threadId
+              ? {
+                  ...r,
+                  status: event.data.status,
+                  updated_at: new Date().toISOString(),
+                }
+              : r,
           ),
         );
       } else {
         // New run — refetch to pick it up
         queryClient.invalidateQueries({
-          queryKey: KEYS.automationRuns(org.id, automationId),
+          queryKey: KEYS.automationRuns(org.id, automationId, triggerIds),
         });
       }
     },
@@ -845,8 +854,6 @@ export default function AutomationDetailPage() {
   const { createTask, setVirtualMcpId, setSelectedModel, sendMessage } =
     useChat();
   const [, setChatOpen] = useDecoChatOpen();
-  const [, startTransition] = useTransition();
-
   // Resolve model for Run Now
   const connectionId = automation?.models?.credentialId;
   const modelId = automation?.models?.thinking?.id;
@@ -870,9 +877,7 @@ export default function AutomationDetailPage() {
 
     // Open chat and create a new thread
     setChatOpen(true);
-    startTransition(() => {
-      createTask();
-    });
+    createTask();
 
     // Send message after React flushes the new thread state
     setTimeout(() => {

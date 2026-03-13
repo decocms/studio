@@ -274,6 +274,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .selectFrom("threads")
       .selectAll()
       .where("organization_id", "=", organizationId)
+      .where("hidden", "=", false)
       .where("trigger_id", "in", triggerIds)
       .orderBy("updated_at", "desc");
 
@@ -281,6 +282,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .selectFrom("threads")
       .select((eb) => eb.fn.count("id").as("count"))
       .where("organization_id", "=", organizationId)
+      .where("hidden", "=", false)
       .where("trigger_id", "in", triggerIds);
 
     if (options?.limit) {

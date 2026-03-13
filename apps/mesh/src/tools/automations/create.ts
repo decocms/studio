@@ -73,7 +73,7 @@ export const AUTOMATION_CREATE = defineTool({
       })
       .loose(),
     temperature: z.number().default(0.5),
-    active: z.boolean().default(true),
+    active: z.boolean().default(false),
   }),
   outputSchema: z.object({
     id: z.string(),
