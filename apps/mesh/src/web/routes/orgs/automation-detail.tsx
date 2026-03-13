@@ -861,8 +861,13 @@ export default function AutomationDetailPage() {
   const deleteMutation = useAutomationDelete();
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const { createTask, setVirtualMcpId, setSelectedModel, sendMessage } =
-    useChat();
+  const {
+    createTask,
+    setVirtualMcpId,
+    setSelectedModel,
+    setSelectedMode,
+    sendMessage,
+  } = useChat();
   const [, setChatOpen] = useDecoChatOpen();
   // Resolve model for Run Now
   const connectionId = automation?.models?.credentialId;
@@ -881,6 +886,7 @@ export default function AutomationDetailPage() {
 
     // Set agent and model to match automation config
     setVirtualMcpId(automation?.agent?.id ?? null);
+    setSelectedMode("passthrough");
     if (resolvedModel) {
       setSelectedModel(resolvedModel);
     }

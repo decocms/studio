@@ -25,7 +25,7 @@ export function buildStreamRequest(
   return {
     messages,
     models: JSON.parse(automation.models),
-    agent: JSON.parse(automation.agent),
+    agent: { ...JSON.parse(automation.agent), mode: "passthrough" },
     temperature: automation.temperature ?? 0.5,
     toolApprovalLevel: "yolo",
     organizationId: automation.organization_id,

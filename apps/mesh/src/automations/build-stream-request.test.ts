@@ -98,4 +98,31 @@ describe("buildStreamRequest", () => {
     const result = buildStreamRequest(makeAutomation(), null, "thrd_1");
     expect(result.toolApprovalLevel).toBe("yolo");
   });
+
+  it("always overrides agent mode to passthrough regardless of stored value", () => {
+    const automation = makeAutomation({
+      agent: JSON.stringify({
+        id: "agent_1",
+        mode: "smart_tool_selection",
+      }),
+    });
+    const result = buildStreamRequest(automation, null, "thrd_1");
+    expect(result.agent.mode).toBe("passthrough");
+  });
+
+  it("keeps passthrough when agent is already passthrough", () => {
+    const automation = makeAutomation({
+      agent: JSON.stringify({ id: "agent_1", mode: "passthrough" }),
+    });
+    const result = buildStreamRequest(automation, null, "thrd_1");
+    expect(result.agent.mode).toBe("passthrough");
+  });
+
+  it("overrides code_execution mode to passthrough", () => {
+    const automation = makeAutomation({
+      agent: JSON.stringify({ id: "agent_1", mode: "code_execution" }),
+    });
+    const result = buildStreamRequest(automation, null, "thrd_1");
+    expect(result.agent.mode).toBe("passthrough");
+  });
 });
