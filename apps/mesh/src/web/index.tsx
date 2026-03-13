@@ -141,12 +141,16 @@ const homeRoute = createRoute({
     // Fetch org list once — used for both slug validation and single-org redirect
     const { data: orgs } = await authClient.organization.list();
 
+    // If the list call failed, skip all redirect logic to avoid clearing a
+    // valid cached slug due to a transient API failure.
+    if (!orgs) return;
+
     // Fast path: validate cached slug against current membership before redirecting.
     // If stale (org deleted or user removed), clear it to prevent a redirect loop
     // where an invalid slug → shell fails → back to "/" → same redirect → loop.
     const lastOrgSlug = localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug());
     if (lastOrgSlug) {
-      const slugIsValid = orgs?.some((o) => o.slug === lastOrgSlug) ?? false;
+      const slugIsValid = orgs.some((o) => o.slug === lastOrgSlug);
       if (slugIsValid) {
         throw redirect({
           to: "/$org/$project",
@@ -158,7 +162,7 @@ const homeRoute = createRoute({
     }
 
     // Slow path: first-time user — redirect if they only have one org
-    const onlyOrg = orgs?.length === 1 ? orgs[0] : undefined;
+    const onlyOrg = orgs.length === 1 ? orgs[0] : undefined;
     if (onlyOrg) {
       throw redirect({
         to: "/$org/$project",
