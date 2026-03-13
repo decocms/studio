@@ -10,17 +10,13 @@ import { resolve, dirname, join, extname, basename, sep } from "path";
  *   hash in the filename changes on every build.
  * - Everything else: no explicit caching directive (browser defaults apply).
  */
-const SECURITY_HEADERS = {
-  "X-Frame-Options": "DENY",
-  "Content-Security-Policy": "frame-ancestors 'none'",
-};
 
 function getAssetCacheHeaders(
   filePath: string,
   indexPath: string,
 ): Record<string, string> {
   if (filePath === indexPath || basename(filePath) === "index.html") {
-    return { "Cache-Control": "no-cache", ...SECURITY_HEADERS };
+    return { "Cache-Control": "no-cache" };
   }
 
   if (filePath.includes(`${sep}assets${sep}`)) {
