@@ -241,14 +241,28 @@ export function ChatProvider({ children }: PropsWithChildren) {
   const { data: session } = authClient.useSession();
   const user = session?.user ?? null;
 
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect
-  useEffect(() => {
+  // Init synchronously during render so the store has org/locator
+  // before children (ChatBridge) render — avoids empty slug in transport URL.
+  const initRef = useRef<string | null>(null);
+  if (initRef.current !== locator) {
+    if (initRef.current !== null) {
+      chatStore.reset();
+    }
     chatStore.init({
       org,
       locator,
       user: user ? { name: user.name, image: user.image ?? undefined } : null,
     });
-    return () => chatStore.reset();
+    initRef.current = locator;
+  }
+
+  // Cleanup on unmount
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    return () => {
+      chatStore.reset();
+      initRef.current = null;
+    };
   }, [locator]);
 
   const activeThreadId = useActiveThreadId();

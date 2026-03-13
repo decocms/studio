@@ -151,11 +151,19 @@ class ChatStore {
 
   // ---- Lifecycle ----
 
-  init(ctx: {
-    org: { id: string; slug: string };
-    locator: ProjectLocator;
-    user: { name: string; image?: string } | null;
-  }): void {
+  /**
+   * Initialise the store with project context. Safe to call during render
+   * (skips notify — subscribers pick up the state on their next read).
+   * Pass `silent: false` when calling outside of render to notify subscribers.
+   */
+  init(
+    ctx: {
+      org: { id: string; slug: string };
+      locator: ProjectLocator;
+      user: { name: string; image?: string } | null;
+    },
+    { silent = true }: { silent?: boolean } = {},
+  ): void {
     const { org, locator, user } = ctx;
 
     const storedModel = readSelectedModel(locator);
@@ -182,7 +190,9 @@ class ChatStore {
     // Store the virtual MCP id so setVirtualMcps can resolve it
     this._pendingVirtualMcpId = storedVirtualMcpId;
 
-    this.notify();
+    if (!silent) {
+      this.notify();
+    }
   }
 
   private _pendingVirtualMcpId: string | null = null;
@@ -719,7 +729,7 @@ class ChatStore {
       api: `/api/${orgSlug}/decopilot/stream`,
       credentials: "include",
       prepareReconnectToStreamRequest: ({ id }) => ({
-        api: `/api/${orgSlug}/decopilot/attach/${id}`,
+        api: `/api/${store.state.org.slug}/decopilot/attach/${id}`,
       }),
       prepareSendMessagesRequest: ({ messages, requestMetadata = {} }) => {
         const {
