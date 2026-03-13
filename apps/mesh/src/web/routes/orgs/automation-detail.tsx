@@ -553,6 +553,11 @@ function SettingsTab({
   const handleSave = async () => {
     const values = form.getValues();
     try {
+      const coercedCredentialId =
+        values.credential_id && values.model_id ? values.credential_id : "";
+      const coercedModelId =
+        values.credential_id && values.model_id ? values.model_id : "";
+
       await updateMutation.mutateAsync({
         id: automationId,
         name: values.name,
@@ -562,16 +567,19 @@ function SettingsTab({
           mode: "passthrough",
         },
         models: {
-          credentialId:
-            values.credential_id && values.model_id ? values.credential_id : "",
+          credentialId: coercedCredentialId,
           thinking: {
-            id: values.credential_id && values.model_id ? values.model_id : "",
+            id: coercedModelId,
           },
         },
         messages: tiptapDocToMessages(tiptapDoc),
         temperature: 0,
       });
-      form.reset(values);
+      form.reset({
+        ...values,
+        credential_id: coercedCredentialId,
+        model_id: coercedModelId,
+      });
       setSavedDoc(tiptapDoc);
       toast.success("Automation saved");
     } catch {
