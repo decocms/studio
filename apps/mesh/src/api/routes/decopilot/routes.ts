@@ -260,26 +260,35 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   }
 
   async function getGithubStatus() {
-    const { ok, stdout } = await runCli("gh", ["auth", "status", "--json"]);
-    if (!ok) return { connected: false, auth: null };
+    // Check if gh CLI is authenticated
+    const { ok: ghOk } = await runCli("gh", ["auth", "status"]);
+    if (!ghOk) return { connected: false, auth: null };
+
+    // Get username via API
+    let user: string | undefined;
     try {
-      const parsed = JSON.parse(stdout);
-      // Also check if the MCP is registered in Claude Code
-      const { ok: mcpRegistered } = await runCli("claude", [
-        "mcp",
-        "get",
-        "github",
+      const { ok, stdout } = await runCli("gh", [
+        "api",
+        "user",
+        "--jq",
+        ".login",
       ]);
-      return {
-        connected: mcpRegistered,
-        auth: {
-          user: parsed.user ?? parsed.login,
-          host: parsed.host ?? "github.com",
-        },
-      };
+      if (ok) user = stdout.trim();
     } catch {
-      return { connected: false, auth: null };
+      // Username not available
     }
+
+    // Check if the MCP is registered in Claude Code
+    const { ok: mcpRegistered } = await runCli("claude", [
+      "mcp",
+      "get",
+      "github",
+    ]);
+
+    return {
+      connected: mcpRegistered,
+      auth: user ? { user } : null,
+    };
   }
 
   app.get("/:org/decopilot/connect-studio/status", async (c) => {

@@ -7,7 +7,7 @@ import {
   DialogTitle,
 } from "@deco/ui/components/dialog.tsx";
 import { useProjectContext } from "@decocms/mesh-sdk";
-import { Check, LinkBroken02, Loading01, RefreshCw01 } from "@untitledui/icons";
+import { Check, Loading01 } from "@untitledui/icons";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -54,51 +54,30 @@ function ConnectionCard({
   orgSlug: string;
 }) {
   const queryClient = useQueryClient();
-  const [connecting, setConnecting] = useState(false);
-  const [disconnecting, setDisconnecting] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   const connected = status?.connected ?? false;
   const auth = status?.auth;
 
-  const handleConnect = async () => {
-    setConnecting(true);
+  const handleToggle = async () => {
+    setBusy(true);
+    const method = connected ? "DELETE" : "POST";
     try {
       const res = await fetch(`/api/${orgSlug}/decopilot/connect-studio`, {
-        method: "POST",
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ target }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Failed" }));
-        throw new Error(err.error ?? "Failed to connect");
+        throw new Error(err.error ?? "Failed");
       }
-      toast.success(`Connected ${name}!`);
+      toast.success(connected ? `Disconnected ${name}` : `Connected ${name}!`);
       queryClient.invalidateQueries({ queryKey: [CONNECT_STUDIO_QK] });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to connect");
+      toast.error(err instanceof Error ? err.message : "Failed");
     } finally {
-      setConnecting(false);
-    }
-  };
-
-  const handleDisconnect = async () => {
-    setDisconnecting(true);
-    try {
-      const res = await fetch(`/api/${orgSlug}/decopilot/connect-studio`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Failed" }));
-        throw new Error(err.error ?? "Failed to disconnect");
-      }
-      toast.success(`Disconnected ${name}`);
-      queryClient.invalidateQueries({ queryKey: [CONNECT_STUDIO_QK] });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to disconnect");
-    } finally {
-      setDisconnecting(false);
+      setBusy(false);
     }
   };
 
@@ -109,80 +88,47 @@ function ConnectionCard({
   return (
     <div
       className={cn(
-        "rounded-lg border px-4 py-3",
+        "flex items-center gap-3 rounded-lg border px-3 py-2.5",
         connected ? "border-green-200 bg-green-50" : "border-border",
       )}
     >
-      <div className="flex items-center gap-3">
-        <div className="h-5 w-5 shrink-0 flex items-center justify-center">
-          {logo}
+      <div className="h-5 w-5 shrink-0 flex items-center justify-center">
+        {logo}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm font-medium">{name}</span>
+          {connected && <Check size={14} className="text-green-600 shrink-0" />}
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium">{name}</span>
-            {connected && (
-              <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
-                <Check size={12} />
-                Connected
-              </span>
-            )}
-          </div>
-          {authLine && (
-            <p className="text-xs text-muted-foreground truncate">{authLine}</p>
+        {authLine && (
+          <p className="text-xs text-muted-foreground truncate">{authLine}</p>
+        )}
+      </div>
+      {isLoading ? (
+        <Loading01
+          size={14}
+          className="animate-spin text-muted-foreground shrink-0"
+        />
+      ) : (
+        <Button
+          variant={connected ? "ghost" : "outline"}
+          size="sm"
+          className={cn(
+            "shrink-0 h-7 text-xs",
+            connected && "text-muted-foreground hover:text-destructive",
           )}
-        </div>
-        {isLoading && (
-          <Loading01
-            size={16}
-            className="animate-spin text-muted-foreground shrink-0"
-          />
-        )}
-      </div>
-
-      <div className="flex gap-2 mt-2.5">
-        {!connected ? (
-          <Button
-            size="sm"
-            className="flex-1"
-            onClick={handleConnect}
-            disabled={connecting || isLoading}
-          >
-            {connecting ? (
-              <Loading01 size={14} className="animate-spin mr-1.5" />
-            ) : null}
-            Connect
-          </Button>
-        ) : (
-          <>
-            <Button
-              variant="outline"
-              size="icon"
-              className="shrink-0 h-8 w-8"
-              onClick={() =>
-                queryClient.invalidateQueries({
-                  queryKey: [CONNECT_STUDIO_QK],
-                })
-              }
-            >
-              <RefreshCw01 size={14} />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1 text-destructive hover:text-destructive"
-              onClick={handleDisconnect}
-              disabled={disconnecting}
-            >
-              {disconnecting ? (
-                <Loading01 size={14} className="animate-spin mr-1.5" />
-              ) : (
-                <LinkBroken02 size={14} className="mr-1.5" />
-              )}
-              Disconnect
-            </Button>
-          </>
-        )}
-      </div>
+          onClick={handleToggle}
+          disabled={busy}
+        >
+          {busy ? (
+            <Loading01 size={12} className="animate-spin" />
+          ) : connected ? (
+            "Disconnect"
+          ) : (
+            "Connect"
+          )}
+        </Button>
+      )}
     </div>
   );
 }
@@ -223,7 +169,7 @@ export function ConnectStudioModal({
             Install studio tools into your local dev environment.
           </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-3 pt-1">
+        <div className="flex flex-col gap-2 pt-1">
           <ConnectionCard
             target="claude-code"
             name="Claude Code"
