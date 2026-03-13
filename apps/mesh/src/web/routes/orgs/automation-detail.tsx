@@ -553,7 +553,6 @@ function SettingsTab({
         },
         messages: tiptapDocToMessages(tiptapDoc),
         temperature: 0,
-        tool_approval_level: "yolo",
       });
       form.reset(values);
       setSavedDoc(tiptapDoc);

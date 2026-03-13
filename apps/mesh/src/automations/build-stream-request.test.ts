@@ -18,7 +18,6 @@ function makeAutomation(overrides?: Partial<Automation>): Automation {
       credentialId: "cred_1",
     }),
     temperature: 0.7,
-    tool_approval_level: "readonly",
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
     ...overrides,
@@ -89,21 +88,8 @@ describe("buildStreamRequest", () => {
     expect(result.temperature).toBe(0.5);
   });
 
-  it("maps tool_approval_level", () => {
-    const result = buildStreamRequest(
-      makeAutomation({ tool_approval_level: "yolo" }),
-      null,
-      "thrd_1",
-    );
-    expect(result.toolApprovalLevel).toBe("yolo");
-  });
-
-  it("defaults tool_approval_level to yolo when null", () => {
-    const result = buildStreamRequest(
-      makeAutomation({ tool_approval_level: null as any }),
-      null,
-      "thrd_1",
-    );
+  it("always sets toolApprovalLevel to yolo", () => {
+    const result = buildStreamRequest(makeAutomation(), null, "thrd_1");
     expect(result.toolApprovalLevel).toBe("yolo");
   });
 });

@@ -70,7 +70,6 @@ export default function AutomationsPage() {
         },
         temperature: 0.5,
         active: true,
-        tool_approval_level: "yolo",
       });
       navigate({
         to: "/$org/$project/automations/$automationId",

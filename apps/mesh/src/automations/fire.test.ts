@@ -37,7 +37,6 @@ function makeAutomation(overrides?: Partial<Automation>): Automation {
       credentialId: "cred_1",
     }),
     temperature: 0.5,
-    tool_approval_level: "none",
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
     ...overrides,

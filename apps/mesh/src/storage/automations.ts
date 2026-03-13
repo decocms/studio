@@ -25,7 +25,6 @@ export interface CreateAutomationInput {
   messages: string; // JSON
   models: string; // JSON
   temperature?: number;
-  tool_approval_level?: string;
 }
 
 export interface UpdateAutomationInput {
@@ -35,7 +34,6 @@ export interface UpdateAutomationInput {
   messages?: string;
   models?: string;
   temperature?: number;
-  tool_approval_level?: string;
 }
 
 export interface CreateTriggerInput {
@@ -113,7 +111,6 @@ function automationFromDbRow(row: {
   messages: string;
   models: string;
   temperature: number;
-  tool_approval_level: string;
   created_at: Date | string;
   updated_at: Date | string;
 }): Automation {
@@ -127,7 +124,6 @@ function automationFromDbRow(row: {
     messages: row.messages,
     models: row.models,
     temperature: row.temperature,
-    tool_approval_level: row.tool_approval_level,
     created_at: toIsoString(row.created_at),
     updated_at: toIsoString(row.updated_at),
   };
@@ -178,7 +174,6 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       messages: input.messages,
       models: input.models,
       temperature: input.temperature ?? 0.5,
-      tool_approval_level: input.tool_approval_level ?? "none",
       created_at: now,
       updated_at: now,
     };
@@ -233,7 +228,6 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         "a.messages",
         "a.models",
         "a.temperature",
-        "a.tool_approval_level",
         "a.created_at",
         "a.updated_at",
       ])
@@ -249,7 +243,6 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         "a.messages",
         "a.models",
         "a.temperature",
-        "a.tool_approval_level",
         "a.created_at",
         "a.updated_at",
       ])
@@ -277,8 +270,6 @@ class KyselyAutomationsStorage implements AutomationsStorage {
     if (input.models !== undefined) updateData.models = input.models;
     if (input.temperature !== undefined)
       updateData.temperature = input.temperature;
-    if (input.tool_approval_level !== undefined)
-      updateData.tool_approval_level = input.tool_approval_level;
 
     await this.db
       .updateTable("automations")
@@ -394,7 +385,6 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         "a.messages as a_messages",
         "a.models as a_models",
         "a.temperature as a_temperature",
-        "a.tool_approval_level as a_tool_approval_level",
         "a.created_at as a_created_at",
         "a.updated_at as a_updated_at",
       ])
@@ -417,7 +407,6 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         messages: row.a_messages,
         models: row.a_models,
         temperature: row.a_temperature,
-        tool_approval_level: row.a_tool_approval_level,
         created_at: row.a_created_at,
         updated_at: row.a_updated_at,
       }),
@@ -449,7 +438,6 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         "a.messages as a_messages",
         "a.models as a_models",
         "a.temperature as a_temperature",
-        "a.tool_approval_level as a_tool_approval_level",
         "a.created_at as a_created_at",
         "a.updated_at as a_updated_at",
       ])
@@ -475,7 +463,6 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         messages: row.a_messages,
         models: row.a_models,
         temperature: row.a_temperature,
-        tool_approval_level: row.a_tool_approval_level,
         created_at: row.a_created_at,
         updated_at: row.a_updated_at,
       }),

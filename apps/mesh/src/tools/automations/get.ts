@@ -35,7 +35,6 @@ export const AUTOMATION_GET = defineTool({
         messages: z.unknown(),
         models: z.unknown(),
         temperature: z.number(),
-        tool_approval_level: z.string(),
         triggers: z.array(
           z.object({
             id: z.string(),
@@ -79,7 +78,6 @@ export const AUTOMATION_GET = defineTool({
         messages: JSON.parse(automation.messages),
         models: JSON.parse(automation.models),
         temperature: automation.temperature,
-        tool_approval_level: automation.tool_approval_level,
         triggers: triggers.map((t) => ({
           id: t.id,
           type: t.type,

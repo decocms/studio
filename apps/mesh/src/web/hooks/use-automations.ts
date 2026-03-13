@@ -51,7 +51,6 @@ export interface AutomationDetail {
     [key: string]: unknown;
   };
   temperature: number;
-  tool_approval_level: string;
   triggers: AutomationTrigger[];
 }
 

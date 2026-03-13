@@ -78,7 +78,6 @@ export const AUTOMATION_UPDATE = defineTool({
       .loose()
       .optional(),
     temperature: z.number().optional(),
-    tool_approval_level: z.enum(["none", "readonly", "yolo"]).optional(),
   }),
   outputSchema: z.object({
     id: z.string(),
@@ -112,9 +111,6 @@ export const AUTOMATION_UPDATE = defineTool({
       updateData.models = JSON.stringify(input.models);
     if (input.temperature !== undefined)
       updateData.temperature = input.temperature;
-    if (input.tool_approval_level !== undefined)
-      updateData.tool_approval_level = input.tool_approval_level;
-
     const automation = await ctx.storage.automations.update(
       input.id,
       organization.id,
