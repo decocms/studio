@@ -8,6 +8,9 @@ import pkg from "./package.json" with { type: "json" };
 export default defineConfig({
   define: {
     __MESH_VERSION__: JSON.stringify(pkg.version),
+    __ENABLE_DECO_IMPORT__: JSON.stringify(
+      process.env.ENABLE_DECO_IMPORT === "true",
+    ),
   },
   server: {
     hmr: {

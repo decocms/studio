@@ -7,6 +7,7 @@ import { CollectionSearch } from "@/web/components/collections/collection-search
 import { ProjectCard } from "@/web/components/project-card";
 import { EmptyState } from "@/web/components/empty-state.tsx";
 import { CreateProjectDialog } from "@/web/components/create-project-dialog";
+import { ImportFromDecoDialog } from "@/web/components/import-from-deco-dialog";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -20,6 +21,7 @@ export default function ProjectsListPage() {
   const { data: projects, isLoading } = useProjects(org.id);
   const [search, setSearch] = useState("");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const navigate = useNavigate();
 
   // Filter out org-admin and apply search
@@ -61,6 +63,16 @@ export default function ProjectsListPage() {
           </Breadcrumb>
         </Page.Header.Left>
         <Page.Header.Right>
+          {__ENABLE_DECO_IMPORT__ && (
+            <Button
+              variant="outline"
+              onClick={() => setImportDialogOpen(true)}
+              size="sm"
+              className="h-7 px-3 rounded-lg text-sm font-medium"
+            >
+              Import from deco.cx
+            </Button>
+          )}
           <Button
             onClick={handleCreateProject}
             size="sm"
@@ -145,6 +157,12 @@ export default function ProjectsListPage() {
       <CreateProjectDialog
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
+      />
+
+      {/* Import from deco.cx Dialog */}
+      <ImportFromDecoDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
       />
     </Page>
   );
