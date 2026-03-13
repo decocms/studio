@@ -1,7 +1,19 @@
 ---
-const { title } = Astro.props;
-const formattedTitle = title ? `${title} - decoCMS` : "decoCMS";
+import { siteConfig } from "../../config/site";
+const { title, description } = Astro.props;
+const formattedTitle = title ? `${title} - deco Studio` : "deco Studio";
+const metaDescription = description || siteConfig.description;
+const ogImage = siteConfig.ogImage;
 ---
 
 <title>{formattedTitle}</title>
+<meta name="description" content={metaDescription} />
+<meta property="og:title" content={formattedTitle} />
+<meta property="og:description" content={metaDescription} />
+<meta property="og:site_name" content="deco Studio" />
+<meta property="og:image" content={ogImage} />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content={formattedTitle} />
+<meta name="twitter:description" content={metaDescription} />
+<meta name="twitter:image" content={ogImage} />
 <link rel="icon" type="image/x-icon" href="/favicon.ico">

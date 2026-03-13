@@ -1,8 +1,9 @@
 export const siteConfig = {
-  name: "Deco MCP Documentation",
-  description: "Documentation for Deco MCP server with tools and workflows",
+  name: "deco Studio Documentation",
+  description:
+    "Hire specialized agents, give them access to your tools, and let them deliver real projects — with planning, verification, and observability built in.",
   url: "https://your-domain.com",
-  ogImage: "https://your-domain.com/og.jpg",
+  ogImage: "/og-image.png",
   links: {
     github: "https://github.com/decocms/studio",
   },
