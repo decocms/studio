@@ -22,9 +22,6 @@ export function buildStreamRequest(
     ...m,
     id: crypto.randomUUID(),
   }));
-  console.info(
-    `[Automation:buildRequest] Thread ${threadId}: automation ${automation.id} has ${messages.length} stored messages (roles: [${messages.map((m: { role: string }) => m.role).join(", ")}])`,
-  );
   return {
     messages,
     models: JSON.parse(automation.models),

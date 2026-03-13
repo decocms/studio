@@ -27,9 +27,15 @@ function makeAutomation(overrides?: Partial<Automation>): Automation {
 describe("buildStreamRequest", () => {
   it("parses JSON columns into objects", () => {
     const result = buildStreamRequest(makeAutomation(), "trig_1", "thrd_1");
-    expect(result.messages).toEqual([
-      { id: "m1", role: "user", parts: [{ type: "text", text: "hello" }] },
-    ]);
+    expect(result.messages).toHaveLength(1);
+    const msg = result.messages[0]!;
+    expect(msg.role).toBe("user");
+    expect(msg.parts).toEqual([{ type: "text", text: "hello" }]);
+    // Message id should be a fresh UUID, not the stored one
+    expect(msg.id).not.toBe("m1");
+    expect(msg.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
     expect(result.models).toEqual({
       thinking: { id: "gpt-4", title: "GPT-4" },
       credentialId: "cred_1",

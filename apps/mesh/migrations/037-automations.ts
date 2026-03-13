@@ -25,9 +25,6 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .addColumn("messages", "text", (col) => col.notNull()) // JSONB: UIMessage[]
     .addColumn("models", "text", (col) => col.notNull()) // JSONB: { connectionId, thinking, coding?, fast? }
     .addColumn("temperature", "real", (col) => col.notNull().defaultTo(0.5))
-    .addColumn("tool_approval_level", "text", (col) =>
-      col.notNull().defaultTo("yolo"),
-    )
     .addColumn("created_at", "text", (col) =>
       col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`),
     )
@@ -35,11 +32,6 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`),
     )
     .execute();
-
-  // Add check constraint for tool_approval_level
-  await sql`ALTER TABLE automations ADD CONSTRAINT chk_tool_approval_level CHECK (tool_approval_level IN ('none', 'readonly', 'yolo'))`.execute(
-    db,
-  );
 
   // Indexes for automations
   await db.schema
@@ -75,6 +67,9 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .execute();
 
   // Add check constraints for trigger types
+  await sql`ALTER TABLE automation_triggers ADD CONSTRAINT chk_trigger_type CHECK (type IN ('cron', 'event'))`.execute(
+    db,
+  );
   await sql`ALTER TABLE automation_triggers ADD CONSTRAINT chk_cron_trigger CHECK (type != 'cron' OR cron_expression IS NOT NULL)`.execute(
     db,
   );

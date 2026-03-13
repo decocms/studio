@@ -45,14 +45,16 @@ export const AUTOMATION_DELETE = defineTool({
     const triggers = await ctx.storage.automations.listTriggers(input.id);
     const eventTriggers = triggers.filter((t) => t.type === "event");
 
-    for (const trigger of eventTriggers) {
-      const result = await configureTriggerOnMcp(ctx, trigger, false);
-      if (!result.success) {
-        console.warn(
-          `Failed to disable trigger ${trigger.id}: ${result.error}`,
-        );
-      }
-    }
+    await Promise.allSettled(
+      eventTriggers.map(async (trigger) => {
+        const result = await configureTriggerOnMcp(ctx, trigger, false);
+        if (!result.success) {
+          console.warn(
+            `Failed to disable trigger ${trigger.id}: ${result.error}`,
+          );
+        }
+      }),
+    );
 
     // Delete the automation (cascading delete removes triggers)
     const { success } = await ctx.storage.automations.delete(

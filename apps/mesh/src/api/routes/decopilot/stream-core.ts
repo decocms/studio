@@ -130,29 +130,17 @@ export async function streamCore(
       ...messages: (ChatMessage | undefined)[]
     ) => {
       const now = Date.now();
-      const filtered = messages.filter(Boolean);
       const messagesToSave = [
-        ...new Map(filtered.map((m) => [m!.id, m!])).values(),
+        ...new Map(messages.filter(Boolean).map((m) => [m!.id, m!])).values(),
       ].map((message, i) => ({
         ...message,
         thread_id: mem.thread.id,
         created_at: new Date(now + i).toISOString(),
         updated_at: new Date(now + i).toISOString(),
       }));
-      if (messagesToSave.length === 0) {
-        console.warn(
-          `[decopilot:stream] Thread ${mem.thread.id}: saveMessagesToThread called with ${messages.length} args but 0 messages to save (filtered=${filtered.length})`,
-        );
-        return;
-      }
-      console.info(
-        `[decopilot:stream] Thread ${mem.thread.id}: saving ${messagesToSave.length} messages (ids: [${messagesToSave.map((m) => m.id).join(", ")}], roles: [${messagesToSave.map((m) => m.role).join(", ")}])`,
-      );
+      if (messagesToSave.length === 0) return;
       await mem.save(messagesToSave as ThreadMessage[]).catch((error) => {
-        console.error(
-          `[decopilot:stream] Thread ${mem.thread.id}: Error saving messages (ids: [${messagesToSave.map((m) => m.id).join(", ")}])`,
-          error,
-        );
+        console.error("[decopilot:stream] Error saving messages", error);
       });
     };
 
@@ -209,12 +197,9 @@ export async function streamCore(
     const systemMessages = input.messages.filter((m) => m.role === "system");
     const requestMessage = input.messages.find((m) => m.role !== "system");
 
-    console.info(
-      `[decopilot:stream] Thread ${mem.thread.id}: input has ${input.messages.length} messages (roles: [${input.messages.map((m) => m.role).join(", ")}]), requestMessage role=${requestMessage?.role ?? "MISSING"}, id=${requestMessage?.id ?? "MISSING"}`,
-    );
     if (!requestMessage) {
-      console.warn(
-        `[decopilot:stream] Thread ${mem.thread.id}: No user message found in input.messages! triggerId=${input.triggerId}, messages=${JSON.stringify(input.messages)}`,
+      throw new Error(
+        "No user message found in input — expected at least one non-system message",
       );
     }
 
@@ -235,7 +220,7 @@ export async function streamCore(
     // Pre-load conversation
     const allMessages = await loadAndMergeMessages(
       mem,
-      requestMessage!,
+      requestMessage,
       [DECOPILOT_BASE_PROMPT(), ...systemMessages],
       windowSize,
     );

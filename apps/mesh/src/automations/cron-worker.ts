@@ -128,21 +128,27 @@ export class AutomationCronWorker {
         new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000).toISOString(),
       );
 
-      for (const { automation: _automation, ...trigger } of allDue) {
-        if (!trigger.cron_expression) continue;
-        try {
-          const cron = new Cron(trigger.cron_expression, { timezone: "UTC" });
-          const nextRun = cron.nextRun();
-          if (nextRun) {
-            await this.storage.updateTriggerNextRunAt(
-              trigger.id,
-              nextRun.toISOString(),
-            );
-          }
-        } catch {
-          // Skip triggers with invalid cron expressions
-        }
-      }
+      await Promise.allSettled(
+        allDue
+          .filter(({ cron_expression }) => !!cron_expression)
+          .map(({ automation: _automation, ...trigger }) => {
+            try {
+              const cron = new Cron(trigger.cron_expression!, {
+                timezone: "UTC",
+              });
+              const nextRun = cron.nextRun();
+              if (nextRun) {
+                return this.storage.updateTriggerNextRunAt(
+                  trigger.id,
+                  nextRun.toISOString(),
+                );
+              }
+            } catch {
+              // Skip triggers with invalid cron expressions
+            }
+            return Promise.resolve();
+          }),
+      );
       console.log(`[AutomationCron] Recovered ${allDue.length} cron triggers`);
     } catch (err) {
       console.error(

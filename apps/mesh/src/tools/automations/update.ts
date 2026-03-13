@@ -124,15 +124,20 @@ export const AUTOMATION_UPDATE = defineTool({
       );
       const eventTriggers = triggers.filter((t) => t.type === "event");
 
-      for (const trigger of eventTriggers) {
-        // Best-effort: log and continue on failure
-        const result = await configureTriggerOnMcp(ctx, trigger, input.active);
-        if (!result.success) {
-          console.warn(
-            `Failed to configure trigger ${trigger.id}: ${result.error}`,
+      await Promise.allSettled(
+        eventTriggers.map(async (trigger) => {
+          const result = await configureTriggerOnMcp(
+            ctx,
+            trigger,
+            input.active!,
           );
-        }
-      }
+          if (!result.success) {
+            console.warn(
+              `Failed to configure trigger ${trigger.id}: ${result.error}`,
+            );
+          }
+        }),
+      );
     }
 
     return {
