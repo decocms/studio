@@ -44,11 +44,15 @@ const app = new Hono<{ Variables: Variables }>();
 // ============================================================================
 
 /**
- * Default timeout for MCP tool calls in milliseconds.
+ * Default timeout for MCP tool calls in milliseconds (used by Decopilot).
  * The MCP SDK default is 60 seconds (60000ms).
- * Increase this value for tools that take longer to execute.
  */
 export const MCP_TOOL_CALL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Timeout for upstream MCP tool calls (proxy → MCP server) in milliseconds.
+ */
+export const MCP_UPSTREAM_TOOL_CALL_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 
 // ============================================================================
 // MCP Proxy Factory
@@ -347,10 +351,14 @@ app.all("/:connectionId/call-tool/:toolName", async (c) => {
 
     // Client pool manages lifecycle, no need for await using
     const client = await clientFromConnection(connection, ctx, false);
-    const result = await client.callTool({
-      name: toolName,
-      arguments: await c.req.json(),
-    });
+    const result = await client.callTool(
+      {
+        name: toolName,
+        arguments: await c.req.json(),
+      },
+      undefined,
+      { timeout: MCP_UPSTREAM_TOOL_CALL_TIMEOUT_MS },
+    );
 
     if (result instanceof Response) {
       return result;
