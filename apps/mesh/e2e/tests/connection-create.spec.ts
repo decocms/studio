@@ -8,12 +8,9 @@ test.describe("Connection creation flow", () => {
     // 1. Sign up — org is auto-created, lands on home page
     await signUp(page);
 
-    // 2. Wait for home page and extract the org slug from the card (@slug text)
-    await page.waitForURL("/");
-    const slugText = page.locator("text=/@[a-z0-9-]+/").first();
-    await slugText.waitFor({ state: "visible" });
-    const rawSlug = await slugText.textContent();
-    const orgSlug = rawSlug?.replace("@", "").trim() ?? "";
+    // 2. Wait for the auto-redirect to the org-admin page and extract slug from URL
+    await page.waitForURL(/\/[a-z0-9-]+\/org-admin/, { timeout: 15_000 });
+    const orgSlug = new URL(page.url()).pathname.split("/")[1];
 
     // 3. Navigate directly to the connections page (org-admin is the default project)
     await page.goto(`/${orgSlug}/org-admin/mcps`);

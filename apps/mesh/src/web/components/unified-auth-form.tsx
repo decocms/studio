@@ -65,9 +65,7 @@ export function UnifiedAuthForm({ redirectUrl }: UnifiedAuthFormProps) {
     },
     onSuccess: () => {
       globalThis.localStorage?.setItem("hasLoggedIn", "true");
-      if (redirectUrl) {
-        window.location.href = redirectUrl;
-      }
+      window.location.href = redirectUrl ?? "/";
     },
   });
 

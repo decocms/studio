@@ -184,6 +184,12 @@ function ShellLayoutContent() {
         organizationSlug: org,
       });
 
+      // Persist for fast redirect on next login (read by homeRoute beforeLoad)
+      // Only write on success to avoid caching an invalid slug
+      if (data) {
+        localStorage.setItem(LOCALSTORAGE_KEYS.lastOrgSlug(), org);
+      }
+
       return {
         org: data,
         // Project slug comes from URL param, actual project data is fetched in project-layout

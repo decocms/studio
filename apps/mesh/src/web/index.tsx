@@ -18,6 +18,8 @@ import type { ReactNode } from "react";
 
 import "../../index.css";
 
+import { authClient } from "@/web/lib/auth-client";
+import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import { sourcePlugins } from "./plugins.ts";
 import type {
   AnyClientPlugin,
@@ -130,11 +132,44 @@ const shellLayout = createRoute({
   component: lazyRouteComponent(() => import("./layouts/shell-layout.tsx")),
 });
 
-// Home route (landing, redirects to first org)
+// Home route (landing, redirects to last or only org)
 const homeRoute = createRoute({
   getParentRoute: () => shellLayout,
   path: "/",
   component: lazyRouteComponent(() => import("./routes/home.tsx")),
+  beforeLoad: async () => {
+    // Fetch org list once — used for both slug validation and single-org redirect
+    const { data: orgs } = await authClient.organization.list();
+
+    // If the list call failed, skip all redirect logic to avoid clearing a
+    // valid cached slug due to a transient API failure.
+    if (!orgs) return;
+
+    // Fast path: validate cached slug against current membership before redirecting.
+    // If stale (org deleted or user removed), clear it to prevent a redirect loop
+    // where an invalid slug → shell fails → back to "/" → same redirect → loop.
+    const lastOrgSlug = localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug());
+    if (lastOrgSlug) {
+      const slugIsValid = orgs.some((o) => o.slug === lastOrgSlug);
+      if (slugIsValid) {
+        throw redirect({
+          to: "/$org/$project",
+          params: { org: lastOrgSlug, project: ORG_ADMIN_PROJECT_SLUG },
+        });
+      }
+      // Stale — remove so future visits don't loop
+      localStorage.removeItem(LOCALSTORAGE_KEYS.lastOrgSlug());
+    }
+
+    // Slow path: first-time user — redirect if they only have one org
+    const onlyOrg = orgs.length === 1 ? orgs[0] : undefined;
+    if (onlyOrg) {
+      throw redirect({
+        to: "/$org/$project",
+        params: { org: onlyOrg.slug, project: ORG_ADMIN_PROJECT_SLUG },
+      });
+    }
+  },
 });
 
 // ============================================
