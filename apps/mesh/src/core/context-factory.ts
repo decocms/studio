@@ -664,9 +664,47 @@ async function authenticateRequest(
       let organization: OrganizationContext | undefined;
       let role: string | undefined;
 
-      if (session.session.activeOrganizationId) {
-        // Get full organization data (includes members with roles)
+      // Prefer the explicit x-org-id request header over the session's activeOrganizationId.
+      // The MCP client sends this header on every request with the org from the URL, enabling
+      // multiple browser tabs to operate in different orgs simultaneously without one tab's
+      // setActive() call clobbering another tab's session state.
+      const headerOrgId = req.headers.get("x-org-id");
 
+      if (headerOrgId) {
+        // Resolve org directly from DB and verify the session user is a member.
+        // This bypasses the shared session state entirely for per-request org resolution.
+        const membership = await timings.measure(
+          "auth_query_org_membership",
+          () =>
+            db
+              .selectFrom("member")
+              .innerJoin(
+                "organization",
+                "organization.id",
+                "member.organizationId",
+              )
+              .select([
+                "member.role",
+                "organization.id as orgId",
+                "organization.slug as orgSlug",
+                "organization.name as orgName",
+              ])
+              .where("member.userId", "=", session.user.id)
+              .where("member.organizationId", "=", headerOrgId)
+              .executeTakeFirst(),
+        );
+
+        if (membership) {
+          organization = {
+            id: membership.orgId,
+            slug: membership.orgSlug,
+            name: membership.orgName,
+          };
+          role = membership.role;
+        }
+      } else if (session.session.activeOrganizationId) {
+        // Fall back to the session's active org when no explicit header is present.
+        // (Existing behavior for requests that don't send x-org-id.)
         const orgData = await timings.measure(
           "auth_get_full_organization",
           () =>
