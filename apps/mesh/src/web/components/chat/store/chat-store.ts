@@ -98,7 +98,7 @@ class ChatStore {
   private renameTaskFn:
     | ((taskId: string, title: string) => Promise<void>)
     | null = null;
-  private createTaskFn: (() => void) | null = null;
+  private createTaskFn: (() => string) | null = null;
 
   constructor() {
     this.state = this.defaultState();
@@ -217,7 +217,7 @@ class ChatStore {
     updateMessagesCache: (threadId: string, messages: ChatMessage[]) => void;
     hideTask: (taskId: string) => Promise<void>;
     renameTask: (taskId: string, title: string) => Promise<void>;
-    createTask: () => void;
+    createTask: () => string;
   }): void {
     this.updateMessagesCacheFn = helpers.updateMessagesCache;
     this.hideTaskFn = helpers.hideTask;
@@ -238,8 +238,18 @@ class ChatStore {
 
     // Delegate to taskManager's createTask if available (handles cache + prefill)
     if (this.createTaskFn) {
-      this.createTaskFn();
-      return this.state.activeThreadId;
+      const newThreadId = this.createTaskFn();
+      this.state = {
+        ...this.state,
+        activeThreadId: newThreadId,
+        threadMessages: {
+          ...this.state.threadMessages,
+          [newThreadId]: [],
+        },
+      };
+      writeActiveThreadId(this.state.locator, newThreadId);
+      this.notify();
+      return newThreadId;
     }
 
     // Fallback: create locally
@@ -612,6 +622,12 @@ class ChatStore {
         activeThreadId: serverThreadId,
       };
       writeActiveThreadId(this.state.locator, serverThreadId);
+
+      // Persist messages under the new server thread ID so ThreadListSync
+      // doesn't wipe them with empty task manager data.
+      if (msgs.length > 0) {
+        this.updateMessagesCacheFn?.(serverThreadId, msgs);
+      }
     }
 
     if (payload.isAbort || payload.isDisconnect || payload.isError) {

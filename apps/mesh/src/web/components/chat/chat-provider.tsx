@@ -69,7 +69,9 @@ function ThreadListSync() {
     hideTask: (taskId) => taskManagerRef.current.hideTask(taskId),
     renameTask: (taskId, title) =>
       taskManagerRef.current.renameTask(taskId, title),
-    createTask: () => taskManagerRef.current.createTask(),
+    createTask: () => {
+      return taskManagerRef.current.createTask();
+    },
   });
 
   return null;
