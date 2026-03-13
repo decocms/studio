@@ -11,6 +11,7 @@ import {
   lastAssistantMessageIsCompleteWithToolCalls,
   lastAssistantMessageIsCompleteWithApprovalResponses,
 } from "ai";
+import { useEffect } from "react";
 import { useInvalidateCollectionsOnToolCall } from "../../hooks/use-invalidate-collections-on-tool-call";
 import { chatStore } from "./store/chat-store";
 import { useActiveThreadId, useChatMessages } from "./store/selectors";
@@ -40,22 +41,24 @@ export function ChatBridge() {
     },
   });
 
-  // Push streaming messages into the store on every render
-  if (chat.status !== "ready") {
-    chatStore.onStreamMessages(chat.messages);
-  }
+  // Sync store after render to avoid "cannot update component while rendering
+  // another" warnings — store mutations call notify() which triggers
+  // useSyncExternalStore listeners synchronously.
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    if (chat.status !== "ready") {
+      chatStore.onStreamMessages(chat.messages);
+    }
+    chatStore.onStatusChange(chat.status);
 
-  // Sync status changes
-  chatStore.onStatusChange(chat.status);
-
-  // Expose chat methods to the store
-  chatStore.registerChatBridge({
-    sendMessage: chat.sendMessage,
-    stop: chat.stop,
-    setMessages: chat.setMessages,
-    resumeStream: chat.resumeStream,
-    addToolOutput: chat.addToolOutput,
-    addToolApprovalResponse: chat.addToolApprovalResponse,
+    chatStore.registerChatBridge({
+      sendMessage: chat.sendMessage,
+      stop: chat.stop,
+      setMessages: chat.setMessages,
+      resumeStream: chat.resumeStream,
+      addToolOutput: chat.addToolOutput,
+      addToolApprovalResponse: chat.addToolApprovalResponse,
+    });
   });
 
   return null;

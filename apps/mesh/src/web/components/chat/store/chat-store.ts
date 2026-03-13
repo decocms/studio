@@ -477,6 +477,8 @@ class ChatStore {
     if (params.model) this.setModel(params.model);
     if (params.agent !== undefined) this.setAgent(params.agent);
     if (params.mode) this.setMode(params.mode);
+    if (params.toolApprovalLevel)
+      this.setToolApprovalLevel(params.toolApprovalLevel);
 
     // Sync server-sourced messages into useAIChat before sending
     const existingMessages =

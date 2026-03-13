@@ -632,7 +632,7 @@ function SettingsTab({
 
     // Send message after React flushes the new thread state
     setTimeout(() => {
-      sendMessage(tiptapDoc);
+      sendMessage(tiptapDoc, { toolApprovalLevel: "yolo" });
     }, 0);
   };
 

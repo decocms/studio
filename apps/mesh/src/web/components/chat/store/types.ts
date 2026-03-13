@@ -68,6 +68,7 @@ export interface SendMessageParams {
   model?: AiProviderModel;
   agent?: VirtualMCPInfo | null;
   mode?: ToolSelectionStrategy;
+  toolApprovalLevel?: string;
 }
 
 // ============================================================================

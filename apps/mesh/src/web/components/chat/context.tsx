@@ -51,7 +51,10 @@ interface ChatStableValue {
   selectedMode: ToolSelectionStrategy;
   setSelectedMode: (mode: ToolSelectionStrategy) => void;
 
-  sendMessage: (tiptapDoc: Metadata["tiptapDoc"]) => Promise<void>;
+  sendMessage: (
+    tiptapDoc: Metadata["tiptapDoc"],
+    options?: { toolApprovalLevel?: string },
+  ) => Promise<void>;
   cancelRun: () => Promise<void>;
   setAppContext: (
     sourceId: string,
@@ -137,8 +140,10 @@ export function useChatStable(): ChatStableValue {
     setSelectedMode: (mode: ToolSelectionStrategy) => chatStore.setMode(mode),
     setOwnerFilter: (filter: TaskOwnerFilter) =>
       chatStore.setOwnerFilter(filter),
-    sendMessage: (tiptapDoc: Metadata["tiptapDoc"]) =>
-      chatStore.sendMessage({ tiptapDoc }),
+    sendMessage: (
+      tiptapDoc: Metadata["tiptapDoc"],
+      options?: { toolApprovalLevel?: string },
+    ) => chatStore.sendMessage({ tiptapDoc, ...options }),
     cancelRun: () => chatStore.cancelRun(),
     setAppContext: (sourceId, params) =>
       chatStore.setAppContext(sourceId, params),
