@@ -1,16 +1,7 @@
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import { CollectionDisplayButton } from "@/web/components/collections/collection-display-button.tsx";
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
-import { type TableColumn } from "@/web/components/collections/collection-table.tsx";
 import { CollectionTabs } from "@/web/components/collections/collection-tabs.tsx";
-import {
-  Table as UITable,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@deco/ui/components/table.tsx";
 import { ConnectionCard } from "@/web/components/connections/connection-card.tsx";
 import { ConnectionInstancesModal } from "@/web/components/connections/connection-instances-modal.tsx";
 import { ConnectionStatus } from "@/web/components/connections/connection-status.tsx";
@@ -97,9 +88,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
-  ArrowDown,
-  ArrowUp,
   CheckSquare,
+  CheckVerified02,
   ChevronDown,
   Container,
   DotsVertical,
@@ -111,7 +101,7 @@ import {
   Trash01,
   XClose,
 } from "@untitledui/icons";
-import { Fragment, Suspense, useEffect, useReducer, useState } from "react";
+import { Suspense, useEffect, useReducer, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { formatTimeAgo } from "@/web/lib/format-time";
@@ -843,303 +833,6 @@ function BulkDeleteDialog({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Grouped table: renders CollectionTable-style rows with collapsible groups
-// ---------------------------------------------------------------------------
-
-function GroupedConnectionTable({
-  columns,
-  grouped,
-  sortKey,
-  sortDirection,
-  onSort,
-  onRowClick,
-  selectionMode,
-  selectedIds,
-  onToggleSelect,
-  emptyState,
-}: {
-  columns: TableColumn<ConnectionEntity>[];
-  grouped: GroupedItem[];
-  sortKey?: string;
-  sortDirection?: "asc" | "desc" | null;
-  onSort?: (key: string) => void;
-  onRowClick: (connection: ConnectionEntity) => void;
-  selectionMode: boolean;
-  selectedIds: Set<string>;
-  onToggleSelect: (id: string) => void;
-  emptyState?: React.ReactNode;
-}) {
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-
-  const toggleGroup = (key: string) => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
-  if (grouped.length === 0 && emptyState) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        {emptyState}
-      </div>
-    );
-  }
-
-  const colCount = columns.length;
-
-  return (
-    <div className="flex-1 overflow-auto">
-      <UITable className="w-full border-collapse">
-        <TableHeader className="border-b-0">
-          <TableRow className="h-9 hover:bg-transparent border-b border-border">
-            {columns.map((col, idx) => {
-              const isActiveSort = sortKey === col.id;
-              const headerBase =
-                "px-4 py-2 text-left font-mono font-normal text-muted-foreground text-[11px] h-9 uppercase tracking-wider";
-              const isLast = idx === colCount - 1;
-              return (
-                <TableHead
-                  key={col.id}
-                  className={cn(
-                    headerBase,
-                    isLast && "w-8",
-                    "group transition-colors select-none",
-                    col.sortable && "hover:bg-accent cursor-pointer",
-                    col.cellClassName,
-                  )}
-                  onClick={
-                    col.sortable && onSort ? () => onSort(col.id) : undefined
-                  }
-                >
-                  <span className="flex items-center gap-1">
-                    {col.header}
-                    {col.sortable && (
-                      <span className="w-4 flex items-center justify-center">
-                        {isActiveSort &&
-                          sortDirection &&
-                          (sortDirection === "asc" ? (
-                            <ArrowUp
-                              size={16}
-                              className="text-muted-foreground"
-                            />
-                          ) : (
-                            <ArrowDown
-                              size={16}
-                              className="text-muted-foreground"
-                            />
-                          ))}
-                      </span>
-                    )}
-                  </span>
-                </TableHead>
-              );
-            })}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {grouped.map((item) => {
-            if (item.type === "single") {
-              const c = item.connection;
-              return (
-                <TableRow
-                  key={c.id}
-                  className={cn(
-                    "group/data-row transition-colors border-b-0 hover:bg-accent/50 cursor-pointer",
-                    selectionMode && selectedIds.has(c.id) && "bg-primary/5",
-                  )}
-                  onClick={() => onRowClick(c)}
-                >
-                  {columns.map((col) => (
-                    <TableCell
-                      key={col.id}
-                      className={cn(
-                        "px-5 py-4 h-16 align-middle text-sm text-foreground",
-                        col.cellClassName,
-                      )}
-                    >
-                      <div className="min-w-0 w-full truncate overflow-hidden whitespace-nowrap">
-                        {col.render ? col.render(c) : null}
-                      </div>
-                    </TableCell>
-                  ))}
-                </TableRow>
-              );
-            }
-
-            const group = item;
-            const isExpanded = expandedGroups.has(group.key);
-            const allSelected = group.connections.every((c) =>
-              selectedIds.has(c.id),
-            );
-            const someSelected = group.connections.some((c) =>
-              selectedIds.has(c.id),
-            );
-            const creators = getUniqueCreators(group.connections);
-
-            const mostRecent = group.connections.reduce((latest, c) => {
-              const t = c.updated_at ?? c.created_at;
-              const l = latest.updated_at ?? latest.created_at;
-              if (!t) return latest;
-              if (!l) return c;
-              return new Date(t) > new Date(l) ? c : latest;
-            }, group.connections[0]!);
-
-            return (
-              <Fragment key={group.key}>
-                {/* Group header row — cells align with columns */}
-                <TableRow
-                  className="border-b-0 hover:bg-accent/50 cursor-pointer transition-colors"
-                  onClick={() => toggleGroup(group.key)}
-                >
-                  {columns.map((col) => {
-                    const base = cn(
-                      "px-5 py-3 h-14 align-middle text-sm",
-                      col.cellClassName,
-                    );
-
-                    if (col.id === "select") {
-                      return (
-                        <TableCell key={col.id} className={base}>
-                          <Checkbox
-                            checked={
-                              allSelected
-                                ? true
-                                : someSelected
-                                  ? "indeterminate"
-                                  : false
-                            }
-                            onCheckedChange={() => {
-                              for (const c of group.connections) {
-                                if (allSelected) {
-                                  if (selectedIds.has(c.id))
-                                    onToggleSelect(c.id);
-                                } else {
-                                  if (!selectedIds.has(c.id))
-                                    onToggleSelect(c.id);
-                                }
-                              }
-                            }}
-                            onClick={(e: React.MouseEvent) =>
-                              e.stopPropagation()
-                            }
-                          />
-                        </TableCell>
-                      );
-                    }
-
-                    if (col.id === "title") {
-                      return (
-                        <TableCell key={col.id} className={base}>
-                          <div className="flex items-center gap-2 min-w-0">
-                            <IntegrationIcon
-                              icon={group.icon}
-                              name={group.title}
-                              size="sm"
-                              className="shrink-0 shadow-sm"
-                              fallbackIcon={<Container />}
-                            />
-                            <span className="text-sm font-medium text-foreground truncate">
-                              {group.title}
-                            </span>
-                            <Badge
-                              variant="secondary"
-                              className="text-xs tabular-nums"
-                            >
-                              x{group.connections.length}
-                            </Badge>
-                          </div>
-                        </TableCell>
-                      );
-                    }
-
-                    if (col.id === "updated_by") {
-                      return (
-                        <TableCell key={col.id} className={base}>
-                          <div className="flex items-center -space-x-1.5">
-                            {creators.map((id) => (
-                              <User
-                                key={id}
-                                id={id}
-                                size="3xs"
-                                avatarOnly={creators.length > 1}
-                              />
-                            ))}
-                          </div>
-                        </TableCell>
-                      );
-                    }
-
-                    if (col.id === "updated_at") {
-                      const ts = mostRecent.updated_at ?? mostRecent.created_at;
-                      return (
-                        <TableCell key={col.id} className={base}>
-                          <span className="text-xs text-muted-foreground whitespace-nowrap">
-                            {ts ? formatTimeAgo(new Date(ts)) : "—"}
-                          </span>
-                        </TableCell>
-                      );
-                    }
-
-                    if (col.id === "actions") {
-                      return (
-                        <TableCell key={col.id} className={base}>
-                          <ChevronDown
-                            size={16}
-                            className={cn(
-                              "text-muted-foreground transition-transform",
-                              isExpanded && "rotate-180",
-                            )}
-                          />
-                        </TableCell>
-                      );
-                    }
-
-                    return <TableCell key={col.id} className={base} />;
-                  })}
-                </TableRow>
-
-                {/* Expanded child rows */}
-                {isExpanded &&
-                  group.connections.map((c) => (
-                    <TableRow
-                      key={c.id}
-                      className={cn(
-                        "group/data-row transition-colors border-b-0 hover:bg-accent/50 cursor-pointer bg-muted/20",
-                        selectionMode &&
-                          selectedIds.has(c.id) &&
-                          "bg-primary/5",
-                      )}
-                      onClick={() => onRowClick(c)}
-                    >
-                      {columns.map((col) => (
-                        <TableCell
-                          key={col.id}
-                          className={cn(
-                            "px-5 py-3 h-14 align-middle text-sm text-foreground",
-                            col.cellClassName,
-                            col.id === "title" && "pl-12",
-                          )}
-                        >
-                          <div className="min-w-0 w-full truncate overflow-hidden whitespace-nowrap">
-                            {col.render ? col.render(c) : null}
-                          </div>
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))}
-              </Fragment>
-            );
-          })}
-        </TableBody>
-      </UITable>
-    </div>
-  );
-}
-
 // ===========================================================================
 
 function OrgMcpsContent() {
@@ -1161,15 +854,15 @@ function OrgMcpsContent() {
 
   const [dialogState, dispatch] = useReducer(dialogReducer, { mode: "idle" });
 
-  // Selection / bulk-action state
-  const [selectionMode, setSelectionMode] = useState(false);
+  // Selection / bulk-action state — no explicit mode; selection is implicit
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const selectionMode = selectedIds.size > 0;
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [addToAgentOpen, setAddToAgentOpen] = useState(false);
 
   // Tab state
   type ConnectionTab = "connected" | "all" | "built-by-me" | "needs-config";
-  const [activeTab, setActiveTab] = useState<ConnectionTab>("connected");
+  const [activeTab, setActiveTab] = useState<ConnectionTab>("all");
 
   // App modal state (instances + tools)
   const [appModal, setAppModal] = useState<{
@@ -1215,7 +908,6 @@ function OrgMcpsContent() {
   };
 
   const exitSelectionMode = () => {
-    setSelectionMode(false);
     setSelectedIds(new Set());
   };
 
@@ -1245,19 +937,25 @@ function OrgMcpsContent() {
     registryListResults ?? [],
   );
 
-  // "All" tab: catalog items from registry that aren't already installed
+  // "All" tab: catalog items from registry (includes already-connected ones)
   const connectedAppNames = new Set(
     connections
       .filter((c) => c.connection_type !== "VIRTUAL" && c.app_name)
       .map((c) => c.app_name as string),
   );
 
+  // App names that exist in the registry (used to hide custom connections from
+  // the "All" tab so they don't appear twice — once in registry, once as custom)
+  const registryAppNames = new Set(
+    registryItems.map(
+      (item) => item.server?.name || item.name || item.id || "",
+    ),
+  );
+
   const searchLower = listState.search.toLowerCase();
-  const catalogOnlyItems =
+  const catalogItems =
     activeTab === "all"
       ? registryItems.filter((item) => {
-          const appName = item.server?.name || item.name || item.id || "";
-          if (connectedAppNames.has(appName)) return false;
           if (!searchLower) return true;
           const meshMeta = item._meta?.["mcp.mesh"] as
             | Record<string, string>
@@ -1286,6 +984,22 @@ function OrgMcpsContent() {
           );
         })
       : [];
+
+  const verifiedCatalogItems = catalogItems.filter(
+    (item) =>
+      item.verified ||
+      item._meta?.["mcp.mesh"]?.verified ||
+      item.meta?.verified,
+  );
+  const otherCatalogItems = catalogItems.filter(
+    (item) =>
+      !item.verified &&
+      !item._meta?.["mcp.mesh"]?.verified &&
+      !item.meta?.verified,
+  );
+
+  // In "All" tab, don't show connected items at top — they belong in the Connected tab
+  const groupedForDisplay = activeTab === "all" ? [] : grouped;
 
   const navigateToCatalogItem = (item: RegistryItem) => {
     const serverSlug = slugify(
@@ -1839,183 +1553,16 @@ function OrgMcpsContent() {
     }
   };
 
-  const columns: TableColumn<ConnectionEntity>[] = [
-    ...(selectionMode
-      ? [
-          {
-            id: "select",
-            header: "",
-            render: (connection: ConnectionEntity) => (
-              <Checkbox
-                checked={selectedIds.has(connection.id)}
-                onCheckedChange={() => toggleSelect(connection.id)}
-                onClick={(e: React.MouseEvent) => e.stopPropagation()}
-              />
-            ),
-            cellClassName: "w-10 shrink-0",
-          } satisfies TableColumn<ConnectionEntity>,
-        ]
-      : []),
-    {
-      id: "title",
-      header: "Name",
-      render: (connection) => (
-        <div className="flex items-center gap-2 min-w-0">
-          <IntegrationIcon
-            icon={connection.icon}
-            name={connection.title}
-            size="sm"
-            className="shrink-0 shadow-sm"
-            fallbackIcon={<Container />}
-          />
-          <span
-            className="text-sm font-medium text-foreground truncate block"
-            title={connection.title}
-          >
-            {connection.title}
-          </span>
-        </div>
-      ),
-      cellClassName: "w-32 min-w-0 shrink-0",
-      sortable: true,
-    },
-    {
-      id: "description",
-      header: "Description",
-      render: (connection) => (
-        <span
-          className="text-sm text-muted-foreground truncate block"
-          title={connection.description || ""}
-        >
-          {connection.description || "—"}
-        </span>
-      ),
-      cellClassName: "flex-1 min-w-0 max-w-0",
-      wrap: false,
-      sortable: true,
-    },
-    {
-      id: "connection_type",
-      header: "Type",
-      accessor: (connection) => (
-        <span className="text-xs font-medium">
-          {connection.connection_type}
-        </span>
-      ),
-      cellClassName: "w-16 shrink-0",
-      sortable: true,
-    },
-    {
-      id: "status",
-      header: "Status",
-      render: (connection) => <ConnectionStatus status={connection.status} />,
-      cellClassName: "w-28 shrink-0",
-      sortable: false,
-    },
-    {
-      id: "updated_by",
-      header: "Updated by",
-      render: (connection) => (
-        <User id={connection.updated_by ?? connection.created_by} size="3xs" />
-      ),
-      cellClassName: "w-32 shrink-0",
-      sortable: true,
-    },
-    {
-      id: "updated_at",
-      header: "Updated",
-      render: (connection) => (
-        <span className="text-xs text-muted-foreground whitespace-nowrap">
-          {connection.updated_at
-            ? formatTimeAgo(new Date(connection.updated_at))
-            : "—"}
-        </span>
-      ),
-      cellClassName: "max-w-24 w-24 shrink-0",
-      sortable: true,
-    },
-    {
-      id: "actions",
-      header: "",
-      render: (connection) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <DotsVertical size={20} />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.stopPropagation();
-                navigate({
-                  to: "/$org/$project/mcps/$connectionId",
-                  params: {
-                    org: org.slug,
-                    project: ORG_ADMIN_PROJECT_SLUG,
-                    connectionId: connection.id,
-                  },
-                });
-              }}
-            >
-              <Eye size={16} />
-              Open
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              variant="destructive"
-              onClick={(e) => {
-                e.stopPropagation();
-                dispatch({ type: "delete", connection });
-              }}
-            >
-              <Trash01 size={16} />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ),
-      cellClassName: "w-12 shrink-0",
-    },
-  ];
-
   const ctaButton = (
     <div className="flex items-center gap-2">
-      {selectionMode ? (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 px-3 rounded-lg text-sm font-medium"
-          onClick={exitSelectionMode}
-        >
-          <XClose size={14} />
-          Cancel
-        </Button>
-      ) : (
-        <>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 px-3 rounded-lg text-sm font-medium"
-            onClick={() => setSelectionMode(true)}
-          >
-            <CheckSquare size={14} />
-            Select
-          </Button>
-
-          <Button
-            onClick={openCreateDialog}
-            size="sm"
-            className="h-7 px-3 rounded-lg text-sm font-medium"
-          >
-            Custom Connection
-          </Button>
-        </>
-      )}
+      <Button
+        variant="outline"
+        onClick={openCreateDialog}
+        size="sm"
+        className="h-7 px-3 rounded-lg text-sm font-medium"
+      >
+        Custom Connection
+      </Button>
     </div>
   );
 
@@ -2460,8 +2007,6 @@ function OrgMcpsContent() {
           </Page.Header.Left>
           <Page.Header.Right>
             <CollectionDisplayButton
-              viewMode={listState.viewMode}
-              onViewModeChange={listState.setViewMode}
               sortKey={listState.sortKey}
               sortDirection={listState.sortDirection}
               onSort={listState.handleSort}
@@ -2506,7 +2051,7 @@ function OrgMcpsContent() {
 
         {/* Search + Tabs */}
         <div className="flex flex-col gap-0">
-          <div className="px-5">
+          <div>
             <CollectionSearch
               value={listState.search}
               onChange={listState.setSearch}
@@ -2522,8 +2067,8 @@ function OrgMcpsContent() {
           <div className="flex items-center justify-between px-5 py-3 border-b border-border">
             <CollectionTabs
               tabs={[
-                { id: "connected", label: "Connected" },
                 { id: "all", label: "All" },
+                { id: "connected", label: "Connected" },
                 { id: "built-by-me", label: "Built by me" },
                 { id: "needs-config", label: "Needs configuration" },
               ]}
@@ -2536,174 +2081,247 @@ function OrgMcpsContent() {
                   activeTab !== "all" && "invisible pointer-events-none",
                 )}
               >
-                <Select
-                  value={selectedRegistryId || registryConnections[0]?.id || ""}
-                  onValueChange={setSelectedRegistryId}
-                >
-                  <SelectTrigger className="h-7 w-auto gap-1.5 text-sm border-input">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent align="end">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 gap-1.5 text-sm font-normal"
+                    >
+                      {(() => {
+                        const active =
+                          registryConnections.find(
+                            (rc) =>
+                              rc.id ===
+                              (selectedRegistryId ||
+                                registryConnections[0]?.id),
+                          ) ?? registryConnections[0];
+                        return (
+                          <>
+                            <IntegrationIcon
+                              icon={active?.icon}
+                              name={active?.title ?? ""}
+                              size="2xs"
+                              className="shrink-0 rounded-sm"
+                            />
+                            <span>{active?.title}</span>
+                          </>
+                        );
+                      })()}
+                      <ChevronDown
+                        size={14}
+                        className="text-muted-foreground"
+                      />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
                     {registryConnections.map((rc) => (
-                      <SelectItem key={rc.id} value={rc.id}>
+                      <DropdownMenuItem
+                        key={rc.id}
+                        onClick={() => setSelectedRegistryId(rc.id)}
+                        className={cn(
+                          selectedRegistryId === rc.id ||
+                            (!selectedRegistryId &&
+                              rc.id === registryConnections[0]?.id)
+                            ? "bg-accent"
+                            : "",
+                        )}
+                      >
+                        <IntegrationIcon
+                          icon={rc.icon}
+                          name={rc.title}
+                          size="2xs"
+                          className="shrink-0 rounded-sm"
+                        />
                         {rc.title}
-                      </SelectItem>
+                      </DropdownMenuItem>
                     ))}
-                  </SelectContent>
-                </Select>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             )}
           </div>
         </div>
 
-        {/* Content: Cards or Table */}
+        {/* Content: Cards */}
         <Page.Content>
-          {listState.viewMode === "cards" ? (
-            <div className="flex-1 overflow-auto p-5">
-              {tabFilteredConnections.length === 0 ? (
-                <EmptyState
-                  image={
-                    <img
-                      src="/emptystate-mcp.svg"
-                      alt=""
-                      width={336}
-                      height={320}
-                      aria-hidden="true"
-                    />
-                  }
-                  title="No Connections found"
-                  description={
-                    listState.search
-                      ? `No Connections match "${listState.search}"`
-                      : "Create a connection to get started."
-                  }
-                />
-              ) : (
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
-                  {grouped.map((item) => {
-                    if (item.type === "group") {
-                      return (
-                        <ConnectionGroupCard
-                          key={item.key}
-                          group={item}
-                          onOpen={() =>
-                            setAppModal({
-                              appName: item.title,
-                              appIcon: item.icon,
-                              instances: item.connections,
-                            })
-                          }
-                          selectionMode={selectionMode}
-                          selectedIds={selectedIds}
-                          onToggleSelect={toggleSelect}
-                        />
-                      );
-                    }
-
-                    const connection = item.connection;
+          <div className="flex-1 overflow-auto p-5">
+            {tabFilteredConnections.length === 0 ? (
+              <EmptyState
+                image={
+                  <img
+                    src="/emptystate-mcp.svg"
+                    alt=""
+                    width={336}
+                    height={320}
+                    aria-hidden="true"
+                  />
+                }
+                title="No Connections found"
+                description={
+                  listState.search
+                    ? `No Connections match "${listState.search}"`
+                    : "Create a connection to get started."
+                }
+              />
+            ) : (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
+                {groupedForDisplay.map((item) => {
+                  if (item.type === "group") {
                     return (
-                      <div key={connection.id} className="relative">
-                        {selectionMode && (
-                          <div className="absolute top-3 left-3 z-10">
+                      <ConnectionGroupCard
+                        key={item.key}
+                        group={item}
+                        onOpen={() =>
+                          setAppModal({
+                            appName: item.title,
+                            appIcon: item.icon,
+                            instances: item.connections,
+                          })
+                        }
+                        selectionMode={selectionMode}
+                        selectedIds={selectedIds}
+                        onToggleSelect={toggleSelect}
+                      />
+                    );
+                  }
+
+                  const connection = item.connection;
+                  const isSelected = selectedIds.has(connection.id);
+                  return (
+                    <ConnectionCard
+                      key={connection.id}
+                      connection={connection}
+                      fallbackIcon={<Container />}
+                      onClick={() =>
+                        selectionMode
+                          ? toggleSelect(connection.id)
+                          : setAppModal({
+                              appName: connection.app_name || connection.title,
+                              appIcon: connection.icon,
+                              appDescription: connection.description,
+                              instances: [connection],
+                            })
+                      }
+                      className={cn(
+                        isSelected && "ring-2 ring-primary bg-primary/5",
+                      )}
+                      headerActionsAlwaysVisible={selectionMode}
+                      headerActions={
+                        <div className="flex items-center gap-1">
+                          {selectionMode && (
                             <Checkbox
-                              checked={selectedIds.has(connection.id)}
+                              checked={isSelected}
                               onCheckedChange={() =>
                                 toggleSelect(connection.id)
                               }
+                              onClick={(e) => e.stopPropagation()}
                             />
-                          </div>
-                        )}
-                        <ConnectionCard
-                          connection={connection}
-                          fallbackIcon={<Container />}
-                          onClick={() =>
-                            selectionMode
-                              ? toggleSelect(connection.id)
-                              : setAppModal({
-                                  appName:
-                                    connection.app_name || connection.title,
-                                  appIcon: connection.icon,
-                                  appDescription: connection.description,
-                                  instances: [connection],
-                                })
-                          }
-                          className={cn(
-                            selectionMode &&
-                              selectedIds.has(connection.id) &&
-                              "ring-2 ring-primary",
                           )}
-                          headerActions={
-                            !selectionMode ? (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 w-8 p-0"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <DotsVertical size={20} />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent
-                                  align="end"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <DropdownMenuItem
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      navigate({
-                                        to: "/$org/$project/mcps/$connectionId",
-                                        params: {
-                                          org: org.slug,
-                                          project: ORG_ADMIN_PROJECT_SLUG,
-                                          connectionId: connection.id,
-                                        },
-                                      });
-                                    }}
-                                  >
-                                    <Eye size={16} />
-                                    Open
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    variant="destructive"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      dispatch({ type: "delete", connection });
-                                    }}
-                                  >
-                                    <Trash01 size={16} />
-                                    Delete
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            ) : undefined
-                          }
-                        />
-                      </div>
-                    );
-                  })}
-                  {/* Catalog items (uninstalled) — only on "All" tab */}
-                  {catalogOnlyItems.map((item) => {
-                    const title =
-                      item.server?.name ||
-                      item.name ||
-                      item.title ||
-                      item.id ||
-                      "";
-                    const description =
-                      item.server?.description || item.description || null;
-                    const icon = item.server?.icons?.[0]?.src || null;
-                    return (
-                      <ConnectionCard
-                        key={`catalog-${item.id}`}
-                        connection={{ title, description, icon }}
-                        fallbackIcon={<Container />}
-                        onClick={() => navigateToCatalogItem(item)}
-                        headerActionsAlwaysVisible
-                        headerActions={
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <DotsVertical size={20} />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              align="end"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate({
+                                    to: "/$org/$project/mcps/$connectionId",
+                                    params: {
+                                      org: org.slug,
+                                      project: ORG_ADMIN_PROJECT_SLUG,
+                                      connectionId: connection.id,
+                                    },
+                                  });
+                                }}
+                              >
+                                <Eye size={16} />
+                                Open
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleSelect(connection.id);
+                                }}
+                              >
+                                <CheckSquare size={16} />
+                                Select
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  dispatch({ type: "delete", connection });
+                                }}
+                              >
+                                <Trash01 size={16} />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      }
+                    />
+                  );
+                })}
+                {/* Catalog items (uninstalled) — only on "All" tab */}
+                {activeTab === "all" && verifiedCatalogItems.length > 0 && (
+                  <div className="col-span-full flex items-center gap-2 mt-2">
+                    <CheckVerified02
+                      size={13}
+                      className="text-muted-foreground shrink-0"
+                    />
+                    <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">
+                      Verified
+                    </span>
+                    <div className="flex-1 h-px bg-border" />
+                  </div>
+                )}
+                {verifiedCatalogItems.map((item) => {
+                  const appName =
+                    item.server?.name || item.name || item.id || "";
+                  const isConnected = connectedAppNames.has(appName);
+                  const meshMeta = item._meta?.["mcp.mesh"] as
+                    | Record<string, string>
+                    | undefined;
+                  const title =
+                    meshMeta?.friendlyName ||
+                    meshMeta?.friendly_name ||
+                    item.server?.title ||
+                    item.title ||
+                    item.server?.name ||
+                    item.name ||
+                    item.id ||
+                    "";
+                  const description =
+                    item.server?.description || item.description || null;
+                  const icon = item.server?.icons?.[0]?.src || null;
+                  return (
+                    <ConnectionCard
+                      key={`catalog-${item.id}`}
+                      connection={{ title, description, icon }}
+                      fallbackIcon={<Container />}
+                      onClick={() => navigateToCatalogItem(item)}
+                      headerActionsAlwaysVisible={!isConnected}
+                      headerActions={
+                        isConnected ? (
+                          <Badge variant="secondary" className="text-xs">
+                            Connected
+                          </Badge>
+                        ) : (
                           <Button
-                            variant="secondary"
+                            variant="outline"
                             size="sm"
                             className="h-7 px-3 rounded-lg text-sm font-medium"
                             onClick={(e) => {
@@ -2713,74 +2331,70 @@ function OrgMcpsContent() {
                           >
                             Connect
                           </Button>
-                        }
-                      />
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="h-full flex flex-col overflow-hidden">
-              <div className="flex-1 overflow-auto min-w-0">
-                <div className="min-w-[1000px]">
-                  <GroupedConnectionTable
-                    columns={columns}
-                    grouped={grouped}
-                    sortKey={listState.sortKey}
-                    sortDirection={listState.sortDirection}
-                    onSort={listState.handleSort}
-                    onRowClick={(connection) =>
-                      selectionMode
-                        ? toggleSelect(connection.id)
-                        : navigate({
-                            to: "/$org/$project/mcps/$connectionId",
-                            params: {
-                              org: org.slug,
-                              project: ORG_ADMIN_PROJECT_SLUG,
-                              connectionId: connection.id,
-                            },
-                          })
-                    }
-                    selectionMode={selectionMode}
-                    selectedIds={selectedIds}
-                    onToggleSelect={toggleSelect}
-                    emptyState={
-                      listState.search ? (
-                        <EmptyState
-                          image={
-                            <img
-                              src="/emptystate-mcp.svg"
-                              alt=""
-                              width={400}
-                              height={178}
-                              aria-hidden="true"
-                            />
-                          }
-                          title="No Connections found"
-                          description={`No Connections match "${listState.search}"`}
-                        />
-                      ) : (
-                        <EmptyState
-                          image={
-                            <img
-                              src="/emptystate-mcp.svg"
-                              alt=""
-                              width={400}
-                              height={178}
-                              aria-hidden="true"
-                            />
-                          }
-                          title="No Connections found"
-                          description="Create a connection to get started."
-                        />
-                      )
-                    }
-                  />
-                </div>
+                        )
+                      }
+                    />
+                  );
+                })}
+                {activeTab === "all" && otherCatalogItems.length > 0 && (
+                  <div className="col-span-full flex items-center gap-2 mt-2">
+                    <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">
+                      All connections
+                    </span>
+                    <div className="flex-1 h-px bg-border" />
+                  </div>
+                )}
+                {otherCatalogItems.map((item) => {
+                  const appName =
+                    item.server?.name || item.name || item.id || "";
+                  const isConnected = connectedAppNames.has(appName);
+                  const meshMeta = item._meta?.["mcp.mesh"] as
+                    | Record<string, string>
+                    | undefined;
+                  const title =
+                    meshMeta?.friendlyName ||
+                    meshMeta?.friendly_name ||
+                    item.server?.title ||
+                    item.title ||
+                    item.server?.name ||
+                    item.name ||
+                    item.id ||
+                    "";
+                  const description =
+                    item.server?.description || item.description || null;
+                  const icon = item.server?.icons?.[0]?.src || null;
+                  return (
+                    <ConnectionCard
+                      key={`catalog-${item.id}`}
+                      connection={{ title, description, icon }}
+                      fallbackIcon={<Container />}
+                      onClick={() => navigateToCatalogItem(item)}
+                      headerActionsAlwaysVisible={!isConnected}
+                      headerActions={
+                        isConnected ? (
+                          <Badge variant="secondary" className="text-xs">
+                            Connected
+                          </Badge>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-3 rounded-lg text-sm font-medium"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigateToCatalogItem(item);
+                            }}
+                          >
+                            Connect
+                          </Button>
+                        )
+                      }
+                    />
+                  );
+                })}
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </Page.Content>
 
         {/* Floating bulk action bar */}

@@ -98,7 +98,7 @@ export function ConnectionFields({
 
   if (isVirtualConnection) {
     return (
-      <div className="flex flex-col gap-4 p-5 border-b border-border">
+      <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3">
           <span className="text-xs text-muted-foreground font-medium">
             Type
@@ -130,7 +130,7 @@ export function ConnectionFields({
   }
 
   return (
-    <div className="flex flex-col gap-4 p-5 border-b border-border">
+    <div className="flex flex-col gap-4">
       <FormField
         control={form.control}
         name="ui_type"
@@ -517,13 +517,15 @@ export function ConnectionSidebar({
         </div>
 
         {/* Connection section */}
-        <ConnectionFields
-          form={form}
-          connection={connection}
-          hasOAuthToken={hasOAuthToken}
-          onReauthenticate={onReauthenticate}
-          onRemoveOAuth={onRemoveOAuth}
-        />
+        <div className="flex flex-col gap-4 p-5 border-b border-border">
+          <ConnectionFields
+            form={form}
+            connection={connection}
+            hasOAuthToken={hasOAuthToken}
+            onReauthenticate={onReauthenticate}
+            onRemoveOAuth={onRemoveOAuth}
+          />
+        </div>
 
         {/* Connection Info section */}
         <div className="flex flex-col gap-2 p-5 border-b border-border">

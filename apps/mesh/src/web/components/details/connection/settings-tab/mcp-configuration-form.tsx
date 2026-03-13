@@ -493,7 +493,7 @@ export function McpConfigurationForm({
   };
 
   return (
-    <div className="flex flex-col h-full overflow-auto p-5">
+    <div className="flex flex-col h-full overflow-auto">
       <RjsfForm
         key={formKey}
         schema={stateSchema}

@@ -17,7 +17,7 @@ import {
 } from "@decocms/mesh-sdk";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Suspense, useState } from "react";
-import { Bar, BarChart, Cell, XAxis } from "recharts";
+import { Bar, BarChart, Cell } from "recharts";
 
 type Timeframe = "7d" | "14d" | "30d";
 
@@ -77,9 +77,9 @@ function ActivityChart({ connectionId, orgId, timeframe }: ActivityChartProps) {
   const hasData = stats.totalCalls > 0;
 
   return (
-    <div className="px-5 pb-5">
+    <div>
       {/* Summary numbers */}
-      <div className="flex gap-6 mb-4">
+      <div className="flex gap-6 px-5 pb-4">
         <div>
           <p className="text-2xl font-semibold text-foreground tabular-nums">
             {stats.totalCalls.toLocaleString()}
@@ -105,50 +105,57 @@ function ActivityChart({ connectionId, orgId, timeframe }: ActivityChartProps) {
       </div>
 
       {hasData ? (
-        <ChartContainer config={CHART_CONFIG} className="h-20 w-full">
-          <BarChart data={chartData} barCategoryGap="20%">
-            <XAxis
-              dataKey="label"
-              tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-              axisLine={false}
-              tickLine={false}
-              interval="preserveStartEnd"
-            />
-            <ChartTooltip
-              content={
-                <ChartTooltipContent
-                  labelFormatter={(_, payload) => {
-                    const first = Array.isArray(payload)
-                      ? payload[0]
-                      : undefined;
-                    return first &&
-                      typeof first === "object" &&
-                      "payload" in first
-                      ? ((first as { payload?: { label?: string } }).payload
-                          ?.label ?? "")
-                      : "";
-                  }}
-                />
-              }
-              cursor={{ fill: "var(--muted)" }}
-            />
-            <Bar dataKey="calls" radius={[2, 2, 0, 0]} minPointSize={1}>
-              {chartData.map((entry: BucketPoint, index: number) => (
-                <Cell
-                  key={`cell-${index}`}
-                  fill={
-                    entry.errorRate > 50
-                      ? "var(--destructive)"
-                      : "var(--foreground)"
-                  }
-                  fillOpacity={
-                    entry.calls === 0 ? 0.2 : entry.errorRate > 50 ? 0.7 : 0.85
-                  }
-                />
-              ))}
-            </Bar>
-          </BarChart>
-        </ChartContainer>
+        <div>
+          <ChartContainer config={CHART_CONFIG} className="h-16 w-full">
+            <BarChart data={chartData} barCategoryGap="4%">
+              <ChartTooltip
+                content={
+                  <ChartTooltipContent
+                    labelFormatter={(_, payload) => {
+                      const first = Array.isArray(payload)
+                        ? payload[0]
+                        : undefined;
+                      return first &&
+                        typeof first === "object" &&
+                        "payload" in first
+                        ? ((first as { payload?: { label?: string } }).payload
+                            ?.label ?? "")
+                        : "";
+                    }}
+                  />
+                }
+                cursor={{ fill: "var(--muted)" }}
+              />
+              <Bar dataKey="calls" radius={[2, 2, 0, 0]} minPointSize={1}>
+                {chartData.map((entry: BucketPoint, index: number) => (
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={
+                      entry.errorRate > 50
+                        ? "var(--destructive)"
+                        : "var(--chart-1)"
+                    }
+                    fillOpacity={
+                      entry.calls === 0
+                        ? 0.2
+                        : entry.errorRate > 50
+                          ? 0.7
+                          : 0.85
+                    }
+                  />
+                ))}
+              </Bar>
+            </BarChart>
+          </ChartContainer>
+          <div className="flex justify-between px-3 mt-1 pb-3">
+            <span className="text-[10px] text-muted-foreground">
+              {chartData[0]?.label}
+            </span>
+            <span className="text-[10px] text-muted-foreground">
+              {chartData[chartData.length - 1]?.label}
+            </span>
+          </div>
+        </div>
       ) : (
         <div className="h-20 flex items-center justify-center">
           <p className="text-sm text-muted-foreground/60">
@@ -162,8 +169,8 @@ function ActivityChart({ connectionId, orgId, timeframe }: ActivityChartProps) {
 
 function ActivitySkeleton() {
   return (
-    <div className="px-5 pb-5">
-      <div className="flex gap-6 mb-4">
+    <div>
+      <div className="flex gap-6 px-5 pb-4">
         <div className="flex flex-col gap-1.5">
           <div className="h-7 w-16 rounded-md bg-muted animate-pulse" />
           <div className="h-3 w-14 rounded bg-muted animate-pulse" />

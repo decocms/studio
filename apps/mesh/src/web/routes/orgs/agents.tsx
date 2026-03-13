@@ -1081,8 +1081,6 @@ function OrgAgentsContent() {
         </Page.Header.Left>
         <Page.Header.Right>
           <CollectionDisplayButton
-            viewMode={listState.viewMode}
-            onViewModeChange={listState.setViewMode}
             sortKey={listState.sortKey}
             sortDirection={listState.sortDirection}
             onSort={listState.handleSort}
@@ -1111,7 +1109,7 @@ function OrgAgentsContent() {
       </Page.Header>
 
       {/* Search Bar */}
-      <div className="flex items-center gap-3 px-5 pb-0">
+      <div className="flex items-center gap-3 pb-0">
         <div className="flex-1">
           <CollectionSearch
             value={listState.search}

@@ -104,7 +104,7 @@ export function ConnectionInstancesModal({
                 Connection{instances.length !== 1 ? "s" : ""}
               </span>
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
                 className="h-7 gap-1.5 text-xs"
                 onClick={addConnection}

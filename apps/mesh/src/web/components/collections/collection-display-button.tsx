@@ -5,21 +5,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
-import {
-  Sliders01,
-  List,
-  Grid01,
-  Check,
-  ArrowUp,
-  ArrowDown,
-} from "@untitledui/icons";
+import { Sliders01, Check, ArrowUp, ArrowDown } from "@untitledui/icons";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
-import { ViewModeToggle } from "@deco/ui/components/view-mode-toggle.tsx";
 import { Badge } from "@deco/ui/components/badge.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 
@@ -31,8 +23,6 @@ export interface FilterGroup {
 }
 
 interface CollectionDisplayButtonProps {
-  viewMode: "table" | "cards";
-  onViewModeChange: (mode: "table" | "cards") => void;
   sortKey?: string;
   sortDirection?: "asc" | "desc" | null;
   onSort?: (key: string) => void;
@@ -41,8 +31,6 @@ interface CollectionDisplayButtonProps {
 }
 
 export function CollectionDisplayButton({
-  viewMode,
-  onViewModeChange,
   sortKey,
   sortDirection,
   onSort,
@@ -78,19 +66,6 @@ export function CollectionDisplayButton({
         </Tooltip>
       </TooltipProvider>
       <DropdownMenuContent align="end" className="w-[200px] p-0 gap-0">
-        {/* View Mode Toggle */}
-        <div className="p-2 border-b border-border">
-          <ViewModeToggle
-            value={viewMode}
-            onValueChange={onViewModeChange}
-            fullWidth
-            options={[
-              { value: "table", icon: <List /> },
-              { value: "cards", icon: <Grid01 /> },
-            ]}
-          />
-        </div>
-
         {/* Sort Options */}
         {sortOptions.length > 0 && onSort && (
           <div className="p-1 flex flex-col gap-0.5 border-b border-border">

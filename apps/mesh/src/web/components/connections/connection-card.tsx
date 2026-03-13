@@ -19,7 +19,6 @@ export interface ConnectionCardProps {
   body?: React.ReactNode;
   footer?: React.ReactNode;
   className?: string;
-  size?: "sm" | "md";
   fallbackIcon?: ReactNode;
 }
 
@@ -31,13 +30,8 @@ export function ConnectionCard({
   body,
   footer,
   className,
-  size = "md",
   fallbackIcon,
 }: ConnectionCardProps) {
-  const paddingClass = size === "sm" ? "p-4" : "p-6";
-  const titleSizeClass = size === "sm" ? "text-sm" : "text-base";
-  const descriptionSizeClass = size === "sm" ? "text-xs" : "text-sm";
-
   return (
     <Card
       className={cn(
@@ -49,13 +43,13 @@ export function ConnectionCard({
     >
       <div className="flex flex-col flex-1">
         {/* Top Section: Icon, Title, Description, Header Actions */}
-        <div className={cn("flex flex-col gap-4", paddingClass)}>
-          {/* Header: Icon + Status Badge / Header Actions */}
+        <div className="flex flex-col gap-3 p-4.5">
+          {/* Header: Icon + Header Actions */}
           <div className="flex items-start justify-between">
             <IntegrationIcon
               icon={connection.icon}
               name={connection.title}
-              size="md"
+              size="sm"
               className="shrink-0 shadow-sm"
               fallbackIcon={fallbackIcon}
             />
@@ -77,21 +71,11 @@ export function ConnectionCard({
           </div>
 
           {/* Title and Description */}
-          <div className="flex flex-col gap-0">
-            <h3
-              className={cn(
-                "font-medium text-foreground truncate",
-                titleSizeClass,
-              )}
-            >
+          <div className="flex flex-col gap-1">
+            <h3 className="text-sm font-medium text-foreground truncate">
               {connection.title}
             </h3>
-            <p
-              className={cn(
-                "text-muted-foreground line-clamp-2",
-                descriptionSizeClass,
-              )}
-            >
+            <p className="text-sm text-muted-foreground line-clamp-2">
               {connection.description || "No description"}
             </p>
           </div>
@@ -104,7 +88,7 @@ export function ConnectionCard({
         {footer && (
           <div className="border-t border-border mt-auto">
             <div
-              className={cn("h-14 flex items-center", paddingClass)}
+              className="h-14 flex items-center p-4.5"
               onClick={(e) => e.stopPropagation()}
             >
               {footer}

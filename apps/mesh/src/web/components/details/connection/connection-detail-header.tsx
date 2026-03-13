@@ -15,12 +15,12 @@ export function ConnectionDetailHeader({
   onDisconnect,
 }: ConnectionDetailHeaderProps) {
   return (
-    <div className="flex items-start gap-6 py-7 px-8 bg-background border-b border-border shrink-0">
+    <div className="flex items-center gap-6 py-7 px-8 bg-background border-b border-border shrink-0">
       <IntegrationIcon
         icon={connection.icon}
         name={connection.title}
         size="xl"
-        className="shrink-0 mt-0.5"
+        className="shrink-0"
       />
       <div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-2 mb-2">
@@ -28,21 +28,11 @@ export function ConnectionDetailHeader({
             {connection.title}
           </h1>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {connection.app_name && (
-            <span className="text-sm text-muted-foreground">
-              {connection.app_name}
-            </span>
-          )}
-          {connection.app_name && connection.description && (
-            <span className="text-muted-foreground/30 text-sm">·</span>
-          )}
-          {connection.description && (
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              {connection.description}
-            </p>
-          )}
-        </div>
+        {connection.description && (
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            {connection.description}
+          </p>
+        )}
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <Button
