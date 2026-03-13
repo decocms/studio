@@ -19,6 +19,7 @@ const ThreadListInputSchema = CollectionListInputSchema.extend({
   where: z
     .object({
       created_by: z.string().optional(),
+      trigger_ids: z.array(z.string()).optional(),
     })
     .optional(),
 });
@@ -53,11 +54,18 @@ export const COLLECTION_THREADS_LIST = defineTool({
     const offset = input.offset ?? 0;
     const limit = input.limit ?? 100;
 
+    const triggerIds = input.where?.trigger_ids;
     const createdBy = input.where?.created_by;
-    const { threads, total } = await ctx.storage.threads.list(createdBy, {
-      limit,
-      offset,
-    });
+
+    const { threads, total } = triggerIds?.length
+      ? await ctx.storage.threads.listByTriggerIds(triggerIds, {
+          limit,
+          offset,
+        })
+      : await ctx.storage.threads.list(createdBy, {
+          limit,
+          offset,
+        });
 
     const hasMore = offset + limit < total;
 

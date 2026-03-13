@@ -994,7 +994,21 @@ function ModelSelectorContentFallback() {
   );
 }
 
-function ModelSelectorContent({ onClose }: { onClose: () => void }) {
+interface ModelSelectorInnerProps {
+  onClose: () => void;
+  credentialId: string | null;
+  onCredentialChange: (id: string | null) => void;
+  selectedModel: AiProviderModel | null;
+  onModelChange: (model: AiProviderModel) => void;
+}
+
+function ModelSelectorInner({
+  onClose,
+  credentialId,
+  onCredentialChange,
+  selectedModel,
+  onModelChange,
+}: ModelSelectorInnerProps) {
   const [hoveredModel, setHoveredModel] = useState<AiProviderModel | null>(
     null,
   );
@@ -1002,12 +1016,6 @@ function ModelSelectorContent({ onClose }: { onClose: () => void }) {
   const [managing, setManaging] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const aiProviders = useAiProviders();
-  const {
-    credentialId,
-    setCredentialId,
-    model: selectedModel,
-    setSelectedModel,
-  } = useChat();
   const keys = useAiProviderKeyList();
 
   const providerMap = Object.fromEntries(
@@ -1016,14 +1024,13 @@ function ModelSelectorContent({ onClose }: { onClose: () => void }) {
   const { open: openSettings } = useSettingsModal();
 
   const handleKeyChange = (keyId: string) => {
-    setCredentialId(keyId);
+    onCredentialChange(keyId);
     setHoveredModel(null);
   };
 
   const handleModelSelect = (model: AiProviderModel) => {
-    const credential = credentialId;
-    if (!credential) return;
-    setSelectedModel({ ...model, keyId: credential });
+    if (!credentialId) return;
+    onModelChange(model);
     setSearchTerm("");
     onClose();
   };
@@ -1160,6 +1167,28 @@ function ModelSelectorContent({ onClose }: { onClose: () => void }) {
   );
 }
 
+function ModelSelectorContent({ onClose }: { onClose: () => void }) {
+  const {
+    credentialId,
+    setCredentialId,
+    model: selectedModel,
+    setSelectedModel,
+  } = useChat();
+
+  return (
+    <ModelSelectorInner
+      onClose={onClose}
+      credentialId={credentialId}
+      onCredentialChange={setCredentialId}
+      selectedModel={selectedModel}
+      onModelChange={(model) => {
+        if (!credentialId) return;
+        setSelectedModel({ ...model, keyId: credentialId });
+      }}
+    />
+  );
+}
+
 // ============================================================================
 // Public Components
 // ============================================================================
@@ -1168,15 +1197,26 @@ export interface ModelSelectorProps {
   variant?: "borderless" | "bordered";
   className?: string;
   placeholder?: string;
+  // Standalone mode (bypasses useChat)
+  model?: AiProviderModel | null;
+  isLoading?: boolean;
+  credentialId?: string | null;
+  onCredentialChange?: (id: string | null) => void;
+  onModelChange?: (model: AiProviderModel) => void;
 }
 
 export function ModelSelector({
   variant = "borderless",
   className,
   placeholder = "Select model",
+  model: modelProp,
+  isLoading: isLoadingProp,
+  credentialId: credentialIdProp,
+  onCredentialChange,
+  onModelChange,
 }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
-  const { model, isModelsLoading } = useChat();
+  const standalone = onModelChange !== undefined;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -1190,11 +1230,15 @@ export function ModelSelector({
             className,
           )}
         >
-          <SelectedModelDisplay
-            model={model}
-            placeholder={placeholder}
-            isLoading={isModelsLoading}
-          />
+          {standalone ? (
+            <SelectedModelDisplay
+              model={modelProp ?? null}
+              placeholder={placeholder}
+              isLoading={isLoadingProp}
+            />
+          ) : (
+            <ModelSelectorTriggerContent placeholder={placeholder} />
+          )}
         </Button>
       </DialogTrigger>
       <DialogContent
@@ -1203,9 +1247,30 @@ export function ModelSelector({
       >
         <DialogTitle className="sr-only">Select model</DialogTitle>
         <Suspense fallback={<ModelSelectorContentFallback />}>
-          <ModelSelectorContent onClose={() => setOpen(false)} />
+          {standalone ? (
+            <ModelSelectorInner
+              onClose={() => setOpen(false)}
+              credentialId={credentialIdProp ?? null}
+              onCredentialChange={onCredentialChange ?? (() => {})}
+              selectedModel={modelProp ?? null}
+              onModelChange={onModelChange}
+            />
+          ) : (
+            <ModelSelectorContent onClose={() => setOpen(false)} />
+          )}
         </Suspense>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ModelSelectorTriggerContent({ placeholder }: { placeholder: string }) {
+  const { model, isModelsLoading } = useChat();
+  return (
+    <SelectedModelDisplay
+      model={model}
+      placeholder={placeholder}
+      isLoading={isModelsLoading}
+    />
   );
 }

@@ -198,6 +198,7 @@ const createMockContext = (
       monitoringDashboards: null as never,
       aiProviderKeys: null as never,
       oauthPkceStates: null as never,
+      automations: null as never,
     },
     vault: null as never,
     authInstance: authInstance as unknown as BetterAuthInstance,

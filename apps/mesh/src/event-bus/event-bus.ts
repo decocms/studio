@@ -60,6 +60,16 @@ export class EventBus implements IEventBus {
     this.worker = new EventBusWorker(this.storage, options.config);
   }
 
+  /**
+   * Set the event trigger engine on the underlying worker.
+   * Allows automations to react to processed events.
+   */
+  setEventTriggerEngine(
+    engine: Parameters<EventBusWorker["setEventTriggerEngine"]>[0],
+  ): void {
+    this.worker.setEventTriggerEngine(engine);
+  }
+
   async publish(
     organizationId: string,
     sourceConnectionId: string,
@@ -76,7 +86,7 @@ export class EventBus implements IEventBus {
     let firstDeliveryTime: string | undefined;
     if (input.cron) {
       try {
-        const cron = new Cron(input.cron);
+        const cron = new Cron(input.cron, { timezone: "UTC" });
         const nextRun = cron.nextRun();
         if (!nextRun) {
           throw new Error("Cron expression does not produce a next run time");

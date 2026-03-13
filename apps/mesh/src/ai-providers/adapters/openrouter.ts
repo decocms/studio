@@ -77,6 +77,9 @@ export const openrouterAdapter: ProviderAdapter = {
                 ...(m.supported_parameters?.includes("tools")
                   ? (["tools"] as const)
                   : []),
+                ...(m.supported_parameters?.includes("reasoning")
+                  ? (["reasoning"] as const)
+                  : []),
               ]),
             ] as ModelCapability[],
             limits: {

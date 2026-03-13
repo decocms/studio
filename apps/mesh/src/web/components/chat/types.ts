@@ -9,7 +9,12 @@ import type { JSONContent } from "@tiptap/core";
 
 export interface ChatModelInfo {
   id: string;
-  capabilities?: { vision?: boolean; text?: boolean; tools?: boolean };
+  capabilities?: {
+    vision?: boolean;
+    text?: boolean;
+    tools?: boolean;
+    reasoning?: boolean;
+  };
   provider?: string | null;
   limits?: { contextWindow?: number; maxOutputTokens?: number };
 }
@@ -49,7 +54,12 @@ export interface MetadataModelInfo {
   id: string;
   title: string;
   provider?: string;
-  capabilities?: { vision?: boolean; text?: boolean; tools?: boolean };
+  capabilities?: {
+    vision?: boolean;
+    text?: boolean;
+    tools?: boolean;
+    reasoning?: boolean;
+  };
   limits?: { contextWindow?: number; maxOutputTokens?: number };
 }
 

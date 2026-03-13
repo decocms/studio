@@ -10,7 +10,6 @@ import {
 import StarterKit from "@tiptap/starter-kit";
 import type { Ref } from "react";
 import { Suspense, useEffect, useImperativeHandle, useRef } from "react";
-import type { VirtualMCPInfo } from "../select-virtual-mcp";
 import type { Metadata } from "../types.ts";
 import { FileNode, FileUploader } from "./file";
 import { MentionNode } from "./mention";
@@ -18,20 +17,24 @@ import { PromptsMention } from "./mention-prompts.tsx";
 import { ResourcesMention } from "./mention-resources.tsx";
 import { AiProviderModel } from "@/web/hooks/collections/use-llm.ts";
 
-const GLOBAL_EXTENSIONS = [
-  StarterKit.configure({
-    heading: false,
-    blockquote: false,
-    codeBlock: false,
-    horizontalRule: false,
-  }),
-  Placeholder.configure({
-    placeholder: "Ask anything, / for prompts, @ for resources...",
-    showOnlyWhenEditable: false,
-  }),
-  MentionNode,
-  FileNode,
-];
+function buildExtensions(placeholderRef: React.RefObject<string | undefined>) {
+  return [
+    StarterKit.configure({
+      heading: false,
+      blockquote: false,
+      codeBlock: false,
+      horizontalRule: false,
+    }),
+    Placeholder.configure({
+      placeholder: () =>
+        placeholderRef.current ??
+        "Ask anything, / for prompts, @ for resources...",
+      showOnlyWhenEditable: false,
+    }),
+    MentionNode,
+    FileNode,
+  ];
+}
 
 export interface TiptapInputHandle {
   focus: () => void;
@@ -41,8 +44,9 @@ export interface TiptapInputHandle {
 interface TiptapProviderProps {
   tiptapDoc: Metadata["tiptapDoc"];
   setTiptapDoc: (doc: Metadata["tiptapDoc"]) => void;
-  selectedModel: AiProviderModel | null;
-  isStreaming: boolean;
+  disabled?: boolean;
+  enterToSubmit?: boolean;
+  placeholder?: string;
   onSubmit?: () => void;
   children: React.ReactNode;
 }
@@ -54,59 +58,74 @@ interface TiptapProviderProps {
 export function TiptapProvider({
   tiptapDoc,
   setTiptapDoc,
-  selectedModel,
-  isStreaming,
+  disabled = false,
+  enterToSubmit = false,
+  placeholder,
   onSubmit,
   children,
 }: TiptapProviderProps) {
-  const isDisabled = isStreaming || !selectedModel;
-
-  // Store callbacks in refs to avoid recreating the editor on every render
+  // Store callbacks and config in refs to avoid recreating the editor on every render
   const onSubmitRef = useRef(onSubmit);
   const setTiptapDocRef = useRef(setTiptapDoc);
+  const enterToSubmitRef = useRef(enterToSubmit);
+  const placeholderRef = useRef(placeholder);
 
   // Initialize Tiptap editor
-  const editor = useEditor(
-    {
-      extensions: GLOBAL_EXTENSIONS,
-      content: tiptapDoc || "",
-      editable: !isDisabled,
-      editorProps: {
-        attributes: {
-          class:
-            "prose prose-sm max-w-none focus:outline-none w-full h-full text-[15px] p-[18px]",
-        },
-        handleKeyDown: (_view: EditorView, event: KeyboardEvent) => {
-          // Handle Enter key: submit on Enter, new line on Shift+Enter
-          if (event.key === "Enter" && !event.shiftKey) {
-            event.preventDefault();
-            onSubmitRef.current?.();
-            return true;
-          }
-          return false;
-        },
+  const editor = useEditor({
+    extensions: buildExtensions(placeholderRef),
+    content: tiptapDoc || "",
+    editorProps: {
+      attributes: {
+        class:
+          "prose prose-sm max-w-none focus:outline-none w-full h-full text-[15px] p-[18px]",
       },
-      onUpdate: ({ editor }: { editor: ReturnType<typeof useEditor> }) => {
-        // Update tiptapDoc in context whenever editor changes
-        setTiptapDocRef.current(editor?.getJSON());
+      handleKeyDown: (_view: EditorView, event: KeyboardEvent) => {
+        if (
+          event.key === "Enter" &&
+          !event.shiftKey &&
+          enterToSubmitRef.current
+        ) {
+          event.preventDefault();
+          onSubmitRef.current?.();
+          return true;
+        }
+        return false;
       },
     },
-    [isDisabled],
-  );
+    onUpdate: ({ editor }: { editor: ReturnType<typeof useEditor> }) => {
+      setTiptapDocRef.current(editor?.getJSON());
+    },
+  });
+
+  // Sync editable via setEditable (preserves undo history, selection, mention state)
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    editor?.setEditable(!disabled);
+  }, [editor, disabled]);
 
   // Keep the refs up to date
-  // eslint-disable-next-line ban-use-effect/ban-use-effect
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {
     onSubmitRef.current = onSubmit;
   }, [onSubmit]);
 
-  // eslint-disable-next-line ban-use-effect/ban-use-effect
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {
     setTiptapDocRef.current = setTiptapDoc;
   }, [setTiptapDoc]);
 
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    enterToSubmitRef.current = enterToSubmit;
+  }, [enterToSubmit]);
+
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    placeholderRef.current = placeholder;
+  }, [placeholder]);
+
   // Sync editor content when tiptapDoc changes externally
-  // eslint-disable-next-line ban-use-effect/ban-use-effect
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {
     if (editor?.isDestroyed) return;
 
@@ -127,9 +146,10 @@ export function TiptapProvider({
 }
 
 interface TiptapInputProps {
-  selectedModel: AiProviderModel | null;
-  isStreaming: boolean;
-  selectedVirtualMcp: VirtualMCPInfo | null;
+  disabled?: boolean;
+  virtualMcpId?: string | null;
+  showFileUploader?: boolean;
+  selectedModel?: AiProviderModel | null;
   ref?: Ref<TiptapInputHandle>;
 }
 
@@ -138,14 +158,13 @@ interface TiptapInputProps {
  * Uses the editor from EditorContext provided by TiptapProvider.
  */
 export function TiptapInput({
+  disabled = false,
+  virtualMcpId,
+  showFileUploader = false,
   selectedModel,
-  isStreaming,
-  selectedVirtualMcp,
   ref,
 }: TiptapInputProps) {
   const { editor } = useCurrentEditor();
-  const virtualMcpId = selectedVirtualMcp?.id ?? null;
-  const isDisabled = isStreaming || !selectedModel;
 
   useImperativeHandle(
     ref ?? null,
@@ -177,23 +196,25 @@ export function TiptapInput({
           "[&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left",
           "[&_.ProseMirror_p.is-editor-empty:first-child::before]:pointer-events-none",
           "[&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0",
-          isDisabled && "cursor-not-allowed opacity-70",
-          isDisabled && "[&_.ProseMirror]:cursor-not-allowed",
+          disabled && "cursor-not-allowed opacity-70",
+          disabled && "[&_.ProseMirror]:cursor-not-allowed",
         )}
       />
 
       {/* Render prompts dropdown menu (includes dialog) */}
       <Suspense fallback={null}>
-        <PromptsMention editor={editor} virtualMcpId={virtualMcpId} />
+        <PromptsMention editor={editor} virtualMcpId={virtualMcpId ?? null} />
       </Suspense>
 
       {/* Render resources dropdown menu */}
       <Suspense fallback={null}>
-        <ResourcesMention editor={editor} virtualMcpId={virtualMcpId} />
+        <ResourcesMention editor={editor} virtualMcpId={virtualMcpId ?? null} />
       </Suspense>
 
       {/* Render file upload handler */}
-      <FileUploader editor={editor} selectedModel={selectedModel} />
+      {showFileUploader && selectedModel ? (
+        <FileUploader editor={editor} selectedModel={selectedModel} />
+      ) : null}
     </>
   );
 }

@@ -18,6 +18,7 @@ function makeDeps(): RunReactorDeps {
       list: mock(() => Promise.resolve({ threads: [], total: 0 })),
       saveMessages: mock(() => Promise.resolve()),
       listMessages: mock(() => Promise.resolve({ messages: [], total: 0 })),
+      listByTriggerIds: mock(() => Promise.resolve({ threads: [], total: 0 })),
       forceFailIfInProgress: mock(() => Promise.resolve(true)),
     },
     streamBuffer: { purge: mock(() => {}) } as unknown as StreamBuffer,

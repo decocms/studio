@@ -13,6 +13,7 @@ function stripProviderPrefix(id: string): string {
 
 function mapOpenRouterModel(m: OpenRouterAPIModel): ModelInfo {
   const canTools = m.supported_parameters.includes("tools");
+  const canReasoning = m.supported_parameters.includes("reasoning");
   return {
     providerId: "openrouter",
     modelId: stripProviderPrefix(m.id),
@@ -24,6 +25,7 @@ function mapOpenRouterModel(m: OpenRouterAPIModel): ModelInfo {
         ...m.architecture.input_modalities,
         ...m.architecture.output_modalities,
         ...(canTools ? (["tools"] as const) : []),
+        ...(canReasoning ? (["reasoning"] as const) : []),
       ]),
     ] as ModelCapability[],
     limits: {

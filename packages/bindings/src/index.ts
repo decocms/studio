@@ -84,6 +84,25 @@ export {
   type EventBusBindingClient,
 } from "./well-known/event-bus";
 
+// Re-export trigger binding types (for connections that can emit triggers)
+export {
+  TriggerParamSchema,
+  type TriggerParam,
+  TriggerDefinitionSchema,
+  type TriggerDefinition,
+  TriggerListInputSchema,
+  type TriggerListInput,
+  TriggerListOutputSchema,
+  type TriggerListOutput,
+  TriggerConfigureInputSchema,
+  type TriggerConfigureInput,
+  TriggerConfigureOutputSchema,
+  type TriggerConfigureOutput,
+  TRIGGER_BINDING,
+  TriggerBinding,
+  type TriggerBindingClient,
+} from "./well-known/trigger";
+
 // Re-export object storage binding types
 export {
   OBJECT_STORAGE_BINDING,

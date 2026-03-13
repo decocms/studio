@@ -46,6 +46,11 @@ export interface ThreadStoragePort {
     createdBy?: string,
     options?: { limit?: number; offset?: number },
   ): Promise<{ threads: Thread[]; total: number }>;
+  listByTriggerIds(
+    organizationId: string,
+    triggerIds: string[],
+    options?: { limit?: number; offset?: number },
+  ): Promise<{ threads: Thread[]; total: number }>;
   // Message operations - upserts by id (updates existing rows)
   saveMessages(data: ThreadMessage[], organizationId: string): Promise<void>;
   listMessages(

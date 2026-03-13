@@ -477,8 +477,8 @@ export function ChatInput({
             key={activeTaskId}
             tiptapDoc={tiptapDoc}
             setTiptapDoc={setTiptapDoc}
-            selectedModel={model}
-            isStreaming={isStreaming}
+            disabled={isStreaming || !model}
+            enterToSubmit={true}
             onSubmit={handleSubmit}
           >
             <form
@@ -491,9 +491,10 @@ export function ChatInput({
                 {/* Input Area with Tiptap */}
                 <TiptapInput
                   ref={tiptapRef}
+                  disabled={isStreaming || !model}
+                  virtualMcpId={selectedVirtualMcp?.id ?? null}
+                  showFileUploader={true}
                   selectedModel={model}
-                  isStreaming={isStreaming}
-                  selectedVirtualMcp={selectedVirtualMcp}
                 />
               </div>
 

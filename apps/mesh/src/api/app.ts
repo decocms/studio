@@ -20,8 +20,10 @@ import { endTime, startTime, timing } from "hono/timing";
 import { auth } from "../auth";
 import {
   ContextFactory,
+  createBoundAuthClient,
   createMeshContextFactory,
 } from "../core/context-factory";
+import { AccessControl } from "../core/access-control";
 import type { MeshContext } from "../core/mesh-context";
 import { getDb, type MeshDatabase } from "../database";
 import { createEventBus, type EventBus } from "../event-bus";
@@ -74,16 +76,27 @@ import {
 import { NatsStreamBuffer } from "./routes/decopilot/nats-stream-buffer";
 import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
-import { SqlThreadStorage } from "../storage/threads";
+import { OrgScopedThreadStorage, SqlThreadStorage } from "../storage/threads";
 import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
 import {
   DEFAULT_LOGS_DIR,
   DEFAULT_TRACES_DIR,
   DEFAULT_METRICS_DIR,
 } from "../monitoring/schema";
+import {
+  AutomationCronWorker,
+  EventTriggerEngine,
+  Semaphore,
+} from "../automations";
+import { fireAutomation } from "../automations/fire";
+import { streamCore } from "./routes/decopilot/stream-core";
+import { createAutomationsStorage } from "../storage/automations";
 
 // Track current event bus instance for cleanup during HMR
 let currentEventBus: EventBus | null = null;
+
+// Track automation cron worker for cleanup during HMR
+let currentCronWorkerCleanup: (() => void) | null = null;
 
 // Track decopilot strategy cleanup (abort active runs, stop strategies) during HMR
 let currentDecopilotCleanup: (() => void) | null = null;
@@ -683,6 +696,174 @@ export async function createApp(options: CreateAppOptions = {}) {
       console.error("[EventBus] Error during startup:", error);
     });
 
+  // ============================================================================
+  // Automation Cron Worker
+  // ============================================================================
+
+  // Cleanup previous cron worker (HMR)
+  if (currentCronWorkerCleanup) {
+    currentCronWorkerCleanup();
+    currentCronWorkerCleanup = null;
+  }
+
+  const automationsStorage = createAutomationsStorage(database.db);
+  const automationSemaphore = new Semaphore(10); // max 10 concurrent runs globally
+
+  /**
+   * MeshContextFactory for automations.
+   * Verifies the user is still an active member of the organization,
+   * then returns a MeshContext scoped to that org/user.
+   * Returns null when the user is no longer in the org.
+   */
+  const automationContextFactory = async (
+    orgId: string,
+    userId: string,
+  ): Promise<MeshContext | null> => {
+    // Verify org membership
+    const membership = await database.db
+      .selectFrom("member")
+      .innerJoin("organization", "organization.id", "member.organizationId")
+      .select([
+        "member.role",
+        "organization.id as orgId",
+        "organization.slug as orgSlug",
+        "organization.name as orgName",
+      ])
+      .where("member.userId", "=", userId)
+      .where("member.organizationId", "=", orgId)
+      .executeTakeFirst();
+
+    if (!membership) {
+      console.warn(
+        `[automationContextFactory] User ${userId} not found in org ${orgId} — returning null`,
+      );
+      return null;
+    }
+
+    console.log(
+      `[automationContextFactory] Resolved context: user=${userId}, org=${orgId}, role=${membership.role}`,
+    );
+
+    // Create a base context (unauthenticated) and override auth/org/access fields
+    const ctx = await ContextFactory.create();
+    ctx.auth.user = { id: userId, role: membership.role };
+    ctx.organization = {
+      id: membership.orgId,
+      slug: membership.orgSlug,
+      name: membership.orgName,
+    };
+
+    // Reconstruct boundAuth and access with the correct identity so that
+    // permission checks use the automation user's role instead of stale
+    // undefined values from the unauthenticated base context.
+    ctx.boundAuth = createBoundAuthClient({
+      auth: ctx.authInstance,
+      headers: new Headers(),
+      role: membership.role,
+      userId,
+    });
+    ctx.access = new AccessControl(
+      ctx.authInstance,
+      userId,
+      undefined, // toolName set later by defineTool
+      ctx.boundAuth,
+      membership.role,
+      "self",
+    );
+
+    // Rebuild thread storage with the correct org so OrgScopedThreadStorage
+    // doesn't throw "thread operations require an authenticated organization".
+    ctx.storage.threads = new OrgScopedThreadStorage(
+      threadStorage,
+      membership.orgId,
+    );
+
+    return ctx;
+  };
+
+  const automationRunner: MeshContext["automationRunner"] = async (
+    automationId,
+    orgId,
+    _userId,
+  ) => {
+    const automation = await automationsStorage.findById(automationId, orgId);
+    if (!automation) throw new Error("Automation not found");
+    return fireAutomation({
+      automation,
+      triggerId: null,
+      storage: automationsStorage,
+      streamCoreFn: streamCore,
+      meshContextFactory: automationContextFactory,
+      config: { maxConcurrentPerAutomation: 3, runTimeoutMs: 5 * 60 * 1000 },
+      globalSemaphore: automationSemaphore,
+      deps: { runRegistry, cancelBroadcast },
+    });
+  };
+
+  const cronWorker = new AutomationCronWorker(
+    automationsStorage,
+    streamCore,
+    automationContextFactory,
+    {
+      maxConcurrentPerAutomation: 3,
+      runTimeoutMs: 5 * 60 * 1000, // 5 minutes
+    },
+    automationSemaphore,
+    { runRegistry, cancelBroadcast },
+  );
+
+  // Start cron worker and poll every 30 seconds
+  const cronPollIntervalMs = 30_000;
+  let cronTimer: ReturnType<typeof setInterval> | null = null;
+
+  Promise.resolve(cronWorker.start())
+    .then(() => {
+      console.log("[AutomationCron] Worker started");
+      cronTimer = setInterval(() => {
+        cronWorker.processNow().catch((err) => {
+          console.error("[AutomationCron] Error processing:", err);
+        });
+      }, cronPollIntervalMs);
+    })
+    .catch((error) => {
+      console.error("[AutomationCron] Error during startup:", error);
+    });
+
+  currentCronWorkerCleanup = () => {
+    if (cronTimer) {
+      clearInterval(cronTimer);
+      cronTimer = null;
+    }
+    cronWorker.stop().catch(() => {});
+  };
+
+  // ============================================================================
+  // Event Trigger Engine — wire automations into the event bus
+  // ============================================================================
+
+  const eventTriggerEngine = new EventTriggerEngine(
+    automationsStorage,
+    streamCore,
+    automationContextFactory,
+    {
+      maxConcurrentPerAutomation: 3,
+      runTimeoutMs: 5 * 60 * 1000, // 5 minutes
+    },
+    automationSemaphore,
+    { runRegistry, cancelBroadcast },
+  );
+
+  // Inject into the event bus worker so processed events trigger automations.
+  // The cast is needed because the EventBus interface doesn't expose this
+  // integration point — it lives on the concrete implementation only.
+  if ("setEventTriggerEngine" in eventBus) {
+    (
+      eventBus as unknown as {
+        setEventTriggerEngine: (engine: EventTriggerEngine) => void;
+      }
+    ).setEventTriggerEngine(eventTriggerEngine);
+  }
+
   // NDJSON monitoring retention cleanup (always — local files are always written)
   const SIGNAL_DIRS = [
     DEFAULT_LOGS_DIR,
@@ -734,6 +915,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     };
 
     const meshCtx = await ContextFactory.create(c.req.raw, { timings });
+    meshCtx.automationRunner = automationRunner;
     c.set("meshContext", meshCtx);
 
     return next();

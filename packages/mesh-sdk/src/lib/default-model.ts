@@ -11,6 +11,7 @@ export const DEFAULT_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> =
   {
     anthropic: ["claude-sonnet-4-6", "claude-sonnet", "claude"],
     openrouter: [
+      "qwen",
       "anthropic/claude-sonnet-4-6",
       "anthropic/claude-sonnet",
       "anthropic/claude",
@@ -34,12 +35,12 @@ export const DEFAULT_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> =
  */
 export function selectDefaultModel(
   models: AiProviderModel[],
-  providerId: string,
+  providerId: ProviderId,
   keyId?: string,
 ): AiProviderModel | null {
   if (models.length === 0) return null;
 
-  const candidates = DEFAULT_MODEL_PREFERENCES[providerId as ProviderId] ?? [];
+  const candidates = DEFAULT_MODEL_PREFERENCES[providerId] ?? [];
 
   const withKey = (model: AiProviderModel): AiProviderModel =>
     keyId !== undefined ? { ...model, keyId } : model;

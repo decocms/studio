@@ -7,7 +7,7 @@ import {
 import { ASSISTANTS_BINDING } from "@decocms/bindings/assistant";
 import { LANGUAGE_MODEL_BINDING } from "@decocms/bindings/llm";
 import { MCP_BINDING } from "@decocms/bindings/mcp";
-import { EVENT_BUS_BINDING } from "@decocms/bindings";
+import { EVENT_BUS_BINDING, TRIGGER_BINDING } from "@decocms/bindings";
 import { convertJsonSchemaToZod } from "zod-from-json-schema";
 import type { ConnectionEntity } from "@/tools/connection/schema";
 import {
@@ -28,6 +28,7 @@ const BUILTIN_BINDINGS: Record<string, Binder> = {
   MCP: MCP_BINDING,
   AI_GATEWAY_BILLING: AI_GATEWAY_BILLING_BINDING,
   EVENT_BUS: EVENT_BUS_BINDING,
+  TRIGGER: TRIGGER_BINDING,
 };
 
 /**
@@ -42,6 +43,7 @@ const BUILTIN_BINDINGS: Record<string, Binder> = {
 const BINDING_TYPE_TO_BUILTIN: Record<string, string> = {
   "@deco/event-bus": "EVENT_BUS",
   "@deco/llm": "LLMS",
+  "@deco/trigger": "TRIGGER",
 };
 
 /**

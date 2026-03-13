@@ -31,7 +31,8 @@ export type ToolCategory =
   | "Code Execution"
   | "Tags"
   | "Projects"
-  | "AI Providers";
+  | "AI Providers"
+  | "Automations";
 
 /**
  * All tool names - keep in sync with ALL_TOOLS in index.ts
@@ -113,6 +114,15 @@ const ALL_TOOL_NAMES = [
   "TAGS_DELETE",
   "MEMBER_TAGS_GET",
   "MEMBER_TAGS_SET",
+  // Automation tools
+  "AUTOMATION_CREATE",
+  "AUTOMATION_GET",
+  "AUTOMATION_LIST",
+  "AUTOMATION_UPDATE",
+  "AUTOMATION_DELETE",
+  "AUTOMATION_TRIGGER_ADD",
+  "AUTOMATION_TRIGGER_REMOVE",
+  "AUTOMATION_RUN",
   // Project tools
   "PROJECT_LIST",
   "PROJECT_GET",
@@ -513,6 +523,48 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Set member tags",
     category: "Tags",
   },
+  // Automation tools
+  {
+    name: "AUTOMATION_CREATE",
+    description: "Create automation",
+    category: "Automations",
+  },
+  {
+    name: "AUTOMATION_GET",
+    description: "View automation details",
+    category: "Automations",
+  },
+  {
+    name: "AUTOMATION_LIST",
+    description: "List automations",
+    category: "Automations",
+  },
+  {
+    name: "AUTOMATION_UPDATE",
+    description: "Update automation",
+    category: "Automations",
+  },
+  {
+    name: "AUTOMATION_DELETE",
+    description: "Delete automation",
+    category: "Automations",
+    dangerous: true,
+  },
+  {
+    name: "AUTOMATION_TRIGGER_ADD",
+    description: "Add trigger to automation",
+    category: "Automations",
+  },
+  {
+    name: "AUTOMATION_TRIGGER_REMOVE",
+    description: "Remove trigger from automation",
+    category: "Automations",
+  },
+  {
+    name: "AUTOMATION_RUN",
+    description: "Manually trigger an automation run",
+    category: "Automations",
+  },
   // Project tools
   {
     name: "PROJECT_LIST",
@@ -692,6 +744,14 @@ const TOOL_LABELS: Record<ToolName, string> = {
   PROJECT_CONNECTION_ADD: "Add project connection",
   PROJECT_CONNECTION_REMOVE: "Remove project connection",
   PROJECT_PINNED_VIEWS_UPDATE: "Update pinned views",
+  AUTOMATION_CREATE: "Create automation",
+  AUTOMATION_GET: "View automation details",
+  AUTOMATION_LIST: "List automations",
+  AUTOMATION_UPDATE: "Update automation",
+  AUTOMATION_DELETE: "Delete automation",
+  AUTOMATION_TRIGGER_ADD: "Add trigger",
+  AUTOMATION_TRIGGER_REMOVE: "Remove trigger",
+  AUTOMATION_RUN: "Run automation",
 
   AI_PROVIDERS_LIST: "List AI providers",
   AI_PROVIDERS_LIST_MODELS: "List AI models",
@@ -725,6 +785,7 @@ export function getToolsByCategory() {
     Tags: [],
     Projects: [],
     "AI Providers": [],
+    Automations: [],
   };
 
   for (const tool of MANAGEMENT_TOOLS) {

@@ -37,6 +37,8 @@ import * as migration035projectconnections from "./035-project-connections.ts";
 import * as migration036updateregistryurl from "./036-update-registry-url.ts";
 import * as migration037aiproviderkeyss from "./037-ai-provider-keys.ts";
 import * as migration038oauthpkcestatess from "./038-oauth-pkce-states.ts";
+import * as migration039automations from "./039-automations.ts";
+import * as migration040replacenextrunatwithlastrunat from "./040-replace-next-run-at-with-last-run-at.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -86,6 +88,9 @@ const migrations: Record<string, Migration> = {
   "036-update-registry-url": migration036updateregistryurl,
   "037-ai-provider-keys": migration037aiproviderkeyss,
   "038-oauth-pkce-states": migration038oauthpkcestatess,
+  "039-automations": migration039automations,
+  "040-replace-next-run-at-with-last-run-at":
+    migration040replacenextrunatwithlastrunat,
 };
 
 export default migrations;

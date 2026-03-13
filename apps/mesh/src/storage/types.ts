@@ -727,6 +727,7 @@ export interface ThreadTable {
   description: string | null;
   hidden: boolean | null;
   status: ThreadStatus;
+  trigger_id: string | null;
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
   created_by: string; // User ID;
@@ -744,6 +745,7 @@ export interface Thread {
   updated_by: string | null;
   hidden: boolean | null;
   status: ThreadStatus;
+  trigger_id: string | null;
 }
 
 export interface ThreadMessageTable {
@@ -908,6 +910,80 @@ export interface ProjectPluginConfig {
   updatedAt: Date | string;
 }
 
+// ============================================================================
+// Automations Table Definitions
+// ============================================================================
+
+/**
+ * Automation table definition
+ * Stores automation configurations with agent, messages, and model settings
+ */
+export interface AutomationTable {
+  id: string;
+  organization_id: string;
+  name: string;
+  active: boolean;
+  created_by: string;
+  agent: string; // JSON string: { id, mode }
+  messages: string; // JSON string: UIMessage[]
+  models: string; // JSON string: { connectionId, thinking, coding?, fast? }
+  temperature: number;
+  created_at: ColumnType<Date, Date | string, never>;
+  updated_at: ColumnType<Date, Date | string, Date | string>;
+}
+
+/**
+ * Automation entity - Runtime representation
+ */
+export interface Automation {
+  id: string;
+  organization_id: string;
+  name: string;
+  active: boolean;
+  created_by: string;
+  agent: string;
+  messages: string;
+  models: string;
+  temperature: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Automation trigger table definition
+ * Defines when automations should run (cron or event-based)
+ */
+export interface AutomationTriggerTable {
+  id: string;
+  automation_id: string;
+  type: string;
+  cron_expression: string | null;
+  connection_id: string | null;
+  event_type: string | null;
+  params: string | null; // JSON string
+  last_run_at: ColumnType<
+    Date | null,
+    Date | string | null,
+    Date | string | null
+  >;
+  created_at: ColumnType<Date, Date | string, never>;
+}
+
+/**
+ * Automation trigger entity - Runtime representation
+ */
+export interface AutomationTrigger {
+  id: string;
+  automation_id: string;
+  type: "cron" | "event";
+  cron_expression: string | null;
+  connection_id: string | null;
+  event_type: string | null;
+  params: string | null;
+  last_run_at: string | null;
+  created_at: string;
+}
+
 /**
  * Complete database schema
  * All tables exist within the organization scope (database boundary)
@@ -960,4 +1036,8 @@ export interface Database {
 
   // OAuth PKCE state table (short-lived, server-side verifier storage)
   oauth_pkce_states: OAuthPkceStateTable;
+
+  // Automations tables
+  automations: AutomationTable;
+  automation_triggers: AutomationTriggerTable;
 }

@@ -5,7 +5,7 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@deco/ui/components/select.tsx";
-import { Bell01, Code01, Shield01 } from "@untitledui/icons";
+import { Bell01, Code01, RefreshCcw01, Shield01 } from "@untitledui/icons";
 import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import { toast } from "@deco/ui/components/sonner.js";
 
@@ -111,6 +111,28 @@ export function AccountPreferencesPage() {
               disabled={typeof Notification === "undefined"}
               checked={preferences.enableNotifications}
               onCheckedChange={handleNotificationsChange}
+            />
+          }
+        />
+        <SettingRow
+          icon={<RefreshCcw01 size={16} />}
+          label="Experimental: Automations"
+          description="Enable the Automations feature in the sidebar. This is an experimental feature under active development."
+          onClick={() =>
+            setPreferences((prev) => ({
+              ...prev,
+              experimentalAutomations: !prev.experimentalAutomations,
+            }))
+          }
+          control={
+            <Switch
+              checked={preferences.experimentalAutomations}
+              onCheckedChange={(checked) =>
+                setPreferences((prev) => ({
+                  ...prev,
+                  experimentalAutomations: checked,
+                }))
+              }
             />
           }
         />

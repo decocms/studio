@@ -416,6 +416,28 @@ const storeDetailRoute = createRoute({
   ),
 });
 
+// Automations
+const automationsRoute = createRoute({
+  getParentRoute: () => projectLayout,
+  path: "/automations",
+  beforeLoad: orgAdminGuard,
+  component: lazyRouteComponent(() => import("./routes/orgs/automations.tsx")),
+});
+
+const automationDetailRoute = createRoute({
+  getParentRoute: () => projectLayout,
+  path: "/automations/$automationId",
+  beforeLoad: orgAdminGuard,
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/automation-detail.tsx"),
+  ),
+  validateSearch: z.lazy(() =>
+    z.object({
+      tab: z.string().optional(),
+    }),
+  ),
+});
+
 // Agents
 const agentsRoute = createRoute({
   getParentRoute: () => projectLayout,
@@ -538,6 +560,8 @@ const projectRoutes = [
   dashboardViewRoute,
   dashboardEditRoute,
   storeRouteWithChildren,
+  automationsRoute,
+  automationDetailRoute,
   agentsRoute,
   agentDetailRoute,
   workflowsRoute,

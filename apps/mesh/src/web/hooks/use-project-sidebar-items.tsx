@@ -15,16 +15,19 @@ import {
   Folder,
   Home02,
   LayoutLeft,
+  RefreshCcw01,
   Settings01,
   Users03,
 } from "@untitledui/icons";
 import { pluginRootSidebarItems, pluginSidebarGroups } from "../index.tsx";
+import { usePreferences } from "./use-preferences.ts";
 import { useProject } from "./use-project";
 
 export function useProjectSidebarItems(): SidebarSection[] {
   const { locator, org: orgContext } = useProjectContext();
   const navigate = useNavigate();
   const routerState = useRouterState();
+  const [preferences] = usePreferences();
   const { org, project } = Locator.parse(locator);
   const isOrgAdminProject = Locator.isOrgAdminProject(locator);
 
@@ -138,6 +141,18 @@ export function useProjectSidebarItems(): SidebarSection[] {
     onClick: () =>
       navigate({
         to: "/$org/$project/agents",
+        params: { org, project: ORG_ADMIN_PROJECT_SLUG },
+      }),
+  };
+
+  const automationsItem: NavigationSidebarItem = {
+    key: "automations",
+    label: "Automations",
+    icon: <RefreshCcw01 />,
+    isActive: isActiveRoute("automations"),
+    onClick: () =>
+      navigate({
+        to: "/$org/$project/automations",
         params: { org, project: ORG_ADMIN_PROJECT_SLUG },
       }),
   };
@@ -282,7 +297,12 @@ export function useProjectSidebarItems(): SidebarSection[] {
         group: {
           id: "build",
           label: "Build",
-          items: [agentsItem, connectionsItem, storeItem],
+          items: [
+            ...(preferences.experimentalAutomations ? [automationsItem] : []),
+            agentsItem,
+            connectionsItem,
+            storeItem,
+          ],
           defaultExpanded: true,
         },
       },

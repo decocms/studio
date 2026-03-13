@@ -53,7 +53,12 @@ export type ChatMessage = UIMessage<
 export interface ModelInfo {
   id: string;
   title: string;
-  capabilities?: { vision?: boolean; text?: boolean; tools?: boolean };
+  capabilities?: {
+    vision?: boolean;
+    text?: boolean;
+    tools?: boolean;
+    reasoning?: boolean;
+  };
   provider?: string | null;
   limits?: { contextWindow?: number; maxOutputTokens?: number };
 }

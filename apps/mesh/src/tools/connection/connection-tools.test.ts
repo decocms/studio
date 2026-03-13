@@ -90,6 +90,7 @@ describe("Connection Tools", () => {
         monitoringDashboards: null as never,
         aiProviderKeys: null as never,
         oauthPkceStates: null as never,
+        automations: null as never,
       },
       vault,
       authInstance: null as never,

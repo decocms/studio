@@ -5,6 +5,9 @@ import {
   useProjectContext,
 } from "@decocms/mesh-sdk";
 
+/** Connection ID used for all LLM calls emitted by Decopilot. Must match server-side DECOPILOT_CONNECTION_ID. */
+const DECOPILOT_CONNECTION_ID = "decopilot";
+
 interface MonitoringQueryOptions {
   enabled?: boolean;
   refetchInterval?: number | false;
@@ -174,7 +177,7 @@ export function useMonitoringLlmStats(
     toolName: "MONITORING_STATS",
     toolArguments: {
       ...params,
-      connectionIds: ["decopilot"],
+      connectionIds: [DECOPILOT_CONNECTION_ID],
       topN: 5,
     },
     staleTime: 30_000,

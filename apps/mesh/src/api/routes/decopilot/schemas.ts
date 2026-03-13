@@ -39,6 +39,7 @@ const ModelInfoSchema = z.object({
       vision: z.boolean().optional(),
       text: z.boolean().optional(),
       tools: z.boolean().optional(),
+      reasoning: z.boolean().optional(),
     })
     .optional(),
   provider: ProviderSchema,
