@@ -107,7 +107,7 @@ app.post("/connections/:connectionId/oauth-token", async (c) => {
           title: connection.title,
           connection_type: connection.connection_type ?? "HTTP",
           connection_url: connection.connection_url!,
-          connection_token: null,
+          connection_token: body.accessToken,
           connection_headers: null,
         }),
       )
