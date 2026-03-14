@@ -1,5 +1,5 @@
 import { Suspense, useState, useEffect } from "react";
-import { useQueryClient, useMutation } from "@tanstack/react-query";
+import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { Trash01, Key01, Eye, EyeOff, AlertCircle } from "@untitledui/icons";
@@ -228,6 +228,7 @@ export function ProviderCard({
   const [oauthStateToken, setOauthStateToken] = useState<string | null>(null);
 
   const isActive = keys.length > 0;
+  const isClaudeCode = provider.id === "claude-code";
 
   const { mutate: deleteKey, isPending: isDeleting } = useMutation({
     mutationFn: async (keyId: string) => {
@@ -243,6 +244,16 @@ export function ProviderCard({
       queryClient.invalidateQueries({
         queryKey: KEYS.aiProviderModels(locator, deletedKeyId),
       });
+      if (isClaudeCode) {
+        fetch(`/api/${org.slug}/decopilot/connect-studio`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ target: "claude-code" }),
+        }).catch(() => {});
+        queryClient.invalidateQueries({
+          queryKey: KEYS.connectStudioStatus(org.slug),
+        });
+      }
       toast.success("Key deleted");
     },
     onError: (err) => {
@@ -322,10 +333,26 @@ export function ProviderCard({
     };
   }, [isOAuthPending, oauthStateToken, exchangeOAuth]);
 
-  const isClaudeCode = provider.id === "claude-code";
   const supportsOAuth = provider.supportedMethods.includes("oauth-pkce");
   const supportsApiKey = provider.supportedMethods.includes("api-key");
   const [isClaudeCodePending, setIsClaudeCodePending] = useState(false);
+
+  const connectStudioStatus = useQuery({
+    queryKey: KEYS.connectStudioStatus(org.slug),
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/${org.slug}/decopilot/connect-studio/status`,
+      );
+      if (!res.ok) throw new Error("Failed to fetch status");
+      return res.json() as Promise<{
+        claude: {
+          connected: boolean;
+          auth: Record<string, string | undefined> | null;
+        };
+      }>;
+    },
+    enabled: isClaudeCode && isActive,
+  });
 
   const handleConnectClaudeCode = async () => {
     if (isActive || isClaudeCodePending) return;
@@ -343,6 +370,28 @@ export function ProviderCard({
         queryKey: KEYS.aiProviderKeys(locator),
       });
       queryClient.invalidateQueries({ queryKey: KEYS.aiProviders(locator) });
+
+      // Also register MCP in Claude Code CLI
+      try {
+        const res = await fetch(`/api/${org.slug}/decopilot/connect-studio`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ target: "claude-code" }),
+        });
+        if (!res.ok) {
+          toast.error(
+            "Connected as provider but failed to register MCP in Claude Code",
+          );
+        }
+      } catch {
+        toast.error(
+          "Connected as provider but failed to register MCP in Claude Code",
+        );
+      }
+      queryClient.invalidateQueries({
+        queryKey: KEYS.connectStudioStatus(org.slug),
+      });
+
       toast.success("Claude Code connected!");
     } catch (err) {
       toast.error(
@@ -448,6 +497,13 @@ export function ProviderCard({
               <p className="text-xs font-medium text-muted-foreground">
                 {keys.length} key{keys.length !== 1 ? "s" : ""} configured
               </p>
+              {isClaudeCode && connectStudioStatus.data?.claude?.auth && (
+                <p className="text-xs text-muted-foreground truncate">
+                  {Object.values(connectStudioStatus.data.claude.auth)
+                    .filter(Boolean)
+                    .join(" — ")}
+                </p>
+              )}
               <KeyList
                 keys={keys}
                 onDelete={deleteKey}

@@ -12,7 +12,7 @@ import {
   SidebarMenu,
   SidebarMenuItem,
 } from "@deco/ui/components/sidebar.tsx";
-import { Check, Coins01, Inbox01, Link01, XClose } from "@untitledui/icons";
+import { Check, Coins01, Inbox01, XClose } from "@untitledui/icons";
 import { AuthUIContext } from "@daveyplate/better-auth-ui";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Component, Suspense, useContext, useState } from "react";
@@ -25,7 +25,6 @@ import {
   useMCPToolCallQuery,
   useProjectContext,
 } from "@decocms/mesh-sdk";
-import { ConnectStudioModal } from "@/web/components/connect-studio-modal";
 import { connectionImplementsBinding } from "@/web/hooks/use-binding";
 import { AI_GATEWAY_BILLING_BINDING } from "@decocms/bindings/ai-gateway";
 
@@ -271,7 +270,6 @@ function CreditChipConditional() {
 
 export function SidebarInboxFooter() {
   const pendingInvitations = usePendingInvitations();
-  const [connectOpen, setConnectOpen] = useState(false);
 
   return (
     <SidebarFooter className="px-3.5 pb-3 group-data-[collapsible=icon]:px-2">
@@ -280,18 +278,6 @@ export function SidebarInboxFooter() {
           <CreditChipConditional />
         </Suspense>
       </SilentErrorBoundary>
-      <div className="group-data-[collapsible=icon]:hidden">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full h-8 gap-1.5 px-2 text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent text-xs justify-start"
-          onClick={() => setConnectOpen(true)}
-        >
-          <Link01 size={14} />
-          <span>Connect Studio</span>
-        </Button>
-        <ConnectStudioModal open={connectOpen} onOpenChange={setConnectOpen} />
-      </div>
       <SidebarMenu>
         <SidebarMenuItem>
           <div className="flex items-center w-full gap-1">
