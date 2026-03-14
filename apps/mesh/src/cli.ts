@@ -235,6 +235,15 @@ if (betterAuthFromFile || encryptionKeyFromFile) {
 }
 
 // ============================================================================
+// Services (PostgreSQL + NATS)
+// ============================================================================
+
+console.log(`${dim}Starting services (PostgreSQL, NATS)...${reset}`);
+const { ensureServices } = await import("./services/ensure-services");
+await ensureServices();
+console.log("");
+
+// ============================================================================
 // Database migrations
 // ============================================================================
 

@@ -7,7 +7,6 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.0.4",
     "deco-cli": "workspace:*",
-    "embedded-postgres": "^18.3.0-beta.16",
     "knip": "^5.83.1",
     "oxlint": "1.23.0",
     "react": "^19.2.0",
@@ -21,9 +20,6 @@
   "scripts": {
     "link": "deco link -p 3000 -e BASE_URL -- bun run dev",
     "dev": "bun run --env-file=.env scripts/dev.ts",
-    "dev:local": "bun run --cwd=apps/mesh dev:local",
-    "dev:local:worktree": "bun run scripts/dev-worktree.ts --local",
-    "dev:local:conductor": "WORKTREE_SLUG=$CONDUCTOR_WORKSPACE_NAME bun run dev:local:worktree",
     "dev:worktree": "bun run scripts/dev-worktree.ts",
     "dev:conductor": "WORKTREE_SLUG=$CONDUCTOR_WORKSPACE_NAME bun run dev:worktree",
     "fmt": "biome format --write",
