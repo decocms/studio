@@ -108,6 +108,7 @@ export async function streamClaudeCode(
 ): Promise<{
   costUsd: number;
   usage: { inputTokens: number; outputTokens: number; totalTokens: number };
+  calledAuthTool: boolean;
 }> {
   const queryFn = await getQuery();
 
@@ -192,6 +193,8 @@ export async function streamClaudeCode(
 
   let totalCostUsd = 0;
   let usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+  // Track whether CONNECTION_AUTHENTICATE was called so the caller can emit auth cards
+  let calledAuthTool = false;
 
   const ensureTextStarted = () => {
     if (!textStarted) {
@@ -287,6 +290,11 @@ export async function streamClaudeCode(
             delta: `\nUsing tool: ${toolName}\n`,
             id: reasoningPartId,
           });
+
+          // Track CONNECTION_AUTHENTICATE calls so caller can emit auth cards
+          if (toolName === "CONNECTION_AUTHENTICATE") {
+            calledAuthTool = true;
+          }
           break;
         }
 
@@ -430,5 +438,5 @@ export async function streamClaudeCode(
     },
   });
 
-  return { costUsd: totalCostUsd, usage };
+  return { costUsd: totalCostUsd, usage, calledAuthTool };
 }

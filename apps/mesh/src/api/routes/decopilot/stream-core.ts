@@ -298,6 +298,61 @@ export async function streamCore(
             });
           }
 
+          // Emit auth cards for connections that need authentication.
+          // The Claude Code path can't render inline tool UI parts directly,
+          // so we call CONNECTION_AUTHENTICATE ourselves and emit the card.
+          if (ccResult.calledAuthTool) {
+            try {
+              const connections = await ctx.storage.connections.list(
+                organization.id,
+              );
+              for (const conn of connections) {
+                const health = await ctx.storage.connections.testConnection(
+                  conn.id,
+                );
+                if (!health.healthy) {
+                  const hasOAuth = !!conn.oauth_config;
+                  const hasScopes =
+                    conn.configuration_scopes &&
+                    conn.configuration_scopes.length > 0;
+                  let authType: string = "none";
+                  if (hasOAuth) authType = "oauth";
+                  else if (hasScopes) authType = "configuration";
+                  else if (conn.connection_url) authType = "oauth";
+
+                  if (authType !== "none") {
+                    const toolCallId = `cc-auth-${conn.id}`;
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const w = writer.write.bind(writer) as (msg: any) => void;
+                    w({
+                      type: "tool-call",
+                      toolCallId,
+                      toolName: "CONNECTION_AUTHENTICATE",
+                      input: { connection_id: conn.id },
+                    });
+                    w({
+                      type: "tool-result",
+                      toolCallId,
+                      toolName: "CONNECTION_AUTHENTICATE",
+                      output: {
+                        connection_id: conn.id,
+                        title: conn.title,
+                        icon: conn.icon ?? null,
+                        description: conn.description ?? null,
+                        connection_url: conn.connection_url ?? null,
+                        status: conn.status ?? "inactive",
+                        needs_auth: true,
+                        auth_type: authType,
+                      },
+                    });
+                  }
+                }
+              }
+            } catch {
+              // Auth card emission is best-effort
+            }
+          }
+
           return;
         }
 
