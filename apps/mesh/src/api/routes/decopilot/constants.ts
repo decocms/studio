@@ -77,7 +77,6 @@ Pub/sub messaging between connections:
 
 - **MONITORING_LOGS_LIST** — view recent logs
 - **MONITORING_STATS** — usage statistics
-- **MONITORING_DASHBOARD_CREATE/GET/LIST/QUERY** — custom dashboards
 
 ## AI providers
 
