@@ -65,13 +65,13 @@ function extractSystemPrompt(messages: ChatMessage[]): string {
 const CLAUDE_CODE_MODELS = [
   {
     id: "claude-code:opus",
-    sdkModel: "claude-opus-4-6",
+    sdkModel: "claude-opus-4-6-max",
     title: "Claude Code Opus",
     tier: "smarter" as const,
   },
   {
     id: "claude-code:sonnet",
-    sdkModel: "claude-sonnet-4-6",
+    sdkModel: "claude-sonnet-4-6-max",
     title: "Claude Code Sonnet",
     tier: "faster" as const,
   },
@@ -296,14 +296,21 @@ export async function streamClaudeCode(
               (message as { total_cost_usd?: number }).total_cost_usd ?? 0;
             const u = (
               message as {
-                usage?: { input_tokens?: number; output_tokens?: number };
+                usage?: {
+                  input_tokens?: number;
+                  output_tokens?: number;
+                  cache_read_input_tokens?: number;
+                  cache_creation_input_tokens?: number;
+                };
               }
             ).usage;
             if (u) {
+              const inputTokens = u.input_tokens ?? 0;
+              const outputTokens = u.output_tokens ?? 0;
               usage = {
-                inputTokens: u.input_tokens ?? 0,
-                outputTokens: u.output_tokens ?? 0,
-                totalTokens: (u.input_tokens ?? 0) + (u.output_tokens ?? 0),
+                inputTokens,
+                outputTokens,
+                totalTokens: inputTokens + outputTokens,
               };
             }
           } else {
@@ -410,7 +417,16 @@ export async function streamClaudeCode(
     type: "finish",
     finishReason: "stop",
     messageMetadata: {
-      usage,
+      usage: {
+        ...usage,
+        providerMetadata: totalCostUsd
+          ? {
+              "claude-code": {
+                usage: { cost: totalCostUsd },
+              },
+            }
+          : undefined,
+      },
     },
   });
 

@@ -36,9 +36,11 @@ export const CODE_EXECUTION_DESCRIBE_TOOLS = defineTool({
     // Get tools from connections (agent-specific or all org connections)
     const toolContext = await getToolsWithConnections(ctx);
 
-    // Describe requested tools
-    const result = describeTools(input.tools, toolContext.tools);
-
-    return result;
+    try {
+      // Describe requested tools
+      return describeTools(input.tools, toolContext.tools);
+    } finally {
+      await toolContext.close();
+    }
   },
 });
