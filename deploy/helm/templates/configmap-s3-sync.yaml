@@ -1,0 +1,38 @@
+{{- if .Values.s3Sync.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "chart-decocms.fullname" . }}-s3-sync
+  labels:
+    {{- include "chart-decocms.labels" . | nindent 4 }}
+data:
+  sync.sh: |
+    #!/bin/sh
+
+    BUCKET={{ required "s3Sync.bucket is required when s3Sync.enabled=true" .Values.s3Sync.bucket | quote }}
+    REGION={{ .Values.s3Sync.region | quote }}
+    PREFIX={{ .Values.s3Sync.prefix | quote }}
+    DATA_DIR={{ .Values.configMap.meshConfig.DATA_DIR | default "/app/data" | quote }}
+    DIRS={{ join " " .Values.s3Sync.syncDirs | quote }}
+    INTERVAL={{ .Values.s3Sync.interval | default 30 }}
+
+    export AWS_DEFAULT_REGION="$REGION"
+    export HOME="/tmp"
+
+    # Build S3 base path
+    S3_BASE="s3://${BUCKET}"
+    if [ -n "$PREFIX" ]; then
+      S3_BASE="${S3_BASE}/${PREFIX}"
+    fi
+
+    echo "Starting s3-sync (polling every ${INTERVAL}s)..."
+
+    while true; do
+      for dir in $DIRS; do
+        if [ -d "${DATA_DIR}/${dir}" ]; then
+          aws s3 sync "${DATA_DIR}/${dir}" "${S3_BASE}/${dir}/" --quiet
+        fi
+      done
+      sleep "$INTERVAL"
+    done
+{{- end }}

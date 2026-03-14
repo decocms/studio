@@ -2,7 +2,7 @@ services:
   mesh:
     image: ${IMAGE_REPOSITORY:-ghcr.io/decocms/mesh/mesh}:${IMAGE_TAG:-latest}
     platform: linux/amd64
-    container_name: deco-mcp-mesh
+    container_name: decocms
     restart: unless-stopped
     ports:
       - "${PORT:-3000}:3000"

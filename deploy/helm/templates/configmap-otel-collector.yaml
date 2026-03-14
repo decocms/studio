@@ -2,9 +2,9 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "chart-deco-mcp-mesh.fullname" . }}-otel-collector
+  name: {{ include "chart-decocms.fullname" . }}-otel-collector
   labels:
-    {{- include "chart-deco-mcp-mesh.labels" . | nindent 4 }}
+    {{- include "chart-decocms.labels" . | nindent 4 }}
 data:
   config.yaml: |
     receivers:
@@ -21,18 +21,6 @@ data:
         timeout: 5s
 
     exporters:
-      {{- if .Values.otel.s3.enabled }}
-      awss3:
-        s3uploader:
-          region: {{ .Values.otel.s3.region | quote }}
-          s3_bucket: {{ required "otel.s3.bucket is required when otel.s3.enabled=true" .Values.otel.s3.bucket | quote }}
-          s3_prefix: {{ .Values.otel.s3.prefix | quote }}
-          file_prefix: {{ .Values.otel.s3.filePrefix | quote }}
-        marshaler: {{ .Values.otel.s3.marshaler | quote }}
-        {{- if ne .Values.otel.s3.compression "none" }}
-        compression: {{ .Values.otel.s3.compression | quote }}
-        {{- end }}
-      {{- end }}
       {{- if .Values.otel.endpoint }}
       otlphttp/remote:
         endpoint: {{ .Values.otel.endpoint | quote }}
@@ -52,9 +40,6 @@ data:
       extensions: [health_check]
       pipelines:
         {{- $exporters := list }}
-        {{- if .Values.otel.s3.enabled }}
-        {{- $exporters = append $exporters "awss3" }}
-        {{- end }}
         {{- if .Values.otel.endpoint }}
         {{- $exporters = append $exporters "otlphttp/remote" }}
         {{- end }}

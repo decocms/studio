@@ -1,4 +1,4 @@
-# Default values for chart-deco-mcp-mesh.
+# Default values for chart-decocms.
 # The value below is only considered if autoscaling is disabled.
 replicaCount: 1
 
@@ -54,6 +54,7 @@ configMap:
     HOST: "0.0.0.0"
     BETTER_AUTH_URL: "http://localhost:8080"
     BASE_URL: "http://localhost:8080"
+    DATA_DIR: "/app/data"
     # PRESTOP_HEAP_SNAPSHOT_DIR: ""  # Optional: Directory for heap snapshots during preStop hook
   
   authConfig:
@@ -143,7 +144,7 @@ affinity: {}
 #         podAffinityTerm:
 #           labelSelector:
 #             matchLabels:
-#               app.kubernetes.io/name: chart-deco-mcp-mesh
+#               app.kubernetes.io/name: chart-decocms
 #           topologyKey: kubernetes.io/hostname
 
 # Topology Spread Constraints (optional - leave empty [] to disable)
@@ -155,8 +156,9 @@ topologySpreadConstraints:
     whenUnsatisfiable: ScheduleAnyway
     labelSelector:
       matchLabels:
-        app.kubernetes.io/name: chart-deco-mcp-mesh
-        app.kubernetes.io/instance: deco-mcp-mesh
+        app.kubernetes.io/name: chart-decocms
+        # Should match your Helm release name
+        app.kubernetes.io/instance: decocms
 
 # OpenTelemetry configuration (optional)
 otel:
@@ -188,16 +190,29 @@ otel:
         memory: "256Mi"
         cpu: "250m"
 
-  # S3 exporter (requires collector.enabled: true)
-  s3:
-    enabled: false
-    bucket: ""               # Required when enabled
-    region: "us-east-1"
-    prefix: "otel"
-    filePrefix: "otel"
-    marshaler: "otlp_json"   # otlp_json | sumo_ic
-    compression: "none"      # none | gzip
-    roleArn: ""              # IRSA role ARN — adds eks.amazonaws.com/role-arn to ServiceAccount
+# S3 file sync sidecar — syncs /app/data/{logs,traces,metrics} to S3
+s3Sync:
+  enabled: false
+  image:
+    repository: amazon/aws-cli
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  bucket: ""               # Required when enabled
+  region: "us-east-1"
+  prefix: ""               # S3 key prefix (e.g. "mesh/production")
+  interval: 30             # Polling interval in seconds
+  roleArn: ""              # IRSA role ARN — adds eks.amazonaws.com/role-arn to ServiceAccount
+  syncDirs:                # Directories under /app/data to sync
+    - logs
+    - traces
+    - metrics
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "100m"
 
 # Additional environment variables (merged with existing envs)
 env: []

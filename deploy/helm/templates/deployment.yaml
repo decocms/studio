@@ -1,16 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "chart-deco-mcp-mesh.fullname" . }}
+  name: {{ include "chart-decocms.fullname" . }}
   labels:
-    {{- include "chart-deco-mcp-mesh.labels" . | nindent 4 }}
+    {{- include "chart-decocms.labels" . | nindent 4 }}
 spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
   strategy:
-    type: {{ include "chart-deco-mcp-mesh.deploymentStrategy" . }}
-    {{- $strategyType := include "chart-deco-mcp-mesh.deploymentStrategy" . }}
+    type: {{ include "chart-decocms.deploymentStrategy" . }}
+    {{- $strategyType := include "chart-decocms.deploymentStrategy" . }}
     {{- if eq $strategyType "RollingUpdate" }}
     rollingUpdate:
       {{- if and .Values.strategy .Values.strategy.rollingUpdate }}
@@ -22,7 +22,7 @@ spec:
     {{- end }}
   selector:
     matchLabels:
-      {{- include "chart-deco-mcp-mesh.selectorLabels" . | nindent 6 }}
+      {{- include "chart-decocms.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       {{- with .Values.podAnnotations }}
@@ -30,7 +30,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "chart-deco-mcp-mesh.labels" . | nindent 8 }}
+        {{- include "chart-decocms.labels" . | nindent 8 }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -42,9 +42,9 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "chart-deco-mcp-mesh.serviceAccountName" . }}
+      serviceAccountName: {{ include "chart-decocms.serviceAccountName" . }}
       securityContext:
-        {{- include "chart-deco-mcp-mesh.podSecurityContext" . | nindent 8 }}
+        {{- include "chart-decocms.podSecurityContext" . | nindent 8 }}
       {{- if .Values.secret.authConfigSecretName }}
       initContainers:
         - name: build-auth-config
@@ -120,84 +120,91 @@ spec:
             - name: NODE_ENV
               valueFrom:
                 configMapKeyRef:
-                  name: {{ include "chart-deco-mcp-mesh.fullname" . }}-config
+                  name: {{ include "chart-decocms.fullname" . }}-config
                   key: NODE_ENV
             - name: PORT
               valueFrom:
                 configMapKeyRef:
-                  name: {{ include "chart-deco-mcp-mesh.fullname" . }}-config
+                  name: {{ include "chart-decocms.fullname" . }}-config
                   key: PORT
             - name: HOST
               valueFrom:
                 configMapKeyRef:
-                  name: {{ include "chart-deco-mcp-mesh.fullname" . }}-config
+                  name: {{ include "chart-decocms.fullname" . }}-config
                   key: HOST
             - name: BETTER_AUTH_URL
               valueFrom:
                 configMapKeyRef:
-                  name: {{ include "chart-deco-mcp-mesh.fullname" . }}-config
+                  name: {{ include "chart-decocms.fullname" . }}-config
                   key: BETTER_AUTH_URL
             - name: BETTER_AUTH_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "chart-deco-mcp-mesh.secretName" . }}
+                  name: {{ include "chart-decocms.secretName" . }}
                   key: BETTER_AUTH_SECRET
             - name: CLICKHOUSE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "chart-deco-mcp-mesh.secretName" . }}
+                  name: {{ include "chart-decocms.secretName" . }}
                   key: CLICKHOUSE_URL
             - name: DATABASE_URL
               {{- if eq (lower (default "sqlite" .Values.database.engine)) "postgresql" }}
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "chart-deco-mcp-mesh.secretName" . }}
+                  name: {{ include "chart-decocms.secretName" . }}
                   key: DATABASE_URL
               {{- else }}
               valueFrom:
                 configMapKeyRef:
-                  name: {{ include "chart-deco-mcp-mesh.fullname" . }}-config
+                  name: {{ include "chart-decocms.fullname" . }}-config
                   key: DATABASE_URL
               {{- end }}
             - name: BASE_URL
               valueFrom:
                 configMapKeyRef:
-                  name: {{ include "chart-deco-mcp-mesh.fullname" . }}-config
+                  name: {{ include "chart-decocms.fullname" . }}-config
                   key: BASE_URL
             {{- if .Values.configMap.meshConfig.DATABASE_PG_SSL }}
             - name: DATABASE_PG_SSL
               valueFrom:
                 configMapKeyRef:
-                  name: {{ include "chart-deco-mcp-mesh.fullname" . }}-config
+                  name: {{ include "chart-decocms.fullname" . }}-config
                   key: DATABASE_PG_SSL
             {{- end }}
             {{- if and .Values.configMap.meshConfig.NODE_EXTRA_CA_CERTS .Values.database.caCert }}
             - name: NODE_EXTRA_CA_CERTS
               valueFrom:
                 configMapKeyRef:
-                  name: {{ include "chart-deco-mcp-mesh.fullname" . }}-config
+                  name: {{ include "chart-decocms.fullname" . }}-config
                   key: NODE_EXTRA_CA_CERTS
             {{- end }}
             {{- if .Values.configMap.meshConfig.ENABLE_DEBUG_SERVER }}
             - name: ENABLE_DEBUG_SERVER
               valueFrom:
                 configMapKeyRef:
-                  name: {{ include "chart-deco-mcp-mesh.fullname" . }}-config
+                  name: {{ include "chart-decocms.fullname" . }}-config
                   key: ENABLE_DEBUG_SERVER
             {{- end }}
             {{- if .Values.configMap.meshConfig.DEBUG_PORT }}
             - name: DEBUG_PORT
               valueFrom:
                 configMapKeyRef:
-                  name: {{ include "chart-deco-mcp-mesh.fullname" . }}-config
+                  name: {{ include "chart-decocms.fullname" . }}-config
                   key: DEBUG_PORT
             {{- end }}
             {{- if .Values.configMap.meshConfig.PRESTOP_HEAP_SNAPSHOT_DIR }}
             - name: PRESTOP_HEAP_SNAPSHOT_DIR
               valueFrom:
                 configMapKeyRef:
-                  name: {{ include "chart-deco-mcp-mesh.fullname" . }}-config
+                  name: {{ include "chart-decocms.fullname" . }}-config
                   key: PRESTOP_HEAP_SNAPSHOT_DIR
+            {{- end }}
+            {{- if .Values.configMap.meshConfig.DATA_DIR }}
+            - name: DATA_DIR
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "chart-decocms.fullname" . }}-config
+                  key: DATA_DIR
             {{- end }}
             {{- if .Values.otel.enabled }}
             {{- if .Values.otel.protocol }}
@@ -217,11 +224,11 @@ spec:
             {{- end }}
             {{- if and .Values.otel.headers (not .Values.otel.collector.enabled) }}
             - name: OTEL_EXPORTER_OTLP_HEADERS
-              value: {{ include "chart-deco-mcp-mesh.otelHeaders" . | quote }}
+              value: {{ include "chart-decocms.otelHeaders" . | quote }}
             {{- end }}
             {{- if .Values.otel.attributes }}
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: {{ include "chart-deco-mcp-mesh.otelAttributes" . | quote }}
+              value: {{ include "chart-decocms.otelAttributes" . | quote }}
             {{- end }}
             {{- end }}
             {{- with .Values.env }}
@@ -256,7 +263,7 @@ spec:
               readOnly: true
             {{- end }}
             - name: data
-              mountPath: /app/data
+              mountPath: {{ .Values.configMap.meshConfig.DATA_DIR | default "/app/data" }}
             {{- if and (eq (lower (default "sqlite" .Values.database.engine)) "postgresql") .Values.database.caCert }}
             - name: ca-cert
               mountPath: /etc/ssl/certs
@@ -294,12 +301,10 @@ spec:
               port: 13133
             initialDelaySeconds: 5
             periodSeconds: 5
+          {{- with .Values.securityContext }}
           securityContext:
-            runAsNonRoot: true
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop:
-                - ALL
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- with .Values.otel.collector.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
@@ -307,6 +312,27 @@ spec:
           volumeMounts:
             - name: otel-collector-config
               mountPath: /etc/otel
+              readOnly: true
+      {{- end }}
+      {{- if .Values.s3Sync.enabled }}
+        - name: s3-sync
+          image: "{{ .Values.s3Sync.image.repository }}:{{ .Values.s3Sync.image.tag }}"
+          imagePullPolicy: {{ .Values.s3Sync.image.pullPolicy }}
+          command: ["/bin/sh", "/scripts/sync.sh"]
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.s3Sync.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.configMap.meshConfig.DATA_DIR | default "/app/data" }}
+              readOnly: true
+            - name: s3-sync-script
+              mountPath: /scripts
               readOnly: true
       {{- end }}
       {{- with .Values.extraContainers }}
@@ -319,7 +345,7 @@ spec:
             secretName: {{ .Values.secret.authConfigSecretName }}
         - name: auth-config-base
           configMap:
-            name: {{ include "chart-deco-mcp-mesh.fullname" . }}-auth-config
+            name: {{ include "chart-decocms.fullname" . }}-auth-config
             items:
               - key: auth-config.json
                 path: auth-config.json
@@ -328,7 +354,7 @@ spec:
         {{- else }}
         - name: auth-config
           configMap:
-            name: {{ include "chart-deco-mcp-mesh.fullname" . }}-auth-config
+            name: {{ include "chart-decocms.fullname" . }}-auth-config
             items:
               - key: auth-config.json
                 path: auth-config.json
@@ -336,7 +362,7 @@ spec:
         {{- if and (eq (lower (default "sqlite" .Values.database.engine)) "postgresql") .Values.database.caCert }}
         - name: ca-cert
           configMap:
-            name: {{ include "chart-deco-mcp-mesh.fullname" . }}-ca-cert
+            name: {{ include "chart-decocms.fullname" . }}-ca-cert
             items:
               - key: ca-cert.pem
                 path: ca-cert.pem
@@ -348,7 +374,7 @@ spec:
             claimName: {{ .Values.persistence.claimName }}
           {{- else }}
           persistentVolumeClaim:
-            claimName: {{ include "chart-deco-mcp-mesh.fullname" . }}-data
+            claimName: {{ include "chart-decocms.fullname" . }}-data
           {{- end }}
         {{- else }}
         - name: data
@@ -357,10 +383,19 @@ spec:
         {{- if and .Values.otel.enabled .Values.otel.collector.enabled }}
         - name: otel-collector-config
           configMap:
-            name: {{ include "chart-deco-mcp-mesh.fullname" . }}-otel-collector
+            name: {{ include "chart-decocms.fullname" . }}-otel-collector
             items:
               - key: config.yaml
                 path: config.yaml
+        {{- end }}
+        {{- if .Values.s3Sync.enabled }}
+        - name: s3-sync-script
+          configMap:
+            name: {{ include "chart-decocms.fullname" . }}-s3-sync
+            defaultMode: 0755
+            items:
+              - key: sync.sh
+                path: sync.sh
         {{- end }}
         {{- with .Values.volumes }}
           {{- toYaml . | nindent 8 }}
