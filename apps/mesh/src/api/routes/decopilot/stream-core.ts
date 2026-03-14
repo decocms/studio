@@ -308,6 +308,8 @@ export async function streamCore(
                 organization.id,
               );
               for (const conn of connections) {
+                // Skip the self connection (Mesh MCP)
+                if (conn.id.endsWith("_self")) continue;
                 const health = await ctx.storage.connections.testConnection(
                   conn.id,
                 );
