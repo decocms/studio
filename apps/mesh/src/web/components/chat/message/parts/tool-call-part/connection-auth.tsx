@@ -38,13 +38,38 @@ function parseAuthData(output: unknown): AuthData | null {
   };
 }
 
-type AuthState = "idle" | "authenticating" | "success" | "error";
+type AuthState = "idle" | "checking" | "authenticating" | "success" | "error";
 
 function AuthCard({ data }: { data: AuthData }) {
-  const [authState, setAuthState] = useState<AuthState>("idle");
+  // Check live token status on mount to handle page refreshes
+  const [authState, setAuthState] = useState<AuthState>(() => {
+    if (!data.needs_auth) return "success";
+    // Kick off a live check — will update state async
+    return "checking";
+  });
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const connected = authState === "success" || !data.needs_auth;
+  // Check live auth status (runs once via useState initializer + async update)
+  const [checked, setChecked] = useState(false);
+  if (!checked && authState === "checking" && data.connection_id) {
+    setChecked(true);
+    fetch(`/api/connections/${data.connection_id}/oauth-token/status`, {
+      credentials: "include",
+    })
+      .then((res) => res.json())
+      .then((status: { hasToken?: boolean; isExpired?: boolean }) => {
+        if (status.hasToken && !status.isExpired) {
+          setAuthState("success");
+        } else {
+          setAuthState("idle");
+        }
+      })
+      .catch(() => {
+        setAuthState("idle");
+      });
+  }
+
+  const connected = authState === "success";
 
   const handleAuthenticate = async () => {
     setAuthState("authenticating");
@@ -130,7 +155,7 @@ function AuthCard({ data }: { data: AuthData }) {
           <p className="text-xs text-destructive mt-0.5">{errorMsg}</p>
         )}
       </div>
-      {!connected && (
+      {!connected && authState !== "checking" && (
         <Button
           variant="outline"
           size="sm"
@@ -146,6 +171,9 @@ function AuthCard({ data }: { data: AuthData }) {
             "Authenticate"
           )}
         </Button>
+      )}
+      {authState === "checking" && (
+        <Loading01 size={12} className="animate-spin text-muted-foreground" />
       )}
     </div>
   );
@@ -168,9 +196,7 @@ export function ConnectionAuthPart({ part, latency }: ConnectionAuthPartProps) {
         title="Authenticate Connection"
         summary={
           data
-            ? data.needs_auth
-              ? `${data.title} needs authentication`
-              : `${data.title} is connected`
+            ? `${data.title}`
             : effectiveState === "loading"
               ? "Checking..."
               : ""
