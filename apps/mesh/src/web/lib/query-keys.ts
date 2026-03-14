@@ -270,4 +270,8 @@ export const KEYS = {
   // AI provider credits balance (scoped by locator + keyId)
   aiProviderCredits: (locator: string, keyId: string) =>
     ["ai-provider-credits", locator, keyId] as const,
+
+  // Connect Studio status (Claude Code MCP registration + auth)
+  connectStudioStatus: (orgSlug: string) =>
+    ["connect-studio-status", orgSlug] as const,
 } as const;
