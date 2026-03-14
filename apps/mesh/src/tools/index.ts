@@ -269,17 +269,17 @@ Use automations and events together to build reactive workflows (e.g. "when I ge
 - **TAGS_CREATE/DELETE/LIST** — tagging system.
 - **USER_GET** — current user info.
 
-## Code execution — for connected service tools
+## Code execution — for already-installed connection tools
 
-To interact with tools from **connected external services** (Gmail, Slack, databases, etc.), use the three CODE_EXECUTION tools in order.
+**CODE_EXECUTION tools are for calling tools from connections that are already installed and authenticated.** They are NOT for searching the registry/store — use \`REGISTRY_ITEM_SEARCH\` for that.
 
-**Important**: CODE_EXECUTION tools only search/run tools from external connections — they do NOT see Mesh MCP management tools. Those are always available as direct calls.
+Use these three tools in order to interact with installed external services (Gmail, Slack, databases, etc.):
 
-### Step 1: Search for tools
+### Step 1: Search for tools from installed connections
 \`\`\`
 CODE_EXECUTION_SEARCH_TOOLS({ query: "gmail" })
 \`\`\`
-Returns tool names and descriptions from connected services. Always do this first — don't guess tool names.
+Searches tools **only from installed, authenticated connections** — not from the registry or store. If this returns empty, the connection may not be installed yet (use \`REGISTRY_ITEM_SEARCH\` + \`CONNECTION_INSTALL\`) or may be unhealthy (use \`CONNECTION_TEST\`).
 
 ### Step 2: Get schemas
 \`\`\`
