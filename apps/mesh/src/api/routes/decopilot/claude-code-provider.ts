@@ -148,35 +148,6 @@ export async function streamClaudeCode(
     queryOpts.maxTurns = 30;
     // Let Claude Code use its default tools + MCP tools
     queryOpts.tools = undefined;
-
-    // Handle MCP elicitation requests (e.g. CONNECTION_AUTHENTICATE OAuth)
-    // by emitting a data part that the frontend renders as an auth card.
-    queryOpts.onElicitation = async (request) => {
-      if (request.mode === "url" && request.elicitationId) {
-        // Extract connection details from elicitationId (format: auth-{connId}-{timestamp})
-        const parts = (request.elicitationId ?? "").split("-");
-        const connectionId =
-          parts.length >= 2 ? parts.slice(1, -1).join("-") : "";
-
-        // Emit a data part for the frontend to render an inline auth card
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (writer.write as (msg: any) => void)({
-          type: "data-connection-auth",
-          data: {
-            connectionId,
-            title: request.message,
-            icon: null,
-            connectionUrl: request.url,
-            elicitationId: request.elicitationId,
-          },
-        });
-        // Return accept — the tool handler on the MCP server side will
-        // continue after this. The actual OAuth completion happens async
-        // when the user clicks the auth card in the frontend.
-        return { action: "accept" as const };
-      }
-      return { action: "decline" as const };
-    };
   }
 
   let conversation: ReturnType<typeof queryFn>;
