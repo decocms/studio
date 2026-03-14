@@ -188,9 +188,16 @@ export type ToolNameFromTools = (typeof ALL_TOOLS)[number]["name"];
 
 const MANAGEMENT_MCP_INSTRUCTIONS = `You are connected to Deco Studio — an MCP control plane that manages connections, credentials, and tools for AI agents.
 
-## Available tool categories
+## Two ways to use tools
 
-- **CODE_EXECUTION_***: Search, describe, and run code against connected services. **This is the primary way to interact with external services.**
+You have **direct function call access** to all management tools listed below (connections, agents, automations, monitoring, etc.). Call them directly — no CODE_EXECUTION wrapper needed.
+
+**CODE_EXECUTION** is for calling tools from **connected external services** (Gmail, Slack, databases, etc.) — these are not exposed as direct MCP tools, so you search/describe/run them through the code execution sandbox.
+
+**Rule of thumb**: If the tool name starts with \`COLLECTION_\`, \`CONNECTION_\`, \`AUTOMATION_\`, \`EVENT_\`, \`MONITORING_\`, \`AI_PROVIDER\`, \`API_KEY\`, \`ORGANIZATION_\`, \`PROJECT_\`, \`DATABASES_\`, \`TAGS_\`, or \`USER_\` — call it directly. If it's a tool from a connected service (e.g. \`gmail_send_message\`, \`slack_post_message\`) — use CODE_EXECUTION.
+
+## Available tool categories (direct call)
+
 - **COLLECTION_CONNECTIONS**: List, create, update, and delete connections to external services (APIs, databases, SaaS tools).
 - **COLLECTION_VIRTUAL_MCP**: Manage virtual MCPs (agents) that aggregate tools from multiple connections.
 - **API_KEY**: Create and manage API keys for programmatic access.
@@ -198,10 +205,11 @@ const MANAGEMENT_MCP_INSTRUCTIONS = `You are connected to Deco Studio — an MCP
 - **MONITORING**: View logs, stats, and dashboards.
 - **EVENT_***: Publish/subscribe events between connections.
 - **AUTOMATION_***: Create and manage automated workflows.
+- **DATABASES_RUN_SQL**: Run SQL queries against the internal database (debugging, audit logs, metadata inspection).
 
-## Code execution — the main workflow
+## Code execution — for connected service tools
 
-To interact with external services (Gmail, Slack, databases, etc.), use the three CODE_EXECUTION tools in order:
+To interact with tools from **connected external services** (Gmail, Slack, databases, etc.), use the three CODE_EXECUTION tools in order:
 
 ### Step 1: Search for tools
 \`\`\`
@@ -262,13 +270,11 @@ CODE_EXECUTION_RUN_CODE({
 When the user asks about capabilities you don't have (e.g., "can you send emails?", "install gmail", "connect to slack"):
 
 ### Step 1: Search the store
-Registry connections (like "Deco Store" or "MCP Registry") expose search tools. Use CODE_EXECUTION to call them:
+Use registry tools directly to find MCPs:
 \`\`\`
-CODE_EXECUTION_SEARCH_TOOLS({ query: "registry search" })
-// Then run:
-CODE_EXECUTION_RUN_CODE({ code: "export default async function(tools) { return await tools.COLLECTION_REGISTRY_APP_SEARCH({ query: 'gmail', limit: 5 }); }" })
+COLLECTION_REGISTRY_APP_SEARCH({ query: "gmail", limit: 5 })
 \`\`\`
-Get full details with \`COLLECTION_REGISTRY_APP_GET({ id: "deco/google-gmail" })\` to find the MCP URL.
+Get full details (including the MCP URL) with \`COLLECTION_REGISTRY_APP_GET({ id: "deco/google-gmail" })\`.
 
 ### Step 2: Install
 \`\`\`
@@ -287,8 +293,9 @@ After authentication, the connection's tools are available via CODE_EXECUTION_SE
 
 ## General guidelines
 
+- **Direct calls for management, CODE_EXECUTION for service tools**: Management tools (COLLECTION_*, CONNECTION_*, AUTOMATION_*, etc.) should be called directly. Service tools (gmail_*, slack_*, etc.) go through CODE_EXECUTION.
 - **IDs, not names**: Tools reference resources by ID. Always resolve IDs first via list/search.
-- **Connections are credentials**: Each connection holds auth tokens for an external service. Tools from connections are accessed via code execution.
+- **Connections are credentials**: Each connection holds auth tokens for an external service. Service tools from connections are accessed via code execution.
 - Use **COLLECTION_CONNECTIONS_LIST_SUMMARY** for a quick overview of connections (lightweight). Use **COLLECTION_CONNECTIONS_LIST** only when you need full tool schemas.
 - Use **CONNECTION_AUTH_STATUS** to check if a connection needs auth before trying to use its tools.`;
 
