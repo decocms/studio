@@ -7,6 +7,7 @@ import {
   DEFAULT_METRICS_DIR,
   MONITORING_LOG_ATTR,
   MONITORING_LOG_TYPE_VALUE,
+  MONITORING_LOG_TYPE_LLM_CALL,
   logRecordToMonitoringRow,
   hrTimeToMs,
   hrTimeToISO,
@@ -66,6 +67,7 @@ describe("logRecordToMonitoringRow", () => {
 
     expect(row.v).toBe(1);
     expect(row.id).toBe("log_test_123");
+    expect(row.type).toBe(MONITORING_LOG_TYPE_VALUE);
     expect(row.organization_id).toBe("org_test");
     expect(row.connection_id).toBe("conn_test");
     expect(row.connection_title).toBe("Test Server");
@@ -128,6 +130,7 @@ describe("logRecordToMonitoringRow", () => {
     const row = logRecordToMonitoringRow(record);
 
     expect(row.id).toBe("log_empty");
+    expect(row.type).toBe(MONITORING_LOG_TYPE_VALUE);
     expect(row.organization_id).toBe("");
     expect(row.connection_id).toBe("");
     expect(row.connection_title).toBe("");
@@ -220,6 +223,24 @@ describe("logRecordToMonitoringRow", () => {
 
     const row = logRecordToMonitoringRow(record);
     expect(row.id).toBe("custom_id_abc");
+  });
+
+  it("should persist llm_call type in the row", () => {
+    const record = makeLogRecord({
+      [MONITORING_LOG_ATTR.TYPE]: MONITORING_LOG_TYPE_LLM_CALL,
+    });
+    const row = logRecordToMonitoringRow(record);
+    expect(row.type).toBe(MONITORING_LOG_TYPE_LLM_CALL);
+  });
+
+  it("should default type to tool_call when attribute is absent", () => {
+    const record: LogRecordInput = {
+      id: "log_no_type",
+      timestampNano: BigInt(Date.now()) * 1_000_000n,
+      attributes: {},
+    };
+    const row = logRecordToMonitoringRow(record);
+    expect(row.type).toBe(MONITORING_LOG_TYPE_VALUE);
   });
 });
 

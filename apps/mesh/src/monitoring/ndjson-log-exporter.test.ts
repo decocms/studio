@@ -4,7 +4,7 @@ import { ExportResultCode } from "@opentelemetry/core";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { MONITORING_LOG_ATTR } from "./schema";
+import { MONITORING_LOG_ATTR, MONITORING_LOG_TYPE_LLM_CALL } from "./schema";
 import { makeTestMonitoringLogRecord, findNDJSONFiles } from "./test-utils";
 
 describe("NDJSONLogExporter", () => {
@@ -31,13 +31,17 @@ describe("NDJSONLogExporter", () => {
     expect(typeof exporter.forceFlush).toBe("function");
   });
 
-  it("should only export records with mesh.monitoring.type = tool_call", async () => {
+  it("should only export records with a known mesh.monitoring.type", async () => {
     const toolCallRecord = makeTestMonitoringLogRecord({
       [MONITORING_LOG_ATTR.TOOL_NAME]: "REAL_TOOL",
     });
-    const otherRecord = makeTestMonitoringLogRecord({});
+    const llmCallRecord = makeTestMonitoringLogRecord({
+      [MONITORING_LOG_ATTR.TOOL_NAME]: "gpt-4o",
+      [MONITORING_LOG_ATTR.TYPE]: MONITORING_LOG_TYPE_LLM_CALL,
+    });
+    const unknownRecord = makeTestMonitoringLogRecord({});
     // Remove the type attribute to simulate a non-monitoring record
-    delete (otherRecord.attributes as Record<string, unknown>)[
+    delete (unknownRecord.attributes as Record<string, unknown>)[
       MONITORING_LOG_ATTR.TYPE
     ];
 
@@ -48,7 +52,7 @@ describe("NDJSONLogExporter", () => {
     });
 
     await new Promise<{ code: number }>((resolve) => {
-      exporter.export([otherRecord as any], resolve);
+      exporter.export([unknownRecord as any], resolve);
     });
 
     let files = await findNDJSONFiles(tmpDir);
@@ -60,6 +64,13 @@ describe("NDJSONLogExporter", () => {
 
     files = await findNDJSONFiles(tmpDir);
     expect(files.length).toBe(1);
+
+    await new Promise<{ code: number }>((resolve) => {
+      exporter.export([llmCallRecord as any], resolve);
+    });
+
+    files = await findNDJSONFiles(tmpDir);
+    expect(files.length).toBe(2);
   });
 
   it("should write valid NDJSON (one JSON object per line)", async () => {

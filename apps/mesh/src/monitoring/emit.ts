@@ -35,6 +35,8 @@ export interface EmitMonitoringLogParams {
   userAgent: string | null;
   virtualMcpId: string | null;
   properties: Record<string, unknown> | null;
+  /** Override the mesh.monitoring.type attribute. Defaults to "tool_call". */
+  type?: string;
 }
 
 /**
@@ -64,7 +66,7 @@ export function emitMonitoringLog(
       severityText: params.isError ? "ERROR" : "INFO",
       body: params.toolName,
       attributes: {
-        [MONITORING_LOG_ATTR.TYPE]: MONITORING_LOG_TYPE_VALUE,
+        [MONITORING_LOG_ATTR.TYPE]: params.type ?? MONITORING_LOG_TYPE_VALUE,
         [MONITORING_LOG_ATTR.ORGANIZATION_ID]: params.organizationId,
         [MONITORING_LOG_ATTR.CONNECTION_ID]: params.connectionId,
         [MONITORING_LOG_ATTR.CONNECTION_TITLE]: params.connectionTitle,

@@ -8,6 +8,8 @@
 
 import type { MeshContext } from "@/core/mesh-context";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
+import { monitorLlmCall } from "@/monitoring/emit-llm-call";
+import { recordLlmCallMetrics } from "@/monitoring/record-llm-call-metrics";
 import { sanitizeProviderMetadata } from "@decocms/mesh-sdk";
 import { createUIMessageStream, stepCountIs, streamText } from "ai";
 import { getBuiltInTools } from "./built-in-tools";
@@ -84,6 +86,8 @@ export async function streamCore(
   let closeClients: (() => void) | undefined;
   let runStarted = false;
   let threadId: string | undefined;
+  let llmCallStartTime: number | undefined;
+  let llmCallLogged = false;
 
   try {
     // 1. Check model permissions
@@ -345,6 +349,7 @@ export async function streamCore(
 
         let reasoningStartAt: Date | null = null;
         let lastProviderMetadata: Record<string, unknown> | undefined;
+        llmCallStartTime = Date.now();
 
         const result = streamText({
           model: provider.aiSdk.languageModel(input.models.thinking.id),
@@ -356,8 +361,88 @@ export async function streamCore(
           maxOutputTokens,
           abortSignal: registrySignal,
           stopWhen: stepCountIs(PARENT_STEP_LIMIT),
+          onFinish: async ({
+            usage,
+            totalUsage,
+            finishReason,
+            request,
+            response,
+          }) => {
+            if (registrySignal.aborted) return;
+            const durationMs = Date.now() - (llmCallStartTime ?? Date.now());
+            llmCallLogged = true;
+            recordLlmCallMetrics({
+              ctx,
+              organizationId: input.organizationId,
+              modelId: input.models.thinking.id,
+              durationMs,
+              isError: false,
+              inputTokens: totalUsage.inputTokens,
+              outputTokens: totalUsage.outputTokens,
+            });
+            monitorLlmCall({
+              ctx,
+              organizationId: input.organizationId,
+              agentId: input.agent.id,
+              modelId: input.models.thinking.id,
+              modelTitle:
+                input.models.thinking.title ?? input.models.thinking.id,
+              credentialId: input.models.credentialId,
+              threadId: mem.thread.id,
+              durationMs,
+              isError: false,
+              finishReason,
+              usage: {
+                inputTokens: usage.inputTokens ?? 0,
+                outputTokens: usage.outputTokens ?? 0,
+                totalTokens: usage.totalTokens ?? 0,
+              },
+              totalUsage: {
+                inputTokens: totalUsage.inputTokens ?? 0,
+                outputTokens: totalUsage.outputTokens ?? 0,
+                totalTokens: totalUsage.totalTokens ?? 0,
+              },
+              request,
+              response,
+              userId: input.userId,
+              requestId: ctx.metadata.requestId,
+              userAgent: ctx.metadata.userAgent ?? null,
+            });
+          },
           onError: async (error) => {
             console.error("[decopilot:stream] Error", error);
+            if (registrySignal.aborted) {
+              throw error;
+            }
+            if (!llmCallLogged) {
+              const durationMs = Date.now() - (llmCallStartTime ?? Date.now());
+              llmCallLogged = true;
+              recordLlmCallMetrics({
+                ctx,
+                organizationId: input.organizationId,
+                modelId: input.models.thinking.id,
+                durationMs,
+                isError: true,
+                errorType: error instanceof Error ? error.name : "Error",
+              });
+              monitorLlmCall({
+                ctx,
+                organizationId: input.organizationId,
+                agentId: input.agent.id,
+                modelId: input.models.thinking.id,
+                modelTitle:
+                  input.models.thinking.title ?? input.models.thinking.id,
+                credentialId: input.models.credentialId,
+                threadId: mem.thread.id,
+                durationMs,
+                isError: true,
+                errorMessage:
+                  error instanceof Error ? error.message : String(error),
+                userId: input.userId,
+                requestId: ctx.metadata.requestId,
+                userAgent: ctx.metadata.userAgent ?? null,
+              });
+            }
             throw error;
           },
         });

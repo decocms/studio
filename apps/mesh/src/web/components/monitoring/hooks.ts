@@ -68,7 +68,13 @@ export function useMonitoringStats(
   }>({
     client,
     toolName: "MONITORING_STATS",
-    toolArguments: params,
+    toolArguments: {
+      ...params,
+      excludeConnectionIds: [
+        DECOPILOT_CONNECTION_ID,
+        ...(params.excludeConnectionIds ?? []),
+      ],
+    },
     staleTime: 30_000,
     ...queryOptions,
     select: (result) =>
@@ -113,7 +119,13 @@ export function useMonitoringTopTools(
   }>({
     client,
     toolName: "MONITORING_STATS",
-    toolArguments: params,
+    toolArguments: {
+      ...params,
+      excludeConnectionIds: [
+        DECOPILOT_CONNECTION_ID,
+        ...(params.excludeConnectionIds ?? []),
+      ],
+    },
     staleTime: 30_000,
     ...queryOptions,
     select: (result) =>

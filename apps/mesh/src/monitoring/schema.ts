@@ -28,6 +28,7 @@ export const DEFAULT_METRICS_DIR = join(DATA_DIR, "metrics");
 export interface MonitoringRow {
   v: 1;
   id: string;
+  type: string;
   organization_id: string;
   connection_id: string;
   connection_title: string;
@@ -81,6 +82,10 @@ export const MONITORING_LOG_ATTR = {
 } as const;
 
 export const MONITORING_LOG_TYPE_VALUE = "tool_call";
+export const MONITORING_LOG_TYPE_LLM_CALL = "llm_call";
+
+/** Connection ID used for all LLM calls emitted by Decopilot. */
+export const DECOPILOT_CONNECTION_ID = "decopilot";
 
 /** Minimal log-record-like input for conversion. */
 export interface LogRecordInput {
@@ -101,6 +106,7 @@ export function logRecordToMonitoringRow(
   return {
     v: 1,
     id: record.id,
+    type: getAttr(a, MONITORING_LOG_ATTR.TYPE) || MONITORING_LOG_TYPE_VALUE,
     organization_id: getAttr(a, MONITORING_LOG_ATTR.ORGANIZATION_ID),
     connection_id: getAttr(a, MONITORING_LOG_ATTR.CONNECTION_ID),
     connection_title: getAttr(a, MONITORING_LOG_ATTR.CONNECTION_TITLE),

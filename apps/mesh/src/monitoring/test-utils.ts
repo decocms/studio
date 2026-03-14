@@ -22,6 +22,7 @@ export function makeTestMonitoringRow(
   return {
     v: 1,
     id: `log_${Math.random().toString(36).slice(2)}`,
+    type: "test",
     organization_id: "org_test",
     connection_id: "conn_1",
     connection_title: "Test Server",

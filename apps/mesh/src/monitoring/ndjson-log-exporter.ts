@@ -6,11 +6,17 @@ import type {
 } from "@opentelemetry/sdk-logs";
 import {
   MONITORING_LOG_ATTR,
+  MONITORING_LOG_TYPE_LLM_CALL,
   MONITORING_LOG_TYPE_VALUE,
   logRecordToMonitoringRow,
   type MonitoringRow,
 } from "./schema";
 import { NDJSONExporter, type NDJSONExporterOptions } from "./ndjson-exporter";
+
+const EXPORTABLE_LOG_TYPES = new Set([
+  MONITORING_LOG_TYPE_VALUE,
+  MONITORING_LOG_TYPE_LLM_CALL,
+]);
 
 export type NDJSONLogExporterOptions = NDJSONExporterOptions;
 
@@ -32,8 +38,9 @@ export class NDJSONLogExporter implements LogRecordExporter {
 
     for (const record of logRecords) {
       if (
-        record.attributes[MONITORING_LOG_ATTR.TYPE] !==
-        MONITORING_LOG_TYPE_VALUE
+        !EXPORTABLE_LOG_TYPES.has(
+          record.attributes[MONITORING_LOG_ATTR.TYPE] as string,
+        )
       ) {
         continue;
       }
