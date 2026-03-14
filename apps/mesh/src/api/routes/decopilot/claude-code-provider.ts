@@ -239,6 +239,12 @@ export async function streamClaudeCode(
                 id: reasoningPartId,
               });
             }
+
+            // New text block after we already streamed text = new turn.
+            // Insert a separator so text doesn't run together.
+            if (event.content_block.type === "text" && streamedText) {
+              needsTextSeparator = true;
+            }
           }
 
           if (event.type === "content_block_delta" && event.delta) {
