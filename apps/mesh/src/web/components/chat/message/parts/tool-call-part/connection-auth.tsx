@@ -54,6 +54,53 @@ function AuthCard({ data }: { data: AuthData }) {
         connectionId: data.connection_id,
       });
       if (result.token) {
+        // Save the OAuth token to the connection so it persists
+        if (result.tokenInfo) {
+          try {
+            const res = await fetch(
+              `/api/connections/${data.connection_id}/oauth-token`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({
+                  accessToken: result.tokenInfo.accessToken,
+                  refreshToken: result.tokenInfo.refreshToken,
+                  expiresIn: result.tokenInfo.expiresIn,
+                  scope: result.tokenInfo.scope,
+                  clientId: result.tokenInfo.clientId,
+                  clientSecret: result.tokenInfo.clientSecret,
+                  tokenEndpoint: result.tokenInfo.tokenEndpoint,
+                }),
+              },
+            );
+            if (!res.ok) {
+              // Fallback: save raw token
+              await fetch(`/api/connections/${data.connection_id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ connection_token: result.token }),
+              });
+            }
+          } catch {
+            // Fallback: save raw token
+            await fetch(`/api/connections/${data.connection_id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({ connection_token: result.token }),
+            });
+          }
+        } else {
+          // No tokenInfo, save raw token
+          await fetch(`/api/connections/${data.connection_id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ connection_token: result.token }),
+          });
+        }
         setAuthState("success");
       } else {
         setAuthState("error");
