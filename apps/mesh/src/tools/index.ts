@@ -447,37 +447,10 @@ export const managementMCP = async (ctx: MeshContext) => {
         annotations: tool.annotations,
         _meta: tool._meta,
       },
-      async (args, extra) => {
+      async (args) => {
         ctx.access.setToolName(tool.name);
         try {
           const result = await tool.execute(args, ctx);
-
-          // CONNECTION_AUTHENTICATE: trigger MCP elicitation so the client
-          // can render an inline auth card (works for Claude Code and any
-          // MCP client that supports elicitation URL mode).
-          const authResult = result as Record<string, unknown> | null;
-          if (
-            tool.name === "CONNECTION_AUTHENTICATE" &&
-            authResult &&
-            authResult.needs_auth === true &&
-            typeof authResult.connection_url === "string"
-          ) {
-            const connId = authResult.connection_id as string;
-            const connTitle = authResult.title as string;
-            try {
-              await server.server.elicitInput(
-                {
-                  mode: "url" as const,
-                  message: `Authenticate ${connTitle}`,
-                  url: `/mcp/${connId}`,
-                  elicitationId: `auth-${connId}-${Date.now()}`,
-                },
-                { signal: extra.signal },
-              );
-            } catch {
-              // Client may not support elicitation — that's OK, fall through
-            }
-          }
 
           return {
             content: [{ type: "text" as const, text: JSON.stringify(result) }],

@@ -298,6 +298,36 @@ export async function streamCore(
             });
           }
 
+          // Emit auth cards for unhealthy connections.
+          // MCP elicitation isn't available (Claude Code's MCP client
+          // doesn't support it), so we check directly after the stream.
+          if (ccResult.calledAuthTool) {
+            try {
+              const connections = await ctx.storage.connections.list(
+                organization.id,
+              );
+              for (const conn of connections) {
+                const health = await ctx.storage.connections.testConnection(
+                  conn.id,
+                );
+                if (!health.healthy && conn.connection_url) {
+                  writer.write({
+                    type: "data-connection-auth",
+                    data: {
+                      connectionId: conn.id,
+                      title: conn.title,
+                      icon: conn.icon ?? null,
+                      connectionUrl: conn.connection_url,
+                      elicitationId: `auth-${conn.id}`,
+                    },
+                  });
+                }
+              }
+            } catch {
+              // Best-effort
+            }
+          }
+
           return;
         }
 
