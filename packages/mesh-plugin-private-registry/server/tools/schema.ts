@@ -212,6 +212,7 @@ const RegistrySearchItemSchema = z.object({
   tags: z.array(z.string()),
   categories: z.array(z.string()),
   is_public: z.boolean(),
+  is_unlisted: z.boolean(),
 });
 
 export const RegistrySearchOutputSchema = z.object({
