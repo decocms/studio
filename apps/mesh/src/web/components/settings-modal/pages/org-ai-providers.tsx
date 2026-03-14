@@ -244,12 +244,14 @@ export function ProviderCard({
       queryClient.invalidateQueries({
         queryKey: KEYS.aiProviderModels(locator, deletedKeyId),
       });
-      if (isClaudeCode) {
+      if (isClaudeCode && keys.length === 1) {
         fetch(`/api/${org.slug}/decopilot/connect-studio`, {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ target: "claude-code" }),
-        }).catch(() => {});
+        }).catch(() => {
+          toast.error("Failed to remove MCP from Claude Code");
+        });
         queryClient.invalidateQueries({
           queryKey: KEYS.connectStudioStatus(org.slug),
         });
@@ -372,12 +374,14 @@ export function ProviderCard({
       queryClient.invalidateQueries({ queryKey: KEYS.aiProviders(locator) });
 
       // Also register MCP in Claude Code CLI
+      let mcpRegistered = false;
       try {
         const res = await fetch(`/api/${org.slug}/decopilot/connect-studio`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ target: "claude-code" }),
         });
+        mcpRegistered = res.ok;
         if (!res.ok) {
           toast.error(
             "Connected as provider but failed to register MCP in Claude Code",
@@ -392,7 +396,9 @@ export function ProviderCard({
         queryKey: KEYS.connectStudioStatus(org.slug),
       });
 
-      toast.success("Claude Code connected!");
+      if (mcpRegistered) {
+        toast.success("Claude Code connected!");
+      }
     } catch (err) {
       toast.error(
         `Failed to connect: ${err instanceof Error ? err.message : String(err)}`,

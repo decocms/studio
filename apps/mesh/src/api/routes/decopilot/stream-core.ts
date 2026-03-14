@@ -273,17 +273,30 @@ export async function streamCore(
           });
 
           llmCallStartTime = Date.now();
-          const ccResult = await streamClaudeCode(writer, {
-            messages: allMessages,
-            abortController,
-            mcpEndpoint,
-            mcpHeaders,
-            agentId: input.agent.id,
-            agentMode: input.agent.mode,
-            threadId: mem.thread.id,
-            connectionId: input.models.credentialId,
-            model: input.models.thinking.id,
-          });
+          let ccResult: Awaited<ReturnType<typeof streamClaudeCode>>;
+          try {
+            ccResult = await streamClaudeCode(writer, {
+              messages: allMessages,
+              abortController,
+              mcpEndpoint,
+              mcpHeaders,
+              agentId: input.agent.id,
+              agentMode: input.agent.mode,
+              threadId: mem.thread.id,
+              connectionId: input.models.credentialId,
+              model: input.models.thinking.id,
+            });
+          } finally {
+            // Revoke the ephemeral API key after the stream completes
+            ctx.boundAuth.apiKey
+              .delete(apiKeyRecord.id)
+              .catch((err: unknown) => {
+                console.error(
+                  "[decopilot:stream] Failed to revoke Claude Code session key",
+                  err,
+                );
+              });
+          }
 
           // Record usage metrics
           if (ccResult.usage) {
@@ -296,6 +309,16 @@ export async function streamCore(
               inputTokens: ccResult.usage.inputTokens,
               outputTokens: ccResult.usage.outputTokens,
             });
+          }
+
+          // Persist the assistant response so it survives page reload
+          if (ccResult.responseText) {
+            const responseMessage: ChatMessage = {
+              id: generateMessageId(),
+              role: "assistant",
+              parts: [{ type: "text", text: ccResult.responseText }],
+            };
+            await saveMessagesToThread(responseMessage);
           }
 
           // Emit auth cards for unhealthy connections.

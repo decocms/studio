@@ -323,7 +323,9 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
   app.delete("/:org/decopilot/connect-studio", async (c) => {
     const ctx = c.get("meshContext");
-    if (!ctx.auth?.user?.id) {
+    ensureOrganization(c);
+    const userId = ctx.auth?.user?.id ?? ctx.auth?.apiKey?.userId;
+    if (!userId) {
       throw new HTTPException(401, { message: "Authentication required" });
     }
 

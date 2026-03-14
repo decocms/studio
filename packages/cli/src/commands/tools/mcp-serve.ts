@@ -43,11 +43,8 @@ export async function mcpServeCommand(options: McpServeOptions) {
     const headers: Record<string, string> = {};
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
-    } else {
-      // Fall back to session auth headers
-      const { getRequestAuthHeaders } = await import("../../lib/session.js");
-      Object.assign(headers, await getRequestAuthHeaders().catch(() => ({})));
     }
+    // Do NOT forward session auth to arbitrary URLs — require explicit --token
 
     client = new Client({ name: "deco-mcp-serve", version: "1.0.0" });
     await client.connect(

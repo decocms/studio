@@ -11,7 +11,16 @@
  * - For PGlite: the PGlite instance (for lifecycle management)
  */
 
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
+import {
+  closeSync,
+  constants as fsConstants,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "fs";
 import { type Dialect, Kysely, LogEvent, PostgresDialect } from "kysely";
 import { PGlite } from "@electric-sql/pglite";
 import { KyselyPGlite } from "kysely-pglite";
@@ -248,8 +257,25 @@ function acquirePGliteLock(dataDir: string): void {
     }
   }
 
-  // Write our real PID
-  writeFileSync(lockPath, String(process.pid));
+  // Write our real PID atomically (O_EXCL fails if file already exists,
+  // preventing TOCTOU races between the stale-lock check above and here)
+  try {
+    const fd = openSync(
+      lockPath,
+      fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL,
+    );
+    writeFileSync(fd, String(process.pid));
+    closeSync(fd);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "EEXIST") {
+      // Another process created the lock between our check and write
+      throw new Error(
+        `\n🔒 Another mesh process acquired the lock at ${dataDir}\n` +
+          `   Stop the other process first, or set DATA_DIR to use a separate database.\n`,
+      );
+    }
+    throw err;
+  }
 
   // Clean up on exit (normal, SIGINT, SIGTERM)
   const cleanup = () => {
@@ -427,8 +453,9 @@ export async function closeDatabase(database: MeshDatabase): Promise<void> {
   // so subsequent getDb() calls create a fresh instance.
   if (database === dbInstance) {
     dbInstance = null;
-    // Release the PGlite lock
+    // Release the PGlite lock and unregister the exit handler
     if (meshLockCleanup) {
+      process.removeListener("exit", meshLockCleanup);
       meshLockCleanup();
       meshLockCleanup = null;
     }
