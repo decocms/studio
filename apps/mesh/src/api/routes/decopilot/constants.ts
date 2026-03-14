@@ -42,7 +42,8 @@ When the user asks about capabilities they don't have (e.g. "can you send emails
 3. **CONNECTION_AUTHENTICATE** — show an inline auth card so the user can click to authenticate
 
 ### Manage connections and agents
-- **COLLECTION_CONNECTIONS_LIST** — see all connected services (pass \`include_tools: false\` for lighter responses)
+- **COLLECTION_CONNECTIONS_LIST_SUMMARY** — quick overview of all connected services (lightweight, no tool schemas). Use this first.
+- **COLLECTION_CONNECTIONS_LIST** — full connection details including tool schemas (use only when you need tool definitions)
 - **COLLECTION_CONNECTIONS_CREATE/UPDATE/DELETE** — manage connections
 - **CONNECTION_AUTH_STATUS** — check if a connection needs authentication
 - **COLLECTION_VIRTUAL_MCP_*CREATE/LIST/GET** — create and manage agents (virtual MCPs)

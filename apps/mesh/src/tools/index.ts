@@ -49,6 +49,7 @@ const CORE_TOOLS = [
   // Connection collection tools
   ConnectionTools.COLLECTION_CONNECTIONS_CREATE,
   ConnectionTools.COLLECTION_CONNECTIONS_LIST,
+  ConnectionTools.COLLECTION_CONNECTIONS_LIST_SUMMARY,
   ConnectionTools.COLLECTION_CONNECTIONS_GET,
   ConnectionTools.COLLECTION_CONNECTIONS_UPDATE,
   ConnectionTools.COLLECTION_CONNECTIONS_DELETE,
@@ -286,7 +287,7 @@ After authentication, the connection's tools are available via CODE_EXECUTION_SE
 
 - **IDs, not names**: Tools reference resources by ID. Always resolve IDs first via list/search.
 - **Connections are credentials**: Each connection holds auth tokens for an external service. Tools from connections are accessed via code execution.
-- **COLLECTION_CONNECTIONS_LIST** includes full tool schemas by default. Pass \`include_tools: false\` for lighter responses when you only need connection metadata.
+- Use **COLLECTION_CONNECTIONS_LIST_SUMMARY** for a quick overview of connections (lightweight). Use **COLLECTION_CONNECTIONS_LIST** only when you need full tool schemas.
 - Use **CONNECTION_AUTH_STATUS** to check if a connection needs auth before trying to use its tools.`;
 
 export const managementMCP = async (ctx: MeshContext) => {

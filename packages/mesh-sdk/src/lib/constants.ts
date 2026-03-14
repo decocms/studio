@@ -293,7 +293,7 @@ When the user asks about capabilities not yet connected (e.g., "can you send ema
 - **IDs, not names**: Tools reference resources by ID — resolve IDs via search first
 - **Handle errors**: Read error messages carefully and adjust
 - **Explain your plan**: Tell the user what you're doing before multi-step workflows
-- **COLLECTION_CONNECTIONS_LIST** includes full tool schemas by default. Pass \`include_tools: false\` for lighter responses when you only need connection metadata.`;
+- Use **COLLECTION_CONNECTIONS_LIST_SUMMARY** for a quick overview of connections. Use **COLLECTION_CONNECTIONS_LIST** only when you need full tool schemas.`;
 
 /**
  * Get well-known Decopilot Virtual MCP entity.
