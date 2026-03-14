@@ -9,7 +9,11 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "bun:test";
 import { auth } from "../auth";
-import { createDatabase, closeDatabase, type MeshDatabase } from "../database";
+import {
+  createTestDatabase,
+  closeTestDatabase,
+  type TestDatabase,
+} from "../database/test-db";
 import type { EventBus } from "../event-bus";
 import { createTestSchema } from "../storage/test-helpers";
 import type { Permission } from "../storage/types";
@@ -100,7 +104,7 @@ interface MCPRequest {
 // ============================================================================
 
 describe("Access Control Integration Tests", () => {
-  let database: MeshDatabase;
+  let database: TestDatabase;
   let app: Awaited<ReturnType<typeof createApp>>;
   let testUsers: Map<string, TestUser>;
   let testOrganizations: Map<string, TestOrganization>;
@@ -117,7 +121,7 @@ describe("Access Control Integration Tests", () => {
 
   beforeEach(async () => {
     // Create in-memory database
-    database = createDatabase(":memory:");
+    database = await createTestDatabase();
     await createTestSchema(database.db);
 
     // Create app instance with test database and mock event bus
@@ -141,7 +145,7 @@ describe("Access Control Integration Tests", () => {
   });
 
   afterEach(async () => {
-    await closeDatabase(database);
+    await closeTestDatabase(database);
     vi.restoreAllMocks();
   });
 

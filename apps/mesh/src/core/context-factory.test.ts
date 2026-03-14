@@ -1,7 +1,11 @@
 /* oxlint-disable no-explicit-any */
 import { afterAll, beforeAll, describe, expect, it, vi } from "bun:test";
 import type { Meter, Tracer } from "@opentelemetry/api";
-import { closeDatabase, createDatabase, type MeshDatabase } from "../database";
+import {
+  createTestDatabase,
+  closeTestDatabase,
+  type TestDatabase,
+} from "../database/test-db";
 import { createTestSchema } from "../storage/test-helpers";
 import { createMeshContextFactory } from "./context-factory";
 import type { BetterAuthInstance } from "./mesh-context";
@@ -30,15 +34,15 @@ const createMockEventBus = (): EventBus => ({
 });
 
 describe("createMeshContextFactory", () => {
-  let database: MeshDatabase;
+  let database: TestDatabase;
 
   beforeAll(async () => {
-    database = createDatabase(":memory:");
+    database = await createTestDatabase();
     await createTestSchema(database.db);
   });
 
   afterAll(async () => {
-    await closeDatabase(database);
+    await closeTestDatabase(database);
   });
 
   // Helper to create a mock Request object (factory expects Request, not Hono context)

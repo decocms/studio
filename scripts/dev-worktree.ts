@@ -3,8 +3,6 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { startWorktree } from "worktree-devservers";
 
-const local = process.argv.includes("--local");
-
 function loadDotEnv(path: string): Record<string, string> {
   try {
     const result: Record<string, string> = {};
@@ -39,10 +37,9 @@ startWorktree(slug, async (ctx) => {
   console.log(`🔌 ${ctx.slug}.localhost → Hono :${port}, Vite :${vitePort}`);
 
   const repoRoot = join(import.meta.dir, "..");
-  const dotEnv = local ? {} : loadDotEnv(join(repoRoot, "apps/mesh/.env"));
-  const command = local ? "dev:local" : "dev";
+  const dotEnv = loadDotEnv(join(repoRoot, "apps/mesh/.env"));
 
-  const child = Bun.spawn(["bun", "run", "--cwd=apps/mesh", command], {
+  const child = Bun.spawn(["bun", "run", "--cwd=apps/mesh", "dev"], {
     cwd: repoRoot,
     env: {
       ...process.env,

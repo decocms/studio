@@ -14,6 +14,7 @@ export async function createTestDb(): Promise<{
   pglite: PGlite;
 }> {
   const pglite = new PGlite();
+  await pglite.waitReady;
   const db = new Kysely<WorkflowDatabase>({
     dialect: new KyselyPGlite(pglite).dialect,
   });

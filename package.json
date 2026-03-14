@@ -19,10 +19,7 @@
   "private": true,
   "scripts": {
     "link": "deco link -p 3000 -e BASE_URL -- bun run dev",
-    "dev": "bun run --env-file=.env --cwd=apps/mesh dev",
-    "dev:local": "bun run --cwd=apps/mesh dev:local",
-    "dev:local:worktree": "bun run scripts/dev-worktree.ts --local",
-    "dev:local:conductor": "WORKTREE_SLUG=$CONDUCTOR_WORKSPACE_NAME bun run dev:local:worktree",
+    "dev": "bun run --env-file=.env scripts/dev.ts",
     "dev:worktree": "bun run scripts/dev-worktree.ts",
     "dev:conductor": "WORKTREE_SLUG=$CONDUCTOR_WORKSPACE_NAME bun run dev:worktree",
     "fmt": "biome format --write",
@@ -39,7 +36,10 @@
     "exorcise": "bun run clean && bun install --force",
     "knip": "knip",
     "benchmark": "bun run --cwd=apps/benchmark benchmark",
-    "benchmark:quick": "bun run --cwd=apps/benchmark benchmark:quick"
+    "benchmark:quick": "bun run --cwd=apps/benchmark benchmark:quick",
+    "services:up": "bun run scripts/dev-services-cli.ts up",
+    "services:down": "bun run scripts/dev-services-cli.ts down",
+    "services:status": "bun run scripts/dev-services-cli.ts status"
   },
   "type": "module",
   "workspaces": [

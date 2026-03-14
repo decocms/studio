@@ -23,7 +23,7 @@ const SERVER_ENTRY_POINT = join(SCRIPT_DIR, "../src/index.ts");
 const CLI_ENTRY_POINT = join(SCRIPT_DIR, "../src/cli.ts");
 const ALWAYS_INCLUDE = [
   "@jitl/quickjs-wasmfile-release-sync",
-  "@electric-sql/pglite",
+  "embedded-postgres",
 ];
 const ALWAYS_EXCLUDE = ["kysely-codegen", "@duckdb/node-bindings"];
 

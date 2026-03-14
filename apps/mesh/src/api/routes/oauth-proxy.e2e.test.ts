@@ -17,10 +17,10 @@ import {
   mock,
 } from "bun:test";
 import {
-  createDatabase,
-  closeDatabase,
-  type MeshDatabase,
-} from "../../database";
+  createTestDatabase,
+  closeTestDatabase,
+  type TestDatabase,
+} from "../../database/test-db";
 import {
   createTestSchema,
   seedCommonTestFixtures,
@@ -96,7 +96,7 @@ function createMockEventBus(): EventBus {
   };
 }
 
-let database: MeshDatabase;
+let database: TestDatabase;
 let app: Awaited<ReturnType<typeof createApp>>;
 const connectionMap = new Map<string, string>();
 
@@ -105,7 +105,7 @@ describe("MCP OAuth Proxy E2E", () => {
     // Restore all mocks in case other tests mocked global.fetch
     mock.restore();
 
-    database = createDatabase(":memory:");
+    database = await createTestDatabase();
     await createTestSchema(database.db);
     await seedCommonTestFixtures(database.db);
     app = await createApp({ database, eventBus: createMockEventBus() });
@@ -176,7 +176,7 @@ describe("MCP OAuth Proxy E2E", () => {
   });
 
   afterAll(async () => {
-    await closeDatabase(database);
+    await closeTestDatabase(database);
   });
 
   // ===========================================================================

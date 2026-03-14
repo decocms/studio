@@ -242,7 +242,7 @@ export async function createTestSchema(db: Kysely<Database>): Promise<void> {
 
 /**
  * Seed common parent records required by FK constraints.
- * PGlite (PostgreSQL) enforces FK constraints, so tests that insert into
+ * PostgreSQL enforces FK constraints, so tests that insert into
  * FK-constrained tables (e.g. connections) need parent records to exist first.
  */
 export async function seedCommonTestFixtures(
