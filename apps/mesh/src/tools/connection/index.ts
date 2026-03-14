@@ -15,8 +15,7 @@ export { COLLECTION_CONNECTIONS_DELETE } from "./delete";
 // Connection test tool
 export { CONNECTION_TEST } from "./test";
 
-// Connection management tools (store search, install, auth)
-export { CONNECTION_SEARCH_STORE } from "./search-store";
+// Connection management tools (install, auth)
 export { CONNECTION_INSTALL } from "./install";
 export { CONNECTION_AUTH_STATUS } from "./auth-status";
 export { CONNECTION_AUTHENTICATE } from "./authenticate";

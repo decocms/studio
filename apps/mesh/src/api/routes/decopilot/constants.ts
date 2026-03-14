@@ -57,10 +57,16 @@ CODE_EXECUTION_RUN_CODE({ code: "export default async function(tools) { return a
 
 ## How to find and install new connections
 
-When the user asks for capabilities that aren't connected yet:
+When the user asks for capabilities that aren't connected yet (e.g. "can you send emails?"):
 
-1. **CONNECTION_SEARCH_STORE** — search the Deco Store for MCPs matching the need
-2. **CONNECTION_INSTALL** — install it (creates a new connection)
+1. **Search the registry** — Registry connections (like "Deco Store" or "MCP Registry") expose tools like \`COLLECTION_REGISTRY_APP_SEARCH\` and \`COLLECTION_REGISTRY_APP_GET\`. Use CODE_EXECUTION_SEARCH_TOOLS to find them, then CODE_EXECUTION_RUN_CODE to search:
+   \`\`\`
+   export default async function(tools) {
+     return await tools.COLLECTION_REGISTRY_APP_SEARCH({ query: "gmail", limit: 5 });
+   }
+   \`\`\`
+   Then get full details (including the MCP URL) with \`COLLECTION_REGISTRY_APP_GET({ id: "deco/google-gmail" })\`.
+2. **CONNECTION_INSTALL** — install it as a connection using the URL from the registry result
 3. **CONNECTION_AUTHENTICATE** — if it needs OAuth, this shows an inline "Authenticate" button the user can click right in the chat. **Wait for them to complete it before proceeding.**
 
 After auth, the connection's tools become available via CODE_EXECUTION_SEARCH_TOOLS.
