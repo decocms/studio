@@ -188,24 +188,71 @@ export type ToolNameFromTools = (typeof ALL_TOOLS)[number]["name"];
 
 const MANAGEMENT_MCP_INSTRUCTIONS = `You are connected to Deco Studio — an MCP control plane that manages connections, credentials, and tools for AI agents.
 
+## What you're talking to
+
+This MCP server (Mesh MCP) is your primary interface to Deco Studio. It exposes **all management tools** as direct MCP tool calls — connections, agents, automations, monitoring, registry, and more. You also get **CODE_EXECUTION** tools for running code against external services connected to the platform.
+
 ## Two ways to use tools
 
-You have **direct function call access** to all management tools listed below (connections, agents, automations, monitoring, etc.). Call them directly — no CODE_EXECUTION wrapper needed.
+**1. Direct tool calls** — for all management/platform tools. These are the tools you see in your tool list. Call them directly by name.
 
-**CODE_EXECUTION** is for calling tools from **connected external services** (Gmail, Slack, databases, etc.) — these are not exposed as direct MCP tools, so you search/describe/run them through the code execution sandbox.
+**2. CODE_EXECUTION** — for calling tools from **connected external services** (Gmail, Slack, databases, etc.). These service tools aren't in your tool list — you discover and run them through the code execution sandbox.
 
-**Rule of thumb**: If the tool name starts with \`COLLECTION_\`, \`CONNECTION_\`, \`AUTOMATION_\`, \`EVENT_\`, \`MONITORING_\`, \`AI_PROVIDER\`, \`API_KEY\`, \`ORGANIZATION_\`, \`PROJECT_\`, \`DATABASES_\`, \`TAGS_\`, or \`USER_\` — call it directly. If it's a tool from a connected service (e.g. \`gmail_send_message\`, \`slack_post_message\`) — use CODE_EXECUTION.
+**Rule of thumb**: If it's in your tool list, call it directly. If it's a tool from a connected service (e.g. \`gmail_send_message\`, \`slack_post_message\`), use CODE_EXECUTION.
 
-## Available tool categories (direct call)
+## Your management tools (direct call)
 
-- **COLLECTION_CONNECTIONS**: List, create, update, and delete connections to external services (APIs, databases, SaaS tools).
-- **COLLECTION_VIRTUAL_MCP**: Manage virtual MCPs (agents) that aggregate tools from multiple connections.
-- **API_KEY**: Create and manage API keys for programmatic access.
-- **ORGANIZATION / PROJECT**: Manage workspaces and projects.
-- **MONITORING**: View logs, stats, and dashboards.
-- **EVENT_***: Publish/subscribe events between connections.
-- **AUTOMATION_***: Create and manage automated workflows.
-- **DATABASES_RUN_SQL**: Run SQL queries against the internal database (debugging, audit logs, metadata inspection).
+### Connections
+- **COLLECTION_CONNECTIONS_LIST_SUMMARY** — lightweight overview of all connections (name, status, tool count). **Start here** when exploring what's connected.
+- **COLLECTION_CONNECTIONS_LIST** — full details including tool schemas. Use only when you need the schema.
+- **COLLECTION_CONNECTIONS_CREATE/GET/UPDATE/DELETE** — CRUD for connections.
+- **CONNECTION_INSTALL** — install a new connection from a URL (e.g. from the registry).
+- **CONNECTION_TEST** — check if a connection is healthy and reachable.
+- **CONNECTION_AUTH_STATUS** — check if a connection needs authentication.
+- **CONNECTION_AUTHENTICATE** — trigger OAuth flow (shows an inline auth card the user can click).
+
+### Agents (Virtual MCPs)
+- **COLLECTION_VIRTUAL_MCP_CREATE/GET/UPDATE/DELETE/LIST** — manage agents. An agent bundles specific connections into a focused chat experience (e.g. "Support Agent" with Zendesk + Slack).
+- **COLLECTION_VIRTUAL_TOOLS_CREATE/GET/UPDATE/DELETE/LIST** — add custom JS tools to an agent.
+
+### Registry (MCP marketplace)
+These tools are part of your Mesh MCP — use them to search and install MCPs from the Deco Store or any configured registry:
+- **COLLECTION_REGISTRY_APP_SEARCH** — search for MCPs by keyword.
+- **COLLECTION_REGISTRY_APP_GET** — get full details including the MCP URL needed for installation.
+- **COLLECTION_REGISTRY_APP_LIST/FILTERS/VERSIONS** — browse and filter the registry.
+- **REGISTRY_ITEM_***, **REGISTRY_DISCOVER_TOOLS** — advanced registry management.
+
+### Automations
+- **AUTOMATION_CREATE/GET/UPDATE/DELETE/LIST** — background automations.
+- **AUTOMATION_TRIGGER_ADD/REMOVE** — define triggers (events, webhooks, cron).
+- **AUTOMATION_RUN** — manually trigger an automation.
+
+### Events
+- **EVENT_PUBLISH** — send events between connections (supports \`deliverAt\` for scheduled, \`cron\` for recurring).
+- **EVENT_SUBSCRIBE/UNSUBSCRIBE** — manage event subscriptions.
+- **EVENT_SUBSCRIPTION_LIST** — list active subscriptions.
+- **EVENT_CANCEL** — cancel a recurring cron event.
+- **EVENT_ACK** — acknowledge event delivery.
+
+### Monitoring & debugging
+- **MONITORING_LOGS_LIST** — recent tool call logs across all connections. Great for debugging.
+- **MONITORING_STATS** — usage statistics (calls, errors, latency).
+- **MONITORING_DASHBOARD_***, **MONITORING_WIDGET_PREVIEW** — create and manage dashboards.
+- **DATABASES_RUN_SQL** — run SQL against the internal database (audit logs, connection metadata, debugging).
+
+### Organization & workspace
+- **ORGANIZATION_CREATE/GET/UPDATE/DELETE/LIST** — manage organizations.
+- **ORGANIZATION_MEMBER_ADD/LIST/REMOVE/UPDATE_ROLE** — team management.
+- **ORGANIZATION_SETTINGS_GET/UPDATE** — org-level settings.
+- **PROJECT_CREATE/GET/UPDATE/DELETE/LIST** — manage projects within organizations.
+- **PROJECT_CONNECTION_ADD/LIST/REMOVE** — assign connections to projects.
+
+### Other
+- **API_KEY_CREATE/DELETE/LIST/UPDATE** — API keys for programmatic access to the platform.
+- **AI_PROVIDERS_LIST/ACTIVE** — configured LLM providers.
+- **AI_PROVIDER_KEY_CREATE/DELETE/LIST** — manage provider API keys (Anthropic, OpenRouter, etc.).
+- **TAGS_CREATE/DELETE/LIST** — tagging system.
+- **USER_GET** — current user info.
 
 ## Code execution — for connected service tools
 
@@ -265,39 +312,26 @@ CODE_EXECUTION_RUN_CODE({
    }
    \`\`\`
 
-## Finding and installing MCPs
+## Finding and installing new connections
 
-When the user asks about capabilities you don't have (e.g., "can you send emails?", "install gmail", "connect to slack"):
+When the user asks for capabilities that aren't connected yet (e.g. "can you send emails?"):
 
-### Step 1: Search the store
-Use registry tools directly to find MCPs:
-\`\`\`
-COLLECTION_REGISTRY_APP_SEARCH({ query: "gmail", limit: 5 })
-\`\`\`
-Get full details (including the MCP URL) with \`COLLECTION_REGISTRY_APP_GET({ id: "deco/google-gmail" })\`.
-
-### Step 2: Install
-\`\`\`
-CONNECTION_INSTALL({ title: "Gmail", connection_url: "https://...", icon: "..." })
-\`\`\`
-Creates a new connection. Returns whether authentication is needed.
-
-### Step 3: Authenticate (if needed)
-\`\`\`
-CONNECTION_AUTHENTICATE({ connection_id: "conn_..." })
-\`\`\`
-Shows an inline authentication card in the chat. The user can click to authenticate via OAuth popup. **Wait for the user to complete authentication before proceeding.**
-
-### Step 4: Use the tools
-After authentication, the connection's tools are available via CODE_EXECUTION_SEARCH_TOOLS.
+1. **Search the registry** — \`COLLECTION_REGISTRY_APP_SEARCH({ query: "gmail", limit: 5 })\`. Then get the MCP URL with \`COLLECTION_REGISTRY_APP_GET({ id: "deco/google-gmail" })\`.
+2. **Install** — \`CONNECTION_INSTALL({ title: "Gmail", connection_url: "https://...", icon: "..." })\`. Returns whether authentication is needed.
+3. **Authenticate (if needed)** — \`CONNECTION_AUTHENTICATE({ connection_id: "conn_..." })\`. Shows an inline auth card the user can click. **Wait for them to complete it.** If auth fails or the user cancels, use \`CONNECTION_AUTH_STATUS\` to check the state, and offer to retry or try a different auth method.
+4. **Use the tools** — after auth, the connection's tools are available via \`CODE_EXECUTION_SEARCH_TOOLS\`.
 
 ## General guidelines
 
-- **Direct calls for management, CODE_EXECUTION for service tools**: Management tools (COLLECTION_*, CONNECTION_*, AUTOMATION_*, etc.) should be called directly. Service tools (gmail_*, slack_*, etc.) go through CODE_EXECUTION.
+- **Direct calls for platform tools, CODE_EXECUTION for service tools**: If it's in your tool list, call it directly. If it's from a connected service, use CODE_EXECUTION.
+- **Explore first**: Use \`COLLECTION_CONNECTIONS_LIST_SUMMARY\` to see what's connected, \`MONITORING_STATS\` to see usage, \`MONITORING_LOGS_LIST\` to see recent activity.
 - **IDs, not names**: Tools reference resources by ID. Always resolve IDs first via list/search.
 - **Connections are credentials**: Each connection holds auth tokens for an external service. Service tools from connections are accessed via code execution.
-- Use **COLLECTION_CONNECTIONS_LIST_SUMMARY** for a quick overview of connections (lightweight). Use **COLLECTION_CONNECTIONS_LIST** only when you need full tool schemas.
-- Use **CONNECTION_AUTH_STATUS** to check if a connection needs auth before trying to use its tools.`;
+- **On errors**:
+  - "Not connected" / "401" → use \`CONNECTION_AUTH_STATUS\` then \`CONNECTION_AUTHENTICATE\`
+  - "Tool not found" → search again with different keywords via \`CODE_EXECUTION_SEARCH_TOOLS\`
+  - Schema validation errors → re-describe the tool via \`CODE_EXECUTION_DESCRIBE_TOOLS\`
+  - Timeout → retry or check \`CONNECTION_TEST\``;
 
 export const managementMCP = async (ctx: MeshContext) => {
   // Get enabled plugins for this organization to filter plugin tools
