@@ -287,15 +287,15 @@ export async function streamCore(
               model: input.models.thinking.id,
             });
           } finally {
-            // Revoke the ephemeral API key after the stream completes
-            ctx.boundAuth.apiKey
-              .delete(apiKeyRecord.id)
-              .catch((err: unknown) => {
-                console.error(
-                  "[decopilot:stream] Failed to revoke Claude Code session key",
-                  err,
-                );
-              });
+            // Revoke the ephemeral wildcard API key after the stream completes
+            try {
+              await ctx.boundAuth.apiKey.delete(apiKeyRecord.id);
+            } catch (err) {
+              console.error(
+                "[decopilot:stream] Failed to revoke Claude Code session key",
+                err,
+              );
+            }
           }
 
           // Record usage metrics
