@@ -65,13 +65,13 @@ function extractSystemPrompt(messages: ChatMessage[]): string {
 const CLAUDE_CODE_MODELS = [
   {
     id: "claude-code:opus",
-    sdkModel: "claude-opus-4-6-max",
+    sdkModel: "claude-opus-4-6",
     title: "Claude Code Opus",
     tier: "smarter" as const,
   },
   {
     id: "claude-code:sonnet",
-    sdkModel: "claude-sonnet-4-6-max",
+    sdkModel: "claude-sonnet-4-6",
     title: "Claude Code Sonnet",
     tier: "faster" as const,
   },
