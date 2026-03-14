@@ -317,6 +317,22 @@ export const managementMCP = async (ctx: MeshContext) => {
   // Core tools are always included, plugin tools only if their plugin is enabled
   const filteredTools = filterToolsByEnabledPlugins(ALL_TOOLS, enabledPlugins);
 
+  // Sync the self connection's stored tools snapshot (background, fire-and-forget).
+  // The self MCP connection stores a tool list at org creation time, which goes stale
+  // when plugins are enabled/disabled. This keeps it current so the UI and
+  // COLLECTION_CONNECTIONS_LIST show the correct tool count.
+  if (ctx.organization) {
+    const selfId = `${ctx.organization.id}_self`;
+    const toolSnapshot = filteredTools.map((t) => ({
+      name: t.name,
+      description: t.description ?? "",
+      inputSchema: {},
+    }));
+    ctx.storage.connections
+      .update(selfId, { tools: toolSnapshot })
+      .catch(() => {});
+  }
+
   // Create MCP server directly
   const server = new McpServer(
     { name: "deco-studio", version: "1.0.0" },
