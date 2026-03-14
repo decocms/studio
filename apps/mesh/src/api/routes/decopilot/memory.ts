@@ -104,12 +104,11 @@ export async function createMemory(
     if (existing) {
       thread = existing;
     } else {
-      // Thread not found in this org — always generate a fresh ID.
-      // We intentionally do not probe whether the ID exists in another org:
-      // that cross-org query would let callers enumerate foreign thread IDs
-      // by observing whether they receive their supplied ID back or a new one.
+      // Thread not found — create using the client-provided ID so the
+      // frontend and server stay in sync (avoids a thread-ID switch in
+      // onFinish which causes a full re-render cascade).
       thread = await storage.create({
-        id: generatePrefixedId("thrd"),
+        id: thread_id,
         organization_id,
         created_by: userId,
         trigger_id: triggerId ?? null,

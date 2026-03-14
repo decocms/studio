@@ -7,6 +7,7 @@
 
 import type { StreamCoreInput } from "@/api/routes/decopilot/stream-core";
 import type { Automation } from "@/storage/types";
+import { getDecopilotId } from "@decocms/mesh-sdk";
 
 export function buildStreamRequest(
   automation: Automation,
@@ -25,7 +26,11 @@ export function buildStreamRequest(
   const request: StreamCoreInput = {
     messages,
     models: JSON.parse(automation.models),
-    agent: { ...JSON.parse(automation.agent), mode: "passthrough" },
+    agent: (() => {
+      const parsed = JSON.parse(automation.agent);
+      const id = parsed.id || getDecopilotId(automation.organization_id);
+      return { ...parsed, id, mode: "passthrough" };
+    })(),
     temperature: automation.temperature ?? 0.5,
     toolApprovalLevel: "yolo",
     organizationId: automation.organization_id,

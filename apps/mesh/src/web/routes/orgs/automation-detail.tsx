@@ -62,12 +62,12 @@ import { ORG_ADMIN_PROJECT_SLUG, useProjectContext } from "@decocms/mesh-sdk";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
   ArrowLeft,
+  ArrowUp,
   Check,
   ChevronRight,
   Clock,
   Edit05,
   Loading01,
-  Play,
   Plus,
   SearchMd,
   Trash01,
@@ -504,9 +504,17 @@ function SettingsTab({
 }) {
   const updateMutation = useAutomationUpdate();
 
-  // Use the chat's effective credential/model as fallback (mirrors chat context
-  // which auto-selects the first available key).
-  const { credentialId: chatCredentialId, model: chatModel } = useChat();
+  // Chat hooks for running the automation
+  const {
+    createTask,
+    setVirtualMcpId,
+    setSelectedModel,
+    setSelectedMode,
+    sendMessage,
+    credentialId: chatCredentialId,
+    model: chatModel,
+  } = useChat();
+  const [, setChatOpen] = useDecoChatOpen();
 
   const initialTiptapDoc =
     (automation.messages?.[0] as { metadata?: Metadata } | undefined)?.metadata
@@ -553,7 +561,7 @@ function SettingsTab({
   const selectedModel: AiProviderModel | null =
     models.find((m) => m.modelId === watchModelId) ?? null;
 
-  const handleSave = async () => {
+  const handleSave = async (): Promise<boolean> => {
     const values = form.getValues();
     try {
       const coercedCredentialId =
@@ -585,8 +593,10 @@ function SettingsTab({
       });
       setSavedDoc(tiptapDoc);
       toast.success("Automation saved");
+      return true;
     } catch {
       toast.error("Failed to save automation");
+      return false;
     }
   };
 
@@ -595,17 +605,49 @@ function SettingsTab({
     setTiptapDoc(savedDoc);
   };
 
+  const isDirty =
+    form.formState.isDirty ||
+    JSON.stringify(tiptapDoc ?? null) !== JSON.stringify(savedDoc ?? null);
+
+  const handleRunClick = async () => {
+    if (isDirty) {
+      const saved = await handleSave();
+      if (!saved) return;
+    }
+
+    if (!tiptapDoc) {
+      toast.error("No message configured for this automation");
+      return;
+    }
+
+    const values = form.getValues();
+
+    // Set agent and model to match current form values
+    setVirtualMcpId(values.agent_id || null);
+    setSelectedMode("passthrough");
+    if (selectedModel && watchConnectionId) {
+      setSelectedModel({ ...selectedModel, keyId: watchConnectionId });
+    }
+
+    // Open chat and create a new thread
+    setChatOpen(true);
+    createTask();
+
+    // Send message after React flushes the new thread state
+    setTimeout(() => {
+      sendMessage(tiptapDoc, { toolApprovalLevel: "yolo" });
+    }, 0);
+  };
+
   return (
     <>
       <ViewActions>
         <SaveActions
-          onSave={handleSave}
+          onSave={async () => {
+            await handleSave();
+          }}
           onUndo={handleUndo}
-          isDirty={
-            form.formState.isDirty ||
-            JSON.stringify(tiptapDoc ?? null) !==
-              JSON.stringify(savedDoc ?? null)
-          }
+          isDirty={isDirty}
           isSaving={updateMutation.isPending}
         />
       </ViewActions>
@@ -654,7 +696,7 @@ function SettingsTab({
                 />
               </div>
 
-              {/* Right: Model selector */}
+              {/* Right: Model selector + Run button */}
               <div className="flex items-center gap-1.5">
                 <ModelSelector
                   model={selectedModel}
@@ -673,6 +715,16 @@ function SettingsTab({
                   }
                   placeholder="Model"
                 />
+                <Button
+                  type="button"
+                  variant="default"
+                  size="icon"
+                  className="size-8 rounded-full"
+                  onClick={handleRunClick}
+                  title="Test Automation"
+                >
+                  <ArrowUp size={20} />
+                </Button>
               </div>
             </div>
           </div>
@@ -875,46 +927,6 @@ export default function AutomationDetailPage() {
   const deleteMutation = useAutomationDelete();
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const {
-    createTask,
-    setVirtualMcpId,
-    setSelectedModel,
-    setSelectedMode,
-    sendMessage,
-  } = useChat();
-  const [, setChatOpen] = useDecoChatOpen();
-  // Resolve model for Run Now
-  const connectionId = automation?.models?.credentialId;
-  const modelId = automation?.models?.thinking?.id;
-  const { models } = useAiProviderModels(connectionId || undefined);
-  const resolvedModel = models.find((m) => m.modelId === modelId) ?? null;
-
-  const handleRun = () => {
-    const tiptapDoc = (
-      automation?.messages?.[0] as { metadata?: Metadata } | undefined
-    )?.metadata?.tiptapDoc;
-    if (!tiptapDoc) {
-      toast.error("No message configured for this automation");
-      return;
-    }
-
-    // Set agent and model to match automation config
-    setVirtualMcpId(automation?.agent?.id ?? null);
-    setSelectedMode("passthrough");
-    if (resolvedModel) {
-      setSelectedModel(resolvedModel);
-    }
-
-    // Open chat and create a new thread
-    setChatOpen(true);
-    createTask();
-
-    // Send message after React flushes the new thread state
-    setTimeout(() => {
-      sendMessage(tiptapDoc);
-    }, 0);
-  };
-
   const handleDelete = async () => {
     try {
       await deleteMutation.mutateAsync(automationId);
@@ -970,10 +982,6 @@ export default function AutomationDetailPage() {
   return (
     <ViewLayout breadcrumb={breadcrumb}>
       <ViewActions>
-        <Button variant="ghost" size="sm" className="h-7" onClick={handleRun}>
-          <Play size={14} />
-          Test Automation
-        </Button>
         <Button
           variant="ghost"
           size="sm"

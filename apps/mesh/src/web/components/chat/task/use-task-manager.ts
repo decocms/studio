@@ -222,7 +222,7 @@ export function useTaskManager() {
    * Create a new task
    * Generates a new task ID, optimistically adds it to cache, prefills message cache, and switches to it
    */
-  const createTask = () => {
+  const createTask = (): string => {
     const newTaskId = crypto.randomUUID();
     const optimisticTask = buildOptimisticTask(newTaskId);
 
@@ -245,6 +245,7 @@ export function useTaskManager() {
 
     // Switch to the new task
     setActiveTaskId(newTaskId);
+    return newTaskId;
   };
 
   /**
