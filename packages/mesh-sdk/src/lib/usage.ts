@@ -55,6 +55,21 @@ const PROVIDER_COST_EXTRACTORS: Record<string, ProviderCostExtractor> = {
     }
     return null;
   },
+  "claude-code": (providerMetadata) => {
+    const cc = providerMetadata?.["claude-code"];
+    if (
+      typeof cc === "object" &&
+      cc !== null &&
+      "usage" in cc &&
+      typeof cc.usage === "object" &&
+      cc.usage !== null &&
+      "cost" in cc.usage &&
+      typeof cc.usage.cost === "number"
+    ) {
+      return cc.usage.cost;
+    }
+    return null;
+  },
 };
 
 // ============================================================================

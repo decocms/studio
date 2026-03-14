@@ -199,6 +199,12 @@ const ConnectionListInputSchema = CollectionListInputSchema.extend({
     .describe(
       "Whether to include VIRTUAL connections in the results. Defaults to false.",
     ),
+  include_tools: z
+    .boolean()
+    .optional()
+    .describe(
+      "Whether to include full tool schemas per connection. Defaults to true. Set to false for lighter responses.",
+    ),
 });
 
 /**
@@ -314,8 +320,17 @@ export const COLLECTION_CONNECTIONS_LIST = defineTool({
     );
     const hasMore = offset + limit < totalCount;
 
+    // Strip tool schemas when explicitly excluded (they bloat AI responses)
+    const items =
+      input.include_tools === false
+        ? paginatedConnections.map(({ tools: _, ...rest }) => ({
+            ...rest,
+            tools: [],
+          }))
+        : paginatedConnections;
+
     return {
-      items: paginatedConnections,
+      items,
       totalCount,
       hasMore,
     };

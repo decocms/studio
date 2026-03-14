@@ -7,6 +7,7 @@ import type { ChatMessage } from "../types.ts";
 import { MessageStatsBar } from "../usage-stats.tsx";
 import { MessageTextPart } from "./parts/text-part.tsx";
 import {
+  ConnectionAuthPart,
   GenericToolCallPart,
   SubtaskPart,
   UserAskPart,
@@ -236,6 +237,15 @@ function MessagePart({
       return null;
     default: {
       const fallback = part as ToolUIPart;
+      // Inline auth card for CONNECTION_AUTHENTICATE tool
+      if (fallback.type === "tool-CONNECTION_AUTHENTICATE") {
+        return (
+          <ConnectionAuthPart
+            part={fallback}
+            latency={getMeta(fallback.toolCallId)?.latencySeconds}
+          />
+        );
+      }
       if (fallback.type.startsWith("tool-")) {
         const toolCallId = (fallback as ToolUIPart).toolCallId;
         const meta = dataParts.toolMetadata.get(toolCallId);

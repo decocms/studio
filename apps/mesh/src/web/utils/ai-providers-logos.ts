@@ -38,7 +38,7 @@ export const PROVIDER_LOGOS: Record<string, string> = {
   amazon:
     "https://assets.decocache.com/decocms/31e7b260-6cf0-4753-bb32-bd062b15c5f1/Amazon_icon.png",
   anthropic: ANTHROPIC_ICON_URL,
-  "claude-code": ANTHROPIC_ICON_URL,
+  "claude-code": "/logos/Claude Code.svg",
   "anthracite-org": DEFAULT_LOGO,
   "arcee-ai":
     "https://assets.decocache.com/decocms/ee325839-6acc-48dc-8cf7-8bab74698015/126496414.png",

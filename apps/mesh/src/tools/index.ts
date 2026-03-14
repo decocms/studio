@@ -53,6 +53,10 @@ const CORE_TOOLS = [
   ConnectionTools.COLLECTION_CONNECTIONS_UPDATE,
   ConnectionTools.COLLECTION_CONNECTIONS_DELETE,
   ConnectionTools.CONNECTION_TEST,
+  ConnectionTools.CONNECTION_SEARCH_STORE,
+  ConnectionTools.CONNECTION_INSTALL,
+  ConnectionTools.CONNECTION_AUTH_STATUS,
+  ConnectionTools.CONNECTION_AUTHENTICATE,
 
   // Virtual MCP collection tools
   VirtualMCPTools.COLLECTION_VIRTUAL_MCP_CREATE,
@@ -186,7 +190,7 @@ const MANAGEMENT_MCP_INSTRUCTIONS = `You are connected to Deco Studio — an MCP
 
 ## Available tool categories
 
-- **CODE_EXECUTION**: Search, describe, and run code in sandboxed environments. Use these to execute operations against connected services programmatically.
+- **CODE_EXECUTION_***: Search, describe, and run code against connected services. **This is the primary way to interact with external services.**
 - **COLLECTION_CONNECTIONS**: List, create, update, and delete connections to external services (APIs, databases, SaaS tools).
 - **COLLECTION_VIRTUAL_MCP**: Manage virtual MCPs (agents) that aggregate tools from multiple connections.
 - **API_KEY**: Create and manage API keys for programmatic access.
@@ -195,12 +199,95 @@ const MANAGEMENT_MCP_INSTRUCTIONS = `You are connected to Deco Studio — an MCP
 - **EVENT_***: Publish/subscribe events between connections.
 - **AUTOMATION_***: Create and manage automated workflows.
 
-## How to use effectively
+## Code execution — the main workflow
 
-1. **Start by listing**: Use LIST tools to discover what's available before creating or modifying.
-2. **IDs, not names**: Tools reference resources by ID. Always resolve IDs first via list/search.
-3. **Code execution flow**: Use CODE_EXECUTION_SEARCH to find available operations, CODE_EXECUTION_DESCRIBE to understand inputs/outputs, then CODE_EXECUTION_RUN to execute.
-4. **Connections are credentials**: Each connection holds auth tokens for an external service. Tools from connections are accessed via the virtual MCP / gateway.`;
+To interact with external services (Gmail, Slack, databases, etc.), use the three CODE_EXECUTION tools in order:
+
+### Step 1: Search for tools
+\`\`\`
+CODE_EXECUTION_SEARCH_TOOLS({ query: "gmail" })
+\`\`\`
+Returns tool names and descriptions. Always do this first — don't guess tool names.
+
+### Step 2: Get schemas
+\`\`\`
+CODE_EXECUTION_DESCRIBE_TOOLS({ tools: ["gmail_send_email"] })
+\`\`\`
+Returns full input/output schemas. Check exact parameter names and types before writing code.
+
+### Step 3: Run code
+**CRITICAL**: The \`code\` parameter must be an ES module that \`export default\`s an async function receiving \`tools\` as its argument.
+
+✅ Correct:
+\`\`\`
+CODE_EXECUTION_RUN_CODE({
+  code: "export default async function(tools) {\\n  const result = await tools.gmail_send_email({ to: 'user@example.com', subject: 'Hello', body: 'Hi there' });\\n  return result;\\n}"
+})
+\`\`\`
+
+❌ Wrong (bare return/await — will fail with syntax error):
+\`\`\`
+CODE_EXECUTION_RUN_CODE({
+  code: "return await tools.gmail_send_email({ ... })"
+})
+\`\`\`
+
+### Code execution rules
+
+1. **Always \`export default async function(tools)\`** — this is the only accepted format
+2. **Always \`return\`** the result so you can see the output
+3. **Use \`await\`** for all tool calls — they are async
+4. **Use bracket notation** for tool names with hyphens: \`tools["my-tool"](args)\`
+5. **Wrap in try/catch** for better error messages:
+   \`\`\`
+   export default async function(tools) {
+     try {
+       return await tools.gmail_list_emails({ maxResults: 5 });
+     } catch (e) {
+       return { error: e.message };
+     }
+   }
+   \`\`\`
+6. **Chain multiple tools** in a single run for complex workflows:
+   \`\`\`
+   export default async function(tools) {
+     const emails = await tools.gmail_list_emails({ maxResults: 3 });
+     const summaries = emails.map(e => e.subject);
+     return { count: emails.length, subjects: summaries };
+   }
+   \`\`\`
+
+## Finding and installing MCPs
+
+When the user asks about capabilities you don't have (e.g., "can you send emails?", "install gmail", "connect to slack"):
+
+### Step 1: Search the store
+\`\`\`
+CONNECTION_SEARCH_STORE({ query: "gmail" })
+\`\`\`
+Returns available MCPs from the Deco Store and community registry.
+
+### Step 2: Install
+\`\`\`
+CONNECTION_INSTALL({ title: "Gmail", connection_url: "https://...", icon: "..." })
+\`\`\`
+Creates a new connection. Returns whether authentication is needed.
+
+### Step 3: Authenticate (if needed)
+\`\`\`
+CONNECTION_AUTHENTICATE({ connection_id: "conn_..." })
+\`\`\`
+Shows an inline authentication card in the chat. The user can click to authenticate via OAuth popup. **Wait for the user to complete authentication before proceeding.**
+
+### Step 4: Use the tools
+After authentication, the connection's tools are available via CODE_EXECUTION_SEARCH_TOOLS.
+
+## General guidelines
+
+- **IDs, not names**: Tools reference resources by ID. Always resolve IDs first via list/search.
+- **Connections are credentials**: Each connection holds auth tokens for an external service. Tools from connections are accessed via code execution.
+- **COLLECTION_CONNECTIONS_LIST** includes full tool schemas by default. Pass \`include_tools: false\` for lighter responses when you only need connection metadata.
+- Use **CONNECTION_AUTH_STATUS** to check if a connection needs auth before trying to use its tools.`;
 
 export const managementMCP = async (ctx: MeshContext) => {
   // Get enabled plugins for this organization to filter plugin tools

@@ -57,6 +57,10 @@ const ALL_TOOL_NAMES = [
   "COLLECTION_CONNECTIONS_UPDATE",
   "COLLECTION_CONNECTIONS_DELETE",
   "CONNECTION_TEST",
+  "CONNECTION_SEARCH_STORE",
+  "CONNECTION_INSTALL",
+  "CONNECTION_AUTH_STATUS",
+  "CONNECTION_AUTHENTICATE",
   // Virtual MCP tools
   "COLLECTION_VIRTUAL_MCP_CREATE",
   "COLLECTION_VIRTUAL_MCP_LIST",
@@ -274,6 +278,26 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "CONNECTION_TEST",
     description: "Test connections",
+    category: "Connections",
+  },
+  {
+    name: "CONNECTION_SEARCH_STORE",
+    description: "Search MCP store",
+    category: "Connections",
+  },
+  {
+    name: "CONNECTION_INSTALL",
+    description: "Install MCP connections",
+    category: "Connections",
+  },
+  {
+    name: "CONNECTION_AUTH_STATUS",
+    description: "Check connection auth status",
+    category: "Connections",
+  },
+  {
+    name: "CONNECTION_AUTHENTICATE",
+    description: "Authenticate connections",
     category: "Connections",
   },
   {
@@ -686,6 +710,10 @@ const TOOL_LABELS: Record<ToolName, string> = {
   COLLECTION_CONNECTIONS_UPDATE: "Update connections",
   COLLECTION_CONNECTIONS_DELETE: "Delete connections",
   CONNECTION_TEST: "Test connections",
+  CONNECTION_SEARCH_STORE: "Search MCP store",
+  CONNECTION_INSTALL: "Install MCP connections",
+  CONNECTION_AUTH_STATUS: "Check connection auth",
+  CONNECTION_AUTHENTICATE: "Authenticate connections",
   DATABASES_RUN_SQL: "Run SQL queries",
   COLLECTION_VIRTUAL_MCP_CREATE: "Create virtual MCPs",
   COLLECTION_VIRTUAL_MCP_LIST: "List virtual MCPs",
