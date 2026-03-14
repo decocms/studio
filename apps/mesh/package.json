@@ -21,7 +21,6 @@
   "scripts": {
     "dev": "bun run migrate && concurrently \"bun run dev:client\" \"bun run dev:server\"",
     "dev:servers": "concurrently \"bun run dev:client\" \"bun run dev:server\"",
-    "dev:local": "MESH_LOCAL_MODE=true bun run dev",
     "dev:client": "bun --bun vite dev",
     "dev:server": "NODE_ENV=development bun --env-file=.env --hot run src/index.ts",
     "build:client": "bun --bun vite build",
@@ -40,6 +39,7 @@
     "@duckdb/node-api": "^1.5.0-r.1"
   },
   "dependencies": {
+    "embedded-postgres": "^18.3.0-beta.16",
     "@ai-sdk/anthropic": "^3.0.58",
     "@anthropic-ai/sdk": "^0.78.0",
     "@clickhouse/client": "^1.8.1",
