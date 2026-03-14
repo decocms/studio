@@ -1,8 +1,13 @@
+import { createHash } from "node:crypto";
 import type { Kysely } from "kysely";
 import type { CredentialVault } from "../encryption/credential-vault";
 import type { Database, ProviderKeyInfo } from "./types";
 import type { ProviderId } from "@decocms/mesh-sdk";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
+
+function hashApiKey(apiKey: string): string {
+  return createHash("sha256").update(apiKey).digest("hex");
+}
 
 export class AIProviderKeyStorage {
   constructor(
@@ -40,6 +45,7 @@ export class AIProviderKeyStorage {
   }): Promise<ProviderKeyInfo> {
     const id = generatePrefixedId("aik");
     const encryptedApiKey = await this.vault.encrypt(params.apiKey);
+    const keyHash = hashApiKey(params.apiKey);
     const createdAt = new Date();
 
     await this.db
@@ -50,6 +56,7 @@ export class AIProviderKeyStorage {
         provider_id: params.providerId,
         label: params.label,
         encrypted_api_key: encryptedApiKey,
+        key_hash: keyHash,
         created_by: params.createdBy,
         created_at: createdAt,
       })
@@ -63,6 +70,56 @@ export class AIProviderKeyStorage {
       created_by: params.createdBy,
       created_at: createdAt,
     });
+  }
+
+  /**
+   * Insert-or-update a key for a provider.
+   * If a row with the same (organization_id, provider_id, key_hash) already
+   * exists the label and audit fields are refreshed; the encrypted key and id
+   * remain unchanged. This makes the OAuth exchange idempotent when the
+   * upstream provider returns the same key on every authorization.
+   */
+  async upsert(params: {
+    providerId: ProviderId;
+    label: string;
+    apiKey: string; // plaintext — will be encrypted before storage
+    organizationId: string;
+    createdBy: string;
+  }): Promise<ProviderKeyInfo> {
+    const id = generatePrefixedId("aik");
+    const encryptedApiKey = await this.vault.encrypt(params.apiKey);
+    const keyHash = hashApiKey(params.apiKey);
+    const createdAt = new Date();
+
+    const row = await this.db
+      .insertInto("ai_provider_keys")
+      .values({
+        id,
+        organization_id: params.organizationId,
+        provider_id: params.providerId,
+        label: params.label,
+        encrypted_api_key: encryptedApiKey,
+        key_hash: keyHash,
+        created_by: params.createdBy,
+        created_at: createdAt,
+      })
+      .onConflict((oc) =>
+        oc.columns(["organization_id", "provider_id", "key_hash"]).doUpdateSet({
+          label: params.label,
+          created_by: params.createdBy,
+        }),
+      )
+      .returning([
+        "id",
+        "provider_id",
+        "label",
+        "organization_id",
+        "created_by",
+        "created_at",
+      ])
+      .executeTakeFirstOrThrow();
+
+    return this.rowToKeyInfo(row);
   }
 
   async list(params: {

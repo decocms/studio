@@ -40,6 +40,7 @@ export interface OAuthPkceParams {
   callbackUrl: string;
   codeChallenge: string; // base64url(sha256(codeVerifier))
   codeChallengeMethod: "S256";
+  organizationId?: string;
 }
 
 export interface OAuthPkceResult {

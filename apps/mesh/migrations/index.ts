@@ -39,6 +39,7 @@ import * as migration037aiproviderkeyss from "./037-ai-provider-keys.ts";
 import * as migration038oauthpkcestatess from "./038-oauth-pkce-states.ts";
 import * as migration039automations from "./039-automations.ts";
 import * as migration040replacenextrunatwithlastrunat from "./040-replace-next-run-at-with-last-run-at.ts";
+import * as migration041aiproviderkeysuniqueconstraint from "./041-ai-provider-keys-unique-constraint.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -91,6 +92,8 @@ const migrations: Record<string, Migration> = {
   "039-automations": migration039automations,
   "040-replace-next-run-at-with-last-run-at":
     migration040replacenextrunatwithlastrunat,
+  "041-ai-provider-keys-unique-constraint":
+    migration041aiproviderkeysuniqueconstraint,
 };
 
 export default migrations;
