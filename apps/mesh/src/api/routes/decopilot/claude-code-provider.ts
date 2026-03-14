@@ -196,6 +196,8 @@ export async function streamClaudeCode(
   let usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
   // Track whether CONNECTION_AUTHENTICATE was called so the caller can emit auth cards
   let calledAuthTool = false;
+  // Insert separator between text from different turns (after tool use)
+  let needsTextSeparator = false;
 
   const ensureTextStarted = () => {
     if (!textStarted) {
@@ -255,6 +257,14 @@ export async function streamClaudeCode(
               });
             } else if (delta.type === "text_delta" && delta.text) {
               ensureTextStarted();
+              if (needsTextSeparator) {
+                writer.write({
+                  type: "text-delta",
+                  delta: "\n\n",
+                  id: textPartId,
+                });
+                needsTextSeparator = false;
+              }
               streamedText = true;
               writer.write({
                 type: "text-delta",
@@ -308,6 +318,8 @@ export async function streamClaudeCode(
             delta: `\n${summaryText}\n`,
             id: reasoningPartId,
           });
+          // Next text output should start on a new line
+          needsTextSeparator = true;
           break;
         }
 
