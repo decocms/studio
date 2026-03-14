@@ -190,6 +190,7 @@ export async function streamClaudeCode(
   // Track which content we've already streamed via stream_event so we
   // don't duplicate it when the assistant message arrives.
   let streamedText = false;
+  let streamedReasoning = false;
 
   let totalCostUsd = 0;
   let usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
@@ -246,6 +247,7 @@ export async function streamClaudeCode(
               delta.thinking &&
               reasoningPartId
             ) {
+              streamedReasoning = true;
               writer.write({
                 type: "reasoning-delta",
                 delta: delta.thinking,
@@ -374,8 +376,12 @@ export async function streamClaudeCode(
           if (!Array.isArray(content)) break;
 
           for (const block of content) {
-            // Stream thinking content as reasoning
-            if (block.type === "thinking" && block.thinking) {
+            // Stream thinking content as reasoning (skip if already streamed via stream_event)
+            if (
+              block.type === "thinking" &&
+              block.thinking &&
+              !streamedReasoning
+            ) {
               if (!reasoningPartId) {
                 reasoningPartId = generateMessageId();
                 writer.write({ type: "reasoning-start", id: reasoningPartId });
