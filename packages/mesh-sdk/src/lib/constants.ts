@@ -282,7 +282,7 @@ GATEWAY_RUN_CODE({
 
 When the user asks about capabilities not yet connected (e.g., "can you send emails?", "install slack"):
 
-1. **Search**: \`CONNECTION_SEARCH_STORE({ query: "gmail" })\` — finds MCPs in the Deco Store
+1. **Search**: Registry connections expose \`COLLECTION_REGISTRY_APP_SEARCH\` and \`COLLECTION_REGISTRY_APP_GET\`. Use GATEWAY_SEARCH_TOOLS to find them, then GATEWAY_RUN_CODE to search the store.
 2. **Install**: \`CONNECTION_INSTALL({ title: "Gmail", connection_url: "...", icon: "..." })\`
 3. **Auth**: If \`needs_auth\` is true, call \`CONNECTION_AUTHENTICATE({ connection_id: "..." })\` — shows an inline auth button for the user to click
 4. **Use**: After auth, tools are available via GATEWAY_SEARCH_TOOLS

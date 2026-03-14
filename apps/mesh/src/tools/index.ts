@@ -54,7 +54,6 @@ const CORE_TOOLS = [
   ConnectionTools.COLLECTION_CONNECTIONS_UPDATE,
   ConnectionTools.COLLECTION_CONNECTIONS_DELETE,
   ConnectionTools.CONNECTION_TEST,
-  ConnectionTools.CONNECTION_SEARCH_STORE,
   ConnectionTools.CONNECTION_INSTALL,
   ConnectionTools.CONNECTION_AUTH_STATUS,
   ConnectionTools.CONNECTION_AUTHENTICATE,
@@ -263,10 +262,13 @@ CODE_EXECUTION_RUN_CODE({
 When the user asks about capabilities you don't have (e.g., "can you send emails?", "install gmail", "connect to slack"):
 
 ### Step 1: Search the store
+Registry connections (like "Deco Store" or "MCP Registry") expose search tools. Use CODE_EXECUTION to call them:
 \`\`\`
-CONNECTION_SEARCH_STORE({ query: "gmail" })
+CODE_EXECUTION_SEARCH_TOOLS({ query: "registry search" })
+// Then run:
+CODE_EXECUTION_RUN_CODE({ code: "export default async function(tools) { return await tools.COLLECTION_REGISTRY_APP_SEARCH({ query: 'gmail', limit: 5 }); }" })
 \`\`\`
-Returns available MCPs from the Deco Store and community registry.
+Get full details with \`COLLECTION_REGISTRY_APP_GET({ id: "deco/google-gmail" })\` to find the MCP URL.
 
 ### Step 2: Install
 \`\`\`

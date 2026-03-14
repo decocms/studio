@@ -58,7 +58,6 @@ const ALL_TOOL_NAMES = [
   "COLLECTION_CONNECTIONS_UPDATE",
   "COLLECTION_CONNECTIONS_DELETE",
   "CONNECTION_TEST",
-  "CONNECTION_SEARCH_STORE",
   "CONNECTION_INSTALL",
   "CONNECTION_AUTH_STATUS",
   "CONNECTION_AUTHENTICATE",
@@ -284,11 +283,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "CONNECTION_TEST",
     description: "Test connections",
-    category: "Connections",
-  },
-  {
-    name: "CONNECTION_SEARCH_STORE",
-    description: "Search MCP store",
     category: "Connections",
   },
   {
@@ -717,7 +711,6 @@ const TOOL_LABELS: Record<ToolName, string> = {
   COLLECTION_CONNECTIONS_UPDATE: "Update connections",
   COLLECTION_CONNECTIONS_DELETE: "Delete connections",
   CONNECTION_TEST: "Test connections",
-  CONNECTION_SEARCH_STORE: "Search MCP store",
   CONNECTION_INSTALL: "Install MCP connections",
   CONNECTION_AUTH_STATUS: "Check connection auth",
   CONNECTION_AUTHENTICATE: "Authenticate connections",
