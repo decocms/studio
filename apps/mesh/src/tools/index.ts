@@ -227,7 +227,7 @@ An agent bundles specific connections into a focused chat experience. When a use
 
 ### Registry (MCP marketplace)
 These tools are part of your Mesh MCP — use them to search and install MCPs from the Deco Store or any configured registry:
-- **COLLECTION_REGISTRY_APP_SEARCH** — search for MCPs by keyword.
+- **REGISTRY_ITEM_SEARCH** — search for MCPs by keyword. **This is the primary search tool.**
 - **COLLECTION_REGISTRY_APP_GET** — get full details including the MCP URL needed for installation.
 - **COLLECTION_REGISTRY_APP_LIST/FILTERS/VERSIONS** — browse and filter the registry.
 - **REGISTRY_ITEM_***, **REGISTRY_DISCOVER_TOOLS** — advanced registry management.
@@ -271,13 +271,15 @@ Use automations and events together to build reactive workflows (e.g. "when I ge
 
 ## Code execution — for connected service tools
 
-To interact with tools from **connected external services** (Gmail, Slack, databases, etc.), use the three CODE_EXECUTION tools in order:
+To interact with tools from **connected external services** (Gmail, Slack, databases, etc.), use the three CODE_EXECUTION tools in order.
+
+**Important**: CODE_EXECUTION tools only search/run tools from external connections — they do NOT see Mesh MCP management tools. Those are always available as direct calls.
 
 ### Step 1: Search for tools
 \`\`\`
 CODE_EXECUTION_SEARCH_TOOLS({ query: "gmail" })
 \`\`\`
-Returns tool names and descriptions. Always do this first — don't guess tool names.
+Returns tool names and descriptions from connected services. Always do this first — don't guess tool names.
 
 ### Step 2: Get schemas
 \`\`\`
@@ -333,7 +335,7 @@ When the user asks for capabilities that aren't connected yet (e.g. "can you sen
 
 \`\`\`
 // 1. Search the registry (direct call — it's a Mesh MCP tool)
-COLLECTION_REGISTRY_APP_SEARCH({ query: "gmail", limit: 5 })
+REGISTRY_ITEM_SEARCH({ query: "gmail", limit: 5 })
 
 // 2. Get the MCP URL from the result
 COLLECTION_REGISTRY_APP_GET({ id: "deco/google-gmail" })

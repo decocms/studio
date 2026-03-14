@@ -59,10 +59,10 @@ CODE_EXECUTION_RUN_CODE({ code: "export default async function(tools) { return a
 
 When the user asks for capabilities that aren't connected yet (e.g. "can you send emails?"):
 
-1. **Search the registry** — Registry connections (like "Deco Store" or "MCP Registry") expose tools like \`COLLECTION_REGISTRY_APP_SEARCH\` and \`COLLECTION_REGISTRY_APP_GET\`. Use CODE_EXECUTION_SEARCH_TOOLS to find them, then CODE_EXECUTION_RUN_CODE to search:
+1. **Search the registry** — Registry connections (like "Deco Store" or "MCP Registry") expose tools like \`REGISTRY_ITEM_SEARCH\` and \`COLLECTION_REGISTRY_APP_GET\`. Use CODE_EXECUTION_SEARCH_TOOLS to find them, then CODE_EXECUTION_RUN_CODE to search:
    \`\`\`
    export default async function(tools) {
-     return await tools.COLLECTION_REGISTRY_APP_SEARCH({ query: "gmail", limit: 5 });
+     return await tools.REGISTRY_ITEM_SEARCH({ query: "gmail", limit: 5 });
    }
    \`\`\`
    Then get full details (including the MCP URL) with \`COLLECTION_REGISTRY_APP_GET({ id: "deco/google-gmail" })\`.
