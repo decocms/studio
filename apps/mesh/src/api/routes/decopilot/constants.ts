@@ -61,7 +61,7 @@ When the user asks for capabilities that aren't connected yet (e.g. "can you sen
 
 1. **Search the registry** — use \`REGISTRY_ITEM_SEARCH({ query: "gmail", limit: 5 })\` to find MCPs in the store. Then get full details with \`COLLECTION_REGISTRY_APP_GET({ id: "deco/google-gmail" })\`.
 2. **CONNECTION_INSTALL** — install it as a connection using the URL from the registry result.
-3. **CONNECTION_AUTHENTICATE** — **always call this after install**. Most services need OAuth. This renders an inline "Authenticate" button the user can click. **Stop and wait** — do NOT say "ready to use" until the user completes authentication.
+3. **CONNECTION_AUTHENTICATE** — **always call this after install**. Most services need OAuth. An auth card with an "Authenticate" button will appear **below your message**. Tell the user to click it below (never say "above"). **Stop and wait** — do NOT say "ready to use" until the user completes authentication.
 
 After the user authenticates via the card, the connection's tools become available via CODE_EXECUTION_SEARCH_TOOLS.
 

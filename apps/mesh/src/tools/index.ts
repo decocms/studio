@@ -356,7 +356,7 @@ CODE_EXECUTION_DESCRIBE_TOOLS({ tools: ["gmail_send_message"] })
 CODE_EXECUTION_RUN_CODE({ code: "export default async function(tools) { ... }" })
 \`\`\`
 
-**Important**: Always call \`CONNECTION_AUTHENTICATE\` after installing a new connection, even if the install response is ambiguous. Most external services require OAuth. Do NOT tell the user "ready to use" until they've clicked the auth card and authenticated. If auth fails or the user cancels, use \`CONNECTION_AUTH_STATUS\` to check state and offer to retry.
+**Important**: Always call \`CONNECTION_AUTHENTICATE\` after installing a new connection, even if the install response is ambiguous. Most external services require OAuth. The auth card appears **below your message** (never say "above"). Do NOT tell the user "ready to use" until they've clicked the auth card and authenticated. If auth fails or the user cancels, use \`CONNECTION_AUTH_STATUS\` to check state and offer to retry.
 
 ## General guidelines
 
