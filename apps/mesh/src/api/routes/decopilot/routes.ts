@@ -5,7 +5,7 @@
  * Uses Memory and ModelProvider abstractions.
  */
 
-import type { MeshContext } from "@/core/mesh-context";
+import { getUserId, type MeshContext } from "@/core/mesh-context";
 import {
   consumeStream,
   createUIMessageStream,
@@ -324,8 +324,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   app.delete("/:org/decopilot/connect-studio", async (c) => {
     const ctx = c.get("meshContext");
     ensureOrganization(c);
-    const userId = ctx.auth?.user?.id ?? ctx.auth?.apiKey?.userId;
-    if (!userId) {
+    if (!getUserId(ctx)) {
       throw new HTTPException(401, { message: "Authentication required" });
     }
 
