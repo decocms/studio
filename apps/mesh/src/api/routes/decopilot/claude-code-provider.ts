@@ -23,10 +23,6 @@ async function getQuery() {
   return _query;
 }
 
-export function isClaudeCodeAvailable(): boolean {
-  return !!Bun.which("claude");
-}
-
 /**
  * Convert chat messages to a prompt string for the Claude Agent SDK.
  */
