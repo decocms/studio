@@ -53,59 +53,45 @@ function AuthCard({ data }: { data: AuthData }) {
       const result = await authenticateMcp({
         connectionId: data.connection_id,
       });
-      if (result.token) {
-        // Save the OAuth token to the connection so it persists
-        if (result.tokenInfo) {
-          try {
-            const res = await fetch(
-              `/api/connections/${data.connection_id}/oauth-token`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify({
-                  accessToken: result.tokenInfo.accessToken,
-                  refreshToken: result.tokenInfo.refreshToken,
-                  expiresIn: result.tokenInfo.expiresIn,
-                  scope: result.tokenInfo.scope,
-                  clientId: result.tokenInfo.clientId,
-                  clientSecret: result.tokenInfo.clientSecret,
-                  tokenEndpoint: result.tokenInfo.tokenEndpoint,
-                }),
-              },
-            );
-            if (!res.ok) {
-              // Fallback: save raw token
-              await fetch(`/api/connections/${data.connection_id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify({ connection_token: result.token }),
-              });
-            }
-          } catch {
-            // Fallback: save raw token
-            await fetch(`/api/connections/${data.connection_id}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              credentials: "include",
-              body: JSON.stringify({ connection_token: result.token }),
-            });
-          }
-        } else {
-          // No tokenInfo, save raw token
-          await fetch(`/api/connections/${data.connection_id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ connection_token: result.token }),
-          });
-        }
-        setAuthState("success");
-      } else {
+      if (!result.token) {
         setAuthState("error");
         setErrorMsg(result.error ?? "Authentication failed");
+        return;
       }
+
+      // Save the OAuth token to the connection so it persists
+      const tokenPayload = result.tokenInfo
+        ? {
+            accessToken: result.tokenInfo.accessToken,
+            refreshToken: result.tokenInfo.refreshToken,
+            expiresIn: result.tokenInfo.expiresIn,
+            scope: result.tokenInfo.scope,
+            clientId: result.tokenInfo.clientId,
+            clientSecret: result.tokenInfo.clientSecret,
+            tokenEndpoint: result.tokenInfo.tokenEndpoint,
+          }
+        : { accessToken: result.token };
+
+      const saveRes = await fetch(
+        `/api/connections/${data.connection_id}/oauth-token`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(tokenPayload),
+        },
+      );
+
+      if (!saveRes.ok) {
+        const errText = await saveRes.text().catch(() => "unknown error");
+        console.error(
+          "[auth-card] Failed to save token:",
+          saveRes.status,
+          errText,
+        );
+      }
+
+      setAuthState("success");
     } catch (err) {
       setAuthState("error");
       setErrorMsg(err instanceof Error ? err.message : "Authentication failed");

@@ -345,7 +345,7 @@ CONNECTION_INSTALL({ title: "Gmail", connection_url: "https://mcp.gmail.example.
 
 // 4. ALWAYS call CONNECTION_AUTHENTICATE after install
 CONNECTION_AUTHENTICATE({ connection_id: "conn_abc123" })
-// → renders an inline auth card the user can click. STOP here and wait for the user.
+// → an auth card will appear BELOW your message. STOP here and wait for the user.
 // Do NOT proceed or say "ready to use" until the user completes authentication.
 
 // 5. After user authenticates, use the new connection's tools via CODE_EXECUTION
