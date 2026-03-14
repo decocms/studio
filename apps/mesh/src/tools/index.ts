@@ -212,8 +212,16 @@ This MCP server (Mesh MCP) is your primary interface to Deco Studio. It exposes 
 - **CONNECTION_AUTHENTICATE** — trigger OAuth flow (shows an inline auth card the user can click).
 
 ### Agents (Virtual MCPs)
-- **COLLECTION_VIRTUAL_MCP_CREATE/GET/UPDATE/DELETE/LIST** — manage agents. An agent bundles specific connections into a focused chat experience (e.g. "Support Agent" with Zendesk + Slack).
+An agent bundles specific connections into a focused chat experience. When a user selects an agent, only that agent's connections and tools are available — reducing noise and keeping the AI focused.
+
+- **COLLECTION_VIRTUAL_MCP_CREATE/GET/UPDATE/DELETE/LIST** — manage agents.
 - **COLLECTION_VIRTUAL_TOOLS_CREATE/GET/UPDATE/DELETE/LIST** — add custom JS tools to an agent.
+
+**When to create an agent vs. just run code:**
+- **One-off task** ("send this email", "check my calendar") → use \`CODE_EXECUTION_RUN_CODE\` directly
+- **Persistent role** ("I want a sales assistant that uses Salesforce + Gmail + Slack") → create an agent with \`COLLECTION_VIRTUAL_MCP_CREATE\`, add the relevant connections
+
+**Custom tools (VIRTUAL_TOOLS_CREATE)** — use these when you want to **compose multiple service tools into a single, reusable tool** attached to an agent. For example, a "create_deal" tool that creates a Salesforce opportunity AND sends a Slack notification. If you're just chaining tools once, use \`CODE_EXECUTION_RUN_CODE\` instead.
 
 ### Registry (MCP marketplace)
 These tools are part of your Mesh MCP — use them to search and install MCPs from the Deco Store or any configured registry:
@@ -222,17 +230,22 @@ These tools are part of your Mesh MCP — use them to search and install MCPs fr
 - **COLLECTION_REGISTRY_APP_LIST/FILTERS/VERSIONS** — browse and filter the registry.
 - **REGISTRY_ITEM_***, **REGISTRY_DISCOVER_TOOLS** — advanced registry management.
 
-### Automations
-- **AUTOMATION_CREATE/GET/UPDATE/DELETE/LIST** — background automations.
-- **AUTOMATION_TRIGGER_ADD/REMOVE** — define triggers (events, webhooks, cron).
-- **AUTOMATION_RUN** — manually trigger an automation.
+### Automations & events
+Use automations and events together to build reactive workflows (e.g. "when I get an email, summarize it in Slack"):
 
-### Events
-- **EVENT_PUBLISH** — send events between connections (supports \`deliverAt\` for scheduled, \`cron\` for recurring).
-- **EVENT_SUBSCRIBE/UNSUBSCRIBE** — manage event subscriptions.
+- **AUTOMATION_CREATE/GET/UPDATE/DELETE/LIST** — background automations that run code when triggered.
+- **AUTOMATION_TRIGGER_ADD/REMOVE** — define what triggers them (event types, webhooks, cron schedules).
+- **AUTOMATION_RUN** — manually trigger an automation for testing.
+- **EVENT_PUBLISH** — send events between connections. Supports \`deliverAt\` for scheduled delivery and \`cron\` for recurring events.
+- **EVENT_SUBSCRIBE/UNSUBSCRIBE** — subscribe a connection to an event type.
 - **EVENT_SUBSCRIPTION_LIST** — list active subscriptions.
 - **EVENT_CANCEL** — cancel a recurring cron event.
-- **EVENT_ACK** — acknowledge event delivery.
+- **EVENT_ACK** — acknowledge event delivery (used in retry flows).
+
+**Common patterns:**
+- **React to events**: Create an automation, add a trigger for an event type (e.g. \`email.received\`), and the automation's code runs whenever that event fires.
+- **Scheduled tasks**: Use \`EVENT_PUBLISH\` with \`cron\` to create recurring events (e.g. daily digest), then subscribe an automation to process them.
+- **One-shot scheduled**: Use \`EVENT_PUBLISH\` with \`deliverAt\` for a single future delivery (e.g. send a reminder in 2 hours).
 
 ### Monitoring & debugging
 - **MONITORING_LOGS_LIST** — recent tool call logs across all connections. Great for debugging.
@@ -314,12 +327,31 @@ CODE_EXECUTION_RUN_CODE({
 
 ## Finding and installing new connections
 
-When the user asks for capabilities that aren't connected yet (e.g. "can you send emails?"):
+When the user asks for capabilities that aren't connected yet (e.g. "can you send emails?"), here's the full flow:
 
-1. **Search the registry** — \`COLLECTION_REGISTRY_APP_SEARCH({ query: "gmail", limit: 5 })\`. Then get the MCP URL with \`COLLECTION_REGISTRY_APP_GET({ id: "deco/google-gmail" })\`.
-2. **Install** — \`CONNECTION_INSTALL({ title: "Gmail", connection_url: "https://...", icon: "..." })\`. Returns whether authentication is needed.
-3. **Authenticate (if needed)** — \`CONNECTION_AUTHENTICATE({ connection_id: "conn_..." })\`. Shows an inline auth card the user can click. **Wait for them to complete it.** If auth fails or the user cancels, use \`CONNECTION_AUTH_STATUS\` to check the state, and offer to retry or try a different auth method.
-4. **Use the tools** — after auth, the connection's tools are available via \`CODE_EXECUTION_SEARCH_TOOLS\`.
+\`\`\`
+// 1. Search the registry (direct call — it's a Mesh MCP tool)
+COLLECTION_REGISTRY_APP_SEARCH({ query: "gmail", limit: 5 })
+
+// 2. Get the MCP URL from the result
+COLLECTION_REGISTRY_APP_GET({ id: "deco/google-gmail" })
+// → returns { server: { remotes: [{ url: "https://..." }] }, ... }
+
+// 3. Install it as a connection
+CONNECTION_INSTALL({ title: "Gmail", connection_url: "https://mcp.gmail.example.com/sse", icon: "https://..." })
+// → returns { connection_id: "conn_abc123", needs_auth: true }
+
+// 4. Authenticate (if needs_auth is true)
+CONNECTION_AUTHENTICATE({ connection_id: "conn_abc123" })
+// → shows inline auth card. Wait for the user to click and complete OAuth.
+
+// 5. Now use the new connection's tools via CODE_EXECUTION
+CODE_EXECUTION_SEARCH_TOOLS({ query: "send email" })
+CODE_EXECUTION_DESCRIBE_TOOLS({ tools: ["gmail_send_message"] })
+CODE_EXECUTION_RUN_CODE({ code: "export default async function(tools) { ... }" })
+\`\`\`
+
+If auth fails or the user cancels, use \`CONNECTION_AUTH_STATUS({ connection_id: "conn_abc123" })\` to check the state, and offer to retry.
 
 ## General guidelines
 
