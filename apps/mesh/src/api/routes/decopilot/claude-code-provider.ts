@@ -274,13 +274,29 @@ export async function streamClaudeCode(
           break;
         }
 
+        // Tool progress — fires during tool execution with tool_name
+        case "tool_progress": {
+          if ((message as { parent_tool_use_id?: string }).parent_tool_use_id) {
+            break;
+          }
+          const progressToolName =
+            (message as { tool_name?: string }).tool_name ?? "";
+
+          // Track CONNECTION_AUTHENTICATE calls so caller can emit auth cards.
+          // Claude Code prefixes MCP tools as mcp__<server>__<tool_name>.
+          if (progressToolName.includes("CONNECTION_AUTHENTICATE")) {
+            calledAuthTool = true;
+          }
+          break;
+        }
+
         // Tool use summary — emit as reasoning so user sees tool activity
         case "tool_use_summary": {
           if ((message as { parent_tool_use_id?: string }).parent_tool_use_id) {
             break;
           }
-          const toolName =
-            (message as { tool_name?: string }).tool_name ?? "tool";
+          const summaryText =
+            (message as { summary?: string }).summary ?? "Using tool...";
 
           // Show tool activity as reasoning
           if (!reasoningPartId) {
@@ -289,14 +305,9 @@ export async function streamClaudeCode(
           }
           writer.write({
             type: "reasoning-delta",
-            delta: `\nUsing tool: ${toolName}\n`,
+            delta: `\n${summaryText}\n`,
             id: reasoningPartId,
           });
-
-          // Track CONNECTION_AUTHENTICATE calls so caller can emit auth cards
-          if (toolName === "CONNECTION_AUTHENTICATE") {
-            calledAuthTool = true;
-          }
           break;
         }
 
