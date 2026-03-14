@@ -56,7 +56,11 @@ export const CONNECTION_AUTH_STATUS = defineTool({
     const hasScopes =
       connection.configuration_scopes &&
       connection.configuration_scopes.length > 0;
-    const needsAuth = !isHealthy && (hasOAuth || !!hasScopes);
+    const hasConfigState =
+      connection.configuration_state &&
+      Object.keys(connection.configuration_state).length > 0;
+    const needsAuth =
+      !isHealthy && (hasOAuth || (!!hasScopes && !hasConfigState));
 
     return {
       connection_id: connection.id,

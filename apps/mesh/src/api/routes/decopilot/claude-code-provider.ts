@@ -31,10 +31,15 @@ function messagesToPrompt(messages: ChatMessage[]): string {
 
   for (const msg of messages) {
     if (msg.role === "system") continue;
+    const textParts: string[] = [];
     for (const part of msg.parts ?? []) {
       if ("text" in part && typeof part.text === "string") {
-        parts.push(part.text);
+        textParts.push(part.text);
       }
+    }
+    if (textParts.length > 0) {
+      const prefix = msg.role === "assistant" ? "Assistant" : "User";
+      parts.push(`${prefix}: ${textParts.join("\n")}`);
     }
   }
 
@@ -105,6 +110,8 @@ export async function streamClaudeCode(
   costUsd: number;
   usage: { inputTokens: number; outputTokens: number; totalTokens: number };
   calledAuthTool: boolean;
+  /** Accumulated text from the response, for persistence */
+  responseText: string;
 }> {
   const queryFn = await getQuery();
 
@@ -190,6 +197,7 @@ export async function streamClaudeCode(
 
   let totalCostUsd = 0;
   let usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+  let responseText = "";
   // Track whether CONNECTION_AUTHENTICATE was called so the caller can emit auth cards
   let calledAuthTool = false;
   // Insert separator between text from different turns (after tool use)
@@ -265,9 +273,11 @@ export async function streamClaudeCode(
                   delta: "\n\n",
                   id: textPartId,
                 });
+                responseText += "\n\n";
                 needsTextSeparator = false;
               }
               streamedText = true;
+              responseText += delta.text;
               writer.write({
                 type: "text-delta",
                 delta: delta.text,
@@ -469,5 +479,5 @@ export async function streamClaudeCode(
     },
   });
 
-  return { costUsd: totalCostUsd, usage, calledAuthTool };
+  return { costUsd: totalCostUsd, usage, calledAuthTool, responseText };
 }

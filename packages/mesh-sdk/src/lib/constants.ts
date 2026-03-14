@@ -284,8 +284,8 @@ When the user asks about capabilities not yet connected (e.g., "can you send ema
 
 1. **Search**: Registry connections expose \`REGISTRY_ITEM_SEARCH\` and \`COLLECTION_REGISTRY_APP_GET\`. Use GATEWAY_SEARCH_TOOLS to find them, then GATEWAY_RUN_CODE to search the store.
 2. **Install**: \`CONNECTION_INSTALL({ title: "Gmail", connection_url: "...", icon: "..." })\`
-3. **Auth**: If \`needs_auth\` is true, call \`CONNECTION_AUTHENTICATE({ connection_id: "..." })\` — shows an inline auth button for the user to click
-4. **Use**: After auth, tools are available via GATEWAY_SEARCH_TOOLS
+3. **Auth**: If \`needs_auth\` is true, call \`CONNECTION_AUTHENTICATE({ connection_id: "..." })\` — shows an inline auth button for the user to click. **Wait for the user to complete OAuth** before proceeding — they need to click the button and authorize in their browser.
+4. **Use**: After the user confirms auth is complete, tools are available via GATEWAY_SEARCH_TOOLS
 
 ## Best practices
 

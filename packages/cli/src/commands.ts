@@ -539,14 +539,21 @@ const mcpServe = new Command("mcp-serve")
   .option("--token <token>", "Bearer token / API key for authentication")
   .action(async (options) => {
     const { mcpServeCommand } = await import("./commands/tools/mcp-serve.js");
-    const config = await getConfig();
-    await mcpServeCommand({
-      workspace: options.workspace ?? config.workspace,
-      integration: options.integration,
-      local: config.local,
-      url: options.url,
-      token: options.token,
-    });
+    if (options.url) {
+      // Direct URL mode — skip workspace config
+      await mcpServeCommand({
+        url: options.url,
+        token: options.token,
+      });
+    } else {
+      const config = await getConfig();
+      await mcpServeCommand({
+        workspace: options.workspace ?? config.workspace,
+        integration: options.integration,
+        local: config.local,
+        token: options.token,
+      });
+    }
   });
 
 // Completion command implementation (internal command)
