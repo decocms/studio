@@ -227,6 +227,38 @@ export function getWellKnownMcpStudioConnection(): ConnectionCreateData {
 }
 
 /**
+ * Master prompt for the Decopilot MCP server.
+ * Sent as `instructions` during MCP initialize — Claude Code and other
+ * clients use this to understand the server's purpose and capabilities.
+ */
+const DECOPILOT_MCP_INSTRUCTIONS = `You are connected to Deco Studio via MCP (Model Context Protocol).
+
+## What is Deco Studio?
+
+Deco Studio is an MCP control plane — a unified layer that manages connections to external services (APIs, databases, SaaS tools) and exposes them as MCP tools. Your tools come from the user's configured connections.
+
+## How tools work
+
+Each tool you see comes from a connection the user has configured in their Studio workspace. Tools follow naming patterns based on their source:
+- Connection tools are prefixed or grouped by the connection they come from
+- Tools accept structured JSON input and return structured JSON output
+- Some tools may be slow (external API calls) — inform the user when waiting
+
+## Key capabilities
+
+1. **Data access**: Query databases, fetch API data, read files from connected services
+2. **Actions**: Create/update/delete records, send messages, trigger workflows
+3. **Multi-service orchestration**: Chain tools across different connections to accomplish complex tasks
+
+## Best practices
+
+- **List tools first**: Call the appropriate list/search tools before attempting to create or modify resources
+- **Be precise with IDs**: Tools use IDs (not names) to reference resources — always resolve IDs first
+- **Handle errors gracefully**: If a tool call fails, read the error message carefully and adjust your approach
+- **Explain what you're doing**: Tell the user which tools you're calling and why before executing multi-step workflows
+- **Batch when possible**: If you need to perform many similar operations, look for batch/bulk tools first`;
+
+/**
  * Get well-known Decopilot Virtual MCP entity.
  * This is the default agent that aggregates ALL org connections.
  *
@@ -247,7 +279,7 @@ export function getWellKnownDecopilotVirtualMCP(
     updated_at: new Date().toISOString(),
     created_by: "system",
     updated_by: undefined,
-    metadata: { instructions: null },
+    metadata: { instructions: DECOPILOT_MCP_INSTRUCTIONS },
     connections: [], // Empty connections array - gateway.ts will populate with all org connections
   };
 }

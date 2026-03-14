@@ -204,16 +204,6 @@ export async function streamClaudeCode(
     for await (const message of conversation) {
       if (abortController.signal.aborted) break;
 
-      const msg = message as Record<string, unknown>;
-      console.log(
-        "[claude-code] SDK message:",
-        msg.type,
-        msg.subtype ?? "",
-        msg.type === "stream_event"
-          ? (msg.event as { type?: string })?.type
-          : "",
-      );
-
       switch (message.type) {
         case "stream_event": {
           // Only handle main thread events (no subagent)
@@ -281,10 +271,11 @@ export async function streamClaudeCode(
 
         // Tool use summary — emit as reasoning so user sees tool activity
         case "tool_use_summary": {
-          if ((msg as { parent_tool_use_id?: string }).parent_tool_use_id) {
+          if ((message as { parent_tool_use_id?: string }).parent_tool_use_id) {
             break;
           }
-          const toolName = (msg as { tool_name?: string }).tool_name ?? "tool";
+          const toolName =
+            (message as { tool_name?: string }).tool_name ?? "tool";
 
           // Show tool activity as reasoning
           if (!reasoningPartId) {

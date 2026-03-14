@@ -522,6 +522,33 @@ const callTool = new Command("call-tool")
     }
   });
 
+// MCP serve command - stdio bridge to mesh
+const mcpServe = new Command("mcp-serve")
+  .description(
+    "Start an MCP stdio server that proxies to a running Mesh instance.",
+  )
+  .option("-w, --workspace <workspace>", "Workspace name")
+  .option(
+    "-i, --integration <integration>",
+    "Integration ID to expose tools from",
+  )
+  .option(
+    "--url <url>",
+    "Direct MCP endpoint URL (e.g. http://localhost:3000/mcp)",
+  )
+  .option("--token <token>", "Bearer token / API key for authentication")
+  .action(async (options) => {
+    const { mcpServeCommand } = await import("./commands/tools/mcp-serve.js");
+    const config = await getConfig();
+    await mcpServeCommand({
+      workspace: options.workspace ?? config.workspace,
+      integration: options.integration,
+      local: config.local,
+      url: options.url,
+      token: options.token,
+    });
+  });
+
 // Completion command implementation (internal command)
 const completion = new Command("completion")
   .description("Generate shell completions (internal command)")
@@ -1230,6 +1257,7 @@ export const program = new Command()
   .addCommand(configure)
   .addCommand(add)
   .addCommand(callTool)
+  .addCommand(mcpServe)
   .addCommand(upgrade)
   .addCommand(update)
   .addCommand(linkCmd)

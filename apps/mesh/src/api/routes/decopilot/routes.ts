@@ -324,7 +324,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         metadata: {
           internal: true,
           target: "claude-code",
-          organization: organization.id,
+          organization,
         },
       });
 
@@ -332,7 +332,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       const origin = `http://localhost:${serverPort}`;
       const mcpConfig = JSON.stringify({
         type: "http",
-        url: `${origin}/mcp`,
+        url: `${origin}/mcp/self`,
         headers: {
           Authorization: `Bearer ${apiKey.key}`,
           "x-org-id": organization.id,

@@ -182,6 +182,26 @@ export type MCPMeshTools = typeof ALL_TOOLS;
 // Derive tool name type from ALL_TOOLS
 export type ToolNameFromTools = (typeof ALL_TOOLS)[number]["name"];
 
+const MANAGEMENT_MCP_INSTRUCTIONS = `You are connected to Deco Studio — an MCP control plane that manages connections, credentials, and tools for AI agents.
+
+## Available tool categories
+
+- **CODE_EXECUTION**: Search, describe, and run code in sandboxed environments. Use these to execute operations against connected services programmatically.
+- **COLLECTION_CONNECTIONS**: List, create, update, and delete connections to external services (APIs, databases, SaaS tools).
+- **COLLECTION_VIRTUAL_MCP**: Manage virtual MCPs (agents) that aggregate tools from multiple connections.
+- **API_KEY**: Create and manage API keys for programmatic access.
+- **ORGANIZATION / PROJECT**: Manage workspaces and projects.
+- **MONITORING**: View logs, stats, and dashboards.
+- **EVENT_***: Publish/subscribe events between connections.
+- **AUTOMATION_***: Create and manage automated workflows.
+
+## How to use effectively
+
+1. **Start by listing**: Use LIST tools to discover what's available before creating or modifying.
+2. **IDs, not names**: Tools reference resources by ID. Always resolve IDs first via list/search.
+3. **Code execution flow**: Use CODE_EXECUTION_SEARCH to find available operations, CODE_EXECUTION_DESCRIBE to understand inputs/outputs, then CODE_EXECUTION_RUN to execute.
+4. **Connections are credentials**: Each connection holds auth tokens for an external service. Tools from connections are accessed via the virtual MCP / gateway.`;
+
 export const managementMCP = async (ctx: MeshContext) => {
   // Get enabled plugins for this organization to filter plugin tools
   // Check both org settings (legacy) and all projects (current UI saves to projects table)
@@ -209,8 +229,11 @@ export const managementMCP = async (ctx: MeshContext) => {
 
   // Create MCP server directly
   const server = new McpServer(
-    { name: "mcp-mesh-management", version: "1.0.0" },
-    { capabilities: { tools: {} } },
+    { name: "deco-studio", version: "1.0.0" },
+    {
+      capabilities: { tools: {} },
+      instructions: MANAGEMENT_MCP_INSTRUCTIONS,
+    },
   );
 
   // Register each tool with the server
