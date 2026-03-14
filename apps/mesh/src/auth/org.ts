@@ -94,11 +94,16 @@ async function notifyOrgCreated(event: OrgCreatedEvent): Promise<void> {
   if (!webhookUrl) return;
 
   try {
-    await fetch(webhookUrl, {
+    const response = await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(event),
     });
+    if (!response.ok) {
+      console.warn(
+        `SEED_ORG_WEBHOOK_URL returned non-OK status: ${response.status} ${response.statusText}`,
+      );
+    }
   } catch (err) {
     console.warn("Failed to notify SEED_ORG_WEBHOOK_URL:", err);
   }
