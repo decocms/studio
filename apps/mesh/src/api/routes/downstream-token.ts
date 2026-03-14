@@ -97,6 +97,30 @@ app.post("/connections/:connectionId/oauth-token", async (c) => {
 
   const token = await tokenStorage.upsert(tokenData);
 
+  // Re-fetch tools now that the connection is authenticated.
+  // This runs in the background so it doesn't block the response.
+  if (connection.connection_url) {
+    import("../../tools/connection/fetch-tools")
+      .then(({ fetchToolsFromMCP }) =>
+        fetchToolsFromMCP({
+          id: connectionId,
+          title: connection.title,
+          connection_type: connection.connection_type ?? "HTTP",
+          connection_url: connection.connection_url!,
+          connection_token: null,
+          connection_headers: null,
+        }),
+      )
+      .then((result) => {
+        if (result?.tools?.length) {
+          ctx.storage.connections
+            .update(connectionId, { tools: result.tools })
+            .catch(() => {});
+        }
+      })
+      .catch(() => {});
+  }
+
   return c.json({
     success: true,
     expiresAt: token.expiresAt,
