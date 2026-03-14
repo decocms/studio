@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@deco/ui/components/button.tsx";
+import { Input } from "@deco/ui/components/input.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { authenticateMcp } from "@decocms/mesh-sdk";
 import { Check, Loading01, Lock01 } from "@untitledui/icons";
@@ -41,37 +42,53 @@ function parseAuthData(output: unknown): AuthData | null {
 type AuthState = "idle" | "checking" | "authenticating" | "success" | "error";
 
 function AuthCard({ data }: { data: AuthData }) {
-  // Check live token status on mount to handle page refreshes
+  const isTokenAuth =
+    data.auth_type === "configuration" || data.auth_type === "token";
+
   const [authState, setAuthState] = useState<AuthState>(() => {
     if (!data.needs_auth) return "success";
-    // Kick off a live check — will update state async
     return "checking";
   });
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [apiKey, setApiKey] = useState("");
 
   // Check live auth status (runs once via useState initializer + async update)
   const [checked, setChecked] = useState(false);
   if (!checked && authState === "checking" && data.connection_id) {
     setChecked(true);
-    fetch(`/api/connections/${data.connection_id}/oauth-token/status`, {
-      credentials: "include",
-    })
+
+    // Check both OAuth token and connection_token status
+    const oauthCheck = fetch(
+      `/api/connections/${data.connection_id}/oauth-token/status`,
+      { credentials: "include" },
+    )
       .then((res) => res.json())
-      .then((status: { hasToken?: boolean; isExpired?: boolean }) => {
-        if (status.hasToken && !status.isExpired) {
-          setAuthState("success");
-        } else {
-          setAuthState("idle");
-        }
-      })
-      .catch(() => {
+      .then(
+        (s: { hasToken?: boolean; isExpired?: boolean }) =>
+          s.hasToken && !s.isExpired,
+      )
+      .catch(() => false);
+
+    const tokenCheck = fetch(
+      `/api/connections/${data.connection_id}/token/status`,
+      { credentials: "include" },
+    )
+      .then((res) => res.json())
+      .then((s: { hasToken?: boolean }) => !!s.hasToken)
+      .catch(() => false);
+
+    Promise.all([oauthCheck, tokenCheck]).then(([hasOAuth, hasToken]) => {
+      if (hasOAuth || hasToken) {
+        setAuthState("success");
+      } else {
         setAuthState("idle");
-      });
+      }
+    });
   }
 
   const connected = authState === "success";
 
-  const handleAuthenticate = async () => {
+  const handleOAuthAuthenticate = async () => {
     setAuthState("authenticating");
     setErrorMsg(null);
     try {
@@ -84,7 +101,6 @@ function AuthCard({ data }: { data: AuthData }) {
         return;
       }
 
-      // Save the OAuth token to the connection so it persists
       const tokenPayload = result.tokenInfo
         ? {
             accessToken: result.tokenInfo.accessToken,
@@ -123,6 +139,30 @@ function AuthCard({ data }: { data: AuthData }) {
     }
   };
 
+  const handleTokenSave = async () => {
+    if (!apiKey.trim()) return;
+    setAuthState("authenticating");
+    setErrorMsg(null);
+    try {
+      const res = await fetch(`/api/connections/${data.connection_id}/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ token: apiKey.trim() }),
+      });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "unknown error");
+        throw new Error(errText);
+      }
+      setAuthState("success");
+    } catch (err) {
+      setAuthState("error");
+      setErrorMsg(
+        err instanceof Error ? err.message : "Failed to save API key",
+      );
+    }
+  };
+
   return (
     <div
       className={cn(
@@ -146,21 +186,55 @@ function AuthCard({ data }: { data: AuthData }) {
           <span className="text-sm font-medium">{data.title}</span>
           {connected && <Check size={14} className="text-green-600 shrink-0" />}
         </div>
-        {data.description && (
+        {connected && data.description && (
           <p className="text-xs text-muted-foreground truncate">
             {data.description}
           </p>
+        )}
+        {/* Inline API key input for token/configuration auth */}
+        {!connected && isTokenAuth && authState !== "checking" && (
+          <form
+            className="flex items-center gap-1.5 mt-1.5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleTokenSave();
+            }}
+          >
+            <Input
+              type="password"
+              placeholder="Enter API key..."
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              className="h-7 text-xs flex-1"
+              disabled={authState === "authenticating"}
+              autoFocus
+            />
+            <Button
+              type="submit"
+              variant="outline"
+              size="sm"
+              className="shrink-0 h-7 text-xs"
+              disabled={!apiKey.trim() || authState === "authenticating"}
+            >
+              {authState === "authenticating" ? (
+                <Loading01 size={12} className="animate-spin" />
+              ) : (
+                "Save"
+              )}
+            </Button>
+          </form>
         )}
         {authState === "error" && errorMsg && (
           <p className="text-xs text-destructive mt-0.5">{errorMsg}</p>
         )}
       </div>
-      {!connected && authState !== "checking" && (
+      {/* OAuth authenticate button */}
+      {!connected && !isTokenAuth && authState !== "checking" && (
         <Button
           variant="outline"
           size="sm"
           className="shrink-0 h-7 text-xs"
-          onClick={handleAuthenticate}
+          onClick={handleOAuthAuthenticate}
           disabled={authState === "authenticating"}
         >
           {authState === "authenticating" ? (

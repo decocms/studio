@@ -118,8 +118,10 @@ export const CONNECTION_INSTALL = defineTool({
       },
     );
 
-    // If tools couldn't be fetched, the connection likely needs auth
-    const needsAuth = !fetchResult;
+    // Auth is needed if tools couldn't be fetched OR if the server declared
+    // configuration scopes (e.g. API key required — tools may list without auth
+    // but fail when called).
+    const needsAuth = !fetchResult || !!scopes;
 
     return {
       connection: {

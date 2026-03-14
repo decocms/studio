@@ -77,7 +77,11 @@ export const CONNECTION_AUTHENTICATE = defineTool({
       authType = "oauth";
     }
 
-    const needsAuth = !isHealthy && authType !== "none";
+    // Auth is needed if unhealthy, OR if scopes exist but no token is stored
+    // (some MCPs like Perplexity list tools without auth but fail on calls).
+    const needsAuth =
+      (!isHealthy && authType !== "none") ||
+      (!!hasScopes && !connection.connection_token);
 
     return {
       connection_id: connection.id,
