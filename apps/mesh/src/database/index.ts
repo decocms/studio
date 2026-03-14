@@ -214,6 +214,9 @@ function isProcessAlive(pid: number): boolean {
 }
 
 function acquirePGliteLock(dataDir: string): void {
+  // Skip lock in test environment — tests use in-memory or share the DB read-only
+  if (env.NODE_ENV === "test") return;
+
   const lockPath = path.join(dataDir, MESH_LOCK_FILE);
 
   if (existsSync(lockPath)) {
