@@ -298,10 +298,11 @@ export async function streamCore(
             });
           }
 
-          // Emit auth cards for connections that need authentication.
-          // The Claude Code path can't render inline tool UI parts directly,
-          // so we call CONNECTION_AUTHENTICATE ourselves and emit the card.
-          if (ccResult.calledAuthTool) {
+          // Emit auth cards for any unhealthy connections.
+          // The Claude Code path can't render inline tool UI parts directly
+          // (SDK doesn't expose structured tool results), so we check for
+          // unhealthy connections after every Claude Code turn and emit cards.
+          {
             try {
               const connections = await ctx.storage.connections.list(
                 organization.id,
