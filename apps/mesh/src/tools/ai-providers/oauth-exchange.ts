@@ -52,7 +52,7 @@ export const AI_PROVIDER_OAUTH_EXCHANGE = defineTool({
       codeChallengeMethod: "S256",
     });
 
-    const key = await ctx.storage.aiProviderKeys.create({
+    const key = await ctx.storage.aiProviderKeys.upsert({
       providerId: input.providerId,
       label: input.label,
       apiKey,

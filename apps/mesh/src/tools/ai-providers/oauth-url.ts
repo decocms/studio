@@ -61,11 +61,13 @@ export const AI_PROVIDER_OAUTH_URL = defineTool({
     const callbackWithState = new URL(input.callbackUrl);
     callbackWithState.searchParams.set("state", stateToken);
 
-    const url = adapter.getOAuthUrl({
+    const oauthParams = {
       callbackUrl: callbackWithState.toString(),
       codeChallenge,
-      codeChallengeMethod: "S256",
-    });
+      codeChallengeMethod: "S256" as const,
+      organizationId: org.id,
+    };
+    const url = adapter.getOAuthUrl(oauthParams);
 
     return { url, stateToken };
   },

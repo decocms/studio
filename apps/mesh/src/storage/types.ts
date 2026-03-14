@@ -221,6 +221,7 @@ export interface AIProviderKeyTable {
   provider_id: string; // ProviderId — enforced at app level, not DB level
   label: string;
   encrypted_api_key: string;
+  key_hash: string | null; // SHA-256 of the plaintext key; null for legacy rows
   created_by: string;
   created_at: ColumnType<Date, Date | string, never>;
 }

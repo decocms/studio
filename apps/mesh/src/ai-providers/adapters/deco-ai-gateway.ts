@@ -13,13 +13,25 @@ export const decoAiGatewayAdapter: ProviderAdapter = {
 
   supportedMethods: ["oauth-pkce", "api-key"],
 
-  getOAuthUrl({ callbackUrl, codeChallenge, codeChallengeMethod }) {
+  getOAuthUrl({
+    callbackUrl,
+    codeChallenge,
+    codeChallengeMethod,
+    organizationId,
+  }: {
+    callbackUrl: string;
+    codeChallenge: string;
+    codeChallengeMethod: "S256";
+    organizationId: string;
+  }) {
     const params = new URLSearchParams({
       redirect_uri: callbackUrl,
       code_challenge: codeChallenge,
       code_challenge_method: codeChallengeMethod,
+      organization_id: organizationId,
     });
-    return `${BASE}/oauth/authorize?${params}`;
+    const url = `${BASE}/oauth/authorize?${params}`;
+    return url;
   },
 
   async exchangeOAuthCode({ code, codeVerifier }): Promise<OAuthPkceResult> {
