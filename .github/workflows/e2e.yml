@@ -13,6 +13,24 @@ jobs:
       run:
         working-directory: apps/mesh
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: deco
+          POSTGRES_PASSWORD: deco
+          POSTGRES_DB: deco_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U deco"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://deco:deco@localhost:5432/deco_dev
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
