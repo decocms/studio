@@ -374,7 +374,13 @@ export async function streamCore(
               requestId: ctx.metadata.requestId,
               userAgent: ctx.metadata.userAgent ?? null,
             });
-            throw error;
+
+            console.error("[decopilot:image] generation failed", error);
+            const errorMsg =
+              error instanceof Error ? error.message : String(error);
+            throw new Error(
+              `Image generation failed: ${errorMsg}. Try describing what you'd like to see as an image.`,
+            );
           }
         },
         onFinish: async ({ responseMessage }) => {
