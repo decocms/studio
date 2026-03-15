@@ -90,7 +90,12 @@ export const CONNECTION_INSTALL = defineTool({
     const tools = fetchResult?.tools?.length ? fetchResult.tools : null;
     const scopes = fetchResult?.scopes?.length ? fetchResult.scopes : null;
 
-    // Create the connection
+    // Auth is needed if tools couldn't be fetched, server declared scopes,
+    // or server has MCP_CONFIGURATION (expects API key / configuration)
+    const hasMcpConfig = tools?.some((t) => t.name === "MCP_CONFIGURATION");
+    const needsAuth = !fetchResult || !!scopes || !!hasMcpConfig;
+
+    // Create the connection with needs_auth flag baked into metadata
     const connection = await ctx.storage.connections.create({
       title: input.title,
       connection_type: input.connection_type ?? "HTTP",
@@ -107,6 +112,7 @@ export const CONNECTION_INSTALL = defineTool({
       configuration_state: null,
       configuration_scopes: scopes,
       tools,
+      metadata: needsAuth ? { needs_auth: true } : null,
     });
 
     await ctx.eventBus.publish(
@@ -117,21 +123,6 @@ export const CONNECTION_INSTALL = defineTool({
         data: connection,
       },
     );
-
-    // Auth is needed if tools couldn't be fetched, server declared scopes,
-    // or server has MCP_CONFIGURATION (expects API key / configuration)
-    const hasMcpConfig = tools?.some((t) => t.name === "MCP_CONFIGURATION");
-    const needsAuth = !fetchResult || !!scopes || !!hasMcpConfig;
-
-    // Persist the flag so the UI can show "Needs API Key" without async checks
-    if (needsAuth) {
-      await ctx.storage.connections.update(connection.id, {
-        metadata: {
-          ...(connection.metadata as Record<string, unknown> | null),
-          needs_auth: true,
-        },
-      });
-    }
 
     return {
       connection: {

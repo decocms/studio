@@ -108,11 +108,20 @@ export const COLLECTION_CONNECTIONS_CREATE = defineTool({
       ? fetchResult.scopes
       : null;
 
+    // Flag needs_auth if the MCP has MCP_CONFIGURATION or scopes
+    const hasMcpConfig = tools?.some((t) => t.name === "MCP_CONFIGURATION");
+    const needsAuth = !fetchResult || !!configuration_scopes || !!hasMcpConfig;
+    const metadata = {
+      ...(connectionData.metadata as Record<string, unknown> | null),
+      ...(needsAuth ? { needs_auth: true } : {}),
+    };
+
     // Create the connection with the fetched tools and scopes
     const connection = await ctx.storage.connections.create({
       ...connectionData,
       tools,
       configuration_scopes,
+      metadata,
     });
 
     await ctx.eventBus.publish(
