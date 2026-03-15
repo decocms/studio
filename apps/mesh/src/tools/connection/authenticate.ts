@@ -63,25 +63,27 @@ export const CONNECTION_AUTHENTICATE = defineTool({
     const hasScopes =
       connection.configuration_scopes &&
       connection.configuration_scopes.length > 0;
+    // MCP_CONFIGURATION tool = server expects configuration (e.g. API key).
+    // Some MCPs (Perplexity) respond to ping/listTools without auth but fail
+    // on actual tool calls, so health check alone is not sufficient.
+    const tools = (connection.tools ?? []) as { name: string }[];
+    const hasMcpConfig = tools.some((t) => t.name === "MCP_CONFIGURATION");
+    const needsToken = hasMcpConfig && !connection.connection_token;
+
     let authType: "oauth" | "token" | "configuration" | "none" = "none";
     if (hasOAuth) {
       authType = "oauth";
     } else if (hasScopes) {
       authType = "configuration";
+    } else if (needsToken) {
+      authType = "token";
     } else if (!isHealthy && connection.connection_token) {
       authType = "token";
     } else if (!isHealthy && connection.connection_url) {
-      // Connection is unhealthy with no stored auth config — default to token
-      // input. Only use "oauth" when oauth_config is explicitly set (above).
-      // Many MCPs (e.g. Perplexity) just need a bearer token / API key.
       authType = "token";
     }
 
-    // Auth is needed if unhealthy, OR if scopes exist but no token is stored
-    // (some MCPs like Perplexity list tools without auth but fail on calls).
-    const needsAuth =
-      (!isHealthy && authType !== "none") ||
-      (!!hasScopes && !connection.connection_token);
+    const needsAuth = (!isHealthy && authType !== "none") || needsToken;
 
     return {
       connection_id: connection.id,

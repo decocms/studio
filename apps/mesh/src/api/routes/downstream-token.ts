@@ -214,6 +214,7 @@ app.post("/connections/:connectionId/token", async (c) => {
 
   await ctx.storage.connections.update(connectionId, {
     connection_token: body.token,
+    status: "active",
   });
 
   // Re-fetch tools in the background now that we have a token
