@@ -3,7 +3,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
-import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { Spinner } from "@deco/ui/components/spinner.tsx";
 import {
   Tooltip,
@@ -16,7 +15,7 @@ import {
   getPrompt,
   getWellKnownDecopilotVirtualMCP,
   useMCPClient,
-  useMCPPromptsList,
+  useMCPPromptsListQuery,
   useProjectContext,
 } from "@decocms/mesh-sdk";
 import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
@@ -173,19 +172,6 @@ interface IceBreakersProps {
 }
 
 /**
- * Fallback component for Suspense that maintains min-height to prevent layout shift
- * Shows skeleton pills matching the actual IceBreakers appearance
- */
-function IceBreakersFallback() {
-  return (
-    <>
-      <Skeleton className="h-6 w-20 rounded-full border border-border" />
-      <Skeleton className="h-6 w-24 rounded-full border border-border" />
-    </>
-  );
-}
-
-/**
  * State machine for ice breakers
  */
 type IceBreakerState =
@@ -237,14 +223,20 @@ function iceBreakerReducer(
  * Inner component that fetches and displays prompts for a specific MCP connection
  * @param connectionId - The connection ID, or null for the management MCP
  */
-function IceBreakersContent({ connectionId }: { connectionId: string | null }) {
+function IceBreakersContent({
+  connectionId,
+  className,
+}: {
+  connectionId: string | null;
+  className?: string;
+}) {
   const { tiptapDocRef, sendMessage } = useChatStable();
   const { org } = useProjectContext();
   const client = useMCPClient({
     connectionId,
     orgId: org.id,
   });
-  const { data } = useMCPPromptsList({ client, staleTime: 60000 });
+  const { data } = useMCPPromptsListQuery({ client, staleTime: 60000 });
   const prompts = data?.prompts ?? [];
   const [state, dispatch] = useReducer(iceBreakerReducer, { stage: "idle" });
   const [dialogPrompt, setDialogPrompt] = useState<Prompt | null>(null);
@@ -318,6 +310,7 @@ function IceBreakersContent({ connectionId }: { connectionId: string | null }) {
         prompts={prompts}
         onSelect={handlePromptSelection}
         loadingPrompt={state.stage === "loading" ? state.prompt : null}
+        className={className}
       />
       <PromptArgsDialog
         prompt={dialogPrompt}
@@ -332,9 +325,8 @@ function IceBreakersContent({ connectionId }: { connectionId: string | null }) {
 }
 
 /**
- * Ice breakers component that uses suspense to fetch MCP prompts.
- * Uses the chat context for connection selection and message sending.
- * Includes ErrorBoundary, Suspense, and container internally.
+ * Ice breakers component that fetches MCP prompts.
+ * Renders nothing until prompts are loaded — no skeleton/loading state.
  */
 export function IceBreakers({ className }: IceBreakersProps) {
   const { selectedVirtualMcp } = useChatStable();
@@ -344,21 +336,10 @@ export function IceBreakers({ className }: IceBreakersProps) {
   const connectionId = selectedVirtualMcp?.id ?? decopilotId;
 
   return (
-    <div
-      style={{ minHeight: "32px" }}
-      className={cn(
-        "flex flex-wrap items-center justify-center gap-2",
-        className,
-      )}
-    >
-      <ErrorBoundary fallback={null}>
-        <Suspense
-          key={connectionId ?? "default"}
-          fallback={<IceBreakersFallback />}
-        >
-          <IceBreakersContent connectionId={connectionId} />
-        </Suspense>
-      </ErrorBoundary>
-    </div>
+    <ErrorBoundary fallback={null}>
+      <Suspense fallback={null}>
+        <IceBreakersContent connectionId={connectionId} className={className} />
+      </Suspense>
+    </ErrorBoundary>
   );
 }

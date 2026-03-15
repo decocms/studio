@@ -28,6 +28,7 @@ const ProviderEnum = z.enum([
   "openrouter",
   "openai-compatible",
   "deco",
+  "claude-code",
 ]);
 
 const ProviderSchema = ProviderEnum.optional().nullable();
@@ -86,6 +87,7 @@ export const StreamRequestSchema = z.object({
   temperature: z.number().default(0.5),
   thread_id: z.string().optional(),
   toolApprovalLevel: z.enum(["none", "readonly", "yolo"]).default("none"),
+  planMode: z.boolean().optional(),
 });
 
 export type StreamRequest = z.infer<typeof StreamRequestSchema>;

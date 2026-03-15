@@ -82,6 +82,7 @@ const TIER_PATTERNS: Array<{ tier: TierId; prefixes: string[] }> = [
   {
     tier: "smarter",
     prefixes: [
+      "claude-code:opus",
       "anthropic/claude-4.6-opus",
       "anthropic/claude-opus-4.6",
       "anthropic/claude-sonnet-4.6",
@@ -96,6 +97,7 @@ const TIER_PATTERNS: Array<{ tier: TierId; prefixes: string[] }> = [
   {
     tier: "faster",
     prefixes: [
+      "claude-code:sonnet",
       "anthropic/claude-haiku-4.5",
       "anthropic/claude-4.5-haiku",
       "google/gemini-3-flash",
@@ -111,6 +113,7 @@ const TIER_PATTERNS: Array<{ tier: TierId; prefixes: string[] }> = [
   {
     tier: "cheaper",
     prefixes: [
+      "claude-code:haiku",
       "google/gemini-2.5-flash-lite",
       "google/gemini-2.5-flash",
       "google/gemini-2.0-flash",

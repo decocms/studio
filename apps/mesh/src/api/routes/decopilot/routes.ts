@@ -5,7 +5,7 @@
  * Uses Memory and ModelProvider abstractions.
  */
 
-import type { MeshContext } from "@/core/mesh-context";
+import { getUserId, type MeshContext } from "@/core/mesh-context";
 import {
   consumeStream,
   createUIMessageStream,
@@ -118,6 +118,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         memory: memoryConfig,
         thread_id,
         toolApprovalLevel,
+        planMode,
       } = await validateRequest(c);
 
       const userId = ctx.auth?.user?.id;
@@ -125,24 +126,28 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         throw new HTTPException(401, { message: "User ID is required" });
       }
 
-      // 2. Check model permissions
-      const allowedModels = await fetchModelPermissions(
-        ctx.db,
-        organization.id,
-        ctx.auth.user?.role,
-      );
+      const isClaudeCode = models.thinking.provider === "claude-code";
 
-      if (
-        allowedModels !== undefined &&
-        !checkModelPermission(
-          allowedModels,
-          models.credentialId,
-          models.thinking.id,
-        )
-      ) {
-        throw new HTTPException(403, {
-          message: "Model not allowed for your role",
-        });
+      // 2. Check model permissions (skip for Claude Code — uses local auth)
+      if (!isClaudeCode) {
+        const allowedModels = await fetchModelPermissions(
+          ctx.db,
+          organization.id,
+          ctx.auth.user?.role,
+        );
+
+        if (
+          allowedModels !== undefined &&
+          !checkModelPermission(
+            allowedModels,
+            models.credentialId,
+            models.thinking.id,
+          )
+        ) {
+          throw new HTTPException(403, {
+            message: "Model not allowed for your role",
+          });
+        }
       }
 
       const windowSize = memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE;
@@ -160,6 +165,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           userId,
           threadId: resolvedThreadId,
           windowSize,
+          planMode,
         },
         ctx,
         { runRegistry, streamBuffer, cancelBroadcast },
@@ -190,6 +196,176 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         500,
       );
     }
+  });
+
+  // ============================================================================
+  // Connect Studio — check + register MCP servers in Claude Code
+  // ============================================================================
+
+  // Helper: run a CLI command and return { ok, stdout, stderr }
+  async function runCli(
+    cmd: string,
+    args: string[],
+    timeoutMs = 5000,
+  ): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+    const { spawn } = await import("node:child_process");
+    return new Promise((resolve) => {
+      const proc = spawn(cmd, args, {
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let stdout = "";
+      let stderr = "";
+      const timer = setTimeout(() => {
+        proc.kill();
+        resolve({ ok: false, stdout, stderr: "timeout" });
+      }, timeoutMs);
+      proc.stdout.on("data", (chunk: Buffer) => {
+        stdout += chunk.toString();
+      });
+      proc.stderr.on("data", (chunk: Buffer) => {
+        stderr += chunk.toString();
+      });
+      proc.on("close", (code) => {
+        clearTimeout(timer);
+        resolve({ ok: code === 0, stdout, stderr });
+      });
+      proc.on("error", (err) => {
+        clearTimeout(timer);
+        resolve({ ok: false, stdout, stderr: err.message });
+      });
+    });
+  }
+
+  async function getClaudeStatus() {
+    const { ok: connected } = await runCli("claude", [
+      "mcp",
+      "get",
+      "deco-studio",
+    ]);
+    let auth: Record<string, string | undefined> | null = null;
+    if (connected) {
+      try {
+        const { stdout } = await runCli("claude", ["auth", "status"]);
+        const parsed = JSON.parse(stdout);
+        if (parsed.loggedIn) {
+          auth = {
+            email: parsed.email,
+            orgName: parsed.orgName,
+            subscriptionType: parsed.subscriptionType,
+          };
+        }
+      } catch {
+        // Auth info not available
+      }
+    }
+    return { connected, auth };
+  }
+
+  app.get("/:org/decopilot/connect-studio/status", async (c) => {
+    const ctx = c.get("meshContext");
+    if (!ctx.auth?.user?.id) {
+      throw new HTTPException(401, { message: "Authentication required" });
+    }
+
+    const claude = await getClaudeStatus();
+
+    return c.json({ claude });
+  });
+
+  app.post("/:org/decopilot/connect-studio", async (c) => {
+    const ctx = c.get("meshContext");
+    const organization = ensureOrganization(c);
+    const userId = ctx.auth?.user?.id;
+    if (!userId) {
+      throw new HTTPException(401, { message: "Authentication required" });
+    }
+
+    const body = await c.req.json().catch(() => ({}));
+    const target = (body as { target?: string }).target;
+
+    if (target === "claude-code") {
+      // Create API key for the MCP endpoint
+      const apiKey = await ctx.boundAuth.apiKey.create({
+        name: "studio-connect-claude-code",
+        permissions: { "*": ["*"] },
+        metadata: {
+          internal: true,
+          target: "claude-code",
+          organization,
+        },
+      });
+
+      const serverPort = process.env.PORT || "3000";
+      const origin = `http://localhost:${serverPort}`;
+      const mcpConfig = JSON.stringify({
+        type: "http",
+        url: `${origin}/mcp/self`,
+        headers: {
+          Authorization: `Bearer ${apiKey.key}`,
+          "x-org-id": organization.id,
+          "x-mesh-client": "Claude Code",
+        },
+      });
+
+      // Remove existing MCP first (ignore failure — may not exist yet)
+      await runCli("claude", [
+        "mcp",
+        "remove",
+        "deco-studio",
+        "--scope",
+        "user",
+      ]);
+
+      const result = await runCli(
+        "claude",
+        ["mcp", "add-json", "deco-studio", mcpConfig, "--scope", "user"],
+        10000,
+      );
+      if (!result.ok) {
+        console.error("[connect-studio] claude mcp add-json failed", {
+          stdout: result.stdout,
+          stderr: result.stderr,
+        });
+        throw new HTTPException(500, {
+          message: "Failed to register deco-studio MCP",
+        });
+      }
+      return c.json({ success: true });
+    }
+
+    throw new HTTPException(400, { message: `Unknown target: ${target}` });
+  });
+
+  app.delete("/:org/decopilot/connect-studio", async (c) => {
+    const ctx = c.get("meshContext");
+    ensureOrganization(c);
+    if (!getUserId(ctx)) {
+      throw new HTTPException(401, { message: "Authentication required" });
+    }
+
+    const body = await c.req.json().catch(() => ({}));
+    const target = (body as { target?: string }).target;
+
+    let mcpName: string;
+    if (target === "claude-code") {
+      mcpName = "deco-studio";
+    } else {
+      throw new HTTPException(400, { message: `Unknown target: ${target}` });
+    }
+
+    const result = await runCli("claude", [
+      "mcp",
+      "remove",
+      mcpName,
+      "--scope",
+      "user",
+    ]);
+    if (!result.ok) {
+      throw new HTTPException(500, {
+        message: `Failed to remove ${mcpName} MCP`,
+      });
+    }
+    return c.json({ success: true });
   });
 
   // ============================================================================

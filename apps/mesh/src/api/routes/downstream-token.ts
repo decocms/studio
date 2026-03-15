@@ -97,6 +97,38 @@ app.post("/connections/:connectionId/oauth-token", async (c) => {
 
   const token = await tokenStorage.upsert(tokenData);
 
+  // Clear needs_auth flag from metadata
+  const existingMeta =
+    (connection.metadata as Record<string, unknown> | null) ?? {};
+  if (existingMeta.needs_auth) {
+    const { needs_auth: _, ...restMeta } = existingMeta;
+    await ctx.storage.connections.update(connectionId, { metadata: restMeta });
+  }
+
+  // Re-fetch tools now that the connection is authenticated.
+  // This runs in the background so it doesn't block the response.
+  if (connection.connection_url) {
+    import("../../tools/connection/fetch-tools")
+      .then(({ fetchToolsFromMCP }) =>
+        fetchToolsFromMCP({
+          id: connectionId,
+          title: connection.title,
+          connection_type: connection.connection_type ?? "HTTP",
+          connection_url: connection.connection_url!,
+          connection_token: body.accessToken,
+          connection_headers: null,
+        }),
+      )
+      .then((result) => {
+        if (result?.tools?.length) {
+          ctx.storage.connections
+            .update(connectionId, { tools: result.tools })
+            .catch(() => {});
+        }
+      })
+      .catch(() => {});
+  }
+
   return c.json({
     success: true,
     expiresAt: token.expiresAt,
@@ -156,6 +188,98 @@ app.get("/connections/:connectionId/oauth-token/status", async (c) => {
     isExpired,
     canRefresh,
     expiresAt: token.expiresAt,
+  });
+});
+
+/**
+ * POST /api/connections/:connectionId/token
+ *
+ * Save an API key as the connection_token (for MCPs that require a bearer token
+ * but don't support OAuth). Re-fetches tools in the background so the connection
+ * becomes healthy immediately.
+ */
+app.post("/connections/:connectionId/token", async (c) => {
+  const ctx = c.get("meshContext");
+  const connectionId = c.req.param("connectionId");
+
+  const userId = ctx.auth.user?.id ?? ctx.auth.apiKey?.userId ?? null;
+  if (!userId) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const connection = await ctx.storage.connections.findById(
+    connectionId,
+    ctx.organization?.id,
+  );
+  if (!connection) {
+    return c.json({ error: "Connection not found" }, 404);
+  }
+
+  const body = await c.req.json<{ token: string }>();
+  if (!body.token) {
+    return c.json({ error: "token is required" }, 400);
+  }
+
+  // Clear needs_auth flag from metadata
+  const existingMeta =
+    (connection.metadata as Record<string, unknown> | null) ?? {};
+  const { needs_auth: _, ...restMeta } = existingMeta;
+
+  await ctx.storage.connections.update(connectionId, {
+    connection_token: body.token,
+    metadata: restMeta,
+  });
+
+  // Re-fetch tools in the background now that we have a token
+  if (connection.connection_url) {
+    import("../../tools/connection/fetch-tools")
+      .then(({ fetchToolsFromMCP }) =>
+        fetchToolsFromMCP({
+          id: connectionId,
+          title: connection.title,
+          connection_type: connection.connection_type ?? "HTTP",
+          connection_url: connection.connection_url!,
+          connection_token: body.token,
+          connection_headers: null,
+        }),
+      )
+      .then((result) => {
+        if (result?.tools?.length) {
+          ctx.storage.connections
+            .update(connectionId, { tools: result.tools })
+            .catch(() => {});
+        }
+      })
+      .catch(() => {});
+  }
+
+  return c.json({ success: true });
+});
+
+/**
+ * GET /api/connections/:connectionId/token/status
+ *
+ * Check if a connection has a stored connection_token (API key).
+ */
+app.get("/connections/:connectionId/token/status", async (c) => {
+  const ctx = c.get("meshContext");
+  const connectionId = c.req.param("connectionId");
+
+  const userId = ctx.auth.user?.id ?? ctx.auth.apiKey?.userId ?? null;
+  if (!userId) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const connection = await ctx.storage.connections.findById(
+    connectionId,
+    ctx.organization?.id,
+  );
+  if (!connection) {
+    return c.json({ error: "Connection not found" }, 404);
+  }
+
+  return c.json({
+    hasToken: !!connection.connection_token,
   });
 });
 

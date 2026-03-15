@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import type { ChatMessage, ChatStatus } from "../types.ts";
+import type { ChatMessage, ChatStatus, Metadata } from "../types.ts";
 import { MessageAssistant } from "./assistant.tsx";
 import { MessageUser } from "./user.tsx";
 
@@ -76,6 +76,8 @@ export function MessagePair({ pair, isLastPair, status }: MessagePairProps) {
     }
   };
 
+  const isPlanMode = !!(pair.user.metadata as Metadata | undefined)?.planMode;
+
   return (
     <div ref={handlePairRef} className="flex flex-col pb-2">
       {/* Sticky overlay to prevent scrolling content from appearing above the user message */}
@@ -88,6 +90,7 @@ export function MessagePair({ pair, isLastPair, status }: MessagePairProps) {
         message={pair.assistant}
         status={status}
         isLast={isLastPair}
+        isPlanMode={isPlanMode}
       />
     </div>
   );

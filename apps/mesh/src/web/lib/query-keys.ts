@@ -260,4 +260,8 @@ export const KEYS = {
 
   // AI provider stored keys (scoped by locator)
   aiProviderKeys: (locator: string) => ["ai-provider-keys", locator] as const,
+
+  // Connect Studio status (Claude Code MCP registration + auth)
+  connectStudioStatus: (orgSlug: string) =>
+    ["connect-studio-status", orgSlug] as const,
 } as const;

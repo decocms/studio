@@ -53,10 +53,14 @@ const ALL_TOOL_NAMES = [
   // Connection tools
   "COLLECTION_CONNECTIONS_CREATE",
   "COLLECTION_CONNECTIONS_LIST",
+  "COLLECTION_CONNECTIONS_LIST_SUMMARY",
   "COLLECTION_CONNECTIONS_GET",
   "COLLECTION_CONNECTIONS_UPDATE",
   "COLLECTION_CONNECTIONS_DELETE",
   "CONNECTION_TEST",
+  "CONNECTION_INSTALL",
+  "CONNECTION_AUTH_STATUS",
+  "CONNECTION_AUTHENTICATE",
   // Virtual MCP tools
   "COLLECTION_VIRTUAL_MCP_CREATE",
   "COLLECTION_VIRTUAL_MCP_LIST",
@@ -256,6 +260,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Connections",
   },
   {
+    name: "COLLECTION_CONNECTIONS_LIST_SUMMARY",
+    description: "List connections (lightweight)",
+    category: "Connections",
+  },
+  {
     name: "COLLECTION_CONNECTIONS_GET",
     description: "View connection details",
     category: "Connections",
@@ -274,6 +283,21 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "CONNECTION_TEST",
     description: "Test connections",
+    category: "Connections",
+  },
+  {
+    name: "CONNECTION_INSTALL",
+    description: "Install MCP connections",
+    category: "Connections",
+  },
+  {
+    name: "CONNECTION_AUTH_STATUS",
+    description: "Check connection auth status",
+    category: "Connections",
+  },
+  {
+    name: "CONNECTION_AUTHENTICATE",
+    description: "Authenticate connections",
     category: "Connections",
   },
   {
@@ -681,11 +705,15 @@ const TOOL_LABELS: Record<ToolName, string> = {
   ORGANIZATION_MEMBER_REMOVE: "Remove members",
   ORGANIZATION_MEMBER_UPDATE_ROLE: "Update member roles",
   COLLECTION_CONNECTIONS_LIST: "List connections",
+  COLLECTION_CONNECTIONS_LIST_SUMMARY: "List connections (summary)",
   COLLECTION_CONNECTIONS_GET: "View connection details",
   COLLECTION_CONNECTIONS_CREATE: "Create connections",
   COLLECTION_CONNECTIONS_UPDATE: "Update connections",
   COLLECTION_CONNECTIONS_DELETE: "Delete connections",
   CONNECTION_TEST: "Test connections",
+  CONNECTION_INSTALL: "Install MCP connections",
+  CONNECTION_AUTH_STATUS: "Check connection auth",
+  CONNECTION_AUTHENTICATE: "Authenticate connections",
   DATABASES_RUN_SQL: "Run SQL queries",
   COLLECTION_VIRTUAL_MCP_CREATE: "Create virtual MCPs",
   COLLECTION_VIRTUAL_MCP_LIST: "List virtual MCPs",

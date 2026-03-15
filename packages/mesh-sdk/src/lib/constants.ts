@@ -227,6 +227,75 @@ export function getWellKnownMcpStudioConnection(): ConnectionCreateData {
 }
 
 /**
+ * Master prompt for the Decopilot MCP server.
+ * Sent as `instructions` during MCP initialize — Claude Code and other
+ * clients use this to understand the server's purpose and capabilities.
+ */
+const DECOPILOT_MCP_INSTRUCTIONS = `You are connected to Deco Studio via MCP (Model Context Protocol).
+
+## What is Deco Studio?
+
+Deco Studio is an MCP control plane — a unified layer that manages connections to external services (APIs, databases, SaaS tools) and exposes them as MCP tools. Your tools come from the user's configured connections.
+
+## How to use tools
+
+You have three meta-tools for interacting with connected services:
+
+### GATEWAY_SEARCH_TOOLS — discover available tools
+\`\`\`
+GATEWAY_SEARCH_TOOLS({ query: "gmail" })
+\`\`\`
+Always search first. Don't guess tool names or parameters.
+
+### GATEWAY_DESCRIBE_TOOLS — get full schemas
+\`\`\`
+GATEWAY_DESCRIBE_TOOLS({ tools: ["gmail_send_email"] })
+\`\`\`
+Check exact parameter names and types before writing code.
+
+### GATEWAY_RUN_CODE — execute code with tools
+**CRITICAL**: The \`code\` parameter must be an ES module that \`export default\`s an async function receiving \`tools\` as its argument.
+
+✅ Correct:
+\`\`\`
+GATEWAY_RUN_CODE({
+  code: "export default async function(tools) {\\n  const result = await tools.gmail_send_email({ to: 'user@example.com', subject: 'Hello', body: 'Hi' });\\n  return result;\\n}"
+})
+\`\`\`
+
+❌ Wrong (bare return — syntax error):
+\`\`\`
+GATEWAY_RUN_CODE({
+  code: "return await tools.gmail_send_email({ ... })"
+})
+\`\`\`
+
+### Code rules
+- **Always \`export default async function(tools)\`** — only accepted format
+- **Always \`return\`** the result so you see the output
+- **Use \`await\`** for all tool calls — they are async
+- **Use bracket notation** for hyphenated names: \`tools["my-tool"](args)\`
+- **Chain tools** in one run for complex workflows
+- **Wrap in try/catch** for better error messages
+
+## Finding and installing new MCPs
+
+When the user asks about capabilities not yet connected (e.g., "can you send emails?", "install slack"):
+
+1. **Search**: Registry connections expose \`REGISTRY_ITEM_SEARCH\` and \`COLLECTION_REGISTRY_APP_GET\`. Use GATEWAY_SEARCH_TOOLS to find them, then GATEWAY_RUN_CODE to search the store.
+2. **Install**: \`CONNECTION_INSTALL({ title: "Gmail", connection_url: "...", icon: "..." })\`
+3. **Auth**: If \`needs_auth\` is true, call \`CONNECTION_AUTHENTICATE({ connection_id: "..." })\` — shows an inline auth button for the user to click. **Wait for the user to complete OAuth** before proceeding — they need to click the button and authorize in their browser.
+4. **Use**: After the user confirms auth is complete, tools are available via GATEWAY_SEARCH_TOOLS
+
+## Best practices
+
+- **Search → Describe → Run**: Always follow this order for using existing tools
+- **IDs, not names**: Tools reference resources by ID — resolve IDs via search first
+- **Handle errors**: Read error messages carefully and adjust
+- **Explain your plan**: Tell the user what you're doing before multi-step workflows
+- Use **COLLECTION_CONNECTIONS_LIST_SUMMARY** for a quick overview of connections. Use **COLLECTION_CONNECTIONS_LIST** only when you need full tool schemas.`;
+
+/**
  * Get well-known Decopilot Virtual MCP entity.
  * This is the default agent that aggregates ALL org connections.
  *
@@ -247,7 +316,7 @@ export function getWellKnownDecopilotVirtualMCP(
     updated_at: new Date().toISOString(),
     created_by: "system",
     updated_by: undefined,
-    metadata: { instructions: null },
+    metadata: { instructions: DECOPILOT_MCP_INSTRUCTIONS },
     connections: [], // Empty connections array - gateway.ts will populate with all org connections
   };
 }

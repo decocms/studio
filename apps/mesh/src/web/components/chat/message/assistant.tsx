@@ -1,12 +1,14 @@
+import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Lightbulb01, Stars01, Target04 } from "@untitledui/icons";
 import type { ToolUIPart } from "ai";
 import { type ReactNode, useEffect, useState } from "react";
 import { ToolCallShell } from "./parts/tool-call-part/common.tsx";
-import type { ChatMessage } from "../types.ts";
+import type { ChatMessage, TiptapDoc } from "../types.ts";
 import { MessageStatsBar } from "../usage-stats.tsx";
 import { MessageTextPart } from "./parts/text-part.tsx";
 import {
+  ConnectionAuthPart,
   GenericToolCallPart,
   SubtaskPart,
   UserAskPart,
@@ -14,6 +16,7 @@ import {
 import { SmartAutoScroll } from "./smart-auto-scroll.tsx";
 import { type DataParts, useFilterParts } from "./use-filter-parts.ts";
 import { addUsage, emptyUsageStats } from "@decocms/mesh-sdk";
+import { useChatStable } from "../context";
 
 type ThinkingStage = "planning" | "thinking";
 
@@ -158,11 +161,78 @@ type MessagePart = ChatMessage["parts"][number];
 
 type ReasoningPart = Extract<MessagePart, { type: "reasoning" }>;
 
+/**
+ * Returns true for parts that should be rendered in the message.
+ * Data parts (metadata, suggestions) and invisible parts are filtered out
+ * so they don't cause index-based key shifts during streaming.
+ */
+function isVisiblePart(part: MessagePart): boolean {
+  switch (part.type) {
+    case "reasoning":
+    case "step-start":
+    case "file":
+    case "source-url":
+    case "source-document":
+    case "data-tool-metadata":
+    case "data-tool-subtask-metadata":
+    case "data-prompt-suggestion":
+      return false;
+    default:
+      if (part.type.startsWith("data-") && part.type !== "data-connection-auth")
+        return false;
+      return true;
+  }
+}
+
+function getPartKey(part: MessagePart, messageId: string, index: number) {
+  if ("toolCallId" in part && part.toolCallId) return part.toolCallId;
+  return `${messageId}-${part.type}-${index}`;
+}
+
+function PlanApprovalActions() {
+  const { sendMessage, setPlanMode } = useChatStable();
+
+  const handleApprove = () => {
+    setPlanMode(false);
+    const doc: TiptapDoc = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: "The plan looks good. Please implement it.",
+            },
+          ],
+        },
+      ],
+    };
+    void sendMessage(doc);
+  };
+
+  return (
+    <div className="flex items-center gap-2 mt-3 pt-3 border-t border-purple-500/20">
+      <Button
+        size="sm"
+        onClick={handleApprove}
+        className="bg-purple-600 hover:bg-purple-700 text-white text-xs h-7"
+      >
+        Approve &amp; Implement
+      </Button>
+      <span className="text-xs text-muted-foreground">
+        or send a message with feedback
+      </span>
+    </div>
+  );
+}
+
 interface MessageAssistantProps {
   message: ChatMessage | null;
   status?: "streaming" | "submitted" | "ready" | "error";
   className?: string;
   isLast: boolean;
+  isPlanMode?: boolean;
 }
 
 interface MessagePartProps {
@@ -233,9 +303,48 @@ function MessagePart({
       return null;
     case "data-tool-metadata":
     case "data-tool-subtask-metadata":
+    case "data-prompt-suggestion":
       return null;
+    case "data-connection-auth": {
+      // Auth card emitted via MCP elicitation (Claude Code path)
+      const authData = (part as { data?: Record<string, unknown> }).data;
+      if (authData) {
+        const connectionId = (authData.connectionId as string) ?? "";
+        return (
+          <ConnectionAuthPart
+            part={
+              {
+                type: "tool-CONNECTION_AUTHENTICATE" as ToolUIPart["type"],
+                toolCallId: `elicit-${connectionId}`,
+                state: "output-available" as const,
+                output: {
+                  connection_id: connectionId,
+                  title: (authData.title as string) ?? "Authenticate",
+                  icon: (authData.icon as string) ?? null,
+                  description: null,
+                  connection_url: (authData.connectionUrl as string) ?? null,
+                  status: "inactive",
+                  needs_auth: true,
+                  auth_type: "oauth",
+                },
+              } as ToolUIPart
+            }
+          />
+        );
+      }
+      return null;
+    }
     default: {
       const fallback = part as ToolUIPart;
+      // Inline auth card for CONNECTION_AUTHENTICATE tool
+      if (fallback.type === "tool-CONNECTION_AUTHENTICATE") {
+        return (
+          <ConnectionAuthPart
+            part={fallback}
+            latency={getMeta(fallback.toolCallId)?.latencySeconds}
+          />
+        );
+      }
       if (fallback.type.startsWith("tool-")) {
         const toolCallId = (fallback as ToolUIPart).toolCallId;
         const meta = dataParts.toolMetadata.get(toolCallId);
@@ -288,11 +397,43 @@ function Container({
   );
 }
 
+function PromptSuggestions({ suggestions }: { suggestions: string[] }) {
+  const { sendMessage } = useChatStable();
+
+  if (suggestions.length === 0) return null;
+
+  const handleClick = (suggestion: string) => {
+    const doc: TiptapDoc = {
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: suggestion }] },
+      ],
+    };
+    void sendMessage(doc);
+  };
+
+  return (
+    <div className="flex flex-wrap gap-2 mt-3">
+      {suggestions.map((suggestion) => (
+        <button
+          key={suggestion}
+          type="button"
+          onClick={() => handleClick(suggestion)}
+          className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-border rounded-full hover:bg-accent/50 transition-colors cursor-pointer"
+        >
+          {suggestion}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function MessageAssistant({
   message,
   status,
   className,
   isLast = false,
+  isPlanMode = false,
 }: MessageAssistantProps) {
   const isStreaming = status === "streaming";
   const isSubmitted = status === "submitted";
@@ -331,42 +472,62 @@ export function MessageAssistant({
       ? reasoningEndAt.getTime() - reasoningStartAt.getTime()
       : null;
 
+  // Filter to only visible parts to avoid index-based key shifts from data/metadata parts
+  const visibleParts = hasContent ? message.parts.filter(isVisiblePart) : [];
+
   return (
     <Container className={className}>
       {hasContent ? (
         <div className="flex flex-col gap-2">
-          {hasReasoning && (
-            <ThoughtSummary
-              duration={duration}
-              parts={reasoningParts}
-              isStreaming={isStreaming}
-            />
+          {isPlanMode && (
+            <div className="flex items-center gap-1.5 text-purple-500 text-xs font-medium">
+              <Target04 size={14} />
+              <span>Plan</span>
+            </div>
           )}
-          {message.parts.map((part, index) => {
-            const isLastPart = index === message.parts.length - 1;
-            const usage = isLastPart
-              ? addUsage(emptyUsageStats(), message.metadata?.usage)
-              : null;
-
-            return (
-              <MessagePart
-                key={`${message.id}-${index}`}
-                part={part}
-                id={message.id}
-                usageStats={
-                  isLastPart && (
-                    <MessageStatsBar usage={usage} duration={duration} />
-                  )
-                }
-                dataParts={dataParts}
-                isLoading={isLoading}
-                isLastMessage={isLast}
+          <div
+            className={cn(
+              "flex flex-col gap-2",
+              isPlanMode && "border-l-2 border-purple-500/30 pl-3",
+            )}
+          >
+            {hasReasoning && (
+              <ThoughtSummary
+                duration={duration}
+                parts={reasoningParts}
+                isStreaming={isStreaming}
               />
-            );
-          })}
-          {isLast && isLoading && startedAt !== null && (
-            <GeneratingFooter startedAt={startedAt} />
-          )}
+            )}
+            {visibleParts.map((part, index) => {
+              const isLastPart = index === visibleParts.length - 1;
+              const usage = isLastPart
+                ? addUsage(emptyUsageStats(), message.metadata?.usage)
+                : null;
+
+              return (
+                <MessagePart
+                  key={getPartKey(part, message.id, index)}
+                  part={part}
+                  id={message.id}
+                  usageStats={
+                    isLastPart && (
+                      <MessageStatsBar usage={usage} duration={duration} />
+                    )
+                  }
+                  dataParts={dataParts}
+                  isLoading={isLoading}
+                  isLastMessage={isLast}
+                />
+              );
+            })}
+            {isLast && !isLoading && dataParts.promptSuggestions.length > 0 && (
+              <PromptSuggestions suggestions={dataParts.promptSuggestions} />
+            )}
+            {isLast && isLoading && startedAt !== null && (
+              <GeneratingFooter startedAt={startedAt} />
+            )}
+          </div>
+          {isLast && !isLoading && isPlanMode && <PlanApprovalActions />}
         </div>
       ) : isLoading ? (
         <TypingIndicator />

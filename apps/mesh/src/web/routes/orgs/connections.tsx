@@ -126,6 +126,16 @@ import {
 } from "@/web/components/env-vars-editor";
 
 // ---------------------------------------------------------------------------
+// Auth helpers
+// ---------------------------------------------------------------------------
+
+/** True when connection was flagged as needing auth and token is still empty */
+function connectionNeedsAuth(c: ConnectionEntity): boolean {
+  const meta = c.metadata as Record<string, unknown> | null;
+  return !!meta?.needs_auth && !c.connection_token;
+}
+
+// ---------------------------------------------------------------------------
 // Grouping helpers
 // ---------------------------------------------------------------------------
 
@@ -608,7 +618,11 @@ function ConnectionGroupCard({
         body={
           <div className="flex items-center gap-1">
             {group.connections.slice(0, 6).map((c) => (
-              <ConnectionStatus key={c.id} status={c.status} />
+              <ConnectionStatus
+                key={c.id}
+                status={c.status}
+                needsAuth={connectionNeedsAuth(c)}
+              />
             ))}
           </div>
         }
@@ -679,7 +693,10 @@ function ConnectionGroupCard({
                   <span className="text-sm font-medium text-foreground truncate">
                     {c.title}
                   </span>
-                  <ConnectionStatus status={c.status} />
+                  <ConnectionStatus
+                    status={c.status}
+                    needsAuth={connectionNeedsAuth(c)}
+                  />
                 </div>
                 <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0">
                   <User id={c.created_by} size="3xs" />
@@ -1928,7 +1945,12 @@ function OrgMcpsContent() {
     {
       id: "status",
       header: "Status",
-      render: (connection) => <ConnectionStatus status={connection.status} />,
+      render: (connection) => (
+        <ConnectionStatus
+          status={connection.status}
+          needsAuth={connectionNeedsAuth(connection)}
+        />
+      ),
       cellClassName: "w-28 shrink-0",
       sortable: false,
     },
@@ -2699,7 +2721,12 @@ function OrgMcpsContent() {
                             </DropdownMenu>
                           ) : undefined
                         }
-                        body={<ConnectionStatus status={connection.status} />}
+                        body={
+                          <ConnectionStatus
+                            status={connection.status}
+                            needsAuth={connectionNeedsAuth(connection)}
+                          />
+                        }
                         footer={
                           <div className="flex items-center justify-between text-xs text-muted-foreground w-full min-w-0">
                             <div className="flex-1 min-w-0">

@@ -4,6 +4,40 @@ import type { ModelListCache } from "./model-list-cache";
 import type { MeshProvider, ModelInfo, OpenRouterAPIModel } from "./types";
 import { PROVIDERS } from "./registry";
 
+/** Static model list for the Claude Code local provider. */
+const CLAUDE_CODE_MODEL_LIST: ModelInfo[] = [
+  {
+    providerId: "claude-code",
+    modelId: "claude-code:opus",
+    title: "Claude Code: Opus",
+    description: "Most capable model via local Claude Code CLI (1M context)",
+    logo: null,
+    capabilities: ["text"] as ModelCapability[],
+    limits: { contextWindow: 1_000_000, maxOutputTokens: 32_768 },
+    costs: null,
+  },
+  {
+    providerId: "claude-code",
+    modelId: "claude-code:sonnet",
+    title: "Claude Code: Sonnet",
+    description: "Fast, capable model via local Claude Code CLI (1M context)",
+    logo: null,
+    capabilities: ["text"] as ModelCapability[],
+    limits: { contextWindow: 1_000_000, maxOutputTokens: 32_768 },
+    costs: null,
+  },
+  {
+    providerId: "claude-code",
+    modelId: "claude-code:haiku",
+    title: "Claude Code: Haiku",
+    description: "Fastest, most affordable model via local Claude Code CLI",
+    logo: null,
+    capabilities: ["text"] as ModelCapability[],
+    limits: { contextWindow: 200_000, maxOutputTokens: 32_768 },
+    costs: null,
+  },
+];
+
 // Sentinel org ID for the shared OpenRouter metadata cache (not org-specific)
 const OR_INDEX_ORG_ID = "_global";
 
@@ -132,6 +166,11 @@ export class AIProviderFactory {
       organizationId,
     );
     const providerId = keyInfo.providerId;
+
+    // Claude Code uses the local CLI — return static model list
+    if (providerId === "claude-code") {
+      return CLAUDE_CODE_MODEL_LIST;
+    }
 
     if (this.cache) {
       const cached = await this.cache.get(organizationId, providerId);

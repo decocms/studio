@@ -1,5 +1,5 @@
 import { Suspense, useState, useEffect } from "react";
-import { useQueryClient, useMutation } from "@tanstack/react-query";
+import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { Trash01, Key01, Eye, EyeOff, AlertCircle } from "@untitledui/icons";
@@ -228,6 +228,7 @@ export function ProviderCard({
   const [oauthStateToken, setOauthStateToken] = useState<string | null>(null);
 
   const isActive = keys.length > 0;
+  const isClaudeCode = provider.id === "claude-code";
 
   const { mutate: deleteKey, isPending: isDeleting } = useMutation({
     mutationFn: async (keyId: string) => {
@@ -243,6 +244,21 @@ export function ProviderCard({
       queryClient.invalidateQueries({
         queryKey: KEYS.aiProviderModels(locator, deletedKeyId),
       });
+      if (isClaudeCode && keys.length === 1) {
+        fetch(`/api/${org.slug}/decopilot/connect-studio`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ target: "claude-code" }),
+        })
+          .then(() => {
+            queryClient.invalidateQueries({
+              queryKey: KEYS.connectStudioStatus(org.slug),
+            });
+          })
+          .catch(() => {
+            toast.error("Failed to remove MCP from Claude Code");
+          });
+      }
       toast.success("Key deleted");
     },
     onError: (err) => {
@@ -324,10 +340,73 @@ export function ProviderCard({
 
   const supportsOAuth = provider.supportedMethods.includes("oauth-pkce");
   const supportsApiKey = provider.supportedMethods.includes("api-key");
+  const [isClaudeCodePending, setIsClaudeCodePending] = useState(false);
+
+  const connectStudioStatus = useQuery({
+    queryKey: KEYS.connectStudioStatus(org.slug),
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/${org.slug}/decopilot/connect-studio/status`,
+      );
+      if (!res.ok) throw new Error("Failed to fetch status");
+      return res.json() as Promise<{
+        claude: {
+          connected: boolean;
+          auth: Record<string, string | undefined> | null;
+        };
+      }>;
+    },
+    enabled: isClaudeCode && isActive,
+  });
+
+  const handleConnectClaudeCode = async () => {
+    if (isActive || isClaudeCodePending) return;
+    setIsClaudeCodePending(true);
+    try {
+      await client.callTool({
+        name: "AI_PROVIDER_KEY_CREATE",
+        arguments: {
+          providerId: "claude-code",
+          label: "Local CLI",
+          apiKey: "local",
+        },
+      });
+      queryClient.invalidateQueries({
+        queryKey: KEYS.aiProviderKeys(locator),
+      });
+      queryClient.invalidateQueries({ queryKey: KEYS.aiProviders(locator) });
+
+      // Also register MCP in Claude Code CLI
+      try {
+        const res = await fetch(`/api/${org.slug}/decopilot/connect-studio`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ target: "claude-code" }),
+        });
+        if (!res.ok) throw new Error("MCP registration failed");
+        queryClient.invalidateQueries({
+          queryKey: KEYS.connectStudioStatus(org.slug),
+        });
+        toast.success("Claude Code connected!");
+      } catch {
+        toast.error(
+          "Connected as provider but failed to register MCP in Claude Code",
+        );
+      }
+    } catch (err) {
+      toast.error(
+        `Failed to connect: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    } finally {
+      setIsClaudeCodePending(false);
+    }
+  };
 
   const handleCardClick = () => {
     if (isConnectFormOpen || isOAuthPending) return;
-    if (supportsOAuth) {
+    if (isClaudeCode) {
+      handleConnectClaudeCode();
+    } else if (supportsOAuth) {
       handleConnectOAuth();
     } else if (supportsApiKey) {
       setIsConnectFormOpen(true);
@@ -375,8 +454,10 @@ export function ProviderCard({
           className={cn(
             "p-4 flex flex-col gap-3 transition-colors relative",
             isActive && "border-primary/20",
-            !isOAuthPending && "cursor-pointer hover:bg-muted/30",
-            isOAuthPending && "cursor-wait",
+            !isOAuthPending &&
+              !isClaudeCodePending &&
+              "cursor-pointer hover:bg-muted/30",
+            (isOAuthPending || isClaudeCodePending) && "cursor-wait",
           )}
           onClick={handleCardClick}
         >
@@ -399,9 +480,30 @@ export function ProviderCard({
                 />
               )}
               <div>
-                <h3 className="font-medium text-base">{provider.name}</h3>
+                <h3 className="font-medium text-base flex items-center gap-1.5">
+                  {provider.name}
+                  {provider.id === "openrouter" && (
+                    <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                      OAuth
+                    </span>
+                  )}
+                  {provider.id === "anthropic" && (
+                    <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                      API
+                    </span>
+                  )}
+                  {provider.id === "claude-code" && (
+                    <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                      Local
+                    </span>
+                  )}
+                </h3>
                 <p className="text-sm text-muted-foreground line-clamp-1">
-                  {isOAuthPending ? "Authorizing..." : provider.description}
+                  {isClaudeCodePending
+                    ? "Connecting..."
+                    : isOAuthPending
+                      ? "Authorizing..."
+                      : provider.description}
                 </p>
               </div>
             </div>
@@ -412,6 +514,13 @@ export function ProviderCard({
               <p className="text-xs font-medium text-muted-foreground">
                 {keys.length} key{keys.length !== 1 ? "s" : ""} configured
               </p>
+              {isClaudeCode && connectStudioStatus.data?.claude?.auth && (
+                <p className="text-xs text-muted-foreground truncate">
+                  {Object.values(connectStudioStatus.data.claude.auth)
+                    .filter(Boolean)
+                    .join(" — ")}
+                </p>
+              )}
               <KeyList
                 keys={keys}
                 onDelete={deleteKey}
@@ -449,7 +558,7 @@ function OrgAiProvidersContent() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 [&>*:first-child]:lg:col-span-2">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {aiProviders?.providers?.map((provider) => (
           <ProviderCard
             key={provider.id}

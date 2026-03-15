@@ -51,6 +51,8 @@ interface ChatStableValue {
   setSelectedModel: (model: AiProviderModel) => void;
   selectedMode: ToolSelectionStrategy;
   setSelectedMode: (mode: ToolSelectionStrategy) => void;
+  planMode: boolean;
+  setPlanMode: (enabled: boolean) => void;
 
   sendMessage: (
     tiptapDoc: Metadata["tiptapDoc"],
@@ -115,6 +117,7 @@ export function useChatStable(): ChatStableValue {
     model: state.selectedModel,
     isModelsLoading: state.isModelsLoading,
     selectedMode: state.selectedMode,
+    planMode: state.planMode,
     allModelsConnections: state.allModelsConnections,
     credentialId: state.credentialId,
     tiptapDoc: state.tiptapDoc,
@@ -139,6 +142,7 @@ export function useChatStable(): ChatStableValue {
     },
     setSelectedModel: (model: AiProviderModel) => chatStore.setModel(model),
     setSelectedMode: (mode: ToolSelectionStrategy) => chatStore.setMode(mode),
+    setPlanMode: (enabled: boolean) => chatStore.setPlanMode(enabled),
     setOwnerFilter: (filter: TaskOwnerFilter) =>
       chatStore.setOwnerFilter(filter),
     sendMessage: (

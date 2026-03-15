@@ -33,11 +33,12 @@ import {
   CheckCircle,
   ChevronDown,
   Container,
-  Users03,
   Globe02,
+  Key01,
   RefreshCcw01,
   Terminal,
   Trash01,
+  Users03,
   XClose,
 } from "@untitledui/icons";
 import { formatDistanceToNow } from "date-fns";
@@ -531,7 +532,16 @@ export function ConnectionSidebar({
             <span className="text-xs text-muted-foreground font-medium">
               Status
             </span>
-            {isMCPAuthenticated ? (
+            {(connection.metadata as Record<string, unknown> | null)
+              ?.needs_auth && !connection.connection_token ? (
+              <Badge
+                variant="outline"
+                className="gap-1.5 text-amber-600 border-amber-400/40 bg-background"
+              >
+                <Key01 size={12} />
+                Needs API Key
+              </Badge>
+            ) : isMCPAuthenticated ? (
               <Badge
                 variant="success"
                 className="gap-1.5 bg-success-foreground text-success"

@@ -16,7 +16,7 @@ function ProviderList() {
   const providers: AiProvider[] = aiProviders?.providers ?? [];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full [&>*:first-child]:sm:col-span-2">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
       {providers.map((provider) => (
         <ProviderCard
           key={provider.id}
@@ -50,7 +50,7 @@ export function NoLlmBindingEmptyState({
       </div>
       <Suspense
         fallback={
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full [&>*:first-child]:sm:col-span-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
             <Skeleton className="h-32 w-full rounded-lg" />
             <Skeleton className="h-32 w-full rounded-lg" />
           </div>
