@@ -239,6 +239,13 @@ export async function streamCore(
     // Image generation mode — skip MCP/tool setup, call generateImage
     // ================================================================
     if (input.imageMode) {
+      // Validate the provider supports image generation
+      if (typeof provider.aiSdk.imageModel !== "function") {
+        throw new Error(
+          "The selected provider does not support image generation",
+        );
+      }
+
       const textPrompt = requestMessage.parts
         .filter(
           (p): p is { type: "text"; text: string } =>
@@ -251,7 +258,15 @@ export async function streamCore(
         throw new Error("Image mode requires a text prompt");
       }
 
+      const ALLOWED_IMAGE_TYPES = new Set([
+        "image/png",
+        "image/jpeg",
+        "image/webp",
+        "image/gif",
+      ]);
+
       const shouldGenerateTitle = mem.thread.title === DEFAULT_THREAD_TITLE;
+      let streamFinished = false;
 
       const uiStream = createUIMessageStream({
         execute: async ({ writer }) => {
@@ -274,9 +289,28 @@ export async function streamCore(
               durationMs,
               isError: false,
             });
+            monitorLlmCall({
+              ctx,
+              organizationId: input.organizationId,
+              agentId: input.agent.id,
+              modelId: input.models.thinking.id,
+              modelTitle:
+                input.models.thinking.title ?? input.models.thinking.id,
+              credentialId: input.models.credentialId,
+              threadId: mem.thread.id,
+              durationMs,
+              isError: false,
+              finishReason: "stop",
+              userId: input.userId,
+              requestId: ctx.metadata.requestId,
+              userAgent: ctx.metadata.userAgent ?? null,
+            });
 
             const base64 = result.image.base64;
-            const mediaType = result.image.mediaType ?? "image/png";
+            const rawMediaType = result.image.mediaType ?? "image/png";
+            const mediaType = ALLOWED_IMAGE_TYPES.has(rawMediaType)
+              ? rawMediaType
+              : "image/png";
 
             // Emit metadata for the response message
             writer.write({
@@ -323,10 +357,30 @@ export async function streamCore(
               isError: true,
               errorType: error instanceof Error ? error.name : "Error",
             });
+            monitorLlmCall({
+              ctx,
+              organizationId: input.organizationId,
+              agentId: input.agent.id,
+              modelId: input.models.thinking.id,
+              modelTitle:
+                input.models.thinking.title ?? input.models.thinking.id,
+              credentialId: input.models.credentialId,
+              threadId: mem.thread.id,
+              durationMs,
+              isError: true,
+              errorMessage:
+                error instanceof Error ? error.message : String(error),
+              userId: input.userId,
+              requestId: ctx.metadata.requestId,
+              userAgent: ctx.metadata.userAgent ?? null,
+            });
             throw error;
           }
         },
         onFinish: async ({ responseMessage }) => {
+          if (streamFinished) return;
+          streamFinished = true;
+
           await saveMessagesToThread(responseMessage as unknown as ChatMessage);
 
           await runRegistry.execute({
@@ -336,6 +390,11 @@ export async function streamCore(
           });
         },
         onError: (error) => {
+          if (streamFinished) {
+            return error instanceof Error ? error.message : String(error);
+          }
+          streamFinished = true;
+
           runRegistry
             .execute({
               type: "FINISH",

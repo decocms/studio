@@ -12,10 +12,13 @@ export function ImagePart({ url, mediaType }: ImagePartProps) {
   const [loaded, setLoaded] = useState(false);
 
   const handleDownload = () => {
+    const ext = mediaType.split("/")[1]?.split(";")[0] ?? "png";
     const link = document.createElement("a");
     link.href = url;
-    link.download = `image-${Date.now()}.${mediaType.split("/")[1] ?? "png"}`;
+    link.download = `image-${Date.now()}.${ext}`;
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
   };
 
   return (

@@ -211,6 +211,7 @@ class ChatStore {
   reset(): void {
     this.chatBridge = null;
     this._initialMessage = null;
+    this._previousModel = null;
     this.state = this.defaultState();
     this.notify();
   }
@@ -313,9 +314,11 @@ class ChatStore {
       this.stop();
     }
 
+    this._previousModel = null;
     this.state = {
       ...this.state,
       activeThreadId: threadId,
+      imageMode: false,
       tiptapDoc: undefined,
       finishReason: null,
     };

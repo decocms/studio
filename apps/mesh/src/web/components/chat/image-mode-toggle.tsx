@@ -47,7 +47,7 @@ export function ImageModeToggle({ disabled = false }: { disabled?: boolean }) {
       )}
       <button
         type="button"
-        disabled={disabled}
+        disabled={disabled || (!imageMode && imageModels.length === 0)}
         onClick={() => setImageMode(!imageMode, imageModels)}
         className={cn(
           "flex items-center gap-1.5 h-8 px-2 rounded-lg text-sm transition-colors shrink-0",
