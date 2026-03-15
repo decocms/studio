@@ -396,6 +396,8 @@ if (import.meta.main) {
   (async () => {
     console.log("🏃 Executing migration function...");
     try {
+      const { repairPGliteIfCorrupted } = await import("./repair");
+      await repairPGliteIfCorrupted();
       await migrateToLatest();
       console.log("✅ All migrations completed. Exiting...");
       process.exit(0);

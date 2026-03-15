@@ -151,7 +151,7 @@ function ensurePGliteDirectory(dataDir: string): string {
   return dataDir;
 }
 
-function extractPGlitePath(connectionString: string): string {
+export function extractPGlitePath(connectionString: string): string {
   if (connectionString === ":memory:") {
     return ":memory:";
   }
@@ -165,7 +165,7 @@ function extractPGlitePath(connectionString: string): string {
   return connectionString;
 }
 
-function clearStalePGliteLock(dataDir: string): void {
+export function clearStalePGliteLock(dataDir: string): void {
   const pidFile = path.join(dataDir, "postmaster.pid");
   if (!existsSync(pidFile)) return;
 

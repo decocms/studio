@@ -238,6 +238,15 @@ if (betterAuthFromFile || encryptionKeyFromFile) {
 // Database migrations
 // ============================================================================
 
+// Auto-repair corrupted PGlite database before migrations
+try {
+  const { repairPGliteIfCorrupted } = await import("./database/repair");
+  await repairPGliteIfCorrupted();
+} catch (error) {
+  console.error("PGlite repair failed:", error);
+  process.exit(1);
+}
+
 if (!values["skip-migrations"]) {
   console.log(`${dim}Running database migrations...${reset}`);
   try {

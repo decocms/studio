@@ -116,6 +116,34 @@ if (env.MESH_LOCAL_MODE) {
     });
 }
 
+// Graceful shutdown: checkpoint PGlite before exit so the next startup
+// doesn't hit a corrupted WAL. Without this, killing the process (Ctrl+C,
+// Conductor cleanup, etc.) leaves WAL entries that PGlite WASM can't replay.
+{
+  const shutdown = async (signal: string) => {
+    console.log(`\n${dim}Received ${signal}, shutting down...${reset}`);
+    try {
+      const { getDb, closeDatabase } = await import("./database");
+      const db = getDb();
+      if (db.type === "pglite") {
+        // Force a WAL checkpoint before closing — flushes all dirty pages
+        // to the base files so the next open doesn't need WAL replay.
+        try {
+          await db.pglite.query("CHECKPOINT");
+        } catch {
+          // Best effort
+        }
+      }
+      await closeDatabase(db);
+    } catch {
+      // Best effort — don't prevent exit
+    }
+    process.exit(0);
+  };
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+}
+
 // Internal debug server (only enabled via ENABLE_DEBUG_SERVER=true)
 if (enableDebugServer) {
   startDebugServer({ port: debugPort });
