@@ -229,6 +229,7 @@ export async function streamCore(
       input.models.thinking.limits?.maxOutputTokens ?? DEFAULT_MAX_TOKENS;
 
     let streamFinished = false;
+    const streamStartTime = Date.now();
     const pendingOps: Promise<void>[] = [];
 
     // Pre-load conversation
@@ -354,53 +355,50 @@ export async function streamCore(
             }
           }
 
-          // Emit auth cards only when Claude Code actually tried to
-          // authenticate a connection during this stream. Don't show
-          // cards for pre-existing unauthenticated connections that
-          // weren't used in this conversation.
-          if (ccResult.calledAuthTool) {
-            try {
-              const connections = await ctx.storage.connections.list(
-                organization.id,
-              );
-              const { DownstreamTokenStorage } = await import(
-                "@/storage/downstream-token"
-              );
-              const tokenStorage = new DownstreamTokenStorage(
-                ctx.db,
-                ctx.vault,
-              );
-              for (const conn of connections) {
-                // Skip the self connection (Mesh MCP)
-                if (conn.id.endsWith("_self")) continue;
-                // Skip connections that already have an OAuth token
-                const existingToken = await tokenStorage
-                  .get(conn.id)
-                  .catch(() => null);
-                if (existingToken?.accessToken) continue;
-                // Skip connections with a stored connection_token
-                if (conn.connection_token) continue;
+          // Emit auth cards for connections created during this stream.
+          // We compare created_at against the stream start time so we only
+          // show cards for freshly installed connections, not pre-existing ones.
+          try {
+            const connections = await ctx.storage.connections.list(
+              organization.id,
+            );
+            const { DownstreamTokenStorage } = await import(
+              "@/storage/downstream-token"
+            );
+            const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);
+            for (const conn of connections) {
+              // Skip the self connection (Mesh MCP)
+              if (conn.id.endsWith("_self")) continue;
 
-                // If we reach here the connection has no OAuth token and no
-                // connection_token — it needs authentication. Skip the health
-                // check because some MCP servers respond "healthy" (HTTP 200)
-                // even without auth but expose 0 tools.
-                if (conn.connection_url) {
-                  writer.write({
-                    type: "data-connection-auth",
-                    data: {
-                      connectionId: conn.id,
-                      title: conn.title,
-                      icon: conn.icon ?? null,
-                      connectionUrl: conn.connection_url,
-                      elicitationId: `auth-${conn.id}`,
-                    },
-                  });
-                }
+              // Only show auth cards for connections created during this
+              // stream — not for pre-existing unauthenticated connections.
+              const createdAt = new Date(conn.created_at).getTime();
+              if (createdAt < streamStartTime) continue;
+
+              // Skip connections that already have an OAuth token
+              const existingToken = await tokenStorage
+                .get(conn.id)
+                .catch(() => null);
+              if (existingToken?.accessToken) continue;
+              // Skip connections with a stored connection_token
+              if (conn.connection_token) continue;
+
+              // Connection was just created with no auth — show auth card
+              if (conn.connection_url) {
+                writer.write({
+                  type: "data-connection-auth",
+                  data: {
+                    connectionId: conn.id,
+                    title: conn.title,
+                    icon: conn.icon ?? null,
+                    connectionUrl: conn.connection_url,
+                    elicitationId: `auth-${conn.id}`,
+                  },
+                });
               }
-            } catch {
-              // Best-effort
             }
+          } catch {
+            // Best-effort
           }
 
           return;

@@ -109,7 +109,6 @@ export async function streamClaudeCode(
 ): Promise<{
   costUsd: number;
   usage: { inputTokens: number; outputTokens: number; totalTokens: number };
-  calledAuthTool: boolean;
   /** Accumulated text from the response, for persistence */
   responseText: string;
 }> {
@@ -199,7 +198,6 @@ export async function streamClaudeCode(
   let usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
   let responseText = "";
   // Track whether CONNECTION_AUTHENTICATE was called so the caller can emit auth cards
-  let calledAuthTool = false;
   // Insert separator between text from different turns (after tool use)
   let needsTextSeparator = false;
 
@@ -300,20 +298,6 @@ export async function streamClaudeCode(
         case "tool_progress": {
           if ((message as { parent_tool_use_id?: string }).parent_tool_use_id) {
             break;
-          }
-          const progressToolName =
-            (message as { tool_name?: string }).tool_name ?? "";
-
-          // Track connection-related tool calls so caller can emit auth cards.
-          // Claude Code prefixes MCP tools as mcp__<server>__<tool_name>.
-          // Emit auth cards when a connection is installed/created (needs auth)
-          // or when the AI explicitly calls CONNECTION_AUTHENTICATE.
-          if (
-            progressToolName.includes("CONNECTION_AUTHENTICATE") ||
-            progressToolName.includes("CONNECTION_INSTALL") ||
-            progressToolName.includes("COLLECTION_CONNECTIONS_CREATE")
-          ) {
-            calledAuthTool = true;
           }
           break;
         }
@@ -485,5 +469,5 @@ export async function streamClaudeCode(
     },
   });
 
-  return { costUsd: totalCostUsd, usage, calledAuthTool, responseText };
+  return { costUsd: totalCostUsd, usage, responseText };
 }
