@@ -42,8 +42,12 @@ function parseAuthData(output: unknown): AuthData | null {
 type AuthState = "idle" | "checking" | "authenticating" | "success" | "error";
 
 function AuthCard({ data }: { data: AuthData }) {
+  // If OAuth fails (e.g. server doesn't support it), fall back to token input
+  const [oauthFailed, setOauthFailed] = useState(false);
   const isTokenAuth =
-    data.auth_type === "configuration" || data.auth_type === "token";
+    oauthFailed ||
+    data.auth_type === "configuration" ||
+    data.auth_type === "token";
 
   const [authState, setAuthState] = useState<AuthState>(() => {
     if (!data.needs_auth) return "success";
@@ -96,8 +100,20 @@ function AuthCard({ data }: { data: AuthData }) {
         connectionId: data.connection_id,
       });
       if (!result.token) {
+        const errMsg = result.error ?? "Authentication failed";
+        // If OAuth discovery failed, fall back to token input
+        if (
+          errMsg.includes("Protected Resource Metadata") ||
+          errMsg.includes("OAuth") ||
+          errMsg.includes("authorization server")
+        ) {
+          setOauthFailed(true);
+          setAuthState("idle");
+          setErrorMsg(null);
+          return;
+        }
         setAuthState("error");
-        setErrorMsg(result.error ?? "Authentication failed");
+        setErrorMsg(errMsg);
         return;
       }
 
@@ -134,8 +150,20 @@ function AuthCard({ data }: { data: AuthData }) {
 
       setAuthState("success");
     } catch (err) {
+      const msg = err instanceof Error ? err.message : "Authentication failed";
+      // If OAuth discovery failed, fall back to token input
+      if (
+        msg.includes("Protected Resource Metadata") ||
+        msg.includes("OAuth") ||
+        msg.includes("authorization server")
+      ) {
+        setOauthFailed(true);
+        setAuthState("idle");
+        setErrorMsg(null);
+        return;
+      }
       setAuthState("error");
-      setErrorMsg(err instanceof Error ? err.message : "Authentication failed");
+      setErrorMsg(msg);
     }
   };
 
