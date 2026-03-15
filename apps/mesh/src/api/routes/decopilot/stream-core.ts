@@ -11,7 +11,12 @@ import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
 import { monitorLlmCall } from "@/monitoring/emit-llm-call";
 import { recordLlmCallMetrics } from "@/monitoring/record-llm-call-metrics";
 import { isDecopilot, sanitizeProviderMetadata } from "@decocms/mesh-sdk";
-import { createUIMessageStream, stepCountIs, streamText } from "ai";
+import {
+  createUIMessageStream,
+  generateImage,
+  stepCountIs,
+  streamText,
+} from "ai";
 import { getBuiltInTools } from "./built-in-tools";
 import { createEnableToolsTool } from "./built-in-tools/enable-tools";
 import {
@@ -77,6 +82,7 @@ export interface StreamCoreInput {
   triggerId?: string;
   windowSize?: number;
   abortSignal?: AbortSignal;
+  imageMode?: { aspectRatio?: string };
 }
 
 export interface StreamCoreDeps {
@@ -228,6 +234,141 @@ export async function streamCore(
     }
 
     await saveMessagesToThread(requestMessage);
+
+    // ================================================================
+    // Image generation mode — skip MCP/tool setup, call generateImage
+    // ================================================================
+    if (input.imageMode) {
+      const textPrompt = requestMessage.parts
+        .filter(
+          (p): p is { type: "text"; text: string } =>
+            p.type === "text" && !!(p as { text?: string }).text?.trim(),
+        )
+        .map((p) => p.text.trim())
+        .join("\n");
+
+      if (!textPrompt) {
+        throw new Error("Image mode requires a text prompt");
+      }
+
+      const shouldGenerateTitle = mem.thread.title === DEFAULT_THREAD_TITLE;
+
+      const uiStream = createUIMessageStream({
+        execute: async ({ writer }) => {
+          const llmStart = Date.now();
+          try {
+            const result = await generateImage({
+              model: provider.aiSdk.imageModel(input.models.thinking.id),
+              prompt: textPrompt,
+              aspectRatio: input.imageMode!.aspectRatio as
+                | `${number}:${number}`
+                | undefined,
+              abortSignal: registrySignal,
+            });
+
+            const durationMs = Date.now() - llmStart;
+            recordLlmCallMetrics({
+              ctx,
+              organizationId: input.organizationId,
+              modelId: input.models.thinking.id,
+              durationMs,
+              isError: false,
+            });
+
+            const base64 = result.image.base64;
+            const mediaType = result.image.mediaType ?? "image/png";
+
+            // Emit metadata for the response message
+            writer.write({
+              type: "start",
+              messageMetadata: {
+                agent: {
+                  id: input.agent.id ?? null,
+                  mode: input.agent.mode,
+                },
+                models: {
+                  credentialId: input.models.credentialId,
+                  thinking: {
+                    ...input.models.thinking,
+                    provider: input.models.thinking.provider ?? undefined,
+                  },
+                },
+                created_at: new Date(),
+                thread_id: mem.thread.id,
+              },
+            });
+
+            // Emit the image as a file part
+            writer.write({
+              type: "file",
+              url: `data:${mediaType};base64,${base64}`,
+              mediaType,
+            });
+
+            // Emit finish
+            writer.write({
+              type: "finish",
+              finishReason: "stop",
+              messageMetadata: {
+                thread_id: mem.thread.id,
+              },
+            });
+          } catch (error) {
+            const durationMs = Date.now() - llmStart;
+            recordLlmCallMetrics({
+              ctx,
+              organizationId: input.organizationId,
+              modelId: input.models.thinking.id,
+              durationMs,
+              isError: true,
+              errorType: error instanceof Error ? error.name : "Error",
+            });
+            throw error;
+          }
+        },
+        onFinish: async ({ responseMessage }) => {
+          await saveMessagesToThread(responseMessage as unknown as ChatMessage);
+
+          await runRegistry.execute({
+            type: "FINISH",
+            threadId: mem.thread.id,
+            threadStatus: "completed",
+          });
+        },
+        onError: (error) => {
+          runRegistry
+            .execute({
+              type: "FINISH",
+              threadId: mem.thread.id,
+              threadStatus: "failed",
+            })
+            .catch((e) => {
+              console.error("[decopilot:image] onError reactor failed", e);
+            });
+          return error instanceof Error ? error.message : String(error);
+        },
+      });
+
+      // Title generation in background
+      if (shouldGenerateTitle) {
+        genTitle({
+          abortSignal: registrySignal,
+          model: provider.aiSdk.languageModel(
+            input.models.fast?.id ?? input.models.thinking.id,
+          ),
+          userMessage: textPrompt,
+        })
+          .then(async (title) => {
+            if (!title) return;
+            await ctx.storage.threads
+              .update(mem.thread.id, { title })
+              .catch(() => {});
+          })
+          .catch(() => {});
+      }
+
+      return { threadId: mem.thread.id, stream: uiStream };
+    }
 
     // Close MCP clients on abort
     registrySignal.addEventListener("abort", () => {
