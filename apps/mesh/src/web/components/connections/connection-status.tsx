@@ -1,12 +1,14 @@
 import { Badge } from "@deco/ui/components/badge.tsx";
-import { AlertCircle, CheckCircle } from "@untitledui/icons";
+import { AlertCircle, CheckCircle, Key01 } from "@untitledui/icons";
 
 type ConnectionStatusValue = "active" | "inactive" | "error";
 
 export function ConnectionStatus({
   status,
+  needsAuth,
 }: {
   status: ConnectionStatusValue;
+  needsAuth?: boolean;
 }) {
   if (status === "active") {
     return (
@@ -28,6 +30,18 @@ export function ConnectionStatus({
       >
         <AlertCircle size={12} />
         Error
+      </Badge>
+    );
+  }
+
+  if (needsAuth || status === "inactive") {
+    return (
+      <Badge
+        variant="outline"
+        className="gap-1.5 text-amber-600 border-amber-400/40 bg-background"
+      >
+        <Key01 size={12} />
+        Needs API Key
       </Badge>
     );
   }

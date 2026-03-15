@@ -118,10 +118,19 @@ export const CONNECTION_INSTALL = defineTool({
       },
     );
 
-    // Auth is needed if tools couldn't be fetched OR if the server declared
-    // configuration scopes (e.g. API key required — tools may list without auth
-    // but fail when called).
-    const needsAuth = !fetchResult || !!scopes;
+    // Auth is needed if:
+    // - tools couldn't be fetched at all, OR
+    // - server declared configuration scopes, OR
+    // - server has MCP_CONFIGURATION tool (needs API key even if tools list OK)
+    const hasMcpConfig = tools?.some((t) => t.name === "MCP_CONFIGURATION");
+    const needsAuth = !fetchResult || !!scopes || !!hasMcpConfig;
+
+    // Mark connection as inactive until auth is provided
+    if (needsAuth) {
+      await ctx.storage.connections.update(connection.id, {
+        status: "inactive",
+      });
+    }
 
     return {
       connection: {

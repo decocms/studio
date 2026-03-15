@@ -321,6 +321,39 @@ export async function streamCore(
             await saveMessagesToThread(responseMessage);
           }
 
+          // Generate title for Claude Code threads (no AI SDK model available,
+          // so extract from the first user message text).
+          if (mem.thread.title === DEFAULT_THREAD_TITLE) {
+            const userText =
+              requestMessage?.parts
+                ?.filter(
+                  (p): p is { type: "text"; text: string } =>
+                    "text" in p &&
+                    typeof (p as { text?: unknown }).text === "string",
+                )
+                .map((p) => p.text)
+                .join(" ")
+                .trim() ?? "";
+            if (userText) {
+              const title = userText
+                .replace(/\s+/g, " ")
+                .slice(0, 60)
+                .replace(/\s\S*$/, userText.length > 60 ? "…" : "");
+              ctx.storage.threads
+                .update(mem.thread.id, { title })
+                .then(() => {
+                  if (!streamFinished) {
+                    writer.write({
+                      type: "data-thread-title",
+                      data: { title },
+                      transient: true,
+                    });
+                  }
+                })
+                .catch(() => {});
+            }
+          }
+
           // Emit auth cards for unhealthy connections.
           // Claude Code's MCP client doesn't support elicitation and
           // tool_progress events don't fire for MCP tools, so we always
