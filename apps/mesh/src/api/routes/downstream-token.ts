@@ -102,9 +102,7 @@ app.post("/connections/:connectionId/oauth-token", async (c) => {
     (connection.metadata as Record<string, unknown> | null) ?? {};
   if (existingMeta.needs_auth) {
     const { needs_auth: _, ...restMeta } = existingMeta;
-    ctx.storage.connections
-      .update(connectionId, { metadata: restMeta })
-      .catch(() => {});
+    await ctx.storage.connections.update(connectionId, { metadata: restMeta });
   }
 
   // Re-fetch tools now that the connection is authenticated.
@@ -229,7 +227,6 @@ app.post("/connections/:connectionId/token", async (c) => {
 
   await ctx.storage.connections.update(connectionId, {
     connection_token: body.token,
-    status: "active",
     metadata: restMeta,
   });
 

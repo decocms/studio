@@ -108,9 +108,10 @@ export const COLLECTION_CONNECTIONS_CREATE = defineTool({
       ? fetchResult.scopes
       : null;
 
-    // Flag needs_auth if the MCP has MCP_CONFIGURATION or scopes
+    // Flag needs_auth if the MCP declared scopes or has MCP_CONFIGURATION.
+    // Don't use !fetchResult — VIRTUAL connections return null by design.
     const hasMcpConfig = tools?.some((t) => t.name === "MCP_CONFIGURATION");
-    const needsAuth = !fetchResult || !!configuration_scopes || !!hasMcpConfig;
+    const needsAuth = !!configuration_scopes || !!hasMcpConfig;
     const metadata = {
       ...(connectionData.metadata as Record<string, unknown> | null),
       ...(needsAuth ? { needs_auth: true } : {}),

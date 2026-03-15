@@ -90,10 +90,10 @@ export const CONNECTION_INSTALL = defineTool({
     const tools = fetchResult?.tools?.length ? fetchResult.tools : null;
     const scopes = fetchResult?.scopes?.length ? fetchResult.scopes : null;
 
-    // Auth is needed if tools couldn't be fetched, server declared scopes,
-    // or server has MCP_CONFIGURATION (expects API key / configuration)
+    // Auth is needed if server declared scopes or has MCP_CONFIGURATION.
+    // Don't use !fetchResult — probe failures shouldn't persist as "Needs API Key".
     const hasMcpConfig = tools?.some((t) => t.name === "MCP_CONFIGURATION");
-    const needsAuth = !fetchResult || !!scopes || !!hasMcpConfig;
+    const needsAuth = !!scopes || !!hasMcpConfig;
 
     // Create the connection with needs_auth flag baked into metadata
     const connection = await ctx.storage.connections.create({
