@@ -60,6 +60,8 @@ export interface StreamCoreInput {
   triggerId?: string;
   windowSize?: number;
   abortSignal?: AbortSignal;
+  /** Claude Code plan mode — produces a plan without executing tools */
+  planMode?: boolean;
 }
 
 export interface StreamCoreDeps {
@@ -286,6 +288,7 @@ export async function streamCore(
               threadId: mem.thread.id,
               connectionId: input.models.credentialId,
               model: input.models.thinking.id,
+              planMode: input.planMode,
             });
           } finally {
             // Revoke the ephemeral wildcard API key after the stream completes

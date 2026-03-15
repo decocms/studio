@@ -51,6 +51,9 @@ export interface ChatStoreState {
   error: Error | null;
   finishReason: string | null;
 
+  // Claude Code plan mode
+  planMode: boolean;
+
   // App contexts from ext-apps
   appContexts: Record<string, string>;
 

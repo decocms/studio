@@ -131,6 +131,7 @@ class ChatStore {
       status: "ready",
       error: null,
       finishReason: null,
+      planMode: false,
       appContexts: {},
       tiptapDoc: undefined,
     };
@@ -414,6 +415,11 @@ class ChatStore {
     this.notify();
   }
 
+  setPlanMode(enabled: boolean): void {
+    this.state = { ...this.state, planMode: enabled };
+    this.notify();
+  }
+
   setCredentialId(id: string | null): void {
     this.state = { ...this.state, credentialId: id };
     writeSelectedKeyId(this.state.locator, id);
@@ -530,6 +536,7 @@ class ChatStore {
       tiptapDoc: params.tiptapDoc,
       created_at: new Date().toISOString(),
       thread_id: this.state.activeThreadId,
+      planMode: this.state.planMode || undefined,
       agent: {
         id: selectedAgent?.id ?? decopilotId,
         mode: selectedMode,
@@ -555,6 +562,7 @@ class ChatStore {
     const metadata: Metadata = {
       ...messageMetadata,
       system,
+      planMode: this.state.planMode || undefined,
       models: {
         credentialId: model.keyId ?? effectiveKeyId ?? "",
         thinking: toMetadataModelInfo(model),

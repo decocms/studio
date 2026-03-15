@@ -81,6 +81,8 @@ export interface Metadata {
   system?: string;
   /** Tiptap document for rich user input (includes prompt tags with resources) */
   tiptapDoc?: TiptapDoc;
+  /** Claude Code plan mode — produces a plan without executing tools */
+  planMode?: boolean;
   usage?: {
     inputTokens?: number;
     outputTokens?: number;

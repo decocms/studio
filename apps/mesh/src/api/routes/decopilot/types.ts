@@ -45,6 +45,9 @@ export type ChatMessage = UIMessage<
       connectionUrl: string | null;
       elicitationId: string;
     };
+    "prompt-suggestion": {
+      suggestion: string;
+    };
   },
   {
     [K in keyof ReturnType<typeof getBuiltInTools>]: InferUITool<

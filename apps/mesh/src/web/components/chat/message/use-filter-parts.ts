@@ -25,12 +25,14 @@ export interface ToolSubtaskMetadata {
 export interface DataParts {
   toolMetadata: Map<string, ToolMetadata>;
   toolSubtaskMetadata: Map<string, ToolSubtaskMetadata>;
+  promptSuggestions: string[];
 }
 
 export function useFilterParts(message: ChatMessage | null) {
   const reasoningParts: ReasoningPart[] = [];
   const toolMetadata = new Map<string, ToolMetadata>();
   const toolSubtaskMetadata = new Map<string, ToolSubtaskMetadata>();
+  const promptSuggestions: string[] = [];
 
   if (message) {
     for (const p of message.parts) {
@@ -73,12 +75,20 @@ export function useFilterParts(message: ChatMessage | null) {
           (p as { id: string }).id,
           (p as { data: ToolSubtaskMetadata }).data,
         );
+        continue;
+      }
+
+      if (p.type === "data-prompt-suggestion" && "data" in p) {
+        const data = (p as { data: { suggestion?: string } }).data;
+        if (data.suggestion) {
+          promptSuggestions.push(data.suggestion);
+        }
       }
     }
   }
 
   return {
     reasoningParts,
-    dataParts: { toolMetadata, toolSubtaskMetadata },
+    dataParts: { toolMetadata, toolSubtaskMetadata, promptSuggestions },
   };
 }
