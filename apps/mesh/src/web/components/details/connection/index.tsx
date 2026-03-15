@@ -304,14 +304,15 @@ function ConnectionInspectorViewWithConnection({
     connectionId: connectionId,
   });
   // VIRTUAL connections are always "authenticated" - they don't have OAuth
-  // They're internal connections that aggregate tools from other connections
   const isVirtualConnection = connection?.connection_type === "VIRTUAL";
-  // A connection is authenticated if the MCP proxy responds OK AND the
-  // connection status is not "inactive" (connections needing an API key may
-  // respond OK to initialize but fail on actual tool calls).
+  // A connection needs auth if it's HTTP/SSE with no token and no oauth_config
+  const needsToken =
+    !isVirtualConnection &&
+    connection?.connection_type !== "STDIO" &&
+    !connection?.connection_token &&
+    !connection?.oauth_config;
   const isMCPAuthenticated =
-    isVirtualConnection ||
-    (authStatus.isAuthenticated && connection?.status !== "inactive");
+    isVirtualConnection || (authStatus.isAuthenticated && !needsToken);
 
   // Check if connection has MCP binding for configuration
   const mcpBindingConnections = useBindingConnections({

@@ -1,7 +1,10 @@
 import type { ConnectionEntity } from "@/tools/connection/schema";
 import { parseVirtualUrl } from "@/tools/connection/schema";
 import { EnvVarsEditor } from "@/web/components/env-vars-editor";
+import { IconPicker } from "@/web/components/icon-picker.tsx";
+import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { useAuthConfig } from "@/web/providers/auth-config-provider";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import { Badge } from "@deco/ui/components/badge.tsx";
 import {
   DropdownMenu,
@@ -10,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
 import {
+  Form,
   FormControl,
   FormDescription,
   FormField,
@@ -29,6 +33,7 @@ import {
   CheckCircle,
   ChevronDown,
   Container,
+  Key01,
   Users03,
   Globe02,
   RefreshCcw01,
@@ -36,10 +41,22 @@ import {
   Trash01,
   XClose,
 } from "@untitledui/icons";
-import { useForm, useWatch } from "react-hook-form";
+import { formatDistanceToNow } from "date-fns";
+import { Controller, useForm, useWatch } from "react-hook-form";
+import { User } from "@/web/components/user/user.tsx";
+import { ConnectionVirtualMCPsSection } from "./settings-tab/connection-virtual-mcps-section";
 import type { ConnectionFormData } from "./settings-tab/schema";
 
-export function ConnectionFields({
+interface ConnectionSidebarProps {
+  form: ReturnType<typeof useForm<ConnectionFormData>>;
+  connection: ConnectionEntity;
+  isMCPAuthenticated: boolean;
+  hasOAuthToken?: boolean;
+  onReauthenticate?: () => void | Promise<void>;
+  onRemoveOAuth?: () => void | Promise<void>;
+}
+
+function ConnectionFields({
   form,
   connection,
   hasOAuthToken,
@@ -82,7 +99,7 @@ export function ConnectionFields({
 
   if (isVirtualConnection) {
     return (
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4 p-5 border-b border-border">
         <div className="flex flex-col gap-3">
           <span className="text-xs text-muted-foreground font-medium">
             Type
@@ -114,7 +131,7 @@ export function ConnectionFields({
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 p-5 border-b border-border">
       <FormField
         control={form.control}
         name="ui_type"
@@ -423,5 +440,149 @@ export function ConnectionFields({
         />
       )}
     </div>
+  );
+}
+
+export function ConnectionSidebar({
+  form,
+  connection,
+  isMCPAuthenticated,
+  hasOAuthToken,
+  onReauthenticate,
+  onRemoveOAuth,
+}: ConnectionSidebarProps) {
+  const { org } = useProjectContext();
+
+  return (
+    <Form {...form}>
+      <div className="flex flex-col h-full overflow-auto">
+        {/* Header section - Icon, Title, Description */}
+        <div className="flex flex-col gap-4 p-5 border-b border-border">
+          {connection.app_name && connection.icon ? (
+            <IntegrationIcon
+              icon={connection.icon}
+              name={connection.title}
+              size="lg"
+              className="shadow-sm"
+            />
+          ) : (
+            <Controller
+              control={form.control}
+              name="icon"
+              render={({ field }) => (
+                <IconPicker
+                  value={field.value}
+                  onChange={field.onChange}
+                  name={connection.title}
+                  size="lg"
+                  className="shadow-sm"
+                />
+              )}
+            />
+          )}
+          <div className="flex flex-col">
+            <FormField
+              control={form.control}
+              name="title"
+              render={({ field }) => (
+                <FormItem className="flex-1 space-y-0">
+                  <FormControl>
+                    <Input
+                      {...field}
+                      className="h-auto py-0.5 text-lg! font-medium leading-7 px-2 -mx-2 border-transparent hover:bg-input/25 focus:border-input bg-transparent transition-all"
+                      placeholder="Connection Name"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem className="w-full space-y-0">
+                  <FormControl>
+                    <Input
+                      {...field}
+                      value={field.value || ""}
+                      className="h-auto py-0.5 text-base text-muted-foreground leading-6 px-2 -mx-2 border-transparent hover:bg-input/25 focus:border-input bg-transparent transition-all"
+                      placeholder="Add a description..."
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        </div>
+
+        {/* Connection section */}
+        <ConnectionFields
+          form={form}
+          connection={connection}
+          hasOAuthToken={hasOAuthToken}
+          onReauthenticate={onReauthenticate}
+          onRemoveOAuth={onRemoveOAuth}
+        />
+
+        {/* Connection Info section */}
+        <div className="flex flex-col gap-2 p-5 border-b border-border">
+          <div className="flex items-center justify-between py-1.5">
+            <span className="text-xs text-muted-foreground font-medium">
+              Status
+            </span>
+            {isMCPAuthenticated ? (
+              <Badge
+                variant="success"
+                className="gap-1.5 bg-success-foreground text-success"
+              >
+                <CheckCircle size={12} />
+                Connected
+              </Badge>
+            ) : !connection.connection_token && !connection.oauth_config ? (
+              <Badge
+                variant="outline"
+                className="gap-1.5 text-amber-600 border-amber-400/40"
+              >
+                <Key01 size={12} />
+                Needs API Key
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-muted-foreground">
+                Not connected
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center justify-between py-1.5">
+            <span className="text-xs text-muted-foreground font-medium">
+              Created by
+            </span>
+            <User id={connection.created_by} size="2xs" />
+          </div>
+          <div className="flex items-center justify-between py-1.5">
+            <span className="text-xs text-muted-foreground font-medium">
+              Updated
+            </span>
+            <span className="text-sm text-foreground">
+              {connection.updated_at
+                ? formatDistanceToNow(new Date(connection.updated_at), {
+                    addSuffix: true,
+                  })
+                : "Unknown"}
+            </span>
+          </div>
+        </div>
+
+        {/* Agents section */}
+        <ConnectionVirtualMCPsSection
+          connectionId={connection.id}
+          connectionTitle={connection.title}
+          connectionDescription={connection.description}
+          connectionIcon={connection.icon}
+          org={org.slug}
+        />
+      </div>
+    </Form>
   );
 }

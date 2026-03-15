@@ -58,32 +58,19 @@ export const CONNECTION_AUTHENTICATE = defineTool({
       // Connection unreachable
     }
 
-    // Determine auth type
+    // Simple: oauth if oauth_config exists, token otherwise.
+    // needs_auth = true when token is missing (and no oauth_config).
     const hasOAuth = !!connection.oauth_config;
-    const hasScopes =
-      connection.configuration_scopes &&
-      connection.configuration_scopes.length > 0;
-    // MCP_CONFIGURATION tool = server expects configuration (e.g. API key).
-    // Some MCPs (Perplexity) respond to ping/listTools without auth but fail
-    // on actual tool calls, so health check alone is not sufficient.
-    const tools = (connection.tools ?? []) as { name: string }[];
-    const hasMcpConfig = tools.some((t) => t.name === "MCP_CONFIGURATION");
-    const needsToken = hasMcpConfig && !connection.connection_token;
+    const hasToken = !!connection.connection_token;
 
     let authType: "oauth" | "token" | "configuration" | "none" = "none";
     if (hasOAuth) {
       authType = "oauth";
-    } else if (hasScopes) {
-      authType = "configuration";
-    } else if (needsToken) {
-      authType = "token";
-    } else if (!isHealthy && connection.connection_token) {
-      authType = "token";
-    } else if (!isHealthy && connection.connection_url) {
+    } else if (!hasToken) {
       authType = "token";
     }
 
-    const needsAuth = (!isHealthy && authType !== "none") || needsToken;
+    const needsAuth = hasOAuth ? !isHealthy : !hasToken;
 
     return {
       connection_id: connection.id,

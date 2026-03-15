@@ -10,6 +10,20 @@ export function ConnectionStatus({
   status: ConnectionStatusValue;
   needsAuth?: boolean;
 }) {
+  // needsAuth takes priority — even if status is "active", the connection
+  // can't actually work without an API key
+  if (needsAuth) {
+    return (
+      <Badge
+        variant="outline"
+        className="gap-1.5 text-amber-600 border-amber-400/40 bg-background"
+      >
+        <Key01 size={12} />
+        Needs API Key
+      </Badge>
+    );
+  }
+
   if (status === "active") {
     return (
       <Badge
@@ -30,18 +44,6 @@ export function ConnectionStatus({
       >
         <AlertCircle size={12} />
         Error
-      </Badge>
-    );
-  }
-
-  if (needsAuth || status === "inactive") {
-    return (
-      <Badge
-        variant="outline"
-        className="gap-1.5 text-amber-600 border-amber-400/40 bg-background"
-      >
-        <Key01 size={12} />
-        Needs API Key
       </Badge>
     );
   }
