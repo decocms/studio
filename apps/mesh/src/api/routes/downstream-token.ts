@@ -97,6 +97,16 @@ app.post("/connections/:connectionId/oauth-token", async (c) => {
 
   const token = await tokenStorage.upsert(tokenData);
 
+  // Clear needs_auth flag from metadata
+  const existingMeta =
+    (connection.metadata as Record<string, unknown> | null) ?? {};
+  if (existingMeta.needs_auth) {
+    const { needs_auth: _, ...restMeta } = existingMeta;
+    ctx.storage.connections
+      .update(connectionId, { metadata: restMeta })
+      .catch(() => {});
+  }
+
   // Re-fetch tools now that the connection is authenticated.
   // This runs in the background so it doesn't block the response.
   if (connection.connection_url) {
@@ -212,9 +222,15 @@ app.post("/connections/:connectionId/token", async (c) => {
     return c.json({ error: "token is required" }, 400);
   }
 
+  // Clear needs_auth flag from metadata
+  const existingMeta =
+    (connection.metadata as Record<string, unknown> | null) ?? {};
+  const { needs_auth: _, ...restMeta } = existingMeta;
+
   await ctx.storage.connections.update(connectionId, {
     connection_token: body.token,
     status: "active",
+    metadata: restMeta,
   });
 
   // Re-fetch tools in the background now that we have a token

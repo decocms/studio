@@ -129,18 +129,10 @@ import {
 // Auth helpers
 // ---------------------------------------------------------------------------
 
-/** True when an HTTP/SSE connection has no token and no OAuth config */
+/** True when connection was flagged as needing auth during install */
 function connectionNeedsAuth(c: ConnectionEntity): boolean {
-  if (c.connection_type === "VIRTUAL" || c.connection_type === "STDIO") {
-    return false;
-  }
-  // Has a bearer token or OAuth config → authenticated
-  if (c.connection_token || c.oauth_config) return false;
-  // Has configuration_scopes → MCP declared it needs configuration
-  if (c.configuration_scopes && c.configuration_scopes.length > 0) return true;
-  // No token, no oauth, no scopes → only flag if health check says unhealthy
-  // (can't determine from entity alone — Gmail has OAuth token stored separately)
-  return false;
+  const meta = c.metadata as Record<string, unknown> | null;
+  return !!meta?.needs_auth;
 }
 
 // ---------------------------------------------------------------------------
