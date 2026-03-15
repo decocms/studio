@@ -381,10 +381,11 @@ export async function streamCore(
                 // Skip connections with a stored connection_token
                 if (conn.connection_token) continue;
 
-                const health = await ctx.storage.connections.testConnection(
-                  conn.id,
-                );
-                if (!health.healthy && conn.connection_url) {
+                // If we reach here the connection has no OAuth token and no
+                // connection_token — it needs authentication. Skip the health
+                // check because some MCP servers respond "healthy" (HTTP 200)
+                // even without auth but expose 0 tools.
+                if (conn.connection_url) {
                   writer.write({
                     type: "data-connection-auth",
                     data: {
