@@ -294,7 +294,10 @@ function getCostLevel(inputPerM: number): { level: number; label: string } {
 const CAPABILITY_CONFIGS: Record<string, { icon: ReactNode; label: string }> = {
   text: { icon: <AlignLeft className="size-3.5" />, label: "Text" },
   vision: { icon: <Image01 className="size-3.5" />, label: "Vision" },
-  image: { icon: <ImagePlus className="size-3.5" />, label: "Image" },
+  "image-generation": {
+    icon: <ImagePlus className="size-3.5" />,
+    label: "Image generation",
+  },
   tools: { icon: <Tool01 className="size-3.5" />, label: "Tools" },
   reasoning: { icon: <Stars01 className="size-3.5" />, label: "Reasoning" },
   "web-search": {
@@ -791,7 +794,7 @@ function ConnectionModelList({
 }) {
   const { models: rawModels } = useAiProviderModels(keyId);
   const allModels = imageMode
-    ? rawModels.filter((m) => m.capabilities?.includes("image"))
+    ? rawModels.filter((m) => m.capabilities?.includes("image-generation"))
     : rawModels;
   const [shortlistSet, setShortlistSet] = useState<Set<string>>(
     () => (keyId ? readShortlist(keyId) : null) ?? DEFAULT_SHORTLIST,

@@ -1,10 +1,6 @@
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Image01 } from "@untitledui/icons";
+import { useAiProviderModels } from "../../hooks/collections/use-llm";
 import { useChat } from "./context";
 
 const ASPECT_RATIOS = [
@@ -14,36 +10,22 @@ const ASPECT_RATIOS = [
 ] as const;
 
 export function ImageModeToggle({ disabled = false }: { disabled?: boolean }) {
-  const { imageMode, imageAspectRatio, setImageMode, setImageAspectRatio } =
-    useChat();
+  const {
+    imageMode,
+    imageAspectRatio,
+    setImageMode,
+    setImageAspectRatio,
+    credentialId,
+  } = useChat();
+  const { models } = useAiProviderModels(credentialId ?? undefined);
+  const imageModels = models.filter((m) =>
+    m.capabilities?.includes("image-generation"),
+  );
 
   return (
     <div className="flex items-center gap-0.5">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => setImageMode(!imageMode)}
-            className={cn(
-              "flex items-center justify-center size-8 rounded-md transition-colors shrink-0",
-              disabled
-                ? "cursor-not-allowed opacity-50"
-                : "cursor-pointer hover:text-muted-foreground",
-              imageMode
-                ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                : "text-muted-foreground/75",
-            )}
-          >
-            <Image01 size={16} />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="top">
-          {imageMode ? "Switch to text mode" : "Switch to image generation"}
-        </TooltipContent>
-      </Tooltip>
       {imageMode && (
-        <div className="flex items-center gap-0.5 ml-0.5">
+        <div className="flex items-center gap-0.5 mr-0.5">
           {ASPECT_RATIOS.map((ratio) => (
             <button
               key={ratio.value}
@@ -63,6 +45,23 @@ export function ImageModeToggle({ disabled = false }: { disabled?: boolean }) {
           ))}
         </div>
       )}
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setImageMode(!imageMode, imageModels)}
+        className={cn(
+          "flex items-center gap-1.5 h-8 px-2 rounded-lg text-sm transition-colors shrink-0",
+          disabled
+            ? "cursor-not-allowed opacity-50"
+            : "cursor-pointer hover:bg-accent",
+          imageMode
+            ? "bg-primary text-primary-foreground hover:bg-primary/90"
+            : "text-muted-foreground",
+        )}
+      >
+        <Image01 size={16} />
+        <span>Image</span>
+      </button>
     </div>
   );
 }

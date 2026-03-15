@@ -83,6 +83,9 @@ class ChatStore {
   private chatBridge: ChatBridgeMethods | null = null;
   private _initialMessage: SendMessageParams | null = null;
 
+  /** Model saved before entering image mode, restored when leaving. */
+  private _previousModel: AiProviderModel | null = null;
+
   // External deps injected from React
   private contextPrompt = "";
   private toolApprovalLevel: ToolApprovalLevel | undefined;
@@ -418,8 +421,35 @@ class ChatStore {
     this.notify();
   }
 
-  setImageMode(enabled: boolean): void {
-    this.state = { ...this.state, imageMode: enabled };
+  setImageMode(enabled: boolean, imageModels?: AiProviderModel[]): void {
+    if (enabled) {
+      // Save current model and auto-select best image model (prefer Gemini)
+      this._previousModel = this.state.selectedModel;
+      const preferredImageModel =
+        imageModels?.find((m) => m.modelId.startsWith("google/gemini")) ??
+        imageModels?.[0] ??
+        null;
+      this.state = {
+        ...this.state,
+        imageMode: true,
+        ...(preferredImageModel && { selectedModel: preferredImageModel }),
+      };
+      if (preferredImageModel) {
+        writeSelectedModel(this.state.locator, preferredImageModel);
+      }
+    } else {
+      // Restore previous model
+      const restored = this._previousModel;
+      this._previousModel = null;
+      this.state = {
+        ...this.state,
+        imageMode: false,
+        ...(restored && { selectedModel: restored }),
+      };
+      if (restored) {
+        writeSelectedModel(this.state.locator, restored);
+      }
+    }
     this.notify();
   }
 
