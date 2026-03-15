@@ -653,7 +653,24 @@ export function ProviderCard({
                 />
               )}
               <div>
-                <h3 className="font-medium text-base">{provider.name}</h3>
+                <h3 className="font-medium text-base flex items-center gap-1.5">
+                  {provider.name}
+                  {provider.id === "openrouter" && (
+                    <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                      OAuth
+                    </span>
+                  )}
+                  {provider.id === "anthropic" && (
+                    <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                      API
+                    </span>
+                  )}
+                  {provider.id === "claude-code" && (
+                    <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                      Local
+                    </span>
+                  )}
+                </h3>
                 <p className="text-sm text-muted-foreground line-clamp-1">
                   {isClaudeCodePending
                     ? "Connecting..."

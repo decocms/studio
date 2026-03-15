@@ -305,12 +305,25 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         },
       });
 
+      // Remove existing MCP first (ignore failure — may not exist yet)
+      await runCli("claude", [
+        "mcp",
+        "remove",
+        "deco-studio",
+        "--scope",
+        "user",
+      ]);
+
       const result = await runCli(
         "claude",
         ["mcp", "add-json", "deco-studio", mcpConfig, "--scope", "user"],
         10000,
       );
       if (!result.ok) {
+        console.error("[connect-studio] claude mcp add-json failed", {
+          stdout: result.stdout,
+          stderr: result.stderr,
+        });
         throw new HTTPException(500, {
           message: "Failed to register deco-studio MCP",
         });

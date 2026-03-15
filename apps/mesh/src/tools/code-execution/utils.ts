@@ -44,6 +44,8 @@ export interface ToolContext {
     name: string,
     args: Record<string, unknown>,
   ) => Promise<CallToolResult>;
+  /** Close all underlying proxies — call after code execution completes */
+  close: () => Promise<void>;
 }
 
 /** Tool description for describe tools output */
@@ -238,16 +240,16 @@ async function loadToolsFromConnections(
     return result as CallToolResult;
   };
 
-  // Dispose of proxies when done
-  const closePromises: Promise<void>[] = [];
-  for (const [, entry] of proxyMap) {
-    closePromises.push(entry.proxy.close().catch(() => {}));
-  }
-  await Promise.all(closePromises);
-
   return {
     tools: allTools,
     callTool,
+    close: async () => {
+      await Promise.all(
+        Array.from(proxyMap.values()).map((entry) =>
+          entry.proxy.close().catch(() => {}),
+        ),
+      );
+    },
   };
 }
 

@@ -7,7 +7,7 @@ export const decoAiGatewayAdapter: ProviderAdapter = {
   info: {
     id: "deco",
     name: "Deco AI Gateway",
-    description: "Deco-managed keys with access to 100+ models",
+    description: "Access to 100+ models",
     logo: "/logos/deco logo.svg",
   },
 
