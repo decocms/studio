@@ -185,6 +185,26 @@ class StreamState {
   // Accumulated response text for persistence
   responseText = "";
 
+  /**
+   * Ordered list of completed parts for message persistence.
+   * Text segments and tool calls are pushed as they finalize so the
+   * persisted message faithfully reproduces what was streamed.
+   */
+  completedParts: Array<
+    | { type: "text"; text: string }
+    | {
+        type: "dynamic-tool";
+        toolCallId: string;
+        toolName: string;
+        input: unknown;
+        output: unknown;
+        state: "output-available" | "output-error";
+      }
+  > = [];
+
+  /** Tracks how much of responseText has been flushed into completedParts */
+  private textFlushedLength = 0;
+
   constructor(writer: UIMessageStreamWriter) {
     this.writer = writer;
     this.textPartId = generateMessageId();
@@ -210,6 +230,15 @@ class StreamState {
     if (this.reasoningPartId) {
       this.writer.write({ type: "reasoning-end", id: this.reasoningPartId });
       this.reasoningPartId = null;
+    }
+  }
+
+  /** Flush any new responseText since the last flush into completedParts */
+  flushTextPart() {
+    if (this.responseText.length > this.textFlushedLength) {
+      const text = this.responseText.slice(this.textFlushedLength);
+      this.completedParts.push({ type: "text", text });
+      this.textFlushedLength = this.responseText.length;
     }
   }
 
@@ -402,6 +431,31 @@ class StreamState {
         toolCallId,
         output: result,
         dynamic: true,
+      });
+    }
+
+    // Accumulate tool call part for persistence
+    const toolBlock = Array.from(this.toolCallBlocks.values()).find(
+      (t) => t.id === toolCallId,
+    );
+    if (toolBlock) {
+      // Flush any preceding text before the tool call
+      this.flushTextPart();
+
+      let parsedInput: unknown = toolBlock.args;
+      try {
+        parsedInput = JSON.parse(toolBlock.args);
+      } catch {
+        // keep as string
+      }
+
+      this.completedParts.push({
+        type: "dynamic-tool",
+        toolCallId,
+        toolName: toolBlock.name,
+        input: parsedInput,
+        output: isError ? { error: result } : result,
+        state: isError ? "output-error" : "output-available",
       });
     }
 
@@ -732,6 +786,18 @@ export async function streamClaudeCode(
   usage: { inputTokens: number; outputTokens: number; totalTokens: number };
   /** Accumulated text from the response, for persistence */
   responseText: string;
+  /** Ordered parts (text + tool calls) for faithful message persistence */
+  parts: Array<
+    | { type: "text"; text: string }
+    | {
+        type: "dynamic-tool";
+        toolCallId: string;
+        toolName: string;
+        input: unknown;
+        output: unknown;
+        state: "output-available" | "output-error";
+      }
+  >;
 }> {
   const queryFn = await getQuery();
 
@@ -1054,5 +1120,13 @@ export async function streamClaudeCode(
     },
   });
 
-  return { costUsd: totalCostUsd, usage, responseText: state.responseText };
+  // Flush any trailing text into completedParts
+  state.flushTextPart();
+
+  return {
+    costUsd: totalCostUsd,
+    usage,
+    responseText: state.responseText,
+    parts: state.completedParts,
+  };
 }

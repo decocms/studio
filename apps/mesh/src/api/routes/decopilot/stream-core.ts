@@ -315,12 +315,18 @@ export async function streamCore(
             });
           }
 
-          // Persist the assistant response so it survives page reload
-          if (ccResult.responseText) {
+          // Persist the assistant response so it survives page reload.
+          // Use the ordered parts array (text + tool calls interleaved) when
+          // available so tool call cards are preserved after refresh.
+          if (ccResult.parts.length > 0 || ccResult.responseText) {
+            const responseParts =
+              ccResult.parts.length > 0
+                ? ccResult.parts
+                : [{ type: "text" as const, text: ccResult.responseText }];
             const responseMessage: ChatMessage = {
               id: generateMessageId(),
               role: "assistant",
-              parts: [{ type: "text", text: ccResult.responseText }],
+              parts: responseParts as unknown as ChatMessage["parts"],
             };
             await saveMessagesToThread(responseMessage);
           }
