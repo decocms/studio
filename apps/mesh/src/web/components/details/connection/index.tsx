@@ -305,14 +305,7 @@ function ConnectionInspectorViewWithConnection({
   });
   // VIRTUAL connections are always "authenticated" - they don't have OAuth
   const isVirtualConnection = connection?.connection_type === "VIRTUAL";
-  // A connection needs auth if it's HTTP/SSE with no token and no oauth_config
-  const needsToken =
-    !isVirtualConnection &&
-    connection?.connection_type !== "STDIO" &&
-    !connection?.connection_token &&
-    !connection?.oauth_config;
-  const isMCPAuthenticated =
-    isVirtualConnection || (authStatus.isAuthenticated && !needsToken);
+  const isMCPAuthenticated = isVirtualConnection || authStatus.isAuthenticated;
 
   // Check if connection has MCP binding for configuration
   const mcpBindingConnections = useBindingConnections({

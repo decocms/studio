@@ -33,7 +33,6 @@ import {
   CheckCircle,
   ChevronDown,
   Container,
-  Key01,
   Users03,
   Globe02,
   RefreshCcw01,
@@ -539,14 +538,6 @@ export function ConnectionSidebar({
               >
                 <CheckCircle size={12} />
                 Connected
-              </Badge>
-            ) : !connection.connection_token && !connection.oauth_config ? (
-              <Badge
-                variant="outline"
-                className="gap-1.5 text-amber-600 border-amber-400/40"
-              >
-                <Key01 size={12} />
-                Needs API Key
               </Badge>
             ) : (
               <Badge variant="outline" className="text-muted-foreground">
