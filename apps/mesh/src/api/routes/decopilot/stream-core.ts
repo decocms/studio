@@ -354,11 +354,11 @@ export async function streamCore(
             }
           }
 
-          // Emit auth cards for unhealthy connections.
-          // Claude Code's MCP client doesn't support elicitation and
-          // tool_progress events don't fire for MCP tools, so we always
-          // check for unhealthy connections after the stream.
-          {
+          // Emit auth cards only when Claude Code actually tried to
+          // authenticate a connection during this stream. Don't show
+          // cards for pre-existing unauthenticated connections that
+          // weren't used in this conversation.
+          if (ccResult.calledAuthTool) {
             try {
               const connections = await ctx.storage.connections.list(
                 organization.id,

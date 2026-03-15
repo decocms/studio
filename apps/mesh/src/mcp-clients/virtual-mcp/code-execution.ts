@@ -89,6 +89,7 @@ export class CodeExecutionClient extends BaseSelection {
       callTool: async (name: string, innerArgs: Record<string, unknown>) => {
         return this.routeToolCall({ name, arguments: innerArgs });
       },
+      close: async () => {},
     };
 
     // Use shared run code logic
