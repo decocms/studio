@@ -922,6 +922,8 @@ function SelectedModelDisplay({
   }
 
   const { displayName } = parseModelTitle(model);
+  // Strip parenthetical suffix for compact trigger display (e.g. "Nano Banana 2 (Gemini …)" → "Nano Banana 2")
+  const shortName = displayName.replace(/\s*\(.*\)\s*$/, "").trim();
 
   const providerLogo = getProviderLogo(model);
 
@@ -932,8 +934,8 @@ function SelectedModelDisplay({
         className="w-3.5 h-3.5 shrink-0 rounded-sm"
         alt={model.title}
       />
-      <span className="text-sm truncate whitespace-nowrap text-muted-foreground max-w-[100px] sm:max-w-none">
-        {displayName}
+      <span className="text-sm truncate whitespace-nowrap hidden md:inline text-muted-foreground">
+        {shortName}
       </span>
       <ChevronDown
         size={14}

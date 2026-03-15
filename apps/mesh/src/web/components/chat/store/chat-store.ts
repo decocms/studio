@@ -251,6 +251,20 @@ class ChatStore {
   // ---- Thread operations ----
 
   createThread(): string {
+    // Exit image mode if active, restoring text model
+    if (this.state.imageMode) {
+      const restored = this._previousModel;
+      this._previousModel = null;
+      this.state = {
+        ...this.state,
+        imageMode: false,
+        ...(restored && { selectedModel: restored }),
+      };
+      if (restored) {
+        writeSelectedModel(this.state.locator, restored);
+      }
+    }
+
     // Clear errors and transient UI state — preserve model, agent, credentials, etc.
     this.state = {
       ...this.state,
@@ -314,14 +328,19 @@ class ChatStore {
       this.stop();
     }
 
+    const restored = this._previousModel;
     this._previousModel = null;
     this.state = {
       ...this.state,
       activeThreadId: threadId,
       imageMode: false,
+      ...(restored && { selectedModel: restored }),
       tiptapDoc: undefined,
       finishReason: null,
     };
+    if (restored) {
+      writeSelectedModel(this.state.locator, restored);
+    }
     writeActiveThreadId(this.state.locator, threadId);
     // Sync AI SDK with the new thread's messages (or empty) to prevent leaking
     const threadMessages = this.state.threadMessages[threadId] ?? [];
@@ -392,7 +411,11 @@ class ChatStore {
 
   setModel(model: AiProviderModel): void {
     this.state = { ...this.state, selectedModel: model };
-    writeSelectedModel(this.state.locator, model);
+    // Don't persist image models — on refresh imageMode resets to false
+    // so localStorage must always hold a text model.
+    if (!this.state.imageMode) {
+      writeSelectedModel(this.state.locator, model);
+    }
     this.notify();
   }
 
@@ -426,7 +449,9 @@ class ChatStore {
 
   setImageMode(enabled: boolean, imageModels?: AiProviderModel[]): void {
     if (enabled) {
-      // Save current model and auto-select best image model (prefer Gemini)
+      // Save current model and auto-select best image model (prefer Gemini).
+      // Do NOT persist image model to localStorage — on refresh imageMode
+      // resets to false so the persisted model must always be a text model.
       this._previousModel = this.state.selectedModel;
       const preferredImageModel =
         imageModels?.find((m) => m.modelId.startsWith("google/gemini")) ??
@@ -437,11 +462,8 @@ class ChatStore {
         imageMode: true,
         ...(preferredImageModel && { selectedModel: preferredImageModel }),
       };
-      if (preferredImageModel) {
-        writeSelectedModel(this.state.locator, preferredImageModel);
-      }
     } else {
-      // Restore previous model
+      // Restore previous model and persist it
       const restored = this._previousModel;
       this._previousModel = null;
       this.state = {
