@@ -55,6 +55,105 @@ function messagesToPrompt(messages: ChatMessage[]): string {
 }
 
 /**
+ * Check if the last user message contains image file parts.
+ */
+function hasImageParts(messages: ChatMessage[]): boolean {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (!msg || msg.role !== "user") continue;
+    for (const part of msg.parts ?? []) {
+      if (
+        part.type === "file" &&
+        "mediaType" in part &&
+        typeof part.mediaType === "string" &&
+        part.mediaType.startsWith("image/")
+      ) {
+        return true;
+      }
+    }
+    break; // only check the last user message
+  }
+  return false;
+}
+
+/**
+ * Build an Anthropic MessageParam content array from the last user message,
+ * including both text and image blocks.
+ */
+function buildUserContent(messages: ChatMessage[]): Array<
+  | { type: "text"; text: string }
+  | {
+      type: "image";
+      source: { type: "base64"; media_type: string; data: string };
+    }
+> {
+  const content: Array<
+    | { type: "text"; text: string }
+    | {
+        type: "image";
+        source: { type: "base64"; media_type: string; data: string };
+      }
+  > = [];
+
+  // Add context from prior messages as text
+  const priorParts: string[] = [];
+  for (let i = 0; i < messages.length - 1; i++) {
+    const msg = messages[i];
+    if (!msg || msg.role === "system") continue;
+    const textParts: string[] = [];
+    for (const part of msg.parts ?? []) {
+      if ("text" in part && typeof part.text === "string") {
+        textParts.push(part.text);
+      }
+    }
+    if (textParts.length > 0) {
+      const prefix = msg.role === "assistant" ? "Assistant" : "User";
+      priorParts.push(`${prefix}: ${textParts.join("\n")}`);
+    }
+  }
+  if (priorParts.length > 0) {
+    content.push({
+      type: "text",
+      text: `Previous conversation:\n\n${priorParts.join("\n\n")}`,
+    });
+  }
+
+  // Process the last user message with both text and images
+  const lastMsg = messages[messages.length - 1];
+  if (lastMsg) {
+    for (const part of lastMsg.parts ?? []) {
+      if ("text" in part && typeof part.text === "string" && part.text.trim()) {
+        content.push({ type: "text", text: part.text });
+      }
+      if (
+        part.type === "file" &&
+        "url" in part &&
+        typeof part.url === "string" &&
+        "mediaType" in part &&
+        typeof part.mediaType === "string" &&
+        part.mediaType.startsWith("image/")
+      ) {
+        // Extract base64 data from data URL
+        const dataUrl = part.url as string;
+        const base64Match = dataUrl.match(/^data:[^;]+;base64,(.+)$/);
+        if (base64Match?.[1]) {
+          content.push({
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: part.mediaType as string,
+              data: base64Match[1],
+            },
+          });
+        }
+      }
+    }
+  }
+
+  return content;
+}
+
+/**
  * Extract system prompt text from system messages.
  */
 function extractSystemPrompt(messages: ChatMessage[]): string {
@@ -801,7 +900,24 @@ export async function streamClaudeCode(
 }> {
   const queryFn = await getQuery();
 
-  const prompt = messagesToPrompt(opts.messages);
+  // When images are present, build an SDKUserMessage with content blocks.
+  // Otherwise use plain text prompt.
+  const containsImages = hasImageParts(opts.messages);
+  const prompt = containsImages
+    ? ((async function* () {
+        yield {
+          type: "user" as const,
+          message: {
+            role: "user" as const,
+            content: buildUserContent(opts.messages),
+          },
+          parent_tool_use_id: null,
+          session_id: "chat",
+        };
+      })() as AsyncIterable<
+        import("@anthropic-ai/claude-agent-sdk").SDKUserMessage
+      >)
+    : messagesToPrompt(opts.messages);
   const systemPrompt = extractSystemPrompt(opts.messages);
 
   const abortController = opts.abortController ?? new AbortController();
