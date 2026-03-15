@@ -304,9 +304,14 @@ export async function streamClaudeCode(
           const progressToolName =
             (message as { tool_name?: string }).tool_name ?? "";
 
-          // Track CONNECTION_AUTHENTICATE calls so caller can emit auth cards.
+          // Track connection-related tool calls so caller can emit auth cards.
           // Claude Code prefixes MCP tools as mcp__<server>__<tool_name>.
-          if (progressToolName.includes("CONNECTION_AUTHENTICATE")) {
+          // Emit auth cards when a connection is created (needs auth) or
+          // when the AI explicitly calls CONNECTION_AUTHENTICATE.
+          if (
+            progressToolName.includes("CONNECTION_AUTHENTICATE") ||
+            progressToolName.includes("COLLECTION_CONNECTIONS_CREATE")
+          ) {
             calledAuthTool = true;
           }
           break;
