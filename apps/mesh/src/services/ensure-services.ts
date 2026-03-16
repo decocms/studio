@@ -225,8 +225,8 @@ async function ensurePostgres(): Promise<ServiceInfo> {
   }
 
   if (await probePort(PG_PORT)) {
-    info.state = "external";
-    info.owner = "external";
+    info.state = "running";
+    info.owner = process.env.DATABASE_URL ? "external" : "managed";
     return info;
   }
   const dataDir = join(SERVICES_DIR, "postgres", "data");
@@ -458,8 +458,8 @@ async function ensureNats(): Promise<ServiceInfo> {
   }
 
   if (await probePort(NATS_PORT)) {
-    info.state = "external";
-    info.owner = "external";
+    info.state = "running";
+    info.owner = process.env.NATS_URL ? "external" : "managed";
     return info;
   }
 
