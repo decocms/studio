@@ -17,7 +17,7 @@ export const KEY_WIDTH = 32;
 export const RULE_WIDTH = 42;
 
 export function section(title: string): string {
-  return `  ${dim(`── ${title} ${"─".repeat(Math.max(0, RULE_WIDTH - title.length - 4))}`)}`;
+  return `\n  ${dim(`── ${title} ${"─".repeat(Math.max(0, RULE_WIDTH - title.length - 4))}`)}`;
 }
 
 export function row(key: string, value: string): string {
