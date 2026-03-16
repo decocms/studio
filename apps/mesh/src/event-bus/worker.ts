@@ -510,6 +510,8 @@ export class EventBusWorker {
         console.log(
           `[EventBus] Cron expression for event ${event.id} has no more runs`,
         );
+        // Cron is exhausted — mark the event as delivered (terminal state)
+        await this.storage.markEventCompleted(event.id);
         return;
       }
 
