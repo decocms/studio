@@ -346,9 +346,10 @@ export const auth = betterAuth({
     ...authConfig.account,
     accountLinking: {
       ...authConfig.account?.accountLinking,
-      trustedProviders: authConfig.ssoConfig
-        ? [authConfig.ssoConfig.providerId]
-        : [],
+      trustedProviders: [
+        ...(authConfig.account?.accountLinking?.trustedProviders ?? []),
+        ...(authConfig.ssoConfig ? [authConfig.ssoConfig.providerId] : []),
+      ],
     },
   },
 
