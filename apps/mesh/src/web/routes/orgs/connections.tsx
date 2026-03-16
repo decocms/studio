@@ -12,15 +12,15 @@ import { Page } from "@/web/components/page";
 import type { RegistryItem } from "@/web/components/store/types";
 import { User } from "@/web/components/user/user.tsx";
 import { useRegistryConnections } from "@/web/hooks/use-binding";
+import { useInfiniteScroll } from "@/web/hooks/use-infinite-scroll";
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import { useListState } from "@/web/hooks/use-list-state";
 import { authClient } from "@/web/lib/auth-client";
 import { useAuthConfig } from "@/web/providers/auth-config-provider";
-import {
-  extractItemsFromResponse,
-  findListToolName,
-} from "@/web/utils/registry-utils";
+import { useStoreDiscovery } from "@/web/hooks/use-store-discovery";
+import { getGitHubAvatarUrl } from "@/web/utils/github";
+import { findListToolName } from "@/web/utils/registry-utils";
 import { slugify } from "@/web/utils/slugify";
 import {
   AlertDialog,
@@ -79,7 +79,6 @@ import {
   useConnectionActions,
   useConnections,
   useMCPClient,
-  useMCPToolCallQuery,
   useProjectContext,
   useVirtualMCPs,
   type ConnectionEntity,
@@ -854,7 +853,7 @@ function OrgMcpsContent() {
 
   // Optional registry lookup: support multiple registries, let user pick on "All" tab
   // Sort so the self/management MCP (Mesh MCP) appears last — external registries like
-  // Deco Store should be the default catalog source.
+  // Deco Store / MCP Registry should be the default catalog source.
   const registryConnections = useRegistryConnections(allConnections).sort(
     (a, b) => {
       const isSelfA = a.app_name === "@deco/management-mcp";
@@ -874,21 +873,17 @@ function OrgMcpsContent() {
       : undefined) ?? registryConnections[0];
   const registryId = registryConnection?.id ?? "";
   const registryListToolName = findListToolName(registryConnection?.tools);
-  const registryClient = useMCPClient({
-    connectionId: registryId || null,
-    orgId: org.id,
-  });
-  const { data: registryListResults } = useMCPToolCallQuery<unknown>({
-    client: registryClient,
-    toolName: registryListToolName,
-    toolArguments: { limit: 200 },
+  const registryDiscovery = useStoreDiscovery({
+    registryId,
+    listToolName: registryListToolName,
     enabled: Boolean(registryId && registryListToolName),
-    staleTime: 60 * 60 * 1000,
-    select: (result) =>
-      (result as { structuredContent?: unknown }).structuredContent ?? result,
   });
-  const registryItems = extractItemsFromResponse<RegistryItem>(
-    registryListResults ?? [],
+  const registryItems = registryDiscovery.items;
+
+  const catalogSentinelRef = useInfiniteScroll(
+    registryDiscovery.loadMore,
+    registryDiscovery.hasMore,
+    registryDiscovery.isLoadingMore,
   );
 
   // "All" tab: catalog items from registry (includes already-connected ones)
@@ -2256,7 +2251,10 @@ function OrgMcpsContent() {
                     "";
                   const description =
                     item.server?.description || item.description || null;
-                  const icon = item.server?.icons?.[0]?.src || null;
+                  const icon =
+                    item.server?.icons?.[0]?.src ||
+                    getGitHubAvatarUrl(item.server?.repository) ||
+                    null;
                   const appInstances = allConnections.filter(
                     (c) =>
                       c.connection_type !== "VIRTUAL" && c.app_name === appName,
@@ -2325,7 +2323,10 @@ function OrgMcpsContent() {
                     "";
                   const description =
                     item.server?.description || item.description || null;
-                  const icon = item.server?.icons?.[0]?.src || null;
+                  const icon =
+                    item.server?.icons?.[0]?.src ||
+                    getGitHubAvatarUrl(item.server?.repository) ||
+                    null;
                   const appInstances = allConnections.filter(
                     (c) =>
                       c.connection_type !== "VIRTUAL" && c.app_name === appName,
@@ -2368,6 +2369,17 @@ function OrgMcpsContent() {
                     />
                   );
                 })}
+                {activeTab === "all" && registryId && (
+                  <div ref={catalogSentinelRef} className="col-span-full h-4" />
+                )}
+                {activeTab === "all" && registryDiscovery.isLoadingMore && (
+                  <div className="col-span-full flex justify-center py-6">
+                    <Loading01
+                      size={24}
+                      className="animate-spin text-muted-foreground"
+                    />
+                  </div>
+                )}
               </div>
             )}
           </div>

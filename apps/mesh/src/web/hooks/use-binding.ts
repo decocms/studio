@@ -1,5 +1,9 @@
 import { z } from "zod";
 import { type Binder, createBindingChecker } from "@decocms/bindings";
+import {
+  BaseCollectionEntitySchema,
+  createCollectionBindings,
+} from "@decocms/bindings/collections";
 import { ASSISTANTS_BINDING } from "@decocms/bindings/assistant";
 import { LANGUAGE_MODEL_BINDING } from "@decocms/bindings/llm";
 import { MCP_BINDING } from "@decocms/bindings/mcp";
@@ -232,6 +236,18 @@ export interface ValidatedCollection {
 }
 
 /**
+ * Formats a collection name for display
+ * e.g., "LLM" -> "Llm", "USER_PROFILES" -> "User Profiles"
+ */
+function formatCollectionName(name: string): string {
+  return name
+    .toLowerCase()
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+/**
  * Extracts collection names from tools using regex pattern
  * Matches COLLECTION_{NAME}_LIST where NAME can contain underscores
  */
@@ -262,6 +278,169 @@ function hasRegistryListTool(
     if (tool.name === "COLLECTION_REGISTRY_APP_LIST") return true;
     return tool.name.startsWith("COLLECTION_REGISTRY_APP_");
   });
+}
+
+/**
+ * Extracts collection schema from tools
+ */
+function extractCollectionSchema(
+  tools: Array<{
+    name: string;
+    inputSchema?: Record<string, unknown>;
+    outputSchema?: Record<string, unknown>;
+  }>,
+  collectionName: string,
+): Record<string, unknown> | undefined {
+  // Try to get schema from CREATE tool (preferred as it has full entity)
+  const createTool = tools.find(
+    (t) => t.name === `COLLECTION_${collectionName}_CREATE`,
+  );
+  const createToolProperties = createTool?.inputSchema?.properties;
+  if (
+    createToolProperties &&
+    typeof createToolProperties === "object" &&
+    "data" in createToolProperties
+  ) {
+    return createToolProperties.data as Record<string, unknown>;
+  }
+
+  // Try to get schema from UPDATE tool
+  const updateTool = tools.find(
+    (t) => t.name === `COLLECTION_${collectionName}_UPDATE`,
+  );
+  const updateToolProperties = updateTool?.inputSchema?.properties;
+  if (
+    updateToolProperties &&
+    typeof updateToolProperties === "object" &&
+    "data" in updateToolProperties
+  ) {
+    // Update usually has partial data, but might still be useful
+    return updateToolProperties.data as Record<string, unknown>;
+  }
+
+  // Try to get schema from LIST tool (output)
+  const listTool = tools.find(
+    (t) => t.name === `COLLECTION_${collectionName}_LIST`,
+  );
+  const listToolProperties = listTool?.outputSchema?.properties;
+  if (
+    listToolProperties &&
+    typeof listToolProperties === "object" &&
+    "items" in listToolProperties
+  ) {
+    const itemsSchema = listToolProperties.items as Record<string, unknown>;
+    if (itemsSchema.items) {
+      return itemsSchema.items as Record<string, unknown>;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Detects CRUD capabilities for a collection
+ */
+function detectCrudCapabilities(
+  tools: Array<{ name: string }>,
+  collectionName: string,
+): {
+  hasCreateTool: boolean;
+  hasUpdateTool: boolean;
+  hasDeleteTool: boolean;
+} {
+  const upperCollectionName = collectionName.toUpperCase();
+  return {
+    hasCreateTool: tools.some(
+      (t) => t.name === `COLLECTION_${upperCollectionName}_CREATE`,
+    ),
+    hasUpdateTool: tools.some(
+      (t) => t.name === `COLLECTION_${upperCollectionName}_UPDATE`,
+    ),
+    hasDeleteTool: tools.some(
+      (t) => t.name === `COLLECTION_${upperCollectionName}_DELETE`,
+    ),
+  };
+}
+
+/**
+ * Detects and validates collection bindings from tools
+ */
+function detectCollections(
+  tools: Array<{
+    name: string;
+    inputSchema?: Record<string, unknown>;
+    outputSchema?: Record<string, unknown>;
+  }> | null,
+): ValidatedCollection[] {
+  if (!tools || tools.length === 0) {
+    return [];
+  }
+
+  const potentialCollections = extractCollectionNames(tools);
+
+  if (potentialCollections.length === 0) {
+    return [];
+  }
+
+  const validatedCollections: ValidatedCollection[] = [];
+
+  for (const collectionName of potentialCollections) {
+    try {
+      // Create a minimal collection binding to check against (read-only)
+      const binding = createCollectionBindings(
+        collectionName.toLowerCase(),
+        BaseCollectionEntitySchema,
+        { readOnly: true },
+      );
+
+      // For collection detection, we only validate input schema compatibility.
+      // Output schema validation is skipped because:
+      // 1. The binding uses BaseCollectionEntitySchema with minimal required fields
+      // 2. Actual collections have additional required fields (description, instructions, etc.)
+      // 3. json-schema-diff sees extra required fields as "removals" (stricter schema)
+      const toolsForChecker = tools.map((t) => ({
+        name: t.name,
+        inputSchema: t.inputSchema,
+        // outputSchema intentionally omitted for detection
+      }));
+
+      // Create binding without output schemas for the same reason
+      const bindingForChecker = binding.map((b) => ({
+        name: b.name,
+        inputSchema: b.inputSchema,
+      }));
+
+      const checker = createBindingChecker(bindingForChecker);
+      const isValid = checker.isImplementedBy(toolsForChecker);
+
+      if (isValid) {
+        const crudCapabilities = detectCrudCapabilities(tools, collectionName);
+        validatedCollections.push({
+          name: collectionName,
+          displayName: formatCollectionName(collectionName),
+          schema: extractCollectionSchema(tools, collectionName),
+          ...crudCapabilities,
+        });
+      }
+    } catch {
+      // Skip collections that fail validation
+    }
+  }
+
+  return validatedCollections;
+}
+
+/**
+ * Hook to detect and validate collection bindings from connection tools
+ * Runs entirely client-side using the connection's tools array
+ *
+ * @param connection - The connection entity to analyze
+ * @returns Array of validated collections
+ */
+export function useCollectionBindings(
+  connection: ConnectionEntity | undefined,
+): ValidatedCollection[] {
+  return detectCollections(connection?.tools ?? null);
 }
 
 /**
