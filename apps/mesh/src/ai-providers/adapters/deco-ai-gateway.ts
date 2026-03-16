@@ -5,7 +5,7 @@ const BASE = process.env.DECO_AI_GATEWAY_URL ?? "https://ai-site.decocache.com";
 
 export const decoAiGatewayAdapter: ProviderAdapter = {
   info: {
-    id: "deco",
+    id: "openrouter",
     name: "Deco AI Gateway",
     description: "Deco-managed keys with access to 100+ models",
     logo: "/logos/deco logo.svg",

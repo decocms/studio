@@ -22,7 +22,10 @@
         // Dev-only module loaded via require() - needs explicit entry
         "src/api/routes/dev-only.ts"
       ],
-      "ignore": ["src/api/index.ts"]
+      "ignore": [
+        "src/api/index.ts",
+        "src/ai-providers/adapters/deco-ai-gateway.ts"
+      ]
     },
     "packages/mesh-sdk": {
       "ignoreDependencies": ["sonner"]
