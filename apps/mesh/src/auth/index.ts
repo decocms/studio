@@ -26,6 +26,7 @@ import {
 import { emailOTP } from "better-auth/plugins/email-otp";
 import {
   adminAc,
+  ownerAc,
   defaultStatements,
 } from "better-auth/plugins/organization/access";
 
@@ -104,7 +105,7 @@ const admin = ac.newRole({
 
 const owner = ac.newRole({
   self: ["*"],
-  ...adminAc.statements,
+  ...ownerAc.statements,
 }) as Role;
 
 const scopes = Object.values(getToolsByCategory())
