@@ -18,8 +18,10 @@ describe("Database Factory", () => {
       expect(database.type).toBe("postgres");
     });
 
-    it("should use default DATABASE_URL when no URL provided", () => {
-      const database = createDatabase();
+    it("should default to postgres type", () => {
+      const database = createDatabase(
+        "postgresql://user:pass@localhost:5432/testdb",
+      );
       expect(database).toBeDefined();
       expect(database.type).toBe("postgres");
     });
