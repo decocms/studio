@@ -205,8 +205,6 @@ export function CollectionTab({
     <>
       <ViewActions>
         <CollectionDisplayButton
-          viewMode={viewMode}
-          onViewModeChange={setViewMode}
           sortKey={sortKey as string}
           sortDirection={sortDirection}
           onSort={handleSort}

@@ -14,7 +14,6 @@ import {
   Folder,
   Home02,
   LayoutLeft,
-  MessageChatSquare,
   RefreshCcw01,
   Settings01,
   Users03,

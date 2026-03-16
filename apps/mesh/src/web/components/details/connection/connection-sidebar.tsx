@@ -442,7 +442,7 @@ export function ConnectionFields({
   );
 }
 
-export function ConnectionSidebar({
+function ConnectionSidebar({
   form,
   connection,
   isMCPAuthenticated,

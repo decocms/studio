@@ -55,7 +55,7 @@ function collectionNameFromTool(toolName: string): string {
   const match = toolName.match(
     /^COLLECTION_(.+?)_(LIST|GET|CREATE|UPDATE|DELETE|FILTERS|SEARCH|VERSIONS|UPSERT|PATCH|ARCHIVE|RESTORE|EXPORT|IMPORT|COUNT|BULK_\w+)$/i,
   );
-  if (match) {
+  if (match?.[1]) {
     return match[1]
       .split("_")
       .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())

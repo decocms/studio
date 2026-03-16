@@ -437,7 +437,7 @@ function detectCollections(
  * @param connection - The connection entity to analyze
  * @returns Array of validated collections
  */
-export function useCollectionBindings(
+function useCollectionBindings(
   connection: ConnectionEntity | undefined,
 ): ValidatedCollection[] {
   return detectCollections(connection?.tools ?? null);

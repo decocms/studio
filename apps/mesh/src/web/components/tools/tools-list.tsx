@@ -233,8 +233,6 @@ export function ToolsList({
       {showToolbar && (
         <ViewActions>
           <CollectionDisplayButton
-            viewMode={viewMode}
-            onViewModeChange={setViewMode}
             sortKey={sortKey}
             sortDirection={sortDirection}
             onSort={handleSort}
