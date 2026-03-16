@@ -25,6 +25,9 @@ export type AuthConfig = {
   magicLink: {
     enabled: boolean;
   };
+  emailOtp: {
+    enabled: boolean;
+  };
   socialProviders: {
     enabled: boolean;
     providers: {
@@ -81,6 +84,9 @@ app.get("/config", async (c) => {
       },
       magicLink: {
         enabled: authConfig.magicLinkConfig?.enabled ?? false,
+      },
+      emailOtp: {
+        enabled: authConfig.emailOtpConfig?.enabled ?? false,
       },
       resetPassword: {
         enabled: resetPasswordEnabled,
