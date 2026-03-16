@@ -66,7 +66,9 @@ startWorktree(slug, async (ctx) => {
   const dotEnv = loadDotEnv(join(repoRoot, "apps/mesh/.env"));
 
   // Apply .env early so ensureServices() sees DATABASE_URL / NATS_URL
-  Object.assign(process.env, dotEnv);
+  for (const [key, value] of Object.entries(dotEnv)) {
+    if (process.env[key] === undefined) process.env[key] = value;
+  }
 
   // Services
   const services = await ensureServices();
