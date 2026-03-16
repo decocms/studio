@@ -1,3 +1,7 @@
+import { decodeJwt } from "jose";
+import { sql } from "kysely";
+import { getDb } from "../database";
+
 export interface MicrosoftSSOConfig {
   domain: string;
   providerId: "microsoft";
@@ -9,6 +13,8 @@ export interface MicrosoftSSOConfig {
 
 const createMicrosoftSSO = (config: MicrosoftSSOConfig) => {
   return {
+    trustEmailVerified: true,
+    provisionUser: mergeDuplicateSSOUser,
     defaultSSO: [
       {
         domain: config.domain,
@@ -26,13 +32,14 @@ const createMicrosoftSSO = (config: MicrosoftSSOConfig) => {
           tokenEndpointAuthentication: "client_secret_post" as const,
           scopes: config.scopes,
           mapping: {
-            id: "sub", // sub é o identificador único do usuário
-            email: "email", // claim 'email' existe no discovery
-            emailVerified: "email_verified", // se estiver presente
-            name: "name", // normalmente 'name' ou 'preferred_username'
-            image: "picture", // opcional, pode não existir
+            id: "sub",
+            email: "email",
+            emailVerified: "email_verified",
+            name: "name",
+            image: "picture",
             extraFields: {
               emailVerified: "email_verified",
+              oid: "oid",
             },
           },
         },
@@ -40,6 +47,105 @@ const createMicrosoftSSO = (config: MicrosoftSSOConfig) => {
     ],
   };
 };
+
+/**
+ * After SSO login, detect and merge duplicate users caused by email aliases.
+ *
+ * When a Microsoft user has multiple email aliases (e.g., john@company.com
+ * and j.doe@company.com), the initial SSO login might create a duplicate user
+ * if the email claim doesn't match the existing user's email. This function
+ * detects that scenario by checking the `preferred_username` / `upn` claims
+ * from the ID token and merges the duplicate into the original user.
+ */
+async function mergeDuplicateSSOUser(data: {
+  user: { id: string; email: string } & Record<string, unknown>;
+  userInfo: Record<string, unknown>;
+  token?: { idToken?: string; accessToken?: string; refreshToken?: string };
+  provider: Record<string, unknown>;
+}) {
+  const { user, token } = data;
+  if (!token?.idToken) return;
+
+  let decoded: Record<string, unknown>;
+  try {
+    decoded = decodeJwt(token.idToken);
+  } catch {
+    return;
+  }
+
+  const preferredUsername = decoded.preferred_username as string | undefined;
+  const upn = decoded.upn as string | undefined;
+
+  // Collect alternate emails from the token that differ from the SSO user's email
+  const alternateEmails = [preferredUsername, upn]
+    .filter(
+      (e): e is string =>
+        typeof e === "string" &&
+        e.length > 0 &&
+        e.toLowerCase() !== user.email.toLowerCase(),
+    )
+    .map((e) => e.toLowerCase());
+
+  if (alternateEmails.length === 0) return;
+
+  const { db } = getDb();
+
+  // Check if there's an existing user with one of the alternate emails
+  const originalUser = await db
+    .selectFrom("user")
+    .selectAll()
+    .where("email", "in", alternateEmails)
+    .where("id", "!=", user.id)
+    .executeTakeFirst();
+
+  if (!originalUser) return;
+
+  console.info(
+    `[SSO] Merging duplicate user ${user.id} (${user.email}) into original ${originalUser.id} (${originalUser.email})`,
+  );
+
+  try {
+    // Move all accounts from the duplicate to the original user
+    await sql`UPDATE "account" SET "userId" = ${originalUser.id} WHERE "userId" = ${user.id}`.execute(
+      db,
+    );
+
+    // Move sessions so the current login session works with the original user
+    await sql`UPDATE "session" SET "userId" = ${originalUser.id} WHERE "userId" = ${user.id}`.execute(
+      db,
+    );
+
+    // Move memberships that don't conflict (skip orgs where original is already a member)
+    await sql`
+      UPDATE "member" SET "userId" = ${originalUser.id}
+      WHERE "userId" = ${user.id}
+        AND "organizationId" NOT IN (
+          SELECT "organizationId" FROM "member" WHERE "userId" = ${originalUser.id}
+        )
+    `.execute(db);
+
+    // Delete remaining memberships for the duplicate (conflicts)
+    await sql`DELETE FROM "member" WHERE "userId" = ${user.id}`.execute(db);
+
+    // Delete organizations that were auto-created for the duplicate and have no other members
+    await sql`
+      DELETE FROM "organization" WHERE "id" IN (
+        SELECT o."id" FROM "organization" o
+        LEFT JOIN "member" m ON m."organizationId" = o."id"
+        WHERE m."organizationId" IS NULL
+      )
+    `.execute(db);
+
+    // Delete the duplicate user
+    await sql`DELETE FROM "user" WHERE "id" = ${user.id}`.execute(db);
+
+    console.info(
+      `[SSO] Successfully merged duplicate user into ${originalUser.id}`,
+    );
+  } catch (error) {
+    console.error("[SSO] Failed to merge duplicate user:", error);
+  }
+}
 
 export const createSSOConfig = (config: SSOConfig) => {
   if (config.providerId === "microsoft") {
