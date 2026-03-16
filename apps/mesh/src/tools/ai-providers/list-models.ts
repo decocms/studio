@@ -19,21 +19,21 @@ export const AI_PROVIDERS_LIST_MODELS = defineTool({
         providerId: z.string(),
         modelId: z.string(),
         title: z.string(),
-        description: z.string().nullable(),
-        logo: z.string().nullable(),
+        description: z.string().nullish(),
+        logo: z.string().nullish(),
         capabilities: z.array(z.string()),
         limits: z
           .object({
             contextWindow: z.coerce.number(),
             maxOutputTokens: z.coerce.number().nullable(),
           })
-          .nullable(),
+          .nullish(),
         costs: z
           .object({
             input: z.coerce.number(),
             output: z.coerce.number(),
           })
-          .nullable(),
+          .nullish(),
       }),
     ),
   }),

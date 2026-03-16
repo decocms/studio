@@ -2,7 +2,7 @@
 // AI Provider Types — shared between server tool output and client hooks
 // ============================================================================
 
-export const PROVIDER_IDS = ["anthropic", "openrouter"] as const;
+export const PROVIDER_IDS = ["anthropic", "openrouter", "google"] as const;
 
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 

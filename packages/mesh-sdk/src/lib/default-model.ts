@@ -22,6 +22,7 @@ export const DEFAULT_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> =
     //   "anthropic/claude-haiku",
     //   "anthropic/claude",
     // ],
+    google: ["gemini-3-flash"],
   };
 
 /**

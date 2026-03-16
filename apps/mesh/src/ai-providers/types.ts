@@ -14,10 +14,10 @@ export interface ModelInfo {
   providerId: ProviderId;
   modelId: string;
   title: string;
-  description: string | null;
-  logo: string | null;
+  description?: string | null;
+  logo?: string | null;
   capabilities: ModelCapability[];
-  limits: { contextWindow: number; maxOutputTokens: number | null } | null;
+  limits?: { contextWindow: number; maxOutputTokens: number | null } | null;
   costs: { input: number; output: number } | null;
 }
 

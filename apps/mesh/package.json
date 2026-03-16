@@ -39,8 +39,8 @@
     "@duckdb/node-api": "^1.5.0-r.1"
   },
   "dependencies": {
-    "embedded-postgres": "^18.3.0-beta.16",
     "@ai-sdk/anthropic": "^3.0.58",
+    "@ai-sdk/google": "^3.0.43",
     "@anthropic-ai/sdk": "^0.78.0",
     "@clickhouse/client": "^1.8.1",
     "@jitl/quickjs-wasmfile-release-sync": "^0.31.0",
@@ -49,6 +49,7 @@
     "@opentelemetry/core": "^2.6.0",
     "@tanstack/react-virtual": "^3.13.21",
     "dompurify": "^3.3.1",
+    "embedded-postgres": "^18.3.0-beta.16",
     "kysely": "^0.28.8",
     "nats": "^2.29.3",
     "quickjs-emscripten-core": "^0.31.0"
