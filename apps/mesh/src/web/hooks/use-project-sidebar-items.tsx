@@ -10,7 +10,6 @@ import {
   CheckDone01,
   Container,
   Dataflow03,
-  FaceSmile,
   Folder,
   Home02,
   LayoutLeft,
@@ -156,18 +155,6 @@ export function useProjectSidebarItems(): SidebarSection[] {
       }),
   };
 
-  const membersItem: NavigationSidebarItem = {
-    key: "members",
-    label: "Members",
-    icon: <FaceSmile />,
-    isActive: isActiveRoute("members"),
-    onClick: () =>
-      navigate({
-        to: "/$org/$project/members",
-        params: { org, project: ORG_ADMIN_PROJECT_SLUG },
-      }),
-  };
-
   // Plugin items mapped to navigation items (flat items)
   const pluginItems: NavigationSidebarItem[] = enabledPluginItems.map(
     (item) => ({
@@ -260,7 +247,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
     // Org-admin sidebar layout:
     // - Home, Tasks (if enabled), Projects (if enabled) (top-level)
     // - Build group: Agents, Connections, Store
-    // - Manage group: Monitor, Members, Settings
+    // - Manage group: Monitor, Settings
     // - Plugin items / groups
     const settingsItem: NavigationSidebarItem = {
       key: "settings",
@@ -297,7 +284,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
         group: {
           id: "manage",
           label: "Manage",
-          items: [monitorItem, membersItem, settingsItem],
+          items: [monitorItem, settingsItem],
           defaultExpanded: true,
         },
       },

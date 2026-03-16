@@ -6,7 +6,8 @@ export type SettingsSection =
   | "org.general"
   | "org.plugins"
   | "org.ai-providers"
-  | "org.billing";
+  | "org.billing"
+  | "org.members";
 
 const VALID_SECTIONS = new Set<string>([
   "account.profile",
@@ -15,6 +16,7 @@ const VALID_SECTIONS = new Set<string>([
   "org.plugins",
   "org.ai-providers",
   "org.billing",
+  "org.members",
 ]);
 
 function isValidSettingsSection(

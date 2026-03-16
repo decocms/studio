@@ -4,6 +4,7 @@ import {
   Building02,
   Coins01,
   Settings01,
+  Users03,
   Zap,
   CpuChip01,
 } from "@untitledui/icons";
@@ -59,6 +60,11 @@ export function SettingsSidebar({
       key: "org.ai-providers" as SettingsSection,
       label: "AI Providers",
       icon: <CpuChip01 size={14} />,
+    },
+    {
+      key: "org.members" as SettingsSection,
+      label: "Members",
+      icon: <Users03 size={14} />,
     },
     {
       key: "org.billing" as SettingsSection,

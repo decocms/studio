@@ -23,6 +23,7 @@ import { OrgGeneralPage } from "./pages/org-general";
 import { ProjectPluginsPage } from "./pages/project-plugins";
 import { OrgBillingPage } from "./pages/org-billing";
 import { OrgAiProvidersPage } from "./pages/org-ai-providers";
+import { OrgMembersPage } from "./pages/org-members";
 
 function ContentSkeleton() {
   return (
@@ -85,6 +86,8 @@ function SettingsContent({ section }: { section: SettingsSection }) {
       return <OrgAiProvidersPage />;
     case "org.billing":
       return <OrgBillingPage />;
+    case "org.members":
+      return <OrgMembersPage />;
     default:
       return <AccountPreferencesPage />;
   }
@@ -109,11 +112,11 @@ export function SettingsModal() {
           </Suspense>
 
           {/* Right content */}
-          <div className="flex-1 overflow-y-auto min-w-0 relative">
+          <div className="flex-1 min-w-0 relative flex flex-col overflow-hidden">
             <button
               type="button"
               onClick={close}
-              className="sticky top-4 float-right mr-4 mt-4 z-10 rounded-md p-1 opacity-70 hover:opacity-100 transition-opacity focus:outline-none focus:ring-2 focus:ring-ring"
+              className="absolute top-4 right-4 z-10 rounded-md p-1 opacity-70 hover:opacity-100 transition-opacity focus:outline-none focus:ring-2 focus:ring-ring"
             >
               <X size={16} />
               <span className="sr-only">Close</span>
