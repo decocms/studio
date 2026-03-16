@@ -3,10 +3,10 @@ import { Hono } from "hono";
 import type { MeshContext } from "../../core/mesh-context";
 import { CredentialVault } from "../../encryption/credential-vault";
 import {
-  createDatabase,
-  closeDatabase,
-  type MeshDatabase,
-} from "../../database";
+  createTestDatabase,
+  closeTestDatabase,
+  type TestDatabase,
+} from "../../database/test-db";
 import {
   createTestSchema,
   seedCommonTestFixtures,
@@ -14,11 +14,11 @@ import {
 import downstreamTokenRoutes from "./downstream-token";
 
 describe("Downstream Token Routes", () => {
-  let database: MeshDatabase;
+  let database: TestDatabase;
   let app: Hono<{ Variables: { meshContext: MeshContext } }>;
 
   beforeEach(async () => {
-    database = createDatabase(":memory:");
+    database = await createTestDatabase();
     await createTestSchema(database.db);
     await seedCommonTestFixtures(database.db);
 
@@ -54,7 +54,7 @@ describe("Downstream Token Routes", () => {
   });
 
   afterEach(async () => {
-    await closeDatabase(database);
+    await closeTestDatabase(database);
     mock.restore();
   });
 

@@ -53,7 +53,8 @@ const envSchema = z
   })
   .transform((e) => ({
     ...e,
-    DATABASE_URL: e.DATABASE_URL ?? `file://${join(e.DATA_DIR, "db.pglite")}`,
+    DATABASE_URL:
+      e.DATABASE_URL ?? "postgresql://deco:deco@localhost:5432/deco_dev",
   }));
 
 export type Env = z.infer<typeof envSchema>;

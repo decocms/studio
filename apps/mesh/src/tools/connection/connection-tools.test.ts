@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "bun:test";
 import {
-  createDatabase,
-  closeDatabase,
-  type MeshDatabase,
-} from "../../database";
+  createTestDatabase,
+  closeTestDatabase,
+  type TestDatabase,
+} from "../../database/test-db";
 import {
   createTestSchema,
   seedCommonTestFixtures,
@@ -40,12 +40,12 @@ const createMockBoundAuth = (): BoundAuthClient =>
   }) as unknown as BoundAuthClient;
 
 describe("Connection Tools", () => {
-  let database: MeshDatabase;
+  let database: TestDatabase;
   let ctx: MeshContext;
   let vault: CredentialVault;
 
   beforeAll(async () => {
-    database = createDatabase(":memory:");
+    database = await createTestDatabase();
     await createTestSchema(database.db);
     await seedCommonTestFixtures(database.db);
 
@@ -140,7 +140,7 @@ describe("Connection Tools", () => {
   });
 
   afterAll(async () => {
-    await closeDatabase(database);
+    await closeTestDatabase(database);
   });
 
   describe("COLLECTION_CONNECTIONS_CREATE", () => {

@@ -1,5 +1,5 @@
 // Utility functions for saving and reading session data securely
-import { join } from "path";
+import { join, dirname } from "path";
 import { homedir } from "os";
 import { promises as fs } from "fs";
 import type { User } from "@supabase/supabase-js";
@@ -29,7 +29,7 @@ export type SessionData = z.infer<typeof SessionSchema>;
  * Path to the session file in the user's home directory.
  */
 function getSessionPath(): string {
-  return join(homedir(), ".deco_auth_session.json");
+  return join(homedir(), "deco", "auth_session.json");
 }
 
 /**
@@ -42,6 +42,7 @@ export async function saveSession(data: {
 }) {
   const { session, user } = data;
   const sessionPath = getSessionPath();
+  await fs.mkdir(dirname(sessionPath), { recursive: true });
   await fs.writeFile(
     sessionPath,
     JSON.stringify(

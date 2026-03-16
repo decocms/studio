@@ -6,7 +6,7 @@
  * - Managing subscriptions
  * - Tracking event deliveries
  *
- * Supports both PGlite and PostgreSQL via Kysely.
+ * PostgreSQL storage via Kysely.
  *
  * Concurrency Safety:
  * - Uses atomic UPDATE with status change to claim deliveries
@@ -153,7 +153,7 @@ export interface EventBusStorage {
    * Atomically claim pending deliveries for processing.
    * Uses an atomic UPDATE ... WHERE id IN (subquery) ... RETURNING clause
    * to change status from 'pending' to 'processing', ensuring only one
-   * worker processes each delivery. Works with both PGlite and PostgreSQL.
+   * worker processes each delivery.
    *
    * @param limit - Maximum number of deliveries to claim
    * @returns Claimed deliveries with their events and subscriptions
@@ -413,7 +413,7 @@ class KyselyEventBusStorage implements EventBusStorage {
         publisher: input.publisher ?? null,
         event_type: input.eventType,
         filter: input.filter ?? null,
-        enabled: 1 as never, // PGLite boolean
+        enabled: 1 as never,
         created_at: now,
         updated_at: now,
       })
@@ -426,7 +426,7 @@ class KyselyEventBusStorage implements EventBusStorage {
       publisher: input.publisher ?? null,
       eventType: input.eventType,
       filter: input.filter ?? null,
-      enabled: 1 as never, // PGLite boolean
+      enabled: 1 as never,
       createdAt: now,
       updatedAt: now,
     };
@@ -530,7 +530,7 @@ class KyselyEventBusStorage implements EventBusStorage {
   async claimPendingDeliveries(limit: number): Promise<PendingDelivery[]> {
     const now = new Date().toISOString();
 
-    // Atomic claim with RETURNING — works with both PGlite and PostgreSQL
+    // Atomic claim with RETURNING
     const result = await this.db
       .updateTable("event_deliveries")
       .set({ status: "processing" })
@@ -1082,7 +1082,7 @@ class KyselyEventBusStorage implements EventBusStorage {
           event_type: desiredSub.eventType,
           publisher: desiredSub.publisher ?? null,
           filter: desiredSub.filter ?? null,
-          enabled: 1 as never, // PGLite boolean
+          enabled: 1 as never,
           created_at: now,
           updated_at: now,
         });

@@ -3,7 +3,7 @@
   "ignoreBinaries": ["playwright"],
   "workspaces": {
     ".": {
-      "entry": ["plugins/**/*"],
+      "entry": ["plugins/**/*", "scripts/**/*.ts"],
       "project": [],
       "ignoreDependencies": []
     },

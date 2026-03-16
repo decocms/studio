@@ -103,8 +103,9 @@ function groupByConnection(pendingDeliveries: PendingDelivery[]): Map<
  *
  * The worker doesn't manage its own timing - it relies on a NotifyStrategy
  * to trigger processing. This allows:
- * - PGlite: Timer-based polling
+ * - Polling: Timer-based polling (safety net)
  * - PostgreSQL: Event-based via LISTEN/NOTIFY
+ * - NATS: Event-based via NATS pub/sub
  */
 export class EventBusWorker {
   private notifySubscriber: NotifySubscriberFn;

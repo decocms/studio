@@ -55,6 +55,7 @@ async function setupTestData() {
 beforeEach(async () => {
   // Create in-memory PGlite database
   pgliteInstance = new PGlite();
+  await pgliteInstance.waitReady;
   db = new Kysely<UserSandboxDatabase>({
     dialect: new KyselyPGlite(pgliteInstance).dialect,
   });

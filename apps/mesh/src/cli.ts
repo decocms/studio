@@ -67,7 +67,7 @@ Options:
 Environment Variables:
   PORT                  Port to listen on (default: 3000)
   DATA_DIR              Data directory (default: ~/deco/)
-  DATABASE_URL          Database connection URL (default: file://$HOME/deco/db.pglite)
+  DATABASE_URL          Database connection URL (default: postgresql://deco:deco@localhost:5432/deco_dev)
   NODE_ENV              Set to 'production' for production mode
   BETTER_AUTH_SECRET    Secret for authentication (auto-generated if not set)
   ENCRYPTION_KEY        Key for encrypting secrets (auto-generated if not set)
@@ -233,6 +233,15 @@ if (betterAuthFromFile || encryptionKeyFromFile) {
   );
   console.log("");
 }
+
+// ============================================================================
+// Services (PostgreSQL + NATS)
+// ============================================================================
+
+console.log(`${dim}Starting services (PostgreSQL, NATS)...${reset}`);
+const { ensureServices } = await import("./services/ensure-services");
+await ensureServices();
+console.log("");
 
 // ============================================================================
 // Database migrations

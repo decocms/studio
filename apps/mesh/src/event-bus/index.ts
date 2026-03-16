@@ -5,7 +5,7 @@
  *
  * Architecture:
  * - EventBus: Single class handling publish/subscribe and worker management
- * - EventBusStorage: Database operations (unified for PGlite/PostgreSQL via Kysely)
+ * - EventBusStorage: Database operations (PostgreSQL via Kysely)
  * - EventBusWorker: Event processing and delivery logic (no internal polling)
  * - NotifyStrategy: Triggers worker processing (selected via NOTIFY_STRATEGY / NATS_URL env vars)
  *   - nats:     NatsNotifyStrategy + polling safety net
@@ -85,7 +85,7 @@ export { sseHub, type SSEEvent } from "./sse-hub";
  */
 type NotifyStrategyName = "nats" | "postgres" | "polling";
 
-function resolveNotifyStrategy(database: MeshDatabase): NotifyStrategyName {
+function resolveNotifyStrategy(): NotifyStrategyName {
   const explicit = env.NOTIFY_STRATEGY;
   if (
     explicit === "nats" ||
@@ -97,8 +97,7 @@ function resolveNotifyStrategy(database: MeshDatabase): NotifyStrategyName {
 
   // Auto-detect
   if (env.NATS_URL) return "nats";
-  if (database.type === "postgres") return "postgres";
-  return "polling";
+  return "postgres";
 }
 
 /**
@@ -109,7 +108,7 @@ function resolveNotifyStrategy(database: MeshDatabase): NotifyStrategyName {
  * NOTIFY_STRATEGY and NATS_URL env vars.
  * See resolveNotifyStrategy for full selection logic.
  *
- * @param database - MeshDatabase instance (discriminated union)
+ * @param database - MeshDatabase instance
  * @param config - Optional event bus configuration
  * @param natsProvider - Optional shared NATS connection provider (when using NATS strategies)
  * @returns EventBus instance
@@ -123,7 +122,7 @@ export function createEventBus(
   const pollIntervalMs =
     config?.pollIntervalMs ?? DEFAULT_EVENT_BUS_CONFIG.pollIntervalMs;
 
-  const strategyName = resolveNotifyStrategy(database);
+  const strategyName = resolveNotifyStrategy();
   const polling = new PollingStrategy(pollIntervalMs);
   const natsUrl = env.NATS_URL;
 
@@ -159,13 +158,6 @@ export function createEventBus(
       break;
     }
     case "postgres": {
-      if (database.type !== "postgres") {
-        console.warn(
-          "[EventBus] NOTIFY_STRATEGY=postgres requires a PostgreSQL database, falling back to polling",
-        );
-        notifyStrategy = polling;
-        break;
-      }
       console.log("[EventBus] Using PostgreSQL LISTEN/NOTIFY strategy");
       notifyStrategy = compose(
         polling,

@@ -8,7 +8,11 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { RequestInfo } from "@modelcontextprotocol/sdk/types.js";
 import { afterEach, beforeEach, describe, vi } from "bun:test";
 import { auth } from "../auth";
-import { createDatabase, closeDatabase, type MeshDatabase } from "../database";
+import {
+  createTestDatabase,
+  closeTestDatabase,
+  type TestDatabase,
+} from "../database/test-db";
 import type { EventBus } from "../event-bus";
 import { createTestSchema } from "../storage/test-helpers";
 import { createApp } from "./app";
@@ -43,12 +47,12 @@ describe("MCP Integration", () => {
   describe("Management Tools MCP Server", () => {
     let client: Client | null = null;
     let originalFetch: typeof global.fetch;
-    let database: MeshDatabase;
+    let database: TestDatabase;
     let app: Awaited<ReturnType<typeof createApp>>;
 
     beforeEach(async () => {
       // Create test database and app
-      database = createDatabase(":memory:");
+      database = await createTestDatabase();
       await createTestSchema(database.db);
       app = await createApp({ database, eventBus: createMockEventBus() });
 
@@ -120,7 +124,7 @@ describe("MCP Integration", () => {
         client = null;
       }
 
-      await closeDatabase(database);
+      await closeTestDatabase(database);
     });
 
     // Integration tests for MCP protocol removed - require complex Better Auth mocking

@@ -40,6 +40,7 @@ afterEach(async () => {
 // Create test database with required tables
 async function createTestDb() {
   const pglite = new PGlite();
+  await pglite.waitReady;
   const db = new Kysely({
     dialect: new KyselyPGlite(pglite).dialect,
   });
