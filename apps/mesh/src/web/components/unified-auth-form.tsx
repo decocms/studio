@@ -17,7 +17,8 @@ interface UnifiedAuthFormProps {
 type FormView = "signIn" | "signUp" | "forgotPassword" | "emailOtp";
 
 export function UnifiedAuthForm({ redirectUrl }: UnifiedAuthFormProps) {
-  const { emailAndPassword, resetPassword, emailOtp } = useAuthConfig();
+  const { emailAndPassword, resetPassword, emailOtp, socialProviders } =
+    useAuthConfig();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -289,6 +290,51 @@ export function UnifiedAuthForm({ redirectUrl }: UnifiedAuthFormProps) {
           Check your email for a password reset link.
         </div>
       )}
+
+      {/* Social Provider Buttons */}
+      {!isForgotPassword && !isEmailOtp && socialProviders.enabled && (
+        <div className="grid gap-3">
+          {socialProviders.providers.map((provider) => (
+            <Button
+              key={provider.name}
+              type="button"
+              variant="outline"
+              size="lg"
+              className="w-full font-medium"
+              disabled={isLoading}
+              onClick={() => {
+                authClient.signIn.social({
+                  provider: provider.name,
+                  callbackURL: redirectUrl ?? "/",
+                });
+              }}
+            >
+              {provider.icon && (
+                <img
+                  src={provider.icon}
+                  alt=""
+                  className="h-5 w-5"
+                  aria-hidden="true"
+                />
+              )}
+              Continue with{" "}
+              {provider.name.charAt(0).toUpperCase() + provider.name.slice(1)}
+            </Button>
+          ))}
+        </div>
+      )}
+
+      {/* Divider between social and email-based auth */}
+      {!isForgotPassword &&
+        !isEmailOtp &&
+        socialProviders.enabled &&
+        (emailAndPassword.enabled || emailOtp.enabled) && (
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-xs text-muted-foreground">or</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+        )}
 
       {/* Email OTP Form */}
       {isEmailOtp && emailOtp.enabled && (

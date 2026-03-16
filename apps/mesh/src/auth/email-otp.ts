@@ -21,6 +21,9 @@ export const createEmailOtpConfig = (
 
   const sendEmail = createEmailSender(provider);
 
+  const expiresInSeconds = config.expiresIn ?? 300;
+  const expiryMinutes = Math.round(expiresInSeconds / 60);
+
   return {
     sendVerificationOTP: async ({ email, otp, type }) => {
       const subject =
@@ -36,7 +39,7 @@ export const createEmailOtpConfig = (
         html: `
           <h2>${subject}</h2>
           <p>Your verification code is: <strong>${otp}</strong></p>
-          <p>This code expires in 5 minutes.</p>
+          <p>This code expires in ${expiryMinutes} minute${expiryMinutes !== 1 ? "s" : ""}.</p>
           <p>If you didn't request this, you can safely ignore this email.</p>
         `,
       });
