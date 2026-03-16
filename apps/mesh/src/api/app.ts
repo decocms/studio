@@ -382,6 +382,13 @@ export async function createApp(options: CreateAppOptions = {}) {
     }),
   );
 
+  // Security headers middleware - prevents UI redressing / clickjacking
+  app.use("*", async (c, next) => {
+    await next();
+    c.header("X-Frame-Options", "DENY");
+    c.header("Content-Security-Policy", "frame-ancestors 'none'");
+  });
+
   if (env.NODE_ENV === "production") {
     app.use("*", logger());
   } else {

@@ -60,6 +60,23 @@ const handleAssets = createAssetHandler({
   isServerPath,
 });
 
+const SECURITY_HEADERS: Record<string, string> = {
+  "X-Frame-Options": "DENY",
+  "Content-Security-Policy": "frame-ancestors 'none'",
+};
+
+function withSecurityHeaders(res: Response): Response {
+  const headers = new Headers(res.headers);
+  for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
+    headers.set(key, value);
+  }
+  return new Response(res.body, {
+    status: res.status,
+    statusText: res.statusText,
+    headers,
+  });
+}
+
 // Create the Hono app
 const app = await createApp();
 
@@ -81,7 +98,9 @@ Bun.serve({
   fetch: async (request, server) => {
     // Try assets first (static files or dev proxy), then API
     // Pass server as env so Hono's getConnInfo can access requestIP
-    return (await handleAssets(request)) ?? app.fetch(request, { server });
+    const assetRes = await handleAssets(request);
+    if (assetRes) return withSecurityHeaders(assetRes);
+    return app.fetch(request, { server });
   },
   development: env.NODE_ENV !== "production",
 });
