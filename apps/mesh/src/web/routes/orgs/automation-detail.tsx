@@ -979,12 +979,12 @@ function SettingsTab({
                 <Button
                   type="button"
                   variant="default"
-                  size="icon"
-                  className="size-8 rounded-full"
+                  className="h-8 gap-1.5 rounded-md px-3 text-sm font-medium"
                   onClick={handleRunClick}
                   title="Test Automation"
                 >
-                  <ArrowUp size={20} />
+                  <ArrowUp size={16} />
+                  Test
                 </Button>
               </div>
             </div>

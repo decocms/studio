@@ -580,7 +580,7 @@ export function ChatInput({
                     size="icon"
                     disabled={!canSubmit && !showStopOrCancel}
                     className={cn(
-                      "size-8 rounded-full transition-all",
+                      "size-8 rounded-md transition-all",
                       !canSubmit &&
                         !showStopOrCancel &&
                         "bg-muted text-muted-foreground hover:bg-muted hover:text-muted-foreground cursor-not-allowed",

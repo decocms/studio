@@ -911,7 +911,7 @@ function SelectedModelDisplay({
     <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
       <img
         src={providerLogo}
-        className="w-5 h-5 shrink-0 rounded-sm"
+        className="w-3.5 h-3.5 shrink-0 rounded-sm"
         alt={model.title}
       />
       <span className="text-sm truncate whitespace-nowrap hidden md:inline text-muted-foreground">
