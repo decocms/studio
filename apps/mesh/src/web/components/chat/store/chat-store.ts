@@ -6,7 +6,6 @@
  * is a thin streaming adapter wired through ChatBridge.
  */
 
-import type { ToolSelectionStrategy } from "@/mcp-clients/virtual-mcp/types";
 import { getWellKnownDecopilotVirtualMCP } from "@decocms/mesh-sdk";
 import type { ProjectLocator } from "@decocms/mesh-sdk";
 import { DefaultChatTransport, type UIMessage } from "ai";
@@ -25,13 +24,11 @@ import {
   readActiveThreadId,
   readOwnerFilter,
   readSelectedKeyId,
-  readSelectedMode,
   readSelectedModel,
   readSelectedVirtualMcpId,
   writeActiveThreadId,
   writeOwnerFilter,
   writeSelectedKeyId,
-  writeSelectedMode,
   writeSelectedModel,
   writeSelectedVirtualMcpId,
 } from "./local-storage";
@@ -124,7 +121,6 @@ class ChatStore {
       selectedModel: null,
       isModelsLoading: false,
       selectedAgent: null,
-      selectedMode: "code_execution",
       credentialId: null,
       virtualMcps: [],
       allModelsConnections: [] as ReturnType<typeof useAiProviderKeyList>,
@@ -179,7 +175,6 @@ class ChatStore {
     const { org, locator, user } = ctx;
 
     const storedModel = readSelectedModel(locator);
-    const storedMode = readSelectedMode(locator);
     const storedKeyId = readSelectedKeyId(locator);
     const storedVirtualMcpId = readSelectedVirtualMcpId(locator);
     const storedActiveThreadId = readActiveThreadId(locator);
@@ -192,7 +187,6 @@ class ChatStore {
       user,
       activeThreadId: storedActiveThreadId ?? crypto.randomUUID(),
       selectedModel: storedModel,
-      selectedMode: storedMode,
       credentialId: storedKeyId,
       ownerFilter: storedOwnerFilter,
       // selectedAgent is resolved later when virtualMcps arrive
@@ -408,12 +402,6 @@ class ChatStore {
     this.notify();
   }
 
-  setMode(mode: ToolSelectionStrategy): void {
-    this.state = { ...this.state, selectedMode: mode };
-    writeSelectedMode(this.state.locator, mode);
-    this.notify();
-  }
-
   setCredentialId(id: string | null): void {
     this.state = { ...this.state, credentialId: id };
     writeSelectedKeyId(this.state.locator, id);
@@ -506,7 +494,6 @@ class ChatStore {
     // Apply overrides
     if (params.model) this.setModel(params.model);
     if (params.agent !== undefined) this.setAgent(params.agent);
-    if (params.mode) this.setMode(params.mode);
     // Use a one-shot override so automation-level approval doesn't leak into later messages
     this._toolApprovalOverride = params.toolApprovalLevel;
 
@@ -523,7 +510,6 @@ class ChatStore {
 
     const decopilotId = getWellKnownDecopilotVirtualMCP(this.state.org.id).id;
     const selectedAgent = this.state.selectedAgent;
-    const selectedMode = this.state.selectedMode;
     const effectiveKeyId = this.state.credentialId;
 
     const messageMetadata: Metadata = {
@@ -532,7 +518,6 @@ class ChatStore {
       thread_id: this.state.activeThreadId,
       agent: {
         id: selectedAgent?.id ?? decopilotId,
-        mode: selectedMode,
       },
       user: {
         avatar: this.state.user?.image ?? undefined,

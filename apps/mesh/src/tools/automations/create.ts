@@ -27,7 +27,6 @@ export const AUTOMATION_CREATE = defineTool({
     name: z.string().min(1).max(255),
     agent: z.object({
       id: z.string(),
-      mode: z.enum(["passthrough", "smart_tool_selection", "code_execution"]),
     }),
     messages: z.array(
       z.looseObject({

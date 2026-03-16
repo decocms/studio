@@ -1,4 +1,3 @@
-import type { ToolSelectionStrategy } from "@/mcp-clients/virtual-mcp/types";
 import type { ProjectLocator } from "@decocms/mesh-sdk";
 import type { AiProviderModel } from "../../../hooks/collections/use-llm";
 import { LOCALSTORAGE_KEYS } from "../../../lib/localstorage-keys";
@@ -67,23 +66,6 @@ export function writeSelectedModel(
     costs: model.costs,
     keyId: model.keyId,
   });
-}
-
-export function readSelectedMode(
-  locator: ProjectLocator,
-): ToolSelectionStrategy {
-  return (
-    readJSON<ToolSelectionStrategy>(
-      LOCALSTORAGE_KEYS.chatSelectedMode(locator),
-    ) ?? "code_execution"
-  );
-}
-
-export function writeSelectedMode(
-  locator: ProjectLocator,
-  mode: ToolSelectionStrategy,
-): void {
-  writeJSON(LOCALSTORAGE_KEYS.chatSelectedMode(locator), mode);
 }
 
 export function readSelectedKeyId(locator: ProjectLocator): string | null {

@@ -13,8 +13,6 @@ export const LOCALSTORAGE_KEYS = {
   decoChatOpen: () => `mesh:decochat:open`,
   chatSelectedModel: (locator: ProjectLocator) =>
     `mesh:chat:selectedModel:${locator}`,
-  chatSelectedMode: (locator: ProjectLocator) =>
-    `mesh:chat:selectedMode:${locator}`,
   chatSelectedKeyId: (locator: ProjectLocator) =>
     `mesh:chat:selectedKeyId:${locator}`,
   assistantChatActiveTask: (locator: ProjectLocator) =>

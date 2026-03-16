@@ -7,7 +7,6 @@ import { MessagePair, useMessagePairs } from "./message/pair.tsx";
 import { NoLlmBindingEmptyState } from "./no-llm-binding-empty-state";
 import { TaskHistoryPopover } from "./popover-tasks";
 import { DecoChatSkeleton } from "./skeleton";
-export type { ToolSelectionStrategy } from "@/mcp-clients/virtual-mcp/types";
 export { useChat } from "./context";
 export type { VirtualMCPInfo } from "./select-virtual-mcp";
 export type { ChatMessage, ChatStatus } from "./types.ts";

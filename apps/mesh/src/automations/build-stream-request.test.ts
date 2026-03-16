@@ -9,7 +9,7 @@ function makeAutomation(overrides?: Partial<Automation>): Automation {
     name: "Test",
     active: true,
     created_by: "user_1",
-    agent: JSON.stringify({ id: "agent_1", mode: "passthrough" }),
+    agent: JSON.stringify({ id: "agent_1" }),
     messages: JSON.stringify([
       { id: "m1", role: "user", parts: [{ type: "text", text: "hello" }] },
     ]),
@@ -40,7 +40,7 @@ describe("buildStreamRequest", () => {
       thinking: { id: "gpt-4", title: "GPT-4" },
       credentialId: "cred_1",
     });
-    expect(result.agent).toEqual({ id: "agent_1", mode: "passthrough" });
+    expect(result.agent).toEqual({ id: "agent_1" });
   });
 
   it("sets organizationId from automation", () => {
@@ -99,7 +99,7 @@ describe("buildStreamRequest", () => {
     expect(result.toolApprovalLevel).toBe("yolo");
   });
 
-  it("always overrides agent mode to passthrough regardless of stored value", () => {
+  it("extracts agent id from stored JSON", () => {
     const automation = makeAutomation({
       agent: JSON.stringify({
         id: "agent_1",
@@ -107,22 +107,6 @@ describe("buildStreamRequest", () => {
       }),
     });
     const result = buildStreamRequest(automation, null, "thrd_1");
-    expect(result.agent.mode).toBe("passthrough");
-  });
-
-  it("keeps passthrough when agent is already passthrough", () => {
-    const automation = makeAutomation({
-      agent: JSON.stringify({ id: "agent_1", mode: "passthrough" }),
-    });
-    const result = buildStreamRequest(automation, null, "thrd_1");
-    expect(result.agent.mode).toBe("passthrough");
-  });
-
-  it("overrides code_execution mode to passthrough", () => {
-    const automation = makeAutomation({
-      agent: JSON.stringify({ id: "agent_1", mode: "code_execution" }),
-    });
-    const result = buildStreamRequest(automation, null, "thrd_1");
-    expect(result.agent.mode).toBe("passthrough");
+    expect(result.agent).toEqual({ id: "agent_1" });
   });
 });

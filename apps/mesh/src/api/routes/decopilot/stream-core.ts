@@ -13,6 +13,7 @@ import { recordLlmCallMetrics } from "@/monitoring/record-llm-call-metrics";
 import { sanitizeProviderMetadata } from "@decocms/mesh-sdk";
 import { createUIMessageStream, stepCountIs, streamText } from "ai";
 import { getBuiltInTools } from "./built-in-tools";
+import { createEnableToolsTool } from "./built-in-tools/enable-tools";
 import {
   DECOPILOT_BASE_PROMPT,
   DEFAULT_MAX_TOKENS,
@@ -44,7 +45,6 @@ import { ThreadMessage } from "@/storage/types";
 
 export interface AgentConfig {
   id: string;
-  mode: "passthrough" | "smart_tool_selection" | "code_execution";
 }
 
 export interface StreamCoreInput {
@@ -214,7 +214,6 @@ export async function streamCore(
       closeClients?.();
     });
 
-    const isGatewayMode = input.agent.mode !== "passthrough";
     const maxOutputTokens =
       input.models.thinking.limits?.maxOutputTokens ?? DEFAULT_MAX_TOKENS;
 
@@ -235,16 +234,14 @@ export async function streamCore(
     const uiStream = createUIMessageStream({
       originalMessages: allMessages,
       execute: async ({ writer }) => {
-        const [passthroughClient, strategyClient] = await Promise.all([
-          createVirtualClientFrom(virtualMcp, ctx, "passthrough"),
-          isGatewayMode
-            ? createVirtualClientFrom(virtualMcp, ctx, input.agent.mode)
-            : Promise.resolve(null),
-        ]);
+        const passthroughClient = await createVirtualClientFrom(
+          virtualMcp,
+          ctx,
+          "passthrough",
+        );
 
         closeClients = () => {
           passthroughClient.close().catch(() => {});
-          strategyClient?.close().catch(() => {});
         };
 
         // Enrich with agent-specific instructions
@@ -264,15 +261,6 @@ export async function streamCore(
           input.toolApprovalLevel,
         );
 
-        const strategyTools = strategyClient
-          ? await toolsFromMCP(
-              strategyClient,
-              toolOutputMap,
-              writer,
-              input.toolApprovalLevel,
-            )
-          : {};
-
         const builtInTools = await getBuiltInTools(
           writer,
           {
@@ -285,24 +273,49 @@ export async function streamCore(
           ctx,
         );
 
+        // Progressive tool disclosure: enable_tools + prepareStep
+        const passthroughToolNames = new Set(Object.keys(passthroughTools));
+        const builtInToolNames = Object.keys(builtInTools);
+        const enabledTools = reconstructEnabledTools(
+          allMessages,
+          passthroughToolNames,
+        );
+
         const tools = {
           ...passthroughTools,
-          ...strategyTools,
           ...builtInTools,
+          enable_tools: createEnableToolsTool(
+            enabledTools,
+            passthroughToolNames,
+          ),
         };
 
-        const activeToolNames = strategyClient
-          ? ([
-              ...Object.keys(strategyTools),
-              ...Object.keys(builtInTools),
-            ] as (keyof typeof tools)[])
-          : undefined;
+        // Build compact catalog for tools not yet enabled
+        const toolCatalog = await buildToolCatalog(
+          passthroughClient,
+          enabledTools,
+        );
+
+        // Inject tool catalog into the enriched messages before processing
+        const messagesWithCatalog = toolCatalog
+          ? enrichedMessages.map((msg) =>
+              msg.id === "decopilot-system"
+                ? {
+                    ...msg,
+                    parts: [
+                      ...msg.parts,
+                      { type: "text" as const, text: toolCatalog },
+                    ],
+                  }
+                : msg,
+            )
+          : enrichedMessages;
 
         const {
           systemMessages: processedSystemMessages,
           messages: processedMessages,
           originalMessages,
-        } = await processConversation(enrichedMessages, {
+        } = await processConversation(messagesWithCatalog, {
           windowSize,
           models: input.models,
           tools,
@@ -356,7 +369,13 @@ export async function streamCore(
           system: processedSystemMessages,
           messages: processedMessages,
           tools,
-          activeTools: activeToolNames,
+          prepareStep: () => ({
+            activeTools: [
+              ...builtInToolNames,
+              "enable_tools",
+              ...enabledTools,
+            ] as (keyof typeof tools)[],
+          }),
           temperature: input.temperature,
           maxOutputTokens,
           abortSignal: registrySignal,
@@ -455,7 +474,6 @@ export async function streamCore(
               return {
                 agent: {
                   id: input.agent.id ?? null,
-                  mode: input.agent.mode,
                 },
                 models: {
                   credentialId: input.models.credentialId,
@@ -621,6 +639,62 @@ export async function streamCore(
 // ============================================================================
 // Helpers
 // ============================================================================
+
+/**
+ * Reconstruct the set of enabled tools from conversation history.
+ * Scans for prior `enable_tools` calls and re-adds their tool names.
+ */
+function reconstructEnabledTools(
+  messages: ChatMessage[],
+  availableToolNames: Set<string>,
+): Set<string> {
+  const enabled = new Set<string>();
+  for (const msg of messages) {
+    if (msg.role !== "assistant") continue;
+    for (const part of msg.parts) {
+      if (
+        "toolName" in part &&
+        part.toolName === "enable_tools" &&
+        "result" in part &&
+        part.result
+      ) {
+        const result = part.result as { enabled?: string[] };
+        if (Array.isArray(result.enabled)) {
+          for (const name of result.enabled) {
+            if (availableToolNames.has(name)) {
+              enabled.add(name);
+            }
+          }
+        }
+      }
+    }
+  }
+  return enabled;
+}
+
+/**
+ * Build a compact tool catalog for the system prompt.
+ * Format: <available-tools>\nTOOL_NAME|Description (80 chars)\n</available-tools>
+ */
+async function buildToolCatalog(
+  client: {
+    listTools(): Promise<{ tools: { name: string; description?: string }[] }>;
+  },
+  enabledTools: Set<string>,
+): Promise<string | null> {
+  const { tools } = await client.listTools();
+  const catalogLines: string[] = [];
+
+  for (const t of tools) {
+    if (enabledTools.has(t.name)) continue;
+    const desc = (t.description ?? "").slice(0, 80);
+    catalogLines.push(`${t.name}|${desc}`);
+  }
+
+  if (catalogLines.length === 0) return null;
+
+  return `\n\n<available-tools>\n${catalogLines.join("\n")}\n</available-tools>`;
+}
 
 /**
  * Consume a StreamCoreResult by draining its ReadableStream.

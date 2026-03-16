@@ -18,10 +18,7 @@ import { createServerFromClient, getDecopilotId } from "@decocms/mesh-sdk";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { Hono } from "hono";
 import type { MeshContext } from "../../core/mesh-context";
-import {
-  createVirtualClientFrom,
-  parseStrategyFromMode,
-} from "../../mcp-clients/virtual-mcp";
+import { createVirtualClientFrom } from "../../mcp-clients/virtual-mcp";
 import type { Env } from "../hono-env";
 
 // Define Hono variables type
@@ -113,11 +110,12 @@ export async function handleVirtualMcpRequest(
       };
     }
 
-    // Parse strategy from query string mode parameter (defaults to passthrough)
-    const strategy = parseStrategyFromMode(c.req.query("mode"));
-
-    // Create client from entity
-    const client = await createVirtualClientFrom(virtualMcp, ctx, strategy);
+    // Create client from entity (always passthrough)
+    const client = await createVirtualClientFrom(
+      virtualMcp,
+      ctx,
+      "passthrough",
+    );
 
     // Create server from client using the bridge
     const server = createServerFromClient(

@@ -29,7 +29,7 @@ export function buildStreamRequest(
     agent: (() => {
       const parsed = JSON.parse(automation.agent);
       const id = parsed.id || getDecopilotId(automation.organization_id);
-      return { ...parsed, id, mode: "passthrough" };
+      return { id };
     })(),
     temperature: automation.temperature ?? 0.5,
     toolApprovalLevel: "yolo",
@@ -43,7 +43,6 @@ export function buildStreamRequest(
     threadId,
     triggerId,
     agentId: request.agent?.id,
-    agentMode: request.agent?.mode,
     credentialId: request.models?.credentialId,
     modelId: request.models?.thinking?.id,
     messageCount: request.messages.length,

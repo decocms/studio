@@ -18,6 +18,3 @@ export type {
   VirtualMCPCreateData,
   VirtualMCPUpdateData,
 } from "./schema";
-
-// Re-export strategy type from virtual-mcp client (not from schema since it's not persisted)
-export type { ToolSelectionStrategy } from "../../mcp-clients/virtual-mcp/types";

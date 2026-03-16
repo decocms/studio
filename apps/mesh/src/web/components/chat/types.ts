@@ -20,7 +20,6 @@ export interface ChatModelInfo {
 }
 export interface ChatAgentConfig {
   id: string | null;
-  mode: "passthrough" | "smart_tool_selection" | "code_execution";
 }
 
 export interface ChatUserConfig {

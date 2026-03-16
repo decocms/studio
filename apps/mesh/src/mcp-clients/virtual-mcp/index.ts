@@ -14,10 +14,8 @@ import {
   isVirtualTool,
   type VirtualToolDefinition,
 } from "../../tools/virtual-tool/schema";
-import { CodeExecutionClient } from "./code-execution";
 import { PassthroughClient } from "./passthrough-client";
-import { SmartToolSelectionClient } from "./smart-tool-selection";
-import { type ToolSelectionStrategy, type VirtualClientOptions } from "./types";
+import { type VirtualClientOptions } from "./types";
 
 /**
  * Check if a connection would cause a self-reference for a Virtual MCP
@@ -59,19 +57,19 @@ export async function createVirtualClient(
 }
 
 /**
- * Load virtual MCP entity and create MCP client
+ * Load virtual MCP entity and create passthrough MCP client
  * Uses inclusion mode: only connections specified in virtualMcp.connections are included
  *
  * @param virtualMcp - Virtual MCP entity from database
  * @param ctx - Mesh context for creating proxies
- * @param strategy - Tool selection strategy (passthrough, smart_tool_selection, code_execution)
+ * @param _strategy - Kept for backward compatibility, always uses passthrough
  * @param superUser - Whether to use superuser mode for background processes
  * @returns Client instance with aggregated tools, resources, and prompts
  */
 export async function createVirtualClientFrom(
   virtualMcp: VirtualMCPEntity,
   ctx: MeshContext,
-  strategy: ToolSelectionStrategy,
+  _strategy: "passthrough",
   superUser = false,
 ): Promise<Client> {
   // Inclusion mode: use only the connections specified in virtual MCP
@@ -115,18 +113,8 @@ export async function createVirtualClientFrom(
     superUser,
   };
 
-  // Create the appropriate client based on strategy
-  return strategy === "smart_tool_selection"
-    ? new SmartToolSelectionClient(options, ctx)
-    : strategy === "code_execution"
-      ? new CodeExecutionClient(options, ctx)
-      : new PassthroughClient(options, ctx);
+  return new PassthroughClient(options, ctx);
 }
 
 // Re-export types and utilities
-export {
-  parseStrategyFromMode,
-  type VirtualClientOptions,
-  type ToolSelectionStrategy,
-  type ProxyEntry,
-} from "./types";
+export { type VirtualClientOptions, type ProxyEntry } from "./types";

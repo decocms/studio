@@ -79,7 +79,6 @@ export const StreamRequestSchema = z.object({
   agent: z
     .object({
       id: z.string(),
-      mode: z.enum(["passthrough", "smart_tool_selection", "code_execution"]),
     })
     .loose(),
   stream: z.boolean().optional(),

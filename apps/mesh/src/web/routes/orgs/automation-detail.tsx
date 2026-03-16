@@ -657,7 +657,6 @@ function SettingsTab({
     createTask,
     setVirtualMcpId,
     setSelectedModel,
-    setSelectedMode,
     sendMessage,
     credentialId: chatCredentialId,
     model: chatModel,
@@ -726,7 +725,6 @@ function SettingsTab({
         active: values.active,
         agent: {
           id: values.agent_id,
-          mode: "passthrough",
         },
         models: {
           credentialId: coercedCredentialId,
@@ -774,7 +772,6 @@ function SettingsTab({
     const values = form.getValues();
 
     setVirtualMcpId(values.agent_id || null);
-    setSelectedMode("passthrough");
     if (selectedModel && watchConnectionId) {
       setSelectedModel({ ...selectedModel, keyId: watchConnectionId });
     }

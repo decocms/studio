@@ -1,5 +1,4 @@
 import { slugify } from "@/web/utils/slugify";
-import { Badge } from "@deco/ui/components/badge.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   Dialog,
@@ -8,31 +7,12 @@ import {
   DialogTitle,
 } from "@deco/ui/components/dialog.tsx";
 import {
-  RadioGroup,
-  RadioGroupItem,
-} from "@deco/ui/components/radio-group.tsx";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
-import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
 } from "@decocms/mesh-sdk";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk";
-import {
-  ArrowsRight,
-  Check,
-  Code01,
-  Copy01,
-  InfoCircle,
-  Key01,
-  Lightbulb02,
-  Loading01,
-} from "@untitledui/icons";
+import { Check, Copy01, Key01, Loading01 } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
@@ -363,27 +343,11 @@ export function VirtualMCPShareModal({
   onOpenChange: (open: boolean) => void;
   virtualMcp: VirtualMCPEntity;
 }) {
-  const [mode, setMode] = useState<
-    "passthrough" | "smart_tool_selection" | "code_execution"
-  >("code_execution");
-
-  const handleModeChange = (value: string) => {
-    if (
-      value === "passthrough" ||
-      value === "smart_tool_selection" ||
-      value === "code_execution"
-    ) {
-      setMode(value);
-    }
-  };
-
-  // Build URL with mode query parameter
   // Virtual MCPs (agents) are accessed via the virtual-mcp endpoint
   const virtualMcpUrl = new URL(
     `/mcp/virtual-mcp/${virtualMcp.id}`,
     window.location.origin,
   );
-  virtualMcpUrl.searchParams.set("mode", mode);
 
   // Server name for IDE integrations
   const serverName =
@@ -397,131 +361,6 @@ export function VirtualMCPShareModal({
         </DialogHeader>
         <div className="flex flex-col gap-6">
           {/* Mode Selection */}
-          <div className="flex flex-col gap-3">
-            <div>
-              <h4 className="text-sm font-medium text-foreground mt-1">
-                How should this agent work?
-              </h4>
-            </div>
-            <RadioGroup
-              value={mode}
-              onValueChange={handleModeChange}
-              className="flex flex-col gap-4.5"
-            >
-              {/* Passthrough Option */}
-              <label
-                htmlFor="mode-passthrough"
-                className="flex items-center gap-3 px-3 py-5 rounded-lg border border-border hover:border-ring/50 cursor-pointer transition-colors has-checked:border-ring has-checked:bg-accent/5"
-              >
-                <div className="p-1.5 shrink-0">
-                  <ArrowsRight className="size-5 text-muted-foreground" />
-                </div>
-                <div className="flex-1 flex flex-col gap-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-foreground">
-                      Direct access
-                    </span>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <InfoCircle className="size-3.5 text-muted-foreground" />
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
-                          <p className="text-xs">
-                            All tools are exposed directly via tools/list. Best
-                            for small tool surfaces with deterministic behavior.
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    Best for small teams or when you need predictable behavior
-                  </p>
-                </div>
-                <RadioGroupItem id="mode-passthrough" value="passthrough" />
-              </label>
-
-              {/* Smart Tool Selection Option */}
-              <label
-                htmlFor="mode-smart"
-                className="flex items-center gap-3 px-3 py-5 rounded-lg border border-border hover:border-ring/50 cursor-pointer transition-colors has-checked:border-ring has-checked:bg-accent/5"
-              >
-                <div className="p-1.5 shrink-0">
-                  <Lightbulb02 className="size-5 text-muted-foreground" />
-                </div>
-                <div className="flex-1 flex flex-col gap-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-foreground">
-                      Smart discovery
-                    </span>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <InfoCircle className="size-3.5 text-muted-foreground" />
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
-                          <p className="text-xs">
-                            Uses meta-tools (GATEWAY_SEARCH_TOOLS,
-                            GATEWAY_DESCRIBE_TOOLS, GATEWAY_CALL_TOOL) to keep
-                            the tool list small and request details on demand.
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    Ideal for large teams with many tools - AI finds what it
-                    needs
-                  </p>
-                </div>
-                <RadioGroupItem id="mode-smart" value="smart_tool_selection" />
-              </label>
-
-              {/* Code Execution Option */}
-              <label
-                htmlFor="mode-code"
-                className="relative flex items-center gap-3 px-3 py-5 rounded-lg border border-border hover:border-ring/50 cursor-pointer transition-colors has-checked:border-ring has-checked:bg-accent/5"
-              >
-                <div className="p-1.5 shrink-0">
-                  <Code01 className="size-5 text-muted-foreground" />
-                </div>
-                <div className="flex-1 flex flex-col gap-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-foreground">
-                      Smart execution
-                    </span>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <InfoCircle className="size-3.5 text-muted-foreground" />
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
-                          <p className="text-xs">
-                            Exposes meta-tools for discovery + sandboxed
-                            execution (GATEWAY_RUN_CODE). Reduces overhead on
-                            large surfaces by shifting work into a controlled
-                            runtime.
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    Maximum flexibility - AI can write code to orchestrate tools
-                  </p>
-                </div>
-                <RadioGroupItem id="mode-code" value="code_execution" />
-                <Badge
-                  variant="outline"
-                  className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-background z-10"
-                >
-                  Recommended
-                </Badge>
-              </label>
-            </RadioGroup>
-          </div>
-
           {/* Action Buttons */}
           <div className="flex flex-col gap-3 pt-2">
             <div className="grid grid-cols-3 gap-2">

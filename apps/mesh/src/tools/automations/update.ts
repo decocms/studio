@@ -28,7 +28,6 @@ export const AUTOMATION_UPDATE = defineTool({
     agent: z
       .object({
         id: z.string(),
-        mode: z.enum(["passthrough", "smart_tool_selection", "code_execution"]),
       })
       .optional(),
     messages: z

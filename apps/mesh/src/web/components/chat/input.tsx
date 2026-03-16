@@ -34,7 +34,6 @@ import { useEffect, useRef, useState, type MouseEvent } from "react";
 import type { Metadata } from "./types.ts";
 import { useChat } from "./context";
 import { ChatHighlight } from "./highlight";
-import { ModeSelector } from "./select-mode";
 import { ModelSelector } from "./select-model";
 import {
   VirtualMCPPopoverContent,
@@ -314,8 +313,6 @@ export function ChatInput({
     setVirtualMcpId,
     model,
     isModelsLoading,
-    selectedMode,
-    setSelectedMode,
     messages,
     isStreaming,
     isRunInProgress,
@@ -544,11 +541,6 @@ export function ChatInput({
                   <FileUploadButton
                     selectedModel={model}
                     isStreaming={isStreaming}
-                  />
-                  <ModeSelector
-                    selectedMode={selectedMode}
-                    onModeChange={setSelectedMode}
-                    disabled={isStreaming}
                   />
                   {contextWindow && lastTotalTokens > 0 && (
                     <SessionStats

@@ -1,4 +1,3 @@
-import type { ToolSelectionStrategy } from "@/mcp-clients/virtual-mcp/types";
 import type { UseChatHelpers } from "@ai-sdk/react";
 import type { ProjectLocator } from "@decocms/mesh-sdk";
 import type { McpUiUpdateModelContextRequest } from "@modelcontextprotocol/ext-apps";
@@ -37,7 +36,6 @@ export interface ChatStoreState {
   selectedModel: AiProviderModel | null;
   isModelsLoading: boolean;
   selectedAgent: VirtualMCPInfo | null;
-  selectedMode: ToolSelectionStrategy;
   credentialId: string | null;
 
   // All available agents and model connections
@@ -68,7 +66,6 @@ export interface SendMessageParams {
   threadId?: string;
   model?: AiProviderModel;
   agent?: VirtualMCPInfo | null;
-  mode?: ToolSelectionStrategy;
   toolApprovalLevel?: ToolApprovalLevel;
 }
 

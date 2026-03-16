@@ -15,17 +15,6 @@ export interface ProxyEntry {
   connection: ConnectionEntity;
 }
 
-/**
- * Aggregator tool selection strategy
- * - "passthrough": Pass tools through as-is (default)
- * - "smart_tool_selection": Smart tool selection behavior
- * - "code_execution": Code execution behavior
- */
-export type ToolSelectionStrategy =
-  | "passthrough"
-  | "smart_tool_selection"
-  | "code_execution";
-
 /** Options for creating an aggregator */
 export interface VirtualClientOptions {
   connections: ConnectionEntity[];
@@ -34,21 +23,4 @@ export interface VirtualClientOptions {
   virtualTools?: VirtualToolDefinition[];
   /** Whether to use superuser mode for background processes (bypasses auth checks on sub-clients) */
   superUser?: boolean;
-}
-
-/**
- * Parse strategy from mode query parameter
- */
-export function parseStrategyFromMode(
-  mode: string | undefined,
-): ToolSelectionStrategy {
-  switch (mode) {
-    case "smart_tool_selection":
-      return "smart_tool_selection";
-    case "code_execution":
-      return "code_execution";
-    case "passthrough":
-    default:
-      return "passthrough";
-  }
 }

@@ -43,7 +43,7 @@ export interface AutomationDetail {
   created_by: string;
   created_at: string;
   updated_at: string;
-  agent: { id: string; mode: string };
+  agent: { id: string };
   messages: unknown[];
   models: {
     credentialId: string;

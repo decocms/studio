@@ -7,7 +7,6 @@
  * New code should import from ./store/selectors directly.
  */
 
-import type { ToolSelectionStrategy } from "@/mcp-clients/virtual-mcp/types";
 import type { McpUiUpdateModelContextRequest } from "@modelcontextprotocol/ext-apps";
 import { chatStore } from "./store/chat-store";
 import { useChatStore } from "./store/selectors";
@@ -49,9 +48,6 @@ interface ChatStableValue {
   model: AiProviderModel | null;
   isModelsLoading: boolean;
   setSelectedModel: (model: AiProviderModel) => void;
-  selectedMode: ToolSelectionStrategy;
-  setSelectedMode: (mode: ToolSelectionStrategy) => void;
-
   sendMessage: (
     tiptapDoc: Metadata["tiptapDoc"],
     options?: { toolApprovalLevel?: ToolApprovalLevel },
@@ -114,7 +110,6 @@ export function useChatStable(): ChatStableValue {
     selectedVirtualMcp: state.selectedAgent,
     model: state.selectedModel,
     isModelsLoading: state.isModelsLoading,
-    selectedMode: state.selectedMode,
     allModelsConnections: state.allModelsConnections,
     credentialId: state.credentialId,
     tiptapDoc: state.tiptapDoc,
@@ -138,7 +133,6 @@ export function useChatStable(): ChatStableValue {
       chatStore.setAgent(agent);
     },
     setSelectedModel: (model: AiProviderModel) => chatStore.setModel(model),
-    setSelectedMode: (mode: ToolSelectionStrategy) => chatStore.setMode(mode),
     setOwnerFilter: (filter: TaskOwnerFilter) =>
       chatStore.setOwnerFilter(filter),
     sendMessage: (
