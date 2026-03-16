@@ -72,16 +72,16 @@ if (!slug) {
   process.exit(1);
 }
 
+// Print banner before startWorktree so it appears above any external output
+console.log("");
+for (const line of ASCII_ART) {
+  console.log(line);
+}
+console.log("");
+
 startWorktree(slug, async (ctx) => {
   const port = await ctx.findFreePort(3000);
   const vitePort = await ctx.findFreePort(4000);
-
-  // Print banner
-  console.log("");
-  for (const line of ASCII_ART) {
-    console.log(line);
-  }
-  console.log("");
 
   const repoRoot = join(import.meta.dir, "..");
   const dotEnv = loadDotEnv(join(repoRoot, "apps/mesh/.env"));
