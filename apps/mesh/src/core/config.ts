@@ -1,3 +1,4 @@
+import { EmailOtpConfig } from "@/auth/email-otp";
 import { EmailProviderConfig } from "@/auth/email-providers";
 import { MagicLinkConfig } from "@/auth/magic-link";
 import { SSOConfig } from "@/auth/sso";
@@ -45,6 +46,7 @@ export interface Config {
   auth: Partial<BetterAuthOptions> & {
     ssoConfig?: SSOConfig;
     magicLinkConfig?: MagicLinkConfig;
+    emailOtpConfig?: EmailOtpConfig;
     emailProviders?: EmailProviderConfig[];
     inviteEmailProviderId?: string;
     resetPasswordEmailProviderId?: string;

@@ -127,7 +127,7 @@ export default function LoginRoute() {
   const session = authClient.useSession();
   const searchParams = useSearch({ from: "/login" });
   const {
-    next = "/",
+    next: rawNext = "/",
     client_id,
     redirect_uri,
     response_type,
@@ -136,8 +136,18 @@ export default function LoginRoute() {
     code_challenge,
     code_challenge_method,
   } = searchParams;
-  const { sso, emailAndPassword, magicLink, socialProviders, localMode } =
-    useAuthConfig();
+
+  // Prevent open redirect — only allow relative paths
+  const next =
+    rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/";
+  const {
+    sso,
+    emailAndPassword,
+    magicLink,
+    emailOtp,
+    socialProviders,
+    localMode,
+  } = useAuthConfig();
 
   // Build OAuth authorize URL if this is an OAuth flow
   const oauthAuthorizeUrl = buildOAuthAuthorizeUrl({
@@ -178,6 +188,7 @@ export default function LoginRoute() {
   if (
     emailAndPassword.enabled ||
     magicLink.enabled ||
+    emailOtp.enabled ||
     socialProviders.enabled
   ) {
     return (
@@ -198,7 +209,7 @@ export default function LoginRoute() {
           <div className="absolute left-0 top-1/2 -translate-y-1/2 w-px h-screen bg-brand-foreground/15" />
           <div className="absolute right-0 top-1/2 -translate-y-1/2 w-px h-screen bg-brand-foreground/15" />
 
-          <UnifiedAuthForm redirectUrl={oauthAuthorizeUrl} />
+          <UnifiedAuthForm redirectUrl={oauthAuthorizeUrl} callbackUrl={next} />
         </div>
       </main>
     );
