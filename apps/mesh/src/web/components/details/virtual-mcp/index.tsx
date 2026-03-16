@@ -373,7 +373,7 @@ function VirtualMcpDetailViewWithData({
                 className="w-full flex items-center justify-between px-6 py-4 hover:bg-muted/50 transition-colors cursor-pointer"
               >
                 <p className="text-sm font-medium text-muted-foreground">
-                  Skills
+                  Connections
                 </p>
                 <div className="h-7 px-2 inline-flex items-center justify-center gap-1 rounded-md text-sm text-muted-foreground">
                   <Plus size={14} />
@@ -387,7 +387,7 @@ function VirtualMcpDetailViewWithData({
                   className="w-full flex items-center justify-between px-6 py-4 hover:bg-muted/50 transition-colors cursor-pointer"
                 >
                   <p className="text-sm font-medium text-muted-foreground">
-                    Skills
+                    Connections
                   </p>
                   <div className="flex items-center">
                     {/* Icons preview - collapses instantly when open, expands smoothly when closed */}
