@@ -155,14 +155,8 @@ export function ImportFromDecoDialog({
           pinnedViews: [
             {
               connectionId: connId,
-              toolName: "list_environments",
-              label: "Preview",
-              icon: null,
-            },
-            {
-              connectionId: connId,
               toolName: "file_explorer",
-              label: "File Explorer",
+              label: "Preview",
               icon: null,
             },
             {
