@@ -19,7 +19,7 @@ for (const line of ASCII_ART) {
 console.log("");
 
 // Services
-const services = await ensureServices({ quiet: true });
+const services = await ensureServices();
 
 console.log(section("Services"));
 for (const s of services) {

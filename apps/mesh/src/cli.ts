@@ -239,7 +239,7 @@ if (betterAuthFromFile || encryptionKeyFromFile) {
 // ============================================================================
 
 const { ensureServices } = await import("./services/ensure-services");
-const services = await ensureServices({ quiet: true });
+const services = await ensureServices();
 
 console.log(section("Services"));
 for (const s of services) {

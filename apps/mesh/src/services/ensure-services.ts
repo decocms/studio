@@ -204,9 +204,7 @@ function fixEmbeddedPostgresLibSymlinks() {
   }
 }
 
-async function ensurePostgres(
-  log: (...args: unknown[]) => void = console.log,
-): Promise<ServiceInfo> {
+async function ensurePostgres(): Promise<ServiceInfo> {
   const info: ServiceInfo = {
     name: "PostgreSQL",
     state: "stopped",
@@ -221,23 +219,16 @@ async function ensurePostgres(
       info.state = "running";
       info.pid = existingPid;
       info.owner = "managed";
-      log(`PostgreSQL already running (PID ${existingPid})`);
       return info;
     }
-    log("PostgreSQL: stale PID file, cleaning up...");
     await removePid("postgres");
   }
 
   if (await probePort(PG_PORT)) {
-    log(
-      `PostgreSQL: port ${PG_PORT} already in use — reusing external instance`,
-    );
     info.state = "external";
     info.owner = "external";
     return info;
   }
-
-  log("PostgreSQL: starting via embedded-postgres...");
   const dataDir = join(SERVICES_DIR, "postgres", "data");
   ensureDir(dataDir);
 
@@ -291,7 +282,6 @@ async function ensurePostgres(
 
   info.state = "running";
   info.owner = "managed";
-  log(`PostgreSQL started on port ${PG_PORT} (PID ${pgPid ?? "unknown"})`);
   return info;
 }
 
@@ -394,9 +384,7 @@ function natsBinaryPath(): string {
   return join(SERVICES_DIR, "nats", "bin", `nats-server${EXE_EXT}`);
 }
 
-async function downloadNats(
-  log: (...args: unknown[]) => void = console.log,
-): Promise<string> {
+async function downloadNats(): Promise<string> {
   const binPath = natsBinaryPath();
   if (existsSync(binPath)) return binPath;
 
@@ -405,8 +393,6 @@ async function downloadNats(
 
   const artifact = natsArtifactName();
   const url = `https://github.com/nats-io/nats-server/releases/download/${NATS_VERSION}/${artifact}`;
-
-  log(`NATS: downloading ${artifact}...`);
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(
@@ -418,7 +404,6 @@ async function downloadNats(
   const arrayBuffer = await response.arrayBuffer();
   writeFileSync(zipPath, Buffer.from(arrayBuffer));
 
-  log("NATS: extracting...");
   if (IS_WINDOWS) {
     const proc = Bun.spawn([
       "powershell",
@@ -449,13 +434,10 @@ async function downloadNats(
     throw new Error(`NATS binary not found at ${binPath} after extraction`);
   }
 
-  log(`NATS: binary installed at ${binPath}`);
   return binPath;
 }
 
-async function ensureNats(
-  log: (...args: unknown[]) => void = console.log,
-): Promise<ServiceInfo> {
+async function ensureNats(): Promise<ServiceInfo> {
   const info: ServiceInfo = {
     name: "NATS",
     state: "stopped",
@@ -470,26 +452,22 @@ async function ensureNats(
       info.state = "running";
       info.pid = existingPid;
       info.owner = "managed";
-      log(`NATS already running (PID ${existingPid})`);
       return info;
     }
-    log("NATS: stale PID file, cleaning up...");
     await removePid("nats");
   }
 
   if (await probePort(NATS_PORT)) {
-    log(`NATS: port ${NATS_PORT} already in use — reusing external instance`);
     info.state = "external";
     info.owner = "external";
     return info;
   }
 
-  const binPath = await downloadNats(log);
+  const binPath = await downloadNats();
   const dataDir = join(SERVICES_DIR, "nats", "data");
   const logDir = join(SERVICES_DIR, "nats");
   ensureDir(dataDir);
 
-  log("NATS: starting...");
   const logFile = Bun.file(join(logDir, "nats.log"));
   const proc = Bun.spawn(
     [binPath, "-p", String(NATS_PORT), "-store_dir", dataDir, "--jetstream"],
@@ -506,7 +484,6 @@ async function ensureNats(
   info.state = "running";
   info.pid = proc.pid;
   info.owner = "managed";
-  log(`NATS started on port ${NATS_PORT} (PID ${proc.pid})`);
   return info;
 }
 
@@ -575,22 +552,12 @@ function isLocalUrl(url: string): boolean {
   }
 }
 
-export async function ensureServices(options?: {
-  quiet?: boolean;
-}): Promise<ServiceInfo[]> {
-  const log = options?.quiet ? () => {} : console.log.bind(console);
+export async function ensureServices(): Promise<ServiceInfo[]> {
   ensureDir(SERVICES_DIR);
 
   const skipPostgres =
     process.env.DATABASE_URL && !isLocalUrl(process.env.DATABASE_URL);
   const skipNats = process.env.NATS_URL && !isLocalUrl(process.env.NATS_URL);
-
-  if (skipPostgres) {
-    log("PostgreSQL: using external service (DATABASE_URL is set)");
-  }
-  if (skipNats) {
-    log("NATS: using external service (NATS_URL is set)");
-  }
 
   const pgInfo: ServiceInfo = skipPostgres
     ? {

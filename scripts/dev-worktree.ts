@@ -55,7 +55,7 @@ startWorktree(slug, async (ctx) => {
   const dotEnv = loadDotEnv(join(repoRoot, "apps/mesh/.env"));
 
   // Services
-  const services = await ensureServices({ quiet: true });
+  const services = await ensureServices();
 
   console.log(section("Services"));
   for (const s of services) {
