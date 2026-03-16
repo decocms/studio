@@ -876,7 +876,6 @@ function OrgMcpsContent() {
   const registryDiscovery = useStoreDiscovery({
     registryId,
     listToolName: registryListToolName,
-    enabled: Boolean(registryId && registryListToolName),
   });
   const registryItems = registryDiscovery.items;
 

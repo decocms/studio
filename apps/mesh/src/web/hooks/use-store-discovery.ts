@@ -27,8 +27,6 @@ interface UseStoreDiscoveryOptions {
   filtersToolName?: string;
   /** Search term for server-side filtering */
   search?: string;
-  /** When false, the list query is not run (e.g. no registry selected) */
-  enabled?: boolean;
 }
 
 interface UseStoreDiscoveryResult {
@@ -74,7 +72,6 @@ export function useStoreDiscovery({
   listToolName,
   filtersToolName,
   search,
-  enabled = true,
 }: UseStoreDiscoveryOptions): UseStoreDiscoveryResult {
   const { org } = useProjectContext();
   // Filter state
@@ -131,8 +128,6 @@ export function useStoreDiscovery({
     ...(searchWhereClause && { where: searchWhereClause }),
   };
 
-  const queryEnabled = enabled && Boolean(registryId && listToolName);
-
   const {
     data,
     fetchNextPage,
@@ -170,7 +165,6 @@ export function useStoreDiscovery({
       }
       return undefined;
     },
-    enabled: queryEnabled,
     staleTime: 60 * 60 * 1000,
     placeholderData: keepPreviousData,
     retry: 2,
