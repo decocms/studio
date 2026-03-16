@@ -6,7 +6,7 @@
  * Called by `bun run dev` from the monorepo root.
  */
 import { join } from "path";
-import { ASCII_ART } from "../apps/mesh/src/fmt.ts";
+import { ASCII_ART, row, section } from "../apps/mesh/src/fmt.ts";
 import { ensureServices } from "./dev-services.ts";
 
 const repoRoot = join(import.meta.dir, "..");
@@ -19,22 +19,42 @@ for (const line of ASCII_ART) {
 console.log("");
 
 // 1. Ensure PostgreSQL + NATS are running (sets DATABASE_URL, NATS_URL)
-await ensureServices();
-process.env.DECO_CLI = "1";
+const services = await ensureServices({ quiet: true });
+
+console.log(section("Services"));
+for (const s of services) {
+  const details: string[] = [s.state];
+  if (s.pid) details.push(`pid ${s.pid}`);
+  details.push(`:${s.port}`);
+  details.push(s.owner);
+  console.log(row(s.name, details.join(" · ")));
+}
 
 // 2. Run migrations
-const migrate = Bun.spawn(["bun", "run", "--cwd=apps/mesh", "migrate"], {
-  cwd: repoRoot,
-  env: process.env,
-  stdio: ["inherit", "inherit", "inherit"],
-});
-const migrateCode = await migrate.exited;
-if (migrateCode !== 0) {
-  console.error("Migration failed");
-  process.exit(migrateCode);
+try {
+  const { migrateToLatest } = await import(
+    "../apps/mesh/src/database/migrate.ts"
+  );
+  const result = await migrateToLatest();
+
+  console.log(section("Migrations"));
+  console.log(
+    row(
+      "Kysely",
+      result.kysely > 0 ? `${result.kysely} applied` : "up to date",
+    ),
+  );
+  if (result.plugins > 0) {
+    console.log(row("Plugins", `${result.plugins} applied`));
+  }
+  console.log(row("Better Auth", result.betterAuth));
+} catch (error) {
+  console.error("Migration failed:", error);
+  process.exit(1);
 }
 
 // 3. Start dev servers (client + server concurrently)
+process.env.DECO_CLI = "1";
 const servers = Bun.spawn(["bun", "run", "--cwd=apps/mesh", "dev:servers"], {
   cwd: repoRoot,
   env: process.env,

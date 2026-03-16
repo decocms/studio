@@ -2,7 +2,7 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 import { startWorktree } from "worktree-devservers";
-import { ASCII_ART } from "../apps/mesh/src/fmt.ts";
+import { ASCII_ART, row, section } from "../apps/mesh/src/fmt.ts";
 import { ensureServices } from "./dev-services.ts";
 
 function loadDotEnv(path: string): Record<string, string> {
@@ -48,9 +48,41 @@ startWorktree(slug, async (ctx) => {
   const dotEnv = loadDotEnv(join(repoRoot, "apps/mesh/.env"));
 
   // Ensure PostgreSQL + NATS are running before migrations
-  await ensureServices();
+  const services = await ensureServices({ quiet: true });
 
-  const child = Bun.spawn(["bun", "run", "--cwd=apps/mesh", "dev"], {
+  console.log(section("Services"));
+  for (const s of services) {
+    const details: string[] = [s.state];
+    if (s.pid) details.push(`pid ${s.pid}`);
+    details.push(`:${s.port}`);
+    details.push(s.owner);
+    console.log(row(s.name, details.join(" · ")));
+  }
+
+  // Run migrations inline (formatted output instead of subprocess noise)
+  try {
+    const { migrateToLatest } = await import(
+      "../apps/mesh/src/database/migrate.ts"
+    );
+    const result = await migrateToLatest();
+
+    console.log(section("Migrations"));
+    console.log(
+      row(
+        "Kysely",
+        result.kysely > 0 ? `${result.kysely} applied` : "up to date",
+      ),
+    );
+    if (result.plugins > 0) {
+      console.log(row("Plugins", `${result.plugins} applied`));
+    }
+    console.log(row("Better Auth", result.betterAuth));
+  } catch (error) {
+    console.error("Migration failed:", error);
+    process.exit(1);
+  }
+
+  const child = Bun.spawn(["bun", "run", "--cwd=apps/mesh", "dev:servers"], {
     cwd: repoRoot,
     env: {
       ...process.env,
