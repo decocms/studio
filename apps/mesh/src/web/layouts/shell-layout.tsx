@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Chat } from "@/web/components/chat/index";
 import { ChatPanel } from "@/web/components/chat/side-panel-chat";
 import { CreateProjectDialog } from "@/web/components/create-project-dialog";
+import { KeyboardShortcutsDialog } from "@/web/components/keyboard-shortcuts-dialog";
+import { isModKey } from "@/web/lib/keyboard-shortcuts";
 import { MeshSidebar } from "@/web/components/sidebar";
 import { SplashScreen } from "@/web/components/splash-screen";
 import { MeshUserMenu } from "@/web/components/user-menu.tsx";
@@ -164,6 +166,31 @@ function ShellLayoutContent() {
   const { org, project } = useParams({ strict: false });
   const routerState = useRouterState();
   const [createProjectDialogOpen, setCreateProjectDialogOpen] = useState(false);
+  const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
+
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    const handler = (e: globalThis.KeyboardEvent) => {
+      if (!isModKey(e)) return;
+
+      const tag = (e.target as HTMLElement).tagName;
+      const isEditing =
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        (e.target as HTMLElement).isContentEditable;
+
+      if (e.code === "KeyK") {
+        e.preventDefault();
+        setShortcutsDialogOpen(true);
+      }
+      if (!isEditing && e.code === "KeyL") {
+        e.preventDefault();
+        document.dispatchEvent(new CustomEvent("mesh:focus-chat-input"));
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, []);
 
   // Check if we're on the project home route (/$org/$project)
   const isHomeRoute =
@@ -254,6 +281,12 @@ function ShellLayoutContent() {
       <CreateProjectDialog
         open={createProjectDialogOpen}
         onOpenChange={setCreateProjectDialogOpen}
+      />
+
+      {/* Keyboard Shortcuts Dialog */}
+      <KeyboardShortcutsDialog
+        open={shortcutsDialogOpen}
+        onOpenChange={setShortcutsDialogOpen}
       />
     </ProjectContextProvider>
   );
