@@ -36,7 +36,6 @@ import {
   Loading01,
   Play,
   Plus,
-  ZapCircle,
   Tool01,
   Users03,
 } from "@untitledui/icons";
@@ -309,7 +308,30 @@ function VirtualMcpDetailViewWithData({
             dispatch({ type: "SET_SHARE_DIALOG_OPEN", payload: true })
           }
         >
-          <ZapCircle size={14} />
+          <div className="flex items-center -space-x-1.5 mr-0.5">
+            <div
+              className="size-4 rounded-full ring-1 ring-background flex items-center justify-center"
+              style={{ backgroundColor: "#181818" }}
+            >
+              <img
+                src="/logos/cursor.svg"
+                alt="Cursor"
+                className="size-2.5"
+                style={{ filter: "brightness(0) invert(1)" }}
+              />
+            </div>
+            <div
+              className="size-4 rounded-full ring-1 ring-background flex items-center justify-center"
+              style={{ backgroundColor: "#D97757" }}
+            >
+              <img
+                src="/logos/Claude Code.svg"
+                alt="Claude Code"
+                className="size-2.5"
+                style={{ filter: "brightness(0) invert(1)" }}
+              />
+            </div>
+          </div>
           Connect
         </Button>
       </ViewActions>
