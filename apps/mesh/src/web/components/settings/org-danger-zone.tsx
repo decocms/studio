@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { authClient } from "@/web/lib/auth-client";
 import { KEYS } from "@/web/lib/query-keys";
@@ -17,6 +17,11 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@deco/ui/components/alert-dialog.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 import { toast } from "sonner";
 
 export function OrgDangerZone() {
@@ -25,6 +30,12 @@ export function OrgDangerZone() {
   const queryClient = useQueryClient();
   const [confirmName, setConfirmName] = useState("");
   const [isOpen, setIsOpen] = useState(false);
+
+  const { data: activeMember } = useQuery({
+    queryKey: [org.id, "active-member"],
+    queryFn: () => authClient.organization.getActiveMember(),
+  });
+  const isOwner = activeMember?.data?.role === "owner";
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -82,14 +93,26 @@ export function OrgDangerZone() {
         </div>
 
         <AlertDialog open={isOpen} onOpenChange={handleOpenChange}>
-          <AlertDialogTrigger asChild>
-            <Button
-              variant="outline"
-              className="shrink-0 bg-destructive/10 text-destructive border-0 hover:bg-destructive/15 hover:text-destructive"
-            >
-              Delete Organization
-            </Button>
-          </AlertDialogTrigger>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="shrink-0">
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    disabled={!isOwner}
+                    className="bg-destructive/10 text-destructive border-0 hover:bg-destructive/15 hover:text-destructive disabled:pointer-events-none"
+                  >
+                    Delete Organization
+                  </Button>
+                </AlertDialogTrigger>
+              </span>
+            </TooltipTrigger>
+            {!isOwner && (
+              <TooltipContent>
+                Only owners can delete the organization
+              </TooltipContent>
+            )}
+          </Tooltip>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Delete "{org.name}"?</AlertDialogTitle>
