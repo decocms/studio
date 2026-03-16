@@ -49,6 +49,7 @@ import { ErrorBoundary } from "../error-boundary";
 import { useChat } from "./context";
 import { getProviderLogo } from "@/web/utils/ai-providers-logos";
 import { useSettingsModal } from "@/web/hooks/use-settings-modal";
+import { NoLlmBindingEmptyState } from "./no-llm-binding-empty-state";
 
 function parseModelTitle(model: { title: string; modelId: string }): {
   provider: string;
@@ -1030,6 +1031,17 @@ function ModelSelectorInner({
     setSearchTerm("");
     onClose();
   };
+
+  if (keys.length === 0) {
+    return (
+      <div className="flex items-center justify-center p-8 w-full sm:w-[740px]">
+        <NoLlmBindingEmptyState
+          title="Connect an AI provider"
+          description="Connect to a model provider to unlock AI-powered features."
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col md:flex-row h-[460px]">
