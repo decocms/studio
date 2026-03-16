@@ -75,7 +75,7 @@ function withSecurityHeaders(res: Response): Response {
 // Create the Hono app
 const app = await createApp();
 
-// When DECO_CLI is set, the calling script handles all output
+// When DECO_CLI is set, the calling script handles its own banner/config output
 if (!process.env.DECO_CLI) {
   const { ASCII_ART } = await import("./fmt");
   console.log("");

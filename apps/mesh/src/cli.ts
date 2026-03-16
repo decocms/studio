@@ -140,7 +140,8 @@ if (localMode) {
 // Secrets (auto-generate on first run, persist to ~/deco/secrets.json)
 // ============================================================================
 
-const { ASCII_ART, dim, green, row, section, yellow } = await import("./fmt");
+const { ASCII_ART, bold, cyan, dim, green, row, section, underline, yellow } =
+  await import("./fmt");
 
 const crypto = await import("crypto");
 const { chmod, mkdir, writeFile } = await import("fs/promises");
@@ -245,7 +246,7 @@ console.log(section("Services"));
 for (const s of services) {
   const details: string[] = [s.state];
   if (s.pid) details.push(`pid ${s.pid}`);
-  details.push(`:${s.port}`);
+  if (s.owner !== "external") details.push(`:${s.port}`);
   details.push(s.owner);
   console.log(row(s.name, details.join(" · ")));
 }
@@ -296,3 +297,10 @@ console.log("");
 
 process.env.DECO_CLI = "1";
 await import("./index");
+
+const url = env.BASE_URL || `http://localhost:${values.port}`;
+console.log("");
+console.log(`${green("✓")} ${bold("Ready")}`);
+console.log("");
+console.log(`  ${dim("Open in browser:")}  ${cyan(underline(url))}`);
+console.log("");

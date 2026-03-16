@@ -54,6 +54,9 @@ startWorktree(slug, async (ctx) => {
   const repoRoot = join(import.meta.dir, "..");
   const dotEnv = loadDotEnv(join(repoRoot, "apps/mesh/.env"));
 
+  // Apply .env early so ensureServices() sees DATABASE_URL / NATS_URL
+  Object.assign(process.env, dotEnv);
+
   // Services
   const services = await ensureServices();
 
@@ -61,7 +64,7 @@ startWorktree(slug, async (ctx) => {
   for (const s of services) {
     const details: string[] = [s.state];
     if (s.pid) details.push(`pid ${s.pid}`);
-    details.push(`:${s.port}`);
+    if (s.owner !== "external") details.push(`:${s.port}`);
     details.push(s.owner);
     console.log(row(s.name, details.join(" · ")));
   }
