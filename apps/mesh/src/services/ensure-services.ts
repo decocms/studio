@@ -24,9 +24,9 @@ import { join } from "path";
 const SERVICES_DIR = join(homedir(), "deco", "services");
 
 const PG_PORT = 5432;
-const PG_USER = "deco";
-const PG_PASSWORD = "deco";
-const PG_DATABASE = "deco_dev";
+const PG_USER = "postgres";
+const PG_PASSWORD = "postgres";
+const PG_DATABASE = "postgres";
 const PG_CONNECTION_STRING = `postgresql://${PG_USER}:${PG_PASSWORD}@localhost:${PG_PORT}/${PG_DATABASE}`;
 
 const NATS_PORT = 4222;

@@ -54,7 +54,8 @@ const envSchema = z
   .transform((e) => ({
     ...e,
     DATABASE_URL:
-      e.DATABASE_URL ?? "postgresql://deco:deco@localhost:5432/deco_dev",
+      e.DATABASE_URL ??
+      "postgresql://postgres:postgres@localhost:5432/postgres",
   }));
 
 export type Env = z.infer<typeof envSchema>;
