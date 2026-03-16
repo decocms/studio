@@ -1,4 +1,4 @@
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext, useVirtualMCPs } from "@decocms/mesh-sdk";
 import type { ConnectionEntity } from "@decocms/mesh-sdk";
 import { ConnectionVirtualMCPsSection } from "./settings-tab/connection-virtual-mcps-section";
 
@@ -11,6 +11,16 @@ export function ConnectionAgentsPanel({
 }: ConnectionAgentsPanelProps) {
   const { org } = useProjectContext();
 
+  const virtualMcps = useVirtualMCPs({
+    filters: [{ column: "connection_id", value: connection.id }],
+  });
+
+  const hasVirtualMcps = virtualMcps.length > 0;
+
+  if (!hasVirtualMcps) {
+    return <></>;
+  }
+
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       <div className="px-5 py-4 border-b border-border">
@@ -20,10 +30,7 @@ export function ConnectionAgentsPanel({
       </div>
       <div className="px-5 py-4">
         <ConnectionVirtualMCPsSection
-          connectionId={connection.id}
-          connectionTitle={connection.title}
-          connectionDescription={connection.description}
-          connectionIcon={connection.icon}
+          virtualMcps={virtualMcps}
           org={org.slug}
         />
       </div>

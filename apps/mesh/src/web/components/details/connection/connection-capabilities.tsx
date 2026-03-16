@@ -13,6 +13,9 @@ import {
   Tool01,
 } from "@untitledui/icons";
 import { useNavigate } from "@tanstack/react-router";
+import { getUIResourceUri } from "@/mcp-apps/types.ts";
+import type { Tool as UiTool } from "@/web/components/tools";
+import { ConnectionUiTab } from "./connection-ui-tab.tsx";
 
 /**
  * Converts a snake_case or dot.case tool function name to readable English.
@@ -67,6 +70,8 @@ function collectionNameFromTool(toolName: string): string {
 interface Tool {
   name: string;
   description?: string;
+  _meta?: Record<string, unknown>;
+  annotations?: unknown;
 }
 
 interface Prompt {
@@ -120,6 +125,8 @@ export function ConnectionCapabilities({
   }
   const collectionTools = tools.filter((t) => /^COLLECTION_/i.test(t.name));
   const regularTools = tools.filter((t) => !/^COLLECTION_/i.test(t.name));
+  const hasUiTools =
+    connectionId && org && tools.some((t) => getUIResourceUri(t._meta));
 
   // Group collections by name (e.g. "USERS" from COLLECTION_USERS_LIST)
   const collectionGroups = collectionTools.reduce<Record<string, Tool[]>>(
@@ -156,6 +163,11 @@ export function ConnectionCapabilities({
             <TabsTrigger value="tools" variant="underline">
               Tools
             </TabsTrigger>
+            {hasUiTools && (
+              <TabsTrigger value="apps" variant="underline">
+                UI
+              </TabsTrigger>
+            )}
             <TabsTrigger value="prompts" variant="underline">
               Prompts
             </TabsTrigger>
@@ -202,6 +214,16 @@ export function ConnectionCapabilities({
             )}
           </div>
         </TabsContent>
+
+        {hasUiTools && (
+          <TabsContent value="apps" className="h-auto min-h-[200px]">
+            <ConnectionUiTab
+              tools={tools as UiTool[]}
+              connectionId={connectionId!}
+              org={org!}
+            />
+          </TabsContent>
+        )}
 
         <TabsContent value="prompts" className="h-auto">
           <div className="divide-y divide-border">
