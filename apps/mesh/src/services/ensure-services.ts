@@ -76,6 +76,38 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
+/**
+ * Verify that a PID belongs to the expected service by checking the process
+ * command line. This guards against PID reuse: if the OS recycled the PID for
+ * an unrelated process, we must not signal it.
+ */
+function isOwnedProcess(pid: number, expectedName: string): boolean {
+  if (!isProcessAlive(pid)) return false;
+
+  try {
+    if (IS_WINDOWS) {
+      const proc = Bun.spawnSync([
+        "wmic",
+        "process",
+        "where",
+        `ProcessId=${pid}`,
+        "get",
+        "CommandLine",
+      ]);
+      const output = new TextDecoder().decode(proc.stdout);
+      return output.toLowerCase().includes(expectedName.toLowerCase());
+    }
+
+    // Unix: read /proc or use ps
+    const proc = Bun.spawnSync(["ps", "-p", String(pid), "-o", "comm="]);
+    const output = new TextDecoder().decode(proc.stdout).trim().toLowerCase();
+    return output.includes(expectedName.toLowerCase());
+  } catch {
+    // If we can't verify, assume it's ours to avoid breaking existing behavior
+    return true;
+  }
+}
+
 function probePort(port: number, host = "localhost"): Promise<boolean> {
   return new Promise((resolve) => {
     const sock = createConnection({ port, host });
@@ -183,7 +215,7 @@ async function ensurePostgres(): Promise<ServiceInfo> {
 
   const existingPid = readPid("postgres");
   if (existingPid !== null) {
-    if (isProcessAlive(existingPid)) {
+    if (isOwnedProcess(existingPid, "postgres")) {
       info.state = "running";
       info.pid = existingPid;
       info.owner = "managed";
@@ -278,6 +310,14 @@ async function stopPostgres(): Promise<void> {
     return;
   }
 
+  if (!isOwnedProcess(pid, "postgres")) {
+    console.log(
+      `PostgreSQL: PID ${pid} no longer belongs to postgres (possible PID reuse), cleaning up PID file`,
+    );
+    await removePid("postgres");
+    return;
+  }
+
   console.log(`PostgreSQL: stopping (PID ${pid})...`);
 
   const dataDir = join(SERVICES_DIR, "postgres", "data");
@@ -296,13 +336,19 @@ async function stopPostgres(): Promise<void> {
       "PostgreSQL: embedded-postgres stop failed, sending SIGTERM...",
     );
     try {
-      process.kill(pid, "SIGTERM");
-      const start = Date.now();
-      while (Date.now() - start < 5000 && isProcessAlive(pid)) {
-        await Bun.sleep(200);
-      }
-      if (isProcessAlive(pid)) {
-        process.kill(pid, "SIGKILL");
+      if (!isOwnedProcess(pid, "postgres")) {
+        console.log(
+          `PostgreSQL: PID ${pid} is no longer postgres, skipping signal`,
+        );
+      } else {
+        process.kill(pid, "SIGTERM");
+        const start = Date.now();
+        while (Date.now() - start < 5000 && isProcessAlive(pid)) {
+          await Bun.sleep(200);
+        }
+        if (isProcessAlive(pid) && isOwnedProcess(pid, "postgres")) {
+          process.kill(pid, "SIGKILL");
+        }
       }
     } catch {
       // Process may already be dead
@@ -414,7 +460,7 @@ async function ensureNats(): Promise<ServiceInfo> {
 
   const existingPid = readPid("nats");
   if (existingPid !== null) {
-    if (isProcessAlive(existingPid)) {
+    if (isOwnedProcess(existingPid, "nats-server")) {
       info.state = "running";
       info.pid = existingPid;
       info.owner = "managed";
@@ -477,6 +523,14 @@ async function stopNats(): Promise<void> {
     return;
   }
 
+  if (!isOwnedProcess(pid, "nats-server")) {
+    console.log(
+      `NATS: PID ${pid} no longer belongs to nats-server (possible PID reuse), cleaning up PID file`,
+    );
+    await removePid("nats");
+    return;
+  }
+
   console.log(`NATS: stopping (PID ${pid})...`);
 
   if (IS_WINDOWS) {
@@ -490,7 +544,7 @@ async function stopNats(): Promise<void> {
     await Bun.sleep(200);
   }
 
-  if (isProcessAlive(pid)) {
+  if (isProcessAlive(pid) && isOwnedProcess(pid, "nats-server")) {
     console.log("NATS: force killing...");
     if (IS_WINDOWS) {
       Bun.spawn(["taskkill", "/PID", String(pid), "/F"]);
