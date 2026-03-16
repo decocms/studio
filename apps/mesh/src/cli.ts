@@ -291,4 +291,5 @@ console.log("");
 // Start server
 // ============================================================================
 
+process.env.DECO_CLI = "1";
 await import("./index");

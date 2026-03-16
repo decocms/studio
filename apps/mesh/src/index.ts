@@ -75,6 +75,15 @@ function withSecurityHeaders(res: Response): Response {
 // Create the Hono app
 const app = await createApp();
 
+// Print ASCII art banner unless the CLI already printed it
+if (!process.env.DECO_CLI) {
+  const { ASCII_ART } = await import("./fmt");
+  console.log("");
+  for (const line of ASCII_ART) {
+    console.log(line);
+  }
+}
+
 logConfiguration(env);
 
 console.log("");

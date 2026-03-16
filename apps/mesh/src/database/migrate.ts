@@ -380,17 +380,13 @@ export async function migrateDown(): Promise<void> {
 
 // Entry point: Run migrations when executed directly
 if (import.meta.main) {
-  console.log("🚀 Migration script starting...");
-  console.log("📦 Imported migrateToLatest function");
-
   (async () => {
-    console.log("🏃 Executing migration function...");
     try {
       await migrateToLatest();
-      console.log("✅ All migrations completed. Exiting...");
+      console.log("Migrations completed.");
       process.exit(0);
     } catch (error) {
-      console.error("❌ Migration failed:", error);
+      console.error("Migration failed:", error);
       process.exit(1);
     }
   })();

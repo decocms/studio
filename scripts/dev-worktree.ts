@@ -2,6 +2,7 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 import { startWorktree } from "worktree-devservers";
+import { ASCII_ART } from "../apps/mesh/src/fmt.ts";
 import { ensureServices } from "./dev-services.ts";
 
 function loadDotEnv(path: string): Record<string, string> {
@@ -27,7 +28,7 @@ function loadDotEnv(path: string): Record<string, string> {
 
 const slug = process.env.WORKTREE_SLUG;
 if (!slug) {
-  console.error("❌ WORKTREE_SLUG environment variable is required.");
+  console.error("WORKTREE_SLUG environment variable is required.");
   process.exit(1);
 }
 
@@ -35,7 +36,13 @@ startWorktree(slug, async (ctx) => {
   const port = await ctx.findFreePort(3000);
   const vitePort = await ctx.findFreePort(4000);
 
-  console.log(`🔌 ${ctx.slug}.localhost → Hono :${port}, Vite :${vitePort}`);
+  // Print banner before any service/migration output
+  console.log("");
+  for (const line of ASCII_ART) {
+    console.log(line);
+  }
+  console.log("");
+  console.log(`  ${ctx.slug}.localhost → Hono :${port}, Vite :${vitePort}`);
 
   const repoRoot = join(import.meta.dir, "..");
   const dotEnv = loadDotEnv(join(repoRoot, "apps/mesh/.env"));
@@ -51,6 +58,7 @@ startWorktree(slug, async (ctx) => {
       PORT: String(port),
       VITE_PORT: String(vitePort),
       BASE_URL: `http://${ctx.slug}.localhost`,
+      DECO_CLI: "1",
     },
     stdio: ["inherit", "inherit", "inherit"],
   });

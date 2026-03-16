@@ -6,15 +6,23 @@
  * Called by `bun run dev` from the monorepo root.
  */
 import { join } from "path";
+import { ASCII_ART } from "../apps/mesh/src/fmt.ts";
 import { ensureServices } from "./dev-services.ts";
 
 const repoRoot = join(import.meta.dir, "..");
 
+// Print banner before any service/migration output
+console.log("");
+for (const line of ASCII_ART) {
+  console.log(line);
+}
+console.log("");
+
 // 1. Ensure PostgreSQL + NATS are running (sets DATABASE_URL, NATS_URL)
 await ensureServices();
+process.env.DECO_CLI = "1";
 
 // 2. Run migrations
-console.log("\nRunning migrations...");
 const migrate = Bun.spawn(["bun", "run", "--cwd=apps/mesh", "migrate"], {
   cwd: repoRoot,
   env: process.env,
@@ -27,7 +35,6 @@ if (migrateCode !== 0) {
 }
 
 // 3. Start dev servers (client + server concurrently)
-console.log("\nStarting dev servers...");
 const servers = Bun.spawn(["bun", "run", "--cwd=apps/mesh", "dev:servers"], {
   cwd: repoRoot,
   env: process.env,
