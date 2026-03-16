@@ -126,6 +126,18 @@ function probePort(port: number, host = "localhost"): Promise<boolean> {
   });
 }
 
+function findPidOnPort(port: number): number | null {
+  try {
+    const proc = Bun.spawnSync(["lsof", "-ti", `tcp:${port}`, "-sTCP:LISTEN"]);
+    const output = new TextDecoder().decode(proc.stdout).trim();
+    if (!output) return null;
+    const pid = Number.parseInt(output.split("\n")[0], 10);
+    return Number.isNaN(pid) ? null : pid;
+  } catch {
+    return null;
+  }
+}
+
 async function waitForPort(port: number, timeoutMs = 30_000): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -225,8 +237,9 @@ async function ensurePostgres(): Promise<ServiceInfo> {
   }
 
   if (await probePort(PG_PORT)) {
-    info.state = "external";
-    info.owner = "external";
+    info.state = "running";
+    info.pid = findPidOnPort(PG_PORT);
+    info.owner = "managed";
     return info;
   }
   const dataDir = join(SERVICES_DIR, "postgres", "data");
@@ -458,8 +471,9 @@ async function ensureNats(): Promise<ServiceInfo> {
   }
 
   if (await probePort(NATS_PORT)) {
-    info.state = "external";
-    info.owner = "external";
+    info.state = "running";
+    info.pid = findPidOnPort(NATS_PORT);
+    info.owner = "managed";
     return info;
   }
 
@@ -611,10 +625,10 @@ export async function serviceStatus(): Promise<ServiceInfo[]> {
   } else if (await probePort(PG_PORT)) {
     services.push({
       name: "PostgreSQL",
-      state: "external",
-      pid: null,
+      state: "running",
+      pid: findPidOnPort(PG_PORT),
       port: PG_PORT,
-      owner: "external",
+      owner: "managed",
     });
   } else {
     services.push({
@@ -638,10 +652,10 @@ export async function serviceStatus(): Promise<ServiceInfo[]> {
   } else if (await probePort(NATS_PORT)) {
     services.push({
       name: "NATS",
-      state: "external",
-      pid: null,
+      state: "running",
+      pid: findPidOnPort(NATS_PORT),
       port: NATS_PORT,
-      owner: "external",
+      owner: "managed",
     });
   } else {
     services.push({
