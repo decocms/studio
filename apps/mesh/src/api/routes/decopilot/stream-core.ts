@@ -255,6 +255,35 @@ export async function streamCore(
           const { getInternalUrl } = await import("@/core/server-constants");
           const internalUrl = getInternalUrl();
 
+          // Enrich messages with agent-specific instructions (same as standard path).
+          // The virtual MCP client holds the agent's custom prompt/instructions.
+          let enrichedMessages = allMessages;
+          let agentClient: Awaited<
+            ReturnType<typeof createVirtualClientFrom>
+          > | null = null;
+          try {
+            agentClient = await createVirtualClientFrom(
+              virtualMcp,
+              ctx,
+              "passthrough",
+            );
+            const serverInstructions = agentClient.getInstructions();
+            if (serverInstructions?.trim()) {
+              enrichedMessages = allMessages.map((msg) =>
+                msg.id === "decopilot-system"
+                  ? DECOPILOT_BASE_PROMPT(serverInstructions)
+                  : msg,
+              );
+            }
+          } catch (err) {
+            console.warn(
+              "[decopilot:stream] Failed to load agent instructions for Claude Code",
+              err,
+            );
+          } finally {
+            agentClient?.close().catch(() => {});
+          }
+
           // Build MCP endpoint so Claude Code can reach Mesh tools
           const mcpEndpoint = `${internalUrl}/mcp/self`;
           const apiKeyRecord = await ctx.boundAuth.apiKey.create({
@@ -281,7 +310,7 @@ export async function streamCore(
           let ccResult: Awaited<ReturnType<typeof streamClaudeCode>>;
           try {
             ccResult = await streamClaudeCode(writer, {
-              messages: allMessages,
+              messages: enrichedMessages,
               abortController,
               mcpEndpoint,
               mcpHeaders,
