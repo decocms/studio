@@ -75,22 +75,22 @@ function withSecurityHeaders(res: Response): Response {
 // Create the Hono app
 const app = await createApp();
 
-// Print ASCII art banner unless the CLI already printed it
+// When DECO_CLI is set, the calling script handles all output
 if (!process.env.DECO_CLI) {
   const { ASCII_ART } = await import("./fmt");
   console.log("");
   for (const line of ASCII_ART) {
     console.log(line);
   }
+
+  logConfiguration(env);
+
+  console.log("");
+  console.log(`${green("✓")} ${bold("Ready")}`);
+  console.log("");
+  console.log(`  ${dim("Open in browser:")}  ${cyan(underline(url))}`);
+  console.log("");
 }
-
-logConfiguration(env);
-
-console.log("");
-console.log(`${green("✓")} ${bold("Ready")}`);
-console.log("");
-console.log(`  ${dim("Open in browser:")}  ${cyan(underline(url))}`);
-console.log("");
 
 Bun.serve({
   // This was necessary because MCP has SSE endpoints (like notification) that disconnects after 10 seconds (default bun idle timeout)

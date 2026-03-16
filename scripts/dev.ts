@@ -5,20 +5,30 @@
  *
  * Called by `bun run dev` from the monorepo root.
  */
+import { createConnection } from "net";
 import { join } from "path";
-import { ASCII_ART, row, section } from "../apps/mesh/src/fmt.ts";
+import {
+  ASCII_ART,
+  bold,
+  cyan,
+  dim,
+  green,
+  row,
+  section,
+  underline,
+} from "../apps/mesh/src/fmt.ts";
 import { ensureServices } from "./dev-services.ts";
 
 const repoRoot = join(import.meta.dir, "..");
 
-// Print banner before any service/migration output
+// Banner
 console.log("");
 for (const line of ASCII_ART) {
   console.log(line);
 }
 console.log("");
 
-// 1. Ensure PostgreSQL + NATS are running (sets DATABASE_URL, NATS_URL)
+// Services
 const services = await ensureServices({ quiet: true });
 
 console.log(section("Services"));
@@ -30,7 +40,7 @@ for (const s of services) {
   console.log(row(s.name, details.join(" · ")));
 }
 
-// 2. Run migrations
+// Migrations
 try {
   const { migrateToLatest } = await import(
     "../apps/mesh/src/database/migrate.ts"
@@ -53,12 +63,58 @@ try {
   process.exit(1);
 }
 
-// 3. Start dev servers (client + server concurrently)
+// Configuration
+const { logConfiguration, env } = await import("../apps/mesh/src/env.ts");
+logConfiguration(env);
+
+// Start dev servers (silent — all output handled above)
 process.env.DECO_CLI = "1";
+const port = env.PORT;
+const url = env.BASE_URL || `http://localhost:${port}`;
+
 const servers = Bun.spawn(["bun", "run", "--cwd=apps/mesh", "dev:servers"], {
   cwd: repoRoot,
   env: process.env,
   stdio: ["inherit", "inherit", "inherit"],
+});
+
+// Wait for server to be ready
+function waitForPort(p: number, timeoutMs = 30_000): Promise<void> {
+  const start = Date.now();
+  return new Promise((resolve, reject) => {
+    const check = () => {
+      const sock = createConnection({ port: p, host: "localhost" });
+      sock.once("connect", () => {
+        sock.destroy();
+        resolve();
+      });
+      sock.once("error", () => {
+        sock.destroy();
+        if (Date.now() - start > timeoutMs) {
+          reject(new Error(`Timed out waiting for port ${p}`));
+        } else {
+          setTimeout(check, 200);
+        }
+      });
+      sock.setTimeout(1000, () => {
+        sock.destroy();
+        if (Date.now() - start > timeoutMs) {
+          reject(new Error(`Timed out waiting for port ${p}`));
+        } else {
+          setTimeout(check, 200);
+        }
+      });
+    };
+    check();
+  });
+}
+
+waitForPort(port).then(() => {
+  console.log("");
+  console.log(`${green("✓")} ${bold("Ready")}`);
+  console.log("");
+  console.log(`  ${dim("Open in browser:")}  ${cyan(underline(url))}`);
+  console.log("");
 });
 
 process.on("SIGINT", () => servers.kill("SIGINT"));

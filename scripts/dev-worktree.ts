@@ -1,8 +1,18 @@
 #!/usr/bin/env bun
+import { createConnection } from "net";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { startWorktree } from "worktree-devservers";
-import { ASCII_ART, row, section } from "../apps/mesh/src/fmt.ts";
+import {
+  ASCII_ART,
+  bold,
+  cyan,
+  dim,
+  green,
+  row,
+  section,
+  underline,
+} from "../apps/mesh/src/fmt.ts";
 import { ensureServices } from "./dev-services.ts";
 
 function loadDotEnv(path: string): Record<string, string> {
@@ -26,6 +36,36 @@ function loadDotEnv(path: string): Record<string, string> {
   }
 }
 
+function waitForPort(port: number, timeoutMs = 30_000): Promise<void> {
+  const start = Date.now();
+  return new Promise((resolve, reject) => {
+    const check = () => {
+      const sock = createConnection({ port, host: "localhost" });
+      sock.once("connect", () => {
+        sock.destroy();
+        resolve();
+      });
+      sock.once("error", () => {
+        sock.destroy();
+        if (Date.now() - start > timeoutMs) {
+          reject(new Error(`Timed out waiting for port ${port}`));
+        } else {
+          setTimeout(check, 200);
+        }
+      });
+      sock.setTimeout(1000, () => {
+        sock.destroy();
+        if (Date.now() - start > timeoutMs) {
+          reject(new Error(`Timed out waiting for port ${port}`));
+        } else {
+          setTimeout(check, 200);
+        }
+      });
+    };
+    check();
+  });
+}
+
 const slug = process.env.WORKTREE_SLUG;
 if (!slug) {
   console.error("WORKTREE_SLUG environment variable is required.");
@@ -36,18 +76,17 @@ startWorktree(slug, async (ctx) => {
   const port = await ctx.findFreePort(3000);
   const vitePort = await ctx.findFreePort(4000);
 
-  // Print banner before any service/migration output
+  // Print banner
   console.log("");
   for (const line of ASCII_ART) {
     console.log(line);
   }
   console.log("");
-  console.log(`  ${ctx.slug}.localhost → Hono :${port}, Vite :${vitePort}`);
 
   const repoRoot = join(import.meta.dir, "..");
   const dotEnv = loadDotEnv(join(repoRoot, "apps/mesh/.env"));
 
-  // Ensure PostgreSQL + NATS are running before migrations
+  // Services
   const services = await ensureServices({ quiet: true });
 
   console.log(section("Services"));
@@ -59,7 +98,7 @@ startWorktree(slug, async (ctx) => {
     console.log(row(s.name, details.join(" · ")));
   }
 
-  // Run migrations inline (formatted output instead of subprocess noise)
+  // Migrations
   try {
     const { migrateToLatest } = await import(
       "../apps/mesh/src/database/migrate.ts"
@@ -82,17 +121,35 @@ startWorktree(slug, async (ctx) => {
     process.exit(1);
   }
 
+  // Configuration — set env vars then import the config logger
+  const childEnv = {
+    ...process.env,
+    ...dotEnv,
+    PORT: String(port),
+    VITE_PORT: String(vitePort),
+    BASE_URL: `http://${ctx.slug}.localhost`,
+    DECO_CLI: "1",
+  };
+  Object.assign(process.env, childEnv);
+
+  const { logConfiguration, env } = await import("../apps/mesh/src/env.ts");
+  logConfiguration(env);
+
+  // Start dev servers (silent — all output handled above)
   const child = Bun.spawn(["bun", "run", "--cwd=apps/mesh", "dev:servers"], {
     cwd: repoRoot,
-    env: {
-      ...process.env,
-      ...dotEnv,
-      PORT: String(port),
-      VITE_PORT: String(vitePort),
-      BASE_URL: `http://${ctx.slug}.localhost`,
-      DECO_CLI: "1",
-    },
+    env: childEnv,
     stdio: ["inherit", "inherit", "inherit"],
+  });
+
+  // Wait for server to be ready, then print
+  const url = `http://${ctx.slug}.localhost`;
+  waitForPort(port).then(() => {
+    console.log("");
+    console.log(`${green("✓")} ${bold("Ready")}`);
+    console.log("");
+    console.log(`  ${dim("Open in browser:")}  ${cyan(underline(url))}`);
+    console.log("");
   });
 
   return { port, process: child };
