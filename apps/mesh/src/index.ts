@@ -84,13 +84,13 @@ if (!process.env.DECO_CLI) {
   }
 
   logConfiguration(env);
-
-  console.log("");
-  console.log(`${green("✓")} ${bold("Ready")}`);
-  console.log("");
-  console.log(`  ${dim("Open in browser:")}  ${cyan(underline(url))}`);
-  console.log("");
 }
+
+console.log("");
+console.log(`${green("✓")} ${bold("Ready")}`);
+console.log("");
+console.log(`  ${dim("Open in browser:")}  ${cyan(underline(url))}`);
+console.log("");
 
 Bun.serve({
   // This was necessary because MCP has SSE endpoints (like notification) that disconnects after 10 seconds (default bun idle timeout)
