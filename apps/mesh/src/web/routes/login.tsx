@@ -205,7 +205,7 @@ export default function LoginRoute() {
           <div className="absolute left-0 top-1/2 -translate-y-1/2 w-px h-screen bg-brand-foreground/15" />
           <div className="absolute right-0 top-1/2 -translate-y-1/2 w-px h-screen bg-brand-foreground/15" />
 
-          <UnifiedAuthForm redirectUrl={oauthAuthorizeUrl} />
+          <UnifiedAuthForm redirectUrl={oauthAuthorizeUrl} callbackUrl={next} />
         </div>
       </main>
     );

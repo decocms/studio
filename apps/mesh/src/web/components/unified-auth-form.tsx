@@ -10,13 +10,22 @@ interface UnifiedAuthFormProps {
   /**
    * URL to redirect to after successful authentication.
    * Used for OAuth flows to redirect back to the authorize endpoint.
+   * Takes priority over callbackUrl when set.
    */
   redirectUrl?: string | null;
+  /**
+   * General post-login redirect (e.g. the `next` query param).
+   * Used when redirectUrl is not set. Defaults to "/".
+   */
+  callbackUrl?: string;
 }
 
 type FormView = "signIn" | "signUp" | "forgotPassword" | "emailOtp";
 
-export function UnifiedAuthForm({ redirectUrl }: UnifiedAuthFormProps) {
+export function UnifiedAuthForm({
+  redirectUrl,
+  callbackUrl = "/",
+}: UnifiedAuthFormProps) {
   const { emailAndPassword, resetPassword, emailOtp, socialProviders } =
     useAuthConfig();
   const [email, setEmail] = useState("");
@@ -72,7 +81,7 @@ export function UnifiedAuthForm({ redirectUrl }: UnifiedAuthFormProps) {
     },
     onSuccess: () => {
       globalThis.localStorage?.setItem("hasLoggedIn", "true");
-      window.location.href = redirectUrl ?? "/";
+      window.location.href = redirectUrl ?? callbackUrl;
     },
   });
 
@@ -121,7 +130,7 @@ export function UnifiedAuthForm({ redirectUrl }: UnifiedAuthFormProps) {
     },
     onSuccess: () => {
       globalThis.localStorage?.setItem("hasLoggedIn", "true");
-      window.location.href = redirectUrl ?? "/";
+      window.location.href = redirectUrl ?? callbackUrl;
     },
   });
 
@@ -308,7 +317,7 @@ export function UnifiedAuthForm({ redirectUrl }: UnifiedAuthFormProps) {
               onClick={() => {
                 authClient.signIn.social({
                   provider: provider.name,
-                  callbackURL: redirectUrl ?? "/",
+                  callbackURL: redirectUrl ?? callbackUrl,
                 });
               }}
             >
