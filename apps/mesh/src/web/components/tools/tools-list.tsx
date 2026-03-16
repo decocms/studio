@@ -126,7 +126,7 @@ export function ToolsList({
 }: ToolsListProps) {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  const [viewMode, setViewMode] = useState<"table" | "cards">("table");
+  const [viewMode] = useState<"table" | "cards">("table");
   const [sortKey, setSortKey] = useState<string | undefined>("name");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>(
     "asc",

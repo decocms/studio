@@ -441,7 +441,7 @@ function OrgMembersContent() {
     null,
   );
   const [search, setSearch] = useState("");
-  const [viewMode, setViewMode] = useState<"table" | "cards">("table");
+  const [viewMode] = useState<"table" | "cards">("table");
   const [sortKey, setSortKey] = useState<string>("member");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>(
     "asc",

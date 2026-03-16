@@ -70,7 +70,6 @@ export function CollectionsList<T extends BaseCollectionEntity>({
   data,
   schema,
   viewMode,
-  onViewModeChange = () => {},
   search,
   sortKey,
   sortDirection = "asc",
