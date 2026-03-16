@@ -1,3 +1,4 @@
+import { isMac, isModKey } from "@/web/lib/keyboard-shortcuts";
 import { calculateUsageStats } from "@/web/lib/usage-utils.ts";
 import { getAgentColor } from "@/web/utils/agent-color";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -349,6 +350,20 @@ export function ChatInput({
   const contextWindow = model?.limits?.contextWindow;
 
   const tiptapRef = useRef<TiptapInputHandle | null>(null);
+
+  // Focus chat input on Cmd+L
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    const handler = (e: globalThis.KeyboardEvent) => {
+      if (isModKey(e) && e.code === "KeyL") {
+        e.preventDefault();
+        tiptapRef.current?.focus();
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, []);
+
   const usage = calculateUsageStats(messages);
 
   const lastUsage = [...messages]
@@ -487,7 +502,7 @@ export function ChatInput({
                 "w-full relative rounded-xl min-h-[130px] flex flex-col border border-border bg-background shadow-sm",
               )}
             >
-              <div className="relative flex flex-col gap-2 flex-1">
+              <div className="group/input relative flex flex-col gap-2 flex-1">
                 {/* Input Area with Tiptap */}
                 <TiptapInput
                   ref={tiptapRef}
@@ -496,6 +511,10 @@ export function ChatInput({
                   showFileUploader={true}
                   selectedModel={model}
                 />
+                {/* Focus hint — hidden when editor is focused */}
+                <span className="absolute top-3 right-3 text-xs text-muted-foreground/50 pointer-events-none select-none group-focus-within/input:hidden">
+                  {isMac ? "⌘" : "Ctrl+"}L to focus
+                </span>
               </div>
 
               {/* Bottom Actions Row */}
