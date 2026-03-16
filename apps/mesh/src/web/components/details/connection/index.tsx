@@ -551,18 +551,16 @@ function ConnectionInspectorViewWithConnection({
                 onReauthenticate={handleAuthenticate}
                 onRemoveOAuth={handleRemoveOAuth}
               />
-              {hasMcpBinding && (
-                <SettingsTab
-                  connection={connection}
-                  form={form}
-                  hasMcpBinding={hasMcpBinding}
-                  isMCPAuthenticated={isMCPAuthenticated}
-                  supportsOAuth={authStatus.supportsOAuth}
-                  isServerError={authStatus.isServerError}
-                  onAuthenticate={handleAuthenticate}
-                  onViewReadme={undefined}
-                />
-              )}
+              <SettingsTab
+                connection={connection}
+                form={form}
+                hasMcpBinding={hasMcpBinding}
+                isMCPAuthenticated={isMCPAuthenticated}
+                supportsOAuth={authStatus.supportsOAuth}
+                isServerError={authStatus.isServerError}
+                onAuthenticate={handleAuthenticate}
+                onViewReadme={undefined}
+              />
             </div>
             <div className="px-6 py-4 border-t border-border flex gap-2 shrink-0">
               <Button

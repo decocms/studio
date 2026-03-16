@@ -157,6 +157,19 @@ export function ConnectionVirtualMCPsSection({
   // Has virtual MCPs - show the list
   return (
     <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <h4 className="text-xs text-muted-foreground font-medium">
+          Use in your IDE
+        </h4>
+        <CreateVirtualMCPButton
+          connectionId={connectionId}
+          connectionTitle={connectionTitle}
+          connectionDescription={connectionDescription}
+          connectionIcon={connectionIcon}
+          org={org}
+          hasExistingVirtualMcps={true}
+        />
+      </div>
       <div className="flex flex-col gap-2">
         {virtualMcps.map((virtualMcp) => (
           <VirtualMCPListItem

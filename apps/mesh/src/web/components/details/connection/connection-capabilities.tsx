@@ -53,7 +53,7 @@ function humanizeName(name: string): string {
  */
 function collectionNameFromTool(toolName: string): string {
   const match = toolName.match(
-    /^COLLECTION_([^_]+(?:_[^_]+)*?)_(LIST|GET|CREATE|UPDATE|DELETE)$/i,
+    /^COLLECTION_(.+?)_(LIST|GET|CREATE|UPDATE|DELETE|FILTERS|SEARCH|VERSIONS|UPSERT|PATCH|ARCHIVE|RESTORE|EXPORT|IMPORT|COUNT|BULK_\w+)$/i,
   );
   if (match) {
     return match[1]

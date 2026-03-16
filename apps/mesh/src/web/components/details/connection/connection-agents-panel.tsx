@@ -14,8 +14,6 @@ export function ConnectionAgentsPanel({
     filters: [{ column: "connection_id", value: connection.id }],
   });
 
-  if (virtualMcps.length === 0) return null;
-
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       <div className="px-5 py-4 border-b border-border">
