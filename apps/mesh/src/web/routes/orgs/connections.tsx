@@ -928,11 +928,10 @@ function OrgMcpsContent() {
       return 0;
     },
   );
-  const [selectedRegistryId, setSelectedRegistryId] =
-    useLocalStorage<string>(
-      LOCALSTORAGE_KEYS.selectedRegistry(org.slug),
-      (existing) => existing ?? "",
-    );
+  const [selectedRegistryId, setSelectedRegistryId] = useLocalStorage<string>(
+    LOCALSTORAGE_KEYS.selectedRegistry(org.slug),
+    (existing) => existing ?? "",
+  );
   const registryConnection =
     (selectedRegistryId
       ? registryConnections.find((r) => r.id === selectedRegistryId)
