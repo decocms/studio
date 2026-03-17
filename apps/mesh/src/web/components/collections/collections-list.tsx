@@ -65,7 +65,22 @@ export function CollectionsList<T extends BaseCollectionEntity>({
           id: col.id,
           label: typeof col.header === "string" ? col.header : col.id,
         }))
-    : generateSortOptionsFromSchema(schema, sortableFields);
+    : Object.keys(schema.properties || {})
+        .filter(
+          (key) =>
+            ![
+              "id",
+              "created_at",
+              "updated_at",
+              "created_by",
+              "updated_by",
+            ].includes(key) &&
+            (!sortableFields || sortableFields.includes(key)),
+        )
+        .map((key) => ({
+          id: key,
+          label: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, " "),
+        }));
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
