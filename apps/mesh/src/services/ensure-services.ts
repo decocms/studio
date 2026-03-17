@@ -162,52 +162,59 @@ interface ServiceInfo {
 // ---------------------------------------------------------------------------
 
 /**
- * Fix missing .dylib symlinks in the embedded-postgres package.
- * The npm package ships versioned libs (e.g. libicudata.77.1.dylib) but
- * binaries reference the short name (libicudata.77.dylib). Symlinks are
- * lost during npm packaging, so we recreate them at startup.
+ * Fix missing .dylib symlinks in the embedded-postgres platform package.
+ *
+ * The npm package ships a `pg-symlinks.json` manifest listing symlinks that
+ * must exist (e.g. libicudata.77.1.dylib → libicudata.77.dylib). These are
+ * created by a postinstall script, but bun doesn't always run postinstall for
+ * optional platform packages, so we re-hydrate them at startup.
+ *
+ * We locate the platform package by resolving `embedded-postgres` and then
+ * scanning the bun cache directory for the platform-specific package.
  */
 function fixEmbeddedPostgresLibSymlinks() {
-  if (platform() !== "darwin") return;
-
   try {
-    // Locate the platform-specific package lib directory.
-    // Bun stores it at node_modules/.bun/@embedded-postgres+<platform>-<arch>@<ver>/
+    // Resolve `embedded-postgres` to find the bun cache directory.
+    // Path: <root>/node_modules/.bun/embedded-postgres@ver/node_modules/embedded-postgres/dist/index.js
     const epDir = require.resolve("embedded-postgres");
-    // Walk up from .bun/embedded-postgres@ver/node_modules/embedded-postgres/dist/index.js
-    // to the .bun/ directory
     const bunCacheDir = join(epDir, "..", "..", "..", "..", "..");
     const platformPkg = `@embedded-postgres+${platform()}-${arch()}`;
-    // Find the versioned directory
+
+    // Find the versioned directory for the platform package
     const candidates = existsSync(bunCacheDir)
       ? readdirSync(bunCacheDir).filter((d) => d.startsWith(platformPkg))
       : [];
 
     for (const candidate of candidates) {
-      const libDir = join(
+      const pkgRoot = join(
         bunCacheDir,
         candidate,
         "node_modules",
         "@embedded-postgres",
         `${platform()}-${arch()}`,
-        "native",
-        "lib",
       );
-      if (!existsSync(libDir)) continue;
+      const symlinksFile = join(pkgRoot, "native", "pg-symlinks.json");
 
-      for (const file of readdirSync(libDir)) {
-        // Create symlinks for versioned dylibs, e.g.:
-        // libicudata.77.1.dylib → libicudata.77.dylib → libicudata.dylib
-        const match = file.match(/^(.+)\.(\d+)\.(\d+)\.dylib$/);
-        if (!match) continue;
-        const [, base, major] = match;
-        const midName = `${base}.${major}.dylib`;
-        const shortName = `${base}.dylib`;
-        for (const name of [midName, shortName]) {
-          const target = join(libDir, name);
-          if (!existsSync(target)) {
-            symlinkSync(file, target);
-          }
+      if (!existsSync(symlinksFile)) continue;
+
+      const symlinks: { source: string; target: string }[] = JSON.parse(
+        readFileSync(symlinksFile, "utf-8"),
+      );
+
+      for (const { source, target } of symlinks) {
+        const absTarget = join(pkgRoot, target);
+        if (existsSync(absTarget)) continue;
+
+        const targetDir = join(absTarget, "..");
+        const sourceName = source.split("/").pop()!;
+        const targetName = target.split("/").pop()!;
+        try {
+          const cwd = process.cwd();
+          process.chdir(targetDir);
+          symlinkSync(sourceName, targetName);
+          process.chdir(cwd);
+        } catch {
+          // Symlink may already exist from a concurrent run
         }
       }
     }
