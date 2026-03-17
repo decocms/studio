@@ -222,6 +222,10 @@ function ShellLayoutContent() {
     refetchOnMount: false,
   });
 
+  // Must be called unconditionally (Rules of Hooks)
+  const orgId = projectContext?.org?.id;
+  const { data: ssoStatus } = useOrgSsoStatus(orgId);
+
   if (!projectContext) {
     return (
       <div className="min-h-screen bg-background">
@@ -245,13 +249,9 @@ function ShellLayoutContent() {
   }
 
   // Check org-level SSO enforcement
-  const orgId = projectContext.org.id;
-  const { data: ssoStatus } = useOrgSsoStatus(orgId);
-
   if (ssoStatus?.ssoRequired && !ssoStatus.authenticated) {
     return (
       <SsoRequiredScreen
-        orgId={orgId}
         orgName={projectContext.org.name}
         domain={ssoStatus.domain}
       />

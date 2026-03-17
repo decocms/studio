@@ -18,7 +18,7 @@ export function useOrgSsoStatus(orgId: string | undefined) {
   return useQuery({
     queryKey: KEYS.orgSsoStatus(orgId ?? ""),
     queryFn: async (): Promise<SsoStatusResponse> => {
-      const response = await fetch(`/api/org-sso/status?orgId=${orgId}`);
+      const response = await fetch("/api/org-sso/status");
       if (!response.ok) throw new Error("Failed to check SSO status");
       return response.json();
     },

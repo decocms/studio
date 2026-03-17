@@ -2,18 +2,13 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { Lock01 } from "@untitledui/icons";
 
 interface SsoRequiredScreenProps {
-  orgId: string;
   orgName?: string;
   domain?: string;
 }
 
-export function SsoRequiredScreen({
-  orgId,
-  orgName,
-  domain,
-}: SsoRequiredScreenProps) {
+export function SsoRequiredScreen({ orgName, domain }: SsoRequiredScreenProps) {
   const handleSsoLogin = () => {
-    window.location.href = `/api/org-sso/authorize?orgId=${encodeURIComponent(orgId)}`;
+    window.location.href = "/api/org-sso/authorize";
   };
 
   const handleGoBack = () => {

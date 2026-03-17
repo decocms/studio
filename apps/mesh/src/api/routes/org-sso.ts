@@ -34,9 +34,9 @@ app.get("/status", async (c) => {
     return c.json({ error: "Authentication required" }, 401);
   }
 
-  const orgId = c.req.query("orgId");
+  const orgId = ctx.organization?.id;
   if (!orgId) {
-    return c.json({ error: "orgId is required" }, 400);
+    return c.json({ error: "Organization context required" }, 400);
   }
 
   const ssoConfig = await ctx.storage.orgSsoConfig.getByOrgId(orgId);
@@ -72,9 +72,9 @@ app.get("/authorize", async (c) => {
     return c.json({ error: "Authentication required" }, 401);
   }
 
-  const orgId = c.req.query("orgId");
+  const orgId = ctx.organization?.id;
   if (!orgId) {
-    return c.json({ error: "orgId is required" }, 400);
+    return c.json({ error: "Organization context required" }, 400);
   }
 
   const ssoConfig = await ctx.storage.orgSsoConfig.getByOrgId(orgId);
