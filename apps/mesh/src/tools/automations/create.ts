@@ -28,14 +28,17 @@ export const AUTOMATION_CREATE = defineTool({
     agent: z.object({
       id: z.string(),
     }),
-    messages: z.array(
-      z.looseObject({
-        id: z.string().optional(),
-        role: z.enum(["user", "assistant", "system"]),
-        parts: z.array(z.record(z.string(), z.unknown())),
-        metadata: z.unknown().optional(),
-      }),
-    ),
+    messages: z.union([
+      z.string(),
+      z.array(
+        z.looseObject({
+          id: z.string().optional(),
+          role: z.enum(["user", "assistant", "system"]),
+          parts: z.array(z.record(z.string(), z.unknown())),
+          metadata: z.unknown().optional(),
+        }),
+      ),
+    ]),
     models: z
       .object({
         credentialId: z.string(),
@@ -70,7 +73,8 @@ export const AUTOMATION_CREATE = defineTool({
         coding: z.object({ id: z.string() }).optional(),
         fast: z.object({ id: z.string() }).optional(),
       })
-      .loose(),
+      .loose()
+      .optional(),
     temperature: z.number().default(0.5),
     active: z.boolean().default(true),
   }),
@@ -90,13 +94,48 @@ export const AUTOMATION_CREATE = defineTool({
       throw new Error("Unable to determine user identity");
     }
 
+    // Normalize string messages to array format
+    const normalizedMessages =
+      typeof input.messages === "string"
+        ? [
+            {
+              id: crypto.randomUUID(),
+              role: "user" as const,
+              parts: [{ type: "text", text: input.messages }],
+            },
+          ]
+        : input.messages;
+
+    // Auto-resolve models from credentials when not provided
+    let models = input.models;
+    if (!models) {
+      const keys = await ctx.storage.aiProviderKeys.list({
+        organizationId: organization.id,
+      });
+      if (keys.length === 0) {
+        throw new Error("No AI provider credentials configured");
+      }
+      const credential = keys[0]!;
+      const modelList = await ctx.aiProviders.listModels(
+        credential.id,
+        organization.id,
+      );
+      if (modelList.length === 0) {
+        throw new Error("No models available from the configured AI provider");
+      }
+      models = {
+        credentialId: credential.id,
+        thinking: { id: modelList[0]!.modelId },
+      };
+    }
+
     const automation = await ctx.storage.automations.create({
       organization_id: organization.id,
       created_by: userId,
       name: input.name,
       agent: JSON.stringify(input.agent),
-      messages: JSON.stringify(input.messages),
-      models: JSON.stringify(input.models),
+      messages: JSON.stringify(normalizedMessages),
+      models: JSON.stringify(models),
       temperature: input.temperature,
       active: input.active,
     });

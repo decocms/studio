@@ -31,14 +31,17 @@ export const AUTOMATION_UPDATE = defineTool({
       })
       .optional(),
     messages: z
-      .array(
-        z.looseObject({
-          id: z.string().optional(),
-          role: z.enum(["user", "assistant", "system"]),
-          parts: z.array(z.record(z.string(), z.unknown())),
-          metadata: z.unknown().optional(),
-        }),
-      )
+      .union([
+        z.string(),
+        z.array(
+          z.looseObject({
+            id: z.string().optional(),
+            role: z.enum(["user", "assistant", "system"]),
+            parts: z.array(z.record(z.string(), z.unknown())),
+            metadata: z.unknown().optional(),
+          }),
+        ),
+      ])
       .optional(),
     models: z
       .object({
@@ -104,8 +107,19 @@ export const AUTOMATION_UPDATE = defineTool({
     if (input.active !== undefined) updateData.active = input.active;
     if (input.agent !== undefined)
       updateData.agent = JSON.stringify(input.agent);
-    if (input.messages !== undefined)
-      updateData.messages = JSON.stringify(input.messages);
+    if (input.messages !== undefined) {
+      const normalizedMessages =
+        typeof input.messages === "string"
+          ? [
+              {
+                id: crypto.randomUUID(),
+                role: "user" as const,
+                parts: [{ type: "text", text: input.messages }],
+              },
+            ]
+          : input.messages;
+      updateData.messages = JSON.stringify(normalizedMessages);
+    }
     if (input.models !== undefined)
       updateData.models = JSON.stringify(input.models);
     if (input.temperature !== undefined)
