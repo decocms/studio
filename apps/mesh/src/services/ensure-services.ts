@@ -200,13 +200,14 @@ function fixEmbeddedPostgresLibSymlinks() {
       const targetDir = join(absTarget, "..");
       const sourceName = source.split("/").pop()!;
       const targetName = target.split("/").pop()!;
+      const cwd = process.cwd();
       try {
-        const cwd = process.cwd();
         process.chdir(targetDir);
         symlinkSync(sourceName, targetName);
-        process.chdir(cwd);
       } catch {
         // Symlink may already exist from a concurrent run
+      } finally {
+        process.chdir(cwd);
       }
     }
   } catch {
