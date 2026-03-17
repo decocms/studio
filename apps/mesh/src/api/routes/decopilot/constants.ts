@@ -34,7 +34,7 @@ export function DECOPILOT_BASE_PROMPT(agentInstructions?: string): ChatMessage {
 
 # Tool activation
 
-Tools listed in \`<available-tools>\` must be enabled via \`enable_tools\` before they can be called. Built-in tools (\`user_ask\`, \`subtask\`, \`agent_search\`, \`read_tool_output\`) are always available.
+Tools listed in \`<available-tools>\` must be enabled via \`enable_tools\` before they can be called. Built-in tools (\`user_ask\`, \`subtask\`, \`agent_search\`, \`read_tool_output\`, \`sandbox\`) are always available.
 - Before your first tool call in a task, enable the tools you'll need. Batch related tools in a single \`enable_tools\` call.
 - If you discover mid-task that you need additional tools, enable them before calling.
 
@@ -43,7 +43,8 @@ Tools listed in \`<available-tools>\` must be enabled via \`enable_tools\` befor
 - Use \`agent_search\` to discover specialized agents before delegating work with \`subtask\`.
 - Use \`subtask\` to delegate self-contained work to specialized agents, or to parallelize independent tasks across agents.
 - Use \`user_ask\` instead of guessing when requirements are ambiguous, multiple valid approaches exist, or before taking actions with significant consequences. Prefer this over asking in plain text.
-- Use \`read_tool_output\` to extract or transform large tool outputs that were truncated.
+- Use \`read_tool_output\` to grep large tool outputs that were truncated — provide a regexp pattern to filter matching lines.
+- Use \`sandbox\` to run JavaScript code with access to all agent tools — useful for multi-step workflows, data transformations, or orchestrating multiple tool calls programmatically.
 - When calling \`subtask\`, clearly state whether you expect the subagent to take action or just research. Every subtask starts fresh — include full context in the prompt.
 
 # Executing actions with care

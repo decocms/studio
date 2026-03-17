@@ -48,14 +48,6 @@ These strategies ship by default:
   - `GATEWAY_CALL_TOOL` (execute a chosen tool)
 - Goal: keep the tool list small and let the client request details on demand.
 
-### Code execution
-
-- Exposes meta-tools for discovery + sandboxed execution:
-  - `GATEWAY_SEARCH_TOOLS`
-  - `GATEWAY_DESCRIBE_TOOLS`
-  - `GATEWAY_RUN_CODE` (run JS in a sandbox that can call tools)
-- Goal: reduce tool exposure overhead on large surfaces by shifting work into a constrained runtime.
-
 ## The default Agent (auto-created per org)
 
 Every new organization gets a **Default Agent**:
@@ -74,25 +66,11 @@ We ran an agent strategy benchmark here: [MCP Agent Benchmark (GitHub Actions ru
 **Summary (high level):**
 
 - **Small tool surface (~10 tools)**:
-  - **Passthrough** used fewer tokens, but had lower success than **Code execution**
+  - **Passthrough** used fewer tokens overall
   - **Smart tool selection** was the least reliable in this run
 - **Large tool surface (~128 tools)**:
-  - **Code execution** reduced token usage substantially vs **Passthrough** and had the highest success
   - **Smart tool selection** was the most expensive in tokens in this run
+  - **Passthrough** remained effective with progressive tool disclosure
 
 If you want the raw numbers, open the run and download the **benchmark-results** artifact.
-
-## Code Execution Tools in the Management MCP
-
-In addition to gateway strategies, you can use code execution tools directly from the **Management MCP** (`/mcp`):
-
-- `CODE_EXECUTION_SEARCH_TOOLS` - search tools by name or description
-- `CODE_EXECUTION_DESCRIBE_TOOLS` - get detailed tool schemas
-- `CODE_EXECUTION_RUN_CODE` - run JS in a sandbox with tool access
-
-These tools operate on:
-- All active connections in the organization (by default)
-- Agent-specific connections (if `gatewayId` is set in context)
-
-This lets you use the code execution paradigm without configuring a specific gateway strategy.
 

@@ -315,10 +315,6 @@ function generateMarkdown(report: BenchmarkReport): string {
   const smartAt100 = dashboardAgg.find(
     (a) => a.strategy === "smart_tool_selection" && a.toolCount === 100,
   );
-  const codeAt100 = dashboardAgg.find(
-    (a) => a.strategy === "code_execution" && a.toolCount === 100,
-  );
-
   if (passthroughAt100 && smartAt100) {
     const savings = Math.round(
       ((passthroughAt100.avgTotalTokens - smartAt100.avgTotalTokens) /
@@ -328,19 +324,6 @@ function generateMarkdown(report: BenchmarkReport): string {
     if (savings > 0) {
       lines.push(
         `- **Smart Tool Selection** saves ~${savings}% tokens compared to Passthrough at 100 tools`,
-      );
-    }
-  }
-
-  if (passthroughAt100 && codeAt100) {
-    const savings = Math.round(
-      ((passthroughAt100.avgTotalTokens - codeAt100.avgTotalTokens) /
-        passthroughAt100.avgTotalTokens) *
-        100,
-    );
-    if (savings > 0) {
-      lines.push(
-        `- **Code Execution** saves ~${savings}% tokens compared to Passthrough at 100 tools`,
       );
     }
   }

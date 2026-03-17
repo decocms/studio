@@ -1,6 +1,5 @@
 import { tool, zodSchema } from "ai";
 import { z } from "zod";
-import { runTransform } from "@/sandbox";
 
 export interface ReadToolOutputParams {
   readonly toolOutputMap: Map<string, string>;
@@ -10,35 +9,32 @@ export function createReadToolOutputTool(params: ReadToolOutputParams) {
   const { toolOutputMap } = params;
   return tool({
     description:
-      "Extract desired information from a tool output that was too large to display inline. " +
-      "The input is a raw string — don't make assumptions about its format; prefer regexes and string manipulation. " +
-      "You may call this tool multiple times to extract different pieces of information.",
+      "Filter a tool output that was too large to display inline. " +
+      "Returns all lines matching the given regular expression pattern (grep-like). " +
+      "You may call this tool multiple times with different patterns to extract different pieces of information.",
     inputExamples: [
       {
-        input: {
-          tool_call_id: "tool_call_id_1",
-          code: "export default (input) => { return input.match(/[a-z]/g); }",
-        },
+        input: { tool_call_id: "id_1", pattern: "error|warning" },
       },
       {
         input: {
-          tool_call_id: "tool_call_id_2",
-          code: "export default (input) => { return input.split(' ').map(word => word.length); }",
+          tool_call_id: "id_2",
+          pattern: '"status":\\s*"failed"',
         },
       },
     ],
     inputSchema: zodSchema(
       z.object({
         tool_call_id: z.string(),
-        code: z
+        pattern: z
           .string()
           .min(1)
           .describe(
-            "JavaScript code to transform the tool output. The code must be an ES module: `export default (input) => { ... }`",
+            "Regular expression pattern to filter tool output lines. Returns all matching lines.",
           ),
       }),
     ),
-    execute: async ({ tool_call_id, code }) => {
+    execute: async ({ tool_call_id, pattern }) => {
       if (!toolOutputMap.has(tool_call_id)) {
         throw new Error(
           `Tool output not found for tool call id: ${tool_call_id}`,
@@ -46,23 +42,22 @@ export function createReadToolOutputTool(params: ReadToolOutputParams) {
       }
       const input = toolOutputMap.get(tool_call_id)!;
 
-      const result = await runTransform({
-        input,
-        code,
-        timeoutMs: 5_000,
-      });
+      const regex = new RegExp(pattern);
+      const lines = input.split("\n");
+      const matching = lines.filter((line) => regex.test(line));
+      const result = matching.join("\n");
 
-      const tokenCount = estimateJsonTokens({ return: result.returnValue });
+      const tokenCount = estimateJsonTokens(result);
       if (tokenCount > 4000) {
         throw new Error(
-          `Tool call ${tool_call_id} output is too long to display (${tokenCount} tokens), reduce or truncate the output`,
+          `Tool call ${tool_call_id} output is too long to display (${tokenCount} tokens), use a more specific pattern to reduce output`,
         );
       }
 
       return {
-        result: result.returnValue as string,
-        error: result.error,
-        consoleLogs: result.consoleLogs,
+        result,
+        matchCount: matching.length,
+        totalLines: lines.length,
       };
     },
   });

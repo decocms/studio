@@ -27,6 +27,10 @@ const mockParams: BuiltinToolParams = {
     thinking: { id: "model_test" },
   } as never,
   toolOutputMap: new Map(),
+  passthroughClient: {
+    listTools: () => Promise.resolve({ tools: [] }),
+    callTool: () => Promise.resolve({ content: [] }),
+  } as never,
 };
 
 const mockCtx = {

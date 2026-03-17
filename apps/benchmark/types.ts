@@ -11,8 +11,7 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
  */
 export type VirtualMCPtoolSelectionStrategy =
   | "passthrough"
-  | "smart_tool_selection"
-  | "code_execution";
+  | "smart_tool_selection";
 
 /**
  * Task definition for a benchmark scenario

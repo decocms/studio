@@ -28,7 +28,6 @@ export type ToolCategory =
   | "Users"
   | "API Keys"
   | "Event Bus"
-  | "Code Execution"
   | "Tags"
   | "Projects"
   | "AI Providers"
@@ -97,10 +96,6 @@ const ALL_TOOL_NAMES = [
   "EVENT_SYNC_SUBSCRIPTIONS",
   // User tools
   "USER_GET",
-  // Code Execution tools
-  "CODE_EXECUTION_SEARCH_TOOLS",
-  "CODE_EXECUTION_DESCRIBE_TOOLS",
-  "CODE_EXECUTION_RUN_CODE",
   // Thread tools
   "COLLECTION_THREADS_CREATE",
   "COLLECTION_THREADS_LIST",
@@ -449,23 +444,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Get a user by id",
     category: "Users",
   },
-  // Code Execution tools
-  {
-    name: "CODE_EXECUTION_SEARCH_TOOLS",
-    description: "Search available tools by name or description",
-    category: "Code Execution",
-  },
-  {
-    name: "CODE_EXECUTION_DESCRIBE_TOOLS",
-    description: "Get detailed schemas for specific tools",
-    category: "Code Execution",
-  },
-  {
-    name: "CODE_EXECUTION_RUN_CODE",
-    description: "Run JavaScript code in a sandbox with tool access",
-    category: "Code Execution",
-    dangerous: true,
-  },
   // Thread tools
   {
     name: "COLLECTION_THREADS_CREATE",
@@ -731,9 +709,6 @@ const TOOL_LABELS: Record<ToolName, string> = {
   EVENT_SYNC_SUBSCRIPTIONS: "Sync subscriptions to desired state",
 
   USER_GET: "Get user by id",
-  CODE_EXECUTION_SEARCH_TOOLS: "Search tools",
-  CODE_EXECUTION_DESCRIBE_TOOLS: "Describe tools",
-  CODE_EXECUTION_RUN_CODE: "Run code",
   COLLECTION_THREADS_CREATE: "Create threads",
   COLLECTION_THREADS_LIST: "List threads",
   COLLECTION_THREADS_GET: "View thread details",
@@ -795,7 +770,6 @@ export function getToolsByCategory() {
     Users: [],
     "API Keys": [],
     "Event Bus": [],
-    "Code Execution": [],
     Tags: [],
     Projects: [],
     "AI Providers": [],

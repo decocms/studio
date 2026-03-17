@@ -50,7 +50,6 @@ const TOOL_COUNTS = [10, 50, 100, 300, 500] as const;
 const STRATEGIES: VirtualMCPtoolSelectionStrategy[] = [
   "passthrough",
   // "smart_tool_selection", there's a bug in the smart tool selection strategy for now we are not using yet.
-  "code_execution",
 ];
 
 /**

@@ -48,14 +48,6 @@ Estas estratégias vêm por padrão:
   - `GATEWAY_CALL_TOOL` (executa a tool escolhida)
 - Objetivo: manter a lista de tools pequena e deixar o client pedir detalhes sob demanda.
 
-### Code execution
-
-- Expõe meta-tools para descoberta + execução sandboxed:
-  - `GATEWAY_SEARCH_TOOLS`
-  - `GATEWAY_DESCRIBE_TOOLS`
-  - `GATEWAY_RUN_CODE` (executa JS em um sandbox que pode chamar tools)
-- Objetivo: reduzir overhead de exposição em superfícies grandes movendo trabalho para um runtime controlado.
-
 ## O Agent padrão (criado automaticamente por org)
 
 Toda organização nova recebe um **Default Agent**:
@@ -74,24 +66,10 @@ Rodamos um benchmark de estratégia de agent aqui: [MCP Agent Benchmark (GitHub 
 **Resumo (alto nível):**
 
 - **Superfície pequena (~10 tools)**:
-  - **Passthrough** usou menos tokens, mas teve menor sucesso que **Code execution**
+  - **Passthrough** usou menos tokens no geral
   - **Smart tool selection** foi o menos confiável nessa execução
 - **Superfície grande (~128 tools)**:
-  - **Code execution** reduziu substancialmente o uso de tokens vs **Passthrough** e teve o maior sucesso
   - **Smart tool selection** foi o mais caro em tokens nessa execução
+  - **Passthrough** continuou efetivo com progressive tool disclosure
 
 Se você quiser os números brutos, abra o run e baixe o artifact **benchmark-results**.
-
-## Tools de Code Execution no Management MCP
-
-Além das estratégias de gateway, você pode usar as tools de code execution diretamente no **Management MCP** (`/mcp`):
-
-- `CODE_EXECUTION_SEARCH_TOOLS` - busca tools por nome ou descrição
-- `CODE_EXECUTION_DESCRIBE_TOOLS` - retorna schemas detalhados das tools
-- `CODE_EXECUTION_RUN_CODE` - executa JS em sandbox com acesso às tools
-
-Essas tools operam sobre:
-- Todas as connections ativas da organização (por padrão)
-- Connections específicas de um agent (se `gatewayId` estiver definido no contexto)
-
-Isso permite usar o paradigma de code execution sem precisar configurar uma estratégia de gateway específica.

@@ -16,7 +16,6 @@ import {
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import * as ApiKeyTools from "./apiKeys";
-import * as CodeExecutionTools from "./code-execution";
 import * as ConnectionTools from "./connection";
 import * as DatabaseTools from "./database";
 import * as EventBusTools from "./eventbus";
@@ -102,10 +101,6 @@ const CORE_TOOLS = [
   // User tools
   UserTools.USER_GET,
 
-  // Code Execution tools
-  CodeExecutionTools.CODE_EXECUTION_SEARCH_TOOLS,
-  CodeExecutionTools.CODE_EXECUTION_DESCRIBE_TOOLS,
-  CodeExecutionTools.CODE_EXECUTION_RUN_CODE,
   // Thread collection tools
   ThreadTools.COLLECTION_THREADS_CREATE,
   ThreadTools.COLLECTION_THREADS_LIST,

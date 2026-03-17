@@ -27,8 +27,15 @@ import {
 import { lazy } from "../../common";
 import type { MeshContext } from "../../core/mesh-context";
 import { runCode, type ToolHandler } from "../../sandbox/index";
-import type { ToolWithConnection } from "../../tools/code-execution/utils";
 import type { ConnectionEntity } from "../../tools/connection/schema";
+
+/** Extended tool info with connection metadata */
+export interface ToolWithConnection extends Tool {
+  _meta: {
+    connectionId: string;
+    connectionTitle: string;
+  };
+}
 import {
   getVirtualToolCode,
   type VirtualToolDefinition,
