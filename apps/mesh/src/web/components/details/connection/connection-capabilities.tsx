@@ -100,7 +100,6 @@ export function ConnectionCapabilities({
       },
     });
   }
-  const regularTools = tools.filter((t) => !/^COLLECTION_/i.test(t.name));
   const hasUiTools =
     connectionId && org && tools.some((t) => getUIResourceUri(t._meta));
 
@@ -126,7 +125,7 @@ export function ConnectionCapabilities({
         <div className="px-5 flex items-center justify-between border-b border-border">
           <TabsList variant="underline" className="gap-1">
             <TabsTrigger value="tools" variant="underline">
-              Tools
+              Tools ({tools.length})
             </TabsTrigger>
             {hasUiTools && (
               <TabsTrigger value="apps" variant="underline">
@@ -144,8 +143,8 @@ export function ConnectionCapabilities({
 
         <TabsContent value="tools" className="h-auto">
           <div className="divide-y divide-border">
-            {regularTools.length > 0 ? (
-              regularTools.map((tool) => (
+            {tools.length > 0 ? (
+              tools.map((tool) => (
                 <button
                   key={tool.name}
                   type="button"

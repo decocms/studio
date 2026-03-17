@@ -169,7 +169,7 @@ export function ConnectionInstancesModal({
               <div className="flex items-center gap-2 px-6 py-3">
                 <Tool01 size={14} className="text-muted-foreground" />
                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Actions ({tools.length})
+                  Tools ({tools.length})
                 </span>
               </div>
               <div className="pb-2">
