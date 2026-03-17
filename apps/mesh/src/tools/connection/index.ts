@@ -17,7 +17,9 @@ export { CONNECTION_TEST } from "./test";
 
 // Connection management tools (install, auth)
 export { CONNECTION_INSTALL } from "./install";
-export { CONNECTION_AUTH_STATUS } from "./auth-status";
-export { CONNECTION_AUTHENTICATE } from "./authenticate";
+export {
+  CONNECTION_AUTH_STATUS,
+  CONNECTION_AUTHENTICATE,
+} from "./authenticate";
 
 // Utility exports
