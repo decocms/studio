@@ -124,18 +124,18 @@ export function ConnectionInstancesPanel({
           {instances.length === 1 ? "Instance" : "Instances"}
         </h3>
         <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6 text-muted-foreground hover:text-foreground"
+          variant="default"
+          size="sm"
+          className="h-7 gap-1.5 text-xs"
           onClick={onAdd}
           disabled={isAdding}
-          title="Add instance"
         >
           {isAdding ? (
             <Loading01 size={13} className="animate-spin" />
           ) : (
             <Plus size={13} />
           )}
+          Add instance
         </Button>
       </div>
       <div className="p-2 flex flex-col gap-1">
