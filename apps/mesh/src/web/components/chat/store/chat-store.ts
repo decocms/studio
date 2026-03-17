@@ -770,10 +770,9 @@ class ChatStore {
   }
 
   getTransport(): DefaultChatTransport<UIMessage<Metadata>> {
-    const orgSlug = this.state.org.slug;
     const store = this;
     return new DefaultChatTransport<UIMessage<Metadata>>({
-      api: `/api/${orgSlug}/decopilot/stream`,
+      api: `/api/${store.state.org.slug}/decopilot/stream`,
       credentials: "include",
       prepareReconnectToStreamRequest: ({ id }) => ({
         api: `/api/${store.state.org.slug}/decopilot/attach/${id}`,
@@ -810,6 +809,7 @@ class ChatStore {
         store._toolApprovalOverride = undefined;
 
         return {
+          api: `/api/${store.state.org.slug}/decopilot/stream`,
           body: {
             messages: allMessages,
             ...mergedMetadata,
