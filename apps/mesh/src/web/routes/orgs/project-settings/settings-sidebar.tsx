@@ -8,7 +8,6 @@ import {
   Zap,
 } from "@untitledui/icons";
 import type { ReactNode } from "react";
-import { ORG_ADMIN_PROJECT_SLUG } from "@decocms/mesh-sdk";
 
 const SETTINGS_ITEMS: Array<{
   key: string;
@@ -32,13 +31,10 @@ export function ProjectSettingsSidebar() {
   const params = useParams({ strict: false }) as {
     org: string;
     project: string;
-    slug?: string;
   };
 
   const handleNavigate = (key: string) => {
-    const href = params.slug
-      ? `/${params.org}/${ORG_ADMIN_PROJECT_SLUG}/projects/${params.slug}/settings/${key}`
-      : `/${params.org}/${params.project}/settings/${key}`;
+    const href = `/${params.org}/${params.project}/settings/${key}`;
     navigate({ href });
   };
 

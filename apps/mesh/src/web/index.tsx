@@ -307,68 +307,6 @@ const projectsListRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/projects-list.tsx")),
 });
 
-// Project settings (org-admin only - dedicated page)
-const projectSettingsLayout = createRoute({
-  getParentRoute: () => projectLayout,
-  path: "/projects/$slug/settings",
-  beforeLoad: orgAdminGuard,
-  component: lazyRouteComponent(
-    () => import("./routes/orgs/project-settings/layout.tsx"),
-  ),
-});
-
-const projectSettingsIndexRoute = createRoute({
-  getParentRoute: () => projectSettingsLayout,
-  path: "/",
-  beforeLoad: ({ params }) => {
-    throw redirect({
-      to: "/$org/$project/projects/$slug/settings/general",
-      params,
-    });
-  },
-  component: () => null,
-});
-
-const projectSettingsGeneralRoute = createRoute({
-  getParentRoute: () => projectSettingsLayout,
-  path: "/general",
-  component: lazyRouteComponent(
-    () => import("./routes/orgs/project-settings/general.tsx"),
-  ),
-});
-
-const projectSettingsDependenciesRoute = createRoute({
-  getParentRoute: () => projectSettingsLayout,
-  path: "/dependencies",
-  component: lazyRouteComponent(
-    () => import("./routes/orgs/project-settings/dependencies.tsx"),
-  ),
-});
-
-const projectSettingsSidebarRoute = createRoute({
-  getParentRoute: () => projectSettingsLayout,
-  path: "/sidebar",
-  component: lazyRouteComponent(
-    () => import("./routes/orgs/project-settings/sidebar-settings.tsx"),
-  ),
-});
-
-const projectSettingsPluginsRoute = createRoute({
-  getParentRoute: () => projectSettingsLayout,
-  path: "/plugins",
-  component: lazyRouteComponent(
-    () => import("./routes/orgs/project-settings/plugins.tsx"),
-  ),
-});
-
-const projectSettingsDangerRoute = createRoute({
-  getParentRoute: () => projectSettingsLayout,
-  path: "/danger",
-  component: lazyRouteComponent(
-    () => import("./routes/orgs/project-settings/danger.tsx"),
-  ),
-});
-
 // Members
 const membersRoute = createRoute({
   getParentRoute: () => projectLayout,
@@ -608,15 +546,6 @@ const pluginLayoutWithChildren = pluginLayoutRoute.addChildren(pluginRoutes);
 
 const storeRouteWithChildren = storeRoute.addChildren([storeDetailRoute]);
 
-const projectSettingsWithChildren = projectSettingsLayout.addChildren([
-  projectSettingsIndexRoute,
-  projectSettingsGeneralRoute,
-  projectSettingsDependenciesRoute,
-  projectSettingsSidebarRoute,
-  projectSettingsPluginsRoute,
-  projectSettingsDangerRoute,
-]);
-
 const projectSettingsDirectWithChildren = projectSettingsRoute.addChildren([
   projectSettingsDirectIndexRoute,
   projectSettingsDirectGeneralRoute,
@@ -631,7 +560,6 @@ const projectRoutes = [
   tasksRoute,
   projectSettingsDirectWithChildren,
   projectsListRoute,
-  projectSettingsWithChildren,
   membersRoute,
   connectionsRoute,
   connectionDetailRoute,
