@@ -929,6 +929,46 @@ export async function createApp(options: CreateAppOptions = {}) {
     return next();
   });
 
+  // Enforce org-level SSO on all org-scoped API/MCP requests.
+  // Skip the SSO flow routes themselves so authorize/callback can complete.
+  app.use("*", async (c, next) => {
+    const path = c.req.path;
+
+    // Skip routes that handle the SSO flow itself, or don't need org context
+    if (
+      path.startsWith("/api/org-sso/") ||
+      path.startsWith("/api/auth/") ||
+      shouldSkipMeshContext(path)
+    ) {
+      return next();
+    }
+
+    const meshCtx = c.get("meshContext") as MeshContext | undefined;
+    if (!meshCtx?.organization?.id || !meshCtx.auth.user?.id) {
+      return next();
+    }
+
+    const ssoConfig = await meshCtx.storage.orgSsoConfig.getByOrgId(
+      meshCtx.organization.id,
+    );
+    if (!ssoConfig?.enforced) {
+      return next();
+    }
+
+    const isValid = await meshCtx.storage.orgSsoSessions.isValid(
+      meshCtx.auth.user.id,
+      meshCtx.organization.id,
+    );
+    if (isValid) {
+      return next();
+    }
+
+    return c.json(
+      { error: "SSO authentication required for this organization" },
+      403,
+    );
+  });
+
   // Get all management tools (for OAuth consent UI)
   app.get("/api/tools/management", (c) => {
     return c.json({

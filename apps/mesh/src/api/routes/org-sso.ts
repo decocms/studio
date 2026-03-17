@@ -251,13 +251,10 @@ app.get("/callback", async (c) => {
   await ctx.storage.orgSsoSessions.upsert(ctx.auth.user.id, stateData.orgId);
 
   // Look up org slug to redirect to the org
-  const org = await ctx.db
-    .selectFrom("organization")
-    .select("slug")
-    .where("id", "=", stateData.orgId)
-    .executeTakeFirst();
+  const orgResult = await ctx.boundAuth.organization.get(stateData.orgId);
+  const orgSlug = orgResult && "slug" in orgResult ? orgResult.slug : null;
 
-  const redirectPath = org?.slug ? `/${org.slug}/org-admin` : "/";
+  const redirectPath = orgSlug ? `/${orgSlug}/org-admin` : "/";
   return c.redirect(redirectPath);
 });
 
