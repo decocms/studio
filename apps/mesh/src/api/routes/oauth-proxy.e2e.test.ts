@@ -121,7 +121,7 @@ describe("MCP OAuth Proxy E2E", () => {
         id: "test-key-id",
         name: "Test API Key",
         userId: "test-user-id",
-        permissions: { self: ["COLLECTION_CONNECTIONS_LIST"] },
+        permissions: { self: ["CONNECTIONS_LIST"] },
         metadata: {
           organization: {
             id: orgId,

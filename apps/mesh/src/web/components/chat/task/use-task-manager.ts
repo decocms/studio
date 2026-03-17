@@ -83,7 +83,7 @@ function useTasks(ownerFilter: TaskOwnerFilter, userId: string | undefined) {
             : baseInput;
 
         const result = (await client.callTool({
-          name: "COLLECTION_THREADS_LIST",
+          name: "THREADS_LIST",
           arguments: input,
         })) as { structuredContent?: unknown };
         const payload = (result.structuredContent ??

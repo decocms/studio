@@ -177,7 +177,7 @@ export async function prefetchTaskMessages(
   }
 
   // Fetch messages and populate cache (matches useCollectionList queryFn)
-  const listToolName = "COLLECTION_THREAD_MESSAGES_LIST";
+  const listToolName = "THREAD_MESSAGES_LIST";
   const where = buildWhereExpression(
     undefined,
     [{ column: "thread_id", value: taskId }],

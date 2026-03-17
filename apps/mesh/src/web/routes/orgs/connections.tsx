@@ -852,7 +852,7 @@ function OrgMcpsContent() {
   };
 
   // Optional registry lookup: support multiple registries, let user pick on "All" tab
-  // Sort so the self/management MCP (Mesh MCP) appears last — external registries like
+  // Sort so the self/management MCP (CMS MCP) appears last — external registries like
   // Deco Store / MCP Registry should be the default catalog source.
   const registryConnections = useRegistryConnections(allConnections).sort(
     (a, b) => {
@@ -1132,7 +1132,7 @@ function OrgMcpsContent() {
     for (const id of ids) {
       try {
         const result = await selfClient!.callTool({
-          name: "COLLECTION_CONNECTIONS_DELETE",
+          name: "CONNECTIONS_DELETE",
           arguments: { id, force: true },
         });
         if (!result.isError) deleted++;
@@ -1189,7 +1189,7 @@ function OrgMcpsContent() {
 
     try {
       await selfClient.callTool({
-        name: "COLLECTION_VIRTUAL_MCP_UPDATE",
+        name: "VIRTUAL_MCP_UPDATE",
         arguments: {
           id: agentId,
           data: {
@@ -1239,7 +1239,7 @@ function OrgMcpsContent() {
 
     try {
       const result = await selfClient.callTool({
-        name: "COLLECTION_CONNECTIONS_DELETE",
+        name: "CONNECTIONS_DELETE",
         arguments: { id: connection.id },
       });
 
@@ -1286,7 +1286,7 @@ function OrgMcpsContent() {
 
     try {
       const result = await selfClient.callTool({
-        name: "COLLECTION_CONNECTIONS_DELETE",
+        name: "CONNECTIONS_DELETE",
         arguments: { id, force: true },
       });
 

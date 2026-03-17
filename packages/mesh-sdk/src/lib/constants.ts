@@ -113,8 +113,8 @@ export function getWellKnownSelfConnection(
 ): ConnectionCreateData {
   return {
     id: WellKnownOrgMCPId.SELF(orgId),
-    title: "Mesh MCP",
-    description: "The MCP for the mesh API",
+    title: "CMS MCP",
+    description: "The MCP for the CMS API",
     connection_type: "HTTP",
     // Custom url for targeting this mcp. It's a standalone endpoint that exposes all management tools.
     connection_url: `${baseUrl}/mcp/${SELF_MCP_ALIAS_ID}`,

@@ -73,7 +73,7 @@ export async function serverFromConnection(
   const server = createServerFromClient(
     baseClient,
     {
-      name: "mcp-mesh-enhanced",
+      name: "mcp-cms-enhanced",
       version: "1.0.0",
     },
     {
