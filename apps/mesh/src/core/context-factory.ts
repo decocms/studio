@@ -209,6 +209,7 @@ export interface AuthContext {
   role?: string; // User's role (for built-in role bypass)
   permissions?: Permission; // Permissions from API key or custom role (MCP OAuth)
   userId?: string; // User ID for server-side API key operations
+  serverSide?: boolean; // MCP OAuth / API key — BA session APIs can't resolve these tokens
 }
 
 /**
@@ -220,7 +221,12 @@ export interface AuthContext {
  * 2. Browser sessions → delegate to Better Auth's hasPermission API
  */
 export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
-  const { auth, headers, role, permissions, userId } = ctx;
+  const { auth, headers, role, permissions, userId, serverSide } = ctx;
+
+  // For MCP OAuth / API key auth, the Bearer token in headers confuses BA's
+  // session middleware (it tries cookie or API key resolution, both fail).
+  // Use empty headers for server-side calls — BA still works via query/body params.
+  const serverHeaders = new Headers();
 
   // Get hasPermission from Better Auth's organization plugin (for browser sessions)
   const hasPermissionApi = (auth.api as { hasPermission?: HasPermissionAPI })
@@ -303,15 +309,16 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
 
       get: async (organizationId) => {
         return auth.api.getFullOrganization({
-          headers,
+          headers: serverSide ? serverHeaders : headers,
           query: organizationId ? { organizationId } : undefined,
         });
       },
 
-      list: async (userId?: string) => {
+      list: async (targetUserId?: string) => {
+        const uid = serverSide ? (targetUserId ?? userId) : targetUserId;
         return auth.api.listOrganizations({
-          headers,
-          query: userId ? { userId } : undefined,
+          headers: serverSide ? serverHeaders : headers,
+          query: uid ? { userId: uid } : undefined,
         });
       },
 
@@ -331,7 +338,7 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
 
       listMembers: async (options) => {
         return auth.api.listMembers({
-          headers,
+          headers: serverSide ? serverHeaders : headers,
           query: options
             ? {
                 organizationId: options.organizationId,
@@ -460,6 +467,7 @@ async function authenticateRequest(
   permissions?: Permission; // Permissions from API key or custom role (for non-browser sessions)
   apiKeyId?: string;
   organization?: OrganizationContext;
+  isMcpOAuthSession?: boolean;
 }> {
   const authHeader = req.headers.get("Authorization");
 
@@ -521,6 +529,7 @@ async function authenticateRequest(
         role,
         permissions,
         organization,
+        isMcpOAuthSession: true,
       };
     }
   } catch (error) {
@@ -850,12 +859,17 @@ export async function createMeshContextFactory(
       : { user: undefined };
 
     // Create bound auth client (encapsulates HTTP headers and auth context)
+    // MCP OAuth / API key tokens aren't resolvable by BA's session middleware,
+    // so flag those as serverSide to use empty headers + explicit userId/query params.
+    const isServerSide =
+      !!authResult.isMcpOAuthSession || !!authResult.apiKeyId;
     const boundAuth = createBoundAuthClient({
       auth: config.auth,
       headers: req?.headers ?? new Headers(),
       role: authResult.role,
       permissions: authResult.permissions,
-      userId: authResult.user?.id, // For server-side API key operations
+      userId: authResult.user?.id,
+      serverSide: isServerSide,
     });
 
     // Build auth object for MeshContext
