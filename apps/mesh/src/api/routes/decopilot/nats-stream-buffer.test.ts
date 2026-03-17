@@ -2,55 +2,18 @@ import { describe, it, expect, mock } from "bun:test";
 import { NatsStreamBuffer } from "./nats-stream-buffer";
 
 describe("NatsStreamBuffer", () => {
-  it("init is a no-op when getConnection returns null", async () => {
-    const buffer = new NatsStreamBuffer({
-      getConnection: () => null,
-      getJetStream: () => null,
-    });
-    await expect(buffer.init()).resolves.toBeUndefined();
-  });
-
-  it("relay passes through when JetStream is unavailable", async () => {
-    const buffer = new NatsStreamBuffer({
-      getConnection: () => null,
-      getJetStream: () => null,
-    });
-
-    const chunks = [{ type: "text", value: "hello" }];
-    const input = new ReadableStream({
-      start(controller) {
-        for (const c of chunks) controller.enqueue(c);
-        controller.close();
-      },
-    });
-
-    const output = buffer.relay(input, "thread-1");
-    const reader = output.getReader();
-    const result = await reader.read();
-
-    expect(result.value).toEqual(chunks[0]);
-  });
-
-  it("createReplayStream returns null when JetStream is unavailable", async () => {
-    const buffer = new NatsStreamBuffer({
-      getConnection: () => null,
-      getJetStream: () => null,
-    });
-    expect(await buffer.createReplayStream("any")).toBeNull();
-  });
-
   it("purge is a no-op when jsm is not initialized (no throw)", () => {
     const buffer = new NatsStreamBuffer({
-      getConnection: () => null,
-      getJetStream: () => null,
+      getConnection: () => ({}) as never,
+      getJetStream: () => ({}) as never,
     });
     expect(() => buffer.purge("any")).not.toThrow();
   });
 
   it("teardown clears references", () => {
     const buffer = new NatsStreamBuffer({
-      getConnection: () => null,
-      getJetStream: () => null,
+      getConnection: () => ({}) as never,
+      getJetStream: () => ({}) as never,
     });
     expect(() => buffer.teardown()).not.toThrow();
   });

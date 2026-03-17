@@ -55,51 +55,40 @@ export type { NotifyStrategy } from "./notify-strategy";
 export { sseHub, type SSEEvent } from "./sse-hub";
 
 /**
- * Create an EventBus instance and start the SSE hub with the appropriate
- * broadcast strategy.
+ * Create an EventBus instance and start the SSE hub with NATS broadcast.
  *
  * Uses NATS for both notify (immediate wake-up) and SSE broadcast (cross-pod
  * fan-out). A PollingStrategy is always composed alongside NATS as a safety
  * net for scheduled/cron event delivery.
  *
  * @param database - MeshDatabase instance
- * @param natsProvider - Shared NATS connection provider
+ * @param natsProvider - Shared NATS connection provider (required)
  * @param config - Optional event bus configuration
  * @returns EventBus instance
  */
 export function createEventBus(
   database: MeshDatabase,
-  natsProvider: NatsConnectionProvider | null,
+  natsProvider: NatsConnectionProvider,
   config?: EventBusConfig,
 ): EventBus {
   const storage = createEventBusStorage(database.db);
   const pollIntervalMs =
     config?.pollIntervalMs ?? DEFAULT_EVENT_BUS_CONFIG.pollIntervalMs;
 
-  const polling = new PollingStrategy(pollIntervalMs);
-  const notifyStrategy = natsProvider
-    ? compose(
-        polling,
-        new NatsNotifyStrategy({
-          getConnection: () => natsProvider.getConnection(),
-        }),
-      )
-    : polling;
-
-  // Start SSE hub with NATS cross-pod fan-out when available.
-  if (natsProvider) {
-    const sseBroadcast = new NatsSSEBroadcast({
+  const notifyStrategy = compose(
+    new PollingStrategy(pollIntervalMs),
+    new NatsNotifyStrategy({
       getConnection: () => natsProvider.getConnection(),
-    });
+    }),
+  );
 
-    sseHub.start(sseBroadcast).catch((err) => {
-      console.error("[SSEHub] Failed to start broadcast strategy:", err);
-    });
-  } else {
-    sseHub.start().catch((err) => {
-      console.error("[SSEHub] Error starting broadcast (no NATS):", err);
-    });
-  }
+  const sseBroadcast = new NatsSSEBroadcast({
+    getConnection: () => natsProvider.getConnection(),
+  });
+
+  sseHub.start(sseBroadcast).catch((err) => {
+    console.error("[SSEHub] Failed to start broadcast strategy:", err);
+  });
 
   return new EventBusImpl({
     storage,

@@ -2,9 +2,8 @@
  * SSE Broadcast Strategy Interface
  *
  * Abstraction for how SSE events are broadcast across processes.
- * In a single-process deployment, events are emitted locally.
- * In multi-pod deployments (K8s), a cross-process strategy (e.g., NATS)
- * ensures SSE clients on any pod receive events published from any other pod.
+ * Uses NATS pub/sub to ensure SSE clients on any pod receive events
+ * published from any other pod.
  *
  * Mirrors the NotifyStrategy pattern used for event bus worker wake-up.
  */
@@ -32,24 +31,4 @@ export interface SSEBroadcastStrategy {
 
   /** Stop the strategy and release resources. */
   stop(): Promise<void>;
-}
-
-/**
- * Local-only broadcast — events are emitted to the current process only.
- * Used as the default SSEHub strategy before a cross-pod strategy is started.
- */
-export class LocalSSEBroadcast implements SSEBroadcastStrategy {
-  private localEmit: LocalEmitFn | null = null;
-
-  async start(localEmit: LocalEmitFn): Promise<void> {
-    this.localEmit = localEmit;
-  }
-
-  broadcast(organizationId: string, event: SSEEvent): void {
-    this.localEmit?.(organizationId, event);
-  }
-
-  async stop(): Promise<void> {
-    this.localEmit = null;
-  }
 }

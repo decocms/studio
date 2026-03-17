@@ -8,13 +8,7 @@
  */
 
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
-import {
-  JSONCodec,
-  StorageType,
-  type JetStreamClient,
-  type KV,
-  type NatsConnection,
-} from "nats";
+import { JSONCodec, StorageType, type JetStreamClient, type KV } from "nats";
 
 export interface ToolListCache {
   get(connectionId: string): Promise<Tool[] | null>;
@@ -23,32 +17,11 @@ export interface ToolListCache {
   teardown(): void;
 }
 
-export class InMemoryToolListCache implements ToolListCache {
-  private readonly cache = new Map<string, Tool[]>();
-
-  async get(connectionId: string): Promise<Tool[] | null> {
-    return this.cache.get(connectionId) ?? null;
-  }
-
-  async set(connectionId: string, tools: Tool[]): Promise<void> {
-    this.cache.set(connectionId, tools);
-  }
-
-  async invalidate(connectionId: string): Promise<void> {
-    this.cache.delete(connectionId);
-  }
-
-  teardown(): void {
-    this.cache.clear();
-  }
-}
-
 const KV_BUCKET = "MESH_TOOL_LISTS";
 const KV_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 export interface JetStreamKVToolListCacheOptions {
-  getJetStream: () => JetStreamClient | null;
-  getConnection: () => NatsConnection | null;
+  getJetStream: () => JetStreamClient;
 }
 
 export class JetStreamKVToolListCache implements ToolListCache {
@@ -58,23 +31,11 @@ export class JetStreamKVToolListCache implements ToolListCache {
   constructor(private readonly options: JetStreamKVToolListCacheOptions) {}
 
   async init(): Promise<void> {
-    const nc = this.options.getConnection();
-    if (!nc) return;
-
     const js = this.options.getJetStream();
-    if (!js) return;
-
-    try {
-      this.kv = await js.views.kv(KV_BUCKET, {
-        ttl: KV_TTL_MS,
-        storage: StorageType.Memory,
-      });
-    } catch (err) {
-      console.warn(
-        "[ToolListCache] JetStream KV init failed, cache disabled:",
-        err,
-      );
-    }
+    this.kv = await js.views.kv(KV_BUCKET, {
+      ttl: KV_TTL_MS,
+      storage: StorageType.Memory,
+    });
   }
 
   async get(connectionId: string): Promise<Tool[] | null> {

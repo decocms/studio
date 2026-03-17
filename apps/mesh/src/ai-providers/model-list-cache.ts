@@ -1,11 +1,5 @@
 import type { ModelInfo } from "./types";
-import {
-  JSONCodec,
-  StorageType,
-  type JetStreamClient,
-  type KV,
-  type NatsConnection,
-} from "nats";
+import { JSONCodec, StorageType, type JetStreamClient, type KV } from "nats";
 
 export interface ModelListCache {
   get(organizationId: string, providerId: string): Promise<ModelInfo[] | null>;
@@ -22,56 +16,11 @@ function cacheKey(organizationId: string, providerId: string): string {
   return `${organizationId}.${providerId}`;
 }
 
-export class InMemoryModelListCache implements ModelListCache {
-  private readonly cache = new Map<
-    string,
-    { models: ModelInfo[]; ts: number }
-  >();
-  private readonly ttlMs: number;
-
-  constructor(ttlMs = 10 * 60 * 1000) {
-    this.ttlMs = ttlMs;
-  }
-
-  async get(
-    organizationId: string,
-    providerId: string,
-  ): Promise<ModelInfo[] | null> {
-    const key = cacheKey(organizationId, providerId);
-    const entry = this.cache.get(key);
-    if (!entry) return null;
-    if (Date.now() - entry.ts > this.ttlMs) {
-      this.cache.delete(key);
-      return null;
-    }
-    return entry.models;
-  }
-
-  async set(
-    organizationId: string,
-    providerId: string,
-    models: ModelInfo[],
-  ): Promise<void> {
-    const key = cacheKey(organizationId, providerId);
-    this.cache.set(key, { models, ts: Date.now() });
-  }
-
-  async invalidate(organizationId: string, providerId: string): Promise<void> {
-    const key = cacheKey(organizationId, providerId);
-    this.cache.delete(key);
-  }
-
-  teardown(): void {
-    this.cache.clear();
-  }
-}
-
 const KV_BUCKET = "MESH_MODEL_LISTS";
 const KV_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 export interface JetStreamKVModelListCacheOptions {
-  getJetStream: () => JetStreamClient | null;
-  getConnection: () => NatsConnection | null;
+  getJetStream: () => JetStreamClient;
 }
 
 export class JetStreamKVModelListCache implements ModelListCache {
@@ -81,23 +30,11 @@ export class JetStreamKVModelListCache implements ModelListCache {
   constructor(private readonly options: JetStreamKVModelListCacheOptions) {}
 
   async init(): Promise<void> {
-    const nc = this.options.getConnection();
-    if (!nc) return;
-
     const js = this.options.getJetStream();
-    if (!js) return;
-
-    try {
-      this.kv = await js.views.kv(KV_BUCKET, {
-        ttl: KV_TTL_MS,
-        storage: StorageType.Memory,
-      });
-    } catch (err) {
-      console.warn(
-        "[ModelListCache] JetStream KV init failed, cache disabled:",
-        err,
-      );
-    }
+    this.kv = await js.views.kv(KV_BUCKET, {
+      ttl: KV_TTL_MS,
+      storage: StorageType.Memory,
+    });
   }
 
   async get(
