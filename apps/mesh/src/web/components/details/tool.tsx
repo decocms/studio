@@ -672,7 +672,7 @@ function ToolDetailsAuthenticated({
                 toolResult={rawToolResult ?? undefined}
                 displayMode="fullscreen"
                 minHeight={MCP_APP_DISPLAY_MODES.view.minHeight}
-                maxHeight={MCP_APP_DISPLAY_MODES.view.maxHeight}
+                maxHeight={99_999}
                 client={client}
                 onMessage={handleAppMessage}
                 onUpdateModelContext={(params) =>
