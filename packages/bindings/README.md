@@ -338,16 +338,16 @@ Models bindings provide a well-known interface for AI model providers. They use 
 ### Using Models Bindings
 
 ```typescript
-import { MODELS_BINDING, MODELS_COLLECTION_BINDING } from "@decocms/bindings/models";
+import { LANGUAGE_MODEL_BINDING } from "@decocms/bindings/models";
 import { createBindingChecker } from "@decocms/bindings";
 
-// Use the pre-defined MODELS_BINDING
-const modelsChecker = createBindingChecker(MODELS_BINDING);
+// Use the pre-defined LANGUAGE_MODEL_BINDING
+const modelsChecker = createBindingChecker(LANGUAGE_MODEL_BINDING);
 
 // Check if available tools implement the binding
 const availableTools = [
-  { name: "MODELS_LIST" },
-  { name: "MODELS_GET" },
+  { name: "LLM_LIST" },
+  { name: "LLM_GET" },
 ];
 
 const isImplemented = modelsChecker.isImplementedBy(availableTools);
@@ -356,15 +356,15 @@ console.log(isImplemented); // true if all required tools are present
 
 ### Models Binding Tools
 
-The `MODELS_BINDING` includes:
+The `LANGUAGE_MODEL_BINDING` includes:
 
-1. **MODELS_LIST** (required)
+1. **LLM_LIST** (required)
    - List available AI models with their capabilities and streaming endpoints
    - Uses collection binding LIST operation
    - Input: `where?`, `orderBy?`, `limit?`, `offset?`
    - Output: `items[]` (array of model entities with endpoint info)
 
-2. **MODELS_GET** (required)
+2. **LLM_GET** (required)
    - Get a single model by ID
    - Uses collection binding GET operation
    - Input: `id` (string)
@@ -407,10 +407,10 @@ Models follow the collection entity schema with additional model-specific fields
 Here's how you would implement the models binding in an MCP server:
 
 ```typescript
-import { MODELS_BINDING } from "@decocms/bindings/models";
+import { LANGUAGE_MODEL_BINDING } from "@decocms/bindings/models";
 import { impl } from "@decocms/sdk/mcp/bindings/binder";
 
-const modelTools = impl(MODELS_BINDING, [
+const modelTools = impl(LANGUAGE_MODEL_BINDING, [
   {
     description: "List available AI models",
     handler: async ({ where, orderBy, limit, offset }) => {
