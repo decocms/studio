@@ -101,7 +101,7 @@ jobs:
           if [ $exit_code -eq 0 ]; then
             exit 0
           elif [ $exit_code -eq 132 ] && ! grep -q '[1-9][0-9]* fail' /tmp/test-output.txt; then
-            echo "⚠️  Bun exited with SIGILL (known PGlite WASM cleanup bug) but all tests passed"
+            echo "⚠️  Bun exited with SIGILL (known WASM cleanup bug) but all tests passed"
             exit 0
           else
             exit $exit_code

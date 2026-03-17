@@ -117,7 +117,7 @@ async function publishRequestCreatedEvent(args: {
   }
 
   // Best effort wake-up for PostgreSQL LISTEN/NOTIFY deployments.
-  // On PGlite, this may not be supported and is safely ignored.
+  // On some configurations, this may not be supported and is safely ignored.
   try {
     await sql`SELECT pg_notify('mesh_events', ${eventId})`.execute(
       args.db as any,

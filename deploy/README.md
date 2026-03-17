@@ -8,7 +8,7 @@ This is the local version using Docker Compose, to speed up your testing with th
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start---get-started-in-4-steps)
 - [Configuration](#configuration)
-- [Using PGlite (Default)](#using-pglite-default)
+- [Using Embedded PostgreSQL (Default)](#using-embedded-postgresql-default)
 - [Using PostgreSQL](#using-postgresql)
 - [Authentication Configuration](#authentication-configuration-auth-configjson)
 - [Security](#security)
@@ -19,7 +19,7 @@ This is the local version using Docker Compose, to speed up your testing with th
 
 ## 🎯 Overview
 
-- ✅ **PGlite by default** - Embedded PostgreSQL via WASM, works immediately without additional configuration
+- ✅ **Embedded PostgreSQL by default** - Works immediately without additional configuration
 - ✅ **PostgreSQL optional** - Configure via environment variable for production
 - ✅ **Data persistence** - Docker volume to keep data between restarts
 - ✅ **Health checks** - Automatic application health monitoring
@@ -80,15 +80,15 @@ Main variables:
 | `BETTER_AUTH_URL` | `http://localhost:3000` | URL for authentication |
 | `BASE_URL` | `http://localhost:3000` | Application base URL |
 | `BETTER_AUTH_SECRET` | **required** | Authentication secret |
-| `DATABASE_URL` | `file:///app/data/mesh.pglite` | Database URL (PGlite or PostgreSQL) |
+| `DATABASE_URL` | `postgresql://postgres:postgres@localhost:5432/postgres` | Database URL (embedded PostgreSQL or external PostgreSQL) |
 
-## 💾 Using PGlite (Default)
+## 💾 Using Embedded PostgreSQL (Default)
 
-PGlite (embedded PostgreSQL via WASM) is the default and requires no additional configuration:
+Embedded PostgreSQL is the default and requires no additional configuration:
 
 ```bash
 # .env
-DATABASE_URL=file:///app/data/mesh.pglite
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres
 ```
 
 Data will be persisted in the Docker volume `mesh-data` and kept between restarts.
@@ -391,23 +391,23 @@ docker compose up -d
 
 ```bash
 # 1. Backup first
-docker compose cp mesh:/app/data/mesh.pglite ./backup-$(date +%Y%m%d-%H%M%S).pglite
+docker compose exec mesh pg_dumpall -U postgres > ./backup-$(date +%Y%m%d-%H%M%S).sql
 
 # 2. Reset
 docker compose down -v
 docker compose up -d
 ```
 
-#### Method 4: Reset only PGlite (keep other data)
+#### Method 4: Reset only database (keep other data)
 
-If you want to reset only the PGlite database keeping other files:
+If you want to reset only the database keeping other files:
 
 ```bash
 # Enter container
 docker compose exec mesh sh
 
-# Inside container, remove only the database
-rm -rf /app/data/mesh.pglite
+# Inside container, remove only the database data
+rm -rf /app/data/postgres
 
 # Restart application (will recreate database)
 exit
@@ -460,11 +460,11 @@ docker compose up -d
 
 ## 📦 Backup and Restore
 
-### Backup (PGlite)
+### Backup (Embedded PostgreSQL)
 
 ```bash
-# Copy to host
-docker compose cp mesh:/app/data/mesh.pglite ./backup-$(date +%Y%m%d).pglite
+# Dump to host
+docker compose exec mesh pg_dumpall -U postgres > ./backup-$(date +%Y%m%d).sql
 ```
 
 ### Backup (PostgreSQL)
