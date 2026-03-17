@@ -217,9 +217,7 @@ function ShellLayoutContent() {
       } as ProjectContextProviderProps;
     },
     gcTime: Infinity,
-    staleTime: Infinity,
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
   });
 
   // Must be called unconditionally (Rules of Hooks)

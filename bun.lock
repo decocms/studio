@@ -55,7 +55,7 @@
     },
     "apps/mesh": {
       "name": "decocms",
-      "version": "2.175.1",
+      "version": "2.175.6",
       "bin": {
         "deco": "./dist/server/cli.js",
       },
@@ -149,8 +149,6 @@
         "marked": "^15.0.6",
         "mesh-plugin-object-storage": "workspace:*",
         "mesh-plugin-private-registry": "workspace:*",
-        "mesh-plugin-reports": "workspace:*",
-        "mesh-plugin-user-sandbox": "workspace:*",
         "mesh-plugin-workflows": "workspace:*",
         "nanoid": "^5.1.6",
         "pg": "^8.16.3",
@@ -278,43 +276,6 @@
       },
       "peerDependencies": {
         "react": "^19.2.0",
-      },
-    },
-    "packages/mesh-plugin-reports": {
-      "name": "mesh-plugin-reports",
-      "version": "0.1.0",
-      "dependencies": {
-        "@deco/ui": "workspace:*",
-        "@decocms/bindings": "workspace:*",
-        "@decocms/mesh-sdk": "workspace:*",
-        "@tanstack/react-query": "5.90.11",
-        "@untitledui/icons": "^0.0.19",
-        "react": "^19.2.0",
-        "sonner": "^2.0.7",
-      },
-    },
-    "packages/mesh-plugin-user-sandbox": {
-      "name": "mesh-plugin-user-sandbox",
-      "version": "0.1.0",
-      "dependencies": {
-        "@decocms/bindings": "workspace:*",
-        "@decocms/mesh-sdk": "workspace:*",
-        "hono": "^4.7.10",
-        "kysely": "^0.27.5",
-        "zod": "^4.0.0",
-      },
-      "devDependencies": {
-        "@electric-sql/pglite": "^0.3.15",
-        "@types/bun": "latest",
-        "kysely-pglite": "^0.6.1",
-        "typescript": "^5.8.3",
-      },
-      "peerDependencies": {
-        "@deco/ui": "*",
-        "@tanstack/react-query": ">=5.0.0",
-        "lucide-react": "*",
-        "react": "^19.2.0",
-        "sonner": ">=2.0.0",
       },
     },
     "packages/mesh-plugin-workflows": {
@@ -2356,10 +2317,6 @@
     "mesh-plugin-object-storage": ["mesh-plugin-object-storage@workspace:packages/mesh-plugin-object-storage"],
 
     "mesh-plugin-private-registry": ["mesh-plugin-private-registry@workspace:packages/mesh-plugin-private-registry"],
-
-    "mesh-plugin-reports": ["mesh-plugin-reports@workspace:packages/mesh-plugin-reports"],
-
-    "mesh-plugin-user-sandbox": ["mesh-plugin-user-sandbox@workspace:packages/mesh-plugin-user-sandbox"],
 
     "mesh-plugin-workflows": ["mesh-plugin-workflows@workspace:packages/mesh-plugin-workflows"],
 

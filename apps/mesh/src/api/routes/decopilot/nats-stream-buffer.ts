@@ -58,8 +58,8 @@ function createPublishTracker(threadId: string) {
 }
 
 export interface NatsStreamBufferOptions {
-  getConnection: () => NatsConnection | null;
-  getJetStream: () => JetStreamClient | null;
+  getConnection: () => NatsConnection;
+  getJetStream: () => JetStreamClient;
 }
 
 export class NatsStreamBuffer implements StreamBuffer {
@@ -71,8 +71,6 @@ export class NatsStreamBuffer implements StreamBuffer {
 
   async init(): Promise<void> {
     const nc = this.options.getConnection();
-    if (!nc) return;
-
     const jsm = await nc.jetstreamManager();
 
     const config = {

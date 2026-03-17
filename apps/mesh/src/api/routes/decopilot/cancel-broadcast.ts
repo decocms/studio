@@ -1,11 +1,8 @@
 /**
  * Cancel Broadcast Interface
  *
- * Abstraction for how run cancellation is broadcast across pods.
- * In single-process mode, cancel is local only.
- * In multi-pod deployments, NATS pub/sub propagates cancellation.
- *
- * Mirrors the SSEBroadcastStrategy pattern from event-bus.
+ * Abstraction for how run cancellation is broadcast across pods
+ * via NATS pub/sub.
  */
 
 export interface CancelBroadcast {
@@ -15,24 +12,4 @@ export interface CancelBroadcast {
   broadcast(threadId: string): void;
   /** Stop listening and release resources. */
   stop(): Promise<void>;
-}
-
-/**
- * Local-only cancel — cancel only works on the current process.
- * Suitable for single-process deployments and when NATS is unavailable.
- */
-export class LocalCancelBroadcast implements CancelBroadcast {
-  private onCancel: ((threadId: string) => void) | null = null;
-
-  async start(onCancel: (threadId: string) => void): Promise<void> {
-    this.onCancel = onCancel;
-  }
-
-  broadcast(threadId: string): void {
-    this.onCancel?.(threadId);
-  }
-
-  async stop(): Promise<void> {
-    this.onCancel = null;
-  }
 }

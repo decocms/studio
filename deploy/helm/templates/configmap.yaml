@@ -5,28 +5,16 @@ metadata:
   labels:
     {{- include "chart-deco-mcp-mesh.labels" . | nindent 4 }}
 data:
-  NODE_ENV: {{ .Values.configMap.meshConfig.NODE_ENV | quote }}
-  PORT: {{ .Values.configMap.meshConfig.PORT | quote }}
-  HOST: {{ .Values.configMap.meshConfig.HOST | quote }}
-  BETTER_AUTH_URL: {{ .Values.configMap.meshConfig.BETTER_AUTH_URL | quote }}
-  BASE_URL: {{ .Values.configMap.meshConfig.BASE_URL | quote }}
-  {{- if .Values.configMap.meshConfig.DATABASE_PG_SSL }}
-  DATABASE_PG_SSL: {{ .Values.configMap.meshConfig.DATABASE_PG_SSL | quote }}
+  {{- $knownKeys := list "NODE_EXTRA_CA_CERTS" }}
+  {{- range $key, $value := .Values.configMap.meshConfig }}
+  {{- if not (has $key $knownKeys) }}
+  {{ $key }}: {{ $value | quote }}
   {{- end }}
-  {{- if and .Values.configMap.meshConfig.NODE_EXTRA_CA_CERTS .Values.database.caCert }}
+  {{- end }}
+  {{- if and .Values.configMap.meshConfig.NODE_EXTRA_CA_CERTS $.Values.database.caCert }}
   NODE_EXTRA_CA_CERTS: {{ .Values.configMap.meshConfig.NODE_EXTRA_CA_CERTS | quote }}
-  {{- end }}
-  {{- if .Values.configMap.meshConfig.ENABLE_DEBUG_SERVER }}
-  ENABLE_DEBUG_SERVER: {{ .Values.configMap.meshConfig.ENABLE_DEBUG_SERVER | quote }}
-  {{- end }}
-  {{- if .Values.configMap.meshConfig.DEBUG_PORT }}
-  DEBUG_PORT: {{ .Values.configMap.meshConfig.DEBUG_PORT | quote }}
-  {{- end }}
-  {{- if .Values.configMap.meshConfig.PRESTOP_HEAP_SNAPSHOT_DIR }}
-  PRESTOP_HEAP_SNAPSHOT_DIR: {{ .Values.configMap.meshConfig.PRESTOP_HEAP_SNAPSHOT_DIR | quote }}
   {{- end }}
   {{- if ne (lower (default "sqlite" .Values.database.engine)) "postgresql" }}
   # DATABASE_URL only goes in ConfigMap when SQLite (file path, not sensitive)
   DATABASE_URL: {{ include "chart-deco-mcp-mesh.databaseUrl" . | trim | quote }}
-
   {{- end }}

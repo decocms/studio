@@ -91,6 +91,7 @@ export {
   type AiProviderModelLimits,
   type AiProviderModelCosts,
   type AiProviderKey,
+  type AiProviderInfo,
   // Connection types
   ConnectionEntitySchema,
   ConnectionCreateDataSchema,

@@ -1,11 +1,22 @@
 import { Suspense, useState, useEffect } from "react";
-import { useQueryClient, useMutation } from "@tanstack/react-query";
+import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
-import { Trash01, Key01, Eye, EyeOff, AlertCircle } from "@untitledui/icons";
+import {
+  Trash01,
+  Key01,
+  Eye,
+  EyeOff,
+  AlertCircle,
+  CreditCard01,
+} from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Card } from "@deco/ui/components/card.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@deco/ui/components/toggle-group.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import {
@@ -205,10 +216,170 @@ export type AiProvider = {
   id: string;
   name: string;
   description: string;
-  logo: string | null;
-  connectionMethod: "api-key" | "oauth-pkce";
+  logo?: string | null;
+  connectionMethod?: "api-key" | "oauth-pkce";
   supportedMethods: ("api-key" | "oauth-pkce")[];
+  supportsTopUp?: boolean;
+  supportsCredits?: boolean;
 };
+
+function TopUpForm({
+  keyId,
+  providerId,
+  onCancel,
+}: {
+  keyId: string;
+  providerId: string;
+  onCancel: () => void;
+}) {
+  const { org } = useProjectContext();
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+  });
+
+  const [amount, setAmount] = useState("10");
+  const [currency, setCurrency] = useState<"usd" | "brl">("usd");
+
+  const { mutate: topUp, isPending } = useMutation({
+    mutationFn: async () => {
+      const amountCents = Math.round(parseFloat(amount) * 100);
+      const result = (await client.callTool({
+        name: "AI_PROVIDER_TOPUP_URL",
+        arguments: { providerId, keyId, amountCents, currency },
+      })) as {
+        structuredContent?: { url: string };
+        isError?: boolean;
+        content?: { text?: string }[];
+      };
+
+      if (result?.isError) {
+        throw new Error(
+          result.content?.[0]?.text ?? "Failed to get top-up URL",
+        );
+      }
+      return result.structuredContent?.url;
+    },
+    onSuccess: (url) => {
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
+      onCancel();
+    },
+    onError: (err) => {
+      toast.error(`Top-up failed: ${err.message}`);
+    },
+  });
+
+  const amountNum = parseFloat(amount);
+  const isValid = !isNaN(amountNum) && amountNum >= 1;
+  const currencySymbol = currency === "brl" ? "R$" : "$";
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground select-none">
+            {currencySymbol}
+          </span>
+          <Input
+            type="number"
+            min="1"
+            step="1"
+            placeholder="10"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className="h-8 text-sm pl-8"
+          />
+        </div>
+        <ToggleGroup
+          type="single"
+          size="sm"
+          value={currency}
+          onValueChange={(v) => {
+            if (v) setCurrency(v as "usd" | "brl");
+          }}
+        >
+          <ToggleGroupItem value="usd" className="h-8 px-2 text-xs">
+            USD
+          </ToggleGroupItem>
+          <ToggleGroupItem value="brl" className="h-8 px-2 text-xs">
+            BRL
+          </ToggleGroupItem>
+        </ToggleGroup>
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onCancel}
+          disabled={isPending}
+        >
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          onClick={() => topUp()}
+          disabled={!isValid || isPending}
+        >
+          {isPending ? "Opening..." : "Checkout"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function CreditsBalance({ providerId }: { providerId: string }) {
+  const { locator, org } = useProjectContext();
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+  });
+
+  const { data, isLoading, refetch, isFetching } = useQuery({
+    queryKey: KEYS.aiProviderCredits(locator, providerId),
+    staleTime: 60_000,
+    queryFn: async () => {
+      const result = (await client.callTool({
+        name: "AI_PROVIDER_CREDITS",
+        arguments: { providerId },
+      })) as {
+        structuredContent?: { balanceCents: number };
+        isError?: boolean;
+        content?: { text?: string }[];
+      };
+      if (result?.isError) {
+        throw new Error(result.content?.[0]?.text ?? "Failed to fetch credits");
+      }
+      return result.structuredContent ?? null;
+    },
+  });
+
+  const dollars = data != null ? (data.balanceCents / 100).toFixed(2) : null;
+
+  return (
+    <div
+      className="flex items-center gap-1.5 text-xs"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <span className="text-muted-foreground">Balance:</span>
+      {isLoading || isFetching ? (
+        <Skeleton className="h-3 w-12 inline-block" />
+      ) : dollars != null ? (
+        <span className="font-medium tabular-nums">${dollars}</span>
+      ) : (
+        <span className="text-muted-foreground">—</span>
+      )}
+      <button
+        type="button"
+        onClick={() => refetch()}
+        disabled={isFetching}
+        className="text-muted-foreground hover:text-foreground disabled:opacity-50 ml-0.5"
+        title="Refresh balance"
+      >
+        ↻
+      </button>
+    </div>
+  );
+}
 
 export function ProviderCard({
   provider,
@@ -226,6 +397,7 @@ export function ProviderCard({
   const [isConnectFormOpen, setIsConnectFormOpen] = useState(false);
   const [isOAuthPending, setIsOAuthPending] = useState(false);
   const [oauthStateToken, setOauthStateToken] = useState<string | null>(null);
+  const [topUpKeyId, setTopUpKeyId] = useState<string | null>(null);
 
   const isActive = keys.length > 0;
 
@@ -238,6 +410,7 @@ export function ProviderCard({
       return keyId; // Return keyId for invalidation logic if needed
     },
     onSuccess: (deletedKeyId) => {
+      if (topUpKeyId === deletedKeyId) setTopUpKeyId(null);
       queryClient.invalidateQueries({ queryKey: KEYS.aiProviderKeys(locator) });
       queryClient.invalidateQueries({ queryKey: KEYS.aiProviders(locator) });
       queryClient.invalidateQueries({
@@ -409,9 +582,43 @@ export function ProviderCard({
 
           {isActive && (
             <div className="mt-1">
-              <p className="text-xs font-medium text-muted-foreground">
-                {keys.length} key{keys.length !== 1 ? "s" : ""} configured
-              </p>
+              {provider.supportsCredits && (
+                <div className="mb-2">
+                  <CreditsBalance providerId={provider.id} />
+                </div>
+              )}
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-muted-foreground">
+                  {keys.length} key{keys.length !== 1 ? "s" : ""} configured
+                </p>
+                {provider.supportsTopUp && (
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      className="h-6 gap-1 text-xs text-muted-foreground hover:text-foreground"
+                      onClick={() =>
+                        setTopUpKeyId(topUpKeyId ? null : (keys[0]?.id ?? null))
+                      }
+                    >
+                      <CreditCard01 size={12} />
+                      Add credits
+                    </Button>
+                  </div>
+                )}
+              </div>
+              {topUpKeyId && keys.some((k) => k.id === topUpKeyId) && (
+                <div
+                  className="mt-2 p-3 rounded-md border bg-muted/30"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <TopUpForm
+                    keyId={topUpKeyId}
+                    providerId={provider.id}
+                    onCancel={() => setTopUpKeyId(null)}
+                  />
+                </div>
+              )}
               <KeyList
                 keys={keys}
                 onDelete={deleteKey}
@@ -439,6 +646,8 @@ export function ProviderCard({
 function OrgAiProvidersContent() {
   const aiProviders = useAiProviders();
   const allKeys = useAiProviderKeyList();
+  const providers = aiProviders?.providers ?? [];
+  const isEven = providers.length % 2 === 0;
 
   return (
     <div className="space-y-6">
@@ -450,12 +659,18 @@ function OrgAiProvidersContent() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 [&>*:first-child]:lg:col-span-2">
-        {aiProviders?.providers?.map((provider) => (
-          <ProviderCard
+        {providers.map((provider, index) => (
+          <div
             key={provider.id}
-            provider={provider}
-            keys={allKeys.filter((k) => k.providerId === provider.id)}
-          />
+            className={cn(
+              isEven && index === providers.length - 1 && "lg:col-span-2",
+            )}
+          >
+            <ProviderCard
+              provider={provider}
+              keys={allKeys.filter((k) => k.providerId === provider.id)}
+            />
+          </div>
         ))}
       </div>
     </div>

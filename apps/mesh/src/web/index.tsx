@@ -85,15 +85,6 @@ const betterAuthRoutes = createRoute({
 });
 
 /**
- * Gateway templates connect flow (public, no auth)
- */
-const connectRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/connect/$sessionId",
-  component: lazyRouteComponent(() => import("./routes/connect.tsx")),
-});
-
-/**
  * Store invite route - deep links to store apps without knowing the org slug
  * After login, redirects to the user's first org and first registry
  */
@@ -619,7 +610,6 @@ const routeTree = rootRoute.addChildren([
   betterAuthRoutes,
   oauthCallbackRoute,
   oauthCallbackAiProviderRoute,
-  connectRoute,
   storeInviteRoute,
 ]);
 

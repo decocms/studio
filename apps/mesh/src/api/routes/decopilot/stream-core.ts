@@ -450,6 +450,7 @@ export async function streamCore(
         const uiMessageStream = result.toUIMessageStream({
           originalMessages,
           generateMessageId,
+          onError: (error) => sanitizeStreamError(error),
           messageMetadata: ({ part }) => {
             if (part.type === "start") {
               return {
@@ -577,7 +578,7 @@ export async function streamCore(
         streamFinished = true;
         closeClients?.();
         if (registrySignal.aborted) {
-          return error instanceof Error ? error.message : String(error);
+          return sanitizeStreamError(error);
         }
         console.error("[decopilot] stream error:", error);
 
@@ -591,7 +592,7 @@ export async function streamCore(
             console.error("[decopilot:stream] onError reactor failed", e);
           });
 
-        return error instanceof Error ? error.message : String(error);
+        return sanitizeStreamError(error);
       },
     });
 
@@ -621,6 +622,33 @@ export async function streamCore(
 // ============================================================================
 // Helpers
 // ============================================================================
+
+function stripProviderSpecificDetails(message: string): string {
+  const sentences = message.split(/\.\s+/);
+  const cleaned = sentences.filter(
+    (s) => !/https?:\/\//i.test(s) && !/openrouter/i.test(s),
+  );
+  if (cleaned.length === 0) return message;
+  const result = cleaned.join(". ").trim();
+  return result.endsWith(".") ? result : `${result}.`;
+}
+
+/**
+ * Returns a sanitized, user-facing error message.
+ * Provider-specific URLs and branding are stripped so they are never
+ * surfaced to the client.
+ */
+// TODO @pedrofrxncx: remove this code in favor of a better solution
+function sanitizeStreamError(error: unknown): string {
+  if (error instanceof Error) {
+    const statusCode = (error as { statusCode?: number }).statusCode;
+    if (statusCode === 402 || error.message.toLowerCase().includes("credit")) {
+      return stripProviderSpecificDetails(error.message);
+    }
+    return error.message;
+  }
+  return String(error);
+}
 
 /**
  * Consume a StreamCoreResult by draining its ReadableStream.

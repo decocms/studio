@@ -1,14 +1,15 @@
 /**
  * ToolListCache unit tests
  *
- * Tests InMemoryToolListCache directly.
+ * Uses a minimal TestToolListCache (Map-based) as a test double for
+ * withToolCaching decorator tests.
  * JetStreamKVToolListCache requires a live NATS server — see
  * scripts/sim-tool-list-cache.ts for a multi-pod integration simulation.
  */
 
-import { describe, expect, it, beforeEach } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
-import { InMemoryToolListCache } from "./tool-list-cache";
+import type { ToolListCache } from "./tool-list-cache";
 import { withToolCaching } from "./decorators/with-tool-caching";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { ConnectionEntity } from "@/tools/connection/schema";
@@ -43,56 +44,28 @@ const makeConnection = (
     ...overrides,
   }) as ConnectionEntity;
 
-// ============================================================================
-// InMemoryToolListCache
-// ============================================================================
-
-describe("InMemoryToolListCache", () => {
-  let cache: InMemoryToolListCache;
-
-  beforeEach(() => {
-    cache = new InMemoryToolListCache();
-  });
-
-  it("returns null for unknown connection", async () => {
-    expect(await cache.get("missing")).toBeNull();
-  });
-
-  it("stores and retrieves tools", async () => {
-    const tools = [makeTool("tool_a"), makeTool("tool_b")];
-    await cache.set("conn_1", tools);
-    expect(await cache.get("conn_1")).toEqual(tools);
-  });
-
-  it("invalidates a connection", async () => {
-    await cache.set("conn_1", [makeTool("tool_a")]);
-    await cache.invalidate("conn_1");
-    expect(await cache.get("conn_1")).toBeNull();
-  });
-
-  it("teardown clears all entries", async () => {
-    await cache.set("conn_1", [makeTool("tool_a")]);
-    await cache.set("conn_2", [makeTool("tool_b")]);
-    cache.teardown();
-    expect(await cache.get("conn_1")).toBeNull();
-    expect(await cache.get("conn_2")).toBeNull();
-  });
-
-  it("isolates separate connection IDs", async () => {
-    const tools1 = [makeTool("tool_1")];
-    const tools2 = [makeTool("tool_2")];
-    await cache.set("conn_1", tools1);
-    await cache.set("conn_2", tools2);
-    expect(await cache.get("conn_1")).toEqual(tools1);
-    expect(await cache.get("conn_2")).toEqual(tools2);
-  });
-});
+/** Minimal Map-based ToolListCache for testing. */
+class TestToolListCache implements ToolListCache {
+  private readonly cache = new Map<string, Tool[]>();
+  async get(connectionId: string) {
+    return this.cache.get(connectionId) ?? null;
+  }
+  async set(connectionId: string, tools: Tool[]) {
+    this.cache.set(connectionId, tools);
+  }
+  async invalidate(connectionId: string) {
+    this.cache.delete(connectionId);
+  }
+  teardown() {
+    this.cache.clear();
+  }
+}
 
 // ============================================================================
-// withToolCaching + InMemoryToolListCache integration
+// withToolCaching + TestToolListCache integration
 // ============================================================================
 
-describe("withToolCaching with InMemoryToolListCache", () => {
+describe("withToolCaching with TestToolListCache", () => {
   it("returns DB tools for non-VIRTUAL connection with indexed tools (cache not used)", async () => {
     const dbTools = [makeTool("db_tool")];
     const connection = makeConnection({ tools: dbTools as any });
@@ -100,11 +73,7 @@ describe("withToolCaching with InMemoryToolListCache", () => {
       listTools: async () => ({ tools: [makeTool("downstream")] }),
     } as any as Client;
 
-    const cached = withToolCaching(
-      client,
-      connection,
-      new InMemoryToolListCache(),
-    );
+    const cached = withToolCaching(client, connection, new TestToolListCache());
     const result = await cached.listTools();
     expect(result.tools[0]!.name).toBe("db_tool");
   });
@@ -120,7 +89,7 @@ describe("withToolCaching with InMemoryToolListCache", () => {
       },
     } as any as Client;
 
-    const cache = new InMemoryToolListCache();
+    const cache = new TestToolListCache();
     const cached = withToolCaching(client, connection, cache);
 
     const result = await cached.listTools();
@@ -142,7 +111,7 @@ describe("withToolCaching with InMemoryToolListCache", () => {
       },
     } as any as Client;
 
-    const cache = new InMemoryToolListCache();
+    const cache = new TestToolListCache();
     const cached = withToolCaching(client, connection, cache);
 
     await cached.listTools(); // miss — populates cache
@@ -164,7 +133,7 @@ describe("withToolCaching with InMemoryToolListCache", () => {
       },
     } as any as Client;
 
-    const cache = new InMemoryToolListCache();
+    const cache = new TestToolListCache();
     const cached = withToolCaching(client, connection, cache);
 
     await cached.listTools();
@@ -196,12 +165,12 @@ describe("withToolCaching with InMemoryToolListCache", () => {
 });
 
 // ============================================================================
-// Cross-pod simulation using shared InMemoryToolListCache instance
+// Cross-pod simulation using shared TestToolListCache instance
 // ============================================================================
 
-describe("cross-pod cache simulation (shared InMemoryToolListCache)", () => {
+describe("cross-pod cache simulation (shared TestToolListCache)", () => {
   it("pod-2 gets cached result populated by pod-1", async () => {
-    const sharedCache = new InMemoryToolListCache();
+    const sharedCache = new TestToolListCache();
     const connection = makeConnection({ tools: null });
 
     let pod1Calls = 0;
