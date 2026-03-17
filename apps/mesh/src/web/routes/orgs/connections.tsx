@@ -29,7 +29,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@deco/ui/components/alert-dialog.tsx";
-import { Badge } from "@deco/ui/components/badge.tsx";
 import {
   Breadcrumb,
   BreadcrumbItem,

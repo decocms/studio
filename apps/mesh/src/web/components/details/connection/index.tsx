@@ -698,55 +698,55 @@ function ConnectionInspectorViewWithConnection({
                   onAdd={async () => {
                     setIsAddingInstance(true);
                     try {
-                    const base = siblings[0] ?? connection;
-                    const baseName = base.title.replace(/\s*\(\d+\)\s*$/, "");
-                    const nextNumber = siblings.length + 1;
-                    const newTitle = `${baseName} (${nextNumber})`;
-                    const newId = generatePrefixedId("conn");
-                    await connectionActions.create.mutateAsync({
-                      id: newId,
-                      title: newTitle,
-                      description: base.description ?? null,
-                      connection_type: base.connection_type,
-                      connection_url: base.connection_url ?? null,
-                      connection_token: null,
-                      created_at: new Date().toISOString(),
-                      updated_at: new Date().toISOString(),
-                      created_by: base.created_by,
-                      organization_id: base.organization_id,
-                      icon: base.icon ?? null,
-                      app_name: base.app_name ?? null,
-                      app_id: base.app_id ?? null,
-                      connection_headers: base.connection_headers ?? null,
-                      oauth_config: null,
-                      configuration_state: base.configuration_state ?? null,
-                      metadata: null,
-                      tools: null,
-                      bindings: null,
-                      status: "inactive",
-                    });
-                    const mcpProxyUrl = new URL(
-                      `/mcp/${newId}`,
-                      window.location.origin,
-                    );
-                    const authStatus = await isConnectionAuthenticated({
-                      url: mcpProxyUrl.href,
-                      token: null,
-                    });
-                    if (
-                      authStatus.supportsOAuth &&
-                      !authStatus.isAuthenticated
-                    ) {
-                      await handleAuthenticateForId(newId);
-                    }
-                    navigate({
-                      to: "/$org/$project/mcps/$connectionId",
-                      params: {
-                        org,
-                        project: ORG_ADMIN_PROJECT_SLUG,
-                        connectionId: newId,
-                      },
-                    });
+                      const base = siblings[0] ?? connection;
+                      const baseName = base.title.replace(/\s*\(\d+\)\s*$/, "");
+                      const nextNumber = siblings.length + 1;
+                      const newTitle = `${baseName} (${nextNumber})`;
+                      const newId = generatePrefixedId("conn");
+                      await connectionActions.create.mutateAsync({
+                        id: newId,
+                        title: newTitle,
+                        description: base.description ?? null,
+                        connection_type: base.connection_type,
+                        connection_url: base.connection_url ?? null,
+                        connection_token: null,
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString(),
+                        created_by: base.created_by,
+                        organization_id: base.organization_id,
+                        icon: base.icon ?? null,
+                        app_name: base.app_name ?? null,
+                        app_id: base.app_id ?? null,
+                        connection_headers: base.connection_headers ?? null,
+                        oauth_config: null,
+                        configuration_state: base.configuration_state ?? null,
+                        metadata: null,
+                        tools: null,
+                        bindings: null,
+                        status: "inactive",
+                      });
+                      const mcpProxyUrl = new URL(
+                        `/mcp/${newId}`,
+                        window.location.origin,
+                      );
+                      const authStatus = await isConnectionAuthenticated({
+                        url: mcpProxyUrl.href,
+                        token: null,
+                      });
+                      if (
+                        authStatus.supportsOAuth &&
+                        !authStatus.isAuthenticated
+                      ) {
+                        await handleAuthenticateForId(newId);
+                      }
+                      navigate({
+                        to: "/$org/$project/mcps/$connectionId",
+                        params: {
+                          org,
+                          project: ORG_ADMIN_PROJECT_SLUG,
+                          connectionId: newId,
+                        },
+                      });
                     } finally {
                       setIsAddingInstance(false);
                     }
