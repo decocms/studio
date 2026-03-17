@@ -34,6 +34,7 @@ import {
   tracingMiddleware,
 } from "../observability";
 import authRoutes from "./routes/auth";
+import orgSsoRoutes from "./routes/org-sso";
 import { createDecopilotRoutes } from "./routes/decopilot";
 import downstreamTokenRoutes from "./routes/downstream-token";
 import virtualMcpRoutes from "./routes/virtual-mcp";
@@ -449,6 +450,9 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Auth routes (API key management via web UI)
   app.route("/api/auth/custom", authRoutes);
+
+  // Organization-level SSO routes
+  app.route("/api/org-sso", orgSsoRoutes);
 
   // All Better Auth routes (OAuth, session management, etc.)
   app.all("/api/auth/*", async (c) => {

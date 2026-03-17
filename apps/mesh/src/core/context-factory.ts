@@ -31,6 +31,8 @@ import { ProjectsStorage } from "../storage/projects";
 import { ProjectConnectionsStorage } from "../storage/project-connections";
 import { ProjectPluginConfigsStorage } from "../storage/project-plugin-configs";
 import { createAutomationsStorage } from "../storage/automations";
+import { OrgSsoConfigStorage } from "../storage/org-sso-config";
+import { OrgSsoSessionStorage } from "../storage/org-sso-sessions";
 import { TagStorage } from "../storage/tags";
 import type { Database, Permission } from "../storage/types";
 import { UserStorage } from "../storage/user";
@@ -825,6 +827,8 @@ export async function createMeshContextFactory(
     aiProviderKeys: new AIProviderKeyStorage(config.db, vault),
     oauthPkceStates: new OAuthPkceStateStorage(config.db),
     automations: createAutomationsStorage(config.db),
+    orgSsoConfig: new OrgSsoConfigStorage(config.db, vault),
+    orgSsoSessions: new OrgSsoSessionStorage(config.db),
     // Note: Organizations, teams, members, roles managed by Better Auth organization plugin
     // Note: Policies handled by Better Auth permissions directly
     // Note: API keys (tokens) managed by Better Auth API Key plugin

@@ -385,6 +385,84 @@ export interface DownstreamToken {
 // ============================================================================
 
 // ============================================================================
+// Organization SSO Table Definitions
+// ============================================================================
+
+/**
+ * OIDC SSO provider configuration per organization
+ */
+export interface OrgSsoConfigTable {
+  id: string;
+  organization_id: string;
+  issuer: string;
+  client_id: string;
+  client_secret: string; // Encrypted via vault
+  discovery_endpoint: string | null;
+  scopes: string; // JSON array
+  domain: string; // Email domain (e.g. "company.com")
+  enforced: number; // 0 or 1
+  created_at: ColumnType<Date, Date | string, never>;
+  updated_at: ColumnType<Date, Date | string, Date | string>;
+}
+
+/**
+ * Organization SSO config - Runtime representation
+ */
+export interface OrgSsoConfig {
+  id: string;
+  organizationId: string;
+  issuer: string;
+  clientId: string;
+  clientSecret: string; // Decrypted
+  discoveryEndpoint: string | null;
+  scopes: string[];
+  domain: string;
+  enforced: boolean;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
+/**
+ * Sanitized SSO config for API responses (no secrets)
+ */
+export interface OrgSsoConfigPublic {
+  id: string;
+  organizationId: string;
+  issuer: string;
+  clientId: string;
+  discoveryEndpoint: string | null;
+  scopes: string[];
+  domain: string;
+  enforced: boolean;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
+/**
+ * Per-user SSO authentication session per organization
+ */
+export interface OrgSsoSessionTable {
+  id: string;
+  user_id: string;
+  organization_id: string;
+  authenticated_at: string;
+  expires_at: string;
+  created_at: ColumnType<Date, Date | string, never>;
+}
+
+/**
+ * Organization SSO session - Runtime representation
+ */
+export interface OrgSsoSession {
+  id: string;
+  userId: string;
+  organizationId: string;
+  authenticatedAt: string;
+  expiresAt: string;
+  createdAt: Date | string;
+}
+
+// ============================================================================
 // Better Auth Organization Tables (managed by Better Auth plugin)
 // ============================================================================
 
@@ -1041,4 +1119,8 @@ export interface Database {
   // Automations tables
   automations: AutomationTable;
   automation_triggers: AutomationTriggerTable;
+
+  // Organization SSO tables
+  org_sso_config: OrgSsoConfigTable;
+  org_sso_sessions: OrgSsoSessionTable;
 }

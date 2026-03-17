@@ -266,4 +266,9 @@ export const KEYS = {
 
   // AI provider stored keys (scoped by locator)
   aiProviderKeys: (locator: string) => ["ai-provider-keys", locator] as const,
+  // Organization SSO
+  orgSsoConfig: (organizationId: string) =>
+    ["org-sso-config", organizationId] as const,
+  orgSsoStatus: (organizationId: string) =>
+    ["org-sso-status", organizationId] as const,
 } as const;

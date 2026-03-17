@@ -31,6 +31,8 @@ const createMockContext = (overrides?: Partial<MeshContext>): MeshContext => ({
     aiProviderKeys: null as never,
     oauthPkceStates: null as never,
     automations: null as never,
+    orgSsoConfig: null as never,
+    orgSsoSessions: null as never,
   },
   vault: null as never,
   authInstance: null as never,

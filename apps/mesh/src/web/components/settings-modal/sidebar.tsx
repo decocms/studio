@@ -7,6 +7,7 @@ import {
   Users03,
   Zap,
   CpuChip01,
+  Lock01,
 } from "@untitledui/icons";
 import { authClient } from "@/web/lib/auth-client";
 import { type SettingsSection } from "@/web/hooks/use-settings-modal";
@@ -65,6 +66,11 @@ export function SettingsSidebar({
       key: "org.members" as SettingsSection,
       label: "Members",
       icon: <Users03 size={14} />,
+    },
+    {
+      key: "org.sso" as SettingsSection,
+      label: "SSO",
+      icon: <Lock01 size={14} />,
     },
     {
       key: "org.billing" as SettingsSection,

@@ -24,6 +24,7 @@ import { ProjectPluginsPage } from "./pages/project-plugins";
 import { OrgBillingPage } from "./pages/org-billing";
 import { OrgAiProvidersPage } from "./pages/org-ai-providers";
 import { OrgMembersPage } from "./pages/org-members";
+import { OrgSsoPage } from "./pages/org-sso";
 
 function ContentSkeleton() {
   return (
@@ -88,6 +89,8 @@ function SettingsContent({ section }: { section: SettingsSection }) {
       return <OrgBillingPage />;
     case "org.members":
       return <OrgMembersPage />;
+    case "org.sso":
+      return <OrgSsoPage />;
     default:
       return <AccountPreferencesPage />;
   }
