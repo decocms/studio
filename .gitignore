@@ -49,7 +49,7 @@ kv-wal
 *.db-shm
 *.db-wal
 
-# PGlite database directories
+# Embedded PostgreSQL database directories
 *.pglite
 
 .playwright-mcp/

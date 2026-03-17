@@ -92,7 +92,7 @@ Token spend per connection — OpenRouter, Perplexity, Firecrawl, all of it. Lat
 
 | | |
 |---|---|
-| **Local** | `bunx decocms` on your laptop. PGlite. Private. |
+| **Local** | `bunx decocms` on your laptop. Embedded PostgreSQL. Private. |
 | **Cloud** | Log in to studio.decocms.com. Control local projects from any browser. |
 | **Team** | Invite people. Roles. Shared connections. Cost attribution. |
 | **Enterprise** | Self-hosted. Your infra. Your rules. |
@@ -223,7 +223,7 @@ bun run dev:conductor
 ## Deploy Anywhere
 
 ```bash
-# Docker (PGlite)
+# Docker (embedded PostgreSQL)
 docker compose -f deploy/docker-compose.yml up
 
 # Docker (PostgreSQL)
@@ -247,7 +247,7 @@ No vendor lock-in. Runs on Docker, Kubernetes, AWS, GCP, or local runtimes.
 | Runtime | Bun / Node |
 | Language | TypeScript + Zod |
 | Framework | Hono (API) + Vite + React 19 |
-| Database | Kysely → PGlite / PostgreSQL |
+| Database | Kysely → embedded PostgreSQL / PostgreSQL |
 | Auth | Better Auth (OAuth 2.1 + API keys) |
 | Observability | OpenTelemetry |
 | UI | React 19 + Tailwind v4 + shadcn |

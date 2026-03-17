@@ -20,9 +20,9 @@ services:
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
       
       # Database URL
-      - DATABASE_URL=${DATABASE_URL:-file:///app/data/mesh.pglite}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/postgres}
     volumes:
-      # Persistent volume for data (PGlite or other files)
+      # Persistent volume for data (embedded PostgreSQL or other files)
       - mesh-data:/app/data
       
       # Auth config - mounts the JSON authentication configuration file
