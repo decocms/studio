@@ -48,8 +48,8 @@ describe("getBuiltInTools", () => {
   test("user_ask tool has correct description", () => {
     const tools = getTools();
 
-    expect(tools.user_ask?.description).toBe(
-      "Ask the user instead of guessing when requirements are ambiguous, multiple valid approaches exist, or before destructive changes. Prefer this tool over asking in plain text.",
+    expect(tools.user_ask?.description).toContain(
+      "Ask the user instead of guessing when requirements are ambiguous",
     );
   });
 

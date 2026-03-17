@@ -158,8 +158,8 @@ describe("buildSubagentSystemPrompt", () => {
 
     expect(prompt).toContain("focused subtask agent");
     expect(prompt).toContain("Assess the Task");
-    expect(prompt).toContain("When Done: Summarize");
-    expect(prompt).toContain("Constraints");
+    expect(prompt).toContain("When Done: Report");
+    expect(prompt).toContain("Rules (non-negotiable)");
     expect(prompt).not.toContain("Agent-Specific Instructions");
   });
 
