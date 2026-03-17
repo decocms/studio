@@ -49,6 +49,24 @@ export class OrgSsoConfigStorage {
       data.scopes ?? ["openid", "email", "profile"],
     );
 
+    const enforcedValue =
+      data.enforced === undefined ? 0 : data.enforced ? 1 : 0;
+
+    const updateSet: Record<string, unknown> = {
+      issuer: data.issuer,
+      client_id: data.clientId,
+      client_secret: encryptedSecret,
+      discovery_endpoint: data.discoveryEndpoint ?? null,
+      scopes: scopesJson,
+      domain: data.domain.toLowerCase(),
+      updated_at: now,
+    };
+
+    // Only overwrite enforced on update if explicitly provided
+    if (data.enforced !== undefined) {
+      updateSet.enforced = data.enforced ? 1 : 0;
+    }
+
     await this.db
       .insertInto("org_sso_config")
       .values({
@@ -60,22 +78,11 @@ export class OrgSsoConfigStorage {
         discovery_endpoint: data.discoveryEndpoint ?? null,
         scopes: scopesJson,
         domain: data.domain.toLowerCase(),
-        enforced: data.enforced ? 1 : 0,
+        enforced: enforcedValue,
         created_at: now,
         updated_at: now,
       })
-      .onConflict((oc) =>
-        oc.column("organization_id").doUpdateSet({
-          issuer: data.issuer,
-          client_id: data.clientId,
-          client_secret: encryptedSecret,
-          discovery_endpoint: data.discoveryEndpoint ?? null,
-          scopes: scopesJson,
-          domain: data.domain.toLowerCase(),
-          enforced: data.enforced ? 1 : 0,
-          updated_at: now,
-        }),
-      )
+      .onConflict((oc) => oc.column("organization_id").doUpdateSet(updateSet))
       .execute();
 
     const result = await this.getByOrgId(organizationId);
