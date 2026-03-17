@@ -45,9 +45,7 @@ const envSchema = z
 
     // AI Gateway
     DECO_AI_GATEWAY_ENABLED: zBooleanString,
-    DECO_AI_GATEWAY_URL: z
-      .string()
-      .default("https://ai-site.decocache.com"),
+    DECO_AI_GATEWAY_URL: z.string().default("https://ai-site.decocache.com"),
 
     // Debug / K8s
     DEBUG_PORT: z.coerce.number().default(9090),
