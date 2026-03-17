@@ -16,11 +16,13 @@ export interface VirtualClient {
 export interface SandboxToolParams {
   readonly passthroughClient: VirtualClient;
   readonly toolOutputMap: Map<string, string>;
+  readonly needsApproval: boolean;
 }
 
 export function createSandboxTool(params: SandboxToolParams) {
-  const { passthroughClient, toolOutputMap } = params;
+  const { passthroughClient, toolOutputMap, needsApproval } = params;
   return tool({
+    needsApproval,
     description:
       "Execute JavaScript code in a sandbox with access to the MCP tools available in the current agent context. " +
       "Use this for multi-step workflows, data transformations, or orchestrating multiple tool calls programmatically.",

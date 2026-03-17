@@ -99,7 +99,6 @@ export const AUTOMATION_CREATE = defineTool({
       typeof input.messages === "string"
         ? [
             {
-              id: crypto.randomUUID(),
               role: "user" as const,
               parts: [{ type: "text", text: input.messages }],
             },

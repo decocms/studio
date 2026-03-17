@@ -69,6 +69,7 @@ export function getBuiltInTools(
     sandbox: createSandboxTool({
       passthroughClient,
       toolOutputMap,
+      needsApproval: toolNeedsApproval(toolApprovalLevel, false),
     }),
   } as const;
 }
