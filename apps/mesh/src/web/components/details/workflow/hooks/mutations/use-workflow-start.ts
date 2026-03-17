@@ -32,7 +32,7 @@ export function useWorkflowStart() {
     const virtualMcpId = selectedVirtualMcpId ?? getDecopilotId(org.id);
     const startAtEpochMs = Date.now();
     const result = await startWorkflowMutation({
-      name: "COLLECTION_WORKFLOW_EXECUTION_CREATE",
+      name: "WORKFLOW_EXECUTION_CREATE",
       arguments: {
         input,
         virtual_mcp_id: virtualMcpId,

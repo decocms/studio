@@ -15,8 +15,8 @@ import { requireWorkflowContext, getPluginStorage } from "../types";
 // LIST
 // ============================================================================
 
-export const WORKFLOW_COLLECTION_LIST: ServerPluginToolDefinition = {
-  name: "COLLECTION_WORKFLOW_LIST",
+export const WORKFLOW_LIST: ServerPluginToolDefinition = {
+  name: "WORKFLOW_LIST",
   description:
     "List workflows with pagination. Does not include steps -- use GET for full details.",
   inputSchema: z.object({
@@ -68,8 +68,8 @@ export const WORKFLOW_COLLECTION_LIST: ServerPluginToolDefinition = {
 // GET
 // ============================================================================
 
-export const WORKFLOW_COLLECTION_GET: ServerPluginToolDefinition = {
-  name: "COLLECTION_WORKFLOW_GET",
+export const WORKFLOW_GET: ServerPluginToolDefinition = {
+  name: "WORKFLOW_GET",
   description: "Get a single workflow by ID, including its steps.",
   inputSchema: z.object({
     id: z.string(),
@@ -117,8 +117,8 @@ export const WORKFLOW_COLLECTION_GET: ServerPluginToolDefinition = {
 // CREATE
 // ============================================================================
 
-export const WORKFLOW_COLLECTION_CREATE: ServerPluginToolDefinition = {
-  name: "COLLECTION_WORKFLOW_CREATE",
+export const WORKFLOW_CREATE: ServerPluginToolDefinition = {
+  name: "WORKFLOW_CREATE",
   description: `Create a workflow template. This is a reusable definition, not an execution.
 
 Key concepts:
@@ -221,8 +221,8 @@ Example workflow with a step that references the output of another step:
 // UPDATE
 // ============================================================================
 
-export const WORKFLOW_COLLECTION_UPDATE: ServerPluginToolDefinition = {
-  name: "COLLECTION_WORKFLOW_UPDATE",
+export const WORKFLOW_UPDATE: ServerPluginToolDefinition = {
+  name: "WORKFLOW_UPDATE",
   description: "Update an existing workflow template.",
   inputSchema: z.object({
     id: z.string(),
@@ -300,8 +300,8 @@ export const WORKFLOW_COLLECTION_UPDATE: ServerPluginToolDefinition = {
 // DELETE
 // ============================================================================
 
-export const WORKFLOW_COLLECTION_DELETE: ServerPluginToolDefinition = {
-  name: "COLLECTION_WORKFLOW_DELETE",
+export const WORKFLOW_DELETE: ServerPluginToolDefinition = {
+  name: "WORKFLOW_DELETE",
   description: "Delete a workflow template by ID.",
   inputSchema: z.object({
     id: z.string(),

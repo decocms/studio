@@ -101,7 +101,7 @@ export type TypedToolCaller<TBinding extends Binder> = <
  * const { toolCaller, connection } = usePluginContext<typeof REGISTRY_APP_BINDING>();
  *
  * // toolCaller and connection are non-null
- * const result = await toolCaller("COLLECTION_REGISTRY_APP_LIST", { limit: 20 });
+ * const result = await toolCaller("REGISTRY_LIST", { limit: 20 });
  * ```
  */
 export interface PluginContext<TBinding extends Binder = Binder> {

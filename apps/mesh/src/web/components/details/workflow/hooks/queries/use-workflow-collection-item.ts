@@ -28,7 +28,7 @@ export function usePollingWorkflowExecution(executionId?: string) {
 
   const { data, isLoading } = useMCPToolCallQuery<ExecutionQueryResult>({
     client,
-    toolName: "COLLECTION_WORKFLOW_EXECUTION_GET",
+    toolName: "WORKFLOW_EXECUTION_GET",
     toolArguments: {
       id: executionId,
     },
@@ -67,7 +67,7 @@ export function useExecutionCompletedStep(
     error: string | null;
   }>({
     client,
-    toolName: "COLLECTION_WORKFLOW_EXECUTION_GET_STEP_RESULT",
+    toolName: "WORKFLOW_EXECUTION_GET_STEP_RESULT",
     toolArguments: {
       executionId: executionId,
       stepId: stepName,

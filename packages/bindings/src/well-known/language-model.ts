@@ -693,8 +693,8 @@ const LLM_COLLECTION_BINDING = createCollectionBindings(
  * - LLM_METADATA: Get metadata for a specific model
  * - LLM_DO_STREAM: Stream a language model response
  * - LLM_DO_GENERATE: Generate a language model response
- * - COLLECTION_LLM_LIST: List available AI models with their capabilities
- * - COLLECTION_LLM_GET: Get a single model by ID
+ * - LLM_LIST: List available AI models with their capabilities
+ * - LLM_GET: Get a single model by ID
  */
 export const LANGUAGE_MODEL_BINDING = [
   {

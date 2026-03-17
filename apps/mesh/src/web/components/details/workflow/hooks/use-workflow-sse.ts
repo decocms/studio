@@ -35,9 +35,9 @@ const workflowSSE = createSSESubscription({
 
 /** Tool names whose query caches should be invalidated on workflow events */
 const INVALIDATION_TARGETS = [
-  "COLLECTION_WORKFLOW_EXECUTION_LIST",
-  "COLLECTION_WORKFLOW_EXECUTION_GET",
-  "COLLECTION_WORKFLOW_EXECUTION_GET_STEP_RESULT",
+  "WORKFLOW_EXECUTION_LIST",
+  "WORKFLOW_EXECUTION_GET",
+  "WORKFLOW_EXECUTION_GET_STEP_RESULT",
 ];
 
 /** Debounce window — coalesce rapid SSE events into one invalidation */

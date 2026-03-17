@@ -197,7 +197,7 @@ describe("Connection Tools", () => {
           return {
             tools: [
               {
-                name: "COLLECTION_LLM_LIST",
+                name: "LLM_LIST",
                 description: "List models",
                 inputSchema: {},
               },
@@ -212,9 +212,7 @@ describe("Connection Tools", () => {
       );
 
       expect(fetchSpy).toHaveBeenCalled();
-      expect(
-        result.item.tools?.some((t) => t.name === "COLLECTION_LLM_LIST"),
-      ).toBe(true);
+      expect(result.item.tools?.some((t) => t.name === "LLM_LIST")).toBe(true);
     });
   });
 

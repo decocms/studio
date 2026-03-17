@@ -76,13 +76,13 @@ export const ASSISTANTS_COLLECTION_BINDING = createCollectionBindings(
  * Any MCP that implements this binding can provide configurable AI assistants.
  *
  * Required tools:
- * - COLLECTION_ASSISTANT_LIST: List available AI assistants with their configurations
- * - COLLECTION_ASSISTANT_GET: Get a single assistant by ID (includes system_prompt, virtual_mcp_id, model)
+ * - ASSISTANT_LIST: List available AI assistants with their configurations
+ * - ASSISTANT_GET: Get a single assistant by ID (includes system_prompt, virtual_mcp_id, model)
  *
  * Optional tools:
- * - COLLECTION_ASSISTANT_CREATE: Create a new assistant
- * - COLLECTION_ASSISTANT_UPDATE: Update an existing assistant
- * - COLLECTION_ASSISTANT_DELETE: Delete an assistant
+ * - ASSISTANT_CREATE: Create a new assistant
+ * - ASSISTANT_UPDATE: Update an existing assistant
+ * - ASSISTANT_DELETE: Delete an assistant
  */
 export const ASSISTANTS_BINDING = [
   ...ASSISTANTS_COLLECTION_BINDING,

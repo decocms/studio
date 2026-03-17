@@ -20,7 +20,7 @@ import {
  */
 function createPublicMCPTools(storage: RegistryItemStorage, orgId: string) {
   const LIST_TOOL = createTool({
-    id: "COLLECTION_REGISTRY_APP_LIST",
+    id: "REGISTRY_LIST",
     description: "List public registry items",
     inputSchema: RegistryListInputSchema,
     outputSchema: RegistryListOutputSchema,
@@ -38,7 +38,7 @@ function createPublicMCPTools(storage: RegistryItemStorage, orgId: string) {
   });
 
   const GET_TOOL = createTool({
-    id: "COLLECTION_REGISTRY_APP_GET",
+    id: "REGISTRY_GET",
     description: "Get a public registry item by ID or name",
     inputSchema: RegistryGetInputSchema,
     outputSchema: RegistryGetOutputSchema,
@@ -57,7 +57,7 @@ function createPublicMCPTools(storage: RegistryItemStorage, orgId: string) {
   });
 
   const VERSIONS_TOOL = createTool({
-    id: "COLLECTION_REGISTRY_APP_VERSIONS",
+    id: "REGISTRY_VERSIONS",
     description: "Get available versions of a public registry item",
     inputSchema: RegistryGetInputSchema,
     outputSchema: z.object({
@@ -78,7 +78,7 @@ function createPublicMCPTools(storage: RegistryItemStorage, orgId: string) {
   });
 
   const SEARCH_TOOL = createTool({
-    id: "COLLECTION_REGISTRY_APP_SEARCH",
+    id: "REGISTRY_SEARCH",
     description:
       "Search public registry items returning minimal data (id, title, tags, categories, is_public). " +
       "Use this instead of LIST when you need to find items efficiently without loading full details.",
@@ -90,7 +90,7 @@ function createPublicMCPTools(storage: RegistryItemStorage, orgId: string) {
   });
 
   const FILTERS_TOOL = createTool({
-    id: "COLLECTION_REGISTRY_APP_FILTERS",
+    id: "REGISTRY_FILTERS",
     description: "Get available tags and categories for public registry items",
     inputSchema: z.object({}),
     outputSchema: RegistryFiltersOutputSchema,

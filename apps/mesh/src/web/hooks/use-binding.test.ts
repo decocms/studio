@@ -76,8 +76,8 @@ describe("connectionImplementsBinding", () => {
       { name: "LLM_METADATA", inputSchema: {} },
       { name: "LLM_DO_STREAM", inputSchema: {} },
       { name: "LLM_DO_GENERATE", inputSchema: {} },
-      { name: "COLLECTION_LLM_LIST", inputSchema: {} },
-      { name: "COLLECTION_LLM_GET", inputSchema: {} },
+      { name: "LLM_LIST", inputSchema: {} },
+      { name: "LLM_GET", inputSchema: {} },
     ]);
     expect(connectionImplementsBinding(conn, LANGUAGE_MODEL_BINDING)).toBe(
       true,

@@ -84,7 +84,7 @@ export default function StorePage() {
   const allRegistryConnections = useRegistryConnections(allConnections);
 
   // The self MCP caches ALL tools (including plugin tools) in its tools column.
-  // When the private-registry plugin is disabled, the COLLECTION_REGISTRY_APP_*
+  // When the private-registry plugin is disabled, the REGISTRY_*
   // tools still appear in the cached array, so the self MCP would incorrectly
   // show up as a registry. Filter it out unless the plugin is actually enabled.
   const selfMcpId = WellKnownOrgMCPId.SELF(org.id);

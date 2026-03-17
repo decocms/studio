@@ -62,7 +62,7 @@ export function resolveBindingType(
  * Simplified binding definition format (JSON Schema based)
  */
 export interface BindingDefinition {
-  /** Tool name to match (e.g., "MY_TOOL", "COLLECTION_USERS_LIST") */
+  /** Tool name to match (e.g., "MY_TOOL", "USERS_LIST") */
   name: string;
   /** JSON Schema for the tool's input parameters */
   inputSchema?: Record<string, unknown>;
@@ -233,14 +233,14 @@ export interface ValidatedCollection {
 
 /**
  * Extracts collection names from tools using regex pattern
- * Matches COLLECTION_{NAME}_LIST where NAME can contain underscores
+ * Matches {NAME}_LIST where NAME can contain underscores
  */
 function extractCollectionNames(
   tools: Array<{ name: string }> | null | undefined,
 ): string[] {
   if (!tools || tools.length === 0) return [];
 
-  const collectionRegex = /^COLLECTION_(.+)_LIST$/;
+  const collectionRegex = /^(.+)_LIST$/;
   const names: string[] = [];
 
   for (const tool of tools) {
@@ -259,8 +259,8 @@ function hasRegistryListTool(
   if (!tools || tools.length === 0) return false;
   return tools.some((tool) => {
     if (tool.name === "REGISTRY_ITEM_LIST") return true;
-    if (tool.name === "COLLECTION_REGISTRY_APP_LIST") return true;
-    return tool.name.startsWith("COLLECTION_REGISTRY_APP_");
+    if (tool.name === "REGISTRY_LIST") return true;
+    return tool.name.startsWith("REGISTRY_");
   });
 }
 

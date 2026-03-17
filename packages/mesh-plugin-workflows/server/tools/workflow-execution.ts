@@ -35,7 +35,7 @@ function epochMsToIsoString(epochMs: unknown): string {
 // ============================================================================
 
 export const WORKFLOW_EXECUTION_LIST: ServerPluginToolDefinition = {
-  name: "COLLECTION_WORKFLOW_EXECUTION_LIST",
+  name: "WORKFLOW_EXECUTION_LIST",
   description:
     "List workflow executions with filtering, sorting, and pagination.",
   inputSchema: z.object({
@@ -87,7 +87,7 @@ export const WORKFLOW_EXECUTION_LIST: ServerPluginToolDefinition = {
 // ============================================================================
 
 export const WORKFLOW_EXECUTION_GET: ServerPluginToolDefinition = {
-  name: "COLLECTION_WORKFLOW_EXECUTION_GET",
+  name: "WORKFLOW_EXECUTION_GET",
   description:
     "Get a single workflow execution by ID with step status summary.",
   inputSchema: z.object({
@@ -150,7 +150,7 @@ export const WORKFLOW_EXECUTION_GET: ServerPluginToolDefinition = {
 // ============================================================================
 
 export const WORKFLOW_EXECUTION_CREATE: ServerPluginToolDefinition = {
-  name: "COLLECTION_WORKFLOW_EXECUTION_CREATE",
+  name: "WORKFLOW_EXECUTION_CREATE",
   description:
     "Create a workflow execution from a workflow template and return the execution ID.",
   inputSchema: z.object({
@@ -310,7 +310,7 @@ export const WORKFLOW_EXECUTION_RESUME: ServerPluginToolDefinition = {
 // ============================================================================
 
 export const WORKFLOW_EXECUTION_GET_STEP_RESULT: ServerPluginToolDefinition = {
-  name: "COLLECTION_WORKFLOW_EXECUTION_GET_STEP_RESULT",
+  name: "WORKFLOW_EXECUTION_GET_STEP_RESULT",
   description: "Get a single step result by execution ID and step ID.",
   inputSchema: z.object({
     executionId: z

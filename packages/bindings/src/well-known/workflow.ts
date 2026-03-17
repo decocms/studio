@@ -442,8 +442,8 @@ export const WORKFLOW_EXECUTIONS_COLLECTION_BINDING = createCollectionBindings(
  * Any MCP that implements this binding can provide configurable workflows.
  *
  * Required tools:
- * - COLLECTION_WORKFLOW_LIST: List available workflows with their configurations
- * - COLLECTION_WORKFLOW_GET: Get a single workflow by ID (includes steps and triggers)
+ * - WORKFLOW_LIST: List available workflows with their configurations
+ * - WORKFLOW_GET: Get a single workflow by ID (includes steps and triggers)
  */
 export const WORKFLOW_COLLECTIONS_BINDINGS = [
   ...WORKFLOWS_COLLECTION_BINDING,

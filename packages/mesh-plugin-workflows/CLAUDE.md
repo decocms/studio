@@ -94,19 +94,19 @@ Note: The bindings schema (`packages/bindings/src/well-known/workflow.ts`) defin
 ## MCP Tools (12 total)
 
 ### Workflow Collection (5 tools)
-- `COLLECTION_WORKFLOW_LIST` — List templates with pagination
-- `COLLECTION_WORKFLOW_GET` — Get single template with steps
-- `COLLECTION_WORKFLOW_CREATE` — Create new template
-- `COLLECTION_WORKFLOW_UPDATE` — Update existing template
-- `COLLECTION_WORKFLOW_DELETE` — Delete template
+- `WORKFLOW_LIST` — List templates with pagination
+- `WORKFLOW_GET` — Get single template with steps
+- `WORKFLOW_CREATE` — Create new template
+- `WORKFLOW_UPDATE` — Update existing template
+- `WORKFLOW_DELETE` — Delete template
 
 ### Workflow Execution (7 tools)
-- `COLLECTION_WORKFLOW_EXECUTION_LIST` — List executions with filtering
-- `COLLECTION_WORKFLOW_EXECUTION_GET` — Get execution with step status
-- `COLLECTION_WORKFLOW_EXECUTION_CREATE` — Create execution from template
+- `WORKFLOW_EXECUTION_LIST` — List executions with filtering
+- `WORKFLOW_EXECUTION_GET` — Get execution with step status
+- `WORKFLOW_EXECUTION_CREATE` — Create execution from template
 - `CANCEL_EXECUTION` — Cancel running execution
 - `RESUME_EXECUTION` — Resume cancelled execution
-- `COLLECTION_WORKFLOW_EXECUTION_GET_STEP_RESULT` — Get step result
+- `WORKFLOW_EXECUTION_GET_STEP_RESULT` — Get step result
 - `WORKFLOW_EXECUTION_GET_WORKFLOW` — Get workflow snapshot for execution
 
 ## Database Schema (4 tables)

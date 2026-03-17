@@ -705,9 +705,9 @@ const toolsFor = <TSchema extends ZodTypeAny = never>({
     }),
 
     // Auto-generated trigger tool for each declared workflow.
-    // Calls COLLECTION_WORKFLOW_EXECUTION_CREATE on the mesh and returns the
+    // Calls WORKFLOW_EXECUTION_CREATE on the mesh and returns the
     // execution ID immediately (fire-and-forget; poll with
-    // COLLECTION_WORKFLOW_EXECUTION_GET to track progress).
+    // WORKFLOW_EXECUTION_GET to track progress).
     ...(workflows?.length
       ? workflows.map((wf) => {
           const id = wf.toolId ?? workflowToolId(wf.title);
@@ -717,7 +717,7 @@ const toolsFor = <TSchema extends ZodTypeAny = never>({
               wf.description
                 ? `Run workflow: ${wf.description}`
                 : `Start the "${wf.title}" workflow.`,
-              "Returns an execution_id immediately. Use COLLECTION_WORKFLOW_EXECUTION_GET to track progress.",
+              "Returns an execution_id immediately. Use WORKFLOW_EXECUTION_GET to track progress.",
             ].join(" "),
             inputSchema: z.object({
               input: z

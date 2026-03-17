@@ -25,10 +25,8 @@ export function useInvalidateCollectionsOnToolCall() {
   return (event: { toolCall: { toolName: string } }) => {
     const toolName = event.toolCall.toolName;
 
-    // Match COLLECTION_<NAME>_(CREATE|UPDATE|DELETE) pattern
-    const match = toolName.match(
-      /^COLLECTION_([A-Z_]+)_(CREATE|UPDATE|DELETE)$/,
-    );
+    // Match <NAME>_(CREATE|UPDATE|DELETE) pattern
+    const match = toolName.match(/^([A-Z_]+)_(CREATE|UPDATE|DELETE)$/);
     if (!match || !match[1]) {
       return; // Not a collection CRUD tool
     }

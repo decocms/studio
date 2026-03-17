@@ -223,7 +223,7 @@ export interface FilterItem {
   count: number;
 }
 
-/** Response from COLLECTION_REGISTRY_APP_FILTERS tool */
+/** Response from REGISTRY_FILTERS tool */
 export interface RegistryFiltersResponse {
   tags?: FilterItem[];
   categories?: FilterItem[];

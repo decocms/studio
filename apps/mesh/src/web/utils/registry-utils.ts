@@ -13,9 +13,7 @@ export function findListToolName(
   tools?: Array<{ name: string }> | null,
 ): string {
   if (!tools) return "";
-  const preferred = tools.find(
-    (tool) => tool.name === "COLLECTION_REGISTRY_APP_LIST",
-  );
+  const preferred = tools.find((tool) => tool.name === "REGISTRY_LIST");
   if (preferred) return preferred.name;
 
   const privateRegistryList = tools.find(
@@ -24,9 +22,7 @@ export function findListToolName(
   if (privateRegistryList) return privateRegistryList.name;
 
   const registryList = tools.find(
-    (tool) =>
-      tool.name.startsWith("COLLECTION_REGISTRY_APP_") &&
-      tool.name.endsWith("_LIST"),
+    (tool) => tool.name.startsWith("REGISTRY_") && tool.name.endsWith("_LIST"),
   );
   if (registryList) return registryList.name;
   return "";
@@ -41,9 +37,7 @@ export function findFiltersToolName(
   tools?: Array<{ name: string }> | null,
 ): string {
   if (!tools) return "";
-  const preferred = tools.find(
-    (tool) => tool.name === "COLLECTION_REGISTRY_APP_FILTERS",
-  );
+  const preferred = tools.find((tool) => tool.name === "REGISTRY_FILTERS");
   if (preferred) return preferred.name;
 
   const privateRegistryFilters = tools.find(
@@ -53,15 +47,14 @@ export function findFiltersToolName(
 
   const filtersTool = tools.find(
     (tool) =>
-      tool.name.startsWith("COLLECTION_REGISTRY_APP_") &&
-      tool.name.endsWith("_FILTERS"),
+      tool.name.startsWith("REGISTRY_") && tool.name.endsWith("_FILTERS"),
   );
   if (filtersTool) return filtersTool.name;
   return "";
 }
 
 /**
- * Find a REGISTRY_APP tool by suffix (e.g., "_GET", "_VERSIONS")
+ * Find a REGISTRY tool by suffix (e.g., "_GET", "_VERSIONS")
  */
 export function findRegistryToolBySuffix(
   tools: Array<{ name: string }> | null | undefined,
@@ -69,9 +62,7 @@ export function findRegistryToolBySuffix(
 ): string {
   if (!tools) return "";
 
-  const preferred = tools.find(
-    (tool) => tool.name === `COLLECTION_REGISTRY_APP${suffix}`,
-  );
+  const preferred = tools.find((tool) => tool.name === `REGISTRY${suffix}`);
   if (preferred) return preferred.name;
 
   const privateRegistryToolNameBySuffix: Record<
@@ -88,9 +79,7 @@ export function findRegistryToolBySuffix(
   if (privateRegistryTool) return privateRegistryTool.name;
 
   const registryTool = tools.find(
-    (tool) =>
-      tool.name.startsWith("COLLECTION_REGISTRY_APP_") &&
-      tool.name.endsWith(suffix),
+    (tool) => tool.name.startsWith("REGISTRY_") && tool.name.endsWith(suffix),
   );
   if (registryTool) return registryTool.name;
   return "";

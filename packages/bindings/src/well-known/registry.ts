@@ -12,9 +12,13 @@
  */
 
 import { z } from "zod";
+import type { ToolBinder } from "../core/binder";
 import {
   BaseCollectionEntitySchema,
-  createCollectionBindings,
+  CollectionGetInputSchema,
+  CollectionListInputSchema,
+  createCollectionGetOutputSchema,
+  createCollectionListOutputSchema,
 } from "./collections";
 
 /**
@@ -99,30 +103,28 @@ export type RegistryAppCollectionEntity = z.infer<
 >;
 
 /**
- * Registry App Collection Binding (read-only)
+ * Registry Binding (read-only)
  *
- * Collection bindings for registry apps (read-only).
- * Provides LIST and GET operations for public apps.
- * Only includes public apps (unlisted: false).
+ * Provides LIST and GET operations for public registry items.
+ * Only includes public items (unlisted: false).
  *
  * Returns servers in MCP Registry Spec format with:
  * - _meta: DecoCMS-specific metadata (id, verified, tools, etc.)
  * - server: MCP Registry Spec compliant server definition
- */
-const REGISTRY_APP_COLLECTION_BINDING = createCollectionBindings(
-  "registry_app",
-  MCPRegistryServerSchema,
-  { readOnly: true },
-);
-
-/**
- * Registry App Binding
- *
- * Defines the interface for accessing public registry apps.
- * Any MCP that implements this binding can provide a searchable list of apps.
  *
  * Required tools:
- * - COLLECTION_REGISTRY_APP_LIST: List available apps with filtering and pagination
- * - COLLECTION_REGISTRY_APP_GET: Get a single app by ID
+ * - REGISTRY_LIST: List available items with filtering and pagination
+ * - REGISTRY_GET: Get a single item by ID
  */
-export const REGISTRY_APP_BINDING = REGISTRY_APP_COLLECTION_BINDING;
+export const REGISTRY_APP_BINDING: ToolBinder[] = [
+  {
+    name: "REGISTRY_LIST",
+    inputSchema: CollectionListInputSchema,
+    outputSchema: createCollectionListOutputSchema(MCPRegistryServerSchema),
+  },
+  {
+    name: "REGISTRY_GET",
+    inputSchema: CollectionGetInputSchema,
+    outputSchema: createCollectionGetOutputSchema(MCPRegistryServerSchema),
+  },
+];

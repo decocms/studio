@@ -61,7 +61,7 @@ export interface UsePluginContextOptions {
  * ```tsx
  * // In route component (connection guaranteed by layout)
  * const { toolCaller, connection } = usePluginContext<typeof REGISTRY_APP_BINDING>();
- * const result = await toolCaller("COLLECTION_REGISTRY_APP_LIST", { limit: 20 });
+ * const result = await toolCaller("REGISTRY_LIST", { limit: 20 });
  *
  * // In empty state component (no connection available)
  * const { session, org } = usePluginContext<typeof REGISTRY_APP_BINDING>({ partial: true });

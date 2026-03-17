@@ -100,7 +100,7 @@ type LLMBindingClient = ReturnType<
 >;
 
 export interface LLMProvider extends ProviderV2 {
-  listModels: LLMBindingClient["COLLECTION_LLM_LIST"];
+  listModels: LLMBindingClient["LLM_LIST"];
 }
 
 /**
@@ -200,7 +200,7 @@ export const createLLMProvider = (binding: LLMBindingClient): LLMProvider => {
       );
     },
     listModels: async () => {
-      return await binding.COLLECTION_LLM_LIST({});
+      return await binding.LLM_LIST({});
     },
     languageModel: (modelId: string): LanguageModelV2 => {
       const supportedUrls = lazy(() =>

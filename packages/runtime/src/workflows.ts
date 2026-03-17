@@ -46,21 +46,18 @@ interface DefaultVirtualMCPItem {
  *
  * TODO: Replace with a generated client derived from WorkflowBinding in
  * @decocms/bindings/workflow once that binding covers write operations
- * (CREATE, UPDATE, DELETE) and COLLECTION_WORKFLOW_EXECUTION_CREATE.
+ * (CREATE, UPDATE, DELETE) and WORKFLOW_EXECUTION_CREATE.
  * Until then, any rename of a tool or field on the server side requires a
  * matching change here — the bindings system was designed to prevent exactly
  * this class of silent drift.
  */
 interface MeshWorkflowClient {
-  COLLECTION_WORKFLOW_LIST: (input: {
-    limit?: number;
-    offset?: number;
-  }) => Promise<{
+  WORKFLOW_LIST: (input: { limit?: number; offset?: number }) => Promise<{
     items: WorkflowCollectionItem[];
     totalCount: number;
     hasMore: boolean;
   }>;
-  COLLECTION_WORKFLOW_CREATE: (input: {
+  WORKFLOW_CREATE: (input: {
     data: {
       id: string;
       title: string;
@@ -69,7 +66,7 @@ interface MeshWorkflowClient {
       steps: Step[];
     };
   }) => Promise<{ item: WorkflowCollectionItem }>;
-  COLLECTION_WORKFLOW_UPDATE: (input: {
+  WORKFLOW_UPDATE: (input: {
     id: string;
     data: {
       title?: string;
@@ -78,10 +75,10 @@ interface MeshWorkflowClient {
       steps?: Step[];
     };
   }) => Promise<{ success: boolean; error?: string }>;
-  COLLECTION_WORKFLOW_DELETE: (input: {
+  WORKFLOW_DELETE: (input: {
     id: string;
   }) => Promise<{ success: boolean; error?: string }>;
-  COLLECTION_WORKFLOW_EXECUTION_CREATE: (input: {
+  WORKFLOW_EXECUTION_CREATE: (input: {
     workflow_collection_id: string;
     virtual_mcp_id?: string;
     input?: Record<string, unknown>;
@@ -328,7 +325,7 @@ async function doSyncWorkflows(
     let offset = 0;
     const limit = 200;
     while (true) {
-      const page = await client.COLLECTION_WORKFLOW_LIST({ limit, offset });
+      const page = await client.WORKFLOW_LIST({ limit, offset });
       allItems.push(...page.items);
       if (!page.hasMore || page.items.length === 0) break;
       offset += page.items.length;
@@ -374,7 +371,7 @@ async function doSyncWorkflows(
         const resolvedVmcpId = wf.virtual_mcp_id ?? defaultVmcpId;
 
         if (op === "UPDATE") {
-          const result = await client.COLLECTION_WORKFLOW_UPDATE({
+          const result = await client.WORKFLOW_UPDATE({
             id,
             data: {
               title: wf.title,
@@ -395,7 +392,7 @@ async function doSyncWorkflows(
             console.log(`${tag} UPDATE "${wf.title}" OK`);
           }
         } else {
-          await client.COLLECTION_WORKFLOW_CREATE({
+          await client.WORKFLOW_CREATE({
             data: {
               id,
               title: wf.title,
@@ -426,7 +423,7 @@ async function doSyncWorkflows(
   await Promise.all(
     orphanIds.map(async (id) => {
       try {
-        await client.COLLECTION_WORKFLOW_DELETE({ id });
+        await client.WORKFLOW_DELETE({ id });
         console.log(`${tag} DELETE "${id}" OK`);
       } catch (error) {
         hadError = true;
@@ -487,11 +484,11 @@ async function syncWorkflows(
  * error in the consumer rather than a silent scope mismatch.
  */
 export const WORKFLOW_SCOPES = [
-  "SELF::COLLECTION_WORKFLOW_LIST",
-  "SELF::COLLECTION_WORKFLOW_CREATE",
-  "SELF::COLLECTION_WORKFLOW_UPDATE",
-  "SELF::COLLECTION_WORKFLOW_DELETE",
-  "SELF::COLLECTION_WORKFLOW_EXECUTION_CREATE",
+  "SELF::WORKFLOW_LIST",
+  "SELF::WORKFLOW_CREATE",
+  "SELF::WORKFLOW_UPDATE",
+  "SELF::WORKFLOW_DELETE",
+  "SELF::WORKFLOW_EXECUTION_CREATE",
   "SELF::VIRTUAL_MCP_LIST",
   "SELF::VIRTUAL_MCP_CREATE",
 ] as const;
@@ -517,7 +514,7 @@ export const Workflow = {
     },
   ): Promise<string> => {
     const client = createMeshSelfClient(meshUrl, token);
-    const result = await client.COLLECTION_WORKFLOW_EXECUTION_CREATE(params);
+    const result = await client.WORKFLOW_EXECUTION_CREATE(params);
     return result.item.id;
   },
   /**

@@ -218,27 +218,27 @@ Intentionally not supported. `forEach` is bounded iteration over a known array, 
 
 | Tool | Description |
 |------|-------------|
-| `COLLECTION_WORKFLOW_LIST` | List templates with pagination |
-| `COLLECTION_WORKFLOW_GET` | Get a single template including its steps |
-| `COLLECTION_WORKFLOW_CREATE` | Create a new workflow template |
-| `COLLECTION_WORKFLOW_UPDATE` | Update an existing template |
-| `COLLECTION_WORKFLOW_DELETE` | Delete a template |
+| `WORKFLOW_LIST` | List templates with pagination |
+| `WORKFLOW_GET` | Get a single template including its steps |
+| `WORKFLOW_CREATE` | Create a new workflow template |
+| `WORKFLOW_UPDATE` | Update an existing template |
+| `WORKFLOW_DELETE` | Delete a template |
 
 ### Workflow Execution (7 tools)
 
 | Tool | Description |
 |------|-------------|
-| `COLLECTION_WORKFLOW_EXECUTION_LIST` | List executions with status filtering |
-| `COLLECTION_WORKFLOW_EXECUTION_GET` | Get execution with per-step status breakdown |
-| `COLLECTION_WORKFLOW_EXECUTION_CREATE` | Create an execution from a template (publishes to event bus) |
+| `WORKFLOW_EXECUTION_LIST` | List executions with status filtering |
+| `WORKFLOW_EXECUTION_GET` | Get execution with per-step status breakdown |
+| `WORKFLOW_EXECUTION_CREATE` | Create an execution from a template (publishes to event bus) |
 | `CANCEL_EXECUTION` | Cancel a running execution (in-flight steps finish, no new steps start) |
 | `RESUME_EXECUTION` | Resume a cancelled/failed execution (preserves successful step outputs, retries failed) |
-| `COLLECTION_WORKFLOW_EXECUTION_GET_STEP_RESULT` | Get a specific step's output/error |
+| `WORKFLOW_EXECUTION_GET_STEP_RESULT` | Get a specific step's output/error |
 | `WORKFLOW_EXECUTION_GET_WORKFLOW` | Get the immutable workflow snapshot for an execution |
 
 ### Creating Workflows via MCP
 
-The `COLLECTION_WORKFLOW_CREATE` tool includes rich descriptions and examples in its schema, so LLMs can create workflows conversationally:
+The `WORKFLOW_CREATE` tool includes rich descriptions and examples in its schema, so LLMs can create workflows conversationally:
 
 ```json
 {
@@ -262,7 +262,7 @@ The `virtual_mcp_id` defaults to the org-wide Decopilot agent if not specified. 
 
 ### Executing Workflows
 
-`COLLECTION_WORKFLOW_EXECUTION_CREATE` creates an immutable snapshot of the template (so edits don't affect in-flight runs), then publishes a `workflow.execution.created` event to the bus. Supports `start_at_epoch_ms` for scheduled execution via the event bus `deliverAt` mechanism.
+`WORKFLOW_EXECUTION_CREATE` creates an immutable snapshot of the template (so edits don't affect in-flight runs), then publishes a `workflow.execution.created` event to the bus. Supports `start_at_epoch_ms` for scheduled execution via the event bus `deliverAt` mechanism.
 
 `RESUME_EXECUTION` clears failed/incomplete step results while preserving successful ones, resets the execution to `enqueued`, and re-publishes the creation event. The orchestrator picks it up, sees the existing successful results, and only dispatches the remaining steps.
 
