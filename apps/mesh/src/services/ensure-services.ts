@@ -8,14 +8,14 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
-  readdirSync,
   symlinkSync,
   writeFileSync,
 } from "fs";
 import { chmod, unlink } from "fs/promises";
+import { createRequire } from "module";
 import { createConnection } from "net";
 import { arch, homedir, platform } from "os";
-import { join } from "path";
+import { dirname, join } from "path";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -169,53 +169,45 @@ interface ServiceInfo {
  * created by a postinstall script, but bun doesn't always run postinstall for
  * optional platform packages, so we re-hydrate them at startup.
  *
- * We locate the platform package by resolving `embedded-postgres` and then
- * scanning the bun cache directory for the platform-specific package.
+ * We locate the platform package by using createRequire scoped to the
+ * embedded-postgres module, which can resolve its optional dependencies
+ * regardless of directory layout (.bun cache, flat node_modules, or bunx).
  */
 function fixEmbeddedPostgresLibSymlinks() {
   try {
-    // Resolve `embedded-postgres` to find the bun cache directory.
-    // Path: <root>/node_modules/.bun/embedded-postgres@ver/node_modules/embedded-postgres/dist/index.js
-    const epDir = require.resolve("embedded-postgres");
-    const bunCacheDir = join(epDir, "..", "..", "..", "..", "..");
-    const platformPkg = `@embedded-postgres+${platform()}-${arch()}`;
+    // Resolve the platform-specific package from embedded-postgres's own
+    // module context using createRequire. This works regardless of directory
+    // layout (.bun cache, flat node_modules, bunx temporary installs).
+    const epPath = require.resolve("embedded-postgres");
+    const requireFromEp = createRequire(epPath);
+    const platformPkgName = `@embedded-postgres/${platform()}-${arch()}`;
+    const resolved = requireFromEp.resolve(platformPkgName);
 
-    // Find the versioned directory for the platform package
-    const candidates = existsSync(bunCacheDir)
-      ? readdirSync(bunCacheDir).filter((d) => d.startsWith(platformPkg))
-      : [];
+    // resolved = <pkgRoot>/dist/index.js — navigate up to package root
+    const pkgRoot = join(dirname(resolved), "..");
+    const symlinksFile = join(pkgRoot, "native", "pg-symlinks.json");
 
-    for (const candidate of candidates) {
-      const pkgRoot = join(
-        bunCacheDir,
-        candidate,
-        "node_modules",
-        "@embedded-postgres",
-        `${platform()}-${arch()}`,
-      );
-      const symlinksFile = join(pkgRoot, "native", "pg-symlinks.json");
+    if (!existsSync(symlinksFile)) return;
 
-      if (!existsSync(symlinksFile)) continue;
+    const symlinks: { source: string; target: string }[] = JSON.parse(
+      readFileSync(symlinksFile, "utf-8"),
+    );
 
-      const symlinks: { source: string; target: string }[] = JSON.parse(
-        readFileSync(symlinksFile, "utf-8"),
-      );
+    for (const { source, target } of symlinks) {
+      const absTarget = join(pkgRoot, target);
+      if (existsSync(absTarget)) continue;
 
-      for (const { source, target } of symlinks) {
-        const absTarget = join(pkgRoot, target);
-        if (existsSync(absTarget)) continue;
-
-        const targetDir = join(absTarget, "..");
-        const sourceName = source.split("/").pop()!;
-        const targetName = target.split("/").pop()!;
-        try {
-          const cwd = process.cwd();
-          process.chdir(targetDir);
-          symlinkSync(sourceName, targetName);
-          process.chdir(cwd);
-        } catch {
-          // Symlink may already exist from a concurrent run
-        }
+      const targetDir = join(absTarget, "..");
+      const sourceName = source.split("/").pop()!;
+      const targetName = target.split("/").pop()!;
+      const cwd = process.cwd();
+      try {
+        process.chdir(targetDir);
+        symlinkSync(sourceName, targetName);
+      } catch {
+        // Symlink may already exist from a concurrent run
+      } finally {
+        process.chdir(cwd);
       }
     }
   } catch {
