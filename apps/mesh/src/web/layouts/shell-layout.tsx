@@ -180,15 +180,6 @@ function ShellLayoutContent() {
     return () => document.removeEventListener("keydown", handler);
   }, []);
 
-  // Always keep the server-side active org in sync with the URL param.
-  // The useSuspenseQuery below has staleTime: Infinity, so setActive is
-  // skipped on subsequent visits to a cached org — this effect closes that gap.
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect
-  useEffect(() => {
-    if (!org) return;
-    authClient.organization.setActive({ organizationSlug: org });
-  }, [org]);
-
   // Check if we're on the project home route (/$org/$project)
   const isHomeRoute =
     routerState.location.pathname === `/${org}/${project}` ||
@@ -224,9 +215,7 @@ function ShellLayoutContent() {
       } as ProjectContextProviderProps;
     },
     gcTime: Infinity,
-    staleTime: Infinity,
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
   });
 
   if (!projectContext) {
