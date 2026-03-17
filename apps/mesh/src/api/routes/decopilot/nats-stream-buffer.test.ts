@@ -1,25 +1,5 @@
 import { describe, it, expect, mock } from "bun:test";
 import { NatsStreamBuffer } from "./nats-stream-buffer";
-import { NoOpStreamBuffer } from "./stream-buffer";
-
-describe("NoOpStreamBuffer", () => {
-  it("relay returns the input stream unchanged", () => {
-    const buffer = new NoOpStreamBuffer();
-    const stream = new ReadableStream();
-    expect(buffer.relay(stream)).toBe(stream);
-  });
-
-  it("createReplayStream returns null", async () => {
-    const buffer = new NoOpStreamBuffer();
-    expect(await buffer.createReplayStream()).toBeNull();
-  });
-
-  it("purge and teardown are no-ops (no throw)", () => {
-    const buffer = new NoOpStreamBuffer();
-    expect(() => buffer.purge()).not.toThrow();
-    expect(() => buffer.teardown()).not.toThrow();
-  });
-});
 
 describe("NatsStreamBuffer", () => {
   it("init is a no-op when getConnection returns null", async () => {

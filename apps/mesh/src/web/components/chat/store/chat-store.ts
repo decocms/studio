@@ -721,6 +721,15 @@ class ChatStore {
   }
 
   resumeStream(): Promise<void> {
+    // Seed the AI SDK with existing messages before resuming, so the
+    // stream buffer replay (which only contains the current run's delta)
+    // is appended to the full conversation history — mirroring what
+    // sendMessage() does at line ~516.
+    const existingMessages =
+      this.state.threadMessages[this.state.activeThreadId] ?? [];
+    if (existingMessages.length > 0) {
+      this.chatBridge?.setMessages(existingMessages);
+    }
     return this.chatBridge?.resumeStream() ?? Promise.resolve();
   }
 

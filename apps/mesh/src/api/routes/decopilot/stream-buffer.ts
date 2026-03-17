@@ -2,12 +2,7 @@
  * Stream Buffer Interface
  *
  * Abstraction for buffering UIMessageStream chunks so late-joining
- * clients can replay them from any pod.
- *
- * In single-process mode without NATS/JetStream, the buffer is a no-op
- * (late-join is disabled, relay is a passthrough).
- *
- * Mirrors the SSEBroadcastStrategy / CancelBroadcast pattern.
+ * clients can replay them from any pod via NATS JetStream.
  */
 
 /**
@@ -42,10 +37,6 @@ export interface StreamBuffer {
   teardown(): void;
 }
 
-/**
- * No-op stream buffer — late-join disabled, relay is passthrough.
- * Used when NATS/JetStream is not configured.
- */
 export class NoOpStreamBuffer implements StreamBuffer {
   async init(): Promise<void> {}
 

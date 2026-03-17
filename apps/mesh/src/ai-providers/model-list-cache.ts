@@ -52,14 +52,13 @@ export class InMemoryModelListCache implements ModelListCache {
     providerId: string,
     models: ModelInfo[],
   ): Promise<void> {
-    this.cache.set(cacheKey(organizationId, providerId), {
-      models,
-      ts: Date.now(),
-    });
+    const key = cacheKey(organizationId, providerId);
+    this.cache.set(key, { models, ts: Date.now() });
   }
 
   async invalidate(organizationId: string, providerId: string): Promise<void> {
-    this.cache.delete(cacheKey(organizationId, providerId));
+    const key = cacheKey(organizationId, providerId);
+    this.cache.delete(key);
   }
 
   teardown(): void {

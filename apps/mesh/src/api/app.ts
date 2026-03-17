@@ -219,58 +219,41 @@ export async function createApp(options: CreateAppOptions = {}) {
     });
   }
 
-  // Create shared NATS provider when NATS_URL is set (must init before event bus)
-  const natsUrl = env.NATS_URL;
-  let natsProvider = natsUrl ? createNatsConnectionProvider() : null;
-  if (natsProvider) {
-    try {
-      await natsProvider.init(natsUrl!);
-    } catch (err) {
-      console.warn(
-        "[NATS] Connection failed, falling back to local-only mode:",
-        err,
-      );
-      natsProvider = null;
-    }
-  }
-
-  // Create tool list cache: JetStream KV when NATS is available, local Map otherwise
-  let toolListCache: ToolListCache = natsProvider
-    ? new JetStreamKVToolListCache({
-        getJetStream: () => natsProvider!.getJetStream(),
-        getConnection: () => natsProvider!.getConnection(),
-      })
-    : new InMemoryToolListCache();
-  if (toolListCache instanceof JetStreamKVToolListCache) {
-    await toolListCache.init().catch((err) => {
-      console.warn(
-        "[ToolListCache] KV init failed, falling back to in-memory cache:",
-        err,
-      );
-      toolListCache = new InMemoryToolListCache();
-    });
-  }
-  // Create model list cache (same pattern as tool list cache)
-  let modelListCache: ModelListCache = natsProvider
-    ? new JetStreamKVModelListCache({
-        getJetStream: () => natsProvider!.getJetStream(),
-        getConnection: () => natsProvider!.getConnection(),
-      })
-    : new InMemoryModelListCache();
-  if (modelListCache instanceof JetStreamKVModelListCache) {
-    await modelListCache.init().catch((err) => {
-      console.warn(
-        "[ModelListCache] KV init failed, falling back to in-memory cache:",
-        err,
-      );
-      modelListCache = new InMemoryModelListCache();
-    });
-  }
-
   let eventBus: EventBus;
+  let toolListCache: ToolListCache;
+  let modelListCache: ModelListCache;
+  let cancelBroadcast: CancelBroadcast;
+  let streamBuffer: StreamBuffer;
+  let natsProvider: ReturnType<typeof createNatsConnectionProvider> | null =
+    null;
 
   if (options.eventBus) {
+    // Test mode: use provided event bus and no-op stubs (no NATS required)
     eventBus = options.eventBus;
+    toolListCache = {
+      get: async () => null,
+      set: async () => {},
+      invalidate: async () => {},
+      teardown: () => {},
+    };
+    modelListCache = {
+      get: async () => null,
+      set: async () => {},
+      invalidate: async () => {},
+      teardown: () => {},
+    };
+    cancelBroadcast = {
+      start: async () => {},
+      broadcast: () => {},
+      stop: async () => {},
+    };
+    streamBuffer = {
+      init: async () => {},
+      relay: (stream: ReadableStream) => stream,
+      createReplayStream: async () => null,
+      purge: () => {},
+      teardown: () => {},
+    };
     sseHub.start().catch((error) => {
       console.error(
         "[SSEHub] Error starting broadcast (custom eventBus):",
@@ -278,10 +261,69 @@ export async function createApp(options: CreateAppOptions = {}) {
       );
     });
   } else {
-    // Create notify function that uses the context factory
-    // This is called by the worker to deliver events to subscribers
-    // EventBus uses the full MeshDatabase (includes Pool for PostgreSQL)
-    eventBus = createEventBus(database, undefined, natsProvider);
+    // Production/dev mode: connect to NATS and create real services
+    natsProvider = createNatsConnectionProvider();
+    try {
+      await natsProvider.init(env.NATS_URL);
+    } catch (err) {
+      console.warn(
+        "[NATS] Connection failed, falling back to local-only mode:",
+        err,
+      );
+      natsProvider = null;
+    }
+
+    // Create tool list cache: JetStream KV when NATS is available, local Map otherwise
+    let tlc: ToolListCache = natsProvider
+      ? new JetStreamKVToolListCache({
+          getJetStream: () => natsProvider!.getJetStream(),
+          getConnection: () => natsProvider!.getConnection(),
+        })
+      : new InMemoryToolListCache();
+    if (tlc instanceof JetStreamKVToolListCache) {
+      await tlc.init().catch((err) => {
+        console.warn(
+          "[ToolListCache] KV init failed, falling back to in-memory cache:",
+          err,
+        );
+        tlc = new InMemoryToolListCache();
+      });
+    }
+    toolListCache = tlc;
+
+    // Create model list cache (same pattern as tool list cache)
+    let mlc: ModelListCache = natsProvider
+      ? new JetStreamKVModelListCache({
+          getJetStream: () => natsProvider!.getJetStream(),
+          getConnection: () => natsProvider!.getConnection(),
+        })
+      : new InMemoryModelListCache();
+    if (mlc instanceof JetStreamKVModelListCache) {
+      await mlc.init().catch((err) => {
+        console.warn(
+          "[ModelListCache] KV init failed, falling back to in-memory cache:",
+          err,
+        );
+        mlc = new InMemoryModelListCache();
+      });
+    }
+    modelListCache = mlc;
+
+    cancelBroadcast = natsProvider
+      ? new NatsCancelBroadcast({
+          getConnection: () => natsProvider!.getConnection(),
+        })
+      : new LocalCancelBroadcast();
+
+    streamBuffer = natsProvider
+      ? new NatsStreamBuffer({
+          getConnection: () => natsProvider!.getConnection(),
+          getJetStream: () => natsProvider!.getJetStream(),
+        })
+      : new NoOpStreamBuffer();
+
+    // Create event bus (with or without NATS provider)
+    eventBus = createEventBus(database, natsProvider);
   }
 
   // Track for cleanup during HMR
@@ -294,19 +336,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   setToolListCache(toolListCache);
 
   const threadStorage = new SqlThreadStorage(database.db);
-
-  const cancelBroadcast: CancelBroadcast = natsProvider
-    ? new NatsCancelBroadcast({
-        getConnection: () => natsProvider!.getConnection(),
-      })
-    : new LocalCancelBroadcast();
-
-  const streamBuffer: StreamBuffer = natsProvider
-    ? new NatsStreamBuffer({
-        getConnection: () => natsProvider!.getConnection(),
-        getJetStream: () => natsProvider!.getJetStream(),
-      })
-    : new NoOpStreamBuffer();
 
   const cancelReactorDeps: RunReactorDeps = {
     storage: threadStorage,

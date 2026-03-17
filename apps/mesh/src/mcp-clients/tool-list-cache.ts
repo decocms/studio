@@ -1,9 +1,7 @@
 /**
  * Tool List Cache
  *
- * Provides a cross-pod cache for MCP tool lists.
- * - InMemoryToolListCache: local Map, no cross-pod sharing (dev/single-pod)
- * - JetStreamKVToolListCache: NATS JetStream KV bucket, shared across all pods
+ * Provides a cross-pod cache for MCP tool lists via NATS JetStream KV.
  *
  * Used by the withToolCaching decorator's fallback path (VIRTUAL connections
  * and non-VIRTUAL connections before tool indexing completes).
