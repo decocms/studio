@@ -22,6 +22,7 @@ interface ConnectionInstancesModalProps {
   appIcon?: string | null;
   appDescription?: string | null;
   instances: ConnectionEntity[];
+  onAddConnection: () => void;
 }
 
 export function ConnectionInstancesModal({
@@ -31,6 +32,7 @@ export function ConnectionInstancesModal({
   appIcon,
   appDescription,
   instances,
+  onAddConnection,
 }: ConnectionInstancesModalProps) {
   const { org } = useProjectContext();
   const navigate = useNavigate();
@@ -49,11 +51,7 @@ export function ConnectionInstancesModal({
   }
 
   function addConnection() {
-    navigate({
-      to: "/$org/$project/mcps",
-      params: { org: orgSlug, project: ORG_ADMIN_PROJECT_SLUG },
-      search: { install: appName } as Record<string, string>,
-    });
+    onAddConnection();
     onClose();
   }
 

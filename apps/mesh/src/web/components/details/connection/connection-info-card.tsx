@@ -4,24 +4,13 @@ import type { ConnectionEntity } from "@decocms/mesh-sdk";
 
 interface ConnectionInfoCardProps {
   connection: ConnectionEntity;
-  onOpenSettings: () => void;
 }
 
-export function ConnectionInfoCard({
-  connection,
-  onOpenSettings,
-}: ConnectionInfoCardProps) {
+export function ConnectionInfoCard({ connection }: ConnectionInfoCardProps) {
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
-      <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+      <div className="px-5 py-4 border-b border-border">
         <h3 className="text-sm font-semibold text-foreground">Connection</h3>
-        <button
-          type="button"
-          onClick={onOpenSettings}
-          className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors cursor-pointer"
-        >
-          Configure
-        </button>
       </div>
       <div className="px-5 py-4 flex flex-col gap-3">
         <div className="flex items-center justify-between">

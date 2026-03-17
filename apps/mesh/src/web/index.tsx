@@ -350,6 +350,7 @@ const connectionsRoute = createRoute({
   validateSearch: z.lazy(() =>
     z.object({
       action: z.enum(["create"]).optional(),
+      tab: z.enum(["all", "connected"]).optional(),
     }),
   ),
 });

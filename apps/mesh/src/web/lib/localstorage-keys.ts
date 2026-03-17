@@ -30,4 +30,5 @@ export const LOCALSTORAGE_KEYS = {
   chatTaskOwnerFilter: (locator: ProjectLocator) =>
     `mesh:chat:task-owner-filter:${locator}`,
   lastOrgSlug: () => `mesh:last-org-slug`,
+  connectionsTab: (org: string) => `mesh:connections:tab:${org}`,
 } as const;

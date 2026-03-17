@@ -1,3 +1,4 @@
+import { generatePrefixedId } from "@/shared/utils/generate-id";
 import { EmptyState } from "@/web/components/empty-state.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import {
@@ -7,7 +8,12 @@ import {
 } from "@/web/components/env-vars-editor";
 import { useBindingConnections } from "@/web/hooks/use-binding";
 import { useMCPAuthStatus } from "@/web/hooks/use-mcp-auth-status";
-import { authenticateMcp } from "@/web/lib/mcp-oauth";
+import { useMembers } from "@/web/hooks/use-members";
+import { Avatar } from "@deco/ui/components/avatar.tsx";
+import {
+  authenticateMcp,
+  isConnectionAuthenticated,
+} from "@/web/lib/mcp-oauth";
 import { KEYS } from "@/web/lib/query-keys";
 import {
   Breadcrumb,
@@ -17,6 +23,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@deco/ui/components/breadcrumb.tsx";
+import { ConnectionInstancesPanel } from "./connection-instances-panel.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,6 +56,7 @@ import {
   ORG_ADMIN_PROJECT_SLUG,
   useConnection,
   useConnectionActions,
+  useConnections,
   useMCPClient,
   useMCPPromptsListQuery,
   useMCPResourcesListQuery,
@@ -62,7 +70,7 @@ import {
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { Loading01 } from "@untitledui/icons";
+import { Loading01, Trash01 } from "@untitledui/icons";
 import { Suspense, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -71,7 +79,6 @@ import { ConnectionActivity } from "./connection-activity.tsx";
 import { ConnectionAgentsPanel } from "./connection-agents-panel.tsx";
 import { ConnectionCapabilities } from "./connection-capabilities.tsx";
 import { ConnectionDetailHeader } from "./connection-detail-header.tsx";
-import { ConnectionInfoCard } from "./connection-info-card.tsx";
 import { ConnectionFields } from "./connection-sidebar.tsx";
 import { SettingsTab } from "./settings-tab";
 import {
@@ -272,16 +279,15 @@ function ConnectionInspectorViewWithConnection({
   connection,
   connectionId,
   org,
-  onUpdate,
   isUpdating,
   tools,
   prompts,
   resources,
+  siblings,
 }: {
   connection: ConnectionEntity;
   connectionId: string;
   org: string;
-  onUpdate: (connection: Partial<ConnectionEntity>) => Promise<void>;
   isUpdating: boolean;
   tools: Array<{
     name: string;
@@ -293,16 +299,27 @@ function ConnectionInspectorViewWithConnection({
   }>;
   prompts: Array<{ name: string; description?: string }>;
   resources: Array<{ name: string; description?: string; uri?: string }>;
+  siblings: ConnectionEntity[];
 }) {
   const navigate = useNavigate({ from: "/$org/$project/mcps/$connectionId" });
   const queryClient = useQueryClient();
   const connectionActions = useConnectionActions();
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [disconnectConfirmOpen, setDisconnectConfirmOpen] = useState(false);
+  const [configureInstance, setConfigureInstance] =
+    useState<ConnectionEntity | null>(null);
+  const [disconnectInstance, setDisconnectInstance] =
+    useState<ConnectionEntity | null>(null);
+  const [isAddingInstance, setIsAddingInstance] = useState(false);
 
   const authStatus = useMCPAuthStatus({
     connectionId: connectionId,
   });
+
+  const { data: membersData } = useMembers();
+  const members = membersData?.data?.members ?? [];
+  const activeInstance = configureInstance ?? connection;
+  const instanceCreator = members.find(
+    (m) => m.userId === activeInstance.created_by,
+  );
   // VIRTUAL connections are always "authenticated" - they don't have OAuth
   // They're internal connections that aggregate tools from other connections
   const isVirtualConnection = connection?.connection_type === "VIRTUAL";
@@ -318,7 +335,7 @@ function ConnectionInspectorViewWithConnection({
   // Form state lifted to parent
   const form = useForm<ConnectionFormData>({
     resolver: zodResolver(connectionFormSchema),
-    values: connectionToFormValues(connection),
+    values: connectionToFormValues(configureInstance ?? connection),
   });
 
   const hasAnyChanges = form.formState.isDirty;
@@ -329,17 +346,21 @@ function ConnectionInspectorViewWithConnection({
 
     const data = form.getValues();
     const updateData = formValuesToConnectionUpdate(data);
-    await onUpdate(updateData);
+    const idToUpdate = configureInstance?.id ?? connectionId;
+    await connectionActions.update.mutateAsync({
+      id: idToUpdate,
+      data: updateData,
+    });
     form.reset(data);
   };
 
   const handleUndo = () => {
-    form.reset(connectionToFormValues(connection));
+    form.reset(connectionToFormValues(configureInstance ?? connection));
   };
 
-  const handleAuthenticate = async () => {
+  const handleAuthenticateForId = async (connId: string) => {
     const { token, tokenInfo, error } = await authenticateMcp({
-      connectionId: connection.id,
+      connectionId: connId,
     });
     if (error || !token) {
       toast.error(`Authentication failed: ${error}`);
@@ -348,33 +369,30 @@ function ConnectionInspectorViewWithConnection({
 
     if (tokenInfo) {
       try {
-        const response = await fetch(
-          `/api/connections/${connection.id}/oauth-token`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({
-              accessToken: tokenInfo.accessToken,
-              refreshToken: tokenInfo.refreshToken,
-              expiresIn: tokenInfo.expiresIn,
-              scope: tokenInfo.scope,
-              clientId: tokenInfo.clientId,
-              clientSecret: tokenInfo.clientSecret,
-              tokenEndpoint: tokenInfo.tokenEndpoint,
-            }),
-          },
-        );
+        const response = await fetch(`/api/connections/${connId}/oauth-token`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            accessToken: tokenInfo.accessToken,
+            refreshToken: tokenInfo.refreshToken,
+            expiresIn: tokenInfo.expiresIn,
+            scope: tokenInfo.scope,
+            clientId: tokenInfo.clientId,
+            clientSecret: tokenInfo.clientSecret,
+            tokenEndpoint: tokenInfo.tokenEndpoint,
+          }),
+        });
         if (!response.ok) {
           console.error("Failed to save OAuth token:", await response.text());
           await connectionActions.update.mutateAsync({
-            id: connection.id,
+            id: connId,
             data: { connection_token: token },
           });
         } else {
           try {
             await connectionActions.update.mutateAsync({
-              id: connection.id,
+              id: connId,
               data: {},
             });
           } catch (err) {
@@ -387,27 +405,26 @@ function ConnectionInspectorViewWithConnection({
       } catch (err) {
         console.error("Error saving OAuth token:", err);
         await connectionActions.update.mutateAsync({
-          id: connection.id,
+          id: connId,
           data: { connection_token: token },
         });
       }
     } else {
       await connectionActions.update.mutateAsync({
-        id: connection.id,
+        id: connId,
         data: { connection_token: token },
       });
     }
 
-    const mcpProxyUrl = new URL(
-      `/mcp/${connection.id}`,
-      window.location.origin,
-    );
+    const mcpProxyUrl = new URL(`/mcp/${connId}`, window.location.origin);
     await queryClient.invalidateQueries({
       queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
     });
 
     toast.success("Authentication successful");
   };
+
+  const handleAuthenticate = () => handleAuthenticateForId(connection.id);
 
   const handleRemoveOAuth = async () => {
     try {
@@ -442,12 +459,29 @@ function ConnectionInspectorViewWithConnection({
     }
   };
 
-  const handleDisconnect = async () => {
-    await connectionActions.delete.mutateAsync(connection.id);
-    navigate({
-      to: "/$org/$project/mcps",
-      params: { org, project: ORG_ADMIN_PROJECT_SLUG },
-    });
+  const handleDisconnect = async (instance: ConnectionEntity) => {
+    await connectionActions.delete.mutateAsync(instance.id);
+    // If we deleted the currently viewed connection or last sibling, go back
+    if (instance.id === connectionId || siblings.length <= 1) {
+      navigate({
+        to: "/$org/$project/mcps",
+        params: { org, project: ORG_ADMIN_PROJECT_SLUG },
+      });
+    } else {
+      // Navigate to another sibling
+      const remaining = siblings.filter((s) => s.id !== instance.id);
+      if (remaining.length > 0) {
+        navigate({
+          to: "/$org/$project/mcps/$connectionId",
+          params: {
+            org,
+            project: ORG_ADMIN_PROJECT_SLUG,
+            connectionId: remaining[0]!.id,
+          },
+        });
+      }
+    }
+    setDisconnectInstance(null);
   };
 
   const breadcrumb = (
@@ -465,7 +499,14 @@ function ConnectionInspectorViewWithConnection({
         </BreadcrumbItem>
         <BreadcrumbSeparator />
         <BreadcrumbItem>
-          <BreadcrumbPage>{connection.title}</BreadcrumbPage>
+          <BreadcrumbPage>
+            {(() => {
+              const first = siblings[0] ?? connection;
+              return first.app_name
+                ? first.title.replace(/\s*\(\d+\)\s*$/, "")
+                : first.title;
+            })()}
+          </BreadcrumbPage>
         </BreadcrumbItem>
       </BreadcrumbList>
     </Breadcrumb>
@@ -475,16 +516,18 @@ function ConnectionInspectorViewWithConnection({
     <>
       {/* Disconnect Confirmation */}
       <AlertDialog
-        open={disconnectConfirmOpen}
-        onOpenChange={setDisconnectConfirmOpen}
+        open={disconnectInstance !== null}
+        onOpenChange={(open) => {
+          if (!open) setDisconnectInstance(null);
+        }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Disconnect connection?</AlertDialogTitle>
+            <AlertDialogTitle>Disconnect instance?</AlertDialogTitle>
             <AlertDialogDescription>
               This will permanently remove{" "}
               <span className="font-medium text-foreground">
-                {connection.title}
+                {disconnectInstance?.title}
               </span>
               . This action cannot be undone.
             </AlertDialogDescription>
@@ -492,7 +535,9 @@ function ConnectionInspectorViewWithConnection({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleDisconnect}
+              onClick={() =>
+                disconnectInstance && handleDisconnect(disconnectInstance)
+              }
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Disconnect
@@ -502,18 +547,45 @@ function ConnectionInspectorViewWithConnection({
       </AlertDialog>
 
       {/* Settings Sheet */}
-      <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
+      <Sheet
+        open={configureInstance !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfigureInstance(null);
+        }}
+      >
         <SheetContent
           side="right"
           className="sm:max-w-[520px] p-0 flex flex-col gap-0 overflow-hidden"
         >
           <SheetHeader className="px-6 py-4 border-b border-border shrink-0">
-            <SheetTitle className="text-base">{connection.title}</SheetTitle>
+            <SheetTitle className="text-base">
+              {configureInstance?.title ?? connection.title}
+            </SheetTitle>
             <SheetDescription className="text-xs">
               Update URL, authentication, and other settings
             </SheetDescription>
+            {instanceCreator && (
+              <div className="flex items-center gap-1.5 pt-1">
+                <span className="text-xs text-muted-foreground">
+                  Connected by
+                </span>
+                <Avatar
+                  url={instanceCreator.user?.image ?? undefined}
+                  fallback={
+                    instanceCreator.user?.name ??
+                    instanceCreator.user?.email ??
+                    "?"
+                  }
+                  size="3xs"
+                  shape="circle"
+                />
+                <span className="text-xs font-medium text-foreground">
+                  {instanceCreator.user?.name || instanceCreator.user?.email}
+                </span>
+              </div>
+            )}
           </SheetHeader>
-          <Form {...form}>
+          <Form key={configureInstance?.id ?? connection.id} {...form}>
             <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-6">
               <div className="flex flex-col gap-4">
                 <FormField
@@ -545,13 +617,13 @@ function ConnectionInspectorViewWithConnection({
               </div>
               <ConnectionFields
                 form={form}
-                connection={connection}
+                connection={configureInstance ?? connection}
                 hasOAuthToken={authStatus.hasOAuthToken}
                 onReauthenticate={handleAuthenticate}
                 onRemoveOAuth={handleRemoveOAuth}
               />
               <SettingsTab
-                connection={connection}
+                connection={configureInstance ?? connection}
                 form={form}
                 hasMcpBinding={hasMcpBinding}
                 isMCPAuthenticated={isMCPAuthenticated}
@@ -574,6 +646,18 @@ function ConnectionInspectorViewWithConnection({
                   Undo
                 </Button>
               )}
+              <Button
+                variant="outline"
+                className="gap-2 text-muted-foreground hover:text-destructive hover:border-destructive"
+                onClick={() => {
+                  const inst = configureInstance ?? connection;
+                  setConfigureInstance(null);
+                  setDisconnectInstance(inst);
+                }}
+              >
+                <Trash01 size={15} />
+                Delete
+              </Button>
             </div>
           </Form>
         </SheetContent>
@@ -584,8 +668,12 @@ function ConnectionInspectorViewWithConnection({
         <div className="flex flex-col h-full overflow-hidden">
           <ConnectionDetailHeader
             connection={connection}
-            onOpenSettings={() => setSettingsOpen(true)}
-            onDisconnect={() => setDisconnectConfirmOpen(true)}
+            displayTitle={(() => {
+              const first = siblings[0] ?? connection;
+              return first.app_name
+                ? first.title.replace(/\s*\(\d+\)\s*$/, "")
+                : first.title;
+            })()}
           />
           <div className="flex-1 overflow-auto">
             <div className="flex gap-6 p-6">
@@ -601,12 +689,70 @@ function ConnectionInspectorViewWithConnection({
                 />
               </div>
               {/* Right column */}
-              <div className="w-72 shrink-0 flex flex-col gap-5">
-                <ConnectionAgentsPanel connection={connection} />
-                <ConnectionInfoCard
-                  connection={connection}
-                  onOpenSettings={() => setSettingsOpen(true)}
+              <div className="w-96 shrink-0 flex flex-col gap-5">
+                <ConnectionInstancesPanel
+                  instances={siblings}
+                  onConfigure={(inst) => setConfigureInstance(inst)}
+                  onAuthenticate={(inst) => handleAuthenticateForId(inst.id)}
+                  isAdding={isAddingInstance}
+                  onAdd={async () => {
+                    setIsAddingInstance(true);
+                    try {
+                    const base = siblings[0] ?? connection;
+                    const baseName = base.title.replace(/\s*\(\d+\)\s*$/, "");
+                    const nextNumber = siblings.length + 1;
+                    const newTitle = `${baseName} (${nextNumber})`;
+                    const newId = generatePrefixedId("conn");
+                    await connectionActions.create.mutateAsync({
+                      id: newId,
+                      title: newTitle,
+                      description: base.description ?? null,
+                      connection_type: base.connection_type,
+                      connection_url: base.connection_url ?? null,
+                      connection_token: null,
+                      created_at: new Date().toISOString(),
+                      updated_at: new Date().toISOString(),
+                      created_by: base.created_by,
+                      organization_id: base.organization_id,
+                      icon: base.icon ?? null,
+                      app_name: base.app_name ?? null,
+                      app_id: base.app_id ?? null,
+                      connection_headers: base.connection_headers ?? null,
+                      oauth_config: null,
+                      configuration_state: base.configuration_state ?? null,
+                      metadata: null,
+                      tools: null,
+                      bindings: null,
+                      status: "inactive",
+                    });
+                    const mcpProxyUrl = new URL(
+                      `/mcp/${newId}`,
+                      window.location.origin,
+                    );
+                    const authStatus = await isConnectionAuthenticated({
+                      url: mcpProxyUrl.href,
+                      token: null,
+                    });
+                    if (
+                      authStatus.supportsOAuth &&
+                      !authStatus.isAuthenticated
+                    ) {
+                      await handleAuthenticateForId(newId);
+                    }
+                    navigate({
+                      to: "/$org/$project/mcps/$connectionId",
+                      params: {
+                        org,
+                        project: ORG_ADMIN_PROJECT_SLUG,
+                        connectionId: newId,
+                      },
+                    });
+                    } finally {
+                      setIsAddingInstance(false);
+                    }
+                  }}
                 />
+                <ConnectionAgentsPanel connection={connection} />
               </div>
             </div>
           </div>
@@ -624,6 +770,7 @@ function ConnectionInspectorViewContent() {
   const { org: projectOrg } = useProjectContext();
 
   const connection = useConnection(connectionId);
+  const allConnections = useConnections();
   const actions = useConnectionActions();
 
   // Get MCP client for this connection (suspense-based)
@@ -654,6 +801,41 @@ function ConnectionInspectorViewContent() {
         _meta: t._meta as Record<string, unknown> | undefined,
       }));
 
+  // Compute siblings: all non-virtual connections sharing the same app_name
+  const siblings = connection?.app_name
+    ? allConnections.filter(
+        (c) =>
+          c.app_name === connection.app_name && c.connection_type !== "VIRTUAL",
+      )
+    : connection
+      ? [connection]
+      : [];
+
+  // Aggregate tools from all siblings (deduped by name)
+  const aggregatedTools = (() => {
+    if (siblings.length <= 1) return tools;
+    const seen = new Set<string>();
+    const result: typeof tools = [];
+    for (const sibling of siblings) {
+      for (const tool of sibling.tools ?? []) {
+        if (!seen.has(tool.name)) {
+          seen.add(tool.name);
+          result.push({
+            name: tool.name,
+            description: tool.description,
+            inputSchema: (tool.inputSchema ?? {}) as Record<string, unknown>,
+            outputSchema: tool.outputSchema as
+              | Record<string, unknown>
+              | undefined,
+            annotations: tool.annotations,
+            _meta: tool._meta as Record<string, unknown> | undefined,
+          });
+        }
+      }
+    }
+    return result.length > 0 ? result : tools;
+  })();
+
   // Fetch prompts and resources from the MCP connection
   const { data: promptsData } = useMCPPromptsListQuery({ client });
   const { data: resourcesData } = useMCPResourcesListQuery({ client });
@@ -668,16 +850,6 @@ function ConnectionInspectorViewContent() {
     description: r.description,
     uri: r.uri,
   }));
-
-  // Update connection handler
-  const handleUpdateConnection = async (
-    updatedConnection: Partial<ConnectionEntity>,
-  ) => {
-    await actions.update.mutateAsync({
-      id: connectionId,
-      data: updatedConnection,
-    });
-  };
 
   if (!connection) {
     return (
@@ -711,11 +883,11 @@ function ConnectionInspectorViewContent() {
       org={org}
       connection={connection}
       connectionId={connectionId}
-      onUpdate={handleUpdateConnection}
       isUpdating={actions.update.isPending}
-      tools={tools}
+      tools={aggregatedTools}
       prompts={prompts}
       resources={resources}
+      siblings={siblings}
     />
   );
 }

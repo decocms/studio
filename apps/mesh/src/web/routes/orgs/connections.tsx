@@ -3,14 +3,11 @@ import { CollectionDisplayButton } from "@/web/components/collections/collection
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
 import { CollectionTabs } from "@/web/components/collections/collection-tabs.tsx";
 import { ConnectionCard } from "@/web/components/connections/connection-card.tsx";
-import { ConnectionInstancesModal } from "@/web/components/connections/connection-instances-modal.tsx";
-import { ConnectionStatus } from "@/web/components/connections/connection-status.tsx";
 import { EmptyState } from "@/web/components/empty-state.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { Page } from "@/web/components/page";
 import type { RegistryItem } from "@/web/components/store/types";
-import { User } from "@/web/components/user/user.tsx";
 import { useRegistryConnections } from "@/web/hooks/use-binding";
 import { useInfiniteScroll } from "@/web/hooks/use-infinite-scroll";
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
@@ -104,7 +101,6 @@ import {
 } from "@untitledui/icons";
 import { Suspense, useEffect, useReducer, useState } from "react";
 import { useForm } from "react-hook-form";
-import { formatTimeAgo } from "@/web/lib/format-time";
 import {
   connectionFormSchema,
   type ConnectionFormData,
@@ -142,7 +138,7 @@ interface SingleConnection {
 type GroupedItem = SingleConnection | ConnectionGroup;
 
 function getGroupKey(c: ConnectionEntity): string {
-  return c.title.trim().replace(/\s+\(\d+\)$/, "");
+  return c.app_name ?? c.title.trim().replace(/\s+\(\d+\)$/, "");
 }
 
 function groupConnections(connections: ConnectionEntity[]): GroupedItem[] {
@@ -184,18 +180,6 @@ function groupConnections(connections: ConnectionEntity[]): GroupedItem[] {
     }
   }
   return items;
-}
-
-function getUniqueCreators(connections: ConnectionEntity[]): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const c of connections) {
-    if (c.created_by && !seen.has(c.created_by)) {
-      seen.add(c.created_by);
-      result.push(c.created_by);
-    }
-  }
-  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -463,16 +447,6 @@ function ConnectionGroupCard({
 }) {
   const allSelected = group.connections.every((c) => selectedIds.has(c.id));
   const someSelected = group.connections.some((c) => selectedIds.has(c.id));
-  const creators = getUniqueCreators(group.connections);
-
-  const mostRecent = group.connections.reduce((latest, c) => {
-    const t = c.updated_at ?? c.created_at;
-    const l = latest.updated_at ?? latest.created_at;
-    if (!t) return latest;
-    if (!l) return c;
-    return new Date(t) > new Date(l) ? c : latest;
-  }, group.connections[0]!);
-  const recentTs = mostRecent.updated_at ?? mostRecent.created_at;
 
   return (
     <>
@@ -503,50 +477,69 @@ function ConnectionGroupCard({
             "ring-1 ring-primary/50",
         )}
         fallbackIcon={<Container />}
+        headerActionsAlwaysVisible
         headerActions={
-          selectionMode ? (
-            <Checkbox
-              checked={
-                allSelected ? true : someSelected ? "indeterminate" : false
-              }
-              onCheckedChange={() => {
-                for (const c of group.connections) {
-                  if (allSelected) {
-                    if (selectedIds.has(c.id)) onToggleSelect(c.id);
-                  } else {
-                    if (!selectedIds.has(c.id)) onToggleSelect(c.id);
-                  }
-                }
-              }}
-            />
-          ) : (
-            <Badge variant="secondary" className="text-xs tabular-nums">
-              x{group.connections.length}
-            </Badge>
-          )
-        }
-        body={
           <div className="flex items-center gap-1">
-            {group.connections.slice(0, 6).map((c) => (
-              <ConnectionStatus key={c.id} status={c.status} />
-            ))}
-          </div>
-        }
-        footer={
-          <div className="flex items-center justify-between text-xs text-muted-foreground w-full min-w-0">
-            <div className="flex items-center -space-x-1.5">
-              {creators.map((id) => (
-                <User
-                  key={id}
-                  id={id}
-                  size="3xs"
-                  avatarOnly={creators.length > 1}
-                />
-              ))}
+            {selectionMode ? (
+              <Checkbox
+                checked={
+                  allSelected ? true : someSelected ? "indeterminate" : false
+                }
+                onCheckedChange={() => {
+                  for (const c of group.connections) {
+                    if (allSelected) {
+                      if (selectedIds.has(c.id)) onToggleSelect(c.id);
+                    } else {
+                      if (!selectedIds.has(c.id)) onToggleSelect(c.id);
+                    }
+                  }
+                }}
+              />
+            ) : (
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-muted-foreground font-normal">
+                  Connected
+                </span>
+                <span className="text-xs text-muted-foreground font-normal tabular-nums">
+                  x{group.connections.length}
+                </span>
+              </div>
+            )}
+            <div
+              className={cn(
+                "overflow-hidden transition-all duration-150 ease-out",
+                selectionMode
+                  ? "w-8 opacity-100"
+                  : "w-0 opacity-0 group-hover:w-8 group-hover:opacity-100",
+              )}
+            >
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <DotsVertical size={20} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpen();
+                    }}
+                  >
+                    <Eye size={16} />
+                    Open
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
-            <span className="shrink-0 ml-2">
-              {recentTs ? formatTimeAgo(new Date(recentTs)) : "—"}
-            </span>
           </div>
         }
       />
@@ -782,7 +775,10 @@ function OrgMcpsContent() {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const search = useSearch({ strict: false }) as { action?: "create" };
+  const search = useSearch({ strict: false }) as {
+    action?: "create";
+    tab?: "all" | "connected";
+  };
   const { data: session } = authClient.useSession();
   const { stdioEnabled } = useAuthConfig();
 
@@ -808,15 +804,10 @@ function OrgMcpsContent() {
 
   // Tab state
   type ConnectionTab = "connected" | "all";
-  const [activeTab, setActiveTab] = useState<ConnectionTab>("all");
-
-  // App modal state (instances + tools)
-  const [appModal, setAppModal] = useState<{
-    appName: string;
-    appIcon?: string | null;
-    appDescription?: string | null;
-    instances: ConnectionEntity[];
-  } | null>(null);
+  const [activeTab, setActiveTab] = useLocalStorage<ConnectionTab>(
+    LOCALSTORAGE_KEYS.connectionsTab(org.slug),
+    search.tab ?? "all",
+  );
 
   // Type & status filters
   const [typeFilter, setTypeFilter] = useState<ConnectionTypeFilter>("ALL");
@@ -895,7 +886,7 @@ function OrgMcpsContent() {
 
   const searchLower = listState.search.toLowerCase();
   const catalogItems =
-    activeTab === "all"
+    activeTab === "all" || searchLower
       ? registryItems.filter((item) => {
           if (!searchLower) return true;
           const meshMeta = item._meta?.["mcp.mesh"] as
@@ -940,7 +931,8 @@ function OrgMcpsContent() {
   );
 
   // In "All" tab, don't show connected items at top — they belong in the Connected tab
-  const groupedForDisplay = activeTab === "all" ? [] : grouped;
+  // But when searching, show connected items regardless of tab so results appear across both
+  const groupedForDisplay = activeTab === "all" && !searchLower ? [] : grouped;
 
   const navigateToCatalogItem = (item: RegistryItem) => {
     const serverSlug = slugify(
@@ -2086,10 +2078,14 @@ function OrgMcpsContent() {
         <Page.Content>
           <div className="flex-1 overflow-auto p-5">
             {(
-              activeTab === "all"
+              searchLower
                 ? verifiedCatalogItems.length === 0 &&
-                  otherCatalogItems.length === 0
-                : tabFilteredConnections.length === 0
+                  otherCatalogItems.length === 0 &&
+                  tabFilteredConnections.length === 0
+                : activeTab === "all"
+                  ? verifiedCatalogItems.length === 0 &&
+                    otherCatalogItems.length === 0
+                  : tabFilteredConnections.length === 0
             ) ? (
               <EmptyState
                 image={
@@ -2116,13 +2112,19 @@ function OrgMcpsContent() {
                       <ConnectionGroupCard
                         key={item.key}
                         group={item}
-                        onOpen={() =>
-                          setAppModal({
-                            appName: item.title,
-                            appIcon: item.icon,
-                            instances: item.connections,
-                          })
-                        }
+                        onOpen={() => {
+                          const firstId = item.connections[0]?.id;
+                          if (firstId) {
+                            navigate({
+                              to: "/$org/$project/mcps/$connectionId",
+                              params: {
+                                org: org.slug,
+                                project: ORG_ADMIN_PROJECT_SLUG,
+                                connectionId: firstId,
+                              },
+                            });
+                          }
+                        }}
                         selectionMode={selectionMode}
                         selectedIds={selectedIds}
                         onToggleSelect={toggleSelect}
@@ -2140,20 +2142,22 @@ function OrgMcpsContent() {
                       onClick={() =>
                         selectionMode
                           ? toggleSelect(connection.id)
-                          : setAppModal({
-                              appName: connection.app_name || connection.title,
-                              appIcon: connection.icon,
-                              appDescription: connection.description,
-                              instances: [connection],
+                          : navigate({
+                              to: "/$org/$project/mcps/$connectionId",
+                              params: {
+                                org: org.slug,
+                                project: ORG_ADMIN_PROJECT_SLUG,
+                                connectionId: connection.id,
+                              },
                             })
                       }
                       className={cn(
                         isSelected && "ring-2 ring-primary bg-primary/5",
                       )}
-                      headerActionsAlwaysVisible={selectionMode}
+                      headerActionsAlwaysVisible
                       headerActions={
                         <div className="flex items-center gap-1">
-                          {selectionMode && (
+                          {selectionMode ? (
                             <Checkbox
                               checked={isSelected}
                               onCheckedChange={() =>
@@ -2161,59 +2165,72 @@ function OrgMcpsContent() {
                               }
                               onClick={(e) => e.stopPropagation()}
                             />
+                          ) : (
+                            <span className="text-xs text-muted-foreground font-normal">
+                              Connected
+                            </span>
                           )}
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0"
+                          <div
+                            className={cn(
+                              "overflow-hidden transition-all duration-150 ease-out",
+                              selectionMode
+                                ? "w-8 opacity-100"
+                                : "w-0 opacity-0 group-hover:w-8 group-hover:opacity-100",
+                            )}
+                          >
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <DotsVertical size={20} />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent
+                                align="end"
                                 onClick={(e) => e.stopPropagation()}
                               >
-                                <DotsVertical size={20} />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent
-                              align="end"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <DropdownMenuItem
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  navigate({
-                                    to: "/$org/$project/mcps/$connectionId",
-                                    params: {
-                                      org: org.slug,
-                                      project: ORG_ADMIN_PROJECT_SLUG,
-                                      connectionId: connection.id,
-                                    },
-                                  });
-                                }}
-                              >
-                                <Eye size={16} />
-                                Open
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleSelect(connection.id);
-                                }}
-                              >
-                                <CheckSquare size={16} />
-                                Select
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                variant="destructive"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  dispatch({ type: "delete", connection });
-                                }}
-                              >
-                                <Trash01 size={16} />
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate({
+                                      to: "/$org/$project/mcps/$connectionId",
+                                      params: {
+                                        org: org.slug,
+                                        project: ORG_ADMIN_PROJECT_SLUG,
+                                        connectionId: connection.id,
+                                      },
+                                    });
+                                  }}
+                                >
+                                  <Eye size={16} />
+                                  Open
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleSelect(connection.id);
+                                  }}
+                                >
+                                  <CheckSquare size={16} />
+                                  Select
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    dispatch({ type: "delete", connection });
+                                  }}
+                                >
+                                  <Trash01 size={16} />
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
                         </div>
                       }
                     />
@@ -2263,22 +2280,29 @@ function OrgMcpsContent() {
                       key={`catalog-${item.id}`}
                       connection={{ title, description, icon }}
                       fallbackIcon={<Container />}
-                      onClick={() =>
-                        isConnected
-                          ? setAppModal({
-                              appName: title,
-                              appIcon: icon,
-                              appDescription: description,
-                              instances: appInstances,
-                            })
-                          : navigateToCatalogItem(item)
-                      }
+                      onClick={() => {
+                        if (isConnected) {
+                          const firstId = appInstances[0]?.id;
+                          if (firstId) {
+                            navigate({
+                              to: "/$org/$project/mcps/$connectionId",
+                              params: {
+                                org: org.slug,
+                                project: ORG_ADMIN_PROJECT_SLUG,
+                                connectionId: firstId,
+                              },
+                            });
+                          }
+                        } else {
+                          navigateToCatalogItem(item);
+                        }
+                      }}
                       headerActionsAlwaysVisible
                       headerActions={
                         isConnected ? (
-                          <Badge variant="secondary" className="text-xs">
+                          <span className="text-xs text-muted-foreground font-normal">
                             Connected
-                          </Badge>
+                          </span>
                         ) : (
                           <Button
                             variant="outline"
@@ -2335,22 +2359,29 @@ function OrgMcpsContent() {
                       key={`catalog-${item.id}`}
                       connection={{ title, description, icon }}
                       fallbackIcon={<Container />}
-                      onClick={() =>
-                        isConnected
-                          ? setAppModal({
-                              appName: title,
-                              appIcon: icon,
-                              appDescription: description,
-                              instances: appInstances,
-                            })
-                          : navigateToCatalogItem(item)
-                      }
+                      onClick={() => {
+                        if (isConnected) {
+                          const firstId = appInstances[0]?.id;
+                          if (firstId) {
+                            navigate({
+                              to: "/$org/$project/mcps/$connectionId",
+                              params: {
+                                org: org.slug,
+                                project: ORG_ADMIN_PROJECT_SLUG,
+                                connectionId: firstId,
+                              },
+                            });
+                          }
+                        } else {
+                          navigateToCatalogItem(item);
+                        }
+                      }}
                       headerActionsAlwaysVisible
                       headerActions={
                         isConnected ? (
-                          <Badge variant="secondary" className="text-xs">
+                          <span className="text-xs text-muted-foreground font-normal">
                             Connected
-                          </Badge>
+                          </span>
                         ) : (
                           <Button
                             variant="outline"
@@ -2400,17 +2431,6 @@ function OrgMcpsContent() {
           />
         )}
       </Page>
-
-      {appModal && (
-        <ConnectionInstancesModal
-          open={true}
-          onClose={() => setAppModal(null)}
-          appName={appModal.appName}
-          appIcon={appModal.appIcon}
-          appDescription={appModal.appDescription}
-          instances={appModal.instances}
-        />
-      )}
     </>
   );
 }

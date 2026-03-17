@@ -29,7 +29,11 @@ import {
   useMCPToolCall,
   type ConnectionEntity,
 } from "@decocms/mesh-sdk";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  authenticateMcp,
+  isConnectionAuthenticated,
+} from "@/web/lib/mcp-oauth";
 import { authClient } from "@/web/lib/auth-client";
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
@@ -276,6 +280,8 @@ function StoreMCPServerDetailContent() {
     customName: string;
   } | null>(null);
 
+  const [isConnecting, setIsConnecting] = useState(false);
+  const queryClient = useQueryClient();
   const actions = useConnectionActions();
   const allConnections = useConnections();
   const { data: session } = authClient.useSession();
@@ -577,6 +583,7 @@ function StoreMCPServerDetailContent() {
   ) => {
     const version = allVersions[versionIndex ?? 0] || selectedItem;
     if (!version || !org || !session?.user?.id) return;
+    setIsConnecting(true);
 
     const connectionData = extractConnectionData(
       version,
@@ -612,18 +619,79 @@ function StoreMCPServerDetailContent() {
     try {
       const { id } = await actions.create.mutateAsync(connectionData);
 
+      // Check if OAuth is required before navigating
+      const mcpProxyUrl = new URL(`/mcp/${id}`, window.location.origin);
+      const authStatus = await isConnectionAuthenticated({
+        url: mcpProxyUrl.href,
+        token: null,
+      });
+
+      if (authStatus.supportsOAuth && !authStatus.isAuthenticated) {
+        const { token, tokenInfo, error } = await authenticateMcp({
+          connectionId: id,
+        });
+        if (error || !token) {
+          toast.error(`Authentication failed: ${error}`);
+        } else {
+          if (tokenInfo) {
+            try {
+              const response = await fetch(
+                `/api/connections/${id}/oauth-token`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  credentials: "include",
+                  body: JSON.stringify({
+                    accessToken: tokenInfo.accessToken,
+                    refreshToken: tokenInfo.refreshToken,
+                    expiresIn: tokenInfo.expiresIn,
+                    scope: tokenInfo.scope,
+                    clientId: tokenInfo.clientId,
+                    clientSecret: tokenInfo.clientSecret,
+                    tokenEndpoint: tokenInfo.tokenEndpoint,
+                  }),
+                },
+              );
+              if (!response.ok) {
+                await actions.update.mutateAsync({
+                  id,
+                  data: { connection_token: token },
+                });
+              } else {
+                await actions.update.mutateAsync({ id, data: {} });
+              }
+            } catch {
+              await actions.update.mutateAsync({
+                id,
+                data: { connection_token: token },
+              });
+            }
+          } else {
+            await actions.update.mutateAsync({
+              id,
+              data: { connection_token: token },
+            });
+          }
+          await queryClient.invalidateQueries({
+            queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
+          });
+          toast.success("Authentication successful");
+        }
+      }
+
       navigate({
-        to: "/$org/$project/mcps/$connectionId",
+        to: "/$org/$project/mcps",
         params: {
           org: org.slug,
           project: ORG_ADMIN_PROJECT_SLUG,
-          connectionId: id,
         },
+        search: { tab: "connected" },
       });
     } catch (error) {
       toast.error(
         `Failed to connect MCP Server: ${error instanceof Error ? error.message : String(error)}`,
       );
+      setIsConnecting(false);
     }
   };
 
@@ -658,7 +726,7 @@ function StoreMCPServerDetailContent() {
 
   const handleBackClick = () => {
     navigate({
-      to: "/$org/$project/store",
+      to: "/$org/$project/mcps",
       params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
     });
   };
@@ -683,10 +751,10 @@ function StoreMCPServerDetailContent() {
         <BreadcrumbItem>
           <BreadcrumbLink asChild>
             <Link
-              to="/$org/$project/store"
+              to="/$org/$project/mcps"
               params={{ org: org.slug, project: ORG_ADMIN_PROJECT_SLUG }}
             >
-              Store
+              Connections
             </Link>
           </BreadcrumbLink>
         </BreadcrumbItem>
@@ -858,7 +926,7 @@ function StoreMCPServerDetailContent() {
               }
               onInstall={handleInstall}
               canInstall={canInstall}
-              isInstalling={actions.create.isPending}
+              isInstalling={isConnecting}
               hideInstallControls={hasMultipleServers}
               selectedVersionIndex={effectiveVersionIndex}
               onVersionChange={setSelectedVersionIndex}
@@ -898,7 +966,7 @@ function StoreMCPServerDetailContent() {
                     );
                   }
                 }}
-                isInstalling={actions.create.isPending}
+                isInstalling={isConnecting}
                 mcpIcon={data.icon}
                 mcpName={data.name}
                 showStdio={showStdio}
@@ -917,7 +985,7 @@ export default function StoreMCPServerDetail() {
 
   const handleBackClick = () => {
     navigate({
-      to: "/$org/$project/store",
+      to: "/$org/$project/mcps",
       params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
     });
   };
