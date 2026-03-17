@@ -29,6 +29,9 @@ export const AI_PROVIDER_TOPUP_URL = defineTool({
     await ctx.access.check();
 
     const adapter = PROVIDERS[input.providerId];
+    if (!adapter) {
+      throw new Error(`Unknown provider: ${input.providerId}`);
+    }
     if (!adapter.getTopUpUrl) {
       throw new Error(
         `Provider ${input.providerId} does not support credit top-ups`,

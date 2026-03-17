@@ -410,6 +410,7 @@ export function ProviderCard({
       return keyId; // Return keyId for invalidation logic if needed
     },
     onSuccess: (deletedKeyId) => {
+      if (topUpKeyId === deletedKeyId) setTopUpKeyId(null);
       queryClient.invalidateQueries({ queryKey: KEYS.aiProviderKeys(locator) });
       queryClient.invalidateQueries({ queryKey: KEYS.aiProviders(locator) });
       queryClient.invalidateQueries({
@@ -606,7 +607,7 @@ export function ProviderCard({
                   </div>
                 )}
               </div>
-              {topUpKeyId && (
+              {topUpKeyId && keys.some((k) => k.id === topUpKeyId) && (
                 <div
                   className="mt-2 p-3 rounded-md border bg-muted/30"
                   onClick={(e) => e.stopPropagation()}

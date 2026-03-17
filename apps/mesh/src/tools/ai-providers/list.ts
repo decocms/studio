@@ -27,12 +27,14 @@ export const AI_PROVIDERS_LIST = defineTool({
     requireOrganization(ctx);
     await ctx.access.check();
 
-    const providers = Object.values(PROVIDERS).map((adapter) => ({
-      ...adapter.info,
-      supportedMethods: adapter.supportedMethods,
-      supportsTopUp: !!adapter.getTopUpUrl,
-      supportsCredits: !!adapter.getCreditsBalance,
-    }));
+    const providers = Object.values(PROVIDERS)
+      .filter((adapter) => !!adapter)
+      .map((adapter) => ({
+        ...adapter.info,
+        supportedMethods: adapter.supportedMethods,
+        supportsTopUp: !!adapter.getTopUpUrl,
+        supportsCredits: !!adapter.getCreditsBalance,
+      }));
     return { providers };
   },
 });

@@ -135,7 +135,12 @@ export async function mintGatewayJwt(
   userId: string,
   expiresIn = 3600,
 ): Promise<string> {
-  const secret = getSecret();
+  if (!env.MESH_JWT_SECRET) {
+    throw new Error(
+      "MESH_JWT_SECRET must be set to mint gateway JWTs — the external gateway cannot verify tokens signed with a fallback secret",
+    );
+  }
+  const secret = new TextEncoder().encode(env.MESH_JWT_SECRET);
   return await new SignJWT({ iss: "mesh", sub: userId })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setIssuedAt()

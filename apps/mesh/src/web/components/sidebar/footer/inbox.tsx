@@ -167,7 +167,7 @@ function CreditChip() {
     orgId: org.id,
   });
 
-  const { data, isPending } = useMCPToolCallQuery<
+  const { data, isPending, isError } = useMCPToolCallQuery<
     { balanceCents: number } | undefined
   >({
     client,
@@ -179,7 +179,8 @@ function CreditChip() {
         .structuredContent,
   });
 
-  const balanceDollars = (data?.balanceCents ?? 0) / 100;
+  const balanceDollars =
+    data?.balanceCents != null ? data.balanceCents / 100 : null;
 
   return (
     <button
@@ -191,7 +192,7 @@ function CreditChip() {
         <Coins01 size={13} className="text-muted-foreground/60 shrink-0" />
         <span className="text-xs text-muted-foreground">Credits</span>
       </div>
-      {isPending ? (
+      {isPending || isError || balanceDollars == null ? (
         <span className="text-xs font-medium tabular-nums text-muted-foreground/40">
           —
         </span>

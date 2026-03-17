@@ -30,6 +30,9 @@ export const AI_PROVIDER_CREDITS = defineTool({
     if (!userId) throw new Error("Unable to determine user ID");
 
     const adapter = PROVIDERS[input.providerId];
+    if (!adapter) {
+      throw new Error(`Unknown provider: ${input.providerId}`);
+    }
     if (!adapter.getCreditsBalance) {
       throw new Error(
         `Provider ${input.providerId} does not expose a credits balance`,

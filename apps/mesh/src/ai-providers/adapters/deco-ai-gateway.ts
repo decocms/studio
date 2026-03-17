@@ -56,7 +56,6 @@ export const decoAiGatewayAdapter: ProviderAdapter = {
     amountCents: number,
     currency: "usd" | "brl" = "usd",
   ) {
-    console.log({ amountCents, currency });
     const res = await fetch(`${BASE}/api/credits/topup`, {
       method: "POST",
       headers: {

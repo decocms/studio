@@ -28,6 +28,9 @@ export const AI_PROVIDER_OAUTH_EXCHANGE = defineTool({
     await ctx.access.check();
 
     const adapter = PROVIDERS[input.providerId];
+    if (!adapter) {
+      throw new Error(`Unknown provider: ${input.providerId}`);
+    }
     if (
       !adapter.supportedMethods.includes("oauth-pkce") ||
       !adapter.exchangeOAuthCode

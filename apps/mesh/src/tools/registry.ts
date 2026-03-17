@@ -672,7 +672,7 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   },
   {
     name: "AI_PROVIDER_CREDITS",
-    description: "Get current credit balance for a provider key",
+    description: "Get current credit balance for a provider",
     category: "AI Providers",
   },
 ];
