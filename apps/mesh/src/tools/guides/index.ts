@@ -3,7 +3,7 @@ import * as aiProviders from "./ai-providers";
 import * as automations from "./automations";
 import * as connections from "./connections";
 import * as platform from "./platform";
-import * as virtualTools from "./virtual-tools";
+import * as store from "./store";
 
 export interface GuidePrompt {
   name: string;
@@ -23,7 +23,7 @@ export function getPrompts(): GuidePrompt[] {
   return [
     ...agents.prompts,
     ...connections.prompts,
-    ...virtualTools.prompts,
+    ...store.prompts,
     ...automations.prompts,
     ...aiProviders.prompts,
   ];
@@ -34,7 +34,7 @@ export function getResources(): GuideResource[] {
     ...platform.resources,
     ...agents.resources,
     ...connections.resources,
-    ...virtualTools.resources,
+    ...store.resources,
     ...automations.resources,
     ...aiProviders.resources,
   ];

@@ -51,6 +51,32 @@ Checks:
 - Confirm the final agent definition matches the request.
 `,
   },
+  {
+    name: "improve-agent-instructions",
+    description:
+      "Review and strengthen an agent's instructions using the XML-based guidance and workflow best practices.",
+    text: `# Improve agent instructions
+
+Goal: rewrite or refine an agent's instructions so they clearly describe the agent's purpose, constraints, and workflows in a reliable format.
+
+Read docs://agents.md for the instruction-writing pattern, XML-style structure, and workflow guidance.
+
+Recommended tool order:
+1. Use VIRTUAL_MCP_LIST or VIRTUAL_MCP_GET to identify the target agent and inspect its current instructions.
+2. Review the current instructions against docs://agents.md.
+3. If the intended purpose, audience, or boundaries are unclear, use user_ask before rewriting.
+4. Rewrite the instructions with explicit XML-style sections such as <role>, <capabilities>, <constraints>, and <workflows>.
+5. Use VIRTUAL_MCP_UPDATE to save the improved instructions.
+6. Use VIRTUAL_MCP_GET to verify the final stored version.
+
+Checks:
+- Make the agent's purpose explicit in a <role> section.
+- Detect whether the current instructions already contain a workflow. If they do, improve the workflow to be concrete, ordered, and operational. If they do not, add one.
+- Keep workflows numbered and focused on real execution steps, not vague advice.
+- Add or tighten constraints when the current instructions are too open-ended.
+- Preserve the user's intended domain and responsibilities while improving clarity.
+`,
+  },
 ];
 
 export const resources: GuideResource[] = [
@@ -124,6 +150,15 @@ Use numbered workflows for multi-step tasks:
 2. Validate assumptions with tools.
 3. Perform the allowed action.
 4. Report the result and any follow-up.
+
+### Improving existing instructions
+
+When revising an existing agent:
+- Identify whether a usable workflow already exists.
+- If the workflow exists but is vague, rewrite it into concrete ordered steps.
+- If no workflow exists, add one that reflects how the agent should actually operate.
+- Move generic purpose statements into a clear XML-style <role> section.
+- Add <capabilities> and <constraints> sections when the current instructions blur what the agent should and should not do.
 
 ### Tool-use patterns
 
