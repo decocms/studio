@@ -36,13 +36,7 @@ function SidebarNavigationItem({ item }: { item: NavigationSidebarItem }) {
         className={cn(item.isExternal && "group/external")}
       >
         <span className="[&>svg]:size-4">{item.icon}</span>
-        <span
-          className={cn(
-            "truncate group-data-[collapsible=icon]:hidden",
-            item.isExternal &&
-              "group-hover/external:underline underline-offset-2",
-          )}
-        >
+        <span className={cn("truncate group-data-[collapsible=icon]:hidden")}>
           {item.label}
         </span>
         {item.isExternal && (
