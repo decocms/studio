@@ -294,18 +294,15 @@ export async function streamCore(
         };
 
         // Build compact catalogs for system prompt
-        const [toolCatalog, promptCatalog] = await Promise.all([
-          buildToolCatalog(passthroughClient, enabledTools),
-          buildAvailablePromptCatalog(passthroughClient),
-        ]);
+        const toolCatalog = await buildToolCatalog(
+          passthroughClient,
+          enabledTools,
+        );
 
-        // Inject tool and prompt catalogs into the enriched messages before processing
+        // Inject tool catalog into the enriched messages before processing
         const catalogParts = [
           ...(toolCatalog
             ? [{ type: "text" as const, text: toolCatalog }]
-            : []),
-          ...(promptCatalog
-            ? [{ type: "text" as const, text: promptCatalog }]
             : []),
         ];
         const messagesWithCatalog =
@@ -741,27 +738,6 @@ async function buildToolCatalog(
   if (catalogLines.length === 0) return null;
 
   return `\n\n<available-tools>\n${catalogLines.join("\n")}\n</available-tools>`;
-}
-
-/**
- * Build a compact prompt catalog for the system prompt.
- * Format: <available_prompts>\nName|Description\n</available_prompts>
- */
-async function buildAvailablePromptCatalog(client: {
-  listPrompts(): Promise<{
-    prompts: { name: string; description?: string }[];
-  }>;
-}): Promise<string | null> {
-  const { prompts } = await client.listPrompts();
-
-  if (prompts.length === 0) return null;
-
-  const lines = prompts.map((p) => {
-    const desc = (p.description ?? "").slice(0, 120);
-    return `${p.name}|${desc}`;
-  });
-
-  return `\n\n<available_prompts>\n${lines.join("\n")}\n</available_prompts>`;
 }
 
 /**

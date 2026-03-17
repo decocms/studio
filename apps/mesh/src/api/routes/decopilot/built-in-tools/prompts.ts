@@ -7,6 +7,37 @@ import {
   estimateJsonTokens,
 } from "./read-tool-output";
 
+/**
+ * Normalize MCP prompt content to text-safe representations.
+ * Replaces image/audio blobs and embedded resources with placeholders
+ * to avoid dumping base64 into the model context.
+ */
+function normalizePromptContent(
+  content: { type: string; [key: string]: unknown } | string,
+): string {
+  if (typeof content === "string") return content;
+
+  if (content.type === "text" && typeof content.text === "string") {
+    return content.text;
+  }
+  if (content.type === "image") {
+    const mime = (content.mimeType as string) ?? "image/*";
+    return `[image: ${mime}]`;
+  }
+  if (content.type === "audio") {
+    const mime = (content.mimeType as string) ?? "audio/*";
+    return `[audio: ${mime}]`;
+  }
+  if (content.type === "resource") {
+    const res = content.resource as
+      | { uri?: string; text?: string; mimeType?: string }
+      | undefined;
+    if (res?.text) return res.text;
+    return `[embedded resource: ${res?.uri ?? "unknown"}]`;
+  }
+  return JSON.stringify(content);
+}
+
 export interface PromptToolParams {
   readonly passthroughClient: VirtualClient;
   readonly toolOutputMap: Map<string, string>;
@@ -46,7 +77,7 @@ export function createReadPromptTool(params: PromptToolParams) {
 
       const parts = messages.map((m) => ({
         role: m.role,
-        content: m.content,
+        content: normalizePromptContent(m.content),
       }));
 
       const serialized = JSON.stringify(parts, null, 2);

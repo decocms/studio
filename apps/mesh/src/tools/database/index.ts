@@ -210,7 +210,7 @@ async function executeWithIsolation(
 export const DATABASES_RUN_SQL = defineTool({
   name: "DATABASES_RUN_SQL",
   description:
-    "Run a SQL query in a connection-scoped isolated schema. Supports DDL and DML.",
+    "Run a SQL query in a connection-scoped isolated schema. Supports SELECT, DDL, and DML.",
   annotations: {
     title: "Run SQL Query",
     readOnlyHint: false,

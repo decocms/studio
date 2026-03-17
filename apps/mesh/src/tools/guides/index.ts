@@ -4,6 +4,7 @@ import * as automations from "./automations";
 import * as connections from "./connections";
 import * as platform from "./platform";
 import * as store from "./store";
+import * as virtualTools from "./virtual-tools";
 
 export interface GuidePrompt {
   name: string;
@@ -26,6 +27,7 @@ export function getPrompts(): GuidePrompt[] {
     ...store.prompts,
     ...automations.prompts,
     ...aiProviders.prompts,
+    ...virtualTools.prompts,
   ];
 }
 
@@ -37,5 +39,6 @@ export function getResources(): GuideResource[] {
     ...store.resources,
     ...automations.resources,
     ...aiProviders.resources,
+    ...virtualTools.resources,
   ];
 }

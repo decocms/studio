@@ -24,7 +24,7 @@ export const PROJECT_PINNED_VIEWS_UPDATE = defineTool({
   annotations: {
     title: "Update Pinned Views",
     readOnlyHint: false,
-    destructiveHint: false,
+    destructiveHint: true,
     idempotentHint: true,
     openWorldHint: false,
   },

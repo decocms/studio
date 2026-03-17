@@ -61,9 +61,10 @@ Take a registry item the user already chose and convert it into a real connectio
 - app_name and app_id: copy the registry/server identifiers when present.
 
 ### Transport selection
+- Always prefer remote endpoints (HTTP, SSE, or Websocket) over package commands. STDIO transport is disabled by default in production.
 - If the item exposes a remote endpoint, create an HTTP, SSE, or Websocket connection using that remote's type and URL.
-- If the item exposes a package command instead, create a STDIO connection.
-- If the item exposes multiple remotes or packages, ask the user before choosing unless one is clearly the default.
+- If the item only exposes a package command, warn the user that STDIO transport may be unavailable in production before creating the connection.
+- If the item exposes multiple remotes or packages, prefer remote transports. Ask the user before choosing unless one is clearly the default.
 - If the item exposes neither a usable remote nor a package command, stop and report that the item cannot be installed automatically.
 
 ### HTTP, SSE, or Websocket shape

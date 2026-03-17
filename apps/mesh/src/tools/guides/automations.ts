@@ -40,7 +40,7 @@ Recommended tool order:
 2. Use VIRTUAL_MCP_GET if you need to confirm the assigned agent context.
 3. Use user_ask if the requested trigger or behavior change is not exact.
 4. Use AUTOMATION_UPDATE for metadata or agent changes.
-5. Use AUTOMATION_TRIGGER_REMOVE and AUTOMATION_TRIGGER_ADD if the trigger itself must change.
+5. Use AUTOMATION_TRIGGER_ADD then AUTOMATION_TRIGGER_REMOVE if the trigger itself must change (add before remove so the automation is never left untriggered if the add fails).
 6. Use AUTOMATION_GET to confirm the final state.
 7. Optionally use AUTOMATION_RUN to validate the updated workflow.
 

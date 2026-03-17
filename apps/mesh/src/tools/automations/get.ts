@@ -10,8 +10,7 @@ import { requireAuth, requireOrganization } from "../../core/mesh-context";
 
 export const AUTOMATION_GET = defineTool({
   name: "AUTOMATION_GET",
-  description:
-    "Get an automation's full configuration, triggers, and run history by ID.",
+  description: "Get an automation's full configuration and triggers by ID.",
   annotations: {
     title: "Get Automation",
     readOnlyHint: true,
