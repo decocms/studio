@@ -127,9 +127,13 @@ export async function toolsFromMCP(
               output.structuredContent ?? output.content,
             );
             if (tokens > MAX_RESULT_TOKENS) {
-              const raw = JSON.stringify(
-                output.structuredContent ?? output.content,
-              );
+              const value = output.structuredContent ?? output.content;
+              let raw: string;
+              try {
+                raw = JSON.stringify(value, null, 2);
+              } catch {
+                raw = String(value);
+              }
               toolOutputMap.set(toolCallId, raw);
               const preview = createOutputPreview(raw);
 
