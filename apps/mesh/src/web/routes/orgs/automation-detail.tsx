@@ -60,6 +60,11 @@ import {
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
 import { Switch } from "@deco/ui/components/switch.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 import { ORG_ADMIN_PROJECT_SLUG, useProjectContext } from "@decocms/mesh-sdk";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
@@ -976,16 +981,20 @@ function SettingsTab({
                   }
                   placeholder="Model"
                 />
-                <Button
-                  type="button"
-                  variant="default"
-                  className="h-8 gap-1.5 rounded-md px-3 text-sm font-medium"
-                  onClick={handleRunClick}
-                  title="Test Automation"
-                >
-                  <ArrowUp size={16} />
-                  Test
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="default"
+                      className="h-8 gap-1.5 rounded-md px-3 text-sm font-medium"
+                      onClick={handleRunClick}
+                    >
+                      <ArrowUp size={16} />
+                      Test
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Test Automation</TooltipContent>
+                </Tooltip>
               </div>
             </div>
           </TiptapProvider>
