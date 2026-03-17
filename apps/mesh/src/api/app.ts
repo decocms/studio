@@ -52,27 +52,19 @@ import {
   runPluginStartupHooks,
 } from "../core/plugin-loader";
 import { CredentialVault } from "../encryption/credential-vault";
-import {
-  LocalCancelBroadcast,
-  type CancelBroadcast,
-} from "./routes/decopilot/cancel-broadcast";
+import { type CancelBroadcast } from "./routes/decopilot/cancel-broadcast";
 import { createNatsConnectionProvider } from "../nats/connection";
 import {
-  InMemoryToolListCache,
   JetStreamKVToolListCache,
   setToolListCache,
   type ToolListCache,
 } from "../mcp-clients/tool-list-cache";
 import {
-  InMemoryModelListCache,
   JetStreamKVModelListCache,
   type ModelListCache,
 } from "../ai-providers/model-list-cache";
 import { NatsCancelBroadcast } from "./routes/decopilot/nats-cancel-broadcast";
-import {
-  NoOpStreamBuffer,
-  type StreamBuffer,
-} from "./routes/decopilot/stream-buffer";
+import { type StreamBuffer } from "./routes/decopilot/stream-buffer";
 import { NatsStreamBuffer } from "./routes/decopilot/nats-stream-buffer";
 import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
@@ -219,53 +211,23 @@ export async function createApp(options: CreateAppOptions = {}) {
     });
   }
 
-  // Create shared NATS provider when NATS_URL is set (must init before event bus)
-  const natsUrl = env.NATS_URL;
-  let natsProvider = natsUrl ? createNatsConnectionProvider() : null;
-  if (natsProvider) {
-    try {
-      await natsProvider.init(natsUrl!);
-    } catch (err) {
-      console.warn(
-        "[NATS] Connection failed, falling back to local-only mode:",
-        err,
-      );
-      natsProvider = null;
-    }
-  }
+  // Create shared NATS provider (must init before event bus)
+  const natsProvider = createNatsConnectionProvider();
+  await natsProvider.init(env.NATS_URL);
 
-  // Create tool list cache: JetStream KV when NATS is available, local Map otherwise
-  let toolListCache: ToolListCache = natsProvider
-    ? new JetStreamKVToolListCache({
-        getJetStream: () => natsProvider!.getJetStream(),
-        getConnection: () => natsProvider!.getConnection(),
-      })
-    : new InMemoryToolListCache();
-  if (toolListCache instanceof JetStreamKVToolListCache) {
-    await toolListCache.init().catch((err) => {
-      console.warn(
-        "[ToolListCache] KV init failed, falling back to in-memory cache:",
-        err,
-      );
-      toolListCache = new InMemoryToolListCache();
-    });
-  }
-  // Create model list cache (same pattern as tool list cache)
-  let modelListCache: ModelListCache = natsProvider
-    ? new JetStreamKVModelListCache({
-        getJetStream: () => natsProvider!.getJetStream(),
-        getConnection: () => natsProvider!.getConnection(),
-      })
-    : new InMemoryModelListCache();
-  if (modelListCache instanceof JetStreamKVModelListCache) {
-    await modelListCache.init().catch((err) => {
-      console.warn(
-        "[ModelListCache] KV init failed, falling back to in-memory cache:",
-        err,
-      );
-      modelListCache = new InMemoryModelListCache();
-    });
-  }
+  // Create tool list cache (JetStream KV)
+  const toolListCache: ToolListCache = new JetStreamKVToolListCache({
+    getJetStream: () => natsProvider.getJetStream(),
+    getConnection: () => natsProvider.getConnection(),
+  });
+  await (toolListCache as JetStreamKVToolListCache).init();
+
+  // Create model list cache (JetStream KV)
+  const modelListCache: ModelListCache = new JetStreamKVModelListCache({
+    getJetStream: () => natsProvider.getJetStream(),
+    getConnection: () => natsProvider.getConnection(),
+  });
+  await (modelListCache as JetStreamKVModelListCache).init();
 
   let eventBus: EventBus;
 
@@ -295,18 +257,14 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   const threadStorage = new SqlThreadStorage(database.db);
 
-  const cancelBroadcast: CancelBroadcast = natsProvider
-    ? new NatsCancelBroadcast({
-        getConnection: () => natsProvider!.getConnection(),
-      })
-    : new LocalCancelBroadcast();
+  const cancelBroadcast: CancelBroadcast = new NatsCancelBroadcast({
+    getConnection: () => natsProvider.getConnection(),
+  });
 
-  const streamBuffer: StreamBuffer = natsProvider
-    ? new NatsStreamBuffer({
-        getConnection: () => natsProvider!.getConnection(),
-        getJetStream: () => natsProvider!.getJetStream(),
-      })
-    : new NoOpStreamBuffer();
+  const streamBuffer: StreamBuffer = new NatsStreamBuffer({
+    getConnection: () => natsProvider.getConnection(),
+    getJetStream: () => natsProvider.getJetStream(),
+  });
 
   const cancelReactorDeps: RunReactorDeps = {
     storage: threadStorage,
@@ -340,7 +298,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     toolListCache.teardown();
     modelListCache.teardown();
     setToolListCache(null);
-    natsProvider?.drain().catch(() => {});
+    natsProvider.drain().catch(() => {});
   };
 
   const app = new Hono<Env>();

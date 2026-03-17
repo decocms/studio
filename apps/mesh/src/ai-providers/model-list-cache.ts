@@ -22,51 +22,6 @@ function cacheKey(organizationId: string, providerId: string): string {
   return `${organizationId}.${providerId}`;
 }
 
-export class InMemoryModelListCache implements ModelListCache {
-  private readonly cache = new Map<
-    string,
-    { models: ModelInfo[]; ts: number }
-  >();
-  private readonly ttlMs: number;
-
-  constructor(ttlMs = 10 * 60 * 1000) {
-    this.ttlMs = ttlMs;
-  }
-
-  async get(
-    organizationId: string,
-    providerId: string,
-  ): Promise<ModelInfo[] | null> {
-    const key = cacheKey(organizationId, providerId);
-    const entry = this.cache.get(key);
-    if (!entry) return null;
-    if (Date.now() - entry.ts > this.ttlMs) {
-      this.cache.delete(key);
-      return null;
-    }
-    return entry.models;
-  }
-
-  async set(
-    organizationId: string,
-    providerId: string,
-    models: ModelInfo[],
-  ): Promise<void> {
-    this.cache.set(cacheKey(organizationId, providerId), {
-      models,
-      ts: Date.now(),
-    });
-  }
-
-  async invalidate(organizationId: string, providerId: string): Promise<void> {
-    this.cache.delete(cacheKey(organizationId, providerId));
-  }
-
-  teardown(): void {
-    this.cache.clear();
-  }
-}
-
 const KV_BUCKET = "MESH_MODEL_LISTS";
 const KV_TTL_MS = 10 * 60 * 1000; // 10 minutes
 

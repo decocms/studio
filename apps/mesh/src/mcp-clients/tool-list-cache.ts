@@ -1,9 +1,7 @@
 /**
  * Tool List Cache
  *
- * Provides a cross-pod cache for MCP tool lists.
- * - InMemoryToolListCache: local Map, no cross-pod sharing (dev/single-pod)
- * - JetStreamKVToolListCache: NATS JetStream KV bucket, shared across all pods
+ * Provides a cross-pod cache for MCP tool lists via NATS JetStream KV.
  *
  * Used by the withToolCaching decorator's fallback path (VIRTUAL connections
  * and non-VIRTUAL connections before tool indexing completes).
@@ -23,26 +21,6 @@ export interface ToolListCache {
   set(connectionId: string, tools: Tool[]): Promise<void>;
   invalidate(connectionId: string): Promise<void>;
   teardown(): void;
-}
-
-export class InMemoryToolListCache implements ToolListCache {
-  private readonly cache = new Map<string, Tool[]>();
-
-  async get(connectionId: string): Promise<Tool[] | null> {
-    return this.cache.get(connectionId) ?? null;
-  }
-
-  async set(connectionId: string, tools: Tool[]): Promise<void> {
-    this.cache.set(connectionId, tools);
-  }
-
-  async invalidate(connectionId: string): Promise<void> {
-    this.cache.delete(connectionId);
-  }
-
-  teardown(): void {
-    this.cache.clear();
-  }
 }
 
 const KV_BUCKET = "MESH_TOOL_LISTS";

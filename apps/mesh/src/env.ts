@@ -34,8 +34,7 @@ const envSchema = z
     OTEL_SERVICE_NAME: z.string().default("mesh"),
 
     // Event Bus & Networking
-    NATS_URL: z.string().optional(),
-    NOTIFY_STRATEGY: z.enum(["nats", "postgres", "polling"]).optional(),
+    NATS_URL: z.string().default("nats://localhost:4222"),
 
     // Config files
     CONFIG_PATH: z.string().default("./config.json"),
@@ -155,7 +154,6 @@ function logConfiguration(e: Env) {
 
   sect("Event Bus & Networking");
   r("NATS_URL", e.NATS_URL);
-  r("NOTIFY_STRATEGY", e.NOTIFY_STRATEGY ?? "auto");
 
   sect("Config Files");
   r("CONFIG_PATH", e.CONFIG_PATH);

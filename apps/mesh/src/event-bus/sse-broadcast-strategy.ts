@@ -36,7 +36,7 @@ export interface SSEBroadcastStrategy {
 
 /**
  * Local-only broadcast — events are emitted to the current process only.
- * Suitable for single-process deployments and local development.
+ * Used as the default SSEHub strategy before a cross-pod strategy is started.
  */
 export class LocalSSEBroadcast implements SSEBroadcastStrategy {
   private localEmit: LocalEmitFn | null = null;
