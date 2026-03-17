@@ -17,13 +17,11 @@ import { createApp } from "./api/app";
 import { isServerPath } from "./api/utils/paths";
 import { startDebugServer } from "./debug";
 import { env, logConfiguration } from "./env";
-import { bold, cyan, dim, green, red, underline } from "./fmt";
+import { cyan, dim, green, red, underline } from "./fmt";
 
 const port = env.PORT;
 const debugPort = env.DEBUG_PORT;
 const enableDebugServer = env.ENABLE_DEBUG_SERVER;
-
-const url = env.BASE_URL || `http://localhost:${port}`;
 
 // Refuse local mode in production — it disables authentication
 if (
@@ -85,12 +83,6 @@ if (!process.env.DECO_CLI) {
 
   logConfiguration(env);
 }
-
-console.log("");
-console.log(`${green("✓")} ${bold("Ready")}`);
-console.log("");
-console.log(`  ${dim("Open in browser:")}  ${cyan(underline(url))}`);
-console.log("");
 
 Bun.serve({
   // This was necessary because MCP has SSE endpoints (like notification) that disconnects after 10 seconds (default bun idle timeout)
