@@ -51,7 +51,7 @@ const client = await createMCPClient({
 
 // List connections
 const result = await client.callTool({
-  name: "COLLECTION_CONNECTIONS_LIST",
+  name: "CONNECTIONS_LIST",
   arguments: { limit: 100 },
 });
 ```
@@ -180,13 +180,13 @@ const client = await createMCPClient({
 
 // List Virtual MCPs (agents)
 const agents = await client.callTool({
-  name: "COLLECTION_VIRTUAL_MCP_LIST",
+  name: "VIRTUAL_MCP_LIST",
   arguments: { limit: 100 },
 });
 
 // Create a connection
 const newConn = await client.callTool({
-  name: "COLLECTION_CONNECTIONS_CREATE",
+  name: "CONNECTIONS_CREATE",
   arguments: {
     data: {
       title: "My MCP Server",

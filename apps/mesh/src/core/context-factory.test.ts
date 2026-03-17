@@ -68,7 +68,7 @@ describe("createMeshContextFactory", () => {
           id: "key_1",
           name: "Test Key",
           userId: "user_1",
-          permissions: { self: ["COLLECTION_CONNECTIONS_LIST"] },
+          permissions: { self: ["CONNECTIONS_LIST"] },
           metadata: {
             organization: {
               id: "org_123",
@@ -222,7 +222,7 @@ describe("createMeshContextFactory", () => {
             valid: true,
             key: {
               id: "key_1",
-              permissions: { self: ["COLLECTION_CONNECTIONS_LIST"] },
+              permissions: { self: ["CONNECTIONS_LIST"] },
               metadata: {},
             },
           }),

@@ -168,7 +168,7 @@ async function createMCPProxyDoNotUseDirectly(
   const server = createServerFromClient(
     cachedClient,
     {
-      name: "mcp-mesh-proxy-client",
+      name: "mcp-cms-proxy-client",
       version: "1.0.0",
     },
     {
@@ -186,7 +186,7 @@ async function createMCPProxyDoNotUseDirectly(
 
   // Create client and connect to client-side transport
   const client = new Client({
-    name: "mcp-mesh-proxy-client",
+    name: "mcp-cms-proxy-client",
     version: "1.0.0",
   });
   await client.connect(clientTransport);

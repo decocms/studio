@@ -207,11 +207,11 @@ curl -X POST http://localhost:3000/mcp \
 | `ORGANIZATION_MEMBER_REMOVE` | Remove member |
 | `ORGANIZATION_MEMBER_LIST` | List members |
 | `ORGANIZATION_MEMBER_UPDATE_ROLE` | Update member role |
-| `COLLECTION_CONNECTIONS_CREATE` | Register MCP connection |
-| `COLLECTION_CONNECTIONS_LIST` | List connections |
-| `COLLECTION_CONNECTIONS_GET` | Get connection details |
-| `COLLECTION_CONNECTIONS_UPDATE` | Update connection |
-| `COLLECTION_CONNECTIONS_DELETE` | Delete connection |
+| `CONNECTIONS_CREATE` | Register MCP connection |
+| `CONNECTIONS_LIST` | List connections |
+| `CONNECTIONS_GET` | Get connection details |
+| `CONNECTIONS_UPDATE` | Update connection |
+| `CONNECTIONS_DELETE` | Delete connection |
 | `CONNECTION_TEST` | Test connection health |
 | `CONNECTION_CONFIGURE` | Configure connection |
 

@@ -256,8 +256,8 @@ const plugins = [
           "ORGANIZATION_LIST",
           "ORGANIZATION_GET", // Organization read access
           "ORGANIZATION_MEMBER_LIST", // Member read access
-          "COLLECTION_CONNECTIONS_LIST",
-          "COLLECTION_CONNECTIONS_GET", // Connection read access
+          "CONNECTIONS_LIST",
+          "CONNECTIONS_GET", // Connection read access
           "API_KEY_CREATE", // API key creation
           "API_KEY_LIST", // API key listing (metadata only)
           // Note: API_KEY_UPDATE and API_KEY_DELETE are not default - users must explicitly request

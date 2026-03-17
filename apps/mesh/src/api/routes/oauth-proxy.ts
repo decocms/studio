@@ -89,7 +89,7 @@ async function checkOriginSupportsOAuth(
         params: {
           protocolVersion: "2025-06-18",
           capabilities: {},
-          clientInfo: { name: "mcp-mesh-proxy", version: "1.0.0" },
+          clientInfo: { name: "mcp-cms-proxy", version: "1.0.0" },
         },
       }),
     });

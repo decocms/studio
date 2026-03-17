@@ -87,7 +87,7 @@ interface MeshWorkflowClient {
     input?: Record<string, unknown>;
     start_at_epoch_ms?: number;
   }) => Promise<{ item: { id: string } }>;
-  COLLECTION_VIRTUAL_MCP_LIST: (input: {
+  VIRTUAL_MCP_LIST: (input: {
     where?: {
       operator: "and";
       conditions: Array<{ field: string[]; operator: string; value: unknown }>;
@@ -99,7 +99,7 @@ interface MeshWorkflowClient {
     totalCount: number;
     hasMore: boolean;
   }>;
-  COLLECTION_VIRTUAL_MCP_CREATE: (input: {
+  VIRTUAL_MCP_CREATE: (input: {
     data: {
       title: string;
       connections: Array<{
@@ -208,7 +208,7 @@ async function resolveDefaultVirtualMcp(
   const title = defaultVmcpTitle(connectionId);
 
   try {
-    const result = await client.COLLECTION_VIRTUAL_MCP_LIST({
+    const result = await client.VIRTUAL_MCP_LIST({
       where: {
         operator: "and",
         conditions: [
@@ -232,7 +232,7 @@ async function resolveDefaultVirtualMcp(
   }
 
   try {
-    const created = await client.COLLECTION_VIRTUAL_MCP_CREATE({
+    const created = await client.VIRTUAL_MCP_CREATE({
       data: {
         title,
         connections: [{ connection_id: connectionId, selected_tools: null }],
@@ -492,8 +492,8 @@ export const WORKFLOW_SCOPES = [
   "SELF::COLLECTION_WORKFLOW_UPDATE",
   "SELF::COLLECTION_WORKFLOW_DELETE",
   "SELF::COLLECTION_WORKFLOW_EXECUTION_CREATE",
-  "SELF::COLLECTION_VIRTUAL_MCP_LIST",
-  "SELF::COLLECTION_VIRTUAL_MCP_CREATE",
+  "SELF::VIRTUAL_MCP_LIST",
+  "SELF::VIRTUAL_MCP_CREATE",
 ] as const;
 
 export const Workflow = {

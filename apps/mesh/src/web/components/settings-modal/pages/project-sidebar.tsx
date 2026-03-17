@@ -180,7 +180,7 @@ function ProjectSidebarForm() {
   const connectionIds = connections.map((c) => c.id).sort();
 
   // Fetch full connection details (including tools) for all connections.
-  // COLLECTION_CONNECTIONS_GET now backfills tools when they're null.
+  // CONNECTIONS_GET now backfills tools when they're null.
   const { data: connectionsWithTools } = useQuery({
     queryKey: KEYS.projectConnectionDetails(projectId, connectionIds),
     enabled: connectionIds.length > 0,
@@ -189,7 +189,7 @@ function ProjectSidebarForm() {
         connections.map(async (conn) => {
           try {
             const result = await client.callTool({
-              name: "COLLECTION_CONNECTIONS_GET",
+              name: "CONNECTIONS_GET",
               arguments: { id: conn.id },
             });
             const { item } = unwrapToolResult<{
