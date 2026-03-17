@@ -1,5 +1,5 @@
 /**
- * COLLECTION_THREADS_CREATE Tool
+ * THREADS_CREATE Tool
  *
  * Create a new thread (organization-scoped) with collection binding compliance.
  */
@@ -32,9 +32,9 @@ const CreateOutputSchema = z.object({
   item: ThreadEntitySchema.describe("The created thread entity"),
 });
 
-export const COLLECTION_THREADS_CREATE = defineTool({
-  name: "COLLECTION_THREADS_CREATE",
-  description: "Create a new thread in the organization",
+export const THREADS_CREATE = defineTool({
+  name: "THREADS_CREATE",
+  description: "Create a new thread for organizing messages and conversations.",
   annotations: {
     title: "Create Thread",
     readOnlyHint: false,

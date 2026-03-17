@@ -12,7 +12,7 @@ import type { ProjectUI } from "../../storage/types";
 
 export const PROJECT_UPDATE = defineTool({
   name: "PROJECT_UPDATE" as const,
-  description: "Update a project's details",
+  description: "Update a project's name, description, or enabled plugins.",
   annotations: {
     title: "Update Project",
     readOnlyHint: false,

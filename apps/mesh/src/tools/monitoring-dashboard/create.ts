@@ -15,7 +15,8 @@ import {
 
 export const MONITORING_DASHBOARD_CREATE = defineTool({
   name: "MONITORING_DASHBOARD_CREATE",
-  description: "Create a new monitoring dashboard with JSONPath widgets",
+  description:
+    "Create a monitoring dashboard with JSONPath-based aggregation widgets.",
   annotations: {
     title: "Create Monitoring Dashboard",
     readOnlyHint: false,

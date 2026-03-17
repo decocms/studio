@@ -10,7 +10,8 @@ import { requireAuth, requireOrganization } from "../../core/mesh-context";
 
 export const TAGS_DELETE = defineTool({
   name: "TAGS_DELETE",
-  description: "Delete a tag from an organization (removes from all members)",
+  description:
+    "Delete a tag and automatically remove it from all assigned members.",
   annotations: {
     title: "Delete Tag",
     readOnlyHint: false,

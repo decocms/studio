@@ -5,11 +5,11 @@
  */
 
 // Collection-compliant CRUD tools
-export { COLLECTION_CONNECTIONS_CREATE } from "./create";
-export { COLLECTION_CONNECTIONS_LIST } from "./list";
-export { COLLECTION_CONNECTIONS_GET } from "./get";
-export { COLLECTION_CONNECTIONS_UPDATE } from "./update";
-export { COLLECTION_CONNECTIONS_DELETE } from "./delete";
+export { CONNECTIONS_CREATE } from "./create";
+export { CONNECTIONS_LIST } from "./list";
+export { CONNECTIONS_GET } from "./get";
+export { CONNECTIONS_UPDATE } from "./update";
+export { CONNECTIONS_DELETE } from "./delete";
 
 // Connection test tool
 export { CONNECTION_TEST } from "./test";

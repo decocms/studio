@@ -10,7 +10,8 @@ import { getUserId, requireAuth } from "../../core/mesh-context";
 
 export const ORGANIZATION_CREATE = defineTool({
   name: "ORGANIZATION_CREATE" as const,
-  description: "Create a new organization",
+  description:
+    "Create a new organization. The caller becomes the owner automatically.",
   annotations: {
     title: "Create Organization",
     readOnlyHint: false,

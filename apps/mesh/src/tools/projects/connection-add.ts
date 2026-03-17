@@ -10,7 +10,8 @@ import { requireAuth, requireOrganization } from "../../core/mesh-context";
 
 export const PROJECT_CONNECTION_ADD = defineTool({
   name: "PROJECT_CONNECTION_ADD" as const,
-  description: "Associate a connection with a project",
+  description:
+    "Add an existing connection to a project, making its tools available in that project scope.",
   annotations: {
     title: "Add Project Connection",
     readOnlyHint: false,

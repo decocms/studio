@@ -10,7 +10,8 @@ import { requireAuth } from "../../core/mesh-context";
 
 export const ORGANIZATION_GET = defineTool({
   name: "ORGANIZATION_GET",
-  description: "Get organization details by slug or ID",
+  description:
+    "Get an organization's details, members, and settings by slug or ID.",
   annotations: {
     title: "Get Organization",
     readOnlyHint: true,

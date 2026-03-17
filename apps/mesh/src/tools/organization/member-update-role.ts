@@ -10,7 +10,8 @@ import { requireAuth } from "../../core/mesh-context";
 
 export const ORGANIZATION_MEMBER_UPDATE_ROLE = defineTool({
   name: "ORGANIZATION_MEMBER_UPDATE_ROLE",
-  description: "Update a member's role in an organization",
+  description:
+    "Change a member's role (e.g., admin, member) within the organization.",
   annotations: {
     title: "Update Member Role",
     readOnlyHint: false,

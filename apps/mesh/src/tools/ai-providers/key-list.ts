@@ -10,7 +10,7 @@ import {
 export const AI_PROVIDER_KEY_LIST = defineTool({
   name: "AI_PROVIDER_KEY_LIST",
   description:
-    "List stored API keys for AI providers (metadata only, no secrets)",
+    "List stored AI provider API keys. Returns metadata only — secrets are never exposed.",
   inputSchema: z.object({
     providerId: z.enum(PROVIDER_IDS).optional(),
   }),

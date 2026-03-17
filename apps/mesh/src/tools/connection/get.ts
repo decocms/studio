@@ -1,5 +1,5 @@
 /**
- * COLLECTION_CONNECTIONS_GET Tool
+ * CONNECTIONS_GET Tool
  *
  * Get connection details by ID with collection binding compliance.
  */
@@ -25,9 +25,10 @@ const ConnectionGetOutputSchema = createCollectionGetOutputSchema(
   ConnectionEntitySchema,
 );
 
-export const COLLECTION_CONNECTIONS_GET = defineTool({
-  name: "COLLECTION_CONNECTIONS_GET",
-  description: "Get connection details by ID",
+export const CONNECTIONS_GET = defineTool({
+  name: "CONNECTIONS_GET",
+  description:
+    "Get a connection's configuration, tools list, and status by ID.",
   annotations: {
     title: "Get Connection",
     readOnlyHint: true,

@@ -1,5 +1,5 @@
 /**
- * COLLECTION_THREAD_MESSAGES_LIST Tool
+ * THREAD_MESSAGES_LIST Tool
  *
  * List all messages for a specific thread.
  */
@@ -43,9 +43,10 @@ const ListMessagesOutputSchema = createCollectionListOutputSchema(
   ThreadMessageEntitySchema,
 );
 
-export const COLLECTION_THREAD_MESSAGES_LIST = defineTool({
-  name: "COLLECTION_THREAD_MESSAGES_LIST",
-  description: "List all messages for a specific thread",
+export const THREAD_MESSAGES_LIST = defineTool({
+  name: "THREAD_MESSAGES_LIST",
+  description:
+    "List messages in a thread with pagination. Returns messages in chronological order.",
   annotations: {
     title: "List Thread Messages",
     readOnlyHint: true,

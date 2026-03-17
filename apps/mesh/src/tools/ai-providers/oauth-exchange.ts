@@ -12,7 +12,7 @@ import { providerKeyOutputSchema } from "./key-create";
 export const AI_PROVIDER_OAUTH_EXCHANGE = defineTool({
   name: "AI_PROVIDER_OAUTH_EXCHANGE",
   description:
-    "Exchange an OAuth authorization code for an API key and store it",
+    "Exchange an OAuth authorization code for an API key. Completes the OAuth flow started by AI_PROVIDER_OAUTH_URL.",
   inputSchema: z.object({
     providerId: z.enum(PROVIDER_IDS),
     code: z.string(),

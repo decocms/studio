@@ -1,5 +1,5 @@
 /**
- * COLLECTION_VIRTUAL_MCP_LIST Tool
+ * VIRTUAL_MCP_LIST Tool
  *
  * List all virtual MCPs for the organization with collection binding compliance.
  */
@@ -197,9 +197,9 @@ const ListOutputSchema = createCollectionListOutputSchema(
   VirtualMCPEntitySchema,
 );
 
-export const COLLECTION_VIRTUAL_MCP_LIST = defineTool({
-  name: "COLLECTION_VIRTUAL_MCP_LIST",
-  description: "List all MCP virtual MCPs in the organization",
+export const VIRTUAL_MCP_LIST = defineTool({
+  name: "VIRTUAL_MCP_LIST",
+  description: "List Virtual MCPs with filtering, sorting, and pagination.",
   annotations: {
     title: "List Virtual MCPs",
     readOnlyHint: true,

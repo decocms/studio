@@ -47,7 +47,7 @@ const WidgetConfigSchema = z.object({
 export const MONITORING_WIDGET_PREVIEW = defineTool({
   name: "MONITORING_WIDGET_PREVIEW",
   description:
-    "Preview a widget aggregation without saving. Used to test queries in the dashboard editor.",
+    "Preview a widget aggregation without saving. Test queries before adding to a dashboard.",
   annotations: {
     title: "Preview Monitoring Widget",
     readOnlyHint: true,

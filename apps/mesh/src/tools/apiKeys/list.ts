@@ -26,7 +26,7 @@ interface ApiKeyMetadata {
 export const API_KEY_LIST = defineTool({
   name: "API_KEY_LIST",
   description:
-    "List all API keys for the current user in the current organization. Returns metadata only - key values are never shown after creation.",
+    "List API keys for the current user. Returns metadata only — key values are never shown after creation.",
   annotations: {
     title: "List API Keys",
     readOnlyHint: true,

@@ -129,7 +129,7 @@ async function fetchToolsFromHttpMCP(
     );
 
     client = new Client({
-      name: "mcp-mesh-tool-fetcher",
+      name: "mcp-cms-tool-fetcher",
       version: "1.0.0",
     });
 
@@ -209,7 +209,7 @@ async function fetchToolsFromSSEMCP(
       { requestInit: { headers } },
     );
 
-    client = new Client({ name: "mcp-mesh-tool-fetcher", version: "1.0.0" });
+    client = new Client({ name: "mcp-cms-tool-fetcher", version: "1.0.0" });
 
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error("SSE connection timeout")), 15_000);
@@ -276,7 +276,7 @@ async function fetchToolsFromStdioMCP(
     });
 
     client = new Client({
-      name: "mcp-mesh-tool-fetcher",
+      name: "mcp-cms-tool-fetcher",
       version: "1.0.0",
     });
 

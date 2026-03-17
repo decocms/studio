@@ -12,7 +12,7 @@ import { CancelEventInputSchema, CancelEventOutputSchema } from "./schema";
 export const EVENT_CANCEL = defineTool({
   name: "EVENT_CANCEL",
   description:
-    "Cancel a recurring event to stop future deliveries. Only the publisher can cancel their own events.",
+    "Stop a recurring event from delivering further. Only the original publisher can cancel.",
   annotations: {
     title: "Cancel Recurring Event",
     readOnlyHint: false,

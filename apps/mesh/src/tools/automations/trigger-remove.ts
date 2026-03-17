@@ -13,7 +13,7 @@ import { configureTriggerOnMcp } from "./configure-trigger";
 export const AUTOMATION_TRIGGER_REMOVE = defineTool({
   name: "AUTOMATION_TRIGGER_REMOVE",
   description:
-    "Remove a trigger from an automation. Disables event triggers on their MCP connections.",
+    "Remove a trigger from an automation. Disables associated event listeners on MCPs.",
   annotations: {
     title: "Remove Trigger",
     readOnlyHint: false,

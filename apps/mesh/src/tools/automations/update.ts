@@ -13,7 +13,7 @@ import { configureTriggerOnMcp } from "./configure-trigger";
 export const AUTOMATION_UPDATE = defineTool({
   name: "AUTOMATION_UPDATE",
   description:
-    "Update an automation. When active state changes, event triggers are configured on their MCP connections.",
+    "Update an automation's config. Toggling active state reconfigures event triggers on MCPs.",
   annotations: {
     title: "Update Automation",
     readOnlyHint: false,

@@ -13,7 +13,8 @@ import type { ProjectUI } from "../../storage/types";
 
 export const PROJECT_CREATE = defineTool({
   name: "PROJECT_CREATE" as const,
-  description: "Create a new project in an organization",
+  description:
+    "Create a new project to scope connections and tools within an organization.",
   annotations: {
     title: "Create Project",
     readOnlyHint: false,

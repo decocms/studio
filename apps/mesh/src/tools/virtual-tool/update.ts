@@ -1,5 +1,5 @@
 /**
- * COLLECTION_VIRTUAL_TOOLS_UPDATE Tool
+ * VIRTUAL_TOOLS_UPDATE Tool
  *
  * Update an existing virtual tool on a Virtual MCP.
  * The creator can specify new connection dependencies when updating.
@@ -30,10 +30,10 @@ const UpdateOutputSchema = z.object({
   item: VirtualToolEntitySchema.describe("The updated virtual tool"),
 });
 
-export const COLLECTION_VIRTUAL_TOOLS_UPDATE = defineTool({
-  name: "COLLECTION_VIRTUAL_TOOLS_UPDATE",
+export const VIRTUAL_TOOLS_UPDATE = defineTool({
+  name: "VIRTUAL_TOOLS_UPDATE",
   description:
-    "Update an existing virtual tool on a Virtual MCP. Specify connection_dependencies to update which connections this tool uses.",
+    "Update a virtual tool's code, schema, or connection dependencies on a Virtual MCP.",
   annotations: {
     title: "Update Virtual Tool",
     readOnlyHint: false,

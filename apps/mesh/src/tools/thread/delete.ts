@@ -1,5 +1,5 @@
 /**
- * COLLECTION_THREADS_DELETE Tool
+ * THREADS_DELETE Tool
  *
  * Delete a thread with collection binding compliance.
  */
@@ -13,9 +13,9 @@ import { requireAuth, requireOrganization } from "../../core/mesh-context";
 import { normalizeThreadForResponse } from "./helpers";
 import { ThreadEntitySchema } from "./schema";
 
-export const COLLECTION_THREADS_DELETE = defineTool({
-  name: "COLLECTION_THREADS_DELETE",
-  description: "Delete a thread",
+export const THREADS_DELETE = defineTool({
+  name: "THREADS_DELETE",
+  description: "Permanently delete a thread and all its messages.",
   annotations: {
     title: "Delete Thread",
     readOnlyHint: false,

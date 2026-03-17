@@ -10,7 +10,8 @@ import { requireAuth, requireOrganization } from "../../core/mesh-context";
 
 export const MEMBER_TAGS_SET = defineTool({
   name: "MEMBER_TAGS_SET",
-  description: "Set tags for a member (replaces all existing tags)",
+  description:
+    "Replace all tags on a member with the given set. Pass empty array to clear.",
   annotations: {
     title: "Set Member Tags",
     readOnlyHint: false,

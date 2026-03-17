@@ -13,7 +13,7 @@ import { configureTriggerOnMcp } from "./configure-trigger";
 export const AUTOMATION_DELETE = defineTool({
   name: "AUTOMATION_DELETE",
   description:
-    "Delete an automation. Disables all event triggers on their MCP connections before deleting.",
+    "Permanently delete an automation. Disables all event triggers on connected MCPs first.",
   annotations: {
     title: "Delete Automation",
     readOnlyHint: false,

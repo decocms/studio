@@ -11,7 +11,8 @@ import { requireAuth } from "../../core/mesh-context";
 
 export const PROJECT_DELETE = defineTool({
   name: "PROJECT_DELETE" as const,
-  description: "Delete a project (cannot delete org-admin)",
+  description:
+    "Permanently delete a project. The default org-admin project cannot be deleted.",
   annotations: {
     title: "Delete Project",
     readOnlyHint: false,

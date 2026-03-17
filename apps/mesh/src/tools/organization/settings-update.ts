@@ -5,7 +5,8 @@ import { SidebarItemSchema } from "./schema.ts";
 
 export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
   name: "ORGANIZATION_SETTINGS_UPDATE",
-  description: "Update organization-level settings",
+  description:
+    "Update organization-level settings such as sidebar configuration.",
   annotations: {
     title: "Update Organization Settings",
     readOnlyHint: false,

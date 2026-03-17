@@ -12,7 +12,8 @@ import type { ProjectUI } from "../../storage/types";
 
 export const PROJECT_CONNECTION_REMOVE = defineTool({
   name: "PROJECT_CONNECTION_REMOVE" as const,
-  description: "Remove a connection association from a project",
+  description:
+    "Remove a connection from a project. The connection itself is not deleted.",
   annotations: {
     title: "Remove Project Connection",
     readOnlyHint: false,

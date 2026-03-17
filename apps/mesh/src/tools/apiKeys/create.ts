@@ -12,7 +12,7 @@ import { ApiKeyCreateInputSchema, ApiKeyCreateOutputSchema } from "./schema";
 export const API_KEY_CREATE = defineTool({
   name: "API_KEY_CREATE",
   description:
-    "Create a new API key with specified permissions. The key value is only returned once - store it securely!",
+    "Create an API key with scoped permissions. The key value is returned only once — store it immediately.",
   annotations: {
     title: "Create API Key",
     readOnlyHint: false,

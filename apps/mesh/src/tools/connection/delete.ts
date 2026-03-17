@@ -1,5 +1,5 @@
 /**
- * COLLECTION_CONNECTIONS_DELETE Tool
+ * CONNECTIONS_DELETE Tool
  *
  * Delete a connection with collection binding compliance.
  */
@@ -22,9 +22,10 @@ const ConnectionDeleteInputSchema = CollectionDeleteInputSchema.extend({
     ),
 });
 
-export const COLLECTION_CONNECTIONS_DELETE = defineTool({
-  name: "COLLECTION_CONNECTIONS_DELETE",
-  description: "Delete a connection",
+export const CONNECTIONS_DELETE = defineTool({
+  name: "CONNECTIONS_DELETE",
+  description:
+    "Permanently delete a connection. Set force=true to auto-remove from referencing Virtual MCPs.",
   annotations: {
     title: "Delete Connection",
     readOnlyHint: false,

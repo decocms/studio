@@ -14,7 +14,7 @@ import type { AggregationFunction, GroupByColumn } from "@/storage/ports";
 export const MONITORING_DASHBOARD_QUERY = defineTool({
   name: "MONITORING_DASHBOARD_QUERY",
   description:
-    "Execute a dashboard's widgets and return aggregated monitoring data",
+    "Execute a dashboard's widgets and return aggregated monitoring data.",
   annotations: {
     title: "Query Monitoring Dashboard",
     readOnlyHint: true,

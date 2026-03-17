@@ -10,7 +10,7 @@ import { requireAuth, requireOrganization } from "../../core/mesh-context";
 
 export const TAGS_LIST = defineTool({
   name: "TAGS_LIST",
-  description: "List all tags in an organization",
+  description: "List all tags available in the organization.",
   annotations: {
     title: "List Tags",
     readOnlyHint: true,

@@ -26,7 +26,8 @@ const OutputSchema = z.object({
 
 export const USER_GET = defineTool({
   name: "USER_GET",
-  description: "Get a user by id (restricted to shared organizations)",
+  description:
+    "Get a user's profile by ID. Only returns users who share an organization with the caller.",
   annotations: {
     title: "Get User",
     readOnlyHint: true,

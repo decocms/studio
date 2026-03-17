@@ -17,7 +17,7 @@ import { getBaseUrl } from "../../core/server-constants";
 
 export const PROJECT_PLUGIN_CONFIG_UPDATE = defineTool({
   name: "PROJECT_PLUGIN_CONFIG_UPDATE" as const,
-  description: "Update or create plugin configuration for a project",
+  description: "Set or update a plugin's configuration for a specific project.",
   annotations: {
     title: "Update Project Plugin Config",
     readOnlyHint: false,

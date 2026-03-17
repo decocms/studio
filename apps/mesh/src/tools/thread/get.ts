@@ -1,5 +1,5 @@
 /**
- * COLLECTION_THREADS_GET Tool
+ * THREADS_GET Tool
  *
  * Get thread details by ID with collection binding compliance.
  */
@@ -19,9 +19,9 @@ import { ThreadEntitySchema } from "./schema";
 const ThreadGetOutputSchema =
   createCollectionGetOutputSchema(ThreadEntitySchema);
 
-export const COLLECTION_THREADS_GET = defineTool({
-  name: "COLLECTION_THREADS_GET",
-  description: "Get thread details by ID",
+export const THREADS_GET = defineTool({
+  name: "THREADS_GET",
+  description: "Get a thread's details and metadata by ID.",
   annotations: {
     title: "Get Thread",
     readOnlyHint: true,

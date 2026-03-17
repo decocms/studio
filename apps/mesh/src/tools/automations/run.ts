@@ -14,7 +14,8 @@ import {
 
 export const AUTOMATION_RUN = defineTool({
   name: "AUTOMATION_RUN",
-  description: "Manually trigger an automation run",
+  description:
+    "Manually trigger an automation run. Bypasses configured triggers.",
   annotations: {
     title: "Run Automation",
     readOnlyHint: false,
