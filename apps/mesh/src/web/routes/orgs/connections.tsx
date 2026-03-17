@@ -805,7 +805,7 @@ function OrgMcpsContent() {
   type ConnectionTab = "connected" | "all";
   const [activeTab, setActiveTab] = useLocalStorage<ConnectionTab>(
     LOCALSTORAGE_KEYS.connectionsTab(org.slug),
-    search.tab ?? "all",
+    (existing) => search.tab ?? existing ?? "all",
   );
 
   // Type & status filters
@@ -2398,17 +2398,18 @@ function OrgMcpsContent() {
                     />
                   );
                 })}
-                {activeTab === "all" && registryId && (
+                {(activeTab === "all" || searchLower) && registryId && (
                   <div ref={catalogSentinelRef} className="col-span-full h-4" />
                 )}
-                {activeTab === "all" && registryDiscovery.isLoadingMore && (
-                  <div className="col-span-full flex justify-center py-6">
-                    <Loading01
-                      size={24}
-                      className="animate-spin text-muted-foreground"
-                    />
-                  </div>
-                )}
+                {(activeTab === "all" || searchLower) &&
+                  registryDiscovery.isLoadingMore && (
+                    <div className="col-span-full flex justify-center py-6">
+                      <Loading01
+                        size={24}
+                        className="animate-spin text-muted-foreground"
+                      />
+                    </div>
+                  )}
               </div>
             )}
           </div>
