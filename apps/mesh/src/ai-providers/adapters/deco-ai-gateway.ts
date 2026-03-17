@@ -1,7 +1,8 @@
 import type { OAuthPkceResult, ProviderAdapter } from "../types";
 import { openrouterAdapter } from "./openrouter";
+import { env } from "../../env";
 
-const BASE = process.env.DECO_AI_GATEWAY_URL ?? "https://ai-site.decocache.com";
+const BASE = env.DECO_AI_GATEWAY_URL ?? "https://ai-site.decocache.com";
 
 export const decoAiGatewayAdapter: ProviderAdapter = {
   info: {

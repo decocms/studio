@@ -43,6 +43,10 @@ const envSchema = z
     // Transport
     UNSAFE_ALLOW_STDIO_TRANSPORT: zBooleanString,
 
+    // AI Gateway
+    DECO_AI_GATEWAY_ENABLED: zBooleanString,
+    DECO_AI_GATEWAY_URL: z.string().default("https://ai-site.decocache.com"),
+
     // Debug / K8s
     DEBUG_PORT: z.coerce.number().default(9090),
     ENABLE_DEBUG_SERVER: zBooleanString,
@@ -161,6 +165,10 @@ function logConfiguration(e: Env) {
 
   sect("Transport");
   r("UNSAFE_ALLOW_STDIO_TRANSPORT", e.UNSAFE_ALLOW_STDIO_TRANSPORT);
+
+  sect("AI Gateway");
+  r("DECO_AI_GATEWAY_ENABLED", e.DECO_AI_GATEWAY_ENABLED);
+  r("DECO_AI_GATEWAY_URL", e.DECO_AI_GATEWAY_URL);
 
   sect("Debug / K8s");
   r("DEBUG_PORT", e.DEBUG_PORT);
