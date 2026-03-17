@@ -11,7 +11,8 @@ import { MonitoringDashboardSchema } from "./schema";
 
 export const MONITORING_DASHBOARD_GET = defineTool({
   name: "MONITORING_DASHBOARD_GET",
-  description: "Get a monitoring dashboard by ID",
+  description:
+    "Get a monitoring dashboard's full configuration and widgets by ID.",
   annotations: {
     title: "Get Monitoring Dashboard",
     readOnlyHint: true,

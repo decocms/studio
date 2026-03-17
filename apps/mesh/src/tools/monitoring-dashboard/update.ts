@@ -15,7 +15,7 @@ import {
 
 export const MONITORING_DASHBOARD_UPDATE = defineTool({
   name: "MONITORING_DASHBOARD_UPDATE",
-  description: "Update an existing monitoring dashboard",
+  description: "Update a monitoring dashboard's name, filters, or widgets.",
   annotations: {
     title: "Update Monitoring Dashboard",
     readOnlyHint: false,

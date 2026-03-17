@@ -10,7 +10,7 @@ import { requireAuth, requireOrganization } from "../../core/mesh-context";
 
 export const TAGS_CREATE = defineTool({
   name: "TAGS_CREATE",
-  description: "Create a new tag in an organization",
+  description: "Create a new tag that can be assigned to organization members.",
   annotations: {
     title: "Create Tag",
     readOnlyHint: false,

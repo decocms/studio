@@ -11,7 +11,7 @@ import { serializedProjectWithBindingsSchema } from "./schema";
 
 export const PROJECT_LIST = defineTool({
   name: "PROJECT_LIST" as const,
-  description: "List all projects in an organization",
+  description: "List all projects with their descriptions and enabled plugins.",
   annotations: {
     title: "List Projects",
     readOnlyHint: true,

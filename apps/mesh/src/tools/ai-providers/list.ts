@@ -6,7 +6,7 @@ import { PROVIDERS } from "@/ai-providers/registry";
 export const AI_PROVIDERS_LIST = defineTool({
   name: "AI_PROVIDERS_LIST",
   description:
-    "List all available AI providers that can be connected with an API key",
+    "List all supported AI providers and their connection methods (API key, OAuth).",
   inputSchema: z.object({}),
   outputSchema: z.object({
     providers: z.array(

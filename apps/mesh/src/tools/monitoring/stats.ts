@@ -12,7 +12,8 @@ import { z } from "zod";
 
 export const MONITORING_STATS = defineTool({
   name: "MONITORING_STATS",
-  description: "Get aggregated statistics for tool call monitoring",
+  description:
+    "Get aggregated statistics (counts, latency, error rates) for tool call monitoring.",
   annotations: {
     title: "Get Monitoring Stats",
     readOnlyHint: true,

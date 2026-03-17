@@ -21,7 +21,7 @@ import { z } from "zod";
  * Actions: Array of tool names or "*" for all permissions
  *
  * Examples:
- * - { "self": ["API_KEY_CREATE", "COLLECTION_CONNECTIONS_LIST"] }
+ * - { "self": ["API_KEY_CREATE", "CONNECTIONS_LIST"] }
  * - { "conn_abc123": ["SEND_MESSAGE", "LIST_THREADS"] }
  * - { "self": ["*"] } (all management tools)
  * - { "conn_abc123": ["*"] } (all tools for specific connection)
@@ -74,7 +74,7 @@ export const ApiKeyCreateInputSchema = z.object({
     .max(64)
     .describe("Human-readable name for the API key"),
   permissions: PermissionSchema.optional().describe(
-    'Permissions to grant. Format: { resource: [actions] }. Resource is "self" for management tools or "conn_<UUID>" for connection-specific tools. Actions are tool names (e.g., ["API_KEY_CREATE"]) or ["*"] for all. Example: { "self": ["API_KEY_CREATE", "COLLECTION_CONNECTIONS_LIST"] }. Defaults to read-only permissions.',
+    'Permissions to grant. Format: { resource: [actions] }. Resource is "self" for management tools or "conn_<UUID>" for connection-specific tools. Actions are tool names (e.g., ["API_KEY_CREATE"]) or ["*"] for all. Example: { "self": ["API_KEY_CREATE", "CONNECTIONS_LIST"] }. Defaults to read-only permissions.',
   ),
   expiresIn: z
     .number()

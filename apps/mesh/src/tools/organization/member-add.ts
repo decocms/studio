@@ -10,7 +10,8 @@ import { requireAuth } from "../../core/mesh-context";
 
 export const ORGANIZATION_MEMBER_ADD = defineTool({
   name: "ORGANIZATION_MEMBER_ADD",
-  description: "Add a member to an organization",
+  description:
+    "Invite a member to the organization by email with an assigned role.",
   annotations: {
     title: "Add Organization Member",
     readOnlyHint: false,

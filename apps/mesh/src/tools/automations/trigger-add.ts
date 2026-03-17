@@ -14,8 +14,7 @@ import { configureTriggerOnMcp } from "./configure-trigger";
 
 export const AUTOMATION_TRIGGER_ADD = defineTool({
   name: "AUTOMATION_TRIGGER_ADD",
-  description:
-    "Add a trigger to an automation. Supports cron (scheduled) and event (connection-based) triggers.",
+  description: "Add a cron or event-based trigger to an automation.",
   annotations: {
     title: "Add Trigger",
     readOnlyHint: false,

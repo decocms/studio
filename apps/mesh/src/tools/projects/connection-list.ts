@@ -18,7 +18,8 @@ const connectionSummarySchema = z.object({
 
 export const PROJECT_CONNECTION_LIST = defineTool({
   name: "PROJECT_CONNECTION_LIST" as const,
-  description: "List connections associated with a project",
+  description:
+    "List connections assigned to a project with their status and tools.",
   annotations: {
     title: "List Project Connections",
     readOnlyHint: true,

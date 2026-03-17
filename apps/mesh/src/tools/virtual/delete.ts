@@ -1,5 +1,5 @@
 /**
- * COLLECTION_VIRTUAL_MCP_DELETE Tool
+ * VIRTUAL_MCP_DELETE Tool
  *
  * Delete a virtual MCP with collection binding compliance.
  */
@@ -25,9 +25,9 @@ const DeleteOutputSchema = z.object({
   item: VirtualMCPEntitySchema.describe("The deleted virtual MCP entity"),
 });
 
-export const COLLECTION_VIRTUAL_MCP_DELETE = defineTool({
-  name: "COLLECTION_VIRTUAL_MCP_DELETE",
-  description: "Delete an MCP virtual MCP",
+export const VIRTUAL_MCP_DELETE = defineTool({
+  name: "VIRTUAL_MCP_DELETE",
+  description: "Permanently delete a Virtual MCP and its virtual tools.",
   annotations: {
     title: "Delete Virtual MCP",
     readOnlyHint: false,

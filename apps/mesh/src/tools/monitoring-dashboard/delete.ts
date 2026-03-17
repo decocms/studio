@@ -10,7 +10,7 @@ import { z } from "zod";
 
 export const MONITORING_DASHBOARD_DELETE = defineTool({
   name: "MONITORING_DASHBOARD_DELETE",
-  description: "Delete a monitoring dashboard",
+  description: "Permanently delete a monitoring dashboard and all its widgets.",
   annotations: {
     title: "Delete Monitoring Dashboard",
     readOnlyHint: false,

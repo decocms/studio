@@ -11,7 +11,8 @@ import { MonitoringDashboardSchema } from "./schema";
 
 export const MONITORING_DASHBOARD_LIST = defineTool({
   name: "MONITORING_DASHBOARD_LIST",
-  description: "List all monitoring dashboards for the organization",
+  description:
+    "List all monitoring dashboards with their widget configurations.",
   annotations: {
     title: "List Monitoring Dashboards",
     readOnlyHint: true,

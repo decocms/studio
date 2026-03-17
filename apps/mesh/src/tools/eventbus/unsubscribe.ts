@@ -10,7 +10,7 @@ import { UnsubscribeInputSchema, UnsubscribeOutputSchema } from "./schema";
 
 export const EVENT_UNSUBSCRIBE = defineTool({
   name: "EVENT_UNSUBSCRIBE",
-  description: "Unsubscribe from events by removing a subscription.",
+  description: "Remove a subscription to stop receiving events of that type.",
   annotations: {
     title: "Unsubscribe from Events",
     readOnlyHint: false,

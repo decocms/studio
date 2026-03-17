@@ -5,7 +5,8 @@ import { PROVIDERS } from "../../ai-providers/registry";
 
 export const AI_PROVIDERS_ACTIVE = defineTool({
   name: "AI_PROVIDERS_ACTIVE",
-  description: "List AI providers that have at least one API key configured",
+  description:
+    "List AI providers that have at least one API key configured and ready to use.",
   inputSchema: z.object({}),
   outputSchema: z.object({
     providers: z.array(

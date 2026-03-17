@@ -9,7 +9,7 @@ import {
 export const AI_PROVIDERS_LIST_MODELS = defineTool({
   name: "AI_PROVIDERS_LIST_MODELS",
   description:
-    "List models available from an AI provider using a specific API key",
+    "List models available from an AI provider. Requires a valid stored API key.",
   inputSchema: z.object({
     keyId: z.string().describe("The provider key ID to use"),
   }),

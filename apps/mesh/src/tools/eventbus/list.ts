@@ -14,7 +14,7 @@ import {
 export const EVENT_SUBSCRIPTION_LIST = defineTool({
   name: "EVENT_SUBSCRIPTION_LIST",
   description:
-    "List event subscriptions, optionally filtered by connection ID.",
+    "List event subscriptions. Filter by connection ID to scope results.",
   annotations: {
     title: "List Event Subscriptions",
     readOnlyHint: true,

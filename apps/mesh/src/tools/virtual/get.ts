@@ -1,5 +1,5 @@
 /**
- * COLLECTION_VIRTUAL_MCP_GET Tool
+ * VIRTUAL_MCP_GET Tool
  *
  * Get a single virtual MCP by ID with collection binding compliance.
  */
@@ -27,9 +27,10 @@ const GetOutputSchema = z.object({
   ),
 });
 
-export const COLLECTION_VIRTUAL_MCP_GET = defineTool({
-  name: "COLLECTION_VIRTUAL_MCP_GET",
-  description: "Get an MCP virtual MCP by ID",
+export const VIRTUAL_MCP_GET = defineTool({
+  name: "VIRTUAL_MCP_GET",
+  description:
+    "Get a Virtual MCP's configuration, connections, and virtual tools by ID.",
   annotations: {
     title: "Get Virtual MCP",
     readOnlyHint: true,

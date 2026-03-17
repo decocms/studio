@@ -1,5 +1,5 @@
 /**
- * COLLECTION_VIRTUAL_TOOLS_DELETE Tool
+ * VIRTUAL_TOOLS_DELETE Tool
  *
  * Delete a virtual tool from a Virtual MCP.
  * Automatically recalculates indirect dependencies after deletion.
@@ -27,9 +27,9 @@ const DeleteOutputSchema = z.object({
   item: VirtualToolEntitySchema.describe("The deleted virtual tool"),
 });
 
-export const COLLECTION_VIRTUAL_TOOLS_DELETE = defineTool({
-  name: "COLLECTION_VIRTUAL_TOOLS_DELETE",
-  description: "Delete a virtual tool from a Virtual MCP",
+export const VIRTUAL_TOOLS_DELETE = defineTool({
+  name: "VIRTUAL_TOOLS_DELETE",
+  description: "Remove a virtual tool from a Virtual MCP by name.",
   annotations: {
     title: "Delete Virtual Tool",
     readOnlyHint: false,

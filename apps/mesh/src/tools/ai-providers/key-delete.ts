@@ -4,7 +4,7 @@ import { requireAuth, requireOrganization } from "../../core/mesh-context";
 
 export const AI_PROVIDER_KEY_DELETE = defineTool({
   name: "AI_PROVIDER_KEY_DELETE",
-  description: "Delete a stored AI provider API key",
+  description: "Delete a stored AI provider API key. Cannot be undone.",
   inputSchema: z.object({
     keyId: z.string().describe("The provider key ID to delete"),
   }),

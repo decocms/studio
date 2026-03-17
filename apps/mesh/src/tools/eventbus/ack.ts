@@ -13,7 +13,7 @@ import { AckEventInputSchema, AckEventOutputSchema } from "./schema";
 export const EVENT_ACK = defineTool({
   name: "EVENT_ACK",
   description:
-    "Acknowledge delivery of an event. Call after successfully processing an event received via ON_EVENTS with retryAfter.",
+    "Acknowledge event delivery after processing. Only needed for events received with retryAfter.",
   annotations: {
     title: "Acknowledge Event",
     readOnlyHint: false,

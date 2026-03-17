@@ -39,7 +39,8 @@ const monitoringLogSchema = z.object({
 
 export const MONITORING_LOGS_LIST = defineTool({
   name: "MONITORING_LOGS_LIST",
-  description: "List monitoring logs for tool calls in the organization",
+  description:
+    "List monitoring logs for tool calls with filtering and pagination.",
   annotations: {
     title: "List Monitoring Logs",
     readOnlyHint: true,

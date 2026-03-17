@@ -1,5 +1,5 @@
 /**
- * COLLECTION_THREADS_UPDATE Tool
+ * THREADS_UPDATE Tool
  *
  * Update an existing thread (organization-scoped) with collection binding compliance.
  */
@@ -29,9 +29,9 @@ const UpdateOutputSchema = z.object({
   item: ThreadEntitySchema.describe("The updated thread entity"),
 });
 
-export const COLLECTION_THREADS_UPDATE = defineTool({
-  name: "COLLECTION_THREADS_UPDATE",
-  description: "Update an existing thread in the organization",
+export const THREADS_UPDATE = defineTool({
+  name: "THREADS_UPDATE",
+  description: "Update a thread's title, description, or visibility.",
   annotations: {
     title: "Update Thread",
     readOnlyHint: false,

@@ -10,7 +10,7 @@ import { requireAuth } from "../../core/mesh-context";
 
 export const ORGANIZATION_UPDATE = defineTool({
   name: "ORGANIZATION_UPDATE",
-  description: "Update an existing organization",
+  description: "Update an organization's name, slug, or description.",
   annotations: {
     title: "Update Organization",
     readOnlyHint: false,

@@ -10,7 +10,8 @@ import { requireAuth, requireOrganization } from "../../core/mesh-context";
 
 export const AUTOMATION_LIST = defineTool({
   name: "AUTOMATION_LIST",
-  description: "List automations for the current organization",
+  description:
+    "List automations with their status, triggers, and configuration.",
   annotations: {
     title: "List Automations",
     readOnlyHint: true,

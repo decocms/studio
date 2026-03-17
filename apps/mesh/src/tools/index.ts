@@ -46,26 +46,26 @@ const CORE_TOOLS = [
   OrganizationTools.ORGANIZATION_MEMBER_UPDATE_ROLE,
 
   // Connection collection tools
-  ConnectionTools.COLLECTION_CONNECTIONS_CREATE,
-  ConnectionTools.COLLECTION_CONNECTIONS_LIST,
-  ConnectionTools.COLLECTION_CONNECTIONS_GET,
-  ConnectionTools.COLLECTION_CONNECTIONS_UPDATE,
-  ConnectionTools.COLLECTION_CONNECTIONS_DELETE,
+  ConnectionTools.CONNECTIONS_CREATE,
+  ConnectionTools.CONNECTIONS_LIST,
+  ConnectionTools.CONNECTIONS_GET,
+  ConnectionTools.CONNECTIONS_UPDATE,
+  ConnectionTools.CONNECTIONS_DELETE,
   ConnectionTools.CONNECTION_TEST,
 
   // Virtual MCP collection tools
-  VirtualMCPTools.COLLECTION_VIRTUAL_MCP_CREATE,
-  VirtualMCPTools.COLLECTION_VIRTUAL_MCP_LIST,
-  VirtualMCPTools.COLLECTION_VIRTUAL_MCP_GET,
-  VirtualMCPTools.COLLECTION_VIRTUAL_MCP_UPDATE,
-  VirtualMCPTools.COLLECTION_VIRTUAL_MCP_DELETE,
+  VirtualMCPTools.VIRTUAL_MCP_CREATE,
+  VirtualMCPTools.VIRTUAL_MCP_LIST,
+  VirtualMCPTools.VIRTUAL_MCP_GET,
+  VirtualMCPTools.VIRTUAL_MCP_UPDATE,
+  VirtualMCPTools.VIRTUAL_MCP_DELETE,
 
   // Virtual Tool collection tools
-  VirtualToolTools.COLLECTION_VIRTUAL_TOOLS_CREATE,
-  VirtualToolTools.COLLECTION_VIRTUAL_TOOLS_LIST,
-  VirtualToolTools.COLLECTION_VIRTUAL_TOOLS_GET,
-  VirtualToolTools.COLLECTION_VIRTUAL_TOOLS_UPDATE,
-  VirtualToolTools.COLLECTION_VIRTUAL_TOOLS_DELETE,
+  VirtualToolTools.VIRTUAL_TOOLS_CREATE,
+  VirtualToolTools.VIRTUAL_TOOLS_LIST,
+  VirtualToolTools.VIRTUAL_TOOLS_GET,
+  VirtualToolTools.VIRTUAL_TOOLS_UPDATE,
+  VirtualToolTools.VIRTUAL_TOOLS_DELETE,
 
   // Database tools
   DatabaseTools.DATABASES_RUN_SQL,
@@ -102,12 +102,12 @@ const CORE_TOOLS = [
   UserTools.USER_GET,
 
   // Thread collection tools
-  ThreadTools.COLLECTION_THREADS_CREATE,
-  ThreadTools.COLLECTION_THREADS_LIST,
-  ThreadTools.COLLECTION_THREADS_GET,
-  ThreadTools.COLLECTION_THREADS_UPDATE,
-  ThreadTools.COLLECTION_THREADS_DELETE,
-  ThreadTools.COLLECTION_THREAD_MESSAGES_LIST,
+  ThreadTools.THREADS_CREATE,
+  ThreadTools.THREADS_LIST,
+  ThreadTools.THREADS_GET,
+  ThreadTools.THREADS_UPDATE,
+  ThreadTools.THREADS_DELETE,
+  ThreadTools.THREAD_MESSAGES_LIST,
 
   // Tag tools
   TagTools.TAGS_LIST,
@@ -206,7 +206,7 @@ export const managementMCP = async (ctx: MeshContext) => {
 
   // Create MCP server directly
   const server = new McpServer(
-    { name: "mcp-mesh-management", version: "1.0.0" },
+    { name: "mcp-cms-management", version: "1.0.0" },
     { capabilities: { tools: {} } },
   );
 

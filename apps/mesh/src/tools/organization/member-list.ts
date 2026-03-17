@@ -10,7 +10,7 @@ import { requireAuth } from "../../core/mesh-context";
 
 export const ORGANIZATION_MEMBER_LIST = defineTool({
   name: "ORGANIZATION_MEMBER_LIST",
-  description: "List all members in an organization",
+  description: "List all members in the organization with their roles.",
   annotations: {
     title: "List Organization Members",
     readOnlyHint: true,

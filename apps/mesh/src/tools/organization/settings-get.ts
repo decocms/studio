@@ -5,7 +5,8 @@ import { SidebarItemSchema } from "./schema.ts";
 
 export const ORGANIZATION_SETTINGS_GET = defineTool({
   name: "ORGANIZATION_SETTINGS_GET",
-  description: "Get organization-level settings",
+  description:
+    "Get organization-level settings including sidebar configuration.",
   annotations: {
     title: "Get Organization Settings",
     readOnlyHint: true,

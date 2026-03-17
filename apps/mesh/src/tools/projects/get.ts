@@ -11,7 +11,7 @@ import { serializedProjectSchema } from "./schema";
 
 export const PROJECT_GET = defineTool({
   name: "PROJECT_GET" as const,
-  description: "Get a project by ID or slug",
+  description: "Get a project's full configuration by ID or slug.",
   annotations: {
     title: "Get Project",
     readOnlyHint: true,

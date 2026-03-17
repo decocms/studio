@@ -12,7 +12,7 @@ import { env } from "../../env";
 export const AI_PROVIDER_OAUTH_URL = defineTool({
   name: "AI_PROVIDER_OAUTH_URL",
   description:
-    "Get the OAuth authorization URL for a provider that supports OAuth PKCE",
+    "Get the OAuth PKCE authorization URL for a provider. Returns URL and state token.",
   inputSchema: z.object({
     providerId: z.enum(PROVIDER_IDS),
     callbackUrl: z

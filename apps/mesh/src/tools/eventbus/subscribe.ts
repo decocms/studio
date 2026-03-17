@@ -12,7 +12,7 @@ import { SubscribeInputSchema, SubscribeOutputSchema } from "./schema";
 export const EVENT_SUBSCRIBE = defineTool({
   name: "EVENT_SUBSCRIBE",
   description:
-    "Subscribe to events of a specific type. The subscriber is automatically set to the caller's connection.",
+    "Subscribe to events of a specific type. Caller's connection is set as subscriber automatically.",
   annotations: {
     title: "Subscribe to Events",
     readOnlyHint: false,

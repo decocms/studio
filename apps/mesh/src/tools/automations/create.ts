@@ -15,7 +15,7 @@ import {
 export const AUTOMATION_CREATE = defineTool({
   name: "AUTOMATION_CREATE",
   description:
-    "Create a new automation with instructions, agent, and model configuration",
+    "Create an automation with instructions, agent, and model config. Triggers can be added separately.",
   annotations: {
     title: "Create Automation",
     readOnlyHint: false,

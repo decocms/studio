@@ -22,7 +22,7 @@ interface ApiKeyMetadata {
 export const API_KEY_UPDATE = defineTool({
   name: "API_KEY_UPDATE",
   description:
-    "Update an existing API key's name, permissions, or metadata. Note: Key value cannot be changed or retrieved.",
+    "Update an API key's name, permissions, or metadata. The key value cannot be changed or retrieved.",
   annotations: {
     title: "Update API Key",
     readOnlyHint: false,
