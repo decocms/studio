@@ -30,4 +30,6 @@ export const LOCALSTORAGE_KEYS = {
   chatTaskOwnerFilter: (locator: ProjectLocator) =>
     `mesh:chat:task-owner-filter:${locator}`,
   lastOrgSlug: () => `mesh:last-org-slug`,
+  githubRegistries: (org: string) =>
+    `mesh:store:github-registries:${org}` as const,
 } as const;

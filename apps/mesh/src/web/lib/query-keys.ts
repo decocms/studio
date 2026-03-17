@@ -266,4 +266,17 @@ export const KEYS = {
 
   // AI provider stored keys (scoped by locator)
   aiProviderKeys: (locator: string) => ["ai-provider-keys", locator] as const,
+
+  // Skill registry (GitHub repos)
+  skillRegistryList: (owner: string, repo: string, type?: string) =>
+    ["skill-registry", owner, repo, type ?? "all"] as const,
+  skillRegistryItem: (
+    owner: string,
+    repo: string,
+    type: string,
+    name: string,
+  ) => ["skill-registry", owner, repo, type, name] as const,
+
+  // skills.sh search
+  skillsShSearch: (query: string) => ["skills-sh", "search", query] as const,
 } as const;

@@ -447,6 +447,11 @@ const storeDetailRoute = createRoute({
       registryId: z.string().optional(),
       serverName: z.string().optional(),
       itemId: z.string().optional(),
+      // GitHub skill registry params
+      ghOwner: z.string().optional(),
+      ghRepo: z.string().optional(),
+      ghType: z.enum(["skill", "agent"]).optional(),
+      ghName: z.string().optional(),
     }),
   ),
 });

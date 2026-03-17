@@ -1,3 +1,4 @@
+import { serializeAgentToMd } from "@/web/utils/skill-parser";
 import { slugify } from "@/web/utils/slugify";
 import { Badge } from "@deco/ui/components/badge.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -541,8 +542,83 @@ export function VirtualMCPShareModal({
 
           {/* Typegen */}
           <TypegenSection virtualMcp={virtualMcp} />
+
+          <div className="border-t border-border" />
+
+          {/* Export Markdown */}
+          <ExportMarkdownSection virtualMcp={virtualMcp} />
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Export agent definition as markdown
+ */
+function ExportMarkdownSection({
+  virtualMcp,
+}: {
+  virtualMcp: VirtualMCPEntity;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const skillNames = (virtualMcp.connections ?? []).map((c) => c.connection_id);
+
+  const markdown = serializeAgentToMd({
+    title: virtualMcp.title,
+    description: virtualMcp.description,
+    icon: virtualMcp.icon,
+    metadata: virtualMcp.metadata as
+      | { instructions?: string | null }
+      | undefined,
+    skillNames,
+  });
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(markdown);
+    setCopied(true);
+    toast.success("Agent markdown copied to clipboard");
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleDownload = () => {
+    const slug = slugify(virtualMcp.title || "agent");
+    const blob = new Blob([markdown], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${slug}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Downloaded ${slug}.md`);
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <h4 className="text-sm font-medium text-foreground">
+        Export as Markdown
+      </h4>
+      <p className="text-xs text-muted-foreground">
+        Export this agent definition as a shareable markdown file. Can be added
+        to a GitHub repository for team-wide access.
+      </p>
+      <pre className="rounded-lg border border-border bg-muted/30 p-3 text-xs overflow-x-auto max-h-48 overflow-y-auto">
+        <code>{markdown}</code>
+      </pre>
+      <div className="flex gap-2">
+        <Button variant="outline" size="sm" onClick={handleCopy}>
+          {copied ? (
+            <Check className="size-4" />
+          ) : (
+            <Copy01 className="size-4" />
+          )}
+          {copied ? "Copied" : "Copy to Clipboard"}
+        </Button>
+        <Button variant="outline" size="sm" onClick={handleDownload}>
+          Download .md
+        </Button>
+      </div>
+    </div>
   );
 }

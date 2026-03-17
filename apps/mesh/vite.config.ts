@@ -15,6 +15,13 @@ export default defineConfig({
       host: "localhost",
       clientPort: parseInt(process.env.VITE_PORT || "4000", 10),
     },
+    proxy: {
+      "/api/skills-sh": {
+        target: "https://skills.sh",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/skills-sh/, "/api"),
+      },
+    },
   },
   clearScreen: false,
   logLevel: "warn",

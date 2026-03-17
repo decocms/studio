@@ -31,6 +31,7 @@ import * as ThreadTools from "./thread";
 import * as AutomationTools from "./automations";
 import * as UserTools from "./user";
 import * as AiProvidersTools from "./ai-providers";
+import * as SkillRegistryTools from "./skill-registry";
 import { ToolName } from "./registry";
 // Core tools - always available
 const CORE_TOOLS = [
@@ -153,6 +154,11 @@ const CORE_TOOLS = [
   AiProvidersTools.AI_PROVIDER_KEY_LIST,
   AiProvidersTools.AI_PROVIDER_OAUTH_URL,
   AiProvidersTools.AI_PROVIDER_OAUTH_EXCHANGE,
+
+  // Skill Registry tools
+  SkillRegistryTools.SKILL_REGISTRY_SYNC,
+  SkillRegistryTools.SKILL_REGISTRY_LIST,
+  SkillRegistryTools.SKILL_REGISTRY_GET,
 ] as const satisfies { name: ToolName }[];
 
 // Plugin tools - collected at startup, gated by org settings at runtime

@@ -19,6 +19,7 @@ interface StoreRegistrySelectProps {
   value: string;
   onValueChange: (value: string) => void;
   onAddWellKnown: (registry: ConnectionCreateData) => void;
+  onAddGitHubRepo?: () => void;
   wellKnownRegistries: ConnectionCreateData[];
   placeholder?: string;
 }
@@ -28,6 +29,7 @@ export function StoreRegistrySelect({
   value,
   onValueChange,
   onAddWellKnown,
+  onAddGitHubRepo,
   wellKnownRegistries,
   placeholder = "Select a registry...",
 }: StoreRegistrySelectProps) {
@@ -131,6 +133,25 @@ export function StoreRegistrySelect({
                 </span>
               </button>
             ))}
+          </div>
+        )}
+        {onAddGitHubRepo && (
+          <div className="border-t border-border pt-1 mt-1">
+            <button
+              type="button"
+              onClick={() => {
+                onAddGitHubRepo();
+                setOpen(false);
+              }}
+              className="relative flex w-full cursor-pointer items-center gap-2 rounded-lg py-1.5 pr-8 pl-2 text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground"
+            >
+              <div className="flex items-center gap-2">
+                <span className="w-4 h-4 rounded bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
+                  +
+                </span>
+                <span className="flex-1">Add GitHub Repository...</span>
+              </div>
+            </button>
           </div>
         )}
       </PopoverContent>

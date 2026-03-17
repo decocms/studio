@@ -443,6 +443,20 @@ export async function createApp(options: CreateAppOptions = {}) {
   // ============================================================================
   app.route("/api/config", publicConfigRoutes);
 
+  // skills.sh proxy (avoids CORS)
+  app.all("/api/skills-sh/*", async (c) => {
+    const path = c.req.path.replace(/^\/api\/skills-sh/, "/api");
+    const url = new URL(path, "https://skills.sh");
+    url.search = new URL(c.req.url).search;
+    const res = await fetch(url.toString());
+    return new Response(res.body, {
+      status: res.status,
+      headers: {
+        "content-type": res.headers.get("content-type") || "application/json",
+      },
+    });
+  });
+
   // ============================================================================
   // Better Auth Routes
   // ============================================================================

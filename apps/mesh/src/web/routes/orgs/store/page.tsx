@@ -8,12 +8,17 @@ import {
 import { StoreDiscovery } from "@/web/components/store";
 import { StoreRegistrySelect } from "@/web/components/store/store-registry-select";
 import { StoreRegistryEmptyState } from "@/web/components/store/store-registry-empty-state";
+import { GitHubRegistryDiscovery } from "@/web/components/store/github-registry-discovery";
+import { SkillsShDiscovery } from "@/web/components/store/skills-sh-discovery";
+import { GitHubRegistryAddDialog } from "@/web/components/store/github-registry-add-dialog";
 import { useRegistryConnections } from "@/web/hooks/use-binding";
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
+import { useGitHubRegistries } from "@/web/hooks/use-github-registries";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import {
   getWellKnownCommunityRegistryConnection,
   getWellKnownRegistryConnection,
+  ORG_ADMIN_PROJECT_SLUG,
   SELF_MCP_ALIAS_ID,
   useConnectionActions,
   useConnections,
@@ -22,14 +27,37 @@ import {
   WellKnownOrgMCPId,
   type ConnectionCreateData,
 } from "@decocms/mesh-sdk";
+import { slugify } from "@/web/utils/slugify";
 import { PLUGIN_ID as PRIVATE_REGISTRY_PLUGIN_ID } from "mesh-plugin-private-registry/shared";
 import { AlertTriangle, Loading01, RefreshCw01 } from "@untitledui/icons";
-import { Outlet, useRouterState } from "@tanstack/react-router";
+import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { KEYS } from "@/web/lib/query-keys";
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { Button } from "@deco/ui/components/button.tsx";
+
+// GitHub registry IDs are prefixed with "github:" to distinguish from MCP connection IDs
+const GITHUB_PREFIX = "github:";
+const SKILLSSH_ID = "skillssh:";
+
+function isSkillsShId(id: string): boolean {
+  return id === SKILLSSH_ID;
+}
+
+function parseGitHubRegistryId(id: string): {
+  owner: string;
+  repo: string;
+} | null {
+  if (!id.startsWith(GITHUB_PREFIX)) return null;
+  const parts = id.slice(GITHUB_PREFIX.length).split("/");
+  if (parts.length !== 2) return null;
+  return { owner: parts[0]!, repo: parts[1]! };
+}
+
+function makeGitHubRegistryId(owner: string, repo: string): string {
+  return `${GITHUB_PREFIX}${owner}/${repo}`;
+}
 
 /**
  * Error fallback for when a store registry is unreachable or broken.
@@ -73,6 +101,61 @@ export default function StorePage() {
   const { org, project } = useProjectContext();
   const allConnections = useConnections();
   const connectionActions = useConnectionActions();
+  const navigate = useNavigate();
+  const githubRegistries = useGitHubRegistries(org.slug);
+  const [addRepoOpen, setAddRepoOpen] = useState(false);
+
+  const navigateToGitHubItem = (
+    item: import("@/web/components/store/types").RegistryItem,
+  ) => {
+    const meta = item._meta as
+      | Record<string, Record<string, string>>
+      | undefined;
+    const gh = meta?.["mesh.github"];
+    if (!gh) return;
+    navigate({
+      to: "/$org/$project/store/$appName",
+      params: {
+        org: org.slug,
+        project: ORG_ADMIN_PROJECT_SLUG,
+        appName: slugify(item.name || item.title || "item"),
+      },
+      search: {
+        ghOwner: gh.owner,
+        ghRepo: gh.repo,
+        ghType: gh.type as "skill" | "agent",
+        ghName: item.server?.name || gh.path?.split("/").pop() || "",
+      },
+    });
+  };
+
+  const navigateToSkillsShItem = (
+    item: import("@/web/components/store/types").RegistryItem,
+  ) => {
+    const meta = item._meta as
+      | Record<string, Record<string, string>>
+      | undefined;
+    const sh = meta?.["mesh.skillssh"];
+    if (!sh) return;
+    // For skills.sh items, navigate with the source repo info
+    navigate({
+      to: "/$org/$project/store/$appName",
+      params: {
+        org: org.slug,
+        project: ORG_ADMIN_PROJECT_SLUG,
+        appName: slugify(item.name || item.title || "skill"),
+      },
+      search: {
+        ghOwner: sh.source?.split("/")[0] || "",
+        ghRepo: sh.source?.split("/")[1] || "",
+        ghType: "skill" as const,
+        ghName:
+          (meta?.["mesh.skillssh"]?.skillId as string) ||
+          item.server?.name ||
+          "",
+      },
+    });
+  };
 
   // Check if we're viewing a child route (server detail)
   const routerState = useRouterState();
@@ -143,7 +226,7 @@ export default function StorePage() {
 
   const registryBranding = registryPluginConfig?.config?.settings;
 
-  const registryOptions = registryConnections.map((c) => {
+  const mcpRegistryOptions = registryConnections.map((c) => {
     // Override branding for the self MCP when private-registry plugin has custom name/icon
     if (c.id === selfMcpId && registryBranding) {
       return {
@@ -159,15 +242,41 @@ export default function StorePage() {
     };
   });
 
+  // Add GitHub registries and skills.sh to the options
+  const githubRegistryOptions = githubRegistries.registries.map((r) => ({
+    id: makeGitHubRegistryId(r.owner, r.repo),
+    name: `${r.owner}/${r.repo}`,
+    icon: undefined,
+    isGitHub: true as const,
+  }));
+
+  const skillsShOption = {
+    id: SKILLSSH_ID,
+    name: "skills.sh",
+    icon: undefined,
+  };
+
+  const registryOptions = [
+    ...mcpRegistryOptions,
+    ...githubRegistryOptions,
+    skillsShOption,
+  ];
+
   // Persist selected registry in localStorage (scoped by org)
   const [selectedRegistryId, setSelectedRegistryId] = useLocalStorage<string>(
     LOCALSTORAGE_KEYS.selectedRegistry(org.slug),
     (existing) => existing ?? "",
   );
 
-  const selectedRegistry = registryConnections.find(
-    (c) => c.id === selectedRegistryId,
-  );
+  // Check if selected registry is a GitHub or skills.sh registry (not an MCP connection)
+  const isSelectedNonMcp =
+    selectedRegistryId &&
+    (parseGitHubRegistryId(selectedRegistryId) !== null ||
+      isSkillsShId(selectedRegistryId));
+
+  const selectedRegistry = isSelectedNonMcp
+    ? registryOptions.find((r) => r.id === selectedRegistryId)
+    : registryConnections.find((c) => c.id === selectedRegistryId);
 
   // If there's only one registry, use it; otherwise use the selected one if it still exists.
   // Prefer a non-self registry as default so the Deco Store (or Community Registry)
@@ -231,6 +340,7 @@ export default function StorePage() {
             value={effectiveRegistry}
             onValueChange={setSelectedRegistryId}
             onAddWellKnown={async (registry) => addNewKnownRegistry(registry)}
+            onAddGitHubRepo={() => setAddRepoOpen(true)}
             placeholder="Select store..."
           />
         </Page.Header.Right>
@@ -264,10 +374,29 @@ export default function StorePage() {
             }
           >
             {effectiveRegistry ? (
-              <StoreDiscovery
-                registryId={effectiveRegistry}
-                storePrivateOnly={storePrivateOnlyForSelf}
-              />
+              (() => {
+                const ghParsed = parseGitHubRegistryId(effectiveRegistry);
+                if (ghParsed) {
+                  return (
+                    <GitHubRegistryDiscovery
+                      owner={ghParsed.owner}
+                      repo={ghParsed.repo}
+                      onItemClick={navigateToGitHubItem}
+                    />
+                  );
+                }
+                if (isSkillsShId(effectiveRegistry)) {
+                  return (
+                    <SkillsShDiscovery onItemClick={navigateToSkillsShItem} />
+                  );
+                }
+                return (
+                  <StoreDiscovery
+                    registryId={effectiveRegistry}
+                    storePrivateOnly={storePrivateOnlyForSelf}
+                  />
+                );
+              })()
             ) : (
               <div className="flex flex-col items-center justify-center h-full">
                 <StoreRegistryEmptyState
@@ -281,6 +410,15 @@ export default function StorePage() {
             )}
           </Suspense>
         </ErrorBoundary>
+
+        <GitHubRegistryAddDialog
+          open={addRepoOpen}
+          onOpenChange={setAddRepoOpen}
+          onAdd={(owner, repo) => {
+            githubRegistries.addRegistry(owner, repo);
+            setSelectedRegistryId(makeGitHubRegistryId(owner, repo));
+          }}
+        />
       </Page.Content>
     </Page>
   );

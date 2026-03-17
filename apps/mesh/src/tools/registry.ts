@@ -32,7 +32,8 @@ export type ToolCategory =
   | "Tags"
   | "Projects"
   | "AI Providers"
-  | "Automations";
+  | "Automations"
+  | "Skill Registry";
 
 /**
  * All tool names - keep in sync with ALL_TOOLS in index.ts
@@ -145,6 +146,11 @@ const ALL_TOOL_NAMES = [
   "AI_PROVIDER_KEY_DELETE",
   "AI_PROVIDER_OAUTH_URL",
   "AI_PROVIDER_OAUTH_EXCHANGE",
+
+  // Skill Registry tools
+  "SKILL_REGISTRY_SYNC",
+  "SKILL_REGISTRY_LIST",
+  "SKILL_REGISTRY_GET",
 ] as const;
 
 /**
@@ -663,6 +669,22 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Exchange OAuth code for API key",
     category: "AI Providers",
   },
+  // Skill Registry tools
+  {
+    name: "SKILL_REGISTRY_SYNC",
+    description: "Sync a GitHub skill registry",
+    category: "Skill Registry",
+  },
+  {
+    name: "SKILL_REGISTRY_LIST",
+    description: "List skills and agents from a registry",
+    category: "Skill Registry",
+  },
+  {
+    name: "SKILL_REGISTRY_GET",
+    description: "Get skill or agent details",
+    category: "Skill Registry",
+  },
 ];
 
 /**
@@ -761,6 +783,10 @@ const TOOL_LABELS: Record<ToolName, string> = {
   AI_PROVIDER_KEY_DELETE: "Delete provider key",
   AI_PROVIDER_OAUTH_URL: "Get OAuth URL",
   AI_PROVIDER_OAUTH_EXCHANGE: "Connect via OAuth",
+
+  SKILL_REGISTRY_SYNC: "Sync skill registry",
+  SKILL_REGISTRY_LIST: "List registry items",
+  SKILL_REGISTRY_GET: "Get registry item",
 };
 
 // ============================================================================
@@ -786,6 +812,7 @@ export function getToolsByCategory() {
     Projects: [],
     "AI Providers": [],
     Automations: [],
+    "Skill Registry": [],
   };
 
   for (const tool of MANAGEMENT_TOOLS) {

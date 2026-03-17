@@ -33,6 +33,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "better-auth:migrate": "bunx --bun @better-auth/cli migrate -y --config src/auth/index.ts",
+    "pglite:cleanup": "bun run scripts/pglite-cleanup.ts",
     "prepublishOnly": "bun run build:client && bun run build:server"
   },
   "optionalDependencies": {

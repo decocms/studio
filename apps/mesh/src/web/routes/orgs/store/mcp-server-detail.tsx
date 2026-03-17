@@ -1,4 +1,5 @@
 import type { RegistryItem } from "@/web/components/store/types";
+import { GitHubRegistryItemDetail } from "@/web/components/store/github-registry-item-detail";
 import {
   MCPServerDetailLoadingState,
   MCPServerDetailErrorState,
@@ -914,6 +915,12 @@ function StoreMCPServerDetailContent() {
 export default function StoreMCPServerDetail() {
   const { org } = useProjectContext();
   const navigate = useNavigate();
+  const search = useSearch({ strict: false }) as {
+    ghOwner?: string;
+    ghRepo?: string;
+    ghType?: "skill" | "agent";
+    ghName?: string;
+  };
 
   const handleBackClick = () => {
     navigate({
@@ -921,6 +928,19 @@ export default function StoreMCPServerDetail() {
       params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
     });
   };
+
+  // GitHub registry item detail
+  if (search.ghOwner && search.ghRepo && search.ghType && search.ghName) {
+    return (
+      <GitHubRegistryItemDetail
+        owner={search.ghOwner}
+        repo={search.ghRepo}
+        type={search.ghType}
+        name={search.ghName}
+        onBack={handleBackClick}
+      />
+    );
+  }
 
   return (
     <StoreMCPServerDetailErrorBoundary onBack={handleBackClick}>
