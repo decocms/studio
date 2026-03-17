@@ -449,20 +449,35 @@ export class PassthroughClient extends Client {
       const connectionTitle = connection?.title ?? "";
 
       for (const item of data as any[]) {
-        const key = item.name ?? item.uri;
+        const transformed = { ...item };
+
+        // Rewrite skill:// URIs to include connection context
+        if (
+          target === "resources" &&
+          typeof transformed.uri === "string" &&
+          transformed.uri.startsWith("skill://")
+        ) {
+          const slug = connectionTitle.toLowerCase().replace(/\s+/g, "-");
+          transformed.uri = transformed.uri.replace(
+            "skill://",
+            `skill://${slug}/`,
+          );
+        }
+
+        const key =
+          target === "resources"
+            ? (transformed.uri ?? transformed.name)
+            : (transformed.name ?? transformed.uri);
 
         if (mappings.has(key)) continue;
 
-        const transformedItem = {
-          ...item,
-          _meta: {
-            connectionId,
-            connectionTitle,
-            ...item?._meta,
-          },
+        transformed._meta = {
+          connectionId,
+          connectionTitle,
+          ...item?._meta,
         };
 
-        flattened.push(transformedItem);
+        flattened.push(transformed);
         mappings.set(key, connectionId);
       }
     }
@@ -668,7 +683,18 @@ export class PassthroughClient extends Client {
       throw new Error(`Connection not found for resource: ${params.uri}`);
     }
 
-    return await client.readResource(params);
+    // Reverse the skill:// URI rewrite before forwarding
+    let originalUri = params.uri;
+    if (originalUri.startsWith("skill://")) {
+      const connection = this._connections.get(connectionId);
+      const slug = (connection?.title ?? "").toLowerCase().replace(/\s+/g, "-");
+      const prefix = `skill://${slug}/`;
+      if (originalUri.startsWith(prefix)) {
+        originalUri = originalUri.replace(prefix, "skill://");
+      }
+    }
+
+    return await client.readResource({ ...params, uri: originalUri });
   }
 
   /**

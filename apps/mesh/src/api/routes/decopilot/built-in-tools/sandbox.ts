@@ -3,6 +3,9 @@ import { z } from "zod";
 import { runCode, type ToolHandler } from "@/sandbox";
 import type {
   CallToolRequest,
+  GetPromptRequest,
+  GetPromptResult,
+  ListPromptsResult,
   ListResourcesResult,
   ListToolsResult,
   ReadResourceRequest,
@@ -22,6 +25,8 @@ export interface VirtualClient {
   readResource(
     params: ReadResourceRequest["params"],
   ): Promise<ReadResourceResult>;
+  listPrompts(): Promise<ListPromptsResult>;
+  getPrompt(params: GetPromptRequest["params"]): Promise<GetPromptResult>;
 }
 
 export interface SandboxToolParams {

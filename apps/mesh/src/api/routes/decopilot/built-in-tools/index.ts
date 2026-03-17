@@ -10,7 +10,8 @@ import type { UIMessageStreamWriter } from "ai";
 import { toolNeedsApproval, type ToolApprovalLevel } from "../helpers";
 import { createAgentSearchTool } from "./agent-search";
 import { createReadToolOutputTool } from "./read-tool-output";
-import { createListResourcesTool, createReadResourceTool } from "./resources";
+import { createReadPromptTool } from "./prompts";
+import { createReadResourceTool } from "./resources";
 import { createSandboxTool, type VirtualClient } from "./sandbox";
 import { createSubtaskTool } from "./subtask";
 import { userAskTool } from "./user-ask";
@@ -72,11 +73,11 @@ export function getBuiltInTools(
       toolOutputMap,
       needsApproval: toolNeedsApproval(toolApprovalLevel, false),
     }),
-    list_resources: createListResourcesTool({
+    read_resource: createReadResourceTool({
       passthroughClient,
       toolOutputMap,
     }),
-    read_resource: createReadResourceTool({
+    read_prompt: createReadPromptTool({
       passthroughClient,
       toolOutputMap,
     }),

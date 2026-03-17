@@ -852,7 +852,7 @@ function OrgMcpsContent() {
   };
 
   // Optional registry lookup: support multiple registries, let user pick on "All" tab
-  // Sort so the self/management MCP (CMS MCP) appears last — external registries like
+  // Sort so the self/management MCP (Deco CMS) appears last — external registries like
   // Deco Store / MCP Registry should be the default catalog source.
   const registryConnections = useRegistryConnections(allConnections).sort(
     (a, b) => {

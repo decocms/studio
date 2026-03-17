@@ -30,6 +30,7 @@ import * as ThreadTools from "./thread";
 import * as AutomationTools from "./automations";
 import * as UserTools from "./user";
 import * as AiProvidersTools from "./ai-providers";
+import { getPrompts, getResources } from "./guides";
 import { ToolName } from "./registry";
 // Core tools - always available
 const CORE_TOOLS = [
@@ -207,7 +208,7 @@ export const managementMCP = async (ctx: MeshContext) => {
   // Create MCP server directly
   const server = new McpServer(
     { name: "mcp-cms-management", version: "1.0.0" },
-    { capabilities: { tools: {} } },
+    { capabilities: { tools: {}, prompts: {}, resources: {} } },
   );
 
   // Register each tool with the server
@@ -252,6 +253,44 @@ export const managementMCP = async (ctx: MeshContext) => {
             isError: true,
           };
         }
+      },
+    );
+  }
+
+  // Register action prompts
+  const prompts = getPrompts();
+  for (const prompt of prompts) {
+    server.prompt(prompt.name, prompt.description, () => ({
+      messages: [
+        {
+          role: "user" as const,
+          content: { type: "text" as const, text: prompt.text },
+        },
+      ],
+    }));
+  }
+
+  // Register reference resources
+  const resources = getResources();
+  for (const resource of resources) {
+    server.resource(
+      resource.name,
+      resource.uri,
+      {
+        description: resource.description,
+        mimeType: resource.mimeType ?? "text/markdown",
+      },
+      async (uri) => {
+        const resourceUri = typeof uri === "string" ? uri : uri.href;
+        return {
+          contents: [
+            {
+              uri: resourceUri,
+              mimeType: resource.mimeType ?? "text/markdown",
+              text: resource.text,
+            },
+          ],
+        };
       },
     );
   }
