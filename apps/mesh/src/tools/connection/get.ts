@@ -16,6 +16,11 @@ import {
   isDevAssetsConnection,
   isDevMode,
 } from "./dev-assets";
+import {
+  createFilesystemConnectionEntity,
+  isFilesystemConfigured,
+  isFilesystemConnection,
+} from "./filesystem";
 import { ConnectionEntitySchema } from "./schema";
 
 /**
@@ -49,6 +54,16 @@ export const COLLECTION_CONNECTIONS_GET = defineTool({
     if (isDevMode() && isDevAssetsConnection(input.id, organization.id)) {
       return {
         item: createDevAssetsConnectionEntity(organization.id, getBaseUrl()),
+      };
+    }
+
+    // When S3 is configured, check if this is the filesystem connection
+    if (
+      isFilesystemConfigured() &&
+      isFilesystemConnection(input.id, organization.id)
+    ) {
+      return {
+        item: createFilesystemConnectionEntity(organization.id, getBaseUrl()),
       };
     }
 

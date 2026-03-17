@@ -21,6 +21,7 @@ import {
 } from "@deco/ui/components/tooltip.tsx";
 import {
   ORG_ADMIN_PROJECT_SLUG,
+  WellKnownOrgMCPId,
   useConnection,
   useProjectContext,
   useVirtualMCP,
@@ -33,6 +34,7 @@ import {
   ChevronUp,
   CubeOutline,
   File02,
+  HardDrive,
   Loading01,
   Play,
   Plus,
@@ -181,6 +183,69 @@ SkillItem.Fallback = function SkillItemFallback() {
     </div>
   );
 };
+
+/**
+ * Filesystem Access Toggle
+ *
+ * Shows a toggle to enable/disable filesystem access for the agent.
+ * Only visible when the filesystem connection exists (S3 is configured).
+ * Adding filesystem access creates a connection aggregation with all tools selected.
+ */
+function FilesystemAccessToggle({
+  orgId,
+  connections,
+  form,
+}: {
+  orgId: string;
+  connections: VirtualMCPConnection[];
+  form: ReturnType<typeof useForm<VirtualMcpFormData>>;
+}) {
+  const filesystemId = WellKnownOrgMCPId.FILESYSTEM(orgId);
+  const filesystemConnection = useConnection(filesystemId);
+
+  // Don't render if filesystem is not configured (connection doesn't exist)
+  if (!filesystemConnection) return null;
+
+  const isEnabled = connections.some((c) => c.connection_id === filesystemId);
+
+  const handleToggle = (checked: boolean) => {
+    if (checked) {
+      // Add filesystem connection with all tools selected
+      form.setValue(
+        "connections",
+        [
+          ...connections,
+          {
+            connection_id: filesystemId,
+            selected_tools: null,
+            selected_resources: null,
+            selected_prompts: null,
+          },
+        ],
+        { shouldDirty: true },
+      );
+    } else {
+      // Remove filesystem connection
+      form.setValue(
+        "connections",
+        connections.filter((c) => c.connection_id !== filesystemId),
+        { shouldDirty: true },
+      );
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-between px-6 py-4 border-t border-border shrink-0">
+      <div className="flex items-center gap-2">
+        <HardDrive size={16} className="text-muted-foreground" />
+        <p className="text-sm font-medium text-muted-foreground">
+          Filesystem Access
+        </p>
+      </div>
+      <Switch checked={isEnabled} onCheckedChange={handleToggle} />
+    </div>
+  );
+}
 
 function VirtualMcpDetailViewWithData({
   virtualMcp,
@@ -493,6 +558,15 @@ function VirtualMcpDetailViewWithData({
               </div>
             </div>
           </Collapsible>
+
+          {/* Filesystem Access section */}
+          <Suspense fallback={null}>
+            <FilesystemAccessToggle
+              orgId={org.id}
+              connections={connections}
+              form={form}
+            />
+          </Suspense>
 
           {/* Instructions section */}
           <div className="flex flex-col flex-1 p-6 border-t border-border overflow-auto">

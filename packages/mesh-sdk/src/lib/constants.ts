@@ -26,6 +26,8 @@ export const WellKnownOrgMCPId = {
   COMMUNITY_REGISTRY: (org: string) => `${org}_community-registry`,
   /** Dev Assets MCP - local file storage for development */
   DEV_ASSETS: (org: string) => `${org}_dev-assets`,
+  /** Filesystem MCP - S3-backed filesystem for agents */
+  FILESYSTEM: (org: string) => `${org}_filesystem`,
 };
 
 /**
@@ -34,6 +36,13 @@ export const WellKnownOrgMCPId = {
  * The endpoint is exposed at /mcp/self.
  */
 export const SELF_MCP_ALIAS_ID = "self";
+
+/**
+ * Frontend connection ID for the filesystem MCP endpoint.
+ * Use this constant when calling filesystem tools from the frontend.
+ * The endpoint is exposed at /mcp/filesystem.
+ */
+export const FILESYSTEM_MCP_ALIAS_ID = "filesystem";
 
 /**
  * Frontend connection ID for the dev-assets MCP endpoint.
@@ -165,6 +174,41 @@ export function getWellKnownDevAssetsConnection(
       isFixed: true,
       devOnly: true,
       type: "dev-assets",
+    },
+  };
+}
+
+/**
+ * Get well-known connection definition for the Filesystem MCP.
+ * S3-backed filesystem for AI agents with inline content access.
+ * Implements FILESYSTEM_BINDING.
+ *
+ * @param baseUrl - The base URL for the MCP server
+ * @param orgId - The organization ID
+ * @returns ConnectionCreateData for the Filesystem MCP
+ */
+export function getWellKnownFilesystemConnection(
+  baseUrl: string,
+  orgId: string,
+): ConnectionCreateData {
+  return {
+    id: WellKnownOrgMCPId.FILESYSTEM(orgId),
+    title: "Filesystem",
+    description:
+      "S3-backed filesystem for AI agents. Read and write files directly.",
+    connection_type: "HTTP",
+    connection_url: `${baseUrl}/mcp/${FILESYSTEM_MCP_ALIAS_ID}`,
+    icon: "https://api.iconify.design/lucide:hard-drive.svg?color=%23888",
+    app_name: "@deco/filesystem-mcp",
+    app_id: null,
+    connection_token: null,
+    connection_headers: null,
+    oauth_config: null,
+    configuration_state: null,
+    configuration_scopes: null,
+    metadata: {
+      isFixed: true,
+      type: "filesystem",
     },
   };
 }

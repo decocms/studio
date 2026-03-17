@@ -58,6 +58,7 @@
   "devDependencies": {
     "@ai-sdk/provider": "^3.0.8",
     "@ai-sdk/react": "^3.0.103",
+    "@aws-sdk/client-s3": "^3.1010.0",
     "@better-auth/sso": "1.4.1",
     "@daveyplate/better-auth-ui": "^3.2.7",
     "@deco/ui": "workspace:*",

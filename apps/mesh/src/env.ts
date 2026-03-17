@@ -44,6 +44,14 @@ const envSchema = z
     // Transport
     UNSAFE_ALLOW_STDIO_TRANSPORT: zBooleanString,
 
+    // Object Storage (S3-compatible)
+    S3_ENDPOINT: z.string().optional(),
+    S3_BUCKET: z.string().optional(),
+    S3_REGION: z.string().default("auto"),
+    S3_ACCESS_KEY_ID: z.string().optional(),
+    S3_SECRET_ACCESS_KEY: z.string().optional(),
+    S3_FORCE_PATH_STYLE: z.enum(["true", "false"]).optional().default("true"),
+
     // Debug / K8s
     DEBUG_PORT: z.coerce.number().default(9090),
     ENABLE_DEBUG_SERVER: zBooleanString,
@@ -95,6 +103,8 @@ const SECRET_KEYS = new Set([
   "BETTER_AUTH_SECRET",
   "ENCRYPTION_KEY",
   "MESH_JWT_SECRET",
+  "S3_ACCESS_KEY_ID",
+  "S3_SECRET_ACCESS_KEY",
 ]);
 const URL_KEYS = new Set(["DATABASE_URL", "CLICKHOUSE_URL", "NATS_URL"]);
 
@@ -173,6 +183,14 @@ function logConfiguration(e: Env) {
 
   section("Transport");
   row("UNSAFE_ALLOW_STDIO_TRANSPORT", e.UNSAFE_ALLOW_STDIO_TRANSPORT);
+
+  section("Object Storage");
+  row("S3_ENDPOINT", e.S3_ENDPOINT);
+  row("S3_BUCKET", e.S3_BUCKET);
+  row("S3_REGION", e.S3_REGION);
+  row("S3_ACCESS_KEY_ID", e.S3_ACCESS_KEY_ID);
+  row("S3_SECRET_ACCESS_KEY", e.S3_SECRET_ACCESS_KEY);
+  row("S3_FORCE_PATH_STYLE", e.S3_FORCE_PATH_STYLE);
 
   section("Debug / K8s");
   row("DEBUG_PORT", e.DEBUG_PORT);

@@ -14,6 +14,7 @@ import {
   type WhereExpression,
 } from "@decocms/bindings/collections";
 import { LANGUAGE_MODEL_BINDING } from "@decocms/bindings/llm";
+import { FILESYSTEM_BINDING } from "@decocms/bindings/filesystem";
 import { OBJECT_STORAGE_BINDING } from "@decocms/bindings/object-storage";
 import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import { z } from "zod";
@@ -21,12 +22,17 @@ import { defineTool } from "../../core/define-tool";
 import { getBaseUrl } from "../../core/server-constants";
 import { requireOrganization } from "../../core/mesh-context";
 import { createDevAssetsConnectionEntity, isDevMode } from "./dev-assets";
+import {
+  createFilesystemConnectionEntity,
+  isFilesystemConfigured,
+} from "./filesystem";
 import { type ConnectionEntity, ConnectionEntitySchema } from "./schema";
 
 const BUILTIN_BINDING_CHECKERS: Record<string, Binder> = {
   LLM: LANGUAGE_MODEL_BINDING,
   ASSISTANTS: ASSISTANTS_BINDING,
   OBJECT_STORAGE: OBJECT_STORAGE_BINDING,
+  FILESYSTEM: FILESYSTEM_BINDING,
 };
 
 /**
@@ -264,6 +270,20 @@ export const COLLECTION_CONNECTIONS_LIST = defineTool({
           baseUrl,
         );
         connections.unshift(devAssetsConnection);
+      }
+    }
+
+    // When S3 is configured, inject the filesystem connection
+    if (isFilesystemConfigured()) {
+      const baseUrl = getBaseUrl();
+      const filesystemId = WellKnownOrgMCPId.FILESYSTEM(organization.id);
+
+      if (!connections.some((c) => c.id === filesystemId)) {
+        const filesystemConnection = createFilesystemConnectionEntity(
+          organization.id,
+          baseUrl,
+        );
+        connections.unshift(filesystemConnection);
       }
     }
 

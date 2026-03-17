@@ -12,7 +12,7 @@ import { env } from "../env";
 import { DECO_STORE_URL, isDecoHostedMcp } from "@/core/deco-constants";
 import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import { PrometheusSerializer } from "@opentelemetry/exporter-prometheus";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
@@ -970,6 +970,47 @@ export async function createApp(options: CreateAppOptions = {}) {
     const { mountDevRoutes } = require("./routes/dev-only");
     mountDevRoutes(app, mcpAuth);
   }
+
+  // Filesystem MCP routes (S3-backed filesystem for agents)
+  // Handle /mcp/filesystem alias
+  app.use("/mcp/filesystem", mcpAuth);
+  app.route(
+    "/mcp/filesystem",
+    (await import("./routes/filesystem-mcp")).default,
+  );
+
+  // Handle {org_id}_filesystem connection ID pattern
+  app.all(
+    "/mcp/:connectionId{.*_filesystem$}",
+    mcpAuth,
+    async (c: Context<Env>) => {
+      const ctx = c.get("meshContext") as MeshContext;
+      const { handleFilesystemMcpRequest } = await import(
+        "./routes/filesystem-mcp"
+      );
+      return handleFilesystemMcpRequest(c.req.raw, ctx);
+    },
+  );
+
+  // Handle call-tool endpoint for filesystem connections
+  app.all(
+    "/mcp/:connectionId{.*_filesystem$}/call-tool/:toolName",
+    mcpAuth,
+    async (c: Context<Env>) => {
+      const ctx = c.get("meshContext") as MeshContext;
+      const toolName = c.req.param("toolName");
+      if (!toolName) {
+        return c.json({ error: "Missing tool name" }, 400);
+      }
+      const args = (await c.req.json()) as Record<string, unknown>;
+      const { callFilesystemTool } = await import("./routes/filesystem-mcp");
+      const result = await callFilesystemTool(toolName, args, ctx);
+      if (result.isError) {
+        return c.json(result.content, 500);
+      }
+      return c.json(result.content);
+    },
+  );
 
   // Virtual MCP / Agent routes (must be before proxy to match /mcp/gateway and /mcp/virtual-mcp before /mcp/:connectionId)
   // /mcp/gateway/:virtualMcpId (backward compat) or /mcp/virtual-mcp/:virtualMcpId

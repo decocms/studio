@@ -22,6 +22,7 @@
     "./collections": "./src/well-known/collections.ts",
     "./llm": "./src/well-known/language-model.ts",
     "./object-storage": "./src/well-known/object-storage.ts",
+    "./filesystem": "./src/well-known/filesystem.ts",
     "./connection": "./src/core/connection.ts",
     "./client": "./src/core/client/index.ts",
     "./mcp": "./src/well-known/mcp.ts",

@@ -195,6 +195,8 @@ export {
   getWellKnownCommunityRegistryConnection,
   getWellKnownSelfConnection,
   getWellKnownDevAssetsConnection,
+  getWellKnownFilesystemConnection,
+  FILESYSTEM_MCP_ALIAS_ID,
   getWellKnownOpenRouterConnection,
   getWellKnownMcpStudioConnection,
   // Virtual MCP factory functions

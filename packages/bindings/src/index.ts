@@ -121,6 +121,32 @@ export {
   type DeleteObjectsOutput,
 } from "./well-known/object-storage";
 
+// Re-export filesystem binding types
+export {
+  FILESYSTEM_BINDING,
+  type FilesystemBinding,
+  type FsReadInput,
+  type FsReadOutput,
+  FsReadInputSchema,
+  FsReadOutputSchema,
+  type FsWriteInput,
+  type FsWriteOutput,
+  FsWriteInputSchema,
+  FsWriteOutputSchema,
+  type FsListInput,
+  type FsListOutput,
+  FsListInputSchema,
+  FsListOutputSchema,
+  type FsDeleteInput,
+  type FsDeleteOutput,
+  FsDeleteInputSchema,
+  FsDeleteOutputSchema,
+  type FsMetadataInput,
+  type FsMetadataOutput,
+  FsMetadataInputSchema,
+  FsMetadataOutputSchema,
+} from "./well-known/filesystem";
+
 // Re-export workflow binding types
 export { WORKFLOWS_COLLECTION_BINDING } from "./well-known/workflow";
 
