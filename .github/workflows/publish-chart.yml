@@ -6,10 +6,6 @@ on:
       - main
     paths:
       - 'deploy/helm/Chart.yaml'
-      - 'deploy/helm/Chart.lock'
-      - 'deploy/helm/templates/**'
-      - 'deploy/helm/values.yaml'
-      - 'deploy/helm/charts/**'
 
 jobs:
   publish:
