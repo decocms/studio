@@ -13,3 +13,19 @@ export interface CancelBroadcast {
   /** Stop listening and release resources. */
   stop(): Promise<void>;
 }
+
+export class LocalCancelBroadcast implements CancelBroadcast {
+  private onCancel: ((threadId: string) => void) | null = null;
+
+  async start(onCancel: (threadId: string) => void): Promise<void> {
+    this.onCancel = onCancel;
+  }
+
+  broadcast(threadId: string): void {
+    this.onCancel?.(threadId);
+  }
+
+  async stop(): Promise<void> {
+    this.onCancel = null;
+  }
+}

@@ -69,7 +69,7 @@ export { sseHub, type SSEEvent } from "./sse-hub";
  */
 export function createEventBus(
   database: MeshDatabase,
-  natsProvider: NatsConnectionProvider,
+  natsProvider: NatsConnectionProvider | null,
   config?: EventBusConfig,
 ): EventBus {
   const storage = createEventBusStorage(database.db);
@@ -77,21 +77,29 @@ export function createEventBus(
     config?.pollIntervalMs ?? DEFAULT_EVENT_BUS_CONFIG.pollIntervalMs;
 
   const polling = new PollingStrategy(pollIntervalMs);
-  const notifyStrategy = compose(
-    polling,
-    new NatsNotifyStrategy({
+  const notifyStrategy = natsProvider
+    ? compose(
+        polling,
+        new NatsNotifyStrategy({
+          getConnection: () => natsProvider.getConnection(),
+        }),
+      )
+    : polling;
+
+  // Start SSE hub with NATS cross-pod fan-out when available.
+  if (natsProvider) {
+    const sseBroadcast = new NatsSSEBroadcast({
       getConnection: () => natsProvider.getConnection(),
-    }),
-  );
+    });
 
-  // Start SSE hub with NATS cross-pod fan-out.
-  const sseBroadcast = new NatsSSEBroadcast({
-    getConnection: () => natsProvider.getConnection(),
-  });
-
-  sseHub.start(sseBroadcast).catch((err) => {
-    console.error("[SSEHub] Failed to start broadcast strategy:", err);
-  });
+    sseHub.start(sseBroadcast).catch((err) => {
+      console.error("[SSEHub] Failed to start broadcast strategy:", err);
+    });
+  } else {
+    sseHub.start().catch((err) => {
+      console.error("[SSEHub] Error starting broadcast (no NATS):", err);
+    });
+  }
 
   return new EventBusImpl({
     storage,

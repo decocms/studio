@@ -52,19 +52,27 @@ import {
   runPluginStartupHooks,
 } from "../core/plugin-loader";
 import { CredentialVault } from "../encryption/credential-vault";
-import { type CancelBroadcast } from "./routes/decopilot/cancel-broadcast";
+import {
+  LocalCancelBroadcast,
+  type CancelBroadcast,
+} from "./routes/decopilot/cancel-broadcast";
 import { createNatsConnectionProvider } from "../nats/connection";
 import {
+  InMemoryToolListCache,
   JetStreamKVToolListCache,
   setToolListCache,
   type ToolListCache,
 } from "../mcp-clients/tool-list-cache";
 import {
+  InMemoryModelListCache,
   JetStreamKVModelListCache,
   type ModelListCache,
 } from "../ai-providers/model-list-cache";
 import { NatsCancelBroadcast } from "./routes/decopilot/nats-cancel-broadcast";
-import { type StreamBuffer } from "./routes/decopilot/stream-buffer";
+import {
+  NoOpStreamBuffer,
+  type StreamBuffer,
+} from "./routes/decopilot/stream-buffer";
 import { NatsStreamBuffer } from "./routes/decopilot/nats-stream-buffer";
 import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
@@ -255,34 +263,66 @@ export async function createApp(options: CreateAppOptions = {}) {
   } else {
     // Production/dev mode: connect to NATS and create real services
     natsProvider = createNatsConnectionProvider();
-    await natsProvider.init(env.NATS_URL);
+    try {
+      await natsProvider.init(env.NATS_URL);
+    } catch (err) {
+      console.warn(
+        "[NATS] Connection failed, falling back to local-only mode:",
+        err,
+      );
+      natsProvider = null;
+    }
 
-    // Create tool list cache (JetStream KV)
-    const tlc = new JetStreamKVToolListCache({
-      getJetStream: () => natsProvider!.getJetStream(),
-      getConnection: () => natsProvider!.getConnection(),
-    });
-    await tlc.init();
+    // Create tool list cache: JetStream KV when NATS is available, local Map otherwise
+    let tlc: ToolListCache = natsProvider
+      ? new JetStreamKVToolListCache({
+          getJetStream: () => natsProvider!.getJetStream(),
+          getConnection: () => natsProvider!.getConnection(),
+        })
+      : new InMemoryToolListCache();
+    if (tlc instanceof JetStreamKVToolListCache) {
+      await tlc.init().catch((err) => {
+        console.warn(
+          "[ToolListCache] KV init failed, falling back to in-memory cache:",
+          err,
+        );
+        tlc = new InMemoryToolListCache();
+      });
+    }
     toolListCache = tlc;
 
-    // Create model list cache (JetStream KV)
-    const mlc = new JetStreamKVModelListCache({
-      getJetStream: () => natsProvider!.getJetStream(),
-      getConnection: () => natsProvider!.getConnection(),
-    });
-    await mlc.init();
+    // Create model list cache (same pattern as tool list cache)
+    let mlc: ModelListCache = natsProvider
+      ? new JetStreamKVModelListCache({
+          getJetStream: () => natsProvider!.getJetStream(),
+          getConnection: () => natsProvider!.getConnection(),
+        })
+      : new InMemoryModelListCache();
+    if (mlc instanceof JetStreamKVModelListCache) {
+      await mlc.init().catch((err) => {
+        console.warn(
+          "[ModelListCache] KV init failed, falling back to in-memory cache:",
+          err,
+        );
+        mlc = new InMemoryModelListCache();
+      });
+    }
     modelListCache = mlc;
 
-    cancelBroadcast = new NatsCancelBroadcast({
-      getConnection: () => natsProvider!.getConnection(),
-    });
+    cancelBroadcast = natsProvider
+      ? new NatsCancelBroadcast({
+          getConnection: () => natsProvider!.getConnection(),
+        })
+      : new LocalCancelBroadcast();
 
-    streamBuffer = new NatsStreamBuffer({
-      getConnection: () => natsProvider!.getConnection(),
-      getJetStream: () => natsProvider!.getJetStream(),
-    });
+    streamBuffer = natsProvider
+      ? new NatsStreamBuffer({
+          getConnection: () => natsProvider!.getConnection(),
+          getJetStream: () => natsProvider!.getJetStream(),
+        })
+      : new NoOpStreamBuffer();
 
-    // Create event bus with NATS provider
+    // Create event bus (with or without NATS provider)
     eventBus = createEventBus(database, natsProvider);
   }
 

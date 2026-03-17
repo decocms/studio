@@ -36,3 +36,19 @@ export interface StreamBuffer {
   /** Release resources (clear references, called on shutdown). */
   teardown(): void;
 }
+
+export class NoOpStreamBuffer implements StreamBuffer {
+  async init(): Promise<void> {}
+
+  relay(stream: ReadableStream): ReadableStream {
+    return stream;
+  }
+
+  async createReplayStream(): Promise<ReadableStream | null> {
+    return null;
+  }
+
+  purge(): void {}
+
+  teardown(): void {}
+}

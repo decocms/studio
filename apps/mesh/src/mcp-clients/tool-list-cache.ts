@@ -23,6 +23,26 @@ export interface ToolListCache {
   teardown(): void;
 }
 
+export class InMemoryToolListCache implements ToolListCache {
+  private readonly cache = new Map<string, Tool[]>();
+
+  async get(connectionId: string): Promise<Tool[] | null> {
+    return this.cache.get(connectionId) ?? null;
+  }
+
+  async set(connectionId: string, tools: Tool[]): Promise<void> {
+    this.cache.set(connectionId, tools);
+  }
+
+  async invalidate(connectionId: string): Promise<void> {
+    this.cache.delete(connectionId);
+  }
+
+  teardown(): void {
+    this.cache.clear();
+  }
+}
+
 const KV_BUCKET = "MESH_TOOL_LISTS";
 const KV_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
