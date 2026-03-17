@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Deco Studio CLI Entry Point
+ * Deco CMS CLI Entry Point
  *
  * This script serves as the bin entry point for `deco` / `npx decocms`.
  * It runs database migrations, seeds the local environment, and starts the server.
@@ -51,7 +51,7 @@ const { values } = parseArgs({
 
 if (values.help) {
   console.log(`
-Deco Studio — Open-source control plane for your AI agents
+Deco CMS — Open-source control plane for your AI agents
 
 Usage:
   deco [options]
@@ -106,7 +106,7 @@ if (values.version) {
     }
   }
 
-  console.log(`Deco Studio v${version}`);
+  console.log(`Deco CMS v${version}`);
   process.exit(0);
 }
 

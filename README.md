@@ -1,4 +1,4 @@
-<h1 align="center">deco Studio</h1>
+<h1 align="center">Deco CMS</h1>
 
 <p align="center">
 <em>Open-source · TypeScript-first · Deploy anywhere</em><br/><br/>
@@ -15,7 +15,7 @@
 
 ---
 
-## What is deco Studio?
+## What is Deco CMS?
 
 Studio is where you hire agents, connect tools, and organize them into projects that actually do things.
 
@@ -31,7 +31,7 @@ Everything is tracked — tokens, costs, errors, latency — per connection, per
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                        DECO STUDIO                              │
+│                         DECO CMS                              │
 │  Agents · Connections · Projects · Observability · Token Vault  │
 └───────────────────────────┬─────────────────────────────────────┘
                             │
@@ -159,7 +159,7 @@ Every tool call gets input/output validation, access control, audit logging, and
 
 ```
 ├── apps/
-│   ├── mesh/                # Full-stack deco Studio (Hono API + Vite/React)
+│   ├── mesh/                # Full-stack Deco CMS (Hono API + Vite/React)
 │   │   ├── src/
 │   │   │   ├── api/         # Hono HTTP + MCP proxy routes
 │   │   │   ├── auth/        # Better Auth (OAuth + API keys)
