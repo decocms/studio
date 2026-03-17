@@ -659,39 +659,28 @@ function ToolDetailsAuthenticated({
           {/* Results Content */}
           <div className="relative flex-1 overflow-auto bg-muted/50">
             {uiResourceUri && resultView === "ui" && client ? (
-              <Suspense
-                fallback={
-                  <div className="flex items-center justify-center h-48">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      <span className="text-sm">Loading app...</span>
-                    </div>
-                  </div>
+              <MCPAppRenderer
+                resourceURI={uiResourceUri}
+                toolInfo={
+                  tool
+                    ? {
+                        tool: tool as Tool,
+                      }
+                    : undefined
                 }
-              >
-                <MCPAppRenderer
-                  resourceURI={uiResourceUri}
-                  toolInfo={
-                    tool
-                      ? {
-                          tool: tool as Tool,
-                        }
-                      : undefined
-                  }
-                  toolInput={lastToolInput ?? undefined}
-                  toolResult={rawToolResult ?? undefined}
-                  displayMode="fullscreen"
-                  minHeight={MCP_APP_DISPLAY_MODES.view.minHeight}
-                  maxHeight={MCP_APP_DISPLAY_MODES.view.maxHeight}
-                  client={client}
-                  onMessage={handleAppMessage}
-                  onUpdateModelContext={(params) =>
-                    setAppContext(sourceId, params)
-                  }
-                  onTeardown={() => clearAppContext(sourceId)}
-                  className="h-full"
-                />
-              </Suspense>
+                toolInput={lastToolInput ?? undefined}
+                toolResult={rawToolResult ?? undefined}
+                displayMode="fullscreen"
+                minHeight={MCP_APP_DISPLAY_MODES.view.minHeight}
+                maxHeight={MCP_APP_DISPLAY_MODES.view.maxHeight}
+                client={client}
+                onMessage={handleAppMessage}
+                onUpdateModelContext={(params) =>
+                  setAppContext(sourceId, params)
+                }
+                onTeardown={() => clearAppContext(sourceId)}
+                className="h-full"
+              />
             ) : executionResult ? (
               <>
                 <MonacoCodeEditor

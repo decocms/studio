@@ -8,6 +8,8 @@ import type {
 } from "@modelcontextprotocol/ext-apps";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { Suspense } from "react";
+import { ErrorBoundary } from "@/web/components/error-boundary.tsx";
 import { injectCSP } from "./csp-injector.ts";
 import type { McpUiResourceCsp } from "./types.ts";
 import { useAppBridge } from "./use-app-bridge.ts";
@@ -58,7 +60,7 @@ interface MCPAppRendererProps {
 // Component
 // ---------------------------------------------------------------------------
 
-export function MCPAppRenderer({
+function MCPAppRendererInner({
   resourceURI: uri,
   toolInfo,
   toolInput,
@@ -126,5 +128,15 @@ export function MCPAppRenderer({
         title={`MCP App: ${toolName ?? uri}`}
       />
     </div>
+  );
+}
+
+export function MCPAppRenderer(props: MCPAppRendererProps) {
+  return (
+    <ErrorBoundary fallback={null}>
+      <Suspense fallback={null}>
+        <MCPAppRendererInner {...props} />
+      </Suspense>
+    </ErrorBoundary>
   );
 }

@@ -131,7 +131,16 @@ export function useMCPReadResource({
   return useSuspenseQuery<ReadResourceResult, Error>({
     ...queryOptions,
     queryKey: KEYS.mcpReadResource(client, uri),
-    queryFn: () => readResource(client, uri),
+    queryFn: () =>
+      Promise.race([
+        readResource(client, uri),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error("Resource load timed out")),
+            10_000,
+          ),
+        ),
+      ]),
     staleTime: queryOptions.staleTime ?? 30000,
     retry: false,
   });
