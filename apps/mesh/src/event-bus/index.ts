@@ -70,7 +70,7 @@ export { sseHub, type SSEEvent } from "./sse-hub";
 export function createEventBus(
   database: MeshDatabase,
   config?: EventBusConfig,
-  natsProvider?: NatsConnectionProvider,
+  natsProvider: NatsConnectionProvider,
 ): EventBus {
   const storage = createEventBusStorage(database.db);
   const pollIntervalMs =
@@ -80,13 +80,13 @@ export function createEventBus(
   const notifyStrategy = compose(
     polling,
     new NatsNotifyStrategy({
-      getConnection: () => natsProvider!.getConnection(),
+      getConnection: () => natsProvider.getConnection(),
     }),
   );
 
   // Start SSE hub with NATS cross-pod fan-out.
   const sseBroadcast = new NatsSSEBroadcast({
-    getConnection: () => natsProvider!.getConnection(),
+    getConnection: () => natsProvider.getConnection(),
   });
 
   sseHub.start(sseBroadcast).catch((err) => {
