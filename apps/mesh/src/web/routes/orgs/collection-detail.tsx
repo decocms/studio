@@ -4,7 +4,6 @@ import { ErrorBoundary } from "@/web/components/error-boundary";
 import {
   ORG_ADMIN_PROJECT_SLUG,
   useCollectionActions,
-  useConnection,
   useConnections,
   useMCPClient,
   useProjectContext,

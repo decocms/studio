@@ -12,9 +12,8 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { getUIResourceUri } from "@/mcp-apps/types.ts";
-import { getConnectionSlug } from "@/web/utils/connection-slug";
 import type { ToolDefinition } from "@decocms/mesh-sdk";
-import { ORG_ADMIN_PROJECT_SLUG, useConnection } from "@decocms/mesh-sdk";
+import { ORG_ADMIN_PROJECT_SLUG } from "@decocms/mesh-sdk";
 import {
   AlertTriangle,
   Eye,
