@@ -76,8 +76,7 @@ const SUBTASK_ANNOTATIONS = {
   openWorldHint: true,
 } as const;
 
-export function buildSubagentSystemPrompt(agentInstructions?: string): string {
-  let prompt = `You are a focused subtask agent delegated a specific task by a parent agent. You are NOT the parent agent.
+const SUBTASK_BASE_PROMPT = `You are a focused subtask agent delegated a specific task by a parent agent. You are NOT the parent agent.
 
 ## Rules (non-negotiable)
 
@@ -107,11 +106,14 @@ End with a structured summary:
 
 This report is all the parent agent sees.`;
 
+export function buildSubagentSystemPrompt(
+  agentInstructions?: string,
+): string[] {
+  const prompts = [SUBTASK_BASE_PROMPT];
   if (agentInstructions?.trim()) {
-    prompt += `\n\n---\n\n## Agent-Specific Instructions\n\n${agentInstructions}`;
+    prompts.push(agentInstructions);
   }
-
-  return prompt;
+  return prompts;
 }
 
 export function createSubtaskTool(
@@ -168,14 +170,17 @@ export function createSubtaskTool(
 
       // ── 4. Build subagent system prompt ────────────────────────────
       const serverInstructions = mcpClient.getInstructions();
-      const systemPrompt = buildSubagentSystemPrompt(serverInstructions);
+      const systemPrompts = buildSubagentSystemPrompt(serverInstructions);
 
       // ── 5. Run streamText as subagent ──────────────────────────────
       let accumulatedUsage: UsageStats = emptyUsageStats();
 
       const result = streamText({
         model: createLanguageModel(provider, models.thinking),
-        system: systemPrompt,
+        system: systemPrompts.map((content) => ({
+          role: "system" as const,
+          content,
+        })),
         prompt,
         tools: subagentTools,
         abortSignal,

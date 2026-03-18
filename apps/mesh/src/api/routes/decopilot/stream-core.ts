@@ -10,12 +10,13 @@ import type { MeshContext } from "@/core/mesh-context";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
 import { monitorLlmCall } from "@/monitoring/emit-llm-call";
 import { recordLlmCallMetrics } from "@/monitoring/record-llm-call-metrics";
-import { getFastModel, sanitizeProviderMetadata } from "@decocms/mesh-sdk";
+import { isDecopilot, sanitizeProviderMetadata } from "@decocms/mesh-sdk";
 import { createUIMessageStream, stepCountIs, streamText } from "ai";
 import { getBuiltInTools } from "./built-in-tools";
 import { createEnableToolsTool } from "./built-in-tools/enable-tools";
 import {
-  DECOPILOT_BASE_PROMPT,
+  buildBasePlatformPrompt,
+  buildDecopilotAgentPrompt,
   DEFAULT_MAX_TOKENS,
   DEFAULT_THREAD_TITLE,
   DEFAULT_WINDOW_SIZE,
@@ -239,11 +240,11 @@ export async function streamCore(
     let streamFinished = false;
     const pendingOps: Promise<void>[] = [];
 
-    // Pre-load conversation
+    // Pre-load conversation (no system messages — those are built separately)
     const allMessages = await loadAndMergeMessages(
       mem,
       requestMessage,
-      [DECOPILOT_BASE_PROMPT(), ...systemMessages],
+      systemMessages,
       windowSize,
     );
 
@@ -262,16 +263,6 @@ export async function streamCore(
         closeClients = () => {
           passthroughClient.close().catch(() => {});
         };
-
-        // Enrich with agent-specific instructions
-        const serverInstructions = passthroughClient.getInstructions();
-        const enrichedMessages = serverInstructions?.trim()
-          ? allMessages.map((msg) =>
-              msg.id === "decopilot-system"
-                ? DECOPILOT_BASE_PROMPT(serverInstructions)
-                : msg,
-            )
-          : allMessages;
 
         const passthroughTools = await toolsFromMCP(
           passthroughClient,
@@ -310,38 +301,32 @@ export async function streamCore(
           ),
         };
 
-        // Build compact catalogs for system prompt
+        // Build composable system prompt array
+        const basePrompt = buildBasePlatformPrompt();
+
         const [toolCatalog, promptCatalog] = await Promise.all([
           buildToolCatalog(passthroughClient, enabledTools),
           buildPromptCatalog(passthroughClient),
         ]);
 
-        // Inject tool + prompt catalogs into the enriched messages before processing
-        const catalogParts = [
-          ...(toolCatalog
-            ? [{ type: "text" as const, text: toolCatalog }]
-            : []),
-          ...(promptCatalog
-            ? [{ type: "text" as const, text: promptCatalog }]
-            : []),
-        ];
-        const messagesWithCatalog =
-          catalogParts.length > 0
-            ? enrichedMessages.map((msg) =>
-                msg.id === "decopilot-system"
-                  ? {
-                      ...msg,
-                      parts: [...msg.parts, ...catalogParts],
-                    }
-                  : msg,
-              )
-            : enrichedMessages;
+        // Agent prompt: decopilot-specific or custom agent instructions
+        const serverInstructions = passthroughClient.getInstructions();
+        const agentPrompt = isDecopilot(input.agent.id)
+          ? buildDecopilotAgentPrompt()
+          : serverInstructions;
+
+        const systemPrompts = [
+          basePrompt,
+          toolCatalog,
+          promptCatalog,
+          agentPrompt,
+        ].filter((s): s is string => Boolean(s?.trim()));
 
         const {
           systemMessages: processedSystemMessages,
           messages: processedMessages,
           originalMessages,
-        } = await processConversation(messagesWithCatalog, {
+        } = await processConversation(allMessages, {
           windowSize,
           models: input.models,
           tools,
@@ -351,18 +336,6 @@ export async function streamCore(
 
         const shouldGenerateTitle = mem.thread.title === DEFAULT_THREAD_TITLE;
         if (shouldGenerateTitle) {
-          const isAllowed = (id: string) =>
-            checkModelPermission(allowedModels, input.models.credentialId, id);
-          const fastCandidate = getFastModel(provider.info.id);
-          const titleModelId =
-            (input.models.fast?.id && isAllowed(input.models.fast.id)
-              ? input.models.fast.id
-              : null) ??
-            (fastCandidate && isAllowed(fastCandidate)
-              ? fastCandidate
-              : null) ??
-            input.models.thinking.id;
-
           genTitle({
             abortSignal: registrySignal,
             model: createLanguageModel(
@@ -405,7 +378,13 @@ export async function streamCore(
 
         const result = streamText({
           model: createLanguageModel(provider, input.models.thinking),
-          system: processedSystemMessages,
+          system: [
+            ...systemPrompts.map((content) => ({
+              role: "system" as const,
+              content,
+            })),
+            ...processedSystemMessages,
+          ],
           messages: processedMessages,
           tools,
           prepareStep: () => ({
