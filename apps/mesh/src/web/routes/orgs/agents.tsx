@@ -740,7 +740,7 @@ function OrgAgentsContent() {
   const { org } = useProjectContext();
   const navigate = useNavigate();
 
-  const listState = useListState({
+  const listState = useListState<VirtualMCPEntity>({
     namespace: org.slug,
     resource: "agents",
   });
@@ -1084,18 +1084,14 @@ function OrgAgentsContent() {
           <CollectionDisplayButton
             viewMode={listState.viewMode}
             onViewModeChange={listState.setViewMode}
-            sortKey={listState.sort}
-            sortDirection={null}
-            onSort={(key) =>
-              listState.setSort(
-                key as import("@decocms/bindings/collections").SortPreset,
-              )
-            }
+            sortKey={listState.sortKey}
+            sortDirection={listState.sortDirection}
+            onSort={listState.handleSort}
             sortOptions={[
-              { id: "newest", label: "Newest" },
-              { id: "oldest", label: "Oldest" },
-              { id: "a-z", label: "A → Z" },
-              { id: "z-a", label: "Z → A" },
+              { id: "title", label: "Name" },
+              { id: "description", label: "Description" },
+              { id: "updated_by", label: "Updated by" },
+              { id: "updated_at", label: "Updated" },
             ]}
             filters={[
               {
@@ -1278,58 +1274,49 @@ function OrgAgentsContent() {
         ) : (
           <div className="h-full flex flex-col overflow-hidden">
             <div className="flex-1 overflow-auto min-w-0">
-              <div className="min-w-[1000px]">
-                <GroupedAgentTable
-                  columns={columns}
-                  grouped={grouped}
-                  sortKey={listState.sort}
-                  sortDirection={null}
-                  onSort={(key) =>
-                    listState.setSort(
-                      key as import("@decocms/bindings/collections").SortPreset,
-                    )
-                  }
-                  onRowClick={(agent) => navigateToAgent(agent.id)}
-                  selectionMode={selectionMode}
-                  selectedIds={selectedIds}
-                  onToggleSelect={toggleSelect}
-                  emptyState={
-                    listState.search ? (
-                      <EmptyState
-                        image={
-                          <Users03
-                            size={36}
-                            className="text-muted-foreground"
-                          />
-                        }
-                        title="No agents found"
-                        description={`No agents match "${listState.search}"`}
-                      />
-                    ) : (
-                      <EmptyState
-                        image={
-                          <Users03
-                            size={36}
-                            className="text-muted-foreground"
-                          />
-                        }
-                        title="No agents yet"
-                        description="Create an agent to aggregate tools from multiple Connections."
-                        actions={
-                          <Button
-                            size="sm"
-                            onClick={createVirtualMCP}
-                            disabled={isCreating}
-                          >
-                            <Plus size={14} />
-                            {isCreating ? "Creating..." : "Create Agent"}
-                          </Button>
-                        }
-                      />
-                    )
-                  }
-                />
-              </div>
+              {grouped.length === 0 ? (
+                <div className="flex items-center h-full">
+                  <EmptyState
+                    image={
+                      <Users03 size={48} className="text-muted-foreground" />
+                    }
+                    title={
+                      listState.search ? "No agents found" : "No agents yet"
+                    }
+                    description={
+                      listState.search
+                        ? `No agents match "${listState.search}"`
+                        : "Create an agent to aggregate tools from multiple Connections."
+                    }
+                    actions={
+                      !listState.search && (
+                        <Button
+                          size="sm"
+                          onClick={createVirtualMCP}
+                          disabled={isCreating}
+                        >
+                          <Plus size={14} />
+                          {isCreating ? "Creating..." : "Create Agent"}
+                        </Button>
+                      )
+                    }
+                  />
+                </div>
+              ) : (
+                <div className="min-w-[1000px]">
+                  <GroupedAgentTable
+                    columns={columns}
+                    grouped={grouped}
+                    sortKey={listState.sortKey}
+                    sortDirection={listState.sortDirection}
+                    onSort={listState.handleSort}
+                    onRowClick={(agent) => navigateToAgent(agent.id)}
+                    selectionMode={selectionMode}
+                    selectedIds={selectedIds}
+                    onToggleSelect={toggleSelect}
+                  />
+                </div>
+              )}
             </div>
           </div>
         )}
