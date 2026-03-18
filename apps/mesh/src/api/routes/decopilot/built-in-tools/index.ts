@@ -11,7 +11,7 @@ import { toolNeedsApproval, type ToolApprovalLevel } from "../helpers";
 import { createAgentSearchTool } from "./agent-search";
 import { createReadToolOutputTool } from "./read-tool-output";
 import { createReadPromptTool } from "./prompts";
-import { createListResourcesTool, createReadResourceTool } from "./resources";
+import { createReadResourceTool } from "./resources";
 import { createSandboxTool, type VirtualClient } from "./sandbox";
 import { createSubtaskTool } from "./subtask";
 import { userAskTool } from "./user-ask";
@@ -72,10 +72,6 @@ export function getBuiltInTools(
       passthroughClient,
       toolOutputMap,
       needsApproval: toolNeedsApproval(toolApprovalLevel, false),
-    }),
-    list_resources: createListResourcesTool({
-      passthroughClient,
-      toolOutputMap,
     }),
     read_resource: createReadResourceTool({
       passthroughClient,
