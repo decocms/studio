@@ -114,16 +114,23 @@ export const weatherTool = (env: Env) =>
 
 ### Using Integrations
 
-Call other MCP servers installed in the same workspace:
+Call other MCP servers installed in the same workspace. The `env` is available from the tool factory closure:
 
 ```typescript
-execute: async ({ context, env }) => {
-  const integration = env["my-integration-id"];
-  const result = await integration.callTool("some_tool", {
-    param: context.value,
+export const myTool = (env: Env) =>
+  createTool({
+    id: "my_tool",
+    description: "Call an installed integration",
+    inputSchema: z.object({ value: z.string() }),
+    outputSchema: z.object({ result: z.unknown() }),
+    execute: async ({ context }) => {
+      const integration = env["my-integration-id"];
+      const result = await integration.callTool("some_tool", {
+        param: context.value,
+      });
+      return { result };
+    },
   });
-  return result;
-},
 ```
 
 ## Registering Tools
