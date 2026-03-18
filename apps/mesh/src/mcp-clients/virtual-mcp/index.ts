@@ -7,6 +7,7 @@
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { isDecopilot } from "@decocms/mesh-sdk";
+import { getToolListCache } from "../tool-list-cache";
 import type { MeshContext } from "../../core/mesh-context";
 import type { ConnectionEntity } from "../../tools/connection/schema";
 import type { VirtualMCPEntity } from "../../tools/virtual/schema";
@@ -113,6 +114,7 @@ export async function createVirtualClientFrom(
     virtualMcp,
     virtualTools: virtualTools.length > 0 ? virtualTools : undefined,
     superUser,
+    toolListCache: getToolListCache() ?? undefined,
   };
 
   // Create the appropriate client based on strategy
