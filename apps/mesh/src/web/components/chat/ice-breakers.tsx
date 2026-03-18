@@ -14,7 +14,6 @@ import {
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   getPrompt,
-  getWellKnownDecopilotVirtualMCP,
   useMCPClient,
   useMCPPromptsList,
   useProjectContext,
@@ -338,10 +337,7 @@ function IceBreakersContent({ connectionId }: { connectionId: string | null }) {
  */
 export function IceBreakers({ className }: IceBreakersProps) {
   const { selectedVirtualMcp } = useChatStable();
-  // When selectedVirtualMcp is null, use decopilot ID (default agent)
-  const { org } = useProjectContext();
-  const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
-  const connectionId = selectedVirtualMcp?.id ?? decopilotId;
+  const connectionId = selectedVirtualMcp?.id ?? null;
 
   return (
     <div
