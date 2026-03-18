@@ -311,15 +311,18 @@ export async function streamCore(
         };
 
         // Build compact catalogs for system prompt
-        const toolCatalog = await buildToolCatalog(
-          passthroughClient,
-          enabledTools,
-        );
+        const [toolCatalog, promptCatalog] = await Promise.all([
+          buildToolCatalog(passthroughClient, enabledTools),
+          buildPromptCatalog(passthroughClient),
+        ]);
 
-        // Inject tool catalog into the enriched messages before processing
+        // Inject tool + prompt catalogs into the enriched messages before processing
         const catalogParts = [
           ...(toolCatalog
             ? [{ type: "text" as const, text: toolCatalog }]
+            : []),
+          ...(promptCatalog
+            ? [{ type: "text" as const, text: promptCatalog }]
             : []),
         ];
         const messagesWithCatalog =
@@ -400,13 +403,8 @@ export async function streamCore(
         let lastProviderMetadata: Record<string, unknown> | undefined;
         llmCallStartTime = Date.now();
 
-        const availablePrompts = await passthroughClient.listPrompts();
         console.log("[decopilot:stream] streamText input:", {
           system: processedSystemMessages,
-          tools: [...builtInToolNames, "enable_tools", ...enabledTools],
-          prompts: availablePrompts.prompts.map(
-            (p) => `${p.name}: ${p.description}`,
-          ),
         });
 
         const result = streamText({
@@ -808,6 +806,23 @@ async function buildToolCatalog(
   }
 
   return `\n\n<available-connections>\n${sections.join("\n")}\n</available-connections>`;
+}
+
+/**
+ * Build a compact prompt catalog for the system prompt.
+ * Format: <available_prompts>name|description\n...</available_prompts>
+ */
+async function buildPromptCatalog(client: {
+  listPrompts(): Promise<{
+    prompts: Array<{ name: string; description?: string }>;
+  }>;
+}): Promise<string | null> {
+  const { prompts } = await client.listPrompts();
+  if (prompts.length === 0) return null;
+
+  const lines = prompts.map((p) => `${p.name}|${p.description ?? ""}`);
+
+  return `\n\n<available_prompts>\n${lines.join("\n")}\n</available_prompts>`;
 }
 
 /**
