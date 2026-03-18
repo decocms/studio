@@ -400,20 +400,13 @@ export async function streamCore(
         let lastProviderMetadata: Record<string, unknown> | undefined;
         llmCallStartTime = Date.now();
 
-        console.log(
-          "[decopilot:stream] System prompt:\n",
-          processedSystemMessages,
-        );
-        console.log("[decopilot:stream] Available tools:\n", [
-          ...builtInToolNames,
-          "enable_tools",
-          ...enabledTools,
-        ]);
-        passthroughClient.listPrompts().then((result) => {
-          console.log(
-            "[decopilot:stream] Available prompts:\n",
-            result.prompts.map((p) => `${p.name}: ${p.description}`),
-          );
+        const availablePrompts = await passthroughClient.listPrompts();
+        console.log("[decopilot:stream] streamText input:", {
+          system: processedSystemMessages,
+          tools: [...builtInToolNames, "enable_tools", ...enabledTools],
+          prompts: availablePrompts.prompts.map(
+            (p) => `${p.name}: ${p.description}`,
+          ),
         });
 
         const result = streamText({
