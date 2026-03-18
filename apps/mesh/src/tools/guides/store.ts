@@ -3,8 +3,7 @@ import type { GuidePrompt, GuideResource } from "./index";
 export const prompts: GuidePrompt[] = [
   {
     name: "store-search",
-    description:
-      "Search the Deco Store or registry for new connections that match a user need.",
+    description: "Find MCP servers in the Deco Store or a registry.",
     text: `# Search store
 
 Goal: find good candidate connections in the Deco Store or another registry before recommending or installing anything.
@@ -31,8 +30,7 @@ Checks:
   },
   {
     name: "store-install",
-    description:
-      "Step-by-step tool calling sequence for installing an MCP server from the store.",
+    description: "Install an MCP server from a store or registry.",
     text: `# Install MCP server from store
 
 Goal: install a specific MCP server from a registry into the workspace as a working connection.

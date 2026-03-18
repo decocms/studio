@@ -3,8 +3,7 @@ import type { GuidePrompt, GuideResource } from "./index";
 export const prompts: GuidePrompt[] = [
   {
     name: "agents-create",
-    description:
-      "Create a new agent with the right connections and instructions.",
+    description: "Build a new agent for a specific role or workflow.",
     text: `# Create agent
 
 Goal: create a new agent that has a clear role, the correct connections, and instructions that are specific enough to be reliable.
@@ -29,7 +28,7 @@ Checks:
   {
     name: "agents-update",
     description:
-      "Update an existing agent's scope, connections, or instructions.",
+      "Modify an existing agent's behavior, connections, or instructions.",
     text: `# Update agent
 
 Goal: safely modify an existing agent without broadening its scope unintentionally.
@@ -53,8 +52,7 @@ Checks:
   },
   {
     name: "writing-prompts",
-    description:
-      "Review and strengthen instructions for either an agent or an automation using XML-based guidance and workflow best practices.",
+    description: "Improve instructions for an agent or automation.",
     text: `# Writing instructions
 
 Goal: rewrite or refine instructions for either an agent or an automation so they clearly describe the purpose, constraints, and workflows in a reliable format.

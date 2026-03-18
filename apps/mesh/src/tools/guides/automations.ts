@@ -3,7 +3,8 @@ import type { GuidePrompt, GuideResource } from "./index";
 export const prompts: GuidePrompt[] = [
   {
     name: "automations-create",
-    description: "Create an automation and attach the right trigger pattern.",
+    description:
+      "Set up a background workflow that runs on a schedule, event, or webhook.",
     text: `# Create automation
 
 Goal: create a background workflow that runs the right agent with the correct trigger model.
@@ -27,8 +28,7 @@ Checks:
   },
   {
     name: "automations-update",
-    description:
-      "Update automation behavior or triggers without breaking existing workflows.",
+    description: "Change an automation's triggers, agent, or configuration.",
     text: `# Update automation
 
 Goal: change an automation's configuration safely and verify the final behavior.

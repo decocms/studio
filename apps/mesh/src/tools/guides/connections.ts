@@ -3,8 +3,7 @@ import type { GuidePrompt, GuideResource } from "./index";
 export const prompts: GuidePrompt[] = [
   {
     name: "connections-create",
-    description:
-      "Create and validate a new connection to an external MCP server.",
+    description: "Add a new MCP server connection to the workspace.",
     text: `# Create connection
 
 Goal: install a new connection, capture the correct authentication method, and confirm it is healthy before treating it as usable.
@@ -28,8 +27,7 @@ Checks:
   },
   {
     name: "connections-update",
-    description:
-      "Update connection settings or authentication without losing track of health.",
+    description: "Change an existing connection's settings or credentials.",
     text: `# Update connection
 
 Goal: modify an existing connection safely and verify the updated configuration works.
@@ -52,8 +50,7 @@ Checks:
   },
   {
     name: "connections-troubleshoot",
-    description:
-      "Diagnose connection failures and identify likely remediation steps.",
+    description: "Fix a broken or unhealthy connection.",
     text: `# Troubleshoot connection
 
 Goal: determine whether a connection issue is caused by missing authentication, server reachability, bad configuration, or missing tools.
