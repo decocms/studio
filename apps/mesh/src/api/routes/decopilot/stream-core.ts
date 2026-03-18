@@ -35,9 +35,26 @@ import type { RunRegistry } from "./run-registry";
 import { resolveThreadStatus } from "./status";
 import type { StreamBuffer } from "./stream-buffer";
 import { genTitle } from "./title-generator";
-import type { ChatMessage, ModelsConfig } from "./types";
+import type { ChatMessage, ModelInfo, ModelsConfig } from "./types";
 import type { CancelBroadcast } from "./cancel-broadcast";
 import { ThreadMessage } from "@/storage/types";
+import type { MeshProvider } from "@/ai-providers/types";
+
+/**
+ * Creates a language model from the provider, enabling reasoning when the
+ * model advertises the "reasoning" capability (e.g. OpenRouter thinking models).
+ */
+export function createLanguageModel(provider: MeshProvider, model: ModelInfo) {
+  if (model.capabilities?.reasoning) {
+    // Provider-specific settings (e.g. OpenRouter reasoning) are not part of
+    // the generic ProviderV3 interface, so we cast to pass them through.
+    const lm = (provider.aiSdk.languageModel as Function)(model.id, {
+      reasoning: { enabled: true, effort: "medium" },
+    });
+    return lm as ReturnType<typeof provider.aiSdk.languageModel>;
+  }
+  return provider.aiSdk.languageModel(model.id);
+}
 
 // ============================================================================
 // Types
@@ -345,7 +362,10 @@ export async function streamCore(
 
           genTitle({
             abortSignal: registrySignal,
-            model: provider.aiSdk.languageModel(titleModelId),
+            model: createLanguageModel(
+              provider,
+              input.models.fast ?? input.models.thinking,
+            ),
             userMessage: JSON.stringify(processedMessages[0]?.content),
           })
             .then(async (title) => {
@@ -381,7 +401,7 @@ export async function streamCore(
         llmCallStartTime = Date.now();
 
         const result = streamText({
-          model: provider.aiSdk.languageModel(input.models.thinking.id),
+          model: createLanguageModel(provider, input.models.thinking),
           system: processedSystemMessages,
           messages: processedMessages,
           tools,

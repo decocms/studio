@@ -25,6 +25,7 @@ import {
 import { toolsFromMCP } from "../helpers";
 import type { ModelsConfig } from "../types";
 import { MeshProvider } from "@/ai-providers/types";
+import { createLanguageModel } from "../stream-core";
 
 export const SubtaskInputSchema = z.object({
   prompt: z
@@ -173,7 +174,7 @@ export function createSubtaskTool(
       let accumulatedUsage: UsageStats = emptyUsageStats();
 
       const result = streamText({
-        model: provider.aiSdk.languageModel(models.thinking.id),
+        model: createLanguageModel(provider, models.thinking),
         system: systemPrompt,
         prompt,
         tools: subagentTools,
