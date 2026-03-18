@@ -84,10 +84,14 @@ const beautifyToolName = (toolName: string) => {
 function ToolDetailsContent({
   toolName,
   connectionId,
+  siblings,
+  onSelectInstance,
   onBack,
 }: {
   toolName: string;
   connectionId: string;
+  siblings: ConnectionEntity[];
+  onSelectInstance: (id: string) => void;
   onBack: () => void;
 }) {
   const authStatus = useMCPAuthStatus({
@@ -114,6 +118,8 @@ function ToolDetailsContent({
       key={`${connectionId}:${toolName}`}
       toolName={toolName}
       connectionId={connectionId}
+      siblings={siblings}
+      onSelectInstance={onSelectInstance}
     />
   );
 }
@@ -121,9 +127,13 @@ function ToolDetailsContent({
 function ToolDetailsAuthenticated({
   toolName,
   connectionId,
+  siblings,
+  onSelectInstance,
 }: {
   toolName: string;
   connectionId: string;
+  siblings: ConnectionEntity[];
+  onSelectInstance: (id: string) => void;
 }) {
   // Read replayId from search params to check for prefilled input
   const { replayId } = useSearch({ strict: false }) as { replayId?: string };
@@ -377,352 +387,384 @@ function ToolDetailsAuthenticated({
     </Breadcrumb>
   );
 
-  return (
-    <ViewLayout breadcrumb={breadcrumb}>
-      <div className="grid grid-cols-1 lg:grid-cols-[30%_70%] h-full">
-        {/* Left Panel - Tool Info, Parameters & Execute */}
-        <div className="flex flex-col border-r border-border overflow-hidden">
-          <div className="flex-1 overflow-auto">
-            {/* Tool Header */}
-            <div className="flex flex-col gap-4 p-6 border-b border-border min-h-28">
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-3">
-                  <IntegrationIcon
-                    icon={connection?.icon || null}
-                    name={connection?.title || toolName}
-                    size="sm"
-                    className="shadow-sm shrink-0"
-                  />
-                  <h1 className="text-lg font-medium text-foreground leading-none">
-                    {toolName}
-                  </h1>
-                  {/* MCP Status */}
-                  <div className="flex items-center gap-2 px-2.5 py-1 bg-muted/50 rounded-md h-fit">
-                    {toolsQuery.isSuccess ? (
-                      <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse shrink-0" />
-                    ) : toolsQuery.isLoading ? (
-                      <Loading01
-                        size={10}
-                        className="animate-spin text-yellow-500 shrink-0"
-                      />
-                    ) : (
-                      <div className="h-1.5 w-1.5 rounded-full bg-red-500 shrink-0" />
-                    )}
-                    <span className="font-mono text-xs capitalize text-muted-foreground leading-none">
-                      {toolsQuery.isSuccess
-                        ? "ready"
-                        : toolsQuery.isLoading
-                          ? "connecting"
-                          : "error"}
-                    </span>
-                  </div>
-                </div>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  {tool?.description || "No description available"}
-                </p>
-              </div>
-            </div>
-
-            {/* Parameters Section */}
-            <div className="flex flex-col p-6 gap-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide">
-                  Parameters
-                </h2>
-                {tool?.inputSchema?.required &&
-                  tool.inputSchema.required.length > 0 && (
-                    <span className="text-xs text-muted-foreground">
-                      <span className="text-red-500">*</span> Required
-                    </span>
-                  )}
-              </div>
-
-              <div className="space-y-4">
-                {hasToolProperties && tool?.inputSchema?.properties ? (
-                  Object.entries(tool.inputSchema.properties).map(
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    ([key, prop]: [string, any]) => (
-                      <div key={key} className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <label className="text-sm font-medium leading-none flex items-center gap-1.5">
-                            {key}
-                            {tool.inputSchema?.required?.includes(key) && (
-                              <span className="text-red-500 text-xs">*</span>
-                            )}
-                          </label>
-                          <span className="text-xs text-muted-foreground font-mono">
-                            {prop.type}
-                          </span>
-                        </div>
-                        {prop.description && (
-                          <p className="text-xs text-muted-foreground leading-relaxed">
-                            {prop.description}
-                          </p>
-                        )}
-                        {prop.type === "object" || prop.type === "array" ? (
-                          <Textarea
-                            className="font-mono text-xs"
-                            value={
-                              hasEditedKey(key)
-                                ? ((editedParams[key] as string) ?? "")
-                                : ((defaultParams[key] as string) ?? "")
-                            }
-                            onChange={(e) =>
-                              handleInputChange(key, e.target.value)
-                            }
-                            placeholder={`Enter ${key} as JSON...`}
-                            rows={3}
-                          />
-                        ) : prop.type === "boolean" ? (
-                          <Select
-                            value={
-                              hasEditedKey(key)
-                                ? String(editedParams[key] ?? "")
-                                : ""
-                            }
-                            onValueChange={(v) =>
-                              handleInputChange(key, v === "true")
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select true or false..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="true">true</SelectItem>
-                              <SelectItem value="false">false</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          <Input
-                            value={
-                              hasEditedKey(key)
-                                ? ((editedParams[key] as string) ?? "")
-                                : ((defaultParams[key] as string) ?? "")
-                            }
-                            onChange={(e) =>
-                              handleInputChange(key, e.target.value)
-                            }
-                            placeholder={`Enter ${key}...`}
-                          />
-                        )}
-                      </div>
-                    ),
-                  )
-                ) : tool?.inputSchema && !hasToolProperties ? (
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">
-                      Raw JSON Input
-                    </label>
-                    <Textarea
-                      className="font-mono text-xs min-h-[120px]"
-                      value={rawJsonText}
-                      onChange={(e) => setRawJsonText(e.target.value)}
-                      placeholder='e.g. { "foo": "bar" }'
-                    />
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center p-8 bg-muted/30 rounded-lg border border-dashed border-border">
-                    <p className="text-sm text-muted-foreground">
-                      No parameters required
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Right Panel - Results Only */}
-        <div className="flex flex-col h-full overflow-hidden">
-          {/* Results Header */}
-          <div className="flex items-center justify-between px-4 h-14 border-t lg:border-t-0 border-b border-border bg-background">
-            <div className="flex items-center gap-3">
-              <h2 className="text-sm font-medium text-foreground uppercase tracking-wide">
-                Result
-              </h2>
-              <ToolAnnotationBadges
-                annotations={tool?.annotations}
-                _meta={tool?._meta as Record<string, unknown> | undefined}
+  const instanceSelector = siblings.length > 1 && (
+    <Select value={connectionId} onValueChange={onSelectInstance}>
+      <SelectTrigger className="h-8 w-auto min-w-[200px]">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {siblings.map((s) => (
+          <SelectItem key={s.id} value={s.id}>
+            <div className="flex items-center gap-2">
+              <IntegrationIcon
+                icon={s.icon}
+                name={s.title}
+                size="xs"
+                className="shrink-0"
               />
+              {s.title}
             </div>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
 
-            {/* Execution Stats */}
-            {stats && (
-              <div className="flex items-center gap-3 text-xs">
-                <div className="flex items-center gap-1.5">
-                  <Clock className="h-3 w-3 text-muted-foreground" />
-                  <span className="font-mono text-foreground">
-                    {stats.duration}
+  const parametersSection = (
+    <div className="flex flex-col p-6 gap-4 overflow-auto">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide">
+          Parameters
+        </h2>
+        {tool?.inputSchema?.required &&
+          tool.inputSchema.required.length > 0 && (
+            <span className="text-xs text-muted-foreground">
+              <span className="text-red-500">*</span> Required
+            </span>
+          )}
+      </div>
+
+      <div className="space-y-4">
+        {hasToolProperties && tool?.inputSchema?.properties ? (
+          Object.entries(tool.inputSchema.properties).map(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ([key, prop]: [string, any]) => (
+              <div key={key} className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium leading-none flex items-center gap-1.5">
+                    {key}
+                    {tool.inputSchema?.required?.includes(key) && (
+                      <span className="text-red-500 text-xs">*</span>
+                    )}
+                  </label>
+                  <span className="text-xs text-muted-foreground font-mono">
+                    {prop.type}
                   </span>
                 </div>
-                {stats.tokens && (
-                  <div className="flex items-center gap-1.5">
-                    <Box className="h-3 w-3 text-muted-foreground" />
-                    <span className="font-mono text-foreground">
-                      {stats.tokens}
-                    </span>
-                  </div>
+                {prop.description && (
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    {prop.description}
+                  </p>
                 )}
-                {stats.bytes && (
-                  <div className="flex items-center gap-1.5">
-                    <Database01 className="h-3 w-3 text-muted-foreground" />
-                    <span className="font-mono text-foreground">
-                      {stats.bytes}
-                    </span>
-                  </div>
-                )}
-                {stats.cost && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-mono text-foreground">
-                      {stats.cost}
-                    </span>
-                  </div>
+                {prop.type === "object" || prop.type === "array" ? (
+                  <Textarea
+                    className="font-mono text-xs"
+                    value={
+                      hasEditedKey(key)
+                        ? ((editedParams[key] as string) ?? "")
+                        : ((defaultParams[key] as string) ?? "")
+                    }
+                    onChange={(e) => handleInputChange(key, e.target.value)}
+                    placeholder={`Enter ${key} as JSON...`}
+                    rows={3}
+                  />
+                ) : prop.type === "boolean" ? (
+                  <Select
+                    value={
+                      hasEditedKey(key) ? String(editedParams[key] ?? "") : ""
+                    }
+                    onValueChange={(v) => handleInputChange(key, v === "true")}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select true or false..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="true">true</SelectItem>
+                      <SelectItem value="false">false</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    value={
+                      hasEditedKey(key)
+                        ? ((editedParams[key] as string) ?? "")
+                        : ((defaultParams[key] as string) ?? "")
+                    }
+                    onChange={(e) => handleInputChange(key, e.target.value)}
+                    placeholder={`Enter ${key}...`}
+                  />
                 )}
               </div>
-            )}
+            ),
+          )
+        ) : tool?.inputSchema && !hasToolProperties ? (
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Raw JSON Input</label>
+            <Textarea
+              className="font-mono text-xs min-h-[120px]"
+              value={rawJsonText}
+              onChange={(e) => setRawJsonText(e.target.value)}
+              placeholder='e.g. { "foo": "bar" }'
+            />
           </div>
+        ) : (
+          <div className="flex items-center justify-center p-8 bg-muted/30 rounded-lg border border-dashed border-border">
+            <p className="text-sm text-muted-foreground">
+              No parameters required
+            </p>
+          </div>
+        )}
+      </div>
 
-          {/* Execute Buttons Row */}
-          <div className="flex items-center justify-end lg:justify-between px-4 h-14 border-b border-border bg-background">
-            <div className="flex items-center gap-2 w-full lg:w-auto">
-              {isExecuting ? (
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  className="h-8 gap-2 flex-1 lg:flex-none"
-                  onClick={handleClear}
-                >
-                  <StopCircle className="h-3.5 w-3.5" />
-                  Cancel
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="default"
-                  className="h-8 gap-2 flex-1 lg:flex-none"
-                  onClick={handleExecute}
-                >
-                  <Play className="h-3.5 w-3.5 fill-current" />
-                  Execute Tool
-                </Button>
+      {/* Execute Button */}
+      <div className="flex items-center gap-2 pt-2">
+        {isExecuting ? (
+          <Button
+            size="sm"
+            variant="destructive"
+            className="h-8 gap-2"
+            onClick={handleClear}
+          >
+            <StopCircle className="h-3.5 w-3.5" />
+            Cancel
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant="default"
+            className="h-8 gap-2"
+            onClick={handleExecute}
+          >
+            <Play className="h-3.5 w-3.5 fill-current" />
+            Execute Tool
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+
+  const resultPanel = (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Results Header */}
+      <div className="flex items-center justify-between px-4 h-14 border-b border-border bg-background">
+        <h2 className="text-sm font-medium text-foreground uppercase tracking-wide">
+          Result
+        </h2>
+
+        <div className="flex items-center gap-3">
+          {/* Execution Stats */}
+          {stats && (
+            <div className="flex items-center gap-3 text-xs">
+              <div className="flex items-center gap-1.5">
+                <Clock className="h-3 w-3 text-muted-foreground" />
+                <span className="font-mono text-foreground">
+                  {stats.duration}
+                </span>
+              </div>
+              {stats.tokens && (
+                <div className="flex items-center gap-1.5">
+                  <Box className="h-3 w-3 text-muted-foreground" />
+                  <span className="font-mono text-foreground">
+                    {stats.tokens}
+                  </span>
+                </div>
+              )}
+              {stats.bytes && (
+                <div className="flex items-center gap-1.5">
+                  <Database01 className="h-3 w-3 text-muted-foreground" />
+                  <span className="font-mono text-foreground">
+                    {stats.bytes}
+                  </span>
+                </div>
+              )}
+              {stats.cost && (
+                <div className="flex items-center gap-1.5">
+                  <span className="font-mono text-foreground">
+                    {stats.cost}
+                  </span>
+                </div>
               )}
             </div>
-            {/* View toggle: UI / JSON */}
-            {uiResourceUri && (
-              <TooltipProvider>
-                <div className="flex items-center gap-1">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        size="icon"
-                        variant={resultView === "ui" ? "secondary" : "ghost"}
-                        className="h-8 w-8"
-                        onClick={() => setResultView("ui")}
-                      >
-                        <LayersTwo01 size={14} />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Interactive view</TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        size="icon"
-                        variant={resultView === "json" ? "secondary" : "ghost"}
-                        className="h-8 w-8"
-                        onClick={() => setResultView("json")}
-                      >
-                        <Code01 size={14} />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>JSON view</TooltipContent>
-                  </Tooltip>
-                </div>
-              </TooltipProvider>
-            )}
-          </div>
-
-          {/* Error Alert */}
-          {executionError && (
-            <div className="px-6 py-4 bg-background">
-              <Alert variant="destructive">
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle className="mb-0">Execution Failed</AlertTitle>
-                  </div>
-                  <AlertDescription className="text-xs text-destructive">
-                    {executionError}
-                  </AlertDescription>
-                </div>
-              </Alert>
-            </div>
           )}
-
-          {/* Results Content */}
-          <div className="relative flex-1 overflow-auto bg-muted/50">
-            {uiResourceUri && resultView === "ui" && client ? (
-              <Suspense
-                fallback={
-                  <div className="flex items-center justify-center h-48">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      <span className="text-sm">Loading app...</span>
-                    </div>
-                  </div>
-                }
-              >
-                <MCPAppRenderer
-                  resourceURI={uiResourceUri}
-                  toolInfo={
-                    tool
-                      ? {
-                          tool: tool as Tool,
-                        }
-                      : undefined
-                  }
-                  toolInput={lastToolInput ?? undefined}
-                  toolResult={rawToolResult ?? undefined}
-                  displayMode="fullscreen"
-                  minHeight={MCP_APP_DISPLAY_MODES.view.minHeight}
-                  maxHeight={MCP_APP_DISPLAY_MODES.view.maxHeight}
-                  client={client}
-                  onMessage={handleAppMessage}
-                  onUpdateModelContext={(params) =>
-                    setAppContext(sourceId, params)
-                  }
-                  onTeardown={() => clearAppContext(sourceId)}
-                  className="h-full"
-                />
-              </Suspense>
-            ) : executionResult ? (
-              <>
-                <MonacoCodeEditor
-                  code={JSON.stringify(executionResult, null, 2)}
-                  language="json"
-                  height="100%"
-                  readOnly
-                />
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="absolute top-4 right-4 h-8 w-8 bg-background/80 hover:bg-background border border-border shadow-sm"
-                  onClick={() => {
-                    navigator.clipboard.writeText(
-                      JSON.stringify(executionResult, null, 2),
-                    );
-                    toast.success("Copied to clipboard");
-                  }}
-                >
-                  <Copy01 className="h-3.5 w-3.5" />
-                </Button>
-              </>
-            ) : (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground">
-                <Code01 className="h-12 w-12 mb-3 opacity-40" />
-                <p className="text-sm">Run the tool to see results</p>
+          {/* View toggle: UI / JSON */}
+          {uiResourceUri && (
+            <TooltipProvider>
+              <div className="flex items-center gap-1">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant={resultView === "ui" ? "secondary" : "ghost"}
+                      className="h-8 w-8"
+                      onClick={() => setResultView("ui")}
+                    >
+                      <LayersTwo01 size={14} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Interactive view</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant={resultView === "json" ? "secondary" : "ghost"}
+                      className="h-8 w-8"
+                      onClick={() => setResultView("json")}
+                    >
+                      <Code01 size={14} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>JSON view</TooltipContent>
+                </Tooltip>
               </div>
-            )}
+            </TooltipProvider>
+          )}
+        </div>
+      </div>
+
+      {/* Error Alert */}
+      {executionError && (
+        <div className="px-6 py-4 bg-background">
+          <Alert variant="destructive">
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle className="mb-0">Execution Failed</AlertTitle>
+              </div>
+              <AlertDescription className="text-xs text-destructive">
+                {executionError}
+              </AlertDescription>
+            </div>
+          </Alert>
+        </div>
+      )}
+
+      {/* Results Content */}
+      <div className="relative flex-1 overflow-auto bg-muted/50">
+        {uiResourceUri && resultView === "ui" && client ? (
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center h-48">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  <span className="text-sm">Loading app...</span>
+                </div>
+              </div>
+            }
+          >
+            <MCPAppRenderer
+              resourceURI={uiResourceUri}
+              toolInfo={
+                tool
+                  ? {
+                      tool: tool as Tool,
+                    }
+                  : undefined
+              }
+              toolInput={lastToolInput ?? undefined}
+              toolResult={rawToolResult ?? undefined}
+              displayMode="fullscreen"
+              minHeight={MCP_APP_DISPLAY_MODES.view.minHeight}
+              maxHeight={MCP_APP_DISPLAY_MODES.view.maxHeight}
+              client={client}
+              onMessage={handleAppMessage}
+              onUpdateModelContext={(params) => setAppContext(sourceId, params)}
+              onTeardown={() => clearAppContext(sourceId)}
+              className="h-full"
+            />
+          </Suspense>
+        ) : executionResult ? (
+          <>
+            <MonacoCodeEditor
+              code={JSON.stringify(executionResult, null, 2)}
+              language="json"
+              height="100%"
+              readOnly
+            />
+            <Button
+              size="icon"
+              variant="ghost"
+              className="absolute top-4 right-4 h-8 w-8 bg-background/80 hover:bg-background border border-border shadow-sm"
+              onClick={() => {
+                navigator.clipboard.writeText(
+                  JSON.stringify(executionResult, null, 2),
+                );
+                toast.success("Copied to clipboard");
+              }}
+            >
+              <Copy01 className="h-3.5 w-3.5" />
+            </Button>
+          </>
+        ) : (
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground">
+            <Code01 className="h-12 w-12 mb-3 opacity-40" />
+            <p className="text-sm">Run the tool to see results</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <ViewLayout breadcrumb={breadcrumb}>
+      <div className="flex flex-col h-full overflow-hidden @container">
+        {/* Header */}
+        <div className="flex flex-col gap-3 py-7 px-8 bg-background border-b border-border shrink-0">
+          {/* Row 1: icon | title + status | selector */}
+          <div className="flex items-center gap-4">
+            <IntegrationIcon
+              icon={connection?.icon || null}
+              name={connection?.title || toolName}
+              size="xl"
+              className="shrink-0"
+            />
+            <h1 className="text-xl font-semibold tracking-tight text-foreground leading-none truncate">
+              {toolName}
+            </h1>
+            {/* MCP Status */}
+            <div className="flex items-center gap-2 px-2.5 py-1 bg-muted/50 rounded-md h-fit shrink-0">
+              {toolsQuery.isSuccess ? (
+                <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse shrink-0" />
+              ) : toolsQuery.isLoading ? (
+                <Loading01
+                  size={10}
+                  className="animate-spin text-yellow-500 shrink-0"
+                />
+              ) : (
+                <div className="h-1.5 w-1.5 rounded-full bg-red-500 shrink-0" />
+              )}
+              <span className="font-mono text-xs capitalize text-muted-foreground leading-none">
+                {toolsQuery.isSuccess
+                  ? "ready"
+                  : toolsQuery.isLoading
+                    ? "connecting"
+                    : "error"}
+              </span>
+            </div>
+            <ToolAnnotationBadges
+              annotations={tool?.annotations}
+              _meta={tool?._meta as Record<string, unknown> | undefined}
+            />
+            {/* Instance switcher — visible only on large containers */}
+            <div className="hidden @3xl:flex items-center ml-auto shrink-0">
+              {instanceSelector}
+            </div>
+          </div>
+          {/* Row 2: description */}
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            {tool?.description || "No description available"}
+          </p>
+        </div>
+
+        {/* Instance switcher — visible only on small containers */}
+        {siblings.length > 1 && (
+          <div className="flex @3xl:hidden items-center gap-3 px-8 py-3 border-b border-border">
+            <span className="text-xs font-medium text-muted-foreground shrink-0">
+              Instance
+            </span>
+            {instanceSelector}
+          </div>
+        )}
+
+        {/* Content area */}
+        <div className="flex-1 overflow-hidden">
+          <div className="grid grid-cols-1 @3xl:grid-cols-[minmax(0,2fr)_minmax(0,5fr)] h-full grid-rows-[auto_1fr] @3xl:grid-rows-1">
+            {/* Parameters */}
+            <div className="@3xl:border-r border-border @3xl:overflow-auto">
+              {parametersSection}
+            </div>
+            {/* Result */}
+            {resultPanel}
           </div>
         </div>
       </div>
@@ -767,28 +809,11 @@ export function ToolDetailsView({
         </div>
       }
     >
-      {siblings.length > 1 && (
-        <div className="flex items-center gap-2 px-6 py-3 border-b border-border bg-muted/30">
-          <span className="text-xs font-medium text-muted-foreground">
-            Instance
-          </span>
-          <Select value={connectionId} onValueChange={setSelectedConnectionId}>
-            <SelectTrigger className="h-8 w-auto min-w-[200px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {siblings.map((s) => (
-                <SelectItem key={s.id} value={s.id}>
-                  {s.title}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
       <ToolDetailsContent
         toolName={toolName}
         connectionId={connectionId}
+        siblings={siblings}
+        onSelectInstance={setSelectedConnectionId}
         onBack={onBack}
       />
     </Suspense>
