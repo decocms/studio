@@ -32,6 +32,8 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { Outlet, useParams, useRouterState } from "@tanstack/react-router";
 import { PropsWithChildren, Suspense, useTransition } from "react";
 import { KEYS } from "../lib/query-keys";
+import { useOrgSsoStatus } from "../hooks/use-org-sso";
+import { SsoRequiredScreen } from "../components/sso-required-screen";
 
 /**
  * This component persists the width of the chat panel across reloads.
@@ -218,6 +220,10 @@ function ShellLayoutContent() {
     refetchOnWindowFocus: false,
   });
 
+  // Must be called unconditionally (Rules of Hooks)
+  const orgId = projectContext?.org?.id;
+  const { data: ssoStatus } = useOrgSsoStatus(orgId);
+
   if (!projectContext) {
     return (
       <div className="min-h-screen bg-background">
@@ -238,6 +244,16 @@ function ShellLayoutContent() {
       window.location.href = "/";
     }
     return null;
+  }
+
+  // Check org-level SSO enforcement
+  if (ssoStatus?.ssoRequired && !ssoStatus.authenticated) {
+    return (
+      <SsoRequiredScreen
+        orgName={projectContext.org.name}
+        domain={ssoStatus.domain}
+      />
+    );
   }
 
   // Update project context with current project slug from URL

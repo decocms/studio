@@ -34,6 +34,7 @@ import {
   tracingMiddleware,
 } from "../observability";
 import authRoutes from "./routes/auth";
+import orgSsoRoutes from "./routes/org-sso";
 import { createDecopilotRoutes } from "./routes/decopilot";
 import downstreamTokenRoutes from "./routes/downstream-token";
 import virtualMcpRoutes from "./routes/virtual-mcp";
@@ -429,6 +430,9 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Auth routes (API key management via web UI)
   app.route("/api/auth/custom", authRoutes);
+
+  // Organization-level SSO routes
+  app.route("/api/org-sso", orgSsoRoutes);
 
   // All Better Auth routes (OAuth, session management, etc.)
   app.all("/api/auth/*", async (c) => {
@@ -903,6 +907,46 @@ export async function createApp(options: CreateAppOptions = {}) {
     c.set("meshContext", meshCtx);
 
     return next();
+  });
+
+  // Enforce org-level SSO on all org-scoped API/MCP requests.
+  // Skip the SSO flow routes themselves so authorize/callback can complete.
+  app.use("*", async (c, next) => {
+    const path = c.req.path;
+
+    // Skip routes that handle the SSO flow itself, or don't need org context
+    if (
+      path.startsWith("/api/org-sso/") ||
+      path.startsWith("/api/auth/") ||
+      shouldSkipMeshContext(path)
+    ) {
+      return next();
+    }
+
+    const meshCtx = c.get("meshContext") as MeshContext | undefined;
+    if (!meshCtx?.organization?.id || !meshCtx.auth.user?.id) {
+      return next();
+    }
+
+    const ssoConfig = await meshCtx.storage.orgSsoConfig.getByOrgId(
+      meshCtx.organization.id,
+    );
+    if (!ssoConfig?.enforced) {
+      return next();
+    }
+
+    const isValid = await meshCtx.storage.orgSsoSessions.isValid(
+      meshCtx.auth.user.id,
+      meshCtx.organization.id,
+    );
+    if (isValid) {
+      return next();
+    }
+
+    return c.json(
+      { error: "SSO authentication required for this organization" },
+      403,
+    );
   });
 
   // Get all management tools (for OAuth consent UI)
