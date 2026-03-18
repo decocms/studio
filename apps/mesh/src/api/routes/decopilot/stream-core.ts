@@ -45,7 +45,7 @@ import type { MeshProvider } from "@/ai-providers/types";
  * model advertises the "reasoning" capability (e.g. OpenRouter thinking models).
  */
 export function createLanguageModel(provider: MeshProvider, model: ModelInfo) {
-  if (model.capabilities?.reasoning) {
+  if (model.capabilities?.reasoning !== false) {
     // Provider-specific settings (e.g. OpenRouter reasoning) are not part of
     // the generic ProviderV3 interface, so we cast to pass them through.
     const lm = (provider.aiSdk.languageModel as Function)(model.id, {
@@ -402,10 +402,6 @@ export async function streamCore(
         let reasoningStartAt: Date | null = null;
         let lastProviderMetadata: Record<string, unknown> | undefined;
         llmCallStartTime = Date.now();
-
-        console.log("[decopilot:stream] streamText input:", {
-          system: processedSystemMessages,
-        });
 
         const result = streamText({
           model: createLanguageModel(provider, input.models.thinking),
@@ -801,11 +797,19 @@ async function buildToolCatalog(
   const sections: string[] = [];
   for (const { name, id, lines } of connections.values()) {
     sections.push(
-      `<connection name="${name}" id="${id}">\n${lines.join("\n")}\n</connection>`,
+      `<connection name="${escapeXmlAttr(name)}" id="${escapeXmlAttr(id)}">\n${lines.join("\n")}\n</connection>`,
     );
   }
 
   return `\n\n<available-connections>\n${sections.join("\n")}\n</available-connections>`;
+}
+
+function escapeXmlAttr(s: string): string {
+  return s
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 }
 
 /**

@@ -62,15 +62,13 @@ export function createReadResourceTool(params: ResourceToolParams) {
   return tool({
     description:
       "Read a resource by its URI. Returns the content of the resource. " +
-      "Use list_resources first to discover available resource URIs.",
+      "Resource URIs (docs://...) are provided in prompt content.",
     inputSchema: zodSchema(
       z.object({
         uri: z
           .string()
           .min(1)
-          .describe(
-            "The URI of the resource to read, as returned by list_resources.",
-          ),
+          .describe("The URI of the resource to read (e.g. docs://store.md)."),
       }),
     ),
     execute: async ({ uri }) => {

@@ -1,6 +1,55 @@
 import type { GuidePrompt, GuideResource } from "./index";
 
-export const prompts: GuidePrompt[] = [];
+export const prompts: GuidePrompt[] = [
+  {
+    name: "virtual-tools-create",
+    description: "Add a sandboxed JavaScript tool to an agent.",
+    text: `# Create virtual tool
+
+Goal: add a focused JavaScript tool to an agent when built-in tools are insufficient.
+
+Read docs://virtual-tools.md for code format, sandbox expectations, and schema guidance. Read docs://agents.md if you also need instruction-writing context for the parent agent.
+
+Recommended tool order:
+1. Use COLLECTION_VIRTUAL_MCP_LIST or COLLECTION_VIRTUAL_MCP_GET to identify the target agent.
+2. Use COLLECTION_VIRTUAL_TOOLS_LIST to avoid duplicate names and inspect the current tool set.
+3. If behavior, schema, or the target agent is ambiguous, use user_ask.
+4. Use COLLECTION_VIRTUAL_TOOLS_CREATE with a clear name, description, input schema, JavaScript implementation, and connection_dependencies for any tools the code calls.
+5. Use COLLECTION_VIRTUAL_TOOLS_GET to verify the saved code and schema.
+
+Checks:
+- Prefer a virtual tool only when existing tools do not already solve the task directly.
+- Keep the tool focused on one workflow.
+- Make the input schema explicit and minimal.
+- Ensure the code matches the sandbox signature from docs://virtual-tools.md.
+- Verify the tool name is descriptive and does not collide with existing tools.
+- Always set connection_dependencies to the list of connection IDs whose tools the code invokes, so the platform can sync and protect those downstream connections.
+`,
+  },
+  {
+    name: "virtual-tools-update",
+    description: "Modify a virtual tool's code or schema safely.",
+    text: `# Update virtual tool
+
+Goal: modify an existing virtual tool safely and confirm the final definition is coherent.
+
+Read docs://virtual-tools.md for schema and sandbox guidance.
+
+Recommended tool order:
+1. Use COLLECTION_VIRTUAL_TOOLS_LIST or COLLECTION_VIRTUAL_TOOLS_GET to locate the existing tool.
+2. Use COLLECTION_VIRTUAL_MCP_GET if you need more context about the parent agent.
+3. Use user_ask if the requested behavior change is not precise.
+4. Use COLLECTION_VIRTUAL_TOOLS_UPDATE with the exact fields to change.
+5. Use COLLECTION_VIRTUAL_TOOLS_GET to confirm the final code and schema.
+
+Checks:
+- Preserve compatibility unless the user explicitly wants a breaking change.
+- Keep code aligned with the declared input schema.
+- Avoid broad refactors when a targeted update is enough.
+- Confirm the updated tool still belongs on that agent and does not duplicate another tool.
+`,
+  },
+];
 
 export const resources: GuideResource[] = [
   {

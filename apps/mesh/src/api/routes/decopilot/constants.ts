@@ -31,7 +31,7 @@ Some tools are always enabled. The rest are listed in <available-connections> an
 <workflow>
 Follow this workflow for every request:
 
-1. **Understand intent** — Ask clarifying questions (via user_ask) if the request is ambiguous. Check available resources (read_resource) for relevant context.
+1. **Understand intent** — Ask clarifying questions (via user_ask) if the request is ambiguous.
 
 2. **Set a goal** — State what you will accomplish in one sentence.
 

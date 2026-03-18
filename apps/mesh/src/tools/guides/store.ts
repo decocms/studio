@@ -107,7 +107,7 @@ Take a registry item the user already chose and convert it into a real connectio
 
 ### Auth and configuration metadata
 - oauth_config: copy it from the registry item when present.
-- configuration_state and configuration_scopes: copy them when the registry item includes them.
+- configuration_state: copy them when the registry item includes them.
 - metadata: preserve store provenance such as source=store, registry item ID, verification state, repository, and other useful install metadata when available.
 
 ## Checks
@@ -235,7 +235,7 @@ Search by the user's intended outcome (e.g. "send email", "query database") rath
 Use REGISTRY_ITEM_GET on the chosen item. The response typically includes:
 - \`server.remotes[]\` — remote transport endpoints (HTTP, SSE, Websocket)
 - \`server.packages[]\` — STDIO package commands (npx, uvx, docker, etc.)
-- \`_meta["mcp.mesh"]\` — Mesh-specific metadata (oauth_config, configuration_state, configuration_scopes)
+- \`_meta["mcp.mesh"]\` — Mesh-specific metadata (oauth_config, configuration_state)
 - Tool listings, auth requirements, and publisher info
 
 ## 4. Extract connection parameters
@@ -255,13 +255,12 @@ Use REGISTRY_ITEM_GET on the chosen item. The response typically includes:
     "icon": "<item or publisher icon>",
     "app_name": "<registry/server identifier>",
     "app_id": "<registry item ID>",
-    "connection_type": "<HTTP | SSE | WEBSOCKET>",
+    "connection_type": "<HTTP | SSE | Websocket>",
     "connection_url": "<remote URL>",
     "connection_headers": null,
     "connection_token": null,
     "oauth_config": "<from _meta if present>",
     "configuration_state": "<from _meta if present>",
-    "configuration_scopes": "<from _meta if present>",
     "metadata": {
       "source": "store",
       "registry_item_id": "<item ID>",
