@@ -812,7 +812,10 @@ function OrgMcpsContent() {
   type ConnectionTab = "connected" | "all";
   const [activeTab, setActiveTab] = useLocalStorage<ConnectionTab>(
     LOCALSTORAGE_KEYS.connectionsTab(org.slug),
-    (existing) => search.tab ?? existing ?? "all",
+    (existing) =>
+      search.tab === "all" || search.tab === "connected"
+        ? search.tab
+        : (existing ?? "all"),
   );
 
   // Type & status filters
@@ -1018,7 +1021,8 @@ function OrgMcpsContent() {
           connectionId: id,
         });
         if (error || !token) {
-          toast.error(`Authentication failed: ${error}`);
+          toast.error(`Authentication failed: ${error ?? "no token received"}`);
+          return;
         } else {
           if (tokenInfo) {
             try {
@@ -2430,7 +2434,7 @@ function OrgMcpsContent() {
                             variant="outline"
                             size="sm"
                             className="h-7 px-3 rounded-lg text-sm font-medium"
-                            disabled={connectingItemId === item.id}
+                            disabled={connectingItemId !== null}
                             onClick={(e) => {
                               e.stopPropagation();
                               handleInlineConnect(item);
@@ -2514,7 +2518,7 @@ function OrgMcpsContent() {
                             variant="outline"
                             size="sm"
                             className="h-7 px-3 rounded-lg text-sm font-medium"
-                            disabled={connectingItemId === item.id}
+                            disabled={connectingItemId !== null}
                             onClick={(e) => {
                               e.stopPropagation();
                               handleInlineConnect(item);
