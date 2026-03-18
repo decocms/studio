@@ -74,6 +74,20 @@ export const VirtualMCPEntitySchema = z.object({
         .string()
         .nullable()
         .describe("Instructions also used as system prompt"),
+      ice_breakers: z
+        .array(z.string())
+        .nullable()
+        .optional()
+        .describe(
+          "Static conversation starter prompts shown in the chat UI as clickable pills",
+        ),
+      required_apps: z
+        .array(z.string())
+        .nullable()
+        .optional()
+        .describe(
+          "app_names of MCPs this agent needs. Used for auto-wiring when MCPs are installed",
+        ),
     })
     .loose()
     .describe("Metadata"),
@@ -111,7 +125,18 @@ export const VirtualMCPCreateDataSchema = z.object({
         .nullable()
         .optional()
         .describe("MCP server instructions"),
+      ice_breakers: z
+        .array(z.string())
+        .nullable()
+        .optional()
+        .describe("Static conversation starter prompts"),
+      required_apps: z
+        .array(z.string())
+        .nullable()
+        .optional()
+        .describe("app_names of MCPs this agent needs"),
     })
+    .loose()
     .nullable()
     .optional()
     .describe("Additional metadata including MCP server instructions"),
@@ -143,7 +168,18 @@ export const VirtualMCPUpdateDataSchema = z.object({
         .nullable()
         .optional()
         .describe("MCP server instructions"),
+      ice_breakers: z
+        .array(z.string())
+        .nullable()
+        .optional()
+        .describe("Static conversation starter prompts"),
+      required_apps: z
+        .array(z.string())
+        .nullable()
+        .optional()
+        .describe("app_names of MCPs this agent needs"),
     })
+    .loose()
     .nullable()
     .optional()
     .describe("Additional metadata including MCP server instructions"),

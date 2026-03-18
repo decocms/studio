@@ -665,19 +665,61 @@ export class PassthroughClient extends Client {
   }
 
   /**
-   * List all aggregated prompts
+   * Get static prompts from the virtual MCP's metadata.ice_breakers field.
+   * These are displayed as conversation starters in the chat UI.
    */
-  override async listPrompts(): Promise<ListPromptsResult> {
-    const cache = await this._cachedPrompts;
-    return { prompts: cache.data };
+  private getStaticPrompts(): Prompt[] {
+    const metadata = this.options.virtualMcp.metadata as Record<
+      string,
+      unknown
+    >;
+    const iceBreakers = metadata?.ice_breakers;
+    if (!Array.isArray(iceBreakers)) return [];
+    return iceBreakers
+      .filter((text): text is string => typeof text === "string")
+      .map((text, i) => ({
+        name: `__ice_breaker_${i}`,
+        title: text,
+        description: text,
+      }));
   }
 
   /**
-   * Get a prompt by name, routing to the correct connection
+   * List all aggregated prompts, prepending static ice breakers from metadata
+   */
+  override async listPrompts(): Promise<ListPromptsResult> {
+    const staticPrompts = this.getStaticPrompts();
+    const cache = await this._cachedPrompts;
+    return { prompts: [...staticPrompts, ...cache.data] };
+  }
+
+  /**
+   * Get a prompt by name, routing to the correct connection.
+   * Static ice breaker prompts return their description as a user message.
    */
   override async getPrompt(
     params: GetPromptRequest["params"],
   ): Promise<GetPromptResult> {
+    // Handle static ice breaker prompts
+    if (params.name.startsWith("__ice_breaker_")) {
+      const staticPrompts = this.getStaticPrompts();
+      const prompt = staticPrompts.find((p) => p.name === params.name);
+      if (prompt) {
+        return {
+          description: prompt.description,
+          messages: [
+            {
+              role: "user",
+              content: {
+                type: "text",
+                text: prompt.description ?? prompt.name,
+              },
+            },
+          ],
+        };
+      }
+    }
+
     const cache = await this._cachedPrompts;
     const clients = this._clients;
 

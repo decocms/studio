@@ -1,3 +1,4 @@
+import { AgentTemplates } from "@/web/components/agents/agent-templates.tsx";
 import { CollectionDisplayButton } from "@/web/components/collections/collection-display-button.tsx";
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
 import { Page } from "@/web/components/page";
@@ -57,6 +58,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@deco/ui/components/tabs.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   ArrowDown,
@@ -757,6 +764,12 @@ function OrgAgentsContent() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
 
+  // Tab state
+  const hasAgents = virtualMcps.length > 0;
+  const [activeTab, setActiveTab] = useState<"agents" | "templates">(
+    hasAgents ? "agents" : "templates",
+  );
+
   // Status filter
   const [statusFilter, setStatusFilter] = useState<AgentStatusFilter>("ALL");
 
@@ -1069,250 +1082,281 @@ function OrgAgentsContent() {
               <BreadcrumbItem>
                 <BreadcrumbPage className="flex items-center gap-2">
                   Agents
-                  <span className="text-xs font-normal text-muted-foreground tabular-nums">
-                    {stats.total} total
-                    {stats.active > 0 && ` · ${stats.active} active`}
-                    {stats.inactive > 0 && ` · ${stats.inactive} inactive`}
-                  </span>
+                  {activeTab === "agents" && (
+                    <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                      {stats.total} total
+                      {stats.active > 0 && ` · ${stats.active} active`}
+                      {stats.inactive > 0 && ` · ${stats.inactive} inactive`}
+                    </span>
+                  )}
                 </BreadcrumbPage>
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
         </Page.Header.Left>
         <Page.Header.Right>
-          <CollectionDisplayButton
-            viewMode={listState.viewMode}
-            onViewModeChange={listState.setViewMode}
-            sortKey={listState.sortKey}
-            sortDirection={listState.sortDirection}
-            onSort={listState.handleSort}
-            sortOptions={[
-              { id: "title", label: "Name" },
-              { id: "description", label: "Description" },
-              { id: "updated_by", label: "Updated by" },
-              { id: "updated_at", label: "Updated" },
-            ]}
-            filters={[
-              {
-                label: "Status",
-                value: statusFilter,
-                onChange: (v) =>
-                  setStatusFilter((v as AgentStatusFilter) || "ALL"),
-                options: [
-                  { id: "ALL", label: "All" },
-                  { id: "active", label: "Active" },
-                  { id: "inactive", label: "Inactive" },
-                ],
-              },
-            ]}
-          />
-          {ctaButton}
+          {activeTab === "agents" && (
+            <>
+              <CollectionDisplayButton
+                viewMode={listState.viewMode}
+                onViewModeChange={listState.setViewMode}
+                sortKey={listState.sortKey}
+                sortDirection={listState.sortDirection}
+                onSort={listState.handleSort}
+                sortOptions={[
+                  { id: "title", label: "Name" },
+                  { id: "description", label: "Description" },
+                  { id: "updated_by", label: "Updated by" },
+                  { id: "updated_at", label: "Updated" },
+                ]}
+                filters={[
+                  {
+                    label: "Status",
+                    value: statusFilter,
+                    onChange: (v) =>
+                      setStatusFilter((v as AgentStatusFilter) || "ALL"),
+                    options: [
+                      { id: "ALL", label: "All" },
+                      { id: "active", label: "Active" },
+                      { id: "inactive", label: "Inactive" },
+                    ],
+                  },
+                ]}
+              />
+              {ctaButton}
+            </>
+          )}
         </Page.Header.Right>
       </Page.Header>
 
-      {/* Search Bar */}
-      <div className="flex items-center gap-3 px-5 pb-0">
-        <div className="flex-1">
-          <CollectionSearch
-            value={listState.search}
-            onChange={listState.setSearch}
-            placeholder="Search for an agent..."
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                listState.setSearch("");
-                (event.target as HTMLInputElement).blur();
-              }
-            }}
-          />
-        </div>
-      </div>
+      {/* Tab Switcher */}
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setActiveTab(v as "agents" | "templates")}
+        className="flex-1 flex flex-col min-h-0"
+        variant="underline"
+      >
+        <TabsList variant="underline" className="px-5 shrink-0">
+          <TabsTrigger value="agents" variant="underline">
+            My Agents
+          </TabsTrigger>
+          <TabsTrigger value="templates" variant="underline">
+            Templates
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Content: Cards or Table */}
-      <Page.Content>
-        {listState.viewMode === "cards" ? (
-          <div className="flex-1 overflow-auto p-5">
-            {filteredAgents.length === 0 ? (
-              <EmptyState
-                image={<Users03 size={36} className="text-muted-foreground" />}
-                title={listState.search ? "No agents found" : "No agents yet"}
-                description={
-                  listState.search
-                    ? `No agents match "${listState.search}"`
-                    : "Create an agent to aggregate tools from multiple Connections."
-                }
+        {/* My Agents tab */}
+        <TabsContent value="agents" className="flex-1 flex flex-col min-h-0">
+          {/* Search Bar */}
+          <div className="flex items-center gap-3 px-5 py-3">
+            <div className="flex-1">
+              <CollectionSearch
+                value={listState.search}
+                onChange={listState.setSearch}
+                placeholder="Search for an agent..."
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    listState.setSearch("");
+                    (event.target as HTMLInputElement).blur();
+                  }
+                }}
               />
-            ) : (
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
-                {grouped.map((item) => {
-                  if (item.type === "group") {
-                    return (
-                      <AgentGroupCard
-                        key={item.key}
-                        group={item}
-                        onNavigate={navigateToAgent}
-                        onDelete={(a) =>
-                          dispatch({ type: "delete", virtualMcp: a })
-                        }
-                        selectionMode={selectionMode}
-                        selectedIds={selectedIds}
-                        onToggleSelect={toggleSelect}
-                      />
-                    );
-                  }
-
-                  const agent = item.agent;
-                  return (
-                    <div key={agent.id} className="relative">
-                      {selectionMode && (
-                        <div className="absolute top-3 left-3 z-10">
-                          <Checkbox
-                            checked={selectedIds.has(agent.id)}
-                            onCheckedChange={() => toggleSelect(agent.id)}
-                          />
-                        </div>
-                      )}
-                      <ConnectionCard
-                        connection={{
-                          id: agent.id ?? "",
-                          title: agent.title,
-                          description: agent.description,
-                          icon: agent.icon,
-                          status: agent.status,
-                        }}
-                        fallbackIcon={<Users03 />}
-                        onClick={() => navigateToAgent(agent.id)}
-                        className={cn(
-                          selectionMode &&
-                            selectedIds.has(agent.id) &&
-                            "ring-2 ring-primary",
-                        )}
-                        body={<ConnectionStatus status={agent.status} />}
-                        footer={
-                          <div className="flex items-center justify-between text-xs text-muted-foreground w-full min-w-0">
-                            <div className="flex-1 min-w-0">
-                              <User
-                                id={agent.updated_by ?? agent.created_by}
-                                size="3xs"
-                              />
-                            </div>
-                            <span className="shrink-0 ml-2">
-                              {agent.updated_at
-                                ? formatTimeAgo(new Date(agent.updated_at))
-                                : "—"}
-                            </span>
-                          </div>
-                        }
-                        headerActions={
-                          !selectionMode ? (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-8 w-8 p-0"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <DotsVertical size={20} />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent
-                                align="end"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <DropdownMenuItem
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    navigateToAgent(agent.id);
-                                  }}
-                                >
-                                  <Eye size={16} />
-                                  Open
-                                </DropdownMenuItem>
-                                {!isDecopilot(agent.id) && (
-                                  <DropdownMenuItem
-                                    variant="destructive"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      dispatch({
-                                        type: "delete",
-                                        virtualMcp: agent,
-                                      });
-                                    }}
-                                  >
-                                    <Trash01 size={16} />
-                                    Delete
-                                  </DropdownMenuItem>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          ) : undefined
-                        }
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="h-full flex flex-col overflow-hidden">
-            <div className="flex-1 overflow-auto min-w-0">
-              <div className="min-w-[1000px]">
-                <GroupedAgentTable
-                  columns={columns}
-                  grouped={grouped}
-                  sortKey={listState.sortKey}
-                  sortDirection={listState.sortDirection}
-                  onSort={listState.handleSort}
-                  onRowClick={(agent) => navigateToAgent(agent.id)}
-                  selectionMode={selectionMode}
-                  selectedIds={selectedIds}
-                  onToggleSelect={toggleSelect}
-                  emptyState={
-                    listState.search ? (
-                      <EmptyState
-                        image={
-                          <Users03
-                            size={36}
-                            className="text-muted-foreground"
-                          />
-                        }
-                        title="No agents found"
-                        description={`No agents match "${listState.search}"`}
-                      />
-                    ) : (
-                      <EmptyState
-                        image={
-                          <Users03
-                            size={36}
-                            className="text-muted-foreground"
-                          />
-                        }
-                        title="No agents yet"
-                        description="Create an agent to aggregate tools from multiple Connections."
-                      />
-                    )
-                  }
-                />
-              </div>
             </div>
           </div>
-        )}
-      </Page.Content>
 
-      {/* Bulk Action Bar */}
-      {selectionMode && (
-        <BulkActionBar
-          count={selectedIds.size}
-          total={filteredAgents.length}
-          onSelectAll={() =>
-            setSelectedIds(new Set(filteredAgents.map((a) => a.id)))
-          }
-          onDeselectAll={() => setSelectedIds(new Set())}
-          onDelete={() => setBulkDeleteOpen(true)}
-          onCancel={exitSelectionMode}
-        />
-      )}
+          {/* Content: Cards or Table */}
+          {listState.viewMode === "cards" ? (
+            <div className="flex-1 overflow-auto p-5">
+              {filteredAgents.length === 0 ? (
+                <EmptyState
+                  image={
+                    <Users03 size={36} className="text-muted-foreground" />
+                  }
+                  title={listState.search ? "No agents found" : "No agents yet"}
+                  description={
+                    listState.search
+                      ? `No agents match "${listState.search}"`
+                      : "Create an agent to aggregate tools from multiple Connections."
+                  }
+                />
+              ) : (
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
+                  {grouped.map((item) => {
+                    if (item.type === "group") {
+                      return (
+                        <AgentGroupCard
+                          key={item.key}
+                          group={item}
+                          onNavigate={navigateToAgent}
+                          onDelete={(a) =>
+                            dispatch({ type: "delete", virtualMcp: a })
+                          }
+                          selectionMode={selectionMode}
+                          selectedIds={selectedIds}
+                          onToggleSelect={toggleSelect}
+                        />
+                      );
+                    }
+
+                    const agent = item.agent;
+                    return (
+                      <div key={agent.id} className="relative">
+                        {selectionMode && (
+                          <div className="absolute top-3 left-3 z-10">
+                            <Checkbox
+                              checked={selectedIds.has(agent.id)}
+                              onCheckedChange={() => toggleSelect(agent.id)}
+                            />
+                          </div>
+                        )}
+                        <ConnectionCard
+                          connection={{
+                            id: agent.id ?? "",
+                            title: agent.title,
+                            description: agent.description,
+                            icon: agent.icon,
+                            status: agent.status,
+                          }}
+                          fallbackIcon={<Users03 />}
+                          onClick={() => navigateToAgent(agent.id)}
+                          className={cn(
+                            selectionMode &&
+                              selectedIds.has(agent.id) &&
+                              "ring-2 ring-primary",
+                          )}
+                          body={<ConnectionStatus status={agent.status} />}
+                          footer={
+                            <div className="flex items-center justify-between text-xs text-muted-foreground w-full min-w-0">
+                              <div className="flex-1 min-w-0">
+                                <User
+                                  id={agent.updated_by ?? agent.created_by}
+                                  size="3xs"
+                                />
+                              </div>
+                              <span className="shrink-0 ml-2">
+                                {agent.updated_at
+                                  ? formatTimeAgo(new Date(agent.updated_at))
+                                  : "—"}
+                              </span>
+                            </div>
+                          }
+                          headerActions={
+                            !selectionMode ? (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <DotsVertical size={20} />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent
+                                  align="end"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <DropdownMenuItem
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      navigateToAgent(agent.id);
+                                    }}
+                                  >
+                                    <Eye size={16} />
+                                    Open
+                                  </DropdownMenuItem>
+                                  {!isDecopilot(agent.id) && (
+                                    <DropdownMenuItem
+                                      variant="destructive"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        dispatch({
+                                          type: "delete",
+                                          virtualMcp: agent,
+                                        });
+                                      }}
+                                    >
+                                      <Trash01 size={16} />
+                                      Delete
+                                    </DropdownMenuItem>
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            ) : undefined
+                          }
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="h-full flex flex-col overflow-hidden">
+              <div className="flex-1 overflow-auto min-w-0">
+                <div className="min-w-[1000px]">
+                  <GroupedAgentTable
+                    columns={columns}
+                    grouped={grouped}
+                    sortKey={listState.sortKey}
+                    sortDirection={listState.sortDirection}
+                    onSort={listState.handleSort}
+                    onRowClick={(agent) => navigateToAgent(agent.id)}
+                    selectionMode={selectionMode}
+                    selectedIds={selectedIds}
+                    onToggleSelect={toggleSelect}
+                    emptyState={
+                      listState.search ? (
+                        <EmptyState
+                          image={
+                            <Users03
+                              size={36}
+                              className="text-muted-foreground"
+                            />
+                          }
+                          title="No agents found"
+                          description={`No agents match "${listState.search}"`}
+                        />
+                      ) : (
+                        <EmptyState
+                          image={
+                            <Users03
+                              size={36}
+                              className="text-muted-foreground"
+                            />
+                          }
+                          title="No agents yet"
+                          description="Create an agent to aggregate tools from multiple Connections."
+                        />
+                      )
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Bulk Action Bar */}
+          {selectionMode && (
+            <BulkActionBar
+              count={selectedIds.size}
+              total={filteredAgents.length}
+              onSelectAll={() =>
+                setSelectedIds(new Set(filteredAgents.map((a) => a.id)))
+              }
+              onDeselectAll={() => setSelectedIds(new Set())}
+              onDelete={() => setBulkDeleteOpen(true)}
+              onCancel={exitSelectionMode}
+            />
+          )}
+        </TabsContent>
+
+        {/* Templates tab */}
+        <TabsContent value="templates" className="flex-1 min-h-0">
+          <AgentTemplates />
+        </TabsContent>
+      </Tabs>
     </Page>
   );
 }
