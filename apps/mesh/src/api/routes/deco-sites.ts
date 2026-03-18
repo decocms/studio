@@ -174,6 +174,17 @@ app.post("/connection", async (c) => {
     return c.json({ error: "siteName, connId, and orgId are required" }, 400);
   }
 
+  const membership = await ctx.db
+    .selectFrom("member")
+    .select("member.id")
+    .where("member.userId", "=", userId)
+    .where("member.organizationId", "=", orgId)
+    .executeTakeFirst();
+
+  if (!membership) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
   const config = getSupabaseConfig();
   if (!config) {
     return c.json({ error: "Deco integration is not configured" }, 503);
