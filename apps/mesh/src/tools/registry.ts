@@ -145,6 +145,8 @@ const ALL_TOOL_NAMES = [
   "AI_PROVIDER_KEY_DELETE",
   "AI_PROVIDER_OAUTH_URL",
   "AI_PROVIDER_OAUTH_EXCHANGE",
+  "AI_PROVIDER_TOPUP_URL",
+  "AI_PROVIDER_CREDITS",
 ] as const;
 
 /**
@@ -663,6 +665,16 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Exchange OAuth code for API key",
     category: "AI Providers",
   },
+  {
+    name: "AI_PROVIDER_TOPUP_URL",
+    description: "Get checkout URL to top up provider credits",
+    category: "AI Providers",
+  },
+  {
+    name: "AI_PROVIDER_CREDITS",
+    description: "Get current credit balance for a provider",
+    category: "AI Providers",
+  },
 ];
 
 /**
@@ -761,6 +773,8 @@ const TOOL_LABELS: Record<ToolName, string> = {
   AI_PROVIDER_KEY_DELETE: "Delete provider key",
   AI_PROVIDER_OAUTH_URL: "Get OAuth URL",
   AI_PROVIDER_OAUTH_EXCHANGE: "Connect via OAuth",
+  AI_PROVIDER_TOPUP_URL: "Get top-up checkout URL",
+  AI_PROVIDER_CREDITS: "Get credit balance",
 };
 
 // ============================================================================

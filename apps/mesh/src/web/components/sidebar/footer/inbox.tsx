@@ -20,13 +20,12 @@ import type { ErrorInfo, ReactNode } from "react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  useConnections,
+  SELF_MCP_ALIAS_ID,
   useMCPClient,
   useMCPToolCallQuery,
   useProjectContext,
 } from "@decocms/mesh-sdk";
-import { connectionImplementsBinding } from "@/web/hooks/use-binding";
-import { AI_GATEWAY_BILLING_BINDING } from "@decocms/bindings/ai-gateway";
+import { useAiProviderKeyList } from "@/web/hooks/collections/use-llm";
 
 interface Invitation {
   id: string;
@@ -153,89 +152,35 @@ class SilentErrorBoundary extends Component<
   }
 }
 
-type LimitPeriod = "daily" | "weekly" | "monthly";
-
-interface GatewayUsageResult {
-  billing: { mode: "prepaid" | "postpaid"; limitPeriod: LimitPeriod | null };
-  limit: { remaining: number | null; total: number | null };
-  usage: { total: number; daily: number; weekly: number; monthly: number };
-}
-
-const CHIP_PERIOD_KEY = "gateway-chip-period";
-
-function getChipPeriod(): LimitPeriod {
-  try {
-    const stored = localStorage.getItem(CHIP_PERIOD_KEY);
-    if (stored === "daily" || stored === "weekly" || stored === "monthly")
-      return stored;
-  } catch {
-    // ignore
-  }
-  return "daily";
-}
-
-function prepaidColor(remaining: number, total: number | null): string {
-  if (!total || total <= 0) return "text-foreground/70";
-  const pct = remaining / total;
-  if (pct <= 0.05) return "text-destructive";
-  if (pct <= 0.2) return "text-amber-500 dark:text-amber-400";
+function creditColor(balanceDollars: number): string {
+  if (balanceDollars <= 1) return "text-destructive";
+  if (balanceDollars <= 5) return "text-amber-500 dark:text-amber-400";
   return "text-foreground/70";
 }
 
-function postpaidUsedColor(percentUsed: number): string {
-  if (percentUsed >= 90) return "text-destructive";
-  if (percentUsed >= 70) return "text-amber-500 dark:text-amber-400";
-  return "text-foreground/70";
-}
-
-function CreditChip({ connectionId }: { connectionId: string }) {
+function CreditChip() {
   const { open } = useSettingsModal();
   const { org } = useProjectContext();
 
-  const client = useMCPClient({ connectionId, orgId: org.id });
-
-  const { data } = useMCPToolCallQuery<GatewayUsageResult | undefined>({
-    client,
-    toolName: "GATEWAY_USAGE",
-    toolArguments: {},
-    staleTime: 60_000,
-    select: (result) =>
-      (result as { structuredContent?: GatewayUsageResult }).structuredContent,
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
   });
 
-  const billingMode = data?.billing.mode ?? "prepaid";
-  const limitTotal = data?.limit.total ?? null;
-  const limitRemaining = data?.limit.remaining ?? 0;
-  const usage = data?.usage ?? { total: 0, daily: 0, weekly: 0, monthly: 0 };
+  const { data, isPending, isError } = useMCPToolCallQuery<
+    { balanceCents: number } | undefined
+  >({
+    client,
+    toolName: "AI_PROVIDER_CREDITS",
+    toolArguments: { providerId: "deco" },
+    staleTime: 60_000,
+    select: (result) =>
+      (result as { structuredContent?: { balanceCents: number } })
+        .structuredContent,
+  });
 
-  let label: string;
-  let value: string;
-  let valueColor: string;
-
-  if (billingMode === "prepaid") {
-    label = "Credits";
-    value = `$${limitRemaining.toFixed(2)}`;
-    valueColor = prepaidColor(limitRemaining, limitTotal);
-  } else if (limitTotal != null && limitTotal > 0) {
-    const used = limitTotal - limitRemaining;
-    const pct = Math.min(100, Math.round((used / limitTotal) * 100));
-    label = "Usage";
-    value = `${pct}%`;
-    valueColor = postpaidUsedColor(pct);
-  } else {
-    const chipPeriod = getChipPeriod();
-    const periodUsage =
-      chipPeriod === "daily"
-        ? usage.daily
-        : chipPeriod === "weekly"
-          ? usage.weekly
-          : usage.monthly;
-    const periodSuffix =
-      chipPeriod === "daily" ? "/day" : chipPeriod === "weekly" ? "/wk" : "/mo";
-    label = "Usage";
-    value = `$${periodUsage.toFixed(2)}${periodSuffix}`;
-    valueColor = "text-foreground/70";
-  }
+  const balanceDollars =
+    data?.balanceCents != null ? data.balanceCents / 100 : null;
 
   return (
     <button
@@ -245,27 +190,33 @@ function CreditChip({ connectionId }: { connectionId: string }) {
     >
       <div className="flex items-center gap-1.5">
         <Coins01 size={13} className="text-muted-foreground/60 shrink-0" />
-        <span className="text-xs text-muted-foreground">{label}</span>
+        <span className="text-xs text-muted-foreground">Credits</span>
       </div>
-      <span className={cn("text-xs font-medium tabular-nums", valueColor)}>
-        {value}
-      </span>
+      {isPending || isError || balanceDollars == null ? (
+        <span className="text-xs font-medium tabular-nums text-muted-foreground/40">
+          —
+        </span>
+      ) : (
+        <span
+          className={cn(
+            "text-xs font-medium tabular-nums",
+            creditColor(balanceDollars),
+          )}
+        >
+          ${balanceDollars.toFixed(2)}
+        </span>
+      )}
     </button>
   );
 }
 
 function CreditChipConditional() {
-  const connections = useConnections();
+  const keys = useAiProviderKeyList();
+  const hasDecoKey = keys.some((k) => k.providerId === "deco");
 
-  const gatewayConnection = connections.find((c) =>
-    connectionImplementsBinding(c, AI_GATEWAY_BILLING_BINDING),
-  );
+  if (!hasDecoKey) return null;
 
-  if (!gatewayConnection?.id) {
-    return null;
-  }
-
-  return <CreditChip connectionId={gatewayConnection.id} />;
+  return <CreditChip />;
 }
 
 export function SidebarInboxFooter() {

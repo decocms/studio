@@ -123,31 +123,3 @@ export {
 
 // Re-export workflow binding types
 export { WORKFLOWS_COLLECTION_BINDING } from "./well-known/workflow";
-
-// Re-export reports binding types
-export {
-  REPORTS_BINDING,
-  type ReportsBinding,
-  type ReportStatus,
-  type ReportLifecycleStatus,
-  type CriterionItem,
-  type MetricItem,
-  type RankedListRow,
-  type ReportSection,
-  type ReportSummary,
-  type Report,
-  type ReportsListInput,
-  type ReportsListOutput,
-  type ReportsGetInput,
-  type ReportsGetOutput,
-  type ReportsUpdateStatusInput,
-  type ReportsUpdateStatusOutput,
-  ReportStatusSchema,
-  ReportLifecycleStatusSchema,
-  MetricItemSchema,
-  ReportSectionSchema,
-  ReportSummarySchema,
-  ReportSchema,
-  type SectionGroup,
-  groupSections,
-} from "./well-known/reports";

@@ -10,11 +10,11 @@ Este guia cobre o deploy do deco CMS localmente usando Docker Compose para teste
 
 Saiba mais: [a página do produto deco CMS](https://www.decocms.com/mesh)
 
-Código-fonte (Docker Compose + README): [decocms/mesh/deploy](https://github.com/decocms/mesh/tree/main/deploy)
+Código-fonte (Docker Compose + README): [decocms/mesh/deploy](https://github.com/decocms/mesh/tree/main/deploy/docker-compose)
 
 ## Visão Geral
 
-- **SQLite por padrão** - Funciona imediatamente sem configuração adicional
+- **PGlite por padrão** - Funciona imediatamente sem configuração adicional
 - **PostgreSQL opcional** - Configure via variável de ambiente
 - **Persistência de dados** - Volume Docker para manter dados entre reinicializações
 - **Health checks** - Monitoramento automático de saúde da aplicação
@@ -32,12 +32,19 @@ A forma mais rápida de testar a aplicação:
 
 ```bash
 # 1. Configurar variáveis de ambiente
-# Edite .env e configure BETTER_AUTH_SECRET (obrigatório)
-# Gere um secret: openssl rand -base64 32
-cp conf-examples/env.example .env
+# Crie um arquivo .env com pelo menos BETTER_AUTH_SECRET
+cat > .env << EOF
+BETTER_AUTH_SECRET=$(openssl rand -base64 32)
+EOF
 
 # 2. Configurar autenticação
-cp conf-examples/auth-config.json.example auth-config.json
+cat > auth-config.json << 'EOF'
+{
+  "emailAndPassword": {
+    "enabled": true
+  }
+}
+EOF
 
 # 3. Iniciar a aplicação
 docker compose up -d
@@ -75,15 +82,15 @@ O arquivo `.env` contém todas as configurações.
 | `BETTER_AUTH_URL` | `http://localhost:3000` | URL para autenticação |
 | `BASE_URL` | `http://localhost:3000` | URL base da aplicação |
 | `BETTER_AUTH_SECRET` | **obrigatório** | Secret de autenticação |
-| `DATABASE_URL` | `/app/data/mesh.db` | URL do banco de dados (SQLite ou PostgreSQL) |
+| `DATABASE_URL` | `file:///app/data/mesh.pglite` | URL do banco de dados (PGlite ou PostgreSQL) |
 
-## Usando SQLite (Padrão)
+## Usando PGlite (Padrão)
 
-SQLite é o padrão e não requer configuração adicional:
+PGlite é o padrão e não requer configuração adicional:
 
 ```bash
 # .env
-DATABASE_URL=/app/data/mesh.db
+DATABASE_URL=file:///app/data/mesh.pglite
 ```
 
 Os dados serão persistidos no volume Docker `mesh-data` e mantidos entre reinicializações.
@@ -195,13 +202,11 @@ A aplicação deco CMS carrega este arquivo na inicialização para configurar:
 - Provedores de email (Resend, etc.)
 - Configuração de magic link
 
-### Arquivos de Exemplo Disponíveis
-
-Existem dois arquivos de exemplo na pasta `conf-examples/`:
+### Exemplos de Configuração
 
 #### Configuração Simples
 
-Use este arquivo quando você só precisa de autenticação básica por email e senha:
+Use esta configuração quando você só precisa de autenticação básica por email e senha:
 
 ```json
 {
@@ -218,7 +223,7 @@ Use este arquivo quando você só precisa de autenticação básica por email e 
 
 #### Configuração Completa (SSO + Email)
 
-Use este arquivo quando precisar de recursos avançados como SSO, login social e envio de emails:
+Use esta configuração quando precisar de recursos avançados como SSO, login social e envio de emails:
 
 ```json
 {
@@ -389,24 +394,24 @@ docker compose up -d
 
 ```bash
 # 1. Fazer backup primeiro
-docker compose exec mesh cp /app/data/mesh.db /app/data/mesh.db.backup
-docker compose cp mesh:/app/data/mesh.db ./backup-$(date +%Y%m%d-%H%M%S).db
+docker compose exec mesh cp -r /app/data/mesh.pglite /app/data/mesh.pglite.backup
+docker compose cp mesh:/app/data/mesh.pglite ./backup-$(date +%Y%m%d-%H%M%S).pglite
 
 # 2. Resetar
 docker compose down -v
 docker compose up -d
 ```
 
-#### Método 4: Resetar apenas o SQLite (manter outros dados)
+#### Método 4: Resetar apenas o PGlite (manter outros dados)
 
-Se quiser resetar apenas o banco de dados SQLite mantendo outros arquivos:
+Se quiser resetar apenas o banco de dados PGlite mantendo outros arquivos:
 
 ```bash
 # Entrar no container
 docker compose exec mesh sh
 
 # Dentro do container, remover apenas o banco
-rm /app/data/mesh.db
+rm -rf /app/data/mesh.pglite
 
 # Reiniciar a aplicação (vai recriar o banco)
 exit
@@ -458,14 +463,14 @@ docker compose up -d
 
 ## Backup e Restauração
 
-### Backup (SQLite)
+### Backup (PGlite)
 
 ```bash
 # Criar backup
-docker compose exec mesh cp /app/data/mesh.db /app/data/mesh.db.backup
+docker compose exec mesh cp -r /app/data/mesh.pglite /app/data/mesh.pglite.backup
 
 # Copiar para o host
-docker compose cp mesh:/app/data/mesh.db ./backup-$(date +%Y%m%d).db
+docker compose cp mesh:/app/data/mesh.pglite ./backup-$(date +%Y%m%d).pglite
 ```
 
 ### Backup (PostgreSQL)

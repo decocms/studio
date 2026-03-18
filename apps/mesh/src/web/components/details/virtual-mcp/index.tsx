@@ -367,19 +367,60 @@ function VirtualMcpDetailViewWithData({
             className="border-t border-border shrink-0 max-h-[400px] overflow-hidden flex flex-col"
           >
             {connections.length === 0 ? (
-              <button
-                type="button"
-                onClick={handleAddConnection}
-                className="w-full flex items-center justify-between px-6 py-4 hover:bg-muted/50 transition-colors cursor-pointer"
-              >
+              <div className="px-6 py-4 flex flex-col gap-3">
                 <p className="text-sm font-medium text-muted-foreground">
                   Connections
                 </p>
-                <div className="h-7 px-2 inline-flex items-center justify-center gap-1 rounded-md text-sm text-muted-foreground">
-                  <Plus size={14} />
-                  Add
-                </div>
-              </button>
+                <button
+                  type="button"
+                  onClick={handleAddConnection}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border hover:bg-accent/50 transition-colors w-full text-left cursor-pointer overflow-hidden"
+                >
+                  <div className="relative flex items-center justify-center size-8 rounded-md text-muted-foreground/75 shrink-0">
+                    <svg
+                      className="absolute inset-0 size-full overflow-hidden"
+                      fill="none"
+                      viewBox="0 0 32 32"
+                    >
+                      <defs>
+                        <linearGradient
+                          id="agent-detail-border-gradient"
+                          gradientUnits="userSpaceOnUse"
+                          x1="0"
+                          y1="0"
+                          x2="32"
+                          y2="32"
+                        >
+                          <animateTransform
+                            attributeName="gradientTransform"
+                            type="rotate"
+                            from="0 16 16"
+                            to="360 16 16"
+                            dur="6s"
+                            repeatCount="indefinite"
+                          />
+                          <stop offset="0%" stopColor="var(--chart-1)" />
+                          <stop offset="100%" stopColor="var(--chart-4)" />
+                        </linearGradient>
+                      </defs>
+                      <rect
+                        x="0.5"
+                        y="0.5"
+                        width="31"
+                        height="31"
+                        rx="5.5"
+                        stroke="url(#agent-detail-border-gradient)"
+                        strokeWidth="1"
+                        strokeDasharray="3 3"
+                      />
+                    </svg>
+                    <Plus size={16} />
+                  </div>
+                  <span className="text-sm text-muted-foreground truncate">
+                    No connections yet. Add one to get started.
+                  </span>
+                </button>
+              </div>
             ) : (
               <CollapsibleTrigger asChild>
                 <button

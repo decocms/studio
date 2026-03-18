@@ -1,4 +1,4 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { useNavigate, useParams, useRouterState } from "@tanstack/react-router";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   AlertTriangle,
@@ -27,6 +27,16 @@ const SETTINGS_ITEMS: Array<{
 
 export function ProjectSettingsSidebar() {
   const { location } = useRouterState();
+  const navigate = useNavigate();
+  const params = useParams({ strict: false }) as {
+    org: string;
+    project: string;
+  };
+
+  const handleNavigate = (key: string) => {
+    const href = `/${params.org}/${params.project}/settings/${key}`;
+    navigate({ href });
+  };
 
   return (
     <div className="w-52 shrink-0 border-r border-border bg-sidebar/50 overflow-y-auto py-3 flex flex-col gap-0.5 px-2">
@@ -34,9 +44,10 @@ export function ProjectSettingsSidebar() {
         const isActive = location.pathname.endsWith(`/settings/${item.key}`);
 
         return (
-          <Link
+          <button
             key={item.key}
-            to={`/$org/$project/projects/$slug/settings/${item.key}`}
+            type="button"
+            onClick={() => handleNavigate(item.key)}
             className={cn(
               "flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm text-left w-full transition-colors",
               isActive
@@ -46,7 +57,7 @@ export function ProjectSettingsSidebar() {
           >
             <span className="shrink-0">{item.icon}</span>
             <span className="truncate">{item.label}</span>
-          </Link>
+          </button>
         );
       })}
     </div>

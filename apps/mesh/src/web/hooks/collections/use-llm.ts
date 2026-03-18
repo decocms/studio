@@ -12,10 +12,11 @@ import {
   useProjectContext,
   type AiProviderModel,
   type AiProviderKey,
+  type AiProviderInfo,
   type UseCollectionListOptions,
 } from "@decocms/mesh-sdk";
 
-export type { AiProviderKey, AiProviderModel };
+export type { AiProviderKey, AiProviderModel, AiProviderInfo };
 import { z } from "zod";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { KEYS } from "../../lib/query-keys";
@@ -43,16 +44,7 @@ export function useAiProviders() {
         name: "AI_PROVIDERS_LIST",
         arguments: {},
       })) as {
-        structuredContent?: {
-          providers: {
-            id: string;
-            name: string;
-            description: string;
-            logo: string | null;
-            connectionMethod: "api-key" | "oauth-pkce";
-            supportedMethods: ("api-key" | "oauth-pkce")[];
-          }[];
-        };
+        structuredContent?: { providers: AiProviderInfo[] };
       };
       return result.structuredContent;
     },

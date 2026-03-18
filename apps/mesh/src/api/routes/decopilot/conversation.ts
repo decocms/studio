@@ -104,13 +104,16 @@ function mergeMessages(
   threadMessages: ThreadMessage[],
   requestMessage: ChatMessage,
 ): ChatMessage[] {
-  const matchIndex = threadMessages.findIndex(
-    (m) => m.id === requestMessage.id,
+  // Filter out messages with empty parts to prevent bricked threads
+  // (e.g. assistant messages saved after an LLM error before any content was generated)
+  const validMessages = threadMessages.filter(
+    (m) => m.parts && m.parts.length > 0,
   );
+  const matchIndex = validMessages.findIndex((m) => m.id === requestMessage.id);
   const conversation =
     matchIndex >= 0
-      ? [...threadMessages.slice(0, matchIndex), requestMessage]
-      : [...threadMessages, requestMessage];
+      ? [...validMessages.slice(0, matchIndex), requestMessage]
+      : [...validMessages, requestMessage];
   return conversation;
 }
 

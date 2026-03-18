@@ -8,14 +8,14 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
-  readdirSync,
   symlinkSync,
   writeFileSync,
 } from "fs";
-import { chmod, rm, unlink } from "fs/promises";
+import { chmod, unlink } from "fs/promises";
+import { createRequire } from "module";
 import { createConnection } from "net";
 import { arch, homedir, platform } from "os";
-import { join } from "path";
+import { dirname, join } from "path";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -162,53 +162,52 @@ interface ServiceInfo {
 // ---------------------------------------------------------------------------
 
 /**
- * Fix missing .dylib symlinks in the embedded-postgres package.
- * The npm package ships versioned libs (e.g. libicudata.77.1.dylib) but
- * binaries reference the short name (libicudata.77.dylib). Symlinks are
- * lost during npm packaging, so we recreate them at startup.
+ * Fix missing .dylib symlinks in the embedded-postgres platform package.
+ *
+ * The npm package ships a `pg-symlinks.json` manifest listing symlinks that
+ * must exist (e.g. libicudata.77.1.dylib → libicudata.77.dylib). These are
+ * created by a postinstall script, but bun doesn't always run postinstall for
+ * optional platform packages, so we re-hydrate them at startup.
+ *
+ * We locate the platform package by using createRequire scoped to the
+ * embedded-postgres module, which can resolve its optional dependencies
+ * regardless of directory layout (.bun cache, flat node_modules, or bunx).
  */
 function fixEmbeddedPostgresLibSymlinks() {
-  if (platform() !== "darwin") return;
-
   try {
-    // Locate the platform-specific package lib directory.
-    // Bun stores it at node_modules/.bun/@embedded-postgres+<platform>-<arch>@<ver>/
-    const epDir = require.resolve("embedded-postgres");
-    // Walk up from .bun/embedded-postgres@ver/node_modules/embedded-postgres/dist/index.js
-    // to the .bun/ directory
-    const bunCacheDir = join(epDir, "..", "..", "..", "..", "..");
-    const platformPkg = `@embedded-postgres+${platform()}-${arch()}`;
-    // Find the versioned directory
-    const candidates = existsSync(bunCacheDir)
-      ? readdirSync(bunCacheDir).filter((d) => d.startsWith(platformPkg))
-      : [];
+    // Resolve the platform-specific package from embedded-postgres's own
+    // module context using createRequire. This works regardless of directory
+    // layout (.bun cache, flat node_modules, bunx temporary installs).
+    const epPath = require.resolve("embedded-postgres");
+    const requireFromEp = createRequire(epPath);
+    const platformPkgName = `@embedded-postgres/${platform()}-${arch()}`;
+    const resolved = requireFromEp.resolve(platformPkgName);
 
-    for (const candidate of candidates) {
-      const libDir = join(
-        bunCacheDir,
-        candidate,
-        "node_modules",
-        "@embedded-postgres",
-        `${platform()}-${arch()}`,
-        "native",
-        "lib",
-      );
-      if (!existsSync(libDir)) continue;
+    // resolved = <pkgRoot>/dist/index.js — navigate up to package root
+    const pkgRoot = join(dirname(resolved), "..");
+    const symlinksFile = join(pkgRoot, "native", "pg-symlinks.json");
 
-      for (const file of readdirSync(libDir)) {
-        // Create symlinks for versioned dylibs, e.g.:
-        // libicudata.77.1.dylib → libicudata.77.dylib → libicudata.dylib
-        const match = file.match(/^(.+)\.(\d+)\.(\d+)\.dylib$/);
-        if (!match) continue;
-        const [, base, major] = match;
-        const midName = `${base}.${major}.dylib`;
-        const shortName = `${base}.dylib`;
-        for (const name of [midName, shortName]) {
-          const target = join(libDir, name);
-          if (!existsSync(target)) {
-            symlinkSync(file, target);
-          }
-        }
+    if (!existsSync(symlinksFile)) return;
+
+    const symlinks: { source: string; target: string }[] = JSON.parse(
+      readFileSync(symlinksFile, "utf-8"),
+    );
+
+    for (const { source, target } of symlinks) {
+      const absTarget = join(pkgRoot, target);
+      if (existsSync(absTarget)) continue;
+
+      const targetDir = join(absTarget, "..");
+      const sourceName = source.split("/").pop()!;
+      const targetName = target.split("/").pop()!;
+      const cwd = process.cwd();
+      try {
+        process.chdir(targetDir);
+        symlinkSync(sourceName, targetName);
+      } catch {
+        // Symlink may already exist from a concurrent run
+      } finally {
+        process.chdir(cwd);
       }
     }
   } catch {
@@ -262,11 +261,29 @@ async function ensurePostgres(): Promise<ServiceInfo> {
 
   const pgVersionFile = join(dataDir, "PG_VERSION");
   if (!existsSync(pgVersionFile)) {
-    // Clean up empty/broken data dir — initdb fails if the directory exists
-    if (existsSync(dataDir) && readdirSync(dataDir).length === 0) {
-      await rm(dataDir, { recursive: true, force: true });
+    try {
+      await pg.initialise();
+    } catch (initErr) {
+      // initdb may have been killed by a signal (exit code null) due to a race
+      // with another process initializing the same data directory. Log the
+      // error for debugging — do NOT remove the data dir as it may contain
+      // important data from a prior run.
+      console.error(
+        `[ensurePostgres] pg.initialise() failed. dataDir=${dataDir}`,
+        initErr,
+      );
+
+      // Another process (e.g. another workspace) may have won the race and
+      // already started postgres on our port.
+      if (await probePort(PG_PORT)) {
+        info.state = "running";
+        info.pid = findPidOnPort(PG_PORT);
+        info.owner = "managed";
+        return info;
+      }
+
+      throw initErr;
     }
-    await pg.initialise();
   }
   await pg.start();
 

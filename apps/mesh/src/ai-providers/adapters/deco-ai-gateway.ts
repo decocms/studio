@@ -1,11 +1,12 @@
 import type { OAuthPkceResult, ProviderAdapter } from "../types";
 import { openrouterAdapter } from "./openrouter";
+import { env } from "../../env";
 
-const BASE = process.env.DECO_AI_GATEWAY_URL ?? "https://ai-site.decocache.com";
+const BASE = env.DECO_AI_GATEWAY_URL ?? "https://ai-site.decocache.com";
 
 export const decoAiGatewayAdapter: ProviderAdapter = {
   info: {
-    id: "openrouter",
+    id: "deco",
     name: "Deco AI Gateway",
     description: "Deco-managed keys with access to 100+ models",
     logo: "/logos/deco logo.svg",
@@ -30,8 +31,7 @@ export const decoAiGatewayAdapter: ProviderAdapter = {
       code_challenge_method: codeChallengeMethod,
       organization_id: organizationId,
     });
-    const url = `${BASE}/oauth/authorize?${params}`;
-    return url;
+    return `${BASE}/oauth/authorize?${params}`;
   },
 
   async exchangeOAuthCode({ code, codeVerifier }): Promise<OAuthPkceResult> {
@@ -50,6 +50,39 @@ export const decoAiGatewayAdapter: ProviderAdapter = {
     }
     const data = await res.json();
     return { apiKey: data.key };
+  },
+
+  async getTopUpUrl(
+    apiKey: string,
+    amountCents: number,
+    currency: "usd" | "brl" = "usd",
+  ) {
+    const res = await fetch(`${BASE}/api/credits/topup`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ amountCents, currency }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to create top-up checkout: ${res.status}`);
+    }
+    const data = (await res.json()) as { url: string };
+    return data.url;
+  },
+
+  async getCreditsBalance(meshJwt: string, organizationId: string) {
+    const res = await fetch(`${BASE}/api/teams/${organizationId}/balance`, {
+      headers: { Authorization: `Bearer ${meshJwt}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to fetch credits balance: ${res.status}`);
+    }
+    const data = (await res.json()) as { balance_cents: number };
+    return { balanceCents: data.balance_cents };
   },
 
   create(apiKey) {

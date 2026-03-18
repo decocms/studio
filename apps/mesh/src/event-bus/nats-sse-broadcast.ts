@@ -25,7 +25,7 @@ interface NatsSSEMessage {
 }
 
 export interface NatsSSEBroadcastOptions {
-  getConnection: () => NatsConnection | null;
+  getConnection: () => NatsConnection;
 }
 
 export class NatsSSEBroadcast implements SSEBroadcastStrategy {
@@ -39,9 +39,8 @@ export class NatsSSEBroadcast implements SSEBroadcastStrategy {
   async start(localEmit: LocalEmitFn): Promise<void> {
     this.localEmit = localEmit;
 
-    const nc = this.options.getConnection();
-    if (!nc || this.sub) return;
-    this.sub = nc.subscribe(SUBJECT);
+    if (this.sub) return;
+    this.sub = this.options.getConnection().subscribe(SUBJECT);
 
     const decoder = new TextDecoder();
 
@@ -71,9 +70,6 @@ export class NatsSSEBroadcast implements SSEBroadcastStrategy {
   broadcast(organizationId: string, event: SSEEvent): void {
     this.localEmit?.(organizationId, event);
 
-    const nc = this.options.getConnection();
-    if (!nc) return;
-
     const payload: NatsSSEMessage = {
       originId: this.originId,
       organizationId,
@@ -81,7 +77,9 @@ export class NatsSSEBroadcast implements SSEBroadcastStrategy {
     };
 
     try {
-      nc.publish(SUBJECT, this.encoder.encode(JSON.stringify(payload)));
+      this.options
+        .getConnection()
+        .publish(SUBJECT, this.encoder.encode(JSON.stringify(payload)));
     } catch (err) {
       console.warn("[NatsSSEBroadcast] Publish failed (non-critical):", err);
     }

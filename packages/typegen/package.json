@@ -18,7 +18,7 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.26.0",
+    "@modelcontextprotocol/sdk": "1.27.1",
     "json-schema-to-typescript": "^15.0.4",
     "prettier": "^3.6.2"
   },

@@ -29,11 +29,13 @@ import { cn } from "@deco/ui/lib/utils.ts";
 
 import {
   Check,
+  CheckDone02,
   ChevronRight,
   Edit01,
   Loading01,
   Plus,
 } from "@untitledui/icons";
+import { EmptyState } from "@/web/components/empty-state.tsx";
 import { Suspense, useRef, useState } from "react";
 import { ErrorBoundary } from "../error-boundary";
 import { User as UserIcon, Users as UsersIcon } from "lucide-react";
@@ -233,13 +235,17 @@ export function TaskListContent({ onTaskSelect }: TaskListContentProps) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto flex flex-col">
         {searched.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 py-12 px-4 text-center">
-            <p className="text-xs text-muted-foreground">
-              {searchQuery ? "No tasks found" : "No tasks yet"}
-            </p>
-          </div>
+          <EmptyState
+            image={<CheckDone02 size={48} className="text-muted-foreground" />}
+            title={searchQuery ? "No tasks found" : "No tasks yet"}
+            description={
+              searchQuery
+                ? `No tasks match "${searchQuery}"`
+                : "Tasks will appear here as you start working."
+            }
+          />
         ) : (
           activeStatuses.map((status, idx) => {
             const config = STATUS_CONFIG[status];

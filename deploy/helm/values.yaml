@@ -1,4 +1,4 @@
-# Default values for chart-deco-mcp-mesh.
+# Default values for chart-deco-studio.
 # The value below is only considered if autoscaling is disabled.
 replicaCount: 1
 
@@ -11,7 +11,7 @@ strategy:
   #   maxUnavailable: 0
 
 image:
-  repository: ghcr.io/decocms/studio/mesh
+  repository: ghcr.io/decocms/studio/studio
   pullPolicy: Always
 
 service:
@@ -54,8 +54,10 @@ configMap:
     HOST: "0.0.0.0"
     BETTER_AUTH_URL: "http://localhost:8080"
     BASE_URL: "http://localhost:8080"
+    DATA_DIR: "/app/data"
     # PRESTOP_HEAP_SNAPSHOT_DIR: ""  # Optional: Directory for heap snapshots during preStop hook
-  
+    # NATS_URL: ""  # Optional: overrides auto-derived URL when nats.enabled=true (e.g. nats://my-nats:4222)
+    DECO_AI_GATEWAY_ENABLED: "false"
   authConfig:
     emailAndPassword:
       enabled: true
@@ -143,7 +145,7 @@ affinity: {}
 #         podAffinityTerm:
 #           labelSelector:
 #             matchLabels:
-#               app.kubernetes.io/name: chart-deco-mcp-mesh
+#               app.kubernetes.io/name: chart-deco-studio
 #           topologyKey: kubernetes.io/hostname
 
 # Topology Spread Constraints (optional - leave empty [] to disable)
@@ -155,8 +157,8 @@ topologySpreadConstraints:
     whenUnsatisfiable: ScheduleAnyway
     labelSelector:
       matchLabels:
-        app.kubernetes.io/name: chart-deco-mcp-mesh
-        app.kubernetes.io/instance: deco-mcp-mesh
+        app.kubernetes.io/name: chart-deco-studio
+        app.kubernetes.io/instance: deco-studio
 
 # OpenTelemetry configuration (optional)
 otel:
@@ -188,16 +190,47 @@ otel:
         memory: "256Mi"
         cpu: "250m"
 
-  # S3 exporter (requires collector.enabled: true)
-  s3:
-    enabled: false
-    bucket: ""               # Required when enabled
-    region: "us-east-1"
-    prefix: "otel"
-    filePrefix: "otel"
-    marshaler: "otlp_json"   # otlp_json | sumo_ic
-    compression: "none"      # none | gzip
-    roleArn: ""              # IRSA role ARN — adds eks.amazonaws.com/role-arn to ServiceAccount
+# S3 file sync sidecar — syncs /app/data/{logs,traces,metrics} to S3
+s3Sync:
+  enabled: false
+  image:
+    repository: amazon/aws-cli
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  bucket: ""               # Required when enabled
+  region: "us-east-1"
+  prefix: ""               # S3 key prefix (e.g. "studio/production")
+  interval: 30             # Polling interval in seconds
+  roleArn: ""              # IRSA role ARN — adds eks.amazonaws.com/role-arn to ServiceAccount
+  syncDirs:                # Directories under /app/data to sync
+    - logs
+    - traces
+    - metrics
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "100m"
+
+# NATS subchart (https://artifacthub.io/packages/helm/nats/nats)
+# When enabled, NATS_URL is automatically set to nats://<release-name>-nats:4222
+# unless overridden via configMap.meshConfig.NATS_URL
+nats:
+  enabled: true
+  config:
+    jetstream:
+      enabled: true
+      memoryStore:
+        enabled: true
+        maxSize: 1Gi
+      fileStore:
+        enabled: true
+        pvc:
+          enabled: true
+          size: 10Gi
+          storageClassName: ""  # empty = use cluster default StorageClass
 
 # Additional environment variables (merged with existing envs)
 env: []

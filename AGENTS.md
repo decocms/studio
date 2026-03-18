@@ -160,14 +160,14 @@ Pub/sub system between connections following CloudEvents v1.0 spec:
 - At-least-once delivery with exponential backoff (1s to 1hr, max 20 attempts)
 - Scheduled delivery (`deliverAt`) and recurring events (`cron`)
 - Per-event results (subscribers can return individual results per event)
-- Pluggable NotifyStrategy: PollingStrategy (timer-based) or PostgresNotifyStrategy (LISTEN/NOTIFY)
+- NotifyStrategy: NATS notify (immediate wake-up) + PollingStrategy (safety net for scheduled/cron delivery)
 
 #### Event Bus Files
 - `packages/bindings/src/well-known/event-bus.ts` - EVENT_BUS_BINDING (PUBLISH, SUBSCRIBE, UNSUBSCRIBE, CANCEL, ACK)
 - `packages/bindings/src/well-known/event-subscriber.ts` - EVENT_SUBSCRIBER_BINDING (ON_EVENTS)
 - `apps/mesh/src/event-bus/` - EventBus implementation and worker
-- `apps/mesh/src/event-bus/polling.ts` - Timer-based NotifyStrategy (for PGlite/other)
-- `apps/mesh/src/event-bus/postgres-notify.ts` - LISTEN/NOTIFY NotifyStrategy (for PostgreSQL)
+- `apps/mesh/src/event-bus/polling.ts` - Timer-based PollingStrategy (safety net for scheduled/cron delivery)
+- `apps/mesh/src/event-bus/nats-notify.ts` - NatsNotifyStrategy (immediate wake-up via NATS)
 - `apps/mesh/src/storage/event-bus.ts` - Database operations
 - `apps/mesh/src/tools/eventbus/` - MCP tools (publish, subscribe, unsubscribe, list, cancel, ack)
 - `apps/mesh/migrations/008-event-bus.ts` - Database schema
@@ -202,8 +202,9 @@ Subscribers can return batch or per-event results:
 
 #### NotifyStrategy Architecture
 The worker doesn't poll internally - it relies on a NotifyStrategy to trigger processing:
-- `PollingStrategy(intervalMs)` - Timer-based, for PGlite or databases without pub/sub
-- `PostgresNotifyStrategy(pool)` - Event-based via LISTEN/NOTIFY, no polling
+- `NatsNotifyStrategy` - Primary: immediate wake-up via NATS pub/sub
+- `PollingStrategy(intervalMs)` - Safety net: picks up scheduled/cron deliveries
+- Both are composed together via `compose()` so the worker responds to either signal
 
 #### Event Bus Configuration (EventBusConfig)
 ```typescript
@@ -218,8 +219,9 @@ The worker doesn't poll internally - it relies on a NotifyStrategy to trigger pr
 
 ### Database & Storage
 
-Uses **Kysely ORM** with support for PGlite (default, embedded PostgreSQL via WASM, using `kysely-pglite` and `@electric-sql/pglite`) and PostgreSQL.
-- Database URL: `DATABASE_URL` environment variable (defaults to `file://$HOME/deco/db.pglite`)
+Uses **Kysely ORM** with embedded PostgreSQL (via `embedded-postgres` package) for local development and standard PostgreSQL for production.
+- Database URL: `DATABASE_URL` environment variable (defaults to `postgresql://postgres:postgres@localhost:5432/postgres`)
+- Local data directory: `~/deco/services/postgres/data`
 - Schema types: `apps/mesh/src/storage/types.ts`
 - Operations organized by domain: `apps/mesh/src/storage/`
 - Multi-tenancy: Workspace/project isolation for config, credentials, policies, audit logs

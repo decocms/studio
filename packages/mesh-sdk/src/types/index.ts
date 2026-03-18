@@ -34,6 +34,7 @@ export {
   type AiProviderModelLimits,
   type AiProviderModelCosts,
   type AiProviderKey,
+  type AiProviderInfo,
 } from "./ai-providers";
 
 export {

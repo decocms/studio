@@ -61,7 +61,7 @@ Each event handler is fire-and-forget: the event bus delivers the event, the han
 
 ### How It Uses the Database
 
-Every state mutation goes through PostgreSQL (or PGlite) with careful use of atomic operations:
+Every state mutation goes through PostgreSQL with careful use of atomic operations:
 
 **Execution claiming** — `claimExecution()` uses `UPDATE ... SET status = 'running' WHERE id = ? AND status = 'enqueued'`. Only one worker wins the race; others see zero affected rows and bail. This is the entire distributed lock mechanism — no advisory locks, no external coordination.
 

@@ -57,6 +57,7 @@ import {
   Eye,
   Loading01,
   Plus,
+  RefreshCcw01,
   Trash01,
 } from "@untitledui/icons";
 import { useState } from "react";
@@ -209,6 +210,9 @@ export default function AutomationsPage() {
         ) : !automations || automations.length === 0 ? (
           <div className="flex items-center h-full">
             <EmptyState
+              image={
+                <RefreshCcw01 size={48} className="text-muted-foreground" />
+              }
               title="No automations yet"
               description="Automations run tasks on a schedule or in response to events."
               actions={

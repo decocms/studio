@@ -35,10 +35,9 @@ function ProjectSettingsContent() {
   const params = useParams({ strict: false }) as {
     org: string;
     project: string;
-    slug: string;
   };
   const { org } = useProjectContext();
-  const slug = params.slug;
+  const slug = params.project;
 
   const { data: project, isLoading } = useProject(org.id, slug);
 

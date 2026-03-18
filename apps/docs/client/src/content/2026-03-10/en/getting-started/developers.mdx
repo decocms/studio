@@ -1,113 +1,71 @@
 ---
 title: For Developers
-description: Set up your local development environment and deploy your first MCP server
+description: Set up your development environment and build your first MCP App
 icon: Code
 ---
 import Callout from "../../../../components/ui/Callout.astro";
 
 ## Prerequisites
 
-- **Node.js** v22+ ([download](https://nodejs.org))
+- **Bun** v1.1+ ([bun.sh](https://bun.sh))
 - **Git**
 - **Code editor** ([Cursor](https://cursor.com) recommended)
 - **TypeScript basics** ([docs](https://www.typescriptlang.org/docs/))
 
-## Initial Setup
-
-### Create Your First App
+## Create Your First MCP App
 
 ```bash
 npm create deco@latest
 cd <your-app-name>
-npm install
-deco login
+bun install
 ```
 
-Opens browser for authentication. You can create a new account if you don’t have one.
-
-### Local Development
+## Start Development
 
 ```bash
-npm run dev
+bun run dev
 ```
 
-Starts local server on port 8787 with hot reload enabled. The preview URL is accessible anywhere now.
+This starts two processes concurrently:
 
-### Project Structure
+- **API server** on port 3001 with hot reload (`bun run --hot api/main.ts`)
+- **Web UI** in watch mode (`vite build --watch`)
 
-The server serves both:
-- MCP app at `/mcp`
-- React frontend view at `/`
+Your MCP endpoint is available at `http://localhost:3001/api/mcp`.
 
-### Test Your MCP Server
+## Project Overview
+
+```
+├── api/          # MCP server with tools and resources
+│   ├── main.ts   # Server entry point
+│   ├── tools/    # Tool definitions
+│   ├── resources/# MCP App resources (serve HTML UIs)
+│   └── types/    # StateSchema + Env type
+├── web/          # React UI for each tool (MCP Apps)
+│   ├── app.tsx   # React entry point
+│   ├── context.tsx # MCP state management
+│   ├── router.tsx  # Tool-based routing
+│   └── tools/    # One folder per tool UI
+├── app.json      # Deco mesh configuration
+└── .mcp.json     # Local MCP server config
+```
+
+## Test Your MCP Server
 
 1. Go to [admin.decocms.com](https://admin.decocms.com)
 2. **Add Integration** → **Custom Integration**
-3. Paste preview URL + `/mcp`
-4. Save and test default tools that come from template
+3. Paste `http://localhost:3001/api/mcp`
+4. Test the `hello_world` tool that comes with the template
 
-### Deploy
-
-When you are ready to share your MCP:
+## Deploy
 
 ```bash
-npm run deploy
+bun run build
 ```
 
-This builds and deploys your MCP app to Cloudflare Workers, making it available on your organization's private registry.
+This builds both the web UI (single-file HTML) and the server bundle. See the [Deployment](/en/full-code-guides/deployment) guide for publishing to deco mesh.
 
-## Understanding the Current Workflow
+## Get Help
 
-As you know by now, there are two ways to build AI apps using deco:
-1. **Platform/UI** - Build in [admin.decocms.com](https://admin.decocms.com)
-2. **CLI** - Build locally with TypeScript
-
-These workflows exist separately right now and moving between them isn't seamless yet.
-
-### Bridging UI and Code
-
-While we work toward seamless integration, you have two options:
-
-**1. Workspace Resources (deconfig pull/push)**
-
-Work with all resources in a workspace:
-
-```bash
-# Pull all resources from entire workspace
-deco deconfig pull -w <workspace> --path <path>
-
-# Edit locally in your IDE
-
-# Push changes back to workspace
-deco deconfig push -w <workspace> --path <path>
-```
-
-**Note:** If you're not inside a deco project folder or haven't initialized the CLI in your editor, you'll need to install it globally using `npm i -g deco-cli@latest` in order to get access to deco commands
-
-**2. Single Project (export/import)**
-
-Work with one specific project within an organization:
-
-```bash
-# Export a single project (tools, views, workflows, agents, schemas)
-deco project export --org <org> --project <project> --out ./my-project
-
-# Edit locally in your IDE
-
-# Import back to same or different organization
-deco project import --from ./my-project --org <org>
-```
-
-**Use cases:**
-- **Workspace pull/push:** Quick sync of all workspace resources for iteration
-- **Project export/import:** Move specific projects between organizations or archive them
-
-<Callout type="info">
-  **What we're building toward:** Git-native sync between UI and code.
-</Callout>
-
-**Get Help:** [Discord](https://decocms.com/discord)
-
-**Non-developer?** See [For AI Builders](/en/getting-started/ai-builders) for no-code workflow.
-
-
+- **Discord:** [decocms.com/discord](https://decocms.com/discord)
+- **Non-developer?** See [For AI Builders](/en/getting-started/ai-builders) for the no-code workflow.

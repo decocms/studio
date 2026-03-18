@@ -7,7 +7,7 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.26.0",
+    "@modelcontextprotocol/sdk": "1.27.1",
     "@tanstack/react-router": "1.139.7",
     "react": "^19.2.0",
     "zod": "^4.0.0",

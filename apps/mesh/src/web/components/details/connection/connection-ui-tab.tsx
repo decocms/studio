@@ -6,9 +6,11 @@ import { ToolAnnotationBadges, type Tool } from "@/web/components/tools";
 import { Card } from "@deco/ui/components/card.tsx";
 import {
   ORG_ADMIN_PROJECT_SLUG,
+  useConnection,
   useMCPClient,
   useProjectContext,
 } from "@decocms/mesh-sdk";
+import { getConnectionSlug } from "@/web/utils/connection-slug";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 
@@ -26,6 +28,10 @@ export function ConnectionUiTab({
   const navigate = useNavigate();
   const { org: projectOrg } = useProjectContext();
   const client = useMCPClient({ connectionId, orgId: projectOrg.id });
+  const connectionData = useConnection(connectionId);
+  const appSlug = connectionData
+    ? getConnectionSlug(connectionData)
+    : connectionId;
   const [search, setSearch] = useState("");
 
   // Filter to only tools with a UI resource URI
@@ -42,11 +48,11 @@ export function ConnectionUiTab({
 
   const handleToolClick = (tool: Tool) => {
     navigate({
-      to: "/$org/$project/mcps/$connectionId/$collectionName/$itemId",
+      to: "/$org/$project/mcps/$appSlug/$collectionName/$itemId",
       params: {
         org,
         project: ORG_ADMIN_PROJECT_SLUG,
-        connectionId,
+        appSlug,
         collectionName: "tools",
         itemId: encodeURIComponent(tool.name),
       },

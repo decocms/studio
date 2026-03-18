@@ -16,7 +16,7 @@ import type { NotifyStrategy } from "./notify-strategy";
 const SUBJECT = "mesh.events.notify";
 
 export interface NatsNotifyStrategyOptions {
-  getConnection: () => NatsConnection | null;
+  getConnection: () => NatsConnection;
 }
 
 export class NatsNotifyStrategy implements NotifyStrategy {
@@ -27,11 +27,10 @@ export class NatsNotifyStrategy implements NotifyStrategy {
   constructor(private readonly options: NatsNotifyStrategyOptions) {}
 
   async start(onNotify: () => void): Promise<void> {
-    const nc = this.options.getConnection();
-    if (!nc || this.sub) return;
+    if (this.sub) return;
 
     this.onNotify = onNotify;
-    this.sub = nc.subscribe(SUBJECT);
+    this.sub = this.options.getConnection().subscribe(SUBJECT);
 
     (async () => {
       for await (const _msg of this.sub!) {
@@ -49,11 +48,10 @@ export class NatsNotifyStrategy implements NotifyStrategy {
   }
 
   async notify(eventId: string): Promise<void> {
-    const nc = this.options.getConnection();
-    if (!nc) return;
-
     try {
-      nc.publish(SUBJECT, this.encoder.encode(eventId));
+      this.options
+        .getConnection()
+        .publish(SUBJECT, this.encoder.encode(eventId));
     } catch (err) {
       console.warn("[NatsNotify] Publish failed (non-critical):", err);
     }

@@ -2,14 +2,14 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: {{ include "chart-deco-mcp-mesh.fullname" . }}
+  name: {{ include "chart-deco-studio.fullname" . }}
   labels:
-    {{- include "chart-deco-mcp-mesh.labels" . | nindent 4 }}
+    {{- include "chart-deco-studio.labels" . | nindent 4 }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: {{ include "chart-deco-mcp-mesh.fullname" . }}
+    name: {{ include "chart-deco-studio.fullname" . }}
   minReplicas: {{ .Values.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.autoscaling.maxReplicas }}
   metrics:

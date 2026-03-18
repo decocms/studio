@@ -1,9 +1,9 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "chart-deco-mcp-mesh.fullname" . }}
+  name: {{ include "chart-deco-studio.fullname" . }}
   labels:
-    {{- include "chart-deco-mcp-mesh.labels" . | nindent 4 }}
+    {{- include "chart-deco-studio.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.service.type }}
   ports:
@@ -12,7 +12,7 @@ spec:
       protocol: TCP
       name: http
   selector:
-    {{- include "chart-deco-mcp-mesh.selectorLabels" . | nindent 4 }}
+    {{- include "chart-deco-studio.selectorLabels" . | nindent 4 }}
   {{- if .Values.service.sessionAffinity }}
   sessionAffinity: {{ .Values.service.sessionAffinity }}
   {{- end }}

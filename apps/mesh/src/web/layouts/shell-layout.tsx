@@ -215,9 +215,7 @@ function ShellLayoutContent() {
       } as ProjectContextProviderProps;
     },
     gcTime: Infinity,
-    staleTime: Infinity,
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
   });
 
   if (!projectContext) {

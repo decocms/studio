@@ -12,9 +12,9 @@
   },
   "dependencies": {
     "decocms": "workspace:*",
-    "@modelcontextprotocol/sdk": "1.26.0",
+    "@modelcontextprotocol/sdk": "1.27.1",
     "@openrouter/ai-sdk-provider": "^1.5.4",
-    "ai": "^6.0.1",
+    "ai": "^6.0.116",
     "hono": "^4.10.7"
   },
   "devDependencies": {

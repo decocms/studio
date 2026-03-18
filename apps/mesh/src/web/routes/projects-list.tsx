@@ -15,6 +15,7 @@ import {
   BreadcrumbPage,
 } from "@deco/ui/components/breadcrumb.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
+import { FolderClosed, Plus } from "@untitledui/icons";
 
 function ImportFromDecoButton() {
   const [open, setOpen] = useState(false);
@@ -52,11 +53,10 @@ export default function ProjectsListPage() {
 
   const handleSettingsClick = (projectSlug: string) => {
     navigate({
-      to: "/$org/$project/projects/$slug/settings/general",
+      to: "/$org/$project/settings/general",
       params: {
         org: org.slug,
-        project: ORG_ADMIN_PROJECT_SLUG,
-        slug: projectSlug,
+        project: projectSlug,
       },
     });
   };
@@ -79,6 +79,7 @@ export default function ProjectsListPage() {
           </Breadcrumb>
         </Page.Header.Left>
         <Page.Header.Right>
+<<<<<<< tavano/add-deco-import
           {__ENABLE_DECO_IMPORT__ && <ImportFromDecoButton />}
           <Button
             onClick={handleCreateProject}
@@ -86,6 +87,11 @@ export default function ProjectsListPage() {
             className="h-7 px-3 rounded-lg text-sm font-medium"
           >
             Create new project
+=======
+          <Button onClick={handleCreateProject} size="sm">
+            <Plus size={14} />
+            Create Project
+>>>>>>> main
           </Button>
         </Page.Header.Right>
       </Page.Header>
@@ -119,26 +125,26 @@ export default function ProjectsListPage() {
           </div>
         )}
 
-        {/* Empty State - No projects after filtering */}
-        {!isLoading && userProjects.length === 0 && search && (
-          <div className="flex items-center justify-center h-full">
+        {/* Empty State */}
+        {!isLoading && userProjects.length === 0 && (
+          <div className="flex items-center h-full">
             <EmptyState
-              title="No projects found"
-              description={`No projects match "${search}"`}
-            />
-          </div>
-        )}
-
-        {/* Empty State - No projects at all */}
-        {!isLoading && userProjects.length === 0 && !search && (
-          <div className="flex items-center justify-center h-full">
-            <EmptyState
-              title="No projects yet"
-              description="Create a project to get started."
+              image={
+                <FolderClosed size={48} className="text-muted-foreground" />
+              }
+              title={search ? "No projects found" : "No projects yet"}
+              description={
+                search
+                  ? `No projects match "${search}"`
+                  : "Create a project to get started."
+              }
               actions={
-                <Button onClick={handleCreateProject}>
-                  Create new project
-                </Button>
+                !search && (
+                  <Button size="sm" onClick={handleCreateProject}>
+                    <Plus size={14} />
+                    Create Project
+                  </Button>
+                )
               }
             />
           </div>

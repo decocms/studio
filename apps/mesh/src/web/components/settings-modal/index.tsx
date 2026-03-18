@@ -21,7 +21,6 @@ import { AccountProfilePage } from "./pages/account-profile";
 import { AccountPreferencesPage } from "./pages/account-preferences";
 import { OrgGeneralPage } from "./pages/org-general";
 import { ProjectPluginsPage } from "./pages/project-plugins";
-import { OrgBillingPage } from "./pages/org-billing";
 import { OrgAiProvidersPage } from "./pages/org-ai-providers";
 import { OrgMembersPage } from "./pages/org-members";
 
@@ -84,8 +83,6 @@ function SettingsContent({ section }: { section: SettingsSection }) {
       );
     case "org.ai-providers":
       return <OrgAiProvidersPage />;
-    case "org.billing":
-      return <OrgBillingPage />;
     case "org.members":
       return <OrgMembersPage />;
     default:

@@ -34,6 +34,7 @@ import {
   type VirtualToolDefinition,
 } from "../../tools/virtual-tool/schema";
 import type { VirtualMCPConnection } from "../../tools/virtual/schema";
+import type { ToolListCache } from "../../mcp-clients/tool-list-cache";
 import type { VirtualClientOptions } from "./types";
 
 interface Cache<T> {
@@ -67,6 +68,7 @@ function createLazyClient(
   connection: ConnectionEntity,
   ctx: MeshContext,
   superUser: boolean,
+  cache?: ToolListCache,
 ): Client {
   // Placeholder client — never connects to anything
   const placeholder = new Client(
@@ -123,10 +125,23 @@ function createLazyClient(
       })),
     });
   } else {
-    // No cached tools — must connect to get tool list
+    // No cached tools — check NATS KV cache before falling back to real client
+    // VIRTUAL connections are excluded: their tool lists are dynamic (composed
+    // from sub-connections) and must not be served from cross-pod cache.
+    const useKvCache = cache && connection.connection_type !== "VIRTUAL";
     placeholder.listTools = async () => {
+      if (useKvCache) {
+        const cached = await cache.get(connection.id);
+        if (cached) {
+          return { tools: cached };
+        }
+      }
       const real = await getRealClient();
-      return real.listTools();
+      const result = await real.listTools();
+      if (useKvCache && result.tools.length > 0) {
+        cache.set(connection.id, result.tools).catch(() => {});
+      }
+      return result;
     };
   }
 
@@ -203,11 +218,15 @@ function createClientMap(
   connections: ConnectionEntity[],
   ctx: MeshContext,
   superUser = false,
+  cache?: ToolListCache,
 ): Map<string, Client> {
   const clientMap = new Map<string, Client>();
 
   for (const connection of connections) {
-    clientMap.set(connection.id, createLazyClient(connection, ctx, superUser));
+    clientMap.set(
+      connection.id,
+      createLazyClient(connection, ctx, superUser, cache),
+    );
   }
 
   return clientMap;
@@ -277,6 +296,7 @@ export class PassthroughClient extends Client {
       this.options.connections,
       this.ctx,
       this.options.superUser,
+      this.options.toolListCache,
     );
 
     // Initialize lazy caches - all share the same ProxyCollection

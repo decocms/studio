@@ -102,14 +102,4 @@ describe("NatsCancelBroadcast", () => {
 
     expect(cancelled).toHaveLength(0);
   });
-
-  it("broadcast is a no-op when NATS is unavailable", async () => {
-    const broadcast = new NatsCancelBroadcast({ getConnection: () => null });
-    const cancelled: string[] = [];
-
-    await broadcast.start((id) => cancelled.push(id));
-    broadcast.broadcast("thread-1");
-
-    expect(cancelled).toEqual(["thread-1"]);
-  });
 });

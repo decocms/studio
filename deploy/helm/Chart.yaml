@@ -1,6 +1,12 @@
 apiVersion: v2
-name: chart-deco-mcp-mesh
-description: A Helm chart for deco-mcp-mesh self-hosted deployment
+name: chart-deco-studio
+description: A Helm chart for deco Studio self-hosted deployment
 type: application
-version: 0.1.22
+version: 0.1.39
 appVersion: "latest"
+
+dependencies:
+  - name: nats
+    version: "2.12.5"
+    repository: "https://nats-io.github.io/k8s/helm/charts/"
+    condition: nats.enabled

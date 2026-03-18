@@ -3,9 +3,9 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "chart-deco-mcp-mesh.fullname" . }}-data
+  name: {{ include "chart-deco-studio.fullname" . }}-data
   labels:
-    {{- include "chart-deco-mcp-mesh.labels" . | nindent 4 }}
+    {{- include "chart-deco-studio.labels" . | nindent 4 }}
 spec:
   accessModes:
     - {{ .Values.persistence.accessMode }}

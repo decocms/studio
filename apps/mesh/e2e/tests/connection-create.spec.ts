@@ -33,8 +33,8 @@ test.describe("Connection creation flow", () => {
       .last()
       .click();
 
-    // 7. Should navigate to the connection detail page
-    await page.waitForURL(/\/mcps\/conn_/, { timeout: 10_000 });
-    await expect(page).toHaveURL(/\/mcps\/conn_/);
+    // 7. Should navigate to the connection detail page (slug derived from URL)
+    await page.waitForURL(/\/mcps\/examplecom-mcp/, { timeout: 10_000 });
+    await expect(page).toHaveURL(/\/mcps\/examplecom-mcp/);
   });
 });

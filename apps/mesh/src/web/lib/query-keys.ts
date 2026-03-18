@@ -266,4 +266,8 @@ export const KEYS = {
 
   // AI provider stored keys (scoped by locator)
   aiProviderKeys: (locator: string) => ["ai-provider-keys", locator] as const,
+
+  // AI provider credits balance (scoped by locator + keyId)
+  aiProviderCredits: (locator: string, keyId: string) =>
+    ["ai-provider-credits", locator, keyId] as const,
 } as const;

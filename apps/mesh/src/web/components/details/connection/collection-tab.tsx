@@ -10,6 +10,7 @@ import type { ValidatedCollection } from "@/web/hooks/use-binding";
 import { useListState } from "@/web/hooks/use-list-state";
 import { authClient } from "@/web/lib/auth-client";
 import { BaseCollectionJsonSchema } from "@/web/utils/constants";
+import { getConnectionSlug } from "@/web/utils/connection-slug";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,6 +27,7 @@ import {
   ORG_ADMIN_PROJECT_SLUG,
   useCollectionActions,
   useCollectionList,
+  useConnection,
   useMCPClient,
   useProjectContext,
 } from "@decocms/mesh-sdk";
@@ -54,6 +56,10 @@ export function CollectionTab({
   const navigate = useNavigate();
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id || "unknown";
+  const connectionData = useConnection(connectionId);
+  const appSlug = connectionData
+    ? getConnectionSlug(connectionData)
+    : connectionId;
 
   const { org: projectOrg } = useProjectContext();
   const client = useMCPClient({
@@ -99,11 +105,11 @@ export function CollectionTab({
   // Create action handlers
   const handleEdit = (item: BaseCollectionEntity) => {
     navigate({
-      to: "/$org/$project/mcps/$connectionId/$collectionName/$itemId",
+      to: "/$org/$project/mcps/$appSlug/$collectionName/$itemId",
       params: {
         org,
         project: ORG_ADMIN_PROJECT_SLUG,
-        connectionId,
+        appSlug,
         collectionName,
         itemId: item.id,
       },
@@ -167,11 +173,11 @@ export function CollectionTab({
 
       // Navigate to the new item's detail page
       navigate({
-        to: "/$org/$project/mcps/$connectionId/$collectionName/$itemId",
+        to: "/$org/$project/mcps/$appSlug/$collectionName/$itemId",
         params: {
           org,
           project: ORG_ADMIN_PROJECT_SLUG,
-          connectionId,
+          appSlug,
           collectionName,
           itemId: createdItem.id,
         },

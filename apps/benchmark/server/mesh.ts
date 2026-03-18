@@ -86,7 +86,7 @@ async function parseSSEResponseAsJson(response: Response) {
  * Start a mesh server for benchmarking
  */
 export async function startMesh(port: number): Promise<MeshServerHandle> {
-  // Use a temp file because PGlite needs a persistent data directory
+  // Use a temp file because embedded-postgres needs a persistent data directory
   const dbPath = join(
     tmpdir(),
     `mesh-benchmark-${Date.now()}-${Math.random().toString(36).slice(2)}.pglite`,
@@ -282,7 +282,7 @@ export async function startMesh(port: number): Promise<MeshServerHandle> {
       server.stop(true);
       await closeDatabase(database);
 
-      // Delete temp database directory (PGlite creates a directory, not a file)
+      // Delete temp database directory (embedded-postgres creates a directory, not a file)
       try {
         rmSync(dbPath, { recursive: true, force: true });
       } catch {

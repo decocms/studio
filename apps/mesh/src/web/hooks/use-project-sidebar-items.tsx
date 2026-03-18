@@ -321,28 +321,30 @@ export function useProjectSidebarItems(): SidebarSection[] {
       }),
   };
 
-  const projectWorkflowsItem: NavigationSidebarItem = {
-    key: "workflows",
-    label: "Workflows",
-    icon: <Dataflow03 />,
-    isActive: isActiveRoute("workflows"),
-    onClick: () =>
-      navigate({
-        to: "/$org/$project/workflows",
-        params: { org, project },
-      }),
-  };
+  const projectWorkflowsItem: NavigationSidebarItem | null =
+    enabledPlugins.includes("workflows")
+      ? {
+          key: "workflows",
+          label: "Workflows",
+          icon: <Dataflow03 />,
+          isActive: isActiveRoute("workflows"),
+          onClick: () =>
+            navigate({
+              to: "/$org/$project/workflows",
+              params: { org, project },
+            }),
+        }
+      : null;
 
   const configureItem: NavigationSidebarItem = {
     key: "configure",
-    label: "Configure",
+    label: "Settings",
     icon: <Settings01 />,
-    isActive: false,
-    isExternal: true,
+    isActive: isActiveRoute("settings"),
     onClick: () =>
       navigate({
-        to: "/$org/$project/projects/$slug/settings/general",
-        params: { org, project: ORG_ADMIN_PROJECT_SLUG, slug: project },
+        to: "/$org/$project/settings/general",
+        params: { org, project },
       }),
   };
 
@@ -354,7 +356,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
   const projectItems: NavigationSidebarItem[] = [
     homeItem,
     projectTasksItem,
-    projectWorkflowsItem,
+    ...(projectWorkflowsItem ? [projectWorkflowsItem] : []),
     configureItem,
   ];
 

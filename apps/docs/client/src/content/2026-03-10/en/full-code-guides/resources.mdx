@@ -1,474 +1,114 @@
 ---
 title: Resources
-description: Create typed, versioned resources with real-time sync
+description: Serve MCP App UIs and data as MCP resources
 icon: Database
 ---
-
 import Callout from "../../../../components/ui/Callout.astro";
 
-deconfig is deco CMS's git-like versioned filesystem for storing resources. This guide shows you how to define custom resource types with full CRUD operations and real-time synchronization.
+## What Are MCP Resources?
 
-**Use cases:**
-- Theme settings
-- User preferences  
-- Configuration data
-- Feature flags
-- Any typed data that needs versioning and real-time updates
+MCP resources are read-only data exposed by your MCP server, identified by URI. In the context of MCP Apps, resources primarily serve single-file HTML bundles that render as rich UIs inside MCP clients.
 
-## How It Works
+## MCP App Resources
 
-Define a resource schema → Auto-generated CRUD tools → Type-safe frontend client → Real-time SSE updates
+An MCP App resource serves the built HTML bundle as a rich UI for a tool:
 
-Resources are:
-- **Typed** with Zod schemas
-- **Versioned** in deconfig (git-like storage)
-- **Referenceable** via `rsc://` URIs
-- **Real-time** with Server-Sent Events
+- **MIME type**: `text/html;profile=mcp-app`
+- **Content**: single-file HTML (CSS + JS inlined) built by Vite + `vite-plugin-singlefile`
+- **Linked to tools** via `_meta.ui.resourceUri`
 
----
+## Creating a Resource
 
-## Define a Resource
+### Basic Example
 
-Create a schema in `server/tools/`:
+Here's the hello resource from the template (`api/resources/hello.ts`):
 
 ```typescript
-import { DeconfigResource } from "@decocms/runtime/deconfig";
-import { z } from "zod";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { createPublicResource } from "@decocms/runtime/tools";
+import { HELLO_RESOURCE_URI } from "../tools/hello.ts";
+import type { Env } from "../types/env.ts";
 
-const ThemeSettings = DeconfigResource.define({
-  resourceName: "theme_settings",
-  dataSchema: z.object({
-    name: z.string().min(1),
-    primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
-    secondaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
-    textColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
-  }),
-});
+const RESOURCE_MIME_TYPE = "text/html;profile=mcp-app";
 
-// Register in your tools array
-export const tools = [
-  (env: Env) => ThemeSettings.create(env),
-  // ... other tools
-];
+function getDistPath(): string {
+  const projectRoot = join(import.meta.dir, "../..");
+  return join(projectRoot, "dist", "client", "index.html");
+}
 
-export { ThemeSettings };
+export const helloAppResource = (_env: Env) =>
+  createPublicResource({
+    uri: HELLO_RESOURCE_URI,
+    name: "Hello UI",
+    description: "Interactive greeting display powered by MCP Apps",
+    mimeType: RESOURCE_MIME_TYPE,
+    read: async () => {
+      const html = await readFile(getDistPath(), "utf-8");
+      return {
+        uri: HELLO_RESOURCE_URI,
+        mimeType: RESOURCE_MIME_TYPE,
+        text: html,
+      };
+    },
+  });
 ```
 
-This generates 6 CRUD tools automatically:
+Key parts:
+- **`createPublicResource`** from `@decocms/runtime/tools` — creates a publicly accessible resource
+- **`uri`** — must match the `_meta.ui.resourceUri` in the tool definition
+- **`mimeType`** — `text/html;profile=mcp-app` tells the MCP client this is an MCP App
+- **`read()`** — async function that returns the HTML content
 
-| Tool | Purpose |
-|------|---------|
-| `CREATE` | Create new resource with data |
-| `READ` | Get resource by URI |
-| `UPDATE` | Update resource (partial merge) |
-| `DELETE` | Delete resource by URI |
-| `SEARCH` | List/filter resources with pagination |
-| `DESCRIBE` | Get metadata and SSE endpoint |
+### Registering Resources
 
-### Resource URIs
-
-Resources are identified by URIs in the format: `rsc://app-id/theme_settings/resource-id`
-
-The `resource-id` can be auto-generated or you can specify it in CREATE:
+Add your resource creator to the `resources` array in `withRuntime()` in `api/main.ts`:
 
 ```typescript
-await client.tools.DECO_RESOURCE_THEME_SETTINGS_CREATE({
-  resourceId: "dark-theme", // Optional: specify ID
-  data: { /* ... */ }
+const runtime = withRuntime<Env, typeof StateSchema>({
+  configuration: { state: StateSchema },
+  tools,
+  resources: [helloAppResource, myToolResource],
 });
 ```
 
-## Use in Frontend
+## Resource URIs
 
-After running `npm run gen:self`, use the generated client:
+- **Convention**: `ui://<app-name>/<tool-name>` (e.g., `ui://mcp-app/hello`)
+- The URI must match the `_meta.ui.resourceUri` in the corresponding tool definition
+- The MCP client uses this URI to find and load the UI for a tool result
 
-### Basic Operations
-
-```typescript
-import { client } from "./lib/rpc";
-
-// Create
-const theme = await client.tools.DECO_RESOURCE_THEME_SETTINGS_CREATE({
-  data: {
-    name: "Dark Theme",
-    primaryColor: "#1a1a1a",
-    secondaryColor: "#2d2d2d",
-    textColor: "#ffffff",
-  }
-});
-
-// Read
-const theme = await client.tools.DECO_RESOURCE_THEME_SETTINGS_READ({
-  uri: "rsc://my-app/theme_settings/dark-theme"
-});
-
-// Update (partial update - merges with existing)
-await client.tools.DECO_RESOURCE_THEME_SETTINGS_UPDATE({
-  uri: "rsc://my-app/theme_settings/dark-theme",
-  data: { primaryColor: "#000000" }
-});
-
-// Delete
-await client.tools.DECO_RESOURCE_THEME_SETTINGS_DELETE({
-  uri: "rsc://my-app/theme_settings/dark-theme"
-});
-
-// Search with filtering and pagination
-const results = await client.tools.DECO_RESOURCE_THEME_SETTINGS_SEARCH({
-  term: "dark",           // Searches in name, description, resourceId
-  page: 1,                // Page number (starts at 1)
-  pageSize: 10,           // Items per page (use Infinity for all)
-  sortBy: "name",         // Sort by: "name", "resourceId", "mtime"
-  sortOrder: "asc",       // "asc" or "desc"
-  filters: {              // Optional filters
-    created_by: "user-id",
-    updated_by: ["user-1", "user-2"],
-  },
-});
-
-// Result structure
-// {
-//   items: Resource[],
-//   total: number,
-//   page: number,
-//   pageSize: number
-// }
-```
-
-<Callout type="tip">
-  **Metadata tracking:** Resources automatically track `created_by`, `updated_by`, `created_at`, and `updated_at`.
+<Callout type="info">
+  Export your resource URI as a constant from the tool file so both the tool and resource reference the same value.
 </Callout>
 
-### Real-time Updates with SSE
+## Build Output
 
-Subscribe to resource changes via Server-Sent Events:
+Vite builds `web/` into `dist/client/index.html`:
+
+- All CSS and JS are inlined into a single HTML file (via `vite-plugin-singlefile`)
+- The resource reads this file at runtime and serves it to MCP clients
+- In development, `bun run dev` runs `vite build --watch` to keep the bundle updated
+
+## Multiple Resources
+
+If your app has multiple tools with UIs, each tool gets its own resource definition — but they all serve the **same HTML bundle**. The router inside the bundle (`web/router.tsx`) dispatches to the correct tool UI based on `toolName` from the host context.
 
 ```typescript
-import { useEffect } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { client } from "./lib/rpc";
-
-function useThemeSync() {
-  const queryClient = useQueryClient();
-
-  useEffect(() => {
-    let eventSource: EventSource;
-
-    const setup = async () => {
-      // Get SSE endpoint
-      const desc = await client.tools.DECO_RESOURCE_THEME_SETTINGS_DESCRIBE({});
-      const watchUrl = desc.features?.watch?.pathname;
-      
-      if (!watchUrl) return;
-
-      // Connect to SSE stream (watch all theme_settings resources)
-      const uri = desc.uriTemplate; // rsc://app/theme_settings/*
-      eventSource = new EventSource(`${watchUrl}?uri=${encodeURIComponent(uri)}`);
-
-      eventSource.onmessage = (event) => {
-        const update = JSON.parse(event.data);
-        // Invalidate queries to trigger refetch
-        queryClient.invalidateQueries({ queryKey: ["themes"] });
+// api/resources/analytics.ts
+export const analyticsAppResource = (_env: Env) =>
+  createPublicResource({
+    uri: ANALYTICS_RESOURCE_URI,
+    name: "Analytics UI",
+    description: "Interactive analytics dashboard",
+    mimeType: "text/html;profile=mcp-app",
+    read: async () => {
+      const html = await readFile(getDistPath(), "utf-8");
+      return {
+        uri: ANALYTICS_RESOURCE_URI,
+        mimeType: "text/html;profile=mcp-app",
+        text: html,
       };
-
-      eventSource.onerror = (error) => {
-        console.error("SSE connection error:", error);
-        eventSource.close();
-        // Implement reconnection logic if needed
-      };
-    };
-
-    setup();
-
-    return () => {
-      eventSource?.close();
-    };
-  }, [queryClient]);
-}
-```
-
-**How it works:**
-1. Call `DESCRIBE` to get SSE endpoint
-2. Connect EventSource to watch URL with URI pattern
-3. Receive events when resources change
-4. Update UI by invalidating React Query cache
-
-Changes propagate instantly to all connected clients.
-
-### Complete Example
-
-Combine CRUD + real-time sync:
-
-```typescript
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
-import { client } from './your-client';
-
-export function useThemeSettings() {
-  const queryClient = useQueryClient();
-
-  // Fetch all themes
-  const { data: themes, isLoading } = useQuery({
-    queryKey: ["themes"],
-    queryFn: async () => {
-      const result = await client.DECO_RESOURCE_THEME_SETTINGS_SEARCH({
-        pageSize: Infinity,
-      });
-      return result.items;
     },
   });
-
-  // Create mutation
-  const createTheme = useMutation({
-    mutationFn: async (data: ThemeData) => {
-      return client.DECO_RESOURCE_THEME_SETTINGS_CREATE({ data });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["themes"] });
-    },
-  });
-
-  // Update mutation
-  const updateTheme = useMutation({
-    mutationFn: async ({ uri, data }: { uri: string; data: Partial<ThemeData> }) => {
-      return client.DECO_RESOURCE_THEME_SETTINGS_UPDATE({ uri, data });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["themes"] });
-    },
-  });
-
-  // Real-time SSE subscription
-  useEffect(() => {
-    let eventSource: EventSource | null = null;
-
-    const setupSSE = async () => {
-      try {
-        const description = await client.DECO_RESOURCE_THEME_SETTINGS_DESCRIBE({});
-        const watchPathname = description.features?.watch?.pathname;
-        const uriTemplate = description.uriTemplate;
-
-        if (watchPathname) {
-          const watchUrl = `${watchPathname}?uri=${encodeURIComponent(uriTemplate)}`;
-          eventSource = new EventSource(watchUrl);
-
-          eventSource.onmessage = (event) => {
-            const update = JSON.parse(event.data);
-            if (update.uri) {
-              queryClient.invalidateQueries({ queryKey: ["themes"] });
-            }
-          };
-        }
-      } catch (error) {
-        console.error("Failed to setup SSE:", error);
-      }
-    };
-
-    setupSSE();
-
-    return () => {
-      eventSource?.close();
-    };
-  }, [queryClient]);
-
-  return {
-    themes,
-    isLoading,
-    createTheme: createTheme.mutate,
-    updateTheme: updateTheme.mutate,
-  };
-}
 ```
-
-## Schema Best Practices
-
-Design resources with searchability in mind:
-
-```typescript
-const MyResource = DeconfigResource.define({
-  resourceName: "my_resource",
-  dataSchema: z.object({
-    name: z.string().min(1).describe("Display name"),
-    description: z.string().describe("Resource description"),
-    // ^ These fields are searchable by default
-    
-    // Your custom fields
-    apiKey: z.string().describe("API key"),
-    environment: z.enum(["dev", "prod"]).describe("Environment"),
-    isActive: z.boolean().default(true),
-  }),
-});
-```
-
-**Tips:**
-- Include `name` and `description` for better search
-- Use `.describe()` for documentation
-- Set sensible defaults with `.default()`
-- Validate formats strictly (hex colors, emails, URLs)
-
-## Advanced Options
-
-### Custom Validation
-
-Add business logic validation beyond schema checks:
-
-```typescript
-const UserSettings = DeconfigResource.define({
-  resourceName: "user_settings",
-  dataSchema: z.object({
-    username: z.string(),
-    email: z.string().email(),
-  }),
-  validate: async (data) => {
-    const exists = await checkUsernameExists(data.username);
-    if (exists) {
-      throw new Error("Username already exists");
-    }
-  },
-});
-```
-
-### Custom Storage Path
-
-```typescript
-const PrivateSettings = DeconfigResource.define({
-  resourceName: "private_settings",
-  dataSchema: /* ... */,
-  directory: "/private/user_settings",
-});
-```
-
-### Watch Specific Resource
-
-```typescript
-// Watch one specific resource instead of all
-const uri = "rsc://my-app/theme_settings/dark-theme";
-const watchUrl = `${watchPathname}?uri=${encodeURIComponent(uri)}`;
-```
-
-### Tool Description Enhancements
-
-Customize generated tool descriptions:
-
-```typescript
-const MyResource = DeconfigResource.define({
-  resourceName: "my_resource",
-  dataSchema: /* ... */,
-  enhancements: {
-    DECO_RESOURCE_MY_RESOURCE_SEARCH: {
-      description: "Search my resources with custom filters",
-    },
-  },
-});
-```
-
-### External Data Signaling
-
-Use deconfig resources as signals to trigger refetches for external data (Airtable, Google Sheets, APIs):
-
-**Pattern:**
-1. Create minimal signal resource with `lastUpdated` timestamp
-2. Update signal when external data changes
-3. Frontend watches signal via SSE, refetches external data on changes
-
-**Example:**
-```typescript
-// Backend: Signal resource
-const ExternalSync = DeconfigResource.define({
-  resourceName: "external_sync",
-  dataSchema: z.object({
-    source: z.string(),
-    lastUpdated: z.string().datetime(),
-  }),
-});
-
-// Backend: Update signal after external change
-await client.tools.DECO_RESOURCE_EXTERNAL_SYNC_UPDATE({
-  uri: "rsc://app/external_sync/airtable-data",
-  data: { source: "airtable", lastUpdated: new Date().toISOString() }
-});
-
-// Frontend: Watch signal and refetch
-useEffect(() => {
-  // Watch external_sync resource
-  // On change → refetch from Airtable/external API
-}, []);
-```
-
-## Error Handling
-
-Handle resource operation errors:
-
-```typescript
-try {
-  const theme = await client.tools.DECO_RESOURCE_THEME_SETTINGS_READ({
-    uri: "rsc://app/theme_settings/missing"
-  });
-} catch (error) {
-  if (error.message.includes("not found")) {
-    // Resource doesn't exist
-  } else if (error.message.includes("validation")) {
-    // Schema validation failed
-  } else {
-    // Other errors
-  }
-}
-```
-
-**Common errors:**
-- `NotFoundError`: Resource URI doesn't exist
-- `ValidationError`: Data doesn't match schema
-- `ConflictError`: Resource with ID already exists (on CREATE)
-
-## Performance Tips
-
-**Pagination:**
-```typescript
-// Bad: Load everything
-pageSize: Infinity
-
-// Good: Paginate large datasets
-pageSize: 20, page: currentPage
-```
-
-**React Query stale time:**
-```typescript
-useQuery({
-  queryKey: ["themes"],
-  queryFn: fetchThemes,
-  staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-});
-```
-
-**Debounce updates:**
-```typescript
-const debouncedUpdate = debounce(
-  (data) => client.tools.DECO_RESOURCE_THEME_SETTINGS_UPDATE({ uri, data }),
-  500
-);
-```
-
-## Configuration Reference
-
-All options available in `DeconfigResource.define()`:
-
-```typescript
-DeconfigResource.define({
-  // Required
-  resourceName: string,              // Resource type (snake_case)
-  dataSchema: ZodSchema,             // Zod schema for validation
-  
-  // Optional
-  directory?: string,                // Custom storage path
-  validate?: async (data) => void,  // Custom validation logic
-  enhancements?: {                   // Custom tool descriptions
-    DECO_RESOURCE_NAME_OPERATION: {
-      description: string,
-    },
-  },
-})
-```
-
-**Returns:**
-- `create(env)`: Function to register resource tools
-- Generated CRUD tools with typed interfaces

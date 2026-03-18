@@ -9,20 +9,28 @@ import {
   useAiProviders,
   useAiProviderKeyList,
 } from "@/web/hooks/collections/use-llm";
+import { cn } from "@deco/ui/lib/utils.ts";
 
 function ProviderList() {
   const aiProviders = useAiProviders();
   const allKeys = useAiProviderKeyList();
   const providers: AiProvider[] = aiProviders?.providers ?? [];
+  const isEven = providers.length % 2 === 0;
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full [&>*:first-child]:sm:col-span-2">
-      {providers.map((provider) => (
-        <ProviderCard
+      {providers.map((provider, index) => (
+        <div
           key={provider.id}
-          provider={provider}
-          keys={allKeys.filter((k) => k.providerId === provider.id)}
-        />
+          className={cn(
+            isEven && index === providers.length - 1 && "sm:col-span-2",
+          )}
+        >
+          <ProviderCard
+            provider={provider}
+            keys={allKeys.filter((k) => k.providerId === provider.id)}
+          />
+        </div>
       ))}
     </div>
   );

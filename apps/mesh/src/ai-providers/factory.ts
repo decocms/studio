@@ -120,6 +120,7 @@ export class AIProviderFactory {
       organizationId,
     );
     const adapter = PROVIDERS[keyInfo.providerId];
+    if (!adapter) throw new Error(`Unknown provider: ${keyInfo.providerId}`);
     return adapter.create(apiKey);
   }
 
@@ -138,7 +139,9 @@ export class AIProviderFactory {
       if (cached) return cached;
     }
 
-    const provider = PROVIDERS[providerId].create(apiKey);
+    const adapter = PROVIDERS[providerId];
+    if (!adapter) throw new Error(`Unknown provider: ${providerId}`);
+    const provider = adapter.create(apiKey);
     const rawModels = await provider.listModels();
 
     // Providers occasionally return duplicate modelIds — keep first occurrence

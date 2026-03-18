@@ -66,6 +66,7 @@ import {
   DotsVertical,
   Eye,
   Loading01,
+  Plus,
   Trash01,
   Users03,
   XClose,
@@ -1132,15 +1133,31 @@ function OrgAgentsContent() {
         {listState.viewMode === "cards" ? (
           <div className="flex-1 overflow-auto p-5">
             {filteredAgents.length === 0 ? (
-              <EmptyState
-                image={<Users03 size={36} className="text-muted-foreground" />}
-                title={listState.search ? "No agents found" : "No agents yet"}
-                description={
-                  listState.search
-                    ? `No agents match "${listState.search}"`
-                    : "Create an agent to aggregate tools from multiple Connections."
-                }
-              />
+              <div className="flex items-center h-full">
+                <EmptyState
+                  image={
+                    <Users03 size={48} className="text-muted-foreground" />
+                  }
+                  title={listState.search ? "No agents found" : "No agents yet"}
+                  description={
+                    listState.search
+                      ? `No agents match "${listState.search}"`
+                      : "Create an agent to aggregate tools from multiple Connections."
+                  }
+                  actions={
+                    !listState.search && (
+                      <Button
+                        size="sm"
+                        onClick={createVirtualMCP}
+                        disabled={isCreating}
+                      >
+                        <Plus size={14} />
+                        {isCreating ? "Creating..." : "Create Agent"}
+                      </Button>
+                    )
+                  }
+                />
+              </div>
             ) : (
               <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
                 {grouped.map((item) => {
@@ -1257,44 +1274,49 @@ function OrgAgentsContent() {
         ) : (
           <div className="h-full flex flex-col overflow-hidden">
             <div className="flex-1 overflow-auto min-w-0">
-              <div className="min-w-[1000px]">
-                <GroupedAgentTable
-                  columns={columns}
-                  grouped={grouped}
-                  sortKey={listState.sortKey}
-                  sortDirection={listState.sortDirection}
-                  onSort={listState.handleSort}
-                  onRowClick={(agent) => navigateToAgent(agent.id)}
-                  selectionMode={selectionMode}
-                  selectedIds={selectedIds}
-                  onToggleSelect={toggleSelect}
-                  emptyState={
-                    listState.search ? (
-                      <EmptyState
-                        image={
-                          <Users03
-                            size={36}
-                            className="text-muted-foreground"
-                          />
-                        }
-                        title="No agents found"
-                        description={`No agents match "${listState.search}"`}
-                      />
-                    ) : (
-                      <EmptyState
-                        image={
-                          <Users03
-                            size={36}
-                            className="text-muted-foreground"
-                          />
-                        }
-                        title="No agents yet"
-                        description="Create an agent to aggregate tools from multiple Connections."
-                      />
-                    )
-                  }
-                />
-              </div>
+              {grouped.length === 0 ? (
+                <div className="flex items-center h-full">
+                  <EmptyState
+                    image={
+                      <Users03 size={48} className="text-muted-foreground" />
+                    }
+                    title={
+                      listState.search ? "No agents found" : "No agents yet"
+                    }
+                    description={
+                      listState.search
+                        ? `No agents match "${listState.search}"`
+                        : "Create an agent to aggregate tools from multiple Connections."
+                    }
+                    actions={
+                      !listState.search && (
+                        <Button
+                          size="sm"
+                          onClick={createVirtualMCP}
+                          disabled={isCreating}
+                        >
+                          <Plus size={14} />
+                          {isCreating ? "Creating..." : "Create Agent"}
+                        </Button>
+                      )
+                    }
+                  />
+                </div>
+              ) : (
+                <div className="min-w-[1000px]">
+                  <GroupedAgentTable
+                    columns={columns}
+                    grouped={grouped}
+                    sortKey={listState.sortKey}
+                    sortDirection={listState.sortDirection}
+                    onSort={listState.handleSort}
+                    onRowClick={(agent) => navigateToAgent(agent.id)}
+                    selectionMode={selectionMode}
+                    selectedIds={selectedIds}
+                    onToggleSelect={toggleSelect}
+                  />
+                </div>
+              )}
             </div>
           </div>
         )}

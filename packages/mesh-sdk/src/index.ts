@@ -91,6 +91,7 @@ export {
   type AiProviderModelLimits,
   type AiProviderModelCosts,
   type AiProviderKey,
+  type AiProviderInfo,
   // Connection types
   ConnectionEntitySchema,
   ConnectionCreateDataSchema,
@@ -155,7 +156,9 @@ export { KEYS } from "./lib/query-keys";
 // Default model selection
 export {
   DEFAULT_MODEL_PREFERENCES,
+  FAST_MODEL_PREFERENCES,
   selectDefaultModel,
+  getFastModel,
 } from "./lib/default-model";
 
 // MCP OAuth utilities

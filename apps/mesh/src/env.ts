@@ -34,8 +34,7 @@ const envSchema = z
     OTEL_SERVICE_NAME: z.string().default("mesh"),
 
     // Event Bus & Networking
-    NATS_URL: z.string().optional(),
-    NOTIFY_STRATEGY: z.enum(["nats", "postgres", "polling"]).optional(),
+    NATS_URL: z.string().default("nats://localhost:4222"),
 
     // Config files
     CONFIG_PATH: z.string().default("./config.json"),
@@ -43,6 +42,10 @@ const envSchema = z
 
     // Transport
     UNSAFE_ALLOW_STDIO_TRANSPORT: zBooleanString,
+
+    // AI Gateway
+    DECO_AI_GATEWAY_ENABLED: zBooleanString,
+    DECO_AI_GATEWAY_URL: z.string().default("https://ai-site.decocache.com"),
 
     // Debug / K8s
     DEBUG_PORT: z.coerce.number().default(9090),
@@ -155,7 +158,6 @@ function logConfiguration(e: Env) {
 
   sect("Event Bus & Networking");
   r("NATS_URL", e.NATS_URL);
-  r("NOTIFY_STRATEGY", e.NOTIFY_STRATEGY ?? "auto");
 
   sect("Config Files");
   r("CONFIG_PATH", e.CONFIG_PATH);
@@ -163,6 +165,10 @@ function logConfiguration(e: Env) {
 
   sect("Transport");
   r("UNSAFE_ALLOW_STDIO_TRANSPORT", e.UNSAFE_ALLOW_STDIO_TRANSPORT);
+
+  sect("AI Gateway");
+  r("DECO_AI_GATEWAY_ENABLED", e.DECO_AI_GATEWAY_ENABLED);
+  r("DECO_AI_GATEWAY_URL", e.DECO_AI_GATEWAY_URL);
 
   sect("Debug / K8s");
   r("DEBUG_PORT", e.DEBUG_PORT);

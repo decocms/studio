@@ -2,7 +2,6 @@ import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   Building02,
-  Coins01,
   Settings01,
   Users03,
   Zap,
@@ -65,11 +64,6 @@ export function SettingsSidebar({
       key: "org.members" as SettingsSection,
       label: "Members",
       icon: <Users03 size={14} />,
-    },
-    {
-      key: "org.billing" as SettingsSection,
-      label: "Billing",
-      icon: <Coins01 size={14} />,
     },
   ];
 

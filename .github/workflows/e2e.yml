@@ -30,6 +30,7 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      NATS_URL: nats://localhost:4222
 
     steps:
       - name: Checkout repository
@@ -43,6 +44,12 @@ jobs:
       - name: Install dependencies
         run: bun install
         working-directory: .
+
+      - name: Start NATS with JetStream
+        run: |
+          docker run -d --name nats -p 4222:4222 nats:2.10 -js
+          for i in $(seq 1 10); do nc -z localhost 4222 && break || sleep 1; done
+          nc -z localhost 4222
 
       - name: Cache Playwright browsers
         id: cache-playwright

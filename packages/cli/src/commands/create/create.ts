@@ -1,44 +1,24 @@
 import inquirer from "inquirer";
 import { promises as fs } from "fs";
 import { spawn } from "child_process";
-import { dirname, join } from "path";
-import { fileURLToPath } from "url";
-import { copy, ensureDir } from "../../lib/fs.js";
-import {
-  type Config,
-  readWranglerConfig,
-  writeWranglerConfig,
-} from "../../lib/config.js";
+import { join } from "path";
+import { ensureDir, copy } from "../../lib/fs.js";
 import { slugify } from "../../lib/slugify.js";
-import { promptWorkspace } from "../../lib/prompt-workspace.js";
-import { genEnv } from "../gen/gen.js";
-import { promptIDESetup, writeIDEConfig } from "../../lib/prompt-ide-setup.js";
-import { readSession } from "../../lib/session.js";
-import { loginCommand } from "../auth/login.js";
 import { displayBanner } from "../../lib/banner.js";
 import process from "node:process";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
 interface Template {
   name: string;
   description: string;
   repo: string;
   branch?: string;
-  path?: string;
-  wranglerRoot?: string;
-  /**
-   * Paths to remove from the original
-   * repository after cloning.
-   */
   pathsToIgnore?: string[];
 }
 
 const DEFAULT_TEMPLATE: Template = {
-  name: "Deco MCP app",
-  description: "A Deco MCP app",
-  repo: "deco-cx/deco-create",
+  name: "MCP App",
+  description: "MCP App template for deco",
+  repo: "decocms/mcp-app",
   branch: "main",
   pathsToIgnore: [],
 };
@@ -70,16 +50,6 @@ async function downloadTemplate(
   template: Template,
   targetDir: string,
 ): Promise<void> {
-  // For the base template, use the local copy
-  if (template.name === "base") {
-    const templatePath = join(__dirname, "../../../template/base");
-    await ensureDir(targetDir);
-    await copy(templatePath, targetDir, { overwrite: true });
-    console.log(`✅ Template '${template.name}' copied successfully!`);
-    return;
-  }
-
-  // For remote templates, use git clone
   const tempDir = join(process.cwd(), `.temp-${Date.now()}`);
 
   try {
@@ -117,15 +87,8 @@ async function downloadTemplate(
       }
     }
 
-    const templatePath = join(tempDir, template.path || "");
-    try {
-      await fs.access(templatePath);
-    } catch {
-      throw new Error(`Template '${template.name}' not found in repository`);
-    }
-
     await ensureDir(targetDir);
-    await copy(templatePath, targetDir, { overwrite: true });
+    await copy(tempDir, targetDir, { overwrite: true });
 
     console.log(`✅ Template '${template.name}' downloaded successfully!`);
   } finally {
@@ -136,22 +99,16 @@ async function downloadTemplate(
 async function customizeTemplate({
   targetDir,
   projectName,
-  workspace,
-  wranglerRoot,
 }: {
   targetDir: string;
   projectName: string;
-  workspace?: string;
-  wranglerRoot?: string;
 }): Promise<void> {
+  // Update package.json name
   const packageJsonPath = join(targetDir, "package.json");
-
   try {
     const packageJsonContent = await fs.readFile(packageJsonPath, "utf-8");
     const packageJson = JSON.parse(packageJsonContent);
-
     packageJson.name = projectName;
-
     await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
   } catch (error) {
     console.warn(
@@ -160,77 +117,26 @@ async function customizeTemplate({
     );
   }
 
-  // Write config file with project name and workspace
-  if (workspace) {
-    try {
-      // Read current config from target directory
-      const currentConfig = await readWranglerConfig(wranglerRoot || targetDir);
-
-      // For now, use empty bindings - we can enhance this later with prompt integrations
-      const bindings = currentConfig.deco?.bindings || [];
-
-      // Merge with new project name and workspace - preserve all existing config
-      const newConfig = {
-        ...currentConfig,
-        name: projectName,
-        scope: workspace,
-        deco: {
-          ...currentConfig.deco,
-          workspace,
-          bindings,
-        },
-      };
-
-      // Write the new config file
-      await writeWranglerConfig(newConfig, wranglerRoot || targetDir);
-
-      // Generate environment variables file
-      const envContent = await genEnv({
-        workspace: workspace,
-        local: false,
-        bindings: newConfig.deco.bindings || [],
-      });
-
-      const outputPath = join(wranglerRoot || targetDir, "deco.gen.ts");
-      await fs.writeFile(outputPath, envContent);
-      console.log(`✅ Environment types written to: ${outputPath}`);
-    } catch (error) {
-      console.warn(
-        "⚠️  Could not update config file:",
-        error instanceof Error ? error.message : String(error),
-      );
-    }
+  // Update app.json name and scopeName
+  const appJsonPath = join(targetDir, "app.json");
+  try {
+    const appJsonContent = await fs.readFile(appJsonPath, "utf-8");
+    const appJson = JSON.parse(appJsonContent);
+    appJson.name = projectName;
+    appJson.scopeName = projectName;
+    await fs.writeFile(appJsonPath, JSON.stringify(appJson, null, 2));
+  } catch (error) {
+    console.warn(
+      "⚠️  Could not customize app.json:",
+      error instanceof Error ? error.message : String(error),
+    );
   }
 }
 
-export async function createCommand(
-  projectName?: string,
-  config: Partial<Config> = {},
-): Promise<void> {
+export async function createCommand(projectName?: string): Promise<void> {
   try {
-    // Clear the terminal for a clean experience
     console.clear();
-
-    // Display the capybara banner
     displayBanner();
-
-    let session = await readSession();
-    if (!session) {
-      console.log("🔐 No session found. Starting authentication process...");
-      try {
-        await loginCommand();
-        console.log("✅ Successfully logged in to admin.decocms.com");
-        session = await readSession();
-      } catch (error) {
-        console.error(
-          "❌ Login failed:",
-          error instanceof Error ? error.message : String(error),
-        );
-        console.warn(
-          "⚠️  Continuing without authentication. You can run 'deco login' later for a better experience.",
-        );
-      }
-    }
 
     const selectedTemplate = DEFAULT_TEMPLATE;
 
@@ -256,28 +162,6 @@ export async function createCommand(
         ).projectName,
     );
 
-    // Prompt user to select workspace if we have a session
-    let workspace: string | undefined = config?.workspace;
-    if (session) {
-      try {
-        workspace = await promptWorkspace(config?.local, workspace);
-        console.log(`📁 Selected workspace: ${workspace}`);
-      } catch (error) {
-        console.error(
-          "❌ Failed to select workspace:",
-          error instanceof Error ? error.message : String(error),
-        );
-        console.warn(
-          "⚠️  Could not select workspace. Continuing without workspace selection.",
-        );
-        // Continue without workspace
-      }
-    } else {
-      console.log(
-        "⚠️  No authentication session - skipping workspace selection",
-      );
-    }
-
     const targetDir = join(process.cwd(), finalProjectName);
     try {
       await fs.access(targetDir);
@@ -301,57 +185,34 @@ export async function createCommand(
       // Directory doesn't exist, that's fine
     }
 
-    const wranglerRoot = join(targetDir, selectedTemplate.wranglerRoot || "");
-
-    const { initGit } = await inquirer.prompt([
-      {
-        type: "list",
-        name: "initGit",
-        message: "Initialize a git repository?",
-        choices: ["No", "Yes"],
-      },
-    ]);
-
-    // Prompt user to install MCP configuration for IDE
-    const mcpResult = workspace
-      ? await promptIDESetup({ workspace, app: finalProjectName }, targetDir)
-      : null;
-
     console.log(`📦 Downloading template '${selectedTemplate.name}'...`);
     await downloadTemplate(selectedTemplate, targetDir);
-
-    if (mcpResult) {
-      await writeIDEConfig(mcpResult);
-    }
 
     await customizeTemplate({
       targetDir,
       projectName: finalProjectName,
-      workspace,
-      wranglerRoot,
     });
 
-    if (initGit === "Yes") {
-      try {
-        const success = await runCommand("git", ["init"], targetDir);
-        if (success) {
-          console.log(`✅ Git repository initialized in '${finalProjectName}'`);
-        } else {
-          console.warn("⚠️  Failed to initialize git repository");
-        }
-      } catch (error) {
-        console.warn(
-          "⚠️  Could not initialize git repository:",
-          error instanceof Error ? error.message : String(error),
-        );
+    // Initialize git repo
+    try {
+      const success = await runCommand("git", ["init"], targetDir);
+      if (success) {
+        console.log(`✅ Git repository initialized in '${finalProjectName}'`);
+      } else {
+        console.warn("⚠️  Failed to initialize git repository");
       }
+    } catch (error) {
+      console.warn(
+        "⚠️  Could not initialize git repository:",
+        error instanceof Error ? error.message : String(error),
+      );
     }
 
     console.log(`\n🎉 Project '${finalProjectName}' created successfully!`);
     console.log(`\nNext steps:`);
     console.log(`  cd ${finalProjectName}`);
-    console.log(`  npm install`);
-    console.log(`  npm run dev`);
+    console.log(`  bun install`);
+    console.log(`  bun run dev`);
   } catch (error) {
     console.error(
       "❌ Failed to create project:",

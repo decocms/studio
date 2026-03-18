@@ -123,17 +123,17 @@ process.env.DECOCMS_HOME = decoHome;
 process.env.DATA_DIR = decoHome;
 process.env.PORT = values.port;
 
-if (!process.env.NODE_ENV) {
-  process.env.NODE_ENV = "production";
-}
-
 // Determine if local mode should be active (opt-in only)
 const localMode = values["local-mode"] === true;
 process.env.MESH_LOCAL_MODE = localMode ? "true" : "false";
 
-// CLI is the intended local runner — allow local mode even when NODE_ENV=production
+// Local mode always runs as production so the built UI is served
+// instead of proxying to a Vite dev server on port 4000
 if (localMode) {
+  process.env.NODE_ENV = "production";
   process.env.MESH_ALLOW_LOCAL_PROD = "true";
+} else if (!process.env.NODE_ENV) {
+  process.env.NODE_ENV = "production";
 }
 
 // ============================================================================

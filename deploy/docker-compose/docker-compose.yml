@@ -1,0 +1,45 @@
+services:
+  studio:
+    image: ${IMAGE_REPOSITORY:-ghcr.io/decocms/studio/studio}:${IMAGE_TAG:-latest}
+    platform: linux/amd64
+    container_name: decocms
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      # Basic configuration
+      - NODE_ENV=${NODE_ENV:-production}
+      - PORT=3000
+      - HOST=0.0.0.0
+      
+      # Application URLs
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:3000}
+      - BASE_URL=${BASE_URL:-http://localhost:3000}
+      
+      # Authentication secret (required)
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+      
+      # Database URL
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/postgres}
+    volumes:
+      # Persistent volume for data (embedded PostgreSQL or other files)
+      - studio-data:/app/data
+      
+      # Auth config - mounts the JSON authentication configuration file
+      # The file is mounted at /app/apps/mesh/auth-config.json
+      # If the file doesn't exist locally, Docker Compose will fail to start
+      - ./auth-config.json:/app/apps/mesh/auth-config.json:ro
+    healthcheck:
+      # Health check using curl (adjust if your image doesn't have curl)
+      # Alternative: use wget or remove if not available
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    # Security context
+    user: "1001:1001"
+
+volumes:
+  studio-data:
+    driver: local

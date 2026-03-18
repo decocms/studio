@@ -7,10 +7,9 @@
  * - NatsNotifyStrategy (event bus wake-up)
  * - NatsSSEBroadcast (cross-pod SSE fan-out)
  *
- * Benefits:
- * - Single connection to NATS server (recommended best practice)
- * - One place for reconnect logic and error handling
- * - Clear shutdown ordering (drain shared connection last)
+ * NATS is a required dependency — init() must be called and succeed before
+ * using getConnection()/getJetStream(). The app will crash fast if NATS
+ * is unreachable.
  */
 
 import { connect, type JetStreamClient, type NatsConnection } from "nats";
@@ -18,10 +17,10 @@ import { connect, type JetStreamClient, type NatsConnection } from "nats";
 export interface NatsConnectionProvider {
   /** Connect to NATS eagerly. Fails fast if unreachable. */
   init(url: string | string[]): Promise<void>;
-  /** Returns the shared connection, or null if not initialized. */
-  getConnection(): NatsConnection | null;
-  /** Returns a JetStream client from the shared connection, or null. */
-  getJetStream(): JetStreamClient | null;
+  /** Returns the shared connection. Throws if not initialized. */
+  getConnection(): NatsConnection;
+  /** Returns a JetStream client from the shared connection. Throws if not initialized. */
+  getJetStream(): JetStreamClient;
   /** Drain the connection. Call after all consumers have stopped. */
   drain(): Promise<void>;
 }
@@ -40,12 +39,13 @@ export function createNatsConnectionProvider(): NatsConnectionProvider {
       nc = await connect({ servers: url });
     },
 
-    getConnection(): NatsConnection | null {
+    getConnection(): NatsConnection {
+      if (!nc) throw new Error("[NATS] Not initialized — call init() first");
       return nc;
     },
 
-    getJetStream(): JetStreamClient | null {
-      if (!nc) return null;
+    getJetStream(): JetStreamClient {
+      if (!nc) throw new Error("[NATS] Not initialized — call init() first");
       if (!js) {
         js = nc.jetstream();
       }
