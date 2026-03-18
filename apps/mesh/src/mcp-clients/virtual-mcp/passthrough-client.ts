@@ -126,8 +126,11 @@ function createLazyClient(
     });
   } else {
     // No cached tools — check NATS KV cache before falling back to real client
+    // VIRTUAL connections are excluded: their tool lists are dynamic (composed
+    // from sub-connections) and must not be served from cross-pod cache.
+    const useKvCache = cache && connection.connection_type !== "VIRTUAL";
     placeholder.listTools = async () => {
-      if (cache) {
+      if (useKvCache) {
         const cached = await cache.get(connection.id);
         if (cached) {
           return { tools: cached };
@@ -135,7 +138,7 @@ function createLazyClient(
       }
       const real = await getRealClient();
       const result = await real.listTools();
-      if (cache && result.tools.length > 0) {
+      if (useKvCache && result.tools.length > 0) {
         cache.set(connection.id, result.tools).catch(() => {});
       }
       return result;
