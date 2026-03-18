@@ -1,139 +1,95 @@
 ---
 title: Deployment
-description: Deploy your full-stack AI app to Cloudflare Workers
+description: Build and deploy your MCP App
 icon: Rocket
 ---
+import Callout from "../../../../components/ui/Callout.astro";
 
-## Deploy Command
-
-When you're ready to share your app with the world (or your team), you'll deploy it to Cloudflare Workers via the deco CLI.
-
+## Build
 
 ```bash
-npm run deploy
+bun run build
 ```
 
-That's it! Your app goes live on Cloudflare's global edge network.
+This runs two steps:
 
-## What Happens
+1. **`build:web`** — Vite builds the React app into a single-file HTML bundle (`dist/client/index.html`)
+2. **`build:server`** — Bun bundles `api/main.ts` into `dist/server/main.js` (minified, production-ready)
 
-**1. Build frontend**
-- Vite bundles React app (`/view`) into optimized static files
-- Output goes to `/view/dist`
+## `app.json` Configuration
 
-**2. Build worker**
-- TypeScript compiles `server/main.ts`
-- Dependencies bundled
-- Static assets attached using Workers asset binding
+Update `app.json` with your app's details before publishing:
 
-**3. Upload to Cloudflare**
-- Uses `wrangler.toml` for project configuration
-- Worker code deployed globally
-- Assets served from edge
-- Database (D1) provisioned automatically
-
-**4. Live URL**
-- Your app goes live at `https://<app-name>.deco.page`
-- MCP endpoint available at `https://<app-name>.deco.page/mcp`
-
-<Callout type="success">
-  **One repo, one deploy, one URL.** Frontend, backend, and database deploy together with shared context and zero integration code.
-</Callout>
-
-## Authentication
-
-First deploy requires authentication:
-
-```bash
-deco login
-# or
-npx deco-cli login
+```json
+{
+  "scopeName": "your-org",
+  "name": "your-app",
+  "friendlyName": "Your App Name",
+  "description": "What your app does.",
+  "connection": {
+    "type": "HTTP",
+    "url": "https://your-app.decocache.com/api/mcp",
+    "configSchema": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+}
 ```
 
-Opens browser to authenticate. Your credentials persist locally.
+- **`scopeName`** + **`name`** — unique identifier in the deco mesh
+- **`connection.url`** — your deployed MCP endpoint (must end with `/api/mcp`)
+- **`configSchema`** — JSON Schema for configuration options shown to users who install your app
 
-## CI/CD Deployment
+## Publishing to Deco Mesh
 
-For automated deployments, use an API token:
+1. Update `app.json` with your app's name, description, and deployed connection URL
+2. Push to your repository
+3. Follow deco mesh publishing instructions to make your app available
 
-```bash
-deco deploy -t <your-api-token>
-```
+## CI/CD
 
-Get tokens from your workspace settings with `HOSTING_APP_DEPLOY` permission.
+### GitHub Actions
 
-**GitHub Actions example:**
+The template includes a CI workflow (`.github/workflows/ci.yml`):
+
 ```yaml
-name: Deploy
-on:
-  push:
-    branches: [main]
-    
+name: CI
+
+on: [push, pull_request]
+
 jobs:
-  deploy:
+  ci:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: '22'
-      - run: npm install
-      - run: npm run deploy
-        env:
-          DECO_TOKEN: ${{ secrets.DECO_TOKEN }}
+          bun-version: latest
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: ${{ runner.os }}-bun-
+
+      - run: bun install --frozen-lockfile
+      - run: bun run ci:check
+      - run: bun run check
+      - run: bun run build
 ```
 
-## Edge Runtime Benefits
+This runs on every push and pull request:
+- **`bun run ci:check`** — Biome lint + format check
+- **`bun run check`** — TypeScript type checking
+- **`bun run build`** — Full production build
 
-**Global deployment:**
-Code runs in 300+ cities worldwide. Users connect to the nearest edge location.
+## Testing After Deploy
 
-**Auto-scaling:**
-Cloudflare handles traffic spikes automatically. No capacity planning needed.
-
-**Zero cold starts:**
-Workers stay warm. First request is as fast as the hundredth.
-
-**Efficient I/O:**
-Worker suspends during `await` calls (fetch, database queries). External API waits don't count against CPU time, keeping costs low even with heavy external dependencies.
-
-## Post-Deploy Testing
-
-Test production immediately after deploy:
-
-1. Open `https://<app-name>.deco.page`
-2. Verify frontend loads correctly
-3. Test tool invocations through UI
-4. Check integrations work (production may use different credentials than dev)
-5. Test as an end user would interact with the app
-6. Review Cloudflare Worker logs if issues occur
-
-## Updates and Rollbacks
-
-**Deploy updates:**
-```bash
-# Make changes
-npm run deploy
-```
-
-Fast deployments mean you can iterate quickly.
-
-**Rollback:**
-```bash
-git checkout <previous-commit>
-npm run deploy
-```
-
-No built-in version management yet. Use Git to track changes and redeploy previous versions if needed.
-
-<Callout type="warning">
-  **Environment variables:** Set production secrets in `wrangler.toml` or Cloudflare dashboard. Never commit secrets to Git.
-</Callout>
-
-## Custom Domains
-
-Custom domain support coming soon. For now, apps deploy to `*.deco.page` subdomains.
-
----
-
-**Remember:** Every deploy is a fresh start. Database persists, but Worker code updates instantly across all edge locations.
+1. Go to [admin.decocms.com](https://admin.decocms.com)
+2. Add your deployed URL + `/api/mcp` as a custom integration
+3. Test tool invocations
+4. Verify MCP App UIs render correctly in the client

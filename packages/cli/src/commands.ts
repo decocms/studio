@@ -366,8 +366,7 @@ const create = new Command("create")
   .argument("[project-name]", "Name of the project")
   .action(async (projectName) => {
     try {
-      const config = await getConfig().catch(() => ({}));
-      await createCommand(projectName, config);
+      await createCommand(projectName);
     } catch (error) {
       console.error(
         "❌ Project creation failed:",

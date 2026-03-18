@@ -1,293 +1,250 @@
 ---
-title: Building Views
-description: Create custom React interfaces with typed RPC to your backend
+title: Building MCP Apps
+description: Build interactive UIs for MCP tools using the MCP Apps SDK
 icon: Globe
 ---
-
 import Callout from "../../../../components/ui/Callout.astro";
 
-Views are custom React interfaces for your tools and workflows. Unlike traditional web apps, there's no REST API layer, your frontend calls backend tools directly via typed RPC.
+## What's an MCP App?
+
+An MCP App is an interactive UI rendered inside MCP clients (Claude, Cursor, etc.). It connects to the host via the `@modelcontextprotocol/ext-apps` SDK, receives tool input and results, and renders a rich interactive display.
+
+MCP Apps are:
+- Built as single-file HTML bundles
+- Served as MCP resources by your server
+- Connected to tools via `_meta.ui.resourceUri`
+- Styled automatically by the host theme
 
 ## Stack
 
-- **React 19** - UI library
-- **Tailwind v4** - Utility-first CSS (configured in `tailwind.config.js`)
-- **TanStack Router** - Type-safe routing
-- **Vite** - Fast bundler with hot reload
+- **React 19** with React Compiler (`babel-plugin-react-compiler`)
+- **Tailwind v4** + **shadcn/ui** components
+- **TanStack Router** (hash-based, works in embedded contexts)
+- **@modelcontextprotocol/ext-apps** SDK for host communication
+- **Vite** + **vite-plugin-singlefile** (builds to a single HTML file)
 
-All configured out of the box in `/view`.
+## How It Works
 
-## Calling Tools from React
+1. Your MCP server exposes tools with `_meta.ui.resourceUri` pointing to a resource
+2. When a tool is called, the MCP client loads the resource (an HTML bundle)
+3. The HTML bundle connects to the host via the MCP Apps SDK
+4. The UI receives tool input and results through event handlers
+5. The UI renders an interactive display and can send messages back to the conversation
 
-The RPC client (`src/lib/rpc.ts`) connects your UI to backend tools with full type safety:
+## App Structure
+
+### `web/app.tsx` — React entry point
 
 ```tsx
-import { client } from "../lib/rpc";
-import { useState } from "react";
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { McpProvider } from "./context.tsx";
+import { AppRouter } from "./router.tsx";
 
-function CustomerForm() {
-  const [status, setStatus] = useState("");
-  
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    
-    const result = await client.tools.CUSTOMER_CREATE({
-      name: formData.get("name") as string,
-      email: formData.get("email") as string,
-      city: formData.get("city") as string,
-      state: formData.get("state") as string,
-    });
-    
-    setStatus(`Customer created with ID: ${result.id}`);
-  };
-  
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <McpProvider>
+      <AppRouter />
+    </McpProvider>
+  </StrictMode>,
+);
+```
+
+### `web/context.tsx` — MCP state management
+
+The `McpProvider` connects to the MCP host and manages state:
+
+```tsx
+import {
+  type App,
+  type McpUiHostContext,
+  useApp,
+  useHostStyles,
+} from "@modelcontextprotocol/ext-apps/react";
+
+export function McpProvider({ children }: { children: ReactNode }) {
+  const [state, setState] = useState<McpState>(INITIAL_STATE);
+
+  const onAppCreated = useCallback((app: App) => {
+    app.ontoolinput = (params) => {
+      setState((prev) => ({
+        ...prev,
+        status: "tool-input",
+        toolInput: params.arguments,
+      }));
+    };
+
+    app.ontoolresult = (result) => {
+      setState((prev) => ({
+        ...prev,
+        status: "tool-result",
+        toolResult: result.structuredContent,
+      }));
+    };
+
+    app.ontoolcancelled = () => {
+      setState((prev) => ({ ...prev, status: "tool-cancelled" }));
+    };
+  }, []);
+
+  const { app, isConnected } = useApp({
+    appInfo: { name: "MCP App", version: "1.0.0" },
+    capabilities: {},
+    onAppCreated,
+  });
+
+  useHostStyles(app, app?.getHostContext());
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <input name="name" placeholder="Name" required />
-      <input name="email" type="email" placeholder="Email" required />
-      <input name="city" placeholder="City" required />
-      <input name="state" placeholder="State" maxLength={2} required />
-      <button type="submit">Create Customer</button>
-      {status && <p>{status}</p>}
-    </form>
+    <McpAppContext.Provider value={app}>
+      <McpStateContext.Provider value={state}>
+        {children}
+      </McpStateContext.Provider>
+    </McpAppContext.Provider>
   );
 }
 ```
 
-**Key benefits:**
-- **Type safety** - TypeScript knows all tool signatures
-- **No API layer** - Direct function calls
-- **Auto-complete** - IDE suggests available tools
+Exports:
+- **`useMcpState<TInput, TResult>()`** — typed access to the current MCP state
+- **`useMcpApp()`** — access the App instance (for `sendMessage()`, etc.)
+- **`useMcpHostContext()`** — access host context (safe area insets, tool info)
 
-Run `npm run gen:self` after adding tools to update types.
-
-## Adding Routes
-
-TanStack Router provides type-safe routing. To add a new page:
-
-1. Create `/view/src/routes/my-page.tsx`:
-```tsx
-import { createRoute } from "@tanstack/react-router";
-import { rootRoute } from "../main";
-
-export const myPageRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/my-page",
-  component: MyPage,
-});
-
-function MyPage() {
-  return <div>My Page Content</div>;
-}
-```
-
-2. Register in `/view/src/main.tsx`:
-```tsx
-import { myPageRoute } from "./routes/my-page";
-
-const routeTree = rootRoute.addChildren([
-  indexRoute,
-  myPageRoute, // Add your route
-]);
-```
-
-3. Navigate using `Link`:
-```tsx
-import { Link } from "@tanstack/react-router";
-
-<Link to="/my-page">Go to My Page</Link>
-```
-
-## Styling with Tailwind
-
-Tailwind v4 is configured by default. Use utility classes:
+### `web/router.tsx` — Tool routing
 
 ```tsx
-<div className="flex flex-col gap-4 p-6 bg-white rounded-lg shadow-md">
-  <h1 className="text-2xl font-bold text-gray-900">Title</h1>
-  <p className="text-gray-600">Description text</p>
-  <button className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
-    Click me
-  </button>
-</div>
-```
-
-Use `src/components/ui/` for reusable components (buttons, forms, etc.). You can integrate any React design system or component library as needed.
-
-## Theme Tokens
-
-Views automatically inherit your workspace theme through CSS custom properties. Instead of hardcoding colors, use theme tokens for consistent branding:
-
-**Key tokens:**
-```css
---background          /* Page background */
---foreground          /* Primary text color */
---card                /* Card/panel backgrounds */
---primary             /* Primary brand color (CTAs) */
---destructive         /* Delete/error states */
---success             /* Success/confirmation states */
---warning             /* Warning/caution states */
---border              /* Borders and dividers */
---radius              /* Border radius */
-```
-
-**Usage example:**
-```tsx
-<button 
-  className="px-4 py-2 rounded-[var(--radius)]"
-  style={{
-    backgroundColor: 'var(--primary)',
-    color: 'var(--primary-foreground)'
-  }}
->
-  Primary Action
-</button>
-
-<div 
-  className="p-4 border"
-  style={{
-    backgroundColor: 'var(--card)',
-    borderColor: 'var(--border)',
-    borderRadius: 'var(--radius)'
-  }}
->
-  Card content
-</div>
-```
-
-**Semantic tokens for states:**
-```tsx
-{/* Success state */}
-<span style={{
-  backgroundColor: 'var(--success)',
-  color: 'var(--success-foreground)'
-}}>
-  Active
-</span>
-
-{/* Warning state */}
-<span style={{
-  backgroundColor: 'var(--warning)',
-  color: 'var(--warning-foreground)'
-}}>
-  Pending
-</span>
-
-{/* Destructive state */}
-<button style={{
-  backgroundColor: 'var(--destructive)',
-  color: 'var(--destructive-foreground)'
-}}>
-  Delete
-</button>
-```
-
-**Why use theme tokens?**
-- Views automatically match workspace branding
-- Theme changes don't require code updates
-- Consistent design system across all views
-- Semantic meaning (primary vs destructive) built in
-
-## Development Workflow
-
-**Hot reload for frontend:**
-```bash
-npm run dev
-```
-
-Edit React components → instant browser update (no refresh needed).
-
-**Backend changes:**
-Edit tools/workflows → Worker restarts → refresh page to see changes.
-
-**Type updates:**
-After adding/modifying tools:
-```bash
-npm run gen:self
-```
-
-Your `client` gets updated with new methods and types.
-
-<Callout type="info">
-  **TypeScript prevents errors:** If you call a tool that doesn't exist, the compiler catches it before runtime.
-</Callout>
-
-## Common Patterns
-
-**Loading states:**
-```tsx
-const [loading, setLoading] = useState(false);
-
-const handleAction = async () => {
-  setLoading(true);
-  try {
-    await client.tools.MY_TOOL(data);
-  } finally {
-    setLoading(false);
-  }
+const TOOL_PAGES: Record<string, React.ComponentType> = {
+  hello_world: HelloPage,
 };
-```
 
-**Error handling:**
-```tsx
-try {
-  await client.tools.MY_TOOL(data);
-} catch (error) {
-  console.error("Tool failed:", error);
-  setError(error.message);
+function ToolRouter() {
+  const { toolName } = useMcpState();
+  const Page = TOOL_PAGES[toolName];
+  if (!Page) return <p>Unknown tool: {toolName}</p>;
+  return <Page />;
 }
 ```
 
-**Optimistic updates:**
-```tsx
-// Update UI immediately
-setItems([...items, newItem]);
+The router reads `toolName` from the MCP host context and renders the matching page. `RootLayout` applies safe area insets from the host.
 
-// Sync to backend
-client.tools.ITEM_CREATE(newItem)
-  .catch(() => {
-    // Revert if failed
-    setItems(items);
-  });
+### `web/types.ts` — State types
+
+```typescript
+export type McpStatus =
+  | "initializing"
+  | "connected"
+  | "tool-input"
+  | "tool-result"
+  | "tool-cancelled"
+  | "error";
+
+export interface McpState<TInput = unknown, TResult = unknown> {
+  status: McpStatus;
+  toolName?: string;
+  error?: string;
+  toolInput?: TInput;
+  toolResult?: TResult;
+}
 ```
 
-## State Management
+## Building a Tool UI
 
-For simple apps, React's built-in `useState` and `useEffect` are sufficient. For complex state needs, you can add:
+### Step-by-step: Add a new tool UI
 
-- **React Context** - Built-in, good for simple global state
-- **Zustand** - Lightweight state management library
-- **React Query** - For server state and caching
+1. **Create the tool** (`api/tools/my-tool.ts`) with `_meta.ui.resourceUri`
+2. **Create UI component** (`web/tools/my-tool/index.tsx`)
+3. **Register in router** — add to `TOOL_PAGES` in `web/router.tsx`
+4. **Create resource** (`api/resources/my-tool.ts`) serving the HTML bundle
+5. **Register resource** in `api/main.ts` (`resources` array)
 
-Since the RPC client returns promises, you can use React Query for automatic caching and refetching:
+### Example: Tool UI component
+
+Here's the hello tool UI (`web/tools/hello/index.tsx`):
 
 ```tsx
-import { useQuery } from "@tanstack/react-query";
+import { Badge } from "@/components/ui/badge.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
+import { useMcpApp, useMcpState } from "@/context.tsx";
+import type { HelloInput, HelloOutput } from "../../../api/tools/hello.ts";
 
-const { data, isLoading } = useQuery({
-  queryKey: ["customers"],
-  queryFn: () => client.tools.CUSTOMERS_LIST(),
-});
+export default function HelloPage() {
+  const state = useMcpState<HelloInput, HelloOutput>();
+  const app = useMcpApp();
 
-// Display customer list with loyalty tier and total orders
-if (isLoading) return <div>Loading customers...</div>;
+  if (state.status === "initializing") {
+    return <div>Connecting to host...</div>;
+  }
 
-return (
-  <div>
-    {data?.customers.map(customer => (
-      <div key={customer.id}>
-        <h3>{customer.name}</h3>
-        <p>Loyalty: {customer.loyaltyTier}</p>
-        <p>Total Orders: {customer.totalOrders}</p>
-      </div>
-    ))}
-  </div>
-);
+  if (state.status === "connected") {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Hello MCP App</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p>
+            Connected. Call the <Badge variant="secondary">hello_world</Badge>{" "}
+            tool to see a greeting here.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (state.status === "tool-input") {
+    return <div>Greeting {state.toolInput?.name ?? "someone"}...</div>;
+  }
+
+  if (state.status === "error") {
+    return <p className="text-destructive">{state.error}</p>;
+  }
+
+  if (state.status === "tool-cancelled") {
+    return <p className="text-destructive">Tool call was cancelled.</p>;
+  }
+
+  // tool-result
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{state.toolResult?.greeting}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Button
+          onClick={() => {
+            app?.sendMessage({
+              role: "user",
+              content: [{ type: "text", text: "Tell me more!" }],
+            });
+          }}
+        >
+          Send Message
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
 ```
 
-<Callout type="info">
-  The template doesn't include global state management by default. Add it only if your app needs it.
-</Callout>
+Key patterns:
+- Use `useMcpState<TInput, TResult>()` with your tool's input/output types
+- Handle **all** status states (`initializing`, `connected`, `tool-input`, `tool-result`, `tool-cancelled`, `error`)
+- Use `app.sendMessage()` to send messages back to the conversation
 
-**Remember:** Views and tools share the same types. No API contracts, no integration code, just TypeScript.
+### Example: Resource definition
+
+See [Resources](/en/full-code-guides/resources) for how to create the resource that serves this UI.
+
+## Host Integration
+
+- **`useHostStyles()`** — automatically inherit host theme (colors, fonts, spacing)
+- **`useMcpHostContext()`** — access safe area insets, tool info from the host
+- **`app.sendMessage()`** — send messages back to the AI conversation
+
+## Styling
+
+- **shadcn/ui** components available in `web/components/ui/`
+- **Tailwind v4** for utility classes
+- Host styles automatically applied via `useHostStyles()` — your UI matches the host's theme
+- Design for embedded contexts: use safe area insets, compact layouts

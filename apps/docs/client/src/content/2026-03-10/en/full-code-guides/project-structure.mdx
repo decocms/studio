@@ -1,225 +1,203 @@
 ---
 title: Project Structure
-description: Understand the full-stack TypeScript architecture of deco applications
+description: Understand the full-stack TypeScript architecture of MCP Apps on deco
 icon: Folder
 ---
-
 import Callout from "../../../../components/ui/Callout.astro";
-
-Deco CMS apps are full-stack TypeScript monorepos. Backend (MCP server) and frontend (React app) share types, deploy together, and communicate via typed RPC, no REST APIs needed.
-
-<Callout type="success">
-  **One codebase, one deploy:** Backend changes instantly available in frontend with full type safety.
-</Callout>
 
 ## Directory Structure
 
 ```
-my-ai-app/
-├── package.json          # Root workspace scripts (dev, gen, deploy)
-├── tsconfig.json         # Shared TypeScript configuration
-│
-├── server/               # Backend: MCP Server (Cloudflare Worker)
-│   ├── main.ts          # Server entry point
-│   ├── deco.gen.ts      # Auto-generated types (never edit)
-│   │
-│   ├── tools/           # Tool definitions by domain
-│   │   ├── index.ts     # Central export for all tools
-│   │   ├── todos.ts     # Example: Todo CRUD tools
-│   │   └── user.ts      # Example: User management tools
-│   │
-│   ├── schema.ts        # Database schema (Drizzle ORM + SQLite)
-│   ├── db.ts            # Database connection helper
-│   ├── drizzle.config.ts # Drizzle configuration
-│   ├── drizzle/         # Database migration files
-│   └── wrangler.toml    # Cloudflare Workers config
-│
-└── view/                # Frontend: React App (Vite + TanStack Router)
-    ├── src/
-    │   ├── main.tsx     # App entry point with router
-    │   │
-    │   ├── routes/      # Page components (TanStack Router)
-    │   │   └── home.tsx # Example: Homepage route
-    │   │
-    │   ├── components/  # Reusable UI components
-    │   │   ├── ui/      # shadcn/ui design system
-    │   │   └── ...      # Custom components
-    │   │
-    │   ├── hooks/       # Custom React hooks
-    │   │   └── useToolCalls.ts # Example: Tool call wrapper
-    │   │
-    │   ├── lib/         # Core utilities
-    │   │   ├── rpc.ts   # Typed RPC client (calls backend)
-    │   │   └── utils.ts # General utilities
-    │   │
-    │   └── styles.css   # Tailwind CSS styles
-    │
-    ├── public/          # Static assets (images, fonts)
-    ├── vite.config.ts   # Vite bundler configuration
-    ├── components.json  # shadcn/ui configuration
-    └── package.json     # Frontend dependencies
+├── api/                        # MCP server (Bun)
+│   ├── main.ts                 # Server entry point with middleware
+│   ├── tools/
+│   │   ├── index.ts            # Tool registry
+│   │   └── hello.ts            # Example tool (hello_world)
+│   ├── resources/
+│   │   └── hello.ts            # MCP App resource (serves HTML)
+│   └── types/
+│       └── env.ts              # StateSchema + Env type
+├── web/                        # React UI (MCP App)
+│   ├── app.tsx                 # React entry point
+│   ├── context.tsx             # MCP state management
+│   ├── router.tsx              # TanStack Router (hash-based)
+│   ├── types.ts                # McpState, McpStatus types
+│   ├── tools/                  # One folder per tool UI
+│   │   └── hello/
+│   │       └── index.tsx       # hello_world tool UI
+│   ├── components/ui/          # shadcn/ui components
+│   ├── lib/utils.ts            # cn() helper
+│   └── globals.css             # Tailwind base styles
+├── index.html                  # Vite entry HTML
+├── package.json
+├── tsconfig.json
+├── biome.json
+├── vite.config.ts              # Vite + React Compiler + singlefile
+├── components.json             # shadcn/ui config
+├── app.json                    # Deco mesh configuration
+└── .mcp.json                   # Local MCP server config
+```
+
+## Backend (`api/`)
+
+### `main.ts`
+
+The server entry point sets up the MCP runtime and starts a Bun HTTP server:
+
+```typescript
+import { withRuntime } from "@decocms/runtime";
+import { helloAppResource } from "./resources/hello.ts";
+import { tools } from "./tools/index.ts";
+import { type Env, StateSchema } from "./types/env.ts";
+
+const runtime = withRuntime<Env, typeof StateSchema>({
+  configuration: {
+    state: StateSchema,
+  },
+  tools,
+  resources: [helloAppResource],
+});
+
+Bun.serve({
+  port: 3001,
+  fetch: withLogging(withMcpApiRoute(runtime.fetch)),
+});
+```
+
+Key parts:
+- **`withRuntime()`** — creates the MCP server from tools, resources, and configuration
+- **`withMcpApiRoute()`** — rewrites `/api/mcp` to `/mcp` so the MCP endpoint lives at a clean API path
+- **`withLogging()`** — colored request/response logging middleware
+- **`Bun.serve()`** — starts the HTTP server
+
+### `tools/`
+
+Tool definitions organized by domain. Each file exports a tool creator function that receives the environment.
+
+- `tools/index.ts` exports the `tools` array — all tool creators registered here
+- See [Building Tools](/en/full-code-guides/building-tools) for details
+
+### `resources/`
+
+MCP App resources that serve single-file HTML bundles as rich UIs for tool results.
+
+- Each resource maps a URI (e.g., `ui://mcp-app/hello`) to the built HTML file
+- See [Resources](/en/full-code-guides/resources) for details
+
+### `types/`
+
+```typescript
+import type { DefaultEnv } from "@decocms/runtime";
+import { z } from "zod";
+
+export const StateSchema = z.object({});
+
+export type Env = DefaultEnv<typeof StateSchema>;
+```
+
+- **`StateSchema`** — Zod schema defining your app's configuration (shown to installers)
+- **`Env`** — typed environment extending `DefaultEnv`, available in tool handlers
+
+## Frontend (`web/`)
+
+### Entry point (`web/app.tsx`)
+
+```typescript
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { McpProvider } from "./context.tsx";
+import { AppRouter } from "./router.tsx";
+
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <McpProvider>
+      <AppRouter />
+    </McpProvider>
+  </StrictMode>,
+);
+```
+
+The app wraps everything in `McpProvider` (connects to the MCP host) and `AppRouter` (routes to the correct tool UI).
+
+### MCP Context (`web/context.tsx`)
+
+Manages the connection to the MCP host using `@modelcontextprotocol/ext-apps`:
+
+- **`McpProvider`** — connects via `useApp()`, handles events (`ontoolinput`, `ontoolresult`, `ontoolcancelled`, `onerror`, `onhostcontextchanged`), applies host styles
+- **`useMcpState<TInput, TResult>()`** — access current MCP state (status, tool input/result)
+- **`useMcpApp()`** — access the MCP App instance (e.g., for `app.sendMessage()`)
+- **`useMcpHostContext()`** — access host context (safe area insets, tool info)
+
+### Router (`web/router.tsx`)
+
+Uses TanStack Router with hash-based history:
+
+```typescript
+const TOOL_PAGES: Record<string, React.ComponentType> = {
+  hello_world: HelloPage,
+};
+```
+
+The `ToolRouter` component reads `toolName` from the MCP state and renders the matching page component. `RootLayout` applies safe area insets from the host context.
+
+### Tool UIs (`web/tools/<name>/`)
+
+Each tool's UI lives in its own folder. The component uses `useMcpState<TInput, TResult>()` to handle all lifecycle states: `initializing`, `connected`, `tool-input`, `tool-result`, `tool-cancelled`, and `error`.
+
+### Build system
+
+- **Vite** with `vite-plugin-singlefile` — builds into a single `dist/client/index.html`
+- **React 19** with React Compiler (`babel-plugin-react-compiler`)
+- All CSS and JS inlined into one HTML file for serving as an MCP App resource
+
+## Configuration
+
+### `app.json`
+
+```json
+{
+  "scopeName": "deco",
+  "name": "mcp-app",
+  "friendlyName": "MCP App Template",
+  "description": "Starter template for building MCP Apps on deco.",
+  "connection": {
+    "type": "HTTP",
+    "url": "https://your-app.decocache.com/api/mcp",
+    "configSchema": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+}
+```
+
+- **`scopeName`** + **`name`** — unique identifier for your app in the deco mesh
+- **`friendlyName`** — display name shown to users
+- **`connection.url`** — your deployed MCP endpoint
+- **`configSchema`** — JSON Schema defining configuration options shown to installers
+
+### `.mcp.json`
+
+Local MCP server config for testing with editors:
+
+```json
+{
+  "mcpServers": {
+    "mcp-app": {
+      "type": "sse",
+      "url": "http://localhost:3001/mcp"
+    }
+  }
+}
 ```
 
 ## Development Flow
 
-1. Define tool in `server/tools/`
-2. Run `npm run gen:self` to generate types
-3. Call `client.tools.YOUR_TOOL(...)` from React
-4. TypeScript enforces correctness at compile time
-
-No REST APIs, no version mismatches, no integration code.
-
-## Backend (`/server`)
-
-Your Cloudflare Worker serves:
-- **`/mcp`** - MCP server for AI agents
-- **`/rpc`** - Typed RPC for your React UI  
-- **`/`** - Static assets (built React app)
-
-### `main.ts`
-
-```typescript
-import { withRuntime } from "@deco/workers-runtime";
-import { StateSchema } from "./deco.gen.ts";
-import { tools } from "./tools/";
-import { workflows } from "./workflows/";
-import { views } from "./views";
-
-const runtime = withRuntime<Env, typeof StateSchema>({
-  oauth: {
-    scopes: ["AI_GENERATE", "AI_GENERATE_OBJECT"],
-    state: StateSchema,
-  },
-  tools,
-  workflows,
-  views,
-  fetch: fallbackToView("/"), // Serves React assets
-});
-
-export const Workflow = runtime.Workflow;
-export default runtime;
-```
-
-**OAuth Scopes:** Request permissions for AI generation capabilities.
-
-**State Schema:** Configuration form users fill when installing your app. Extend with custom fields for API keys, environment settings, etc.
-
-### `tools/`
-
-Organize tools by domain:
-
-```
-tools/
-├── index.ts        # Export all tools
-├── customers.ts    # Customer-related tools
-└── billing.ts      # Billing-related tools
-```
-
-```typescript
-// tools/index.ts
-export { customerTools } from "./customers";
-export { billingTools } from "./billing";
-
-export const tools = [
-  ...customerTools,
-  ...billingTools,
-];
-```
-
-See [Building Tools](/en/full-code-guides/building-tools) for details.
-
-### `workflows/`
-
-Organize workflows by domain:
-
-```typescript
-// workflows/index.ts
-export const workflows = [
-  // Add workflow creators here
-];
-```
-
-### `views.ts`
-
-External React apps that integrate with your MCP:
-
-```typescript
-export const views = () => [
-  {
-    title: "My App",
-    icon: "dashboard",
-    url: "https://my-app.deco.page",
-  },
-];
-```
-
-### `deco.gen.ts`
-
-Auto-generated types. Never edit manually.
-
-```bash
-npm run gen        # Regenerate after adding integrations
-npm run gen:self   # Generate types for your tools
-```
-
-### `schema.ts and db.ts`
-
-Database schema (Drizzle ORM + SQLite):
-
-```typescript
-// schema.ts
-export const customers = sqliteTable("customers", {
-  id: integer("id").primaryKey(),
-  name: text("name"),
-  email: text("email"),
-});
-
-// db.ts
-export const getDb = (env: Env) => getDatabase(env, schema);
-```
-
-### `wrangler.toml`
-
-Cloudflare Workers configuration. Auto-updated when adding integrations.
-
-## Frontend (`/view`)
-
-React 19 + Tailwind v4 + TanStack Router.
-
-```
-view/src/
-├── main.tsx         # Entry point
-├── routes/          # Pages  
-├── components/ui/   # UI components
-├── lib/rpc.ts       # Typed RPC client
-└── styles.css       # Tailwind styles
-```
-
-### RPC Client
-
-The `rpc.ts` client is auto-generated from your backend tools:
-
-```typescript
-// view/src/lib/rpc.ts
-import { createClient } from "@deco/workers-runtime/client";
-import type { Env } from "../../server/deco.gen.ts";
-
-export const client = createClient<Env["SELF"]>();
-```
-
-Usage in React:
-
-```typescript
-import { client } from "./lib/rpc";
-
-const result = await client.tools.EMAIL_SEND({
-  to: "user@example.com",
-  subject: "Welcome",
-  body: "Thanks for signing up",
-});
-```
-
-TypeScript provides autocomplete and type checking for all tool inputs/outputs.
-
-See [Building Views](/en/full-code-guides/building-views) for details.
-
+1. Create a tool in `api/tools/my-tool.ts`
+2. Register it in `api/tools/index.ts`
+3. Create a UI component in `web/tools/my-tool/index.tsx`
+4. Register the page in `web/router.tsx` (`TOOL_PAGES` map)
+5. Create a resource in `api/resources/my-tool.ts`
+6. Register the resource in `api/main.ts` (`resources` array)
+7. Run `bun run dev` and test
