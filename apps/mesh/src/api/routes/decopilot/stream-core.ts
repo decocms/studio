@@ -400,6 +400,11 @@ export async function streamCore(
         let lastProviderMetadata: Record<string, unknown> | undefined;
         llmCallStartTime = Date.now();
 
+        console.log(
+          "[decopilot:stream] System prompt:\n",
+          processedSystemMessages,
+        );
+
         const result = streamText({
           model: createLanguageModel(provider, input.models.thinking),
           system: processedSystemMessages,
