@@ -1315,6 +1315,16 @@ function OrgAgentsContent() {
                         }
                         title="No agents yet"
                         description="Create an agent to aggregate tools from multiple Connections."
+                        actions={
+                          <Button
+                            size="sm"
+                            onClick={createVirtualMCP}
+                            disabled={isCreating}
+                          >
+                            <Plus size={14} />
+                            {isCreating ? "Creating..." : "Create Agent"}
+                          </Button>
+                        }
                       />
                     )
                   }
