@@ -10,7 +10,7 @@ import type { MeshContext } from "@/core/mesh-context";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
 import { monitorLlmCall } from "@/monitoring/emit-llm-call";
 import { recordLlmCallMetrics } from "@/monitoring/record-llm-call-metrics";
-import { sanitizeProviderMetadata } from "@decocms/mesh-sdk";
+import { getFastModel, sanitizeProviderMetadata } from "@decocms/mesh-sdk";
 import { createUIMessageStream, stepCountIs, streamText } from "ai";
 import { getBuiltInTools } from "./built-in-tools";
 import {
@@ -314,11 +314,21 @@ export async function streamCore(
 
         const shouldGenerateTitle = mem.thread.title === DEFAULT_THREAD_TITLE;
         if (shouldGenerateTitle) {
+          const isAllowed = (id: string) =>
+            checkModelPermission(allowedModels, input.models.credentialId, id);
+          const fastCandidate = getFastModel(provider.info.id);
+          const titleModelId =
+            (input.models.fast?.id && isAllowed(input.models.fast.id)
+              ? input.models.fast.id
+              : null) ??
+            (fastCandidate && isAllowed(fastCandidate)
+              ? fastCandidate
+              : null) ??
+            input.models.thinking.id;
+
           genTitle({
             abortSignal: registrySignal,
-            model: provider.aiSdk.languageModel(
-              input.models.fast?.id ?? input.models.thinking.id,
-            ),
+            model: provider.aiSdk.languageModel(titleModelId),
             userMessage: JSON.stringify(processedMessages[0]?.content),
           })
             .then(async (title) => {
