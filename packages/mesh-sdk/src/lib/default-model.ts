@@ -26,6 +26,31 @@ export const DEFAULT_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> =
   };
 
 /**
+ * Preferred fast/cheap models per provider — used for lightweight tasks
+ * like title generation where latency and cost matter more than capability.
+ */
+export const FAST_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> = {
+  anthropic: ["claude-haiku-4-5", "claude-haiku"],
+  openrouter: [
+    "qwen/qwen3.5-flash",
+    "anthropic/claude-haiku-4-5",
+    "anthropic/claude-haiku",
+    "google/gemini-3-flash",
+  ],
+  deco: ["qwen/qwen3.5-flash", "anthropic/claude-haiku"],
+  google: ["gemini-2.5-flash", "gemini-3-flash"],
+};
+
+/**
+ * Return the preferred fast model ID for a given provider.
+ * Returns the first candidate or `null` if no preference is configured.
+ */
+export function getFastModel(providerId: ProviderId): string | null {
+  const candidates = FAST_MODEL_PREFERENCES[providerId];
+  return candidates?.[0] ?? null;
+}
+
+/**
  * Select the best default model from a loaded list for a given provider.
  *
  * Resolution order:

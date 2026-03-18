@@ -10,7 +10,7 @@ import type { MeshContext } from "@/core/mesh-context";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
 import { monitorLlmCall } from "@/monitoring/emit-llm-call";
 import { recordLlmCallMetrics } from "@/monitoring/record-llm-call-metrics";
-import { sanitizeProviderMetadata } from "@decocms/mesh-sdk";
+import { getFastModel, sanitizeProviderMetadata } from "@decocms/mesh-sdk";
 import { createUIMessageStream, stepCountIs, streamText } from "ai";
 import { getBuiltInTools } from "./built-in-tools";
 import {
@@ -315,7 +315,9 @@ export async function streamCore(
           genTitle({
             abortSignal: registrySignal,
             model: provider.aiSdk.languageModel(
-              input.models.fast?.id ?? input.models.thinking.id,
+              input.models.fast?.id ??
+                getFastModel(provider.info.id) ??
+                input.models.thinking.id,
             ),
             userMessage: JSON.stringify(processedMessages[0]?.content),
           })
