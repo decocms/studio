@@ -740,7 +740,7 @@ function OrgAgentsContent() {
   const { org } = useProjectContext();
   const navigate = useNavigate();
 
-  const listState = useListState<VirtualMCPEntity>({
+  const listState = useListState({
     namespace: org.slug,
     resource: "agents",
   });
@@ -1084,14 +1084,18 @@ function OrgAgentsContent() {
           <CollectionDisplayButton
             viewMode={listState.viewMode}
             onViewModeChange={listState.setViewMode}
-            sortKey={listState.sortKey}
-            sortDirection={listState.sortDirection}
-            onSort={listState.handleSort}
+            sortKey={listState.sort}
+            sortDirection={null}
+            onSort={(key) =>
+              listState.setSort(
+                key as import("@decocms/bindings/collections").SortPreset,
+              )
+            }
             sortOptions={[
-              { id: "title", label: "Name" },
-              { id: "description", label: "Description" },
-              { id: "updated_by", label: "Updated by" },
-              { id: "updated_at", label: "Updated" },
+              { id: "newest", label: "Newest" },
+              { id: "oldest", label: "Oldest" },
+              { id: "a-z", label: "A → Z" },
+              { id: "z-a", label: "Z → A" },
             ]}
             filters={[
               {
@@ -1307,9 +1311,13 @@ function OrgAgentsContent() {
                   <GroupedAgentTable
                     columns={columns}
                     grouped={grouped}
-                    sortKey={listState.sortKey}
-                    sortDirection={listState.sortDirection}
-                    onSort={listState.handleSort}
+                    sortKey={listState.sort}
+                    sortDirection={null}
+                    onSort={(key) =>
+                      listState.setSort(
+                        key as import("@decocms/bindings/collections").SortPreset,
+                      )
+                    }
                     onRowClick={(agent) => navigateToAgent(agent.id)}
                     selectionMode={selectionMode}
                     selectedIds={selectedIds}
