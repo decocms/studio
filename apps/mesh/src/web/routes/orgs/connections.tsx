@@ -2419,27 +2419,9 @@ function OrgMcpsContent() {
                       headerActionsAlwaysVisible
                       headerActions={
                         isConnected ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 px-3 rounded-lg text-sm font-medium"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const firstId = appInstances[0]?.id;
-                              if (firstId) {
-                                navigate({
-                                  to: "/$org/$project/mcps/$connectionId",
-                                  params: {
-                                    org: org.slug,
-                                    project: ORG_ADMIN_PROJECT_SLUG,
-                                    connectionId: firstId,
-                                  },
-                                });
-                              }
-                            }}
-                          >
-                            See connection
-                          </Button>
+                          <span className="text-xs text-muted-foreground font-normal">
+                            Connected
+                          </span>
                         ) : (
                           <Button
                             variant="outline"
@@ -2521,27 +2503,9 @@ function OrgMcpsContent() {
                       headerActionsAlwaysVisible
                       headerActions={
                         isConnected ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 px-3 rounded-lg text-sm font-medium"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const firstId = appInstances[0]?.id;
-                              if (firstId) {
-                                navigate({
-                                  to: "/$org/$project/mcps/$connectionId",
-                                  params: {
-                                    org: org.slug,
-                                    project: ORG_ADMIN_PROJECT_SLUG,
-                                    connectionId: firstId,
-                                  },
-                                });
-                              }
-                            }}
-                          >
-                            See connection
-                          </Button>
+                          <span className="text-xs text-muted-foreground font-normal">
+                            Connected
+                          </span>
                         ) : (
                           <Button
                             variant="outline"
