@@ -640,63 +640,6 @@ function AgentPicker({
 }
 
 // ============================================================================
-// Editable Title
-// ============================================================================
-
-function EditableTitle({
-  form,
-}: {
-  form: ReturnType<typeof useForm<SettingsFormData>>;
-}) {
-  const [isEditing, setIsEditing] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const name = form.watch("name");
-
-  const startEditing = () => {
-    setIsEditing(true);
-    setTimeout(() => {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    }, 0);
-  };
-
-  const stopEditing = () => {
-    setIsEditing(false);
-  };
-
-  if (isEditing) {
-    return (
-      <Input
-        {...form.register("name")}
-        ref={(el) => {
-          form.register("name").ref(el);
-          (
-            inputRef as React.MutableRefObject<HTMLInputElement | null>
-          ).current = el;
-        }}
-        placeholder="Automation name"
-        className="border-0 shadow-none px-0 text-2xl md:text-2xl font-semibold h-auto focus-visible:ring-0 bg-transparent"
-        onBlur={stopEditing}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === "Escape") {
-            stopEditing();
-          }
-        }}
-      />
-    );
-  }
-
-  return (
-    <h1
-      className="text-2xl md:text-2xl font-semibold cursor-default select-none truncate"
-      onDoubleClick={startEditing}
-    >
-      {name || "Automation name"}
-    </h1>
-  );
-}
-
-// ============================================================================
 // Settings Tab
 // ============================================================================
 
@@ -857,7 +800,11 @@ function SettingsTab({
       <div className="max-w-2xl mx-auto w-full px-6 py-6 flex flex-col gap-8">
         {/* Header: Name + Status + Creator */}
         <div className="flex flex-col gap-1.5">
-          <EditableTitle form={form} />
+          <Input
+            {...form.register("name")}
+            placeholder="Automation name"
+            className="border border-transparent shadow-none px-0 text-2xl md:text-2xl font-semibold h-auto focus-visible:ring-0 focus-visible:border-border bg-transparent"
+          />
           <div className="flex items-center gap-2">
             <Controller
               control={form.control}
