@@ -118,15 +118,23 @@ function ThoughtSummary({
       : "Thought"
     : "Thought";
 
+  // Join with newlines (not spaces) so we can extract individual lines
   const rawText = parts
     .map((p) => p.text ?? "")
-    .join(" ")
+    .join("\n")
     .trim();
+  const lines = rawText.split("\n").filter(Boolean);
+
+  // Streaming: show last line (latest thinking). Done: show first line (topic).
+  const summaryLine = isStreaming
+    ? (lines[lines.length - 1] ?? "")
+    : (lines[0] ?? "");
+
   const summary =
-    !allPartsRedacted && rawText
-      ? rawText.length > 100
-        ? rawText.slice(0, 100) + "…"
-        : rawText
+    !allPartsRedacted && summaryLine
+      ? summaryLine.length > 100
+        ? summaryLine.slice(0, 100) + "…"
+        : summaryLine
       : undefined;
 
   const fullText = parts.map((p) => p.text ?? "").join("\n\n");
@@ -150,7 +158,6 @@ function ThoughtSummary({
       state={isStreaming ? "loading" : "idle"}
       detailVariant="prose"
       latency={latency}
-      forceOpen={isStreaming}
     />
   );
 }
