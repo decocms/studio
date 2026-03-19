@@ -349,120 +349,58 @@ export class PassthroughClient extends Client {
 
     // Initialize lazy caches - all share the same ProxyCollection
     this._cachedTools = lazy(() => this.loadToolsCache());
-    this._cachedResources = lazy(() => this.loadCache("resources"));
-    this._cachedPrompts = lazy(() => this.loadCache("prompts"));
+    this._cachedResources = lazy(() =>
+      this.loadItemsFromClients<Resource>(
+        "resources",
+        (client) =>
+          client
+            .listResources()
+            .catch(fallbackOnMethodNotFoundError({ resources: [] }))
+            .then((r) => r.resources),
+        (item) => item.uri ?? (item as any).name,
+        "selected_resources",
+      ),
+    );
+    this._cachedPrompts = lazy(() =>
+      this.loadItemsFromClients<Prompt>(
+        "prompts",
+        (client) =>
+          client
+            .listPrompts()
+            .catch(fallbackOnMethodNotFoundError({ prompts: [] }))
+            .then((r) => r.prompts),
+        (item) => item.name,
+        "selected_prompts",
+      ),
+    );
   }
 
   /**
-   * Load tools cache from downstream connections plus any virtual tools.
+   * Generic loader: fan out to all clients, apply selection, flatten with dedup.
    */
-  private async loadToolsCache(): Promise<ToolCache> {
-    const clients = this._clients;
-
-    const results = await Promise.all(
-      Array.from(clients.entries()).map(async ([connectionId, client]) => {
-        try {
-          let data = await client.listTools().then((r) => r.tools);
-
-          const selected = this._selectionMap.get(connectionId);
-          if (selected?.selected_tools?.length) {
-            const selectedSet = new Set(selected.selected_tools);
-            data = data.filter((item) => selectedSet.has(item.name));
-          }
-
-          return { connectionId, data };
-        } catch (error) {
-          console.error(
-            `[PassthroughClient] Failed to load tools for connection ${connectionId}:`,
-            error,
-          );
-          return null;
-        }
-      }),
-    );
-
-    const flattened: ToolWithConnection[] = [];
-    const mappings = new Map<string, string>();
-    const virtualToolsMap = new Map<string, VirtualToolDefinition>();
-
-    for (const virtualTool of this.options.virtualTools ?? []) {
-      if (mappings.has(virtualTool.name)) continue;
-
-      flattened.push({
-        ...virtualTool,
-        _meta: {
-          connectionId: this.options.virtualMcp.id ?? "__VIRTUAL__",
-          connectionTitle: this.options.virtualMcp.title,
-        },
-      });
-      mappings.set(virtualTool.name, "__VIRTUAL__");
-      virtualToolsMap.set(virtualTool.name, virtualTool);
-    }
-
-    // Add downstream tools
-    for (const result of results) {
-      if (!result) continue;
-
-      const { connectionId, data } = result;
-      const connection = this._connections.get(connectionId);
-      const connectionTitle = connection?.title ?? "";
-
-      for (const item of data) {
-        const key = item.name;
-
-        if (mappings.has(key)) continue;
-
-        const transformedItem: ToolWithConnection = {
-          ...item,
-          _meta: {
-            connectionId,
-            connectionTitle,
-            ...item?._meta,
-          },
-        };
-
-        flattened.push(transformedItem);
-        mappings.set(key, connectionId);
-      }
-    }
-
-    return { data: flattened, mappings, virtualTools: virtualToolsMap };
-  }
-
-  private async loadCache<T>(
-    target: "resources" | "prompts",
+  private async loadItemsFromClients<T>(
+    type: "tools" | "resources" | "prompts",
+    listFn: (client: Client) => Promise<T[]>,
+    extractKey: (item: T) => string,
+    selectionKey: "selected_tools" | "selected_resources" | "selected_prompts",
   ): Promise<Cache<T>> {
     const clients = this._clients;
 
     const results = await Promise.all(
       Array.from(clients.entries()).map(async ([connectionId, client]) => {
         try {
-          const data =
-            target === "resources"
-              ? await client
-                  .listResources()
-                  .catch(fallbackOnMethodNotFoundError({ resources: [] }))
-                  .then((r) => r.resources)
-              : await client
-                  .listPrompts()
-                  .catch(fallbackOnMethodNotFoundError({ prompts: [] }))
-                  .then((r) => r.prompts);
+          let data = await listFn(client);
 
           const selected = this._selectionMap.get(connectionId);
-          const selectedKey =
-            target === "resources" ? "selected_resources" : "selected_prompts";
-          if (selected?.[selectedKey]?.length) {
-            const selectedSet = new Set(selected[selectedKey]);
-            return {
-              connectionId,
-              data: data.filter((item: any) => selectedSet.has(item.name)),
-            };
+          if (selected?.[selectionKey]?.length) {
+            const selectedSet = new Set(selected[selectionKey]);
+            data = data.filter((item) => selectedSet.has(extractKey(item)));
           }
 
           return { connectionId, data };
         } catch (error) {
           console.error(
-            `[PassthroughClient] Failed to load cache for connection ${connectionId}:`,
+            `[PassthroughClient] Failed to load ${type} for connection ${connectionId}:`,
             error,
           );
           return null;
@@ -475,33 +413,76 @@ export class PassthroughClient extends Client {
 
     for (const result of results) {
       if (!result) continue;
-
       const { connectionId, data } = result;
       const connection = this._connections.get(connectionId);
       const connectionTitle = connection?.title ?? "";
 
-      for (const item of data as any[]) {
-        const transformed = { ...item };
-
-        const key =
-          target === "resources"
-            ? (transformed.uri ?? transformed.name)
-            : (transformed.name ?? transformed.uri);
-
+      for (const item of data) {
+        const key = extractKey(item);
         if (mappings.has(key)) continue;
 
-        transformed._meta = {
+        (item as any)._meta = {
           connectionId,
           connectionTitle,
-          ...item?._meta,
+          ...(item as any)?._meta,
         };
 
-        flattened.push(transformed);
+        flattened.push(item);
         mappings.set(key, connectionId);
       }
     }
 
     return { data: flattened, mappings };
+  }
+
+  /**
+   * Load tools cache from downstream connections plus any virtual tools.
+   */
+  private async loadToolsCache(): Promise<ToolCache> {
+    const virtualToolsMap = new Map<string, VirtualToolDefinition>();
+    const virtualItems: ToolWithConnection[] = [];
+
+    for (const virtualTool of this.options.virtualTools ?? []) {
+      if (virtualToolsMap.has(virtualTool.name)) continue;
+      virtualItems.push({
+        ...virtualTool,
+        _meta: {
+          connectionId: this.options.virtualMcp.id ?? "__VIRTUAL__",
+          connectionTitle: this.options.virtualMcp.title,
+        },
+      });
+      virtualToolsMap.set(virtualTool.name, virtualTool);
+    }
+
+    const downstream = await this.loadItemsFromClients<ToolWithConnection>(
+      "tools",
+      (client) =>
+        client.listTools().then((r) => r.tools as ToolWithConnection[]),
+      (item) => item.name,
+      "selected_tools",
+    );
+
+    // Virtual tools take precedence — prepend them and merge mappings
+    const mappings = new Map<string, string>();
+    for (const vt of virtualItems) {
+      mappings.set(vt.name, "__VIRTUAL__");
+    }
+    for (const [key, connId] of downstream.mappings) {
+      if (!mappings.has(key)) {
+        mappings.set(key, connId);
+      }
+    }
+
+    // Filter downstream items that would conflict with virtual tool names
+    const filteredDownstream = downstream.data.filter(
+      (item) => !virtualToolsMap.has(item.name),
+    );
+
+    return {
+      data: [...virtualItems, ...filteredDownstream],
+      mappings,
+      virtualTools: virtualToolsMap,
+    };
   }
 
   /**

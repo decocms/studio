@@ -10,6 +10,7 @@ import type { MeshContext } from "@/core/mesh-context";
 import {
   type McpListCache,
   getMcpListCache,
+  hydrateList,
 } from "@/mcp-clients/mcp-list-cache";
 import type { ConnectionEntity } from "@/tools/connection/schema";
 import { AccessControl } from "@/core/access-control";
@@ -86,18 +87,12 @@ export class AuthTransport extends WrapperTransport {
   private async ensureToolsMap(): Promise<Map<string, any>> {
     const cache = this.options.cache ?? getMcpListCache();
 
-    // Try NATS KV cache first
-    let tools: unknown[] | null = cache
-      ? await cache.get("tools", this.options.connection.id)
-      : null;
-
-    // Cache miss: fetch live from the downstream MCP server
-    if (!tools) {
-      tools = await this.fetchToolsFromServer();
-      if (tools && cache) {
-        cache.set("tools", this.options.connection.id, tools).catch(() => {});
-      }
-    }
+    const tools = await hydrateList(
+      "tools",
+      this.options.connection.id,
+      async () => (await this.fetchToolsFromServer()) ?? [],
+      cache,
+    );
 
     if (!tools) {
       return new Map();

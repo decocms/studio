@@ -12,7 +12,7 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { defineTool } from "../../core/define-tool";
 import { requireOrganization } from "../../core/mesh-context";
 import { getBaseUrl } from "../../core/server-constants";
-import { getMcpListCache } from "../../mcp-clients/mcp-list-cache";
+import { getMcpListCache, hydrateList } from "../../mcp-clients/mcp-list-cache";
 import { clientFromConnection } from "../../mcp-clients";
 import {
   createDevAssetsConnectionEntity,
@@ -65,30 +65,23 @@ export const COLLECTION_CONNECTIONS_GET = defineTool({
       return { item: null };
     }
 
-    // Hydrate tools from NATS KV cache, falling back to live MCP fetch
     if (connection.tools === null) {
-      const cache = getMcpListCache();
-
-      if (cache) {
-        const cached = await cache.get("tools", connection.id);
-        if (cached !== null) {
-          connection.tools = cached as Tool[];
-        }
-      }
-
-      if (connection.tools === null) {
-        try {
+      const tools = await hydrateList(
+        "tools",
+        connection.id,
+        async () => {
           const client = await clientFromConnection(connection, ctx, true);
           try {
             const result = await client.listTools();
-            connection.tools = result.tools as Tool[];
-            cache?.set("tools", connection.id, result.tools).catch(() => {});
+            return result.tools;
           } finally {
             await client.close().catch(() => {});
           }
-        } catch {
-          // Connection unreachable — leave tools as null
-        }
+        },
+        getMcpListCache(),
+      );
+      if (tools !== null) {
+        connection.tools = tools as Tool[];
       }
     }
 

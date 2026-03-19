@@ -86,6 +86,30 @@ export class JetStreamKVMcpListCache implements McpListCache {
   }
 }
 
+/**
+ * Hydrate a list from cache, falling back to a live fetch.
+ * Stores the result in cache on a successful live fetch.
+ */
+export async function hydrateList(
+  type: McpListType,
+  connectionId: string,
+  fetchLive: () => Promise<unknown[]>,
+  cache: McpListCache | null,
+): Promise<unknown[] | null> {
+  if (cache) {
+    const cached = await cache.get(type, connectionId);
+    if (cached !== null) return cached;
+  }
+
+  try {
+    const data = await fetchLive();
+    cache?.set(type, connectionId, data).catch(() => {});
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 // Module-level active cache — set once at app startup, read by withMcpCaching
 let activeCache: McpListCache | null = null;
 
