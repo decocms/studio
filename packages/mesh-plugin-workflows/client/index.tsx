@@ -19,7 +19,6 @@ const PluginEmptyState = lazy(() => import("./components/plugin-empty-state"));
 export const clientPlugin: ClientPlugin<Binder> = {
   id: PLUGIN_ID,
   description: PLUGIN_DESCRIPTION,
-  binding: [],
   renderHeader: (props) => <PluginHeader {...props} />,
   renderEmptyState: () => <PluginEmptyState />,
 };

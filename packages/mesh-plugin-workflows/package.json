@@ -1,6 +1,6 @@
 {
   "name": "mesh-plugin-workflows",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Workflows plugin for Mesh - create and manage workflows",
   "scripts": {
