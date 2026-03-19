@@ -24,6 +24,10 @@ const KEYBOARD_SHORTCUTS = {
   newLine: { keys: ["Shift", "Enter"], description: "New line" },
   selectOption: { keys: ["1-9"], description: "Select option" },
   applyFilter: { keys: [MOD, "Enter"], description: "Apply filter" },
+  togglePlanMode: {
+    keys: [MOD, "Shift", "L"],
+    description: "Toggle plan mode",
+  },
 } as const satisfies Record<string, Shortcut>;
 
 export const SHORTCUT_GROUPS: ShortcutGroup[] = [
@@ -39,6 +43,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     label: "Chat",
     shortcuts: [
       KEYBOARD_SHORTCUTS.focusChatInput,
+      KEYBOARD_SHORTCUTS.togglePlanMode,
       KEYBOARD_SHORTCUTS.sendMessage,
       KEYBOARD_SHORTCUTS.newLine,
     ],

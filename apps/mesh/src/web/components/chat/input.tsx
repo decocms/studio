@@ -328,8 +328,8 @@ function PlanModeToggle({ disabled }: { disabled?: boolean }) {
             "flex items-center justify-center size-8 rounded-md transition-colors shrink-0",
             disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
             isPlanMode
-              ? "bg-purple-500/15 text-purple-500 hover:bg-purple-500/25"
-              : "text-muted-foreground/75 hover:text-muted-foreground",
+              ? "border border-purple-500 text-purple-500 bg-purple-500/10 hover:bg-purple-500/20"
+              : "border border-purple-300 text-purple-300 hover:border-purple-400 hover:text-purple-400",
           )}
           aria-label={isPlanMode ? "Exit plan mode" : "Enter plan mode"}
         >
@@ -395,18 +395,27 @@ export function ChatInput({
 
   const tiptapRef = useRef<TiptapInputHandle | null>(null);
 
-  // Focus chat input on Cmd+L
+  const [preferences, setPreferences] = usePreferences();
+
+  // Focus chat input on Cmd+L, toggle plan mode on Cmd+Shift+L
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {
     const handler = (e: globalThis.KeyboardEvent) => {
       if (isModKey(e) && e.code === "KeyL") {
         e.preventDefault();
+        if (e.shiftKey) {
+          const isPlan = preferences.toolApprovalLevel === "plan";
+          setPreferences({
+            ...preferences,
+            toolApprovalLevel: isPlan ? "auto" : "plan",
+          });
+        }
         tiptapRef.current?.focus();
       }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, []);
+  }, [preferences, setPreferences]);
 
   const usage = calculateUsageStats(messages);
 
