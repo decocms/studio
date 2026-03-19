@@ -103,7 +103,11 @@ export async function fetchWithCache(
   if (!cache) {
     try {
       return await fetchLive();
-    } catch {
+    } catch (err) {
+      console.warn(
+        `[fetchWithCache] ${type}:${connectionId} no-cache live FAILED:`,
+        err,
+      );
       return null;
     }
   }
@@ -117,7 +121,11 @@ export async function fetchWithCache(
       const data = await fetchLive();
       cache.set(type, connectionId, data).catch(() => {});
       return data;
-    } catch {
+    } catch (err) {
+      console.warn(
+        `[fetchWithCache] ${type}:${connectionId} cache-miss live FAILED:`,
+        err,
+      );
       return null;
     }
   }
@@ -128,7 +136,12 @@ export async function fetchWithCache(
     revalidating.add(revalKey);
     fetchLive()
       .then((data) => cache.set(type, connectionId, data))
-      .catch(() => {})
+      .catch((err) => {
+        console.warn(
+          `[fetchWithCache] ${type}:${connectionId} background revalidation FAILED:`,
+          err,
+        );
+      })
       .finally(() => revalidating.delete(revalKey));
   }
 

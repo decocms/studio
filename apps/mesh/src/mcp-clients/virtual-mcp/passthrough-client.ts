@@ -158,7 +158,7 @@ export class PassthroughClient extends Client {
             .listResources()
             .catch(fallbackOnMethodNotFoundError({ resources: [] }))
             .then((r) => r.resources),
-        (item) => item.uri,
+        (item) => item.name || item.uri,
         "selected_resources",
       ),
     );
