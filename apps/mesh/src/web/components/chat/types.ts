@@ -83,6 +83,8 @@ export interface Metadata {
   tiptapDoc?: TiptapDoc;
   /** Tool approval level at send time — used for visual treatment (e.g., purple border for plan mode) */
   toolApprovalLevel?: ToolApprovalLevel;
+  /** Claude Code plan mode */
+  planMode?: boolean;
   usage?: {
     inputTokens?: number;
     outputTokens?: number;

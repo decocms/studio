@@ -38,6 +38,7 @@ import type { StreamBuffer } from "./stream-buffer";
 import { genTitle } from "./title-generator";
 import type { ChatMessage, ModelInfo, ModelsConfig } from "./types";
 import type { CancelBroadcast } from "./cancel-broadcast";
+import { streamClaudeCode } from "./claude-code-provider";
 import { ThreadMessage } from "@/storage/types";
 import type { MeshProvider } from "@/ai-providers/types";
 
@@ -77,6 +78,8 @@ export interface StreamCoreInput {
   triggerId?: string;
   windowSize?: number;
   abortSignal?: AbortSignal;
+  /** Claude Code plan mode — produces a plan without executing tools */
+  planMode?: boolean;
 }
 
 export interface StreamCoreDeps {
@@ -108,21 +111,25 @@ export async function streamCore(
   let llmCallLogged = false;
 
   try {
-    // 1. Check model permissions
-    const allowedModels = await fetchModelPermissions(
-      ctx.db,
-      input.organizationId,
-      ctx.auth.user?.role,
-    );
+    const isClaudeCode = input.models.thinking.provider === "claude-code";
 
-    if (
-      !checkModelPermission(
-        allowedModels,
-        input.models.credentialId,
-        input.models.thinking.id,
-      )
-    ) {
-      throw new Error("Model not allowed for your role");
+    // 1. Check model permissions (skip for Claude Code — uses local auth)
+    if (!isClaudeCode) {
+      const allowedModels = await fetchModelPermissions(
+        ctx.db,
+        input.organizationId,
+        ctx.auth.user?.role,
+      );
+
+      if (
+        !checkModelPermission(
+          allowedModels,
+          input.models.credentialId,
+          input.models.thinking.id,
+        )
+      ) {
+        throw new Error("Model not allowed for your role");
+      }
     }
 
     const windowSize = input.windowSize ?? DEFAULT_WINDOW_SIZE;
@@ -130,7 +137,12 @@ export async function streamCore(
     // 2. Load entities and create/load memory in parallel
     const [virtualMcp, provider, mem] = await Promise.all([
       ctx.storage.virtualMcps.findById(input.agent.id, input.organizationId),
-      ctx.aiProviders.activate(input.models.credentialId, input.organizationId),
+      isClaudeCode
+        ? Promise.resolve(null)
+        : ctx.aiProviders.activate(
+            input.models.credentialId,
+            input.organizationId,
+          ),
       createMemory(ctx.storage.threads, {
         organization_id: input.organizationId,
         thread_id: input.threadId,
@@ -254,6 +266,166 @@ export async function streamCore(
     const uiStream = createUIMessageStream({
       originalMessages: allMessages,
       execute: async ({ writer }) => {
+        // ── Claude Code path ──────────────────────────────────────────
+        if (isClaudeCode) {
+          const { getInternalUrl } = await import("@/core/server-constants");
+          const internalUrl = getInternalUrl();
+
+          // Enrich messages with agent-specific instructions
+          let enrichedMessages = allMessages;
+          let agentClient: Awaited<
+            ReturnType<typeof createVirtualClientFrom>
+          > | null = null;
+          try {
+            agentClient = await createVirtualClientFrom(
+              virtualMcp,
+              ctx,
+              "passthrough",
+            );
+            const serverInstructions = agentClient.getInstructions();
+            if (serverInstructions?.trim()) {
+              enrichedMessages = allMessages.map((msg) =>
+                msg.id === "decopilot-system"
+                  ? ({
+                      id: "decopilot-system",
+                      role: "system",
+                      parts: [
+                        {
+                          type: "text",
+                          text:
+                            buildBasePlatformPrompt() +
+                            "\n\n" +
+                            serverInstructions,
+                        },
+                      ],
+                    } as ChatMessage)
+                  : msg,
+              );
+            }
+          } catch (err) {
+            console.warn(
+              "[decopilot:stream] Failed to load agent instructions for Claude Code",
+              err,
+            );
+          } finally {
+            agentClient?.close().catch(() => {});
+          }
+
+          // Build MCP endpoint so Claude Code can reach Mesh tools
+          const mcpEndpoint = `${internalUrl}/mcp/self`;
+          const apiKeyRecord = await ctx.boundAuth.apiKey.create({
+            name: "claude-code-session",
+            permissions: { "*": ["*"] },
+            metadata: {
+              internal: true,
+              target: "claude-code",
+              organization: ctx.organization,
+            },
+          });
+          const mcpHeaders: Record<string, string> = {
+            Authorization: `Bearer ${apiKeyRecord.key}`,
+            "x-org-id": input.organizationId,
+            "x-mesh-client": "Claude Code",
+          };
+
+          const abortController = new AbortController();
+          registrySignal.addEventListener("abort", () => {
+            abortController.abort();
+          });
+
+          llmCallStartTime = Date.now();
+          let ccResult: Awaited<ReturnType<typeof streamClaudeCode>>;
+          try {
+            ccResult = await streamClaudeCode(writer, {
+              messages: enrichedMessages,
+              abortController,
+              mcpEndpoint,
+              mcpHeaders,
+              agentId: input.agent.id,
+              agentMode: "passthrough",
+              threadId: mem.thread.id,
+              connectionId: input.models.credentialId,
+              model: input.models.thinking.id,
+              planMode: input.planMode,
+            });
+          } finally {
+            // Revoke the ephemeral wildcard API key
+            try {
+              await ctx.boundAuth.apiKey.delete(apiKeyRecord.id);
+            } catch (err) {
+              console.error(
+                "[decopilot:stream] Failed to revoke Claude Code session key",
+                err,
+              );
+            }
+          }
+
+          // Record usage metrics
+          if (ccResult.usage) {
+            recordLlmCallMetrics({
+              ctx,
+              organizationId: input.organizationId,
+              modelId: input.models.thinking.id,
+              durationMs: Date.now() - (llmCallStartTime ?? Date.now()),
+              isError: false,
+              inputTokens: ccResult.usage.inputTokens,
+              outputTokens: ccResult.usage.outputTokens,
+            });
+          }
+
+          // Persist the assistant response
+          if (ccResult.parts.length > 0 || ccResult.responseText) {
+            const responseParts =
+              ccResult.parts.length > 0
+                ? ccResult.parts
+                : [{ type: "text" as const, text: ccResult.responseText }];
+            const responseMessage: ChatMessage = {
+              id: generateMessageId(),
+              role: "assistant",
+              parts: responseParts as unknown as ChatMessage["parts"],
+            };
+            await saveMessagesToThread(responseMessage);
+          }
+
+          // Generate title for Claude Code threads
+          if (mem.thread.title === DEFAULT_THREAD_TITLE) {
+            const userText =
+              requestMessage?.parts
+                ?.filter(
+                  (p): p is { type: "text"; text: string } =>
+                    "text" in p &&
+                    typeof (p as { text?: unknown }).text === "string",
+                )
+                .map((p) => p.text)
+                .join(" ")
+                .trim() ?? "";
+            if (userText) {
+              const title = userText
+                .replace(/\s+/g, " ")
+                .slice(0, 60)
+                .replace(/\s\S*$/, userText.length > 60 ? "..." : "");
+              ctx.storage.threads
+                .update(mem.thread.id, { title })
+                .then(() => {
+                  if (!streamFinished) {
+                    writer.write({
+                      type: "data-thread-title",
+                      data: { title },
+                      transient: true,
+                    });
+                  }
+                })
+                .catch(() => {});
+            }
+          }
+
+          return;
+        }
+
+        // ── Standard AI provider path ─────────────────────────────────
+        // provider is guaranteed non-null here (Claude Code returns early above)
+        const activeProvider = provider!;
+
         const passthroughClient = await createVirtualClientFrom(
           virtualMcp,
           ctx,
@@ -274,7 +446,7 @@ export async function streamCore(
         const builtInTools = await getBuiltInTools(
           writer,
           {
-            provider,
+            provider: activeProvider,
             organization,
             models: input.models,
             toolApprovalLevel: input.toolApprovalLevel,
@@ -365,7 +537,7 @@ export async function streamCore(
           genTitle({
             abortSignal: registrySignal,
             model: createLanguageModel(
-              provider,
+              activeProvider,
               input.models.fast ?? input.models.thinking,
             ),
             userMessage: JSON.stringify(processedMessages[0]?.content),
@@ -403,7 +575,7 @@ export async function streamCore(
         llmCallStartTime = Date.now();
 
         const result = streamText({
-          model: createLanguageModel(provider, input.models.thinking),
+          model: createLanguageModel(activeProvider, input.models.thinking),
           system: [
             ...systemPrompts.map((content) => ({
               role: "system" as const,

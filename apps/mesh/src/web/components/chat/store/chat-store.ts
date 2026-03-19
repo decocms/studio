@@ -129,6 +129,7 @@ class ChatStore {
       status: "ready",
       error: null,
       finishReason: null,
+      planMode: false,
       appContexts: {},
       tiptapDoc: undefined,
     };
@@ -410,6 +411,11 @@ class ChatStore {
     this.notify();
   }
 
+  setPlanMode(enabled: boolean): void {
+    this.state = { ...this.state, planMode: enabled };
+    this.notify();
+  }
+
   setCredentialId(id: string | null): void {
     this.state = { ...this.state, credentialId: id };
     writeSelectedKeyId(this.state.locator, id);
@@ -532,6 +538,7 @@ class ChatStore {
       tiptapDoc: params.tiptapDoc,
       created_at: new Date().toISOString(),
       thread_id: this.state.activeThreadId,
+      planMode: this.state.planMode || undefined,
       agent: {
         id: selectedAgent?.id ?? decopilotId,
       },
@@ -559,6 +566,7 @@ class ChatStore {
     const metadata: Metadata = {
       ...messageMetadata,
       system,
+      planMode: this.state.planMode || undefined,
       models: {
         credentialId: model.keyId ?? effectiveKeyId ?? "",
         thinking: toMetadataModelInfo(model),
@@ -735,8 +743,7 @@ class ChatStore {
   resumeStream(): Promise<void> {
     // Seed the AI SDK with existing messages before resuming, so the
     // stream buffer replay (which only contains the current run's delta)
-    // is appended to the full conversation history — mirroring what
-    // sendMessage() does at line ~516.
+    // is appended to the full conversation history.
     const existingMessages =
       this.state.threadMessages[this.state.activeThreadId] ?? [];
     if (existingMessages.length > 0) {
