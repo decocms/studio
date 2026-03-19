@@ -160,6 +160,7 @@ export class PassthroughClient extends Client {
             .then((r) => r.resources),
         (item) => item.name || item.uri,
         "selected_resources",
+        (item) => item.uri,
       ),
     );
     this._cachedPrompts = lazy(() =>
@@ -184,8 +185,10 @@ export class PassthroughClient extends Client {
     listFn: (client: Client) => Promise<T[]>,
     extractKey: (item: T) => string,
     selectionKey: "selected_tools" | "selected_resources" | "selected_prompts",
+    routingKey?: (item: T) => string,
   ): Promise<Cache<T>> {
     const clients = this._clients;
+    const extractRoutingKey = routingKey ?? extractKey;
 
     const results = await Promise.all(
       Array.from(clients.entries()).map(async ([connectionId, client]) => {
@@ -211,6 +214,7 @@ export class PassthroughClient extends Client {
 
     const flattened: T[] = [];
     const mappings = new Map<string, string>();
+    const seen = new Set<string>();
 
     for (const result of results) {
       if (!result) continue;
@@ -219,8 +223,9 @@ export class PassthroughClient extends Client {
       const connectionTitle = connection?.title ?? "";
 
       for (const item of data) {
-        const key = extractKey(item);
-        if (mappings.has(key)) continue;
+        const rKey = extractRoutingKey(item);
+        if (seen.has(rKey)) continue;
+        seen.add(rKey);
 
         (item as any)._meta = {
           connectionId,
@@ -229,7 +234,7 @@ export class PassthroughClient extends Client {
         };
 
         flattened.push(item);
-        mappings.set(key, connectionId);
+        mappings.set(rKey, connectionId);
       }
     }
 
