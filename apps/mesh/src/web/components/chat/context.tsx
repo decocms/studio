@@ -49,9 +49,9 @@ interface ChatStableValue {
   isModelsLoading: boolean;
   setSelectedModel: (model: AiProviderModel) => void;
 
-  imageMode: boolean;
+  imageModel: AiProviderModel | null;
   imageAspectRatio: string;
-  setImageMode: (enabled: boolean, imageModels?: AiProviderModel[]) => void;
+  setImageModel: (model: AiProviderModel | null) => void;
   setImageAspectRatio: (ratio: string) => void;
 
   sendMessage: (
@@ -119,7 +119,7 @@ export function useChatStable(): ChatStableValue {
     allModelsConnections: state.allModelsConnections,
     credentialId: state.credentialId,
     tiptapDoc: state.tiptapDoc,
-    imageMode: state.imageMode,
+    imageModel: state.imageModel,
     imageAspectRatio: state.imageAspectRatio,
   }));
 
@@ -141,8 +141,8 @@ export function useChatStable(): ChatStableValue {
       chatStore.setAgent(agent);
     },
     setSelectedModel: (model: AiProviderModel) => chatStore.setModel(model),
-    setImageMode: (enabled: boolean, imageModels?: AiProviderModel[]) =>
-      chatStore.setImageMode(enabled, imageModels),
+    setImageModel: (model: AiProviderModel | null) =>
+      chatStore.setImageModel(model),
     setImageAspectRatio: (ratio: string) =>
       chatStore.setImageAspectRatio(ratio),
     setOwnerFilter: (filter: TaskOwnerFilter) =>

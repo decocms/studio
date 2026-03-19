@@ -44,8 +44,8 @@ export interface ChatStoreState {
     typeof import("../../../hooks/collections/use-llm").useAiProviderKeyList
   >;
 
-  // Image generation mode
-  imageMode: boolean;
+  // Image generation
+  imageModel: AiProviderModel | null;
   imageAspectRatio: string;
 
   // Streaming
