@@ -32,7 +32,7 @@ import { ErrorBoundary } from "../error-boundary";
 import { ChatBridge } from "./chat-bridge";
 import { chatStore } from "./store/chat-store";
 import { useActiveThreadId, useChatStore } from "./store/selectors";
-import { useTaskManager } from "./task";
+import { useTaskManager, type TaskOwnerFilter } from "./task";
 
 // ============================================================================
 // ThreadListSync — bridges React Query thread data into the store
@@ -41,6 +41,14 @@ import { useTaskManager } from "./task";
 function ThreadListSync() {
   const taskManager = useTaskManager();
   const activeThreadId = useActiveThreadId();
+  const storeOwnerFilter = useChatStore(
+    (s) => s.ownerFilter as TaskOwnerFilter,
+  );
+
+  // Sync ownerFilter from chatStore → taskManager so filter changes trigger re-fetch
+  if (taskManager.ownerFilter !== storeOwnerFilter) {
+    taskManager.setOwnerFilter(storeOwnerFilter);
+  }
 
   // Sync threads, pagination, and messages into store after render
   // to avoid "cannot update component while rendering another" warnings.

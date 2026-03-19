@@ -46,7 +46,7 @@ export type TaskOwnerFilter = "me" | "everyone";
  * Hook to get all tasks with infinite scroll pagination
  *
  * @param ownerFilter - "me" filters to current user's tasks, "everyone" shows all org tasks
- * @param userId - current user's ID, required when ownerFilter is "me"
+ * @param userId - current user's ID, used only for cache key isolation (not sent to server)
  * @returns Object with tasks array, pagination helpers, and refetch function
  */
 function useTasks(ownerFilter: TaskOwnerFilter, userId: string | undefined) {
@@ -67,16 +67,13 @@ function useTasks(ownerFilter: TaskOwnerFilter, userId: string | undefined) {
         if (!client) {
           throw new Error("MCP client is not available");
         }
-        if (ownerFilter === "me" && !userId) {
-          return { items: [], hasMore: false, totalCount: 0 };
-        }
         const baseInput = {
           limit: TASK_CONSTANTS.TASKS_PAGE_SIZE,
           offset: pageParam,
         };
         const input =
           ownerFilter === "me"
-            ? { ...baseInput, where: { created_by: userId! } }
+            ? { ...baseInput, where: { created_by: "me" } }
             : baseInput;
 
         const result = (await client.callTool({
