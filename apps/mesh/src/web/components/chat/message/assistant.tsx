@@ -8,6 +8,7 @@ import { MessageStatsBar } from "../usage-stats.tsx";
 import { MessageTextPart } from "./parts/text-part.tsx";
 import {
   GenericToolCallPart,
+  ProposePlanPart,
   SubtaskPart,
   UserAskPart,
 } from "./parts/tool-call-part/index.ts";
@@ -205,6 +206,8 @@ function MessagePart({
           latency={getMeta(part.toolCallId)?.latencySeconds}
         />
       );
+    case "tool-propose_plan":
+      return <ProposePlanPart part={part} />;
     case "tool-subtask":
       return (
         <SubtaskPart

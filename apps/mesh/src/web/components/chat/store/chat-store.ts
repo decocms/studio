@@ -81,6 +81,7 @@ class ChatStore {
   private listeners = new Set<() => void>();
   private deferredNotifyScheduled = false;
   private chatBridge: ChatBridgeMethods | null = null;
+  private _initialMessage: SendMessageParams | null = null;
 
   // External deps injected from React
   private contextPrompt = "";
@@ -204,6 +205,7 @@ class ChatStore {
 
   reset(): void {
     this.chatBridge = null;
+    this._initialMessage = null;
     this.state = this.defaultState();
     this.notify();
   }
@@ -243,13 +245,13 @@ class ChatStore {
   // ---- Thread operations ----
 
   createThread(): string {
-    // Reset interaction state
+    // Clear errors and transient UI state — preserve model, agent, credentials, etc.
     this.state = {
       ...this.state,
+      error: null,
       finishReason: null,
       tiptapDoc: undefined,
     };
-    this.notify();
 
     // Delegate to taskManager's createTask if available (handles cache + prefill)
     if (this.createTaskFn) {
@@ -283,6 +285,11 @@ class ChatStore {
     this.chatBridge?.setMessages([]);
     this.notify();
     return newThreadId;
+  }
+
+  createThreadAndSend(params: SendMessageParams): string {
+    this._initialMessage = params;
+    return this.createThread();
   }
 
   async hideTask(taskId: string): Promise<void> {
@@ -517,6 +524,10 @@ class ChatStore {
     const selectedAgent = this.state.selectedAgent;
     const effectiveKeyId = this.state.credentialId;
 
+    // Determine effective tool approval level for metadata persistence
+    const effectiveApprovalLevel =
+      params.toolApprovalLevel ?? this.toolApprovalLevel;
+
     const messageMetadata: Metadata = {
       tiptapDoc: params.tiptapDoc,
       created_at: new Date().toISOString(),
@@ -528,6 +539,9 @@ class ChatStore {
         avatar: this.state.user?.image ?? undefined,
         name: this.state.user?.name ?? "you",
       },
+      ...(effectiveApprovalLevel && {
+        toolApprovalLevel: effectiveApprovalLevel,
+      }),
     };
 
     // Compose system prompt: route context + app contexts
@@ -603,6 +617,14 @@ class ChatStore {
 
   registerChatBridge(bridge: ChatBridgeMethods): void {
     this.chatBridge = bridge;
+
+    // Drain any pending initial message queued by createThreadAndSend().
+    // Clear before sending to prevent re-entrance (registerChatBridge runs every render).
+    const pending = this._initialMessage;
+    if (pending) {
+      this._initialMessage = null;
+      void this.sendMessage(pending);
+    }
   }
 
   onStreamMessages(messages: ChatMessage[]): void {

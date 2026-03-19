@@ -2,6 +2,7 @@ import type { ChatMessage } from "@/api/routes/decopilot/types";
 export type { ChatMessage };
 import type { UseChatHelpers } from "@ai-sdk/react";
 import type { JSONContent } from "@tiptap/core";
+import type { ToolApprovalLevel } from "@/web/hooks/use-preferences";
 
 // ============================================================================
 // Chat Config Types
@@ -80,6 +81,8 @@ export interface Metadata {
   system?: string;
   /** Tiptap document for rich user input (includes prompt tags with resources) */
   tiptapDoc?: TiptapDoc;
+  /** Tool approval level at send time — used for visual treatment (e.g., purple border for plan mode) */
+  toolApprovalLevel?: ToolApprovalLevel;
   usage?: {
     inputTokens?: number;
     outputTokens?: number;

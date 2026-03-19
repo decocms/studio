@@ -292,12 +292,27 @@ export async function streamCore(
           passthroughToolNames,
         );
 
+        // Build tool annotations map for plan-mode gating in enable_tools
+        const toolAnnotations = new Map<string, { readOnlyHint?: boolean }>();
+        if (input.toolApprovalLevel === "plan") {
+          const { tools: toolList } = await passthroughClient.listTools();
+          for (const t of toolList) {
+            toolAnnotations.set(t.name, {
+              readOnlyHint: t.annotations?.readOnlyHint,
+            });
+          }
+        }
+
         const tools = {
           ...passthroughTools,
           ...builtInTools,
           enable_tools: createEnableToolsTool(
             enabledTools,
             passthroughToolNames,
+            {
+              toolApprovalLevel: input.toolApprovalLevel,
+              toolAnnotations,
+            },
           ),
         };
 
@@ -315,8 +330,19 @@ export async function streamCore(
           ? buildDecopilotAgentPrompt()
           : serverInstructions;
 
+        // Plan mode system prompt injection
+        const planModePrompt =
+          input.toolApprovalLevel === "plan"
+            ? "You are in plan mode. You can only read and explore — you cannot make changes. " +
+              "When you have enough information, call `propose_plan` with a comprehensive markdown plan " +
+              "that includes all discoveries, file locations, and implementation steps. " +
+              "After approval, a new implementation thread will be created with this plan as the starting context. " +
+              "Only read-only tools can be enabled via enable_tools."
+            : null;
+
         const systemPrompts = [
           basePrompt,
+          planModePrompt,
           toolCatalog,
           promptCatalog,
           agentPrompt,
@@ -387,13 +413,34 @@ export async function streamCore(
           ],
           messages: processedMessages,
           tools,
-          prepareStep: () => ({
-            activeTools: [
+          prepareStep: () => {
+            let activeToolNames = [
               ...builtInToolNames,
               "enable_tools",
               ...enabledTools,
-            ] as (keyof typeof tools)[],
-          }),
+            ];
+
+            // Layer 2: In plan mode, filter out any non-read-only tools that
+            // somehow got enabled (safety net for Layer 1 in enable_tools)
+            if (input.toolApprovalLevel === "plan") {
+              activeToolNames = activeToolNames.filter((name) => {
+                // Built-in tools and enable_tools are always allowed
+                if (
+                  builtInToolNames.includes(name) ||
+                  name === "enable_tools"
+                ) {
+                  return true;
+                }
+                // Only allow passthrough tools with readOnlyHint
+                const annotations = toolAnnotations.get(name);
+                return annotations?.readOnlyHint === true;
+              });
+            }
+
+            return {
+              activeTools: activeToolNames as (keyof typeof tools)[],
+            };
+          },
           temperature: input.temperature,
           maxOutputTokens,
           abortSignal: registrySignal,

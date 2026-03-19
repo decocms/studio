@@ -1,8 +1,11 @@
 import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { AlertCircle, AlertTriangle, X } from "@untitledui/icons";
+import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import { useChat } from "../context";
+import { chatStore } from "../store/chat-store";
 import { ApprovalHighlight, extractPendingApprovals } from "./approval";
+import { ProposePlanHighlight, extractPendingPlans } from "./propose-plan";
 import { UserAskQuestionHighlight } from "./user-ask-question";
 import type { UserAskToolPart } from "../types";
 
@@ -130,6 +133,7 @@ export function ChatHighlight() {
     addToolApprovalResponse,
     sendMessage,
   } = useChat();
+  const [preferences, setPreferences] = usePreferences();
 
   const lastMessage = messages.at(-1);
 
@@ -141,6 +145,12 @@ export function ChatHighlight() {
   const isWaitingForUserInput = userAskParts?.filter(
     (p) => p.state !== "output-available",
   )?.length;
+
+  // Collect pending plan proposals from the last assistant message
+  const pendingPlans =
+    lastMessage?.role === "assistant"
+      ? extractPendingPlans(lastMessage.parts)
+      : [];
 
   // Collect pending approval parts from the last assistant message
   const pendingApprovals =
@@ -189,6 +199,26 @@ export function ChatHighlight() {
     });
   };
 
+  const handlePlanApprove = (planText: string) => {
+    // Set approval level to auto and persist
+    chatStore.setToolApprovalLevel("auto");
+    setPreferences({ ...preferences, toolApprovalLevel: "auto" });
+
+    // Create a new thread and queue the plan as the initial message.
+    // createThreadAndSend() stores the message and drains it once
+    // ChatBridge re-registers with the fresh Chat instance, avoiding
+    // the race where sendMessage() would use the old bridge methods.
+    chatStore.createThreadAndSend({
+      parts: [{ type: "text", text: `Implement this plan:\n\n${planText}` }],
+      toolApprovalLevel: "auto",
+    });
+  };
+
+  const handlePlanDismiss = () => {
+    const editor = document.querySelector<HTMLElement>("[data-chat-input]");
+    editor?.focus();
+  };
+
   const handleApprovalRespond = (
     approvalId: string,
     approved: boolean,
@@ -201,7 +231,7 @@ export function ChatHighlight() {
     });
   };
 
-  // Priority: user_ask > approval > error > warning
+  // Priority: user_ask > propose_plan > approval > error > warning
   if (isWaitingForUserInput) {
     return (
       <div className="absolute bottom-full left-0 right-0">
@@ -209,6 +239,19 @@ export function ChatHighlight() {
           userAskParts={userAskParts}
           isStreaming={isStreaming}
           onSubmit={handleUserAskSubmit}
+        />
+      </div>
+    );
+  }
+
+  if (pendingPlans.length > 0) {
+    return (
+      <div className="absolute bottom-full left-0 right-0">
+        <ProposePlanHighlight
+          plans={pendingPlans}
+          isStreaming={isStreaming}
+          onApprove={handlePlanApprove}
+          onDismiss={handlePlanDismiss}
         />
       </div>
     );

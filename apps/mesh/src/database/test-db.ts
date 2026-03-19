@@ -23,8 +23,20 @@ export interface TestDatabase extends MeshDatabase {
  * directly — tests that need LISTEN/NOTIFY should use real PostgreSQL.
  */
 export async function createTestDatabase(): Promise<TestDatabase> {
-  const pglite = new PGlite();
-  await pglite.waitReady;
+  // PGlite WASM _pgl_initdb() can sporadically fail with a null-reference
+  // error in CI (GitHub Actions). Retry a few times to work around this.
+  let pglite!: PGlite;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      pglite = new PGlite();
+      await pglite.waitReady;
+      break;
+    } catch (err) {
+      if (attempt === 2) throw err;
+      // Small delay before retry
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
   const dialect = new KyselyPGlite(pglite).dialect;
   const db = new Kysely<DatabaseSchema>({ dialect });
 

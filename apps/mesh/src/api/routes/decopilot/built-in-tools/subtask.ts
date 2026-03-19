@@ -159,7 +159,7 @@ export function createSubtaskTool(
         mcpClient,
         new Map(),
         writer,
-        "yolo",
+        "auto",
         { disableOutputTruncation: true },
       );
       const subagentTools = Object.fromEntries(

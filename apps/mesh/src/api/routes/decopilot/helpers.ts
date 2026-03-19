@@ -29,7 +29,7 @@ import {
 /**
  * Tool approval levels determine which tools require user approval before executing
  */
-export type ToolApprovalLevel = "none" | "readonly" | "yolo";
+export type ToolApprovalLevel = "auto" | "readonly" | "plan";
 
 /**
  * Determine if a tool needs approval based on approval level and readOnlyHint
@@ -41,9 +41,13 @@ export type ToolApprovalLevel = "none" | "readonly" | "yolo";
 export function toolNeedsApproval(
   level: ToolApprovalLevel,
   readOnlyHint?: boolean,
-): boolean {
-  if (level === "yolo") return false;
-  if (level === "none") return true;
+): boolean | "hard-block" {
+  if (level === "auto") return false;
+  if (level === "plan") {
+    // Hard block: non-read-only tools cannot run at all in plan mode
+    if (readOnlyHint === true) return false;
+    return "hard-block";
+  }
   // "readonly": auto-approve only if explicitly marked readOnly
   return readOnlyHint !== true;
 }
@@ -86,7 +90,7 @@ export async function toolsFromMCP(
   client: Client,
   toolOutputMap: Map<string, string>,
   writer?: UIMessageStreamWriter,
-  toolApprovalLevel: ToolApprovalLevel = "none",
+  toolApprovalLevel: ToolApprovalLevel = "readonly",
   options?: { disableOutputTruncation?: boolean },
 ): Promise<ToolSet> {
   const truncate = !options?.disableOutputTruncation;
@@ -103,10 +107,9 @@ export async function toolsFromMCP(
         description,
         inputSchema: jsonSchema(inputSchema as JSONSchema7),
         outputSchema: undefined,
-        needsApproval: toolNeedsApproval(
-          toolApprovalLevel,
-          annotations?.readOnlyHint,
-        ),
+        needsApproval:
+          toolNeedsApproval(toolApprovalLevel, annotations?.readOnlyHint) !==
+          false,
         execute: async (input, options) => {
           const startTime = performance.now();
           try {

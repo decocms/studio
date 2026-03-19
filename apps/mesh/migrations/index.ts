@@ -43,6 +43,7 @@ import * as migration041aiproviderkeysuniqueconstraint from "./041-ai-provider-k
 import * as migration042renamemeshmcptocmsmcp from "./042-rename-mesh-mcp-to-cms-mcp.ts";
 import * as migration043renamecmsmcptodecocms from "./043-rename-cms-mcp-to-deco-cms.ts";
 import * as migration044dropconnectionstoolscolumn from "./044-drop-connections-tools-column.ts";
+import * as migration045threadcontextstartmessage from "./045-thread-context-start-message.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -100,6 +101,7 @@ const migrations: Record<string, Migration> = {
   "042-rename-mesh-mcp-to-cms-mcp": migration042renamemeshmcptocmsmcp,
   "043-rename-cms-mcp-to-deco-cms": migration043renamecmsmcptodecocms,
   "044-drop-connections-tools-column": migration044dropconnectionstoolscolumn,
+  "045-thread-context-start-message": migration045threadcontextstartmessage,
 };
 
 export default migrations;

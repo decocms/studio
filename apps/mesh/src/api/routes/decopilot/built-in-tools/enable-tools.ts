@@ -7,6 +7,7 @@
 
 import { tool } from "ai";
 import { z } from "zod";
+import type { ToolApprovalLevel } from "../helpers";
 
 const enableToolsInputSchema = z.object({
   tools: z
@@ -19,10 +20,15 @@ const enableToolsInputSchema = z.object({
  *
  * @param enabledTools - Shared set that tracks which tools have been enabled
  * @param availableToolNames - Set of all tool names from the passthrough client
+ * @param options - Optional config for plan-mode gating
  */
 export function createEnableToolsTool(
   enabledTools: Set<string>,
   availableToolNames: Set<string>,
+  options?: {
+    toolApprovalLevel?: ToolApprovalLevel;
+    toolAnnotations?: Map<string, { readOnlyHint?: boolean }>;
+  },
 ) {
   return tool({
     description:
@@ -36,19 +42,35 @@ export function createEnableToolsTool(
     execute: async ({ tools }) => {
       const enabled: string[] = [];
       const notFound: string[] = [];
+      const blocked: string[] = [];
 
       for (const name of tools) {
-        if (availableToolNames.has(name)) {
-          enabledTools.add(name);
-          enabled.push(name);
-        } else {
+        if (!availableToolNames.has(name)) {
           notFound.push(name);
+          continue;
         }
+
+        // In plan mode, block non-read-only tools
+        if (options?.toolApprovalLevel === "plan") {
+          const annotations = options.toolAnnotations?.get(name);
+          if (annotations?.readOnlyHint !== true) {
+            blocked.push(name);
+            continue;
+          }
+        }
+
+        enabledTools.add(name);
+        enabled.push(name);
       }
 
       return {
         enabled,
         ...(notFound.length > 0 && { not_found: notFound }),
+        ...(blocked.length > 0 && {
+          blocked,
+          blocked_reason:
+            "These tools cannot be enabled in plan mode — they have side effects.",
+        }),
       };
     },
   });

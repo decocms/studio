@@ -1,3 +1,4 @@
+import { cn } from "@deco/ui/lib/utils.ts";
 import { useRef } from "react";
 import type { ChatMessage, ChatStatus } from "../types.ts";
 import { MessageAssistant } from "./assistant.tsx";
@@ -77,7 +78,7 @@ export function MessagePair({ pair, isLastPair, status }: MessagePairProps) {
   };
 
   return (
-    <div ref={handlePairRef} className="flex flex-col pb-2 sm:pb-2">
+    <div ref={handlePairRef} className={cn("flex flex-col pb-2 sm:pb-2")}>
       {/* Sticky overlay to prevent scrolling content from appearing above the user message */}
       <div className="sticky top-0 z-50 w-full h-4 bg-background" />
       <div className="sticky mb-8 sm:mb-6 top-4 z-50">

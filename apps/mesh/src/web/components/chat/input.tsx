@@ -22,6 +22,7 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowUp,
+  BookOpen01,
   ChevronDown,
   Edit01,
   Lock01,
@@ -34,6 +35,7 @@ import type { FormEvent } from "react";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import type { Metadata } from "./types.ts";
 import { useChat } from "./context";
+import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import { ChatHighlight } from "./highlight";
 import { ModelSelector } from "./select-model";
 import {
@@ -301,6 +303,57 @@ function VirtualMCPBadge({
 }
 
 // ============================================================================
+// PlanModeToggle - Toggle button for plan mode
+// ============================================================================
+
+function PlanModeToggle({ disabled }: { disabled?: boolean }) {
+  const [preferences, setPreferences] = usePreferences();
+  const isPlanMode = preferences.toolApprovalLevel === "plan";
+
+  const handleToggle = () => {
+    setPreferences({
+      ...preferences,
+      toolApprovalLevel: isPlanMode ? "auto" : "plan",
+    });
+  };
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={handleToggle}
+          disabled={disabled}
+          className={cn(
+            "flex items-center justify-center size-8 rounded-md transition-colors shrink-0",
+            disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
+            isPlanMode
+              ? "border border-purple-500 text-purple-500 bg-purple-500/10 hover:bg-purple-500/20"
+              : "border border-border text-muted-foreground/75 hover:text-muted-foreground",
+          )}
+          aria-label={isPlanMode ? "Exit plan mode" : "Enter plan mode"}
+        >
+          <BookOpen01 size={16} />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="flex items-center gap-1.5">
+        {isPlanMode ? "Exit plan mode" : "Plan mode"}
+        <span className="flex items-center gap-0.5">
+          {(isMac ? ["⌘", "⇧", "L"] : ["Ctrl", "⇧", "L"]).map((key) => (
+            <kbd
+              key={key}
+              className="inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-sm border border-white/20 bg-white/10 text-white/70 text-xs font-mono"
+            >
+              {key}
+            </kbd>
+          ))}
+        </span>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+// ============================================================================
 // ChatInput - Merged component with virtual MCP wrapper, banners, and selectors
 // ============================================================================
 
@@ -352,18 +405,28 @@ export function ChatInput({
 
   const tiptapRef = useRef<TiptapInputHandle | null>(null);
 
-  // Focus chat input on Cmd+L
+  const [preferences, setPreferences] = usePreferences();
+  const isPlanMode = preferences.toolApprovalLevel === "plan";
+
+  // Focus chat input on Cmd+L, toggle plan mode on Cmd+Shift+L
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {
     const handler = (e: globalThis.KeyboardEvent) => {
       if (isModKey(e) && e.code === "KeyL") {
         e.preventDefault();
+        if (e.shiftKey) {
+          const isPlan = preferences.toolApprovalLevel === "plan";
+          setPreferences({
+            ...preferences,
+            toolApprovalLevel: isPlan ? "auto" : "plan",
+          });
+        }
         tiptapRef.current?.focus();
       }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, []);
+  }, [preferences, setPreferences]);
 
   const usage = calculateUsageStats(messages);
 
@@ -500,7 +563,10 @@ export function ChatInput({
             <form
               onSubmit={handleSubmit}
               className={cn(
-                "w-full relative rounded-xl min-h-[110px] md:min-h-[130px] flex flex-col border border-border bg-background shadow-sm",
+                "w-full relative rounded-xl min-h-[110px] md:min-h-[130px] flex flex-col border bg-background shadow-sm",
+                isPlanMode
+                  ? "border-dashed border-purple-500"
+                  : "border-border",
               )}
               style={{
                 boxShadow:
@@ -550,6 +616,7 @@ export function ChatInput({
                     selectedModel={model}
                     isStreaming={isStreaming}
                   />
+                  <PlanModeToggle disabled={isStreaming} />
                   {contextWindow && lastTotalTokens > 0 && (
                     <SessionStats
                       usage={usage}

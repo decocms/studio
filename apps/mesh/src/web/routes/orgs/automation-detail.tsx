@@ -780,7 +780,7 @@ function SettingsTab({
     createTask();
 
     setTimeout(() => {
-      sendMessage(tiptapDoc, { toolApprovalLevel: "yolo" });
+      sendMessage(tiptapDoc, { toolApprovalLevel: "auto" });
     }, 0);
   };
 

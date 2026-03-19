@@ -1,7 +1,7 @@
 import { useLocalStorage } from "./use-local-storage.ts";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys.ts";
 
-export type ToolApprovalLevel = "none" | "readonly" | "yolo";
+export type ToolApprovalLevel = "auto" | "readonly" | "plan";
 
 interface Preferences {
   devMode: boolean;
@@ -12,7 +12,7 @@ interface Preferences {
 
 const DEFAULT_PREFERENCES: Preferences = {
   devMode: false,
-  toolApprovalLevel: "none",
+  toolApprovalLevel: "readonly",
   enableNotifications: typeof Notification !== "undefined" ? true : false,
   experimentalAutomations: false,
 };

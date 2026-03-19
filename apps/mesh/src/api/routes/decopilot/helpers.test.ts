@@ -6,8 +6,8 @@ import { describe, expect, test } from "bun:test";
 import { toolNeedsApproval, type ToolApprovalLevel } from "./helpers";
 
 describe("toolNeedsApproval", () => {
-  describe('approval level: "yolo"', () => {
-    const level: ToolApprovalLevel = "yolo";
+  describe('approval level: "auto"', () => {
+    const level: ToolApprovalLevel = "auto";
 
     test("returns false when readOnlyHint is true", () => {
       expect(toolNeedsApproval(level, true)).toBe(false);
@@ -22,19 +22,19 @@ describe("toolNeedsApproval", () => {
     });
   });
 
-  describe('approval level: "none"', () => {
-    const level: ToolApprovalLevel = "none";
+  describe('approval level: "plan"', () => {
+    const level: ToolApprovalLevel = "plan";
 
-    test("returns true when readOnlyHint is true", () => {
-      expect(toolNeedsApproval(level, true)).toBe(true);
+    test("returns false when readOnlyHint is true (read-only allowed)", () => {
+      expect(toolNeedsApproval(level, true)).toBe(false);
     });
 
-    test("returns true when readOnlyHint is false", () => {
-      expect(toolNeedsApproval(level, false)).toBe(true);
+    test('returns "hard-block" when readOnlyHint is false', () => {
+      expect(toolNeedsApproval(level, false)).toBe("hard-block");
     });
 
-    test("returns true when readOnlyHint is undefined", () => {
-      expect(toolNeedsApproval(level, undefined)).toBe(true);
+    test('returns "hard-block" when readOnlyHint is undefined', () => {
+      expect(toolNeedsApproval(level, undefined)).toBe("hard-block");
     });
   });
 

@@ -76,6 +76,7 @@ export function TiptapProvider({
     content: tiptapDoc || "",
     editorProps: {
       attributes: {
+        "data-chat-input": "true",
         class:
           "prose prose-sm max-w-none focus:outline-none w-full h-full text-[15px] p-[18px]",
       },
