@@ -42,11 +42,8 @@ export function createClientPool(): (<T extends Transport>(
     // Check cache for existing promise (single-flight pattern)
     const cachedPromise = clientMap.get(key);
     if (cachedPromise) {
-      console.log(`[ClientPool] Reusing cached client for ${key}`);
       return cachedPromise;
     }
-
-    console.log(`[ClientPool] Creating new client for ${key}`);
 
     // Create the connection promise immediately and store it
     // This ensures concurrent requests for the same key get the same promise
@@ -90,11 +87,7 @@ export function createClientPool(): (<T extends Transport>(
       const closePromises: Promise<void>[] = [];
       for (const [key, clientPromise] of clientMap) {
         closePromises.push(
-          clientPromise
-            .then((client) => client.close())
-            .catch((err) =>
-              console.error(`[ClientPool] Error closing client ${key}:`, err),
-            ),
+          clientPromise.then((client) => client.close()).catch(() => {}),
         );
       }
       await Promise.all(closePromises);
