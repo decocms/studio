@@ -24,6 +24,8 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import type { MeshContext } from "../core/mesh-context";
 import { clientFromConnection } from "./client";
+import { withMcpCaching } from "./decorators/with-mcp-caching";
+import { getMcpListCache } from "./mcp-list-cache";
 import { fallbackOnMethodNotFoundError } from "./utils";
 
 /**
@@ -41,11 +43,9 @@ const DEFAULT_SERVER_CAPABILITIES = {
  * Creates an enhanced MCP Server with custom request handlers from a connection.
  *
  * The server wraps a client connection and adds:
+ * - SWR caching for tool/resource/prompt lists (via withMcpCaching + NATS KV)
  * - Graceful error handling for optional features
  * - Uniform capabilities for consistent client experience
- *
- * Note: MCP caching should be applied via the withMcpCaching decorator
- * before creating the client if caching is desired.
  *
  * @param connection - The connection entity to create a server for
  * @param ctx - Mesh context with storage and organization info
@@ -66,19 +66,24 @@ export async function serverFromConnection(
   ctx: MeshContext,
   superUser: boolean,
 ): Promise<McpServer> {
-  // Create base client with auth + monitoring transports
+  // Create base client with auth + monitoring transports, then wrap with SWR cache
   const baseClient = await clientFromConnection(connection, ctx, superUser);
+  const client = withMcpCaching(
+    baseClient,
+    connection,
+    getMcpListCache() ?? undefined,
+  );
 
   // Create server from client with default capabilities
   const server = createServerFromClient(
-    baseClient,
+    client,
     {
       name: "mcp-mesh-enhanced",
       version: "1.0.0",
     },
     {
       capabilities: DEFAULT_SERVER_CAPABILITIES,
-      instructions: baseClient.getInstructions(),
+      instructions: client.getInstructions(),
     },
   );
 
@@ -86,7 +91,7 @@ export async function serverFromConnection(
   server.server.setRequestHandler(
     ListResourcesRequestSchema,
     async (): Promise<ListResourcesResult> => {
-      return await baseClient
+      return await client
         .listResources()
         .catch(fallbackOnMethodNotFoundError({ resources: [] }));
     },
@@ -96,7 +101,7 @@ export async function serverFromConnection(
   server.server.setRequestHandler(
     ListResourceTemplatesRequestSchema,
     async (): Promise<ListResourceTemplatesResult> => {
-      return await baseClient
+      return await client
         .listResourceTemplates()
         .catch(fallbackOnMethodNotFoundError({ resourceTemplates: [] }));
     },
@@ -106,7 +111,7 @@ export async function serverFromConnection(
   server.server.setRequestHandler(
     ListPromptsRequestSchema,
     async (): Promise<ListPromptsResult> => {
-      return await baseClient
+      return await client
         .listPrompts()
         .catch(fallbackOnMethodNotFoundError({ prompts: [] }));
     },
