@@ -13,7 +13,10 @@ import {
   collectPluginTools,
   filterToolsByEnabledPlugins,
 } from "@/core/plugin-loader";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { Tool as McpTool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import * as ApiKeyTools from "./apiKeys";
 import * as ConnectionTools from "./connection";
@@ -289,3 +292,26 @@ export const managementMCP = async (ctx: MeshContext) => {
 
   return server;
 };
+
+/**
+ * List management MCP tools in-process (no HTTP round-trip).
+ * The self MCP endpoint requires session auth, so hydrating its tool list
+ * via HTTP fails on a cold NATS cache. This bypasses HTTP entirely by
+ * connecting a client to the management server over InMemoryTransport.
+ */
+export async function listManagementTools(
+  ctx: MeshContext,
+): Promise<McpTool[]> {
+  const server = await managementMCP(ctx);
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  const client = new Client({ name: "tools-hydration", version: "1.0.0" });
+  await client.connect(clientTransport);
+  try {
+    const result = await client.listTools();
+    return result.tools;
+  } finally {
+    await client.close().catch(() => {});
+  }
+}

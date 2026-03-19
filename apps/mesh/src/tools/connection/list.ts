@@ -255,21 +255,35 @@ export const COLLECTION_CONNECTIONS_LIST = defineTool({
     });
 
     const cache = getMcpListCache();
+    const selfId = WellKnownOrgMCPId.SELF(organization.id);
     await Promise.all(
       connections.map(async (connection) => {
         if (connection.tools !== null) return;
+        // The self MCP requires session auth, so an HTTP round-trip would
+        // fail without forwarding cookies. Use in-process transport instead.
+        const fetchLive =
+          connection.id === selfId
+            ? async () => {
+                const { listManagementTools } = await import("../../tools");
+                return listManagementTools(ctx) as Promise<unknown[]>;
+              }
+            : async () => {
+                const client = await clientFromConnection(
+                  connection,
+                  ctx,
+                  true,
+                );
+                try {
+                  const result = await client.listTools();
+                  return result.tools;
+                } finally {
+                  await client.close().catch(() => {});
+                }
+              };
         const tools = await hydrateList(
           "tools",
           connection.id,
-          async () => {
-            const client = await clientFromConnection(connection, ctx, true);
-            try {
-              const result = await client.listTools();
-              return result.tools;
-            } finally {
-              await client.close().catch(() => {});
-            }
-          },
+          fetchLive,
           cache,
         );
         if (tools !== null) {
