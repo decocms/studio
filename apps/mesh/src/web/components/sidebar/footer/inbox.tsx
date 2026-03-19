@@ -185,7 +185,7 @@ function CreditChip() {
   return (
     <button
       type="button"
-      onClick={() => open("org.billing")}
+      onClick={() => open("org.ai-providers")}
       className="group-data-[collapsible=icon]:hidden flex items-center justify-between w-full px-2 py-1.5 rounded-md hover:bg-sidebar-accent transition-colors"
     >
       <div className="flex items-center gap-1.5">
