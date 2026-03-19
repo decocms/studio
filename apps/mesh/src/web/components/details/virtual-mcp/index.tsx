@@ -81,7 +81,6 @@ function dialogReducer(state: DialogState, action: DialogAction): DialogState {
     case "SET_EDITING_CONNECTION_ID":
       return { ...state, editingConnectionId: action.payload };
     case "SET_SKILLS_OPEN":
-      localStorage.setItem("agent-connections-open", String(action.payload));
       return { ...state, skillsOpen: action.payload };
     default:
       return state;
@@ -362,9 +361,10 @@ function VirtualMcpDetailViewWithData({
           {/* Skills section - Collapsible */}
           <Collapsible
             open={dialogState.skillsOpen}
-            onOpenChange={(open) =>
-              dispatch({ type: "SET_SKILLS_OPEN", payload: open })
-            }
+            onOpenChange={(open) => {
+              localStorage.setItem("agent-connections-open", String(open));
+              dispatch({ type: "SET_SKILLS_OPEN", payload: open });
+            }}
             className="border-t border-border shrink-0 max-h-[400px] overflow-hidden flex flex-col"
           >
             {connections.length === 0 ? (
