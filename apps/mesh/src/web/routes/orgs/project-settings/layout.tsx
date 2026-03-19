@@ -17,6 +17,10 @@ import {
   BreadcrumbSeparator,
 } from "@deco/ui/components/breadcrumb.tsx";
 import { ProjectSettingsSidebar } from "./settings-sidebar";
+import {
+  SettingsFooterProvider,
+  SettingsFooterMount,
+} from "@/web/components/settings/settings-footer-context";
 
 function ContentSkeleton() {
   return (
@@ -130,11 +134,16 @@ function ProjectSettingsContent() {
         </Page.Header>
         <Page.Content className="flex">
           <ProjectSettingsSidebar />
-          <div className="flex-1 overflow-y-auto p-8">
-            <Suspense fallback={<ContentSkeleton />}>
-              <Outlet />
-            </Suspense>
-          </div>
+          <SettingsFooterProvider>
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-8">
+                <Suspense fallback={<ContentSkeleton />}>
+                  <Outlet />
+                </Suspense>
+              </div>
+              <SettingsFooterMount />
+            </div>
+          </SettingsFooterProvider>
         </Page.Content>
       </Page>
     </ProjectContextProvider>

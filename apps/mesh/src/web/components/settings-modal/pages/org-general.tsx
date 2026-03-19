@@ -1,4 +1,5 @@
 import { OrganizationForm } from "@/web/components/settings/organization-form";
+import { OrgDangerZone } from "@/web/components/settings/org-danger-zone";
 
 export function OrgGeneralPage() {
   return (
@@ -9,6 +10,7 @@ export function OrgGeneralPage() {
         </h2>
       </div>
       <OrganizationForm />
+      <OrgDangerZone />
     </div>
   );
 }

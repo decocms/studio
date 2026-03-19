@@ -17,6 +17,10 @@ import {
 } from "@decocms/mesh-sdk";
 import { useProject } from "@/web/hooks/use-project";
 import { SettingsSidebar } from "./sidebar";
+import {
+  SettingsFooterProvider,
+  SettingsFooterMount,
+} from "@/web/components/settings/settings-footer-context";
 import { AccountProfilePage } from "./pages/account-profile";
 import { AccountPreferencesPage } from "./pages/account-preferences";
 import { OrgGeneralPage } from "./pages/org-general";
@@ -109,22 +113,27 @@ export function SettingsModal() {
           </Suspense>
 
           {/* Right content */}
-          <div className="flex-1 min-w-0 overflow-y-auto relative flex flex-col overflow-hidden">
-            <button
-              type="button"
-              onClick={close}
-              className="absolute top-4 right-4 z-10 rounded-md p-1 opacity-70 hover:opacity-100 transition-opacity focus:outline-none focus:ring-2 focus:ring-ring"
-            >
-              <X size={16} />
-              <span className="sr-only">Close</span>
-            </button>
+          <SettingsFooterProvider>
+            <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+              <div className="flex-1 overflow-y-auto relative">
+                <button
+                  type="button"
+                  onClick={close}
+                  className="absolute top-4 right-4 z-10 rounded-md p-1 opacity-70 hover:opacity-100 transition-opacity focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <X size={16} />
+                  <span className="sr-only">Close</span>
+                </button>
 
-            <div className="p-8">
-              <Suspense fallback={<ContentSkeleton />}>
-                <SettingsContent section={activeSection} />
-              </Suspense>
+                <div className="p-8">
+                  <Suspense fallback={<ContentSkeleton />}>
+                    <SettingsContent section={activeSection} />
+                  </Suspense>
+                </div>
+              </div>
+              <SettingsFooterMount />
             </div>
-          </div>
+          </SettingsFooterProvider>
         </div>
       </DialogContent>
     </Dialog>

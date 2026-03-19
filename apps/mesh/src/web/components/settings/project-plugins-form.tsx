@@ -1,4 +1,6 @@
 import { useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { useSettingsFooterEl } from "@/web/components/settings/settings-footer-context";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useProjectContext,
@@ -203,6 +205,7 @@ export function ProjectPluginsForm() {
   const { org, project } = useProjectContext();
   const queryClient = useQueryClient();
 
+  const footerEl = useSettingsFooterEl();
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
@@ -420,22 +423,27 @@ export function ProjectPluginsForm() {
         })}
       </div>
 
-      <div className="flex items-center gap-3 pt-4">
-        <Button
-          variant="outline"
-          onClick={handleCancel}
-          disabled={!hasChanges || isSaving}
-        >
-          Cancel
-        </Button>
-        <Button
-          onClick={handleSave}
-          disabled={!hasChanges || isSaving}
-          className="min-w-24"
-        >
-          {isSaving ? "Saving..." : "Save Changes"}
-        </Button>
-      </div>
+      {footerEl &&
+        hasChanges &&
+        createPortal(
+          <div className="border-t border-border bg-background px-8 py-4 flex items-center justify-end gap-3">
+            <Button
+              variant="outline"
+              onClick={handleCancel}
+              disabled={isSaving}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={isSaving}
+              className="min-w-24"
+            >
+              {isSaving ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>,
+          footerEl,
+        )}
     </div>
   );
 }
