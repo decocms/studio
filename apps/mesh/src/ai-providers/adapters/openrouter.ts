@@ -72,7 +72,11 @@ export const openrouterAdapter: ProviderAdapter = {
             logo: null,
             capabilities: [
               ...new Set([
-                ...m.architecture.input_modalities,
+                // OpenRouter uses "image" in input_modalities to mean vision (can see images).
+                // Map it to "vision" so we distinguish from "image" (image generation output).
+                ...m.architecture.input_modalities.map((mod) =>
+                  mod === "image" ? "vision" : mod,
+                ),
                 ...m.architecture.output_modalities,
                 ...(m.supported_parameters?.includes("tools")
                   ? (["tools"] as const)

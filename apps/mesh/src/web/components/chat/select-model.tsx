@@ -30,6 +30,7 @@ import {
   ChevronDown,
   ChevronSelectorVertical,
   Image01,
+  ImagePlus,
   Key01,
   RefreshCcw01,
   SearchMd,
@@ -293,6 +294,7 @@ function getCostLevel(inputPerM: number): { level: number; label: string } {
 const CAPABILITY_CONFIGS: Record<string, { icon: ReactNode; label: string }> = {
   text: { icon: <AlignLeft className="size-3.5" />, label: "Text" },
   vision: { icon: <Image01 className="size-3.5" />, label: "Vision" },
+  image: { icon: <ImagePlus className="size-3.5" />, label: "Image" },
   tools: { icon: <Tool01 className="size-3.5" />, label: "Tools" },
   reasoning: { icon: <Stars01 className="size-3.5" />, label: "Reasoning" },
   "web-search": {
