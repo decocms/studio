@@ -151,9 +151,17 @@ export async function processConversation(
     messages: nonSystemModelMessages,
   } = splitMessages(modelMessages);
 
+  // Strip reasoning from all previous assistant messages.
+  // Reasoning parts carry provider-specific metadata (e.g. OpenRouter
+  // reasoning_details with cryptographic signatures). When OpenRouter
+  // load-balances across backends (Anthropic direct, Azure, GCP), the
+  // signatures from one backend are invalid on another, causing
+  // "Invalid signature in thinking block" errors on subsequent turns.
+  // Pruning reasoning from prior turns prevents sending stale signatures
+  // while the current turn generates fresh thinking blocks.
   const prunedModelMessages = pruneMessages({
     messages: nonSystemModelMessages,
-    reasoning: "none",
+    reasoning: "all",
     emptyMessages: "remove",
     toolCalls: "none",
   });
