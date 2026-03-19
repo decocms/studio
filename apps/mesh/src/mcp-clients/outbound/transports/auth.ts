@@ -2,7 +2,8 @@
  * Authorization Transport
  *
  * Intercepts tool calls to check permissions before forwarding to downstream.
- * Uses cached connection.tools metadata for public tool checks.
+ * Uses NATS KV cached tools metadata for public tool checks,
+ * falling back to a live tools/list request on cache miss.
  */
 
 import type { MeshContext } from "@/core/mesh-context";
@@ -37,11 +38,66 @@ export class AuthTransport extends WrapperTransport {
     super(innerTransport);
   }
 
+  private toolsListPromise: Promise<unknown[] | null> | null = null;
+
+  /**
+   * Fetch tools by sending a tools/list JSON-RPC request through the inner transport.
+   * Single-flighted: concurrent callers share the same in-flight request.
+   */
+  private fetchToolsFromServer(): Promise<unknown[] | null> {
+    if (!this.toolsListPromise) {
+      this.toolsListPromise = new Promise<unknown[] | null>((resolve) => {
+        const requestId = `auth-tools-${Date.now()}`;
+        const prev = this.innerTransport.onmessage;
+
+        this.innerTransport.onmessage = (message: JSONRPCMessage) => {
+          if (
+            "id" in message &&
+            message.id === requestId &&
+            "result" in message
+          ) {
+            this.innerTransport.onmessage = prev;
+            this.toolsListPromise = null;
+            const tools =
+              (message.result as { tools?: unknown[] })?.tools ?? null;
+            resolve(tools);
+          } else {
+            prev?.(message);
+          }
+        };
+
+        this.innerTransport
+          .send({
+            jsonrpc: "2.0",
+            id: requestId,
+            method: "tools/list",
+            params: {},
+          } as JSONRPCMessage)
+          .catch(() => {
+            this.innerTransport.onmessage = prev;
+            this.toolsListPromise = null;
+            resolve(null);
+          });
+      });
+    }
+    return this.toolsListPromise;
+  }
+
   private async ensureToolsMap(): Promise<Map<string, any>> {
     const cache = this.options.cache ?? getMcpListCache();
-    const tools =
-      (cache ? await cache.get("tools", this.options.connection.id) : null) ??
-      this.options.connection.tools;
+
+    // Try NATS KV cache first
+    let tools: unknown[] | null = cache
+      ? await cache.get("tools", this.options.connection.id)
+      : null;
+
+    // Cache miss: fetch live from the downstream MCP server
+    if (!tools) {
+      tools = await this.fetchToolsFromServer();
+      if (tools && cache) {
+        cache.set("tools", this.options.connection.id, tools).catch(() => {});
+      }
+    }
 
     if (!tools) {
       return new Map();
