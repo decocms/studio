@@ -1,4 +1,5 @@
 import { authClient } from "@/web/lib/auth-client";
+import { setCurrentOrgId } from "@/web/lib/org-store";
 import { useNavigate } from "@tanstack/react-router";
 import { EntityCard } from "@deco/ui/components/entity-card.tsx";
 import { EntityGrid } from "@deco/ui/components/entity-grid.tsx";
@@ -40,10 +41,15 @@ function InvitationCard({ invitation }: { invitation: Invitation }) {
         toast.error(result.error.message);
         setIsAccepting(false);
       } else {
-        // Set the new org as active to update session
+        // Set the new org as active to update session and get org data.
         const setActiveResult = await authClient.organization.setActive({
           organizationId: invitation.organizationId,
         });
+
+        // Keep the per-tab org store in sync with the explicit switch.
+        if (setActiveResult?.data?.id) {
+          setCurrentOrgId(setActiveResult.data.id);
+        }
 
         if (setActiveResult?.data?.slug) {
           toast.success("Invitation accepted!");

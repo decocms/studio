@@ -12,6 +12,7 @@ import { useLocalStorage } from "@/web/hooks/use-local-storage";
 import RequiredAuthLayout from "@/web/layouts/required-auth-layout";
 import { authClient } from "@/web/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
+import { setCurrentOrgId } from "@/web/lib/org-store";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -195,8 +196,11 @@ function ShellLayoutContent() {
         return null;
       }
 
-      const { data } = await authClient.organization.setActive({
-        organizationSlug: org,
+      // Pure read — does not mutate the shared session's activeOrganizationId.
+      // This is the key fix for multi-tab org isolation: previously setActive()
+      // would overwrite the session for every other open tab.
+      const { data } = await authClient.organization.getFullOrganization({
+        query: { organizationSlug: org },
       });
 
       // Persist for fast redirect on next login (read by homeRoute beforeLoad)
@@ -217,6 +221,12 @@ function ShellLayoutContent() {
     gcTime: Infinity,
     refetchOnWindowFocus: false,
   });
+
+  // Sync the per-tab org store on every render so the auth client injects the
+  // correct organizationId on all outbound Better Auth calls from this tab.
+  // This must live outside queryFn because cache hits (staleTime: Infinity)
+  // skip the fetch function, which would leave the store stale after org switches.
+  setCurrentOrgId(projectContext?.org?.id ?? null);
 
   if (!projectContext) {
     return (
