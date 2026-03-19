@@ -22,7 +22,13 @@ import { isStdioParameters } from "./schema";
 export interface ConnectionForToolFetch {
   id: string;
   title: string;
-  connection_type: "HTTP" | "SSE" | "Websocket" | "STDIO" | "VIRTUAL";
+  connection_type:
+    | "HTTP"
+    | "SSE"
+    | "Websocket"
+    | "STDIO"
+    | "VIRTUAL"
+    | "GITHUB";
   connection_url?: string | null;
   connection_token?: string | null;
   connection_headers?: ConnectionParameters | null;
@@ -58,6 +64,9 @@ export async function fetchToolsFromMCP(
     case "VIRTUAL":
       // VIRTUAL connections aggregate tools from their underlying Virtual MCP
       // Tools are fetched dynamically at runtime, not cached at creation time
+      return null;
+    case "GITHUB":
+      // GITHUB connections are context repos — tools are provided by CORE_TOOLS, not the connection itself
       return null;
     default:
       return null;

@@ -158,7 +158,13 @@ export interface MCPConnectionTable {
   app_id: string | null;
 
   // Connection details
-  connection_type: "HTTP" | "SSE" | "Websocket" | "STDIO" | "VIRTUAL";
+  connection_type:
+    | "HTTP"
+    | "SSE"
+    | "Websocket"
+    | "STDIO"
+    | "VIRTUAL"
+    | "GITHUB";
   connection_url: string | null; // Null for STDIO, virtual://$id for VIRTUAL
   connection_token: string | null; // Encrypted
   connection_headers: string | null; // JSON - encrypted envVars for STDIO
@@ -1042,4 +1048,5 @@ export interface Database {
   // Automations tables
   automations: AutomationTable;
   automation_triggers: AutomationTriggerTable;
+
 }

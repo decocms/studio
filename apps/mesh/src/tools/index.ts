@@ -32,6 +32,7 @@ import * as ThreadTools from "./thread";
 import * as AutomationTools from "./automations";
 import * as UserTools from "./user";
 import * as AiProvidersTools from "./ai-providers";
+import * as ContextRepoTools from "./context-repo";
 import { getPrompts, getResources } from "./guides";
 import { ToolName } from "./registry";
 // Core tools - always available
@@ -146,6 +147,18 @@ const CORE_TOOLS = [
   AiProvidersTools.AI_PROVIDER_OAUTH_EXCHANGE,
   AiProvidersTools.AI_PROVIDER_TOPUP_URL,
   AiProvidersTools.AI_PROVIDER_CREDITS,
+
+  // Context repo tools
+  ContextRepoTools.CONTEXT_REPO_SETUP,
+  ContextRepoTools.CONTEXT_REPO_SYNC,
+  ContextRepoTools.CONTEXT_REPO_SEARCH,
+  ContextRepoTools.CONTEXT_REPO_READ,
+  ContextRepoTools.CONTEXT_REPO_LIST_SKILLS,
+  ContextRepoTools.CONTEXT_ISSUE_CREATE,
+  ContextRepoTools.CONTEXT_ISSUE_LIST,
+  ContextRepoTools.CONTEXT_ISSUE_GET,
+  ContextRepoTools.CONTEXT_ISSUE_COMMENT,
+  ContextRepoTools.CONTEXT_AGENT_SAVE,
 ] as const satisfies { name: ToolName }[];
 
 // Plugin tools - collected at startup, gated by org settings at runtime
