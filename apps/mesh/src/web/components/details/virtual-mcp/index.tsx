@@ -81,6 +81,7 @@ function dialogReducer(state: DialogState, action: DialogAction): DialogState {
     case "SET_EDITING_CONNECTION_ID":
       return { ...state, editingConnectionId: action.payload };
     case "SET_SKILLS_OPEN":
+      localStorage.setItem("agent-connections-open", String(action.payload));
       return { ...state, skillsOpen: action.payload };
     default:
       return state;
@@ -204,7 +205,7 @@ function VirtualMcpDetailViewWithData({
     shareDialogOpen: false,
     connectionDialogOpen: false,
     editingConnectionId: null,
-    skillsOpen: false,
+    skillsOpen: localStorage.getItem("agent-connections-open") === "true",
   });
 
   // Auto-open chat with this agent selected
