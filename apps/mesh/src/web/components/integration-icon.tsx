@@ -1,6 +1,7 @@
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Container } from "@untitledui/icons";
 import { useState, type ReactNode } from "react";
+import { AgentAvatar, type AgentAvatarSize } from "./agent-icon";
 
 interface IntegrationIconProps {
   icon: string | null | undefined;
@@ -39,6 +40,16 @@ const ICON_SIZES: Record<Size, number> = {
   xl: 28,
 };
 
+/** Map IntegrationIcon size to AgentAvatar size */
+const AGENT_SIZE_MAP: Record<Size, AgentAvatarSize> = {
+  "2xs": "xs",
+  xs: "xs",
+  sm: "sm",
+  md: "md",
+  lg: "lg",
+  xl: "lg",
+};
+
 export function IntegrationIcon({
   icon,
   name,
@@ -46,6 +57,18 @@ export function IntegrationIcon({
   className,
   fallbackIcon,
 }: IntegrationIconProps) {
+  // Delegate icon:// URLs to AgentAvatar for colored-icon rendering
+  if (icon?.startsWith("icon://")) {
+    return (
+      <AgentAvatar
+        icon={icon}
+        name={name}
+        size={AGENT_SIZE_MAP[size]}
+        className={className}
+      />
+    );
+  }
+
   // Key the stateful subtree by `icon` so load state resets whenever the icon URL changes,
   // without needing effects.
   return (

@@ -38,7 +38,6 @@ import {
   Plus,
   ZapCircle,
   Tool01,
-  Users03,
 } from "@untitledui/icons";
 import {
   Breadcrumb,
@@ -329,7 +328,6 @@ function VirtualMcpDetailViewWithData({
                     name={form.watch("title") || "Agent"}
                     size="lg"
                     className="shrink-0 shadow-sm"
-                    fallbackIcon={<Users03 />}
                   />
                 )}
               />

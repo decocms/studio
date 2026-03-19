@@ -1,4 +1,4 @@
-import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
+import { AgentAvatar } from "@/web/components/agent-icon";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import {
@@ -53,13 +53,7 @@ function VirtualMCPItemContent({
       )}
     >
       {/* Icon */}
-      <IntegrationIcon
-        icon={virtualMcp.icon}
-        name={virtualMcp.title}
-        size="sm"
-        fallbackIcon={virtualMcp.fallbackIcon ?? <Users03 />}
-        className="rounded-xl border border-border shadow-sm shrink-0 aspect-square"
-      />
+      <AgentAvatar icon={virtualMcp.icon} name={virtualMcp.title} size="sm" />
 
       {/* Text Content */}
       <div className="flex flex-col flex-1 min-w-0 gap-0.5">
@@ -274,7 +268,7 @@ export function VirtualMCPSelector({
                 type="button"
                 disabled={disabled}
                 className={cn(
-                  "relative flex items-center justify-center size-8 rounded-md text-muted-foreground/75 transition-colors shrink-0",
+                  "relative flex items-center justify-center size-8 rounded-lg text-muted-foreground/75 transition-colors shrink-0",
                   disabled
                     ? "cursor-not-allowed opacity-50"
                     : "cursor-pointer hover:text-muted-foreground",
@@ -283,12 +277,11 @@ export function VirtualMCPSelector({
                 aria-label={placeholder}
               >
                 {selectedVirtualMcp ? (
-                  <IntegrationIcon
+                  <AgentAvatar
                     icon={selectedVirtualMcp.icon}
                     name={selectedVirtualMcp.title}
                     size="sm"
-                    fallbackIcon={<Users03 size={16} />}
-                    className="rounded-md shrink-0 absolute inset-0 size-full"
+                    className="absolute inset-0 size-full"
                   />
                 ) : (
                   <>
@@ -319,7 +312,7 @@ export function VirtualMCPSelector({
                         y="0.5"
                         width="31"
                         height="31"
-                        rx="5.5"
+                        rx="7.5"
                         stroke="url(#agent-border-gradient)"
                         strokeWidth="1"
                         strokeDasharray="3 3"

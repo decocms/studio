@@ -80,7 +80,7 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
         created_by: userId,
         title: data.title,
         description: data.description ?? null,
-        icon: data.icon ?? null, // icon should always be provided by the caller (either custom or default capybara)
+        icon: data.icon ?? null,
         app_name: null,
         app_id: null,
         connection_type: "VIRTUAL",

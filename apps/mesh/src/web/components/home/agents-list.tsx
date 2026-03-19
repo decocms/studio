@@ -57,9 +57,8 @@ function AgentPreview({
       <IntegrationIcon
         icon={agent.icon}
         name={agent.title}
-        size="sm"
-        fallbackIcon={<Users03 size={16} />}
-        className="sm:h-12 sm:w-12 sm:min-w-[3rem]"
+        size="md"
+        fallbackIcon={<Users03 size={24} />}
       />
       <p className="text-xs sm:text-sm text-foreground text-center leading-tight line-clamp-2">
         {agent.title}
@@ -112,7 +111,7 @@ function SeeAllButton({
           )}
           aria-label="See all agents"
         >
-          <div className="h-9 w-9 sm:size-12 rounded-lg bg-accent flex items-center justify-center shrink-0">
+          <div className="size-12 rounded-xl bg-accent flex items-center justify-center shrink-0">
             <ChevronRight size={20} className="text-foreground" />
           </div>
           <p className="text-xs sm:text-sm text-foreground text-center leading-tight">
@@ -193,7 +192,7 @@ function AgentsListSkeleton() {
             key={i}
             className="flex flex-col items-center gap-1.5 sm:gap-3 p-1.5 sm:p-2 self-stretch"
           >
-            <Skeleton className="h-9 w-9 sm:size-12 rounded-md shrink-0" />
+            <Skeleton className="size-12 rounded-xl shrink-0" />
             <Skeleton className="h-3 sm:h-4 w-full" />
           </div>
         ))}

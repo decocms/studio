@@ -11,7 +11,7 @@ import { ConnectionCard } from "@/web/components/connections/connection-card.tsx
 import { ConnectionStatus } from "@/web/components/connections/connection-status.tsx";
 import { EmptyState } from "@/web/components/empty-state.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary";
-import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
+import { AgentAvatar } from "@/web/components/agent-icon";
 import { useListState } from "@/web/hooks/use-list-state";
 import { useCreateVirtualMCP } from "@/web/hooks/use-create-virtual-mcp";
 import {
@@ -291,12 +291,11 @@ function AgentGroupCard({
           >
             <SheetHeader className="px-6 pt-6 pb-4 border-b border-border shrink-0">
               <div className="flex items-center gap-3">
-                <IntegrationIcon
+                <AgentAvatar
                   icon={group.icon}
                   name={group.title}
                   size="md"
-                  className="shrink-0 shadow-sm"
-                  fallbackIcon={<Users03 />}
+                  className="shrink-0"
                 />
                 <div>
                   <SheetTitle>
@@ -324,12 +323,11 @@ function AgentGroupCard({
                     onNavigate(a.id);
                   }}
                 >
-                  <IntegrationIcon
+                  <AgentAvatar
                     icon={a.icon}
                     name={a.title}
                     size="sm"
                     className="shrink-0"
-                    fallbackIcon={<Users03 />}
                   />
                   <div className="flex-1 min-w-0 flex items-center gap-2">
                     <span className="text-sm font-medium text-foreground truncate">
@@ -389,12 +387,11 @@ function AgentGroupCard({
           <DialogContent className="sm:max-w-lg p-0 gap-0">
             <DialogHeader className="px-6 pt-6 pb-4">
               <div className="flex items-center gap-3">
-                <IntegrationIcon
+                <AgentAvatar
                   icon={group.icon}
                   name={group.title}
                   size="md"
-                  className="shrink-0 shadow-sm"
-                  fallbackIcon={<Users03 />}
+                  className="shrink-0"
                 />
                 <div>
                   <DialogTitle>
@@ -422,12 +419,11 @@ function AgentGroupCard({
                     onNavigate(a.id);
                   }}
                 >
-                  <IntegrationIcon
+                  <AgentAvatar
                     icon={a.icon}
                     name={a.title}
                     size="sm"
                     className="shrink-0"
-                    fallbackIcon={<Users03 />}
                   />
                   <div className="flex-1 min-w-0 flex items-center gap-2">
                     <span className="text-sm font-medium text-foreground truncate">
@@ -730,12 +726,10 @@ function GroupedAgentTable({
                       return (
                         <TableCell key={col.id} className={base}>
                           <div className="flex items-center gap-2 min-w-0">
-                            <IntegrationIcon
+                            <AgentAvatar
                               icon={group.icon}
                               name={group.title}
                               size="sm"
-                              className="shrink-0 shadow-sm"
-                              fallbackIcon={<Users03 size={16} />}
                             />
                             <span className="text-sm font-medium text-foreground truncate">
                               {group.title}
@@ -952,12 +946,10 @@ function OrgAgentsContent() {
       header: "Name",
       render: (virtualMcp) => (
         <div className="flex items-center gap-2 min-w-0">
-          <IntegrationIcon
+          <AgentAvatar
             icon={virtualMcp.icon}
             name={virtualMcp.title}
             size="sm"
-            className="shrink-0 shadow-sm"
-            fallbackIcon={<Users03 size={16} />}
           />
           <span className="text-sm font-medium text-foreground truncate">
             {virtualMcp.title}

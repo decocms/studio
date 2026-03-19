@@ -11,7 +11,7 @@ import { TasksPanel } from "@/web/components/chat/tasks-panel";
 import { EditableTaskTitle } from "@/web/components/chat/editable-task-title";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { AgentsList } from "@/web/components/home/agents-list.tsx";
-import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
+import { AgentAvatar } from "@/web/components/agent-icon";
 import { Page } from "@/web/components/page";
 import { authClient } from "@/web/lib/auth-client";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -32,7 +32,6 @@ import {
   LayoutRight,
   MessageChatSquare,
   Plus,
-  Users03,
 } from "@untitledui/icons";
 import { Suspense, useState } from "react";
 
@@ -145,12 +144,14 @@ function HomeChatContent({
           <div className="flex-1 flex flex-col items-center justify-center px-4">
             <div className="flex flex-col items-center w-full max-w-[600px]">
               <div className="flex justify-center mb-4">
-                <IntegrationIcon
+                <AgentAvatar
                   icon={displayAgent.icon}
                   name={displayAgent.title}
                   size="md"
-                  fallbackIcon={<Users03 size={20} />}
-                  className="size-12 rounded-xl border border-stone-200/60 shadow-sm aspect-square transition-opacity duration-200"
+                  className={cn(
+                    "transition-opacity duration-200",
+                    !selectedVirtualMcp && "invisible",
+                  )}
                 />
               </div>
               <div className="text-center">
@@ -177,12 +178,14 @@ function HomeChatContent({
         <div className="flex-1 flex flex-col items-center justify-center px-10">
           <div className="flex flex-col items-center w-full max-w-[600px]">
             <div className="flex justify-center mb-4">
-              <IntegrationIcon
+              <AgentAvatar
                 icon={displayAgent.icon}
                 name={displayAgent.title}
                 size="md"
-                fallbackIcon={<Users03 size={20} />}
-                className="size-12 rounded-xl border border-stone-200/60 shadow-sm aspect-square transition-opacity duration-200"
+                className={cn(
+                  "transition-opacity duration-200",
+                  !selectedVirtualMcp && "invisible",
+                )}
               />
             </div>
             <div className="text-center mb-6">

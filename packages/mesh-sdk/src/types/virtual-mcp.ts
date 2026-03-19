@@ -112,6 +112,7 @@ export const VirtualMCPCreateDataSchema = z.object({
         .optional()
         .describe("MCP server instructions"),
     })
+    .loose()
     .nullable()
     .optional()
     .describe("Additional metadata including MCP server instructions"),
@@ -144,6 +145,7 @@ export const VirtualMCPUpdateDataSchema = z.object({
         .optional()
         .describe("MCP server instructions"),
     })
+    .loose()
     .nullable()
     .optional()
     .describe("Additional metadata including MCP server instructions"),
