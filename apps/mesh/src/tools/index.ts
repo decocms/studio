@@ -55,6 +55,9 @@ const CORE_TOOLS = [
   ConnectionTools.COLLECTION_CONNECTIONS_UPDATE,
   ConnectionTools.COLLECTION_CONNECTIONS_DELETE,
   ConnectionTools.CONNECTION_TEST,
+  ConnectionTools.CONNECTION_INSTALL,
+  ConnectionTools.CONNECTION_AUTHENTICATE,
+  ConnectionTools.CONNECTION_AUTH_STATUS,
 
   // Virtual MCP collection tools
   VirtualMCPTools.COLLECTION_VIRTUAL_MCP_CREATE,

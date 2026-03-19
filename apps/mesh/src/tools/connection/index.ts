@@ -14,4 +14,11 @@ export { COLLECTION_CONNECTIONS_DELETE } from "./delete";
 // Connection test tool
 export { CONNECTION_TEST } from "./test";
 
+// Connection install and auth tools
+export { CONNECTION_INSTALL } from "./install";
+export {
+  CONNECTION_AUTHENTICATE,
+  CONNECTION_AUTH_STATUS,
+} from "./authenticate";
+
 // Utility exports
