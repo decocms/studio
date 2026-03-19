@@ -269,9 +269,9 @@ describe("ConnectionStorage", () => {
         metadata: { key: "value" },
       });
 
-      // Update with tools and bindings
+      // Tools are cached outside the connections table; bindings still round-trip
+      // through storage as JSON.
       const updated = await storage.update(connection.id, {
-        tools: [{ name: "TEST_TOOL", inputSchema: {} }],
         bindings: ["CHAT"],
       });
 
@@ -279,7 +279,7 @@ describe("ConnectionStorage", () => {
         headers: { "X-Test": "value" },
       });
       expect(updated.metadata).toEqual({ key: "value" });
-      expect(updated.tools).toEqual([{ name: "TEST_TOOL", inputSchema: {} }]);
+      expect(updated.tools).toBeNull();
       expect(updated.bindings).toEqual(["CHAT"]);
     });
   });
