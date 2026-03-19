@@ -122,22 +122,9 @@ export async function loadAndMergeMessages(
   requestMessage: ChatMessage,
   systemMessages: ChatMessage[],
   windowSize: number,
-  options?: { contextStartMessageId?: string | null },
 ): Promise<ChatMessage[]> {
   const threadMessages = await loadMemory(memory, windowSize);
-
-  // Context truncation for plan mode: start from the anchor message
-  let effectiveMessages = threadMessages;
-  if (options?.contextStartMessageId) {
-    const anchorIndex = threadMessages.findIndex(
-      (m) => m.id === options.contextStartMessageId,
-    );
-    if (anchorIndex >= 0) {
-      effectiveMessages = threadMessages.slice(anchorIndex);
-    }
-  }
-
-  const conversation = mergeMessages(effectiveMessages, requestMessage);
+  const conversation = mergeMessages(threadMessages, requestMessage);
   const allMessages: ChatMessage[] = [...systemMessages, ...conversation];
   return allMessages;
 }

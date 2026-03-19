@@ -33,8 +33,8 @@ export type ProposePlanOutput = z.infer<typeof ProposePlanOutputSchema>;
 
 const description =
   "Propose an implementation plan for user review. Include all discoveries, context, and steps needed — " +
-  "this becomes the sole context for execution. After approval, the conversation history before this plan " +
-  "will be truncated, so anything not included in the plan will be lost.\n\n" +
+  "this becomes the sole context for execution. After approval, a new thread will be created with this plan " +
+  "as the starting context, so anything not included in the plan will be lost.\n\n" +
   "Guidelines:\n" +
   "- Include file paths, function names, and specific code locations discovered during exploration.\n" +
   "- List concrete implementation steps in order.\n" +

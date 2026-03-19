@@ -77,19 +77,8 @@ export function MessagePair({ pair, isLastPair, status }: MessagePairProps) {
     }
   };
 
-  // Check if this pair was generated in plan mode
-  const isPlanMode =
-    pair.user.metadata?.toolApprovalLevel === "plan" ||
-    pair.assistant?.metadata?.toolApprovalLevel === "plan";
-
   return (
-    <div
-      ref={handlePairRef}
-      className={cn(
-        "flex flex-col pb-2 sm:pb-2",
-        isPlanMode && "border-l-2 border-purple-500/60 pl-2",
-      )}
-    >
+    <div ref={handlePairRef} className={cn("flex flex-col pb-2 sm:pb-2")}>
       {/* Sticky overlay to prevent scrolling content from appearing above the user message */}
       <div className="sticky top-0 z-50 w-full h-4 bg-background" />
       <div className="sticky mb-8 sm:mb-6 top-4 z-50">

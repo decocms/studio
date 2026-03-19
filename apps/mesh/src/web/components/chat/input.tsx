@@ -406,6 +406,7 @@ export function ChatInput({
   const tiptapRef = useRef<TiptapInputHandle | null>(null);
 
   const [preferences, setPreferences] = usePreferences();
+  const isPlanMode = preferences.toolApprovalLevel === "plan";
 
   // Focus chat input on Cmd+L, toggle plan mode on Cmd+Shift+L
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
@@ -562,7 +563,10 @@ export function ChatInput({
             <form
               onSubmit={handleSubmit}
               className={cn(
-                "w-full relative rounded-xl min-h-[110px] md:min-h-[130px] flex flex-col border border-border bg-background shadow-sm",
+                "w-full relative rounded-xl min-h-[110px] md:min-h-[130px] flex flex-col border bg-background shadow-sm",
+                isPlanMode
+                  ? "border-dashed border-purple-500"
+                  : "border-border",
               )}
               style={{
                 boxShadow:

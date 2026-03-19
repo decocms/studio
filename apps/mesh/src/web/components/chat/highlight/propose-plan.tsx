@@ -22,16 +22,17 @@ export interface PendingPlan {
 
 interface ProposePlanPromptProps {
   plan: PendingPlan;
-  onRespond: (toolCallId: string, approved: boolean) => void;
+  onApprove: (planText: string) => void;
+  onDismiss: () => void;
 }
 
-function ProposePlanPrompt({ plan, onRespond }: ProposePlanPromptProps) {
+function ProposePlanPrompt({
+  plan,
+  onApprove,
+  onDismiss,
+}: ProposePlanPromptProps) {
   const handleApprove = () => {
-    onRespond(plan.toolCallId, true);
-  };
-
-  const handleReject = () => {
-    onRespond(plan.toolCallId, false);
+    onApprove(plan.plan);
   };
 
   const footerRight = (
@@ -41,7 +42,7 @@ function ProposePlanPrompt({ plan, onRespond }: ProposePlanPromptProps) {
         variant="ghost"
         size="sm"
         className="h-7 px-2.5 text-xs text-muted-foreground [@media(hover:hover)]:hover:text-foreground active:scale-[0.97] transition-transform"
-        onClick={handleReject}
+        onClick={onDismiss}
       >
         Keep iterating
       </Button>
@@ -57,7 +58,11 @@ function ProposePlanPrompt({ plan, onRespond }: ProposePlanPromptProps) {
   );
 
   return (
-    <HighlightCard title="Implementation Plan" footerRight={footerRight}>
+    <HighlightCard
+      title="Implementation Plan"
+      footerRight={footerRight}
+      className="border-dashed border-purple-500"
+    >
       <div className="px-4 max-h-64 overflow-y-auto">
         <div className="prose prose-sm max-w-none text-sm">
           <MessageTextPart
@@ -92,11 +97,13 @@ function ProposePlanLoadingUI() {
 export function ProposePlanHighlight({
   plans,
   isStreaming,
-  onRespond,
+  onApprove,
+  onDismiss,
 }: {
   plans: PendingPlan[];
   isStreaming: boolean;
-  onRespond: (toolCallId: string, approved: boolean) => void;
+  onApprove: (planText: string) => void;
+  onDismiss: () => void;
 }) {
   if (isStreaming && plans.length === 0) {
     return <ProposePlanLoadingUI />;
@@ -108,7 +115,13 @@ export function ProposePlanHighlight({
     return null;
   }
 
-  return <ProposePlanPrompt plan={activePlan} onRespond={onRespond} />;
+  return (
+    <ProposePlanPrompt
+      plan={activePlan}
+      onApprove={onApprove}
+      onDismiss={onDismiss}
+    />
+  );
 }
 
 // ============================================================================

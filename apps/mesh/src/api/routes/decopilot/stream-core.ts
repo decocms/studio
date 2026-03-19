@@ -229,21 +229,6 @@ export async function streamCore(
 
     await saveMessagesToThread(requestMessage);
 
-    // Detect propose_plan approval → set context truncation for future requests
-    if (requestMessage.role === "assistant") {
-      const planApproved = requestMessage.parts?.some(
-        (part: Record<string, unknown>) =>
-          part.type === "tool-propose_plan" &&
-          part.state === "output-available" &&
-          (part.output as { approved?: boolean })?.approved === true,
-      );
-      if (planApproved) {
-        await ctx.storage.threads.update(mem.thread.id, {
-          context_start_message_id: requestMessage.id,
-        });
-      }
-    }
-
     // Close MCP clients on abort
     registrySignal.addEventListener("abort", () => {
       closeClients?.();
@@ -261,7 +246,6 @@ export async function streamCore(
       requestMessage,
       systemMessages,
       windowSize,
-      { contextStartMessageId: mem.thread.context_start_message_id },
     );
 
     const toolOutputMap = new Map<string, string>();
@@ -352,7 +336,7 @@ export async function streamCore(
             ? "You are in plan mode. You can only read and explore — you cannot make changes. " +
               "When you have enough information, call `propose_plan` with a comprehensive markdown plan " +
               "that includes all discoveries, file locations, and implementation steps. " +
-              "This plan will be the only context available during execution — anything not in the plan will be lost. " +
+              "After approval, a new implementation thread will be created with this plan as the starting context. " +
               "Only read-only tools can be enabled via enable_tools."
             : null;
 

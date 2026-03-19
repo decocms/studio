@@ -199,30 +199,24 @@ export function ChatHighlight() {
     });
   };
 
-  const handlePlanRespond = (toolCallId: string, approved: boolean) => {
-    if (!approved) {
-      addToolOutput({
-        tool: "propose_plan",
-        toolCallId,
-        output: { approved },
-      });
-      const editor = document.querySelector<HTMLElement>("[data-chat-input]");
-      editor?.focus();
-      return;
-    }
-
-    // Set approval level BEFORE addToolOutput because addToolOutput
-    // triggers sendAutomaticallyWhen → auto-resend reads toolApprovalLevel immediately.
-    // Call setToolApprovalLevel directly (synchronous) rather than waiting for
-    // React to re-render via setPreferences.
+  const handlePlanApprove = (planText: string) => {
+    // Set approval level to auto and persist
     chatStore.setToolApprovalLevel("auto");
     setPreferences({ ...preferences, toolApprovalLevel: "auto" });
 
-    addToolOutput({
-      tool: "propose_plan",
-      toolCallId,
-      output: { approved },
+    // Create a new thread and queue the plan as the initial message.
+    // createThreadAndSend() stores the message and drains it once
+    // ChatBridge re-registers with the fresh Chat instance, avoiding
+    // the race where sendMessage() would use the old bridge methods.
+    chatStore.createThreadAndSend({
+      parts: [{ type: "text", text: `Implement this plan:\n\n${planText}` }],
+      toolApprovalLevel: "auto",
     });
+  };
+
+  const handlePlanDismiss = () => {
+    const editor = document.querySelector<HTMLElement>("[data-chat-input]");
+    editor?.focus();
   };
 
   const handleApprovalRespond = (
@@ -256,7 +250,8 @@ export function ChatHighlight() {
         <ProposePlanHighlight
           plans={pendingPlans}
           isStreaming={isStreaming}
-          onRespond={handlePlanRespond}
+          onApprove={handlePlanApprove}
+          onDismiss={handlePlanDismiss}
         />
       </div>
     );

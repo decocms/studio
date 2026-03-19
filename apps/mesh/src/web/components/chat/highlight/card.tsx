@@ -65,6 +65,7 @@ export interface HighlightCardProps {
   children: React.ReactNode;
   footerLeft?: React.ReactNode;
   footerRight: React.ReactNode;
+  className?: string;
 }
 
 export function HighlightCard({
@@ -72,9 +73,15 @@ export function HighlightCard({
   children,
   footerLeft,
   footerRight,
+  className,
 }: HighlightCardProps) {
   return (
-    <div className="flex flex-col rounded-xl bg-background border border-border shadow-md w-[calc(100%-16px)] max-w-[584px] mx-auto mb-[-16px]">
+    <div
+      className={cn(
+        "flex flex-col rounded-xl bg-background border shadow-md w-[calc(100%-16px)] max-w-[584px] mx-auto mb-[-16px]",
+        className ?? "border-border",
+      )}
+    >
       {/* Header */}
       <div className="flex items-center gap-2 p-4">
         <p className="flex-1 text-base font-medium text-foreground min-w-0">
