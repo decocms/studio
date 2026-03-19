@@ -803,7 +803,7 @@ function SettingsTab({
           <Input
             {...form.register("name")}
             placeholder="Automation name"
-            className="border-0 shadow-none px-0 text-2xl md:text-2xl font-semibold h-auto focus-visible:ring-0 bg-transparent"
+            className="border border-transparent shadow-none px-0 text-2xl md:text-2xl font-semibold h-auto focus-visible:ring-0 focus-visible:border-border bg-transparent"
           />
           <div className="flex items-center gap-2">
             <Controller
