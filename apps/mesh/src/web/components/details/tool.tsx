@@ -534,7 +534,7 @@ function ToolDetailsAuthenticated({
   );
 
   const resultPanel = (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col @3xl:h-full @3xl:overflow-hidden">
       {/* Results Header */}
       <div className="flex items-center justify-between px-4 h-14 border-b border-border bg-background">
         <h2 className="text-sm font-medium text-foreground uppercase tracking-wide">
@@ -630,7 +630,7 @@ function ToolDetailsAuthenticated({
       )}
 
       {/* Results Content */}
-      <div className="relative flex-1 overflow-auto bg-muted/50">
+      <div className="relative flex-1 min-h-[400px] @3xl:min-h-0 @3xl:overflow-auto bg-muted/50">
         {uiResourceUri && resultView === "ui" && client ? (
           <Suspense
             fallback={
@@ -757,8 +757,8 @@ function ToolDetailsAuthenticated({
         )}
 
         {/* Content area */}
-        <div className="flex-1 overflow-hidden">
-          <div className="grid grid-cols-1 @3xl:grid-cols-[minmax(0,2fr)_minmax(0,5fr)] h-full grid-rows-[auto_1fr] @3xl:grid-rows-1">
+        <div className="flex-1 overflow-auto @3xl:overflow-hidden">
+          <div className="grid grid-cols-1 @3xl:grid-cols-[minmax(0,2fr)_minmax(0,5fr)] @3xl:h-full @3xl:grid-rows-1">
             {/* Parameters */}
             <div className="@3xl:border-r border-border @3xl:overflow-auto">
               {parametersSection}

@@ -54,7 +54,9 @@ export const COLLECTION_THREADS_LIST = defineTool({
     const limit = input.limit ?? 100;
 
     const triggerIds = input.where?.trigger_ids;
-    const createdBy = input.where?.created_by;
+    // "me" is a reserved value meaning "filter by the authenticated user"
+    const createdBy =
+      input.where?.created_by === "me" ? userId : input.where?.created_by;
 
     const { threads, total } = triggerIds?.length
       ? await ctx.storage.threads.listByTriggerIds(triggerIds, {

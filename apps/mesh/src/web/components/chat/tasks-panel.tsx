@@ -42,10 +42,8 @@ import { User as UserIcon, Users as UsersIcon } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.js";
 import { Button } from "@deco/ui/components/button.js";
@@ -123,8 +121,6 @@ function TaskOwnerFilter() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuLabel>Filter by owner</DropdownMenuLabel>
-        <DropdownMenuSeparator />
         <DropdownMenuRadioGroup
           value={ownerFilter}
           onValueChange={handleChange}
