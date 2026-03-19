@@ -324,7 +324,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
   const projectWorkflowsItem: NavigationSidebarItem | null =
     enabledPlugins.includes("workflows")
       ? {
-          key: "workflows",
+          key: "Workflows",
           label: "Workflows",
           icon: <Dataflow03 />,
           isActive: isActiveRoute("workflows"),
