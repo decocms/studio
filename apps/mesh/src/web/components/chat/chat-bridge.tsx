@@ -30,7 +30,7 @@ export function ChatBridge() {
       lastAssistantMessageIsCompleteWithToolCalls({ messages }) ||
       lastAssistantMessageIsCompleteWithApprovalResponses({ messages }),
     onFinish: (payload) => chatStore.onFinish(payload),
-    onToolCall,
+    onToolCall: onToolCall as never,
     onError: (error) => chatStore.onError(error),
     onData: ({ data, type }) => {
       if (type === "data-thread-title") {

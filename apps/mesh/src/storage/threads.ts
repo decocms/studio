@@ -179,6 +179,9 @@ export class SqlThreadStorage implements ThreadStoragePort {
     if (data.status !== undefined) {
       updateData.status = data.status;
     }
+    if (data.context_start_message_id !== undefined) {
+      updateData.context_start_message_id = data.context_start_message_id;
+    }
 
     await this.db
       .updateTable("threads")
@@ -430,6 +433,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
     description: string | null;
     status: string;
     trigger_id?: string | null;
+    context_start_message_id?: string | null;
     created_at: Date | string;
     updated_at: Date | string;
     created_by: string;
@@ -443,6 +447,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
       description: row.description,
       status: row.status as ThreadStatus,
       trigger_id: row.trigger_id ?? null,
+      context_start_message_id: row.context_start_message_id ?? null,
       created_at: toIsoString(row.created_at),
       updated_at: toIsoString(row.updated_at),
       created_by: row.created_by,

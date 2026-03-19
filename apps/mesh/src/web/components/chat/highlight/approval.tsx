@@ -40,9 +40,8 @@ const APPROVAL_LEVEL_OPTIONS: {
   value: ToolApprovalLevel;
   label: string;
 }[] = [
-  { value: "none", label: "Always ask" },
   { value: "readonly", label: "Skip read-only" },
-  { value: "yolo", label: "Auto-approve all" },
+  { value: "auto", label: "Auto-approve all" },
 ];
 
 // ============================================================================
@@ -55,7 +54,7 @@ function ApprovalLevelSelect({ onYolo }: { onYolo: () => void }) {
   const handleLevelChange = (value: string) => {
     const newLevel = value as ToolApprovalLevel;
     setPreferences({ ...preferences, toolApprovalLevel: newLevel });
-    if (newLevel === "yolo") {
+    if (newLevel === "auto") {
       onYolo();
     }
   };

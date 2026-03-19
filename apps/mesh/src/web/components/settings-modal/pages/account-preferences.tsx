@@ -146,7 +146,7 @@ export function AccountPreferencesPage() {
               onValueChange={(value) =>
                 setPreferences((prev) => ({
                   ...prev,
-                  toolApprovalLevel: value as "none" | "readonly" | "yolo",
+                  toolApprovalLevel: value as "auto" | "readonly" | "plan",
                 }))
               }
             >
@@ -154,35 +154,35 @@ export function AccountPreferencesPage() {
                 <span>
                   {
                     {
-                      none: "Always ask",
                       readonly: "Skip read-only",
-                      yolo: "Auto-approve all",
+                      auto: "Auto-approve all",
+                      plan: "Plan mode",
                     }[preferences.toolApprovalLevel]
                   }
                 </span>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none" textValue="Always ask">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="font-medium">Always ask</span>
-                    <span className="text-xs text-muted-foreground">
-                      Require approval for all tool calls
-                    </span>
-                  </div>
-                </SelectItem>
                 <SelectItem value="readonly" textValue="Skip read-only">
                   <div className="flex flex-col gap-0.5">
                     <span className="font-medium">Skip read-only</span>
                     <span className="text-xs text-muted-foreground">
-                      Auto-approve read-only tools
+                      Auto-approve read-only tools, ask for others
                     </span>
                   </div>
                 </SelectItem>
-                <SelectItem value="yolo" textValue="Auto-approve all">
+                <SelectItem value="auto" textValue="Auto-approve all">
                   <div className="flex flex-col gap-0.5">
                     <span className="font-medium">Auto-approve all</span>
                     <span className="text-xs text-muted-foreground">
                       Execute all tools without approval
+                    </span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="plan" textValue="Plan mode">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-medium">Plan mode</span>
+                    <span className="text-xs text-muted-foreground">
+                      Read-only exploration, then propose a plan
                     </span>
                   </div>
                 </SelectItem>

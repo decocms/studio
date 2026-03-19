@@ -84,7 +84,7 @@ export const StreamRequestSchema = z.object({
   stream: z.boolean().optional(),
   temperature: z.number().default(0.5),
   thread_id: z.string().optional(),
-  toolApprovalLevel: z.enum(["none", "readonly", "yolo"]).default("none"),
+  toolApprovalLevel: z.enum(["auto", "readonly", "plan"]).default("readonly"),
 });
 
 export type StreamRequest = z.infer<typeof StreamRequestSchema>;

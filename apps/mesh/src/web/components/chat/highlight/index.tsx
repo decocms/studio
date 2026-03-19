@@ -1,8 +1,11 @@
 import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { AlertCircle, AlertTriangle, X } from "@untitledui/icons";
+import { useProjectContext } from "@decocms/mesh-sdk";
+import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import { useChat } from "../context";
 import { ApprovalHighlight, extractPendingApprovals } from "./approval";
+import { ProposePlanHighlight, extractPendingPlans } from "./propose-plan";
 import { UserAskQuestionHighlight } from "./user-ask-question";
 import type { UserAskToolPart } from "../types";
 
@@ -129,7 +132,10 @@ export function ChatHighlight() {
     addToolOutput,
     addToolApprovalResponse,
     sendMessage,
+    activeTaskId,
   } = useChat();
+  const { org } = useProjectContext();
+  const [preferences, setPreferences] = usePreferences();
 
   const lastMessage = messages.at(-1);
 
@@ -141,6 +147,12 @@ export function ChatHighlight() {
   const isWaitingForUserInput = userAskParts?.filter(
     (p) => p.state !== "output-available",
   )?.length;
+
+  // Collect pending plan proposals from the last assistant message
+  const pendingPlans =
+    lastMessage?.role === "assistant"
+      ? extractPendingPlans(lastMessage.parts)
+      : [];
 
   // Collect pending approval parts from the last assistant message
   const pendingApprovals =
@@ -189,6 +201,65 @@ export function ChatHighlight() {
     });
   };
 
+  const handlePlanRespond = async (toolCallId: string, approved: boolean) => {
+    // Submit the tool output first
+    addToolOutput({
+      tool: "propose_plan",
+      toolCallId,
+      output: { approved },
+    });
+
+    if (approved) {
+      // Find the assistant message containing this propose_plan call
+      const planMessage = messages.findLast(
+        (m) =>
+          m.role === "assistant" &&
+          m.parts.some(
+            (p) =>
+              "toolCallId" in p &&
+              (p as { toolCallId: string }).toolCallId === toolCallId,
+          ),
+      );
+
+      if (planMessage) {
+        // Set context truncation anchor on the server
+        try {
+          await fetch(
+            `/api/${org.slug}/decopilot/threads/${activeTaskId}/context-start`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({ messageId: planMessage.id }),
+            },
+          );
+        } catch (err) {
+          console.error("[plan-approve] Failed to set context start", err);
+        }
+      }
+
+      // Switch to auto mode
+      setPreferences({ ...preferences, toolApprovalLevel: "auto" });
+
+      // Auto-send "Approved. Begin implementation."
+      const doc = {
+        type: "doc" as const,
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "text",
+                text: "Approved. Begin implementation.",
+              },
+            ],
+          },
+        ],
+      };
+      void sendMessage(doc, { toolApprovalLevel: "auto" });
+    }
+  };
+
   const handleApprovalRespond = (
     approvalId: string,
     approved: boolean,
@@ -201,7 +272,7 @@ export function ChatHighlight() {
     });
   };
 
-  // Priority: user_ask > approval > error > warning
+  // Priority: user_ask > propose_plan > approval > error > warning
   if (isWaitingForUserInput) {
     return (
       <div className="absolute bottom-full left-0 right-0">
@@ -209,6 +280,18 @@ export function ChatHighlight() {
           userAskParts={userAskParts}
           isStreaming={isStreaming}
           onSubmit={handleUserAskSubmit}
+        />
+      </div>
+    );
+  }
+
+  if (pendingPlans.length > 0) {
+    return (
+      <div className="absolute bottom-full left-0 right-0">
+        <ProposePlanHighlight
+          plans={pendingPlans}
+          isStreaming={isStreaming}
+          onRespond={handlePlanRespond}
         />
       </div>
     );

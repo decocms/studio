@@ -517,6 +517,10 @@ class ChatStore {
     const selectedAgent = this.state.selectedAgent;
     const effectiveKeyId = this.state.credentialId;
 
+    // Determine effective tool approval level for metadata persistence
+    const effectiveApprovalLevel =
+      params.toolApprovalLevel ?? this.toolApprovalLevel;
+
     const messageMetadata: Metadata = {
       tiptapDoc: params.tiptapDoc,
       created_at: new Date().toISOString(),
@@ -528,6 +532,9 @@ class ChatStore {
         avatar: this.state.user?.image ?? undefined,
         name: this.state.user?.name ?? "you",
       },
+      ...(effectiveApprovalLevel && {
+        toolApprovalLevel: effectiveApprovalLevel,
+      }),
     };
 
     // Compose system prompt: route context + app contexts

@@ -15,6 +15,7 @@ import { createReadResourceTool } from "./resources";
 import { createSandboxTool, type VirtualClient } from "./sandbox";
 import { createSubtaskTool } from "./subtask";
 import { userAskTool } from "./user-ask";
+import { proposePlanTool } from "./propose-plan";
 import type { ModelsConfig } from "../types";
 import { MeshProvider } from "@/ai-providers/types";
 
@@ -41,19 +42,20 @@ export function getBuiltInTools(
     provider,
     organization,
     models,
-    toolApprovalLevel = "none",
+    toolApprovalLevel = "readonly",
     toolOutputMap,
     passthroughClient,
   } = params;
   return {
     user_ask: userAskTool,
+    propose_plan: proposePlanTool,
     subtask: createSubtaskTool(
       writer,
       {
         provider,
         organization,
         models,
-        needsApproval: toolNeedsApproval(toolApprovalLevel, false),
+        needsApproval: toolNeedsApproval(toolApprovalLevel, false) !== false,
       },
       ctx,
     ),
@@ -61,7 +63,7 @@ export function getBuiltInTools(
       writer,
       {
         organization,
-        needsApproval: toolNeedsApproval(toolApprovalLevel, true),
+        needsApproval: toolNeedsApproval(toolApprovalLevel, true) !== false,
       },
       ctx,
     ),
@@ -71,7 +73,7 @@ export function getBuiltInTools(
     sandbox: createSandboxTool({
       passthroughClient,
       toolOutputMap,
-      needsApproval: toolNeedsApproval(toolApprovalLevel, false),
+      needsApproval: toolNeedsApproval(toolApprovalLevel, false) !== false,
     }),
     read_resource: createReadResourceTool({
       passthroughClient,

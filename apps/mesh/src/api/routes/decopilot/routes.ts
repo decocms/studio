@@ -193,6 +193,34 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   });
 
   // ============================================================================
+  // Set Context Start Message — set truncation anchor for plan approval
+  // ============================================================================
+
+  app.post("/:org/decopilot/threads/:threadId/context-start", async (c) => {
+    try {
+      const { ctx, threadId } = await validateThreadOwnership(c);
+      const { messageId } = await c.req.json<{ messageId: string }>();
+
+      if (!messageId || typeof messageId !== "string") {
+        throw new HTTPException(400, { message: "messageId is required" });
+      }
+
+      await ctx.storage.threads.update(threadId, {
+        context_start_message_id: messageId,
+      });
+
+      return c.json({ ok: true });
+    } catch (err) {
+      if (err instanceof HTTPException) throw err;
+      console.error("[decopilot:context-start] Error", err);
+      return c.json(
+        { error: err instanceof Error ? err.message : "Internal error" },
+        500,
+      );
+    }
+  });
+
+  // ============================================================================
   // Cancel Endpoint — cancel ongoing run (local or via NATS to owning pod)
   // ============================================================================
 

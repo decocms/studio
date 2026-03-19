@@ -94,9 +94,9 @@ describe("buildStreamRequest", () => {
     expect(result.temperature).toBe(0.5);
   });
 
-  it("always sets toolApprovalLevel to yolo", () => {
+  it("always sets toolApprovalLevel to auto", () => {
     const result = buildStreamRequest(makeAutomation(), null, "thrd_1");
-    expect(result.toolApprovalLevel).toBe("yolo");
+    expect(result.toolApprovalLevel).toBe("auto");
   });
 
   it("extracts agent id from stored JSON", () => {

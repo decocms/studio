@@ -22,6 +22,7 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowUp,
+  BookOpen01,
   ChevronDown,
   Edit01,
   Lock01,
@@ -34,6 +35,7 @@ import type { FormEvent } from "react";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import type { Metadata } from "./types.ts";
 import { useChat } from "./context";
+import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import { ChatHighlight } from "./highlight";
 import { ModelSelector } from "./select-model";
 import {
@@ -301,6 +303,47 @@ function VirtualMCPBadge({
 }
 
 // ============================================================================
+// PlanModeToggle - Toggle button for plan mode
+// ============================================================================
+
+function PlanModeToggle({ disabled }: { disabled?: boolean }) {
+  const [preferences, setPreferences] = usePreferences();
+  const isPlanMode = preferences.toolApprovalLevel === "plan";
+
+  const handleToggle = () => {
+    setPreferences({
+      ...preferences,
+      toolApprovalLevel: isPlanMode ? "auto" : "plan",
+    });
+  };
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={handleToggle}
+          disabled={disabled}
+          className={cn(
+            "flex items-center justify-center size-8 rounded-md transition-colors shrink-0",
+            disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
+            isPlanMode
+              ? "bg-purple-500/15 text-purple-500 hover:bg-purple-500/25"
+              : "text-muted-foreground/75 hover:text-muted-foreground",
+          )}
+          aria-label={isPlanMode ? "Exit plan mode" : "Enter plan mode"}
+        >
+          <BookOpen01 size={16} />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top">
+        {isPlanMode ? "Exit plan mode" : "Plan mode"}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+// ============================================================================
 // ChatInput - Merged component with virtual MCP wrapper, banners, and selectors
 // ============================================================================
 
@@ -550,6 +593,7 @@ export function ChatInput({
                     selectedModel={model}
                     isStreaming={isStreaming}
                   />
+                  <PlanModeToggle disabled={isStreaming} />
                   {contextWindow && lastTotalTokens > 0 && (
                     <SessionStats
                       usage={usage}
