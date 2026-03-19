@@ -6,6 +6,10 @@
  */
 
 import type { MeshContext } from "@/core/mesh-context";
+import {
+  type McpListCache,
+  getMcpListCache,
+} from "@/mcp-clients/mcp-list-cache";
 import type { ConnectionEntity } from "@/tools/connection/schema";
 import { AccessControl } from "@/core/access-control";
 import type {
@@ -22,10 +26,12 @@ interface AuthTransportOptions {
   ctx: MeshContext;
   connection: ConnectionEntity;
   superUser?: boolean;
+  cache?: McpListCache;
 }
 
 export class AuthTransport extends WrapperTransport {
   private cachedToolsMap: Map<string, any> | null = null;
+  private toolsMapPromise: Promise<Map<string, any>> | null = null;
 
   constructor(
     innerTransport: Transport,
@@ -39,6 +45,26 @@ export class AuthTransport extends WrapperTransport {
         options.connection.tools.map((tool) => [tool.name, tool]),
       );
     }
+  }
+
+  private async ensureToolsMap(): Promise<Map<string, any>> {
+    if (this.cachedToolsMap) return this.cachedToolsMap;
+    if (!this.toolsMapPromise) {
+      this.toolsMapPromise = (async () => {
+        const cache = this.options.cache ?? getMcpListCache();
+        if (cache) {
+          const tools = await cache.get("tools", this.options.connection.id);
+          if (tools) {
+            this.cachedToolsMap = new Map(
+              (tools as Array<{ name: string }>).map((t) => [t.name, t]),
+            );
+            return this.cachedToolsMap;
+          }
+        }
+        return new Map();
+      })();
+    }
+    return this.toolsMapPromise;
   }
 
   protected override async handleOutgoingMessage(
@@ -71,7 +97,7 @@ export class AuthTransport extends WrapperTransport {
     const { ctx, connection } = this.options;
 
     // Check if tool is public (using cached metadata)
-    if (this.isPublicTool(toolName)) {
+    if (await this.isPublicTool(toolName)) {
       return; // Public tools skip auth
     }
 
@@ -84,7 +110,8 @@ export class AuthTransport extends WrapperTransport {
 
     // Create getToolMeta callback for AccessControl
     const getToolMeta = async () => {
-      const tool = this.cachedToolsMap?.get(toolName);
+      const toolsMap = await this.ensureToolsMap();
+      const tool = toolsMap.get(toolName);
       return tool?._meta as Record<string, unknown> | undefined;
     };
 
@@ -103,18 +130,13 @@ export class AuthTransport extends WrapperTransport {
     await connectionAccessControl.check(toolName);
   }
 
-  private isPublicTool(toolName: string): boolean {
-    // Check MESH_PUBLIC_ prefix
+  private async isPublicTool(toolName: string): Promise<boolean> {
     if (toolName.startsWith("MESH_PUBLIC_")) {
       return true;
     }
 
-    // Check cached metadata
-    if (!this.cachedToolsMap) {
-      return false;
-    }
-
-    const tool = this.cachedToolsMap.get(toolName);
+    const toolsMap = await this.ensureToolsMap();
+    const tool = toolsMap.get(toolName);
     if (!tool?._meta) {
       return false;
     }

@@ -20,6 +20,8 @@ import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { getBaseUrl } from "../../core/server-constants";
 import { requireOrganization } from "../../core/mesh-context";
+import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { getMcpListCache } from "../../mcp-clients/mcp-list-cache";
 import { createDevAssetsConnectionEntity, isDevMode } from "./dev-assets";
 import { type ConnectionEntity, ConnectionEntitySchema } from "./schema";
 
@@ -250,6 +252,21 @@ export const COLLECTION_CONNECTIONS_LIST = defineTool({
     const connections = await ctx.storage.connections.list(organization.id, {
       includeVirtual: input.include_virtual ?? false,
     });
+
+    // Hydrate tools from NATS KV for connections with null tools
+    const cache = getMcpListCache();
+    if (cache) {
+      await Promise.all(
+        connections.map(async (connection) => {
+          if (!connection.tools || connection.tools.length === 0) {
+            const cached = await cache.get("tools", connection.id);
+            if (cached) {
+              connection.tools = cached as Tool[];
+            }
+          }
+        }),
+      );
+    }
 
     // In dev mode, inject the dev-assets connection for local file storage
     // This provides object storage functionality without requiring an external S3 bucket

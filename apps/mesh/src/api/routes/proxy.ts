@@ -14,11 +14,11 @@
 import {
   clientFromConnection,
   serverFromConnection,
-  withToolCaching,
+  withMcpCaching,
   type ClientWithOptionalStreamingSupport,
   type ClientWithStreamingSupport,
 } from "@/mcp-clients";
-import { getToolListCache } from "@/mcp-clients/tool-list-cache";
+import { getMcpListCache } from "@/mcp-clients/mcp-list-cache";
 import type { ConnectionEntity } from "@/tools/connection/schema";
 import type { ServerClient } from "@decocms/bindings/mcp";
 import {
@@ -149,10 +149,10 @@ async function createMCPProxyDoNotUseDirectly(
   const baseClient = await clientFromConnection(connection, ctx, superUser);
 
   // Apply tool caching decorator (pass cross-pod cache if available)
-  const cachedClient = withToolCaching(
+  const cachedClient = withMcpCaching(
     baseClient,
     connection,
-    getToolListCache() ?? undefined,
+    getMcpListCache() ?? undefined,
   );
 
   // Create server directly from decorated client

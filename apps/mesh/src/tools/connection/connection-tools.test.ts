@@ -212,9 +212,9 @@ describe("Connection Tools", () => {
       );
 
       expect(fetchSpy).toHaveBeenCalled();
-      expect(
-        result.item.tools?.some((t) => t.name === "COLLECTION_LLM_LIST"),
-      ).toBe(true);
+      // Tools are no longer stored in the DB — they go to NATS KV cache
+      // The connection record should have tools: null
+      expect(result.item.tools).toBeNull();
     });
   });
 

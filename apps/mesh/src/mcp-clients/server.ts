@@ -44,7 +44,7 @@ const DEFAULT_SERVER_CAPABILITIES = {
  * - Graceful error handling for optional features
  * - Uniform capabilities for consistent client experience
  *
- * Note: Tool caching should be applied via the withToolCaching decorator
+ * Note: MCP caching should be applied via the withMcpCaching decorator
  * before creating the client if caching is desired.
  *
  * @param connection - The connection entity to create a server for

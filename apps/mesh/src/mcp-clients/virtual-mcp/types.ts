@@ -6,9 +6,8 @@
 
 import type { ConnectionEntity } from "../../tools/connection/schema";
 import type { VirtualMCPEntity } from "../../tools/virtual/schema";
-import type { VirtualToolDefinition } from "../../tools/virtual-tool/schema";
 import type { MCPProxyClient } from "../../api/routes/proxy";
-import type { ToolListCache } from "../../mcp-clients/tool-list-cache";
+import type { McpListCache } from "../../mcp-clients/mcp-list-cache";
 
 /** Entry in the proxy map (connection ID -> proxy entry) */
 export interface ProxyEntry {
@@ -20,10 +19,8 @@ export interface ProxyEntry {
 export interface VirtualClientOptions {
   connections: ConnectionEntity[];
   virtualMcp: VirtualMCPEntity;
-  /** Virtual tools defined on this Virtual MCP (tools with code in _meta["mcp.mesh"]["tool.fn"]) */
-  virtualTools?: VirtualToolDefinition[];
   /** Whether to use superuser mode for background processes (bypasses auth checks on sub-clients) */
   superUser?: boolean;
-  /** Cross-pod NATS KV cache for tool lists (avoids MCP handshake on listTools) */
-  toolListCache?: ToolListCache;
+  /** Cross-pod NATS KV cache for MCP lists (avoids MCP handshake on listTools/listResources/listPrompts) */
+  mcpListCache?: McpListCache;
 }

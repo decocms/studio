@@ -59,10 +59,10 @@ import {
   type NatsConnectionProvider,
 } from "../nats/connection";
 import {
-  JetStreamKVToolListCache,
-  setToolListCache,
-  type ToolListCache,
-} from "../mcp-clients/tool-list-cache";
+  JetStreamKVMcpListCache,
+  setMcpListCache,
+  type McpListCache,
+} from "../mcp-clients/mcp-list-cache";
 import {
   JetStreamKVModelListCache,
   type ModelListCache,
@@ -216,7 +216,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   }
 
   let eventBus: EventBus;
-  let toolListCache: ToolListCache;
+  let mcpListCache: McpListCache;
   let modelListCache: ModelListCache;
   let cancelBroadcast: CancelBroadcast;
   let streamBuffer: StreamBuffer;
@@ -225,7 +225,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   if (options.eventBus) {
     // Test mode: use provided event bus and no-op stubs (no NATS required)
     eventBus = options.eventBus;
-    toolListCache = {
+    mcpListCache = {
       get: async () => null,
       set: async () => {},
       invalidate: async () => {},
@@ -254,11 +254,11 @@ export async function createApp(options: CreateAppOptions = {}) {
     natsProvider = createNatsConnectionProvider();
     await natsProvider.init(env.NATS_URL);
 
-    const tlc = new JetStreamKVToolListCache({
+    const tlc = new JetStreamKVMcpListCache({
       getJetStream: () => natsProvider!.getJetStream(),
     });
     await tlc.init();
-    toolListCache = tlc;
+    mcpListCache = tlc;
 
     const mlc = new JetStreamKVModelListCache({
       getJetStream: () => natsProvider!.getJetStream(),
@@ -285,7 +285,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   if (currentDecopilotCleanup) currentDecopilotCleanup();
 
   // Set tool list cache after cleanup to avoid previous cleanup nulling the new cache
-  setToolListCache(toolListCache);
+  setMcpListCache(mcpListCache);
 
   const threadStorage = new SqlThreadStorage(database.db);
 
@@ -318,9 +318,9 @@ export async function createApp(options: CreateAppOptions = {}) {
     runRegistry.dispose();
     cancelBroadcast.stop().catch(() => {});
     streamBuffer.teardown();
-    toolListCache.teardown();
+    mcpListCache.teardown();
     modelListCache.teardown();
-    setToolListCache(null);
+    setMcpListCache(null);
     natsProvider?.drain().catch(() => {});
   };
 

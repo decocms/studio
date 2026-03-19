@@ -5,6 +5,7 @@
  */
 
 import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
+import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import {
@@ -12,6 +13,7 @@ import {
   requireAuth,
   requireOrganization,
 } from "../../core/mesh-context";
+import { getMcpListCache } from "../../mcp-clients/mcp-list-cache";
 import { fetchToolsFromMCP } from "./fetch-tools";
 import {
   buildVirtualUrl,
@@ -112,9 +114,16 @@ export const COLLECTION_CONNECTIONS_CREATE = defineTool({
     // Create the connection with the fetched tools and scopes
     const connection = await ctx.storage.connections.create({
       ...connectionData,
-      tools,
+      tools: null,
       configuration_scopes,
     });
+
+    // Eagerly populate NATS KV cache with fetched tools
+    if (tools) {
+      getMcpListCache()
+        ?.set("tools", connection.id, tools as Tool[])
+        .catch(() => {});
+    }
 
     await ctx.eventBus.publish(
       organization.id,

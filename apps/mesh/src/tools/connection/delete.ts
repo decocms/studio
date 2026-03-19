@@ -11,6 +11,7 @@ import {
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/mesh-context";
+import { getMcpListCache } from "../../mcp-clients/mcp-list-cache";
 import { ConnectionEntitySchema } from "./schema";
 
 const ConnectionDeleteInputSchema = CollectionDeleteInputSchema.extend({
@@ -87,6 +88,11 @@ export const COLLECTION_CONNECTIONS_DELETE = defineTool({
 
     // Delete connection
     await ctx.storage.connections.delete(input.id);
+
+    // Invalidate NATS KV cache
+    getMcpListCache()
+      ?.invalidate(input.id)
+      .catch(() => {});
 
     return {
       item: connection,

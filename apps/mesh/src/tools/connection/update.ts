@@ -11,6 +11,7 @@ import {
 } from "@/auth/configuration-scopes";
 import { clientFromConnection } from "@/mcp-clients";
 import { DownstreamTokenStorage } from "@/storage/downstream-token";
+import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import {
@@ -18,6 +19,7 @@ import {
   requireAuth,
   requireOrganization,
 } from "../../core/mesh-context";
+import { getMcpListCache } from "../../mcp-clients/mcp-list-cache";
 import { fetchToolsFromMCP } from "./fetch-tools";
 import { prop } from "./json-path";
 import {
@@ -276,12 +278,19 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
     const updatePayload: Partial<ConnectionEntity> = {
       ...data,
       connection_url: finalConnectionUrl,
-      tools,
+      tools: null,
       configuration_state: finalState,
       configuration_scopes: finalScopes,
       updated_by: userId,
     };
     const connection = await ctx.storage.connections.update(id, updatePayload);
+
+    // Eagerly populate NATS KV cache with fetched tools
+    if (tools) {
+      getMcpListCache()
+        ?.set("tools", id, tools as Tool[])
+        .catch(() => {});
+    }
 
     // Invoke ON_MCP_CONFIGURATION callback if configuration was updated
     // Ignore errors but await for the response before responding
