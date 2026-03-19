@@ -287,6 +287,17 @@ app.all("/:connectionId", async (c) => {
         throw new Error(`Connection inactive: ${connection.status}`);
       }
 
+      // For HTTP connections, eagerly attempt the upstream MCP handshake to
+      // surface auth errors (e.g. OAuth 401). The lazy client inside
+      // serverFromConnection defers the connection, so without this probe
+      // the proxy would handle "initialize" locally and return 200 OK —
+      // hiding the 401 the frontend needs to trigger the OAuth popup.
+      // On success this also warms the per-request client pool, so the
+      // lazy client reuses the same connection instead of double-connecting.
+      if (connection.connection_url) {
+        await clientFromConnection(connection, ctx, false);
+      }
+
       // Create enhanced server directly (no need for bridge - server is used directly!)
       const server = serverFromConnection(connection, ctx, false);
 
