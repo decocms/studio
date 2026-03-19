@@ -22,11 +22,19 @@ import {
   type ReadResourceRequest,
   type ReadResourceResult,
   type Resource,
+  type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import { lazy } from "../../common";
 import type { MeshContext } from "../../core/mesh-context";
-import type { ToolWithConnection } from "../../tools/code-execution/utils";
 import type { ConnectionEntity } from "../../tools/connection/schema";
+
+/** Tool with connection metadata for routing */
+interface ToolWithConnection extends Tool {
+  _meta: {
+    connectionId: string;
+    connectionTitle: string;
+  };
+}
 import type { VirtualMCPConnection } from "../../tools/virtual/schema";
 import { type McpListCache, getMcpListCache } from "../mcp-list-cache";
 import type { VirtualClientOptions } from "./types";

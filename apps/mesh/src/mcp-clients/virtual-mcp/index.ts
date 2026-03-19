@@ -11,7 +11,6 @@ import { getMcpListCache } from "../mcp-list-cache";
 import type { MeshContext } from "../../core/mesh-context";
 import type { ConnectionEntity } from "../../tools/connection/schema";
 import type { VirtualMCPEntity } from "../../tools/virtual/schema";
-import { CodeExecutionClient } from "./code-execution";
 import { PassthroughClient } from "./passthrough-client";
 import { type VirtualClientOptions } from "./types";
 
