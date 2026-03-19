@@ -1,16 +1,27 @@
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@deco/ui/components/popover.tsx";
+import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { Spinner } from "@deco/ui/components/spinner.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   getPrompt,
   useMCPClient,
-  useMCPPromptsListQuery,
+  useMCPPromptsList,
   useProjectContext,
 } from "@decocms/mesh-sdk";
 import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
 import { Suspense, useReducer, useState } from "react";
 import { toast } from "sonner";
 import { ErrorBoundary } from "../error-boundary";
-import { AgentAvatar } from "../agent-icon";
 import { useChatStable } from "./context";
 import {
   PromptArgsDialog,
@@ -19,103 +30,163 @@ import {
 import { createMentionDoc } from "./tiptap/mention/node";
 import { appendToTiptapDoc } from "./tiptap/utils";
 
-// ---------------------------------------------------------------------------
-// Prompt card
-// ---------------------------------------------------------------------------
-
-function PromptCard({
-  prompt,
-  onSelect,
-  isDisabled,
-  isLoading,
-  agentIcon,
-  agentName,
-}: {
-  prompt: Prompt;
-  onSelect: (prompt: Prompt) => void;
-  isDisabled?: boolean;
-  isLoading?: boolean;
-  agentIcon: string | null | undefined;
-  agentName: string;
-}) {
-  const promptText =
-    prompt.description ?? (prompt.title ?? prompt.name).replace(/_/g, " ");
-
-  return (
-    <button
-      type="button"
-      onClick={() => onSelect(prompt)}
-      disabled={isDisabled || isLoading}
-      className={cn(
-        "flex flex-col gap-3 p-4 rounded-xl bg-muted/50 border border-border/60",
-        "text-left cursor-pointer transition-all duration-150",
-        "hover:bg-accent/60 hover:border-border hover:shadow-sm",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
-        isLoading && "bg-accent/60 border-border",
-        (isDisabled || isLoading) && "cursor-not-allowed opacity-60",
-      )}
-    >
-      <div className="flex items-center justify-between">
-        <AgentAvatar icon={agentIcon} name={agentName} size="xs" />
-        {isLoading && <Spinner size="xs" />}
-      </div>
-      <p className="text-sm text-foreground leading-snug line-clamp-3">
-        {promptText}
-      </p>
-    </button>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Cards grid
-// ---------------------------------------------------------------------------
-
 interface IceBreakersUIProps {
   prompts: Prompt[];
   onSelect: (prompt: Prompt) => void;
   loadingPrompt?: Prompt | null;
-  agentIcon: string | null | undefined;
-  agentName: string;
+  className?: string;
 }
 
+const MAX_VISIBLE = 3;
+
+function PromptPill({
+  prompt,
+  onSelect,
+  isSelected,
+  isDisabled,
+  isLoading,
+}: {
+  prompt: Prompt;
+  onSelect: (prompt: Prompt) => void;
+  isSelected?: boolean;
+  isDisabled?: boolean;
+  isLoading?: boolean;
+}) {
+  const promptText = prompt.description ?? prompt.name;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={() => onSelect(prompt)}
+          disabled={isDisabled || isLoading}
+          className={cn(
+            "px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-border rounded-full hover:bg-accent/50 transition-colors cursor-pointer flex items-center gap-1.5",
+            isSelected && "bg-accent/50 text-foreground",
+            isLoading && "bg-accent/50 text-foreground",
+            (isDisabled || isLoading) &&
+              "cursor-not-allowed hover:bg-accent/50",
+          )}
+        >
+          {(prompt.title ?? prompt.name).replace(/_/g, " ")}
+          {isLoading && <Spinner size="xs" />}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="max-w-xs">
+        <p className="text-xs">{promptText}</p>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/**
+ * IceBreakersUI - Displays prompts as clickable conversation starters
+ *
+ * Shows prompts as compact pills that, when clicked, submit the prompt as the first message
+ */
 function IceBreakersUI({
   prompts,
   onSelect,
   loadingPrompt,
-  agentIcon,
-  agentName,
+  className,
 }: IceBreakersUIProps) {
   if (prompts.length === 0) return null;
 
+  const visiblePrompts = prompts.slice(0, MAX_VISIBLE);
+  const hiddenPrompts = prompts.slice(MAX_VISIBLE);
+  const hasMore = hiddenPrompts.length > 0;
   const isAnyLoading = !!loadingPrompt;
 
   return (
-    <div
-      className={cn(
-        "grid gap-3 w-full",
-        prompts.length === 1 && "grid-cols-1 max-w-xs mx-auto",
-        prompts.length >= 2 && "grid-cols-2",
-      )}
-    >
-      {prompts.map((prompt) => (
-        <PromptCard
-          key={prompt.name}
-          prompt={prompt}
-          onSelect={onSelect}
-          isLoading={loadingPrompt?.name === prompt.name}
-          isDisabled={isAnyLoading && loadingPrompt?.name !== prompt.name}
-          agentIcon={agentIcon}
-          agentName={agentName}
-        />
-      ))}
-    </div>
+    <TooltipProvider delayDuration={300}>
+      <div
+        className={cn(
+          "flex flex-wrap items-center justify-center gap-2",
+          className,
+        )}
+      >
+        {visiblePrompts.map((prompt) => (
+          <PromptPill
+            key={prompt.name}
+            prompt={prompt}
+            onSelect={onSelect}
+            isLoading={loadingPrompt?.name === prompt.name}
+            isDisabled={isAnyLoading && loadingPrompt?.name !== prompt.name}
+          />
+        ))}
+        {hasMore && (
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                disabled={isAnyLoading}
+                className={cn(
+                  "size-7 flex items-center justify-center text-xs text-muted-foreground hover:text-foreground border border-border rounded-full hover:bg-accent/50 transition-colors cursor-pointer",
+                  isAnyLoading && "opacity-60 cursor-not-allowed",
+                )}
+              >
+                +{hiddenPrompts.length}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent side="bottom" align="center" className="w-auto p-2">
+              <div className="flex flex-col gap-1">
+                {hiddenPrompts.map((prompt) => {
+                  const promptText = prompt.description ?? prompt.name;
+                  const isLoading = loadingPrompt?.name === prompt.name;
+                  return (
+                    <Tooltip key={prompt.name}>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={() => onSelect(prompt)}
+                          disabled={isAnyLoading && !isLoading}
+                          className={cn(
+                            "px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-md transition-colors cursor-pointer text-left flex items-center gap-1.5",
+                            isLoading && "bg-accent/50 text-foreground",
+                            isAnyLoading &&
+                              !isLoading &&
+                              "opacity-60 cursor-not-allowed",
+                          )}
+                        >
+                          {(prompt.title ?? prompt.name).replace(/_/g, " ")}
+                          {isLoading && <Spinner size="xs" />}
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="max-w-xs">
+                        <p className="text-xs">{promptText}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  );
+                })}
+              </div>
+            </PopoverContent>
+          </Popover>
+        )}
+      </div>
+    </TooltipProvider>
   );
 }
 
-// ---------------------------------------------------------------------------
-// State machine
-// ---------------------------------------------------------------------------
+interface IceBreakersProps {
+  className?: string;
+}
 
+/**
+ * Fallback component for Suspense that maintains min-height to prevent layout shift
+ * Shows skeleton pills matching the actual IceBreakers appearance
+ */
+function IceBreakersFallback() {
+  return (
+    <>
+      <Skeleton className="h-6 w-20 rounded-full border border-border" />
+      <Skeleton className="h-6 w-24 rounded-full border border-border" />
+    </>
+  );
+}
+
+/**
+ * State machine for ice breakers
+ */
 type IceBreakerState =
   | { stage: "idle" }
   | {
@@ -139,9 +210,11 @@ function iceBreakerReducer(
 ): IceBreakerState {
   switch (action.type) {
     case "SELECT_PROMPT":
+      // If prompt has no arguments, go directly to loading
       if (!action.prompt.arguments || action.prompt.arguments.length === 0) {
         return { stage: "loading", prompt: action.prompt };
       }
+      // Otherwise, will open dialog - stay idle until dialog submits
       return { stage: "idle" };
 
     case "START_LOADING":
@@ -159,24 +232,21 @@ function iceBreakerReducer(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Content (fetches prompts for a connection)
-// ---------------------------------------------------------------------------
-
+/**
+ * Inner component that fetches and displays prompts for a specific MCP connection
+ * @param connectionId - The connection ID, or null for the management MCP
+ */
 function IceBreakersContent({ connectionId }: { connectionId: string | null }) {
-  const { tiptapDocRef, sendMessage, selectedVirtualMcp } = useChatStable();
+  const { tiptapDocRef, sendMessage } = useChatStable();
   const { org } = useProjectContext();
   const client = useMCPClient({
     connectionId,
     orgId: org.id,
   });
-  const { data } = useMCPPromptsListQuery({ client, staleTime: 60000 });
+  const { data } = useMCPPromptsList({ client, staleTime: 60000 });
   const prompts = data?.prompts ?? [];
   const [state, dispatch] = useReducer(iceBreakerReducer, { stage: "idle" });
   const [dialogPrompt, setDialogPrompt] = useState<Prompt | null>(null);
-
-  const agentIcon = selectedVirtualMcp?.icon ?? null;
-  const agentName = selectedVirtualMcp?.title ?? "Agent";
 
   const loadPrompt = async (prompt: Prompt, args?: PromptArgumentValues) => {
     if (!client) {
@@ -190,6 +260,8 @@ function IceBreakersContent({ connectionId }: { connectionId: string | null }) {
 
       dispatch({ type: "RESET" });
 
+      // Append prompt to current tiptapDoc and send
+      // Wrap mention in a paragraph since it's an inline node
       const newTiptapDoc = appendToTiptapDoc(tiptapDocRef.current, {
         type: "paragraph",
         content: [
@@ -211,12 +283,14 @@ function IceBreakersContent({ connectionId }: { connectionId: string | null }) {
   };
 
   const handlePromptSelection = async (prompt: Prompt) => {
+    // If prompt has arguments, open dialog
     if (prompt.arguments && prompt.arguments.length > 0) {
       dispatch({ type: "SELECT_PROMPT", prompt });
       setDialogPrompt(prompt);
       return;
     }
 
+    // No arguments - fetch directly
     dispatch({ type: "START_LOADING", prompt });
     await loadPrompt(prompt);
   };
@@ -243,8 +317,6 @@ function IceBreakersContent({ connectionId }: { connectionId: string | null }) {
         prompts={prompts}
         onSelect={handlePromptSelection}
         loadingPrompt={state.stage === "loading" ? state.prompt : null}
-        agentIcon={agentIcon}
-        agentName={agentName}
       />
       <PromptArgsDialog
         prompt={dialogPrompt}
@@ -258,26 +330,28 @@ function IceBreakersContent({ connectionId }: { connectionId: string | null }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Public export
-// ---------------------------------------------------------------------------
-
-interface IceBreakersProps {
-  className?: string;
-}
-
+/**
+ * Ice breakers component that uses suspense to fetch MCP prompts.
+ * Uses the chat context for connection selection and message sending.
+ * Includes ErrorBoundary, Suspense, and container internally.
+ */
 export function IceBreakers({ className }: IceBreakersProps) {
   const { selectedVirtualMcp } = useChatStable();
-
-  // Only show ice breakers for custom agents, not Decopilot
-  if (!selectedVirtualMcp) return null;
-
-  const connectionId = selectedVirtualMcp.id;
+  const connectionId = selectedVirtualMcp?.id ?? null;
 
   return (
-    <div className={cn("w-full mt-6", className)}>
+    <div
+      style={{ minHeight: "32px" }}
+      className={cn(
+        "flex flex-wrap items-center justify-center gap-2",
+        className,
+      )}
+    >
       <ErrorBoundary fallback={null}>
-        <Suspense key={connectionId} fallback={null}>
+        <Suspense
+          key={connectionId ?? "default"}
+          fallback={<IceBreakersFallback />}
+        >
           <IceBreakersContent connectionId={connectionId} />
         </Suspense>
       </ErrorBoundary>

@@ -1,5 +1,5 @@
 /**
- * Notion-style Icon Picker
+ * Icon Picker
  *
  * Allows users to pick an icon + color from @untitledui/icons, upload an image,
  * or remove the current icon. Stores the selection as an icon:// URL string.

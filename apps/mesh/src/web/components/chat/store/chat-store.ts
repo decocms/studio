@@ -417,6 +417,10 @@ class ChatStore {
       selectedAgent =
         virtualMcps.find((v) => v.id === this._pendingVirtualMcpId) ?? null;
       this._pendingVirtualMcpId = null;
+    } else if (selectedAgent) {
+      // Refresh selectedAgent with latest data (e.g. color/icon changes)
+      selectedAgent =
+        virtualMcps.find((v) => v.id === selectedAgent!.id) ?? selectedAgent;
     }
 
     this.state = { ...this.state, virtualMcps, selectedAgent };
