@@ -253,7 +253,7 @@ const serveOptions = {
   port: values.port!,
   home: decoHome,
   skipMigrations: values["skip-migrations"] === true,
-  localMode: values["local-mode"] === true,
+  localMode: values["no-local-mode"] !== true,
 };
 
 const noTui = values["no-tui"] === true || !process.stdout.isTTY;
@@ -275,9 +275,12 @@ if (noTui) {
   const { render } = await import("ink");
   const { createElement } = await import("react");
   const { App } = await import("./cli/app");
-  const { startServer } = await import("./cli/commands/serve");
+  const { startServer, interceptConsoleForTui } = await import(
+    "./cli/commands/serve"
+  );
 
   const displayHome = decoHome.replace(homedir(), "~");
+  interceptConsoleForTui();
   render(createElement(App, { home: displayHome }));
 
   await startServer(serveOptions);

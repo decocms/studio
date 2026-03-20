@@ -8,9 +8,11 @@ import { chmod, mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 import { resolveSecrets, type SecretsFile } from "./resolve-secrets";
 import {
+  addLogEntry,
   setEnv,
   setMigrationsDone,
   setServerUrl,
+  setTuiConsoleIntercepted,
   updateService,
 } from "../cli-store";
 import type { ServiceStatus } from "../header";
@@ -20,6 +22,57 @@ export interface ServeOptions {
   home: string;
   skipMigrations: boolean;
   localMode: boolean;
+}
+
+// Strip ANSI escape codes from a string
+function stripAnsi(str: string): string {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI codes requires matching control chars
+  return str.replace(/\x1b\[[0-9;]*m/g, "");
+}
+
+/**
+ * Intercept console.log/warn/error so in-process server output
+ * (e.g. Better Auth errors, library logs) is routed through the CLI store
+ * instead of corrupting the Ink TUI rendering.
+ *
+ * We patch console methods (not process.stdout.write) because Ink manages
+ * stdout.write directly for its own rendering.
+ */
+export function interceptConsoleForTui() {
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  const originalError = console.error;
+
+  function capture(...args: unknown[]) {
+    const text = args
+      .map((a) => (typeof a === "string" ? a : Bun.inspect(a)))
+      .join(" ");
+
+    for (const raw of text.split("\n")) {
+      const stripped = stripAnsi(raw).trim();
+      if (!stripped) continue;
+      addLogEntry({
+        method: "",
+        path: "",
+        status: 0,
+        duration: 0,
+        timestamp: new Date(),
+        rawLine: stripped,
+      });
+    }
+  }
+
+  console.log = capture;
+  console.warn = capture;
+  console.error = capture;
+  setTuiConsoleIntercepted(true);
+
+  return () => {
+    console.log = originalLog;
+    console.warn = originalWarn;
+    console.error = originalError;
+    setTuiConsoleIntercepted(false);
+  };
 }
 
 export async function startServer(options: ServeOptions): Promise<void> {

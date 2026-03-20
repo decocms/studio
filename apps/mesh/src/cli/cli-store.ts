@@ -91,3 +91,17 @@ export function toggleViewMode() {
   };
   emit();
 }
+
+/**
+ * When true, console output is being intercepted for TUI rendering.
+ * devLogger should skip its own console.log calls to avoid duplicates.
+ */
+let tuiConsoleIntercepted = false;
+
+export function setTuiConsoleIntercepted(value: boolean) {
+  tuiConsoleIntercepted = value;
+}
+
+export function isTuiConsoleIntercepted(): boolean {
+  return tuiConsoleIntercepted;
+}
