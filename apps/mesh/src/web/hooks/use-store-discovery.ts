@@ -27,6 +27,8 @@ interface UseStoreDiscoveryOptions {
   filtersToolName?: string;
   /** Search term for server-side filtering */
   search?: string;
+  /** Whether to enable fetching. Defaults to true. */
+  enabled?: boolean;
 }
 
 interface UseStoreDiscoveryResult {
@@ -72,6 +74,7 @@ export function useStoreDiscovery({
   listToolName,
   filtersToolName,
   search,
+  enabled = true,
 }: UseStoreDiscoveryOptions): UseStoreDiscoveryResult {
   const { org } = useProjectContext();
   // Filter state
@@ -99,6 +102,7 @@ export function useStoreDiscovery({
       })) as { structuredContent?: unknown };
       return (result.structuredContent ?? result) as RegistryFiltersResponse;
     },
+    enabled: enabled && hasFiltersSupport,
     staleTime: 60 * 60 * 1000, // 1 hour - filters don't change often
     retry: 2,
   });
@@ -165,6 +169,7 @@ export function useStoreDiscovery({
       }
       return undefined;
     },
+    enabled,
     staleTime: 60 * 60 * 1000,
     placeholderData: keepPreviousData,
     retry: 2,
