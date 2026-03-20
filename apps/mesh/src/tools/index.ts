@@ -26,7 +26,6 @@ import * as VirtualMCPTools from "./virtual";
 import * as MonitoringTools from "./monitoring";
 import * as MonitoringDashboardTools from "./monitoring-dashboard";
 import * as OrganizationTools from "./organization";
-import * as ProjectTools from "./projects";
 import * as TagTools from "./tags";
 import * as ThreadTools from "./thread";
 import * as AutomationTools from "./automations";
@@ -122,18 +121,10 @@ const CORE_TOOLS = [
   AutomationTools.AUTOMATION_TRIGGER_REMOVE,
   AutomationTools.AUTOMATION_RUN,
 
-  // Project tools
-  ProjectTools.PROJECT_LIST,
-  ProjectTools.PROJECT_GET,
-  ProjectTools.PROJECT_CREATE,
-  ProjectTools.PROJECT_UPDATE,
-  ProjectTools.PROJECT_DELETE,
-  ProjectTools.PROJECT_PLUGIN_CONFIG_GET,
-  ProjectTools.PROJECT_PLUGIN_CONFIG_UPDATE,
-  ProjectTools.PROJECT_CONNECTION_LIST,
-  ProjectTools.PROJECT_CONNECTION_ADD,
-  ProjectTools.PROJECT_CONNECTION_REMOVE,
-  ProjectTools.PROJECT_PINNED_VIEWS_UPDATE,
+  // Virtual MCP plugin config tools
+  VirtualMCPTools.VIRTUAL_MCP_PLUGIN_CONFIG_GET,
+  VirtualMCPTools.VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE,
+  VirtualMCPTools.VIRTUAL_MCP_PINNED_VIEWS_UPDATE,
 
   // Ai providers tools
   AiProvidersTools.AI_PROVIDERS_LIST,

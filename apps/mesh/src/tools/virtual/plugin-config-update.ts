@@ -1,13 +1,12 @@
 /**
- * PROJECT_PLUGIN_CONFIG_UPDATE Tool
+ * VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE Tool
  *
- * Update or create plugin configuration for a project
+ * Update or create plugin configuration for a virtual MCP
  */
 
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { getUserId, requireAuth } from "../../core/mesh-context";
-import { serializedPluginConfigSchema } from "./schema";
 import {
   createDevAssetsConnectionEntity,
   isDevAssetsConnection,
@@ -15,18 +14,29 @@ import {
 } from "../connection/dev-assets";
 import { getBaseUrl } from "../../core/server-constants";
 
-export const PROJECT_PLUGIN_CONFIG_UPDATE = defineTool({
-  name: "PROJECT_PLUGIN_CONFIG_UPDATE" as const,
-  description: "Set or update a plugin's configuration for a specific project.",
+const serializedPluginConfigSchema = z.object({
+  id: z.string(),
+  virtualMcpId: z.string(),
+  pluginId: z.string(),
+  connectionId: z.string().nullable(),
+  settings: z.record(z.string(), z.unknown()).nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE = defineTool({
+  name: "VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE" as const,
+  description:
+    "Set or update a plugin's configuration for a specific virtual MCP.",
   annotations: {
-    title: "Update Project Plugin Config",
+    title: "Update Virtual MCP Plugin Config",
     readOnlyHint: false,
     destructiveHint: true,
     idempotentHint: true,
     openWorldHint: false,
   },
   inputSchema: z.object({
-    projectId: z.string().describe("Project ID"),
+    virtualMcpId: z.string().describe("Virtual MCP ID"),
     pluginId: z.string().describe("Plugin ID"),
     connectionId: z
       .string()
@@ -51,12 +61,12 @@ export const PROJECT_PLUGIN_CONFIG_UPDATE = defineTool({
     // Check authorization
     await ctx.access.check();
 
-    const { projectId, pluginId, connectionId, settings } = input;
+    const { virtualMcpId, pluginId, connectionId, settings } = input;
     const userId = getUserId(ctx);
 
-    const project = await ctx.storage.projects.get(projectId);
-    if (!project) {
-      throw new Error(`Project not found: ${projectId}`);
+    const virtualMcp = await ctx.storage.virtualMcps.findById(virtualMcpId);
+    if (!virtualMcp) {
+      throw new Error(`Virtual MCP not found: ${virtualMcpId}`);
     }
 
     const connectionExists = connectionId
@@ -65,28 +75,28 @@ export const PROJECT_PLUGIN_CONFIG_UPDATE = defineTool({
 
     if (
       connectionId &&
-      project.organizationId &&
+      virtualMcp.organization_id &&
       !connectionExists &&
       isDevMode()
     ) {
-      if (isDevAssetsConnection(connectionId, project.organizationId)) {
+      if (isDevAssetsConnection(connectionId, virtualMcp.organization_id)) {
         if (!userId) {
           throw new Error("User ID required to create dev-assets connection");
         }
         const devAssetsConnection = createDevAssetsConnectionEntity(
-          project.organizationId,
+          virtualMcp.organization_id,
           getBaseUrl(),
         );
         await ctx.storage.connections.create({
           ...devAssetsConnection,
-          organization_id: project.organizationId,
+          organization_id: virtualMcp.organization_id,
           created_by: userId,
         });
       }
     }
 
-    const config = await ctx.storage.projectPluginConfigs.upsert(
-      projectId,
+    const config = await ctx.storage.virtualMcpPluginConfigs.upsert(
+      virtualMcpId,
       pluginId,
       {
         connectionId,
@@ -97,7 +107,7 @@ export const PROJECT_PLUGIN_CONFIG_UPDATE = defineTool({
     return {
       config: {
         id: config.id,
-        projectId: config.projectId,
+        virtualMcpId: config.virtualMcpId,
         pluginId: config.pluginId,
         connectionId: config.connectionId,
         settings: config.settings,

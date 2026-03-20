@@ -1,26 +1,36 @@
 /**
- * PROJECT_PLUGIN_CONFIG_GET Tool
+ * VIRTUAL_MCP_PLUGIN_CONFIG_GET Tool
  *
- * Get plugin configuration for a project
+ * Get plugin configuration for a virtual MCP
  */
 
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/mesh-context";
-import { serializedPluginConfigSchema } from "./schema";
 
-export const PROJECT_PLUGIN_CONFIG_GET = defineTool({
-  name: "PROJECT_PLUGIN_CONFIG_GET" as const,
-  description: "Get a plugin's current configuration for a specific project.",
+const serializedPluginConfigSchema = z.object({
+  id: z.string(),
+  virtualMcpId: z.string(),
+  pluginId: z.string(),
+  connectionId: z.string().nullable(),
+  settings: z.record(z.string(), z.unknown()).nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const VIRTUAL_MCP_PLUGIN_CONFIG_GET = defineTool({
+  name: "VIRTUAL_MCP_PLUGIN_CONFIG_GET" as const,
+  description:
+    "Get a plugin's current configuration for a specific virtual MCP.",
   annotations: {
-    title: "Get Project Plugin Config",
+    title: "Get Virtual MCP Plugin Config",
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
     openWorldHint: false,
   },
   inputSchema: z.object({
-    projectId: z.string().describe("Project ID"),
+    virtualMcpId: z.string().describe("Virtual MCP ID"),
     pluginId: z.string().describe("Plugin ID"),
   }),
 
@@ -35,10 +45,10 @@ export const PROJECT_PLUGIN_CONFIG_GET = defineTool({
     // Check authorization
     await ctx.access.check();
 
-    const { projectId, pluginId } = input;
+    const { virtualMcpId, pluginId } = input;
 
-    const config = await ctx.storage.projectPluginConfigs.get(
-      projectId,
+    const config = await ctx.storage.virtualMcpPluginConfigs.get(
+      virtualMcpId,
       pluginId,
     );
 
@@ -49,7 +59,7 @@ export const PROJECT_PLUGIN_CONFIG_GET = defineTool({
     return {
       config: {
         id: config.id,
-        projectId: config.projectId,
+        virtualMcpId: config.virtualMcpId,
         pluginId: config.pluginId,
         connectionId: config.connectionId,
         settings: config.settings,
