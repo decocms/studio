@@ -15,14 +15,6 @@ export const underline = (s: string) => `\x1b[4m${s}\x1b[24m`;
 export const KEY_WIDTH = 32;
 export const RULE_WIDTH = 42;
 
-export function section(title: string): string {
-  return `\n  ${dim(`── ${title} ${"─".repeat(Math.max(0, RULE_WIDTH - title.length - 4))}`)}`;
-}
-
-export function row(key: string, value: string): string {
-  return `  ${dim(key.padEnd(KEY_WIDTH))}${value}`;
-}
-
 const rgb = (r: number, g: number, b: number, s: string) =>
   `\x1b[38;2;${r};${g};${b}m${s}\x1b[39m`;
 

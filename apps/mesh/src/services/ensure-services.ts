@@ -703,7 +703,7 @@ export async function stopServices(home: string): Promise<void> {
   console.log("\nAll managed services stopped.");
 }
 
-export async function serviceStatus(home: string): Promise<ServiceInfo[]> {
+async function serviceStatus(home: string): Promise<ServiceInfo[]> {
   const services: ServiceInfo[] = [];
 
   const pgState = readState(home, "postgres");
