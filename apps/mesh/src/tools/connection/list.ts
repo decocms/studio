@@ -262,6 +262,8 @@ export const COLLECTION_CONNECTIONS_LIST = defineTool({
     await Promise.all(
       connections.map(async (connection) => {
         if (connection.tools !== null) return;
+        // Skip non-MCP connections — they don't have tools to discover
+        if (connection.connection_type === "GITHUB") return;
         // The self MCP requires session auth, so an HTTP round-trip would
         // fail without forwarding cookies. Use in-process transport instead.
         const fetchLive =

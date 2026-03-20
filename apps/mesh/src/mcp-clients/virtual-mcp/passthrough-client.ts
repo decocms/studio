@@ -72,6 +72,9 @@ function createClientMap(
   const clientMap = new Map<string, Client>();
 
   for (const connection of connections) {
+    // Skip non-MCP connection types (e.g., GITHUB) — they don't speak MCP protocol
+    if (connection.connection_type === "GITHUB") continue;
+
     clientMap.set(
       connection.id,
       createLazyClient(connection, ctx, superUser, cache),
