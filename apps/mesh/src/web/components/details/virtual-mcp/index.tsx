@@ -264,14 +264,14 @@ function ConnectionItemWithAuth({
       </Link>
 
       {/* Footer — instance selector + resources summary + edit + remove */}
-      <div className="flex items-center gap-2 px-4 py-2 border-t border-border bg-muted/25">
+      <div className="flex items-center gap-3 px-4 py-2 border-t border-border bg-muted/25">
         {/* Instance selector */}
-        {siblings.length > 0 ? (
+        {siblings.length > 0 && (
           <Select
             value={connection_id}
             onValueChange={(newId) => onSwitchInstance(connection_id, newId)}
           >
-            <SelectTrigger className="h-7 w-auto max-w-[160px] text-xs gap-1 px-2 border-border bg-background">
+            <SelectTrigger className="h-7 w-auto text-xs gap-1 px-2 border border-border bg-background rounded">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -282,8 +282,6 @@ function ConnectionItemWithAuth({
               ))}
             </SelectContent>
           </Select>
-        ) : (
-          <span className="text-xs text-muted-foreground flex-1" />
         )}
 
         {/* Resources summary */}
