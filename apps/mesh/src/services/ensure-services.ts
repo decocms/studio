@@ -3,6 +3,10 @@
  * Ensures PostgreSQL and NATS are running before the app starts.
  *
  * Used by both `cli.ts` (npx decocms) and `scripts/dev.ts` (bun run dev).
+ *
+ * Each `home` directory gets its own `services/` tree with state.json files
+ * for service discovery. Multiple projects can run concurrently with isolated
+ * databases and NATS instances on different dynamic ports.
  */
 import {
   existsSync,
@@ -13,57 +17,102 @@ import {
 } from "fs";
 import { chmod, unlink } from "fs/promises";
 import { createRequire } from "module";
-import { createConnection } from "net";
-import { arch, homedir, platform } from "os";
+import { createConnection, createServer } from "net";
+import { arch, platform } from "os";
 import { dirname, join } from "path";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const SERVICES_DIR = join(homedir(), "deco", "services");
-
-const PG_PORT = 5432;
 const PG_USER = "postgres";
 const PG_PASSWORD = "postgres";
 const PG_DATABASE = "postgres";
-const PG_CONNECTION_STRING = `postgresql://${PG_USER}:${PG_PASSWORD}@localhost:${PG_PORT}/${PG_DATABASE}`;
 
-const NATS_PORT = 4222;
 const NATS_VERSION = "v2.10.24";
-const NATS_CONNECTION_STRING = `nats://localhost:${NATS_PORT}`;
 
 const IS_WINDOWS = platform() === "win32";
 const EXE_EXT = IS_WINDOWS ? ".exe" : "";
 
 // ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+type ServiceState = "running" | "external" | "stopped";
+
+interface ServiceInfo {
+  name: string;
+  state: ServiceState;
+  pid: number | null;
+  port: number;
+  owner: "managed" | "external" | "none";
+}
+
+interface StateFile {
+  pid: number;
+  port: number;
+  startedAt: string;
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function servicesDir(home: string): string {
+  return join(home, "services");
+}
 
 function ensureDir(dir: string) {
   mkdirSync(dir, { recursive: true });
 }
 
-function pidFilePath(service: string): string {
-  return join(SERVICES_DIR, service, "pid");
+function findAvailablePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = createServer();
+    srv.listen(0, () => {
+      const addr = srv.address();
+      if (addr && typeof addr === "object") {
+        const { port } = addr;
+        srv.close(() => resolve(port));
+      } else {
+        srv.close(() => reject(new Error("Could not determine port")));
+      }
+    });
+    srv.on("error", reject);
+  });
 }
 
-function readPid(service: string): number | null {
-  const p = pidFilePath(service);
+function stateFilePath(home: string, service: string): string {
+  return join(servicesDir(home), service, "state.json");
+}
+
+function readState(home: string, service: string): StateFile | null {
+  const p = stateFilePath(home, service);
   if (!existsSync(p)) return null;
-  const raw = readFileSync(p, "utf8").trim();
-  const pid = Number.parseInt(raw, 10);
-  return Number.isNaN(pid) ? null : pid;
+  try {
+    const raw = readFileSync(p, "utf8");
+    const parsed = JSON.parse(raw);
+    if (
+      typeof parsed.pid === "number" &&
+      typeof parsed.port === "number" &&
+      typeof parsed.startedAt === "string"
+    ) {
+      return parsed as StateFile;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
-function writePid(service: string, pid: number) {
-  const dir = join(SERVICES_DIR, service);
+function writeState(home: string, service: string, state: StateFile) {
+  const dir = join(servicesDir(home), service);
   ensureDir(dir);
-  writeFileSync(pidFilePath(service), String(pid));
+  writeFileSync(stateFilePath(home, service), JSON.stringify(state, null, 2));
 }
 
-async function removePid(service: string) {
-  const p = pidFilePath(service);
+async function removeState(home: string, service: string) {
+  const p = stateFilePath(home, service);
   if (existsSync(p)) await unlink(p);
 }
 
@@ -126,18 +175,6 @@ function probePort(port: number, host = "localhost"): Promise<boolean> {
   });
 }
 
-function findPidOnPort(port: number): number | null {
-  try {
-    const proc = Bun.spawnSync(["lsof", "-ti", `tcp:${port}`, "-sTCP:LISTEN"]);
-    const output = new TextDecoder().decode(proc.stdout).trim();
-    if (!output) return null;
-    const pid = Number.parseInt(output.split("\n")[0] ?? "", 10);
-    return Number.isNaN(pid) ? null : pid;
-  } catch {
-    return null;
-  }
-}
-
 async function waitForPort(port: number, timeoutMs = 30_000): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -145,16 +182,6 @@ async function waitForPort(port: number, timeoutMs = 30_000): Promise<void> {
     await Bun.sleep(200);
   }
   throw new Error(`Timed out waiting for port ${port}`);
-}
-
-type ServiceState = "running" | "external" | "stopped";
-
-interface ServiceInfo {
-  name: string;
-  state: ServiceState;
-  pid: number | null;
-  port: number;
-  owner: "managed" | "external" | "none";
 }
 
 // ---------------------------------------------------------------------------
@@ -215,39 +242,44 @@ function fixEmbeddedPostgresLibSymlinks() {
   }
 }
 
-async function ensurePostgres(): Promise<ServiceInfo> {
+function pgConnectionString(port: number): string {
+  return `postgresql://${PG_USER}:${PG_PASSWORD}@localhost:${port}/${PG_DATABASE}`;
+}
+
+async function ensurePostgres(home: string): Promise<ServiceInfo> {
   const info: ServiceInfo = {
     name: "PostgreSQL",
     state: "stopped",
     pid: null,
-    port: PG_PORT,
+    port: 0,
     owner: "none",
   };
 
-  const existingPid = readPid("postgres");
-  if (existingPid !== null) {
-    if (isOwnedProcess(existingPid, "postgres")) {
+  // Check state.json for an existing managed instance
+  const existing = readState(home, "postgres");
+  if (existing !== null) {
+    if (isOwnedProcess(existing.pid, "postgres")) {
       info.state = "running";
-      info.pid = existingPid;
+      info.pid = existing.pid;
+      info.port = existing.port;
       info.owner = "managed";
       return info;
     }
-    await removePid("postgres");
+    // Dead process — clean up stale state
+    await removeState(home, "postgres");
   }
 
-  if (await probePort(PG_PORT)) {
-    info.state = "running";
-    info.pid = findPidOnPort(PG_PORT);
-    info.owner = "managed";
-    return info;
-  }
-  const dataDir = join(SERVICES_DIR, "postgres", "data");
+  // Allocate a dynamic port
+  const port = await findAvailablePort();
+  info.port = port;
+
+  const dataDir = join(servicesDir(home), "postgres", "data");
   ensureDir(dataDir);
 
   const EmbeddedPostgres = (await import("embedded-postgres")).default;
   const pg = new EmbeddedPostgres({
     databaseDir: dataDir,
-    port: PG_PORT,
+    port,
     user: PG_USER,
     password: PG_PASSWORD,
     persistent: true,
@@ -274,10 +306,12 @@ async function ensurePostgres(): Promise<ServiceInfo> {
       );
 
       // Another process (e.g. another workspace) may have won the race and
-      // already started postgres on our port.
-      if (await probePort(PG_PORT)) {
+      // already started postgres — check state again
+      const raceState = readState(home, "postgres");
+      if (raceState && isOwnedProcess(raceState.pid, "postgres")) {
         info.state = "running";
-        info.pid = findPidOnPort(PG_PORT);
+        info.pid = raceState.pid;
+        info.port = raceState.port;
         info.owner = "managed";
         return info;
       }
@@ -294,7 +328,7 @@ async function ensurePostgres(): Promise<ServiceInfo> {
     if (!msg.includes("already exists")) throw e;
   }
 
-  await waitForPort(PG_PORT);
+  await waitForPort(port);
 
   const postmasterPidFile = join(dataDir, "postmaster.pid");
   let pgPid: number | null = null;
@@ -306,7 +340,11 @@ async function ensurePostgres(): Promise<ServiceInfo> {
   }
 
   if (pgPid) {
-    writePid("postgres", pgPid);
+    writeState(home, "postgres", {
+      pid: pgPid,
+      port,
+      startedAt: new Date().toISOString(),
+    });
     info.pid = pgPid;
   }
 
@@ -315,39 +353,37 @@ async function ensurePostgres(): Promise<ServiceInfo> {
   return info;
 }
 
-async function stopPostgres(): Promise<void> {
-  const pid = readPid("postgres");
-  if (pid === null) {
-    if (await probePort(PG_PORT)) {
-      console.log("PostgreSQL: running externally, skipping stop");
-    } else {
-      console.log("PostgreSQL: not running");
-    }
+async function stopPostgres(home: string): Promise<void> {
+  const state = readState(home, "postgres");
+  if (state === null) {
+    console.log("PostgreSQL: not running");
     return;
   }
 
+  const { pid, port } = state;
+
   if (!isProcessAlive(pid)) {
-    console.log("PostgreSQL: process already dead, cleaning up PID file");
-    await removePid("postgres");
+    console.log("PostgreSQL: process already dead, cleaning up state");
+    await removeState(home, "postgres");
     return;
   }
 
   if (!isOwnedProcess(pid, "postgres")) {
     console.log(
-      `PostgreSQL: PID ${pid} no longer belongs to postgres (possible PID reuse), cleaning up PID file`,
+      `PostgreSQL: PID ${pid} no longer belongs to postgres (possible PID reuse), cleaning up state`,
     );
-    await removePid("postgres");
+    await removeState(home, "postgres");
     return;
   }
 
-  console.log(`PostgreSQL: stopping (PID ${pid})...`);
+  console.log(`PostgreSQL: stopping (PID ${pid}, port ${port})...`);
 
-  const dataDir = join(SERVICES_DIR, "postgres", "data");
+  const dataDir = join(servicesDir(home), "postgres", "data");
   try {
     const EmbeddedPostgres = (await import("embedded-postgres")).default;
     const pg = new EmbeddedPostgres({
       databaseDir: dataDir,
-      port: PG_PORT,
+      port,
       user: PG_USER,
       password: PG_PASSWORD,
       persistent: true,
@@ -377,7 +413,7 @@ async function stopPostgres(): Promise<void> {
     }
   }
 
-  await removePid("postgres");
+  await removeState(home, "postgres");
   console.log("PostgreSQL stopped");
 }
 
@@ -410,15 +446,15 @@ function natsArtifactName(): string {
   return `nats-server-${NATS_VERSION}-${osName}-${archName}.zip`;
 }
 
-function natsBinaryPath(): string {
-  return join(SERVICES_DIR, "nats", "bin", `nats-server${EXE_EXT}`);
+function natsBinaryPath(home: string): string {
+  return join(servicesDir(home), "nats", "bin", `nats-server${EXE_EXT}`);
 }
 
-async function downloadNats(): Promise<string> {
-  const binPath = natsBinaryPath();
+async function downloadNats(home: string): Promise<string> {
+  const binPath = natsBinaryPath(home);
   if (existsSync(binPath)) return binPath;
 
-  const binDir = join(SERVICES_DIR, "nats", "bin");
+  const binDir = join(servicesDir(home), "nats", "bin");
   ensureDir(binDir);
 
   const artifact = natsArtifactName();
@@ -467,50 +503,54 @@ async function downloadNats(): Promise<string> {
   return binPath;
 }
 
-async function ensureNats(): Promise<ServiceInfo> {
+async function ensureNats(home: string): Promise<ServiceInfo> {
   const info: ServiceInfo = {
     name: "NATS",
     state: "stopped",
     pid: null,
-    port: NATS_PORT,
+    port: 0,
     owner: "none",
   };
 
-  const existingPid = readPid("nats");
-  if (existingPid !== null) {
-    if (isOwnedProcess(existingPid, "nats-server")) {
+  // Check state.json for an existing managed instance
+  const existing = readState(home, "nats");
+  if (existing !== null) {
+    if (isOwnedProcess(existing.pid, "nats-server")) {
       info.state = "running";
-      info.pid = existingPid;
+      info.pid = existing.pid;
+      info.port = existing.port;
       info.owner = "managed";
       return info;
     }
-    await removePid("nats");
+    // Dead process — clean up stale state
+    await removeState(home, "nats");
   }
 
-  if (await probePort(NATS_PORT)) {
-    info.state = "running";
-    info.pid = findPidOnPort(NATS_PORT);
-    info.owner = "managed";
-    return info;
-  }
+  // Allocate a dynamic port
+  const port = await findAvailablePort();
+  info.port = port;
 
-  const binPath = await downloadNats();
-  const dataDir = join(SERVICES_DIR, "nats", "data");
-  const logDir = join(SERVICES_DIR, "nats");
+  const binPath = await downloadNats(home);
+  const dataDir = join(servicesDir(home), "nats", "data");
+  const logDir = join(servicesDir(home), "nats");
   ensureDir(dataDir);
 
   const logFile = Bun.file(join(logDir, "nats.log"));
   const proc = Bun.spawn(
-    [binPath, "-p", String(NATS_PORT), "-store_dir", dataDir, "--jetstream"],
+    [binPath, "-p", String(port), "-store_dir", dataDir, "--jetstream"],
     {
       stdout: logFile,
       stderr: logFile,
     },
   );
 
-  writePid("nats", proc.pid);
+  writeState(home, "nats", {
+    pid: proc.pid,
+    port,
+    startedAt: new Date().toISOString(),
+  });
 
-  await waitForPort(NATS_PORT);
+  await waitForPort(port);
 
   info.state = "running";
   info.pid = proc.pid;
@@ -518,28 +558,26 @@ async function ensureNats(): Promise<ServiceInfo> {
   return info;
 }
 
-async function stopNats(): Promise<void> {
-  const pid = readPid("nats");
-  if (pid === null) {
-    if (await probePort(NATS_PORT)) {
-      console.log("NATS: running externally, skipping stop");
-    } else {
-      console.log("NATS: not running");
-    }
+async function stopNats(home: string): Promise<void> {
+  const state = readState(home, "nats");
+  if (state === null) {
+    console.log("NATS: not running");
     return;
   }
 
+  const { pid } = state;
+
   if (!isProcessAlive(pid)) {
-    console.log("NATS: process already dead, cleaning up PID file");
-    await removePid("nats");
+    console.log("NATS: process already dead, cleaning up state");
+    await removeState(home, "nats");
     return;
   }
 
   if (!isOwnedProcess(pid, "nats-server")) {
     console.log(
-      `NATS: PID ${pid} no longer belongs to nats-server (possible PID reuse), cleaning up PID file`,
+      `NATS: PID ${pid} no longer belongs to nats-server (possible PID reuse), cleaning up state`,
     );
-    await removePid("nats");
+    await removeState(home, "nats");
     return;
   }
 
@@ -565,7 +603,7 @@ async function stopNats(): Promise<void> {
     }
   }
 
-  await removePid("nats");
+  await removeState(home, "nats");
   console.log("NATS stopped");
 }
 
@@ -583,8 +621,17 @@ function isLocalUrl(url: string): boolean {
   }
 }
 
-export async function ensureServices(): Promise<ServiceInfo[]> {
-  ensureDir(SERVICES_DIR);
+function portFromUrl(url: string, fallback: number): number {
+  try {
+    const parsed = new URL(url);
+    return parsed.port ? Number.parseInt(parsed.port, 10) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export async function ensureServices(home: string): Promise<ServiceInfo[]> {
+  ensureDir(servicesDir(home));
 
   const skipPostgres =
     process.env.DATABASE_URL && !isLocalUrl(process.env.DATABASE_URL);
@@ -595,91 +642,77 @@ export async function ensureServices(): Promise<ServiceInfo[]> {
         name: "PostgreSQL",
         state: "external",
         pid: null,
-        port: PG_PORT,
+        port: portFromUrl(process.env.DATABASE_URL!, 5432),
         owner: "external",
       }
-    : await ensurePostgres();
+    : await ensurePostgres(home);
 
   const natsInfo: ServiceInfo = skipNats
     ? {
         name: "NATS",
         state: "external",
         pid: null,
-        port: NATS_PORT,
+        port: portFromUrl(process.env.NATS_URL!, 4222),
         owner: "external",
       }
-    : await ensureNats();
+    : await ensureNats(home);
 
   if (!skipPostgres && !process.env.DATABASE_URL) {
-    process.env.DATABASE_URL = PG_CONNECTION_STRING;
+    process.env.DATABASE_URL = pgConnectionString(pgInfo.port);
   }
 
   if (!skipNats && !process.env.NATS_URL) {
-    process.env.NATS_URL = NATS_CONNECTION_STRING;
+    process.env.NATS_URL = `nats://localhost:${natsInfo.port}`;
   }
 
   return [pgInfo, natsInfo];
 }
 
-export async function stopServices(): Promise<void> {
-  await stopPostgres();
-  await stopNats();
+export async function stopServices(home: string): Promise<void> {
+  await stopPostgres(home);
+  await stopNats(home);
   console.log("\nAll managed services stopped.");
 }
 
-export async function serviceStatus(): Promise<ServiceInfo[]> {
+export async function serviceStatus(home: string): Promise<ServiceInfo[]> {
   const services: ServiceInfo[] = [];
 
-  const pgPid = readPid("postgres");
-  if (pgPid !== null && isProcessAlive(pgPid)) {
+  const pgState = readState(home, "postgres");
+  if (pgState !== null && isProcessAlive(pgState.pid)) {
     services.push({
       name: "PostgreSQL",
       state: "running",
-      pid: pgPid,
-      port: PG_PORT,
-      owner: "managed",
-    });
-  } else if (await probePort(PG_PORT)) {
-    services.push({
-      name: "PostgreSQL",
-      state: "running",
-      pid: findPidOnPort(PG_PORT),
-      port: PG_PORT,
+      pid: pgState.pid,
+      port: pgState.port,
       owner: "managed",
     });
   } else {
+    if (pgState !== null) await removeState(home, "postgres");
     services.push({
       name: "PostgreSQL",
       state: "stopped",
       pid: null,
-      port: PG_PORT,
+      port: 0,
       owner: "none",
     });
   }
 
-  const natsPid = readPid("nats");
-  if (natsPid !== null && isProcessAlive(natsPid)) {
+  const natsState = readState(home, "nats");
+  if (natsState !== null && isProcessAlive(natsState.pid)) {
     services.push({
       name: "NATS",
       state: "running",
-      pid: natsPid,
-      port: NATS_PORT,
-      owner: "managed",
-    });
-  } else if (await probePort(NATS_PORT)) {
-    services.push({
-      name: "NATS",
-      state: "running",
-      pid: findPidOnPort(NATS_PORT),
-      port: NATS_PORT,
+      pid: natsState.pid,
+      port: natsState.port,
       owner: "managed",
     });
   } else {
+    if (natsState !== null) await removeState(home, "nats");
     services.push({
       name: "NATS",
       state: "stopped",
       pid: null,
-      port: NATS_PORT,
+      port: 0,
       owner: "none",
     });
   }
@@ -696,7 +729,7 @@ export function printTable(services: ServiceInfo[]) {
     const name = s.name.padEnd(10);
     const state = s.state.padEnd(10);
     const pid = (s.pid?.toString() ?? "-").padEnd(5);
-    const port = String(s.port).padEnd(5);
+    const port = (s.port ? String(s.port) : "-").padEnd(5);
     const owner = s.owner;
     console.log(`${name}  ${state}  ${pid}  ${port}  ${owner}`);
   }

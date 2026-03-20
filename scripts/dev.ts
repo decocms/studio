@@ -5,6 +5,7 @@
  *
  * Called by `bun run dev` from the monorepo root.
  */
+import { homedir } from "os";
 import { join } from "path";
 import { ASCII_ART, row, section } from "../apps/mesh/src/fmt.ts";
 import { ensureServices } from "./dev-services.ts";
@@ -19,6 +20,9 @@ for (const [key, value] of Object.entries(dotEnv)) {
   }
 }
 
+const decoHome =
+  process.env.DATA_DIR || process.env.DECOCMS_HOME || join(homedir(), "deco");
+
 // Banner
 console.log("");
 for (const line of ASCII_ART) {
@@ -27,7 +31,7 @@ for (const line of ASCII_ART) {
 console.log("");
 
 // Services
-const services = await ensureServices();
+const services = await ensureServices(decoHome);
 
 console.log(section("Services"));
 for (const s of services) {

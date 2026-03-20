@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { homedir } from "os";
 import { join } from "path";
 import { startWorktree } from "worktree-devservers";
 import {
@@ -49,8 +50,11 @@ startWorktree(slug, async (ctx) => {
     if (process.env[key] === undefined) process.env[key] = value;
   }
 
+  const decoHome =
+    process.env.DATA_DIR || process.env.DECOCMS_HOME || join(homedir(), "deco");
+
   // Services
-  const services = await ensureServices();
+  const services = await ensureServices(decoHome);
 
   console.log(section("Services"));
   for (const s of services) {

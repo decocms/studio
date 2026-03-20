@@ -1,4 +1,6 @@
 #!/usr/bin/env bun
+import { homedir } from "os";
+import { join } from "path";
 import {
   ensureServices,
   getStatus,
@@ -6,19 +8,22 @@ import {
   stopServices,
 } from "./dev-services.ts";
 
+const decoHome =
+  process.env.DATA_DIR || process.env.DECOCMS_HOME || join(homedir(), "deco");
+
 const command = process.argv[2];
 
 switch (command) {
   case "up": {
-    await ensureServices();
+    await ensureServices(decoHome);
     break;
   }
   case "down": {
-    await stopServices();
+    await stopServices(decoHome);
     break;
   }
   case "status": {
-    const services = await getStatus();
+    const services = await getStatus(decoHome);
     printTable(services);
     break;
   }

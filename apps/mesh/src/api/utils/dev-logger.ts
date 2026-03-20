@@ -1,4 +1,5 @@
 import type { Context, Next } from "hono";
+import { logEmitter } from "../../cli/log-emitter";
 
 // ANSI color codes for elegant logging
 const colors = {
@@ -148,6 +149,15 @@ export function devLogger() {
       console.log(
         `${colors.dim}${outArrow}${colors.reset} ${methodColor}${method}${colors.reset} ${displayPath}${mcpInfo ? ` ${mcpInfo}` : ""} ${statusColor}${status}${colors.reset} ${colors.duration}${durationStr}${colors.reset}`,
       );
+
+      // Emit to Ink UI log emitter
+      logEmitter.emit("request", {
+        method,
+        path,
+        status,
+        duration,
+        timestamp: new Date(),
+      });
     }
   };
 }
