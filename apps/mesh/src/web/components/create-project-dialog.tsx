@@ -121,10 +121,10 @@ export function CreateProjectDialog({
         bannerColor: "#3B82F6",
       });
       setSlugManuallyEdited(false);
-      // Navigate to the new project
+      // Navigate to the new project using its virtual MCP ID
       navigate({
-        to: "/$org/$project",
-        params: { org: org.slug, project: result.slug },
+        to: "/$org/p/$virtualMcpId",
+        params: { org: org.slug, virtualMcpId: result.item.id },
       });
     },
     onError: (error) => {

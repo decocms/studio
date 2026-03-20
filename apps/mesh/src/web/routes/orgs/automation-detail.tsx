@@ -1212,8 +1212,8 @@ export default function AutomationDetailPage() {
       await deleteMutation.mutateAsync(automationId);
       toast.success("Automation deleted");
       navigate({
-        to: "/$org/$project/automations",
-        params: { org: org.slug, project: "org-admin" },
+        to: "/$org/automations",
+        params: { org: org.slug },
       });
     } catch {
       toast.error("Failed to delete automation");
@@ -1243,10 +1243,7 @@ export default function AutomationDetailPage() {
       <BreadcrumbList>
         <BreadcrumbItem>
           <BreadcrumbLink asChild>
-            <Link
-              to="/$org/$project/automations"
-              params={{ org: org.slug, project: "org-admin" }}
-            >
+            <Link to="/$org/automations" params={{ org: org.slug }}>
               Automations
             </Link>
           </BreadcrumbLink>

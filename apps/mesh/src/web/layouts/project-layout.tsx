@@ -42,8 +42,8 @@ function ProjectRequestError({
         variant="link"
         onClick={() =>
           navigate({
-            to: "/$org/$project",
-            params: { org: orgSlug, project: "org-admin" },
+            to: "/$org",
+            params: { org: orgSlug },
           })
         }
       >
@@ -75,8 +75,8 @@ function ProjectNotFoundError({
         variant="link"
         onClick={() =>
           navigate({
-            to: "/$org/$project",
-            params: { org: orgSlug, project: "org-admin" },
+            to: "/$org",
+            params: { org: orgSlug },
           })
         }
       >

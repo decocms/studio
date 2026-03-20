@@ -913,10 +913,9 @@ function OrgAgentsContent() {
       return;
     }
     navigate({
-      to: "/$org/$project/agents/$agentId",
+      to: "/$org/agents/$agentId",
       params: {
         org: org.slug,
-        project: "org-admin",
         agentId,
       },
     });

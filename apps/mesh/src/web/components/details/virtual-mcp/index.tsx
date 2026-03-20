@@ -627,10 +627,7 @@ Define step-by-step how the agent should handle requests.
       <BreadcrumbList>
         <BreadcrumbItem>
           <BreadcrumbLink asChild>
-            <Link
-              to="/$org/$project/agents"
-              params={{ org: org.slug, project: "org-admin" }}
-            >
+            <Link to="/$org/agents" params={{ org: org.slug }}>
               Agents
             </Link>
           </BreadcrumbLink>
@@ -884,7 +881,7 @@ Define step-by-step how the agent should handle requests.
 
 function VirtualMcpDetailViewContent() {
   const navigate = useNavigate();
-  const params = useParams({ from: "/shell/$org/$project/agents/$agentId" });
+  const params = useParams({ from: "/shell/$org/agents/$agentId" });
   const { org, agentId: virtualMcpId } = params;
 
   const virtualMcp = useVirtualMCP(virtualMcpId);
@@ -900,8 +897,8 @@ function VirtualMcpDetailViewContent() {
               variant="outline"
               onClick={() =>
                 navigate({
-                  to: "/$org/$project/agents",
-                  params: { org, project: "org-admin" },
+                  to: "/$org/agents",
+                  params: { org },
                 })
               }
             >

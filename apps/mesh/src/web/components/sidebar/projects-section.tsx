@@ -61,8 +61,8 @@ function ProjectListItem({
       <SidebarMenuButton
         onClick={() => {
           navigate({
-            to: "/$org/$project",
-            params: { org: org.slug, project: project.slug },
+            to: "/$org/p/$virtualMcpId",
+            params: { org: org.slug, virtualMcpId: project.id },
           });
         }}
         tooltip={project.name}

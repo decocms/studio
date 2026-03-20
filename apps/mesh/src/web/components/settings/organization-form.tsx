@@ -40,7 +40,7 @@ type OrganizationSettingsFormValues = z.infer<
 
 export function OrganizationForm() {
   const navigate = useNavigate();
-  const { org, project } = useProjectContext();
+  const { org } = useProjectContext();
   const queryClient = useQueryClient();
   const [isSaving, setIsSaving] = useState(false);
 
@@ -88,8 +88,9 @@ export function OrganizationForm() {
       // If slug changed, navigate to new slug
       if (data?.data?.slug && data.data.slug !== org.slug) {
         navigate({
-          to: "/$org/$project/settings",
-          params: { org: data.data.slug, project: project.slug },
+          to: "/$org",
+          params: { org: data.data.slug },
+          search: { settings: "org.general" },
         });
       }
     },

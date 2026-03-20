@@ -476,8 +476,8 @@ export function McpConfigurationForm({
 
   const handleAddNew = () => {
     navigate({
-      to: "/$org/$project/mcps",
-      params: { org: org.slug, project: "org-admin" },
+      to: "/$org/mcps",
+      params: { org: org.slug },
       search: { action: "create" },
     });
   };

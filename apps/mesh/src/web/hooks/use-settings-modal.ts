@@ -29,9 +29,8 @@ function isValidSettingsSection(
 export function useSettingsModal() {
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { settings?: string };
-  const { org, project } = useParams({ strict: false }) as {
+  const { org } = useParams({ strict: false }) as {
     org?: string;
-    project?: string;
   };
 
   const activeSection = isValidSettingsSection(search.settings)
@@ -40,19 +39,19 @@ export function useSettingsModal() {
   const isOpen = !!activeSection;
 
   const open = (section: SettingsSection) => {
-    if (!org || !project) return;
+    if (!org) return;
     navigate({
-      to: "/$org/$project",
-      params: { org, project },
+      to: "/$org",
+      params: { org },
       search: { settings: section },
     });
   };
 
   const close = () => {
-    if (!org || !project) return;
+    if (!org) return;
     navigate({
-      to: "/$org/$project",
-      params: { org, project },
+      to: "/$org",
+      params: { org },
       search: {},
     });
   };

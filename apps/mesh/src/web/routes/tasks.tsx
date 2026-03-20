@@ -14,15 +14,15 @@ import { Suspense } from "react";
 import { useChatStable } from "../components/chat/context";
 
 function TasksContent() {
-  const { org, project } = useProjectContext();
+  const { org } = useProjectContext();
   const navigate = useNavigate();
   const { switchToTask } = useChatStable();
 
   const handleTaskSelect = async (taskId: string) => {
     await switchToTask(taskId);
     navigate({
-      to: "/$org/$project",
-      params: { org: org.slug, project: project.slug },
+      to: "/$org",
+      params: { org: org.slug },
     });
   };
 

@@ -382,10 +382,9 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
     sessionStorage.setItem(`replay-${replayId}`, JSON.stringify(log.input));
     // Navigate to tool page with replayId
     navigate({
-      to: "/$org/$project/mcps/$connectionId/$collectionName/$itemId",
+      to: "/$org/mcps/$connectionId/$collectionName/$itemId",
       params: {
         org: org.slug,
-        project: "org-admin",
         connectionId: log.connectionId,
         collectionName: "tools",
         itemId: encodeURIComponent(log.toolName),
@@ -470,10 +469,9 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                           value,
                         };
                         navigate({
-                          to: "/$org/$project/monitoring",
+                          to: "/$org/monitoring",
                           params: {
                             org: org.slug,
-                            project: "org-admin",
                           },
                           search: {
                             propertyFilters: serializePropertyFilters([filter]),

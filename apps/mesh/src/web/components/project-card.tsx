@@ -38,8 +38,8 @@ export function ProjectCard({ project, onSettingsClick }: ProjectCardProps) {
 
   return (
     <Link
-      to="/$org/$project"
-      params={{ org: org.slug, project: project.slug }}
+      to="/$org/p/$virtualMcpId"
+      params={{ org: org.slug, virtualMcpId: project.id }}
       className="block group"
     >
       <div className="border border-border rounded-xl overflow-hidden bg-card">

@@ -53,12 +53,12 @@ export default function ProjectsListPage() {
           p.description?.toLowerCase().includes(search.toLowerCase()),
       ) ?? [];
 
-  const handleSettingsClick = (projectSlug: string) => {
+  const handleSettingsClick = (projectId: string) => {
     navigate({
-      to: "/$org/$project/settings/general",
+      to: "/$org/p/$virtualMcpId/settings/general",
       params: {
         org: org.slug,
-        project: projectSlug,
+        virtualMcpId: projectId,
       },
     });
   };
@@ -151,7 +151,7 @@ export default function ProjectsListPage() {
                 <ProjectCard
                   key={project.id}
                   project={project}
-                  onSettingsClick={() => handleSettingsClick(project.slug)}
+                  onSettingsClick={() => handleSettingsClick(project.id)}
                 />
               ))}
             </div>

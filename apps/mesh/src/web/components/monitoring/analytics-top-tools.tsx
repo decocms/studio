@@ -412,8 +412,8 @@ function TopToolsContent({
 
   const handleTitleClick = () => {
     navigate({
-      to: "/$org/$project/monitoring",
-      params: { org: org.slug, project: "org-admin" },
+      to: "/$org/monitoring",
+      params: { org: org.slug },
     });
   };
 

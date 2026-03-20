@@ -47,10 +47,9 @@ export function ConnectionUiTab({
 
   const handleToolClick = (tool: Tool) => {
     navigate({
-      to: "/$org/$project/mcps/$appSlug/$collectionName/$itemId",
+      to: "/$org/mcps/$appSlug/$collectionName/$itemId",
       params: {
         org,
-        project: "org-admin",
         appSlug,
         collectionName: "tools",
         itemId: encodeURIComponent(tool.name),

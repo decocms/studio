@@ -679,10 +679,9 @@ function StoreMCPServerDetailContent() {
       }
 
       navigate({
-        to: "/$org/$project/mcps",
+        to: "/$org/mcps",
         params: {
           org: org.slug,
-          project: "org-admin",
         },
         search: { tab: "connected" },
       });
@@ -725,8 +724,8 @@ function StoreMCPServerDetailContent() {
 
   const handleBackClick = () => {
     navigate({
-      to: "/$org/$project/mcps",
-      params: { org: org.slug, project: "org-admin" },
+      to: "/$org/mcps",
+      params: { org: org.slug },
     });
   };
 
@@ -749,10 +748,7 @@ function StoreMCPServerDetailContent() {
       <BreadcrumbList>
         <BreadcrumbItem>
           <BreadcrumbLink asChild>
-            <Link
-              to="/$org/$project/mcps"
-              params={{ org: org.slug, project: "org-admin" }}
-            >
+            <Link to="/$org/mcps" params={{ org: org.slug }}>
               Connections
             </Link>
           </BreadcrumbLink>
@@ -984,8 +980,8 @@ export default function StoreMCPServerDetail() {
 
   const handleBackClick = () => {
     navigate({
-      to: "/$org/$project/mcps",
-      params: { org: org.slug, project: "org-admin" },
+      to: "/$org/mcps",
+      params: { org: org.slug },
     });
   };
 

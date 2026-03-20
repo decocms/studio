@@ -104,10 +104,9 @@ export function CollectionTab({
   // Create action handlers
   const handleEdit = (item: BaseCollectionEntity) => {
     navigate({
-      to: "/$org/$project/mcps/$appSlug/$collectionName/$itemId",
+      to: "/$org/mcps/$appSlug/$collectionName/$itemId",
       params: {
         org,
-        project: "org-admin",
         appSlug,
         collectionName,
         itemId: item.id,
@@ -172,10 +171,9 @@ export function CollectionTab({
 
       // Navigate to the new item's detail page
       navigate({
-        to: "/$org/$project/mcps/$appSlug/$collectionName/$itemId",
+        to: "/$org/mcps/$appSlug/$collectionName/$itemId",
         params: {
           org,
-          project: "org-admin",
           appSlug,
           collectionName,
           itemId: createdItem.id,

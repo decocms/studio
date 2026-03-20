@@ -112,11 +112,11 @@ export function PluginLayout({
   const { org, project } = useProjectContext();
   const {
     org: orgParam,
-    project: projectParam,
+    virtualMcpId,
     pluginId,
   } = useParams({
     strict: false,
-  }) as { org: string; project: string; pluginId: string };
+  }) as { org: string; virtualMcpId: string; pluginId: string };
   const allConnections = useConnections();
   const { data: authSession } = authClient.useSession();
 
@@ -231,10 +231,10 @@ export function PluginLayout({
           </div>
           <Button asChild>
             <Link
-              to="/$org/$project/settings"
+              to="/$org/p/$virtualMcpId/settings"
               params={{
                 org: orgParam ?? org.slug,
-                project: projectParam ?? project.slug ?? "",
+                virtualMcpId: virtualMcpId ?? project.id ?? "",
               }}
             >
               Go to Project Settings

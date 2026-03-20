@@ -22,7 +22,6 @@ import {
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { UserProjectItems, ProjectListSkeleton } from "./project-panel";
-import { useProject } from "@/web/hooks/use-project";
 import { CreateOrganizationDialog } from "@/web/components/create-organization-dialog";
 import { useState } from "react";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
@@ -52,7 +51,9 @@ export function MeshAccountSwitcher({
   isCollapsed = false,
   onCreateProject,
 }: MeshAccountSwitcherProps) {
-  const { org: orgParam, project: projectParam } = useParams({ strict: false });
+  const { org: orgParam } = useParams({ strict: false }) as {
+    org?: string;
+  };
   const { data: organizations } = authClient.useListOrganizations();
   const navigate = useNavigate();
 
@@ -62,40 +63,31 @@ export function MeshAccountSwitcher({
   const [showOrgList, setShowOrgList] = useState(false);
   const isMobile = useIsMobile();
 
-  const isStudio = projectParam === "org-admin";
-
-  // Fetch full project data to get the name — sidebar context only has the slug
-  const { data: currentProjectData } = useProject(
-    currentOrg?.id ?? "",
-    isStudio ? "" : (projectParam ?? ""),
-  );
-
-  const sortedOrgs = [...(organizations ?? [])].sort((a, b) => {
-    if (a.slug === orgParam) return -1;
-    if (b.slug === orgParam) return 1;
-    return a.name.localeCompare(b.name);
-  });
+  // The account switcher always shows the org-level (Studio) view
+  const isStudio = true;
 
   const handleSelectStudio = () => {
     if (!orgParam) return;
     navigate({
-      to: "/$org/$project",
-      params: { org: orgParam, project: "org-admin" },
+      to: "/$org",
+      params: { org: orgParam },
     });
   };
 
   const handleSelectProject = (projectSlug: string) => {
+    // Project selection now needs the virtual MCP ID, not the slug
+    // This is handled by the project-panel component which passes the ID
     if (!orgParam) return;
     navigate({
-      to: "/$org/$project",
-      params: { org: orgParam, project: projectSlug },
+      to: "/$org/p/$virtualMcpId",
+      params: { org: orgParam, virtualMcpId: projectSlug },
     });
   };
 
   const handleSelectOrg = (orgSlug: string) => {
     navigate({
-      to: "/$org/$project",
-      params: { org: orgSlug, project: "org-admin" },
+      to: "/$org",
+      params: { org: orgSlug },
     });
   };
 
@@ -104,17 +96,11 @@ export function MeshAccountSwitcher({
     : undefined;
 
   const handleSettings = () => {
-    if (!orgParam || !projectParam) return;
-    const isOrgAdmin = projectParam === "org-admin";
+    if (!orgParam) return;
     navigate({
-      to: "/$org/$project",
-      params: { org: orgParam, project: projectParam },
-      search: (prev: { settings?: string }) => ({
-        ...prev,
-        settings: isOrgAdmin
-          ? "org.general"
-          : `project:${projectParam}:general`,
-      }),
+      to: "/$org",
+      params: { org: orgParam },
+      search: { settings: "org.general" },
     });
   };
 
@@ -168,33 +154,15 @@ export function MeshAccountSwitcher({
                   "shrink-0 rounded-md flex items-center justify-center border border-border/50 overflow-hidden transition-[width,height] duration-300 ease-[var(--ease-out-quart)]",
                   isCollapsed ? "size-6" : "size-8",
                 )}
-                style={
-                  currentProjectData?.ui?.icon
-                    ? undefined
-                    : {
-                        backgroundColor:
-                          currentProjectData?.ui?.themeColor ?? "#60a5fa",
-                      }
-                }
               >
-                {currentProjectData?.ui?.icon ? (
-                  <img
-                    src={currentProjectData.ui.icon}
-                    alt=""
-                    className="size-full object-cover"
-                  />
-                ) : (
-                  <span
-                    className={cn(
-                      "font-semibold text-white",
-                      isCollapsed ? "text-xs" : "text-lg",
-                    )}
-                  >
-                    {(currentProjectData?.name ?? projectParam ?? "?")
-                      .charAt(0)
-                      .toUpperCase()}
-                  </span>
-                )}
+                <span
+                  className={cn(
+                    "font-semibold text-white",
+                    isCollapsed ? "text-xs" : "text-lg",
+                  )}
+                >
+                  ?
+                </span>
               </div>
             )}
             {!isCollapsed && (
@@ -204,9 +172,7 @@ export function MeshAccountSwitcher({
                     {currentOrg?.name ?? "Select org"}
                   </span>
                   <span className="block text-sm font-semibold text-sidebar-foreground truncate leading-tight">
-                    {isStudio
-                      ? "Studio"
-                      : (currentProjectData?.name ?? projectParam ?? "")}
+                    Studio
                   </span>
                 </div>
                 <ChevronSelectorVertical
@@ -226,31 +192,37 @@ export function MeshAccountSwitcher({
         >
           {isMobile && showOrgList ? (
             <>
-              {sortedOrgs.map((org) => (
-                <DropdownMenuItem
-                  key={org.id}
-                  className={cn(
-                    "gap-2.5",
-                    org.slug === orgParam && "bg-accent",
-                  )}
-                  onClick={() => handleSelectOrg(org.slug)}
-                >
-                  <Avatar
-                    url={org.logo ?? ""}
-                    fallback={org.name}
-                    size="xs"
-                    className="size-5 rounded-md shrink-0"
-                    objectFit="cover"
-                  />
-                  <span className="flex-1 truncate">{org.name}</span>
-                  {org.slug === orgParam && (
-                    <Check
-                      size={14}
-                      className="ml-auto text-muted-foreground shrink-0"
+              {[...(organizations ?? [])]
+                .sort((a, b) => {
+                  if (a.slug === orgParam) return -1;
+                  if (b.slug === orgParam) return 1;
+                  return a.name.localeCompare(b.name);
+                })
+                .map((org) => (
+                  <DropdownMenuItem
+                    key={org.id}
+                    className={cn(
+                      "gap-2.5",
+                      org.slug === orgParam && "bg-accent",
+                    )}
+                    onClick={() => handleSelectOrg(org.slug)}
+                  >
+                    <Avatar
+                      url={org.logo ?? ""}
+                      fallback={org.name}
+                      size="xs"
+                      className="size-5 rounded-md shrink-0"
+                      objectFit="cover"
                     />
-                  )}
-                </DropdownMenuItem>
-              ))}
+                    <span className="flex-1 truncate">{org.name}</span>
+                    {org.slug === orgParam && (
+                      <Check
+                        size={14}
+                        className="ml-auto text-muted-foreground shrink-0"
+                      />
+                    )}
+                  </DropdownMenuItem>
+                ))}
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="gap-2.5"
@@ -293,7 +265,7 @@ export function MeshAccountSwitcher({
                 <Suspense fallback={<ProjectListSkeleton />}>
                   <UserProjectItems
                     organizationId={currentOrg.id}
-                    currentProjectSlug={projectParam}
+                    currentProjectSlug={undefined}
                     orgSlug={orgParam ?? ""}
                     onSelect={handleSelectProject}
                   />
@@ -337,31 +309,37 @@ export function MeshAccountSwitcher({
                     <span>Switch organization</span>
                   </DropdownMenuSubTrigger>
                   <DropdownMenuSubContent className="w-48 flex flex-col gap-0.5">
-                    {sortedOrgs.map((org) => (
-                      <DropdownMenuItem
-                        key={org.id}
-                        className={cn(
-                          "gap-2.5",
-                          org.slug === orgParam && "bg-accent",
-                        )}
-                        onClick={() => handleSelectOrg(org.slug)}
-                      >
-                        <Avatar
-                          url={org.logo ?? ""}
-                          fallback={org.name}
-                          size="xs"
-                          className="size-5 rounded-md shrink-0"
-                          objectFit="cover"
-                        />
-                        <span className="flex-1 truncate">{org.name}</span>
-                        {org.slug === orgParam && (
-                          <Check
-                            size={14}
-                            className="ml-auto text-muted-foreground shrink-0"
+                    {[...(organizations ?? [])]
+                      .sort((a, b) => {
+                        if (a.slug === orgParam) return -1;
+                        if (b.slug === orgParam) return 1;
+                        return a.name.localeCompare(b.name);
+                      })
+                      .map((org) => (
+                        <DropdownMenuItem
+                          key={org.id}
+                          className={cn(
+                            "gap-2.5",
+                            org.slug === orgParam && "bg-accent",
+                          )}
+                          onClick={() => handleSelectOrg(org.slug)}
+                        >
+                          <Avatar
+                            url={org.logo ?? ""}
+                            fallback={org.name}
+                            size="xs"
+                            className="size-5 rounded-md shrink-0"
+                            objectFit="cover"
                           />
-                        )}
-                      </DropdownMenuItem>
-                    ))}
+                          <span className="flex-1 truncate">{org.name}</span>
+                          {org.slug === orgParam && (
+                            <Check
+                              size={14}
+                              className="ml-auto text-muted-foreground shrink-0"
+                            />
+                          )}
+                        </DropdownMenuItem>
+                      ))}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       className="gap-2.5"

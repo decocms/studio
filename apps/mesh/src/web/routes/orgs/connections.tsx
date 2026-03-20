@@ -965,10 +965,9 @@ function OrgMcpsContent() {
         ? item.id
         : item.server?.name || item.id || "";
     navigate({
-      to: "/$org/$project/store/$appName",
+      to: "/$org/store/$appName",
       params: {
         org: org.slug,
-        project: "org-admin",
         appName: serverSlug,
       },
       search: { registryId, serverName },
@@ -1095,16 +1094,16 @@ function OrgMcpsContent() {
 
   const openCreateDialog = () => {
     navigate({
-      to: "/$org/$project/mcps",
-      params: { org: org.slug, project: "org-admin" },
+      to: "/$org/mcps",
+      params: { org: org.slug },
       search: { action: "create" },
     });
   };
 
   const closeCreateDialog = () => {
     navigate({
-      to: "/$org/$project/mcps",
-      params: { org: org.slug, project: "org-admin" },
+      to: "/$org/mcps",
+      params: { org: org.slug },
       search: {},
     });
   };
@@ -1513,10 +1512,9 @@ function OrgMcpsContent() {
     closeCreateDialog();
     form.reset();
     navigate({
-      to: "/$org/$project/mcps/$appSlug",
+      to: "/$org/mcps/$appSlug",
       params: {
         org: org.slug,
-        project: "org-admin",
         appSlug: getConnectionSlug({
           app_name: null,
           connection_url: connectionUrl,
@@ -2295,10 +2293,9 @@ function OrgMcpsContent() {
                         group={item}
                         onOpen={() => {
                           navigate({
-                            to: "/$org/$project/mcps/$appSlug",
+                            to: "/$org/mcps/$appSlug",
                             params: {
                               org: org.slug,
-                              project: "org-admin",
                               appSlug: item.key,
                             },
                           });
@@ -2321,10 +2318,9 @@ function OrgMcpsContent() {
                         selectionMode
                           ? toggleSelect(connection.id)
                           : navigate({
-                              to: "/$org/$project/mcps/$appSlug",
+                              to: "/$org/mcps/$appSlug",
                               params: {
                                 org: org.slug,
-                                project: "org-admin",
                                 appSlug: getConnectionSlug(connection),
                               },
                             })
@@ -2375,10 +2371,9 @@ function OrgMcpsContent() {
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     navigate({
-                                      to: "/$org/$project/mcps/$appSlug",
+                                      to: "/$org/mcps/$appSlug",
                                       params: {
                                         org: org.slug,
-                                        project: "org-admin",
                                         appSlug: getConnectionSlug(connection),
                                       },
                                     });
@@ -2463,10 +2458,9 @@ function OrgMcpsContent() {
                           const first = appInstances[0];
                           if (first) {
                             navigate({
-                              to: "/$org/$project/mcps/$appSlug",
+                              to: "/$org/mcps/$appSlug",
                               params: {
                                 org: org.slug,
-                                project: "org-admin",
                                 appSlug: getConnectionSlug(first),
                               },
                             });
@@ -2547,10 +2541,9 @@ function OrgMcpsContent() {
                           const first = appInstances[0];
                           if (first) {
                             navigate({
-                              to: "/$org/$project/mcps/$appSlug",
+                              to: "/$org/mcps/$appSlug",
                               params: {
                                 org: org.slug,
-                                project: "org-admin",
                                 appSlug: getConnectionSlug(first),
                               },
                             });

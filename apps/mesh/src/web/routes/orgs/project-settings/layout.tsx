@@ -37,10 +37,10 @@ function ContentSkeleton() {
 function ProjectSettingsContent() {
   const params = useParams({ strict: false }) as {
     org: string;
-    project: string;
+    virtualMcpId: string;
   };
-  const { org } = useProjectContext();
-  const slug = params.project;
+  const { org, project: projectContext } = useProjectContext();
+  const slug = projectContext.slug;
   const { location } = useRouterState();
   const [mobileShowContent, setMobileShowContent] = useState(true);
 
@@ -62,10 +62,9 @@ function ProjectSettingsContent() {
                 <BreadcrumbItem>
                   <BreadcrumbLink asChild>
                     <Link
-                      to="/$org/$project/projects"
+                      to="/$org/projects"
                       params={{
                         org: params.org,
-                        project: "org-admin",
                       }}
                     >
                       Projects
@@ -110,10 +109,9 @@ function ProjectSettingsContent() {
                 <BreadcrumbItem>
                   <BreadcrumbLink asChild>
                     <Link
-                      to="/$org/$project/projects"
+                      to="/$org/projects"
                       params={{
                         org: params.org,
-                        project: "org-admin",
                       }}
                     >
                       Projects
@@ -124,8 +122,11 @@ function ProjectSettingsContent() {
                 <BreadcrumbItem>
                   <BreadcrumbLink asChild>
                     <Link
-                      to="/$org/$project"
-                      params={{ org: params.org, project: project.slug }}
+                      to="/$org/p/$virtualMcpId"
+                      params={{
+                        org: params.org,
+                        virtualMcpId: params.virtualMcpId,
+                      }}
                     >
                       {project.name}
                     </Link>

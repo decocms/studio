@@ -52,8 +52,8 @@ export function DangerZone() {
       });
       toast.success("Project deleted");
       navigate({
-        to: "/$org/$project/projects",
-        params: { org: org.slug, project: "org-admin" },
+        to: "/$org/projects",
+        params: { org: org.slug },
       });
     },
     onError: (error) => {

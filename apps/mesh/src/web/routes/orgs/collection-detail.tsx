@@ -45,7 +45,7 @@ const WELL_KNOWN_VIEW_DETAILS: Record<
 function ToolDetailsContent() {
   const router = useRouter();
   const params = useParams({
-    from: "/shell/$org/$project/mcps/$appSlug/$collectionName/$itemId",
+    from: "/shell/$org/mcps/$appSlug/$collectionName/$itemId",
   });
 
   const itemId = decodeURIComponent(params.itemId);
@@ -92,7 +92,7 @@ function formatCollectionName(name: string): string {
 function CollectionDetailsContent() {
   const router = useRouter();
   const params = useParams({
-    from: "/shell/$org/$project/mcps/$appSlug/$collectionName/$itemId",
+    from: "/shell/$org/mcps/$appSlug/$collectionName/$itemId",
   });
 
   const collectionName = decodeURIComponent(params.collectionName);
@@ -142,10 +142,7 @@ function CollectionDetailsContent() {
       <BreadcrumbList>
         <BreadcrumbItem>
           <BreadcrumbLink asChild>
-            <Link
-              to="/$org/$project/mcps"
-              params={{ org: org.slug, project: "org-admin" }}
-            >
+            <Link to="/$org/mcps" params={{ org: org.slug }}>
               Connections
             </Link>
           </BreadcrumbLink>
@@ -156,10 +153,9 @@ function CollectionDetailsContent() {
             <BreadcrumbItem>
               <BreadcrumbLink asChild>
                 <Link
-                  to="/$org/$project/mcps/$appSlug"
+                  to="/$org/mcps/$appSlug"
                   params={{
                     org: org.slug,
-                    project: "org-admin",
                     appSlug: params.appSlug,
                   }}
                   search={{ tab: collectionName }}
@@ -205,7 +201,7 @@ function CollectionDetailsContent() {
 
 function CollectionDetailsRouter() {
   const params = useParams({
-    from: "/shell/$org/$project/mcps/$appSlug/$collectionName/$itemId",
+    from: "/shell/$org/mcps/$appSlug/$collectionName/$itemId",
   });
 
   const collectionName = decodeURIComponent(params.collectionName);

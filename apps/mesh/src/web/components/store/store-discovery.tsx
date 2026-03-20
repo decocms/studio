@@ -151,10 +151,9 @@ function StoreDiscoveryContent({
         : item.server?.name || item.id || "";
 
     navigate({
-      to: "/$org/$project/store/$appName",
+      to: "/$org/store/$appName",
       params: {
         org: org.slug,
-        project: "org-admin",
         appName: serverSlug,
       },
       search: {

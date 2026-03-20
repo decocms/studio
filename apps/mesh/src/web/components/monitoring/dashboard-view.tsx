@@ -306,7 +306,7 @@ function DashboardViewContent({
   onTimeRangeChange,
   onPropertyFiltersChange,
 }: DashboardViewContentProps) {
-  const { org, project, locator } = useProjectContext();
+  const { org, locator } = useProjectContext();
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
@@ -391,8 +391,8 @@ function DashboardViewContent({
         <BreadcrumbItem>
           <BreadcrumbLink asChild>
             <Link
-              to="/$org/$project/monitoring"
-              params={{ org: org.slug, project: project.slug }}
+              to="/$org/monitoring"
+              params={{ org: org.slug }}
               search={{ tab: "dashboards" }}
             >
               Monitoring

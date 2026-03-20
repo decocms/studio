@@ -13,13 +13,13 @@ export default function DashboardViewRoute() {
   const { dashboardId } = useParams({ strict: false }) as {
     dashboardId: string;
   };
-  const { org, project } = useProjectContext();
+  const { org } = useProjectContext();
   const navigate = useNavigate();
 
   const handleEdit = () => {
     navigate({
-      to: "/$org/$project/monitoring/dashboards/$dashboardId/edit",
-      params: { org: org.slug, project: project.slug, dashboardId },
+      to: "/$org/monitoring/dashboards/$dashboardId/edit",
+      params: { org: org.slug, dashboardId },
     });
   };
 

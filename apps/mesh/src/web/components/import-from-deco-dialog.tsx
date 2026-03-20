@@ -178,16 +178,16 @@ export function ImportFromDecoDialog({
 
       return { slug, virtualMcpId: payload.item.id, connId };
     },
-    onSuccess: ({ slug, connId }) => {
+    onSuccess: ({ slug, virtualMcpId, connId }) => {
       queryClient.invalidateQueries({ queryKey: KEYS.projects(org.id) });
       toast.success(`Imported ${slug} from deco.cx`);
       handleClose(false);
       localStorage.setItem("mesh:sidebar-open", JSON.stringify(false));
       navigate({
-        to: "/$org/$project/apps/$connectionId/$toolName",
+        to: "/$org/p/$virtualMcpId/apps/$connectionId/$toolName",
         params: {
           org: org.slug,
-          project: slug,
+          virtualMcpId,
           connectionId: connId,
           toolName: "file_explorer",
         },

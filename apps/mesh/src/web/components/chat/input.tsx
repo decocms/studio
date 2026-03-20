@@ -213,10 +213,9 @@ function VirtualMCPBadge({
   const handleEdit = (e: MouseEvent) => {
     e.stopPropagation();
     navigate({
-      to: "/$org/$project/agents/$agentId",
+      to: "/$org/agents/$agentId",
       params: {
         org: org.slug,
-        project: "org-admin",
         agentId: virtualMcpId,
       },
     });

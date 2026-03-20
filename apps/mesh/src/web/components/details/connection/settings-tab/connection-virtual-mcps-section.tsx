@@ -17,8 +17,8 @@ function VirtualMCPListItem({
 }) {
   return (
     <Link
-      to="/$org/$project/agents/$agentId/"
-      params={{ org, project: "org-admin", agentId: virtualMcp.id }}
+      to="/$org/agents/$agentId/"
+      params={{ org, agentId: virtualMcp.id }}
       className="flex items-center gap-3 rounded-lg hover:bg-muted/50 transition-colors group"
     >
       <IntegrationIcon

@@ -95,10 +95,9 @@ export function ConnectionCapabilities({
   function openTool(toolName: string) {
     if (!connectionId || !org) return;
     navigate({
-      to: "/$org/$project/mcps/$appSlug/$collectionName/$itemId",
+      to: "/$org/mcps/$appSlug/$collectionName/$itemId",
       params: {
         org,
-        project: "org-admin",
         appSlug: appSlug!,
         collectionName: "tools",
         itemId: encodeURIComponent(toolName),

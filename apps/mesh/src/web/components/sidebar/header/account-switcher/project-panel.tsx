@@ -17,8 +17,8 @@ interface UserProjectItemsProps {
   organizationId: string;
   currentProjectSlug?: string;
   orgSlug: string;
-  onSelect: (projectSlug: string) => void;
-  onSettings?: (projectSlug: string) => void;
+  onSelect: (virtualMcpId: string) => void;
+  onSettings?: (virtualMcpId: string) => void;
 }
 
 export function UserProjectItems({
@@ -48,7 +48,7 @@ export function UserProjectItems({
           <DropdownMenuItem
             key={project.id}
             className={cn("gap-2.5", isActive && "bg-accent")}
-            onClick={() => onSelect(project.slug)}
+            onClick={() => onSelect(project.id)}
           >
             <div
               className="size-6 rounded-md shrink-0 flex items-center justify-center overflow-hidden border border-border/50"

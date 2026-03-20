@@ -34,11 +34,11 @@ export function ProjectSettingsSidebar({
   const navigate = useNavigate();
   const params = useParams({ strict: false }) as {
     org: string;
-    project: string;
+    virtualMcpId: string;
   };
 
   const handleNavigate = (key: string) => {
-    const href = `/${params.org}/${params.project}/settings/${key}`;
+    const href = `/${params.org}/p/${params.virtualMcpId}/settings/${key}`;
     navigate({ href });
     onNavigate?.(key);
   };
