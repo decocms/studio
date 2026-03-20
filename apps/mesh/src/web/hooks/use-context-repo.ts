@@ -27,6 +27,8 @@ interface ContextRepoConfig {
   fileCount: number;
   indexSizeBytes: number;
   lastSyncedAt: string | null;
+  indexedFolders: string[] | null;
+  folders: string[];
 }
 
 interface ContextRepoStatus {
@@ -120,6 +122,30 @@ export function useContextRepoSync() {
       return await client.callTool({
         name: "CONTEXT_REPO_SYNC",
         arguments: {},
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries();
+    },
+  });
+}
+
+/**
+ * Update which folders are indexed
+ */
+export function useContextRepoUpdateFolders() {
+  const { org } = useProjectContext();
+  const queryClient = useQueryClient();
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+  });
+
+  return useMutation({
+    mutationFn: async (folders: string[]) => {
+      return await client.callTool({
+        name: "CONTEXT_REPO_UPDATE_FOLDERS",
+        arguments: { folders },
       });
     },
     onSuccess: () => {

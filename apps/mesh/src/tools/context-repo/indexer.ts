@@ -98,7 +98,10 @@ function shouldSkipFile(filePath: string): boolean {
   return false;
 }
 
-export async function buildIndex(repoPath: string): Promise<RepoIndex> {
+export async function buildIndex(
+  repoPath: string,
+  folderFilter?: string[] | null,
+): Promise<RepoIndex> {
   const allFiles = await listAllFiles(repoPath);
   const files: IndexedFile[] = [];
   let totalSize = 0;
@@ -106,6 +109,12 @@ export async function buildIndex(repoPath: string): Promise<RepoIndex> {
   for (const filePath of allFiles) {
     if (files.length >= MAX_FILES) break;
     if (shouldSkipFile(filePath)) continue;
+    // If folder filter is set, only index files in selected folders (or root files)
+    if (folderFilter && folderFilter.length > 0) {
+      const topDir = filePath.split("/")[0];
+      const isRootFile = !filePath.includes("/");
+      if (!isRootFile && topDir && !folderFilter.includes(topDir)) continue;
+    }
 
     const fullPath = join(repoPath, filePath);
     try {

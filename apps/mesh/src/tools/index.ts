@@ -151,6 +151,7 @@ const CORE_TOOLS = [
   // Context repo tools
   ContextRepoTools.CONTEXT_REPO_STATUS,
   ContextRepoTools.CONTEXT_REPO_SETUP,
+  ContextRepoTools.CONTEXT_REPO_UPDATE_FOLDERS,
   ContextRepoTools.CONTEXT_REPO_SYNC,
   ContextRepoTools.CONTEXT_REPO_SEARCH,
   ContextRepoTools.CONTEXT_REPO_READ,

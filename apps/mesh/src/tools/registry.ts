@@ -140,6 +140,7 @@ const ALL_TOOL_NAMES = [
   // Context repo tools
   "CONTEXT_REPO_STATUS",
   "CONTEXT_REPO_SETUP",
+  "CONTEXT_REPO_UPDATE_FOLDERS",
   "CONTEXT_REPO_SYNC",
   "CONTEXT_REPO_SEARCH",
   "CONTEXT_REPO_READ",
@@ -646,6 +647,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Context Repo",
   },
   {
+    name: "CONTEXT_REPO_UPDATE_FOLDERS",
+    description: "Update which folders are indexed in the context repo",
+    category: "Context Repo",
+  },
+  {
     name: "CONTEXT_REPO_SYNC",
     description: "Pull latest changes and reindex the context repo",
     category: "Context Repo",
@@ -786,6 +792,7 @@ const TOOL_LABELS: Record<ToolName, string> = {
   // Context repo tools
   CONTEXT_REPO_STATUS: "Context repo status",
   CONTEXT_REPO_SETUP: "Setup context repo",
+  CONTEXT_REPO_UPDATE_FOLDERS: "Update indexed folders",
   CONTEXT_REPO_SYNC: "Sync context repo",
   CONTEXT_REPO_SEARCH: "Search context repo",
   CONTEXT_REPO_READ: "Read context file",

@@ -30,6 +30,7 @@ import {
   useContextRepoSetup,
   useContextRepoSync,
   useContextRepoDisconnect,
+  useContextRepoUpdateFolders,
 } from "@/web/hooks/use-context-repo";
 
 interface ContextRepoModalProps {
@@ -213,12 +214,64 @@ function ConfiguredView({
     fileCount: number;
     indexSizeBytes: number;
     lastSyncedAt: string | null;
+    indexedFolders: string[] | null;
+    folders: string[];
   };
   gh: { available: boolean; user?: string };
 }) {
   const syncMutation = useContextRepoSync();
   const disconnectMutation = useContextRepoDisconnect();
+  const updateFoldersMutation = useContextRepoUpdateFolders();
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+
+  // Track selected folders locally — null means "all folders"
+  const [selectedFolders, setSelectedFolders] = useState<Set<string>>(() => {
+    if (config.indexedFolders && config.indexedFolders.length > 0) {
+      return new Set(config.indexedFolders);
+    }
+    // Default: all folders selected
+    return new Set(config.folders);
+  });
+
+  const allSelected = selectedFolders.size === config.folders.length;
+
+  const toggleFolder = (folder: string) => {
+    const next = new Set(selectedFolders);
+    if (next.has(folder)) {
+      next.delete(folder);
+    } else {
+      next.add(folder);
+    }
+    setSelectedFolders(next);
+  };
+
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelectedFolders(new Set());
+    } else {
+      setSelectedFolders(new Set(config.folders));
+    }
+  };
+
+  // Check if selection changed from what's saved
+  const savedSet = new Set(
+    config.indexedFolders && config.indexedFolders.length > 0
+      ? config.indexedFolders
+      : config.folders,
+  );
+  const selectionChanged =
+    selectedFolders.size !== savedSet.size ||
+    [...selectedFolders].some((f) => !savedSet.has(f));
+
+  const handleSaveFolders = async () => {
+    const folders = allSelected ? [] : [...selectedFolders];
+    try {
+      await updateFoldersMutation.mutateAsync(folders);
+      toast.success("Indexed folders updated");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update folders");
+    }
+  };
 
   const handleSync = async () => {
     try {
@@ -293,6 +346,58 @@ function ConfiguredView({
             {config.lastSyncedCommit.slice(0, 8)}
           </code>
         </p>
+      )}
+
+      {/* Folder selection */}
+      {config.folders.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium">Indexed Folders</label>
+            <button
+              type="button"
+              onClick={toggleAll}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {allSelected ? "Deselect all" : "Select all"}
+            </button>
+          </div>
+          <div className="rounded-lg border border-border max-h-48 overflow-y-auto">
+            {config.folders.map((folder) => (
+              <label
+                key={folder}
+                className="flex items-center gap-2 px-3 py-1.5 hover:bg-accent cursor-pointer text-sm"
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedFolders.has(folder)}
+                  onChange={() => toggleFolder(folder)}
+                  className="rounded border-border"
+                />
+                <span className="text-muted-foreground">/</span>
+                <span>{folder}</span>
+              </label>
+            ))}
+          </div>
+          {selectionChanged && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSaveFolders}
+              disabled={
+                updateFoldersMutation.isPending || selectedFolders.size === 0
+              }
+            >
+              {updateFoldersMutation.isPending ? (
+                <>
+                  <Loading01 className="size-4 animate-spin" />
+                  Reindexing...
+                </>
+              ) : (
+                `Reindex ${selectedFolders.size} folder${selectedFolders.size !== 1 ? "s" : ""}`
+              )}
+            </Button>
+          )}
+        </div>
       )}
 
       {/* Actions */}

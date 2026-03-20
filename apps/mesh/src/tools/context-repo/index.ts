@@ -7,6 +7,7 @@
 
 export { CONTEXT_REPO_STATUS } from "./status";
 export { CONTEXT_REPO_SETUP } from "./setup";
+export { CONTEXT_REPO_UPDATE_FOLDERS } from "./update-folders";
 export { CONTEXT_REPO_SYNC } from "./sync";
 export { CONTEXT_REPO_SEARCH } from "./search";
 export { CONTEXT_REPO_READ } from "./read";

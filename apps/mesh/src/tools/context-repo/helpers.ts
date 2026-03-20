@@ -2,6 +2,7 @@
  * Shared helpers for context repo tools
  */
 
+import { readdir } from "node:fs/promises";
 import type { MeshContext } from "@/core/mesh-context";
 import { getRepoPath } from "./gh-cli";
 
@@ -14,6 +15,7 @@ export interface ContextRepoConfig {
   fileCount: number;
   indexSizeBytes: number;
   lastSyncedAt: string | null;
+  indexedFolders: string[] | null;
 }
 
 /**
@@ -54,6 +56,7 @@ export async function findContextRepo(
       fileCount: (metadata.fileCount as number) || 0,
       indexSizeBytes: (metadata.indexSizeBytes as number) || 0,
       lastSyncedAt: (metadata.lastSyncedAt as string) || null,
+      indexedFolders: (metadata.indexedFolders as string[]) || null,
     };
   }
 
@@ -69,4 +72,19 @@ export function getContextRepoPath(
   repo: string,
 ): string {
   return getRepoPath(orgId, owner, repo);
+}
+
+/**
+ * List top-level directories in a cloned repo (excludes .git and hidden dirs).
+ */
+export async function listRepoFolders(repoPath: string): Promise<string[]> {
+  try {
+    const entries = await readdir(repoPath, { withFileTypes: true });
+    return entries
+      .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+      .map((e) => e.name)
+      .sort();
+  } catch {
+    return [];
+  }
 }
