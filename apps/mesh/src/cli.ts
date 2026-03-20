@@ -229,7 +229,9 @@ if (command === "dev") {
 
     const displayHome = decoHome.replace(homedir(), "~");
     setDevMode();
-    render(createElement(App, { home: displayHome }));
+    render(createElement(App, { home: displayHome }), {
+      patchConsole: false,
+    });
 
     const result = await startDevServer(devOptions);
     const code = await result.process.exited;
@@ -281,7 +283,9 @@ if (noTui) {
 
   const displayHome = decoHome.replace(homedir(), "~");
   interceptConsoleForTui();
-  render(createElement(App, { home: displayHome }));
+  render(createElement(App, { home: displayHome }), {
+    patchConsole: false,
+  });
 
   await startServer(serveOptions);
 }
