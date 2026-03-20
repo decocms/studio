@@ -269,12 +269,42 @@ async function ensurePostgres(home: string): Promise<ServiceInfo> {
     await removeState(home, "postgres");
   }
 
+  const dataDir = join(servicesDir(home), "postgres", "data");
+  ensureDir(dataDir);
+
+  // Check for an already-running postgres via postmaster.pid (handles migration
+  // from the old PID-file system and concurrent instances sharing the data dir)
+  const postmasterPidFile = join(dataDir, "postmaster.pid");
+  if (existsSync(postmasterPidFile)) {
+    const lines = readFileSync(postmasterPidFile, "utf8").split("\n");
+    const existingPid = lines[0]?.trim()
+      ? Number.parseInt(lines[0].trim(), 10)
+      : null;
+    const existingPort = lines[3]?.trim()
+      ? Number.parseInt(lines[3].trim(), 10)
+      : null;
+
+    if (
+      existingPid &&
+      existingPort &&
+      isOwnedProcess(existingPid, "postgres")
+    ) {
+      writeState(home, "postgres", {
+        pid: existingPid,
+        port: existingPort,
+        startedAt: new Date().toISOString(),
+      });
+      info.state = "running";
+      info.pid = existingPid;
+      info.port = existingPort;
+      info.owner = "managed";
+      return info;
+    }
+  }
+
   // Allocate a dynamic port
   const port = await findAvailablePort();
   info.port = port;
-
-  const dataDir = join(servicesDir(home), "postgres", "data");
-  ensureDir(dataDir);
 
   const EmbeddedPostgres = (await import("embedded-postgres")).default;
   const pg = new EmbeddedPostgres({
@@ -330,7 +360,6 @@ async function ensurePostgres(home: string): Promise<ServiceInfo> {
 
   await waitForPort(port);
 
-  const postmasterPidFile = join(dataDir, "postmaster.pid");
   let pgPid: number | null = null;
   if (existsSync(postmasterPidFile)) {
     const firstLine = readFileSync(postmasterPidFile, "utf8")
