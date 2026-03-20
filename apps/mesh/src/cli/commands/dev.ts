@@ -93,7 +93,19 @@ function pipeToLogStore(stream: ReadableStream<Uint8Array>) {
       processLines();
     }
     if (buffer.trim()) {
-      processLines();
+      const stripped = stripAnsi(buffer)
+        .replace(/^\[\d+\]\s*/, "")
+        .trim();
+      if (stripped) {
+        addLogEntry({
+          method: "",
+          path: "",
+          status: 0,
+          duration: 0,
+          timestamp: new Date(),
+          rawLine: stripped,
+        });
+      }
     }
   })();
 }
@@ -188,6 +200,7 @@ export async function startDevServer(
 
   const serverUrl = baseUrl || `http://localhost:${port}`;
   setServerUrl(serverUrl);
+  updateService({ name: "Vite", status: "ready", port: Number(vitePort) });
 
   process.on("SIGINT", () => child.kill("SIGINT"));
   process.on("SIGTERM", () => child.kill("SIGTERM"));
