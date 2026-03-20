@@ -381,6 +381,9 @@ export function ChatInput({
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
 
+  const { org } = useProjectContext();
+  const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
+
   const task = tasks.find((task) => task.id === activeTaskId);
 
   // tiptapDoc lives here (not in context) so keystrokes don't re-render
@@ -578,7 +581,7 @@ export function ChatInput({
                 <TiptapInput
                   ref={tiptapRef}
                   disabled={isStreaming || !model}
-                  virtualMcpId={selectedVirtualMcp?.id ?? null}
+                  virtualMcpId={selectedVirtualMcp?.id ?? decopilotId}
                   showFileUploader={true}
                   selectedModel={model}
                 />
@@ -597,7 +600,7 @@ export function ChatInput({
                       Run in progress
                     </span>
                   )}
-                  {selectedVirtualMcp && isDecopilot(selectedVirtualMcp.id) ? (
+                  {!selectedVirtualMcp || isDecopilot(selectedVirtualMcp.id) ? (
                     <DecopilotIconButton
                       onVirtualMcpChange={setVirtualMcpId}
                       virtualMcps={virtualMcps}
