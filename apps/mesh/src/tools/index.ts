@@ -148,20 +148,13 @@ const CORE_TOOLS = [
   AiProvidersTools.AI_PROVIDER_TOPUP_URL,
   AiProvidersTools.AI_PROVIDER_CREDITS,
 
-  // Context repo tools
+  // Context repo management tools (always available for setup/teardown)
   ContextRepoTools.CONTEXT_REPO_STATUS,
   ContextRepoTools.CONTEXT_REPO_SETUP,
   ContextRepoTools.CONTEXT_REPO_UPDATE_FOLDERS,
   ContextRepoTools.CONTEXT_REPO_DISCONNECT,
-  ContextRepoTools.CONTEXT_REPO_SYNC,
-  ContextRepoTools.CONTEXT_REPO_SEARCH,
-  ContextRepoTools.CONTEXT_REPO_READ,
-  ContextRepoTools.CONTEXT_REPO_LIST_SKILLS,
-  ContextRepoTools.CONTEXT_ISSUE_CREATE,
-  ContextRepoTools.CONTEXT_ISSUE_LIST,
-  ContextRepoTools.CONTEXT_ISSUE_GET,
-  ContextRepoTools.CONTEXT_ISSUE_COMMENT,
-  ContextRepoTools.CONTEXT_AGENT_SAVE,
+  // Operational context-repo tools (search, read, issues, etc.) are exposed
+  // through the GITHUB connection — see tools/context-repo/tool-defs.ts
 ] as const satisfies { name: ToolName }[];
 
 // Plugin tools - collected at startup, gated by org settings at runtime

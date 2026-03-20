@@ -271,10 +271,32 @@ export class PassthroughClient extends Client {
       "selected_tools",
     );
 
+    // Inject tools from GITHUB connections (context-repo tools served locally)
+    const githubTools: ToolWithConnection[] = [];
+    for (const connection of this.options.connections) {
+      if (connection.connection_type !== "GITHUB") continue;
+      const { getContextRepoTools } = await import(
+        "../../tools/context-repo/tool-defs"
+      );
+      for (const tool of getContextRepoTools()) {
+        githubTools.push({
+          ...tool,
+          _meta: {
+            connectionId: connection.id,
+            connectionTitle: connection.title,
+          },
+        });
+      }
+    }
+
     // Virtual tools take precedence — prepend them and merge mappings
     const mappings = new Map<string, string>();
     for (const vt of virtualItems) {
       mappings.set(vt.name, "__VIRTUAL__");
+    }
+    // GitHub tools map to their connection ID
+    for (const gt of githubTools) {
+      mappings.set(gt.name, gt._meta.connectionId);
     }
     for (const [key, connId] of downstream.mappings) {
       if (!mappings.has(key)) {
@@ -288,7 +310,7 @@ export class PassthroughClient extends Client {
     );
 
     return {
-      data: [...virtualItems, ...filteredDownstream],
+      data: [...virtualItems, ...githubTools, ...filteredDownstream],
       mappings,
       virtualTools: virtualToolsMap,
     };
@@ -331,6 +353,12 @@ export class PassthroughClient extends Client {
       );
     }
 
+    // GITHUB connections execute tools locally (not via MCP client)
+    const connection = this._connections.get(connectionId);
+    if (connection?.connection_type === "GITHUB") {
+      return this.executeGitHubTool(params.name, params.arguments ?? {});
+    }
+
     const client = clients.get(connectionId);
     if (!client) {
       return {
@@ -350,6 +378,34 @@ export class PassthroughClient extends Client {
     });
 
     return result as CallToolResult;
+  }
+
+  /**
+   * Execute a context-repo tool locally (GITHUB connections don't use MCP transport)
+   */
+  private async executeGitHubTool(
+    toolName: string,
+    args: Record<string, unknown>,
+  ): Promise<CallToolResult> {
+    try {
+      const { executeContextRepoTool } = await import(
+        "../../tools/context-repo/tool-defs"
+      );
+      const result = await executeContextRepoTool(toolName, args, this.ctx);
+      return {
+        content: [{ type: "text", text: JSON.stringify(result) }],
+      };
+    } catch (e) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error: ${e instanceof Error ? e.message : String(e)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
   }
 
   private async executeVirtualTool(
