@@ -6,7 +6,7 @@
     "@types/node": "^24.9.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.0.4",
-    "deco-cli": "workspace:*",
+
     "knip": "^5.83.1",
     "oxlint": "1.23.0",
     "react": "^19.2.0",
@@ -18,7 +18,6 @@
   },
   "private": true,
   "scripts": {
-    "link": "deco link -p 3000 -e BASE_URL -- bun run dev",
     "dev": "bun run --env-file=.env scripts/dev.ts",
     "dev:worktree": "bun run scripts/dev-worktree.ts",
     "dev:conductor": "WORKTREE_SLUG=$CONDUCTOR_WORKSPACE_NAME bun run dev:worktree",

@@ -16,9 +16,7 @@
   ],
   "author": "Deco team",
   "license": "MIT",
-  "dependencies": {
-    "deco-cli": "^0.26.0"
-  },
+  "dependencies": {},
   "engines": {
     "node": ">=22.0.0"
   },
