@@ -55,7 +55,7 @@ export function resolveSecrets(
 
   // LOCAL_ADMIN_PASSWORD
   let localAdminPassword: string;
-  if (saved.LOCAL_ADMIN_PASSWORD) {
+  if (saved.LOCAL_ADMIN_PASSWORD != null) {
     localAdminPassword = saved.LOCAL_ADMIN_PASSWORD;
   } else {
     localAdminPassword = crypto.randomBytes(24).toString("base64");
