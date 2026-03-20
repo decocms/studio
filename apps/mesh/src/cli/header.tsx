@@ -79,6 +79,17 @@ export function Header({
       ) : (
         <Text dimColor>Starting...</Text>
       )}
+
+      <Text dimColor>
+        <Text bold dimColor>
+          ⌘K
+        </Text>{" "}
+        toggle config {"  "}
+        <Text bold dimColor>
+          ⌘L
+        </Text>{" "}
+        full logs
+      </Text>
     </Box>
   );
 }
