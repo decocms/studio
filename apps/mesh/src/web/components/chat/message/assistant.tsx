@@ -6,6 +6,7 @@ import { ToolCallShell } from "./parts/tool-call-part/common.tsx";
 import type { ChatMessage } from "../types.ts";
 import { MessageStatsBar } from "../usage-stats.tsx";
 import { MessageTextPart } from "./parts/text-part.tsx";
+import { ImagePart } from "./parts/image-part.tsx";
 import {
   GenericToolCallPart,
   ProposePlanPart,
@@ -236,8 +237,18 @@ function MessagePart({
       );
     case "reasoning":
       return null;
+    case "file": {
+      const filePart = part as {
+        type: "file";
+        url?: string;
+        mediaType?: string;
+      };
+      if (filePart.mediaType?.startsWith("image/") && filePart.url) {
+        return <ImagePart url={filePart.url} mediaType={filePart.mediaType} />;
+      }
+      return null;
+    }
     case "step-start":
-    case "file":
     case "source-url":
     case "source-document":
       return null;

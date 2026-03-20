@@ -126,6 +126,8 @@ class ChatStore {
       credentialId: null,
       virtualMcps: [],
       allModelsConnections: [] as ReturnType<typeof useAiProviderKeyList>,
+      imageModel: null,
+      imageAspectRatio: "1:1",
       status: "ready",
       error: null,
       finishReason: null,
@@ -245,6 +247,11 @@ class ChatStore {
   // ---- Thread operations ----
 
   createThread(): string {
+    // Clear image model on new thread
+    if (this.state.imageModel) {
+      this.state = { ...this.state, imageModel: null };
+    }
+
     // Clear errors and transient UI state — preserve model, agent, credentials, etc.
     this.state = {
       ...this.state,
@@ -311,6 +318,7 @@ class ChatStore {
     this.state = {
       ...this.state,
       activeThreadId: threadId,
+      imageModel: null,
       tiptapDoc: undefined,
       finishReason: null,
     };
@@ -413,6 +421,16 @@ class ChatStore {
   setCredentialId(id: string | null): void {
     this.state = { ...this.state, credentialId: id };
     writeSelectedKeyId(this.state.locator, id);
+    this.notify();
+  }
+
+  setImageModel(model: AiProviderModel | null): void {
+    this.state = { ...this.state, imageModel: model };
+    this.notify();
+  }
+
+  setImageAspectRatio(ratio: string): void {
+    this.state = { ...this.state, imageAspectRatio: ratio };
     this.notify();
   }
 
@@ -827,6 +845,12 @@ class ChatStore {
             ...mergedMetadata,
             ...(effectiveApproval && {
               toolApprovalLevel: effectiveApproval,
+            }),
+            ...(store.state.imageModel && {
+              imageModel: {
+                id: store.state.imageModel.modelId,
+                aspectRatio: store.state.imageAspectRatio,
+              },
             }),
           },
         };

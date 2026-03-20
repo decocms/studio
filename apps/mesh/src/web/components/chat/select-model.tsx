@@ -294,7 +294,10 @@ function getCostLevel(inputPerM: number): { level: number; label: string } {
 const CAPABILITY_CONFIGS: Record<string, { icon: ReactNode; label: string }> = {
   text: { icon: <AlignLeft className="size-3.5" />, label: "Text" },
   vision: { icon: <Image01 className="size-3.5" />, label: "Vision" },
-  image: { icon: <ImagePlus className="size-3.5" />, label: "Image" },
+  "image-generation": {
+    icon: <ImagePlus className="size-3.5" />,
+    label: "Image generation",
+  },
   tools: { icon: <Tool01 className="size-3.5" />, label: "Tools" },
   reasoning: { icon: <Stars01 className="size-3.5" />, label: "Reasoning" },
   "web-search": {
@@ -914,6 +917,8 @@ function SelectedModelDisplay({
   }
 
   const { displayName } = parseModelTitle(model);
+  // Strip parenthetical suffix for compact trigger display (e.g. "Nano Banana 2 (Gemini …)" → "Nano Banana 2")
+  const shortName = displayName.replace(/\s*\(.*\)\s*$/, "").trim();
 
   const providerLogo = getProviderLogo(model);
 
@@ -924,8 +929,8 @@ function SelectedModelDisplay({
         className="w-3.5 h-3.5 shrink-0 rounded-sm"
         alt={model.title}
       />
-      <span className="text-sm truncate whitespace-nowrap text-muted-foreground max-w-[100px] sm:max-w-none">
-        {displayName}
+      <span className="text-sm truncate whitespace-nowrap hidden md:inline text-muted-foreground">
+        {shortName}
       </span>
       <ChevronDown
         size={14}

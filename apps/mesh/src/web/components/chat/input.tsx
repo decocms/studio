@@ -37,6 +37,7 @@ import type { Metadata } from "./types.ts";
 import { useChat } from "./context";
 import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import { ChatHighlight } from "./highlight";
+import { ImageModelSelector } from "./select-image-model";
 import { ModelSelector } from "./select-model";
 import {
   VirtualMCPPopoverContent,
@@ -377,6 +378,7 @@ export function ChatInput({
     stop,
     cancelRun,
     tasks,
+    imageModel,
   } = useChat();
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
@@ -612,10 +614,12 @@ export function ChatInput({
                       disabled={isStreaming}
                     />
                   )}
-                  <FileUploadButton
-                    selectedModel={model}
-                    isStreaming={isStreaming}
-                  />
+                  {!imageModel && (
+                    <FileUploadButton
+                      selectedModel={model}
+                      isStreaming={isStreaming}
+                    />
+                  )}
                   <PlanModeToggle disabled={isStreaming} />
                   {contextWindow && lastTotalTokens > 0 && (
                     <SessionStats
@@ -627,8 +631,9 @@ export function ChatInput({
                   )}
                 </div>
 
-                {/* Right Actions (model, send) */}
+                {/* Right Actions (image model, text model, send) */}
                 <div className="flex items-center gap-1.5">
+                  <ImageModelSelector disabled={isStreaming} />
                   <ModelSelector placeholder="Model" variant="borderless" />
 
                   <Button

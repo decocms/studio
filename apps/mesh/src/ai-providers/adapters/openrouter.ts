@@ -78,6 +78,9 @@ export const openrouterAdapter: ProviderAdapter = {
                   mod === "image" ? "vision" : mod,
                 ),
                 ...m.architecture.output_modalities,
+                ...(m.architecture.output_modalities?.includes("image")
+                  ? (["image-generation"] as const)
+                  : []),
                 ...(m.supported_parameters?.includes("tools")
                   ? (["tools"] as const)
                   : []),

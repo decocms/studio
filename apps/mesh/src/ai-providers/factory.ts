@@ -24,6 +24,9 @@ function mapOpenRouterModel(m: OpenRouterAPIModel): ModelInfo {
       ...new Set([
         ...m.architecture.input_modalities,
         ...m.architecture.output_modalities,
+        ...(m.architecture.output_modalities?.includes("image")
+          ? (["image-generation"] as const)
+          : []),
         ...(canTools ? (["tools"] as const) : []),
         ...(canReasoning ? (["reasoning"] as const) : []),
       ]),
