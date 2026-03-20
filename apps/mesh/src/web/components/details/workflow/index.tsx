@@ -30,9 +30,11 @@ import { useParams } from "@tanstack/react-router";
 import {
   useCollectionActions,
   useCollectionItem,
+  useConnections,
   useMCPClient,
   useProjectContext,
 } from "@decocms/mesh-sdk";
+import { getConnectionSlug } from "@/web/utils/connection-slug";
 import { EmptyState } from "@deco/ui/components/empty-state.js";
 import { usePollingWorkflowExecution } from "./hooks";
 import { useWorkflowSSE } from "./hooks/use-workflow-sse";
@@ -44,9 +46,16 @@ import { useRef, useState, useSyncExternalStore } from "react";
 
 export function useCollectionWorkflow({ itemId }: { itemId: string }) {
   const [isUpdating, setIsUpdating] = useState(false);
-  const { connectionId } = useParams({
-    from: "/shell/$org/$project/mcps/$connectionId/$collectionName/$itemId",
+  const { appSlug } = useParams({
+    from: "/shell/$org/$project/mcps/$appSlug/$collectionName/$itemId",
   });
+  const allConnections = useConnections();
+  const connection =
+    allConnections.find(
+      (c) =>
+        c.connection_type !== "VIRTUAL" && getConnectionSlug(c) === appSlug,
+    ) ?? null;
+  const connectionId = connection?.id ?? appSlug;
   const scopeKey = connectionId ?? "no-connection";
 
   const collectionName = "WORKFLOW";
@@ -258,7 +267,7 @@ function WorkflowExecutionBar() {
 
 export function WorkflowDetails() {
   const { itemId } = useParams({
-    from: "/shell/$org/$project/mcps/$connectionId/$collectionName/$itemId",
+    from: "/shell/$org/$project/mcps/$appSlug/$collectionName/$itemId",
   });
   const {
     item: workflow,
@@ -368,9 +377,16 @@ function WorkflowStudio({
 }
 
 function useCollectionWorkflowExecution({ itemId }: { itemId: string }) {
-  const { connectionId } = useParams({
-    from: "/shell/$org/$project/mcps/$connectionId/$collectionName/$itemId",
+  const { appSlug } = useParams({
+    from: "/shell/$org/$project/mcps/$appSlug/$collectionName/$itemId",
   });
+  const allConnections = useConnections();
+  const connection =
+    allConnections.find(
+      (c) =>
+        c.connection_type !== "VIRTUAL" && getConnectionSlug(c) === appSlug,
+    ) ?? null;
+  const connectionId = connection?.id ?? appSlug;
   const scopeKey = connectionId ?? "no-connection";
 
   const collectionName = "WORKFLOW_EXECUTION";
@@ -395,7 +411,7 @@ function useCollectionWorkflowExecution({ itemId }: { itemId: string }) {
 
 export function WorkflowExecutionDetailsView() {
   const { itemId } = useParams({
-    from: "/shell/$org/$project/mcps/$connectionId/$collectionName/$itemId",
+    from: "/shell/$org/$project/mcps/$appSlug/$collectionName/$itemId",
   });
   const { item: execution } = useCollectionWorkflowExecution({
     itemId: itemId,
