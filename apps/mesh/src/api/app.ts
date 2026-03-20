@@ -25,9 +25,10 @@ import {
 } from "../core/context-factory";
 import { AccessControl } from "../core/access-control";
 import type { MeshContext } from "../core/mesh-context";
-import { getDb, type MeshDatabase } from "../database";
+import { closeDatabase, getDb, type MeshDatabase } from "../database";
 import { createEventBus, type EventBus } from "../event-bus";
 import {
+  flushMonitoringData,
   meter,
   prometheusExporter,
   tracer,
@@ -321,7 +322,6 @@ export async function createApp(options: CreateAppOptions = {}) {
     mcpListCache.teardown();
     modelListCache.teardown();
     setMcpListCache(null);
-    natsProvider?.drain().catch(() => {});
   };
 
   const app = new Hono<Env>();
@@ -1145,5 +1145,54 @@ export async function createApp(options: CreateAppOptions = {}) {
     );
   });
 
-  return app;
+  const shutdown = async () => {
+    console.log("[shutdown] Stopping workers...");
+
+    // Phase 1: Stop all workers/consumers in parallel (independent of each other)
+    await Promise.allSettled([
+      currentEventBus?.isRunning() ? currentEventBus.stop() : Promise.resolve(),
+      sseHub.stop(),
+      currentCronWorkerCleanup
+        ? Promise.resolve(currentCronWorkerCleanup()).finally(() => {
+            currentCronWorkerCleanup = null;
+          })
+        : Promise.resolve(),
+      currentDecopilotCleanup
+        ? Promise.resolve(currentDecopilotCleanup()).finally(() => {
+            currentDecopilotCleanup = null;
+          })
+        : Promise.resolve(),
+    ]);
+
+    // Phase 2: Clear timers
+    if (currentRetentionTimer) {
+      clearInterval(currentRetentionTimer);
+      currentRetentionTimer = null;
+    }
+
+    // Phase 3: Drain NATS (after all consumers stopped)
+    if (natsProvider) {
+      await natsProvider
+        .drain()
+        .catch((err: unknown) =>
+          console.error("[shutdown] NATS drain error:", err),
+        );
+    }
+
+    // Phase 4: Flush telemetry
+    console.log("[shutdown] Flushing telemetry...");
+    await flushMonitoringData().catch((err: unknown) =>
+      console.error("[shutdown] Telemetry flush error:", err),
+    );
+
+    // Phase 5: Close database (last — other steps may need DB)
+    console.log("[shutdown] Closing database...");
+    await closeDatabase(database).catch((err: unknown) =>
+      console.error("[shutdown] Database close error:", err),
+    );
+
+    console.log("[shutdown] Cleanup complete.");
+  };
+
+  return Object.assign(app, { shutdown });
 }
