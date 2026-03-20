@@ -37,9 +37,18 @@ export const PROJECT_PLUGIN_CONFIG_GET = defineTool({
 
     const { projectId, pluginId } = input;
 
+    let organizationId = null;
+
+    if (ctx.organization?.id) {
+      organizationId = ctx.organization.id;
+    } else {
+      throw new Error("Organization context is required");
+    }
+
     const config = await ctx.storage.projectPluginConfigs.get(
       projectId,
       pluginId,
+      organizationId,
     );
 
     if (!config) {
