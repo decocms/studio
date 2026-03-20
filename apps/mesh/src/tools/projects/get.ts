@@ -21,7 +21,6 @@ export const PROJECT_GET = defineTool({
   },
   inputSchema: z
     .object({
-      organizationId: z.string().describe("Organization ID"),
       projectId: z
         .string()
         .optional()
@@ -48,11 +47,19 @@ export const PROJECT_GET = defineTool({
 
     let project = null;
 
+    let organizationId = null;
+
+    if (ctx.organization?.id) {
+      organizationId = ctx.organization.id;
+    } else {
+      throw new Error("Organization context is required");
+    }
+
     if (input.projectId) {
       project = await ctx.storage.projects.get(input.projectId);
     } else if (input.slug) {
       project = await ctx.storage.projects.getBySlug(
-        input.organizationId,
+        organizationId,
         input.slug,
       );
     }
