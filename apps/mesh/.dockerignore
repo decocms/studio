@@ -17,7 +17,6 @@ packages/runtime
 packages/sdk
 packages/bindings
 packages/cf-sandbox
-packages/cli
 packages/create-deco
 
 # Development files
