@@ -175,6 +175,11 @@ export interface MCPConnectionTable {
   bindings: JsonArray<string[]> | null; // Detected bindings (CHAT, EMAIL, etc.)
 
   status: "active" | "inactive" | "error";
+  subtype: ColumnType<
+    "agent" | "project" | null,
+    "agent" | "project" | null,
+    "agent" | "project" | null
+  >;
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
@@ -913,6 +918,24 @@ export interface ProjectPluginConfig {
 }
 
 // ============================================================================
+// Virtual MCP Plugin Config Table Definition
+// ============================================================================
+
+/**
+ * Virtual MCP plugin config table definition
+ * Per-virtual-MCP plugin configuration with optional MCP connection binding
+ */
+export interface VirtualMcpPluginConfigTable {
+  id: string;
+  virtual_mcp_id: string;
+  plugin_id: string;
+  connection_id: string | null;
+  settings: JsonObject<Record<string, unknown>> | null;
+  created_at: ColumnType<Date, Date | string, never>;
+  updated_at: ColumnType<Date, Date | string, Date | string>;
+}
+
+// ============================================================================
 // Automations Table Definitions
 // ============================================================================
 
@@ -1032,6 +1055,9 @@ export interface Database {
   projects: ProjectTable;
   project_connections: ProjectConnectionTable;
   project_plugin_configs: ProjectPluginConfigTable;
+
+  // Virtual MCP plugin configs
+  virtual_mcp_plugin_configs: VirtualMcpPluginConfigTable;
 
   // AI Provider keys tables
   ai_provider_keys: AIProviderKeyTable;

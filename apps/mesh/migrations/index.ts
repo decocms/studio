@@ -45,6 +45,7 @@ import * as migration043renamecmsmcptodecocms from "./043-rename-cms-mcp-to-deco
 import * as migration044dropconnectionstoolscolumn from "./044-drop-connections-tools-column.ts";
 import * as migration045threadcontextstartmessage from "./045-thread-context-start-message.ts";
 import * as migration046removeobjectstorageplugin from "./046-remove-object-storage-plugin.ts";
+import * as migration047mergeprojectsagents from "./047-merge-projects-agents.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -104,6 +105,7 @@ const migrations: Record<string, Migration> = {
   "044-drop-connections-tools-column": migration044dropconnectionstoolscolumn,
   "045-thread-context-start-message": migration045threadcontextstartmessage,
   "046-remove-object-storage-plugin": migration046removeobjectstorageplugin,
+  "047-merge-projects-agents": migration047mergeprojectsagents,
 };
 
 export default migrations;
