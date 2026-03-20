@@ -1,23 +1,18 @@
-import { Box, useApp, useInput } from "ink";
+import { Box, Text, useInput } from "ink";
 import { useSyncExternalStore } from "react";
 import { ConfigView } from "./config-view";
 import { Header } from "./header";
 import { RequestLog } from "./request-log";
 import { getCliState, subscribeCliState, toggleViewMode } from "./cli-store";
 
-const HEADER_HEIGHT = 8;
+const HEADER_HEIGHT = 13;
 
 export function App({ home }: { home: string }) {
-  const { exit } = useApp();
   const state = useSyncExternalStore(subscribeCliState, getCliState);
 
-  useInput((_input, key) => {
-    if (key.meta && _input === "k") {
+  useInput((_input) => {
+    if (_input === "K") {
       toggleViewMode();
-    }
-    if (key.meta && _input === "l") {
-      // Exit Ink for full log mode — handled by the CLI entry point
-      exit();
     }
   });
 
@@ -30,8 +25,12 @@ export function App({ home }: { home: string }) {
         serverUrl={state.serverUrl}
       />
 
-      {state.viewMode === "config" && state.env ? (
-        <ConfigView env={state.env} />
+      {state.viewMode === "config" ? (
+        state.env ? (
+          <ConfigView env={state.env} />
+        ) : (
+          <Text dimColor>Loading configuration...</Text>
+        )
       ) : (
         <RequestLog logs={state.logs} headerHeight={HEADER_HEIGHT} />
       )}

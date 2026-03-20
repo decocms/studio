@@ -82,13 +82,9 @@ export function Header({
 
       <Text dimColor>
         <Text bold dimColor>
-          ⌘K
+          ⇧K
         </Text>{" "}
-        toggle config {"  "}
-        <Text bold dimColor>
-          ⌘L
-        </Text>{" "}
-        full logs
+        toggle config
       </Text>
     </Box>
   );
