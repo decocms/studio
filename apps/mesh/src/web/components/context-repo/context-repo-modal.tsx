@@ -1,8 +1,7 @@
 /**
  * Context Repo Modal
  *
- * Modal for setting up and managing the GitHub context repository.
- * Shows live gh CLI auth status with green checkmark when authenticated.
+ * Flow: Setup (clone) → Pick Folders → Index → Configured view
  */
 
 import { useState } from "react";
@@ -18,6 +17,7 @@ import {
   AlertCircle,
   Check,
   CheckCircle,
+  Folder,
   GitBranch01,
   Loading01,
   RefreshCcw01,
@@ -43,6 +43,8 @@ export function ContextRepoModal({
   onOpenChange,
 }: ContextRepoModalProps) {
   const { gh, config, isLoading } = useContextRepo();
+  // After setup (clone), we hold the folders for the picker step
+  const [pendingFolders, setPendingFolders] = useState<string[] | null>(null);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -57,10 +59,24 @@ export function ContextRepoModal({
           <div className="flex items-center justify-center py-8">
             <Loading01 className="size-5 animate-spin text-muted-foreground" />
           </div>
-        ) : config ? (
+        ) : config && config.fileCount > 0 ? (
           <ConfiguredView config={config} gh={gh} />
+        ) : config && pendingFolders === null ? (
+          // Cloned but not indexed yet — fetch folders from status
+          <FolderPickerView
+            folders={config.folders}
+            onIndexed={() => setPendingFolders(null)}
+          />
+        ) : pendingFolders ? (
+          <FolderPickerView
+            folders={pendingFolders}
+            onIndexed={() => setPendingFolders(null)}
+          />
         ) : (
-          <SetupView gh={gh} onSuccess={() => {}} />
+          <SetupView
+            gh={gh}
+            onCloned={(folders) => setPendingFolders(folders)}
+          />
         )}
       </DialogContent>
     </Dialog>
@@ -113,10 +129,10 @@ function GhStatusBadge({ gh }: { gh: { available: boolean; user?: string } }) {
 
 function SetupView({
   gh,
-  onSuccess,
+  onCloned,
 }: {
   gh: { available: boolean; user?: string };
-  onSuccess: () => void;
+  onCloned: (folders: string[]) => void;
 }) {
   const [repoInput, setRepoInput] = useState("");
   const [branch, setBranch] = useState("main");
@@ -131,12 +147,20 @@ function SetupView({
     const [owner, repo] = parts;
 
     try {
-      await setupMutation.mutateAsync({ owner, repo, branch });
-      toast.success(`Connected ${owner}/${repo} as context repo`);
-      onSuccess();
+      const result = await setupMutation.mutateAsync({ owner, repo, branch });
+      // Extract folders from result
+      const content = result?.content as Array<{
+        type: string;
+        text?: string;
+      }>;
+      const text = content?.find((c) => c.type === "text")?.text;
+      const data = text ? JSON.parse(text) : null;
+      const folders = (data?.folders as string[]) ?? [];
+      toast.success(`Cloned ${owner}/${repo} — now pick folders to index`);
+      onCloned(folders);
     } catch (e) {
       toast.error(
-        e instanceof Error ? e.message : "Failed to set up context repo",
+        e instanceof Error ? e.message : "Failed to clone repository",
       );
     }
   };
@@ -180,10 +204,10 @@ function SetupView({
         {setupMutation.isPending ? (
           <>
             <Loading01 className="size-4 animate-spin" />
-            Cloning & indexing...
+            Cloning...
           </>
         ) : (
-          "Connect"
+          "Clone Repository"
         )}
       </Button>
 
@@ -193,10 +217,99 @@ function SetupView({
           <p>
             {setupMutation.error instanceof Error
               ? setupMutation.error.message
-              : "Setup failed"}
+              : "Clone failed"}
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+function FolderPickerView({
+  folders,
+  onIndexed,
+}: {
+  folders: string[];
+  onIndexed: () => void;
+}) {
+  const updateFoldersMutation = useContextRepoUpdateFolders();
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(folders));
+
+  const allSelected = selected.size === folders.length;
+
+  const toggle = (folder: string) => {
+    const next = new Set(selected);
+    if (next.has(folder)) next.delete(folder);
+    else next.add(folder);
+    setSelected(next);
+  };
+
+  const toggleAll = () => {
+    setSelected(allSelected ? new Set() : new Set(folders));
+  };
+
+  const handleIndex = async () => {
+    const foldersToIndex = allSelected ? [] : [...selected];
+    try {
+      await updateFoldersMutation.mutateAsync(foldersToIndex);
+      toast.success("Repository indexed");
+      onIndexed();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Indexing failed");
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
+        Repository cloned. Select which folders to index for search.
+      </p>
+
+      <div className="flex items-center justify-between">
+        <label className="text-sm font-medium flex items-center gap-2">
+          <Folder className="size-4 text-muted-foreground" />
+          Folders
+        </label>
+        <button
+          type="button"
+          onClick={toggleAll}
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {allSelected ? "Deselect all" : "Select all"}
+        </button>
+      </div>
+
+      <div className="rounded-lg border border-border max-h-64 overflow-y-auto">
+        {folders.map((folder) => (
+          <label
+            key={folder}
+            className="flex items-center gap-2 px-3 py-1.5 hover:bg-accent cursor-pointer text-sm"
+          >
+            <input
+              type="checkbox"
+              checked={selected.has(folder)}
+              onChange={() => toggle(folder)}
+              className="rounded border-border"
+            />
+            <span className="text-muted-foreground">/</span>
+            <span>{folder}</span>
+          </label>
+        ))}
+      </div>
+
+      <Button
+        onClick={handleIndex}
+        disabled={updateFoldersMutation.isPending || selected.size === 0}
+      >
+        {updateFoldersMutation.isPending ? (
+          <>
+            <Loading01 className="size-4 animate-spin" />
+            Indexing...
+          </>
+        ) : (
+          `Index ${selected.size} folder${selected.size !== 1 ? "s" : ""}`
+        )}
+      </Button>
     </div>
   );
 }
@@ -224,12 +337,10 @@ function ConfiguredView({
   const updateFoldersMutation = useContextRepoUpdateFolders();
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
 
-  // Track selected folders locally — null means "all folders"
   const [selectedFolders, setSelectedFolders] = useState<Set<string>>(() => {
     if (config.indexedFolders && config.indexedFolders.length > 0) {
       return new Set(config.indexedFolders);
     }
-    // Default: all folders selected
     return new Set(config.folders);
   });
 
@@ -237,23 +348,15 @@ function ConfiguredView({
 
   const toggleFolder = (folder: string) => {
     const next = new Set(selectedFolders);
-    if (next.has(folder)) {
-      next.delete(folder);
-    } else {
-      next.add(folder);
-    }
+    if (next.has(folder)) next.delete(folder);
+    else next.add(folder);
     setSelectedFolders(next);
   };
 
   const toggleAll = () => {
-    if (allSelected) {
-      setSelectedFolders(new Set());
-    } else {
-      setSelectedFolders(new Set(config.folders));
-    }
+    setSelectedFolders(allSelected ? new Set() : new Set(config.folders));
   };
 
-  // Check if selection changed from what's saved
   const savedSet = new Set(
     config.indexedFolders && config.indexedFolders.length > 0
       ? config.indexedFolders
@@ -284,7 +387,7 @@ function ConfiguredView({
 
   const handleDisconnect = async () => {
     try {
-      await disconnectMutation.mutateAsync(config.connectionId);
+      await disconnectMutation.mutateAsync();
       toast.success("Context repo disconnected");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Disconnect failed");
@@ -352,7 +455,10 @@ function ConfiguredView({
       {config.folders.length > 0 && (
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <label className="text-sm font-medium">Indexed Folders</label>
+            <label className="text-sm font-medium flex items-center gap-2">
+              <Folder className="size-4 text-muted-foreground" />
+              Indexed Folders
+            </label>
             <button
               type="button"
               onClick={toggleAll}

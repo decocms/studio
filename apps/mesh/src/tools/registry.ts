@@ -141,6 +141,7 @@ const ALL_TOOL_NAMES = [
   "CONTEXT_REPO_STATUS",
   "CONTEXT_REPO_SETUP",
   "CONTEXT_REPO_UPDATE_FOLDERS",
+  "CONTEXT_REPO_DISCONNECT",
   "CONTEXT_REPO_SYNC",
   "CONTEXT_REPO_SEARCH",
   "CONTEXT_REPO_READ",
@@ -652,6 +653,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Context Repo",
   },
   {
+    name: "CONTEXT_REPO_DISCONNECT",
+    description: "Disconnect context repo and clean up local clone",
+    category: "Context Repo",
+    dangerous: true,
+  },
+  {
     name: "CONTEXT_REPO_SYNC",
     description: "Pull latest changes and reindex the context repo",
     category: "Context Repo",
@@ -793,6 +800,7 @@ const TOOL_LABELS: Record<ToolName, string> = {
   CONTEXT_REPO_STATUS: "Context repo status",
   CONTEXT_REPO_SETUP: "Setup context repo",
   CONTEXT_REPO_UPDATE_FOLDERS: "Update indexed folders",
+  CONTEXT_REPO_DISCONNECT: "Disconnect context repo",
   CONTEXT_REPO_SYNC: "Sync context repo",
   CONTEXT_REPO_SEARCH: "Search context repo",
   CONTEXT_REPO_READ: "Read context file",

@@ -166,10 +166,10 @@ export function useContextRepoDisconnect() {
   });
 
   return useMutation({
-    mutationFn: async (connectionId: string) => {
+    mutationFn: async () => {
       await client.callTool({
-        name: "COLLECTION_CONNECTIONS_DELETE",
-        arguments: { id: connectionId },
+        name: "CONTEXT_REPO_DISCONNECT",
+        arguments: {},
       });
     },
     onSuccess: () => {

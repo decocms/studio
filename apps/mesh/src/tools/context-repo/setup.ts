@@ -1,14 +1,13 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/mesh-context";
-import { checkGhAccess, cloneOrPull } from "./gh-cli";
-import { buildIndex, saveIndex } from "./indexer";
-import { findContextRepo } from "./helpers";
+import { checkGhAccess, cloneOrPull, getRepoPath } from "./gh-cli";
+import { findContextRepo, listRepoFolders } from "./helpers";
 
 export const CONTEXT_REPO_SETUP = defineTool({
   name: "CONTEXT_REPO_SETUP",
   description:
-    "Connect a GitHub repository as the context repo for this organization. Requires gh CLI to be installed and authenticated.",
+    "Clone a GitHub repository as the context repo for this organization. Does NOT index — call CONTEXT_REPO_UPDATE_FOLDERS after to select folders and index.",
   annotations: {
     title: "Setup Context Repo",
     readOnlyHint: false,
@@ -32,9 +31,8 @@ export const CONTEXT_REPO_SETUP = defineTool({
     owner: z.string(),
     repo: z.string(),
     branch: z.string(),
-    fileCount: z.number(),
-    indexSizeBytes: z.number(),
     headCommit: z.string(),
+    folders: z.array(z.string()),
     ghUser: z.string().optional(),
   }),
   handler: async (input, ctx) => {
@@ -57,16 +55,18 @@ export const CONTEXT_REPO_SETUP = defineTool({
       );
     }
 
-    const { path: repoPath, headCommit } = await cloneOrPull(
+    // Clone only — no indexing yet
+    const { headCommit } = await cloneOrPull(
       orgId,
       input.owner,
       input.repo,
       input.branch,
     );
 
-    const index = await buildIndex(repoPath);
-    await saveIndex(repoPath, index);
+    const repoPath = getRepoPath(orgId, input.owner, input.repo);
+    const folders = await listRepoFolders(repoPath);
 
+    // Create connection with zero index stats (will be updated by UPDATE_FOLDERS)
     const connection = await ctx.storage.connections.create({
       organization_id: orgId,
       title: `Context: ${input.owner}/${input.repo}`,
@@ -79,9 +79,10 @@ export const CONTEXT_REPO_SETUP = defineTool({
         repo: input.repo,
         branch: input.branch,
         lastSyncedCommit: headCommit,
-        fileCount: index.fileCount,
-        indexSizeBytes: index.totalSizeBytes,
-        lastSyncedAt: new Date().toISOString(),
+        fileCount: 0,
+        indexSizeBytes: 0,
+        indexedFolders: null,
+        lastSyncedAt: null,
       },
       status: "active",
       created_by: ctx.auth.user?.id || "system",
@@ -92,9 +93,8 @@ export const CONTEXT_REPO_SETUP = defineTool({
       owner: input.owner,
       repo: input.repo,
       branch: input.branch,
-      fileCount: index.fileCount,
-      indexSizeBytes: index.totalSizeBytes,
       headCommit,
+      folders,
       ghUser: ghStatus.user,
     };
   },

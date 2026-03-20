@@ -152,6 +152,7 @@ const CORE_TOOLS = [
   ContextRepoTools.CONTEXT_REPO_STATUS,
   ContextRepoTools.CONTEXT_REPO_SETUP,
   ContextRepoTools.CONTEXT_REPO_UPDATE_FOLDERS,
+  ContextRepoTools.CONTEXT_REPO_DISCONNECT,
   ContextRepoTools.CONTEXT_REPO_SYNC,
   ContextRepoTools.CONTEXT_REPO_SEARCH,
   ContextRepoTools.CONTEXT_REPO_READ,
