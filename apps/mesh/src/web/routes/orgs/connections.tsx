@@ -83,6 +83,7 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import {
   ORG_ADMIN_PROJECT_SLUG,
   SELF_MCP_ALIAS_ID,
+  WellKnownOrgMCPId,
   useConnectionActions,
   useConnections,
   useMCPClient,
@@ -93,7 +94,8 @@ import {
 } from "@decocms/mesh-sdk";
 import { toast } from "sonner";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { PLUGIN_ID as PRIVATE_REGISTRY_PLUGIN_ID } from "mesh-plugin-private-registry/shared";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
   CheckSquare,
@@ -788,7 +790,7 @@ function BulkDeleteDialog({
 // ===========================================================================
 
 function OrgMcpsContent() {
-  const { org } = useProjectContext();
+  const { org, project } = useProjectContext();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as {
@@ -826,7 +828,7 @@ function OrgMcpsContent() {
     (existing) =>
       search.tab === "all" || search.tab === "connected"
         ? search.tab
-        : (existing ?? "all"),
+        : (existing ?? "connected"),
   );
 
   // Type & status filters
@@ -863,30 +865,44 @@ function OrgMcpsContent() {
   };
 
   // Optional registry lookup: support multiple registries, let user pick on "All" tab
-  // Sort so the self/management MCP (Mesh MCP) appears last — external registries like
-  // Deco Store / MCP Registry should be the default catalog source.
-  const registryConnections = useRegistryConnections(allConnections).sort(
-    (a, b) => {
-      const isSelfA = a.app_name === "@deco/management-mcp";
-      const isSelfB = b.app_name === "@deco/management-mcp";
-      if (isSelfA && !isSelfB) return 1;
-      if (!isSelfA && isSelfB) return -1;
-      return 0;
-    },
+  // Sort so the Deco Store appears first, and self/management MCP appears last.
+  // Filter out self MCP unless private registry plugin is enabled.
+  const decoStoreRegistryId = WellKnownOrgMCPId.REGISTRY(org.id);
+  const selfMcpId = WellKnownOrgMCPId.SELF(org.id);
+  const isPrivateRegistryEnabled = (project.enabledPlugins ?? []).includes(
+    PRIVATE_REGISTRY_PLUGIN_ID,
   );
+  const registryConnections = useRegistryConnections(allConnections)
+    .filter((c) => {
+      if (c.id !== selfMcpId) return true;
+      return isPrivateRegistryEnabled;
+    })
+    .sort((a, b) => {
+      if (a.id === decoStoreRegistryId) return -1;
+      if (b.id === decoStoreRegistryId) return 1;
+      if (a.id === selfMcpId) return 1;
+      if (b.id === selfMcpId) return -1;
+      return 0;
+    });
   const [selectedRegistryId, setSelectedRegistryId] = useLocalStorage<string>(
     LOCALSTORAGE_KEYS.selectedRegistry(org.slug),
     (existing) => existing ?? "",
   );
+  const decoStoreRegistry = registryConnections.find(
+    (r) => r.id === decoStoreRegistryId,
+  );
   const registryConnection =
     (selectedRegistryId
       ? registryConnections.find((r) => r.id === selectedRegistryId)
-      : undefined) ?? registryConnections[0];
+      : undefined) ??
+    decoStoreRegistry ??
+    registryConnections[0];
   const registryId = registryConnection?.id ?? "";
   const registryListToolName = findListToolName(registryConnection?.tools);
   const registryDiscovery = useStoreDiscovery({
     registryId,
     listToolName: registryListToolName,
+    enabled: activeTab === "all" || Boolean(listState.search),
   });
   const registryItems = registryDiscovery.items;
 
@@ -1234,6 +1250,48 @@ function OrgMcpsContent() {
   const selfClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+  });
+
+  const hasSelfMcpRegistry = registryConnections.some(
+    (c) => c.id === selfMcpId,
+  );
+  const { data: registryPluginConfig } = useQuery({
+    queryKey: KEYS.projectPluginConfig(
+      project.id ?? "",
+      PRIVATE_REGISTRY_PLUGIN_ID,
+    ),
+    queryFn: async () => {
+      const result = (await selfClient.callTool({
+        name: "PROJECT_PLUGIN_CONFIG_GET",
+        arguments: {
+          projectId: project.id,
+          pluginId: PRIVATE_REGISTRY_PLUGIN_ID,
+        },
+      })) as { structuredContent?: Record<string, unknown> };
+      return (result.structuredContent ?? result) as {
+        config?: {
+          settings?: {
+            registryName?: string;
+            registryIcon?: string;
+          };
+        };
+      };
+    },
+    enabled: hasSelfMcpRegistry && !!project.id,
+    staleTime: 60_000,
+  });
+  const registryBranding = registryPluginConfig?.config?.settings;
+
+  // Build display options with branding overrides for the self MCP
+  const registryDisplayOptions = registryConnections.map((c) => {
+    if (c.id === selfMcpId && registryBranding) {
+      return {
+        ...c,
+        title: registryBranding.registryName || c.title,
+        icon: registryBranding.registryIcon || c.icon || undefined,
+      };
+    }
+    return c;
   });
 
   const invalidateConnections = () => {
@@ -2188,7 +2246,7 @@ function OrgMcpsContent() {
               activeTab={activeTab}
               onTabChange={(id) => setActiveTab(id as ConnectionTab)}
             />
-            {registryConnections.length > 0 && (
+            {registryDisplayOptions.length > 0 && (
               <div
                 className={cn(
                   activeTab !== "all" && "invisible pointer-events-none",
@@ -2203,12 +2261,12 @@ function OrgMcpsContent() {
                     >
                       {(() => {
                         const active =
-                          registryConnections.find(
+                          registryDisplayOptions.find(
                             (rc) =>
                               rc.id ===
                               (selectedRegistryId ||
-                                registryConnections[0]?.id),
-                          ) ?? registryConnections[0];
+                                registryDisplayOptions[0]?.id),
+                          ) ?? registryDisplayOptions[0];
                         return (
                           <>
                             <IntegrationIcon
@@ -2228,14 +2286,14 @@ function OrgMcpsContent() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    {registryConnections.map((rc) => (
+                    {registryDisplayOptions.map((rc) => (
                       <DropdownMenuItem
                         key={rc.id}
                         onClick={() => setSelectedRegistryId(rc.id)}
                         className={cn(
                           selectedRegistryId === rc.id ||
                             (!selectedRegistryId &&
-                              rc.id === registryConnections[0]?.id)
+                              rc.id === registryDisplayOptions[0]?.id)
                             ? "bg-accent"
                             : "",
                         )}

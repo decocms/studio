@@ -88,13 +88,10 @@ export default function StorePage() {
   // tools still appear in the cached array, so the self MCP would incorrectly
   // show up as a registry. Filter it out unless the plugin is actually enabled.
   const selfMcpId = WellKnownOrgMCPId.SELF(org.id);
-  // When enabledPlugins is null (no explicit config), the server treats all
-  // plugins as visible, so we mirror that by not filtering the self MCP.
-  const enabledPlugins = project.enabledPlugins;
-  const isPrivateRegistryEnabled =
-    enabledPlugins === null ||
-    enabledPlugins === undefined ||
-    enabledPlugins.includes(PRIVATE_REGISTRY_PLUGIN_ID);
+  const decoStoreId = WellKnownOrgMCPId.REGISTRY(org.id);
+  const isPrivateRegistryEnabled = (project.enabledPlugins ?? []).includes(
+    PRIVATE_REGISTRY_PLUGIN_ID,
+  );
 
   const registryConnections = allRegistryConnections
     .filter((c) => {
@@ -102,6 +99,8 @@ export default function StorePage() {
       return isPrivateRegistryEnabled;
     })
     .sort((a, b) => {
+      if (a.id === decoStoreId) return -1;
+      if (b.id === decoStoreId) return 1;
       if (a.id === selfMcpId) return 1;
       if (b.id === selfMcpId) return -1;
       return 0;
@@ -170,13 +169,16 @@ export default function StorePage() {
   );
 
   // If there's only one registry, use it; otherwise use the selected one if it still exists.
-  // Prefer a non-self registry as default so the Deco Store (or Community Registry)
-  // is shown instead of the Mesh MCP when nothing is explicitly selected.
+  // Prefer the Deco Store as default, then any non-self registry, then fall back to first.
+  const decoStoreRegistry = registryConnections.find(
+    (c) => c.id === decoStoreId,
+  );
   const firstNonSelfRegistry = registryConnections.find(
     (c) => c.id !== selfMcpId,
   );
   const effectiveRegistry =
     selectedRegistry?.id ||
+    decoStoreRegistry?.id ||
     firstNonSelfRegistry?.id ||
     registryConnections[0]?.id ||
     "";
