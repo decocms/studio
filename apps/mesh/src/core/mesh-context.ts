@@ -225,7 +225,10 @@ import type { BetterAuthInstance } from "@/auth";
 import type { OrgScopedThreadStorage } from "@/storage/threads";
 import type { EventBus } from "../event-bus/interface";
 import type { ConnectionStorage } from "../storage/connection";
-import type { MonitoringStorage } from "../storage/ports";
+import type {
+  MonitoringStorage,
+  VirtualMcpPluginConfigStoragePort,
+} from "../storage/ports";
 import type { SqlMonitoringDashboardStorage } from "../storage/monitoring-dashboards";
 import type { OrganizationSettingsStorage } from "../storage/organization-settings";
 import type { TagStorage } from "../storage/tags";
@@ -265,6 +268,7 @@ export interface MeshStorage {
   aiProviderKeys: AIProviderKeyStorage;
   oauthPkceStates: OAuthPkceStateStorage;
   automations: AutomationsStorage;
+  virtualMcpPluginConfigs: VirtualMcpPluginConfigStoragePort;
 }
 
 // ============================================================================
