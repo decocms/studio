@@ -231,6 +231,7 @@ const createMockContext = (
       requestId: "req_123",
       timestamp: new Date(),
     },
+    objectStorage: null as never,
     aiProviders: null as never,
     createMCPProxy: vi.fn().mockResolvedValue({}),
     getOrCreateClient: vi.fn().mockResolvedValue({}),

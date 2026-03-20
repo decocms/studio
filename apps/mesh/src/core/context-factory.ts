@@ -405,6 +405,8 @@ import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
 import { AIProviderFactory } from "@/ai-providers/factory";
 import type { ModelListCache } from "@/ai-providers/model-list-cache";
+import { getObjectStorageS3Service } from "../object-storage/factory";
+import { createBoundObjectStorage } from "../object-storage/bound-object-storage";
 
 /**
  * Fetch role permissions from the database
@@ -899,6 +901,13 @@ export async function createMeshContextFactory(
       config.modelListCache,
     );
 
+    // Create org-scoped object storage if S3 is configured and org is available
+    const s3Service = getObjectStorageS3Service();
+    const objectStorage =
+      s3Service && organization
+        ? createBoundObjectStorage(s3Service, organization.id)
+        : null;
+
     const ctx: MeshContext = {
       timings,
       auth: meshAuth,
@@ -913,6 +922,7 @@ export async function createMeshContextFactory(
       tracer: config.observability.tracer,
       meter: config.observability.meter,
       baseUrl,
+      objectStorage,
       metadata: {
         requestId: crypto.randomUUID(),
         timestamp: new Date(),
