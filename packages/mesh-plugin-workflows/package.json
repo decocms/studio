@@ -16,7 +16,7 @@
     "@decocms/mesh-sdk": "workspace:*",
     "@jitl/quickjs-wasmfile-release-sync": "^0.31.0",
     "@untitledui/icons": "^0.0.19",
-    "kysely": "^0.27.5",
+    "kysely": "^0.28.12",
     "quickjs-emscripten-core": "^0.31.0",
     "sucrase": "^3.35.0",
     "zod": "^4.0.0"
