@@ -32,6 +32,7 @@ type RawConnectionRow = {
   description: string | null;
   icon: string | null;
   status: "active" | "inactive" | "error";
+  subtype: "agent" | "project" | null;
   created_at: Date | string;
   updated_at: Date | string;
   created_by: string;
@@ -75,6 +76,7 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
         app_name: null,
         app_id: null,
         connection_type: "VIRTUAL",
+        subtype: data.subtype ?? "agent",
         connection_url: `virtual://${id}`,
         connection_token: null,
         connection_headers: null,
@@ -143,6 +145,7 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       // Return Decopilot agent with connections populated
       return {
         ...getWellKnownDecopilotVirtualMCP(resolvedOrgId),
+        subtype: null,
         connections: connections.map((c) => ({
           connection_id: c.id,
           selected_tools: null, // null = all tools
@@ -185,13 +188,21 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
     );
   }
 
-  async list(organizationId: string): Promise<VirtualMCPEntity[]> {
-    const rows = await this.db
+  async list(
+    organizationId: string,
+    subtype?: "agent" | "project",
+  ): Promise<VirtualMCPEntity[]> {
+    let query = this.db
       .selectFrom("connections")
       .selectAll()
       .where("organization_id", "=", organizationId)
-      .where("connection_type", "=", "VIRTUAL")
-      .execute();
+      .where("connection_type", "=", "VIRTUAL");
+
+    if (subtype) {
+      query = query.where("subtype", "=", subtype);
+    }
+
+    const rows = await query.execute();
 
     const virtualMcpIds = rows.map((r) => r.id);
 
@@ -304,6 +315,9 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
     if (data.status !== undefined) {
       updateData.status = data.status;
     }
+    if (data.subtype !== undefined) {
+      updateData.subtype = data.subtype;
+    }
     if (data.metadata !== undefined) {
       updateData.metadata = data.metadata
         ? JSON.stringify(data.metadata)
@@ -412,6 +426,7 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       description: row.description,
       icon: row.icon,
       status,
+      subtype: row.subtype,
       created_at: createdAt,
       updated_at: updatedAt,
       created_by: row.created_by,

@@ -27,9 +27,7 @@ import type { QueryEngine } from "../monitoring/query-engine";
 import { DEFAULT_LOGS_DIR, DEFAULT_METRICS_DIR } from "../monitoring/schema";
 import { SqlMonitoringDashboardStorage } from "../storage/monitoring-dashboards";
 import { OrganizationSettingsStorage } from "../storage/organization-settings";
-import { ProjectsStorage } from "../storage/projects";
-import { ProjectConnectionsStorage } from "../storage/project-connections";
-import { ProjectPluginConfigsStorage } from "../storage/project-plugin-configs";
+import { VirtualMcpPluginConfigsStorage } from "../storage/virtual-mcp-plugin-configs";
 import { createAutomationsStorage } from "../storage/automations";
 import { TagStorage } from "../storage/tags";
 import type { Database, Permission } from "../storage/types";
@@ -821,9 +819,7 @@ export async function createMeshContextFactory(
     virtualMcps: new VirtualMCPStorage(config.db),
     users: new UserStorage(config.db),
     tags: new TagStorage(config.db),
-    projects: new ProjectsStorage(config.db),
-    projectConnections: new ProjectConnectionsStorage(config.db),
-    projectPluginConfigs: new ProjectPluginConfigsStorage(config.db),
+    virtualMcpPluginConfigs: new VirtualMcpPluginConfigsStorage(config.db),
     aiProviderKeys: new AIProviderKeyStorage(config.db, vault),
     oauthPkceStates: new OAuthPkceStateStorage(config.db),
     automations: createAutomationsStorage(config.db),

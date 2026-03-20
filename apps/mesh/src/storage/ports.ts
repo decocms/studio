@@ -330,7 +330,10 @@ export interface VirtualMCPStoragePort {
     id: string,
     organizationId?: string,
   ): Promise<VirtualMCPEntity | null>;
-  list(organizationId: string): Promise<VirtualMCPEntity[]>;
+  list(
+    organizationId: string,
+    subtype?: "agent" | "project",
+  ): Promise<VirtualMCPEntity[]>;
   listByConnectionId(
     organizationId: string,
     connectionId: string,
@@ -342,6 +345,46 @@ export interface VirtualMCPStoragePort {
   ): Promise<VirtualMCPEntity>;
   delete(id: string): Promise<void>;
   removeConnectionReferences(connectionId: string): Promise<void>;
+}
+
+// ============================================================================
+// Virtual MCP Plugin Config Storage Port
+// ============================================================================
+
+export interface VirtualMcpPluginConfig {
+  id: string;
+  virtualMcpId: string;
+  pluginId: string;
+  connectionId: string | null;
+  settings: Record<string, unknown> | null;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
+export interface BoundConnectionSummary {
+  id: string;
+  title: string;
+  icon: string | null;
+}
+
+export interface VirtualMcpPluginConfigStoragePort {
+  list(virtualMcpId: string): Promise<VirtualMcpPluginConfig[]>;
+  get(
+    virtualMcpId: string,
+    pluginId: string,
+  ): Promise<VirtualMcpPluginConfig | null>;
+  upsert(
+    virtualMcpId: string,
+    pluginId: string,
+    data: {
+      connectionId?: string | null;
+      settings?: Record<string, unknown> | null;
+    },
+  ): Promise<VirtualMcpPluginConfig>;
+  delete(virtualMcpId: string, pluginId: string): Promise<boolean>;
+  getBoundConnectionsForVirtualMcps(
+    virtualMcpIds: string[],
+  ): Promise<Map<string, BoundConnectionSummary[]>>;
 }
 
 // ============================================================================
