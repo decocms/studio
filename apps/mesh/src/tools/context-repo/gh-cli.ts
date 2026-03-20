@@ -109,7 +109,7 @@ export async function cloneOrPull(
         "-c",
         "core.hooksPath=/dev/null",
         "--no-recurse-submodules",
-        `https://github.com/${fullName}.git`,
+        `git@github.com:${fullName}.git`,
         repoPath,
       ],
       {
