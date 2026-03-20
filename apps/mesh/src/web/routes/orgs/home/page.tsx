@@ -26,6 +26,7 @@ import { Drawer, DrawerContent } from "@deco/ui/components/drawer.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   getWellKnownDecopilotVirtualMCP,
+  useIsOrgAdmin,
   useProjectContext,
 } from "@decocms/mesh-sdk";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
@@ -115,6 +116,7 @@ function HomeChatContent({
   setShowContext: (v: boolean | ((prev: boolean) => boolean)) => void;
 }) {
   const { org } = useProjectContext();
+  const isOrgAdmin = useIsOrgAdmin();
   const { data: session } = authClient.useSession();
   const {
     isChatEmpty,
@@ -236,10 +238,12 @@ function HomeChatContent({
           <div className="shrink-0 flex flex-col items-center w-full gap-3 pb-2">
             <div className="flex flex-col items-center w-full max-w-2xl mx-auto gap-4 px-4">
               <Chat.IceBreakers className="w-full" />
-              <div className="flex flex-col items-center w-full">
-                <AgentsList />
-              </div>
-              {isDecoUser && (
+              {isOrgAdmin && (
+                <div className="flex flex-col items-center w-full">
+                  <AgentsList />
+                </div>
+              )}
+              {isDecoUser && isOrgAdmin && (
                 <div className="w-full max-w-[500px] mx-auto">
                   <ImportDecoSiteBanner onClick={() => setImportOpen(true)} />
                 </div>
@@ -276,11 +280,13 @@ function HomeChatContent({
                 <Chat.Input onOpenContextPanel={() => setShowContext(true)} />
               </div>
             </div>
-            <div className="w-full max-w-[800px] mt-10 mx-auto">
-              <AgentsList />
-            </div>
+            {isOrgAdmin && (
+              <div className="w-full max-w-[800px] mt-10 mx-auto">
+                <AgentsList />
+              </div>
+            )}
           </div>
-          {isDecoUser && (
+          {isDecoUser && isOrgAdmin && (
             <div className="w-full max-w-[500px] mx-auto pb-6">
               <ImportDecoSiteBanner onClick={() => setImportOpen(true)} />
             </div>

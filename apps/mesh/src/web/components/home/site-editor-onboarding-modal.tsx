@@ -69,9 +69,7 @@ function OnboardingContent({ onCardAction, mobile }: OnboardingContentProps) {
     <div
       className={cn(
         "sm:grid sm:grid-cols-3 sm:gap-4",
-        mobile
-          ? "flex flex-col flex-1 min-h-0 gap-3"
-          : "flex flex-col gap-3",
+        mobile ? "flex flex-col flex-1 min-h-0 gap-3" : "flex flex-col gap-3",
       )}
     >
       {CARDS.map((card) => (
@@ -85,12 +83,18 @@ function OnboardingContent({ onCardAction, mobile }: OnboardingContentProps) {
             "transition-transform duration-150 ease-out will-change-transform",
             "flex flex-row items-center sm:flex-col",
             mobile && "flex-1 min-h-0",
-            !card.comingSoon && "[@media(hover:hover)]:hover:scale-[1.03] sm:[@media(hover:hover)]:hover:scale-[1.05] active:scale-[0.98] cursor-pointer",
+            !card.comingSoon &&
+              "[@media(hover:hover)]:hover:scale-[1.03] sm:[@media(hover:hover)]:hover:scale-[1.05] active:scale-[0.98] cursor-pointer",
             card.comingSoon && "cursor-default",
           )}
         >
           {/* Image — fixed 4/3 ratio; constrained width on mobile, full width on desktop */}
-          <div className={cn("w-28 shrink-0 self-stretch sm:w-full sm:aspect-[4/3] sm:self-auto bg-muted overflow-hidden", card.comingSoon && "opacity-40")}>
+          <div
+            className={cn(
+              "w-28 shrink-0 self-stretch sm:w-full sm:aspect-[4/3] sm:self-auto bg-muted overflow-hidden",
+              card.comingSoon && "opacity-40",
+            )}
+          >
             {card.image && (
               <img
                 src={card.image}
@@ -110,7 +114,10 @@ function OnboardingContent({ onCardAction, mobile }: OnboardingContentProps) {
               size="sm"
               variant={card.comingSoon ? "outline" : "default"}
               disabled={card.comingSoon}
-              onClick={(e) => { e.stopPropagation(); onCardAction(card.id); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onCardAction(card.id);
+              }}
             >
               {card.buttonLabel}
             </Button>
