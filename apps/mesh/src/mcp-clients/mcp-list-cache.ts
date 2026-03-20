@@ -6,6 +6,7 @@
  * Used by the withMcpCaching decorator and lazy clients in PassthroughClient.
  */
 
+import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { JSONCodec, StorageType, type JetStreamClient, type KV } from "nats";
 
 export type McpListType = "tools" | "resources" | "prompts";
@@ -18,7 +19,6 @@ export interface McpListCache {
 }
 
 const KV_BUCKET = "DECOCMS_MCP_LISTS";
-const KV_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
 export interface JetStreamKVMcpListCacheOptions {
   getJetStream: () => JetStreamClient;
@@ -33,7 +33,6 @@ export class JetStreamKVMcpListCache implements McpListCache {
   async init(): Promise<void> {
     const js = this.options.getJetStream();
     this.kv = await js.views.kv(KV_BUCKET, {
-      ttl: KV_TTL_MS,
       storage: StorageType.Memory,
     });
   }
@@ -89,10 +88,13 @@ export class JetStreamKVMcpListCache implements McpListCache {
 // Module-level revalidation tracking (prevents thundering herd)
 const revalidating = new Set<string>();
 
+function isMethodNotFound(err: unknown): boolean {
+  return err instanceof McpError && err.code === ErrorCode.MethodNotFound;
+}
+
 /**
  * Fetch with cache: checks cache first, then revalidates in background.
  * On cache hit, returns cached data immediately and revalidates in background.
- * On cache miss, waits for upstream and populates cache.
  */
 export async function fetchWithCache(
   type: McpListType,
@@ -104,6 +106,7 @@ export async function fetchWithCache(
     try {
       return await fetchLive();
     } catch (err) {
+      if (isMethodNotFound(err)) return [];
       console.warn(
         `[fetchWithCache] ${type}:${connectionId} no-cache live FAILED:`,
         err,
@@ -122,6 +125,10 @@ export async function fetchWithCache(
       cache.set(type, connectionId, data).catch(() => {});
       return data;
     } catch (err) {
+      if (isMethodNotFound(err)) {
+        cache.set(type, connectionId, []).catch(() => {});
+        return [];
+      }
       console.warn(
         `[fetchWithCache] ${type}:${connectionId} cache-miss live FAILED:`,
         err,
@@ -137,6 +144,10 @@ export async function fetchWithCache(
     fetchLive()
       .then((data) => cache.set(type, connectionId, data))
       .catch((err) => {
+        if (isMethodNotFound(err)) {
+          cache.set(type, connectionId, []).catch(() => {});
+          return;
+        }
         console.warn(
           `[fetchWithCache] ${type}:${connectionId} background revalidation FAILED:`,
           err,

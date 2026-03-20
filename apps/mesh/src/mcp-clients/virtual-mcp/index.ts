@@ -89,6 +89,7 @@ export async function createVirtualClientFrom(
   ctx: MeshContext,
   _strategy: "passthrough",
   superUser = false,
+  options?: { listTimeoutMs?: number },
 ): Promise<Client> {
   // Inclusion mode: use only the connections specified in virtual MCP
   const connectionIds = virtualMcp.connections.map((c) => c.connection_id);
@@ -128,15 +129,16 @@ export async function createVirtualClientFrom(
   );
 
   // Build aggregator options
-  const options: VirtualClientOptions = {
+  const clientOptions: VirtualClientOptions = {
     connections: loadedConnections,
     virtualMcp,
     virtualTools: virtualTools.length > 0 ? virtualTools : undefined,
     superUser,
     mcpListCache: getMcpListCache() ?? undefined,
+    listTimeoutMs: options?.listTimeoutMs,
   };
 
-  return new PassthroughClient(options, ctx);
+  return new PassthroughClient(clientOptions, ctx);
 }
 
 // Re-export types and utilities

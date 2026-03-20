@@ -258,6 +258,8 @@ export async function streamCore(
           virtualMcp,
           ctx,
           "passthrough",
+          false,
+          { listTimeoutMs: 1_000 },
         );
 
         closeClients = () => {

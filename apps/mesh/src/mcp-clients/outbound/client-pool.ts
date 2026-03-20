@@ -69,7 +69,7 @@ export function createClientPool(): (<T extends Transport>(
     };
 
     const clientPromise = client
-      .connect(transport, { timeout: 30_000 })
+      .connect(transport)
       .then(() => client)
       .catch((e) => {
         clientMap.delete(key);

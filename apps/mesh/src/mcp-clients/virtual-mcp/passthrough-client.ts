@@ -190,10 +190,26 @@ export class PassthroughClient extends Client {
     const clients = this._clients;
     const extractRoutingKey = routingKey ?? extractKey;
 
+    const timeoutMs = this.options.listTimeoutMs;
+
     const results = await Promise.all(
       Array.from(clients.entries()).map(async ([connectionId, client]) => {
         try {
-          let data = await listFn(client);
+          let dataPromise = listFn(client);
+
+          if (timeoutMs != null) {
+            dataPromise = Promise.race([
+              dataPromise,
+              new Promise<never>((_, reject) =>
+                setTimeout(
+                  () => reject(new Error(`Timed out after ${timeoutMs}ms`)),
+                  timeoutMs,
+                ),
+              ),
+            ]);
+          }
+
+          let data = await dataPromise;
 
           const selected = this._selectionMap.get(connectionId);
           if (selected?.[selectionKey]?.length) {

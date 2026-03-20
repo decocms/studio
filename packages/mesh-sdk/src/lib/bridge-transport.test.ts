@@ -8,6 +8,18 @@ import {
   BridgeServerTransport,
 } from "./bridge-transport";
 
+/** Poll until `condition` returns true, checking every 5ms up to `timeoutMs`. */
+async function waitFor(
+  condition: () => boolean,
+  timeoutMs = 200,
+): Promise<void> {
+  const start = Date.now();
+  while (!condition()) {
+    if (Date.now() - start > timeoutMs) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
 describe("BridgeTransport", () => {
   describe("createBridgeTransportPair", () => {
     it("should create a pair of transports", () => {
@@ -188,7 +200,7 @@ describe("BridgeTransport", () => {
 
       // Send first message and wait for delivery
       await client.send({ jsonrpc: "2.0", id: 1, method: "test" });
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await waitFor(() => receivedMessages.length >= 1);
 
       expect(receivedMessages.length).toBeGreaterThanOrEqual(1);
       const initialCount = receivedMessages.length;
@@ -196,17 +208,13 @@ describe("BridgeTransport", () => {
       // Close client
       await client.close();
 
-      // Wait for close to complete
-      await new Promise((resolve) => setTimeout(resolve, 20));
-
       // Try to send after close (should be silent no-op)
       await client.send({ jsonrpc: "2.0", id: 2, method: "test2" });
 
-      // Wait a bit more to ensure no delivery
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      // Wait a bit to ensure no delivery
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       // Should not receive new messages after close
-      // Note: We check >= initialCount because the first message might still be processing
       expect(receivedMessages.length).toBe(initialCount);
     });
 
@@ -245,8 +253,8 @@ describe("BridgeTransport", () => {
 
       await client.send({ jsonrpc: "2.0", id: 1, method: "test" });
 
-      // Wait for microtask to process
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      // Wait for microtask to process and error to be forwarded
+      await waitFor(() => errors.length >= 1);
 
       expect(errors).toHaveLength(1);
       expect(errors[0].message).toBe("Test error");

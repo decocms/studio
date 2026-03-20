@@ -39,4 +39,6 @@ export interface VirtualClientOptions {
   superUser?: boolean;
   /** Cross-pod NATS KV cache for MCP lists (avoids MCP handshake on listTools/listResources/listPrompts) */
   mcpListCache?: McpListCache;
+  /** Per-connection timeout (ms) for list operations (listTools/listResources/listPrompts). Connections that exceed this are skipped. */
+  listTimeoutMs?: number;
 }
