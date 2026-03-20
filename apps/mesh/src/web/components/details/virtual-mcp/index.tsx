@@ -29,7 +29,6 @@ import {
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
-  getWellKnownDecopilotVirtualMCP,
   ORG_ADMIN_PROJECT_SLUG,
   useConnection,
   useConnectionActions,
@@ -271,7 +270,10 @@ function ConnectionItemWithAuth({
             value={connection_id}
             onValueChange={(newId) => onSwitchInstance(connection_id, newId)}
           >
-            <SelectTrigger className="h-7 w-auto text-xs gap-1 px-2 border border-border bg-background rounded">
+            <SelectTrigger
+              size="sm"
+              className="w-auto text-xs gap-1 px-2 border border-border bg-background rounded"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -413,107 +415,40 @@ function VirtualMcpDetailViewWithData({
 
   // Improve prompt state
   const [isImprovingPrompt, setIsImprovingPrompt] = useState(false);
-  const chatModel = useChatStore((s) => s.selectedModel);
   const chatCredentialId = useChatStore((s) => s.credentialId);
-  const isModelsLoading = useChatStore((s) => s.isModelsLoading);
 
   const handleImprovePrompt = async () => {
     const currentInstructions = form.getValues("metadata.instructions");
     if (!currentInstructions?.trim()) return;
 
-    const model = chatModel;
     const credentialId = chatCredentialId;
-    if (!model || !credentialId) {
-      toast.error("Select a model in the chat panel first");
+    if (!credentialId) {
+      toast.error("No AI provider configured");
       return;
     }
 
-    // Use the base Decopilot agent so the improve task runs with its generic
-    // assistant prompt — not the current agent's custom instructions, which
-    // would override and block the improvement request.
-    const decopilotAgentId = getWellKnownDecopilotVirtualMCP(org.id).id;
-
     setIsImprovingPrompt(true);
     try {
-      const response = await fetch(`/api/${org.slug}/decopilot/stream`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          messages: [
-            {
-              id: crypto.randomUUID(),
-              role: "user",
-              parts: [
-                {
-                  type: "text",
-                  text: `Improve the following agent instructions. Make them clearer, more specific, and well-structured. Return ONLY the improved instructions, no explanations or preamble:\n\n${currentInstructions}`,
-                },
-              ],
-            },
-          ],
-          models: {
+      const response = await fetch(
+        `/api/${org.slug}/decopilot/improve-prompt`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
             credentialId,
-            thinking: {
-              id: model.modelId,
-              title: model.title,
-              provider: model.providerId,
-            },
-          },
-          agent: { id: decopilotAgentId },
-          toolApprovalLevel: "auto",
-        }),
-      });
+            instructions: currentInstructions,
+          }),
+        },
+      );
 
       if (!response.ok) {
         throw new Error("Failed to improve prompt");
       }
 
-      // Parse AI SDK streaming response — extract text parts.
-      // Buffer partial lines across HTTP chunks to avoid losing split text.
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error("No response body");
+      const { improved } = (await response.json()) as { improved: string };
 
-      const decoder = new TextDecoder();
-      let improved = "";
-      let lineBuffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        lineBuffer += decoder.decode(value, { stream: true });
-        const lines = lineBuffer.split("\n");
-        // Keep last (potentially incomplete) line in the buffer
-        lineBuffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          if (line.startsWith("0:")) {
-            try {
-              const text = JSON.parse(line.slice(2));
-              if (typeof text === "string") {
-                improved += text;
-              }
-            } catch {
-              // skip unparseable lines
-            }
-          }
-        }
-      }
-
-      // Process any remaining buffered content
-      if (lineBuffer.startsWith("0:")) {
-        try {
-          const text = JSON.parse(lineBuffer.slice(2));
-          if (typeof text === "string") {
-            improved += text;
-          }
-        } catch {
-          // skip
-        }
-      }
-
-      if (improved.trim()) {
+      if (improved?.trim()) {
         form.setValue("metadata.instructions", improved.trim(), {
           shouldDirty: true,
         });
@@ -680,6 +615,13 @@ function VirtualMcpDetailViewWithData({
     toast.success("Authentication successful");
   };
 
+  const handleInsertTemplate = () => {
+    const current = form.getValues("metadata.instructions") ?? "";
+    const template = `Goal\nEdit this text to describe how your agent should work...\n\nRules\nIf your agent isn't working like you want it to, prompting is how can you can guide it!\n\nMake sure you always...\n\nMake sure you never...`;
+    const next = current.trim() ? `${current}\n\n${template}` : template;
+    form.setValue("metadata.instructions", next, { shouldDirty: true });
+  };
+
   const isSaving = actions.update.isPending;
   const addedConnectionIds = new Set(connections.map((c) => c.connection_id));
 
@@ -817,24 +759,35 @@ function VirtualMcpDetailViewWithData({
               </Button>
             )}
             {activeTab === "instructions" && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 gap-1.5 px-2 text-xs"
-                disabled={
-                  isImprovingPrompt ||
-                  isModelsLoading ||
-                  !form.watch("metadata.instructions")?.trim()
-                }
-                onClick={handleImprovePrompt}
-              >
-                {isImprovingPrompt ? (
-                  <Loading01 size={13} className="animate-spin" />
-                ) : (
-                  <Stars01 size={13} />
+              <div className="flex items-center gap-1.5">
+                {!form.watch("metadata.instructions")?.trim() && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1.5 px-2 text-xs"
+                    onClick={handleInsertTemplate}
+                  >
+                    + Prompt template
+                  </Button>
                 )}
-                {isImprovingPrompt ? "Improving..." : "Improve"}
-              </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1.5 px-2 text-xs"
+                  disabled={
+                    isImprovingPrompt ||
+                    !form.watch("metadata.instructions")?.trim()
+                  }
+                  onClick={handleImprovePrompt}
+                >
+                  {isImprovingPrompt ? (
+                    <Loading01 size={13} className="animate-spin" />
+                  ) : (
+                    <Stars01 size={13} />
+                  )}
+                  {isImprovingPrompt ? "Improving..." : "Improve"}
+                </Button>
+              </div>
             )}
           </div>
 
@@ -897,7 +850,7 @@ function VirtualMcpDetailViewWithData({
                       {...field}
                       value={field.value ?? ""}
                       placeholder="Define how this agent should behave, what tone to use, any constraints or guidelines..."
-                      className="min-h-[200px] resize-none text-sm placeholder:text-muted-foreground/40 leading-relaxed border-0 rounded-none shadow-none px-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-0 bg-transparent"
+                      className="min-h-[200px] resize-none text-[15px] placeholder:text-muted-foreground/40 leading-relaxed border-0 rounded-none shadow-none px-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-0 bg-transparent"
                     />
                   )}
                 />
@@ -925,6 +878,7 @@ function VirtualMcpDetailViewWithData({
         selectedId={dialogState.settingsConnectionId}
         form={form}
         connections={connections}
+        onAuthenticate={handleAuthenticate}
       />
 
       <VirtualMCPShareModal

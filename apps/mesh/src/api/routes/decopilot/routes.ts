@@ -10,6 +10,7 @@ import {
   consumeStream,
   createUIMessageStream,
   createUIMessageStreamResponse,
+  generateText,
 } from "ai";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -31,7 +32,8 @@ import {
 } from "./model-permissions";
 import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage } from "./types";
-import { streamCore } from "./stream-core";
+import { createLanguageModel, streamCore } from "./stream-core";
+import { FAST_MODEL_PREFERENCES } from "@decocms/mesh-sdk";
 
 // ============================================================================
 // Request Validation
@@ -279,6 +281,80 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       if (err instanceof HTTPException) throw err;
       console.error("[decopilot:attach] Error", err);
       return c.body(null, 500);
+    }
+  });
+
+  // ============================================================================
+  // Improve Prompt Endpoint — lightweight one-shot improvement using fast model
+  // ============================================================================
+
+  app.post("/:org/decopilot/improve-prompt", async (c) => {
+    try {
+      const ctx = c.get("meshContext");
+      const organization = ensureOrganization(c);
+      const { credentialId, instructions } = await c.req.json<{
+        credentialId: string;
+        instructions: string;
+      }>();
+
+      if (!credentialId || !instructions?.trim()) {
+        throw new HTTPException(400, {
+          message: "credentialId and instructions are required",
+        });
+      }
+
+      const [provider, modelList] = await Promise.all([
+        ctx.aiProviders.activate(credentialId, organization.id),
+        ctx.aiProviders.listModels(credentialId, organization.id),
+      ]);
+
+      // Find the fast model using same substring-matching logic as selectDefaultModel
+      const fastCandidates =
+        FAST_MODEL_PREFERENCES[
+          provider.info.id as keyof typeof FAST_MODEL_PREFERENCES
+        ] ?? [];
+      const fastModelInfo =
+        fastCandidates
+          .map((c) => modelList.find((m) => m.modelId === c))
+          .find(Boolean) ??
+        fastCandidates
+          .map((c) => modelList.find((m) => m.modelId.includes(c)))
+          .find(Boolean) ??
+        modelList[0];
+
+      if (!fastModelInfo) {
+        throw new HTTPException(400, { message: "No models available" });
+      }
+
+      const model = createLanguageModel(provider, {
+        id: fastModelInfo.modelId,
+        title: fastModelInfo.title,
+        provider: provider.info.id,
+        capabilities: { reasoning: false },
+      });
+
+      const result = await generateText({
+        model,
+        messages: [
+          {
+            role: "user",
+            content: `Improve the following agent instructions. Make them clearer, more specific, and well-structured. Return ONLY the improved instructions, no explanations or preamble:\n\n${instructions}`,
+          },
+        ],
+        maxOutputTokens: 2048,
+        temperature: 0.3,
+      });
+
+      return c.json({ improved: result.text.trim() });
+    } catch (err) {
+      console.error("[decopilot:improve-prompt] Error", err);
+      if (err instanceof HTTPException) {
+        return c.json({ error: err.message }, err.status);
+      }
+      return c.json(
+        { error: err instanceof Error ? err.message : "Internal error" },
+        500,
+      );
     }
   });
 
