@@ -26,4 +26,4 @@ ENV DATABASE_URL=file:/app/data/mesh.db
 
 # The CLI handles migrations automatically on startup
 # Use --skip-migrations if you want to manage migrations separately
-CMD ["bun", "run", "deco"]
+CMD ["bun", "run", "deco", "--no-local-mode"]

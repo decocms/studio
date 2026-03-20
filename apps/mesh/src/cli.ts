@@ -51,10 +51,6 @@ const { values, positionals } = parseArgs({
       type: "boolean",
       default: false,
     },
-    "local-mode": {
-      type: "boolean",
-      default: false,
-    },
     "no-tui": {
       type: "boolean",
       default: false,
@@ -82,7 +78,7 @@ Usage:
 Server Options:
   -p, --port <port>     Port to listen on (default: 3000, or PORT env var)
   --home <path>         Data directory (default: ~/deco/, or DATA_DIR env var)
-  --local-mode          Enable local mode (auto-login, no auth required)
+  --no-local-mode       Disable auto-login (use cloud/SSO auth)
   --skip-migrations     Skip database migrations on startup
   --no-tui              Disable Ink UI, plain stdout (CI mode)
   -h, --help            Show this help message
@@ -92,7 +88,6 @@ Dev Options:
   --vite-port <port>    Vite dev server port (default: 4000)
   --base-url <url>      Base URL for the server
   --env-file <path>     Path to .env file to load
-  --no-local-mode       Disable auto-login (use cloud/SSO auth)
 
 Environment Variables:
   PORT                  Port to listen on (default: 3000)
@@ -106,7 +101,7 @@ Examples:
   deco                            Start with defaults (~/deco/)
   deco -p 8080                    Start on port 8080
   deco --home ~/my-project        Custom data directory
-  deco --local-mode               Enable auto-login (local dev)
+  deco --no-local-mode             Disable auto-login (production)
   deco dev                        Start dev server
   deco dev --vite-port 5000       Dev server with custom Vite port
   deco dev --env-file .env        Dev server with env file
