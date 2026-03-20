@@ -8,7 +8,7 @@ import type {
   ProviderAdapter,
 } from "../types";
 const OPENROUTER_ICON_URL =
-  "https://assets.decocache.com/decocms/b2e2f64f-6025-45f7-9e8c-3b3ebdd073d8/openrouter_logojpg.jpg";
+  "https://assets.decocache.com/decocms/284f1ad9-3fd8-494c-be88-16671069f3b9/openrouter.svg";
 
 export const openrouterAdapter: ProviderAdapter = {
   info: {
