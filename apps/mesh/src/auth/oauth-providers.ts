@@ -5,7 +5,7 @@ export const KNOWN_OAUTH_PROVIDERS = {
   },
   github: {
     name: "GitHub",
-    icon: "https://assets.decocache.com/webdraw/5f999dcb-c8a6-4572-948c-9996ef1d502f/github.svg",
+    icon: "https://assets.decocache.com/decocms/e02ce92e-6684-41a6-acfc-432977eb4878/github.png",
   },
   microsoft: {
     name: "Microsoft",
