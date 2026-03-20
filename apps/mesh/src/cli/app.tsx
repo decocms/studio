@@ -11,7 +11,7 @@ export function App({ home }: { home: string }) {
   const state = useSyncExternalStore(subscribeCliState, getCliState);
 
   useInput((_input) => {
-    if (_input === "K") {
+    if (_input === "k") {
       toggleViewMode();
     }
   });
