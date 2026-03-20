@@ -133,6 +133,7 @@ describe("Connection Tools", () => {
         stop: vi.fn(),
         isRunning: vi.fn().mockReturnValue(false),
       } as unknown as EventBus,
+      objectStorage: null as never,
       aiProviders: null as never,
       createMCPProxy: vi.fn().mockResolvedValue({}),
       getOrCreateClient: vi.fn().mockResolvedValue({}),

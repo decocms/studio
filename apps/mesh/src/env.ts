@@ -50,6 +50,19 @@ const envSchema = z
     // Feature Flags
     ENABLE_DECO_IMPORT: zBooleanString,
 
+    // Object Storage (S3-compatible)
+    S3_ENDPOINT: z.string().optional(),
+    S3_BUCKET: z.string().optional(),
+    S3_REGION: z.string().default("auto"),
+    S3_ACCESS_KEY_ID: z.string().optional(),
+    S3_SECRET_ACCESS_KEY: z.string().optional(),
+    S3_FORCE_PATH_STYLE: z
+      .enum(["true", "false", "1", "0", ""])
+      .optional()
+      .transform(
+        (v) => v === undefined || v === "" || v === "true" || v === "1",
+      ),
+
     // Debug / K8s
     DEBUG_PORT: z.coerce.number().default(9090),
     ENABLE_DEBUG_SERVER: zBooleanString,
@@ -100,8 +113,15 @@ const SECRET_KEYS = new Set([
   "BETTER_AUTH_SECRET",
   "ENCRYPTION_KEY",
   "MESH_JWT_SECRET",
+  "S3_ACCESS_KEY_ID",
+  "S3_SECRET_ACCESS_KEY",
 ]);
-const URL_KEYS = new Set(["DATABASE_URL", "CLICKHOUSE_URL", "NATS_URL"]);
+const URL_KEYS = new Set([
+  "DATABASE_URL",
+  "CLICKHOUSE_URL",
+  "NATS_URL",
+  "S3_ENDPOINT",
+]);
 
 function formatValue(key: string, raw: unknown): string {
   if (SECRET_KEYS.has(key)) {
@@ -175,6 +195,14 @@ function logConfiguration(e: Env) {
 
   sect("Feature Flags");
   r("ENABLE_DECO_IMPORT", e.ENABLE_DECO_IMPORT);
+
+  sect("Object Storage");
+  r("S3_ENDPOINT", e.S3_ENDPOINT);
+  r("S3_BUCKET", e.S3_BUCKET);
+  r("S3_REGION", e.S3_REGION);
+  r("S3_ACCESS_KEY_ID", e.S3_ACCESS_KEY_ID);
+  r("S3_SECRET_ACCESS_KEY", e.S3_SECRET_ACCESS_KEY);
+  r("S3_FORCE_PATH_STYLE", e.S3_FORCE_PATH_STYLE);
 
   sect("Debug / K8s");
   r("DEBUG_PORT", e.DEBUG_PORT);

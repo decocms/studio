@@ -246,7 +246,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
   if (isOrgAdminProject) {
     // Org-admin sidebar layout:
     // - Home, Tasks (if enabled), Projects (if enabled) (top-level)
-    // - Build group: Agents, Connections, Store
+    // - Build group: Agents, Connections, Workflows (if enabled), Store
     // - Manage group: Monitor, Settings
     // - Plugin items / groups
     const settingsItem: NavigationSidebarItem = {
@@ -322,7 +322,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
   };
 
   const projectWorkflowsItem: NavigationSidebarItem | null =
-    enabledPlugins.includes("workflows")
+    enabledPlugins.includes("MCP Workflows")
       ? {
           key: "Workflows",
           label: "Workflows",

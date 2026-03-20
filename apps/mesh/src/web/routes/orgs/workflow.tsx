@@ -10,7 +10,7 @@ import {
 } from "@deco/ui/components/breadcrumb.tsx";
 import { Dataflow03 } from "@untitledui/icons";
 
-const WORKFLOWS_PLUGIN_ID = "workflows";
+const WORKFLOWS_PLUGIN_ID = "MCP Workflows";
 
 const WORKFLOW_COLLECTION = {
   name: "WORKFLOW",

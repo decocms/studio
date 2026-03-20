@@ -241,6 +241,7 @@ import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import type { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
 import { AIProviderFactory } from "@/ai-providers/factory";
 import type { FireAutomationResult } from "../automations/fire";
+import type { BoundObjectStorage } from "../object-storage/bound-object-storage";
 
 // Better Auth instance type - flexible for testing
 // In production, this is the actual Better Auth instance
@@ -344,6 +345,9 @@ export interface MeshContext {
   ) => Promise<Client>;
 
   // AI Provider keys storage
+
+  // Object storage (S3-compatible) — null when S3 isn't configured or no org scope
+  objectStorage: BoundObjectStorage | null;
 
   // Automation runner — fires an automation manually (wired in app.ts)
   automationRunner?: (

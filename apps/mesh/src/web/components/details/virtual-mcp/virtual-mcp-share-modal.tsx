@@ -157,7 +157,7 @@ function InstallClaudeButton({ url, serverName }: ShareWithNameProps) {
       },
     };
     const configJson = JSON.stringify(connectionConfig, null, 2);
-    const command = `claude mcp add-json "${slugifiedServerName}" '${configJson.replace(/'/g, "'\\''")}'`;
+    const command = `claude mcp add-json "${slugifiedServerName}" '${configJson.replace(/'/g, "'\\''")}'  --scope user`;
 
     await navigator.clipboard.writeText(command);
     setCopied(true);
