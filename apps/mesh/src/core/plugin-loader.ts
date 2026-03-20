@@ -36,7 +36,7 @@ const pluginToolMap = new Map<string, string>();
 
 /**
  * Check if a plugin is enabled for an organization.
- * Checks both org settings (legacy) and all projects (current - UI saves to projects table).
+ * Checks both org settings (legacy) and all virtual MCPs.
  */
 async function isPluginEnabledForOrg(
   ctx: MeshContext,
@@ -49,10 +49,11 @@ async function isPluginEnabledForOrg(
     return true;
   }
 
-  // Check all projects in the org (current UI saves enabledPlugins to projects table)
-  const projects = await ctx.storage.projects.list(orgId);
-  for (const project of projects) {
-    if (project.enabledPlugins?.includes(pluginId)) {
+  // Check all virtual MCPs in the org
+  const virtualMcps = await ctx.storage.virtualMcps.list(orgId);
+  for (const virtualMcp of virtualMcps) {
+    const enabledPlugins = virtualMcp.metadata?.enabled_plugins;
+    if (Array.isArray(enabledPlugins) && enabledPlugins.includes(pluginId)) {
       return true;
     }
   }

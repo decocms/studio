@@ -169,18 +169,19 @@ export type ToolNameFromTools = (typeof ALL_TOOLS)[number]["name"];
 
 export const managementMCP = async (ctx: MeshContext) => {
   // Get enabled plugins for this organization to filter plugin tools
-  // Check both org settings (legacy) and all projects (current UI saves to projects table)
+  // Check both org settings (legacy) and all virtual MCPs
   let enabledPlugins: string[] | null = null;
   if (ctx.organization) {
     const settings = await ctx.storage.organizationSettings.get(
       ctx.organization.id,
     );
-    const projects = await ctx.storage.projects.list(ctx.organization.id);
-    // Merge enabled plugins from org settings + all projects
+    const virtualMcps = await ctx.storage.virtualMcps.list(ctx.organization.id);
+    // Merge enabled plugins from org settings + all virtual MCPs
     const merged = new Set<string>(settings?.enabled_plugins ?? []);
-    for (const project of projects) {
-      if (project.enabledPlugins) {
-        for (const pluginId of project.enabledPlugins) {
+    for (const virtualMcp of virtualMcps) {
+      const enabledPlugins = virtualMcp.metadata?.enabled_plugins;
+      if (enabledPlugins && Array.isArray(enabledPlugins)) {
+        for (const pluginId of enabledPlugins) {
           merged.add(pluginId);
         }
       }
