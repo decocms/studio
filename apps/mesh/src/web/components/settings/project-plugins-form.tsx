@@ -127,9 +127,9 @@ function PluginRow({
         throw new Error("Project ID is required to load plugin config.");
       }
       const result = await client.callTool({
-        name: "PROJECT_PLUGIN_CONFIG_GET",
+        name: "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
         arguments: {
-          projectId,
+          virtualMcpId: projectId,
           pluginId: plugin.id,
         },
       });
@@ -289,10 +289,15 @@ export function ProjectPluginsForm() {
 
       if (input.updatePlugins) {
         const result = await client.callTool({
-          name: "PROJECT_UPDATE",
+          name: "COLLECTION_VIRTUAL_MCP_UPDATE",
           arguments: {
-            projectId: project.id,
-            enabledPlugins: input.enabledPlugins,
+            id: project.id,
+            data: {
+              metadata: {
+                instructions: null,
+                enabled_plugins: input.enabledPlugins,
+              },
+            },
           },
         });
         results.push(unwrapToolResult<ProjectUpdateOutput>(result));
@@ -303,9 +308,9 @@ export function ProjectPluginsForm() {
           input.bindingUpdates.map(
             async ({ pluginId, connectionId, settings }) => {
               const result = await client.callTool({
-                name: "PROJECT_PLUGIN_CONFIG_UPDATE",
+                name: "VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE",
                 arguments: {
-                  projectId: project.id,
+                  virtualMcpId: project.id,
                   pluginId,
                   connectionId,
                   settings,

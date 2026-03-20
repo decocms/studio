@@ -13,16 +13,6 @@ import { getUIResourceUri } from "@/mcp-apps/types.ts";
 import { KEYS } from "@/web/lib/query-keys";
 import { unwrapToolResult } from "@/web/lib/unwrap-tool-result";
 
-interface ConnectionListResult {
-  connections: Array<{
-    id: string;
-    title: string;
-    icon: string | null;
-    connectionType: string;
-    status: string;
-  }>;
-}
-
 interface UITool {
   name: string;
   description?: string;
@@ -163,20 +153,30 @@ function ProjectSidebarForm() {
 
   const projectId = project.id ?? "";
 
-  // Fetch associated connections
-  const { data: projectConnections } = useQuery({
+  // Fetch associated connections from the virtual MCP entity
+  const { data: virtualMcpData } = useQuery({
     queryKey: KEYS.projectConnections(projectId),
     enabled: !!project.id,
     queryFn: async () => {
       const result = await client.callTool({
-        name: "PROJECT_CONNECTION_LIST",
-        arguments: { projectId },
+        name: "COLLECTION_VIRTUAL_MCP_GET",
+        arguments: { id: projectId },
       });
-      return unwrapToolResult<ConnectionListResult>(result);
+      return unwrapToolResult<{
+        item: {
+          connections: Array<{ connection_id: string }>;
+        } | null;
+      }>(result);
     },
   });
 
-  const connections = projectConnections?.connections ?? [];
+  const connections = (virtualMcpData?.item?.connections ?? []).map((c) => ({
+    id: c.connection_id,
+    title: c.connection_id,
+    icon: null,
+    connectionType: "",
+    status: "active",
+  }));
   const connectionIds = connections.map((c) => c.id).sort();
 
   // Fetch full connection details (including tools) for all connections.
@@ -276,8 +276,8 @@ function ProjectSidebarForm() {
   const mutation = useMutation({
     mutationFn: async () => {
       const result = await client.callTool({
-        name: "PROJECT_PINNED_VIEWS_UPDATE",
-        arguments: { projectId: project.id, pinnedViews },
+        name: "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
+        arguments: { virtualMcpId: project.id, pinnedViews },
       });
       unwrapToolResult(result);
     },

@@ -240,8 +240,8 @@ export function useRegistryConfig(pluginId: string) {
   const configQuery = useQuery({
     queryKey: KEYS.registryConfigByPlugin(project.id ?? "", pluginId),
     queryFn: async () =>
-      callTool<PluginConfigResponse>(client, "PROJECT_PLUGIN_CONFIG_GET", {
-        projectId: project.id,
+      callTool<PluginConfigResponse>(client, "VIRTUAL_MCP_PLUGIN_CONFIG_GET", {
+        virtualMcpId: project.id,
         pluginId,
       }),
     enabled: Boolean(project.id),
@@ -252,9 +252,9 @@ export function useRegistryConfig(pluginId: string) {
     mutationFn: async (settingsPatch: RegistryConfigSettings) => {
       const latestData = await callTool<PluginConfigResponse>(
         client,
-        "PROJECT_PLUGIN_CONFIG_GET",
+        "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
         {
-          projectId: project.id,
+          virtualMcpId: project.id,
           pluginId,
         },
       );
@@ -263,9 +263,9 @@ export function useRegistryConfig(pluginId: string) {
 
       return callTool<PluginConfigResponse>(
         client,
-        "PROJECT_PLUGIN_CONFIG_UPDATE",
+        "VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE",
         {
-          projectId: project.id,
+          virtualMcpId: project.id,
           pluginId,
           settings: {
             ...latestSettings,

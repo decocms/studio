@@ -7,14 +7,17 @@ describe("Database Types", () => {
     it("should allow valid Permission format", () => {
       const permission: Permission = {
         conn_abc123: ["SEND_MESSAGE", "LIST_THREADS"],
-        mcp: ["PROJECT_CREATE", "PROJECT_LIST"],
+        mcp: ["COLLECTION_VIRTUAL_MCP_CREATE", "COLLECTION_VIRTUAL_MCP_LIST"],
       };
       expect(permission).toBeDefined();
       expect(permission["conn_abc123"]).toEqual([
         "SEND_MESSAGE",
         "LIST_THREADS",
       ]);
-      expect(permission["mcp"]).toEqual(["PROJECT_CREATE", "PROJECT_LIST"]);
+      expect(permission["mcp"]).toEqual([
+        "COLLECTION_VIRTUAL_MCP_CREATE",
+        "COLLECTION_VIRTUAL_MCP_LIST",
+      ]);
     });
 
     it("should allow wildcard permissions", () => {

@@ -130,9 +130,9 @@ export function PluginLayout({
     queryKey: KEYS.projectPluginConfig(project.id ?? "", pluginId),
     queryFn: async () => {
       const result = (await selfClient.callTool({
-        name: "PROJECT_PLUGIN_CONFIG_GET",
+        name: "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
         arguments: {
-          projectId: project.id,
+          virtualMcpId: project.id,
           pluginId,
         },
       })) as { structuredContent?: unknown };

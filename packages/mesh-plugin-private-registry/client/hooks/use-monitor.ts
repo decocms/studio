@@ -265,8 +265,8 @@ export function useRegistryMonitorConfig() {
   const query = useQuery({
     queryKey: KEYS.registryConfigByPlugin(project.id ?? "", PLUGIN_ID),
     queryFn: async () =>
-      callTool<PluginConfigResponse>(client, "PROJECT_PLUGIN_CONFIG_GET", {
-        projectId: project.id,
+      callTool<PluginConfigResponse>(client, "VIRTUAL_MCP_PLUGIN_CONFIG_GET", {
+        virtualMcpId: project.id,
         pluginId: PLUGIN_ID,
       }),
     enabled: Boolean(project.id),
@@ -303,9 +303,9 @@ export function useRegistryMonitorConfig() {
       // Fetch the latest settings to avoid overwriting registry config
       const latestData = await callTool<PluginConfigResponse>(
         client,
-        "PROJECT_PLUGIN_CONFIG_GET",
+        "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
         {
-          projectId: project.id,
+          virtualMcpId: project.id,
           pluginId: PLUGIN_ID,
         },
       );
@@ -314,9 +314,9 @@ export function useRegistryMonitorConfig() {
 
       return callTool<PluginConfigResponse>(
         client,
-        "PROJECT_PLUGIN_CONFIG_UPDATE",
+        "VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE",
         {
-          projectId: project.id,
+          virtualMcpId: project.id,
           pluginId: PLUGIN_ID,
           settings: {
             ...latestSettings,

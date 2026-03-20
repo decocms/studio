@@ -46,10 +46,15 @@ export function useEnablePlugin() {
       const enabledPlugins = [...currentPlugins, pluginId];
 
       const result = await client.callTool({
-        name: "PROJECT_UPDATE",
+        name: "COLLECTION_VIRTUAL_MCP_UPDATE",
         arguments: {
-          projectId: project.id,
-          enabledPlugins,
+          id: project.id,
+          data: {
+            metadata: {
+              instructions: null,
+              enabled_plugins: enabledPlugins,
+            },
+          },
         },
       });
 

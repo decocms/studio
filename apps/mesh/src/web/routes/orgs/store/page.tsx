@@ -121,9 +121,9 @@ export default function StorePage() {
     ),
     queryFn: async () => {
       const result = (await selfClient.callTool({
-        name: "PROJECT_PLUGIN_CONFIG_GET",
+        name: "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
         arguments: {
-          projectId: project.id,
+          virtualMcpId: project.id,
           pluginId: PRIVATE_REGISTRY_PLUGIN_ID,
         },
       })) as { structuredContent?: Record<string, unknown> };

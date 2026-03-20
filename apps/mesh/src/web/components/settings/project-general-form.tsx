@@ -66,16 +66,21 @@ export function ProjectGeneralForm() {
   const mutation = useMutation({
     mutationFn: async (data: FormData) => {
       const result = (await client.callTool({
-        name: "PROJECT_UPDATE",
+        name: "COLLECTION_VIRTUAL_MCP_UPDATE",
         arguments: {
-          projectId: project.id,
-          name: data.name,
-          description: data.description || null,
-          ui: {
-            themeColor: data.themeColor || null,
-            banner: project.ui?.banner ?? null,
-            bannerColor: project.ui?.bannerColor ?? null,
-            icon: data.logo || null,
+          id: project.id,
+          data: {
+            title: data.name,
+            description: data.description || null,
+            metadata: {
+              instructions: null,
+              ui: {
+                themeColor: data.themeColor || null,
+                banner: project.ui?.banner ?? null,
+                bannerColor: project.ui?.bannerColor ?? null,
+                icon: data.logo || null,
+              },
+            },
           },
         },
       })) as { structuredContent?: unknown };

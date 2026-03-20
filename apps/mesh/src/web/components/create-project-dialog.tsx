@@ -33,7 +33,6 @@ import { Label } from "@deco/ui/components/label.tsx";
 import { KEYS } from "@/web/lib/query-keys";
 import { generateSlug, isValidSlug } from "@/web/lib/slug";
 import { ColorPicker } from "./color-picker";
-import type { Project } from "@/web/hooks/use-project";
 
 const formSchema = z.object({
   name: z.string().min(1, "Name is required").max(200),
@@ -49,7 +48,16 @@ interface CreateProjectDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-type ProjectCreateOutput = { project: Project };
+type VirtualMCPCreateOutput = {
+  item: {
+    id: string;
+    title: string;
+    metadata?: {
+      ui?: { slug?: string } | null;
+      migrated_project_slug?: string;
+    } | null;
+  };
+};
 
 export function CreateProjectDialog({
   open,
@@ -78,24 +86,30 @@ export function CreateProjectDialog({
   const mutation = useMutation({
     mutationFn: async (data: FormData) => {
       const result = (await client.callTool({
-        name: "PROJECT_CREATE",
+        name: "COLLECTION_VIRTUAL_MCP_CREATE",
         arguments: {
-          organizationId: org.id,
-          slug: data.slug,
-          name: data.name,
-          description: data.description || null,
-          enabledPlugins: [],
-          ui: {
-            banner: null,
-            bannerColor: data.bannerColor ?? null,
-            icon: null,
-            themeColor: data.bannerColor ?? null,
+          data: {
+            title: data.name,
+            description: data.description || null,
+            subtype: "project",
+            metadata: {
+              instructions: null,
+              enabled_plugins: [],
+              ui: {
+                banner: null,
+                bannerColor: data.bannerColor ?? null,
+                icon: null,
+                themeColor: data.bannerColor ?? null,
+                slug: data.slug,
+              },
+            },
+            connections: [],
           },
         },
       })) as { structuredContent?: unknown };
       const payload = (result.structuredContent ??
-        result) as ProjectCreateOutput;
-      return payload;
+        result) as VirtualMCPCreateOutput;
+      return { slug: data.slug, item: payload.item };
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: KEYS.projects(org.id) });
@@ -111,7 +125,7 @@ export function CreateProjectDialog({
       // Navigate to the new project
       navigate({
         to: "/$org/$project",
-        params: { org: org.slug, project: result.project.slug },
+        params: { org: org.slug, project: result.slug },
       });
     },
     onError: (error) => {

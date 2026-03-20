@@ -23,11 +23,6 @@ import {
 } from "@deco/ui/components/alert-dialog.tsx";
 import { toast } from "sonner";
 
-type ProjectDeleteOutput = {
-  success: boolean;
-  message?: string;
-};
-
 export function DangerZone() {
   const { org, project } = useProjectContext();
   const navigate = useNavigate();
@@ -44,26 +39,22 @@ export function DangerZone() {
   const mutation = useMutation({
     mutationFn: async () => {
       const result = (await client.callTool({
-        name: "PROJECT_DELETE",
+        name: "COLLECTION_VIRTUAL_MCP_DELETE",
         arguments: {
-          projectId: project.id,
+          id: project.id,
         },
       })) as { structuredContent?: unknown };
-      return (result.structuredContent ?? result) as ProjectDeleteOutput;
+      return (result.structuredContent ?? result) as { item: unknown };
     },
-    onSuccess: (result) => {
-      if (result.success) {
-        queryClient.invalidateQueries({
-          queryKey: KEYS.projects(org.id),
-        });
-        toast.success("Project deleted");
-        navigate({
-          to: "/$org/$project/projects",
-          params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
-        });
-      } else {
-        toast.error(result.message ?? "Failed to delete project");
-      }
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: KEYS.projects(org.id),
+      });
+      toast.success("Project deleted");
+      navigate({
+        to: "/$org/$project/projects",
+        params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
+      });
     },
     onError: (error) => {
       toast.error(
