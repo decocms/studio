@@ -91,6 +91,16 @@ export async function handleVirtualMcpRequest(
       );
     }
 
+    if (
+      ctx.organization?.id &&
+      virtualMcp.organization_id !== ctx.organization.id
+    ) {
+      return c.json(
+        { error: "Forbidden: Agent does not belong to your organization" },
+        403,
+      );
+    }
+
     // Set connection context (Virtual MCPs are now connections)
     // Note: virtualMcp.id can be null for Decopilot agent, but connectionId should be set for routing
     ctx.connectionId = virtualMcp.id ?? undefined;
