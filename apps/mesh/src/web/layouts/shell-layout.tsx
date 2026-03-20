@@ -27,7 +27,6 @@ import { cn } from "@deco/ui/lib/utils.js";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { MessageTextCircle02 } from "@untitledui/icons";
 import {
-  ORG_ADMIN_PROJECT_SLUG,
   ProjectContextProvider,
   ProjectContextProviderProps,
 } from "@decocms/mesh-sdk";
@@ -210,7 +209,7 @@ function ShellLayoutInner({
 }
 
 function ShellLayoutContent() {
-  const { org, project } = useParams({ strict: false });
+  const { org } = useParams({ strict: false });
   const routerState = useRouterState();
   const [createProjectDialogOpen, setCreateProjectDialogOpen] = useState(false);
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
@@ -227,13 +226,10 @@ function ShellLayoutContent() {
     return () => document.removeEventListener("keydown", handler);
   }, []);
 
-  // Check if we're on the project home route (/$org/$project)
+  // Check if we're on the org home route (/$org)
   const isHomeRoute =
-    routerState.location.pathname === `/${org}/${project}` ||
-    routerState.location.pathname === `/${org}/${project}/`;
-
-  // Use project slug from URL params, fallback to org-admin
-  const projectSlug = project ?? ORG_ADMIN_PROJECT_SLUG;
+    routerState.location.pathname === `/${org}` ||
+    routerState.location.pathname === `/${org}/`;
 
   const { data: projectContext } = useSuspenseQuery({
     queryKey: KEYS.activeOrganization(org),
@@ -254,10 +250,11 @@ function ShellLayoutContent() {
 
       return {
         org: data,
-        // Project slug comes from URL param, actual project data is fetched in project-layout
+        // Provide a minimal project stub at shell level.
+        // The org-layout and virtual-mcp-layout will override with proper context.
         project: {
-          slug: projectSlug,
-          isOrgAdmin: projectSlug === ORG_ADMIN_PROJECT_SLUG,
+          slug: "_org",
+          isOrgAdmin: true,
         },
       } as ProjectContextProviderProps;
     },
@@ -287,18 +284,8 @@ function ShellLayoutContent() {
     return null;
   }
 
-  // Update project context with current project slug from URL
-  const contextWithCurrentProject = {
-    ...projectContext,
-    project: {
-      ...projectContext.project,
-      slug: projectSlug,
-      isOrgAdmin: projectSlug === ORG_ADMIN_PROJECT_SLUG,
-    },
-  };
-
   return (
-    <ProjectContextProvider {...contextWithCurrentProject}>
+    <ProjectContextProvider {...projectContext}>
       <PersistentSidebarProvider>
         <div className="flex flex-col h-dvh overflow-hidden">
           <Chat.Provider>

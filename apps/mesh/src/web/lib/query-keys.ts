@@ -243,6 +243,10 @@ export const KEYS = {
     ["project", organizationId, slug] as const,
   projectById: (projectId: string) => ["project", "byId", projectId] as const,
 
+  // Virtual MCP entity (scoped by org + id)
+  virtualMcp: (orgId: string, virtualMcpId: string) =>
+    ["virtual-mcp", orgId, virtualMcpId] as const,
+
   // Project plugin configs
   projectPluginConfigs: (projectId: string) =>
     ["project-plugin-configs", projectId] as const,
