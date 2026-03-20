@@ -433,18 +433,6 @@ export async function streamCore(
           });
 
           const mcpUrl = `${getInternalUrl()}/mcp/virtual-mcp/${input.agent.id}`;
-          console.log(
-            "[claude-code] MCP config:",
-            JSON.stringify({
-              url: mcpUrl,
-              agentId: input.agent.id,
-              orgId: input.organizationId,
-              modelId: input.models.thinking.id,
-              hasApiKey: !!apiKey.key,
-              apiKeyPrefix: apiKey.key?.slice(0, 8),
-            }),
-          );
-
           languageModel = createClaudeCodeModel(input.models.thinking.id, {
             mcpServers: {
               mesh: {
