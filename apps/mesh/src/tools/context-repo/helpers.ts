@@ -2,7 +2,6 @@
  * Shared helpers for context repo tools
  */
 
-import { readdir } from "node:fs/promises";
 import type { MeshContext } from "@/core/mesh-context";
 import { getRepoPath } from "./gh-cli";
 
@@ -74,16 +73,73 @@ export function getContextRepoPath(
   return getRepoPath(orgId, owner, repo);
 }
 
+export interface FolderInfo {
+  name: string; // "<root>" for root-level files, or folder name
+  fileCount: number;
+  totalBytes: number;
+}
+
 /**
- * List top-level directories in a cloned repo (excludes .git and hidden dirs).
+ * List top-level directories in a cloned repo with file counts and sizes.
+ * Includes a "<root>" entry for files directly in the repo root.
+ * Excludes .git and hidden dirs.
  */
-export async function listRepoFolders(repoPath: string): Promise<string[]> {
+export async function listRepoFolders(repoPath: string): Promise<FolderInfo[]> {
+  const { listAllFiles } = await import("./gh-cli");
+  const { stat } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+
   try {
-    const entries = await readdir(repoPath, { withFileTypes: true });
-    return entries
-      .filter((e) => e.isDirectory() && !e.name.startsWith("."))
-      .map((e) => e.name)
-      .sort();
+    const allFiles = await listAllFiles(repoPath);
+    const folderMap = new Map<string, { count: number; bytes: number }>();
+
+    for (const filePath of allFiles) {
+      const parts = filePath.split("/");
+      const folderName = parts.length === 1 ? "<root>" : parts[0]!;
+
+      // Skip hidden dirs and .git
+      if (folderName.startsWith(".") && folderName !== "<root>") continue;
+
+      if (!folderMap.has(folderName)) {
+        folderMap.set(folderName, { count: 0, bytes: 0 });
+      }
+      const entry = folderMap.get(folderName)!;
+      entry.count++;
+
+      try {
+        const fileStat = await stat(join(repoPath, filePath));
+        entry.bytes += fileStat.size;
+      } catch {
+        // Skip files we can't stat
+      }
+    }
+
+    const results: FolderInfo[] = [];
+
+    // Root files first
+    const rootEntry = folderMap.get("<root>");
+    if (rootEntry) {
+      results.push({
+        name: "<root>",
+        fileCount: rootEntry.count,
+        totalBytes: rootEntry.bytes,
+      });
+      folderMap.delete("<root>");
+    }
+
+    // Then folders sorted alphabetically
+    const sortedFolders = [...folderMap.entries()].sort(([a], [b]) =>
+      a.localeCompare(b),
+    );
+    for (const [name, info] of sortedFolders) {
+      results.push({
+        name,
+        fileCount: info.count,
+        totalBytes: info.bytes,
+      });
+    }
+
+    return results;
   } catch {
     return [];
   }

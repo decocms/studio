@@ -32,7 +32,13 @@ export const CONTEXT_REPO_STATUS = defineTool({
         indexSizeBytes: z.number(),
         lastSyncedAt: z.string().nullable(),
         indexedFolders: z.array(z.string()).nullable(),
-        folders: z.array(z.string()),
+        folders: z.array(
+          z.object({
+            name: z.string(),
+            fileCount: z.number(),
+            totalBytes: z.number(),
+          }),
+        ),
       })
       .nullable(),
   }),

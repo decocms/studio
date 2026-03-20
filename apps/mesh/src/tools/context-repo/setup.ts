@@ -32,7 +32,13 @@ export const CONTEXT_REPO_SETUP = defineTool({
     repo: z.string(),
     branch: z.string(),
     headCommit: z.string(),
-    folders: z.array(z.string()),
+    folders: z.array(
+      z.object({
+        name: z.string(),
+        fileCount: z.number(),
+        totalBytes: z.number(),
+      }),
+    ),
     ghUser: z.string().optional(),
   }),
   handler: async (input, ctx) => {

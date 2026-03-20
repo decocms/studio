@@ -96,7 +96,7 @@ export async function cloneOrPull(
     const { mkdirSync } = await import("node:fs");
     mkdirSync(join(REPOS_BASE, orgId, owner), { recursive: true });
 
-    // Clone using gh CLI (handles auth for both HTTPS and SSH transparently)
+    // Shallow clone using gh CLI (handles auth for both HTTPS and SSH)
     const proc = Bun.spawn(
       [
         "gh",

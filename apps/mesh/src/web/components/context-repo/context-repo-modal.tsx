@@ -44,7 +44,11 @@ export function ContextRepoModal({
 }: ContextRepoModalProps) {
   const { gh, config, isLoading } = useContextRepo();
   // After setup (clone), we hold the folders for the picker step
-  const [pendingFolders, setPendingFolders] = useState<string[] | null>(null);
+  const [pendingFolders, setPendingFolders] = useState<Array<{
+    name: string;
+    fileCount: number;
+    totalBytes: number;
+  }> | null>(null);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -127,12 +131,18 @@ function GhStatusBadge({ gh }: { gh: { available: boolean; user?: string } }) {
   );
 }
 
+interface FolderInfo {
+  name: string;
+  fileCount: number;
+  totalBytes: number;
+}
+
 function SetupView({
   gh,
   onCloned,
 }: {
   gh: { available: boolean; user?: string };
-  onCloned: (folders: string[]) => void;
+  onCloned: (folders: FolderInfo[]) => void;
 }) {
   const [repoInput, setRepoInput] = useState("");
   const [branch, setBranch] = useState("main");
@@ -155,7 +165,7 @@ function SetupView({
       }>;
       const text = content?.find((c) => c.type === "text")?.text;
       const data = text ? JSON.parse(text) : null;
-      const folders = (data?.folders as string[]) ?? [];
+      const folders = (data?.folders as FolderInfo[]) ?? [];
       toast.success(`Cloned ${owner}/${repo} — now pick folders to index`);
       onCloned(folders);
     } catch (e) {
@@ -225,31 +235,49 @@ function SetupView({
   );
 }
 
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function FolderPickerView({
   folders,
   onIndexed,
 }: {
-  folders: string[];
+  folders: FolderInfo[];
   onIndexed: () => void;
 }) {
   const updateFoldersMutation = useContextRepoUpdateFolders();
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(folders));
+  const folderNames = folders.map((f) => f.name);
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(folderNames),
+  );
 
   const allSelected = selected.size === folders.length;
 
-  const toggle = (folder: string) => {
+  const selectedFiles = folders
+    .filter((f) => selected.has(f.name))
+    .reduce((sum, f) => sum + f.fileCount, 0);
+  const selectedBytes = folders
+    .filter((f) => selected.has(f.name))
+    .reduce((sum, f) => sum + f.totalBytes, 0);
+
+  const toggle = (name: string) => {
     const next = new Set(selected);
-    if (next.has(folder)) next.delete(folder);
-    else next.add(folder);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
     setSelected(next);
   };
 
   const toggleAll = () => {
-    setSelected(allSelected ? new Set() : new Set(folders));
+    setSelected(allSelected ? new Set() : new Set(folderNames));
   };
 
   const handleIndex = async () => {
-    const foldersToIndex = allSelected ? [] : [...selected];
+    const foldersToIndex = allSelected
+      ? []
+      : [...selected].filter((f) => f !== "<root>");
     try {
       await updateFoldersMutation.mutateAsync(foldersToIndex);
       toast.success("Repository indexed");
@@ -279,23 +307,42 @@ function FolderPickerView({
         </button>
       </div>
 
-      <div className="rounded-lg border border-border max-h-64 overflow-y-auto">
+      <div className="rounded-lg border border-border max-h-64 overflow-y-auto divide-y divide-border">
         {folders.map((folder) => (
           <label
-            key={folder}
-            className="flex items-center gap-2 px-3 py-1.5 hover:bg-accent cursor-pointer text-sm"
+            key={folder.name}
+            className="flex items-center gap-2 px-3 py-2 hover:bg-accent cursor-pointer text-sm"
           >
             <input
               type="checkbox"
-              checked={selected.has(folder)}
-              onChange={() => toggle(folder)}
+              checked={selected.has(folder.name)}
+              onChange={() => toggle(folder.name)}
               className="rounded border-border"
             />
-            <span className="text-muted-foreground">/</span>
-            <span>{folder}</span>
+            <span className="flex-1 min-w-0">
+              {folder.name === "<root>" ? (
+                <span className="text-muted-foreground italic">root files</span>
+              ) : (
+                <>
+                  <span className="text-muted-foreground">/</span>
+                  {folder.name}
+                </>
+              )}
+            </span>
+            <span className="text-xs text-muted-foreground tabular-nums shrink-0">
+              {folder.fileCount} files
+            </span>
+            <span className="text-xs text-muted-foreground tabular-nums shrink-0 w-16 text-right">
+              {formatSize(folder.totalBytes)}
+            </span>
           </label>
         ))}
       </div>
+
+      <p className="text-xs text-muted-foreground">
+        {selectedFiles.toLocaleString()} files, {formatSize(selectedBytes)}{" "}
+        selected
+      </p>
 
       <Button
         onClick={handleIndex}
@@ -328,7 +375,7 @@ function ConfiguredView({
     indexSizeBytes: number;
     lastSyncedAt: string | null;
     indexedFolders: string[] | null;
-    folders: string[];
+    folders: FolderInfo[];
   };
   gh: { available: boolean; user?: string };
 }) {
@@ -337,37 +384,40 @@ function ConfiguredView({
   const updateFoldersMutation = useContextRepoUpdateFolders();
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
 
+  const folderNames = config.folders.map((f) => f.name);
   const [selectedFolders, setSelectedFolders] = useState<Set<string>>(() => {
     if (config.indexedFolders && config.indexedFolders.length > 0) {
       return new Set(config.indexedFolders);
     }
-    return new Set(config.folders);
+    return new Set(folderNames);
   });
 
   const allSelected = selectedFolders.size === config.folders.length;
 
-  const toggleFolder = (folder: string) => {
+  const toggleFolder = (name: string) => {
     const next = new Set(selectedFolders);
-    if (next.has(folder)) next.delete(folder);
-    else next.add(folder);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
     setSelectedFolders(next);
   };
 
   const toggleAll = () => {
-    setSelectedFolders(allSelected ? new Set() : new Set(config.folders));
+    setSelectedFolders(allSelected ? new Set() : new Set(folderNames));
   };
 
   const savedSet = new Set(
     config.indexedFolders && config.indexedFolders.length > 0
       ? config.indexedFolders
-      : config.folders,
+      : folderNames,
   );
   const selectionChanged =
     selectedFolders.size !== savedSet.size ||
     [...selectedFolders].some((f) => !savedSet.has(f));
 
   const handleSaveFolders = async () => {
-    const folders = allSelected ? [] : [...selectedFolders];
+    const folders = allSelected
+      ? []
+      : [...selectedFolders].filter((f) => f !== "<root>");
     try {
       await updateFoldersMutation.mutateAsync(folders);
       toast.success("Indexed folders updated");
@@ -467,20 +517,36 @@ function ConfiguredView({
               {allSelected ? "Deselect all" : "Select all"}
             </button>
           </div>
-          <div className="rounded-lg border border-border max-h-48 overflow-y-auto">
+          <div className="rounded-lg border border-border max-h-48 overflow-y-auto divide-y divide-border">
             {config.folders.map((folder) => (
               <label
-                key={folder}
-                className="flex items-center gap-2 px-3 py-1.5 hover:bg-accent cursor-pointer text-sm"
+                key={folder.name}
+                className="flex items-center gap-2 px-3 py-2 hover:bg-accent cursor-pointer text-sm"
               >
                 <input
                   type="checkbox"
-                  checked={selectedFolders.has(folder)}
-                  onChange={() => toggleFolder(folder)}
+                  checked={selectedFolders.has(folder.name)}
+                  onChange={() => toggleFolder(folder.name)}
                   className="rounded border-border"
                 />
-                <span className="text-muted-foreground">/</span>
-                <span>{folder}</span>
+                <span className="flex-1 min-w-0">
+                  {folder.name === "<root>" ? (
+                    <span className="text-muted-foreground italic">
+                      root files
+                    </span>
+                  ) : (
+                    <>
+                      <span className="text-muted-foreground">/</span>
+                      {folder.name}
+                    </>
+                  )}
+                </span>
+                <span className="text-xs text-muted-foreground tabular-nums shrink-0">
+                  {folder.fileCount} files
+                </span>
+                <span className="text-xs text-muted-foreground tabular-nums shrink-0 w-16 text-right">
+                  {formatSize(folder.totalBytes)}
+                </span>
               </label>
             ))}
           </div>

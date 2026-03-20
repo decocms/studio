@@ -28,7 +28,7 @@ interface ContextRepoConfig {
   indexSizeBytes: number;
   lastSyncedAt: string | null;
   indexedFolders: string[] | null;
-  folders: string[];
+  folders: Array<{ name: string; fileCount: number; totalBytes: number }>;
 }
 
 interface ContextRepoStatus {
