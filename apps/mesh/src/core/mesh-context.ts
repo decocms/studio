@@ -231,9 +231,6 @@ import type { OrganizationSettingsStorage } from "../storage/organization-settin
 import type { TagStorage } from "../storage/tags";
 import type { UserStorage } from "../storage/user";
 import type { VirtualMCPStorage } from "../storage/virtual";
-import type { ProjectsStorage } from "../storage/projects";
-import type { ProjectConnectionsStorage } from "../storage/project-connections";
-import type { ProjectPluginConfigsStorage } from "../storage/project-plugin-configs";
 import type { AutomationsStorage } from "../storage/automations";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
@@ -265,9 +262,6 @@ export interface MeshStorage {
   users: UserStorage;
   threads: OrgScopedThreadStorage;
   tags: TagStorage;
-  projects: ProjectsStorage;
-  projectConnections: ProjectConnectionsStorage;
-  projectPluginConfigs: ProjectPluginConfigsStorage;
   aiProviderKeys: AIProviderKeyStorage;
   oauthPkceStates: OAuthPkceStateStorage;
   automations: AutomationsStorage;

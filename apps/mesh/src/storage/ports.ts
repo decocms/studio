@@ -15,10 +15,6 @@ import type {
   MonitoringLog,
   OrganizationSettings,
   OrganizationTag,
-  Project,
-  ProjectConnection,
-  ProjectPluginConfig,
-  ProjectUI,
   Thread,
   ThreadMessage,
 } from "./types";
@@ -62,54 +58,6 @@ export interface ThreadStoragePort {
       sort?: "asc" | "desc";
     },
   ): Promise<{ messages: ThreadMessage[]; total: number }>;
-}
-
-// ============================================================================
-// Project Storage Ports
-// ============================================================================
-
-export interface ProjectStoragePort {
-  list(organizationId: string): Promise<Project[]>;
-  get(projectId: string): Promise<Project | null>;
-  getBySlug(organizationId: string, slug: string): Promise<Project | null>;
-  create(data: {
-    organizationId: string;
-    slug: string;
-    name: string;
-    description?: string | null;
-    enabledPlugins?: string[] | null;
-    ui?: ProjectUI | null;
-  }): Promise<Project>;
-  update(
-    projectId: string,
-    data: Partial<{
-      name: string;
-      description: string | null;
-      enabledPlugins: string[] | null;
-      ui: ProjectUI | null;
-    }>,
-  ): Promise<Project | null>;
-  delete(projectId: string): Promise<boolean>;
-}
-
-export interface ProjectConnectionStoragePort {
-  list(projectId: string): Promise<ProjectConnection[]>;
-  add(projectId: string, connectionId: string): Promise<ProjectConnection>;
-  remove(projectId: string, connectionId: string): Promise<boolean>;
-}
-
-export interface ProjectPluginConfigStoragePort {
-  list(projectId: string): Promise<ProjectPluginConfig[]>;
-  get(projectId: string, pluginId: string): Promise<ProjectPluginConfig | null>;
-  upsert(
-    projectId: string,
-    pluginId: string,
-    data: {
-      connectionId?: string | null;
-      settings?: Record<string, unknown> | null;
-    },
-  ): Promise<ProjectPluginConfig>;
-  delete(projectId: string, pluginId: string): Promise<boolean>;
 }
 
 // ============================================================================
