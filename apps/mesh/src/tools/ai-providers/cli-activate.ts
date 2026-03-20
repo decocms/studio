@@ -18,15 +18,6 @@ export const AI_PROVIDER_CLI_ACTIVATE = defineTool({
     const org = requireOrganization(ctx);
     await ctx.access.check();
 
-    // Idempotent: if already activated, return immediately
-    const existing = await ctx.storage.aiProviderKeys.list({
-      organizationId: org.id,
-      providerId: "claude-code",
-    });
-    if (existing.length > 0) {
-      return { activated: true };
-    }
-
     // Check if Claude Code SDK is available and authenticated
     let email: string | undefined;
     try {
@@ -49,8 +40,8 @@ export const AI_PROVIDER_CLI_ACTIVATE = defineTool({
       };
     }
 
-    // Create a key record to mark the provider as activated
-    await ctx.storage.aiProviderKeys.create({
+    // Upsert key record — idempotent even under concurrent calls
+    await ctx.storage.aiProviderKeys.upsert({
       providerId: "claude-code",
       label: "Claude CLI",
       apiKey: "cli-local",
