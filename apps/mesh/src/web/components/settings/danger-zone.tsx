@@ -3,9 +3,9 @@ import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   useProjectContext,
+  useIsOrgAdmin,
   useMCPClient,
   SELF_MCP_ALIAS_ID,
-  ORG_ADMIN_PROJECT_SLUG,
 } from "@decocms/mesh-sdk";
 import { KEYS } from "@/web/lib/query-keys";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -29,7 +29,7 @@ export function DangerZone() {
   const queryClient = useQueryClient();
   const [confirmName, setConfirmName] = useState("");
   const [isOpen, setIsOpen] = useState(false);
-  const isOrgAdmin = project.slug === ORG_ADMIN_PROJECT_SLUG;
+  const isOrgAdmin = useIsOrgAdmin();
 
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -53,7 +53,7 @@ export function DangerZone() {
       toast.success("Project deleted");
       navigate({
         to: "/$org/$project/projects",
-        params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
+        params: { org: org.slug, project: "org-admin" },
       });
     },
     onError: (error) => {

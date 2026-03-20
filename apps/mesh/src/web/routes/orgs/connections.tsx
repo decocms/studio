@@ -81,7 +81,6 @@ import {
 import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
-  ORG_ADMIN_PROJECT_SLUG,
   SELF_MCP_ALIAS_ID,
   useConnectionActions,
   useConnections,
@@ -969,7 +968,7 @@ function OrgMcpsContent() {
       to: "/$org/$project/store/$appName",
       params: {
         org: org.slug,
-        project: ORG_ADMIN_PROJECT_SLUG,
+        project: "org-admin",
         appName: serverSlug,
       },
       search: { registryId, serverName },
@@ -1097,7 +1096,7 @@ function OrgMcpsContent() {
   const openCreateDialog = () => {
     navigate({
       to: "/$org/$project/mcps",
-      params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
+      params: { org: org.slug, project: "org-admin" },
       search: { action: "create" },
     });
   };
@@ -1105,7 +1104,7 @@ function OrgMcpsContent() {
   const closeCreateDialog = () => {
     navigate({
       to: "/$org/$project/mcps",
-      params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
+      params: { org: org.slug, project: "org-admin" },
       search: {},
     });
   };
@@ -1517,7 +1516,7 @@ function OrgMcpsContent() {
       to: "/$org/$project/mcps/$appSlug",
       params: {
         org: org.slug,
-        project: ORG_ADMIN_PROJECT_SLUG,
+        project: "org-admin",
         appSlug: getConnectionSlug({
           app_name: null,
           connection_url: connectionUrl,
@@ -2299,7 +2298,7 @@ function OrgMcpsContent() {
                             to: "/$org/$project/mcps/$appSlug",
                             params: {
                               org: org.slug,
-                              project: ORG_ADMIN_PROJECT_SLUG,
+                              project: "org-admin",
                               appSlug: item.key,
                             },
                           });
@@ -2325,7 +2324,7 @@ function OrgMcpsContent() {
                               to: "/$org/$project/mcps/$appSlug",
                               params: {
                                 org: org.slug,
-                                project: ORG_ADMIN_PROJECT_SLUG,
+                                project: "org-admin",
                                 appSlug: getConnectionSlug(connection),
                               },
                             })
@@ -2379,7 +2378,7 @@ function OrgMcpsContent() {
                                       to: "/$org/$project/mcps/$appSlug",
                                       params: {
                                         org: org.slug,
-                                        project: ORG_ADMIN_PROJECT_SLUG,
+                                        project: "org-admin",
                                         appSlug: getConnectionSlug(connection),
                                       },
                                     });
@@ -2467,7 +2466,7 @@ function OrgMcpsContent() {
                               to: "/$org/$project/mcps/$appSlug",
                               params: {
                                 org: org.slug,
-                                project: ORG_ADMIN_PROJECT_SLUG,
+                                project: "org-admin",
                                 appSlug: getConnectionSlug(first),
                               },
                             });
@@ -2551,7 +2550,7 @@ function OrgMcpsContent() {
                               to: "/$org/$project/mcps/$appSlug",
                               params: {
                                 org: org.slug,
-                                project: ORG_ADMIN_PROJECT_SLUG,
+                                project: "org-admin",
                                 appSlug: getConnectionSlug(first),
                               },
                             });

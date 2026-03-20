@@ -13,7 +13,6 @@ import {
 } from "@deco/ui/components/tooltip.tsx";
 import { getUIResourceUri } from "@/mcp-apps/types.ts";
 import type { ToolDefinition } from "@decocms/mesh-sdk";
-import { ORG_ADMIN_PROJECT_SLUG } from "@decocms/mesh-sdk";
 import {
   AlertTriangle,
   Eye,
@@ -152,7 +151,7 @@ export function ToolsList({
         to: "/$org/$project/mcps/$connectionId/$collectionName/$itemId",
         params: {
           org: org,
-          project: ORG_ADMIN_PROJECT_SLUG,
+          project: "org-admin",
           connectionId: connectionId,
           collectionName: "tools",
           itemId: encodeURIComponent(tool.name),

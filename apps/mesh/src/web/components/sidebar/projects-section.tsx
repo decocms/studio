@@ -14,7 +14,7 @@ import {
   CollapsibleTrigger,
 } from "@deco/ui/components/collapsible.tsx";
 import { ChevronDown, ChevronRight, Plus } from "@untitledui/icons";
-import { ORG_ADMIN_PROJECT_SLUG, useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import { useProjects, type ProjectWithBindings } from "@/web/hooks/use-project";
 import { CreateProjectDialog } from "@/web/components/create-project-dialog";
 import { cn } from "@deco/ui/lib/utils.ts";
@@ -87,8 +87,7 @@ function ProjectsSectionContent() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   // Filter out org-admin project
-  const userProjects =
-    projects?.filter((p) => p.slug !== ORG_ADMIN_PROJECT_SLUG) ?? [];
+  const userProjects = projects?.filter((p) => p.slug !== "org-admin") ?? [];
 
   if (isLoading) {
     return (

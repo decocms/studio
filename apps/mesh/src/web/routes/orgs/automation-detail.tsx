@@ -65,11 +65,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
-import {
-  getDecopilotId,
-  ORG_ADMIN_PROJECT_SLUG,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
+import { getDecopilotId, useProjectContext } from "@decocms/mesh-sdk";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
   ArrowUp,
@@ -1217,7 +1213,7 @@ export default function AutomationDetailPage() {
       toast.success("Automation deleted");
       navigate({
         to: "/$org/$project/automations",
-        params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
+        params: { org: org.slug, project: "org-admin" },
       });
     } catch {
       toast.error("Failed to delete automation");
@@ -1249,7 +1245,7 @@ export default function AutomationDetailPage() {
           <BreadcrumbLink asChild>
             <Link
               to="/$org/$project/automations"
-              params={{ org: org.slug, project: ORG_ADMIN_PROJECT_SLUG }}
+              params={{ org: org.slug, project: "org-admin" }}
             >
               Automations
             </Link>

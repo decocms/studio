@@ -54,7 +54,6 @@ import {
 import { getConnectionSlug } from "@/web/utils/connection-slug";
 import { useMCPAuthStatus } from "@/web/hooks/use-mcp-auth-status";
 import {
-  ORG_ADMIN_PROJECT_SLUG,
   useConnection,
   useMCPClient,
   useMCPToolsListQuery,
@@ -353,7 +352,7 @@ function ToolDetailsAuthenticated({
           <BreadcrumbLink asChild>
             <Link
               to="/$org/$project/mcps"
-              params={{ org: org.slug, project: ORG_ADMIN_PROJECT_SLUG }}
+              params={{ org: org.slug, project: "org-admin" }}
             >
               Connections
             </Link>
@@ -368,7 +367,7 @@ function ToolDetailsAuthenticated({
                   to="/$org/$project/mcps/$appSlug"
                   params={{
                     org: org.slug,
-                    project: ORG_ADMIN_PROJECT_SLUG,
+                    project: "org-admin",
                     appSlug: getConnectionSlug(connection),
                   }}
                   search={{ tab: "tools" }}

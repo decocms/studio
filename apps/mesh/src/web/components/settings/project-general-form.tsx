@@ -4,9 +4,9 @@ import { z } from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   useProjectContext,
+  useIsOrgAdmin,
   useMCPClient,
   SELF_MCP_ALIAS_ID,
-  ORG_ADMIN_PROJECT_SLUG,
 } from "@decocms/mesh-sdk";
 import { KEYS } from "@/web/lib/query-keys";
 import { Input } from "@deco/ui/components/input.tsx";
@@ -46,7 +46,7 @@ type ProjectUpdateOutput = {
 export function ProjectGeneralForm() {
   const { org, project } = useProjectContext();
   const queryClient = useQueryClient();
-  const isOrgAdmin = project.slug === ORG_ADMIN_PROJECT_SLUG;
+  const isOrgAdmin = useIsOrgAdmin();
 
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,

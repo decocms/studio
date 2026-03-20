@@ -5,7 +5,6 @@ import { EmptyState } from "@/web/components/empty-state.tsx";
 import { ToolAnnotationBadges, type Tool } from "@/web/components/tools";
 import { Card } from "@deco/ui/components/card.tsx";
 import {
-  ORG_ADMIN_PROJECT_SLUG,
   useConnection,
   useMCPClient,
   useProjectContext,
@@ -51,7 +50,7 @@ export function ConnectionUiTab({
       to: "/$org/$project/mcps/$appSlug/$collectionName/$itemId",
       params: {
         org,
-        project: ORG_ADMIN_PROJECT_SLUG,
+        project: "org-admin",
         appSlug,
         collectionName: "tools",
         itemId: encodeURIComponent(tool.name),

@@ -13,11 +13,7 @@ import { Outlet, useParams, useNavigate } from "@tanstack/react-router";
 import { Suspense } from "react";
 import { SplashScreen } from "@/web/components/splash-screen";
 import { useProject } from "@/web/hooks/use-project";
-import {
-  ORG_ADMIN_PROJECT_SLUG,
-  ProjectContextProvider,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
+import { ProjectContextProvider, useProjectContext } from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import { SettingsModal } from "@/web/components/settings-modal/index";
 
@@ -47,7 +43,7 @@ function ProjectRequestError({
         onClick={() =>
           navigate({
             to: "/$org/$project",
-            params: { org: orgSlug, project: ORG_ADMIN_PROJECT_SLUG },
+            params: { org: orgSlug, project: "org-admin" },
           })
         }
       >
@@ -80,7 +76,7 @@ function ProjectNotFoundError({
         onClick={() =>
           navigate({
             to: "/$org/$project",
-            params: { org: orgSlug, project: ORG_ADMIN_PROJECT_SLUG },
+            params: { org: orgSlug, project: "org-admin" },
           })
         }
       >
@@ -134,7 +130,7 @@ function ProjectLayoutContent() {
     description: project.description,
     enabledPlugins: project.enabledPlugins,
     ui: project.ui,
-    isOrgAdmin: project.slug === ORG_ADMIN_PROJECT_SLUG,
+    isOrgAdmin: project.slug === "org-admin",
   };
 
   return (

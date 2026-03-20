@@ -1,7 +1,4 @@
-import {
-  ORG_ADMIN_PROJECT_SLUG,
-  type VirtualMCPEntity,
-} from "@decocms/mesh-sdk";
+import { type VirtualMCPEntity } from "@decocms/mesh-sdk";
 import { Users03, ChevronRight } from "@untitledui/icons";
 import { Link } from "@tanstack/react-router";
 import { IntegrationIcon } from "@/web/components/integration-icon";
@@ -21,7 +18,7 @@ function VirtualMCPListItem({
   return (
     <Link
       to="/$org/$project/agents/$agentId/"
-      params={{ org, project: ORG_ADMIN_PROJECT_SLUG, agentId: virtualMcp.id }}
+      params={{ org, project: "org-admin", agentId: virtualMcp.id }}
       className="flex items-center gap-3 rounded-lg hover:bg-muted/50 transition-colors group"
     >
       <IntegrationIcon

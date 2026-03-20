@@ -53,7 +53,6 @@ import {
 import { Input } from "@deco/ui/components/input.tsx";
 import {
   isStdioParameters,
-  ORG_ADMIN_PROJECT_SLUG,
   useConnectionActions,
   useConnections,
   useMCPClient,
@@ -465,7 +464,7 @@ function ConnectionInspectorViewWithConnection({
     if (siblings.length <= 1) {
       navigate({
         to: "/$org/$project/mcps",
-        params: { org, project: ORG_ADMIN_PROJECT_SLUG },
+        params: { org, project: "org-admin" },
       });
     }
     // Otherwise stay on same slug — remaining siblings still share it
@@ -479,7 +478,7 @@ function ConnectionInspectorViewWithConnection({
           <BreadcrumbLink asChild>
             <Link
               to="/$org/$project/mcps"
-              params={{ org, project: ORG_ADMIN_PROJECT_SLUG }}
+              params={{ org, project: "org-admin" }}
             >
               Connections
             </Link>
@@ -867,7 +866,7 @@ function ConnectionInspectorViewContent() {
                   to: "/$org/$project/mcps",
                   params: {
                     org: org as string,
-                    project: ORG_ADMIN_PROJECT_SLUG,
+                    project: "org-admin",
                   },
                 })
               }

@@ -11,11 +11,7 @@ import {
   useSettingsModal,
   type SettingsSection,
 } from "@/web/hooks/use-settings-modal";
-import {
-  ProjectContextProvider,
-  useProjectContext,
-  ORG_ADMIN_PROJECT_SLUG,
-} from "@decocms/mesh-sdk";
+import { ProjectContextProvider, useProjectContext } from "@decocms/mesh-sdk";
 import { useProject } from "@/web/hooks/use-project";
 import { SettingsSidebar } from "./sidebar";
 import { AccountProfilePage } from "./pages/account-profile";
@@ -58,7 +54,7 @@ function ProjectContextWrapper({
     description: project.description,
     enabledPlugins: project.enabledPlugins,
     ui: project.ui,
-    isOrgAdmin: projectSlug === ORG_ADMIN_PROJECT_SLUG,
+    isOrgAdmin: projectSlug === "org-admin",
   };
 
   return (
@@ -78,7 +74,7 @@ function SettingsContent({ section }: { section: SettingsSection }) {
       return <OrgGeneralPage />;
     case "org.plugins":
       return (
-        <ProjectContextWrapper projectSlug={ORG_ADMIN_PROJECT_SLUG}>
+        <ProjectContextWrapper projectSlug={"org-admin"}>
           <ProjectPluginsPage />
         </ProjectContextWrapper>
       );

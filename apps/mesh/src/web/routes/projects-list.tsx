@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { ORG_ADMIN_PROJECT_SLUG, useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import { useProjects } from "@/web/hooks/use-project";
 import { Page } from "@/web/components/page";
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
@@ -46,7 +46,7 @@ export default function ProjectsListPage() {
   // Filter out org-admin and apply search
   const userProjects =
     projects
-      ?.filter((p) => p.slug !== ORG_ADMIN_PROJECT_SLUG)
+      ?.filter((p) => p.slug !== "org-admin")
       ?.filter(
         (p) =>
           p.name.toLowerCase().includes(search.toLowerCase()) ||

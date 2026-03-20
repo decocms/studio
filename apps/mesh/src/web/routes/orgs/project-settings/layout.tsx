@@ -7,11 +7,7 @@ import {
 import { Suspense, useState } from "react";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { useProject } from "@/web/hooks/use-project";
-import {
-  ORG_ADMIN_PROJECT_SLUG,
-  ProjectContextProvider,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
+import { ProjectContextProvider, useProjectContext } from "@decocms/mesh-sdk";
 import { Page } from "@/web/components/page";
 import {
   Breadcrumb,
@@ -69,7 +65,7 @@ function ProjectSettingsContent() {
                       to="/$org/$project/projects"
                       params={{
                         org: params.org,
-                        project: ORG_ADMIN_PROJECT_SLUG,
+                        project: "org-admin",
                       }}
                     >
                       Projects
@@ -101,7 +97,7 @@ function ProjectSettingsContent() {
     description: project.description,
     enabledPlugins: project.enabledPlugins,
     ui: project.ui,
-    isOrgAdmin: project.slug === ORG_ADMIN_PROJECT_SLUG,
+    isOrgAdmin: project.slug === "org-admin",
   };
 
   return (
@@ -117,7 +113,7 @@ function ProjectSettingsContent() {
                       to="/$org/$project/projects"
                       params={{
                         org: params.org,
-                        project: ORG_ADMIN_PROJECT_SLUG,
+                        project: "org-admin",
                       }}
                     >
                       Projects

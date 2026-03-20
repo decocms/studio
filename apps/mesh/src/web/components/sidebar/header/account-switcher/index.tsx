@@ -21,7 +21,6 @@ import {
 } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
-import { ORG_ADMIN_PROJECT_SLUG } from "@decocms/mesh-sdk";
 import { UserProjectItems, ProjectListSkeleton } from "./project-panel";
 import { useProject } from "@/web/hooks/use-project";
 import { CreateOrganizationDialog } from "@/web/components/create-organization-dialog";
@@ -63,7 +62,7 @@ export function MeshAccountSwitcher({
   const [showOrgList, setShowOrgList] = useState(false);
   const isMobile = useIsMobile();
 
-  const isStudio = projectParam === ORG_ADMIN_PROJECT_SLUG;
+  const isStudio = projectParam === "org-admin";
 
   // Fetch full project data to get the name — sidebar context only has the slug
   const { data: currentProjectData } = useProject(
@@ -81,7 +80,7 @@ export function MeshAccountSwitcher({
     if (!orgParam) return;
     navigate({
       to: "/$org/$project",
-      params: { org: orgParam, project: ORG_ADMIN_PROJECT_SLUG },
+      params: { org: orgParam, project: "org-admin" },
     });
   };
 
@@ -96,7 +95,7 @@ export function MeshAccountSwitcher({
   const handleSelectOrg = (orgSlug: string) => {
     navigate({
       to: "/$org/$project",
-      params: { org: orgSlug, project: ORG_ADMIN_PROJECT_SLUG },
+      params: { org: orgSlug, project: "org-admin" },
     });
   };
 
@@ -106,7 +105,7 @@ export function MeshAccountSwitcher({
 
   const handleSettings = () => {
     if (!orgParam || !projectParam) return;
-    const isOrgAdmin = projectParam === ORG_ADMIN_PROJECT_SLUG;
+    const isOrgAdmin = projectParam === "org-admin";
     navigate({
       to: "/$org/$project",
       params: { org: orgParam, project: projectParam },

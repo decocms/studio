@@ -1,6 +1,6 @@
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { useProjectSidebarItems } from "@/web/hooks/use-project-sidebar-items";
-import { Locator, useProjectContext } from "@decocms/mesh-sdk";
+import { useIsOrgAdmin } from "@decocms/mesh-sdk";
 import { Suspense } from "react";
 import { NavigationSidebar } from "./navigation";
 import { MeshSidebarHeader } from "./header";
@@ -21,8 +21,7 @@ interface MeshSidebarProps {
 
 export function MeshSidebar({ onCreateProject }: MeshSidebarProps) {
   const sidebarSections = useProjectSidebarItems();
-  const { locator } = useProjectContext();
-  const isOrgAdmin = Locator.isOrgAdminProject(locator);
+  const isOrgAdmin = useIsOrgAdmin();
 
   return (
     <NavigationSidebar

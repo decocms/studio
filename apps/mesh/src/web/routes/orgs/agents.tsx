@@ -16,7 +16,6 @@ import { useListState } from "@/web/hooks/use-list-state";
 import { useCreateVirtualMCP } from "@/web/hooks/use-create-virtual-mcp";
 import {
   isDecopilot,
-  ORG_ADMIN_PROJECT_SLUG,
   useProjectContext,
   useVirtualMCPs,
   useVirtualMCPActions,
@@ -917,7 +916,7 @@ function OrgAgentsContent() {
       to: "/$org/$project/agents/$agentId",
       params: {
         org: org.slug,
-        project: ORG_ADMIN_PROJECT_SLUG,
+        project: "org-admin",
         agentId,
       },
     });

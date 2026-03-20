@@ -5,7 +5,6 @@ import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
-  ORG_ADMIN_PROJECT_SLUG,
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
@@ -144,9 +143,9 @@ export function CreateProjectDialog({
       });
       return;
     }
-    if (data.slug === ORG_ADMIN_PROJECT_SLUG) {
+    if (data.slug === "org-admin") {
       form.setError("slug", {
-        message: `"${ORG_ADMIN_PROJECT_SLUG}" is a reserved slug`,
+        message: '"org-admin" is a reserved slug',
       });
       return;
     }
@@ -176,7 +175,7 @@ export function CreateProjectDialog({
   const slug = form.watch("slug");
   const name = form.watch("name");
 
-  const isSlugReserved = slug === ORG_ADMIN_PROJECT_SLUG;
+  const isSlugReserved = slug === "org-admin";
   const isSlugInvalid = slug.length > 0 && !isValidSlug(slug);
 
   return (
@@ -260,7 +259,7 @@ export function CreateProjectDialog({
                   </div>
                   {isSlugReserved && (
                     <p className="text-xs text-destructive">
-                      "{ORG_ADMIN_PROJECT_SLUG}" is a reserved slug
+                      "org-admin" is a reserved slug
                     </p>
                   )}
                   {isSlugInvalid && !isSlugReserved && (

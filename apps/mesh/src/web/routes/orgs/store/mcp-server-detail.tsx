@@ -21,7 +21,6 @@ import {
 import { useRegistryConnections } from "@/web/hooks/use-binding";
 import { usePublisherConnection } from "@/web/hooks/use-publisher-connection";
 import {
-  ORG_ADMIN_PROJECT_SLUG,
   useConnection,
   useConnections,
   useConnectionActions,
@@ -683,7 +682,7 @@ function StoreMCPServerDetailContent() {
         to: "/$org/$project/mcps",
         params: {
           org: org.slug,
-          project: ORG_ADMIN_PROJECT_SLUG,
+          project: "org-admin",
         },
         search: { tab: "connected" },
       });
@@ -727,7 +726,7 @@ function StoreMCPServerDetailContent() {
   const handleBackClick = () => {
     navigate({
       to: "/$org/$project/mcps",
-      params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
+      params: { org: org.slug, project: "org-admin" },
     });
   };
 
@@ -752,7 +751,7 @@ function StoreMCPServerDetailContent() {
           <BreadcrumbLink asChild>
             <Link
               to="/$org/$project/mcps"
-              params={{ org: org.slug, project: ORG_ADMIN_PROJECT_SLUG }}
+              params={{ org: org.slug, project: "org-admin" }}
             >
               Connections
             </Link>
@@ -986,7 +985,7 @@ export default function StoreMCPServerDetail() {
   const handleBackClick = () => {
     navigate({
       to: "/$org/$project/mcps",
-      params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
+      params: { org: org.slug, project: "org-admin" },
     });
   };
 

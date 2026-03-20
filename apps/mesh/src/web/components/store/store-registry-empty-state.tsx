@@ -1,6 +1,5 @@
 import { authClient } from "@/web/lib/auth-client";
 import {
-  ORG_ADMIN_PROJECT_SLUG,
   useConnectionActions,
   useProjectContext,
   type ConnectionCreateData,
@@ -44,7 +43,7 @@ export function StoreRegistryEmptyState({
   const handleInstallMcpServer = () => {
     navigate({
       to: "/$org/$project/mcps",
-      params: { org: orgSlug, project: ORG_ADMIN_PROJECT_SLUG },
+      params: { org: orgSlug, project: "org-admin" },
       search: { action: "create" },
     });
   };

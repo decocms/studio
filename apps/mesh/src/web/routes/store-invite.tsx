@@ -2,7 +2,6 @@ import { Navigate, useParams, useSearch } from "@tanstack/react-router";
 import { AuthLoading, SignedIn, SignedOut } from "@daveyplate/better-auth-ui";
 import { SplashScreen } from "@/web/components/splash-screen";
 import { authClient } from "@/web/lib/auth-client";
-import { ORG_ADMIN_PROJECT_SLUG } from "@decocms/mesh-sdk";
 
 function RedirectToLogin({ appName }: { appName: string }) {
   const search = useSearch({ strict: false });
@@ -37,7 +36,7 @@ function StoreInviteRedirect() {
   return (
     <Navigate
       to="/$org/$project/store/$appName"
-      params={{ org: org.slug, project: ORG_ADMIN_PROJECT_SLUG, appName }}
+      params={{ org: org.slug, project: "org-admin", appName }}
       search={search}
       replace
     />

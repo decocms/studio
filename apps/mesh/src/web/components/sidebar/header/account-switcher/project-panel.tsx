@@ -1,7 +1,6 @@
 import { DropdownMenuItem } from "@deco/ui/components/dropdown-menu.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { ORG_ADMIN_PROJECT_SLUG } from "@decocms/mesh-sdk";
 import { Check } from "@untitledui/icons";
 import { useProjects } from "@/web/hooks/use-project";
 
@@ -29,8 +28,7 @@ export function UserProjectItems({
 }: UserProjectItemsProps) {
   const { data: projects } = useProjects(organizationId, { suspense: true });
 
-  const userProjects =
-    projects?.filter((p) => p.slug !== ORG_ADMIN_PROJECT_SLUG) ?? [];
+  const userProjects = projects?.filter((p) => p.slug !== "org-admin") ?? [];
 
   if (userProjects.length === 0) {
     return (

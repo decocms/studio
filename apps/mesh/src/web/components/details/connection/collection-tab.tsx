@@ -24,7 +24,6 @@ import {
 import { Button } from "@deco/ui/components/button.tsx";
 import type { BaseCollectionEntity } from "@decocms/bindings/collections";
 import {
-  ORG_ADMIN_PROJECT_SLUG,
   useCollectionActions,
   useCollectionList,
   useConnection,
@@ -108,7 +107,7 @@ export function CollectionTab({
       to: "/$org/$project/mcps/$appSlug/$collectionName/$itemId",
       params: {
         org,
-        project: ORG_ADMIN_PROJECT_SLUG,
+        project: "org-admin",
         appSlug,
         collectionName,
         itemId: item.id,
@@ -176,7 +175,7 @@ export function CollectionTab({
         to: "/$org/$project/mcps/$appSlug/$collectionName/$itemId",
         params: {
           org,
-          project: ORG_ADMIN_PROJECT_SLUG,
+          project: "org-admin",
           appSlug,
           collectionName,
           itemId: createdItem.id,

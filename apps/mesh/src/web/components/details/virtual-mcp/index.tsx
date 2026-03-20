@@ -30,7 +30,6 @@ import {
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   getDecopilotId,
-  ORG_ADMIN_PROJECT_SLUG,
   useConnection,
   useConnectionActions,
   useConnections,
@@ -220,7 +219,7 @@ function ConnectionItemWithAuth({
         to="/$org/$project/mcps/$appSlug"
         params={{
           org: orgSlug,
-          project: ORG_ADMIN_PROJECT_SLUG,
+          project: "org-admin",
           appSlug: slug,
         }}
         className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors"
@@ -630,7 +629,7 @@ Define step-by-step how the agent should handle requests.
           <BreadcrumbLink asChild>
             <Link
               to="/$org/$project/agents"
-              params={{ org: org.slug, project: ORG_ADMIN_PROJECT_SLUG }}
+              params={{ org: org.slug, project: "org-admin" }}
             >
               Agents
             </Link>
@@ -902,7 +901,7 @@ function VirtualMcpDetailViewContent() {
               onClick={() =>
                 navigate({
                   to: "/$org/$project/agents",
-                  params: { org, project: ORG_ADMIN_PROJECT_SLUG },
+                  params: { org, project: "org-admin" },
                 })
               }
             >

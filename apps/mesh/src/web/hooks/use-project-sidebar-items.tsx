@@ -1,5 +1,4 @@
-import { Locator, ORG_ADMIN_PROJECT_SLUG } from "@decocms/mesh-sdk";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { Locator, useProjectContext, useIsOrgAdmin } from "@decocms/mesh-sdk";
 import type {
   NavigationSidebarItem,
   SidebarSection,
@@ -27,7 +26,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
   const routerState = useRouterState();
   const [preferences] = usePreferences();
   const { org, project } = Locator.parse(locator);
-  const isOrgAdminProject = Locator.isOrgAdminProject(locator);
+  const isOrgAdminProject = useIsOrgAdmin();
 
   // Fetch project data to get enabledPlugins and pinnedViews
   const { data: projectData } = useProject(orgContext.id, project);
@@ -91,7 +90,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
     onClick: () =>
       navigate({
         to: "/$org/$project/tasks",
-        params: { org, project: ORG_ADMIN_PROJECT_SLUG },
+        params: { org, project: "org-admin" },
       }),
   };
 
@@ -103,7 +102,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
     onClick: () =>
       navigate({
         to: "/$org/$project/mcps",
-        params: { org, project: ORG_ADMIN_PROJECT_SLUG },
+        params: { org, project: "org-admin" },
       }),
   };
 
@@ -115,7 +114,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
     onClick: () =>
       navigate({
         to: "/$org/$project/projects",
-        params: { org, project: ORG_ADMIN_PROJECT_SLUG },
+        params: { org, project: "org-admin" },
       }),
   };
 
@@ -127,7 +126,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
     onClick: () =>
       navigate({
         to: "/$org/$project/agents",
-        params: { org, project: ORG_ADMIN_PROJECT_SLUG },
+        params: { org, project: "org-admin" },
       }),
   };
 
@@ -139,7 +138,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
     onClick: () =>
       navigate({
         to: "/$org/$project/automations",
-        params: { org, project: ORG_ADMIN_PROJECT_SLUG },
+        params: { org, project: "org-admin" },
       }),
   };
 
@@ -151,7 +150,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
     onClick: () =>
       navigate({
         to: "/$org/$project/monitoring",
-        params: { org, project: ORG_ADMIN_PROJECT_SLUG },
+        params: { org, project: "org-admin" },
       }),
   };
 
@@ -257,7 +256,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
       onClick: () =>
         navigate({
           to: "/$org/$project/settings",
-          params: { org, project: ORG_ADMIN_PROJECT_SLUG },
+          params: { org, project: "org-admin" },
         }),
     };
 
