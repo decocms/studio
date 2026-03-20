@@ -10,23 +10,24 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@deco/ui/components/dialog.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
+import { ArrowLeft } from "@untitledui/icons";
 import { authClient } from "@/web/lib/auth-client";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import { KEYS } from "@/web/lib/query-keys";
 import { generateSlug } from "@/web/lib/slug";
 import type { Project } from "@/web/hooks/use-project";
+import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
 
 interface DecoSite {
   name: string;
   domains: { domain: string; production: boolean }[] | null;
+  thumb_url: string | null;
 }
 
 interface DecoSitesResponse {
@@ -45,6 +46,7 @@ async function loadDecoSites(): Promise<DecoSitesResponse> {
 interface ImportFromDecoDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onBack?: () => void;
 }
 
 type ProjectCreateOutput = { project: Project };
@@ -52,6 +54,7 @@ type ProjectCreateOutput = { project: Project };
 export function ImportFromDecoDialog({
   open,
   onOpenChange,
+  onBack,
 }: ImportFromDecoDialogProps) {
   const { org } = useProjectContext();
   const navigate = useNavigate();
@@ -177,13 +180,19 @@ export function ImportFromDecoDialog({
 
       return { project, connId };
     },
-    onSuccess: ({ project }) => {
+    onSuccess: ({ project, connId }) => {
       queryClient.invalidateQueries({ queryKey: KEYS.projects(org.id) });
       toast.success(`Imported ${project.slug} from deco.cx`);
       handleClose(false);
+      localStorage.setItem("mesh:sidebar-open", JSON.stringify(false));
       navigate({
-        to: "/$org/$project",
-        params: { org: org.slug, project: project.slug },
+        to: "/$org/$project/apps/$connectionId/$toolName",
+        params: {
+          org: org.slug,
+          project: project.slug,
+          connectionId: connId,
+          toolName: "file_explorer",
+        },
       });
     },
     onError: (err) => {
@@ -194,73 +203,107 @@ export function ImportFromDecoDialog({
     },
   });
 
-  const userEmail = session?.user?.email ?? "";
-
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-[900px] p-0 gap-0 overflow-hidden">
+        <DialogHeader className="sr-only">
           <DialogTitle>Import from deco.cx</DialogTitle>
-          <DialogDescription>
-            {userEmail
-              ? `Sites available for ${userEmail}`
-              : "Select the site you want to import."}
-          </DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-24">
+        <div className="flex items-center h-12 border-b border-border px-4 gap-3">
+          <button
+            type="button"
+            onClick={() => (onBack ? onBack() : handleClose(false))}
+            className="flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Go back"
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <span className="text-sm font-medium text-foreground">
+            Import from deco.cx
+          </span>
+        </div>
+
+        <div>
+          <CollectionSearch
+            value={search}
+            onChange={setSearch}
+            placeholder="Search sites..."
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setSearch("");
+            }}
+          />
+        </div>
+
+        <div className="pb-0 min-h-[300px]">
           {isLoading && (
-            <div className="flex items-center justify-center h-24 text-sm text-muted-foreground">
+            <div className="flex items-center justify-center h-48 text-sm text-muted-foreground">
               Loading sites...
             </div>
           )}
 
           {!isLoading && !sitesError && sites.length === 0 && (
-            <div className="flex items-center justify-center h-24 text-sm text-muted-foreground">
+            <div className="flex items-center justify-center h-48 text-sm text-muted-foreground">
               No sites found for this account.
             </div>
           )}
 
           {!isLoading && sites.length > 0 && (
-            <div className="space-y-3">
-              <Input
-                placeholder="Search sites..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                autoFocus
-              />
-              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                {filteredSites.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    No sites match &ldquo;{search}&rdquo;
-                  </p>
-                )}
-                {filteredSites.map((site) => (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-h-[420px] overflow-y-auto py-4 px-8 [scrollbar-gutter:stable]">
+              {filteredSites.length === 0 && (
+                <p className="col-span-3 text-sm text-muted-foreground text-center py-8">
+                  No sites match &ldquo;{search}&rdquo;
+                </p>
+              )}
+              {filteredSites.map((site) => {
+                const domain =
+                  site.domains?.find((d) => d.production)?.domain ??
+                  site.domains?.[0]?.domain;
+                const isSelected = selectedSite === site.name;
+                return (
                   <button
                     key={site.name}
                     type="button"
                     onClick={() => setSelectedSite(site.name)}
                     className={cn(
-                      "flex flex-col w-full text-left rounded-lg border px-4 py-3 transition-colors",
-                      selectedSite === site.name
-                        ? "border-primary bg-primary/5 ring-1 ring-primary"
-                        : "border-border hover:bg-muted/50",
+                      "flex flex-col rounded-xl border overflow-hidden text-left transition-all cursor-pointer",
+                      isSelected
+                        ? "border-primary ring-1 ring-primary"
+                        : "border-border hover:border-muted-foreground/40",
                     )}
                   >
-                    <span className="text-sm font-medium">{site.name}</span>
-                    {site.domains?.[0] && (
-                      <span className="text-xs text-muted-foreground">
-                        {site.domains[0].domain}
-                      </span>
-                    )}
+                    {/* Thumbnail */}
+                    <div className="w-full aspect-video bg-muted overflow-hidden">
+                      {site.thumb_url ? (
+                        <img
+                          src={site.thumb_url}
+                          alt={site.name}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-muted" />
+                      )}
+                    </div>
+                    {/* Info */}
+                    <div className="px-4 py-3">
+                      <p className="text-sm font-medium text-foreground truncate">
+                        {site.name}
+                      </p>
+                      {domain && (
+                        <p className="text-xs text-muted-foreground truncate mt-0.5">
+                          {domain}
+                        </p>
+                      )}
+                    </div>
                   </button>
-                ))}
-              </div>
+                );
+              })}
             </div>
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="px-8 py-5 border-t border-border">
           <Button
             variant="outline"
             onClick={() => handleClose(false)}

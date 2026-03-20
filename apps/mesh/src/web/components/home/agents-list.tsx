@@ -18,9 +18,16 @@ import {
 } from "@deco/ui/components/popover.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { isDecopilot, useVirtualMCPs } from "@decocms/mesh-sdk";
-import { ChevronRight, Users03 } from "@untitledui/icons";
+import {
+  isDecopilot,
+  useProjectContext,
+  useVirtualMCPs,
+} from "@decocms/mesh-sdk";
+import { readRecentAgentIds } from "@/web/components/chat/store/local-storage";
+import { ChevronRight, Plus, Users03 } from "@untitledui/icons";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
+import { SiteEditorOnboardingModal } from "@/web/components/home/site-editor-onboarding-modal.tsx";
+import { useCreateVirtualMCP } from "@/web/hooks/use-create-virtual-mcp";
 import { Suspense, useEffect, useRef, useState } from "react";
 
 /**
@@ -28,18 +35,23 @@ import { Suspense, useEffect, useRef, useState } from "react";
  */
 function AgentPreview({
   agent,
+  onSpecialClick,
 }: {
   agent: {
     id: string;
     title: string;
     icon?: string | null;
   };
+  onSpecialClick?: () => void;
 }) {
   const { setVirtualMcpId } = useChatStable();
 
   const handleClick = () => {
-    // Select the agent in the chat context
-    setVirtualMcpId(agent.id);
+    if (onSpecialClick) {
+      onSpecialClick();
+    } else {
+      setVirtualMcpId(agent.id);
+    }
   };
 
   return (
@@ -47,10 +59,11 @@ function AgentPreview({
       type="button"
       onClick={handleClick}
       className={cn(
-        "flex flex-col items-center gap-1.5 sm:gap-3 p-1.5 sm:p-2 rounded-lg",
-        "transition-colors hover:bg-accent/30",
+        "flex flex-col items-center gap-3 p-2 rounded-lg",
+        "transition-colors",
         "cursor-pointer",
-        "self-stretch",
+        "w-[88px]",
+        "group",
       )}
       aria-label={`Select agent ${agent.title}`}
     >
@@ -59,6 +72,7 @@ function AgentPreview({
         name={agent.title}
         size="md"
         fallbackIcon={<Users03 size={24} />}
+        className="transition-transform group-hover:scale-110"
       />
       <p className="text-xs sm:text-sm text-foreground text-center leading-tight line-clamp-2">
         {agent.title}
@@ -104,14 +118,15 @@ function SeeAllButton({
         <button
           type="button"
           className={cn(
-            "flex flex-col items-center gap-1.5 sm:gap-3 p-1.5 sm:p-2 rounded-lg",
-            "transition-colors hover:bg-accent/30",
+            "flex flex-col items-center gap-3 p-2 rounded-lg",
+            "transition-colors",
             "cursor-pointer",
-            "self-stretch",
+            "w-[88px]",
+            "group",
           )}
           aria-label="See all agents"
         >
-          <div className="size-12 rounded-xl bg-accent flex items-center justify-center shrink-0">
+          <div className="size-12 rounded-xl bg-accent flex items-center justify-center shrink-0 transition-transform group-hover:scale-110">
             <ChevronRight size={20} className="text-foreground" />
           </div>
           <p className="text-xs sm:text-sm text-foreground text-center leading-tight">
@@ -137,24 +152,76 @@ function SeeAllButton({
 }
 
 /**
+ * Hardcoded Site Editor agent shown first in the agents list for onboarding.
+ */
+const SITE_EDITOR_AGENT = {
+  id: "site-editor",
+  title: "Site Editor",
+  icon: "icon://Globe01?color=violet",
+} as const;
+
+/**
  * Agents list content component
  */
+function CreateAgentButton() {
+  const { createVirtualMCP, isCreating } = useCreateVirtualMCP({
+    navigateOnCreate: true,
+  });
+
+  return (
+    <button
+      type="button"
+      onClick={() => createVirtualMCP()}
+      disabled={isCreating}
+      className={cn(
+        "flex flex-col items-center gap-3 p-2 rounded-lg",
+        "transition-colors",
+        "cursor-pointer",
+        "w-[88px]",
+        "group",
+        "disabled:opacity-50 disabled:cursor-not-allowed",
+      )}
+      aria-label="Create agent"
+    >
+      <div className="size-12 rounded-xl bg-background border-2 border-dashed border-border flex items-center justify-center shrink-0 transition-transform group-hover:scale-110">
+        <Plus size={20} className="text-muted-foreground" />
+      </div>
+      <p className="text-xs sm:text-sm text-foreground text-center leading-tight">
+        Create agent
+      </p>
+    </button>
+  );
+}
+
 function AgentsListContent() {
   const virtualMcps = useVirtualMCPs();
   const { selectedVirtualMcp, setVirtualMcpId } = useChatStable();
+  const { locator } = useProjectContext();
+  const [siteEditorModalOpen, setSiteEditorModalOpen] = useState(false);
 
-  // Filter out the default Decopilot agent (it's not a real agent)
+  const recentIds = readRecentAgentIds(locator);
+
+  // Filter out Decopilot, sort by most recently used (from localStorage), then take top 5
   const agents = virtualMcps
     .filter(
       (agent): agent is typeof agent & { id: string } =>
         agent.id !== null && !isDecopilot(agent.id),
     )
-    .slice(0, 6);
-
-  // Don't render if no agents
-  if (agents.length === 0) {
-    return null;
-  }
+    .sort((a, b) => {
+      const aIdx = recentIds.indexOf(a.id);
+      const bIdx = recentIds.indexOf(b.id);
+      // Both in recents: lower index = more recent
+      if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+      // Only a in recents: a comes first
+      if (aIdx !== -1) return -1;
+      // Only b in recents: b comes first
+      if (bIdx !== -1) return 1;
+      // Neither in recents: fall back to most recently updated
+      return (
+        new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+      );
+    })
+    .slice(0, 5);
 
   // Convert to VirtualMCPInfo format
   const virtualMcpsInfo: VirtualMCPInfo[] = virtualMcps.map((agent) => ({
@@ -164,19 +231,36 @@ function AgentsListContent() {
     icon: agent.icon,
   }));
 
+  const hasAgents = agents.length > 0;
+
   return (
-    <div className="w-full max-w-[800px]">
-      <div className="flex gap-4 overflow-x-auto no-scrollbar py-2 sm:py-0 sm:grid sm:grid-cols-4 md:grid-cols-7 sm:gap-6">
-        {agents.map((agent) => (
-          <AgentPreview key={agent.id ?? "default"} agent={agent} />
-        ))}
-        <SeeAllButton
-          virtualMcps={virtualMcpsInfo}
-          selectedVirtualMcpId={selectedVirtualMcp?.id ?? null}
-          onVirtualMcpChange={setVirtualMcpId}
-        />
+    <>
+      <div className="w-full">
+        <div className="flex flex-wrap justify-center gap-2">
+          <AgentPreview
+            key={SITE_EDITOR_AGENT.id}
+            agent={SITE_EDITOR_AGENT}
+            onSpecialClick={() => setSiteEditorModalOpen(true)}
+          />
+          {agents.map((agent) => (
+            <AgentPreview key={agent.id ?? "default"} agent={agent} />
+          ))}
+          <CreateAgentButton />
+          {hasAgents && (
+            <SeeAllButton
+              virtualMcps={virtualMcpsInfo}
+              selectedVirtualMcpId={selectedVirtualMcp?.id ?? null}
+              onVirtualMcpChange={setVirtualMcpId}
+            />
+          )}
+        </div>
       </div>
-    </div>
+
+      <SiteEditorOnboardingModal
+        open={siteEditorModalOpen}
+        onOpenChange={setSiteEditorModalOpen}
+      />
+    </>
   );
 }
 
@@ -185,12 +269,12 @@ function AgentsListContent() {
  */
 function AgentsListSkeleton() {
   return (
-    <div className="w-full max-w-[800px]">
-      <div className="flex gap-4 overflow-x-auto no-scrollbar py-2 sm:py-0 sm:grid sm:grid-cols-4 md:grid-cols-7 sm:gap-6">
+    <div className="w-full">
+      <div className="flex flex-wrap justify-center gap-2">
         {Array.from({ length: 7 }).map((_, i) => (
           <div
             key={i}
-            className="flex flex-col items-center gap-1.5 sm:gap-3 p-1.5 sm:p-2 self-stretch"
+            className="flex flex-col items-center gap-3 p-2 w-[88px]"
           >
             <Skeleton className="size-12 rounded-xl shrink-0" />
             <Skeleton className="h-3 sm:h-4 w-full" />

@@ -92,6 +92,20 @@ export function writeSelectedVirtualMcpId(
   writeJSON(`${locator}:selected-virtual-mcp-id`, id);
 }
 
+const MAX_RECENT_AGENTS = 20;
+
+export function readRecentAgentIds(locator: ProjectLocator): string[] {
+  return readJSON<string[]>(`${locator}:recent-agent-ids`) ?? [];
+}
+
+export function pushRecentAgentId(locator: ProjectLocator, id: string): void {
+  const current = readRecentAgentIds(locator).filter((x) => x !== id);
+  writeJSON(
+    `${locator}:recent-agent-ids`,
+    [id, ...current].slice(0, MAX_RECENT_AGENTS),
+  );
+}
+
 export function readOwnerFilter(locator: ProjectLocator): "me" | "everyone" {
   return (
     readJSON<"me" | "everyone">(

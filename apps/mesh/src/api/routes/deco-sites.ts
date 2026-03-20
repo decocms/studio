@@ -22,6 +22,7 @@ const app = new Hono<{ Variables: Variables }>();
 interface SupabaseSite {
   name: string;
   domains: { domain: string; production: boolean }[] | null;
+  thumb_url: string | null;
 }
 
 async function supabaseGet<T>(
@@ -91,6 +92,32 @@ app.use("*", async (c, next) => {
 });
 
 /**
+ * GET /api/deco-sites/profile
+ *
+ * Lightweight check: returns whether the authenticated user has a deco.cx profile.
+ * Used to conditionally show deco.cx onboarding UI without fetching all sites.
+ */
+app.get("/profile", async (c) => {
+  const ctx = c.get("meshContext");
+  const email = ctx.auth.user?.email;
+  if (!email) return c.json({ error: "Unauthorized" }, 401);
+
+  const config = getSupabaseConfig();
+  if (!config) return c.json({ isDecoUser: false });
+
+  try {
+    const profileId = await resolveProfileId(
+      config.supabaseUrl,
+      config.serviceKey,
+      email,
+    );
+    return c.json({ isDecoUser: profileId !== null });
+  } catch {
+    return c.json({ isDecoUser: false });
+  }
+});
+
+/**
  * GET /api/deco-sites
  *
  * Returns deco.cx sites belonging to the authenticated user.
@@ -134,7 +161,7 @@ app.get("/", async (c) => {
     const sites = await supabaseGet<SupabaseSite>(
       supabaseUrl,
       serviceKey,
-      `sites?team=in.(${teamIds.join(",")})&select=name,domains&order=id`,
+      `sites?team=in.(${teamIds.join(",")})&select=name,domains,thumb_url&order=id`,
     );
 
     return c.json({ sites });

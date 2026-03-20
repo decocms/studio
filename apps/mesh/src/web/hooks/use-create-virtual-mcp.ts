@@ -49,7 +49,7 @@ export function useCreateVirtualMCP(
     const virtualMcp = await actions.create.mutateAsync({
       title: "New Agent",
       description:
-        "Agents let you securely expose integrated tools to the outside world.",
+        "AI-driven assistant designed to handle specific tasks",
       status: "active",
       connections: [],
     });

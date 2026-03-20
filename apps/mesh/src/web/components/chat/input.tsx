@@ -563,14 +563,13 @@ export function ChatInput({
             <form
               onSubmit={handleSubmit}
               className={cn(
-                "w-full relative rounded-xl min-h-[110px] md:min-h-[130px] flex flex-col border bg-background shadow-sm",
-                isPlanMode
-                  ? "border-dashed border-purple-500"
-                  : "border-border",
+                "w-full relative rounded-xl min-h-[110px] md:min-h-[130px] flex flex-col bg-background",
+                isPlanMode && "border border-dashed border-purple-500",
               )}
               style={{
-                boxShadow:
-                  "inset 0 0 0.5px 1px hsla(0, 0%, 100%, 0.075), 0 0 0 1px hsla(0, 0%, 0%, 0.05), 0 0.3px 0.4px hsla(0, 0%, 0%, 0.02), 0 0.9px 1.5px hsla(0, 0%, 0%, 0.045), 0 3.5px 6px hsla(0, 0%, 0%, 0.09)",
+                boxShadow: isPlanMode
+                  ? "0px 2px 6px 0px #00000008, 0px 6px 30px 0px #0000000a"
+                  : "0px 10px 28px 0px rgba(0, 0, 0, 0.06), 0px 0px 0px 1px rgba(0, 0, 0, 0.05)",
               }}
             >
               <div className="group/input relative flex flex-col gap-2 flex-1">

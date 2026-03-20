@@ -31,6 +31,7 @@ import {
   writeSelectedKeyId,
   writeSelectedModel,
   writeSelectedVirtualMcpId,
+  pushRecentAgentId,
 } from "./local-storage";
 import type {
   ChatBridgeMethods,
@@ -407,6 +408,9 @@ class ChatStore {
   setAgent(agent: VirtualMCPInfo | null): void {
     this.state = { ...this.state, selectedAgent: agent };
     writeSelectedVirtualMcpId(this.state.locator, agent?.id ?? null);
+    if (agent?.id) {
+      pushRecentAgentId(this.state.locator, agent.id);
+    }
     this.notify();
   }
 
