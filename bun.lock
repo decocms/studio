@@ -54,7 +54,7 @@
     },
     "apps/mesh": {
       "name": "decocms",
-      "version": "2.185.0",
+      "version": "2.186.4",
       "bin": {
         "deco": "./dist/server/cli.js",
       },
@@ -155,7 +155,6 @@
         "kysely-pglite": "^0.6.1",
         "lucide-react": "^0.468.0",
         "marked": "^15.0.6",
-        "mesh-plugin-object-storage": "workspace:*",
         "mesh-plugin-private-registry": "workspace:*",
         "mesh-plugin-workflows": "workspace:*",
         "nanoid": "^5.1.6",
@@ -202,20 +201,6 @@
       "version": "1.1.4",
       "bin": {
         "create-deco": "./index.js",
-      },
-    },
-    "packages/mesh-plugin-object-storage": {
-      "name": "mesh-plugin-object-storage",
-      "version": "0.1.0",
-      "dependencies": {
-        "@deco/ui": "workspace:*",
-        "@decocms/bindings": "workspace:*",
-        "@decocms/mesh-sdk": "workspace:*",
-        "@tanstack/react-query": "5.90.11",
-        "@untitledui/icons": "^0.0.19",
-        "react": "^19.2.0",
-        "sonner": "^2.0.7",
-        "zod": "^3.24.4",
       },
     },
     "packages/mesh-plugin-private-registry": {
@@ -2415,8 +2400,6 @@
 
     "merge2": ["merge2@1.4.1", "", {}, "sha512-8q7VEgMJW4J8tcfVPy8g09NcQwZdbwFEqhe/WZkoIzjn/3TGDwtOCYtXGxA3O8tPzpczCCDgv+P2P5y00ZJOOg=="],
 
-    "mesh-plugin-object-storage": ["mesh-plugin-object-storage@workspace:packages/mesh-plugin-object-storage"],
-
     "mesh-plugin-private-registry": ["mesh-plugin-private-registry@workspace:packages/mesh-plugin-private-registry"],
 
     "mesh-plugin-workflows": ["mesh-plugin-workflows@workspace:packages/mesh-plugin-workflows"],
@@ -3618,8 +3601,6 @@
     "mdast-util-find-and-replace/escape-string-regexp": ["escape-string-regexp@5.0.0", "", {}, "sha512-/veY75JbMK4j1yjvuUxuVsiS/hr/4iHs9FTT6cgTexxdE0Ly/glccBAkloH/DofkjRbZU3bnoj38mOmhkZ0lHw=="],
 
     "mdast-util-mdx-jsx/parse-entities": ["parse-entities@4.0.2", "", { "dependencies": { "@types/unist": "^2.0.0", "character-entities-legacy": "^3.0.0", "character-reference-invalid": "^2.0.0", "decode-named-character-reference": "^1.0.0", "is-alphanumerical": "^2.0.0", "is-decimal": "^2.0.0", "is-hexadecimal": "^2.0.0" } }, "sha512-GG2AQYWoLgL877gQIKeRPGO1xF9+eG1ujIb5soS5gPvLQ1y2o8FL90w2QWNdf9I361Mpp7726c+lj3U0qK1uGw=="],
-
-    "mesh-plugin-object-storage/zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
 
     "mesh-plugin-private-registry/@types/bun": ["@types/bun@1.3.11", "", { "dependencies": { "bun-types": "1.3.11" } }, "sha512-5vPne5QvtpjGpsGYXiFyycfpDF2ECyPcTSsFBMa0fraoxiQyMJ3SmuQIGhzPg2WJuWxVBoxWJ2kClYTcw/4fAg=="],
 

@@ -32,7 +32,6 @@
 @source "../components/**/*.tsx";
 
 /* Scan mesh-plugin components for Tailwind classes */
-@source "../../../mesh-plugin-object-storage/**/*.tsx";
 @source "../../../mesh-plugin-private-registry/**/*.tsx";
 
 @custom-variant dark (&:is(.dark *));
