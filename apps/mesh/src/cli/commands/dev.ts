@@ -169,11 +169,11 @@ export async function startDevServer(
   setEnv(env);
 
   // ── Spawn dev servers ─────────────────────────────────────────────
-  const cliDir = join(import.meta.dir, "..", "..");
-  const meshRoot = join(cliDir);
+  // import.meta.dir = apps/mesh/src/cli/commands → go up 5 levels to repo root
+  const repoRoot = join(import.meta.dir, "..", "..", "..", "..", "..");
 
   const child = Bun.spawn(["bun", "run", "--cwd=apps/mesh", "dev:servers"], {
-    cwd: join(meshRoot, "..", ".."),
+    cwd: repoRoot,
     env: process.env,
     stdio: ["inherit", "inherit", "inherit"],
   });
