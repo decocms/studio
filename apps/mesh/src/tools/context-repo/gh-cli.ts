@@ -96,11 +96,15 @@ export async function cloneOrPull(
     const { mkdirSync } = await import("node:fs");
     mkdirSync(join(REPOS_BASE, orgId, owner), { recursive: true });
 
-    // Shallow clone with security flags
+    // Clone using gh CLI (handles auth for both HTTPS and SSH transparently)
     const proc = Bun.spawn(
       [
-        "git",
+        "gh",
+        "repo",
         "clone",
+        fullName,
+        repoPath,
+        "--",
         "--depth",
         "1",
         "--branch",
@@ -109,8 +113,6 @@ export async function cloneOrPull(
         "-c",
         "core.hooksPath=/dev/null",
         "--no-recurse-submodules",
-        `git@github.com:${fullName}.git`,
-        repoPath,
       ],
       {
         stdout: "pipe",
