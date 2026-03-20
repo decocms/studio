@@ -42,7 +42,13 @@ type RawConnectionRow = {
   icon: string | null;
   app_name: string | null;
   app_id: string | null;
-  connection_type: "HTTP" | "SSE" | "Websocket" | "STDIO" | "VIRTUAL";
+  connection_type:
+    | "HTTP"
+    | "SSE"
+    | "Websocket"
+    | "STDIO"
+    | "VIRTUAL"
+    | "GITHUB";
   connection_url: string | null;
   connection_token: string | null;
   connection_headers: string | null; // JSON, envVars encrypted for STDIO
@@ -128,9 +134,11 @@ export class ConnectionStorage implements ConnectionStoragePort {
       .selectAll()
       .where("organization_id", "=", organizationId);
 
-    // By default, exclude VIRTUAL connections unless explicitly requested
+    // By default, exclude VIRTUAL and GITHUB connections unless explicitly requested
     if (!options?.includeVirtual) {
-      query = query.where("connection_type", "!=", "VIRTUAL");
+      query = query
+        .where("connection_type", "!=", "VIRTUAL")
+        .where("connection_type", "!=", "GITHUB");
     }
 
     const rows = await query.execute();

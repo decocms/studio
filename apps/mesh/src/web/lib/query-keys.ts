@@ -270,4 +270,7 @@ export const KEYS = {
   // AI provider credits balance (scoped by locator + keyId)
   aiProviderCredits: (locator: string, keyId: string) =>
     ["ai-provider-credits", locator, keyId] as const,
+
+  // Context repo
+  contextRepo: (orgId: string) => ["context-repo", orgId] as const,
 } as const;

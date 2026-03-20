@@ -32,6 +32,7 @@ import * as ThreadTools from "./thread";
 import * as AutomationTools from "./automations";
 import * as UserTools from "./user";
 import * as AiProvidersTools from "./ai-providers";
+import * as ContextRepoTools from "./context-repo";
 import { getPrompts, getResources } from "./guides";
 import { ToolName } from "./registry";
 // Core tools - always available
@@ -146,6 +147,14 @@ const CORE_TOOLS = [
   AiProvidersTools.AI_PROVIDER_OAUTH_EXCHANGE,
   AiProvidersTools.AI_PROVIDER_TOPUP_URL,
   AiProvidersTools.AI_PROVIDER_CREDITS,
+
+  // Context repo management tools (always available for setup/teardown)
+  ContextRepoTools.CONTEXT_REPO_STATUS,
+  ContextRepoTools.CONTEXT_REPO_SETUP,
+  ContextRepoTools.CONTEXT_REPO_UPDATE_FOLDERS,
+  ContextRepoTools.CONTEXT_REPO_DISCONNECT,
+  // Operational context-repo tools (search, read, issues, etc.) are exposed
+  // through the GITHUB connection — see tools/context-repo/tool-defs.ts
 ] as const satisfies { name: ToolName }[];
 
 // Plugin tools - collected at startup, gated by org settings at runtime

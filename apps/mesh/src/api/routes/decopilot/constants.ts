@@ -156,3 +156,61 @@ Good examples:
 Bad (too vague): {"title": "Help with task"}
 Bad (too long): {"title": "Investigate and fix the issue where the login button does not respond on mobile devices"}
 Bad (wrong case): {"title": "Fix Login Button On Mobile"}`;
+
+/**
+ * Build a context-repo prompt section if a GITHUB context repo connection exists.
+ * Returns null if no context repo is configured.
+ */
+export function buildContextRepoPrompt(
+  connections: Array<{
+    connection_type: string;
+    metadata: unknown;
+  }>,
+): string | null {
+  for (const conn of connections) {
+    if (conn.connection_type !== "GITHUB") continue;
+
+    let metadata: Record<string, unknown> | null = null;
+    try {
+      metadata =
+        typeof conn.metadata === "string"
+          ? JSON.parse(conn.metadata)
+          : (conn.metadata as Record<string, unknown>);
+    } catch {
+      continue;
+    }
+
+    if (metadata?.type !== "context-repo") continue;
+
+    const owner = metadata.owner as string;
+    const repo = metadata.repo as string;
+    const fileCount = (metadata.fileCount as number) || 0;
+
+    return `<context-repo>
+This organization has a connected context repository: ${owner}/${repo} (${fileCount} files indexed)
+
+You have access to these context tools — use them to find information and collaborate:
+
+**Search & Read:**
+- CONTEXT_REPO_SEARCH: Full-text search across all indexed files. Use to find relevant docs, configs, or code.
+- CONTEXT_REPO_READ: Read any file from the context repo by path.
+- CONTEXT_REPO_LIST_SKILLS: List available skills (markdown instructions in skills/ directory).
+
+**GitHub Issues (team communication):**
+- CONTEXT_ISSUE_CREATE: Create issues for findings, problems, or reports. This is the PRIMARY way to share discoveries with the team and other agents.
+- CONTEXT_ISSUE_LIST: Search and list existing issues.
+- CONTEXT_ISSUE_GET: Read issue details and comments.
+- CONTEXT_ISSUE_COMMENT: Participate in issue discussions.
+
+**Agent Versioning:**
+- CONTEXT_AGENT_SAVE: Save an agent definition to agents/<name>.md in the context repo via PR.
+
+IMPORTANT GUIDELINES:
+- When you discover a problem, insight, or finding worth sharing, CREATE AN ISSUE. Use labels to categorize (e.g., "bug", "finding", "improvement"). Issues are how agents and humans collaborate.
+- Before starting complex work, SEARCH the context repo for relevant documentation and prior findings.
+- Check existing issues to avoid duplicate reports and to build on prior discussions.
+</context-repo>`;
+  }
+
+  return null;
+}

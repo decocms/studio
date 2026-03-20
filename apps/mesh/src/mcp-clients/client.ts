@@ -31,5 +31,10 @@ export async function clientFromConnection(
   if (connection.connection_type === "VIRTUAL") {
     return createVirtualClient(connection, ctx, superUser);
   }
+  if (connection.connection_type === "GITHUB") {
+    throw new Error(
+      "GITHUB connections are not MCP servers — they cannot be used as MCP clients.",
+    );
+  }
   return createOutboundClient(connection, ctx, superUser);
 }

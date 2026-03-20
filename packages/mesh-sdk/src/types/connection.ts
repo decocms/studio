@@ -103,7 +103,7 @@ export const ConnectionEntitySchema = z.object({
   app_id: z.string().nullable().describe("Associated app ID"),
 
   connection_type: z
-    .enum(["HTTP", "SSE", "Websocket", "STDIO", "VIRTUAL"])
+    .enum(["HTTP", "SSE", "Websocket", "STDIO", "VIRTUAL", "GITHUB"])
     .describe("Type of connection"),
   connection_url: z
     .string()
