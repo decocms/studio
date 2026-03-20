@@ -2,7 +2,7 @@
  * Project Hooks
  *
  * Provides React hooks for fetching project data using MCP tools.
- * Used by ProjectLayout to fetch project information based on URL params.
+ * Provides project information based on URL params.
  *
  * Projects are now stored as virtual MCPs with subtype = "project".
  * These hooks call COLLECTION_VIRTUAL_MCP_LIST to fetch project data
