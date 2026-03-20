@@ -122,28 +122,29 @@ Documentation:
   process.exit(0);
 }
 
-// ── Version ────────────────────────────────────────────────────────────
-if (values.version) {
+// ── Version helper ────────────────────────────────────────────────────
+async function getVersion(): Promise<string> {
   const possiblePaths = [
     new URL("../package.json", import.meta.url),
     new URL("../../package.json", import.meta.url),
   ];
 
-  let version = "unknown";
   for (const path of possiblePaths) {
     try {
       const file = Bun.file(path);
       if (await file.exists()) {
         const packageJson = await file.json();
-        version = packageJson.version;
-        break;
+        return packageJson.version;
       }
     } catch {
       // Try next path
     }
   }
+  return "unknown";
+}
 
-  console.log(`Deco CMS v${version}`);
+if (values.version) {
+  console.log(`Deco CMS v${await getVersion()}`);
   process.exit(0);
 }
 
@@ -207,11 +208,12 @@ if (command === "dev") {
   };
 
   if (noTui) {
-    const { ASCII_ART } = await import("./fmt");
+    const { ASCII_ART, dim } = await import("./fmt");
     console.log("");
     for (const line of ASCII_ART) {
       console.log(line);
     }
+    console.log(dim(`  v${await getVersion()}`));
     console.log("");
 
     const { startDevServer } = await import("./cli/commands/dev");
@@ -258,11 +260,12 @@ const noTui = values["no-tui"] === true || !process.stdout.isTTY;
 
 if (noTui) {
   // Plain stdout mode — no Ink, just console.log (CI-friendly)
-  const { ASCII_ART } = await import("./fmt");
+  const { ASCII_ART, dim } = await import("./fmt");
   console.log("");
   for (const line of ASCII_ART) {
     console.log(line);
   }
+  console.log(dim(`  v${await getVersion()}`));
   console.log("");
 
   const { startServer } = await import("./cli/commands/serve");

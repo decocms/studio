@@ -1,5 +1,6 @@
 import { Box, Text } from "ink";
 import { Spinner } from "@inkjs/ui";
+import pkg from "../../package.json" with { type: "json" };
 
 export interface ServiceStatus {
   name: string;
@@ -55,6 +56,7 @@ export function Header({
             {line}
           </Text>
         ))}
+        <Text dimColor> v{pkg.version}</Text>
       </Box>
 
       <Box marginTop={2}>
