@@ -25,7 +25,11 @@ const ALWAYS_INCLUDE = [
   "@jitl/quickjs-wasmfile-release-sync",
   "embedded-postgres",
 ];
-const ALWAYS_EXCLUDE = ["kysely-codegen", "@duckdb/node-bindings"];
+const ALWAYS_EXCLUDE = [
+  "kysely-codegen",
+  "@duckdb/node-bindings",
+  "react-devtools-core",
+];
 
 // Parse command line arguments
 function parseArgs() {
