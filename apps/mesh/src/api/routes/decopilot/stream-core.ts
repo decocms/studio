@@ -40,7 +40,10 @@ import type { ChatMessage, ModelInfo, ModelsConfig } from "./types";
 import type { CancelBroadcast } from "./cancel-broadcast";
 import { ThreadMessage } from "@/storage/types";
 import type { MeshProvider } from "@/ai-providers/types";
-import { createClaudeCodeModel } from "@/ai-providers/adapters/claude-code";
+import {
+  createClaudeCodeModel,
+  resolveClaudeCodeModelId,
+} from "@/ai-providers/adapters/claude-code";
 import { getInternalUrl } from "@/core/server-constants";
 
 /**
@@ -436,19 +439,22 @@ export async function streamCore(
           });
 
           const mcpUrl = `${getInternalUrl()}/mcp/virtual-mcp/${input.agent.id}`;
-          languageModel = createClaudeCodeModel(input.models.thinking.id, {
-            mcpServers: {
-              mesh: {
-                type: "http",
-                url: mcpUrl,
-                headers: {
-                  Authorization: `Bearer ${apiKey.key}`,
-                  "x-org-id": input.organizationId,
+          languageModel = createClaudeCodeModel(
+            resolveClaudeCodeModelId(input.models.thinking.id),
+            {
+              mcpServers: {
+                mesh: {
+                  type: "http",
+                  url: mcpUrl,
+                  headers: {
+                    Authorization: `Bearer ${apiKey.key}`,
+                    "x-org-id": input.organizationId,
+                  },
                 },
               },
+              toolApprovalLevel: input.toolApprovalLevel,
             },
-            toolApprovalLevel: input.toolApprovalLevel,
-          });
+          );
         } else {
           languageModel = createLanguageModel(provider!, input.models.thinking);
         }
