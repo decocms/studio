@@ -48,8 +48,7 @@ export function useCreateVirtualMCP(
   const createVirtualMCP = async (): Promise<CreateVirtualMCPResult> => {
     const virtualMcp = await actions.create.mutateAsync({
       title: "New Agent",
-      description:
-        "AI-driven assistant designed to handle specific tasks",
+      description: "AI-driven assistant designed to handle specific tasks",
       status: "active",
       connections: [],
     });
