@@ -25,8 +25,8 @@ const envSchema = z
     BETTER_AUTH_SECRET: z.string().default(""),
     ENCRYPTION_KEY: z.string().default(""),
     MESH_JWT_SECRET: z.string().optional(),
-    MESH_LOCAL_MODE: zBooleanString,
-    MESH_ALLOW_LOCAL_PROD: zBooleanString,
+    DECOCMS_LOCAL_MODE: zBooleanString,
+    DECOCMS_ALLOW_LOCAL_PROD: zBooleanString,
     DISABLE_RATE_LIMIT: zBooleanString,
 
     // Observability
@@ -148,8 +148,8 @@ function logConfiguration(e: Env) {
   r("BETTER_AUTH_SECRET", e.BETTER_AUTH_SECRET);
   r("ENCRYPTION_KEY", e.ENCRYPTION_KEY);
   r("MESH_JWT_SECRET", e.MESH_JWT_SECRET);
-  r("MESH_LOCAL_MODE", e.MESH_LOCAL_MODE);
-  r("MESH_ALLOW_LOCAL_PROD", e.MESH_ALLOW_LOCAL_PROD);
+  r("DECOCMS_LOCAL_MODE", e.DECOCMS_LOCAL_MODE);
+  r("DECOCMS_ALLOW_LOCAL_PROD", e.DECOCMS_ALLOW_LOCAL_PROD);
   r("DISABLE_RATE_LIMIT", e.DISABLE_RATE_LIMIT);
 
   sect("Observability");

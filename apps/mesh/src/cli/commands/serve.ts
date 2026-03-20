@@ -29,11 +29,11 @@ export async function startServer(options: ServeOptions): Promise<void> {
   process.env.DECOCMS_HOME = home;
   process.env.DATA_DIR = home;
   process.env.PORT = port;
-  process.env.MESH_LOCAL_MODE = localMode ? "true" : "false";
+  process.env.DECOCMS_LOCAL_MODE = localMode ? "true" : "false";
 
   if (localMode) {
     process.env.NODE_ENV = "production";
-    process.env.MESH_ALLOW_LOCAL_PROD = "true";
+    process.env.DECOCMS_ALLOW_LOCAL_PROD = "true";
   } else if (!process.env.NODE_ENV) {
     process.env.NODE_ENV = "production";
   }

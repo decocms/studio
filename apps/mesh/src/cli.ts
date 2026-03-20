@@ -59,6 +59,10 @@ const { values, positionals } = parseArgs({
       type: "boolean",
       default: false,
     },
+    "no-local-mode": {
+      type: "boolean",
+      default: false,
+    },
   },
   allowPositionals: true,
 });
@@ -88,6 +92,7 @@ Dev Options:
   --vite-port <port>    Vite dev server port (default: 4000)
   --base-url <url>      Base URL for the server
   --env-file <path>     Path to .env file to load
+  --no-local-mode       Disable auto-login (use cloud/SSO auth)
 
 Environment Variables:
   PORT                  Port to listen on (default: 3000)
@@ -198,6 +203,7 @@ if (command === "dev") {
     skipMigrations: values["skip-migrations"] === true,
     envFile: values["env-file"],
     noTui,
+    localMode: values["no-local-mode"] !== true,
   };
 
   if (noTui) {

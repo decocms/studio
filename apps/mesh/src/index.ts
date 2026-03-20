@@ -25,9 +25,9 @@ const enableDebugServer = env.ENABLE_DEBUG_SERVER;
 
 // Refuse local mode in production — it disables authentication
 if (
-  env.MESH_LOCAL_MODE &&
+  env.DECOCMS_LOCAL_MODE &&
   env.NODE_ENV === "production" &&
-  !env.MESH_ALLOW_LOCAL_PROD
+  !env.DECOCMS_ALLOW_LOCAL_PROD
 ) {
   console.error(
     red(
@@ -35,7 +35,7 @@ if (
     ),
   );
   console.error(
-    "Set MESH_ALLOW_LOCAL_PROD=true to override (not recommended).",
+    "Set DECOCMS_ALLOW_LOCAL_PROD=true to override (not recommended).",
   );
   process.exit(1);
 }
@@ -102,7 +102,7 @@ Bun.serve({
 // Local mode: seed admin user + organization after server is listening
 // This must run after Bun.serve() so that the org seed can fetch tools
 // from the self MCP endpoint (http://localhost:PORT/mcp/self)
-if (env.MESH_LOCAL_MODE) {
+if (env.DECOCMS_LOCAL_MODE) {
   import("./auth/local-mode")
     .then(async ({ seedLocalMode, markSeedComplete }) => {
       try {

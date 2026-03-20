@@ -24,6 +24,7 @@ export interface DevOptions {
   skipMigrations: boolean;
   envFile?: string;
   noTui?: boolean;
+  localMode: boolean;
 }
 
 function loadDotEnv(path: string): Record<string, string> {
@@ -100,8 +101,16 @@ function pipeToLogStore(stream: ReadableStream<Uint8Array>) {
 export async function startDevServer(
   options: DevOptions,
 ): Promise<{ port: number; process: Subprocess }> {
-  const { port, vitePort, home, baseUrl, skipMigrations, envFile, noTui } =
-    options;
+  const {
+    port,
+    vitePort,
+    home,
+    baseUrl,
+    skipMigrations,
+    envFile,
+    noTui,
+    localMode,
+  } = options;
 
   // ── .env loading ────────────────────────────────────────────────────
   if (envFile) {
@@ -120,6 +129,7 @@ export async function startDevServer(
   process.env.VITE_PORT = vitePort;
   process.env.NODE_ENV = "development";
   process.env.DECO_CLI = "1";
+  process.env.DECOCMS_LOCAL_MODE = localMode ? "true" : "false";
 
   if (baseUrl) {
     process.env.BASE_URL = baseUrl;

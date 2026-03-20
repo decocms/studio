@@ -23,7 +23,7 @@ _deco_completion() {
       return 0
       ;;
     *)
-      COMPREPLY=($(compgen -W "init completion --help --version --port --home --skip-migrations --no-tui --local-mode" -- "$cur"))
+      COMPREPLY=($(compgen -W "init completion --help --version --port --home --skip-migrations --no-tui --local-mode --no-local-mode" -- "$cur"))
       ;;
   esac
 }
@@ -48,6 +48,7 @@ _deco() {
     '--skip-migrations[Skip database migrations]' \\
     '--no-tui[Disable Ink UI]' \\
     '--local-mode[Enable local mode]' \\
+    '--no-local-mode[Disable local mode (dev)]' \\
     '-h[Show help]' \\
     '--help[Show help]' \\
     '-v[Show version]' \\

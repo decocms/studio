@@ -4,7 +4,7 @@
  * Handles auto-seeding an admin user and "Local" organization
  * for the zero-ceremony local developer experience.
  *
- * Only runs when MESH_LOCAL_MODE=true (set by CLI).
+ * Only runs when DECOCMS_LOCAL_MODE=true (set by CLI).
  */
 
 import { getDb } from "@/database";
@@ -177,7 +177,7 @@ export async function getLocalAdminUser() {
 }
 
 export function isLocalMode(): boolean {
-  return env.MESH_LOCAL_MODE;
+  return env.DECOCMS_LOCAL_MODE;
 }
 
 // Seed readiness gate — local-session waits for this before granting access.
