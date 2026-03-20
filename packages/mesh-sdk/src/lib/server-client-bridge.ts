@@ -29,7 +29,10 @@
 
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { ServerCapabilities } from "@modelcontextprotocol/sdk/types.js";
+import type {
+  Implementation,
+  ServerCapabilities,
+} from "@modelcontextprotocol/sdk/types.js";
 import {
   CallToolRequestSchema,
   GetPromptRequestSchema,
@@ -58,13 +61,13 @@ export interface ServerFromClientOptions {
  * Creates an MCP Server that delegates all requests to the provided Client.
  *
  * @param client - The MCP Client to delegate requests to
- * @param serverInfo - Server metadata (name and version)
+ * @param serverInfo - Server metadata (ImplementationSchema-compatible: name, version, title, description, icons, websiteUrl)
  * @param options - Optional server configuration (capabilities and instructions)
  * @returns An MCP Server instance configured to delegate to the client
  */
 export function createServerFromClient(
   client: Client,
-  serverInfo: { name: string; version: string },
+  serverInfo: Implementation,
   options?: ServerFromClientOptions,
 ): McpServer {
   // Get capabilities from client if not provided
