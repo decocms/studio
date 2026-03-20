@@ -275,9 +275,7 @@ function FolderPickerView({
   };
 
   const handleIndex = async () => {
-    const foldersToIndex = allSelected
-      ? []
-      : [...selected].filter((f) => f !== "<root>");
+    const foldersToIndex = allSelected ? [] : [...selected];
     try {
       await updateFoldersMutation.mutateAsync(foldersToIndex);
       toast.success("Repository indexed");
@@ -415,9 +413,7 @@ function ConfiguredView({
     [...selectedFolders].some((f) => !savedSet.has(f));
 
   const handleSaveFolders = async () => {
-    const folders = allSelected
-      ? []
-      : [...selectedFolders].filter((f) => f !== "<root>");
+    const folders = allSelected ? [] : [...selectedFolders];
     try {
       await updateFoldersMutation.mutateAsync(folders);
       toast.success("Indexed folders updated");

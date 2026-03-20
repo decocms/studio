@@ -109,11 +109,16 @@ export async function buildIndex(
   for (const filePath of allFiles) {
     if (files.length >= MAX_FILES) break;
     if (shouldSkipFile(filePath)) continue;
-    // If folder filter is set, only index files in selected folders (or root files)
+    // If folder filter is set, only index files in selected folders
     if (folderFilter && folderFilter.length > 0) {
-      const topDir = filePath.split("/")[0];
       const isRootFile = !filePath.includes("/");
-      if (!isRootFile && topDir && !folderFilter.includes(topDir)) continue;
+      if (isRootFile) {
+        // Root files only included if "<root>" is in the filter
+        if (!folderFilter.includes("<root>")) continue;
+      } else {
+        const topDir = filePath.split("/")[0];
+        if (topDir && !folderFilter.includes(topDir)) continue;
+      }
     }
 
     const fullPath = join(repoPath, filePath);
