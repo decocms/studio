@@ -2,7 +2,7 @@
  * Context Repo Modal
  *
  * Modal for setting up and managing the GitHub context repository.
- * Three states: setup instructions, repo form, or status view.
+ * Shows live gh CLI auth status with green checkmark when authenticated.
  */
 
 import { useState } from "react";
@@ -17,10 +17,12 @@ import { Input } from "@deco/ui/components/input.tsx";
 import {
   AlertCircle,
   Check,
+  CheckCircle,
   GitBranch01,
   Loading01,
   RefreshCcw01,
   Trash01,
+  XCircle,
 } from "@untitledui/icons";
 import { toast } from "sonner";
 import {
@@ -39,9 +41,7 @@ export function ContextRepoModal({
   open,
   onOpenChange,
 }: ContextRepoModalProps) {
-  const contextRepo = useContextRepo();
-  const config = contextRepo.config;
-  const isLoading = contextRepo.isLoading;
+  const { gh, config, isLoading } = useContextRepo();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -57,16 +57,66 @@ export function ContextRepoModal({
             <Loading01 className="size-5 animate-spin text-muted-foreground" />
           </div>
         ) : config ? (
-          <ConfiguredView config={config} />
+          <ConfiguredView config={config} gh={gh} />
         ) : (
-          <SetupView onSuccess={() => {}} />
+          <SetupView gh={gh} onSuccess={() => {}} />
         )}
       </DialogContent>
     </Dialog>
   );
 }
 
-function SetupView({ onSuccess }: { onSuccess: () => void }) {
+function GhStatusBadge({ gh }: { gh: { available: boolean; user?: string } }) {
+  if (gh.available) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950/30 p-3 text-sm">
+        <CheckCircle className="size-4 text-green-600 dark:text-green-400 shrink-0" />
+        <span className="text-green-800 dark:text-green-300">
+          GitHub CLI authenticated
+          {gh.user && (
+            <>
+              {" "}
+              as <span className="font-medium">{gh.user}</span>
+            </>
+          )}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30 p-3 text-sm">
+      <div className="flex items-center gap-2">
+        <XCircle className="size-4 text-amber-600 dark:text-amber-400 shrink-0" />
+        <span className="text-amber-800 dark:text-amber-300">
+          GitHub CLI not authenticated
+        </span>
+      </div>
+      <div className="text-xs text-amber-700 dark:text-amber-400 pl-6 space-y-1">
+        <p>
+          Install:{" "}
+          <code className="bg-amber-100 dark:bg-amber-900/50 px-1 rounded">
+            brew install gh
+          </code>
+        </p>
+        <p>
+          Login:{" "}
+          <code className="bg-amber-100 dark:bg-amber-900/50 px-1 rounded">
+            gh auth login
+          </code>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function SetupView({
+  gh,
+  onSuccess,
+}: {
+  gh: { available: boolean; user?: string };
+  onSuccess: () => void;
+}) {
   const [repoInput, setRepoInput] = useState("");
   const [branch, setBranch] = useState("main");
   const setupMutation = useContextRepoSetup();
@@ -99,17 +149,7 @@ function SetupView({ onSuccess }: { onSuccess: () => void }) {
         discoverable by agents, and issues can be used for agent communication.
       </p>
 
-      <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-        <p className="font-medium text-foreground mb-1">Prerequisites</p>
-        <p>
-          Install GitHub CLI:{" "}
-          <code className="bg-muted px-1 rounded">brew install gh</code>
-        </p>
-        <p>
-          Authenticate:{" "}
-          <code className="bg-muted px-1 rounded">gh auth login</code>
-        </p>
-      </div>
+      <GhStatusBadge gh={gh} />
 
       <div className="flex flex-col gap-2">
         <label className="text-sm font-medium">Repository</label>
@@ -118,6 +158,7 @@ function SetupView({ onSuccess }: { onSuccess: () => void }) {
           value={repoInput}
           onChange={(e) => setRepoInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSetup()}
+          disabled={!gh.available}
         />
       </div>
 
@@ -127,12 +168,13 @@ function SetupView({ onSuccess }: { onSuccess: () => void }) {
           placeholder="main"
           value={branch}
           onChange={(e) => setBranch(e.target.value)}
+          disabled={!gh.available}
         />
       </div>
 
       <Button
         onClick={handleSetup}
-        disabled={setupMutation.isPending || !repoInput.trim()}
+        disabled={setupMutation.isPending || !repoInput.trim() || !gh.available}
       >
         {setupMutation.isPending ? (
           <>
@@ -160,6 +202,7 @@ function SetupView({ onSuccess }: { onSuccess: () => void }) {
 
 function ConfiguredView({
   config,
+  gh,
 }: {
   config: {
     connectionId: string;
@@ -171,6 +214,7 @@ function ConfiguredView({
     indexSizeBytes: number;
     lastSyncedAt: string | null;
   };
+  gh: { available: boolean; user?: string };
 }) {
   const syncMutation = useContextRepoSync();
   const disconnectMutation = useContextRepoDisconnect();
@@ -216,6 +260,9 @@ function ConfiguredView({
         </div>
         <Check className="ml-auto size-4 text-green-500" />
       </div>
+
+      {/* GitHub auth status */}
+      <GhStatusBadge gh={gh} />
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3">

@@ -138,6 +138,7 @@ const ALL_TOOL_NAMES = [
   "AI_PROVIDER_CREDITS",
 
   // Context repo tools
+  "CONTEXT_REPO_STATUS",
   "CONTEXT_REPO_SETUP",
   "CONTEXT_REPO_SYNC",
   "CONTEXT_REPO_SEARCH",
@@ -635,6 +636,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
 
   // Context repo tools
   {
+    name: "CONTEXT_REPO_STATUS",
+    description: "Get context repo status and GitHub CLI auth status",
+    category: "Context Repo",
+  },
+  {
     name: "CONTEXT_REPO_SETUP",
     description: "Connect a GitHub repository as the context repo",
     category: "Context Repo",
@@ -778,6 +784,7 @@ const TOOL_LABELS: Record<ToolName, string> = {
   AI_PROVIDER_CREDITS: "Get credit balance",
 
   // Context repo tools
+  CONTEXT_REPO_STATUS: "Context repo status",
   CONTEXT_REPO_SETUP: "Setup context repo",
   CONTEXT_REPO_SYNC: "Sync context repo",
   CONTEXT_REPO_SEARCH: "Search context repo",

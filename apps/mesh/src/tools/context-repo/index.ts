@@ -5,6 +5,7 @@
  * Provides file search, reading, skills discovery, GitHub issues, and agent versioning.
  */
 
+export { CONTEXT_REPO_STATUS } from "./status";
 export { CONTEXT_REPO_SETUP } from "./setup";
 export { CONTEXT_REPO_SYNC } from "./sync";
 export { CONTEXT_REPO_SEARCH } from "./search";

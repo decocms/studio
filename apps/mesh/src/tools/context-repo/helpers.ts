@@ -13,6 +13,7 @@ export interface ContextRepoConfig {
   lastSyncedCommit: string | null;
   fileCount: number;
   indexSizeBytes: number;
+  lastSyncedAt: string | null;
 }
 
 /**
@@ -52,6 +53,7 @@ export async function findContextRepo(
       lastSyncedCommit: (metadata.lastSyncedCommit as string) || null,
       fileCount: (metadata.fileCount as number) || 0,
       indexSizeBytes: (metadata.indexSizeBytes as number) || 0,
+      lastSyncedAt: (metadata.lastSyncedAt as string) || null,
     };
   }
 

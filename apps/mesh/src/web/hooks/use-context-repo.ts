@@ -1,18 +1,22 @@
 /**
  * Hooks for Context Repo feature
  *
- * Finds the GITHUB context repo connection and provides
- * setup/sync mutations via MCP tool calls.
+ * Uses CONTEXT_REPO_STATUS tool to get both gh CLI status
+ * and current context repo config in a single call.
  */
 
 import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
-  type ConnectionEntity,
 } from "@decocms/mesh-sdk";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/web/lib/query-keys";
+
+interface GhStatus {
+  available: boolean;
+  user?: string;
+}
 
 interface ContextRepoConfig {
   connectionId: string;
@@ -25,11 +29,25 @@ interface ContextRepoConfig {
   lastSyncedAt: string | null;
 }
 
+interface ContextRepoStatus {
+  gh: GhStatus;
+  contextRepo: ContextRepoConfig | null;
+}
+
+function extractToolResult(result: unknown): unknown {
+  const content = (
+    result as { content?: Array<{ type: string; text?: string }> }
+  )?.content;
+  const text = content?.find((c) => c.type === "text")?.text;
+  return text ? JSON.parse(text) : null;
+}
+
 /**
- * Find the GITHUB context repo connection for this org.
- * Calls COLLECTION_CONNECTIONS_LIST with include_virtual=true to include GITHUB connections.
+ * Get context repo status: gh CLI auth + current config.
+ * Single call to CONTEXT_REPO_STATUS tool.
  */
 export function useContextRepo(): {
+  gh: GhStatus;
   config: ContextRepoConfig | null;
   isLoading: boolean;
 } {
@@ -43,39 +61,19 @@ export function useContextRepo(): {
     queryKey: KEYS.contextRepo(org.id),
     queryFn: async () => {
       const result = await client.callTool({
-        name: "COLLECTION_CONNECTIONS_LIST",
-        arguments: { include_virtual: true },
+        name: "CONTEXT_REPO_STATUS",
+        arguments: {},
       });
-      const content = result?.content as Array<{
-        type: string;
-        text?: string;
-      }>;
-      const text = content?.find((c) => c.type === "text")?.text;
-      if (!text) return null;
-      const payload = JSON.parse(text) as { items?: ConnectionEntity[] };
-      const connections = payload.items ?? [];
-
-      for (const conn of connections) {
-        if (conn.connection_type !== "GITHUB") continue;
-        const metadata = conn.metadata as Record<string, unknown> | null;
-        if (!metadata || metadata.type !== "context-repo") continue;
-        return {
-          connectionId: conn.id,
-          owner: metadata.owner as string,
-          repo: metadata.repo as string,
-          branch: (metadata.branch as string) || "main",
-          lastSyncedCommit: (metadata.lastSyncedCommit as string) || null,
-          fileCount: (metadata.fileCount as number) || 0,
-          indexSizeBytes: (metadata.indexSizeBytes as number) || 0,
-          lastSyncedAt: (metadata.lastSyncedAt as string) || null,
-        };
-      }
-      return null;
+      return extractToolResult(result) as ContextRepoStatus;
     },
     staleTime: 30_000,
   });
 
-  return { config: data ?? null, isLoading };
+  return {
+    gh: data?.gh ?? { available: false },
+    config: data?.contextRepo ?? null,
+    isLoading,
+  };
 }
 
 /**
