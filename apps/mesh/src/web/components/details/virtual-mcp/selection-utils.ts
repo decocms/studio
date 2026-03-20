@@ -113,3 +113,41 @@ export const ALL_ITEMS_SELECTED: ConnectionFormValue = {
   resources: null,
   prompts: null,
 } as const;
+
+/**
+ * Get a summary of selections from a VirtualMCPConnection object
+ * @param connection - The connection object with selections
+ * @returns Summary string like "all tools, 3 resources" or "All"
+ */
+export function getSelectionSummary(connection: VirtualMCPConnection): string {
+  const parts: string[] = [];
+
+  if (connection.selected_tools === null) {
+    parts.push("all tools");
+  } else if (
+    connection.selected_tools &&
+    connection.selected_tools.length > 0
+  ) {
+    parts.push(`${connection.selected_tools.length} tools`);
+  }
+
+  if (connection.selected_resources === null) {
+    parts.push("all resources");
+  } else if (
+    connection.selected_resources &&
+    connection.selected_resources.length > 0
+  ) {
+    parts.push(`${connection.selected_resources.length} resources`);
+  }
+
+  if (connection.selected_prompts === null) {
+    parts.push("all prompts");
+  } else if (
+    connection.selected_prompts &&
+    connection.selected_prompts.length > 0
+  ) {
+    parts.push(`${connection.selected_prompts.length} prompts`);
+  }
+
+  return parts.length > 0 ? parts.join(", ") : "All";
+}
