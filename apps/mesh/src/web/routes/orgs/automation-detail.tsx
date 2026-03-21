@@ -65,7 +65,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
-import { ORG_ADMIN_PROJECT_SLUG, useProjectContext } from "@decocms/mesh-sdk";
+import {
+  getDecopilotId,
+  ORG_ADMIN_PROJECT_SLUG,
+  useProjectContext,
+} from "@decocms/mesh-sdk";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
   ArrowUp,
@@ -73,6 +77,7 @@ import {
   Edit01,
   Loading01,
   Plus,
+  Stars01,
   Trash01,
   Users03,
   XClose,
@@ -96,7 +101,11 @@ import {
   TiptapProvider,
   TiptapInput,
 } from "@/web/components/chat/tiptap/input.tsx";
-import { tiptapDocToMessages } from "@/web/components/chat/derive-parts.ts";
+import {
+  derivePartsFromTiptapDoc,
+  tiptapDocToMessages,
+} from "@/web/components/chat/derive-parts.ts";
+import { chatStore } from "@/web/components/chat/store/chat-store";
 
 // ============================================================================
 // Types
@@ -650,6 +659,7 @@ function SettingsTab({
   automationId: string;
   automation: NonNullable<ReturnType<typeof useAutomationDetail>["data"]>;
 }) {
+  const { org } = useProjectContext();
   const updateMutation = useAutomationUpdate();
 
   // Chat hooks for running the automation
@@ -683,6 +693,32 @@ function SettingsTab({
         setSavedDoc(doc);
       }
     }
+  };
+
+  const handleImprovePrompt = () => {
+    const parts = derivePartsFromTiptapDoc(tiptapDoc);
+    const instructionsText = parts
+      .filter((p): p is { type: "text"; text: string } => p.type === "text")
+      .map((p) => p.text)
+      .join("\n");
+    if (!instructionsText.trim()) return;
+
+    setChatOpen(true);
+
+    chatStore.createThreadAndSend({
+      parts: [
+        {
+          type: "text",
+          text: `/writing-prompts ${automationId}\n\n<instructions>\n${instructionsText}\n</instructions>`,
+        },
+      ],
+      agent: {
+        id: getDecopilotId(org.id),
+        title: "Decopilot",
+        description: null,
+        icon: null,
+      },
+    });
   };
 
   const defaultCredentialId =
@@ -949,9 +985,21 @@ function SettingsTab({
 
         {/* Section: Instructions */}
         <div className="flex flex-col gap-2.5">
-          <span className="text-xs font-semibold text-muted-foreground/60">
-            Instructions
-          </span>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-muted-foreground/60">
+              Instructions
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1.5 px-2 text-xs"
+              disabled={!tiptapDoc}
+              onClick={handleImprovePrompt}
+            >
+              <Stars01 size={13} />
+              Improve
+            </Button>
+          </div>
           <TiptapProvider
             tiptapDoc={tiptapDoc}
             setTiptapDoc={setTiptapDoc}
