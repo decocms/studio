@@ -194,7 +194,9 @@ function CreateAgentButton() {
 }
 
 function AgentsListContent() {
-  const virtualMcps = useVirtualMCPs();
+  const virtualMcps = useVirtualMCPs({
+    filters: [{ column: "subtype", value: "agent" }],
+  });
   const { selectedVirtualMcp, setVirtualMcpId } = useChatStable();
   const { locator } = useProjectContext();
   const [siteEditorModalOpen, setSiteEditorModalOpen] = useState(false);

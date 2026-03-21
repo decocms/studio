@@ -839,7 +839,13 @@ function OrgAgentsContent() {
     defaultViewMode: "cards",
   });
 
-  const virtualMcps = useVirtualMCPs(listState);
+  const virtualMcps = useVirtualMCPs({
+    ...listState,
+    filters: [
+      ...(listState.filters ?? []),
+      { column: "subtype", value: "agent" },
+    ],
+  });
   const { createVirtualMCP, isCreating } = useCreateVirtualMCP({
     navigateOnCreate: true,
   });
