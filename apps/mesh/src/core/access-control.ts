@@ -160,8 +160,9 @@ export class AccessControl implements Disposable {
       return false;
     }
 
-    // Admin and owner roles bypass all checks (they have full access)
-    if (this.role === "admin" || this.role === "owner") {
+    // Built-in roles bypass all checks (they have full access)
+    // Must match BUILTIN_ROLES from auth/roles.ts: owner, admin, user
+    if (this.role === "admin" || this.role === "owner" || this.role === "user") {
       return true;
     }
 
