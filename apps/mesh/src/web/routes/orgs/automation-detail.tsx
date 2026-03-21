@@ -990,7 +990,7 @@ function SettingsTab({
               Instructions
             </span>
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               className="h-7 gap-1.5 px-2 text-xs"
               disabled={!tiptapDoc}
