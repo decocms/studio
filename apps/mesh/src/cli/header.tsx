@@ -61,7 +61,7 @@ export function Header({
         <Text dimColor> v{pkg.version}</Text>
       </Box>
 
-      <Box marginTop={2}>
+      <Box marginTop={1}>
         <Text dimColor>Home: {home}</Text>
       </Box>
 
