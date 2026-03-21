@@ -355,12 +355,12 @@ const agentDetailRoute = createRoute({
 });
 
 // ============================================
-// VIRTUAL MCP LAYOUT (/$org/p/$virtualMcpId)
+// VIRTUAL MCP LAYOUT (/$org/projects/$virtualMcpId)
 // ============================================
 
 const virtualMcpLayout = createRoute({
   getParentRoute: () => orgLayout,
-  path: "/p/$virtualMcpId",
+  path: "/projects/$virtualMcpId",
   component: lazyRouteComponent(
     () => import("./layouts/virtual-mcp-layout.tsx"),
   ),
@@ -373,7 +373,7 @@ const virtualMcpLayout = createRoute({
 // VIRTUAL MCP ROUTES (children of virtualMcpLayout)
 // ============================================
 
-// Project settings — layout for /$org/p/$virtualMcpId/settings/*
+// Project settings — layout for /$org/projects/$virtualMcpId/settings/*
 const projectSettingsRoute = createRoute({
   getParentRoute: () => virtualMcpLayout,
   path: "/settings",
@@ -387,7 +387,7 @@ const projectSettingsDirectIndexRoute = createRoute({
   path: "/",
   beforeLoad: ({ params }) => {
     throw redirect({
-      to: "/$org/p/$virtualMcpId/settings/general",
+      to: "/$org/projects/$virtualMcpId/settings/general",
       params: {
         org: params.org,
         virtualMcpId: (params as Record<string, string>).virtualMcpId,

@@ -1,7 +1,7 @@
 /**
  * Virtual MCP Layout
  *
- * Wraps virtual MCP detail routes (/$org/p/$virtualMcpId/...).
+ * Wraps virtual MCP detail routes (/$org/projects/$virtualMcpId/...).
  * Fetches the virtual MCP by ID and provides it as project context
  * for backward compatibility with components that rely on useProjectContext().
  */

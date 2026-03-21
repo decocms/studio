@@ -55,7 +55,7 @@ export default function ProjectsListPage() {
 
   const handleSettingsClick = (projectId: string) => {
     navigate({
-      to: "/$org/p/$virtualMcpId/settings/general",
+      to: "/$org/projects/$virtualMcpId/settings/general",
       params: {
         org: org.slug,
         virtualMcpId: projectId,

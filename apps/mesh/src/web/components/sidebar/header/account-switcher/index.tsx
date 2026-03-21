@@ -79,7 +79,7 @@ export function MeshAccountSwitcher({
     // This is handled by the project-panel component which passes the ID
     if (!orgParam) return;
     navigate({
-      to: "/$org/p/$virtualMcpId",
+      to: "/$org/projects/$virtualMcpId",
       params: { org: orgParam, virtualMcpId: projectSlug },
     });
   };

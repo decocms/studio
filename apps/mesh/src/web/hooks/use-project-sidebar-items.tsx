@@ -1,4 +1,4 @@
-import { Locator, useProjectContext, useIsOrgAdmin } from "@decocms/mesh-sdk";
+import { useProjectContext, useIsOrgAdmin } from "@decocms/mesh-sdk";
 import type {
   NavigationSidebarItem,
   SidebarSection,
@@ -18,29 +18,26 @@ import {
 } from "@untitledui/icons";
 import { pluginRootSidebarItems, pluginSidebarGroups } from "../index.tsx";
 import { usePreferences } from "./use-preferences.ts";
-import { useProject } from "./use-project";
 
 export function useProjectSidebarItems(): SidebarSection[] {
-  const { locator, org: orgContext } = useProjectContext();
+  const { org: orgContext } = useProjectContext();
   const navigate = useNavigate();
   const routerState = useRouterState();
   const [preferences] = usePreferences();
-  const { org, project } = Locator.parse(locator);
+  const org = orgContext.slug;
   const isOrgAdminProject = useIsOrgAdmin();
+  const currentProject = useProjectContext().project;
 
-  // Fetch project data to get enabledPlugins and pinnedViews
-  const { data: projectData } = useProject(orgContext.id, project);
-
-  // The virtual MCP ID for this project (used in /$org/p/$virtualMcpId routes)
-  const virtualMcpId = projectData?.id ?? "";
+  // The virtual MCP ID for this project (used in /$org/projects/$virtualMcpId routes)
+  const virtualMcpId = currentProject.id;
 
   // All projects (including org-admin) use project-level enabledPlugins
-  const enabledPlugins = projectData?.enabledPlugins ?? [];
+  const enabledPlugins = currentProject.enabledPlugins ?? [];
 
   // Pinned views from project UI settings
   const pinnedViews =
     (
-      projectData?.ui as
+      currentProject.ui as
         | {
             pinnedViews?: Array<{
               connectionId: string;
@@ -60,8 +57,10 @@ export function useProjectSidebarItems(): SidebarSection[] {
 
   const pathname = routerState.location.pathname;
 
-  // For org-admin, base path is /$org; for projects, /$org/p/$virtualMcpId
-  const basePath = isOrgAdminProject ? `/${org}` : `/${org}/p/${virtualMcpId}`;
+  // For org-admin, base path is /$org; for projects, /$org/projects/$virtualMcpId
+  const basePath = isOrgAdminProject
+    ? `/${org}`
+    : `/${org}/projects/${virtualMcpId}`;
 
   const isOnHome = pathname === basePath || pathname === `${basePath}/`;
 
@@ -169,7 +168,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
       isActive: isActiveRoute(item.pluginId),
       onClick: () =>
         navigate({
-          to: "/$org/p/$virtualMcpId/$pluginId",
+          to: "/$org/projects/$virtualMcpId/$pluginId",
           params: {
             org,
             virtualMcpId,
@@ -198,7 +197,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
           isActive: isActiveRoute(group.pluginId),
           onClick: () =>
             navigate({
-              to: "/$org/p/$virtualMcpId/$pluginId",
+              to: "/$org/projects/$virtualMcpId/$pluginId",
               params: {
                 org,
                 virtualMcpId,
@@ -226,7 +225,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
     ),
     onClick: () =>
       navigate({
-        to: "/$org/p/$virtualMcpId/apps/$connectionId/$toolName",
+        to: "/$org/projects/$virtualMcpId/apps/$connectionId/$toolName",
         params: {
           org,
           virtualMcpId,
@@ -337,7 +336,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
           isActive: isActiveRoute("workflows"),
           onClick: () =>
             navigate({
-              to: "/$org/p/$virtualMcpId/workflows",
+              to: "/$org/projects/$virtualMcpId/workflows",
               params: { org, virtualMcpId },
             }),
         }
@@ -350,7 +349,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
     isActive: isActiveRoute("settings"),
     onClick: () =>
       navigate({
-        to: "/$org/p/$virtualMcpId/settings/general",
+        to: "/$org/projects/$virtualMcpId/settings/general",
         params: { org, virtualMcpId },
       }),
   };

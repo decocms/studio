@@ -61,7 +61,7 @@ function ProjectListItem({
       <SidebarMenuButton
         onClick={() => {
           navigate({
-            to: "/$org/p/$virtualMcpId",
+            to: "/$org/projects/$virtualMcpId",
             params: { org: org.slug, virtualMcpId: project.id },
           });
         }}
@@ -86,8 +86,7 @@ function ProjectsSectionContent() {
   const [isOpen, setIsOpen] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
-  // Filter out org-admin project
-  const userProjects = projects?.filter((p) => p.slug !== "org-admin") ?? [];
+  const userProjects = projects ?? [];
 
   if (isLoading) {
     return (

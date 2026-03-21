@@ -122,7 +122,7 @@ function ProjectSettingsContent() {
                 <BreadcrumbItem>
                   <BreadcrumbLink asChild>
                     <Link
-                      to="/$org/p/$virtualMcpId"
+                      to="/$org/projects/$virtualMcpId"
                       params={{
                         org: params.org,
                         virtualMcpId: params.virtualMcpId,

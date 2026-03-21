@@ -123,7 +123,7 @@ export function CreateProjectDialog({
       setSlugManuallyEdited(false);
       // Navigate to the new project using its virtual MCP ID
       navigate({
-        to: "/$org/p/$virtualMcpId",
+        to: "/$org/projects/$virtualMcpId",
         params: { org: org.slug, virtualMcpId: result.item.id },
       });
     },
