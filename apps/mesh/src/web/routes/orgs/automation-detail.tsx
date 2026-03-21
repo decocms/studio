@@ -709,7 +709,7 @@ function SettingsTab({
       parts: [
         {
           type: "text",
-          text: `/writing-prompts ${automationId}\n\n<instructions>\n${instructionsText}\n</instructions>`,
+          text: `/writing-prompts for automation with id ${automationId}. The current message is\n\n<message>\n${instructionsText}\n</message>`,
         },
       ],
       agent: {
