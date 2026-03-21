@@ -9,6 +9,7 @@ import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/mesh-context";
 import { configureTriggerOnMcp } from "./configure-trigger";
+import { normalizeMessages } from "./normalize-messages";
 
 export const AUTOMATION_UPDATE = defineTool({
   name: "AUTOMATION_UPDATE",
@@ -108,15 +109,7 @@ export const AUTOMATION_UPDATE = defineTool({
     if (input.agent !== undefined)
       updateData.agent = JSON.stringify(input.agent);
     if (input.messages !== undefined) {
-      const normalizedMessages =
-        typeof input.messages === "string"
-          ? [
-              {
-                role: "user" as const,
-                parts: [{ type: "text", text: input.messages }],
-              },
-            ]
-          : input.messages;
+      const normalizedMessages = normalizeMessages(input.messages);
       updateData.messages = JSON.stringify(normalizedMessages);
     }
     if (input.models !== undefined)

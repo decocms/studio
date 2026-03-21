@@ -11,6 +11,7 @@ import {
   requireAuth,
   requireOrganization,
 } from "../../core/mesh-context";
+import { normalizeMessages } from "./normalize-messages";
 
 export const AUTOMATION_CREATE = defineTool({
   name: "AUTOMATION_CREATE",
@@ -94,16 +95,7 @@ export const AUTOMATION_CREATE = defineTool({
       throw new Error("Unable to determine user identity");
     }
 
-    // Normalize string messages to array format
-    const normalizedMessages =
-      typeof input.messages === "string"
-        ? [
-            {
-              role: "user" as const,
-              parts: [{ type: "text", text: input.messages }],
-            },
-          ]
-        : input.messages;
+    const normalizedMessages = normalizeMessages(input.messages);
 
     // Auto-resolve models from credentials when not provided
     let models = input.models;
