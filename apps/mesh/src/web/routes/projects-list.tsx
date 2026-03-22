@@ -52,7 +52,7 @@ export default function ProjectsListPage() {
   const actions = useVirtualMCPActions();
   const { enableDecoImport } = usePublicConfig();
   const [search, setSearch] = useState("");
-  const { createProject } = useCreateProject();
+  const { createProject, isCreating } = useCreateProject();
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;
     title: string;
@@ -104,7 +104,7 @@ export default function ProjectsListPage() {
         </Page.Header.Left>
         <Page.Header.Right>
           {enableDecoImport && <ImportFromDecoButton />}
-          <Button onClick={createProject} size="sm">
+          <Button onClick={createProject} disabled={isCreating} size="sm">
             <Plus size={14} />
             Create Project
           </Button>
@@ -141,7 +141,11 @@ export default function ProjectsListPage() {
               }
               actions={
                 !search && (
-                  <Button size="sm" onClick={createProject}>
+                  <Button
+                    size="sm"
+                    onClick={createProject}
+                    disabled={isCreating}
+                  >
                     <Plus size={14} />
                     Create Project
                   </Button>
