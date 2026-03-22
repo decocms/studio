@@ -49,6 +49,7 @@ function makeTriggerWithAutomation(
     event_type: "order.created",
     params: null,
     last_run_at: null,
+    next_run_at: null,
     created_at: "2026-01-01T00:00:00Z",
     ...triggerOverrides,
     automation: makeAutomation(automationOverrides),

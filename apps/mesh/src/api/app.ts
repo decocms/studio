@@ -81,6 +81,7 @@ import {
 } from "../monitoring/schema";
 import {
   AutomationCronWorker,
+  AutomationJobStream,
   EventTriggerEngine,
   Semaphore,
 } from "../automations";
@@ -786,24 +787,47 @@ export async function createApp(options: CreateAppOptions = {}) {
     });
   };
 
+  // JetStream job stream for distributing automation fire commands
+  const automationJobStream = new AutomationJobStream({
+    getConnection: () => natsProvider!.getConnection(),
+    getJetStream: () => natsProvider!.getJetStream(),
+  });
+
   const cronWorker = new AutomationCronWorker(
     automationsStorage,
-    streamCore,
-    automationContextFactory,
-    {
-      maxConcurrentPerAutomation: 3,
-      runTimeoutMs: 5 * 60 * 1000, // 5 minutes
-    },
-    automationSemaphore,
-    { runRegistry, cancelBroadcast },
+    automationJobStream,
   );
 
-  // Start cron worker and poll every 30 seconds
-  const cronPollIntervalMs = 30_000;
+  // Start JetStream consumer + cron scheduler with 10s poll interval
+  const cronPollIntervalMs = 10_000;
   let cronTimer: ReturnType<typeof setInterval> | null = null;
 
-  Promise.resolve(cronWorker.start())
-    .then(() => {
+  Promise.resolve(automationJobStream.init())
+    .then(async () => {
+      // Start JetStream consumer (pulls jobs and fires automations)
+      await automationJobStream.startConsumer(async (payload) => {
+        const automation = await automationsStorage.findById(
+          payload.automationId,
+          payload.organizationId,
+        );
+        if (!automation) return;
+        await fireAutomation({
+          automation,
+          triggerId: payload.triggerId,
+          storage: automationsStorage,
+          streamCoreFn: streamCore,
+          meshContextFactory: automationContextFactory,
+          config: {
+            maxConcurrentPerAutomation: 3,
+            runTimeoutMs: 5 * 60 * 1000,
+          },
+          globalSemaphore: automationSemaphore,
+          deps: { runRegistry, cancelBroadcast },
+        });
+      });
+
+      // Start cron scheduler (recomputes stale next_run_at on startup)
+      await cronWorker.start();
       cronTimer = setInterval(() => {
         cronWorker.processNow().catch((err) => {
           console.error("[AutomationCron] Error processing:", err);
@@ -819,6 +843,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       clearInterval(cronTimer);
       cronTimer = null;
     }
+    automationJobStream.stop();
     cronWorker.stop().catch(() => {});
   };
 
