@@ -729,6 +729,17 @@ export interface ThreadTable {
   status: ThreadStatus;
   trigger_id: string | null;
   context_start_message_id: string | null;
+  run_owner_pod: string | null;
+  run_config: ColumnType<
+    Record<string, unknown> | null,
+    string | null,
+    string | null
+  >;
+  run_started_at: ColumnType<
+    Date | null,
+    Date | string | null,
+    Date | string | null
+  >;
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
   created_by: string; // User ID;
@@ -748,6 +759,9 @@ export interface Thread {
   status: ThreadStatus;
   trigger_id: string | null;
   context_start_message_id: string | null;
+  run_owner_pod: string | null;
+  run_config: Record<string, unknown> | null;
+  run_started_at: string | null;
 }
 
 export interface ThreadMessageTable {

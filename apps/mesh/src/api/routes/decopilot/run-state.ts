@@ -63,6 +63,18 @@ export type RunCommand =
       userId: string;
       /** Caller creates the AbortController so the decider stays truly pure */
       abortController: AbortController;
+      /** Opaque run config for persistence. run-state.ts must never import the concrete type. */
+      runConfig?: Record<string, unknown>;
+      /** Pod claiming this run. */
+      podId?: string;
+    }
+  | {
+      type: "RESUME";
+      threadId: string;
+      orgId: string;
+      userId: string;
+      abortController: AbortController;
+      podId: string;
     }
   | { type: "STEP_DONE"; threadId: string }
   | {
@@ -100,6 +112,16 @@ export type RunEvent =
       orgId: string;
       userId: string;
       abortController: AbortController;
+      runConfig?: Record<string, unknown>;
+      podId?: string;
+    }
+  | {
+      type: "RUN_RESUMED";
+      threadId: string;
+      orgId: string;
+      userId: string;
+      abortController: AbortController;
+      podId: string;
     }
   | {
       type: "STEP_COMPLETED";

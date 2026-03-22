@@ -19,6 +19,9 @@ function makeNoopDeps(): RunReactorDeps {
       listMessages: mock(() => Promise.resolve({ messages: [], total: 0 })),
       listByTriggerIds: mock(() => Promise.resolve({ threads: [], total: 0 })),
       forceFailIfInProgress: mock(() => Promise.resolve(false)),
+      claimOrphanedRun: mock(() => Promise.resolve(false)),
+      listOrphanedRuns: mock(() => Promise.resolve([])),
+      orphanRunsByPod: mock(() => Promise.resolve([])),
     },
     streamBuffer: { purge: mock(() => {}) } as unknown as StreamBuffer,
     sseHub: { emit: mock(() => {}) },
@@ -37,7 +40,10 @@ function createRegistry(
   deps = makeNoopDeps(),
   clock?: () => Date,
 ): RunRegistry {
-  const r = clock ? new RunRegistry(deps, clock) : new RunRegistry(deps);
+  const podId = "test-pod";
+  const r = clock
+    ? new RunRegistry(deps, podId, clock)
+    : new RunRegistry(deps, podId);
   createdRegistries.push(r);
   return r;
 }
@@ -316,8 +322,8 @@ describe("RunRegistry", () => {
   // -------------------------------------------------------------------------
   // stopAll
   // -------------------------------------------------------------------------
-  describe("stopAll", () => {
-    it("aborts running entries, triggers reactor side-effects, and marks them not running", async () => {
+  describe("stopAll (orphan semantics)", () => {
+    it("orphans runs in DB, aborts running entries, and clears state", async () => {
       const deps = makeNoopDeps();
       const registry = createRegistry(deps);
 
@@ -335,29 +341,215 @@ describe("RunRegistry", () => {
         threadStatus: "completed",
       });
 
-      registry.stopAll();
+      await registry.stopAll();
 
-      // Dispatch is synchronous — aborts and map removals happen immediately
+      // DB orphan is called first so runs are resumable if process dies
+      expect(deps.storage.orphanRunsByPod).toHaveBeenCalled();
+
+      // In-memory: abort controllers triggered and state cleared
       expect(signalT1.aborted).toBe(true);
       expect(signalT2.aborted).toBe(true);
       expect(registry.isRunning("t1")).toBe(false);
       expect(registry.isRunning("t2")).toBe(false);
+    });
 
-      // reactAll is fire-and-forget — flush promise microtasks before asserting I/O
-      await flushMicrotasks();
+    it("calls orphanRunsByPod with correct podId", async () => {
+      const deps = makeNoopDeps();
+      const registry = createRegistry(deps);
+      startThread(registry, "t1", "org1", "u1");
 
-      expect(deps.storage.update).toHaveBeenCalledWith("t1", "org1", {
-        status: "failed",
-      });
-      expect(deps.storage.update).toHaveBeenCalledWith("t2", "org1", {
-        status: "failed",
-      });
-      expect(deps.streamBuffer.purge).toHaveBeenCalledWith("t1");
-      expect(deps.streamBuffer.purge).toHaveBeenCalledWith("t2");
-      expect(deps.sseHub.emit).toHaveBeenCalledWith(
-        "org1",
-        expect.objectContaining({ type: expect.stringContaining("thread") }),
+      await registry.stopAll();
+      expect(deps.storage.orphanRunsByPod).toHaveBeenCalledWith("test-pod");
+    });
+
+    it("aborts AbortControllers", async () => {
+      const deps = makeNoopDeps();
+      const registry = createRegistry(deps);
+      startThread(registry, "t1", "org1", "u1");
+      const signal = registry.getAbortSignal("t1")!;
+
+      await registry.stopAll();
+      expect(signal.aborted).toBe(true);
+    });
+
+    it("clears in-memory state", async () => {
+      const deps = makeNoopDeps();
+      const registry = createRegistry(deps);
+      startThread(registry, "t1", "org1", "u1");
+
+      await registry.stopAll();
+      expect(registry.isRunning("t1")).toBe(false);
+    });
+
+    it("handles orphanRunsByPod failure gracefully", async () => {
+      const deps = makeNoopDeps();
+      (
+        deps.storage.orphanRunsByPod as ReturnType<typeof mock>
+      ).mockImplementation(() => Promise.reject(new Error("DB down")));
+      const registry = createRegistry(deps);
+      startThread(registry, "t1", "org1", "u1");
+      const signal = registry.getAbortSignal("t1")!;
+
+      await registry.stopAll(); // should not throw
+
+      // controllers still aborted, state still cleared
+      expect(signal.aborted).toBe(true);
+      expect(registry.isRunning("t1")).toBe(false);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // recoverOrphanedRuns
+  // -------------------------------------------------------------------------
+  describe("recoverOrphanedRuns", () => {
+    it("auto-resumes orphaned runs", async () => {
+      const deps = makeNoopDeps();
+      (
+        deps.storage.listOrphanedRuns as ReturnType<typeof mock>
+      ).mockImplementation(() =>
+        Promise.resolve([
+          {
+            id: "t1",
+            organization_id: "org1",
+            trigger_id: "trig1",
+            run_config: {},
+            title: "t",
+            description: null,
+            status: "in_progress",
+            created_at: "",
+            updated_at: "",
+            created_by: "u1",
+            updated_by: null,
+            hidden: false,
+            context_start_message_id: null,
+            run_owner_pod: null,
+            run_started_at: null,
+          },
+        ]),
       );
+      (
+        deps.storage.claimOrphanedRun as ReturnType<typeof mock>
+      ).mockImplementation(() => Promise.resolve(true));
+      const registry = createRegistry(deps);
+      const resumeFn = mock(() => Promise.resolve());
+      await registry.recoverOrphanedRuns(resumeFn);
+      expect(resumeFn).toHaveBeenCalled();
+    });
+
+    it("auto-resumes interactive runs (trigger_id null) too", async () => {
+      const deps = makeNoopDeps();
+      (
+        deps.storage.listOrphanedRuns as ReturnType<typeof mock>
+      ).mockImplementation(() =>
+        Promise.resolve([
+          {
+            id: "t1",
+            organization_id: "org1",
+            trigger_id: null,
+            run_config: {},
+            title: "t",
+            description: null,
+            status: "in_progress",
+            created_at: "",
+            updated_at: "",
+            created_by: "u1",
+            updated_by: null,
+            hidden: false,
+            context_start_message_id: null,
+            run_owner_pod: null,
+            run_started_at: null,
+          },
+        ]),
+      );
+      (
+        deps.storage.claimOrphanedRun as ReturnType<typeof mock>
+      ).mockImplementation(() => Promise.resolve(true));
+      const registry = createRegistry(deps);
+      const resumeFn = mock(() => Promise.resolve());
+      await registry.recoverOrphanedRuns(resumeFn);
+      expect(resumeFn).toHaveBeenCalled();
+    });
+
+    it("skips when CAS claim fails", async () => {
+      const deps = makeNoopDeps();
+      (
+        deps.storage.listOrphanedRuns as ReturnType<typeof mock>
+      ).mockImplementation(() =>
+        Promise.resolve([
+          {
+            id: "t1",
+            organization_id: "org1",
+            trigger_id: "trig1",
+            run_config: {},
+            title: "t",
+            description: null,
+            status: "in_progress",
+            created_at: "",
+            updated_at: "",
+            created_by: "u1",
+            updated_by: null,
+            hidden: false,
+            context_start_message_id: null,
+            run_owner_pod: null,
+            run_started_at: null,
+          },
+        ]),
+      );
+      (
+        deps.storage.claimOrphanedRun as ReturnType<typeof mock>
+      ).mockImplementation(() => Promise.resolve(false));
+      const registry = createRegistry(deps);
+      const resumeFn = mock(() => Promise.resolve());
+      await registry.recoverOrphanedRuns(resumeFn);
+      expect(resumeFn).not.toHaveBeenCalled();
+    });
+
+    it("force-fails on resumeFn error", async () => {
+      const deps = makeNoopDeps();
+      (
+        deps.storage.listOrphanedRuns as ReturnType<typeof mock>
+      ).mockImplementation(() =>
+        Promise.resolve([
+          {
+            id: "t1",
+            organization_id: "org1",
+            trigger_id: "trig1",
+            run_config: {},
+            title: "t",
+            description: null,
+            status: "in_progress",
+            created_at: "",
+            updated_at: "",
+            created_by: "u1",
+            updated_by: null,
+            hidden: false,
+            context_start_message_id: null,
+            run_owner_pod: null,
+            run_started_at: null,
+          },
+        ]),
+      );
+      (
+        deps.storage.claimOrphanedRun as ReturnType<typeof mock>
+      ).mockImplementation(() => Promise.resolve(true));
+      const registry = createRegistry(deps);
+      const resumeFn = mock(() => Promise.reject(new Error("boom")));
+      await registry.recoverOrphanedRuns(resumeFn);
+      expect(deps.storage.forceFailIfInProgress).toHaveBeenCalledWith(
+        "t1",
+        "org1",
+      );
+    });
+
+    it("handles empty orphan list", async () => {
+      const deps = makeNoopDeps();
+      (
+        deps.storage.listOrphanedRuns as ReturnType<typeof mock>
+      ).mockImplementation(() => Promise.resolve([]));
+      const registry = createRegistry(deps);
+      const resumeFn = mock(() => Promise.resolve());
+      await registry.recoverOrphanedRuns(resumeFn);
+      expect(resumeFn).not.toHaveBeenCalled();
     });
   });
 
@@ -387,6 +579,9 @@ describe("RunRegistry", () => {
 
       expect(deps.storage.update).toHaveBeenCalledWith("t1", "org1", {
         status: "failed",
+        run_owner_pod: null,
+        run_config: null,
+        run_started_at: null,
       });
       expect(deps.streamBuffer.purge).toHaveBeenCalledWith("t1");
     });

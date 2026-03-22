@@ -29,9 +29,12 @@ import {
   fetchModelPermissions,
   parseModelsToMap,
 } from "./model-permissions";
+import { PersistedRunConfigSchema, toModelsConfig } from "./run-config";
 import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage } from "./types";
 import { streamCore } from "./stream-core";
+import type { SqlThreadStorage } from "@/storage/threads";
+import { POD_ID } from "@/core/pod-identity";
 
 // ============================================================================
 // Request Validation
@@ -68,10 +71,11 @@ export interface DecopilotDeps {
   cancelBroadcast: CancelBroadcast;
   streamBuffer: StreamBuffer;
   runRegistry: RunRegistry;
+  threadStorage: SqlThreadStorage;
 }
 
 export function createDecopilotRoutes(deps: DecopilotDeps) {
-  const { cancelBroadcast, streamBuffer, runRegistry } = deps;
+  const { cancelBroadcast, streamBuffer, runRegistry, threadStorage } = deps;
   const app = new Hono<{ Variables: { meshContext: MeshContext } }>();
 
   // ============================================================================
@@ -189,6 +193,104 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         { error: err instanceof Error ? err.message : JSON.stringify(err) },
         500,
       );
+    }
+  });
+
+  // ============================================================================
+  // Resume Endpoint — resume an orphaned in-progress run
+  // ============================================================================
+
+  app.post("/:org/decopilot/resume/:threadId", async (c) => {
+    try {
+      const { threadId, thread, organization } =
+        await validateThreadOwnership(c);
+      const ctx = c.get("meshContext");
+      const userId = ctx.auth?.user?.id;
+      if (!userId)
+        throw new HTTPException(401, { message: "User ID is required" });
+
+      // Precondition checks
+      if (thread.status !== "in_progress")
+        throw new HTTPException(409, {
+          message: "Thread is not available for resume",
+        });
+      if (runRegistry.isRunning(threadId))
+        throw new HTTPException(409, {
+          message: "Thread is not available for resume",
+        });
+      if (!thread.run_config)
+        throw new HTTPException(409, {
+          message: "Thread is not available for resume",
+        });
+
+      // Validate stored config (schema drift protection)
+      const parsed = PersistedRunConfigSchema.safeParse(thread.run_config);
+      if (!parsed.success) {
+        await threadStorage.forceFailIfInProgress(threadId, organization.id);
+        throw new HTTPException(409, {
+          message: "Thread is not available for resume",
+        });
+      }
+      const config = parsed.data;
+
+      // Re-check model permissions with CURRENT user role
+      const allowedModels = await fetchModelPermissions(
+        ctx.db,
+        organization.id,
+        ctx.auth.user?.role,
+      );
+      if (
+        allowedModels !== undefined &&
+        !checkModelPermission(
+          allowedModels,
+          config.models.credentialId,
+          config.models.thinking.id,
+        )
+      ) {
+        throw new HTTPException(403, {
+          message: "Model not allowed for your role",
+        });
+      }
+
+      // Atomic CAS claim
+      const claimed = await threadStorage.claimOrphanedRun(
+        threadId,
+        organization.id,
+        POD_ID,
+      );
+      if (!claimed)
+        throw new HTTPException(409, {
+          message: "Thread is not available for resume",
+        });
+
+      // Resume — identity from auth context, NOT stored config
+      const result = await streamCore(
+        {
+          messages: [],
+          models: toModelsConfig(config.models),
+          agent: config.agent,
+          temperature: config.temperature,
+          toolApprovalLevel: config.toolApprovalLevel,
+          organizationId: organization.id,
+          userId,
+          threadId,
+          windowSize: config.windowSize,
+          isResume: true,
+        },
+        ctx,
+        { runRegistry, streamBuffer, cancelBroadcast },
+      );
+
+      return createUIMessageStreamResponse({
+        stream: result.stream,
+        consumeSseStream: consumeStream,
+      });
+    } catch (err) {
+      if (err instanceof HTTPException) throw err;
+      if (err instanceof Error && err.name === "AbortError")
+        return c.body(null, 204);
+      console.error("[decopilot:resume] Unexpected error:", err);
+      throw new HTTPException(500, { message: "Internal server error" });
     }
   });
 

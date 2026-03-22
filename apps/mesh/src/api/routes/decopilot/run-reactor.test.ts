@@ -20,6 +20,9 @@ function makeDeps(): RunReactorDeps {
       listMessages: mock(() => Promise.resolve({ messages: [], total: 0 })),
       listByTriggerIds: mock(() => Promise.resolve({ threads: [], total: 0 })),
       forceFailIfInProgress: mock(() => Promise.resolve(true)),
+      claimOrphanedRun: mock(() => Promise.resolve(false)),
+      listOrphanedRuns: mock(() => Promise.resolve([])),
+      orphanRunsByPod: mock(() => Promise.resolve([])),
     },
     streamBuffer: { purge: mock(() => {}) } as unknown as StreamBuffer,
     sseHub: { emit: mock(() => {}) },
@@ -66,8 +69,83 @@ describe("reactAll", () => {
       expect(deps.storage.update).toHaveBeenCalledTimes(1);
       expect(deps.storage.update).toHaveBeenCalledWith("t1", "org1", {
         status: "in_progress",
+        run_owner_pod: null,
+        run_config: null,
+        run_started_at: null,
       });
       expect(deps.sseHub.emit).toHaveBeenCalledTimes(1);
+      expect(deps.streamBuffer.purge).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("RUN_RESUMED", () => {
+    it("updates run_owner_pod and run_started_at, does NOT write status", async () => {
+      const deps = makeDeps();
+      await reactAll(
+        [
+          {
+            event: {
+              type: "RUN_RESUMED",
+              threadId: "t1",
+              orgId: "org1",
+              userId: "u1",
+              abortController: new AbortController(),
+              podId: "pod-1",
+            },
+            state: makeRunningState(),
+          },
+        ],
+        deps,
+      );
+      const call = (deps.storage.update as ReturnType<typeof mock>).mock
+        .calls[0]!;
+      const payload = call[2] as Record<string, unknown>;
+      expect(payload).toMatchObject({
+        run_owner_pod: "pod-1",
+        run_started_at: expect.any(String),
+      });
+      expect(payload.status).toBeUndefined();
+    });
+
+    it("emits SSE in_progress event", async () => {
+      const deps = makeDeps();
+      await reactAll(
+        [
+          {
+            event: {
+              type: "RUN_RESUMED",
+              threadId: "t1",
+              orgId: "org1",
+              userId: "u1",
+              abortController: new AbortController(),
+              podId: "pod-1",
+            },
+            state: makeRunningState(),
+          },
+        ],
+        deps,
+      );
+      expect(deps.sseHub.emit).toHaveBeenCalled();
+    });
+
+    it("does NOT purge stream buffer", async () => {
+      const deps = makeDeps();
+      await reactAll(
+        [
+          {
+            event: {
+              type: "RUN_RESUMED",
+              threadId: "t1",
+              orgId: "org1",
+              userId: "u1",
+              abortController: new AbortController(),
+              podId: "pod-1",
+            },
+            state: makeRunningState(),
+          },
+        ],
+        deps,
+      );
       expect(deps.streamBuffer.purge).not.toHaveBeenCalled();
     });
   });
@@ -114,6 +192,9 @@ describe("reactAll", () => {
       expect(deps.storage.update).toHaveBeenCalledTimes(1);
       expect(deps.storage.update).toHaveBeenCalledWith("t1", "org1", {
         status: "completed",
+        run_owner_pod: null,
+        run_config: null,
+        run_started_at: null,
       });
       expect(deps.streamBuffer.purge).toHaveBeenCalledTimes(1);
       expect(deps.streamBuffer.purge).toHaveBeenCalledWith("t1");
@@ -141,6 +222,9 @@ describe("reactAll", () => {
       expect(deps.storage.update).toHaveBeenCalledTimes(1);
       expect(deps.storage.update).toHaveBeenCalledWith("t1", "org1", {
         status: "requires_action",
+        run_owner_pod: null,
+        run_config: null,
+        run_started_at: null,
       });
       expect(deps.streamBuffer.purge).toHaveBeenCalledTimes(1);
       expect(deps.sseHub.emit).toHaveBeenCalledTimes(2);
@@ -167,6 +251,9 @@ describe("reactAll", () => {
 
         expect(deps.storage.update).toHaveBeenCalledWith("t1", "org1", {
           status: "failed",
+          run_owner_pod: null,
+          run_config: null,
+          run_started_at: null,
         });
         expect(deps.storage.forceFailIfInProgress).not.toHaveBeenCalled();
         expect(deps.streamBuffer.purge).toHaveBeenCalledWith("t1");
@@ -195,7 +282,12 @@ describe("reactAll", () => {
         "t1",
         "org1",
       );
-      expect(deps.storage.update).not.toHaveBeenCalled();
+      // After forceFailIfInProgress, run columns are cleared via update
+      expect(deps.storage.update).toHaveBeenCalledWith("t1", "org1", {
+        run_owner_pod: null,
+        run_config: null,
+        run_started_at: null,
+      });
       expect(deps.streamBuffer.purge).toHaveBeenCalledWith("t1");
       expect(deps.sseHub.emit).toHaveBeenCalledTimes(2);
     });

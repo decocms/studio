@@ -20,10 +20,8 @@ import { endTime, startTime, timing } from "hono/timing";
 import { auth } from "../auth";
 import {
   ContextFactory,
-  createBoundAuthClient,
   createMeshContextFactory,
 } from "../core/context-factory";
-import { AccessControl } from "../core/access-control";
 import type { MeshContext } from "../core/mesh-context";
 import { getDb, type MeshDatabase } from "../database";
 import { createEventBus, type EventBus } from "../event-bus";
@@ -72,7 +70,7 @@ import type { StreamBuffer } from "./routes/decopilot/stream-buffer";
 import { NatsStreamBuffer } from "./routes/decopilot/nats-stream-buffer";
 import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
-import { OrgScopedThreadStorage, SqlThreadStorage } from "../storage/threads";
+import { SqlThreadStorage } from "../storage/threads";
 import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
 import {
   DEFAULT_LOGS_DIR,
@@ -85,8 +83,14 @@ import {
   Semaphore,
 } from "../automations";
 import { fireAutomation } from "../automations/fire";
-import { streamCore } from "./routes/decopilot/stream-core";
+import { streamCore, consumeStreamCore } from "./routes/decopilot/stream-core";
+import {
+  PersistedRunConfigSchema,
+  toModelsConfig,
+} from "./routes/decopilot/run-config";
+import { POD_ID } from "../core/pod-identity";
 import { createAutomationsStorage } from "../storage/automations";
+import { createAutomationContextFactory } from "./routes/decopilot/automation-context";
 
 // Track current event bus instance for cleanup during HMR
 let currentEventBus: EventBus | null = null;
@@ -95,7 +99,7 @@ let currentEventBus: EventBus | null = null;
 let currentCronWorkerCleanup: (() => void) | null = null;
 
 // Track decopilot strategy cleanup (abort active runs, stop strategies) during HMR
-let currentDecopilotCleanup: (() => void) | null = null;
+let currentDecopilotCleanup: (() => void | Promise<void>) | null = null;
 
 // Track monitoring retention timer for cleanup during HMR
 let currentRetentionTimer: ReturnType<typeof setInterval> | null = null;
@@ -282,7 +286,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   currentEventBus = eventBus;
 
   // Decopilot strategy cleanup on HMR / shutdown
-  if (currentDecopilotCleanup) currentDecopilotCleanup();
+  if (currentDecopilotCleanup) await currentDecopilotCleanup();
 
   // Set tool list cache after cleanup to avoid previous cleanup nulling the new cache
   setMcpListCache(mcpListCache);
@@ -295,7 +299,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     sseHub,
   };
 
-  const runRegistry = new RunRegistry(cancelReactorDeps);
+  const runRegistry = new RunRegistry(cancelReactorDeps, POD_ID);
 
   cancelBroadcast
     .start((threadId) => {
@@ -313,8 +317,8 @@ export async function createApp(options: CreateAppOptions = {}) {
     );
   });
 
-  currentDecopilotCleanup = () => {
-    runRegistry.stopAll();
+  currentDecopilotCleanup = async () => {
+    await runRegistry.stopAll();
     runRegistry.dispose();
     cancelBroadcast.stop().catch(() => {});
     streamBuffer.teardown();
@@ -695,77 +699,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   const automationsStorage = createAutomationsStorage(database.db);
   const automationSemaphore = new Semaphore(10); // max 10 concurrent runs globally
 
-  /**
-   * MeshContextFactory for automations.
-   * Verifies the user is still an active member of the organization,
-   * then returns a MeshContext scoped to that org/user.
-   * Returns null when the user is no longer in the org.
-   */
-  const automationContextFactory = async (
-    orgId: string,
-    userId: string,
-  ): Promise<MeshContext | null> => {
-    // Verify org membership
-    const membership = await database.db
-      .selectFrom("member")
-      .innerJoin("organization", "organization.id", "member.organizationId")
-      .select([
-        "member.role",
-        "organization.id as orgId",
-        "organization.slug as orgSlug",
-        "organization.name as orgName",
-      ])
-      .where("member.userId", "=", userId)
-      .where("member.organizationId", "=", orgId)
-      .executeTakeFirst();
-
-    if (!membership) {
-      console.warn(
-        `[automationContextFactory] User ${userId} not found in org ${orgId} — returning null`,
-      );
-      return null;
-    }
-
-    console.log(
-      `[automationContextFactory] Resolved context: user=${userId}, org=${orgId}, role=${membership.role}`,
-    );
-
-    // Create a base context (unauthenticated) and override auth/org/access fields
-    const ctx = await ContextFactory.create();
-    ctx.auth.user = { id: userId, role: membership.role };
-    ctx.organization = {
-      id: membership.orgId,
-      slug: membership.orgSlug,
-      name: membership.orgName,
-    };
-
-    // Reconstruct boundAuth and access with the correct identity so that
-    // permission checks use the automation user's role instead of stale
-    // undefined values from the unauthenticated base context.
-    ctx.boundAuth = createBoundAuthClient({
-      auth: ctx.authInstance,
-      headers: new Headers(),
-      role: membership.role,
-      userId,
-    });
-    ctx.access = new AccessControl(
-      ctx.authInstance,
-      userId,
-      undefined, // toolName set later by defineTool
-      ctx.boundAuth,
-      membership.role,
-      "self",
-    );
-
-    // Rebuild thread storage with the correct org so OrgScopedThreadStorage
-    // doesn't throw "thread operations require an authenticated organization".
-    ctx.storage.threads = new OrgScopedThreadStorage(
-      threadStorage,
-      membership.orgId,
-    );
-
-    return ctx;
-  };
+  const automationContextFactory = createAutomationContextFactory({
+    db: database.db,
+    threadStorage,
+  });
 
   const automationRunner: MeshContext["automationRunner"] = async (
     automationId,
@@ -848,6 +785,87 @@ export async function createApp(options: CreateAppOptions = {}) {
       }
     ).setEventTriggerEngine(eventTriggerEngine);
   }
+
+  // ============================================================================
+  // Crash Recovery — resume orphaned automation runs after rolling deploy
+  // ============================================================================
+
+  setTimeout(() => {
+    runRegistry
+      .recoverOrphanedRuns(async (thread) => {
+        const parsed = PersistedRunConfigSchema.safeParse(thread.run_config);
+        if (!parsed.success) {
+          console.warn(
+            `[recovery] Invalid run_config for ${thread.id}, force-failing`,
+          );
+          await threadStorage.forceFailIfInProgress(
+            thread.id,
+            thread.organization_id,
+          );
+          return;
+        }
+        const config = parsed.data;
+
+        // Build context for the original user
+        const resumeCtx = await automationContextFactory(
+          thread.organization_id,
+          thread.created_by,
+        );
+        if (!resumeCtx) {
+          console.warn(
+            `[recovery] Cannot build context for ${thread.id}, force-failing`,
+          );
+          await threadStorage.forceFailIfInProgress(
+            thread.id,
+            thread.organization_id,
+          );
+          return;
+        }
+
+        // Audit trail: record that this run was auto-resumed
+        const now = new Date().toISOString();
+        await threadStorage.saveMessages(
+          [
+            {
+              id: crypto.randomUUID(),
+              thread_id: thread.id,
+              role: "system",
+              parts: [
+                {
+                  type: "text",
+                  text: "Run resumed automatically after infrastructure restart.",
+                },
+              ],
+              metadata: undefined,
+              created_at: now,
+              updated_at: now,
+            },
+          ],
+          thread.organization_id,
+        );
+
+        const result = await streamCore(
+          {
+            messages: [],
+            models: toModelsConfig(config.models),
+            agent: config.agent,
+            temperature: config.temperature,
+            toolApprovalLevel: config.toolApprovalLevel,
+            organizationId: thread.organization_id,
+            userId: thread.created_by,
+            threadId: thread.id,
+            windowSize: config.windowSize,
+            isResume: true,
+          },
+          resumeCtx,
+          { runRegistry, cancelBroadcast },
+        );
+        await consumeStreamCore(result);
+      })
+      .catch((err) => {
+        console.error("[recovery] Orphan recovery failed:", err);
+      });
+  }, 10_000); // 10s grace for rolling deploys
 
   // NDJSON monitoring retention cleanup (always — local files are always written)
   const SIGNAL_DIRS = [
@@ -1000,6 +1018,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     cancelBroadcast,
     streamBuffer,
     runRegistry,
+    threadStorage,
   });
   app.route("/api", decopilotRoutes);
 
