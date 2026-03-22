@@ -137,10 +137,11 @@ export class AutomationCronWorker {
       console.log(
         `[AutomationCron] Startup sweep: trigger ${t.id} cron="${t.cron_expression}" last_run_at=${t.last_run_at ?? "null"} → next_run_at=${nextRun?.toISOString() ?? "null"}`,
       );
-      if (nextRun) {
-        await this.storage.updateNextRunAt(t.id, nextRun.toISOString());
-        updated++;
-      }
+      await this.storage.updateNextRunAt(
+        t.id,
+        nextRun ? nextRun.toISOString() : null,
+      );
+      updated++;
     }
 
     console.log(
@@ -225,9 +226,10 @@ export class AutomationCronWorker {
       console.log(
         `[AutomationCron] Dispatch step 2: next_run_at=${nextRun?.toISOString() ?? "null"} for trigger ${trigger.id}`,
       );
-      if (nextRun) {
-        await this.storage.updateNextRunAt(trigger.id, nextRun.toISOString());
-      }
+      await this.storage.updateNextRunAt(
+        trigger.id,
+        nextRun ? nextRun.toISOString() : null,
+      );
     }
 
     // 3. Publish to JetStream for worker execution

@@ -86,7 +86,7 @@ export interface AutomationsStorage {
     now: Date,
     batchSize: number,
   ): Promise<(AutomationTrigger & { automation: Automation })[]>;
-  updateNextRunAt(triggerId: string, nextRunAt: string): Promise<void>;
+  updateNextRunAt(triggerId: string, nextRunAt: string | null): Promise<void>;
   findAllCronTriggersForRecompute(): Promise<AutomationTrigger[]>;
   countInProgressRuns(automationId: string): Promise<number>;
   tryAcquireRunSlot(
@@ -476,59 +476,64 @@ class KyselyAutomationsStorage implements AutomationsStorage {
     now: Date,
     batchSize: number,
   ): Promise<(AutomationTrigger & { automation: Automation })[]> {
-    const rows = await this.db
-      .selectFrom("automation_triggers as t")
-      .innerJoin("automations as a", "a.id", "t.automation_id")
-      .select([
-        "t.id",
-        "t.automation_id",
-        "t.type",
-        "t.cron_expression",
-        "t.connection_id",
-        "t.event_type",
-        "t.params",
-        "t.last_run_at",
-        "t.next_run_at",
-        "t.created_at",
-        "a.id as a_id",
-        "a.organization_id as a_organization_id",
-        "a.name as a_name",
-        "a.active as a_active",
-        "a.created_by as a_created_by",
-        "a.agent as a_agent",
-        "a.messages as a_messages",
-        "a.models as a_models",
-        "a.temperature as a_temperature",
-        "a.created_at as a_created_at",
-        "a.updated_at as a_updated_at",
-      ])
-      .where("t.type", "=", "cron")
-      .where("a.active", "=", true)
-      .where("t.next_run_at", "<=", now.toISOString())
-      .forUpdate()
-      .skipLocked()
-      .limit(batchSize)
-      .execute();
+    return await this.db.transaction().execute(async (trx) => {
+      const rows = await trx
+        .selectFrom("automation_triggers as t")
+        .innerJoin("automations as a", "a.id", "t.automation_id")
+        .select([
+          "t.id",
+          "t.automation_id",
+          "t.type",
+          "t.cron_expression",
+          "t.connection_id",
+          "t.event_type",
+          "t.params",
+          "t.last_run_at",
+          "t.next_run_at",
+          "t.created_at",
+          "a.id as a_id",
+          "a.organization_id as a_organization_id",
+          "a.name as a_name",
+          "a.active as a_active",
+          "a.created_by as a_created_by",
+          "a.agent as a_agent",
+          "a.messages as a_messages",
+          "a.models as a_models",
+          "a.temperature as a_temperature",
+          "a.created_at as a_created_at",
+          "a.updated_at as a_updated_at",
+        ])
+        .where("t.type", "=", "cron")
+        .where("a.active", "=", true)
+        .where("t.next_run_at", "<=", now.toISOString())
+        .forUpdate()
+        .skipLocked()
+        .limit(batchSize)
+        .execute();
 
-    return rows.map((row) => ({
-      ...triggerFromDbRow(row),
-      automation: automationFromDbRow({
-        id: row.a_id,
-        organization_id: row.a_organization_id,
-        name: row.a_name,
-        active: row.a_active,
-        created_by: row.a_created_by,
-        agent: row.a_agent,
-        messages: row.a_messages,
-        models: row.a_models,
-        temperature: row.a_temperature,
-        created_at: row.a_created_at,
-        updated_at: row.a_updated_at,
-      }),
-    }));
+      return rows.map((row) => ({
+        ...triggerFromDbRow(row),
+        automation: automationFromDbRow({
+          id: row.a_id,
+          organization_id: row.a_organization_id,
+          name: row.a_name,
+          active: row.a_active,
+          created_by: row.a_created_by,
+          agent: row.a_agent,
+          messages: row.a_messages,
+          models: row.a_models,
+          temperature: row.a_temperature,
+          created_at: row.a_created_at,
+          updated_at: row.a_updated_at,
+        }),
+      }));
+    });
   }
 
-  async updateNextRunAt(triggerId: string, nextRunAt: string): Promise<void> {
+  async updateNextRunAt(
+    triggerId: string,
+    nextRunAt: string | null,
+  ): Promise<void> {
     await this.db
       .updateTable("automation_triggers")
       .set({ next_run_at: nextRunAt })

@@ -802,52 +802,48 @@ export async function createApp(options: CreateAppOptions = {}) {
   const cronPollIntervalMs = 10_000;
   let cronTimer: ReturnType<typeof setInterval> | null = null;
 
-  Promise.resolve(automationJobStream.init())
-    .then(async () => {
-      // Start JetStream consumer (pulls jobs and fires automations)
-      await automationJobStream.startConsumer(async (payload) => {
-        console.log(
-          `[AutomationCron] Consumer received job: automation=${payload.automationId} trigger=${payload.triggerId} org=${payload.organizationId}`,
-        );
-        const automation = await automationsStorage.findById(
-          payload.automationId,
-          payload.organizationId,
-        );
-        if (!automation) {
-          console.warn(
-            `[AutomationCron] Automation ${payload.automationId} not found in org ${payload.organizationId}, skipping`,
-          );
-          return;
-        }
-        console.log(
-          `[AutomationCron] Firing automation "${automation.name}" (${automation.id})`,
-        );
-        await fireAutomation({
-          automation,
-          triggerId: payload.triggerId,
-          storage: automationsStorage,
-          streamCoreFn: streamCore,
-          meshContextFactory: automationContextFactory,
-          config: {
-            maxConcurrentPerAutomation: 3,
-            runTimeoutMs: 5 * 60 * 1000,
-          },
-          globalSemaphore: automationSemaphore,
-          deps: { runRegistry, cancelBroadcast },
-        });
-      });
+  await automationJobStream.init();
 
-      // Start cron scheduler (recomputes stale next_run_at on startup)
-      await cronWorker.start();
-      cronTimer = setInterval(() => {
-        cronWorker.processNow().catch((err) => {
-          console.error("[AutomationCron] Error processing:", err);
-        });
-      }, cronPollIntervalMs);
-    })
-    .catch((error) => {
-      console.error("[AutomationCron] Error during startup:", error);
+  // Start JetStream consumer (pulls jobs and fires automations)
+  await automationJobStream.startConsumer(async (payload) => {
+    console.log(
+      `[AutomationCron] Consumer received job: automation=${payload.automationId} trigger=${payload.triggerId} org=${payload.organizationId}`,
+    );
+    const automation = await automationsStorage.findById(
+      payload.automationId,
+      payload.organizationId,
+    );
+    if (!automation) {
+      console.warn(
+        `[AutomationCron] Automation ${payload.automationId} not found in org ${payload.organizationId}, skipping`,
+      );
+      return;
+    }
+    console.log(
+      `[AutomationCron] Firing automation "${automation.name}" (${automation.id})`,
+    );
+    await fireAutomation({
+      automation,
+      triggerId: payload.triggerId,
+      storage: automationsStorage,
+      streamCoreFn: streamCore,
+      meshContextFactory: automationContextFactory,
+      config: {
+        maxConcurrentPerAutomation: 3,
+        runTimeoutMs: 5 * 60 * 1000,
+      },
+      globalSemaphore: automationSemaphore,
+      deps: { runRegistry, cancelBroadcast },
     });
+  });
+
+  // Start cron scheduler (recomputes stale next_run_at on startup)
+  await cronWorker.start();
+  cronTimer = setInterval(() => {
+    cronWorker.processNow().catch((err) => {
+      console.error("[AutomationCron] Error processing:", err);
+    });
+  }, cronPollIntervalMs);
 
   currentCronWorkerCleanup = () => {
     if (cronTimer) {

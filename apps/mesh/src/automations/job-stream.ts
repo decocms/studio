@@ -89,18 +89,24 @@ export class AutomationJobStream {
       console.log(
         `[AutomationJobStream] Consumer ${CONSUMER_NAME} exists, pending=${cInfo.num_pending} waiting=${cInfo.num_waiting}`,
       );
-    } catch {
-      console.log(
-        `[AutomationJobStream] Consumer ${CONSUMER_NAME} not found, creating`,
-      );
-      await jsm.consumers.add(STREAM_NAME, {
-        durable_name: CONSUMER_NAME,
-        ack_policy: AckPolicy.Explicit,
-        deliver_policy: DeliverPolicy.All,
-        max_deliver: MAX_DELIVER,
-        ack_wait: ACK_WAIT_NS,
-        filter_subject: `${SUBJECT_PREFIX}.>`,
-      });
+    } catch (err: unknown) {
+      const isNotFound =
+        err instanceof Error && err.message.includes("consumer not found");
+      if (isNotFound) {
+        console.log(
+          `[AutomationJobStream] Consumer ${CONSUMER_NAME} not found, creating`,
+        );
+        await jsm.consumers.add(STREAM_NAME, {
+          durable_name: CONSUMER_NAME,
+          ack_policy: AckPolicy.Explicit,
+          deliver_policy: DeliverPolicy.All,
+          max_deliver: MAX_DELIVER,
+          ack_wait: ACK_WAIT_NS,
+          filter_subject: `${SUBJECT_PREFIX}.>`,
+        });
+      } else {
+        throw err;
+      }
     }
 
     this.js = this.options.getJetStream();
