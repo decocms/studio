@@ -149,23 +149,28 @@ export class AuthTransport extends WrapperTransport {
       );
     }
 
-    // Create getToolMeta callback for AccessControl
+    // Authenticated users (browser session or MCP OAuth) are forwarded directly.
+    // The downstream MCP server handles its own authorization.
+    // Granular per-tool permission checks only apply to API keys.
+    if (ctx.auth.user?.id && !ctx.auth.apiKey?.id) {
+      return;
+    }
+
+    // API key path: check granular per-tool permissions
     const getToolMeta = async () => {
       const toolsMap = await this.ensureToolsMap();
       const tool = toolsMap.get(toolName);
       return tool?._meta as Record<string, unknown> | undefined;
     };
 
-    // Create AccessControl with connectionId set
-    // This checks: does user have permission for this TOOL on this CONNECTION?
     const connectionAccessControl = new AccessControl(
       ctx.authInstance,
-      ctx.auth.user?.id ?? ctx.auth.apiKey?.userId,
-      toolName, // Tool being called
-      ctx.boundAuth, // Bound auth client (encapsulates headers)
-      ctx.auth.user?.role, // Role for built-in role bypass
-      connection.id, // Connection ID for permission check
-      getToolMeta, // Callback for public tool check
+      ctx.auth.apiKey?.userId,
+      toolName,
+      ctx.boundAuth,
+      ctx.auth.user?.role,
+      connection.id,
+      getToolMeta,
     );
 
     await connectionAccessControl.check(toolName);
