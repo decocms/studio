@@ -3,7 +3,7 @@ import { Settings, Trash2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
-import { Avatar } from "@deco/ui/components/avatar.tsx";
+import { AgentAvatar, getIconColor } from "@/web/components/agent-icon";
 import { cn } from "@deco/ui/lib/utils.ts";
 
 interface ProjectCardProps {
@@ -20,14 +20,10 @@ export function ProjectCard({
   const { org } = useProjectContext();
 
   const ui = project.metadata?.ui;
-  const themeColor = ui?.themeColor ?? "#60a5fa";
+  const themeColor = ui?.themeColor as string | null | undefined;
+  const iconColor = themeColor ? getIconColor(themeColor) : null;
 
-  const bannerStyle = {
-    backgroundColor: ui?.bannerColor ?? themeColor,
-    backgroundImage: ui?.banner ? `url(${ui.banner})` : undefined,
-    backgroundSize: "cover",
-    backgroundPosition: "center",
-  };
+  const bannerBg = iconColor?.bg ?? "bg-muted";
 
   return (
     <Link
@@ -37,7 +33,18 @@ export function ProjectCard({
     >
       <div className="border border-border rounded-xl overflow-hidden bg-card">
         {/* Banner */}
-        <div className="h-20 relative" style={bannerStyle}>
+        <div
+          className={cn("h-20 relative", bannerBg)}
+          style={
+            ui?.banner
+              ? {
+                  backgroundImage: `url(${ui.banner})`,
+                  backgroundSize: "cover",
+                  backgroundPosition: "center",
+                }
+              : undefined
+          }
+        >
           {/* Action Buttons */}
           <div className="absolute top-3 right-3 flex items-center gap-1">
             {onDeleteClick && (
@@ -78,22 +85,12 @@ export function ProjectCard({
           {/* Top Section */}
           <div className="flex flex-col gap-4">
             {/* Project Icon */}
-            {ui?.icon ? (
-              <img
-                src={ui.icon}
-                alt=""
-                className="size-8 rounded-md object-cover"
-              />
-            ) : (
-              <div
-                className="size-8 rounded-md flex items-center justify-center"
-                style={{ backgroundColor: themeColor }}
-              >
-                <span className="text-sm font-medium text-white">
-                  {project.title.charAt(0).toUpperCase()}
-                </span>
-              </div>
-            )}
+            <AgentAvatar
+              icon={project.icon}
+              name={project.title}
+              size="md"
+              className="shrink-0"
+            />
 
             {/* Name & Time */}
             <div className="flex flex-col">
@@ -132,12 +129,11 @@ export function ProjectCard({
 
             {/* Org Badge */}
             <div className="flex items-center gap-2 text-xs text-foreground">
-              <Avatar
-                url={org.logo ?? undefined}
-                fallback={org.name}
-                size="2xs"
-                className="shrink-0 rounded"
-                objectFit="cover"
+              <AgentAvatar
+                icon={org.logo ?? null}
+                name={org.name}
+                size="xs"
+                className="shrink-0"
               />
               <span className="truncate max-w-20">{org.name}</span>
             </div>
