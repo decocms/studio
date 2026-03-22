@@ -6,7 +6,11 @@
 
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
-import { getUserId, requireAuth } from "../../core/mesh-context";
+import {
+  getUserId,
+  requireAuth,
+  requireOrganization,
+} from "../../core/mesh-context";
 import { VirtualMCPEntitySchema } from "./schema";
 
 const pinnedViewSchema = z.object({
@@ -40,6 +44,7 @@ export const VIRTUAL_MCP_PINNED_VIEWS_UPDATE = defineTool({
 
   handler: async (input, ctx) => {
     requireAuth(ctx);
+    const organization = requireOrganization(ctx);
     await ctx.access.check();
 
     const { virtualMcpId, pinnedViews } = input;
@@ -47,6 +52,9 @@ export const VIRTUAL_MCP_PINNED_VIEWS_UPDATE = defineTool({
 
     const virtualMcp = await ctx.storage.virtualMcps.findById(virtualMcpId);
     if (!virtualMcp) {
+      throw new Error(`Virtual MCP not found: ${virtualMcpId}`);
+    }
+    if (virtualMcp.organization_id !== organization.id) {
       throw new Error(`Virtual MCP not found: ${virtualMcpId}`);
     }
 

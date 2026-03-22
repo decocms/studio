@@ -294,7 +294,6 @@ export function ProjectPluginsForm() {
             id: project.id,
             data: {
               metadata: {
-                instructions: null,
                 enabled_plugins: input.enabledPlugins,
               },
             },

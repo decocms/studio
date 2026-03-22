@@ -51,13 +51,20 @@ function ProjectContextWrapper({
 
   const ui = entity.metadata?.ui;
 
+  // Use the same virtual-MCP-to-project slug mapping as virtual-mcp-layout
+  const slug =
+    (entity.metadata?.migrated_project_slug as string | undefined) ??
+    ((entity.metadata?.ui as Record<string, unknown> | null | undefined)
+      ?.slug as string | undefined) ??
+    entity.id;
+
   return (
     <ProjectContextProvider
       org={org}
       project={{
         id: entity.id,
         organizationId: entity.organization_id,
-        slug: entity.id,
+        slug,
         name: entity.title,
         description: entity.description,
         enabledPlugins:

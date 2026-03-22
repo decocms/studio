@@ -119,7 +119,7 @@ export async function handleVirtualMcpRequest(
 
     // Build ImplementationSchema-compatible server info
     const serverInfo = {
-      name: virtualMcp.id,
+      name: virtualMcp.id ?? "Decopilot",
       version: "1.0.0",
       title: virtualMcp.title ?? undefined,
       description: virtualMcp.description ?? undefined,

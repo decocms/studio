@@ -21,9 +21,12 @@ export function ProjectCard({
 
   const ui = project.metadata?.ui;
   const themeColor = ui?.themeColor as string | null | undefined;
-  const iconColor = themeColor ? getIconColor(themeColor) : null;
+  const isHexColor = themeColor?.startsWith("#");
+  const iconColor = themeColor && !isHexColor ? getIconColor(themeColor) : null;
 
-  const bannerBg = iconColor?.bg ?? "bg-muted";
+  const bannerBg = iconColor?.bg ?? (isHexColor ? undefined : "bg-muted");
+  const bannerStyle =
+    isHexColor && themeColor ? { backgroundColor: themeColor } : undefined;
 
   return (
     <Link
@@ -42,7 +45,7 @@ export function ProjectCard({
                   backgroundSize: "cover",
                   backgroundPosition: "center",
                 }
-              : undefined
+              : bannerStyle
           }
         >
           {/* Action Buttons */}

@@ -51,7 +51,6 @@ export function useEnablePlugin() {
           id: project.id,
           data: {
             metadata: {
-              instructions: null,
               enabled_plugins: enabledPlugins,
             },
           },

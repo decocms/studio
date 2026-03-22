@@ -74,33 +74,17 @@ export class VirtualMcpPluginConfigsStorage
     },
   ): Promise<VirtualMcpPluginConfig> {
     const now = new Date().toISOString();
-    const existing = await this.get(virtualMcpId, pluginId);
+    const id = generatePrefixedId("vpc");
 
-    if (existing) {
-      const updateData: Record<string, unknown> = { updated_at: now };
-      if (data.connectionId !== undefined)
-        updateData.connection_id = data.connectionId;
-      if (data.settings !== undefined) {
-        updateData.settings = data.settings
-          ? JSON.stringify(data.settings)
-          : null;
-      }
-
-      await this.db
-        .updateTable("virtual_mcp_plugin_configs")
-        .set(updateData)
-        .where("virtual_mcp_id", "=", virtualMcpId)
-        .where("plugin_id", "=", pluginId)
-        .execute();
-
-      const updated = await this.get(virtualMcpId, pluginId);
-      if (!updated) {
-        throw new Error("Failed to update virtual MCP plugin config");
-      }
-      return updated;
+    const updateData: Record<string, unknown> = { updated_at: now };
+    if (data.connectionId !== undefined)
+      updateData.connection_id = data.connectionId;
+    if (data.settings !== undefined) {
+      updateData.settings = data.settings
+        ? JSON.stringify(data.settings)
+        : null;
     }
 
-    const id = generatePrefixedId("vpc");
     await this.db
       .insertInto("virtual_mcp_plugin_configs")
       .values({
@@ -112,13 +96,16 @@ export class VirtualMcpPluginConfigsStorage
         created_at: now,
         updated_at: now,
       })
+      .onConflict((oc) =>
+        oc.columns(["virtual_mcp_id", "plugin_id"]).doUpdateSet(updateData),
+      )
       .execute();
 
-    const created = await this.get(virtualMcpId, pluginId);
-    if (!created) {
-      throw new Error("Failed to create virtual MCP plugin config");
+    const result = await this.get(virtualMcpId, pluginId);
+    if (!result) {
+      throw new Error("Failed to upsert virtual MCP plugin config");
     }
-    return created;
+    return result;
   }
 
   async delete(virtualMcpId: string, pluginId: string): Promise<boolean> {
