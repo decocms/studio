@@ -26,6 +26,7 @@ import {
 import { lazy } from "../../common";
 import type { MeshContext } from "../../core/mesh-context";
 import { runCode, type ToolHandler } from "../../sandbox/run-code";
+import { getConnectionSlug } from "../../shared/utils/slugify";
 import type { ConnectionEntity } from "../../tools/connection/schema";
 
 /** Tool with connection metadata for routing */
@@ -33,6 +34,7 @@ interface ToolWithConnection extends Tool {
   _meta: {
     connectionId: string;
     connectionTitle: string;
+    originalName?: string;
   };
 }
 import type { VirtualMCPConnection } from "../../tools/virtual/schema";
@@ -40,13 +42,20 @@ import { createLazyClient } from "../lazy-client";
 import type { McpListCache } from "../mcp-list-cache";
 import type { VirtualClientOptions, VirtualToolDefinition } from "./types";
 
+interface CacheMapping {
+  connectionId: string;
+  originalName: string;
+}
+
 interface Cache<T> {
   data: T[];
   mappings: Map<string, string>; // key -> connectionId
 }
 
 /** Cached tool data structure */
-interface ToolCache extends Cache<ToolWithConnection> {
+interface ToolCache {
+  data: ToolWithConnection[];
+  mappings: Map<string, CacheMapping>; // namespacedName -> { connectionId, originalName }
   virtualTools: Map<string, VirtualToolDefinition>;
 }
 
@@ -186,6 +195,7 @@ export class PassthroughClient extends Client {
     extractKey: (item: T) => string,
     selectionKey: "selected_tools" | "selected_resources" | "selected_prompts",
     routingKey?: (item: T) => string,
+    deduplicate = true,
   ): Promise<Cache<T>> {
     const clients = this._clients;
     const extractRoutingKey = routingKey ?? extractKey;
@@ -240,7 +250,7 @@ export class PassthroughClient extends Client {
 
       for (const item of data) {
         const rKey = extractRoutingKey(item);
-        if (seen.has(rKey)) continue;
+        if (deduplicate && seen.has(rKey)) continue;
         seen.add(rKey);
 
         (item as any)._meta = {
@@ -250,7 +260,9 @@ export class PassthroughClient extends Client {
         };
 
         flattened.push(item);
-        mappings.set(rKey, connectionId);
+        if (deduplicate) {
+          mappings.set(rKey, connectionId);
+        }
       }
     }
 
@@ -259,6 +271,7 @@ export class PassthroughClient extends Client {
 
   /**
    * Load tools cache from downstream connections plus any virtual tools.
+   * Handles tool name collisions by namespacing: `connection-slug::tool_name`
    */
   private async loadToolsCache(): Promise<ToolCache> {
     const virtualToolsMap = new Map<string, VirtualToolDefinition>();
@@ -276,32 +289,112 @@ export class PassthroughClient extends Client {
       virtualToolsMap.set(virtualTool.name, virtualTool);
     }
 
+    // Pass deduplicate=false so we get ALL tools from all connections
     const downstream = await this.loadItemsFromClients<ToolWithConnection>(
       "tools",
       (client) =>
         client.listTools().then((r) => r.tools as ToolWithConnection[]),
       (item) => item.name,
       "selected_tools",
+      undefined,
+      false,
     );
 
-    // Virtual tools take precedence — prepend them and merge mappings
-    const mappings = new Map<string, string>();
-    for (const vt of virtualItems) {
-      mappings.set(vt.name, "__VIRTUAL__");
-    }
-    for (const [key, connId] of downstream.mappings) {
-      if (!mappings.has(key)) {
-        mappings.set(key, connId);
+    // Group downstream tools by name to detect collisions
+    const byName = new Map<string, ToolWithConnection[]>();
+    for (const tool of downstream.data) {
+      const existing = byName.get(tool.name);
+      if (existing) {
+        existing.push(tool);
+      } else {
+        byName.set(tool.name, [tool]);
       }
     }
 
-    // Filter downstream items that would conflict with virtual tool names
-    const filteredDownstream = downstream.data.filter(
-      (item) => !virtualToolsMap.has(item.name),
-    );
+    // Find colliding names: same tool name from different connections
+    const collidingNames = new Set<string>();
+    for (const [name, tools] of byName) {
+      const uniqueConnections = new Set(tools.map((t) => t._meta.connectionId));
+      if (uniqueConnections.size > 1 || virtualToolsMap.has(name)) {
+        collidingNames.add(name);
+      }
+    }
+
+    // Build slug map for connections, disambiguating slug collisions
+    const connectionSlugMap = new Map<string, string>();
+    const slugToConnIds = new Map<string, string[]>();
+
+    for (const [connId] of this._clients) {
+      const connection = this._connections.get(connId);
+      if (!connection) continue;
+      const slug = getConnectionSlug(connection);
+      connectionSlugMap.set(connId, slug);
+      const existing = slugToConnIds.get(slug);
+      if (existing) {
+        existing.push(connId);
+      } else {
+        slugToConnIds.set(slug, [connId]);
+      }
+    }
+
+    // Disambiguate slug collisions by appending last 4 chars of connection ID
+    for (const [slug, connIds] of slugToConnIds) {
+      if (connIds.length > 1) {
+        for (const connId of connIds) {
+          connectionSlugMap.set(connId, `${slug}-${connId.slice(-4)}`);
+        }
+      }
+    }
+
+    // Build final tool list and mappings
+    const mappings = new Map<string, CacheMapping>();
+    const finalTools: ToolWithConnection[] = [];
+
+    // Virtual tools first — always take precedence, never namespaced
+    for (const vt of virtualItems) {
+      mappings.set(vt.name, {
+        connectionId: "__VIRTUAL__",
+        originalName: vt.name,
+      });
+      finalTools.push(vt);
+    }
+
+    // Process downstream tools
+    for (const [name, tools] of byName) {
+      if (collidingNames.has(name)) {
+        // Namespace all colliding tools
+        for (const tool of tools) {
+          const slug =
+            connectionSlugMap.get(tool._meta.connectionId) ??
+            tool._meta.connectionId;
+          const namespacedName = `${slug}::${name}`;
+          const namespacedTool: ToolWithConnection = {
+            ...tool,
+            name: namespacedName,
+            _meta: {
+              ...tool._meta,
+              originalName: name,
+            },
+          };
+          mappings.set(namespacedName, {
+            connectionId: tool._meta.connectionId,
+            originalName: name,
+          });
+          finalTools.push(namespacedTool);
+        }
+      } else {
+        // No collision — keep first occurrence with plain name
+        const tool = tools[0]!;
+        mappings.set(name, {
+          connectionId: tool._meta.connectionId,
+          originalName: name,
+        });
+        finalTools.push(tool);
+      }
+    }
 
     return {
-      data: [...virtualItems, ...filteredDownstream],
+      data: finalTools,
       mappings,
       virtualTools: virtualToolsMap,
     };
@@ -327,15 +420,15 @@ export class PassthroughClient extends Client {
     const cache = await this._cachedTools;
     const clients = this._clients;
 
-    const connectionId = cache.mappings.get(params.name);
-    if (!connectionId) {
+    const mapping = cache.mappings.get(params.name);
+    if (!mapping) {
       return {
         content: [{ type: "text", text: `Tool not found: ${params.name}` }],
         isError: true,
       };
     }
 
-    if (connectionId === "__VIRTUAL__") {
+    if (mapping.connectionId === "__VIRTUAL__") {
       return this.executeVirtualTool(
         params.name,
         params.arguments ?? {},
@@ -344,7 +437,7 @@ export class PassthroughClient extends Client {
       );
     }
 
-    const client = clients.get(connectionId);
+    const client = clients.get(mapping.connectionId);
     if (!client) {
       return {
         content: [
@@ -358,7 +451,7 @@ export class PassthroughClient extends Client {
     }
 
     const result = await client.callTool({
-      name: params.name,
+      name: mapping.originalName,
       arguments: params.arguments ?? {},
     });
 
@@ -384,15 +477,25 @@ export class PassthroughClient extends Client {
     const code = virtualTool._meta["mcp.mesh"]["tool.fn"];
     const toolsRecord: Record<string, ToolHandler> = {};
 
-    for (const [name, connId] of cache.mappings) {
-      if (connId === "__VIRTUAL__") continue;
+    // Track which original names are ambiguous (appear in multiple connections)
+    const originalNameCount = new Map<string, number>();
+    for (const [, mapping] of cache.mappings) {
+      if (mapping.connectionId === "__VIRTUAL__") continue;
+      originalNameCount.set(
+        mapping.originalName,
+        (originalNameCount.get(mapping.originalName) ?? 0) + 1,
+      );
+    }
 
-      const client = clients.get(connId);
+    for (const [namespacedName, mapping] of cache.mappings) {
+      if (mapping.connectionId === "__VIRTUAL__") continue;
+
+      const client = clients.get(mapping.connectionId);
       if (!client) continue;
 
-      toolsRecord[name] = async (innerArgs: Record<string, unknown>) => {
+      const callTool = async (innerArgs: Record<string, unknown>) => {
         const result = await client.callTool({
-          name,
+          name: mapping.originalName,
           arguments: innerArgs,
         });
 
@@ -416,6 +519,15 @@ export class PassthroughClient extends Client {
 
         return result;
       };
+
+      // Always register under the namespaced name (same as plain name if no collision)
+      toolsRecord[namespacedName] = callTool;
+
+      // Also register under the original name if it's unambiguous
+      const count = originalNameCount.get(mapping.originalName) ?? 0;
+      if (count === 1) {
+        toolsRecord[mapping.originalName] = callTool;
+      }
     }
 
     try {
@@ -538,13 +650,13 @@ export class PassthroughClient extends Client {
     const clients = this._clients;
 
     // For direct tools, route to underlying proxy for streaming
-    const connectionId = cache.mappings.get(name);
-    if (connectionId) {
-      const client = clients.get(connectionId);
+    const mapping = cache.mappings.get(name);
+    if (mapping) {
+      const client = clients.get(mapping.connectionId);
       if (client && "callStreamableTool" in client) {
         // Type guard: client has streaming support
         const streamableClient = client as StreamableMCPProxyClient;
-        return streamableClient.callStreamableTool(name, args);
+        return streamableClient.callStreamableTool(mapping.originalName, args);
       }
     }
 
