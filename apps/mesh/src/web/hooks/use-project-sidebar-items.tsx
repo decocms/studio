@@ -19,7 +19,9 @@ import {
 import { pluginRootSidebarItems, pluginSidebarGroups } from "../index.tsx";
 import { usePreferences } from "./use-preferences.ts";
 
-export function useProjectSidebarItems(): SidebarSection[] {
+export function useProjectSidebarItems(options?: {
+  virtualMcpId?: string;
+}): SidebarSection[] {
   const { org: orgContext } = useProjectContext();
   const navigate = useNavigate();
   const routerState = useRouterState();
@@ -29,7 +31,8 @@ export function useProjectSidebarItems(): SidebarSection[] {
   const currentProject = useProjectContext().project;
 
   // The virtual MCP ID for this project (used in /$org/projects/$virtualMcpId routes)
-  const virtualMcpId = currentProject.id;
+  // Prefer explicit prop (from URL params) over project context
+  const virtualMcpId = options?.virtualMcpId ?? currentProject.id;
 
   // All projects (including org-admin) use project-level enabledPlugins
   const enabledPlugins = currentProject.enabledPlugins ?? [];
@@ -76,10 +79,15 @@ export function useProjectSidebarItems(): SidebarSection[] {
     onClick: () => {
       if (isOnHome) {
         window.dispatchEvent(new CustomEvent("reset-home-view"));
-      } else {
+      } else if (isOrgAdminProject) {
         navigate({
           to: "/$org",
           params: { org },
+        });
+      } else {
+        navigate({
+          to: "/$org/projects/$virtualMcpId",
+          params: { org, virtualMcpId },
         });
       }
     },
@@ -322,8 +330,8 @@ export function useProjectSidebarItems(): SidebarSection[] {
     isActive: isActiveRoute("tasks"),
     onClick: () =>
       navigate({
-        to: "/$org/tasks",
-        params: { org },
+        to: "/$org/projects/$virtualMcpId/tasks",
+        params: { org, virtualMcpId },
       }),
   };
 

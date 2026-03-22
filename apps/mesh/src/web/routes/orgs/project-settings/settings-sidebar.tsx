@@ -32,13 +32,12 @@ export function ProjectSettingsSidebar({
 }) {
   const { location } = useRouterState();
   const navigate = useNavigate();
-  const params = useParams({ strict: false }) as {
-    org: string;
-    virtualMcpId: string;
-  };
+  const params = useParams({
+    from: "/shell/$org/projects/$virtualMcpId/settings",
+  });
 
   const handleNavigate = (key: string) => {
-    const href = `/${params.org}/p/${params.virtualMcpId}/settings/${key}`;
+    const href = `/${params.org}/projects/${params.virtualMcpId}/settings/${key}`;
     navigate({ href });
     onNavigate?.(key);
   };

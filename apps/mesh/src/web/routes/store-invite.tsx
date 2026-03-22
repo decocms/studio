@@ -20,7 +20,7 @@ function RedirectToLogin({ appName }: { appName: string }) {
 }
 
 function StoreInviteRedirect() {
-  const { appName } = useParams({ strict: false }) as { appName: string };
+  const { appName } = useParams({ from: "/store/$appName" });
   const search = useSearch({ strict: false }) as Record<string, string>;
   const { data: organizations, isPending } = authClient.useListOrganizations();
 
@@ -44,7 +44,7 @@ function StoreInviteRedirect() {
 }
 
 export default function StoreInviteRoute() {
-  const { appName } = useParams({ strict: false }) as { appName: string };
+  const { appName } = useParams({ from: "/store/$appName" });
 
   return (
     <>

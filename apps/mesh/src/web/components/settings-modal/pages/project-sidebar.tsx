@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import {
   useProjectContext,
   useMCPClient,
+  useVirtualMCP,
   SELF_MCP_ALIAS_ID,
 } from "@decocms/mesh-sdk";
 import { getUIResourceUri } from "@/mcp-apps/types.ts";
@@ -153,24 +154,9 @@ function ProjectSidebarForm() {
 
   const projectId = project.id ?? "";
 
-  // Fetch associated connections from the virtual MCP entity
-  const { data: virtualMcpData } = useQuery({
-    queryKey: KEYS.projectConnections(projectId),
-    enabled: !!project.id,
-    queryFn: async () => {
-      const result = await client.callTool({
-        name: "COLLECTION_VIRTUAL_MCP_GET",
-        arguments: { id: projectId },
-      });
-      return unwrapToolResult<{
-        item: {
-          connections: Array<{ connection_id: string }>;
-        } | null;
-      }>(result);
-    },
-  });
+  const virtualMcp = useVirtualMCP(projectId);
 
-  const connections = (virtualMcpData?.item?.connections ?? []).map((c) => ({
+  const connections = (virtualMcp?.connections ?? []).map((c) => ({
     id: c.connection_id,
     title: c.connection_id,
     icon: null,
@@ -283,7 +269,10 @@ function ProjectSidebarForm() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: KEYS.project(org.id, project.slug),
+        predicate: (query) =>
+          Array.isArray(query.queryKey) &&
+          query.queryKey.includes("collection") &&
+          query.queryKey.includes("VIRTUAL_MCP"),
       });
       toast.success("Sidebar updated");
     },

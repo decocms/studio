@@ -9,7 +9,7 @@
  * are handled server-side in models.ts (DECOPILOT_SYSTEM_PROMPT).
  */
 
-import { useParams } from "@tanstack/react-router";
+import { useMatch } from "@tanstack/react-router";
 
 /**
  * Hook that generates context for the AI assistant based on current state
@@ -19,7 +19,10 @@ import { useParams } from "@tanstack/react-router";
  */
 export function useContext(virtualMcpId?: string | null): string {
   // Extract route parameters directly using useParams
-  const params = useParams({ strict: false });
+  const collectionMatch = useMatch({
+    from: "/shell/$org/mcps/$appSlug/$collectionName/$itemId",
+    shouldThrow: false,
+  });
 
   const contextParts: string[] = [];
 
@@ -32,16 +35,20 @@ export function useContext(virtualMcpId?: string | null): string {
   // Add route context based on available params
   const routeContextParts: string[] = [];
 
-  if (params.connectionId) {
-    routeContextParts.push(`- Connection ID: ${params.connectionId}`);
+  if (collectionMatch?.params.appSlug) {
+    routeContextParts.push(
+      `- Connection ID: ${collectionMatch?.params.appSlug}`,
+    );
   }
 
-  if (params.collectionName) {
-    routeContextParts.push(`- Collection: ${params.collectionName}`);
+  if (collectionMatch?.params.collectionName) {
+    routeContextParts.push(
+      `- Collection: ${collectionMatch?.params.collectionName}`,
+    );
   }
 
-  if (params.itemId) {
-    routeContextParts.push(`- Item ID: ${params.itemId}`);
+  if (collectionMatch?.params.itemId) {
+    routeContextParts.push(`- Item ID: ${collectionMatch?.params.itemId}`);
   }
 
   if (routeContextParts.length > 0) {

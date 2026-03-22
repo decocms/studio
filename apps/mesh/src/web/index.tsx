@@ -373,6 +373,20 @@ const virtualMcpLayout = createRoute({
 // VIRTUAL MCP ROUTES (children of virtualMcpLayout)
 // ============================================
 
+// Project home - chat view (same as org home)
+const projectHomeRoute = createRoute({
+  getParentRoute: () => virtualMcpLayout,
+  path: "/",
+  component: lazyRouteComponent(() => import("./routes/orgs/home/page.tsx")),
+});
+
+// Project tasks
+const projectTasksRoute = createRoute({
+  getParentRoute: () => virtualMcpLayout,
+  path: "/tasks",
+  component: lazyRouteComponent(() => import("./routes/tasks.tsx")),
+});
+
 // Project settings — layout for /$org/projects/$virtualMcpId/settings/*
 const projectSettingsRoute = createRoute({
   getParentRoute: () => virtualMcpLayout,
@@ -521,6 +535,8 @@ const projectSettingsDirectWithChildren = projectSettingsRoute.addChildren([
 ]);
 
 const virtualMcpWithChildren = virtualMcpLayout.addChildren([
+  projectHomeRoute,
+  projectTasksRoute,
   projectSettingsDirectWithChildren,
   projectAppViewRoute,
   workflowsRoute,

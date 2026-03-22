@@ -1034,9 +1034,9 @@ function DashboardEditContent({ dashboardId }: { dashboardId: string }) {
 // ============================================================================
 
 export default function DashboardEditPage() {
-  const { dashboardId } = useParams({ strict: false }) as {
-    dashboardId: string;
-  };
+  const { dashboardId } = useParams({
+    from: "/shell/$org/monitoring/dashboards/$dashboardId/edit",
+  });
 
   return (
     <ErrorBoundary

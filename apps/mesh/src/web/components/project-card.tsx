@@ -2,36 +2,24 @@ import { Link } from "@tanstack/react-router";
 import { Settings } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useProjectContext } from "@decocms/mesh-sdk";
+import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import type {
-  ProjectUI,
-  BoundConnectionSummary,
-} from "@/web/hooks/use-project";
 
 interface ProjectCardProps {
-  project: {
-    id: string;
-    slug: string;
-    name: string;
-    description: string | null;
-    boundConnections: BoundConnectionSummary[];
-    ui: ProjectUI | null;
-    updatedAt: string;
-  };
+  project: VirtualMCPEntity;
   onSettingsClick?: (e: React.MouseEvent) => void;
 }
 
 export function ProjectCard({ project, onSettingsClick }: ProjectCardProps) {
   const { org } = useProjectContext();
 
-  const themeColor = project.ui?.themeColor ?? "#60a5fa";
+  const ui = project.metadata?.ui;
+  const themeColor = ui?.themeColor ?? "#60a5fa";
 
   const bannerStyle = {
-    backgroundColor: project.ui?.bannerColor ?? themeColor,
-    backgroundImage: project.ui?.banner
-      ? `url(${project.ui.banner})`
-      : undefined,
+    backgroundColor: ui?.bannerColor ?? themeColor,
+    backgroundImage: ui?.banner ? `url(${ui.banner})` : undefined,
     backgroundSize: "cover",
     backgroundPosition: "center",
   };
@@ -67,9 +55,9 @@ export function ProjectCard({ project, onSettingsClick }: ProjectCardProps) {
           {/* Top Section */}
           <div className="flex flex-col gap-4">
             {/* Project Icon */}
-            {project.ui?.icon ? (
+            {ui?.icon ? (
               <img
-                src={project.ui.icon}
+                src={ui.icon}
                 alt=""
                 className="size-8 rounded-md object-cover"
               />
@@ -79,7 +67,7 @@ export function ProjectCard({ project, onSettingsClick }: ProjectCardProps) {
                 style={{ backgroundColor: themeColor }}
               >
                 <span className="text-sm font-medium text-white">
-                  {project.name.charAt(0).toUpperCase()}
+                  {project.title.charAt(0).toUpperCase()}
                 </span>
               </div>
             )}
@@ -87,11 +75,11 @@ export function ProjectCard({ project, onSettingsClick }: ProjectCardProps) {
             {/* Name & Time */}
             <div className="flex flex-col">
               <h3 className="font-medium text-base text-foreground truncate">
-                {project.name}
+                {project.title}
               </h3>
               <p className="text-sm text-muted-foreground">
                 Edited{" "}
-                {formatDistanceToNow(new Date(project.updatedAt), {
+                {formatDistanceToNow(new Date(project.updated_at), {
                   addSuffix: true,
                 })}
               </p>
@@ -102,18 +90,18 @@ export function ProjectCard({ project, onSettingsClick }: ProjectCardProps) {
           <div className="flex items-center justify-between mt-4">
             {/* Bound Connection Icons */}
             <div className="flex pr-2">
-              {project.boundConnections.slice(0, 4).map((conn) => (
+              {project.connections.slice(0, 4).map((conn) => (
                 <div
-                  key={conn.id}
+                  key={conn.connection_id}
                   className="-mr-2 rounded-md border border-background"
                 >
-                  <ConnectionIcon connection={conn} />
+                  <ConnectionIcon connectionId={conn.connection_id} />
                 </div>
               ))}
-              {project.boundConnections.length > 4 && (
+              {project.connections.length > 4 && (
                 <div className="-mr-2 rounded-md border border-background">
                   <div className="size-6 rounded-md bg-background border border-black/10 shadow-sm flex items-center justify-center text-xs text-muted-foreground">
-                    +{project.boundConnections.length - 4}
+                    +{project.connections.length - 4}
                   </div>
                 </div>
               )}
@@ -137,30 +125,14 @@ export function ProjectCard({ project, onSettingsClick }: ProjectCardProps) {
   );
 }
 
-function ConnectionIcon({
-  connection,
-}: {
-  connection: BoundConnectionSummary;
-}) {
+function ConnectionIcon({ connectionId }: { connectionId: string }) {
   const baseClasses =
     "size-6 rounded-md bg-background border border-black/10 shadow-sm flex items-center justify-center overflow-hidden";
 
-  if (connection.icon) {
-    return (
-      <div className={baseClasses} title={connection.title}>
-        <img
-          src={connection.icon}
-          alt={connection.title}
-          className="size-4 object-cover"
-        />
-      </div>
-    );
-  }
-
   return (
-    <div className={baseClasses} title={connection.title}>
+    <div className={baseClasses} title={connectionId}>
       <span className="text-[10px] text-muted-foreground font-medium">
-        {connection.title.charAt(0).toUpperCase()}
+        {connectionId.charAt(0).toUpperCase()}
       </span>
     </div>
   );

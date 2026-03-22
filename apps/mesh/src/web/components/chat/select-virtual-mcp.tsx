@@ -13,11 +13,8 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import {
-  isDecopilot,
-  useVirtualMCPs,
-  type VirtualMCPEntity,
-} from "@decocms/mesh-sdk";
+import { isDecopilot, type VirtualMCPEntity } from "@decocms/mesh-sdk";
+import { useAgents } from "@/web/hooks/use-agents";
 import { Check, SearchMd, Users03 } from "@untitledui/icons";
 import {
   useEffect,
@@ -221,7 +218,7 @@ export function VirtualMCPSelector({
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Use provided virtual MCPs or fetch from hook
-  const virtualMcpsFromHook = useVirtualMCPs();
+  const virtualMcpsFromHook = useAgents();
   const allVirtualMcps = virtualMcpsProp ?? virtualMcpsFromHook;
 
   // Filter out Decopilot from the list

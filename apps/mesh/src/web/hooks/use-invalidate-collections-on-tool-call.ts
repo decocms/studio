@@ -7,7 +7,7 @@
  */
 
 import { useQueryClient } from "@tanstack/react-query";
-import { useParams } from "@tanstack/react-router";
+import { useMatch } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { KEYS } from "../lib/query-keys";
 import { useProjectContext } from "@decocms/mesh-sdk";
@@ -20,7 +20,10 @@ import { useProjectContext } from "@decocms/mesh-sdk";
 export function useInvalidateCollectionsOnToolCall() {
   const queryClient = useQueryClient();
   const { org } = useProjectContext();
-  const params = useParams({ strict: false });
+  const collectionMatch = useMatch({
+    from: "/shell/$org/mcps/$appSlug/$collectionName/$itemId",
+    shouldThrow: false,
+  });
 
   return (event: { toolCall: { toolName: string } }) => {
     const toolName = event.toolCall.toolName;
@@ -37,7 +40,7 @@ export function useInvalidateCollectionsOnToolCall() {
 
     // Try to extract connectionId from URL params
     // Matches routes like /:org/mcps/:connectionId or /:org/mcps/:connectionId/:collectionName/:itemId
-    const connectionId = params.connectionId;
+    const connectionId = collectionMatch?.params.appSlug;
 
     if (!connectionId) {
       // No connectionId in URL, can't invalidate

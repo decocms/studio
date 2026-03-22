@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   Popover,
@@ -21,9 +21,9 @@ import {
   useProjectContext,
   useMCPClient,
   useConnections,
+  useVirtualMCP,
   SELF_MCP_ALIAS_ID,
 } from "@decocms/mesh-sdk";
-import { KEYS } from "@/web/lib/query-keys";
 import { unwrapToolResult } from "@/web/lib/unwrap-tool-result";
 
 function ConnectionIcon({
@@ -56,24 +56,10 @@ function ProjectDependenciesForm() {
   const projectId = project.id ?? "";
   const [popoverOpen, setPopoverOpen] = useState(false);
 
-  const { data: virtualMcpData } = useQuery({
-    queryKey: KEYS.projectConnections(projectId),
-    enabled: !!project.id,
-    queryFn: async () => {
-      const result = await client.callTool({
-        name: "COLLECTION_VIRTUAL_MCP_GET",
-        arguments: { id: projectId },
-      });
-      return unwrapToolResult<{
-        item: {
-          connections: Array<{ connection_id: string }>;
-        } | null;
-      }>(result);
-    },
-  });
+  const virtualMcp = useVirtualMCP(projectId);
 
   const associatedIds = new Set(
-    (virtualMcpData?.item?.connections ?? []).map((c) => c.connection_id),
+    (virtualMcp?.connections ?? []).map((c) => c.connection_id),
   );
 
   const associatedConnections = (allConnections ?? []).filter((c) =>
@@ -84,20 +70,21 @@ function ProjectDependenciesForm() {
   );
 
   const invalidateQueries = () => {
+    // Invalidate all VIRTUAL_MCP collection queries (covers SDK useVirtualMCP/useVirtualMCPs)
     queryClient.invalidateQueries({
-      queryKey: KEYS.projectConnections(projectId),
-    });
-    queryClient.invalidateQueries({
-      queryKey: KEYS.project(org.id, project.slug),
+      predicate: (query) =>
+        Array.isArray(query.queryKey) &&
+        query.queryKey.includes("collection") &&
+        query.queryKey.includes("VIRTUAL_MCP"),
     });
   };
 
   const addMutation = useMutation({
     mutationFn: async (connectionId: string) => {
       // Get current connections and add the new one
-      const currentConnections = (virtualMcpData?.item?.connections ?? []).map(
-        (c) => ({ connection_id: c.connection_id }),
-      );
+      const currentConnections = (virtualMcp?.connections ?? []).map((c) => ({
+        connection_id: c.connection_id,
+      }));
       const result = await client.callTool({
         name: "COLLECTION_VIRTUAL_MCP_UPDATE",
         arguments: {
@@ -124,9 +111,9 @@ function ProjectDependenciesForm() {
   const removeMutation = useMutation({
     mutationFn: async (connectionId: string) => {
       // Get current connections and remove the specified one
-      const currentConnections = (
-        virtualMcpData?.item?.connections ?? []
-      ).filter((c) => c.connection_id !== connectionId);
+      const currentConnections = (virtualMcp?.connections ?? []).filter(
+        (c) => c.connection_id !== connectionId,
+      );
       const result = await client.callTool({
         name: "COLLECTION_VIRTUAL_MCP_UPDATE",
         arguments: {

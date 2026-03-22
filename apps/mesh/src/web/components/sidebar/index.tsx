@@ -1,16 +1,12 @@
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { useProjectSidebarItems } from "@/web/hooks/use-project-sidebar-items";
-import { KEYS } from "@/web/lib/query-keys";
 import {
   ProjectContextProvider,
   useIsOrgAdmin,
   useProjectContext,
-  useMCPClient,
-  SELF_MCP_ALIAS_ID,
+  useVirtualMCP,
 } from "@decocms/mesh-sdk";
-import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
-import { useQuery } from "@tanstack/react-query";
-import { useParams } from "@tanstack/react-router";
+import { useMatch } from "@tanstack/react-router";
 import { Suspense } from "react";
 import { NavigationSidebar } from "./navigation";
 import { MeshSidebarHeader } from "./header";
@@ -27,14 +23,15 @@ export type {
 
 interface MeshSidebarProps {
   onCreateProject?: () => void;
+  virtualMcpId?: string;
 }
 
 /**
  * Sidebar content that reads from the current ProjectContext.
  * Renders org-level or project-level sidebar items depending on context.
  */
-function SidebarContent({ onCreateProject }: MeshSidebarProps) {
-  const sidebarSections = useProjectSidebarItems();
+function SidebarContent({ onCreateProject, virtualMcpId }: MeshSidebarProps) {
+  const sidebarSections = useProjectSidebarItems({ virtualMcpId });
   const isOrgAdmin = useIsOrgAdmin();
 
   return (
@@ -73,27 +70,16 @@ function ProjectScopedSidebar({
 }) {
   const { org } = useProjectContext();
 
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-  });
-
-  const { data: entity } = useQuery({
-    queryKey: KEYS.virtualMcp(org.id, virtualMcpId),
-    queryFn: async () => {
-      const result = (await client.callTool({
-        name: "COLLECTION_VIRTUAL_MCP_GET",
-        arguments: { id: virtualMcpId },
-      })) as { structuredContent?: unknown };
-      return (result.structuredContent ?? result) as VirtualMCPEntity;
-    },
-    enabled: !!org.id && !!virtualMcpId,
-    staleTime: 30000,
-  });
+  const entity = useVirtualMCP(virtualMcpId);
 
   // While loading or if entity not found, fall back to org-level sidebar
   if (!entity) {
-    return <SidebarContent onCreateProject={onCreateProject} />;
+    return (
+      <SidebarContent
+        onCreateProject={onCreateProject}
+        virtualMcpId={virtualMcpId}
+      />
+    );
   }
 
   const slug =
@@ -135,20 +121,27 @@ function ProjectScopedSidebar({
 
   return (
     <ProjectContextProvider org={org} project={projectData}>
-      <SidebarContent onCreateProject={onCreateProject} />
+      <SidebarContent
+        onCreateProject={onCreateProject}
+        virtualMcpId={virtualMcpId}
+      />
     </ProjectContextProvider>
   );
 }
 
-export function MeshSidebar({ onCreateProject }: MeshSidebarProps) {
-  const params = useParams({ strict: false }) as {
-    virtualMcpId?: string;
-  };
+export function MeshSidebar({
+  onCreateProject,
+}: Omit<MeshSidebarProps, "virtualMcpId">) {
+  const projectMatch = useMatch({
+    from: "/shell/$org/projects/$virtualMcpId",
+    shouldThrow: false,
+  });
+  const virtualMcpId = projectMatch?.params.virtualMcpId;
 
-  if (params.virtualMcpId) {
+  if (virtualMcpId) {
     return (
       <ProjectScopedSidebar
-        virtualMcpId={params.virtualMcpId}
+        virtualMcpId={virtualMcpId}
         onCreateProject={onCreateProject}
       />
     );

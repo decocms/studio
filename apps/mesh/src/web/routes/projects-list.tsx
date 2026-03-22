@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useProjectContext } from "@decocms/mesh-sdk";
-import { useProjects } from "@/web/hooks/use-project";
+import { useProjects } from "@/web/hooks/use-projects";
 import { Page } from "@/web/components/page";
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
 import { ProjectCard } from "@/web/components/project-card";
@@ -37,21 +37,19 @@ function ImportFromDecoButton() {
 
 export default function ProjectsListPage() {
   const { org } = useProjectContext();
-  const { data: projects, isLoading } = useProjects(org.id);
+  const projects = useProjects();
   const { enableDecoImport } = usePublicConfig();
   const [search, setSearch] = useState("");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const navigate = useNavigate();
 
   // Filter out org-admin and apply search
-  const userProjects =
-    projects
-      ?.filter((p) => p.slug !== "org-admin")
-      ?.filter(
-        (p) =>
-          p.name.toLowerCase().includes(search.toLowerCase()) ||
-          p.description?.toLowerCase().includes(search.toLowerCase()),
-      ) ?? [];
+  const userProjects = projects.filter(
+    (p) =>
+      p.id !== org.id &&
+      (p.title.toLowerCase().includes(search.toLowerCase()) ||
+        p.description?.toLowerCase().includes(search.toLowerCase())),
+  );
 
   const handleSettingsClick = (projectId: string) => {
     navigate({
@@ -104,22 +102,8 @@ export default function ProjectsListPage() {
 
       {/* Content */}
       <Page.Content className="@container">
-        {/* Loading State */}
-        {isLoading && (
-          <div className="p-5">
-            <div className="grid grid-cols-1 @lg:grid-cols-2 @4xl:grid-cols-3 @6xl:grid-cols-4 gap-4">
-              {[...Array(4)].map((_, i) => (
-                <div
-                  key={i}
-                  className="h-[240px] rounded-xl bg-muted animate-pulse"
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Empty State */}
-        {!isLoading && userProjects.length === 0 && (
+        {userProjects.length === 0 && (
           <div className="flex items-center h-full">
             <EmptyState
               image={
@@ -144,7 +128,7 @@ export default function ProjectsListPage() {
         )}
 
         {/* Card Grid */}
-        {!isLoading && userProjects.length > 0 && (
+        {userProjects.length > 0 && (
           <div className="p-5">
             <div className="grid grid-cols-1 @lg:grid-cols-2 @4xl:grid-cols-3 @6xl:grid-cols-4 gap-4">
               {userProjects.map((project) => (

@@ -15,21 +15,19 @@ import {
 } from "@deco/ui/components/collapsible.tsx";
 import { ChevronDown, ChevronRight, Plus } from "@untitledui/icons";
 import { useProjectContext } from "@decocms/mesh-sdk";
-import { useProjects, type ProjectWithBindings } from "@/web/hooks/use-project";
+import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
+import { useProjects } from "@/web/hooks/use-projects";
 import { CreateProjectDialog } from "@/web/components/create-project-dialog";
 import { cn } from "@deco/ui/lib/utils.ts";
 
-function ProjectIcon({
-  project,
-}: {
-  project: ProjectWithBindings & { organizationId: string };
-}) {
-  const themeColor = project.ui?.themeColor ?? "#60a5fa";
+function ProjectIcon({ project }: { project: VirtualMCPEntity }) {
+  const ui = project.metadata?.ui;
+  const themeColor = ui?.themeColor ?? "#60a5fa";
 
-  if (project.ui?.icon) {
+  if (ui?.icon) {
     return (
       <img
-        src={project.ui.icon}
+        src={ui.icon}
         alt=""
         className="size-4 rounded object-cover border border-border/50"
       />
@@ -42,17 +40,13 @@ function ProjectIcon({
       style={{ backgroundColor: themeColor }}
     >
       <span className="text-[10px] font-medium text-white">
-        {project.name.charAt(0).toUpperCase()}
+        {project.title.charAt(0).toUpperCase()}
       </span>
     </div>
   );
 }
 
-function ProjectListItem({
-  project,
-}: {
-  project: ProjectWithBindings & { organizationId: string };
-}) {
+function ProjectListItem({ project }: { project: VirtualMCPEntity }) {
   const navigate = useNavigate();
   const { org } = useProjectContext();
 
@@ -65,11 +59,11 @@ function ProjectListItem({
             params: { org: org.slug, virtualMcpId: project.id },
           });
         }}
-        tooltip={project.name}
+        tooltip={project.title}
       >
         <ProjectIcon project={project} />
         <span className="truncate flex-1 group-data-[collapsible=icon]:hidden">
-          {project.name}
+          {project.title}
         </span>
         <ChevronRight
           size={12}
@@ -81,35 +75,9 @@ function ProjectListItem({
 }
 
 function ProjectsSectionContent() {
-  const { org } = useProjectContext();
-  const { data: projects, isLoading } = useProjects(org.id);
+  const projects = useProjects();
   const [isOpen, setIsOpen] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-
-  const userProjects = projects ?? [];
-
-  if (isLoading) {
-    return (
-      <SidebarGroup className="py-0 px-0">
-        <SidebarGroupContent>
-          <SidebarMenu className="gap-0.5">
-            <SidebarMenuItem>
-              <div className="flex items-center gap-2 px-2 py-2">
-                <Skeleton className="h-4 w-4 rounded" />
-                <Skeleton className="h-4 flex-1" />
-              </div>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <div className="flex items-center gap-2 px-2 py-2">
-                <Skeleton className="h-4 w-4 rounded" />
-                <Skeleton className="h-4 flex-1" />
-              </div>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarGroupContent>
-      </SidebarGroup>
-    );
-  }
 
   return (
     <>
@@ -151,14 +119,14 @@ function ProjectsSectionContent() {
 
                 {/* Project List */}
                 <CollapsibleContent>
-                  {userProjects.length === 0 ? (
+                  {projects.length === 0 ? (
                     <SidebarMenuItem>
                       <div className="px-2 py-2 text-xs text-muted-foreground">
                         No projects yet
                       </div>
                     </SidebarMenuItem>
                   ) : (
-                    userProjects.map((project) => (
+                    projects.map((project) => (
                       <ProjectListItem key={project.id} project={project} />
                     ))
                   )}

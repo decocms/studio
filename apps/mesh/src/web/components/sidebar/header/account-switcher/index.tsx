@@ -1,4 +1,4 @@
-import { useNavigate, useParams } from "@tanstack/react-router";
+import { useNavigate, useMatch } from "@tanstack/react-router";
 import { Suspense } from "react";
 import { authClient } from "@/web/lib/auth-client";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
@@ -51,9 +51,13 @@ export function MeshAccountSwitcher({
   isCollapsed = false,
   onCreateProject,
 }: MeshAccountSwitcherProps) {
-  const { org: orgParam } = useParams({ strict: false }) as {
-    org?: string;
-  };
+  const orgMatch = useMatch({ from: "/shell/$org", shouldThrow: false });
+  const projectMatch = useMatch({
+    from: "/shell/$org/projects/$virtualMcpId",
+    shouldThrow: false,
+  });
+  const orgParam = orgMatch?.params.org;
+  const currentVirtualMcpId = projectMatch?.params.virtualMcpId;
   const { data: organizations } = authClient.useListOrganizations();
   const navigate = useNavigate();
 
@@ -63,8 +67,7 @@ export function MeshAccountSwitcher({
   const [showOrgList, setShowOrgList] = useState(false);
   const isMobile = useIsMobile();
 
-  // The account switcher always shows the org-level (Studio) view
-  const isStudio = true;
+  const isStudio = !currentVirtualMcpId;
 
   const handleSelectStudio = () => {
     if (!orgParam) return;
@@ -264,8 +267,7 @@ export function MeshAccountSwitcher({
               {currentOrg && (
                 <Suspense fallback={<ProjectListSkeleton />}>
                   <UserProjectItems
-                    organizationId={currentOrg.id}
-                    currentProjectSlug={undefined}
+                    currentProjectId={currentVirtualMcpId}
                     orgSlug={orgParam ?? ""}
                     onSelect={handleSelectProject}
                   />

@@ -18,11 +18,8 @@ import {
 } from "@deco/ui/components/popover.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import {
-  isDecopilot,
-  useProjectContext,
-  useVirtualMCPs,
-} from "@decocms/mesh-sdk";
+import { isDecopilot, useProjectContext } from "@decocms/mesh-sdk";
+import { useAgents } from "@/web/hooks/use-agents";
 import { readRecentAgentIds } from "@/web/components/chat/store/local-storage";
 import { ChevronRight, Plus, Users03 } from "@untitledui/icons";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
@@ -194,9 +191,7 @@ function CreateAgentButton() {
 }
 
 function AgentsListContent() {
-  const virtualMcps = useVirtualMCPs({
-    filters: [{ column: "subtype", value: "agent" }],
-  });
+  const virtualMcps = useAgents();
   const { selectedVirtualMcp, setVirtualMcpId } = useChatStable();
   const { locator } = useProjectContext();
   const [siteEditorModalOpen, setSiteEditorModalOpen] = useState(false);

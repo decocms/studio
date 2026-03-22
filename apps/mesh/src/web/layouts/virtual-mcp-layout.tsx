@@ -7,141 +7,63 @@
  */
 
 import { Outlet, useParams, useNavigate } from "@tanstack/react-router";
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import { SplashScreen } from "@/web/components/splash-screen";
-import { ProjectContextProvider, useProjectContext } from "@decocms/mesh-sdk";
-import { useMCPClient, SELF_MCP_ALIAS_ID } from "@decocms/mesh-sdk";
-import { useQuery } from "@tanstack/react-query";
-import { KEYS } from "@/web/lib/query-keys";
+import {
+  ProjectContextProvider,
+  useProjectContext,
+  useVirtualMCP,
+} from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import { SettingsModal } from "@/web/components/settings-modal/index";
-import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
-
-/**
- * Error display for when a virtual MCP is not found
- */
-function VirtualMCPNotFoundError({
-  virtualMcpId,
-  orgSlug,
-}: {
-  virtualMcpId: string;
-  orgSlug: string;
-}) {
-  const navigate = useNavigate();
-
-  return (
-    <div className="flex flex-col items-center justify-center h-full gap-4 p-8">
-      <h1 className="text-xl font-semibold">Project not found</h1>
-      <p className="text-muted-foreground text-center">
-        The project "{virtualMcpId}" does not exist in this organization.
-      </p>
-      <Button
-        variant="link"
-        onClick={() =>
-          navigate({
-            to: "/$org",
-            params: { org: orgSlug },
-          })
-        }
-      >
-        Go to organization home
-      </Button>
-    </div>
-  );
-}
-
-/**
- * Error display for when a virtual MCP request fails
- */
-function VirtualMCPRequestError({
-  virtualMcpId,
-  orgSlug,
-  error,
-}: {
-  virtualMcpId: string;
-  orgSlug: string;
-  error: Error;
-}) {
-  const navigate = useNavigate();
-
-  return (
-    <div className="flex flex-col items-center justify-center h-full gap-4 p-8">
-      <h1 className="text-xl font-semibold">Failed to load project</h1>
-      <p className="text-muted-foreground text-center">
-        There was an error loading the project "{virtualMcpId}".
-      </p>
-      <p className="text-sm text-muted-foreground">{error.message}</p>
-      <Button
-        variant="link"
-        onClick={() =>
-          navigate({
-            to: "/$org",
-            params: { org: orgSlug },
-          })
-        }
-      >
-        Go to organization home
-      </Button>
-    </div>
-  );
-}
+import { useChatStable } from "@/web/components/chat/context";
+import { useDecoChatOpen } from "@/web/hooks/use-deco-chat-open";
 
 /**
  * Inner component that fetches virtual MCP data and provides project context.
  * Must be rendered inside shell-layout's ProjectContextProvider to access org data.
  */
 function VirtualMCPLayoutContent() {
-  const params = useParams({ strict: false });
+  const params = useParams({ from: "/shell/$org/projects/$virtualMcpId" });
   const { org } = useProjectContext();
+  const { setVirtualMcpId } = useChatStable();
+  const [, setChatOpen] = useDecoChatOpen();
+  const navigate = useNavigate();
 
-  const orgSlug = params.org as string;
-  const virtualMcpId = params.virtualMcpId as string;
+  const orgSlug = params.org;
+  const virtualMcpId = params.virtualMcpId;
 
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-  });
+  // Fetch using the same SDK hook as agent-detail (suspense-based)
+  const entity = useVirtualMCP(virtualMcpId);
 
-  // Fetch the virtual MCP by ID
-  const {
-    data: entity,
-    isLoading,
-    error,
-  } = useQuery({
-    queryKey: KEYS.virtualMcp(org.id, virtualMcpId),
-    queryFn: async () => {
-      const result = (await client.callTool({
-        name: "COLLECTION_VIRTUAL_MCP_GET",
-        arguments: {
-          id: virtualMcpId,
-        },
-      })) as { structuredContent?: unknown };
-      return (result.structuredContent ?? result) as VirtualMCPEntity;
-    },
-    enabled: !!org.id && !!virtualMcpId,
-    staleTime: 30000,
-  });
-
-  // Loading state
-  if (isLoading) {
-    return <SplashScreen />;
-  }
-
-  // Error handling
-  if (error) {
-    return (
-      <VirtualMCPRequestError
-        virtualMcpId={virtualMcpId}
-        orgSlug={orgSlug}
-        error={error}
-      />
-    );
-  }
+  // Select this project's virtual MCP in the chat store and close the side-panel chat
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    if (!entity) return;
+    setVirtualMcpId(entity.id);
+    setChatOpen(false);
+  }, [entity?.id]);
 
   // Not found
   if (!entity) {
     return (
-      <VirtualMCPNotFoundError virtualMcpId={virtualMcpId} orgSlug={orgSlug} />
+      <div className="flex flex-col items-center justify-center h-full gap-4 p-8">
+        <h1 className="text-xl font-semibold">Project not found</h1>
+        <p className="text-muted-foreground text-center">
+          The project "{virtualMcpId}" does not exist in this organization.
+        </p>
+        <Button
+          variant="link"
+          onClick={() =>
+            navigate({
+              to: "/$org",
+              params: { org: orgSlug },
+            })
+          }
+        >
+          Go to organization home
+        </Button>
+      </div>
     );
   }
 

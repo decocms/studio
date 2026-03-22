@@ -31,7 +31,7 @@ import {
   ProjectContextProviderProps,
 } from "@decocms/mesh-sdk";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { Outlet, useParams, useRouterState } from "@tanstack/react-router";
+import { Outlet, useMatch, useRouterState } from "@tanstack/react-router";
 import { PropsWithChildren, Suspense, useTransition } from "react";
 import { KEYS } from "../lib/query-keys";
 
@@ -209,7 +209,8 @@ function ShellLayoutInner({
 }
 
 function ShellLayoutContent() {
-  const { org } = useParams({ strict: false });
+  const orgMatch = useMatch({ from: "/shell/$org", shouldThrow: false });
+  const org = orgMatch?.params.org;
   const routerState = useRouterState();
   const [createProjectDialogOpen, setCreateProjectDialogOpen] = useState(false);
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);

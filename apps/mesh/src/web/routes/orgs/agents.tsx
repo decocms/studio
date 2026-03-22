@@ -17,10 +17,10 @@ import { useCreateVirtualMCP } from "@/web/hooks/use-create-virtual-mcp";
 import {
   isDecopilot,
   useProjectContext,
-  useVirtualMCPs,
   useVirtualMCPActions,
   type VirtualMCPEntity,
 } from "@decocms/mesh-sdk";
+import { useAgents } from "@/web/hooks/use-agents";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -839,13 +839,7 @@ function OrgAgentsContent() {
     defaultViewMode: "cards",
   });
 
-  const virtualMcps = useVirtualMCPs({
-    ...listState,
-    filters: [
-      ...(listState.filters ?? []),
-      { column: "subtype", value: "agent" },
-    ],
-  });
+  const virtualMcps = useAgents(listState);
   const { createVirtualMCP, isCreating } = useCreateVirtualMCP({
     navigateOnCreate: true,
   });

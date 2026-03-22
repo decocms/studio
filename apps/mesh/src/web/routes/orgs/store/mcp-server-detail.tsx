@@ -231,9 +231,9 @@ function StoreMCPServerDetailContent() {
   const { org } = useProjectContext();
   const navigate = useNavigate();
   // Get serverSlug from the child route
-  const { appName: serverSlug } = useParams({ strict: false }) as {
-    appName?: string;
-  };
+  const { appName: serverSlug } = useParams({
+    from: "/shell/$org/store/$appName",
+  });
   const {
     registryId: registryIdParam,
     serverName,

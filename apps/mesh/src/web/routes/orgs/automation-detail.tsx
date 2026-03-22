@@ -1197,9 +1197,9 @@ function RunHistorySection({
 // ============================================================================
 
 export default function AutomationDetailPage() {
-  const { automationId } = useParams({ strict: false }) as {
-    automationId: string;
-  };
+  const { automationId } = useParams({
+    from: "/shell/$org/automations/$automationId",
+  });
   const navigate = useNavigate();
   const { org } = useProjectContext();
 

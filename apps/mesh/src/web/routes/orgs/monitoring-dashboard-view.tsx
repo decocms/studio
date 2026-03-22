@@ -10,9 +10,9 @@ import { useProjectContext } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
 
 export default function DashboardViewRoute() {
-  const { dashboardId } = useParams({ strict: false }) as {
-    dashboardId: string;
-  };
+  const { dashboardId } = useParams({
+    from: "/shell/$org/monitoring/dashboards/$dashboardId",
+  });
   const { org } = useProjectContext();
   const navigate = useNavigate();
 

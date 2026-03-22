@@ -12,7 +12,9 @@ import { sourcePlugins } from "../plugins";
 import { PluginLayout } from "./plugin-layout";
 
 export default function DynamicPluginLayout() {
-  const { pluginId } = useParams({ strict: false }) as { pluginId: string };
+  const { pluginId } = useParams({
+    from: "/shell/$org/projects/$virtualMcpId/$pluginId",
+  });
 
   // Find the plugin by ID
   const plugin = sourcePlugins.find((p) => p.id === pluginId);
