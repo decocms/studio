@@ -265,6 +265,23 @@ export async function streamCore(
       windowSize,
     );
 
+    // Find the last Claude Code sessionId for session resume
+    let resumeSessionId: string | undefined;
+    if (isClaudeCode) {
+      for (let i = allMessages.length - 1; i >= 0; i--) {
+        const msg = allMessages[i];
+        if (
+          msg?.role === "assistant" &&
+          (msg.metadata as { claudeCodeSessionId?: string })
+            ?.claudeCodeSessionId
+        ) {
+          resumeSessionId = (msg.metadata as { claudeCodeSessionId: string })
+            .claudeCodeSessionId;
+          break;
+        }
+      }
+    }
+
     const toolOutputMap = new Map<string, string>();
     const organization = ctx.organization!;
 
@@ -426,6 +443,7 @@ export async function streamCore(
 
         let reasoningStartAt: Date | null = null;
         let lastProviderMetadata: Record<string, unknown> | undefined;
+        let claudeCodeSessionId: string | undefined;
         llmCallStartTime = Date.now();
 
         // Build language model based on provider type
@@ -460,6 +478,7 @@ export async function streamCore(
                 },
               },
               toolApprovalLevel: input.toolApprovalLevel,
+              resume: resumeSessionId,
             },
           );
         } else {
@@ -632,6 +651,13 @@ export async function streamCore(
 
             if (part.type === "finish-step") {
               lastProviderMetadata = part.providerMetadata;
+              if (isClaudeCode && part.providerMetadata?.["claude-code"]) {
+                claudeCodeSessionId = (
+                  part.providerMetadata["claude-code"] as {
+                    sessionId?: string;
+                  }
+                ).sessionId;
+              }
               return;
             }
 
@@ -664,6 +690,7 @@ export async function streamCore(
 
               return {
                 ...(usage && { usage }),
+                ...(claudeCodeSessionId && { claudeCodeSessionId }),
               };
             }
 
