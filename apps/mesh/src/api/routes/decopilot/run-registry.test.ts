@@ -402,7 +402,7 @@ describe("RunRegistry", () => {
   // recoverOrphanedRuns
   // -------------------------------------------------------------------------
   describe("recoverOrphanedRuns", () => {
-    it("auto-resumes automation runs (trigger_id set)", async () => {
+    it("auto-resumes orphaned runs", async () => {
       const deps = makeNoopDeps();
       (
         deps.storage.listOrphanedRuns as ReturnType<typeof mock>
@@ -436,7 +436,7 @@ describe("RunRegistry", () => {
       expect(resumeFn).toHaveBeenCalled();
     });
 
-    it("skips interactive runs (trigger_id null)", async () => {
+    it("auto-resumes interactive runs (trigger_id null) too", async () => {
       const deps = makeNoopDeps();
       (
         deps.storage.listOrphanedRuns as ReturnType<typeof mock>
@@ -461,10 +461,13 @@ describe("RunRegistry", () => {
           },
         ]),
       );
+      (
+        deps.storage.claimOrphanedRun as ReturnType<typeof mock>
+      ).mockImplementation(() => Promise.resolve(true));
       const registry = createRegistry(deps);
       const resumeFn = mock(() => Promise.resolve());
       await registry.recoverOrphanedRuns(resumeFn);
-      expect(resumeFn).not.toHaveBeenCalled();
+      expect(resumeFn).toHaveBeenCalled();
     });
 
     it("skips when CAS claim fails", async () => {

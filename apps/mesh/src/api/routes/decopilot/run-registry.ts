@@ -143,8 +143,8 @@ export class RunRegistry {
   }
 
   /**
-   * Recover orphaned automation runs on startup. Interactive runs (no
-   * trigger_id) are left for the client to resume via POST /resume.
+   * Recover all orphaned runs on startup. Server crashes shouldn't
+   * punish users — every in-progress run gets resumed automatically.
    * Concurrency is capped at 5 concurrent resumes.
    */
   async recoverOrphanedRuns(
@@ -161,10 +161,6 @@ export class RunRegistry {
       const batch = orphans.slice(i, i + CONCURRENCY);
       await Promise.allSettled(
         batch.map(async (thread) => {
-          // Only auto-resume automation runs (trigger_id set)
-          // Interactive runs wait for client POST /resume
-          if (thread.trigger_id == null) return;
-
           const claimed = await this.deps.storage.claimOrphanedRun(
             thread.id,
             thread.organization_id,
@@ -172,9 +168,7 @@ export class RunRegistry {
           );
           if (!claimed) return; // Another pod got it
 
-          console.log(
-            `[RunRegistry] Auto-resuming automation run ${thread.id}`,
-          );
+          console.log(`[RunRegistry] Auto-resuming orphaned run ${thread.id}`);
           try {
             await resumeFn(thread);
           } catch (err) {
