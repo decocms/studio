@@ -7,7 +7,6 @@ import { EmptyState } from "@/web/components/empty-state.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { IconPicker } from "@/web/components/icon-picker.tsx";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
-import { AGENT_ICON_COLORS, getIconColor } from "@/web/components/agent-icon";
 import { useDecoChatOpen } from "@/web/hooks/use-deco-chat-open";
 import { useMCPAuthStatus } from "@/web/hooks/use-mcp-auth-status";
 import { authenticateMcp } from "@/web/lib/mcp-oauth";
@@ -383,70 +382,6 @@ function ConnectionItemSkeleton() {
       <div className="flex items-center px-4 py-2 border-t border-border bg-muted/25">
         <div className="h-5 w-20 rounded bg-muted animate-pulse" />
       </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Color picker for header
-// ---------------------------------------------------------------------------
-
-function ColorPicker({
-  value,
-  onChange,
-}: {
-  value: string | null | undefined;
-  onChange: (color: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const currentColor = value ? getIconColor(value) : null;
-
-  return (
-    <div className="relative">
-      <Tooltip delayDuration={0}>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            className={cn(
-              "size-7 rounded-md border border-border flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity",
-              currentColor?.bg ?? "bg-muted",
-            )}
-            onClick={() => setOpen(!open)}
-            aria-label="Pick a color"
-          >
-            <div
-              className={cn(
-                "size-4 rounded-sm",
-                currentColor?.bg ?? "bg-muted",
-              )}
-            />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">Theme color</TooltipContent>
-      </Tooltip>
-      {open && (
-        <div className="absolute top-full mt-2 right-0 z-50 p-2 rounded-lg border border-border bg-popover shadow-md">
-          <div className="grid grid-cols-8 gap-1.5">
-            {AGENT_ICON_COLORS.map((color) => (
-              <button
-                key={color.name}
-                type="button"
-                className={cn(
-                  "size-6 rounded-full cursor-pointer transition-all hover:scale-110",
-                  color.dot,
-                  value === color.name &&
-                    "ring-2 ring-offset-2 ring-foreground",
-                )}
-                onClick={() => {
-                  onChange(color.name);
-                  setOpen(false);
-                }}
-                aria-label={color.name}
-              />
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -1095,6 +1030,11 @@ Define step-by-step how the agent should handle requests.
                   <IconPicker
                     value={field.value}
                     onChange={field.onChange}
+                    onColorChange={(color) =>
+                      form.setValue("metadata.ui.themeColor", color, {
+                        shouldDirty: true,
+                      })
+                    }
                     name={
                       form.watch("title") || (isAgent ? "Agent" : "Project")
                     }
@@ -1115,30 +1055,6 @@ Define step-by-step how the agent should handle requests.
                   placeholder="Add a description..."
                 />
               </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Controller
-                control={form.control}
-                name="metadata.ui.themeColor"
-                render={({ field }) => (
-                  <ColorPicker
-                    value={field.value as string | null | undefined}
-                    onChange={(color) =>
-                      form.setValue("metadata.ui.themeColor", color, {
-                        shouldDirty: true,
-                      })
-                    }
-                  />
-                )}
-              />
-              <Switch
-                checked={form.watch("status") === "active"}
-                onCheckedChange={(checked) =>
-                  form.setValue("status", checked ? "active" : "inactive", {
-                    shouldDirty: true,
-                  })
-                }
-              />
             </div>
           </div>
 

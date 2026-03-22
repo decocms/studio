@@ -18,33 +18,8 @@ import { useProjectContext } from "@decocms/mesh-sdk";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
 import { useProjects } from "@/web/hooks/use-projects";
 import { CreateProjectDialog } from "@/web/components/create-project-dialog";
+import { AgentAvatar } from "@/web/components/agent-icon";
 import { cn } from "@deco/ui/lib/utils.ts";
-
-function ProjectIcon({ project }: { project: VirtualMCPEntity }) {
-  const ui = project.metadata?.ui;
-  const themeColor = ui?.themeColor ?? "#60a5fa";
-
-  if (ui?.icon) {
-    return (
-      <img
-        src={ui.icon}
-        alt=""
-        className="size-4 rounded object-cover border border-border/50"
-      />
-    );
-  }
-
-  return (
-    <div
-      className="size-4 rounded flex items-center justify-center border border-border/50"
-      style={{ backgroundColor: themeColor }}
-    >
-      <span className="text-[10px] font-medium text-white">
-        {project.title.charAt(0).toUpperCase()}
-      </span>
-    </div>
-  );
-}
 
 function ProjectListItem({ project }: { project: VirtualMCPEntity }) {
   const navigate = useNavigate();
@@ -61,7 +36,7 @@ function ProjectListItem({ project }: { project: VirtualMCPEntity }) {
         }}
         tooltip={project.title}
       >
-        <ProjectIcon project={project} />
+        <AgentAvatar icon={project.icon} name={project.title} size="xs" />
         <span className="truncate flex-1 group-data-[collapsible=icon]:hidden">
           {project.title}
         </span>

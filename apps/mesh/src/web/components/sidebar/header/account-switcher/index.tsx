@@ -1,7 +1,8 @@
+import { AgentAvatar } from "@/web/components/agent-icon";
 import { useNavigate, useMatch } from "@tanstack/react-router";
 import { Suspense } from "react";
 import { authClient } from "@/web/lib/auth-client";
-import { Avatar } from "@deco/ui/components/avatar.tsx";
+import { useProjects } from "@/web/hooks/use-projects";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -41,6 +42,35 @@ function getOrgColorStyle(name: string): {
   };
 }
 
+function OrgIcon({
+  org,
+  size = "sm",
+}: {
+  org: { name: string; logo?: string | null };
+  size?: "xs" | "sm";
+}) {
+  const sizeClass = size === "xs" ? "size-5" : "size-6";
+  const textClass = size === "xs" ? "text-[9px]" : "text-xs";
+
+  return (
+    <div
+      className={cn(
+        sizeClass,
+        "shrink-0 rounded-md flex items-center justify-center border border-border/50 overflow-hidden",
+      )}
+      style={org.logo ? undefined : getOrgColorStyle(org.name)}
+    >
+      {org.logo ? (
+        <img src={org.logo} alt="" className="size-full object-cover" />
+      ) : (
+        <span className={cn("font-semibold leading-none", textClass)}>
+          {org.name.slice(0, 2).toUpperCase()}
+        </span>
+      )}
+    </div>
+  );
+}
+
 interface MeshAccountSwitcherProps {
   isCollapsed?: boolean;
   /** Callback when creating a new project */
@@ -67,6 +97,10 @@ export function MeshAccountSwitcher({
   const [showOrgList, setShowOrgList] = useState(false);
   const isMobile = useIsMobile();
 
+  const projects = useProjects();
+  const currentProject = currentVirtualMcpId
+    ? projects.find((p) => p.id === currentVirtualMcpId)
+    : null;
   const isStudio = !currentVirtualMcpId;
 
   const handleSelectStudio = () => {
@@ -152,21 +186,12 @@ export function MeshAccountSwitcher({
                 )}
               </div>
             ) : (
-              <div
-                className={cn(
-                  "shrink-0 rounded-md flex items-center justify-center border border-border/50 overflow-hidden transition-[width,height] duration-300 ease-[var(--ease-out-quart)]",
-                  isCollapsed ? "size-6" : "size-8",
-                )}
-              >
-                <span
-                  className={cn(
-                    "font-semibold text-white",
-                    isCollapsed ? "text-xs" : "text-lg",
-                  )}
-                >
-                  ?
-                </span>
-              </div>
+              <AgentAvatar
+                icon={currentProject?.icon}
+                name={currentProject?.title ?? "Project"}
+                size={isCollapsed ? "xs" : "sm"}
+                className="shrink-0"
+              />
             )}
             {!isCollapsed && (
               <>
@@ -175,7 +200,7 @@ export function MeshAccountSwitcher({
                     {currentOrg?.name ?? "Select org"}
                   </span>
                   <span className="block text-sm font-semibold text-sidebar-foreground truncate leading-tight">
-                    Studio
+                    {currentProject?.title ?? "Studio"}
                   </span>
                 </div>
                 <ChevronSelectorVertical
@@ -210,13 +235,7 @@ export function MeshAccountSwitcher({
                     )}
                     onClick={() => handleSelectOrg(org.slug)}
                   >
-                    <Avatar
-                      url={org.logo ?? ""}
-                      fallback={org.name}
-                      size="xs"
-                      className="size-5 rounded-md shrink-0"
-                      objectFit="cover"
-                    />
+                    <OrgIcon org={org} size="xs" />
                     <span className="flex-1 truncate">{org.name}</span>
                     {org.slug === orgParam && (
                       <Check
@@ -242,13 +261,7 @@ export function MeshAccountSwitcher({
                 className={cn("gap-2.5", isStudio && "bg-accent")}
                 onClick={handleSelectStudio}
               >
-                <Avatar
-                  url={currentOrg?.logo ?? ""}
-                  fallback={currentOrg?.name ?? ""}
-                  size="sm"
-                  className="size-6 rounded-md shrink-0"
-                  objectFit="cover"
-                />
+                {currentOrg && <OrgIcon org={currentOrg} />}
                 <span className="flex-1 truncate">
                   Studio · {currentOrg?.name}
                 </span>
@@ -326,13 +339,7 @@ export function MeshAccountSwitcher({
                           )}
                           onClick={() => handleSelectOrg(org.slug)}
                         >
-                          <Avatar
-                            url={org.logo ?? ""}
-                            fallback={org.name}
-                            size="xs"
-                            className="size-5 rounded-md shrink-0"
-                            objectFit="cover"
-                          />
+                          <OrgIcon org={org} size="xs" />
                           <span className="flex-1 truncate">{org.name}</span>
                           {org.slug === orgParam && (
                             <Check
