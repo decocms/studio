@@ -3,6 +3,7 @@ import { useNavigate, useMatch } from "@tanstack/react-router";
 import { Suspense } from "react";
 import { authClient } from "@/web/lib/auth-client";
 import { useProjects } from "@/web/hooks/use-projects";
+import { useCreateProject } from "@/web/hooks/use-create-project";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -73,13 +74,10 @@ function OrgIcon({
 
 interface MeshAccountSwitcherProps {
   isCollapsed?: boolean;
-  /** Callback when creating a new project */
-  onCreateProject?: () => void;
 }
 
 export function MeshAccountSwitcher({
   isCollapsed = false,
-  onCreateProject,
 }: MeshAccountSwitcherProps) {
   const orgMatch = useMatch({ from: "/shell/$org", shouldThrow: false });
   const projectMatch = useMatch({
@@ -128,9 +126,7 @@ export function MeshAccountSwitcher({
     });
   };
 
-  const handleCreateProject = onCreateProject
-    ? () => onCreateProject()
-    : undefined;
+  const { createProject } = useCreateProject();
 
   const handleSettings = () => {
     if (!orgParam) return;
@@ -287,15 +283,10 @@ export function MeshAccountSwitcher({
                 </Suspense>
               )}
 
-              {handleCreateProject && (
-                <DropdownMenuItem
-                  className="gap-2.5"
-                  onClick={handleCreateProject}
-                >
-                  <Plus size={14} className="shrink-0 text-muted-foreground" />
-                  <span>Create project</span>
-                </DropdownMenuItem>
-              )}
+              <DropdownMenuItem className="gap-2.5" onClick={createProject}>
+                <Plus size={14} className="shrink-0 text-muted-foreground" />
+                <span>Create project</span>
+              </DropdownMenuItem>
 
               <DropdownMenuSeparator />
 

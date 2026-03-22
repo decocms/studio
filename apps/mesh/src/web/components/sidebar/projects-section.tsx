@@ -17,7 +17,7 @@ import { ChevronDown, ChevronRight, Plus } from "@untitledui/icons";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
 import { useProjects } from "@/web/hooks/use-projects";
-import { CreateProjectDialog } from "@/web/components/create-project-dialog";
+import { useCreateProject } from "@/web/hooks/use-create-project";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { cn } from "@deco/ui/lib/utils.ts";
 
@@ -52,7 +52,7 @@ function ProjectListItem({ project }: { project: VirtualMCPEntity }) {
 function ProjectsSectionContent() {
   const projects = useProjects();
   const [isOpen, setIsOpen] = useState(true);
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const { createProject } = useCreateProject();
 
   return (
     <>
@@ -83,7 +83,7 @@ function ProjectsSectionContent() {
                     </CollapsibleTrigger>
                     <button
                       type="button"
-                      onClick={() => setCreateDialogOpen(true)}
+                      onClick={createProject}
                       title="Create new project"
                       className="opacity-0 group-hover/projects-section:opacity-100 transition-opacity text-muted-foreground hover:text-foreground flex items-center justify-center h-4 rounded shrink-0"
                     >
@@ -111,11 +111,6 @@ function ProjectsSectionContent() {
           </SidebarGroup>
         </Collapsible>
       </div>
-
-      <CreateProjectDialog
-        open={createDialogOpen}
-        onOpenChange={setCreateDialogOpen}
-      />
     </>
   );
 }

@@ -6,7 +6,7 @@ import { Page } from "@/web/components/page";
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
 import { ProjectCard } from "@/web/components/project-card";
 import { EmptyState } from "@/web/components/empty-state.tsx";
-import { CreateProjectDialog } from "@/web/components/create-project-dialog";
+import { useCreateProject } from "@/web/hooks/use-create-project";
 import { ImportFromDecoDialog } from "@/web/components/import-from-deco-dialog";
 import { usePublicConfig } from "@/web/hooks/use-public-config";
 import {
@@ -52,7 +52,7 @@ export default function ProjectsListPage() {
   const actions = useVirtualMCPActions();
   const { enableDecoImport } = usePublicConfig();
   const [search, setSearch] = useState("");
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const { createProject } = useCreateProject();
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;
     title: string;
@@ -75,10 +75,6 @@ export default function ProjectsListPage() {
         virtualMcpId: projectId,
       },
     });
-  };
-
-  const handleCreateProject = () => {
-    setCreateDialogOpen(true);
   };
 
   const confirmDelete = async () => {
@@ -108,7 +104,7 @@ export default function ProjectsListPage() {
         </Page.Header.Left>
         <Page.Header.Right>
           {enableDecoImport && <ImportFromDecoButton />}
-          <Button onClick={handleCreateProject} size="sm">
+          <Button onClick={createProject} size="sm">
             <Plus size={14} />
             Create Project
           </Button>
@@ -145,7 +141,7 @@ export default function ProjectsListPage() {
               }
               actions={
                 !search && (
-                  <Button size="sm" onClick={handleCreateProject}>
+                  <Button size="sm" onClick={createProject}>
                     <Plus size={14} />
                     Create Project
                   </Button>
@@ -204,12 +200,6 @@ export default function ProjectsListPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* Create Project Dialog */}
-      <CreateProjectDialog
-        open={createDialogOpen}
-        onOpenChange={setCreateDialogOpen}
-      />
     </Page>
   );
 }

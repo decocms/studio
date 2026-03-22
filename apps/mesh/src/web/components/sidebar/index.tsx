@@ -22,7 +22,6 @@ export type {
 } from "./types";
 
 interface MeshSidebarProps {
-  onCreateProject?: () => void;
   virtualMcpId?: string;
 }
 
@@ -30,7 +29,7 @@ interface MeshSidebarProps {
  * Sidebar content that reads from the current ProjectContext.
  * Renders org-level or project-level sidebar items depending on context.
  */
-function SidebarContent({ onCreateProject, virtualMcpId }: MeshSidebarProps) {
+function SidebarContent({ virtualMcpId }: MeshSidebarProps) {
   const sidebarSections = useProjectSidebarItems({ virtualMcpId });
   const isOrgAdmin = useIsOrgAdmin();
 
@@ -39,7 +38,7 @@ function SidebarContent({ onCreateProject, virtualMcpId }: MeshSidebarProps) {
       sections={sidebarSections}
       header={
         <Suspense fallback={<MeshSidebarHeader.Skeleton />}>
-          <MeshSidebarHeader onCreateProject={onCreateProject} />
+          <MeshSidebarHeader />
         </Suspense>
       }
       footer={<SidebarInboxFooter />}
@@ -61,25 +60,14 @@ function SidebarContent({ onCreateProject, virtualMcpId }: MeshSidebarProps) {
  * ProjectContextProvider scoped to the virtual MCP so that
  * useProjectSidebarItems() returns project-level items.
  */
-function ProjectScopedSidebar({
-  virtualMcpId,
-  onCreateProject,
-}: {
-  virtualMcpId: string;
-  onCreateProject?: () => void;
-}) {
+function ProjectScopedSidebar({ virtualMcpId }: { virtualMcpId: string }) {
   const { org } = useProjectContext();
 
   const entity = useVirtualMCP(virtualMcpId);
 
   // While loading or if entity not found, fall back to org-level sidebar
   if (!entity) {
-    return (
-      <SidebarContent
-        onCreateProject={onCreateProject}
-        virtualMcpId={virtualMcpId}
-      />
-    );
+    return <SidebarContent virtualMcpId={virtualMcpId} />;
   }
 
   const slug =
@@ -129,17 +117,12 @@ function ProjectScopedSidebar({
 
   return (
     <ProjectContextProvider org={org} project={projectData}>
-      <SidebarContent
-        onCreateProject={onCreateProject}
-        virtualMcpId={virtualMcpId}
-      />
+      <SidebarContent virtualMcpId={virtualMcpId} />
     </ProjectContextProvider>
   );
 }
 
-export function MeshSidebar({
-  onCreateProject,
-}: Omit<MeshSidebarProps, "virtualMcpId">) {
+export function MeshSidebar() {
   const projectMatch = useMatch({
     from: "/shell/$org/projects/$virtualMcpId",
     shouldThrow: false,
@@ -147,13 +130,8 @@ export function MeshSidebar({
   const virtualMcpId = projectMatch?.params.virtualMcpId;
 
   if (virtualMcpId) {
-    return (
-      <ProjectScopedSidebar
-        virtualMcpId={virtualMcpId}
-        onCreateProject={onCreateProject}
-      />
-    );
+    return <ProjectScopedSidebar virtualMcpId={virtualMcpId} />;
   }
 
-  return <SidebarContent onCreateProject={onCreateProject} />;
+  return <SidebarContent />;
 }

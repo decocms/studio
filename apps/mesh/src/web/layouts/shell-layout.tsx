@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Chat } from "@/web/components/chat/index";
 import { ChatPanel } from "@/web/components/chat/side-panel-chat";
-import { CreateProjectDialog } from "@/web/components/create-project-dialog";
 import { KeyboardShortcutsDialog } from "@/web/components/keyboard-shortcuts-dialog";
 import { isModKey } from "@/web/lib/keyboard-shortcuts";
 import { MeshSidebar } from "@/web/components/sidebar";
@@ -108,13 +107,7 @@ function MobileChatFAB({
   );
 }
 
-function ShellLayoutInner({
-  isHomeRoute,
-  onCreateProject,
-}: {
-  isHomeRoute: boolean;
-  onCreateProject: () => void;
-}) {
+function ShellLayoutInner({ isHomeRoute }: { isHomeRoute: boolean }) {
   const [chatOpen, setChatOpen] = useDecoChatOpen();
   const isMobile = useIsMobile();
   const [chatPanelWidth] = useLocalStorage(
@@ -133,7 +126,7 @@ function ShellLayoutInner({
         } as Record<string, string>
       }
     >
-      <MeshSidebar onCreateProject={onCreateProject} />
+      <MeshSidebar />
       {/* SidebarInset: transparent so bg-sidebar from SidebarLayout shows
           through the rounded corners of the inner card */}
       <SidebarInset
@@ -212,7 +205,6 @@ function ShellLayoutContent() {
   const orgMatch = useMatch({ from: "/shell/$org", shouldThrow: false });
   const org = orgMatch?.params.org;
   const routerState = useRouterState();
-  const [createProjectDialogOpen, setCreateProjectDialogOpen] = useState(false);
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
@@ -291,19 +283,10 @@ function ShellLayoutContent() {
       <PersistentSidebarProvider>
         <div className="flex flex-col h-dvh overflow-hidden">
           <Chat.Provider>
-            <ShellLayoutInner
-              isHomeRoute={isHomeRoute}
-              onCreateProject={() => setCreateProjectDialogOpen(true)}
-            />
+            <ShellLayoutInner isHomeRoute={isHomeRoute} />
           </Chat.Provider>
         </div>
       </PersistentSidebarProvider>
-
-      {/* Create Project Dialog */}
-      <CreateProjectDialog
-        open={createProjectDialogOpen}
-        onOpenChange={setCreateProjectDialogOpen}
-      />
 
       {/* Keyboard Shortcuts Dialog */}
       <KeyboardShortcutsDialog
