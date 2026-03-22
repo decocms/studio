@@ -11,7 +11,7 @@ import type {
 import { MCP_MESH_DECOCMS_KEY } from "@/web/utils/constants";
 import { getGitHubAvatarUrl } from "@/web/utils/github";
 import { getConnectionTypeLabel } from "@/web/utils/registry-utils";
-import { generatePrefixedId } from "@/shared/utils/generate-id";
+import { generateConnectionId } from "@/shared/utils/generate-id";
 
 /**
  * Get a display name for a remote endpoint
@@ -177,7 +177,7 @@ export function extractConnectionData(
   const title = baseName + titleSuffix;
 
   return {
-    id: generatePrefixedId("conn"),
+    id: generateConnectionId(title),
     title,
     description,
     icon,

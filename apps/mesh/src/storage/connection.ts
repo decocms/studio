@@ -14,7 +14,7 @@ import type {
   StdioConnectionParameters,
 } from "../tools/connection/schema";
 import { isStdioParameters } from "../tools/connection/schema";
-import { generatePrefixedId } from "@/shared/utils/generate-id";
+import { generateConnectionId } from "@/shared/utils/generate-id";
 import {
   getWellKnownDecopilotConnection,
   isDecopilot,
@@ -62,7 +62,7 @@ export class ConnectionStorage implements ConnectionStoragePort {
   ) {}
 
   async create(data: Partial<ConnectionEntity>): Promise<ConnectionEntity> {
-    const id = data.id ?? generatePrefixedId("conn");
+    const id = data.id ?? generateConnectionId(data.title ?? "");
     const now = new Date().toISOString();
 
     const existing = await this.findById(id);
