@@ -869,6 +869,24 @@ export async function createApp(options: CreateAppOptions = {}) {
       );
   }
 
+  // Expired API key cleanup (e.g. short-lived claude-code-session keys)
+  const cleanupExpiredApiKeys = () =>
+    database.db
+      .deleteFrom("apikey" as any)
+      .where("expiresAt" as any, "<", new Date())
+      .execute()
+      .then((result) => {
+        const deleted = Number(result[0]?.numDeletedRows ?? 0);
+        if (deleted > 0) {
+          console.log(`[auth] Cleaned up ${deleted} expired API keys`);
+        }
+      })
+      .catch((err: unknown) =>
+        console.error("[auth] Expired API key cleanup failed:", err),
+      );
+
+  cleanupExpiredApiKeys();
+
   currentRetentionTimer = setInterval(
     () => {
       for (const dir of SIGNAL_DIRS) {
@@ -876,6 +894,7 @@ export async function createApp(options: CreateAppOptions = {}) {
           console.error("[monitoring] Retention cleanup failed:", err),
         );
       }
+      cleanupExpiredApiKeys();
     },
     24 * 60 * 60 * 1000,
   );
