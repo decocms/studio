@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Settings } from "lucide-react";
+import { Settings, Trash2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
@@ -9,9 +9,14 @@ import { cn } from "@deco/ui/lib/utils.ts";
 interface ProjectCardProps {
   project: VirtualMCPEntity;
   onSettingsClick?: (e: React.MouseEvent) => void;
+  onDeleteClick?: (e: React.MouseEvent) => void;
 }
 
-export function ProjectCard({ project, onSettingsClick }: ProjectCardProps) {
+export function ProjectCard({
+  project,
+  onSettingsClick,
+  onDeleteClick,
+}: ProjectCardProps) {
   const { org } = useProjectContext();
 
   const ui = project.metadata?.ui;
@@ -33,21 +38,39 @@ export function ProjectCard({ project, onSettingsClick }: ProjectCardProps) {
       <div className="border border-border rounded-xl overflow-hidden bg-card">
         {/* Banner */}
         <div className="h-20 relative" style={bannerStyle}>
-          {/* Settings Button */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onSettingsClick?.(e);
-            }}
-            className={cn(
-              "absolute top-3 right-3 size-6 rounded-md flex items-center justify-center",
-              "bg-black/20 hover:bg-black/40 transition-colors",
+          {/* Action Buttons */}
+          <div className="absolute top-3 right-3 flex items-center gap-1">
+            {onDeleteClick && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onDeleteClick(e);
+                }}
+                className={cn(
+                  "size-6 rounded-md flex items-center justify-center",
+                  "bg-black/20 hover:bg-red-500/80 transition-colors",
+                )}
+              >
+                <Trash2 className="size-3.5 text-white" />
+              </button>
             )}
-          >
-            <Settings className="size-3.5 text-white" />
-          </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onSettingsClick?.(e);
+              }}
+              className={cn(
+                "size-6 rounded-md flex items-center justify-center",
+                "bg-black/20 hover:bg-black/40 transition-colors",
+              )}
+            >
+              <Settings className="size-3.5 text-white" />
+            </button>
+          </div>
         </div>
 
         {/* Content */}

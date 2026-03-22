@@ -396,12 +396,13 @@ const projectSettingsRoute = createRoute({
   ),
 });
 
-const projectSettingsDirectIndexRoute = createRoute({
+// Backward-compat redirects: old sub-routes → /settings
+const projectSettingsGeneralRedirect = createRoute({
   getParentRoute: () => projectSettingsRoute,
-  path: "/",
+  path: "/general",
   beforeLoad: ({ params }) => {
     throw redirect({
-      to: "/$org/projects/$virtualMcpId/settings/general",
+      to: "/$org/projects/$virtualMcpId/settings",
       params: {
         org: params.org,
         virtualMcpId: (params as Record<string, string>).virtualMcpId,
@@ -411,44 +412,64 @@ const projectSettingsDirectIndexRoute = createRoute({
   component: () => null,
 });
 
-const projectSettingsDirectGeneralRoute = createRoute({
-  getParentRoute: () => projectSettingsRoute,
-  path: "/general",
-  component: lazyRouteComponent(
-    () => import("./routes/orgs/project-settings/general.tsx"),
-  ),
-});
-
-const projectSettingsDirectDependenciesRoute = createRoute({
+const projectSettingsDependenciesRedirect = createRoute({
   getParentRoute: () => projectSettingsRoute,
   path: "/dependencies",
-  component: lazyRouteComponent(
-    () => import("./routes/orgs/project-settings/dependencies.tsx"),
-  ),
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: "/$org/projects/$virtualMcpId/settings",
+      params: {
+        org: params.org,
+        virtualMcpId: (params as Record<string, string>).virtualMcpId,
+      },
+    });
+  },
+  component: () => null,
 });
 
-const projectSettingsDirectSidebarRoute = createRoute({
+const projectSettingsSidebarRedirect = createRoute({
   getParentRoute: () => projectSettingsRoute,
   path: "/sidebar",
-  component: lazyRouteComponent(
-    () => import("./routes/orgs/project-settings/sidebar-settings.tsx"),
-  ),
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: "/$org/projects/$virtualMcpId/settings",
+      params: {
+        org: params.org,
+        virtualMcpId: (params as Record<string, string>).virtualMcpId,
+      },
+    });
+  },
+  component: () => null,
 });
 
-const projectSettingsDirectPluginsRoute = createRoute({
+const projectSettingsPluginsRedirect = createRoute({
   getParentRoute: () => projectSettingsRoute,
   path: "/plugins",
-  component: lazyRouteComponent(
-    () => import("./routes/orgs/project-settings/plugins.tsx"),
-  ),
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: "/$org/projects/$virtualMcpId/settings",
+      params: {
+        org: params.org,
+        virtualMcpId: (params as Record<string, string>).virtualMcpId,
+      },
+    });
+  },
+  component: () => null,
 });
 
-const projectSettingsDirectDangerRoute = createRoute({
+const projectSettingsDangerRedirect = createRoute({
   getParentRoute: () => projectSettingsRoute,
   path: "/danger",
-  component: lazyRouteComponent(
-    () => import("./routes/orgs/project-settings/danger.tsx"),
-  ),
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: "/$org/projects/$virtualMcpId/settings",
+      params: {
+        org: params.org,
+        virtualMcpId: (params as Record<string, string>).virtualMcpId,
+      },
+    });
+  },
+  component: () => null,
 });
 
 // Pinned App View (virtual MCP scoped)
@@ -525,19 +546,18 @@ const pluginLayoutWithChildren = pluginLayoutRoute.addChildren(pluginRoutes);
 
 const storeRouteWithChildren = storeRoute.addChildren([storeDetailRoute]);
 
-const projectSettingsDirectWithChildren = projectSettingsRoute.addChildren([
-  projectSettingsDirectIndexRoute,
-  projectSettingsDirectGeneralRoute,
-  projectSettingsDirectDependenciesRoute,
-  projectSettingsDirectSidebarRoute,
-  projectSettingsDirectPluginsRoute,
-  projectSettingsDirectDangerRoute,
+const projectSettingsWithChildren = projectSettingsRoute.addChildren([
+  projectSettingsGeneralRedirect,
+  projectSettingsDependenciesRedirect,
+  projectSettingsSidebarRedirect,
+  projectSettingsPluginsRedirect,
+  projectSettingsDangerRedirect,
 ]);
 
 const virtualMcpWithChildren = virtualMcpLayout.addChildren([
   projectHomeRoute,
   projectTasksRoute,
-  projectSettingsDirectWithChildren,
+  projectSettingsWithChildren,
   projectAppViewRoute,
   workflowsRoute,
   pluginLayoutWithChildren,

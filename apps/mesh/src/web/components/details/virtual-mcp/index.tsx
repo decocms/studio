@@ -1,4 +1,5 @@
 import type { VirtualMCPEntity } from "@/tools/virtual/schema";
+import { getUIResourceUri } from "@/mcp-apps/types.ts";
 import { useChatStable } from "@/web/components/chat/context";
 import { chatStore } from "@/web/components/chat/store/chat-store";
 import { CollectionTabs } from "@/web/components/collections/collection-tabs.tsx";
@@ -6,10 +7,12 @@ import { EmptyState } from "@/web/components/empty-state.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { IconPicker } from "@/web/components/icon-picker.tsx";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
+import { AGENT_ICON_COLORS, getIconColor } from "@/web/components/agent-icon";
 import { useDecoChatOpen } from "@/web/hooks/use-deco-chat-open";
 import { useMCPAuthStatus } from "@/web/hooks/use-mcp-auth-status";
 import { authenticateMcp } from "@/web/lib/mcp-oauth";
 import { KEYS } from "@/web/lib/query-keys";
+import { unwrapToolResult } from "@/web/lib/unwrap-tool-result";
 import { getConnectionSlug } from "@/web/utils/connection-slug";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
@@ -30,16 +33,18 @@ import {
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   getDecopilotId,
+  SELF_MCP_ALIAS_ID,
   useConnection,
   useConnectionActions,
   useConnections,
+  useMCPClient,
   useProjectContext,
   useVirtualMCP,
   useVirtualMCPActions,
 } from "@decocms/mesh-sdk";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useParams } from "@tanstack/react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
   ChevronRight,
   Loading01,
@@ -69,6 +74,8 @@ import { DependencySelectionDialog } from "./dependency-selection-dialog";
 import { ALL_ITEMS_SELECTED, getSelectionSummary } from "./selection-utils";
 import { VirtualMcpFormSchema, type VirtualMcpFormData } from "./types";
 import { VirtualMCPShareModal } from "./virtual-mcp-share-modal";
+
+export type VirtualMcpVariant = "agent" | "project";
 
 type DialogState = {
   shareDialogOpen: boolean;
@@ -216,10 +223,9 @@ function ConnectionItemWithAuth({
     >
       {/* Body — clickable, navigates to connection detail */}
       <Link
-        to="/$org/$project/mcps/$appSlug"
+        to="/$org/mcps/$appSlug"
         params={{
           org: orgSlug,
-          project: "org-admin",
           appSlug: slug,
         }}
         className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors"
@@ -381,15 +387,385 @@ function ConnectionItemSkeleton() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Color picker for header
+// ---------------------------------------------------------------------------
+
+function ColorPicker({
+  value,
+  onChange,
+}: {
+  value: string | null | undefined;
+  onChange: (color: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const currentColor = value ? getIconColor(value) : null;
+
+  return (
+    <div className="relative">
+      <Tooltip delayDuration={0}>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className={cn(
+              "size-7 rounded-md border border-border flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity",
+              currentColor?.bg ?? "bg-muted",
+            )}
+            onClick={() => setOpen(!open)}
+            aria-label="Pick a color"
+          >
+            <div
+              className={cn(
+                "size-4 rounded-sm",
+                currentColor?.bg ?? "bg-muted",
+              )}
+            />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Theme color</TooltipContent>
+      </Tooltip>
+      {open && (
+        <div className="absolute top-full mt-2 right-0 z-50 p-2 rounded-lg border border-border bg-popover shadow-md">
+          <div className="grid grid-cols-8 gap-1.5">
+            {AGENT_ICON_COLORS.map((color) => (
+              <button
+                key={color.name}
+                type="button"
+                className={cn(
+                  "size-6 rounded-full cursor-pointer transition-all hover:scale-110",
+                  color.dot,
+                  value === color.name &&
+                    "ring-2 ring-offset-2 ring-foreground",
+                )}
+                onClick={() => {
+                  onChange(color.name);
+                  setOpen(false);
+                }}
+                aria-label={color.name}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sidebar tab content (projects only)
+// ---------------------------------------------------------------------------
+
+interface UITool {
+  name: string;
+  description?: string;
+}
+
+interface PinnedView {
+  connectionId: string;
+  toolName: string;
+  label: string;
+  icon: string | null;
+}
+
+interface ConnectionWithTools {
+  id: string;
+  title: string;
+  icon: string | null;
+  uiTools: UITool[];
+}
+
+function SidebarTabContent({ virtualMcpId }: { virtualMcpId: string }) {
+  const { org } = useProjectContext();
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+  });
+  const queryClient = useQueryClient();
+
+  const virtualMcp = useVirtualMCP(virtualMcpId);
+
+  const connectionIds = (virtualMcp?.connections ?? [])
+    .map((c) => c.connection_id)
+    .sort();
+
+  const { data: connectionsWithTools } = useQuery({
+    queryKey: KEYS.projectConnectionDetails(virtualMcpId, connectionIds),
+    enabled: connectionIds.length > 0,
+    queryFn: async () => {
+      const results = await Promise.all(
+        connectionIds.map(async (connId) => {
+          try {
+            const result = await client.callTool({
+              name: "COLLECTION_CONNECTIONS_GET",
+              arguments: { id: connId },
+            });
+            const { item } = unwrapToolResult<{
+              item: {
+                title?: string;
+                icon?: string | null;
+                tools?: Array<{
+                  name: string;
+                  description?: string;
+                  _meta?: Record<string, unknown>;
+                }> | null;
+              } | null;
+            }>(result);
+            const uiTools: UITool[] = (item?.tools ?? [])
+              .filter((t) => !!getUIResourceUri(t._meta))
+              .map((t) => ({ name: t.name, description: t.description }));
+            return {
+              id: connId,
+              title: item?.title ?? connId,
+              icon: item?.icon ?? null,
+              uiTools,
+            };
+          } catch {
+            return {
+              id: connId,
+              title: connId,
+              icon: null,
+              uiTools: [],
+            };
+          }
+        }),
+      );
+      // Only include connections that have interactive tools
+      return results.filter((c) => c.uiTools.length > 0);
+    },
+  });
+
+  const connectionsData: ConnectionWithTools[] = connectionsWithTools ?? [];
+
+  // Current pinned views from virtual MCP metadata
+  const serverPinned: PinnedView[] =
+    (
+      virtualMcp?.metadata?.ui as
+        | { pinnedViews?: PinnedView[] | null }
+        | null
+        | undefined
+    )?.pinnedViews ?? [];
+
+  const [pinnedViews, setPinnedViews] = useState<PinnedView[]>(serverPinned);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const hasChanges =
+    JSON.stringify(pinnedViews) !== JSON.stringify(serverPinned);
+
+  const handleTogglePin = (
+    connectionId: string,
+    toolName: string,
+    connectionIcon: string | null,
+  ) => {
+    const pinned = pinnedViews.some(
+      (v) => v.connectionId === connectionId && v.toolName === toolName,
+    );
+    if (pinned) {
+      setPinnedViews((prev) =>
+        prev.filter(
+          (v) => !(v.connectionId === connectionId && v.toolName === toolName),
+        ),
+      );
+    } else {
+      setPinnedViews((prev) => [
+        ...prev,
+        { connectionId, toolName, label: toolName, icon: connectionIcon },
+      ]);
+    }
+  };
+
+  const handleLabelChange = (
+    connectionId: string,
+    toolName: string,
+    label: string,
+  ) => {
+    setPinnedViews((prev) =>
+      prev.map((v) =>
+        v.connectionId === connectionId && v.toolName === toolName
+          ? { ...v, label }
+          : v,
+      ),
+    );
+  };
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const result = await client.callTool({
+        name: "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
+        arguments: { virtualMcpId, pinnedViews },
+      });
+      unwrapToolResult(result);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        predicate: (query) =>
+          Array.isArray(query.queryKey) &&
+          query.queryKey.includes("collection") &&
+          query.queryKey.includes("VIRTUAL_MCP"),
+      });
+      toast.success("Sidebar updated");
+    },
+    onError: (error) => {
+      toast.error(
+        "Failed to update sidebar: " +
+          (error instanceof Error ? error.message : "Unknown error"),
+      );
+    },
+    onSettled: () => setIsSaving(false),
+  });
+
+  const handleSave = () => {
+    setIsSaving(true);
+    mutation.mutate();
+  };
+
+  const handleCancel = () => {
+    setPinnedViews(serverPinned);
+  };
+
+  if (connectionIds.length === 0) {
+    return (
+      <div className="px-6 py-4">
+        <p className="text-sm text-muted-foreground">
+          No connections yet. Add connections in the Connections tab first.
+        </p>
+      </div>
+    );
+  }
+
+  if (connectionsWithTools && connectionsData.length === 0) {
+    return (
+      <div className="px-6 py-4">
+        <p className="text-sm text-muted-foreground">
+          None of the connected servers have interactive tools available.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-6 py-4 space-y-6">
+      {connectionsData.map((conn) => (
+        <div key={conn.id}>
+          <div className="flex items-center gap-2 mb-3">
+            <IntegrationIcon
+              icon={conn.icon}
+              name={conn.title}
+              size="2xs"
+              className="shrink-0"
+            />
+            <h3 className="text-sm font-medium text-foreground">
+              {conn.title}
+            </h3>
+          </div>
+          {conn.uiTools.length > 0 && (
+            <div className="flex flex-col">
+              {conn.uiTools.map((tool) => {
+                const pinned = pinnedViews.some(
+                  (v) => v.connectionId === conn.id && v.toolName === tool.name,
+                );
+                const pinnedView = pinnedViews.find(
+                  (v) => v.connectionId === conn.id && v.toolName === tool.name,
+                );
+                return (
+                  <div
+                    key={tool.name}
+                    className="flex flex-col border-b border-border last:border-0"
+                  >
+                    <div
+                      className="flex items-center justify-between gap-6 py-3 cursor-pointer"
+                      onClick={() =>
+                        handleTogglePin(conn.id, tool.name, conn.icon)
+                      }
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-foreground">
+                          {tool.name}
+                        </p>
+                        {tool.description && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {tool.description}
+                          </p>
+                        )}
+                      </div>
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className="shrink-0"
+                      >
+                        <Switch
+                          checked={pinned}
+                          onCheckedChange={() =>
+                            handleTogglePin(conn.id, tool.name, conn.icon)
+                          }
+                          disabled={isSaving}
+                        />
+                      </div>
+                    </div>
+                    {pinned && pinnedView && (
+                      <div
+                        className="pb-3 pl-0 flex items-center gap-3"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <label className="text-xs text-muted-foreground w-12 shrink-0">
+                          Label
+                        </label>
+                        <Input
+                          value={pinnedView.label}
+                          onChange={(e) =>
+                            handleLabelChange(
+                              conn.id,
+                              tool.name,
+                              e.target.value,
+                            )
+                          }
+                          className="h-8 text-sm w-56"
+                          disabled={isSaving}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ))}
+
+      {hasChanges && (
+        <div className="flex items-center gap-3 pt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleCancel}
+            disabled={isSaving}
+          >
+            Cancel
+          </Button>
+          <Button size="sm" onClick={handleSave} disabled={isSaving}>
+            {isSaving ? "Saving..." : "Save Sidebar"}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main detail view
+// ---------------------------------------------------------------------------
+
 function VirtualMcpDetailViewWithData({
   virtualMcp,
+  variant,
 }: {
   virtualMcp: VirtualMCPEntity;
+  variant: VirtualMcpVariant;
 }) {
   const { org } = useProjectContext();
   const actions = useVirtualMCPActions();
   const connectionActions = useConnectionActions();
   const queryClient = useQueryClient();
+
+  const isAgent = variant === "agent";
 
   // Form setup
   const form = useForm<VirtualMcpFormData>({
@@ -436,17 +812,19 @@ function VirtualMcpDetailViewWithData({
     });
   };
 
-  // Auto-open chat with this agent selected
+  // Chat hooks
   const [, setChatOpen] = useDecoChatOpen();
   const { setVirtualMcpId } = useChatStable();
 
-  // Open chat on mount (without selecting the agent)
+  // Agents: open chat on mount and select this agent
+  // Projects: skip (virtual-mcp-layout handles it)
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {
+    if (!isAgent) return;
     setChatOpen(true);
     setVirtualMcpId(virtualMcp.id);
     // eslint-disable-next-line react-hooks/exhaustive-depsbun
-  }, [virtualMcp.id]);
+  }, [virtualMcp.id, isAgent]);
 
   const handleTestAgent = () => {
     setVirtualMcpId(virtualMcp.id);
@@ -622,13 +1000,17 @@ Define step-by-step how the agent should handle requests.
   const isSaving = actions.update.isPending;
   const addedConnectionIds = new Set(connections.map((c) => c.connection_id));
 
+  // Variant-specific breadcrumb
   const breadcrumb = (
     <Breadcrumb>
       <BreadcrumbList>
         <BreadcrumbItem>
           <BreadcrumbLink asChild>
-            <Link to="/$org/agents" params={{ org: org.slug }}>
-              Agents
+            <Link
+              to={isAgent ? "/$org/agents" : "/$org/projects"}
+              params={{ org: org.slug }}
+            >
+              {isAgent ? "Agents" : "Projects"}
             </Link>
           </BreadcrumbLink>
         </BreadcrumbItem>
@@ -640,6 +1022,21 @@ Define step-by-step how the agent should handle requests.
     </Breadcrumb>
   );
 
+  // Variant-specific tabs
+  const tabs = [
+    {
+      id: "instructions",
+      label: isAgent ? "Instructions" : "AGENTS.md",
+    },
+    {
+      id: "connections",
+      label: "Connections",
+      count: connections.length || undefined,
+    },
+    ...(isAgent ? [{ id: "capabilities", label: "Capabilities" }] : []),
+    ...(!isAgent ? [{ id: "sidebar", label: "Sidebar" }] : []),
+  ];
+
   return (
     <ViewLayout breadcrumb={breadcrumb}>
       <ViewActions>
@@ -649,35 +1046,41 @@ Define step-by-step how the agent should handle requests.
           isDirty={hasFormChanges}
           isSaving={isSaving}
         />
-        <Tooltip delayDuration={0}>
-          <TooltipTrigger asChild>
-            <span className="inline-block">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 gap-1.5 px-2 border border-input"
-                onClick={handleTestAgent}
-                aria-label="Test Agent"
-              >
-                <Play size={14} />
-                Test Agent
-              </Button>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Test this agent in chat</TooltipContent>
-        </Tooltip>
+        {isAgent && (
+          <Tooltip delayDuration={0}>
+            <TooltipTrigger asChild>
+              <span className="inline-block">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1.5 px-2 border border-input"
+                  onClick={handleTestAgent}
+                  aria-label="Test Agent"
+                >
+                  <Play size={14} />
+                  Test Agent
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              Test this agent in chat
+            </TooltipContent>
+          </Tooltip>
+        )}
 
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 gap-1.5 px-2 border border-input"
-          onClick={() =>
-            dispatch({ type: "SET_SHARE_DIALOG_OPEN", payload: true })
-          }
-        >
-          <ZapCircle size={14} />
-          Connect
-        </Button>
+        {isAgent && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1.5 px-2 border border-input"
+            onClick={() =>
+              dispatch({ type: "SET_SHARE_DIALOG_OPEN", payload: true })
+            }
+          >
+            <ZapCircle size={14} />
+            Connect
+          </Button>
+        )}
       </ViewActions>
 
       <div className="flex h-full w-full bg-background overflow-auto">
@@ -692,7 +1095,9 @@ Define step-by-step how the agent should handle requests.
                   <IconPicker
                     value={field.value}
                     onChange={field.onChange}
-                    name={form.watch("title") || "Agent"}
+                    name={
+                      form.watch("title") || (isAgent ? "Agent" : "Project")
+                    }
                     size="lg"
                     className="shrink-0 shadow-sm"
                   />
@@ -702,7 +1107,7 @@ Define step-by-step how the agent should handle requests.
                 <Input
                   {...form.register("title")}
                   className="h-auto py-0.5 text-lg! font-medium leading-7 px-1 -mx-1 border-transparent hover:bg-input/25 focus:border-input bg-transparent transition-all"
-                  placeholder="Agent Name"
+                  placeholder={isAgent ? "Agent Name" : "Project Name"}
                 />
                 <Input
                   {...form.register("description")}
@@ -712,6 +1117,20 @@ Define step-by-step how the agent should handle requests.
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
+              <Controller
+                control={form.control}
+                name="metadata.ui.themeColor"
+                render={({ field }) => (
+                  <ColorPicker
+                    value={field.value as string | null | undefined}
+                    onChange={(color) =>
+                      form.setValue("metadata.ui.themeColor", color, {
+                        shouldDirty: true,
+                      })
+                    }
+                  />
+                )}
+              />
               <Switch
                 checked={form.watch("status") === "active"}
                 onCheckedChange={(checked) =>
@@ -723,18 +1142,10 @@ Define step-by-step how the agent should handle requests.
             </div>
           </div>
 
-          {/* Tabs: Connections / Capabilities / Instructions */}
+          {/* Tabs */}
           <div className="flex items-center justify-between px-6 py-3 border-t border-border shrink-0">
             <CollectionTabs
-              tabs={[
-                { id: "instructions", label: "Instructions" },
-                {
-                  id: "connections",
-                  label: "Connections",
-                  count: connections.length || undefined,
-                },
-                { id: "capabilities", label: "Capabilities" },
-              ]}
+              tabs={tabs}
               activeTab={activeTab}
               onTabChange={(id) => {
                 setActiveTab(id);
@@ -823,8 +1234,12 @@ Define step-by-step how the agent should handle requests.
               </div>
             )}
 
-            {activeTab === "capabilities" && (
+            {activeTab === "capabilities" && isAgent && (
               <AgentCapabilities connections={connections} />
+            )}
+
+            {activeTab === "sidebar" && !isAgent && (
+              <SidebarTabContent virtualMcpId={virtualMcp.id} />
             )}
 
             {activeTab === "instructions" && (
@@ -868,41 +1283,54 @@ Define step-by-step how the agent should handle requests.
         onAuthenticate={handleAuthenticate}
       />
 
-      <VirtualMCPShareModal
-        open={dialogState.shareDialogOpen}
-        onOpenChange={(open) =>
-          dispatch({ type: "SET_SHARE_DIALOG_OPEN", payload: open })
-        }
-        virtualMcp={virtualMcp}
-      />
+      {isAgent && (
+        <VirtualMCPShareModal
+          open={dialogState.shareDialogOpen}
+          onOpenChange={(open) =>
+            dispatch({ type: "SET_SHARE_DIALOG_OPEN", payload: open })
+          }
+          virtualMcp={virtualMcp}
+        />
+      )}
     </ViewLayout>
   );
 }
 
-function VirtualMcpDetailViewContent() {
+// ---------------------------------------------------------------------------
+// Exported view component (route-agnostic)
+// ---------------------------------------------------------------------------
+
+export function VirtualMcpDetailView({
+  virtualMcpId,
+  variant,
+}: {
+  virtualMcpId: string;
+  variant: VirtualMcpVariant;
+}) {
   const navigate = useNavigate();
-  const params = useParams({ from: "/shell/$org/agents/$agentId" });
-  const { org, agentId: virtualMcpId } = params;
+  const { org } = useProjectContext();
 
   const virtualMcp = useVirtualMCP(virtualMcpId);
 
   if (!virtualMcp) {
+    const label = variant === "agent" ? "Agent" : "Project";
+    const backTo = variant === "agent" ? "/$org/agents" : "/$org/projects";
     return (
       <div className="flex h-full w-full bg-background">
         <EmptyState
-          title="Agent not found"
-          description="This Agent may have been deleted or you may not have access."
+          title={`${label} not found`}
+          description={`This ${label.toLowerCase()} may have been deleted or you may not have access.`}
           actions={
             <Button
               variant="outline"
               onClick={() =>
                 navigate({
-                  to: "/$org/agents",
-                  params: { org },
+                  to: backTo,
+                  params: { org: org.slug },
                 })
               }
             >
-              Back to agents
+              Back to {label.toLowerCase()}s
             </Button>
           }
         />
@@ -910,8 +1338,14 @@ function VirtualMcpDetailViewContent() {
     );
   }
 
-  return <VirtualMcpDetailViewWithData virtualMcp={virtualMcp} />;
+  return (
+    <VirtualMcpDetailViewWithData virtualMcp={virtualMcp} variant={variant} />
+  );
 }
+
+// ---------------------------------------------------------------------------
+// Default export — legacy agent-only wrapper
+// ---------------------------------------------------------------------------
 
 export default function VirtualMcpDetail() {
   return (
@@ -930,4 +1364,10 @@ export default function VirtualMcpDetail() {
       </Suspense>
     </ErrorBoundary>
   );
+}
+
+function VirtualMcpDetailViewContent() {
+  // This is only used by the agent route default export
+  // The project route uses VirtualMcpDetailView directly
+  return null;
 }

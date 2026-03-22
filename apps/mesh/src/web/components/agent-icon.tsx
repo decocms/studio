@@ -236,7 +236,12 @@ const DEFAULT_WRAPPER = WRAPPER_COLORS.blue!;
 export function getAgentWrapperColor(
   icon: string | null | undefined,
   name: string,
+  themeColor?: string | null,
 ): { border: string; bg: string; text: string; bgLight: string } {
+  // Explicit themeColor takes priority
+  if (themeColor && WRAPPER_COLORS[themeColor]) {
+    return WRAPPER_COLORS[themeColor]!;
+  }
   const parsed = parseIconString(icon);
   if (parsed.type === "icon") {
     return WRAPPER_COLORS[parsed.color] ?? DEFAULT_WRAPPER;

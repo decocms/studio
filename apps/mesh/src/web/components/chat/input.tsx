@@ -203,7 +203,16 @@ function VirtualMCPBadge({
 
   if (!virtualMcp || isDecopilot(virtualMcpId)) return null; // Don't show badge for Decopilot
 
-  const color = getAgentWrapperColor(virtualMcp.icon, virtualMcp.title);
+  const themeColor = (
+    virtualMcp as {
+      metadata?: { ui?: { themeColor?: string | null } | null } | null;
+    }
+  ).metadata?.ui?.themeColor;
+  const color = getAgentWrapperColor(
+    virtualMcp.icon,
+    virtualMcp.title,
+    themeColor,
+  );
 
   const handleReset = (e: MouseEvent) => {
     e.stopPropagation();
@@ -482,8 +491,17 @@ export function ChatInput({
     color: ReturnType<typeof getAgentWrapperColor> | null;
   } | null>(null);
 
+  const selectedThemeColor = (
+    selectedVirtualMcp as {
+      metadata?: { ui?: { themeColor?: string | null } | null } | null;
+    } | null
+  )?.metadata?.ui?.themeColor;
   const color = selectedVirtualMcp
-    ? getAgentWrapperColor(selectedVirtualMcp.icon, selectedVirtualMcp.title)
+    ? getAgentWrapperColor(
+        selectedVirtualMcp.icon,
+        selectedVirtualMcp.title,
+        selectedThemeColor,
+      )
     : null;
 
   if (hasAgentBadge && selectedVirtualMcp?.id) {

@@ -36,6 +36,12 @@ export interface ProjectUI {
   bannerColor: string | null;
   icon: string | null;
   themeColor: string | null;
+  pinnedViews?: Array<{
+    connectionId: string;
+    toolName: string;
+    label: string;
+    icon: string | null;
+  }> | null;
 }
 
 /**

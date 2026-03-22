@@ -114,6 +114,14 @@ function ProjectScopedSidebar({
             ((entity.metadata.ui as Record<string, unknown>).themeColor as
               | string
               | null) ?? null,
+          pinnedViews:
+            ((entity.metadata.ui as Record<string, unknown>)
+              .pinnedViews as Array<{
+              connectionId: string;
+              toolName: string;
+              label: string;
+              icon: string | null;
+            }> | null) ?? null,
         }
       : null,
     isOrgAdmin: false,
