@@ -9,7 +9,7 @@ import { LANGUAGE_MODEL_BINDING } from "@decocms/bindings/llm";
 import { describe, expect, it } from "bun:test";
 
 function makeConnection(
-  tools: Array<{ name: string; inputSchema: Record<string, unknown> }>,
+  tools: ConnectionEntity["tools"],
   overrides?: Partial<ConnectionEntity>,
 ): ConnectionEntity {
   return {
@@ -41,43 +41,48 @@ function makeConnection(
 describe("connectionImplementsBinding", () => {
   it("should detect MCP binding when tools match", () => {
     const conn = makeConnection([
-      { name: "MCP_CONFIGURATION", inputSchema: {} },
+      { name: "MCP_CONFIGURATION", inputSchema: { type: "object" as const } },
     ]);
     expect(connectionImplementsBinding(conn, MCP_BINDING)).toBe(true);
   });
 
   it("should not detect MCP binding when tools do not match", () => {
-    const conn = makeConnection([{ name: "SOME_OTHER_TOOL", inputSchema: {} }]);
+    const conn = makeConnection([
+      { name: "SOME_OTHER_TOOL", inputSchema: { type: "object" as const } },
+    ]);
     expect(connectionImplementsBinding(conn, MCP_BINDING)).toBe(false);
   });
 
   it("should detect EVENT_BUS binding when connection has all event bus tools", () => {
     const conn = makeConnection([
-      { name: "EVENT_PUBLISH", inputSchema: {} },
-      { name: "EVENT_SUBSCRIBE", inputSchema: {} },
-      { name: "EVENT_UNSUBSCRIBE", inputSchema: {} },
-      { name: "EVENT_CANCEL", inputSchema: {} },
-      { name: "EVENT_ACK", inputSchema: {} },
-      { name: "EVENT_SYNC_SUBSCRIPTIONS", inputSchema: {} },
+      { name: "EVENT_PUBLISH", inputSchema: { type: "object" as const } },
+      { name: "EVENT_SUBSCRIBE", inputSchema: { type: "object" as const } },
+      { name: "EVENT_UNSUBSCRIBE", inputSchema: { type: "object" as const } },
+      { name: "EVENT_CANCEL", inputSchema: { type: "object" as const } },
+      { name: "EVENT_ACK", inputSchema: { type: "object" as const } },
+      {
+        name: "EVENT_SYNC_SUBSCRIPTIONS",
+        inputSchema: { type: "object" as const },
+      },
     ]);
     expect(connectionImplementsBinding(conn, EVENT_BUS_BINDING)).toBe(true);
   });
 
   it("should not detect EVENT_BUS binding when missing required tools", () => {
     const conn = makeConnection([
-      { name: "EVENT_PUBLISH", inputSchema: {} },
-      { name: "EVENT_SUBSCRIBE", inputSchema: {} },
+      { name: "EVENT_PUBLISH", inputSchema: { type: "object" as const } },
+      { name: "EVENT_SUBSCRIBE", inputSchema: { type: "object" as const } },
     ]);
     expect(connectionImplementsBinding(conn, EVENT_BUS_BINDING)).toBe(false);
   });
 
   it("should detect LANGUAGE_MODEL binding when connection has LLM tools", () => {
     const conn = makeConnection([
-      { name: "LLM_METADATA", inputSchema: {} },
-      { name: "LLM_DO_STREAM", inputSchema: {} },
-      { name: "LLM_DO_GENERATE", inputSchema: {} },
-      { name: "COLLECTION_LLM_LIST", inputSchema: {} },
-      { name: "COLLECTION_LLM_GET", inputSchema: {} },
+      { name: "LLM_METADATA", inputSchema: { type: "object" as const } },
+      { name: "LLM_DO_STREAM", inputSchema: { type: "object" as const } },
+      { name: "LLM_DO_GENERATE", inputSchema: { type: "object" as const } },
+      { name: "COLLECTION_LLM_LIST", inputSchema: { type: "object" as const } },
+      { name: "COLLECTION_LLM_GET", inputSchema: { type: "object" as const } },
     ]);
     expect(connectionImplementsBinding(conn, LANGUAGE_MODEL_BINDING)).toBe(
       true,
@@ -86,8 +91,8 @@ describe("connectionImplementsBinding", () => {
 
   it("should not detect LANGUAGE_MODEL binding when missing LLM tools", () => {
     const conn = makeConnection([
-      { name: "LLM_METADATA", inputSchema: {} },
-      { name: "SOME_OTHER_TOOL", inputSchema: {} },
+      { name: "LLM_METADATA", inputSchema: { type: "object" as const } },
+      { name: "SOME_OTHER_TOOL", inputSchema: { type: "object" as const } },
     ]);
     expect(connectionImplementsBinding(conn, LANGUAGE_MODEL_BINDING)).toBe(
       false,

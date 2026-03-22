@@ -5,6 +5,7 @@
  * Uses snake_case field names matching the database schema directly.
  */
 
+import { ToolSchema } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
 /**
@@ -23,27 +24,11 @@ const OAuthConfigSchema = z.object({
 export type OAuthConfig = z.infer<typeof OAuthConfigSchema>;
 
 /**
- * Tool annotations schema from MCP spec
+ * Tool definition schema from MCP discovery.
+ * Re-uses the canonical ToolSchema from the MCP SDK so new fields
+ * (execution, icons, title, etc.) are automatically supported.
  */
-const ToolAnnotationsSchema = z.object({
-  title: z.string().optional(),
-  readOnlyHint: z.boolean().optional(),
-  destructiveHint: z.boolean().optional(),
-  idempotentHint: z.boolean().optional(),
-  openWorldHint: z.boolean().optional(),
-});
-
-/**
- * Tool definition schema from MCP discovery
- */
-const ToolDefinitionSchema = z.object({
-  name: z.string(),
-  description: z.string().optional(),
-  inputSchema: z.record(z.string(), z.unknown()),
-  outputSchema: z.record(z.string(), z.unknown()).optional(),
-  annotations: ToolAnnotationsSchema.optional(),
-  _meta: z.record(z.string(), z.unknown()).optional(),
-});
+const ToolDefinitionSchema = ToolSchema;
 
 export type ToolDefinition = z.infer<typeof ToolDefinitionSchema>;
 

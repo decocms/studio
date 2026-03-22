@@ -200,7 +200,7 @@ describe("Connection Tools", () => {
               {
                 name: "COLLECTION_LLM_LIST",
                 description: "List models",
-                inputSchema: {},
+                inputSchema: { type: "object" as const },
               },
             ],
             scopes: null,

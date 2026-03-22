@@ -23,11 +23,12 @@ const DEV_ASSETS_TOOLS: ToolDefinition[] = OBJECT_STORAGE_BINDING.map(
   (binding: (typeof OBJECT_STORAGE_BINDING)[number]) => ({
     name: binding.name,
     description: `${binding.name} operation for local file storage`,
-    inputSchema: z.toJSONSchema(binding.inputSchema) as Record<string, unknown>,
-    outputSchema: z.toJSONSchema(binding.outputSchema) as Record<
-      string,
-      unknown
-    >,
+    inputSchema: z.toJSONSchema(
+      binding.inputSchema,
+    ) as ToolDefinition["inputSchema"],
+    outputSchema: z.toJSONSchema(
+      binding.outputSchema,
+    ) as ToolDefinition["outputSchema"],
   }),
 );
 

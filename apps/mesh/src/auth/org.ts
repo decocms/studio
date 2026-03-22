@@ -56,12 +56,12 @@ function getDefaultOrgMcps(organizationId: string): MCPCreationSpec[] {
               inputSchema: z.toJSONSchema(
                 tool.inputSchema as Parameters<typeof z.toJSONSchema>[0],
                 { unrepresentable: "any" },
-              ),
+              ) as unknown as ToolDefinition["inputSchema"],
               outputSchema: tool.outputSchema
-                ? z.toJSONSchema(
+                ? (z.toJSONSchema(
                     tool.outputSchema as Parameters<typeof z.toJSONSchema>[0],
                     { unrepresentable: "any" },
-                  )
+                  ) as unknown as ToolDefinition["outputSchema"])
                 : undefined,
               description: tool.description,
             };
