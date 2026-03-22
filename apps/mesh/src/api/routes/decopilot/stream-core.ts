@@ -471,7 +471,7 @@ export async function streamCore(
             resolveClaudeCodeModelId(input.models.thinking.id),
             {
               mcpServers: {
-                mesh: {
+                agent: {
                   type: "http",
                   url: mcpUrl,
                   headers: {
