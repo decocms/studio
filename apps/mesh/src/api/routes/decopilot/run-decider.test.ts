@@ -21,6 +21,10 @@ function makeRunningState(overrides?: Partial<RunState>): RunState {
   };
 }
 
+function makeRunningStateForThread(threadId: string): RunState {
+  return makeRunningState({ threadId });
+}
+
 // ============================================================================
 // START
 // ============================================================================
@@ -248,5 +252,49 @@ describe("FORCE_FAIL", () => {
         undefined,
       ),
     ).toEqual([]);
+  });
+});
+
+// ============================================================================
+// RESUME
+// ============================================================================
+
+describe("RESUME", () => {
+  it("emits RUN_RESUMED when no existing state", () => {
+    const ac = new AbortController();
+    const events = decide(
+      {
+        type: "RESUME",
+        threadId: "t1",
+        orgId: "org1",
+        userId: "u1",
+        abortController: ac,
+        podId: "pod-1",
+      },
+      undefined,
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]!.type).toBe("RUN_RESUMED");
+    expect(events[0]).toMatchObject({
+      threadId: "t1",
+      orgId: "org1",
+      userId: "u1",
+      podId: "pod-1",
+    });
+  });
+
+  it("returns [] when already running (idempotent)", () => {
+    const events = decide(
+      {
+        type: "RESUME",
+        threadId: "t1",
+        orgId: "org1",
+        userId: "u1",
+        abortController: new AbortController(),
+        podId: "pod-1",
+      },
+      makeRunningStateForThread("t1"),
+    );
+    expect(events).toEqual([]);
   });
 });

@@ -45,6 +45,7 @@ import {
   resolveClaudeCodeModelId,
 } from "@/ai-providers/adapters/claude-code";
 import { getInternalUrl } from "@/core/server-constants";
+import { POD_ID } from "@/core/pod-identity";
 
 /**
  * Creates a language model from the provider, enabling reasoning when the
@@ -82,6 +83,7 @@ export interface StreamCoreInput {
   triggerId?: string;
   windowSize?: number;
   abortSignal?: AbortSignal;
+  isResume?: boolean;
 }
 
 export interface StreamCoreDeps {
@@ -189,14 +191,34 @@ export async function streamCore(
       throw new Error("Agent not found");
     }
 
-    // 3. Dispatch START
-    await runRegistry.execute({
-      type: "START",
-      threadId: mem.thread.id,
-      orgId: input.organizationId,
-      userId: input.userId,
-      abortController: new AbortController(),
-    });
+    // 3. Dispatch START or RESUME
+    if (input.isResume) {
+      await runRegistry.execute({
+        type: "RESUME",
+        threadId: mem.thread.id,
+        orgId: input.organizationId,
+        userId: input.userId,
+        abortController: new AbortController(),
+        podId: POD_ID,
+      });
+    } else {
+      await runRegistry.execute({
+        type: "START",
+        threadId: mem.thread.id,
+        orgId: input.organizationId,
+        userId: input.userId,
+        abortController: new AbortController(),
+        podId: POD_ID,
+        runConfig: {
+          models: input.models,
+          agent: input.agent,
+          temperature: input.temperature,
+          toolApprovalLevel: input.toolApprovalLevel,
+          windowSize: input.windowSize,
+          triggerId: input.triggerId,
+        },
+      });
+    }
     runStarted = true;
 
     const registrySignal = runRegistry.getAbortSignal(mem.thread.id);
@@ -238,13 +260,14 @@ export async function streamCore(
     const systemMessages = input.messages.filter((m) => m.role === "system");
     const requestMessage = input.messages.find((m) => m.role !== "system");
 
-    if (!requestMessage) {
-      throw new Error(
-        "No user message found in input — expected at least one non-system message",
-      );
+    if (!input.isResume) {
+      if (!requestMessage) {
+        throw new Error(
+          "No user message found in input — expected at least one non-system message",
+        );
+      }
+      await saveMessagesToThread(requestMessage);
     }
-
-    await saveMessagesToThread(requestMessage);
 
     // Close MCP clients on abort
     registrySignal.addEventListener("abort", () => {
@@ -258,6 +281,8 @@ export async function streamCore(
     const pendingOps: Promise<void>[] = [];
 
     // Pre-load conversation (no system messages — those are built separately)
+    // When resuming, requestMessage is undefined — conversation loads entirely
+    // from DB via createMemory / loadAndMergeMessages.
     const allMessages = await loadAndMergeMessages(
       mem,
       requestMessage,
@@ -741,10 +766,11 @@ export async function streamCore(
           }),
         );
         const stepEvent = transitions[0]?.event;
-        if (
-          stepEvent?.type === "STEP_COMPLETED" &&
-          stepEvent.stepCount % 5 === 0
-        ) {
+        const shouldSave = input.isResume
+          ? stepEvent?.type === "STEP_COMPLETED"
+          : stepEvent?.type === "STEP_COMPLETED" &&
+            stepEvent.stepCount % 5 === 0;
+        if (shouldSave) {
           pendingOps.push(
             saveMessagesToThread(responseMessage).catch((e) => {
               console.error("[decopilot:stream] onStepFinish save failed", e);
