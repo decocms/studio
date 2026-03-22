@@ -12,6 +12,7 @@ import {
   requireAuth,
   requireOrganization,
 } from "../../core/mesh-context";
+import { getMcpListCache } from "../../mcp-clients/mcp-list-cache";
 import { fetchToolsFromMCP } from "./fetch-tools";
 
 const InstallInputSchema = z.object({
@@ -26,6 +27,31 @@ const InstallInputSchema = z.object({
     .optional()
     .default("HTTP")
     .describe("Connection type (defaults to HTTP)"),
+  id: z.string().optional().describe("Optional pre-generated connection ID"),
+  connection_token: z
+    .string()
+    .optional()
+    .describe("Authentication token for the connection"),
+  connection_headers: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe("Custom headers or connection parameters"),
+  oauth_config: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe("OAuth configuration"),
+  configuration_state: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe("Configuration state"),
+  configuration_scopes: z
+    .array(z.string())
+    .optional()
+    .describe("Configuration scopes"),
+  metadata: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe("Additional metadata for the connection"),
 });
 
 const InstallOutputSchema = z.object({
@@ -35,6 +61,7 @@ const InstallOutputSchema = z.object({
   connection_url: z.string().nullable(),
   status: z.string(),
   needs_auth: z.boolean(),
+  is_existing: z.boolean(),
   message: z.string(),
 });
 
@@ -62,11 +89,12 @@ export const CONNECTION_INSTALL = defineTool({
       throw new Error("User ID required to install connection");
     }
 
-    // Check for duplicate connections by URL
+    // Check for duplicate connections by URL or app_name
     const existing = await ctx.storage.connections.list(organization.id);
     const duplicate = existing.find(
-      (c: { connection_url?: string | null }) =>
-        c.connection_url === input.connection_url,
+      (c: { connection_url?: string | null; app_name?: string | null }) =>
+        c.connection_url === input.connection_url ||
+        (input.app_name && c.app_name === input.app_name),
     );
     if (duplicate) {
       const dupConn = duplicate as {
@@ -108,6 +136,7 @@ export const CONNECTION_INSTALL = defineTool({
         connection_url: dupConn.connection_url ?? null,
         status: dupConn.status,
         needs_auth: needsAuth,
+        is_existing: true,
         message: needsAuth
           ? `Connection "${dupConn.title}" already exists but needs authentication. Please authenticate it.`
           : `Connection "${dupConn.title}" already exists and is ready to use.`,
@@ -116,18 +145,18 @@ export const CONNECTION_INSTALL = defineTool({
 
     // Validate endpoint by fetching tools
     const fetchResult = await fetchToolsFromMCP({
-      id: `pending-${Date.now()}`,
+      id: input.id ?? `pending-${Date.now()}`,
       title: input.title,
       connection_type: input.connection_type ?? "HTTP",
       connection_url: input.connection_url,
-      connection_token: null,
-      connection_headers: null,
+      connection_token: input.connection_token ?? null,
+      connection_headers: (input.connection_headers as never) ?? null,
     }).catch(() => null);
 
     const tools = fetchResult?.tools?.length ? fetchResult.tools : null;
-    const configurationScopes = fetchResult?.scopes?.length
-      ? fetchResult.scopes
-      : null;
+    const configurationScopes =
+      input.configuration_scopes ??
+      (fetchResult?.scopes?.length ? fetchResult.scopes : null);
 
     // Detect auth requirement from scopes or MCP_CONFIGURATION tool presence
     const hasScopes = !!configurationScopes && configurationScopes.length > 0;
@@ -137,6 +166,7 @@ export const CONNECTION_INSTALL = defineTool({
 
     // Create connection
     const connection = await ctx.storage.connections.create({
+      ...(input.id ? { id: input.id } : {}),
       title: input.title,
       connection_url: input.connection_url,
       connection_type: input.connection_type ?? "HTTP",
@@ -148,8 +178,22 @@ export const CONNECTION_INSTALL = defineTool({
       created_by: userId,
       tools,
       configuration_scopes: configurationScopes,
-      metadata: needsAuth ? { needs_auth: true } : null,
+      connection_token: input.connection_token ?? null,
+      connection_headers: (input.connection_headers as never) ?? null,
+      oauth_config: (input.oauth_config as never) ?? null,
+      configuration_state: (input.configuration_state as never) ?? null,
+      metadata: needsAuth
+        ? { ...(input.metadata ?? {}), needs_auth: true }
+        : ((input.metadata as never) ?? null),
     });
+
+    // Populate NATS KV cache with fetched tools
+    if (tools && tools.length > 0) {
+      const cache = getMcpListCache();
+      if (cache) {
+        cache.set("tools", connection.id, tools).catch(() => {});
+      }
+    }
 
     // Publish connection.created event
     await ctx.eventBus.publish(
@@ -168,6 +212,7 @@ export const CONNECTION_INSTALL = defineTool({
       connection_url: connection.connection_url ?? null,
       status: connection.status,
       needs_auth: needsAuth,
+      is_existing: false,
       message: needsAuth
         ? `Connection "${connection.title}" installed successfully but needs authentication. Use CONNECTION_AUTHENTICATE to show the auth card.`
         : `Connection "${connection.title}" installed and ready to use.`,

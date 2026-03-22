@@ -1,7 +1,7 @@
 import { authClient } from "@/web/lib/auth-client";
 import {
   ORG_ADMIN_PROJECT_SLUG,
-  useConnectionActions,
+  useConnectionInstall,
   useProjectContext,
   type ConnectionCreateData,
 } from "@decocms/mesh-sdk";
@@ -19,7 +19,7 @@ export function StoreRegistryEmptyState({
   registries,
   onConnected,
 }: StoreRegistryEmptyStateProps) {
-  const actions = useConnectionActions();
+  const connectionInstall = useConnectionInstall();
   const {
     org: { slug: orgSlug },
   } = useProjectContext();
@@ -34,8 +34,31 @@ export function StoreRegistryEmptyState({
 
     setIsInstalling(true);
     try {
-      const created = await actions.create.mutateAsync(firstRegistry);
-      onConnected?.(created.id);
+      const result = await connectionInstall.mutateAsync({
+        title: firstRegistry.title,
+        connection_url: firstRegistry.connection_url ?? "",
+        description: firstRegistry.description ?? undefined,
+        icon: firstRegistry.icon ?? undefined,
+        app_name: firstRegistry.app_name ?? undefined,
+        app_id: firstRegistry.app_id ?? undefined,
+        connection_type:
+          (firstRegistry.connection_type as "HTTP" | "SSE" | "Websocket") ??
+          "HTTP",
+        id: firstRegistry.id,
+        connection_token: firstRegistry.connection_token ?? undefined,
+        connection_headers:
+          (firstRegistry.connection_headers as Record<string, unknown>) ??
+          undefined,
+        oauth_config:
+          (firstRegistry.oauth_config as Record<string, unknown>) ?? undefined,
+        configuration_state:
+          (firstRegistry.configuration_state as Record<string, unknown>) ??
+          undefined,
+        configuration_scopes: firstRegistry.configuration_scopes ?? undefined,
+        metadata:
+          (firstRegistry.metadata as Record<string, unknown>) ?? undefined,
+      });
+      onConnected?.(result.connection_id);
     } finally {
       setIsInstalling(false);
     }

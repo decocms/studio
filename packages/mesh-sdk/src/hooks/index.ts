@@ -70,6 +70,13 @@ export {
   type UseMcpGetPromptOptions,
 } from "./use-mcp-prompts";
 
+// Connection install hook
+export {
+  useConnectionInstall,
+  type ConnectionInstallInput,
+  type ConnectionInstallOutput,
+} from "./use-connection-install";
+
 // Virtual MCP hooks
 export {
   useVirtualMCPs,
