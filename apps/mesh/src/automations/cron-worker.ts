@@ -47,8 +47,14 @@ export class AutomationCronWorker {
    * Called by the polling timer; concurrent calls are coalesced.
    */
   async processNow(): Promise<void> {
-    if (!this.running) return;
+    if (!this.running) {
+      console.log("[AutomationCron] processNow skipped: worker not running");
+      return;
+    }
     if (this.processing) {
+      console.log(
+        "[AutomationCron] processNow coalesced: already processing, will re-run after",
+      );
       this.pendingNotify = true;
       return;
     }
@@ -109,10 +115,18 @@ export class AutomationCronWorker {
    */
   private async recomputeStaleNextRunAt(): Promise<void> {
     const triggers = await this.storage.findAllCronTriggersForRecompute();
+    console.log(
+      `[AutomationCron] Startup sweep: found ${triggers.length} active cron trigger(s) to check`,
+    );
     let updated = 0;
 
     for (const t of triggers) {
-      if (!t.cron_expression) continue;
+      if (!t.cron_expression) {
+        console.log(
+          `[AutomationCron] Startup sweep: trigger ${t.id} has no cron_expression, skipping`,
+        );
+        continue;
+      }
       const after = t.last_run_at
         ? new Date(t.last_run_at)
         : new Date(t.created_at);
@@ -120,34 +134,61 @@ export class AutomationCronWorker {
         t.cron_expression,
         after,
       );
+      console.log(
+        `[AutomationCron] Startup sweep: trigger ${t.id} cron="${t.cron_expression}" last_run_at=${t.last_run_at ?? "null"} → next_run_at=${nextRun?.toISOString() ?? "null"}`,
+      );
       if (nextRun) {
         await this.storage.updateNextRunAt(t.id, nextRun.toISOString());
         updated++;
       }
     }
 
-    if (updated > 0) {
-      console.log(
-        `[AutomationCron] Startup sweep: recomputed next_run_at for ${updated} trigger(s)`,
-      );
-    }
+    console.log(
+      `[AutomationCron] Startup sweep complete: recomputed ${updated}/${triggers.length} trigger(s)`,
+    );
   }
 
   private async processDueTriggers(): Promise<void> {
     const now = this.now();
     const batchSize = 20;
 
+    // DEBUG: dump raw state of all cron triggers before filtering
+    const allTriggers = await this.storage.findAllCronTriggersForRecompute();
+    if (allTriggers.length > 0) {
+      console.log(
+        `[AutomationCron] DEBUG all cron triggers in DB (${allTriggers.length}):`,
+        allTriggers.map((t) => ({
+          id: t.id,
+          cron: t.cron_expression,
+          last_run_at: t.last_run_at,
+          next_run_at: t.next_run_at,
+          next_run_at_type: typeof t.next_run_at,
+          created_at: t.created_at,
+        })),
+      );
+    }
+
+    const nowIso = now.toISOString();
+    console.log(
+      `[AutomationCron] Polling for due triggers at ${nowIso} (WHERE next_run_at <= '${nowIso}')`,
+    );
+
     const dueTriggers = await this.storage.findDueCronTriggers(now, batchSize);
+
+    console.log(
+      `[AutomationCron] Query returned ${dueTriggers.length} due trigger(s)`,
+    );
 
     if (dueTriggers.length > 0) {
       console.log(
-        `[AutomationCron] Found ${dueTriggers.length} due trigger(s) at ${now.toISOString()}:`,
+        `[AutomationCron] Due triggers:`,
         dueTriggers.map((t) => ({
           triggerId: t.id,
           automationId: t.automation_id,
           automationName: t.automation.name,
           cronExpr: t.cron_expression,
           lastRunAt: t.last_run_at,
+          nextRunAt: t.next_run_at,
         })),
       );
     }
@@ -170,6 +211,9 @@ export class AutomationCronWorker {
     const now = this.now();
 
     // 1. Update last_run_at FIRST (crash-safe: if this fails, trigger fires again)
+    console.log(
+      `[AutomationCron] Dispatch step 1: updating last_run_at=${now.toISOString()} for trigger ${trigger.id}`,
+    );
     await this.storage.updateTriggerLastRunAt(trigger.id, now.toISOString());
 
     // 2. Compute and store next_run_at (cache update, best-effort)
@@ -178,6 +222,9 @@ export class AutomationCronWorker {
         trigger.cron_expression,
         now,
       );
+      console.log(
+        `[AutomationCron] Dispatch step 2: next_run_at=${nextRun?.toISOString() ?? "null"} for trigger ${trigger.id}`,
+      );
       if (nextRun) {
         await this.storage.updateNextRunAt(trigger.id, nextRun.toISOString());
       }
@@ -185,8 +232,9 @@ export class AutomationCronWorker {
 
     // 3. Publish to JetStream for worker execution
     console.log(
-      `[AutomationCron] Dispatching trigger ${trigger.id} for automation ${payload.automationId}`,
+      `[AutomationCron] Dispatch step 3: publishing to JetStream for trigger ${trigger.id} automation ${payload.automationId}`,
     );
     await this.jobStream.publish(payload);
+    console.log(`[AutomationCron] Dispatch complete for trigger ${trigger.id}`);
   }
 }

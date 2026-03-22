@@ -504,7 +504,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       ])
       .where("t.type", "=", "cron")
       .where("a.active", "=", true)
-      .where("t.next_run_at", "<=", now)
+      .where("t.next_run_at", "<=", now.toISOString())
       .forUpdate()
       .skipLocked()
       .limit(batchSize)
