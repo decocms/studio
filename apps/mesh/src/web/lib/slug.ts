@@ -17,13 +17,3 @@ export function generateSlug(name: string): string {
     .replace(/-+/g, "-") // Replace multiple hyphens with single
     .replace(/^-|-$/g, ""); // Remove leading/trailing hyphens
 }
-
-/**
- * Validate if a string is a valid slug
- *
- * @param slug - The slug to validate
- * @returns True if valid, false otherwise
- */
-export function isValidSlug(slug: string): boolean {
-  return /^[a-z0-9-]+$/.test(slug) && slug.length > 0 && slug.length <= 100;
-}

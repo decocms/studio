@@ -48,7 +48,7 @@ const VirtualMCPConnectionInputSchema = VirtualMCPConnectionSchema.extend({
 /**
  * Pinned view schema - a tool view pinned to a virtual MCP
  */
-export const VirtualMcpPinnedViewSchema = z.object({
+const VirtualMcpPinnedViewSchema = z.object({
   connectionId: z.string(),
   toolName: z.string(),
   label: z.string(),
@@ -60,7 +60,7 @@ export type VirtualMcpPinnedView = z.infer<typeof VirtualMcpPinnedViewSchema>;
 /**
  * Virtual MCP UI customization schema
  */
-export const VirtualMcpUISchema = z.object({
+const VirtualMcpUISchema = z.object({
   banner: z.string().nullable().optional(),
   bannerColor: z.string().nullable().optional(),
   icon: z.string().nullable().optional(),

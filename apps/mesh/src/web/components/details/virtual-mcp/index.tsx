@@ -46,7 +46,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   ChevronRight,
-  Loading01,
   Play,
   Plus,
   Settings01,
@@ -1257,33 +1256,4 @@ export function VirtualMcpDetailView({
   return (
     <VirtualMcpDetailViewWithData virtualMcp={virtualMcp} variant={variant} />
   );
-}
-
-// ---------------------------------------------------------------------------
-// Default export — legacy agent-only wrapper
-// ---------------------------------------------------------------------------
-
-export default function VirtualMcpDetail() {
-  return (
-    <ErrorBoundary>
-      <Suspense
-        fallback={
-          <div className="flex h-full items-center justify-center bg-background">
-            <Loading01
-              size={32}
-              className="animate-spin text-muted-foreground"
-            />
-          </div>
-        }
-      >
-        <VirtualMcpDetailViewContent />
-      </Suspense>
-    </ErrorBoundary>
-  );
-}
-
-function VirtualMcpDetailViewContent() {
-  // This is only used by the agent route default export
-  // The project route uses VirtualMcpDetailView directly
-  return null;
 }
