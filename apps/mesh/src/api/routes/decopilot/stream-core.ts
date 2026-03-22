@@ -436,6 +436,13 @@ export async function streamCore(
           const apiKey = await ctx.boundAuth.apiKey.create({
             name: "claude-code-session",
             expiresIn: 3600,
+            metadata: {
+              organization: {
+                id: organization.id,
+                slug: organization.slug,
+                name: organization.name,
+              },
+            },
           });
 
           const mcpUrl = `${getInternalUrl()}/mcp/virtual-mcp/${input.agent.id}`;
