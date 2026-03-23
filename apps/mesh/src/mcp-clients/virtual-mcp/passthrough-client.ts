@@ -289,7 +289,8 @@ export class PassthroughClient extends Client {
       virtualToolsMap.set(virtualTool.name, virtualTool);
     }
 
-    // Pass deduplicate=false so we get ALL tools from all connections
+    // Pass deduplicate=false so tools with the same name from different
+    // connections are all preserved — they'll be disambiguated by slug prefix
     const downstream = await this.loadItemsFromClients<ToolWithConnection>(
       "tools",
       (client) =>
@@ -299,26 +300,6 @@ export class PassthroughClient extends Client {
       undefined,
       false,
     );
-
-    // Group downstream tools by name to detect collisions
-    const byName = new Map<string, ToolWithConnection[]>();
-    for (const tool of downstream.data) {
-      const existing = byName.get(tool.name);
-      if (existing) {
-        existing.push(tool);
-      } else {
-        byName.set(tool.name, [tool]);
-      }
-    }
-
-    // Find colliding names: same tool name from different connections
-    const collidingNames = new Set<string>();
-    for (const [name, tools] of byName) {
-      const uniqueConnections = new Set(tools.map((t) => t._meta.connectionId));
-      if (uniqueConnections.size > 1 || virtualToolsMap.has(name)) {
-        collidingNames.add(name);
-      }
-    }
 
     // Build slug map for connections, disambiguating slug collisions
     const connectionSlugMap = new Map<string, string>();
@@ -346,7 +327,7 @@ export class PassthroughClient extends Client {
       }
     }
 
-    // Build final tool list and mappings
+    // Build final tool list and mappings — always namespace downstream tools
     const mappings = new Map<string, CacheMapping>();
     const finalTools: ToolWithConnection[] = [];
 
@@ -359,38 +340,25 @@ export class PassthroughClient extends Client {
       finalTools.push(vt);
     }
 
-    // Process downstream tools
-    for (const [name, tools] of byName) {
-      if (collidingNames.has(name)) {
-        // Namespace all colliding tools
-        for (const tool of tools) {
-          const slug =
-            connectionSlugMap.get(tool._meta.connectionId) ??
-            tool._meta.connectionId;
-          const namespacedName = `${slug}::${name}`;
-          const namespacedTool: ToolWithConnection = {
-            ...tool,
-            name: namespacedName,
-            _meta: {
-              ...tool._meta,
-              originalName: name,
-            },
-          };
-          mappings.set(namespacedName, {
-            connectionId: tool._meta.connectionId,
-            originalName: name,
-          });
-          finalTools.push(namespacedTool);
-        }
-      } else {
-        // No collision — keep first occurrence with plain name
-        const tool = tools[0]!;
-        mappings.set(name, {
-          connectionId: tool._meta.connectionId,
-          originalName: name,
-        });
-        finalTools.push(tool);
-      }
+    // Namespace all downstream tools as connection-slug::tool_name
+    for (const tool of downstream.data) {
+      const connId = (tool as ToolWithConnection)._meta.connectionId;
+      const slug = connectionSlugMap.get(connId) ?? connId;
+      const originalName = tool.name;
+      const namespacedName = `${slug}::${originalName}`;
+      const namespacedTool: ToolWithConnection = {
+        ...tool,
+        name: namespacedName,
+        _meta: {
+          ...(tool as ToolWithConnection)._meta,
+          originalName,
+        },
+      };
+      mappings.set(namespacedName, {
+        connectionId: connId,
+        originalName,
+      });
+      finalTools.push(namespacedTool);
     }
 
     return {
