@@ -3,7 +3,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
-import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { Spinner } from "@deco/ui/components/spinner.tsx";
 import {
   Tooltip,
@@ -173,16 +172,11 @@ interface IceBreakersProps {
 }
 
 /**
- * Fallback component for Suspense that maintains min-height to prevent layout shift
- * Shows skeleton pills matching the actual IceBreakers appearance
+ * Fallback component for Suspense — renders nothing while loading
+ * The parent container maintains fixed height to prevent layout shift
  */
 function IceBreakersFallback() {
-  return (
-    <>
-      <Skeleton className="h-6 w-20 rounded-full border border-border" />
-      <Skeleton className="h-6 w-24 rounded-full border border-border" />
-    </>
-  );
+  return null;
 }
 
 /**
@@ -313,7 +307,7 @@ function IceBreakersContent({ connectionId }: { connectionId: string | null }) {
   }
 
   return (
-    <div className="relative w-full mb-3">
+    <>
       <IceBreakersUI
         prompts={prompts}
         onSelect={handlePromptSelection}
@@ -327,7 +321,7 @@ function IceBreakersContent({ connectionId }: { connectionId: string | null }) {
         }}
         onSubmit={handleDialogSubmit}
       />
-    </div>
+    </>
   );
 }
 
@@ -345,7 +339,7 @@ export function IceBreakers({ className }: IceBreakersProps) {
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center justify-center gap-2",
+        "flex flex-wrap items-center justify-center gap-2 min-h-[34px] mb-3",
         className,
       )}
     >

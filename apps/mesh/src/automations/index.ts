@@ -1,4 +1,5 @@
 export { AutomationCronWorker } from "./cron-worker";
+export { AutomationJobStream } from "./job-stream";
 export { EventTriggerEngine } from "./event-trigger-engine";
 export {
   type StreamCoreFn,

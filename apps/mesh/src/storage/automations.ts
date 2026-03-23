@@ -43,6 +43,7 @@ export interface CreateTriggerInput {
   connection_id?: string | null;
   event_type?: string | null;
   params?: string | null;
+  next_run_at?: string | null;
 }
 
 // ============================================================================
@@ -81,6 +82,12 @@ export interface AutomationsStorage {
   findAllActiveCronTriggers(): Promise<
     (AutomationTrigger & { automation: Automation })[]
   >;
+  findDueCronTriggers(
+    now: Date,
+    batchSize: number,
+  ): Promise<(AutomationTrigger & { automation: Automation })[]>;
+  updateNextRunAt(triggerId: string, nextRunAt: string | null): Promise<void>;
+  findAllCronTriggersForRecompute(): Promise<AutomationTrigger[]>;
   countInProgressRuns(automationId: string): Promise<number>;
   tryAcquireRunSlot(
     automationId: string,
@@ -137,6 +144,7 @@ function triggerFromDbRow(row: {
   event_type: string | null;
   params: string | null;
   last_run_at: Date | string | null;
+  next_run_at?: Date | string | null;
   created_at: Date | string;
 }): AutomationTrigger {
   return {
@@ -148,6 +156,7 @@ function triggerFromDbRow(row: {
     event_type: row.event_type,
     params: row.params,
     last_run_at: row.last_run_at ? toIsoString(row.last_run_at) : null,
+    next_run_at: row.next_run_at ? toIsoString(row.next_run_at) : null,
     created_at: toIsoString(row.created_at),
   };
 }
@@ -311,6 +320,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       event_type: input.event_type ?? null,
       params: input.params ?? null,
       last_run_at: null,
+      next_run_at: input.next_run_at ?? null,
       created_at: now,
     };
 
@@ -460,6 +470,87 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         updated_at: row.a_updated_at,
       }),
     }));
+  }
+
+  async findDueCronTriggers(
+    now: Date,
+    batchSize: number,
+  ): Promise<(AutomationTrigger & { automation: Automation })[]> {
+    return await this.db.transaction().execute(async (trx) => {
+      const rows = await trx
+        .selectFrom("automation_triggers as t")
+        .innerJoin("automations as a", "a.id", "t.automation_id")
+        .select([
+          "t.id",
+          "t.automation_id",
+          "t.type",
+          "t.cron_expression",
+          "t.connection_id",
+          "t.event_type",
+          "t.params",
+          "t.last_run_at",
+          "t.next_run_at",
+          "t.created_at",
+          "a.id as a_id",
+          "a.organization_id as a_organization_id",
+          "a.name as a_name",
+          "a.active as a_active",
+          "a.created_by as a_created_by",
+          "a.agent as a_agent",
+          "a.messages as a_messages",
+          "a.models as a_models",
+          "a.temperature as a_temperature",
+          "a.created_at as a_created_at",
+          "a.updated_at as a_updated_at",
+        ])
+        .where("t.type", "=", "cron")
+        .where("a.active", "=", true)
+        .where("t.next_run_at", "<=", now.toISOString() as unknown as Date)
+        .forUpdate()
+        .skipLocked()
+        .limit(batchSize)
+        .execute();
+
+      return rows.map((row) => ({
+        ...triggerFromDbRow(row),
+        automation: automationFromDbRow({
+          id: row.a_id,
+          organization_id: row.a_organization_id,
+          name: row.a_name,
+          active: row.a_active,
+          created_by: row.a_created_by,
+          agent: row.a_agent,
+          messages: row.a_messages,
+          models: row.a_models,
+          temperature: row.a_temperature,
+          created_at: row.a_created_at,
+          updated_at: row.a_updated_at,
+        }),
+      }));
+    });
+  }
+
+  async updateNextRunAt(
+    triggerId: string,
+    nextRunAt: string | null,
+  ): Promise<void> {
+    await this.db
+      .updateTable("automation_triggers")
+      .set({ next_run_at: nextRunAt })
+      .where("id", "=", triggerId)
+      .execute();
+  }
+
+  async findAllCronTriggersForRecompute(): Promise<AutomationTrigger[]> {
+    const rows = await this.db
+      .selectFrom("automation_triggers as t")
+      .innerJoin("automations as a", "a.id", "t.automation_id")
+      .selectAll("t")
+      .where("t.type", "=", "cron")
+      .where("a.active", "=", true)
+      .execute();
+
+    return rows.map(triggerFromDbRow);
   }
 
   async countInProgressRuns(automationId: string): Promise<number> {

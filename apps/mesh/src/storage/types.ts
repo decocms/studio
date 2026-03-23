@@ -890,6 +890,11 @@ export interface AutomationTriggerTable {
     Date | string | null,
     Date | string | null
   >;
+  next_run_at: ColumnType<
+    Date | null,
+    Date | string | null,
+    Date | string | null
+  >;
   created_at: ColumnType<Date, Date | string, never>;
 }
 
@@ -905,6 +910,7 @@ export interface AutomationTrigger {
   event_type: string | null;
   params: string | null;
   last_run_at: string | null;
+  next_run_at: string | null;
   created_at: string;
 }
 

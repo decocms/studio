@@ -1,11 +1,15 @@
 /**
- * Automation Cron Worker
+ * Automation Cron Scheduler
  *
- * Periodically checks all active cron triggers and fires automations that are
- * due. Instead of storing `next_run_at` (fragile — a failed update loses the
- * trigger), we store `last_run_at` and compute due-ness from the cron
- * expression. If `last_run_at` update fails, worst case the trigger fires
- * again (much safer than losing it forever).
+ * Periodically queries for due cron triggers using an indexed `next_run_at`
+ * column and publishes fire commands to NATS JetStream. Workers pull jobs
+ * from the stream and execute them independently.
+ *
+ * Crash-safe design:
+ * - `last_run_at` is the source of truth (updated FIRST before dispatch)
+ * - `next_run_at` is a denormalized cache for indexed queries
+ * - On startup, a sweep recomputes any stale `next_run_at` values
+ * - `FOR UPDATE SKIP LOCKED` enables multi-instance scheduling
  *
  * Follows the same coalescing-loop pattern as EventBusWorker:
  *   - `processNow()` is called by an external timer / polling strategy
@@ -13,17 +17,10 @@
  *     runs at a time, with a follow-up if notifications arrived mid-flight.
  */
 
-import type { StreamCoreDeps } from "@/api/routes/decopilot/stream-core";
 import type { AutomationsStorage } from "@/storage/automations";
-import type { Automation, AutomationTrigger } from "@/storage/types";
+import type { AutomationTrigger } from "@/storage/types";
 import { Cron } from "croner";
-import {
-  fireAutomation,
-  type FireAutomationConfig,
-  type MeshContextFactory,
-  type StreamCoreFn,
-} from "./fire";
-import type { Semaphore } from "./semaphore";
+import type { AutomationJobStream, AutomationJobPayload } from "./job-stream";
 
 export class AutomationCronWorker {
   private running = false;
@@ -32,16 +29,13 @@ export class AutomationCronWorker {
 
   constructor(
     private storage: AutomationsStorage,
-    private streamCoreFn: StreamCoreFn,
-    private meshContextFactory: MeshContextFactory,
-    private config: FireAutomationConfig,
-    private globalSemaphore: Semaphore,
-    private deps: Pick<StreamCoreDeps, "runRegistry" | "cancelBroadcast">,
+    private jobStream: AutomationJobStream,
     private now: () => Date = () => new Date(),
   ) {}
 
   async start(): Promise<void> {
     this.running = true;
+    await this.recomputeStaleNextRunAt();
   }
 
   async stop(): Promise<void> {
@@ -75,10 +69,20 @@ export class AutomationCronWorker {
   // --------------------------------------------------------------------------
 
   /**
+   * Compute the next run time after `after` for a given cron expression.
+   */
+  static computeNextRunAt(cronExpression: string, after: Date): Date | null {
+    try {
+      const cron = new Cron(cronExpression, { timezone: "UTC" });
+      return cron.nextRun(after) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Check if a cron trigger is due based on its expression and last_run_at.
-   *
-   * A trigger is due when the next scheduled occurrence after `last_run_at`
-   * is at or before `now`. If the trigger has never run, it's always due.
+   * Kept for backward compatibility and tests.
    */
   static isDue(
     cronExpression: string,
@@ -87,11 +91,7 @@ export class AutomationCronWorker {
   ): boolean {
     try {
       const cron = new Cron(cronExpression, { timezone: "UTC" });
-
-      // Never run → always due
       if (!lastRunAt) return true;
-
-      // Compute the next scheduled occurrence after last_run_at
       const nextScheduled = cron.nextRun(new Date(lastRunAt));
       return nextScheduled != null && nextScheduled.getTime() <= now.getTime();
     } catch {
@@ -103,66 +103,76 @@ export class AutomationCronWorker {
   // Private helpers
   // --------------------------------------------------------------------------
 
-  private async processDueTriggers(): Promise<void> {
-    const now = this.now();
-    const allTriggers = await this.storage.findAllActiveCronTriggers();
+  /**
+   * On startup, recompute next_run_at for all active cron triggers.
+   * Fixes any stale values from crashes or missed updates.
+   */
+  private async recomputeStaleNextRunAt(): Promise<void> {
+    const triggers = await this.storage.findAllCronTriggersForRecompute();
+    let updated = 0;
 
-    const dueTriggers = allTriggers.filter(
-      (t) =>
-        t.cron_expression &&
-        AutomationCronWorker.isDue(t.cron_expression, t.last_run_at, now),
-    );
+    for (const t of triggers) {
+      if (!t.cron_expression) continue;
+      const after = t.last_run_at
+        ? new Date(t.last_run_at)
+        : new Date(t.created_at);
+      const nextRun = AutomationCronWorker.computeNextRunAt(
+        t.cron_expression,
+        after,
+      );
+      await this.storage.updateNextRunAt(
+        t.id,
+        nextRun ? nextRun.toISOString() : null,
+      );
+      updated++;
+    }
 
-    if (dueTriggers.length > 0) {
+    if (updated > 0) {
       console.log(
-        `[AutomationCron] Found ${dueTriggers.length} due trigger(s) at ${now.toISOString()}:`,
-        dueTriggers.map((t) => ({
-          triggerId: t.id,
-          automationId: t.automation_id,
-          automationName: t.automation.name,
-          cronExpr: t.cron_expression,
-          lastRunAt: t.last_run_at,
-          automationActive: t.automation.active,
-        })),
+        `[AutomationCron] Startup sweep: recomputed next_run_at for ${updated} trigger(s)`,
       );
     }
+  }
+
+  private async processDueTriggers(): Promise<void> {
+    const now = this.now();
+    const batchSize = 20;
+
+    const dueTriggers = await this.storage.findDueCronTriggers(now, batchSize);
 
     await Promise.allSettled(
       dueTriggers.map(({ automation, ...trigger }) =>
-        this.fireTrigger(trigger, automation),
+        this.dispatchTrigger(trigger, {
+          triggerId: trigger.id,
+          automationId: automation.id,
+          organizationId: automation.organization_id,
+        }),
       ),
     );
   }
 
-  private async fireTrigger(
+  private async dispatchTrigger(
     trigger: AutomationTrigger,
-    automation: Automation,
+    payload: AutomationJobPayload,
   ): Promise<void> {
-    console.log(
-      `[AutomationCron] Firing trigger ${trigger.id} for automation "${automation.name}" (${automation.id})`,
-    );
+    const now = this.now();
 
-    // Record last_run_at FIRST (crash safety — if this fails, the trigger
-    // fires again next cycle, which is safe)
-    await this.storage.updateTriggerLastRunAt(
-      trigger.id,
-      this.now().toISOString(),
-    );
+    // 1. Update last_run_at FIRST (crash-safe: if this fails, trigger fires again)
+    await this.storage.updateTriggerLastRunAt(trigger.id, now.toISOString());
 
-    const result = await fireAutomation({
-      automation,
-      triggerId: trigger.id,
-      storage: this.storage,
-      streamCoreFn: this.streamCoreFn,
-      meshContextFactory: this.meshContextFactory,
-      config: this.config,
-      globalSemaphore: this.globalSemaphore,
-      deps: this.deps,
-    });
+    // 2. Compute and store next_run_at (cache update, best-effort)
+    if (trigger.cron_expression) {
+      const nextRun = AutomationCronWorker.computeNextRunAt(
+        trigger.cron_expression,
+        now,
+      );
+      await this.storage.updateNextRunAt(
+        trigger.id,
+        nextRun ? nextRun.toISOString() : null,
+      );
+    }
 
-    console.log(
-      `[AutomationCron] fireAutomation result for trigger ${trigger.id}:`,
-      result,
-    );
+    // 3. Publish to JetStream for worker execution
+    await this.jobStream.publish(payload);
   }
 }

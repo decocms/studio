@@ -1,10 +1,8 @@
 import { describe, expect, it, mock } from "bun:test";
 import type { AutomationsStorage } from "@/storage/automations";
 import type { Automation, AutomationTrigger } from "@/storage/types";
-import type { MeshContext } from "@/core/mesh-context";
-import type { StreamCoreFn, FireAutomationConfig } from "./fire";
 import { AutomationCronWorker } from "./cron-worker";
-import { Semaphore } from "./semaphore";
+import type { AutomationJobStream } from "./job-stream";
 
 // ============================================================================
 // Helpers
@@ -49,51 +47,26 @@ function makeTrigger(
     event_type: null,
     params: null,
     last_run_at: null,
+    next_run_at: null,
     created_at: "2026-01-01T00:00:00Z",
     ...overrides,
   };
 }
 
-function makeMeshContext(): MeshContext {
-  return {
-    organization: { id: ORG_ID, slug: "test", name: "Test" },
-    storage: { threads: {} },
-  } as unknown as MeshContext;
-}
-
-function makeEmptyStream() {
-  return new ReadableStream({
-    start(c) {
-      c.close();
-    },
-  });
-}
-
-function makeDeps() {
-  return {
-    runRegistry: {
-      register: mock(() => () => {}),
-      get: mock(() => undefined),
-    },
-    cancelBroadcast: {
-      subscribe: mock(() => () => {}),
-      broadcast: mock(() => {}),
-    },
-  } as any;
-}
-
 interface MockStorage extends AutomationsStorage {
-  findAllActiveCronTriggers: ReturnType<typeof mock>;
+  findDueCronTriggers: ReturnType<typeof mock>;
+  findAllCronTriggersForRecompute: ReturnType<typeof mock>;
   updateTriggerLastRunAt: ReturnType<typeof mock>;
-  tryAcquireRunSlot: ReturnType<typeof mock>;
-  deactivateAutomation: ReturnType<typeof mock>;
-  markRunFailed: ReturnType<typeof mock>;
+  updateNextRunAt: ReturnType<typeof mock>;
 }
 
 function makeStorage(overrides?: Partial<MockStorage>): MockStorage {
   return {
+    findDueCronTriggers: mock(() => Promise.resolve([])),
     findAllActiveCronTriggers: mock(() => Promise.resolve([])),
+    findAllCronTriggersForRecompute: mock(() => Promise.resolve([])),
     updateTriggerLastRunAt: mock(() => Promise.resolve()),
+    updateNextRunAt: mock(() => Promise.resolve()),
     tryAcquireRunSlot: mock(() => Promise.resolve("thrd_1")),
     deactivateAutomation: mock(() => Promise.resolve()),
     markRunFailed: mock(() => Promise.resolve()),
@@ -101,40 +74,35 @@ function makeStorage(overrides?: Partial<MockStorage>): MockStorage {
   } as unknown as MockStorage;
 }
 
+interface MockJobStream extends AutomationJobStream {
+  publish: ReturnType<typeof mock>;
+}
+
+function makeJobStream(overrides?: Partial<MockJobStream>): MockJobStream {
+  return {
+    publish: mock(() => Promise.resolve()),
+    init: mock(() => Promise.resolve()),
+    startConsumer: mock(() => Promise.resolve()),
+    stop: mock(() => {}),
+    ...overrides,
+  } as unknown as MockJobStream;
+}
+
 function makeWorker(opts?: {
   storage?: MockStorage;
-  streamCoreFn?: StreamCoreFn;
-  meshContextFactory?: (
-    orgId: string,
-    userId: string,
-  ) => Promise<MeshContext | null>;
-  config?: FireAutomationConfig;
-  semaphore?: Semaphore;
+  jobStream?: MockJobStream;
   now?: () => Date;
 }) {
   const storage = opts?.storage ?? makeStorage();
-  const streamCoreFn: StreamCoreFn =
-    opts?.streamCoreFn ??
-    mock(async () => ({ threadId: "thrd_1", stream: makeEmptyStream() }));
-  const factory =
-    opts?.meshContextFactory ?? mock(() => Promise.resolve(makeMeshContext()));
-  const config = opts?.config ?? {
-    maxConcurrentPerAutomation: 3,
-    runTimeoutMs: 60_000,
-  };
-  const semaphore = opts?.semaphore ?? new Semaphore(10);
+  const jobStream = opts?.jobStream ?? makeJobStream();
 
   const worker = new AutomationCronWorker(
     storage,
-    streamCoreFn,
-    factory,
-    config,
-    semaphore,
-    makeDeps(),
+    jobStream,
     opts?.now ?? (() => FIXED_NOW),
   );
 
-  return { worker, storage, streamCoreFn, factory };
+  return { worker, storage, jobStream };
 }
 
 // ============================================================================
@@ -144,14 +112,12 @@ function makeWorker(opts?: {
 describe("AutomationCronWorker", () => {
   describe("isDue", () => {
     it("returns true when trigger has never run", () => {
-      // Every 5 minutes — at 12:00 there was a scheduled time at 12:00
       expect(AutomationCronWorker.isDue("*/5 * * * *", null, FIXED_NOW)).toBe(
         true,
       );
     });
 
     it("returns true when previous scheduled time is after last_run_at", () => {
-      // Every 5 minutes, last ran at 11:50, now 12:00 — 11:55 was missed
       expect(
         AutomationCronWorker.isDue(
           "*/5 * * * *",
@@ -162,7 +128,6 @@ describe("AutomationCronWorker", () => {
     });
 
     it("returns false when next scheduled occurrence is still in the future", () => {
-      // Every 5 minutes, last ran at 12:00:01 — next after that is 12:05 > 12:00
       expect(
         AutomationCronWorker.isDue(
           "*/5 * * * *",
@@ -179,65 +144,98 @@ describe("AutomationCronWorker", () => {
     });
   });
 
+  describe("computeNextRunAt", () => {
+    it("computes next run time from a given date", () => {
+      const result = AutomationCronWorker.computeNextRunAt(
+        "*/5 * * * *",
+        new Date("2026-03-12T12:00:00Z"),
+      );
+      expect(result).toEqual(new Date("2026-03-12T12:05:00Z"));
+    });
+
+    it("returns null for invalid cron expression", () => {
+      expect(
+        AutomationCronWorker.computeNextRunAt("invalid", FIXED_NOW),
+      ).toBeNull();
+    });
+  });
+
+  describe("start", () => {
+    it("recomputes stale next_run_at on startup", async () => {
+      const trigger = makeTrigger({
+        last_run_at: "2026-03-12T11:55:00Z",
+        next_run_at: null,
+      });
+      const storage = makeStorage({
+        findAllCronTriggersForRecompute: mock(() => Promise.resolve([trigger])),
+      });
+
+      const { worker } = makeWorker({ storage });
+      await worker.start();
+
+      expect(storage.updateNextRunAt).toHaveBeenCalledWith(
+        "trig_1",
+        "2026-03-12T12:00:00.000Z",
+      );
+    });
+
+    it("uses created_at when last_run_at is null", async () => {
+      const trigger = makeTrigger({
+        last_run_at: null,
+        created_at: "2026-03-12T11:58:00Z",
+      });
+      const storage = makeStorage({
+        findAllCronTriggersForRecompute: mock(() => Promise.resolve([trigger])),
+      });
+
+      const { worker } = makeWorker({ storage });
+      await worker.start();
+
+      expect(storage.updateNextRunAt).toHaveBeenCalled();
+    });
+  });
+
   describe("processNow", () => {
     it("does nothing when not started", async () => {
       const { worker, storage } = makeWorker();
-      // Don't call start()
       await worker.processNow();
-      expect(storage.findAllActiveCronTriggers).not.toHaveBeenCalled();
+      expect(storage.findDueCronTriggers).not.toHaveBeenCalled();
     });
 
-    it("queries all active cron triggers", async () => {
+    it("queries due cron triggers", async () => {
       const { worker, storage } = makeWorker();
       await worker.start();
       await worker.processNow();
-      expect(storage.findAllActiveCronTriggers).toHaveBeenCalled();
+      expect(storage.findDueCronTriggers).toHaveBeenCalled();
     });
 
-    it("fires automation for due triggers", async () => {
-      // last_run_at is null so it's due
-      const trigger = makeTrigger({ last_run_at: null });
+    it("dispatches due triggers to JetStream", async () => {
+      const trigger = makeTrigger({ next_run_at: "2026-03-12T12:00:00Z" });
       const automation = makeAutomation();
       const storage = makeStorage({
-        findAllActiveCronTriggers: mock(() =>
+        findDueCronTriggers: mock(() =>
           Promise.resolve([{ ...trigger, automation }]),
         ),
       });
 
-      const { worker, streamCoreFn } = makeWorker({ storage });
+      const { worker, jobStream } = makeWorker({ storage });
       await worker.start();
       await worker.processNow();
 
-      expect(streamCoreFn).toHaveBeenCalled();
+      expect(jobStream.publish).toHaveBeenCalledWith({
+        triggerId: "trig_1",
+        automationId: "auto_1",
+        organizationId: ORG_ID,
+      });
     });
 
-    it("does not fire triggers that are not due", async () => {
-      // Hourly cron, last ran at 12:00:01 — next after that is 13:00 > 12:00
-      const trigger = makeTrigger({
-        cron_expression: "0 * * * *",
-        last_run_at: "2026-03-12T12:00:01Z",
-      });
-      const automation = makeAutomation();
-      const storage = makeStorage({
-        findAllActiveCronTriggers: mock(() =>
-          Promise.resolve([{ ...trigger, automation }]),
-        ),
-      });
-
-      const { worker, streamCoreFn } = makeWorker({ storage });
-      await worker.start();
-      await worker.processNow();
-
-      expect(streamCoreFn).not.toHaveBeenCalled();
-    });
-
-    it("records last_run_at BEFORE firing automation", async () => {
+    it("updates last_run_at BEFORE publishing to JetStream", async () => {
       const callOrder: string[] = [];
-      const trigger = makeTrigger({ last_run_at: null });
+      const trigger = makeTrigger({ next_run_at: "2026-03-12T12:00:00Z" });
       const automation = makeAutomation();
 
       const storage = makeStorage({
-        findAllActiveCronTriggers: mock(() =>
+        findDueCronTriggers: mock(() =>
           Promise.resolve([{ ...trigger, automation }]),
         ),
         updateTriggerLastRunAt: mock(() => {
@@ -246,28 +244,58 @@ describe("AutomationCronWorker", () => {
         }),
       });
 
-      const streamCoreFn: StreamCoreFn = mock(async () => {
-        callOrder.push("fire");
-        return { threadId: "thrd_1", stream: makeEmptyStream() };
+      const jobStream = makeJobStream({
+        publish: mock(() => {
+          callOrder.push("publish");
+          return Promise.resolve();
+        }),
       });
 
-      const { worker } = makeWorker({ storage, streamCoreFn });
+      const { worker } = makeWorker({ storage, jobStream });
       await worker.start();
       await worker.processNow();
 
       expect(callOrder.indexOf("updateLastRunAt")).toBeLessThan(
-        callOrder.indexOf("fire"),
+        callOrder.indexOf("publish"),
+      );
+    });
+
+    it("updates next_run_at after dispatching", async () => {
+      const trigger = makeTrigger({
+        cron_expression: "*/5 * * * *",
+        next_run_at: "2026-03-12T12:00:00Z",
+      });
+      const automation = makeAutomation();
+      const storage = makeStorage({
+        findDueCronTriggers: mock(() =>
+          Promise.resolve([{ ...trigger, automation }]),
+        ),
+      });
+
+      const { worker } = makeWorker({ storage });
+      await worker.start();
+      await worker.processNow();
+
+      expect(storage.updateNextRunAt).toHaveBeenCalledWith(
+        "trig_1",
+        "2026-03-12T12:05:00.000Z",
       );
     });
 
     it("handles multiple due triggers in parallel", async () => {
-      const t1 = makeTrigger({ id: "trig_1", last_run_at: null });
-      const t2 = makeTrigger({ id: "trig_2", last_run_at: null });
+      const t1 = makeTrigger({
+        id: "trig_1",
+        next_run_at: "2026-03-12T12:00:00Z",
+      });
+      const t2 = makeTrigger({
+        id: "trig_2",
+        next_run_at: "2026-03-12T12:00:00Z",
+      });
       const a1 = makeAutomation({ id: "auto_1" });
       const a2 = makeAutomation({ id: "auto_2" });
 
       const storage = makeStorage({
-        findAllActiveCronTriggers: mock(() =>
+        findDueCronTriggers: mock(() =>
           Promise.resolve([
             { ...t1, automation: a1 },
             { ...t2, automation: a2 },
@@ -275,22 +303,28 @@ describe("AutomationCronWorker", () => {
         ),
       });
 
-      const { worker, streamCoreFn } = makeWorker({ storage });
+      const { worker, jobStream } = makeWorker({ storage });
       await worker.start();
       await worker.processNow();
 
-      expect((streamCoreFn as any).mock.calls.length).toBe(2);
+      expect((jobStream.publish as any).mock.calls.length).toBe(2);
     });
 
     it("does not crash when one trigger fails", async () => {
-      const t1 = makeTrigger({ id: "trig_1", last_run_at: null });
-      const t2 = makeTrigger({ id: "trig_2", last_run_at: null });
+      const t1 = makeTrigger({
+        id: "trig_1",
+        next_run_at: "2026-03-12T12:00:00Z",
+      });
+      const t2 = makeTrigger({
+        id: "trig_2",
+        next_run_at: "2026-03-12T12:00:00Z",
+      });
       const a1 = makeAutomation({ id: "auto_1" });
       const a2 = makeAutomation({ id: "auto_2" });
 
       let callCount = 0;
       const storage = makeStorage({
-        findAllActiveCronTriggers: mock(() =>
+        findDueCronTriggers: mock(() =>
           Promise.resolve([
             { ...t1, automation: a1 },
             { ...t2, automation: a2 },
@@ -319,7 +353,7 @@ describe("AutomationCronWorker", () => {
       let processNowCallCount = 0;
 
       const storage = makeStorage({
-        findAllActiveCronTriggers: mock(() => {
+        findDueCronTriggers: mock(() => {
           processNowCallCount++;
           if (processNowCallCount === 1) {
             return new Promise<[]>((resolve) => {
@@ -333,21 +367,15 @@ describe("AutomationCronWorker", () => {
       const { worker } = makeWorker({ storage });
       await worker.start();
 
-      // Start first processNow (will block on findAllActiveCronTriggers)
       const p1 = worker.processNow();
-
-      // Allow microtask to enter the blocked state
       await new Promise((r) => setTimeout(r, 10));
 
-      // Queue more calls while first is running — should coalesce into one re-run
       const p2 = worker.processNow();
       const p3 = worker.processNow();
 
-      // Release the blocked call
       resolveProcess!();
       await Promise.all([p1, p2, p3]);
 
-      // Should be 2: the first processNow + one coalesced re-run (not 3)
       expect(processNowCallCount).toBe(2);
     });
   });
@@ -358,17 +386,7 @@ describe("AutomationCronWorker", () => {
       await worker.start();
       await worker.stop();
       await worker.processNow();
-      expect(storage.findAllActiveCronTriggers).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("start", () => {
-    it("does not need recovery — start is synchronous", async () => {
-      const storage = makeStorage();
-      const { worker } = makeWorker({ storage });
-      await worker.start();
-      // No storage calls on start — due-ness is computed on each processNow
-      expect(storage.findAllActiveCronTriggers).not.toHaveBeenCalled();
+      expect(storage.findDueCronTriggers).not.toHaveBeenCalled();
     });
   });
 });

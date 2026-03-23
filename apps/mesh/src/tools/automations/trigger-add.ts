@@ -6,6 +6,7 @@
  * - Event triggers: fail-atomic — if TRIGGER_CONFIGURE call fails, trigger is not inserted
  */
 
+import { AutomationCronWorker } from "../../automations/cron-worker";
 import { Cron } from "croner";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
@@ -97,6 +98,7 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
         event_type: input.event_type,
         params: input.params ? JSON.stringify(input.params) : null,
         last_run_at: null,
+        next_run_at: null,
         created_at: "",
       };
 
@@ -109,6 +111,15 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
       }
     }
 
+    // Compute next_run_at for cron triggers
+    const nextRunAt =
+      input.type === "cron" && input.cron_expression
+        ? AutomationCronWorker.computeNextRunAt(
+            input.cron_expression,
+            new Date(),
+          )
+        : null;
+
     // Insert trigger record
     const trigger = await ctx.storage.automations.addTrigger({
       automation_id: input.automation_id,
@@ -117,6 +128,7 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
       connection_id: input.type === "event" ? input.connection_id : null,
       event_type: input.type === "event" ? input.event_type : null,
       params: input.params ? JSON.stringify(input.params) : null,
+      next_run_at: nextRunAt?.toISOString() ?? null,
     });
 
     return {

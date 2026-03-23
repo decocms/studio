@@ -81,6 +81,7 @@ import {
 } from "../monitoring/schema";
 import {
   AutomationCronWorker,
+  AutomationJobStream,
   EventTriggerEngine,
   Semaphore,
 } from "../automations";
@@ -786,41 +787,61 @@ export async function createApp(options: CreateAppOptions = {}) {
     });
   };
 
-  const cronWorker = new AutomationCronWorker(
-    automationsStorage,
-    streamCore,
-    automationContextFactory,
-    {
-      maxConcurrentPerAutomation: 3,
-      runTimeoutMs: 5 * 60 * 1000, // 5 minutes
-    },
-    automationSemaphore,
-    { runRegistry, cancelBroadcast },
-  );
-
-  // Start cron worker and poll every 30 seconds
-  const cronPollIntervalMs = 30_000;
+  // JetStream job stream for distributing automation fire commands
   let cronTimer: ReturnType<typeof setInterval> | null = null;
 
-  Promise.resolve(cronWorker.start())
-    .then(() => {
-      cronTimer = setInterval(() => {
-        cronWorker.processNow().catch((err) => {
-          console.error("[AutomationCron] Error processing:", err);
-        });
-      }, cronPollIntervalMs);
-    })
-    .catch((error) => {
-      console.error("[AutomationCron] Error during startup:", error);
+  if (natsProvider) {
+    const automationJobStream = new AutomationJobStream({
+      getConnection: () => natsProvider!.getConnection(),
+      getJetStream: () => natsProvider!.getJetStream(),
     });
 
-  currentCronWorkerCleanup = () => {
-    if (cronTimer) {
-      clearInterval(cronTimer);
-      cronTimer = null;
-    }
-    cronWorker.stop().catch(() => {});
-  };
+    const cronWorker = new AutomationCronWorker(
+      automationsStorage,
+      automationJobStream,
+    );
+
+    const cronPollIntervalMs = 10_000;
+
+    await automationJobStream.init();
+
+    await automationJobStream.startConsumer(async (payload) => {
+      const automation = await automationsStorage.findById(
+        payload.automationId,
+        payload.organizationId,
+      );
+      if (!automation) return;
+      await fireAutomation({
+        automation,
+        triggerId: payload.triggerId,
+        storage: automationsStorage,
+        streamCoreFn: streamCore,
+        meshContextFactory: automationContextFactory,
+        config: {
+          maxConcurrentPerAutomation: 3,
+          runTimeoutMs: 5 * 60 * 1000,
+        },
+        globalSemaphore: automationSemaphore,
+        deps: { runRegistry, cancelBroadcast },
+      });
+    });
+
+    await cronWorker.start();
+    cronTimer = setInterval(() => {
+      cronWorker.processNow().catch((err) => {
+        console.error("[AutomationCron] Error processing:", err);
+      });
+    }, cronPollIntervalMs);
+
+    currentCronWorkerCleanup = () => {
+      if (cronTimer) {
+        clearInterval(cronTimer);
+        cronTimer = null;
+      }
+      automationJobStream.stop();
+      cronWorker.stop().catch(() => {});
+    };
+  }
 
   // ============================================================================
   // Event Trigger Engine — wire automations into the event bus
