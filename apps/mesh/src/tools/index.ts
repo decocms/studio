@@ -197,7 +197,7 @@ export const managementMCP = async (ctx: MeshContext) => {
         }
       }
     }
-    enabledPlugins = merged.size > 0 ? [...merged] : null;
+    enabledPlugins = [...merged];
   }
 
   // Filter tools based on enabled plugins
