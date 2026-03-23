@@ -76,7 +76,7 @@ export const StreamRequestSchema = z.object({
       message: "Expected exactly one non-system message",
     }),
   memory: MemoryConfigSchema.optional(),
-  models: ModelsSchema,
+  models: ModelsSchema.optional(),
   agent: z
     .object({
       id: z.string(),

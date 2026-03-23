@@ -2,6 +2,8 @@
 export {
   useCollectionItem,
   useCollectionList,
+  useCollectionListAsync,
+  useCollectionListInfinite,
   useCollectionActions,
   buildWhereExpression,
   buildOrderByExpression,
@@ -16,6 +18,8 @@ export {
 // Connection hooks
 export {
   useConnections,
+  useConnectionsAsync,
+  useConnectionsInfinite,
   useConnection,
   useConnectionActions,
   type ConnectionFilter,

@@ -87,6 +87,36 @@ describe("project", () => {
     });
   });
 
+  describe("RUN_RESUMED", () => {
+    it("creates running state with stepCount 0 and clock time", () => {
+      const ac = new AbortController();
+      const now = new Date("2024-01-01T00:00:00Z");
+      const state = project(
+        undefined,
+        {
+          type: "RUN_RESUMED",
+          threadId: "t1",
+          orgId: "org1",
+          userId: "u1",
+          abortController: ac,
+          podId: "pod-1",
+        },
+        now,
+      );
+      expect(state).toEqual({
+        threadId: "t1",
+        orgId: "org1",
+        userId: "u1",
+        status: {
+          tag: "running",
+          abortController: ac,
+          stepCount: 0,
+          startedAt: now,
+        },
+      });
+    });
+  });
+
   describe("STEP_COMPLETED", () => {
     it("running state → tag still running, stepCount updated", () => {
       const state = makeRunningState(3);

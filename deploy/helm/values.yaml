@@ -55,7 +55,6 @@ configMap:
     BETTER_AUTH_URL: "http://localhost:8080"
     BASE_URL: "http://localhost:8080"
     DATA_DIR: "/app/data"
-    # PRESTOP_HEAP_SNAPSHOT_DIR: ""  # Optional: Directory for heap snapshots during preStop hook
     # NATS_URL: ""  # Optional: overrides auto-derived URL when nats.enabled=true (e.g. nats://my-nats:4222)
     DECO_AI_GATEWAY_ENABLED: "false"
   authConfig:
@@ -117,13 +116,7 @@ readinessProbe:
   failureThreshold: 4
 
 # Optional lifecycle hooks (preStop, postStart)
-# lifecycle:
-#   preStop:
-#     exec:
-#       command:
-#         - /bin/sh
-#         - -c
-#         - "wget -q -O - http://localhost:9229/prestop-hook || true"
+# lifecycle: {}
 
 nodeSelector:
   kubernetes.io/arch: amd64

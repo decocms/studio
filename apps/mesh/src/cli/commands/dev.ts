@@ -135,6 +135,9 @@ export async function startDevServer(
   }
 
   // ── Environment ─────────────────────────────────────────────────────
+  if (noTui) {
+    process.env.DECO_NO_TUI = "true";
+  }
   process.env.DECOCMS_HOME = home;
   process.env.DATA_DIR = home;
   process.env.PORT = port;

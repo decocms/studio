@@ -37,6 +37,7 @@ export async function getNavigationLinks(
     "mcp-mesh/virtual-mcps",
     "mcp-mesh/projects",
     "mcp-mesh/agents",
+    "mcp-mesh/agent-bindings",
     "mcp-mesh/automations",
 
     // 6. Decopilot

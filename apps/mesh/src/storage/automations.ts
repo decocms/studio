@@ -625,10 +625,6 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         })
         .execute();
 
-      console.log(
-        `[tryAcquireRunSlot] Created thread ${threadId} for "${automation.name}" (${automationId}), trigger_id=${triggerId}, org=${automation.organization_id}`,
-      );
-
       return threadId;
     });
   }

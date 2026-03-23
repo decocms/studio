@@ -161,11 +161,16 @@ async function getPluginSettings(
   orgId: string,
 ): Promise<PluginSettings> {
   const rows = await db
-    .selectFrom("project_plugin_configs")
-    .innerJoin("projects", "projects.id", "project_plugin_configs.project_id")
-    .select(["project_plugin_configs.settings as settings"])
-    .where("projects.organization_id", "=", orgId)
-    .where("project_plugin_configs.plugin_id", "=", PLUGIN_ID)
+    .selectFrom("virtual_mcp_plugin_configs")
+    .innerJoin(
+      "connections",
+      "connections.id",
+      "virtual_mcp_plugin_configs.virtual_mcp_id",
+    )
+    .select(["virtual_mcp_plugin_configs.settings as settings"])
+    .where("connections.organization_id", "=", orgId)
+    .where("connections.subtype", "=", "project")
+    .where("virtual_mcp_plugin_configs.plugin_id", "=", PLUGIN_ID)
     .execute();
 
   for (const row of rows as Array<{ settings: string | null }>) {

@@ -74,11 +74,16 @@ export async function getRegistryPluginSettings(
   organizationId: string,
 ): Promise<PrivateRegistryPluginSettings> {
   const rows = await (ctx.db as any)
-    .selectFrom("project_plugin_configs")
-    .innerJoin("projects", "projects.id", "project_plugin_configs.project_id")
-    .select(["project_plugin_configs.settings as settings"])
-    .where("projects.organization_id", "=", organizationId)
-    .where("project_plugin_configs.plugin_id", "=", PLUGIN_ID)
+    .selectFrom("virtual_mcp_plugin_configs")
+    .innerJoin(
+      "connections",
+      "connections.id",
+      "virtual_mcp_plugin_configs.virtual_mcp_id",
+    )
+    .select(["virtual_mcp_plugin_configs.settings as settings"])
+    .where("connections.organization_id", "=", organizationId)
+    .where("connections.subtype", "=", "project")
+    .where("virtual_mcp_plugin_configs.plugin_id", "=", PLUGIN_ID)
     .execute();
 
   const parsedSettings = (rows as Array<{ settings: unknown }>).map((row) =>

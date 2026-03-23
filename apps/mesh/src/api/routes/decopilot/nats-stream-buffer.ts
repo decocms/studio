@@ -232,6 +232,5 @@ export class NatsStreamBuffer implements StreamBuffer {
   teardown(): void {
     this.js = null;
     this.jsm = null;
-    console.log("[Decopilot] JetStream stream buffer torn down");
   }
 }

@@ -13,6 +13,7 @@ interface HeaderProps {
   migrationsStatus: "pending" | "done";
   home: string;
   serverUrl: string | null;
+  vibe?: boolean;
 }
 
 const ASCII_LINES = [
@@ -49,6 +50,7 @@ export function Header({
   migrationsStatus,
   home,
   serverUrl,
+  vibe,
 }: HeaderProps) {
   return (
     <Box flexDirection="column" paddingBottom={1}>
@@ -84,17 +86,31 @@ export function Header({
         {serverUrl ? (
           <Text>
             Open in browser: <Text color="cyan">{serverUrl}</Text>
-            {"  "}
-            <Text dimColor>
-              <Text bold dimColor>
-                K
-              </Text>{" "}
-              toggle config
-            </Text>
           </Text>
         ) : (
           <Text dimColor>Starting...</Text>
         )}
+      </Box>
+
+      <Box gap={2}>
+        <Text dimColor>
+          <Text bold dimColor>
+            K
+          </Text>{" "}
+          toggle config
+        </Text>
+        <Text dimColor>
+          <Text bold dimColor>
+            L
+          </Text>{" "}
+          toggle log flow
+        </Text>
+        <Text dimColor>
+          <Text bold dimColor>
+            V
+          </Text>{" "}
+          toggle vibe {vibe ? "♪ Nihilore · CC BY 4.0" : ""}
+        </Text>
       </Box>
     </Box>
   );

@@ -11,6 +11,10 @@ export const AI_PROVIDERS_LIST_MODELS = defineTool({
   name: "AI_PROVIDERS_LIST_MODELS",
   description:
     "List models available from an AI provider. Requires a valid stored API key.",
+  annotations: {
+    readOnlyHint: true,
+    idempotentHint: true,
+  },
   inputSchema: z.object({
     keyId: z.string().describe("The provider key ID to use"),
   }),

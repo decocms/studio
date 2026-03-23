@@ -27,6 +27,19 @@ export function project(
         },
       };
 
+    case "RUN_RESUMED":
+      return {
+        threadId: event.threadId,
+        orgId: event.orgId,
+        userId: event.userId,
+        status: {
+          tag: "running" as const,
+          abortController: event.abortController,
+          stepCount: 0,
+          startedAt: now,
+        },
+      };
+
     case "STEP_COMPLETED":
       if (state?.status.tag !== "running") return state;
       return {

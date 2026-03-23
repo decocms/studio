@@ -76,10 +76,6 @@ export async function fireAutomation(opts: {
     deps,
   } = opts;
 
-  console.log(
-    `[fireAutomation] Starting for automation "${automation.name}" (${automation.id}), triggerId=${triggerId}`,
-  );
-
   // 0. Acquire global semaphore
   const globalSlot = globalSemaphore.tryAcquire();
   if (!globalSlot) {
@@ -116,10 +112,6 @@ export async function fireAutomation(opts: {
       );
       return { skipped: "concurrency_limit" };
     }
-
-    console.log(
-      `[fireAutomation] Acquired run slot threadId=${threadId} for "${automation.name}"`,
-    );
 
     // 3. Build request & fire with timeout
     const abortController = new AbortController();
@@ -165,9 +157,6 @@ export async function fireAutomation(opts: {
     }
 
     if (runError) return { threadId, error: runError };
-    console.log(
-      `[fireAutomation] SUCCESS "${automation.name}" threadId=${threadId}`,
-    );
     return { threadId };
   } finally {
     globalSlot.release();

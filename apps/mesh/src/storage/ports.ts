@@ -47,6 +47,33 @@ export interface ThreadStoragePort {
     triggerIds: string[],
     options?: { limit?: number; offset?: number },
   ): Promise<{ threads: Thread[]; total: number }>;
+  /** Atomically claim an orphaned run. Returns true if this pod won the CAS. */
+  claimOrphanedRun(
+    threadId: string,
+    organizationId: string,
+    podId: string,
+  ): Promise<boolean>;
+
+  /** List all in_progress threads not owned by the given pod (null or stale owner). */
+  listOrphanedRuns(currentPodId: string): Promise<Thread[]>;
+
+  /** List all in_progress threads owned by a specific (dead) pod. */
+  listOrphanedRunsByPod(deadPodId: string): Promise<Thread[]>;
+
+  /**
+   * Atomically claim a run start via CAS. Returns true if this pod won.
+   * Allows: new runs (not in_progress), orphans (null pod), or same-pod restarts.
+   */
+  claimRunStart(
+    threadId: string,
+    organizationId: string,
+    data: Partial<Thread>,
+    podId: string | null,
+  ): Promise<boolean>;
+
+  /** Release ownership for all runs owned by this pod (graceful shutdown). */
+  orphanRunsByPod(podId: string): Promise<string[]>;
+
   // Message operations - upserts by id (updates existing rows)
   saveMessages(data: ThreadMessage[], organizationId: string): Promise<void>;
   listMessages(

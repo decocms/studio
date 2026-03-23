@@ -7,14 +7,12 @@ interface Preferences {
   devMode: boolean;
   toolApprovalLevel: ToolApprovalLevel;
   enableNotifications: boolean;
-  experimentalAutomations: boolean;
 }
 
 const DEFAULT_PREFERENCES: Preferences = {
   devMode: false,
   toolApprovalLevel: "readonly",
   enableNotifications: typeof Notification !== "undefined" ? true : false,
-  experimentalAutomations: false,
 };
 
 const VALID_TOOL_APPROVAL_LEVELS: ToolApprovalLevel[] = [

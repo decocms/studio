@@ -324,9 +324,12 @@ function ConnectionInspectorViewWithConnection({
   const isVirtualConnection = connection?.connection_type === "VIRTUAL";
   const isMCPAuthenticated = isVirtualConnection || authStatus.isAuthenticated;
 
-  // Check if connection has MCP binding for configuration
+  // Check if connection has MCP binding for configuration.
+  // Use live tools from the MCP proxy (passed as prop) instead of connection.tools,
+  // because the LIST endpoint no longer fetches tools by default (include_tools=false).
+  const connectionWithLiveTools = { ...connection, tools } as ConnectionEntity;
   const mcpBindingConnections = useBindingConnections({
-    connections: [connection],
+    connections: [connectionWithLiveTools],
     binding: "MCP",
   });
   const hasMcpBinding = mcpBindingConnections.length > 0;

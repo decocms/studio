@@ -29,9 +29,13 @@ import {
   fetchModelPermissions,
   parseModelsToMap,
 } from "./model-permissions";
+import { PersistedRunConfigSchema, toModelsConfig } from "./run-config";
 import { StreamRequestSchema } from "./schemas";
-import type { ChatMessage } from "./types";
+import type { ChatMessage, ModelsConfig } from "./types";
 import { streamCore } from "./stream-core";
+import { RunClaimError } from "./run-reactor";
+import type { SqlThreadStorage } from "@/storage/threads";
+import { POD_ID } from "@/core/pod-identity";
 
 // ============================================================================
 // Request Validation
@@ -61,6 +65,37 @@ async function validateRequest(
 }
 
 // ============================================================================
+// Default Model Resolution
+// ============================================================================
+
+async function resolveDefaultModels(
+  ctx: MeshContext,
+  organizationId: string,
+): Promise<ModelsConfig> {
+  const keys = await ctx.storage.aiProviderKeys.list({ organizationId });
+  if (keys.length === 0) {
+    throw new HTTPException(400, {
+      message: "No AI provider credentials configured for this organization",
+    });
+  }
+  const credential = keys[0]!;
+  const modelList = await ctx.aiProviders.listModels(
+    credential.id,
+    organizationId,
+  );
+  if (modelList.length === 0) {
+    throw new HTTPException(400, {
+      message: "No models available from the configured AI provider",
+    });
+  }
+  const model = modelList[0]!;
+  return {
+    credentialId: credential.id,
+    thinking: { id: model.modelId, title: model.title },
+  };
+}
+
+// ============================================================================
 // Route Handler
 // ============================================================================
 
@@ -68,10 +103,11 @@ export interface DecopilotDeps {
   cancelBroadcast: CancelBroadcast;
   streamBuffer: StreamBuffer;
   runRegistry: RunRegistry;
+  threadStorage: SqlThreadStorage;
 }
 
 export function createDecopilotRoutes(deps: DecopilotDeps) {
-  const { cancelBroadcast, streamBuffer, runRegistry } = deps;
+  const { cancelBroadcast, streamBuffer, runRegistry, threadStorage } = deps;
   const app = new Hono<{ Variables: { meshContext: MeshContext } }>();
 
   // ============================================================================
@@ -110,7 +146,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // 1. Validate request
       const {
         organization,
-        models,
+        models: clientModels,
         agent,
         systemMessages,
         requestMessage,
@@ -125,7 +161,11 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         throw new HTTPException(401, { message: "User ID is required" });
       }
 
-      // 2. Check model permissions
+      // 2. Resolve models — use client-provided or fall back to org defaults
+      const models =
+        clientModels ?? (await resolveDefaultModels(ctx, organization.id));
+
+      // 3. Check model permissions
       const allowedModels = await fetchModelPermissions(
         ctx.db,
         organization.id,
@@ -148,7 +188,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       const windowSize = memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE;
       const resolvedThreadId = thread_id ?? memoryConfig?.thread_id;
 
-      // 3. Delegate to streamCore
+      // 4. Delegate to streamCore
       const result = await streamCore(
         {
           messages: [...systemMessages, requestMessage],
@@ -171,6 +211,103 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       });
     } catch (err) {
       console.error("[decopilot:stream] Error", err);
+
+      if (err instanceof HTTPException) {
+        return c.json({ error: err.message }, err.status);
+      }
+
+      if (err instanceof Error && err.name === "AbortError") {
+        console.warn("[decopilot:stream] Aborted", { error: err.message });
+        return c.json({ error: "Request aborted" }, 400);
+      }
+
+      console.error("[decopilot:stream] Failed", {
+        error: err instanceof Error ? err.message : JSON.stringify(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+      return c.json(
+        { error: err instanceof Error ? err.message : JSON.stringify(err) },
+        500,
+      );
+    }
+  });
+
+  app.post("/:org/decopilot/runtime/stream", async (c) => {
+    try {
+      const ctx = c.get("meshContext");
+
+      // 1. Validate request
+      const {
+        organization,
+        models: clientModels,
+        agent,
+        systemMessages,
+        requestMessage,
+        temperature,
+        memory: memoryConfig,
+        thread_id,
+        toolApprovalLevel,
+      } = await validateRequest(c);
+
+      const userId = ctx.auth?.user?.id;
+      if (!userId) {
+        throw new HTTPException(401, { message: "User ID is required" });
+      }
+
+      // 2. Resolve models — use client-provided or fall back to org defaults
+      const models =
+        clientModels ?? (await resolveDefaultModels(ctx, organization.id));
+
+      // 3. Check model permissions
+      const allowedModels = await fetchModelPermissions(
+        ctx.db,
+        organization.id,
+        ctx.auth.user?.role,
+      );
+
+      if (
+        allowedModels !== undefined &&
+        !checkModelPermission(
+          allowedModels,
+          models.credentialId,
+          models.thinking.id,
+        )
+      ) {
+        throw new HTTPException(403, {
+          message: "Model not allowed for your role",
+        });
+      }
+
+      const windowSize = memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE;
+      const resolvedThreadId = thread_id ?? memoryConfig?.thread_id;
+
+      // 4. Delegate to streamCore
+      const result = await streamCore(
+        {
+          messages: [...systemMessages, requestMessage],
+          models,
+          agent,
+          temperature,
+          toolApprovalLevel,
+          organizationId: organization.id,
+          userId,
+          threadId: resolvedThreadId,
+          windowSize,
+        },
+        ctx,
+        { runRegistry, streamBuffer, cancelBroadcast },
+      );
+
+      return createUIMessageStreamResponse({
+        stream: result.stream,
+        consumeSseStream: consumeStream,
+      });
+    } catch (err) {
+      console.error("[decopilot:stream] Error", err);
+
+      if (err instanceof RunClaimError) {
+        return c.json({ error: err.message }, 409);
+      }
 
       if (err instanceof HTTPException) {
         return c.json({ error: err.message }, err.status);
@@ -245,34 +382,114 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
   app.get("/:org/decopilot/attach/:threadId", async (c) => {
     try {
-      const { threadId } = await validateThreadAccess(c);
+      const { threadId, thread, organization } = await validateThreadAccess(c);
 
-      if (!runRegistry.isRunning(threadId)) {
-        return c.body(null, 204);
-      }
+      // ── Fast path: run is active on this pod → replay buffer ──
+      if (runRegistry.isRunning(threadId)) {
+        const replayChunkStream =
+          await streamBuffer.createReplayStream(threadId);
+        if (!replayChunkStream) {
+          return c.body(null, 204);
+        }
 
-      const replayChunkStream = await streamBuffer.createReplayStream(threadId);
-      if (!replayChunkStream) {
-        return c.body(null, 204);
-      }
-
-      const replayStream = createUIMessageStream({
-        execute: async ({ writer }) => {
-          const reader = replayChunkStream.getReader();
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              writer.write(value);
+        const replayStream = createUIMessageStream({
+          execute: async ({ writer }) => {
+            const reader = replayChunkStream.getReader();
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                writer.write(value);
+              }
+            } finally {
+              reader.releaseLock();
             }
-          } finally {
-            reader.releaseLock();
-          }
+          },
+        });
+
+        return createUIMessageStreamResponse({
+          stream: replayStream,
+          consumeSseStream: consumeStream,
+        });
+      }
+
+      // ── Orphan resume path ──
+      const ctx = c.get("meshContext");
+      const userId = ctx.auth?.user?.id;
+
+      // Not in_progress → nothing to resume
+      if (thread.status !== "in_progress") {
+        return c.body(null, 204);
+      }
+
+      // Only the thread owner can trigger orphan resume
+      if (thread.created_by !== userId) {
+        return c.body(null, 204);
+      }
+
+      // No persisted config → can't resume; force-fail so user can retry
+      if (!thread.run_config) {
+        await threadStorage.forceFailIfInProgress(threadId, organization.id);
+        return c.body(null, 204);
+      }
+
+      // Validate stored config (schema drift protection)
+      const parsed = PersistedRunConfigSchema.safeParse(thread.run_config);
+      if (!parsed.success) {
+        await threadStorage.forceFailIfInProgress(threadId, organization.id);
+        return c.body(null, 204);
+      }
+      const config = parsed.data;
+
+      // Re-check model permissions with CURRENT user role
+      const allowedModels = await fetchModelPermissions(
+        ctx.db,
+        organization.id,
+        ctx.auth.user?.role,
+      );
+      if (
+        allowedModels !== undefined &&
+        !checkModelPermission(
+          allowedModels,
+          config.models.credentialId,
+          config.models.thinking.id,
+        )
+      ) {
+        throw new HTTPException(403, {
+          message: "Model not allowed for your role",
+        });
+      }
+
+      // Atomic CAS claim — succeeds for null or stale run_owner_pod
+      const claimed = await threadStorage.claimOrphanedRun(
+        threadId,
+        organization.id,
+        POD_ID,
+      );
+      if (!claimed) {
+        return c.body(null, 204);
+      }
+
+      // Resume the run — identity from auth context, NOT stored config
+      const result = await streamCore(
+        {
+          messages: [],
+          models: toModelsConfig(config.models),
+          agent: config.agent,
+          temperature: config.temperature,
+          toolApprovalLevel: config.toolApprovalLevel,
+          organizationId: organization.id,
+          userId,
+          threadId,
+          windowSize: config.windowSize,
+          isResume: true,
         },
-      });
+        ctx,
+        { runRegistry, streamBuffer, cancelBroadcast },
+      );
 
       return createUIMessageStreamResponse({
-        stream: replayStream,
+        stream: result.stream,
         consumeSseStream: consumeStream,
       });
     } catch (err) {

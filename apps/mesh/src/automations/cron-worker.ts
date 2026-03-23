@@ -126,12 +126,6 @@ export class AutomationCronWorker {
       );
       updated++;
     }
-
-    if (updated > 0) {
-      console.log(
-        `[AutomationCron] Startup sweep: recomputed next_run_at for ${updated} trigger(s)`,
-      );
-    }
   }
 
   private async processDueTriggers(): Promise<void> {

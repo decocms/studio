@@ -29,11 +29,13 @@ export interface BuiltinToolParams {
 }
 
 /**
- * Get all built-in tools as a ToolSet.
- * Deps required so ChatMessage type (via ReturnType<typeof getBuiltInTools>)
- * always includes subtask in the parts union.
+ * Full tool set type — always includes propose_plan so that ChatMessage
+ * (derived via ReturnType) can render historical plan parts regardless
+ * of the current toolApprovalLevel.
  */
-export function getBuiltInTools(
+export type BuiltInToolSet = ReturnType<typeof buildAllTools>;
+
+function buildAllTools(
   writer: UIMessageStreamWriter,
   params: BuiltinToolParams,
   ctx: MeshContext,
@@ -84,4 +86,24 @@ export function getBuiltInTools(
       toolOutputMap,
     }),
   } as const;
+}
+
+/**
+ * Get built-in tools as a ToolSet.
+ * propose_plan is only included when toolApprovalLevel is "plan".
+ */
+export function getBuiltInTools(
+  writer: UIMessageStreamWriter,
+  params: BuiltinToolParams,
+  ctx: MeshContext,
+) {
+  const tools = buildAllTools(writer, params, ctx);
+  const { toolApprovalLevel = "readonly" } = params;
+
+  if (toolApprovalLevel !== "plan") {
+    const { propose_plan: _, ...rest } = tools;
+    return rest;
+  }
+
+  return tools;
 }

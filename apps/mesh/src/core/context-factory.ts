@@ -29,6 +29,8 @@ import { SqlMonitoringDashboardStorage } from "../storage/monitoring-dashboards"
 import { OrganizationSettingsStorage } from "../storage/organization-settings";
 import { VirtualMcpPluginConfigsStorage } from "../storage/virtual-mcp-plugin-configs";
 import { createAutomationsStorage } from "../storage/automations";
+import { OrgSsoConfigStorage } from "../storage/org-sso-config";
+import { OrgSsoSessionStorage } from "../storage/org-sso-sessions";
 import { TagStorage } from "../storage/tags";
 import type { Database, Permission } from "../storage/types";
 import { UserStorage } from "../storage/user";
@@ -410,7 +412,7 @@ import { createBoundObjectStorage } from "../object-storage/bound-object-storage
  * Fetch role permissions from the database
  * Returns undefined for built-in roles (they bypass permission checks)
  */
-async function fetchRolePermissions(
+export async function fetchRolePermissions(
   db: Kysely<Database>,
   organizationId: string,
   role: string,
@@ -823,6 +825,8 @@ export async function createMeshContextFactory(
     aiProviderKeys: new AIProviderKeyStorage(config.db, vault),
     oauthPkceStates: new OAuthPkceStateStorage(config.db),
     automations: createAutomationsStorage(config.db),
+    orgSsoConfig: new OrgSsoConfigStorage(config.db, vault),
+    orgSsoSessions: new OrgSsoSessionStorage(config.db),
     // Note: Organizations, teams, members, roles managed by Better Auth organization plugin
     // Note: Policies handled by Better Auth permissions directly
     // Note: API keys (tokens) managed by Better Auth API Key plugin

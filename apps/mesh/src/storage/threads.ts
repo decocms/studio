@@ -183,6 +183,17 @@ export class SqlThreadStorage implements ThreadStoragePort {
     if (data.context_start_message_id !== undefined) {
       updateData.context_start_message_id = data.context_start_message_id;
     }
+    if (data.run_owner_pod !== undefined) {
+      updateData.run_owner_pod = data.run_owner_pod;
+    }
+    if (data.run_config !== undefined) {
+      updateData.run_config = data.run_config
+        ? JSON.stringify(data.run_config)
+        : null;
+    }
+    if (data.run_started_at !== undefined) {
+      updateData.run_started_at = data.run_started_at;
+    }
 
     await this.db
       .updateTable("threads")
@@ -448,6 +459,115 @@ export class SqlThreadStorage implements ThreadStoragePort {
   }
 
   // ==========================================================================
+  // Cross-Org System Operations (not exposed via OrgScopedThreadStorage)
+  // ==========================================================================
+
+  async claimOrphanedRun(
+    threadId: string,
+    organizationId: string,
+    podId: string,
+  ): Promise<boolean> {
+    // Claim any in-progress run not already owned by this pod.
+    // Matches both orphaned (NULL) and stale-pod (different pod) runs.
+    // Uses raw SQL for the OR because Kysely's eb.or with IS NULL + != can
+    // behave unexpectedly on some PG drivers.
+    const result = await this.db
+      .updateTable("threads")
+      .set({ run_owner_pod: podId, updated_at: new Date().toISOString() })
+      .where("id", "=", threadId)
+      .where("organization_id", "=", organizationId)
+      .where("status", "=", "in_progress")
+      .where(({ eb, or }) =>
+        or([eb("run_owner_pod", "is", null), eb("run_owner_pod", "!=", podId)]),
+      )
+      .executeTakeFirst();
+    return (result?.numUpdatedRows ?? 0n) > 0n;
+  }
+
+  async listOrphanedRuns(currentPodId: string): Promise<Thread[]> {
+    const rows = await this.db
+      .selectFrom("threads")
+      .selectAll()
+      .where("status", "=", "in_progress")
+      .where("run_config", "is not", null)
+      .where((eb) =>
+        eb.or([
+          eb("run_owner_pod", "is", null),
+          eb("run_owner_pod", "!=", currentPodId),
+        ]),
+      )
+      .orderBy("run_started_at", "asc")
+      .limit(100)
+      .execute();
+    return rows.map((row) => this.threadFromDbRow(row));
+  }
+
+  async listOrphanedRunsByPod(deadPodId: string): Promise<Thread[]> {
+    const rows = await this.db
+      .selectFrom("threads")
+      .selectAll()
+      .where("status", "=", "in_progress")
+      .where("run_config", "is not", null)
+      .where("run_owner_pod", "=", deadPodId)
+      .orderBy("run_started_at", "asc")
+      .limit(100)
+      .execute();
+    return rows.map((row) => this.threadFromDbRow(row));
+  }
+
+  async claimRunStart(
+    threadId: string,
+    organizationId: string,
+    data: Partial<Thread>,
+    podId: string | null,
+  ): Promise<boolean> {
+    const now = new Date().toISOString();
+
+    const updateData: Record<string, unknown> = { updated_at: now };
+    if (data.status !== undefined) updateData.status = data.status;
+    if (data.run_owner_pod !== undefined)
+      updateData.run_owner_pod = data.run_owner_pod;
+    if (data.run_config !== undefined) {
+      updateData.run_config = data.run_config
+        ? JSON.stringify(data.run_config)
+        : null;
+    }
+    if (data.run_started_at !== undefined)
+      updateData.run_started_at = data.run_started_at;
+
+    // CAS: only claim if not already running on a different pod
+    const result = await this.db
+      .updateTable("threads")
+      .set(updateData)
+      .where("id", "=", threadId)
+      .where("organization_id", "=", organizationId)
+      .where(({ eb, or }) =>
+        or([
+          // Not currently in_progress → fresh start
+          eb("status", "!=", "in_progress"),
+          // Orphan → null pod
+          eb("run_owner_pod", "is", null),
+          // Same pod restart
+          ...(podId ? [eb("run_owner_pod", "=", podId)] : []),
+        ]),
+      )
+      .executeTakeFirst();
+
+    return (result?.numUpdatedRows ?? 0n) > 0n;
+  }
+
+  async orphanRunsByPod(podId: string): Promise<string[]> {
+    const rows = await this.db
+      .updateTable("threads")
+      .set({ run_owner_pod: null, updated_at: new Date().toISOString() })
+      .where("run_owner_pod", "=", podId)
+      .where("status", "=", "in_progress")
+      .returning("id")
+      .execute();
+    return rows.map((r) => r.id);
+  }
+
+  // ==========================================================================
   // Private Helper Methods
   // ==========================================================================
 
@@ -460,6 +580,9 @@ export class SqlThreadStorage implements ThreadStoragePort {
     trigger_id?: string | null;
     context_start_message_id?: string | null;
     agent_ids?: string | null;
+    run_owner_pod?: string | null;
+    run_config?: Record<string, unknown> | null;
+    run_started_at?: Date | string | null;
     created_at: Date | string;
     updated_at: Date | string;
     created_by: string;
@@ -484,6 +607,11 @@ export class SqlThreadStorage implements ThreadStoragePort {
       trigger_id: row.trigger_id ?? null,
       context_start_message_id: row.context_start_message_id ?? null,
       agent_ids: agentIds,
+      run_owner_pod: row.run_owner_pod ?? null,
+      run_config: row.run_config ?? null,
+      run_started_at: row.run_started_at
+        ? toIsoString(row.run_started_at)
+        : null,
       created_at: toIsoString(row.created_at),
       updated_at: toIsoString(row.updated_at),
       created_by: row.created_by,

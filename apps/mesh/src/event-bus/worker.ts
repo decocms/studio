@@ -153,12 +153,7 @@ export class EventBusWorker {
     if (this.running) return;
 
     // Reset any deliveries that were stuck in 'processing' state from previous crash
-    const resetCount = await this.storage.resetStuckDeliveries();
-    if (resetCount > 0) {
-      console.log(
-        `[EventBus] Reset ${resetCount} stuck deliveries from previous shutdown`,
-      );
-    }
+    await this.storage.resetStuckDeliveries();
 
     // Recover orphaned cron events: "delivered" with no pending future deliveries.
     // This happens when the process crashes between updateEventStatus and
@@ -166,14 +161,6 @@ export class EventBusWorker {
     const orphanedCrons = await this.storage.findOrphanedCronEvents();
     for (const event of orphanedCrons) {
       await this.scheduleNextCronDelivery(event);
-      console.log(
-        `[EventBus] Recovered orphaned cron event ${event.id} (${event.type}, cron: ${event.cron})`,
-      );
-    }
-    if (orphanedCrons.length > 0) {
-      console.log(
-        `[EventBus] Recovered ${orphanedCrons.length} orphaned cron event(s)`,
-      );
     }
 
     this.running = true;
@@ -507,9 +494,6 @@ export class EventBusWorker {
       const nextRun = cron.nextRun();
 
       if (!nextRun) {
-        console.log(
-          `[EventBus] Cron expression for event ${event.id} has no more runs`,
-        );
         return;
       }
 
@@ -518,9 +502,6 @@ export class EventBusWorker {
       // Get the subscriptions that match this event
       const subscriptions = await this.storage.getMatchingSubscriptions(event);
       if (subscriptions.length === 0) {
-        console.log(
-          `[EventBus] No subscriptions for cron event ${event.id}, skipping next delivery`,
-        );
         return;
       }
 
@@ -529,10 +510,6 @@ export class EventBusWorker {
         event.id,
         subscriptions.map((s) => s.id),
         nextDeliveryTime,
-      );
-
-      console.log(
-        `[EventBus] Scheduled next cron delivery for event ${event.id} at ${nextDeliveryTime}`,
       );
     } catch (error) {
       console.error(

@@ -18,6 +18,7 @@ import { decide } from "./run-decider";
 import { project } from "./run-projector";
 import type { RunReactorDeps } from "./run-reactor";
 import { reactAll } from "./run-reactor";
+import type { Thread } from "@/storage/types";
 
 export type { RunReactorDeps };
 
@@ -30,6 +31,7 @@ export class RunRegistry {
 
   constructor(
     private readonly deps: RunReactorDeps,
+    private readonly podId: string,
     private readonly clock: () => Date = () => new Date(),
   ) {
     this.reaperTimer = setInterval(
@@ -111,18 +113,107 @@ export class RunRegistry {
   }
 
   /**
-   * Abort every running entry and trigger the full reactor pipeline for each
-   * (DB update, stream buffer purge, SSE emit). Called during graceful shutdown.
-   * dispatch() is synchronous so state entries are evicted immediately;
-   * react() fires as fire-and-forget.
+   * Graceful shutdown: orphan all runs in the DB first (so they are resumable
+   * if the process dies), then abort in-memory controllers and clear state.
+   * The DB write MUST happen before states.clear() — if the process dies
+   * between clear() and the DB write, threads would be permanently stuck.
    */
-  stopAll(): void {
-    for (const [threadId, state] of this.states) {
+  async stopAll(): Promise<void> {
+    // 1. DB: orphan all runs owned by this pod FIRST
+    //    (if process dies after this, runs are resumable)
+    try {
+      await this.deps.storage.orphanRunsByPod(this.podId);
+    } catch (err) {
+      console.error("[RunRegistry] Failed to orphan runs in DB:", err);
+    }
+    // 2. In-memory: abort all controllers (stops streamText loops)
+    for (const [, state] of this.states) {
       if (state.status.tag === "running") {
-        this.execute({ type: "FORCE_FAIL", threadId, reason: "reaped" }).catch(
-          () => {},
-        );
+        state.status.abortController.abort();
       }
+    }
+    // 3. In-memory: clear map
+    this.states.clear();
+  }
+
+  /**
+   * Recover all orphaned runs on startup. Server crashes shouldn't
+   * punish users — every in-progress run gets resumed automatically.
+   * Concurrency is capped at 5 concurrent resumes.
+   */
+  async recoverOrphanedRuns(
+    resumeFn: (thread: Thread) => Promise<void>,
+  ): Promise<void> {
+    const orphans = await this.deps.storage.listOrphanedRuns(this.podId);
+    if (orphans.length === 0) return;
+
+    // Concurrency cap: max 5 concurrent resumes
+    const CONCURRENCY = 5;
+    for (let i = 0; i < orphans.length; i += CONCURRENCY) {
+      const batch = orphans.slice(i, i + CONCURRENCY);
+      await Promise.allSettled(
+        batch.map(async (thread) => {
+          const claimed = await this.deps.storage.claimOrphanedRun(
+            thread.id,
+            thread.organization_id,
+            this.podId,
+          );
+          if (!claimed) return; // Another pod got it
+
+          try {
+            await resumeFn(thread);
+          } catch (err) {
+            console.error(`[RunRegistry] Failed to resume ${thread.id}:`, err);
+            await this.deps.storage
+              .forceFailIfInProgress(thread.id, thread.organization_id)
+              .catch(() => {});
+          }
+        }),
+      );
+    }
+  }
+
+  /**
+   * Handle a dead pod notification from the heartbeat watcher. Finds all
+   * in-progress threads owned by the dead pod, broadcasts cancel (in case
+   * it's partitioned, not dead), then CAS-claims and resumes each orphan.
+   */
+  async handlePodDeath(
+    deadPodId: string,
+    resumeFn: (thread: Thread) => Promise<void>,
+    cancelBroadcast?: { broadcast(threadId: string): void },
+  ): Promise<void> {
+    const orphans = await this.deps.storage.listOrphanedRunsByPod(deadPodId);
+    if (orphans.length === 0) return;
+
+    // Cancel running threads on the dead pod (in case it's alive but partitioned)
+    for (const thread of orphans) {
+      cancelBroadcast?.broadcast(thread.id);
+    }
+
+    const CONCURRENCY = 5;
+    for (let i = 0; i < orphans.length; i += CONCURRENCY) {
+      const batch = orphans.slice(i, i + CONCURRENCY);
+      await Promise.allSettled(
+        batch.map(async (thread) => {
+          if (this.isRunning(thread.id)) return;
+          const claimed = await this.deps.storage.claimOrphanedRun(
+            thread.id,
+            thread.organization_id,
+            this.podId,
+          );
+          if (!claimed) return;
+
+          try {
+            await resumeFn(thread);
+          } catch (err) {
+            console.error(`[RunRegistry] Failed to resume ${thread.id}:`, err);
+            await this.deps.storage
+              .forceFailIfInProgress(thread.id, thread.organization_id)
+              .catch(() => {});
+          }
+        }),
+      );
     }
   }
 

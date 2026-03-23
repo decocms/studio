@@ -77,16 +77,36 @@ jobs:
           echo "major_version=$NEW_MAJOR_VERSION" >> $GITHUB_OUTPUT
           echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
 
-      - name: Preserve deploy checkbox state
-        id: checkbox_state
+      - name: Auto-suggest version bump from PR title
+        id: suggest_bump
         env:
-          COMMENT_BODY: ${{ steps.find_comment.outputs.comment-body }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
-          # If an existing comment has the checkbox checked, preserve it
-          if echo "$COMMENT_BODY" | grep -q '\[x\] Deploy to production'; then
-            echo "deploy_checked=- [x] Deploy to production (triggers ArgoCD sync after Docker image is published)" >> $GITHUB_OUTPUT
+          # Parse conventional commit prefix from PR title (treat as untrusted input)
+          if [[ "$PR_TITLE" =~ ^(fix|feat|chore|docs|refactor|ci|test|perf|build|style)(\(.+\))?\!?: ]]; then
+            PREFIX="${BASH_REMATCH[1]}"
+            case "$PREFIX" in
+              fix)
+                echo "suggested_type=Patch" >> $GITHUB_OUTPUT
+                echo "suggested_version=${{ steps.calculate_versions.outputs.patch_version }}" >> $GITHUB_OUTPUT
+                echo "suggested_prefix=fix:" >> $GITHUB_OUTPUT
+                ;;
+              feat)
+                echo "suggested_type=Minor" >> $GITHUB_OUTPUT
+                echo "suggested_version=${{ steps.calculate_versions.outputs.minor_version }}" >> $GITHUB_OUTPUT
+                echo "suggested_prefix=feat:" >> $GITHUB_OUTPUT
+                ;;
+              *)
+                echo "suggested_type=Prerelease" >> $GITHUB_OUTPUT
+                echo "suggested_version=${{ steps.calculate_versions.outputs.prerelease_version }}" >> $GITHUB_OUTPUT
+                echo "suggested_prefix=${PREFIX}:" >> $GITHUB_OUTPUT
+                ;;
+            esac
           else
-            echo "deploy_checked=- [ ] Deploy to production (triggers ArgoCD sync after Docker image is published)" >> $GITHUB_OUTPUT
+            # No conventional commit prefix matched — default to minor
+            echo "suggested_type=Minor" >> $GITHUB_OUTPUT
+            echo "suggested_version=${{ steps.calculate_versions.outputs.minor_version }}" >> $GITHUB_OUTPUT
+            echo "suggested_prefix=" >> $GITHUB_OUTPUT
           fi
 
       - name: Post Release Options Comment
@@ -100,9 +120,9 @@ jobs:
           body: |
             ## Release Options
 
-            Should a new version be published when this PR is merged?
+            **Suggested**: ${{ steps.suggest_bump.outputs.suggested_type }} (`${{ steps.suggest_bump.outputs.suggested_version }}`)${{ steps.suggest_bump.outputs.suggested_prefix != '' && format(' — based on `{0}` prefix', steps.suggest_bump.outputs.suggested_prefix) || ' — default (no conventional commit prefix detected)' }}
 
-            React with an emoji to vote on the release type:
+            React with an emoji to override the release type:
 
             | Reaction | Type | Next Version |
             |----------|------|--------------|
@@ -113,8 +133,7 @@ jobs:
 
             Current version: `${{ steps.calculate_versions.outputs.current_version }}`
 
-            ### Deployment
-            ${{ steps.checkbox_state.outputs.deploy_checked }}
+            > **Note**: If multiple reactions exist, the smallest bump wins. If no reactions, the suggested bump is used (default: minor).
 
   determine-tag:
     if: github.event_name == 'push'
@@ -133,15 +152,20 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Find the most recently merged PR to main
-          PR_NUMBER=$(gh pr list --state merged --base main --json number,mergedAt --jq 'sort_by(.mergedAt) | reverse | .[0].number')
-          
+          # Find the most recently merged PR to main (include title for conventional commit detection)
+          PR_DATA=$(gh pr list --state merged --base main --json number,mergedAt,title --jq 'sort_by(.mergedAt) | reverse | .[0]')
+
+          PR_NUMBER=$(echo "$PR_DATA" | jq -r '.number // empty')
+          PR_TITLE=$(echo "$PR_DATA" | jq -r '.title // empty')
+
           if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" == "null" ]; then
             echo "No recently merged PR found"
             echo "pr_number=" >> $GITHUB_OUTPUT
+            echo "pr_title=" >> $GITHUB_OUTPUT
           else
-            echo "Found merged PR #$PR_NUMBER"
+            echo "Found merged PR #$PR_NUMBER: $PR_TITLE"
             echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+            echo "pr_title=$PR_TITLE" >> $GITHUB_OUTPUT
           fi
 
       - name: Get current version
@@ -155,9 +179,13 @@ jobs:
         if: steps.find_pr.outputs.pr_number != ''
         env:
           PR_NUMBER: ${{ steps.find_pr.outputs.pr_number }}
+          PR_TITLE: ${{ steps.find_pr.outputs.pr_title }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CURRENT_VERSION: ${{ steps.get_current_version.outputs.current_version }}
         run: |
+          # Always deploy to production
+          echo "deploy_to_production=true" >> $GITHUB_OUTPUT
+
           # Parse current version
           if [[ "$CURRENT_VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-([a-zA-Z]+)\.([0-9]+))?$ ]]; then
             MAJOR="${BASH_REMATCH[1]}"
@@ -170,85 +198,98 @@ jobs:
             exit 1
           fi
 
-          # Load maintainers list
+          # Determine suggested bump from PR title (conventional commits)
+          SUGGESTED_BUMP=""
+          if [[ "$PR_TITLE" =~ ^(fix|feat|chore|docs|refactor|ci|test|perf|build|style)(\(.+\))?\!?: ]]; then
+            PREFIX="${BASH_REMATCH[1]}"
+            case "$PREFIX" in
+              fix) SUGGESTED_BUMP="patch" ;;
+              feat) SUGGESTED_BUMP="minor" ;;
+              *) SUGGESTED_BUMP="prerelease" ;;
+            esac
+          else
+            SUGGESTED_BUMP="minor"
+          fi
+          echo "Suggested bump from PR title: $SUGGESTED_BUMP"
+
+          # Load maintainers list and check reactions
+          REACTIONS=""
           if [ -f "MAINTAINERS.txt" ]; then
             ALLOWED_USERS=$(grep -v '^#' MAINTAINERS.txt | grep -v '^$' | jq -R -s -c 'split("\n") | map(select(length > 0))')
-          else
-            echo "MAINTAINERS.txt not found, skipping version bump"
-            exit 0
-          fi
-          echo "Maintainers list: $ALLOWED_USERS"
+            echo "Maintainers list: $ALLOWED_USERS"
 
-          # Fetch comments and find the Release Options comment
-          COMMENT_DATA=$(gh api graphql -f query='
-            query {
-              repository(owner:"${{ github.repository_owner }}", name:"${{ github.event.repository.name }}") {
-                pullRequest(number: '${PR_NUMBER}') {
-                  comments(last: 100) {
-                    nodes {
-                      body
-                      id
-                      reactions(last: 100) {
-                        nodes {
-                          content
-                          user {
-                            login
+            # Fetch comments and find the Release Options comment
+            COMMENT_DATA=$(gh api graphql -f query='
+              query {
+                repository(owner:"${{ github.repository_owner }}", name:"${{ github.event.repository.name }}") {
+                  pullRequest(number: '${PR_NUMBER}') {
+                    comments(last: 100) {
+                      nodes {
+                        body
+                        id
+                        reactions(last: 100) {
+                          nodes {
+                            content
+                            user {
+                              login
+                            }
                           }
                         }
                       }
                     }
                   }
                 }
-              }
-            }')
+              }')
 
-          # Extract reactions from the Release Options comment, filtered by maintainers
-          REACTIONS=$(echo "$COMMENT_DATA" | jq -r --argjson allowed_users "$ALLOWED_USERS" '
-            .data.repository.pullRequest.comments.nodes[] |
-            select(.body | contains("## Release Options")) |
-            .reactions.nodes[] |
-            select(.user.login | IN($allowed_users[])) |
-            .content' | tr '[:lower:]' '[:upper:]')
+            # Extract reactions from the Release Options comment, filtered by maintainers
+            REACTIONS=$(echo "$COMMENT_DATA" | jq -r --argjson allowed_users "$ALLOWED_USERS" '
+              .data.repository.pullRequest.comments.nodes[] |
+              select(.body | contains("## Release Options")) |
+              .reactions.nodes[] |
+              select(.user.login | IN($allowed_users[])) |
+              .content' | tr '[:lower:]' '[:upper:]')
 
-          echo "Captured reactions: $REACTIONS"
-
-          # Check for deploy checkbox in comment body
-          COMMENT_BODY=$(echo "$COMMENT_DATA" | jq -r '
-            .data.repository.pullRequest.comments.nodes[] |
-            select(.body | contains("## Release Options")) |
-            .body')
-
-          if echo "$COMMENT_BODY" | grep -q '\[x\] Deploy to production'; then
-            DEPLOY_TO_PRODUCTION="true"
-            echo "Deploy to production: enabled"
+            echo "Captured reactions: $REACTIONS"
           else
-            DEPLOY_TO_PRODUCTION="false"
-            echo "Deploy to production: disabled"
+            echo "MAINTAINERS.txt not found, using suggested bump from PR title"
           fi
-          echo "deploy_to_production=$DEPLOY_TO_PRODUCTION" >> $GITHUB_OUTPUT
 
-          # Determine version bump based on reactions (priority: major > minor > patch > prerelease)
+          # Determine version bump based on reactions (priority: smallest wins — prerelease > patch > minor > major)
           NEW_VERSION=""
-          if echo "$REACTIONS" | grep -q "ROCKET"; then
-            NEW_VERSION="$((MAJOR + 1)).0.0"
-            echo "Major bump selected"
-          elif echo "$REACTIONS" | grep -q "HEART"; then
-            NEW_VERSION="$MAJOR.$((MINOR + 1)).0"
-            echo "Minor bump selected"
-          elif echo "$REACTIONS" | grep -q "HOORAY"; then
-            NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
-            echo "Patch bump selected"
-          elif echo "$REACTIONS" | grep -q "THUMBS_UP"; then
+          if echo "$REACTIONS" | grep -q "THUMBS_UP"; then
             if [ -n "$PRERELEASE_TAG" ]; then
               NEW_VERSION="$MAJOR.$MINOR.$PATCH-$PRERELEASE_TAG.$((PRERELEASE_NUM + 1))"
             else
               NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))-alpha.1"
             fi
-            echo "Prerelease bump selected"
+            echo "Prerelease bump selected (smallest wins)"
+          elif echo "$REACTIONS" | grep -q "HOORAY"; then
+            NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
+            echo "Patch bump selected"
+          elif echo "$REACTIONS" | grep -q "HEART"; then
+            NEW_VERSION="$MAJOR.$((MINOR + 1)).0"
+            echo "Minor bump selected"
+          elif echo "$REACTIONS" | grep -q "ROCKET"; then
+            NEW_VERSION="$((MAJOR + 1)).0.0"
+            echo "Major bump selected"
           else
-            echo "No valid reactions found for version bump. Exiting."
-            echo "new_version=" >> $GITHUB_OUTPUT
-            exit 0
+            # No maintainer reactions — use suggested bump from PR title
+            echo "No maintainer reactions found. Using suggested bump: $SUGGESTED_BUMP"
+            case "$SUGGESTED_BUMP" in
+              prerelease)
+                if [ -n "$PRERELEASE_TAG" ]; then
+                  NEW_VERSION="$MAJOR.$MINOR.$PATCH-$PRERELEASE_TAG.$((PRERELEASE_NUM + 1))"
+                else
+                  NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))-alpha.1"
+                fi
+                ;;
+              patch)
+                NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
+                ;;
+              minor)
+                NEW_VERSION="$MAJOR.$((MINOR + 1)).0"
+                ;;
+            esac
           fi
 
           echo "New version: $NEW_VERSION"
@@ -258,7 +299,7 @@ jobs:
         if: steps.determine_version.outputs.new_version != ''
         run: |
           NEW_VERSION="${{ steps.determine_version.outputs.new_version }}"
-          
+
           # Update version in package.json using node
           node -e "
             const fs = require('fs');
@@ -266,7 +307,7 @@ jobs:
             pkg.version = '$NEW_VERSION';
             fs.writeFileSync('./apps/mesh/package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
-          
+
           echo "Updated apps/mesh/package.json to version $NEW_VERSION"
 
       - name: Commit and push version bump
@@ -288,4 +329,3 @@ jobs:
             -H "Accept: application/vnd.github.everest-preview+json" \
             "https://api.github.com/repos/${{ github.repository }}/actions/workflows/release.yaml/dispatches" \
             -d '{"ref":"main", "inputs":{"deploy_to_production":"${{ steps.determine_version.outputs.deploy_to_production }}"}}'
-

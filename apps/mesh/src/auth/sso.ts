@@ -100,10 +100,6 @@ async function mergeDuplicateSSOUser(data: {
 
   if (!originalUser) return;
 
-  console.info(
-    `[SSO] Merging duplicate user ${user.id} (${user.email}) into original ${originalUser.id} (${originalUser.email})`,
-  );
-
   try {
     await db.transaction().execute(async (tx) => {
       // Move all accounts from the duplicate to the original user
@@ -133,10 +129,6 @@ async function mergeDuplicateSSOUser(data: {
       // Delete the duplicate user
       await sql`DELETE FROM "user" WHERE "id" = ${user.id}`.execute(tx);
     });
-
-    console.info(
-      `[SSO] Successfully merged duplicate user into ${originalUser.id}`,
-    );
   } catch (error) {
     console.error("[SSO] Failed to merge duplicate user:", error);
   }

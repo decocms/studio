@@ -21,6 +21,19 @@ import type { StreamBuffer } from "./stream-buffer";
 import type { RunEvent, RunTransition } from "./run-state";
 
 // ============================================================================
+// Errors
+// ============================================================================
+
+export class RunClaimError extends Error {
+  constructor(threadId: string) {
+    super(
+      `Failed to claim run for thread ${threadId} — already running on another pod`,
+    );
+    this.name = "RunClaimError";
+  }
+}
+
+// ============================================================================
 // Deps
 // ============================================================================
 
@@ -41,7 +54,12 @@ async function handleTerminalStatus(
   deps: RunReactorDeps,
 ): Promise<void> {
   const { storage, streamBuffer, sseHub } = deps;
-  await storage.update(threadId, orgId, { status });
+  await storage.update(threadId, orgId, {
+    status,
+    run_owner_pod: null,
+    run_config: null,
+    run_started_at: null,
+  });
   streamBuffer.purge(threadId);
   sseHub.emit(orgId, createDecopilotThreadStatusEvent(threadId, status));
   sseHub.emit(orgId, createDecopilotFinishEvent(threadId, status));
@@ -55,9 +73,32 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
   const { storage, streamBuffer, sseHub } = deps;
 
   switch (event.type) {
-    case "RUN_STARTED":
+    case "RUN_STARTED": {
+      const claimed = await storage.claimRunStart(
+        event.threadId,
+        event.orgId,
+        {
+          status: "in_progress",
+          run_owner_pod: event.podId ?? null,
+          run_config: event.runConfig ?? null,
+          run_started_at: event.podId ? new Date().toISOString() : null,
+        },
+        event.podId ?? null,
+      );
+      if (!claimed) {
+        throw new RunClaimError(event.threadId);
+      }
+      sseHub.emit(
+        event.orgId,
+        createDecopilotThreadStatusEvent(event.threadId, "in_progress"),
+      );
+      return;
+    }
+
+    case "RUN_RESUMED":
       await storage.update(event.threadId, event.orgId, {
-        status: "in_progress",
+        run_owner_pod: event.podId,
+        run_started_at: new Date().toISOString(),
       });
       sseHub.emit(
         event.orgId,
@@ -98,8 +139,19 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
           event.orgId,
         );
         if (!transitioned) return;
+        // Clear run columns for ghost failures too
+        await storage.update(event.threadId, event.orgId, {
+          run_owner_pod: null,
+          run_config: null,
+          run_started_at: null,
+        });
       } else {
-        await storage.update(event.threadId, event.orgId, { status: "failed" });
+        await storage.update(event.threadId, event.orgId, {
+          status: "failed",
+          run_owner_pod: null,
+          run_config: null,
+          run_started_at: null,
+        });
       }
       streamBuffer.purge(event.threadId);
       sseHub.emit(

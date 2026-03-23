@@ -102,13 +102,16 @@ async function loadMemory(memory: Memory, windowSize: number) {
 
 function mergeMessages(
   threadMessages: ThreadMessage[],
-  requestMessage: ChatMessage,
+  requestMessage?: ChatMessage,
 ): ChatMessage[] {
   // Filter out messages with empty parts to prevent bricked threads
   // (e.g. assistant messages saved after an LLM error before any content was generated)
   const validMessages = threadMessages.filter(
     (m) => m.parts && m.parts.length > 0,
   );
+  if (!requestMessage) {
+    return validMessages as ChatMessage[];
+  }
   const matchIndex = validMessages.findIndex((m) => m.id === requestMessage.id);
   const conversation =
     matchIndex >= 0
@@ -119,7 +122,7 @@ function mergeMessages(
 
 export async function loadAndMergeMessages(
   memory: Memory,
-  requestMessage: ChatMessage,
+  requestMessage: ChatMessage | undefined,
   systemMessages: ChatMessage[],
   windowSize: number,
 ): Promise<ChatMessage[]> {

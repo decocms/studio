@@ -9,6 +9,7 @@ import {
   context,
   createContextKey,
   metrics,
+  SpanStatusCode,
   trace,
   type Attributes,
   type Context,
@@ -429,6 +430,41 @@ export async function flushMonitoringData(): Promise<void> {
   if (rejected) {
     throw rejected.reason;
   }
+}
+
+/**
+ * Run an async function inside an OpenTelemetry span.
+ * Sets OK/ERROR status and records exceptions automatically.
+ */
+export function traced<T>(
+  name: string,
+  fn: (span: Span) => Promise<T>,
+  attrs?: Record<string, string | number | boolean | undefined>,
+): Promise<T> {
+  return tracer.startActiveSpan(
+    name,
+    { attributes: attrs as Record<string, string> },
+    async (span) => {
+      try {
+        const result = await fn(span);
+        span.setStatus({ code: SpanStatusCode.OK });
+        return result;
+      } catch (error) {
+        const err =
+          error instanceof Error
+            ? error
+            : new Error(String(error ?? "unknown"));
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: err.message,
+        });
+        span.recordException(err);
+        throw error;
+      } finally {
+        span.end();
+      }
+    },
+  );
 }
 
 /**

@@ -17,6 +17,32 @@ import type {
 import { isStdioParameters } from "./schema";
 
 /**
+ * Find the registry list tool name from a tools array.
+ * Returns the tool name if found, null otherwise.
+ */
+export function findRegistryListTool(
+  tools: ToolDefinition[] | null | undefined,
+): string | null {
+  if (!tools || tools.length === 0) return null;
+
+  const preferred = tools.find(
+    (t) => t.name === "COLLECTION_REGISTRY_APP_LIST",
+  );
+  if (preferred) return preferred.name;
+
+  const privateRegistry = tools.find((t) => t.name === "REGISTRY_ITEM_LIST");
+  if (privateRegistry) return privateRegistry.name;
+
+  const generic = tools.find(
+    (t) =>
+      t.name.startsWith("COLLECTION_REGISTRY_APP_") && t.name.endsWith("_LIST"),
+  );
+  if (generic) return generic.name;
+
+  return null;
+}
+
+/**
  * Minimal connection data needed for tool fetching
  */
 export interface ConnectionForToolFetch {

@@ -18,7 +18,6 @@ import {
   Users03,
 } from "@untitledui/icons";
 import { pluginRootSidebarItems, pluginSidebarGroups } from "../index.tsx";
-import { usePreferences } from "./use-preferences.ts";
 
 export function useProjectSidebarItems(options?: {
   virtualMcpId?: string;
@@ -26,7 +25,6 @@ export function useProjectSidebarItems(options?: {
   const { org: orgContext } = useProjectContext();
   const navigate = useNavigate();
   const routerState = useRouterState();
-  const [preferences] = usePreferences();
   const org = orgContext.slug;
   const isOrgAdminProject = useIsOrgAdmin();
   const currentProject = useProjectContext().project;
@@ -283,11 +281,7 @@ export function useProjectSidebarItems(options?: {
         group: {
           id: "build",
           label: "Build",
-          items: [
-            ...(preferences.experimentalAutomations ? [automationsItem] : []),
-            agentsItem,
-            connectionsItem,
-          ],
+          items: [automationsItem, agentsItem, connectionsItem],
           defaultExpanded: true,
         },
       },

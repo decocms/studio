@@ -69,10 +69,6 @@ export class EventTriggerEngine {
       return;
     }
 
-    console.log(
-      `[EventTrigger] Processing event: type=${event.type}, source=${event.source}, org=${event.organizationId}, depth=${depth}`,
-    );
-
     // 1. Find matching triggers
     const matchingTriggers = await this.storage.findActiveEventTriggers(
       event.source,
@@ -80,25 +76,10 @@ export class EventTriggerEngine {
       event.organizationId,
     );
 
-    console.log(
-      `[EventTrigger] Found ${matchingTriggers.length} matching trigger(s) for ${event.type}`,
-      matchingTriggers.map((t) => ({
-        triggerId: t.id,
-        automationId: t.automation_id,
-        automationName: t.automation.name,
-      })),
-    );
-
     // 2. Filter by params
     const triggersToFire = matchingTriggers.filter((trigger) =>
       this.paramsMatch(trigger.params, event.data),
     );
-
-    if (triggersToFire.length !== matchingTriggers.length) {
-      console.log(
-        `[EventTrigger] After param filter: ${triggersToFire.length}/${matchingTriggers.length} triggers will fire`,
-      );
-    }
 
     // 3. Fire each
     const results = await Promise.allSettled(
@@ -119,12 +100,7 @@ export class EventTriggerEngine {
 
     for (const [i, result] of results.entries()) {
       const trigger = triggersToFire[i]!;
-      if (result.status === "fulfilled") {
-        console.log(
-          `[EventTrigger] Trigger ${trigger.id} ("${trigger.automation.name}") result:`,
-          result.value,
-        );
-      } else {
+      if (result.status === "rejected") {
         console.error(
           `[EventTrigger] Trigger ${trigger.id} ("${trigger.automation.name}") REJECTED:`,
           result.reason,

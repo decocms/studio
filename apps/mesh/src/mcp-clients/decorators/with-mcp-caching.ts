@@ -52,20 +52,9 @@ export function withMcpCaching(
     ): Promise<Record<string, unknown>> => {
       // Bypass cache for VIRTUAL connections or paginated requests
       if (isVirtual || !cache || shouldBypassCache(params, options)) {
-        const reason = isVirtual
-          ? "VIRTUAL"
-          : !cache
-            ? "no-cache"
-            : "has-params/options";
-        console.log(
-          `[withMcpCaching] ${method} ${connection.id} bypass (${reason})`,
-        );
         return (original as any)(params, options);
       }
 
-      console.log(
-        `[withMcpCaching] ${method} ${connection.id} delegating to fetchWithCache`,
-      );
       const data = await fetchWithCache(
         type,
         connection.id,

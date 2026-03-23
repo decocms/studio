@@ -19,7 +19,7 @@ import type { Context } from "hono";
 
 import type { MeshContext, OrganizationScope } from "@/core/mesh-context";
 import { HTTPException } from "hono/http-exception";
-import { MCP_TOOL_CALL_TIMEOUT_MS } from "../proxy";
+import { MCP_TOOL_CALL_TIMEOUT_MS } from "@/core/constants";
 import {
   MAX_RESULT_TOKENS,
   createOutputPreview,

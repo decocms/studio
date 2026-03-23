@@ -62,13 +62,6 @@ const envSchema = z
       .transform(
         (v) => v === undefined || v === "" || v === "true" || v === "1",
       ),
-
-    // Debug / K8s
-    DEBUG_PORT: z.coerce.number().default(9090),
-    ENABLE_DEBUG_SERVER: zBooleanString,
-    PRESTOP_HEAP_SNAPSHOT_DIR: z.string().optional(),
-    POD_NAME: z.string().optional(),
-    HOSTNAME: z.string().optional(),
   })
   .transform((e) => ({
     ...e,
@@ -203,13 +196,6 @@ function logConfiguration(e: Env) {
   r("S3_ACCESS_KEY_ID", e.S3_ACCESS_KEY_ID);
   r("S3_SECRET_ACCESS_KEY", e.S3_SECRET_ACCESS_KEY);
   r("S3_FORCE_PATH_STYLE", e.S3_FORCE_PATH_STYLE);
-
-  sect("Debug / K8s");
-  r("DEBUG_PORT", e.DEBUG_PORT);
-  r("ENABLE_DEBUG_SERVER", e.ENABLE_DEBUG_SERVER);
-  r("PRESTOP_HEAP_SNAPSHOT_DIR", e.PRESTOP_HEAP_SNAPSHOT_DIR);
-  r("POD_NAME", e.POD_NAME);
-  r("HOSTNAME", e.HOSTNAME);
 
   lines.push("");
   console.log(lines.join("\n"));

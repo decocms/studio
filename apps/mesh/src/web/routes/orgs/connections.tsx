@@ -83,7 +83,8 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import {
   SELF_MCP_ALIAS_ID,
   useConnectionActions,
-  useConnections,
+  useConnectionsAsync,
+  useConnectionsInfinite,
   useMCPClient,
   useProjectContext,
   type ConnectionEntity,
@@ -108,7 +109,7 @@ import {
   Trash01,
   XClose,
 } from "@untitledui/icons";
-import { Suspense, useEffect, useReducer, useState } from "react";
+import { useEffect, useReducer, useState } from "react";
 import { useForm } from "react-hook-form";
 import {
   connectionFormSchema,
@@ -804,21 +805,7 @@ function OrgMcpsContent() {
     resource: "connections",
   });
 
-  const actions = useConnectionActions();
-  const connections = useConnections(listState);
-  // Unfiltered connections for catalog metadata (connectedAppNames, appInstances)
-  // so the "Connected" badge and modal aren't affected by the search term
-  const allConnections = useConnections();
-
-  const [dialogState, dispatch] = useReducer(dialogReducer, { mode: "idle" });
-
-  // Selection / bulk-action state — no explicit mode; selection is implicit
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const selectionMode = selectedIds.size > 0;
-  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
-  const [addToAgentOpen, setAddToAgentOpen] = useState(false);
-
-  // Tab state
+  // Tab state (before queries so we can skip unnecessary fetches per tab)
   type ConnectionTab = "connected" | "all";
   const [activeTab, setActiveTab] = useLocalStorage<ConnectionTab>(
     LOCALSTORAGE_KEYS.connectionsTab(org.slug),
@@ -827,6 +814,32 @@ function OrgMcpsContent() {
         ? search.tab
         : (existing ?? "all"),
   );
+
+  const actions = useConnectionActions();
+
+  // Paginated connections for the "Connected" tab grid.
+  // On "All" tab this is skipped — the store query provides connections for badges.
+  const needsConnectedQuery =
+    activeTab === "connected" || !!listState.searchTerm;
+  const {
+    items: paginatedConnections,
+    isLoading: isLoadingConnections,
+    hasMore: hasMoreConnections,
+    isLoadingMore: isLoadingMoreConnections,
+    loadMore: loadMoreConnections,
+  } = useConnectionsInfinite({
+    ...listState,
+    enabled: needsConnectedQuery,
+  });
+  const connections = needsConnectedQuery ? paginatedConnections : [];
+
+  const [dialogState, dispatch] = useReducer(dialogReducer, { mode: "idle" });
+
+  // Selection / bulk-action state — no explicit mode; selection is implicit
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const selectionMode = selectedIds.size > 0;
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [addToAgentOpen, setAddToAgentOpen] = useState(false);
 
   // Type & status filters
   const [typeFilter, setTypeFilter] = useState<ConnectionTypeFilter>("ALL");
@@ -861,18 +874,27 @@ function OrgMcpsContent() {
     setSelectedIds(new Set());
   };
 
+  // Fetch all connections (without tools) for the "All" tab.
+  // Registry discovery uses metadata.is_registry flag backfilled by migration 048.
+  const needsStore = activeTab === "all" || !!listState.searchTerm;
+  const { data: allConnectionsData, isLoading: isLoadingTools } =
+    useConnectionsAsync({
+      enabled: needsStore,
+    });
+  const allConnections = allConnectionsData ?? connections;
+
   // Optional registry lookup: support multiple registries, let user pick on "All" tab
   // Sort so the self/management MCP (Mesh MCP) appears last — external registries like
   // Deco Store / MCP Registry should be the default catalog source.
-  const registryConnections = useRegistryConnections(allConnections).sort(
-    (a, b) => {
-      const isSelfA = a.app_name === "@deco/management-mcp";
-      const isSelfB = b.app_name === "@deco/management-mcp";
-      if (isSelfA && !isSelfB) return 1;
-      if (!isSelfA && isSelfB) return -1;
-      return 0;
-    },
-  );
+  const registryConnections = useRegistryConnections(
+    allConnectionsData ?? [],
+  ).sort((a, b) => {
+    const isSelfA = a.app_name === "@deco/management-mcp";
+    const isSelfB = b.app_name === "@deco/management-mcp";
+    if (isSelfA && !isSelfB) return 1;
+    if (!isSelfA && isSelfB) return -1;
+    return 0;
+  });
   const [selectedRegistryId, setSelectedRegistryId] = useLocalStorage<string>(
     LOCALSTORAGE_KEYS.selectedRegistry(org.slug),
     (existing) => existing ?? "",
@@ -882,7 +904,14 @@ function OrgMcpsContent() {
       ? registryConnections.find((r) => r.id === selectedRegistryId)
       : undefined) ?? registryConnections[0];
   const registryId = registryConnection?.id ?? "";
-  const registryListToolName = findListToolName(registryConnection?.tools);
+  const registryMeta = registryConnection?.metadata as Record<
+    string,
+    unknown
+  > | null;
+  const registryListToolName =
+    (registryMeta?.registry_list_tool as string) ||
+    findListToolName(registryConnection?.tools);
+
   const registryDiscovery = useStoreDiscovery({
     registryId,
     listToolName: registryListToolName,
@@ -893,6 +922,12 @@ function OrgMcpsContent() {
     registryDiscovery.loadMore,
     registryDiscovery.hasMore,
     registryDiscovery.isLoadingMore,
+  );
+
+  const connectedSentinelRef = useInfiniteScroll(
+    loadMoreConnections,
+    hasMoreConnections,
+    isLoadingMoreConnections,
   );
 
   // "All" tab: catalog items from registry (includes already-connected ones)
@@ -2257,14 +2292,18 @@ function OrgMcpsContent() {
         <Page.Content>
           <div className="flex-1 overflow-auto p-5">
             {(
-              searchLower
-                ? verifiedCatalogItems.length === 0 &&
-                  otherCatalogItems.length === 0 &&
-                  tabFilteredConnections.length === 0
-                : activeTab === "all"
+              isLoadingConnections
+                ? false
+                : searchLower
                   ? verifiedCatalogItems.length === 0 &&
-                    otherCatalogItems.length === 0
-                  : tabFilteredConnections.length === 0
+                    otherCatalogItems.length === 0 &&
+                    tabFilteredConnections.length === 0 &&
+                    !isLoadingTools
+                  : activeTab === "all"
+                    ? verifiedCatalogItems.length === 0 &&
+                      otherCatalogItems.length === 0 &&
+                      !isLoadingTools
+                    : tabFilteredConnections.length === 0
             ) ? (
               <EmptyState
                 image={
@@ -2285,6 +2324,22 @@ function OrgMcpsContent() {
               />
             ) : (
               <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
+                {/* Skeleton cards while connections are loading */}
+                {isLoadingConnections &&
+                  Array.from({ length: 6 }).map((_, i) => (
+                    <div
+                      key={`skeleton-${i}`}
+                      className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 animate-pulse"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-lg bg-muted" />
+                        <div className="flex-1 space-y-2">
+                          <div className="h-4 w-24 rounded bg-muted" />
+                          <div className="h-3 w-40 rounded bg-muted" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 {groupedForDisplay.map((item) => {
                   if (item.type === "group") {
                     return (
@@ -2409,6 +2464,31 @@ function OrgMcpsContent() {
                     />
                   );
                 })}
+                {/* Infinite scroll sentinel for connected items */}
+                {hasMoreConnections && (
+                  <div
+                    ref={connectedSentinelRef}
+                    className="col-span-full h-4"
+                  />
+                )}
+                {isLoadingMoreConnections && (
+                  <div className="col-span-full flex items-center justify-center gap-2 py-4 text-muted-foreground">
+                    <Loading01 size={16} className="animate-spin" />
+                    <span className="text-sm">Loading more connections...</span>
+                  </div>
+                )}
+                {/* Loading indicator while registry tools are being discovered */}
+                {activeTab === "all" &&
+                  isLoadingTools &&
+                  verifiedCatalogItems.length === 0 &&
+                  otherCatalogItems.length === 0 && (
+                    <div className="col-span-full flex items-center justify-center gap-2 py-8 text-muted-foreground">
+                      <Loading01 size={16} className="animate-spin" />
+                      <span className="text-sm">
+                        Loading available connections...
+                      </span>
+                    </div>
+                  )}
                 {/* Catalog items (uninstalled) — only on "All" tab */}
                 {activeTab === "all" && verifiedCatalogItems.length > 0 && (
                   <div className="col-span-full flex items-center gap-2 mt-2">
@@ -2620,18 +2700,7 @@ function OrgMcpsContent() {
 export default function OrgMcps() {
   return (
     <ErrorBoundary>
-      <Suspense
-        fallback={
-          <div className="flex h-full items-center justify-center">
-            <Loading01
-              size={32}
-              className="animate-spin text-muted-foreground"
-            />
-          </div>
-        }
-      >
-        <OrgMcpsContent />
-      </Suspense>
+      <OrgMcpsContent />
     </ErrorBoundary>
   );
 }

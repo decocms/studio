@@ -65,7 +65,7 @@ import { toast } from "sonner";
 
 export default function AutomationsPage() {
   const navigate = useNavigate();
-  const { org, locator } = useProjectContext();
+  const { org } = useProjectContext();
   const { data: automations, isLoading } = useAutomationsList();
   const createMutation = useAutomationCreate();
   const deleteMutation = useAutomationDelete();
@@ -79,8 +79,6 @@ export default function AutomationsPage() {
     resource: "automations",
     defaultViewMode: "table",
   });
-
-  const orgSlug = locator.split("/")[0] ?? org.slug ?? "org-admin";
 
   const handleCreate = async () => {
     try {
@@ -98,7 +96,7 @@ export default function AutomationsPage() {
       navigate({
         to: "/$org/automations/$automationId",
         params: {
-          org: orgSlug,
+          org: org.slug,
           automationId: result.id,
         },
       });
@@ -123,7 +121,7 @@ export default function AutomationsPage() {
     navigate({
       to: "/$org/automations/$automationId",
       params: {
-        org: orgSlug,
+        org: org.slug,
         automationId,
       },
     });

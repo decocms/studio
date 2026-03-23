@@ -3,16 +3,30 @@ import { useSyncExternalStore } from "react";
 import { ConfigView } from "./config-view";
 import { Header } from "./header";
 import { RequestLog } from "./request-log";
-import { getCliState, subscribeCliState, toggleViewMode } from "./cli-store";
+import {
+  getCliState,
+  subscribeCliState,
+  toggleLogFlow,
+  toggleViewMode,
+  toggleVibeState,
+} from "./cli-store";
+import { toggleVibe } from "./vibe/vibe-player";
 
-const HEADER_HEIGHT = 13;
+const HEADER_HEIGHT = 15;
 
 export function App({ home }: { home: string }) {
   const state = useSyncExternalStore(subscribeCliState, getCliState);
 
   useInput((_input) => {
-    if (_input === "k") {
+    if (_input === "k" || _input === "K") {
       toggleViewMode();
+    }
+    if (_input === "l" || _input === "L") {
+      toggleLogFlow();
+    }
+    if ((_input === "v" || _input === "V") && state.dataDir) {
+      toggleVibe(state.dataDir);
+      toggleVibeState();
     }
   });
 
@@ -23,6 +37,7 @@ export function App({ home }: { home: string }) {
         migrationsStatus={state.migrationsStatus}
         home={home}
         serverUrl={state.serverUrl}
+        vibe={state.vibe}
       />
 
       {state.viewMode === "config" ? (

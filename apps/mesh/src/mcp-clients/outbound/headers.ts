@@ -100,9 +100,6 @@ export async function buildRequestHeaders(
     if (isExpired) {
       // Try to refresh if we have refresh capability
       if (canRefresh) {
-        console.log(
-          `[Proxy] Token expired for ${connectionId}, attempting refresh`,
-        );
         const refreshResult = await refreshAccessToken(cachedToken);
 
         if (refreshResult.success && refreshResult.accessToken) {
@@ -122,7 +119,6 @@ export async function buildRequestHeaders(
           });
 
           accessToken = refreshResult.accessToken;
-          console.log(`[Proxy] Token refreshed for ${connectionId}`);
         } else {
           // Refresh failed - token is invalid
           // Delete the cached token so user gets prompted to re-auth
@@ -134,9 +130,6 @@ export async function buildRequestHeaders(
       } else {
         // Token expired but no refresh capability - delete it
         await tokenStorage.delete(connectionId);
-        console.log(
-          `[Proxy] Token expired without refresh capability for ${connectionId}`,
-        );
       }
     } else {
       // Token is still valid

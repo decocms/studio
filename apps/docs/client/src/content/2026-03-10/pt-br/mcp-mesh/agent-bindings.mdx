@@ -1,0 +1,173 @@
+---
+title: Agent Bindings
+description: Conecte agentes de IA ao seu MCP App e faça streaming de respostas programaticamente
+icon: Bot
+---
+import Callout from "../../../../components/ui/Callout.astro";
+
+## Visao Geral
+
+Agent bindings permitem que seu MCP App chame [agentes do decopilot](/pt-br/mcp-mesh/agents) diretamente de tool handlers. Isso permite criar tools que delegam trabalho a agentes de IA — por exemplo, uma tool de suporte ao cliente que faz streaming do raciocinio do agente de volta ao usuario.
+
+Agent bindings funcionam como [connection bindings](/pt-br/full-code-guides/building-tools) (`BindingOf`), mas em vez de chamar tools MCP em uma conexao, eles fazem streaming de mensagens de e para um agente do decopilot.
+
+## Declarando um Agent Binding
+
+Use `AgentOf()` no seu `StateSchema` para declarar um agent binding:
+
+```typescript
+// api/types/env.ts
+import type { DefaultEnv } from "@decocms/runtime";
+import { AgentOf } from "@decocms/runtime";
+import { z } from "zod";
+
+export const StateSchema = z.object({
+  MY_AGENT: AgentOf(),
+});
+
+export type Env = DefaultEnv<typeof StateSchema>;
+```
+
+Quando alguem instala seu MCP App, a interface admin mostra um seletor para o campo `MY_AGENT` onde podem escolher um agente da organizacao.
+
+Em runtime, `MY_AGENT` resolve para um client com um metodo `STREAM` — voce nunca precisa lidar com HTTP ou SSE diretamente.
+
+## Usando o Agente em uma Tool
+
+Uma vez declarado, o agente resolvido esta disponivel em `env.MY_AGENT`:
+
+```typescript
+import { createTool } from "@decocms/runtime/tools";
+import { z } from "zod";
+import type { Env } from "../types/env.ts";
+
+export const askAgentTool = (env: Env) =>
+  createTool({
+    id: "ask_agent",
+    description: "Pergunte ao agente configurado e faca streaming da resposta",
+    inputSchema: z.object({
+      question: z.string().describe("A pergunta a fazer"),
+    }),
+    outputSchema: z.object({
+      answer: z.string(),
+    }),
+    execute: async ({ context }) => {
+      const stream = await env.MY_AGENT.STREAM({
+        messages: [{ role: "user", parts: [{ type: "text", text: context.question }] }],
+      });
+
+      let answer = "";
+      for await (const message of stream) {
+        for (const part of message.parts) {
+          if (part.type === "text") {
+            answer += part.text;
+          }
+        }
+      }
+
+      return { answer };
+    },
+  });
+```
+
+## Parametros do STREAM
+
+O metodo `STREAM` aceita os seguintes parametros:
+
+```typescript
+interface AgentStreamParams {
+  /** Mensagens para enviar ao agente (obrigatorio) */
+  messages: Omit<UIMessage, "id">[];
+
+  /** Sobrescrever a credencial usada para acesso ao modelo */
+  credentialId?: string;
+
+  /** Sobrescrever configuracoes de modelo */
+  thinking?: AgentModelInfo;
+  coding?: AgentModelInfo;
+  fast?: AgentModelInfo;
+
+  /** Nivel de aprovacao de tools: "auto" | "readonly" | "plan" */
+  toolApprovalLevel?: "auto" | "readonly" | "plan";
+
+  /** Temperatura de sampling */
+  temperature?: number;
+
+  /** Configuracao de memoria para continuidade da conversa */
+  memory?: { windowSize: number; thread_id: string };
+
+  /** Thread ID para conversas multi-turn */
+  thread_id?: string;
+}
+```
+
+Os parametros de modelo (`thinking`, `coding`, `fast`), `credentialId`, `toolApprovalLevel` e `temperature` tem defaults da configuracao do binding definida na instalacao. Parametros passados ao `STREAM` sobrescrevem esses defaults.
+
+### Niveis de Modelo
+
+Agentes podem usar ate tres niveis de modelo:
+
+| Nivel | Proposito |
+|-------|-----------|
+| `thinking` | Modelo principal para raciocinio e tarefas complexas |
+| `coding` | Otimizado para geracao de codigo (volta ao thinking se nao configurado) |
+| `fast` | Modelo leve para respostas rapidas e simples |
+
+## Conversas Multi-Turn
+
+Use `thread_id` para manter contexto da conversa entre multiplas chamadas:
+
+```typescript
+const threadId = crypto.randomUUID();
+
+// Primeiro turno
+const stream1 = await env.MY_AGENT.STREAM({
+  messages: [{ role: "user", parts: [{ type: "text", text: "Qual o clima?" }] }],
+  thread_id: threadId,
+});
+
+// Segundo turno — o agente lembra do primeiro
+const stream2 = await env.MY_AGENT.STREAM({
+  messages: [{ role: "user", parts: [{ type: "text", text: "E amanha?" }] }],
+  thread_id: threadId,
+  memory: { windowSize: 10, thread_id: threadId },
+});
+```
+
+## Client Standalone
+
+Se voce precisa chamar um agente do decopilot fora do sistema de bindings (ex: de um script ou servico externo), use `createDecopilotClient`:
+
+```typescript
+import { createDecopilotClient } from "@decocms/runtime/decopilot";
+
+const client = createDecopilotClient({
+  baseUrl: "https://mesh.decocms.com/api",
+  orgSlug: "minha-org",
+  token: "sua-api-key",
+});
+
+const stream = await client.stream({
+  agent: { id: "agent-uuid" },
+  messages: [{ role: "user", parts: [{ type: "text", text: "Ola" }] }],
+});
+
+for await (const message of stream) {
+  console.log(message);
+}
+```
+
+<Callout type="info">
+  O client standalone usa o mesmo protocolo de streaming que o proxy de binding. A abordagem via binding e preferida para MCP Apps pois lida com autenticacao e resolucao do agente automaticamente.
+</Callout>
+
+## Como Funciona
+
+Quando o runtime resolve seu `StateSchema`, ele detecta campos `AgentOf()` pelo marcador `__type: "@deco/agent"` e cria um client proxy. Quando voce chama `STREAM`, o proxy:
+
+1. Resolve o ID do agente a partir da configuracao do binding
+2. Mescla seus parametros com os defaults do binding (credencial, modelos, temperatura, etc.)
+3. Envia um POST request para o endpoint de streaming do decopilot runtime
+4. Parseia a resposta SSE em um async iterable de objetos `UIMessage`
+
+O endpoint de streaming do runtime (`/:org/decopilot/runtime/stream`) lida com checagem de permissoes de modelo e faz fallback para o provedor de IA padrao da organizacao se nenhum modelo explicito for configurado.

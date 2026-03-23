@@ -22,6 +22,10 @@ function createPublicMCPTools(storage: RegistryItemStorage, orgId: string) {
   const LIST_TOOL = createTool({
     id: "COLLECTION_REGISTRY_APP_LIST",
     description: "List public registry items",
+    annotations: {
+      readOnlyHint: true,
+      idempotentHint: true,
+    },
     inputSchema: RegistryListInputSchema,
     outputSchema: RegistryListOutputSchema,
     execute: async ({ context }) => {
@@ -40,6 +44,10 @@ function createPublicMCPTools(storage: RegistryItemStorage, orgId: string) {
   const GET_TOOL = createTool({
     id: "COLLECTION_REGISTRY_APP_GET",
     description: "Get a public registry item by ID or name",
+    annotations: {
+      readOnlyHint: true,
+      idempotentHint: true,
+    },
     inputSchema: RegistryGetInputSchema,
     outputSchema: RegistryGetOutputSchema,
     execute: async ({ context }) => {
@@ -59,6 +67,10 @@ function createPublicMCPTools(storage: RegistryItemStorage, orgId: string) {
   const VERSIONS_TOOL = createTool({
     id: "COLLECTION_REGISTRY_APP_VERSIONS",
     description: "Get available versions of a public registry item",
+    annotations: {
+      readOnlyHint: true,
+      idempotentHint: true,
+    },
     inputSchema: RegistryGetInputSchema,
     outputSchema: z.object({
       versions: z.array(RegistryGetOutputSchema.shape.item),
@@ -82,6 +94,10 @@ function createPublicMCPTools(storage: RegistryItemStorage, orgId: string) {
     description:
       "Search public registry items returning minimal data (id, title, tags, categories, is_public). " +
       "Use this instead of LIST when you need to find items efficiently without loading full details.",
+    annotations: {
+      readOnlyHint: true,
+      idempotentHint: true,
+    },
     inputSchema: RegistrySearchInputSchema,
     outputSchema: RegistrySearchOutputSchema,
     execute: async ({ context }) => {
@@ -92,6 +108,10 @@ function createPublicMCPTools(storage: RegistryItemStorage, orgId: string) {
   const FILTERS_TOOL = createTool({
     id: "COLLECTION_REGISTRY_APP_FILTERS",
     description: "Get available tags and categories for public registry items",
+    annotations: {
+      readOnlyHint: true,
+      idempotentHint: true,
+    },
     inputSchema: z.object({}),
     outputSchema: RegistryFiltersOutputSchema,
     execute: async () => {

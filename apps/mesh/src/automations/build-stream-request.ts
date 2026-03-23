@@ -39,16 +39,5 @@ export function buildStreamRequest(
     threadId,
   };
 
-  console.log(`[buildStreamRequest] automation="${automation.name}":`, {
-    threadId,
-    triggerId,
-    agentId: request.agent?.id,
-    credentialId: request.models?.credentialId,
-    modelId: request.models?.thinking?.id,
-    messageCount: request.messages.length,
-    userId: request.userId,
-    orgId: request.organizationId,
-  });
-
   return request;
 }

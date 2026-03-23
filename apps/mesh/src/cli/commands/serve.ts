@@ -22,6 +22,7 @@ export interface ServeOptions {
   home: string;
   skipMigrations: boolean;
   localMode: boolean;
+  noTui?: boolean;
 }
 
 // Strip ANSI escape codes from a string
@@ -76,9 +77,12 @@ export function interceptConsoleForTui() {
 }
 
 export async function startServer(options: ServeOptions): Promise<void> {
-  const { port, home, skipMigrations, localMode } = options;
+  const { port, home, skipMigrations, localMode, noTui } = options;
 
   // Set env vars before any imports that read them
+  if (noTui) {
+    process.env.DECO_NO_TUI = "true";
+  }
   process.env.DECOCMS_HOME = home;
   process.env.DATA_DIR = home;
   process.env.PORT = port;

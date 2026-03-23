@@ -15,6 +15,9 @@ interface CliState {
   env: Env | null;
   logs: LogEntry[];
   viewMode: "requests" | "config";
+  logFlow: boolean;
+  vibe: boolean;
+  dataDir: string | null;
 }
 
 let state: CliState = {
@@ -27,6 +30,9 @@ let state: CliState = {
   env: null,
   logs: [],
   viewMode: "requests",
+  logFlow: false,
+  vibe: false,
+  dataDir: null,
 };
 
 const listeners = new Set<() => void>();
@@ -89,6 +95,29 @@ export function toggleViewMode() {
     ...state,
     viewMode: state.viewMode === "requests" ? "config" : "requests",
   };
+  emit();
+}
+
+export function toggleLogFlow() {
+  state = {
+    ...state,
+    logFlow: !state.logFlow,
+  };
+  emit();
+}
+
+export function setDataDir(dataDir: string) {
+  state = { ...state, dataDir };
+  emit();
+}
+
+export function setVibe(value: boolean) {
+  state = { ...state, vibe: value };
+  emit();
+}
+
+export function toggleVibeState() {
+  state = { ...state, vibe: !state.vibe };
   emit();
 }
 

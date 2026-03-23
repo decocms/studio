@@ -205,6 +205,12 @@ const ConnectionListInputSchema = CollectionListInputSchema.extend({
     .describe(
       "Whether to include VIRTUAL connections in the results. Defaults to false.",
     ),
+  include_tools: z
+    .boolean()
+    .optional()
+    .describe(
+      "Whether to fetch and include tools for each connection. Defaults to false. Automatically true when binding is specified.",
+    ),
 });
 
 /**
@@ -257,43 +263,48 @@ export const COLLECTION_CONNECTIONS_LIST = defineTool({
       includeVirtual: input.include_virtual ?? false,
     });
 
-    const cache = getMcpListCache();
-    const selfId = WellKnownOrgMCPId.SELF(organization.id);
-    await Promise.all(
-      connections.map(async (connection) => {
-        if (connection.tools !== null) return;
-        // The self MCP requires session auth, so an HTTP round-trip would
-        // fail without forwarding cookies. Use in-process transport instead.
-        const fetchLive =
-          connection.id === selfId
-            ? async () => {
-                const { listManagementTools } = await import("../../tools");
-                return listManagementTools(ctx) as Promise<unknown[]>;
-              }
-            : async () => {
-                const client = await clientFromConnection(
-                  connection,
-                  ctx,
-                  true,
-                );
-                try {
-                  const result = await client.listTools();
-                  return result.tools;
-                } finally {
-                  await client.close().catch(() => {});
+    // Only fetch tools when explicitly requested or when binding filtering requires them
+    const shouldFetchTools = input.include_tools === true || !!input.binding;
+
+    if (shouldFetchTools) {
+      const cache = getMcpListCache();
+      const selfId = WellKnownOrgMCPId.SELF(organization.id);
+      await Promise.all(
+        connections.map(async (connection) => {
+          if (connection.tools !== null) return;
+          // The self MCP requires session auth, so an HTTP round-trip would
+          // fail without forwarding cookies. Use in-process transport instead.
+          const fetchLive =
+            connection.id === selfId
+              ? async () => {
+                  const { listManagementTools } = await import("../../tools");
+                  return listManagementTools(ctx) as Promise<unknown[]>;
                 }
-              };
-        const tools = await fetchWithCache(
-          "tools",
-          connection.id,
-          fetchLive,
-          cache,
-        );
-        if (tools !== null) {
-          connection.tools = tools as Tool[];
-        }
-      }),
-    );
+              : async () => {
+                  const client = await clientFromConnection(
+                    connection,
+                    ctx,
+                    true,
+                  );
+                  try {
+                    const result = await client.listTools();
+                    return result.tools;
+                  } finally {
+                    await client.close().catch(() => {});
+                  }
+                };
+          const tools = await fetchWithCache(
+            "tools",
+            connection.id,
+            fetchLive,
+            cache,
+          );
+          if (tools !== null) {
+            connection.tools = tools as Tool[];
+          }
+        }),
+      );
+    }
 
     // In dev mode, inject the dev-assets connection for local file storage
     // This provides object storage functionality without requiring an external S3 bucket

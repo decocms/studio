@@ -11,7 +11,7 @@ import type { LanguageModelV2 } from "@ai-sdk/provider";
 import type { InferUITool, UIMessage } from "ai";
 import type { ToolDefinition, UsageStats } from "@decocms/mesh-sdk";
 import type { Metadata } from "@/web/components/chat/types";
-import type { getBuiltInTools } from "./built-in-tools";
+import type { BuiltInToolSet } from "./built-in-tools";
 
 // ============================================================================
 // Stream API Message Types
@@ -40,9 +40,7 @@ export type ChatMessage = UIMessage<
     };
   },
   {
-    [K in keyof ReturnType<typeof getBuiltInTools>]: InferUITool<
-      ReturnType<typeof getBuiltInTools>[K]
-    >;
+    [K in keyof BuiltInToolSet]: InferUITool<BuiltInToolSet[K]>;
   }
 >;
 

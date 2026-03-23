@@ -15,6 +15,7 @@ import {
 import { SmartAutoScroll } from "./smart-auto-scroll.tsx";
 import { type DataParts, useFilterParts } from "./use-filter-parts.ts";
 import { addUsage, emptyUsageStats } from "@decocms/mesh-sdk";
+import { useChat } from "../context.tsx";
 
 type ThinkingStage = "planning" | "thinking";
 
@@ -267,7 +268,27 @@ function MessagePart({
   }
 }
 
-function EmptyAssistantState() {
+function EmptyAssistantState({
+  isRunInProgress,
+}: {
+  isRunInProgress: boolean;
+}) {
+  if (isRunInProgress) {
+    return (
+      <div className="flex items-center gap-1.5 py-2 opacity-60">
+        <span className="flex items-center gap-1.5">
+          <Stars01
+            className="text-muted-foreground shrink-0 animate-pulse"
+            size={14}
+          />
+          <span className="text-[14px] text-muted-foreground shimmer">
+            Resuming task...
+          </span>
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="text-[14px] text-muted-foreground/60 py-2">
       No response was generated
@@ -304,6 +325,7 @@ export function MessageAssistant({
   className,
   isLast = false,
 }: MessageAssistantProps) {
+  const { isRunInProgress } = useChat();
   const isStreaming = status === "streaming";
   const isSubmitted = status === "submitted";
   const isLoading = isStreaming || isSubmitted;
@@ -381,7 +403,7 @@ export function MessageAssistant({
       ) : isLoading ? (
         <TypingIndicator />
       ) : (
-        <EmptyAssistantState />
+        <EmptyAssistantState isRunInProgress={isLast && isRunInProgress} />
       )}
       {/* Smart auto-scroll sentinel - only rendered for the last message during streaming */}
       {isLast && isStreaming && <SmartAutoScroll parts={message?.parts} />}

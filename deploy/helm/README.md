@@ -686,7 +686,7 @@ lifecycle:
       command:
         - /bin/sh
         - -c
-        - "wget -q -O - http://localhost:9229/prestop-hook || true"
+        - "sleep 5"
 ```
 
 **Common use cases:**
@@ -713,7 +713,7 @@ lifecycle:
       command:
         - /bin/sh
         - -c
-        - "wget -q -O - http://localhost:9229/prestop-hook || true"
+        - "sleep 5"
 ```
 
 ### Persistence
@@ -1212,7 +1212,7 @@ lifecycle:
       command:
         - /bin/sh
         - -c
-        - "wget -q -O - http://localhost:9229/prestop-hook || true"
+        - "sleep 5"
 ```
 
 ```bash

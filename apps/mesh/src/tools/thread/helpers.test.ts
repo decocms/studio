@@ -20,6 +20,9 @@ const BASE_THREAD: Thread = {
   trigger_id: null,
   context_start_message_id: null,
   agent_ids: [],
+  run_owner_pod: null,
+  run_config: null,
+  run_started_at: null,
 };
 
 const NOW = new Date("2025-01-01T01:00:00.000Z").getTime(); // 1hr after base

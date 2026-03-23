@@ -1,4 +1,6 @@
 import { Box, Text } from "ink";
+import { useSyncExternalStore } from "react";
+import { getCliState, subscribeCliState } from "./cli-store";
 import type { LogEntry } from "./log-emitter";
 import { useTerminalSize } from "./use-terminal-size";
 
@@ -16,8 +18,9 @@ interface RequestLogProps {
 
 export function RequestLog({ logs, headerHeight }: RequestLogProps) {
   const { rows } = useTerminalSize();
+  const { logFlow } = useSyncExternalStore(subscribeCliState, getCliState);
   const visibleCount = Math.max(1, rows - headerHeight - 1);
-  const visible = logs.slice(-visibleCount);
+  const visible = logFlow ? logs : logs.slice(-visibleCount);
 
   return (
     <Box flexDirection="column">

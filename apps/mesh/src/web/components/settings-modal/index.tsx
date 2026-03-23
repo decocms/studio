@@ -23,6 +23,7 @@ import { OrgGeneralPage } from "./pages/org-general";
 import { ProjectPluginsPage } from "./pages/project-plugins";
 import { OrgAiProvidersPage } from "./pages/org-ai-providers";
 import { OrgMembersPage } from "./pages/org-members";
+import { OrgSsoPage } from "./pages/org-sso";
 
 function ContentSkeleton() {
   return (
@@ -86,7 +87,7 @@ function ProjectContextWrapper({
 }
 
 function SettingsContent({ section }: { section: SettingsSection }) {
-  const { org } = useProjectContext();
+  const { project } = useProjectContext();
   switch (section) {
     case "account.profile":
       return <AccountProfilePage />;
@@ -95,8 +96,16 @@ function SettingsContent({ section }: { section: SettingsSection }) {
     case "org.general":
       return <OrgGeneralPage />;
     case "org.plugins":
+      // When on a project route, project.id is a real virtual MCP ID — wrap
+      // in ProjectContextWrapper to fetch the full entity.
+      // On org-level routes (isOrgAdmin), project.id is just the org ID and
+      // there is no backing virtual MCP, so render directly with the existing
+      // project context.
+      if (project.isOrgAdmin) {
+        return <ProjectPluginsPage />;
+      }
       return (
-        <ProjectContextWrapper projectId={org.id}>
+        <ProjectContextWrapper projectId={project.id}>
           <ProjectPluginsPage />
         </ProjectContextWrapper>
       );
@@ -104,6 +113,8 @@ function SettingsContent({ section }: { section: SettingsSection }) {
       return <OrgAiProvidersPage />;
     case "org.members":
       return <OrgMembersPage />;
+    case "org.sso":
+      return <OrgSsoPage />;
     default:
       return <AccountPreferencesPage />;
   }
@@ -117,6 +128,7 @@ const SECTION_LABELS: Record<SettingsSection, string> = {
   "org.ai-providers": "AI Providers",
   "org.billing": "Billing",
   "org.members": "Members",
+  "org.sso": "SSO",
 };
 
 export function SettingsModal() {

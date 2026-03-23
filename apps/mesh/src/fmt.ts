@@ -10,7 +10,6 @@ export const green = (s: string) => `\x1b[32m${s}\x1b[39m`;
 export const yellow = (s: string) => `\x1b[33m${s}\x1b[39m`;
 export const cyan = (s: string) => `\x1b[36m${s}\x1b[39m`;
 export const red = (s: string) => `\x1b[31m${s}\x1b[39m`;
-export const underline = (s: string) => `\x1b[4m${s}\x1b[24m`;
 
 export const KEY_WIDTH = 32;
 export const RULE_WIDTH = 42;

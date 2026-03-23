@@ -610,11 +610,6 @@ export function ChatInput({
               <div className="flex items-center justify-between p-2.5">
                 {/* Left Actions (agent, file upload, mode) */}
                 <div className="flex items-center gap-1.5 min-w-0 overflow-visible">
-                  {isRunInProgress && (
-                    <span className="text-xs text-muted-foreground shrink-0">
-                      Run in progress
-                    </span>
-                  )}
                   {!selectedVirtualMcp || isDecopilot(selectedVirtualMcp.id) ? (
                     <DecopilotIconButton
                       onVirtualMcpChange={setVirtualMcpId}

@@ -272,4 +272,10 @@ export const KEYS = {
   // AI provider credits balance (scoped by locator + keyId)
   aiProviderCredits: (locator: string, keyId: string) =>
     ["ai-provider-credits", locator, keyId] as const,
+
+  // Organization SSO
+  orgSsoConfig: (organizationId: string) =>
+    ["org-sso-config", organizationId] as const,
+  orgSsoStatus: (organizationId: string) =>
+    ["org-sso-status", organizationId] as const,
 } as const;

@@ -140,7 +140,6 @@ export async function runCode({
 
     return { returnValue: value, consoleLogs: consoleBuiltin.logs };
   } catch (err) {
-    console.log(err);
     return { error: inspect(err), consoleLogs: consoleBuiltin.logs };
   }
 }

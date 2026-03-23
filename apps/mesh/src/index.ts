@@ -15,13 +15,10 @@ import {
 } from "@decocms/runtime/asset-server";
 import { createApp } from "./api/app";
 import { isServerPath } from "./api/utils/paths";
-import { startDebugServer } from "./debug";
 import { env, logConfiguration } from "./env";
-import { cyan, dim, green, red, underline } from "./fmt";
+import { red } from "./fmt";
 
 const port = env.PORT;
-const debugPort = env.DEBUG_PORT;
-const enableDebugServer = env.ENABLE_DEBUG_SERVER;
 
 // Refuse local mode in production — it disables authentication
 if (
@@ -107,9 +104,7 @@ if (env.DECOCMS_LOCAL_MODE) {
     .then(async ({ seedLocalMode, markSeedComplete }) => {
       try {
         const seeded = await seedLocalMode();
-        if (seeded) {
-          console.log(`\n${green("Local environment initialized.")}`);
-        }
+        void seeded;
       } catch (error) {
         console.error("Failed to seed local mode:", error);
       } finally {
@@ -127,14 +122,4 @@ if (env.DECOCMS_LOCAL_MODE) {
         // would have resolved it immediately in the Promise constructor)
       }
     });
-}
-
-// Internal debug server (only enabled via ENABLE_DEBUG_SERVER=true)
-if (enableDebugServer) {
-  startDebugServer({ port: debugPort });
-
-  console.log(
-    `  ${dim("Debug server:")}     ${cyan(underline(`http://localhost:${debugPort}`))}`,
-  );
-  console.log("");
 }

@@ -24,11 +24,27 @@ const OAuthConfigSchema = z.object({
 export type OAuthConfig = z.infer<typeof OAuthConfigSchema>;
 
 /**
- * Tool definition schema from MCP discovery.
- * Re-uses the canonical ToolSchema from the MCP SDK so new fields
- * (execution, icons, title, etc.) are automatically supported.
+ * JSON-Schema-safe JSON Schema object.
+ *
+ * The MCP SDK's ToolSchema uses z.custom() (AssertObjectSchema) for property
+ * values inside inputSchema/outputSchema. Zod 4's toJSONSchema() cannot
+ * represent z.custom(), throwing "Custom types cannot be represented in JSON
+ * Schema". We override only these two fields with a safe equivalent so that
+ * all other ToolSchema fields (name, annotations, execution, icons, _meta, …)
+ * still flow through automatically when the MCP SDK is updated.
  */
-const ToolDefinitionSchema = ToolSchema;
+const JsonSchemaObjectSchema = z
+  .object({
+    type: z.literal("object"),
+    properties: z.record(z.string(), z.unknown()).optional(),
+    required: z.array(z.string()).optional(),
+  })
+  .catchall(z.unknown());
+
+const ToolDefinitionSchema = ToolSchema.extend({
+  inputSchema: JsonSchemaObjectSchema,
+  outputSchema: JsonSchemaObjectSchema.optional(),
+});
 
 export type ToolDefinition = z.infer<typeof ToolDefinitionSchema>;
 

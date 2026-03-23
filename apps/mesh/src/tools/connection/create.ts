@@ -14,7 +14,7 @@ import {
   requireOrganization,
 } from "../../core/mesh-context";
 import { getMcpListCache } from "../../mcp-clients/mcp-list-cache";
-import { fetchToolsFromMCP } from "./fetch-tools";
+import { fetchToolsFromMCP, findRegistryListTool } from "./fetch-tools";
 import {
   buildVirtualUrl,
   ConnectionCreateDataSchema,
@@ -111,11 +111,20 @@ export const COLLECTION_CONNECTIONS_CREATE = defineTool({
       ? fetchResult.scopes
       : null;
 
+    // Detect if this connection is a registry/store based on its tools
+    const registryListTool = findRegistryListTool(tools);
+
     // Create the connection with the fetched tools and scopes
     const connection = await ctx.storage.connections.create({
       ...connectionData,
       tools: null,
       configuration_scopes,
+      metadata: {
+        ...((connectionData.metadata as Record<string, unknown>) ?? {}),
+        ...(registryListTool
+          ? { is_registry: true, registry_list_tool: registryListTool }
+          : { is_registry: false, registry_list_tool: null }),
+      },
     });
 
     // Eagerly populate NATS KV cache with fetched tools

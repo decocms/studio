@@ -10,6 +10,7 @@
  * This server can be used directly in proxy routes or bridged to create a Client.
  */
 
+import { MCP_TOOL_CALL_TIMEOUT_MS } from "@/core/constants";
 import type { ConnectionEntity } from "@/tools/connection/schema";
 import { createServerFromClient } from "@decocms/mesh-sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -83,6 +84,7 @@ export function serverFromConnection(
     },
     {
       capabilities: DEFAULT_SERVER_CAPABILITIES,
+      toolCallTimeoutMs: MCP_TOOL_CALL_TIMEOUT_MS,
     },
   );
 

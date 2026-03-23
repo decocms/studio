@@ -17,6 +17,8 @@ export function decide(
         orgId: command.orgId,
         userId: command.userId,
         abortController: command.abortController,
+        runConfig: command.runConfig,
+        podId: command.podId,
       };
 
       if (state?.status.tag === "running") {
@@ -97,6 +99,22 @@ export function decide(
           threadId: command.threadId,
           orgId: state.orgId,
           reason: "cancelled",
+        },
+      ];
+    }
+
+    case "RESUME": {
+      // Idempotent: if already running locally, no-op
+      if (state?.status.tag === "running") return [];
+      // Unlike START, does NOT abort an existing run
+      return [
+        {
+          type: "RUN_RESUMED" as const,
+          threadId: command.threadId,
+          orgId: command.orgId,
+          userId: command.userId,
+          abortController: command.abortController,
+          podId: command.podId,
         },
       ];
     }
