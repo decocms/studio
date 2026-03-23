@@ -117,18 +117,23 @@ export async function handleVirtualMcpRequest(
       "passthrough",
     );
 
+    // Build ImplementationSchema-compatible server info
+    const serverInfo = {
+      name: virtualMcp.id ?? "Decopilot",
+      version: "1.0.0",
+      title: virtualMcp.title ?? undefined,
+      description: virtualMcp.description ?? undefined,
+      icons: virtualMcp.icon ? [{ src: virtualMcp.icon }] : undefined,
+    };
+
     // Create server from client using the bridge
-    const server = createServerFromClient(
-      client,
-      {
-        name: `mcp-virtual-mcp-${virtualMcp.title ?? "Decopilot"}`,
-        version: "1.0.0",
-      },
-      {
-        capabilities: { tools: {}, resources: {}, prompts: {} },
-        instructions: virtualMcp.metadata?.instructions ?? undefined,
-      },
-    );
+    const server = createServerFromClient(client, serverInfo, {
+      capabilities: { tools: {}, resources: {}, prompts: {} },
+      instructions:
+        typeof virtualMcp.metadata?.instructions === "string"
+          ? virtualMcp.metadata.instructions
+          : undefined,
+    });
 
     // Create transport
     const transport = new WebStandardStreamableHTTPServerTransport({

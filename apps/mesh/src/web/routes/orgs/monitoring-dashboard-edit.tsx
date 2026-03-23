@@ -560,7 +560,7 @@ function WidgetEditor({
 // ============================================================================
 
 function DashboardEditContent({ dashboardId }: { dashboardId: string }) {
-  const { org, project, locator } = useProjectContext();
+  const { org, locator } = useProjectContext();
   const queryClient = useQueryClient();
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -785,8 +785,8 @@ function DashboardEditContent({ dashboardId }: { dashboardId: string }) {
         <BreadcrumbItem>
           <BreadcrumbLink asChild>
             <Link
-              to="/$org/$project/monitoring"
-              params={{ org: org.slug, project: project.slug }}
+              to="/$org/monitoring"
+              params={{ org: org.slug }}
               search={{ tab: "dashboards" }}
             >
               Monitoring
@@ -1034,9 +1034,9 @@ function DashboardEditContent({ dashboardId }: { dashboardId: string }) {
 // ============================================================================
 
 export default function DashboardEditPage() {
-  const { dashboardId } = useParams({ strict: false }) as {
-    dashboardId: string;
-  };
+  const { dashboardId } = useParams({
+    from: "/shell/$org/monitoring/dashboards/$dashboardId/edit",
+  });
 
   return (
     <ErrorBoundary

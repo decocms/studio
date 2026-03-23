@@ -9,7 +9,7 @@ import {
 import { cn } from "@deco/ui/lib/utils.ts";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { MessageTextCircle02 } from "@untitledui/icons";
-import { useParams, useRouterState } from "@tanstack/react-router";
+import { useMatch, useRouterState } from "@tanstack/react-router";
 import type { PropsWithChildren, ReactElement, ReactNode } from "react";
 import { Children, isValidElement } from "react";
 
@@ -30,11 +30,11 @@ function findChild<T>(
 function ChatToggleButton() {
   const [isChatOpen, setChatOpen] = useDecoChatOpen();
   const isMobile = useIsMobile();
-  const { org, project } = useParams({ strict: false });
+  const orgMatch = useMatch({ from: "/shell/$org", shouldThrow: false });
+  const org = orgMatch?.params.org;
   const { location } = useRouterState();
   const isHomeRoute =
-    location.pathname === `/${org}/${project}` ||
-    location.pathname === `/${org}/${project}/`;
+    location.pathname === `/${org}` || location.pathname === `/${org}/`;
 
   // On mobile, the FAB handles chat toggle instead
   if (isHomeRoute || isMobile) return null;

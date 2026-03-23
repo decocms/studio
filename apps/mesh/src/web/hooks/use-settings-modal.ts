@@ -1,4 +1,4 @@
-import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { useNavigate, useMatch, useSearch } from "@tanstack/react-router";
 
 export type SettingsSection =
   | "account.profile"
@@ -29,10 +29,8 @@ function isValidSettingsSection(
 export function useSettingsModal() {
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { settings?: string };
-  const { org, project } = useParams({ strict: false }) as {
-    org?: string;
-    project?: string;
-  };
+  const orgMatch = useMatch({ from: "/shell/$org", shouldThrow: false });
+  const org = orgMatch?.params.org;
 
   const activeSection = isValidSettingsSection(search.settings)
     ? search.settings
@@ -40,19 +38,19 @@ export function useSettingsModal() {
   const isOpen = !!activeSection;
 
   const open = (section: SettingsSection) => {
-    if (!org || !project) return;
+    if (!org) return;
     navigate({
-      to: "/$org/$project",
-      params: { org, project },
+      to: "/$org",
+      params: { org },
       search: { settings: section },
     });
   };
 
   const close = () => {
-    if (!org || !project) return;
+    if (!org) return;
     navigate({
-      to: "/$org/$project",
-      params: { org, project },
+      to: "/$org",
+      params: { org },
       search: {},
     });
   };

@@ -17,20 +17,20 @@ import {
 import type { PluginSetupContext } from "./plugins";
 
 /**
- * Prepends the plugin base path (/$org/$project/$pluginId) to a route path.
+ * Prepends the plugin base path (/$org/projects/$virtualMcpId/$pluginId) to a route path.
  * Handles both absolute plugin paths (starting with /) and relative paths.
  */
 function prependBasePath(
   to: string | undefined,
   org: string,
-  project: string,
+  virtualMcpId: string,
   pluginId: string,
 ): string {
-  if (!to) return `/${org}/${project}/${pluginId}`;
+  if (!to) return `/${org}/projects/${virtualMcpId}/${pluginId}`;
 
   // If path starts with /, it's relative to the plugin root
   if (to.startsWith("/")) {
-    return `/${org}/${project}/${pluginId}${to}`;
+    return `/${org}/projects/${virtualMcpId}/${pluginId}${to}`;
   }
 
   // Otherwise, it's already a full path or relative
@@ -123,9 +123,9 @@ export function createPluginRouter<TRoutes extends AnyRoute | AnyRoute[]>(
      */
     useNavigate: () => {
       const navigate = useNavigate();
-      const { org, project, pluginId } = useParams({ strict: false }) as {
+      const { org, virtualMcpId, pluginId } = useParams({ strict: false }) as {
         org: string;
-        project: string;
+        virtualMcpId: string;
         pluginId: string;
       };
 
@@ -136,14 +136,14 @@ export function createPluginRouter<TRoutes extends AnyRoute | AnyRoute[]>(
           search?: TRouteById<TTo>["types"]["fullSearchSchema"];
         },
       ) => {
-        const to = prependBasePath(options.to, org, project, pluginId);
+        const to = prependBasePath(options.to, org, virtualMcpId, pluginId);
 
         return navigate({
           ...options,
           to,
           params: {
             org,
-            project,
+            virtualMcpId,
             pluginId,
             ...(options.params as Record<string, string>),
           },
@@ -171,13 +171,18 @@ export function createPluginRouter<TRoutes extends AnyRoute | AnyRoute[]>(
         children?: ReactNode;
       },
     ) {
-      const { org, project, pluginId } = useParams({ strict: false }) as {
+      const { org, virtualMcpId, pluginId } = useParams({ strict: false }) as {
         org: string;
-        project: string;
+        virtualMcpId: string;
         pluginId: string;
       };
 
-      const to = prependBasePath(props.to as string, org, project, pluginId);
+      const to = prependBasePath(
+        props.to as string,
+        org,
+        virtualMcpId,
+        pluginId,
+      );
 
       return (
         <TanStackLink
@@ -185,7 +190,7 @@ export function createPluginRouter<TRoutes extends AnyRoute | AnyRoute[]>(
           to={to}
           params={{
             org,
-            project,
+            virtualMcpId,
             pluginId,
             ...props.params,
           }}

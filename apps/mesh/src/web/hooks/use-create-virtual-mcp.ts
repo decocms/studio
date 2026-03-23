@@ -5,7 +5,6 @@
 
 import { useNavigate } from "@tanstack/react-router";
 import {
-  ORG_ADMIN_PROJECT_SLUG,
   useProjectContext,
   useVirtualMCPActions,
   type VirtualMCPEntity,
@@ -50,15 +49,15 @@ export function useCreateVirtualMCP(
       title: "New Agent",
       description: "AI-driven assistant designed to handle specific tasks",
       status: "active",
+      subtype: "agent",
       connections: [],
     });
 
     if (navigateOnCreate) {
       navigate({
-        to: "/$org/$project/agents/$agentId",
+        to: "/$org/agents/$agentId",
         params: {
           org: org.slug,
-          project: ORG_ADMIN_PROJECT_SLUG,
           agentId: virtualMcp.id,
         },
       });

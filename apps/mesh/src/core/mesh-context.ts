@@ -225,15 +225,15 @@ import type { BetterAuthInstance } from "@/auth";
 import type { OrgScopedThreadStorage } from "@/storage/threads";
 import type { EventBus } from "../event-bus/interface";
 import type { ConnectionStorage } from "../storage/connection";
-import type { MonitoringStorage } from "../storage/ports";
+import type {
+  MonitoringStorage,
+  VirtualMcpPluginConfigStoragePort,
+} from "../storage/ports";
 import type { SqlMonitoringDashboardStorage } from "../storage/monitoring-dashboards";
 import type { OrganizationSettingsStorage } from "../storage/organization-settings";
 import type { TagStorage } from "../storage/tags";
 import type { UserStorage } from "../storage/user";
 import type { VirtualMCPStorage } from "../storage/virtual";
-import type { ProjectsStorage } from "../storage/projects";
-import type { ProjectConnectionsStorage } from "../storage/project-connections";
-import type { ProjectPluginConfigsStorage } from "../storage/project-plugin-configs";
 import type { AutomationsStorage } from "../storage/automations";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
@@ -265,12 +265,10 @@ export interface MeshStorage {
   users: UserStorage;
   threads: OrgScopedThreadStorage;
   tags: TagStorage;
-  projects: ProjectsStorage;
-  projectConnections: ProjectConnectionsStorage;
-  projectPluginConfigs: ProjectPluginConfigsStorage;
   aiProviderKeys: AIProviderKeyStorage;
   oauthPkceStates: OAuthPkceStateStorage;
   automations: AutomationsStorage;
+  virtualMcpPluginConfigs: VirtualMcpPluginConfigStoragePort;
 }
 
 // ============================================================================

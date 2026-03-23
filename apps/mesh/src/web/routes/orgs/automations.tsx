@@ -48,7 +48,7 @@ import {
   TableRow,
 } from "@deco/ui/components/table.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { ORG_ADMIN_PROJECT_SLUG, useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowDown,
@@ -80,7 +80,7 @@ export default function AutomationsPage() {
     defaultViewMode: "table",
   });
 
-  const orgSlug = locator.split("/")[0] ?? org.slug ?? ORG_ADMIN_PROJECT_SLUG;
+  const orgSlug = locator.split("/")[0] ?? org.slug ?? "org-admin";
 
   const handleCreate = async () => {
     try {
@@ -96,10 +96,9 @@ export default function AutomationsPage() {
         active: true,
       });
       navigate({
-        to: "/$org/$project/automations/$automationId",
+        to: "/$org/automations/$automationId",
         params: {
           org: orgSlug,
-          project: ORG_ADMIN_PROJECT_SLUG,
           automationId: result.id,
         },
       });
@@ -122,10 +121,9 @@ export default function AutomationsPage() {
 
   const navigateToAutomation = (automationId: string) => {
     navigate({
-      to: "/$org/$project/automations/$automationId",
+      to: "/$org/automations/$automationId",
       params: {
         org: orgSlug,
-        project: ORG_ADMIN_PROJECT_SLUG,
         automationId,
       },
     });

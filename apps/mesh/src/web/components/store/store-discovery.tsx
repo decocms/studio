@@ -11,11 +11,7 @@ import {
 import { useDebounce } from "@/web/hooks/use-debounce";
 import { useScrollRestoration } from "@/web/hooks/use-scroll-restoration";
 import { useStoreDiscovery } from "@/web/hooks/use-store-discovery";
-import {
-  ORG_ADMIN_PROJECT_SLUG,
-  useConnection,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
+import { useConnection, useProjectContext } from "@decocms/mesh-sdk";
 import { slugify } from "@/web/utils/slugify";
 import {
   findListToolName,
@@ -155,10 +151,9 @@ function StoreDiscoveryContent({
         : item.server?.name || item.id || "";
 
     navigate({
-      to: "/$org/$project/store/$appName",
+      to: "/$org/store/$appName",
       params: {
         org: org.slug,
-        project: ORG_ADMIN_PROJECT_SLUG,
         appName: serverSlug,
       },
       search: {

@@ -37,6 +37,7 @@ import {
 interface IconPickerProps {
   value: string | null | undefined;
   onChange: (icon: string | null) => void;
+  onColorChange?: (color: string) => void;
   name: string;
   size?: AgentAvatarSize;
   className?: string;
@@ -55,6 +56,7 @@ type PickerTab = "icons" | "upload";
 export function IconPicker({
   value,
   onChange,
+  onColorChange: onColorChangeProp,
   name,
   size = "lg",
   className,
@@ -75,6 +77,7 @@ export function IconPicker({
 
   const handleColorChange = (color: string) => {
     setSelectedColor(color);
+    onColorChangeProp?.(color);
     const parsed = parseIconString(value);
     if (parsed.type === "icon") {
       onChange(buildIconString(parsed.name, color));

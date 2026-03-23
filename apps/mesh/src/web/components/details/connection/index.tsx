@@ -53,7 +53,6 @@ import {
 import { Input } from "@deco/ui/components/input.tsx";
 import {
   isStdioParameters,
-  ORG_ADMIN_PROJECT_SLUG,
   useConnectionActions,
   useConnections,
   useMCPClient,
@@ -301,7 +300,7 @@ function ConnectionInspectorViewWithConnection({
   resources: Array<{ name: string; description?: string; uri?: string }>;
   siblings: ConnectionEntity[];
 }) {
-  const navigate = useNavigate({ from: "/$org/$project/mcps/$appSlug" });
+  const navigate = useNavigate({ from: "/$org/mcps/$appSlug" });
   const queryClient = useQueryClient();
   const connectionActions = useConnectionActions();
   const [configureInstance, setConfigureInstance] =
@@ -464,8 +463,8 @@ function ConnectionInspectorViewWithConnection({
     // If we deleted the last sibling, go back to list
     if (siblings.length <= 1) {
       navigate({
-        to: "/$org/$project/mcps",
-        params: { org, project: ORG_ADMIN_PROJECT_SLUG },
+        to: "/$org/mcps",
+        params: { org },
       });
     }
     // Otherwise stay on same slug — remaining siblings still share it
@@ -477,10 +476,7 @@ function ConnectionInspectorViewWithConnection({
       <BreadcrumbList>
         <BreadcrumbItem>
           <BreadcrumbLink asChild>
-            <Link
-              to="/$org/$project/mcps"
-              params={{ org, project: ORG_ADMIN_PROJECT_SLUG }}
-            >
+            <Link to="/$org/mcps" params={{ org }}>
               Connections
             </Link>
           </BreadcrumbLink>
@@ -747,9 +743,9 @@ function ConnectionInspectorViewWithConnection({
 }
 
 function ConnectionInspectorViewContent() {
-  const navigate = useNavigate({ from: "/$org/$project/mcps/$appSlug" });
+  const navigate = useNavigate({ from: "/$org/mcps/$appSlug" });
   const { appSlug, org } = useParams({
-    from: "/shell/$org/$project/mcps/$appSlug",
+    from: "/shell/$org/mcps/$appSlug",
   });
   const { org: projectOrg } = useProjectContext();
 
@@ -864,10 +860,9 @@ function ConnectionInspectorViewContent() {
               variant="outline"
               onClick={() =>
                 navigate({
-                  to: "/$org/$project/mcps",
+                  to: "/$org/mcps",
                   params: {
                     org: org as string,
-                    project: ORG_ADMIN_PROJECT_SLUG,
                   },
                 })
               }

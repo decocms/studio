@@ -21,7 +21,6 @@ import { authClient } from "@/web/lib/auth-client";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import { KEYS } from "@/web/lib/query-keys";
 import { generateSlug } from "@/web/lib/slug";
-import type { Project } from "@/web/hooks/use-project";
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
 
 interface DecoSite {
@@ -49,7 +48,16 @@ interface ImportFromDecoDialogProps {
   onBack?: () => void;
 }
 
-type ProjectCreateOutput = { project: Project };
+type VirtualMCPCreateOutput = {
+  item: {
+    id: string;
+    title: string;
+    metadata?: {
+      ui?: { slug?: string } | null;
+      migrated_project_slug?: string;
+    } | null;
+  };
+};
 
 export function ImportFromDecoDialog({
   open,
@@ -119,77 +127,67 @@ export function ImportFromDecoDialog({
         );
       }
 
-      // 2. Create a project named after the site
+      const slug = generateSlug(siteName);
+
+      // 2. Create a project (virtual MCP with subtype "project") with the connection already linked
       const result = (await client.callTool({
-        name: "PROJECT_CREATE",
+        name: "COLLECTION_VIRTUAL_MCP_CREATE",
         arguments: {
-          organizationId: org.id,
-          slug: generateSlug(siteName),
-          name: siteName,
-          description: "Imported from deco.cx",
-          enabledPlugins: [],
-          ui: {
-            banner: null,
-            bannerColor: "#22C55E",
-            icon: null,
-            themeColor: "#22C55E",
+          data: {
+            title: siteName,
+            description: "Imported from deco.cx",
+            subtype: "project",
+            metadata: {
+              instructions: null,
+              enabled_plugins: [],
+              ui: {
+                banner: null,
+                bannerColor: "#22C55E",
+                icon: null,
+                themeColor: "#22C55E",
+                slug,
+                pinnedViews: [
+                  {
+                    connectionId: connId,
+                    toolName: "file_explorer",
+                    label: "Preview",
+                    icon: null,
+                  },
+                  {
+                    connectionId: connId,
+                    toolName: "fetch_assets",
+                    label: "Assets",
+                    icon: null,
+                  },
+                  {
+                    connectionId: connId,
+                    toolName: "get_monitor_data",
+                    label: "Monitor",
+                    icon: null,
+                  },
+                ],
+              },
+            },
+            connections: [{ connection_id: connId }],
           },
         },
       })) as { structuredContent?: unknown };
 
       const payload = (result.structuredContent ??
-        result) as ProjectCreateOutput;
-      const project = payload.project;
+        result) as VirtualMCPCreateOutput;
 
-      // 3. Link the connection to the project
-      await client.callTool({
-        name: "PROJECT_CONNECTION_ADD",
-        arguments: {
-          projectId: project.id,
-          connectionId: connId,
-        },
-      });
-
-      // 4. Pin the default sidebar views for this site
-      await client.callTool({
-        name: "PROJECT_PINNED_VIEWS_UPDATE",
-        arguments: {
-          projectId: project.id,
-          pinnedViews: [
-            {
-              connectionId: connId,
-              toolName: "file_explorer",
-              label: "Preview",
-              icon: null,
-            },
-            {
-              connectionId: connId,
-              toolName: "fetch_assets",
-              label: "Assets",
-              icon: null,
-            },
-            {
-              connectionId: connId,
-              toolName: "get_monitor_data",
-              label: "Monitor",
-              icon: null,
-            },
-          ],
-        },
-      });
-
-      return { project, connId };
+      return { slug, virtualMcpId: payload.item.id, connId };
     },
-    onSuccess: ({ project, connId }) => {
+    onSuccess: ({ slug, virtualMcpId, connId }) => {
       queryClient.invalidateQueries({ queryKey: KEYS.projects(org.id) });
-      toast.success(`Imported ${project.slug} from deco.cx`);
+      toast.success(`Imported ${slug} from deco.cx`);
       handleClose(false);
       localStorage.setItem("mesh:sidebar-open", JSON.stringify(false));
       navigate({
-        to: "/$org/$project/apps/$connectionId/$toolName",
+        to: "/$org/projects/$virtualMcpId/apps/$connectionId/$toolName",
         params: {
           org: org.slug,
-          project: project.slug,
+          virtualMcpId,
           connectionId: connId,
           toolName: "file_explorer",
         },

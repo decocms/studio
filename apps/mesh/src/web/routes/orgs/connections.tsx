@@ -81,16 +81,15 @@ import {
 import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
-  ORG_ADMIN_PROJECT_SLUG,
   SELF_MCP_ALIAS_ID,
   useConnectionActions,
   useConnections,
   useMCPClient,
   useProjectContext,
-  useVirtualMCPs,
   type ConnectionEntity,
   type VirtualMCPEntity,
 } from "@decocms/mesh-sdk";
+import { useAgents } from "@/web/hooks/use-agents";
 import { toast } from "sonner";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
@@ -835,7 +834,7 @@ function OrgMcpsContent() {
     useState<ConnectionStatusFilter>("ALL");
 
   // Agents list (for Add to Agent dialog)
-  const agents = useVirtualMCPs();
+  const agents = useAgents();
 
   // Non-virtual connections with filters applied
   const nonVirtualConnections = connections.filter((c) => {
@@ -966,10 +965,9 @@ function OrgMcpsContent() {
         ? item.id
         : item.server?.name || item.id || "";
     navigate({
-      to: "/$org/$project/store/$appName",
+      to: "/$org/store/$appName",
       params: {
         org: org.slug,
-        project: ORG_ADMIN_PROJECT_SLUG,
         appName: serverSlug,
       },
       search: { registryId, serverName },
@@ -1096,16 +1094,16 @@ function OrgMcpsContent() {
 
   const openCreateDialog = () => {
     navigate({
-      to: "/$org/$project/mcps",
-      params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
+      to: "/$org/mcps",
+      params: { org: org.slug },
       search: { action: "create" },
     });
   };
 
   const closeCreateDialog = () => {
     navigate({
-      to: "/$org/$project/mcps",
-      params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
+      to: "/$org/mcps",
+      params: { org: org.slug },
       search: {},
     });
   };
@@ -1514,10 +1512,9 @@ function OrgMcpsContent() {
     closeCreateDialog();
     form.reset();
     navigate({
-      to: "/$org/$project/mcps/$appSlug",
+      to: "/$org/mcps/$appSlug",
       params: {
         org: org.slug,
-        project: ORG_ADMIN_PROJECT_SLUG,
         appSlug: getConnectionSlug({
           app_name: null,
           connection_url: connectionUrl,
@@ -2296,10 +2293,9 @@ function OrgMcpsContent() {
                         group={item}
                         onOpen={() => {
                           navigate({
-                            to: "/$org/$project/mcps/$appSlug",
+                            to: "/$org/mcps/$appSlug",
                             params: {
                               org: org.slug,
-                              project: ORG_ADMIN_PROJECT_SLUG,
                               appSlug: item.key,
                             },
                           });
@@ -2322,10 +2318,9 @@ function OrgMcpsContent() {
                         selectionMode
                           ? toggleSelect(connection.id)
                           : navigate({
-                              to: "/$org/$project/mcps/$appSlug",
+                              to: "/$org/mcps/$appSlug",
                               params: {
                                 org: org.slug,
-                                project: ORG_ADMIN_PROJECT_SLUG,
                                 appSlug: getConnectionSlug(connection),
                               },
                             })
@@ -2376,10 +2371,9 @@ function OrgMcpsContent() {
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     navigate({
-                                      to: "/$org/$project/mcps/$appSlug",
+                                      to: "/$org/mcps/$appSlug",
                                       params: {
                                         org: org.slug,
-                                        project: ORG_ADMIN_PROJECT_SLUG,
                                         appSlug: getConnectionSlug(connection),
                                       },
                                     });
@@ -2464,10 +2458,9 @@ function OrgMcpsContent() {
                           const first = appInstances[0];
                           if (first) {
                             navigate({
-                              to: "/$org/$project/mcps/$appSlug",
+                              to: "/$org/mcps/$appSlug",
                               params: {
                                 org: org.slug,
-                                project: ORG_ADMIN_PROJECT_SLUG,
                                 appSlug: getConnectionSlug(first),
                               },
                             });
@@ -2548,10 +2541,9 @@ function OrgMcpsContent() {
                           const first = appInstances[0];
                           if (first) {
                             navigate({
-                              to: "/$org/$project/mcps/$appSlug",
+                              to: "/$org/mcps/$appSlug",
                               params: {
                                 org: org.slug,
-                                project: ORG_ADMIN_PROJECT_SLUG,
                                 appSlug: getConnectionSlug(first),
                               },
                             });

@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Chat } from "@/web/components/chat/index";
 import { ChatPanel } from "@/web/components/chat/side-panel-chat";
-import { CreateProjectDialog } from "@/web/components/create-project-dialog";
 import { KeyboardShortcutsDialog } from "@/web/components/keyboard-shortcuts-dialog";
 import { isModKey } from "@/web/lib/keyboard-shortcuts";
 import { MeshSidebar } from "@/web/components/sidebar";
@@ -27,12 +26,11 @@ import { cn } from "@deco/ui/lib/utils.js";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { MessageTextCircle02 } from "@untitledui/icons";
 import {
-  ORG_ADMIN_PROJECT_SLUG,
   ProjectContextProvider,
   ProjectContextProviderProps,
 } from "@decocms/mesh-sdk";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { Outlet, useParams, useRouterState } from "@tanstack/react-router";
+import { Outlet, useMatch, useRouterState } from "@tanstack/react-router";
 import { PropsWithChildren, Suspense, useTransition } from "react";
 import { KEYS } from "../lib/query-keys";
 
@@ -109,13 +107,7 @@ function MobileChatFAB({
   );
 }
 
-function ShellLayoutInner({
-  isHomeRoute,
-  onCreateProject,
-}: {
-  isHomeRoute: boolean;
-  onCreateProject: () => void;
-}) {
+function ShellLayoutInner({ isHomeRoute }: { isHomeRoute: boolean }) {
   const [chatOpen, setChatOpen] = useDecoChatOpen();
   const isMobile = useIsMobile();
   const [chatPanelWidth] = useLocalStorage(
@@ -134,7 +126,7 @@ function ShellLayoutInner({
         } as Record<string, string>
       }
     >
-      <MeshSidebar onCreateProject={onCreateProject} />
+      <MeshSidebar />
       {/* SidebarInset: transparent so bg-sidebar from SidebarLayout shows
           through the rounded corners of the inner card */}
       <SidebarInset
@@ -210,9 +202,9 @@ function ShellLayoutInner({
 }
 
 function ShellLayoutContent() {
-  const { org, project } = useParams({ strict: false });
+  const orgMatch = useMatch({ from: "/shell/$org", shouldThrow: false });
+  const org = orgMatch?.params.org;
   const routerState = useRouterState();
-  const [createProjectDialogOpen, setCreateProjectDialogOpen] = useState(false);
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
@@ -227,13 +219,10 @@ function ShellLayoutContent() {
     return () => document.removeEventListener("keydown", handler);
   }, []);
 
-  // Check if we're on the project home route (/$org/$project)
+  // Check if we're on the org home route (/$org)
   const isHomeRoute =
-    routerState.location.pathname === `/${org}/${project}` ||
-    routerState.location.pathname === `/${org}/${project}/`;
-
-  // Use project slug from URL params, fallback to org-admin
-  const projectSlug = project ?? ORG_ADMIN_PROJECT_SLUG;
+    routerState.location.pathname === `/${org}` ||
+    routerState.location.pathname === `/${org}/`;
 
   const { data: projectContext } = useSuspenseQuery({
     queryKey: KEYS.activeOrganization(org),
@@ -254,10 +243,12 @@ function ShellLayoutContent() {
 
       return {
         org: data,
-        // Project slug comes from URL param, actual project data is fetched in project-layout
+        // Provide a minimal project stub at shell level.
+        // The org-layout and virtual-mcp-layout will override with proper context.
         project: {
-          slug: projectSlug,
-          isOrgAdmin: projectSlug === ORG_ADMIN_PROJECT_SLUG,
+          id: "_org",
+          slug: "_org",
+          isOrgAdmin: true,
         },
       } as ProjectContextProviderProps;
     },
@@ -287,34 +278,15 @@ function ShellLayoutContent() {
     return null;
   }
 
-  // Update project context with current project slug from URL
-  const contextWithCurrentProject = {
-    ...projectContext,
-    project: {
-      ...projectContext.project,
-      slug: projectSlug,
-      isOrgAdmin: projectSlug === ORG_ADMIN_PROJECT_SLUG,
-    },
-  };
-
   return (
-    <ProjectContextProvider {...contextWithCurrentProject}>
+    <ProjectContextProvider {...projectContext}>
       <PersistentSidebarProvider>
         <div className="flex flex-col h-dvh overflow-hidden">
           <Chat.Provider>
-            <ShellLayoutInner
-              isHomeRoute={isHomeRoute}
-              onCreateProject={() => setCreateProjectDialogOpen(true)}
-            />
+            <ShellLayoutInner isHomeRoute={isHomeRoute} />
           </Chat.Provider>
         </div>
       </PersistentSidebarProvider>
-
-      {/* Create Project Dialog */}
-      <CreateProjectDialog
-        open={createProjectDialogOpen}
-        onOpenChange={setCreateProjectDialogOpen}
-      />
 
       {/* Keyboard Shortcuts Dialog */}
       <KeyboardShortcutsDialog

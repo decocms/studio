@@ -69,7 +69,7 @@ interface DashboardListResponse {
 // ============================================================================
 
 function DashboardListContent() {
-  const { org, project, locator } = useProjectContext();
+  const { org, locator } = useProjectContext();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const client = useMCPClient({
@@ -129,8 +129,8 @@ function DashboardListContent() {
 
       // Navigate to edit page
       navigate({
-        to: "/$org/$project/monitoring/dashboards/$dashboardId/edit",
-        params: { org: org.slug, project: project.slug, dashboardId },
+        to: "/$org/monitoring/dashboards/$dashboardId/edit",
+        params: { org: org.slug, dashboardId },
       });
     } catch (error) {
       toast.error("Failed to create dashboard");
@@ -142,15 +142,15 @@ function DashboardListContent() {
 
   const handleView = (dashboardId: string) => {
     navigate({
-      to: "/$org/$project/monitoring/dashboards/$dashboardId",
-      params: { org: org.slug, project: project.slug, dashboardId },
+      to: "/$org/monitoring/dashboards/$dashboardId",
+      params: { org: org.slug, dashboardId },
     });
   };
 
   const handleEdit = (dashboardId: string) => {
     navigate({
-      to: "/$org/$project/monitoring/dashboards/$dashboardId/edit",
-      params: { org: org.slug, project: project.slug, dashboardId },
+      to: "/$org/monitoring/dashboards/$dashboardId/edit",
+      params: { org: org.slug, dashboardId },
     });
   };
 

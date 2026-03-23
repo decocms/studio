@@ -9,11 +9,7 @@ import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { LayoutLeft } from "@untitledui/icons";
 import { MeshAccountSwitcher } from "./account-switcher";
 
-interface MeshSidebarHeaderProps {
-  onCreateProject?: () => void;
-}
-
-export function MeshSidebarHeader({ onCreateProject }: MeshSidebarHeaderProps) {
+export function MeshSidebarHeader() {
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
 
@@ -23,10 +19,7 @@ export function MeshSidebarHeader({ onCreateProject }: MeshSidebarHeaderProps) {
         <SidebarMenuItem>
           {isCollapsed ? (
             <div className="flex flex-col w-full gap-0.5">
-              <MeshAccountSwitcher
-                isCollapsed={true}
-                onCreateProject={onCreateProject}
-              />
+              <MeshAccountSwitcher isCollapsed={true} />
               <SidebarMenuButton
                 onClick={toggleSidebar}
                 tooltip="Expand sidebar"
@@ -37,10 +30,7 @@ export function MeshSidebarHeader({ onCreateProject }: MeshSidebarHeaderProps) {
           ) : (
             <div className="flex items-center justify-between w-full gap-1">
               <div className="min-w-0 flex-1">
-                <MeshAccountSwitcher
-                  isCollapsed={false}
-                  onCreateProject={onCreateProject}
-                />
+                <MeshAccountSwitcher isCollapsed={false} />
               </div>
               <SidebarMenuButton
                 onClick={toggleSidebar}

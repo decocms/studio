@@ -21,7 +21,6 @@ import {
 import { useRegistryConnections } from "@/web/hooks/use-binding";
 import { usePublisherConnection } from "@/web/hooks/use-publisher-connection";
 import {
-  ORG_ADMIN_PROJECT_SLUG,
   useConnection,
   useConnections,
   useConnectionActions,
@@ -232,9 +231,9 @@ function StoreMCPServerDetailContent() {
   const { org } = useProjectContext();
   const navigate = useNavigate();
   // Get serverSlug from the child route
-  const { appName: serverSlug } = useParams({ strict: false }) as {
-    appName?: string;
-  };
+  const { appName: serverSlug } = useParams({
+    from: "/shell/$org/store/$appName",
+  });
   const {
     registryId: registryIdParam,
     serverName,
@@ -680,10 +679,9 @@ function StoreMCPServerDetailContent() {
       }
 
       navigate({
-        to: "/$org/$project/mcps",
+        to: "/$org/mcps",
         params: {
           org: org.slug,
-          project: ORG_ADMIN_PROJECT_SLUG,
         },
         search: { tab: "connected" },
       });
@@ -726,8 +724,8 @@ function StoreMCPServerDetailContent() {
 
   const handleBackClick = () => {
     navigate({
-      to: "/$org/$project/mcps",
-      params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
+      to: "/$org/mcps",
+      params: { org: org.slug },
     });
   };
 
@@ -750,10 +748,7 @@ function StoreMCPServerDetailContent() {
       <BreadcrumbList>
         <BreadcrumbItem>
           <BreadcrumbLink asChild>
-            <Link
-              to="/$org/$project/mcps"
-              params={{ org: org.slug, project: ORG_ADMIN_PROJECT_SLUG }}
-            >
+            <Link to="/$org/mcps" params={{ org: org.slug }}>
               Connections
             </Link>
           </BreadcrumbLink>
@@ -985,8 +980,8 @@ export default function StoreMCPServerDetail() {
 
   const handleBackClick = () => {
     navigate({
-      to: "/$org/$project/mcps",
-      params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
+      to: "/$org/mcps",
+      params: { org: org.slug },
     });
   };
 

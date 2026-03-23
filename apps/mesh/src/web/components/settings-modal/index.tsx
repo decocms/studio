@@ -14,9 +14,8 @@ import {
 import {
   ProjectContextProvider,
   useProjectContext,
-  ORG_ADMIN_PROJECT_SLUG,
+  useVirtualMCP,
 } from "@decocms/mesh-sdk";
-import { useProject } from "@/web/hooks/use-project";
 import { SettingsSidebar } from "./sidebar";
 import { AccountProfilePage } from "./pages/account-profile";
 import { AccountPreferencesPage } from "./pages/account-preferences";
@@ -39,36 +38,55 @@ function ContentSkeleton() {
 }
 
 function ProjectContextWrapper({
-  projectSlug,
+  projectId,
   children,
 }: {
-  projectSlug: string;
+  projectId: string;
   children: React.ReactNode;
 }) {
   const { org } = useProjectContext();
-  const { data: project, isLoading } = useProject(org.id, projectSlug);
+  const entity = useVirtualMCP(projectId);
 
-  if (isLoading || !project) return <ContentSkeleton />;
+  if (!entity) return <ContentSkeleton />;
 
-  const enhancedProject = {
-    id: project.id,
-    organizationId: project.organizationId,
-    slug: project.slug,
-    name: project.name,
-    description: project.description,
-    enabledPlugins: project.enabledPlugins,
-    ui: project.ui,
-    isOrgAdmin: projectSlug === ORG_ADMIN_PROJECT_SLUG,
-  };
+  const ui = entity.metadata?.ui;
+
+  // Use the same virtual-MCP-to-project slug mapping as virtual-mcp-layout
+  const slug =
+    (entity.metadata?.migrated_project_slug as string | undefined) ??
+    ((entity.metadata?.ui as Record<string, unknown> | null | undefined)
+      ?.slug as string | undefined) ??
+    entity.id;
 
   return (
-    <ProjectContextProvider org={org} project={enhancedProject}>
+    <ProjectContextProvider
+      org={org}
+      project={{
+        id: entity.id,
+        organizationId: entity.organization_id,
+        slug,
+        name: entity.title,
+        description: entity.description,
+        enabledPlugins:
+          (entity.metadata?.enabled_plugins as string[] | null) ?? null,
+        ui: ui
+          ? {
+              banner: ui.banner ?? null,
+              bannerColor: ui.bannerColor ?? null,
+              icon: ui.icon ?? null,
+              themeColor: ui.themeColor ?? null,
+            }
+          : null,
+        isOrgAdmin: false,
+      }}
+    >
       {children}
     </ProjectContextProvider>
   );
 }
 
 function SettingsContent({ section }: { section: SettingsSection }) {
+  const { org } = useProjectContext();
   switch (section) {
     case "account.profile":
       return <AccountProfilePage />;
@@ -78,7 +96,7 @@ function SettingsContent({ section }: { section: SettingsSection }) {
       return <OrgGeneralPage />;
     case "org.plugins":
       return (
-        <ProjectContextWrapper projectSlug={ORG_ADMIN_PROJECT_SLUG}>
+        <ProjectContextWrapper projectId={org.id}>
           <ProjectPluginsPage />
         </ProjectContextWrapper>
       );

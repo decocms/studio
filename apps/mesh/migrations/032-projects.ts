@@ -11,10 +11,9 @@
 
 import { Kysely } from "kysely";
 import { nanoid } from "nanoid";
-import {
-  ORG_ADMIN_PROJECT_NAME,
-  ORG_ADMIN_PROJECT_SLUG,
-} from "@decocms/mesh-sdk";
+// Inlined constants (previously from @decocms/mesh-sdk)
+const ORG_ADMIN_PROJECT_SLUG = "org-admin";
+const ORG_ADMIN_PROJECT_NAME = "Organization Admin";
 
 export async function up(db: Kysely<unknown>): Promise<void> {
   // Create projects table

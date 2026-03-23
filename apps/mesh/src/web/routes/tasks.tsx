@@ -1,7 +1,7 @@
 import { TaskListContent } from "@/web/components/chat/tasks-panel";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { Page } from "@/web/components/page";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext, useIsOrgAdmin } from "@decocms/mesh-sdk";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -15,15 +15,23 @@ import { useChatStable } from "../components/chat/context";
 
 function TasksContent() {
   const { org, project } = useProjectContext();
+  const isOrgAdmin = useIsOrgAdmin();
   const navigate = useNavigate();
   const { switchToTask } = useChatStable();
 
   const handleTaskSelect = async (taskId: string) => {
     await switchToTask(taskId);
-    navigate({
-      to: "/$org/$project",
-      params: { org: org.slug, project: project.slug },
-    });
+    if (isOrgAdmin) {
+      navigate({
+        to: "/$org",
+        params: { org: org.slug },
+      });
+    } else {
+      navigate({
+        to: "/$org/projects/$virtualMcpId",
+        params: { org: org.slug, virtualMcpId: project.id },
+      });
+    }
   };
 
   return (

@@ -31,7 +31,6 @@ import { useInfiniteScroll } from "@/web/hooks/use-infinite-scroll.ts";
 import { useMembers } from "@/web/hooks/use-members";
 import { KEYS } from "@/web/lib/query-keys";
 import {
-  ORG_ADMIN_PROJECT_SLUG,
   SELF_MCP_ALIAS_ID,
   WellKnownOrgMCPId,
   useConnections,
@@ -1911,7 +1910,7 @@ export default function MonitoringDashboard() {
   const { org } = useProjectContext();
   const navigate = useNavigate();
   const search = useSearch({
-    from: "/shell/$org/$project/monitoring",
+    from: "/shell/$org/monitoring",
   });
 
   const {
@@ -1934,8 +1933,8 @@ export default function MonitoringDashboard() {
   // Update URL with new filter values (pagination is handled internally, not in URL)
   const updateFilters = (updates: Partial<MonitoringSearchParams>) => {
     navigate({
-      to: "/$org/$project/monitoring",
-      params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
+      to: "/$org/monitoring",
+      params: { org: org.slug },
       search: {
         ...search,
         ...updates,

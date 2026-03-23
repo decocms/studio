@@ -16,12 +16,11 @@ import { useListState } from "@/web/hooks/use-list-state";
 import { useCreateVirtualMCP } from "@/web/hooks/use-create-virtual-mcp";
 import {
   isDecopilot,
-  ORG_ADMIN_PROJECT_SLUG,
   useProjectContext,
-  useVirtualMCPs,
   useVirtualMCPActions,
   type VirtualMCPEntity,
 } from "@decocms/mesh-sdk";
+import { useAgents } from "@/web/hooks/use-agents";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -840,7 +839,7 @@ function OrgAgentsContent() {
     defaultViewMode: "cards",
   });
 
-  const virtualMcps = useVirtualMCPs(listState);
+  const virtualMcps = useAgents(listState);
   const { createVirtualMCP, isCreating } = useCreateVirtualMCP({
     navigateOnCreate: true,
   });
@@ -914,10 +913,9 @@ function OrgAgentsContent() {
       return;
     }
     navigate({
-      to: "/$org/$project/agents/$agentId",
+      to: "/$org/agents/$agentId",
       params: {
         org: org.slug,
-        project: ORG_ADMIN_PROJECT_SLUG,
         agentId,
       },
     });

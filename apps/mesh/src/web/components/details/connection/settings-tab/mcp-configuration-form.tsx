@@ -1,8 +1,4 @@
-import {
-  ORG_ADMIN_PROJECT_SLUG,
-  useConnections,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
+import { useConnections, useProjectContext } from "@decocms/mesh-sdk";
 import {
   useBindingConnections,
   resolveBindingType,
@@ -480,8 +476,8 @@ export function McpConfigurationForm({
 
   const handleAddNew = () => {
     navigate({
-      to: "/$org/$project/mcps",
-      params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
+      to: "/$org/mcps",
+      params: { org: org.slug },
       search: { action: "create" },
     });
   };

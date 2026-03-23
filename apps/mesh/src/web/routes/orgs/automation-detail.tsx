@@ -65,11 +65,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
-import {
-  getDecopilotId,
-  ORG_ADMIN_PROJECT_SLUG,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
+import { getDecopilotId, useProjectContext } from "@decocms/mesh-sdk";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
   ArrowUp,
@@ -1201,9 +1197,9 @@ function RunHistorySection({
 // ============================================================================
 
 export default function AutomationDetailPage() {
-  const { automationId } = useParams({ strict: false }) as {
-    automationId: string;
-  };
+  const { automationId } = useParams({
+    from: "/shell/$org/automations/$automationId",
+  });
   const navigate = useNavigate();
   const { org } = useProjectContext();
 
@@ -1216,8 +1212,8 @@ export default function AutomationDetailPage() {
       await deleteMutation.mutateAsync(automationId);
       toast.success("Automation deleted");
       navigate({
-        to: "/$org/$project/automations",
-        params: { org: org.slug, project: ORG_ADMIN_PROJECT_SLUG },
+        to: "/$org/automations",
+        params: { org: org.slug },
       });
     } catch {
       toast.error("Failed to delete automation");
@@ -1247,10 +1243,7 @@ export default function AutomationDetailPage() {
       <BreadcrumbList>
         <BreadcrumbItem>
           <BreadcrumbLink asChild>
-            <Link
-              to="/$org/$project/automations"
-              params={{ org: org.slug, project: ORG_ADMIN_PROJECT_SLUG }}
-            >
+            <Link to="/$org/automations" params={{ org: org.slug }}>
               Automations
             </Link>
           </BreadcrumbLink>

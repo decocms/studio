@@ -1,14 +1,24 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { ORG_ADMIN_PROJECT_SLUG, useProjectContext } from "@decocms/mesh-sdk";
-import { useProjects } from "@/web/hooks/use-project";
+import { useProjectContext, useVirtualMCPActions } from "@decocms/mesh-sdk";
+import { useProjects } from "@/web/hooks/use-projects";
 import { Page } from "@/web/components/page";
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
 import { ProjectCard } from "@/web/components/project-card";
 import { EmptyState } from "@/web/components/empty-state.tsx";
-import { CreateProjectDialog } from "@/web/components/create-project-dialog";
+import { useCreateProject } from "@/web/hooks/use-create-project";
 import { ImportFromDecoDialog } from "@/web/components/import-from-deco-dialog";
 import { usePublicConfig } from "@/web/hooks/use-public-config";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@deco/ui/components/alert-dialog.tsx";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -17,6 +27,7 @@ import {
 } from "@deco/ui/components/breadcrumb.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { FolderClosed, Plus } from "@untitledui/icons";
+import { toast } from "sonner";
 
 function ImportFromDecoButton() {
   const [open, setOpen] = useState(false);
@@ -37,34 +48,45 @@ function ImportFromDecoButton() {
 
 export default function ProjectsListPage() {
   const { org } = useProjectContext();
-  const { data: projects, isLoading } = useProjects(org.id);
+  const projects = useProjects();
+  const actions = useVirtualMCPActions();
   const { enableDecoImport } = usePublicConfig();
   const [search, setSearch] = useState("");
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const { createProject, isCreating } = useCreateProject();
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
   const navigate = useNavigate();
 
   // Filter out org-admin and apply search
-  const userProjects =
-    projects
-      ?.filter((p) => p.slug !== ORG_ADMIN_PROJECT_SLUG)
-      ?.filter(
-        (p) =>
-          p.name.toLowerCase().includes(search.toLowerCase()) ||
-          p.description?.toLowerCase().includes(search.toLowerCase()),
-      ) ?? [];
+  const userProjects = projects.filter(
+    (p) =>
+      p.id !== org.id &&
+      (p.title.toLowerCase().includes(search.toLowerCase()) ||
+        p.description?.toLowerCase().includes(search.toLowerCase())),
+  );
 
-  const handleSettingsClick = (projectSlug: string) => {
+  const handleSettingsClick = (projectId: string) => {
     navigate({
-      to: "/$org/$project/settings/general",
+      to: "/$org/projects/$virtualMcpId/settings",
       params: {
         org: org.slug,
-        project: projectSlug,
+        virtualMcpId: projectId,
       },
     });
   };
 
-  const handleCreateProject = () => {
-    setCreateDialogOpen(true);
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    const { id, title } = deleteTarget;
+    setDeleteTarget(null);
+    try {
+      await actions.delete.mutateAsync(id);
+      toast.success(`Deleted "${title}"`);
+    } catch {
+      // Error toast handled by mutation
+    }
   };
 
   return (
@@ -82,7 +104,7 @@ export default function ProjectsListPage() {
         </Page.Header.Left>
         <Page.Header.Right>
           {enableDecoImport && <ImportFromDecoButton />}
-          <Button onClick={handleCreateProject} size="sm">
+          <Button onClick={createProject} disabled={isCreating} size="sm">
             <Plus size={14} />
             Create Project
           </Button>
@@ -104,22 +126,8 @@ export default function ProjectsListPage() {
 
       {/* Content */}
       <Page.Content className="@container">
-        {/* Loading State */}
-        {isLoading && (
-          <div className="p-5">
-            <div className="grid grid-cols-1 @lg:grid-cols-2 @4xl:grid-cols-3 @6xl:grid-cols-4 gap-4">
-              {[...Array(4)].map((_, i) => (
-                <div
-                  key={i}
-                  className="h-[240px] rounded-xl bg-muted animate-pulse"
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Empty State */}
-        {!isLoading && userProjects.length === 0 && (
+        {userProjects.length === 0 && (
           <div className="flex items-center h-full">
             <EmptyState
               image={
@@ -133,7 +141,11 @@ export default function ProjectsListPage() {
               }
               actions={
                 !search && (
-                  <Button size="sm" onClick={handleCreateProject}>
+                  <Button
+                    size="sm"
+                    onClick={createProject}
+                    disabled={isCreating}
+                  >
                     <Plus size={14} />
                     Create Project
                   </Button>
@@ -144,14 +156,20 @@ export default function ProjectsListPage() {
         )}
 
         {/* Card Grid */}
-        {!isLoading && userProjects.length > 0 && (
+        {userProjects.length > 0 && (
           <div className="p-5">
             <div className="grid grid-cols-1 @lg:grid-cols-2 @4xl:grid-cols-3 @6xl:grid-cols-4 gap-4">
               {userProjects.map((project) => (
                 <ProjectCard
                   key={project.id}
                   project={project}
-                  onSettingsClick={() => handleSettingsClick(project.slug)}
+                  onSettingsClick={() => handleSettingsClick(project.id)}
+                  onDeleteClick={() =>
+                    setDeleteTarget({
+                      id: project.id,
+                      title: project.title,
+                    })
+                  }
                 />
               ))}
             </div>
@@ -159,11 +177,33 @@ export default function ProjectsListPage() {
         )}
       </Page.Content>
 
-      {/* Create Project Dialog */}
-      <CreateProjectDialog
-        open={createDialogOpen}
-        onOpenChange={setCreateDialogOpen}
-      />
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Project?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete{" "}
+              <span className="font-medium text-foreground">
+                {deleteTarget?.title}
+              </span>
+              .
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Page>
   );
 }

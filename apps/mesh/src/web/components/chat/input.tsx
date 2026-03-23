@@ -16,7 +16,6 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import {
   getWellKnownDecopilotVirtualMCP,
   isDecopilot,
-  ORG_ADMIN_PROJECT_SLUG,
   useProjectContext,
 } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
@@ -204,7 +203,16 @@ function VirtualMCPBadge({
 
   if (!virtualMcp || isDecopilot(virtualMcpId)) return null; // Don't show badge for Decopilot
 
-  const color = getAgentWrapperColor(virtualMcp.icon, virtualMcp.title);
+  const themeColor = (
+    virtualMcp as {
+      metadata?: { ui?: { themeColor?: string | null } | null } | null;
+    }
+  ).metadata?.ui?.themeColor;
+  const color = getAgentWrapperColor(
+    virtualMcp.icon,
+    virtualMcp.title,
+    themeColor,
+  );
 
   const handleReset = (e: MouseEvent) => {
     e.stopPropagation();
@@ -214,10 +222,9 @@ function VirtualMCPBadge({
   const handleEdit = (e: MouseEvent) => {
     e.stopPropagation();
     navigate({
-      to: "/$org/$project/agents/$agentId",
+      to: "/$org/agents/$agentId",
       params: {
         org: org.slug,
-        project: ORG_ADMIN_PROJECT_SLUG,
         agentId: virtualMcpId,
       },
     });
@@ -484,8 +491,17 @@ export function ChatInput({
     color: ReturnType<typeof getAgentWrapperColor> | null;
   } | null>(null);
 
+  const selectedThemeColor = (
+    selectedVirtualMcp as {
+      metadata?: { ui?: { themeColor?: string | null } | null } | null;
+    } | null
+  )?.metadata?.ui?.themeColor;
   const color = selectedVirtualMcp
-    ? getAgentWrapperColor(selectedVirtualMcp.icon, selectedVirtualMcp.title)
+    ? getAgentWrapperColor(
+        selectedVirtualMcp.icon,
+        selectedVirtualMcp.title,
+        selectedThemeColor,
+      )
     : null;
 
   if (hasAgentBadge && selectedVirtualMcp?.id) {

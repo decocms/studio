@@ -15,10 +15,6 @@ import type {
   MonitoringLog,
   OrganizationSettings,
   OrganizationTag,
-  Project,
-  ProjectConnection,
-  ProjectPluginConfig,
-  ProjectUI,
   Thread,
   ThreadMessage,
 } from "./types";
@@ -62,54 +58,6 @@ export interface ThreadStoragePort {
       sort?: "asc" | "desc";
     },
   ): Promise<{ messages: ThreadMessage[]; total: number }>;
-}
-
-// ============================================================================
-// Project Storage Ports
-// ============================================================================
-
-export interface ProjectStoragePort {
-  list(organizationId: string): Promise<Project[]>;
-  get(projectId: string): Promise<Project | null>;
-  getBySlug(organizationId: string, slug: string): Promise<Project | null>;
-  create(data: {
-    organizationId: string;
-    slug: string;
-    name: string;
-    description?: string | null;
-    enabledPlugins?: string[] | null;
-    ui?: ProjectUI | null;
-  }): Promise<Project>;
-  update(
-    projectId: string,
-    data: Partial<{
-      name: string;
-      description: string | null;
-      enabledPlugins: string[] | null;
-      ui: ProjectUI | null;
-    }>,
-  ): Promise<Project | null>;
-  delete(projectId: string): Promise<boolean>;
-}
-
-export interface ProjectConnectionStoragePort {
-  list(projectId: string): Promise<ProjectConnection[]>;
-  add(projectId: string, connectionId: string): Promise<ProjectConnection>;
-  remove(projectId: string, connectionId: string): Promise<boolean>;
-}
-
-export interface ProjectPluginConfigStoragePort {
-  list(projectId: string): Promise<ProjectPluginConfig[]>;
-  get(projectId: string, pluginId: string): Promise<ProjectPluginConfig | null>;
-  upsert(
-    projectId: string,
-    pluginId: string,
-    data: {
-      connectionId?: string | null;
-      settings?: Record<string, unknown> | null;
-    },
-  ): Promise<ProjectPluginConfig>;
-  delete(projectId: string, pluginId: string): Promise<boolean>;
 }
 
 // ============================================================================
@@ -330,7 +278,10 @@ export interface VirtualMCPStoragePort {
     id: string,
     organizationId?: string,
   ): Promise<VirtualMCPEntity | null>;
-  list(organizationId: string): Promise<VirtualMCPEntity[]>;
+  list(
+    organizationId: string,
+    subtype?: "agent" | "project",
+  ): Promise<VirtualMCPEntity[]>;
   listByConnectionId(
     organizationId: string,
     connectionId: string,
@@ -342,6 +293,46 @@ export interface VirtualMCPStoragePort {
   ): Promise<VirtualMCPEntity>;
   delete(id: string): Promise<void>;
   removeConnectionReferences(connectionId: string): Promise<void>;
+}
+
+// ============================================================================
+// Virtual MCP Plugin Config Storage Port
+// ============================================================================
+
+export interface VirtualMcpPluginConfig {
+  id: string;
+  virtualMcpId: string;
+  pluginId: string;
+  connectionId: string | null;
+  settings: Record<string, unknown> | null;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
+export interface BoundConnectionSummary {
+  id: string;
+  title: string;
+  icon: string | null;
+}
+
+export interface VirtualMcpPluginConfigStoragePort {
+  list(virtualMcpId: string): Promise<VirtualMcpPluginConfig[]>;
+  get(
+    virtualMcpId: string,
+    pluginId: string,
+  ): Promise<VirtualMcpPluginConfig | null>;
+  upsert(
+    virtualMcpId: string,
+    pluginId: string,
+    data: {
+      connectionId?: string | null;
+      settings?: Record<string, unknown> | null;
+    },
+  ): Promise<VirtualMcpPluginConfig>;
+  delete(virtualMcpId: string, pluginId: string): Promise<boolean>;
+  getBoundConnectionsForVirtualMcps(
+    virtualMcpIds: string[],
+  ): Promise<Map<string, BoundConnectionSummary[]>>;
 }
 
 // ============================================================================

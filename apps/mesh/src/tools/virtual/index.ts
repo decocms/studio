@@ -11,6 +11,11 @@ export { COLLECTION_VIRTUAL_MCP_GET } from "./get";
 export { COLLECTION_VIRTUAL_MCP_UPDATE } from "./update";
 export { COLLECTION_VIRTUAL_MCP_DELETE } from "./delete";
 
+// Virtual MCP plugin config and pinned views tools
+export { VIRTUAL_MCP_PLUGIN_CONFIG_GET } from "./plugin-config-get";
+export { VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE } from "./plugin-config-update";
+export { VIRTUAL_MCP_PINNED_VIEWS_UPDATE } from "./pinned-views-update";
+
 // Re-export schema types (only types, not runtime schemas)
 export type {
   VirtualMCPConnection,

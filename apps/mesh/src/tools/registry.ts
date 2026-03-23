@@ -28,7 +28,6 @@ export type ToolCategory =
   | "API Keys"
   | "Event Bus"
   | "Tags"
-  | "Projects"
   | "AI Providers"
   | "Automations";
 
@@ -111,18 +110,10 @@ const ALL_TOOL_NAMES = [
   "AUTOMATION_TRIGGER_ADD",
   "AUTOMATION_TRIGGER_REMOVE",
   "AUTOMATION_RUN",
-  // Project tools
-  "PROJECT_LIST",
-  "PROJECT_GET",
-  "PROJECT_CREATE",
-  "PROJECT_UPDATE",
-  "PROJECT_DELETE",
-  "PROJECT_PLUGIN_CONFIG_GET",
-  "PROJECT_PLUGIN_CONFIG_UPDATE",
-  "PROJECT_CONNECTION_LIST",
-  "PROJECT_CONNECTION_ADD",
-  "PROJECT_CONNECTION_REMOVE",
-  "PROJECT_PINNED_VIEWS_UPDATE",
+  // Virtual MCP plugin config and pinned views tools
+  "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
+  "VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE",
+  "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
 
   // Ai providers tools
   "AI_PROVIDERS_LIST",
@@ -512,62 +503,21 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Manually trigger an automation run",
     category: "Automations",
   },
-  // Project tools
+  // Virtual MCP plugin config and pinned views tools
   {
-    name: "PROJECT_LIST",
-    description: "List projects in organization",
-    category: "Projects",
+    name: "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
+    description: "View virtual MCP plugin configuration",
+    category: "Virtual MCPs",
   },
   {
-    name: "PROJECT_GET",
-    description: "View project details",
-    category: "Projects",
+    name: "VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE",
+    description: "Update virtual MCP plugin configuration",
+    category: "Virtual MCPs",
   },
   {
-    name: "PROJECT_CREATE",
-    description: "Create new project",
-    category: "Projects",
-  },
-  {
-    name: "PROJECT_UPDATE",
-    description: "Update project",
-    category: "Projects",
-  },
-  {
-    name: "PROJECT_DELETE",
-    description: "Delete project",
-    category: "Projects",
-    dangerous: true,
-  },
-  {
-    name: "PROJECT_PLUGIN_CONFIG_GET",
-    description: "View project plugin configuration",
-    category: "Projects",
-  },
-  {
-    name: "PROJECT_PLUGIN_CONFIG_UPDATE",
-    description: "Update project plugin configuration",
-    category: "Projects",
-  },
-  {
-    name: "PROJECT_CONNECTION_LIST",
-    description: "List project connections",
-    category: "Projects",
-  },
-  {
-    name: "PROJECT_CONNECTION_ADD",
-    description: "Add connection to project",
-    category: "Projects",
-  },
-  {
-    name: "PROJECT_CONNECTION_REMOVE",
-    description: "Remove connection from project",
-    category: "Projects",
-  },
-  {
-    name: "PROJECT_PINNED_VIEWS_UPDATE",
-    description: "Update project pinned sidebar views",
-    category: "Projects",
+    name: "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
+    description: "Update virtual MCP pinned sidebar views",
+    category: "Virtual MCPs",
   },
   {
     name: "AI_PROVIDERS_LIST",
@@ -687,17 +637,9 @@ const TOOL_LABELS: Record<ToolName, string> = {
   TAGS_DELETE: "Delete organization tag",
   MEMBER_TAGS_GET: "Get member tags",
   MEMBER_TAGS_SET: "Set member tags",
-  PROJECT_LIST: "List projects",
-  PROJECT_GET: "View project details",
-  PROJECT_CREATE: "Create project",
-  PROJECT_UPDATE: "Update project",
-  PROJECT_DELETE: "Delete project",
-  PROJECT_PLUGIN_CONFIG_GET: "View plugin config",
-  PROJECT_PLUGIN_CONFIG_UPDATE: "Update plugin config",
-  PROJECT_CONNECTION_LIST: "List project connections",
-  PROJECT_CONNECTION_ADD: "Add project connection",
-  PROJECT_CONNECTION_REMOVE: "Remove project connection",
-  PROJECT_PINNED_VIEWS_UPDATE: "Update pinned views",
+  VIRTUAL_MCP_PLUGIN_CONFIG_GET: "View plugin config",
+  VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE: "Update plugin config",
+  VIRTUAL_MCP_PINNED_VIEWS_UPDATE: "Update pinned views",
   AUTOMATION_CREATE: "Create automation",
   AUTOMATION_GET: "View automation details",
   AUTOMATION_LIST: "List automations",
@@ -738,7 +680,6 @@ export function getToolsByCategory() {
     "API Keys": [],
     "Event Bus": [],
     Tags: [],
-    Projects: [],
     "AI Providers": [],
     Automations: [],
   };

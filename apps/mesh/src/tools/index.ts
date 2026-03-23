@@ -26,7 +26,6 @@ import * as VirtualMCPTools from "./virtual";
 import * as MonitoringTools from "./monitoring";
 import * as MonitoringDashboardTools from "./monitoring-dashboard";
 import * as OrganizationTools from "./organization";
-import * as ProjectTools from "./projects";
 import * as TagTools from "./tags";
 import * as ThreadTools from "./thread";
 import * as AutomationTools from "./automations";
@@ -122,18 +121,10 @@ const CORE_TOOLS = [
   AutomationTools.AUTOMATION_TRIGGER_REMOVE,
   AutomationTools.AUTOMATION_RUN,
 
-  // Project tools
-  ProjectTools.PROJECT_LIST,
-  ProjectTools.PROJECT_GET,
-  ProjectTools.PROJECT_CREATE,
-  ProjectTools.PROJECT_UPDATE,
-  ProjectTools.PROJECT_DELETE,
-  ProjectTools.PROJECT_PLUGIN_CONFIG_GET,
-  ProjectTools.PROJECT_PLUGIN_CONFIG_UPDATE,
-  ProjectTools.PROJECT_CONNECTION_LIST,
-  ProjectTools.PROJECT_CONNECTION_ADD,
-  ProjectTools.PROJECT_CONNECTION_REMOVE,
-  ProjectTools.PROJECT_PINNED_VIEWS_UPDATE,
+  // Virtual MCP plugin config tools
+  VirtualMCPTools.VIRTUAL_MCP_PLUGIN_CONFIG_GET,
+  VirtualMCPTools.VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE,
+  VirtualMCPTools.VIRTUAL_MCP_PINNED_VIEWS_UPDATE,
 
   // Ai providers tools
   AiProvidersTools.AI_PROVIDERS_LIST,
@@ -178,18 +169,19 @@ export type ToolNameFromTools = (typeof ALL_TOOLS)[number]["name"];
 
 export const managementMCP = async (ctx: MeshContext) => {
   // Get enabled plugins for this organization to filter plugin tools
-  // Check both org settings (legacy) and all projects (current UI saves to projects table)
+  // Check both org settings (legacy) and all virtual MCPs
   let enabledPlugins: string[] | null = null;
   if (ctx.organization) {
     const settings = await ctx.storage.organizationSettings.get(
       ctx.organization.id,
     );
-    const projects = await ctx.storage.projects.list(ctx.organization.id);
-    // Merge enabled plugins from org settings + all projects
+    const virtualMcps = await ctx.storage.virtualMcps.list(ctx.organization.id);
+    // Merge enabled plugins from org settings + all virtual MCPs
     const merged = new Set<string>(settings?.enabled_plugins ?? []);
-    for (const project of projects) {
-      if (project.enabledPlugins) {
-        for (const pluginId of project.enabledPlugins) {
+    for (const virtualMcp of virtualMcps) {
+      const enabledPlugins = virtualMcp.metadata?.enabled_plugins;
+      if (enabledPlugins && Array.isArray(enabledPlugins)) {
+        for (const pluginId of enabledPlugins) {
           merged.add(pluginId);
         }
       }

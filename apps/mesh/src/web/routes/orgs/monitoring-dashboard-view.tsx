@@ -10,16 +10,16 @@ import { useProjectContext } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
 
 export default function DashboardViewRoute() {
-  const { dashboardId } = useParams({ strict: false }) as {
-    dashboardId: string;
-  };
-  const { org, project } = useProjectContext();
+  const { dashboardId } = useParams({
+    from: "/shell/$org/monitoring/dashboards/$dashboardId",
+  });
+  const { org } = useProjectContext();
   const navigate = useNavigate();
 
   const handleEdit = () => {
     navigate({
-      to: "/$org/$project/monitoring/dashboards/$dashboardId/edit",
-      params: { org: org.slug, project: project.slug, dashboardId },
+      to: "/$org/monitoring/dashboards/$dashboardId/edit",
+      params: { org: org.slug, dashboardId },
     });
   };
 

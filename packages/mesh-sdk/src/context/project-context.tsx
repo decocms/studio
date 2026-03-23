@@ -1,9 +1,9 @@
 import { createContext, useContext, type PropsWithChildren } from "react";
 
 /**
- * a ProjectLocator is a github-like slug string that identifies a project in an organization.
+ * A ProjectLocator is an ID-based string that identifies a project in an organization.
  *
- * format: <org-slug>/<project-slug>
+ * format: <orgId>/<projectId>
  */
 export type ProjectLocator = `${string}/${string}`;
 
@@ -12,15 +12,8 @@ export type LocatorStructured = {
   project: string;
 };
 
-export const ORG_ADMIN_PROJECT_SLUG = "org-admin";
-export const ORG_ADMIN_PROJECT_NAME = "Organization Admin";
-
 export const Locator = {
   from({ org, project }: LocatorStructured): ProjectLocator {
-    if (org?.includes("/") || project.includes("/")) {
-      throw new Error("Org or project cannot contain slashes");
-    }
-
     return `${org}/${project}` as ProjectLocator;
   },
   parse(locator: ProjectLocator): LocatorStructured {
@@ -33,12 +26,6 @@ export const Locator = {
     }
     return { org, project };
   },
-  isOrgAdminProject(locator: ProjectLocator): boolean {
-    return locator.split("/")[1] === ORG_ADMIN_PROJECT_SLUG;
-  },
-  adminProject(org: string): ProjectLocator {
-    return `${org}/${ORG_ADMIN_PROJECT_SLUG}`;
-  },
 } as const;
 
 /**
@@ -49,6 +36,12 @@ export interface ProjectUI {
   bannerColor: string | null;
   icon: string | null;
   themeColor: string | null;
+  pinnedViews?: Array<{
+    connectionId: string;
+    toolName: string;
+    label: string;
+    icon: string | null;
+  }> | null;
 }
 
 /**
@@ -66,8 +59,8 @@ export interface OrganizationData {
  * Includes full project info when loaded from storage
  */
 export interface ProjectData {
-  /** Project ID (only available when loaded from storage) */
-  id?: string;
+  /** Project ID */
+  id: string;
   /** Organization ID (only available when loaded from storage) */
   organizationId?: string;
   /** Project slug */
@@ -122,7 +115,7 @@ export const useCurrentProject = () => {
  */
 export const useIsOrgAdmin = () => {
   const project = useProjectContext().project;
-  return project.isOrgAdmin ?? project.slug === ORG_ADMIN_PROJECT_SLUG;
+  return project.isOrgAdmin === true;
 };
 
 export type ProjectContextProviderProps = {
@@ -135,7 +128,7 @@ export const ProjectContextProvider = ({
   org,
   project,
 }: PropsWithChildren<ProjectContextProviderProps>) => {
-  const locator = Locator.from({ org: org.slug, project: project.slug });
+  const locator = Locator.from({ org: org.id, project: project.id });
 
   const value = { org, project, locator };
 
