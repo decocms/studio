@@ -7,6 +7,7 @@ import type { ChatMessage } from "../types.ts";
 import { MessageStatsBar } from "../usage-stats.tsx";
 import { MessageTextPart } from "./parts/text-part.tsx";
 import {
+  ConnectionAuthPart,
   GenericToolCallPart,
   ProposePlanPart,
   SubtaskPart,
@@ -246,7 +247,35 @@ function MessagePart({
       return null;
     default: {
       const fallback = part as ToolUIPart;
+      // Auto-detect path: data-connection-auth parts from stream-core
+      if ((fallback.type as string) === "data-connection-auth") {
+        const authData = (
+          fallback as unknown as { data: Record<string, unknown> }
+        ).data;
+        const syntheticPart = {
+          ...fallback,
+          type: "tool-CONNECTION_AUTHENTICATE" as const,
+          toolCallId: `auth-${authData?.connectionId ?? "unknown"}`,
+          toolName: "CONNECTION_AUTHENTICATE",
+          state: "output-available" as const,
+          output: {
+            connection_id: authData?.connectionId,
+            title: authData?.title ?? "Connection",
+            icon: authData?.icon ?? null,
+            description: null,
+            connection_url: authData?.connectionUrl ?? null,
+            status: "active",
+            needs_auth: true,
+            auth_type: "oauth" as const,
+          },
+        } as unknown as ToolUIPart;
+        return <ConnectionAuthPart part={syntheticPart} />;
+      }
       if (fallback.type.startsWith("tool-")) {
+        // Tool path: CONNECTION_AUTHENTICATE tool calls render as auth cards
+        if (fallback.type === "tool-CONNECTION_AUTHENTICATE") {
+          return <ConnectionAuthPart part={fallback} />;
+        }
         const toolCallId = (fallback as ToolUIPart).toolCallId;
         const meta = dataParts.toolMetadata.get(toolCallId);
         return (

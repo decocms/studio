@@ -84,6 +84,7 @@ import {
   ORG_ADMIN_PROJECT_SLUG,
   SELF_MCP_ALIAS_ID,
   useConnectionActions,
+  useConnectionInstall,
   useConnections,
   useMCPClient,
   useProjectContext,
@@ -127,12 +128,8 @@ import {
   recordToEnvVars,
   type EnvVar,
 } from "@/web/components/env-vars-editor";
+import { AuthCard } from "@/web/components/connection-auth-card";
 import { extractConnectionData } from "@/web/utils/extract-connection-data";
-import {
-  isConnectionAuthenticated,
-  authenticateMcp,
-} from "@/web/lib/mcp-oauth";
-import { KEYS } from "@/web/lib/query-keys";
 
 // ---------------------------------------------------------------------------
 // Grouping helpers
@@ -806,6 +803,8 @@ function OrgMcpsContent() {
   });
 
   const actions = useConnectionActions();
+  const connectionInstall = useConnectionInstall();
+  const [authConnectionId, setAuthConnectionId] = useState<string | null>(null);
   const connections = useConnections(listState);
   // Unfiltered connections for catalog metadata (connectedAppNames, appInstances)
   // so the "Connected" badge and modal aren't affected by the search term
@@ -1018,70 +1017,48 @@ function OrgMcpsContent() {
         connectionData.title = `${baseName} (${existing.length + 1})`;
       }
 
-      const { id } = await actions.create.mutateAsync(connectionData);
-
-      // Handle OAuth flow
-      const mcpProxyUrl = new URL(`/mcp/${id}`, window.location.origin);
-      const authStatus = await isConnectionAuthenticated({
-        url: mcpProxyUrl.href,
-        token: null,
-      });
-
-      if (authStatus.supportsOAuth && !authStatus.isAuthenticated) {
-        const { token, tokenInfo, error } = await authenticateMcp({
-          connectionId: id,
+      if (isStdioConnection) {
+        // STDIO connections use COLLECTION_CONNECTIONS_CREATE directly
+        await actions.create.mutateAsync(connectionData);
+        toast.success("Connected successfully");
+      } else {
+        // HTTP/SSE/Websocket connections use CONNECTION_INSTALL
+        const result = await connectionInstall.mutateAsync({
+          title: connectionData.title,
+          connection_url: connectionData.connection_url,
+          description: connectionData.description ?? undefined,
+          icon: connectionData.icon ?? undefined,
+          app_name: connectionData.app_name ?? undefined,
+          app_id: connectionData.app_id ?? undefined,
+          connection_type: connectionData.connection_type as
+            | "HTTP"
+            | "SSE"
+            | "Websocket",
+          id: connectionData.id,
+          connection_token: connectionData.connection_token ?? undefined,
+          connection_headers:
+            (connectionData.connection_headers as Record<string, unknown>) ??
+            undefined,
+          oauth_config:
+            (connectionData.oauth_config as Record<string, unknown>) ??
+            undefined,
+          configuration_state:
+            (connectionData.configuration_state as Record<string, unknown>) ??
+            undefined,
+          configuration_scopes:
+            connectionData.configuration_scopes ?? undefined,
+          metadata:
+            (connectionData.metadata as Record<string, unknown>) ?? undefined,
         });
-        if (error || !token) {
-          toast.error(`Authentication failed: ${error ?? "no token received"}`);
-          return;
+
+        if (result.needs_auth) {
+          setAuthConnectionId(result.connection_id);
+        } else if (result.is_existing) {
+          toast.success(`"${result.title}" is already connected and ready.`);
         } else {
-          if (tokenInfo) {
-            try {
-              const response = await fetch(
-                `/api/connections/${id}/oauth-token`,
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  credentials: "include",
-                  body: JSON.stringify({
-                    accessToken: tokenInfo.accessToken,
-                    refreshToken: tokenInfo.refreshToken,
-                    expiresIn: tokenInfo.expiresIn,
-                    scope: tokenInfo.scope,
-                    clientId: tokenInfo.clientId,
-                    clientSecret: tokenInfo.clientSecret,
-                    tokenEndpoint: tokenInfo.tokenEndpoint,
-                  }),
-                },
-              );
-              if (!response.ok) {
-                await actions.update.mutateAsync({
-                  id,
-                  data: { connection_token: token },
-                });
-              } else {
-                await actions.update.mutateAsync({ id, data: {} });
-              }
-            } catch {
-              await actions.update.mutateAsync({
-                id,
-                data: { connection_token: token },
-              });
-            }
-          } else {
-            await actions.update.mutateAsync({
-              id,
-              data: { connection_token: token },
-            });
-          }
-          await queryClient.invalidateQueries({
-            queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
-          });
-          toast.success("Authentication successful");
+          toast.success("Connected successfully");
         }
       }
-
-      toast.success("Connected successfully");
     } catch (error) {
       toast.error(
         `Failed to connect: ${error instanceof Error ? error.message : String(error)}`,
@@ -1487,29 +1464,53 @@ function OrgMcpsContent() {
     }
 
     const newId = generatePrefixedId("conn");
-    // Create new connection
-    await actions.create.mutateAsync({
-      id: newId,
-      title: data.title,
-      description: data.description || null,
-      connection_type: connectionType,
-      connection_url: connectionUrl,
-      connection_token: connectionToken,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      created_by: session?.user?.id || "system",
-      organization_id: org.id,
-      icon: data.icon ?? null,
-      app_name: null,
-      app_id: null,
-      connection_headers: connectionParameters,
-      oauth_config: null,
-      configuration_state: null,
-      metadata: null,
-      tools: null,
-      bindings: null,
-      status: "inactive",
-    });
+    const isStdioConnection = connectionType === "STDIO";
+
+    if (isStdioConnection) {
+      // STDIO connections use COLLECTION_CONNECTIONS_CREATE directly
+      await actions.create.mutateAsync({
+        id: newId,
+        title: data.title,
+        description: data.description || null,
+        connection_type: connectionType,
+        connection_url: connectionUrl,
+        connection_token: connectionToken,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        created_by: session?.user?.id || "system",
+        organization_id: org.id,
+        icon: data.icon ?? null,
+        app_name: null,
+        app_id: null,
+        connection_headers: connectionParameters,
+        oauth_config: null,
+        configuration_state: null,
+        metadata: null,
+        tools: null,
+        bindings: null,
+        status: "inactive",
+      });
+    } else {
+      // HTTP/SSE/Websocket connections use CONNECTION_INSTALL
+      const result = await connectionInstall.mutateAsync({
+        title: data.title,
+        connection_url: connectionUrl,
+        description: data.description || undefined,
+        icon: data.icon ?? undefined,
+        connection_type: connectionType as "HTTP" | "SSE" | "Websocket",
+        id: newId,
+        connection_token: connectionToken ?? undefined,
+        connection_headers:
+          (connectionParameters as Record<string, unknown>) ?? undefined,
+      });
+
+      if (result.needs_auth) {
+        closeCreateDialog();
+        form.reset();
+        setAuthConnectionId(result.connection_id);
+        return;
+      }
+    }
 
     closeCreateDialog();
     form.reset();
@@ -2620,6 +2621,34 @@ function OrgMcpsContent() {
             onCancel={exitSelectionMode}
           />
         )}
+        {/* Auth card dialog */}
+        <Dialog
+          open={!!authConnectionId}
+          onOpenChange={(open) => {
+            if (!open) setAuthConnectionId(null);
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Authentication Required</DialogTitle>
+              <DialogDescription>
+                This connection requires authentication to work properly.
+              </DialogDescription>
+            </DialogHeader>
+            {authConnectionId && (
+              <AuthCard
+                data={{
+                  connection_id: authConnectionId,
+                  title:
+                    allConnections.find((c) => c.id === authConnectionId)
+                      ?.title ?? "Connection",
+                  needs_auth: true,
+                }}
+                onSuccess={() => setAuthConnectionId(null)}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
       </Page>
     </>
   );

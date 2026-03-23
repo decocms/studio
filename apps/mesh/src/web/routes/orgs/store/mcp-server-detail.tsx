@@ -25,15 +25,12 @@ import {
   useConnection,
   useConnections,
   useConnectionActions,
+  useConnectionInstall,
   useMCPClient,
   useMCPToolCall,
   type ConnectionEntity,
 } from "@decocms/mesh-sdk";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  authenticateMcp,
-  isConnectionAuthenticated,
-} from "@/web/lib/mcp-oauth";
+import { useQuery } from "@tanstack/react-query";
 import { authClient } from "@/web/lib/auth-client";
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
@@ -281,8 +278,8 @@ function StoreMCPServerDetailContent() {
   } | null>(null);
 
   const [isConnecting, setIsConnecting] = useState(false);
-  const queryClient = useQueryClient();
   const actions = useConnectionActions();
+  const connectionInstall = useConnectionInstall();
   const allConnections = useConnections();
   const { data: session } = authClient.useSession();
   const registryConnections = useRegistryConnections(allConnections);
@@ -617,65 +614,56 @@ function StoreMCPServerDetailContent() {
     }
 
     try {
-      const { id } = await actions.create.mutateAsync(connectionData);
-
-      // Check if OAuth is required before navigating
-      const mcpProxyUrl = new URL(`/mcp/${id}`, window.location.origin);
-      const authStatus = await isConnectionAuthenticated({
-        url: mcpProxyUrl.href,
-        token: null,
-      });
-
-      if (authStatus.supportsOAuth && !authStatus.isAuthenticated) {
-        const { token, tokenInfo, error } = await authenticateMcp({
-          connectionId: id,
+      if (isStdioConnection) {
+        // STDIO connections use COLLECTION_CONNECTIONS_CREATE directly
+        await actions.create.mutateAsync(connectionData);
+      } else {
+        // HTTP/SSE/Websocket connections use CONNECTION_INSTALL
+        const result = await connectionInstall.mutateAsync({
+          title: connectionData.title,
+          connection_url: connectionData.connection_url,
+          description: connectionData.description ?? undefined,
+          icon: connectionData.icon ?? undefined,
+          app_name: connectionData.app_name ?? undefined,
+          app_id: connectionData.app_id ?? undefined,
+          connection_type: connectionData.connection_type as
+            | "HTTP"
+            | "SSE"
+            | "Websocket",
+          id: connectionData.id,
+          connection_token: connectionData.connection_token ?? undefined,
+          connection_headers:
+            (connectionData.connection_headers as Record<string, unknown>) ??
+            undefined,
+          oauth_config:
+            (connectionData.oauth_config as Record<string, unknown>) ??
+            undefined,
+          configuration_state:
+            (connectionData.configuration_state as Record<string, unknown>) ??
+            undefined,
+          configuration_scopes:
+            connectionData.configuration_scopes ?? undefined,
+          metadata:
+            (connectionData.metadata as Record<string, unknown>) ?? undefined,
         });
-        if (error || !token) {
-          toast.error(`Authentication failed: ${error}`);
-        } else {
-          if (tokenInfo) {
-            try {
-              const response = await fetch(
-                `/api/connections/${id}/oauth-token`,
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  credentials: "include",
-                  body: JSON.stringify({
-                    accessToken: tokenInfo.accessToken,
-                    refreshToken: tokenInfo.refreshToken,
-                    expiresIn: tokenInfo.expiresIn,
-                    scope: tokenInfo.scope,
-                    clientId: tokenInfo.clientId,
-                    clientSecret: tokenInfo.clientSecret,
-                    tokenEndpoint: tokenInfo.tokenEndpoint,
-                  }),
-                },
-              );
-              if (!response.ok) {
-                await actions.update.mutateAsync({
-                  id,
-                  data: { connection_token: token },
-                });
-              } else {
-                await actions.update.mutateAsync({ id, data: {} });
-              }
-            } catch {
-              await actions.update.mutateAsync({
-                id,
-                data: { connection_token: token },
-              });
-            }
-          } else {
-            await actions.update.mutateAsync({
-              id,
-              data: { connection_token: token },
-            });
-          }
-          await queryClient.invalidateQueries({
-            queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
+
+        if (result.needs_auth) {
+          navigate({
+            to: "/$org/$project/mcps",
+            params: {
+              org: org.slug,
+              project: ORG_ADMIN_PROJECT_SLUG,
+            },
+            search: {
+              tab: "connected",
+              authConnectionId: result.connection_id,
+            },
           });
-          toast.success("Authentication successful");
+          return;
+        }
+
+        if (result.is_existing && !result.needs_auth) {
+          toast.success(`"${result.title}" is already connected and ready.`);
         }
       }
 

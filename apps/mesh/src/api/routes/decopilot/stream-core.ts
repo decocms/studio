@@ -284,10 +284,13 @@ export async function streamCore(
 
     const toolOutputMap = new Map<string, string>();
     const organization = ctx.organization!;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let capturedWriter: { write: (part: any) => void } | null = null;
 
     const uiStream = createUIMessageStream({
       originalMessages: allMessages,
       execute: async ({ writer }) => {
+        capturedWriter = writer;
         const passthroughClient = await createVirtualClientFrom(
           virtualMcp,
           ctx,
@@ -468,7 +471,7 @@ export async function streamCore(
             resolveClaudeCodeModelId(input.models.thinking.id),
             {
               mcpServers: {
-                mesh: {
+                agent: {
                   type: "http",
                   url: mcpUrl,
                   headers: {
@@ -731,6 +734,38 @@ export async function streamCore(
         });
       },
       onStepFinish: ({ responseMessage }) => {
+        // Emit data-connection-auth for newly created connections that need auth
+        if (capturedWriter && responseMessage?.parts) {
+          for (const part of responseMessage.parts) {
+            if (
+              "toolName" in part &&
+              part.toolName === "CONNECTION_INSTALL" &&
+              "result" in part &&
+              part.result &&
+              typeof part.result === "object"
+            ) {
+              const result = part.result as {
+                needs_auth?: boolean;
+                connection_id?: string;
+                title?: string;
+                icon?: string | null;
+                connection_url?: string | null;
+              };
+              if (result.needs_auth && result.connection_id) {
+                capturedWriter.write({
+                  type: "data-connection-auth",
+                  data: {
+                    connectionId: result.connection_id,
+                    title: result.title ?? "Connection",
+                    icon: result.icon ?? null,
+                    connectionUrl: result.connection_url ?? null,
+                  },
+                });
+              }
+            }
+          }
+        }
+
         const transitions = runRegistry.dispatch({
           type: "STEP_DONE",
           threadId: mem.thread.id,
