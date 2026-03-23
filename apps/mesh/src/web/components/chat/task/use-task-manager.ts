@@ -267,6 +267,40 @@ export function useTaskManager() {
   };
 
   /**
+   * Set the status of a task
+   * Calls backend to update task status, then updates cache
+   */
+  const setTaskStatus = async (taskId: string, status: string) => {
+    try {
+      const updatedTask = await callUpdateTaskTool(client, taskId, {
+        status: status as
+          | "requires_action"
+          | "failed"
+          | "expired"
+          | "in_progress"
+          | "completed",
+      });
+      if (updatedTask) {
+        updateTaskInCache(
+          queryClient,
+          locator,
+          taskId,
+          {
+            status: updatedTask.status,
+            updated_at: updatedTask.updated_at ?? new Date().toISOString(),
+          },
+          ownerFilter,
+          ownerFilter === "me" ? userId : undefined,
+        );
+      }
+    } catch (error) {
+      const err = error as Error;
+      toast.error(`Failed to update task status: ${err.message}`);
+      console.error("[chat] Failed to set task status:", error);
+    }
+  };
+
+  /**
    * Rename a task
    * Calls backend to update task title, then updates cache
    */
@@ -403,6 +437,7 @@ export function useTaskManager() {
     updateTask,
     renameTask,
     hideTask,
+    setTaskStatus,
     updateMessagesCache: updateMessagesInCache,
   };
 }

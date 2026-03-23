@@ -64,6 +64,9 @@ export const COLLECTION_THREADS_UPDATE = defineTool({
       title: data.title,
       description: data.description,
       hidden: data.hidden,
+      status: data.status as
+        | import("../../storage/types").ThreadStatus
+        | undefined,
       updated_by: userId,
     });
 

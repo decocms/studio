@@ -3,6 +3,7 @@ import type {
   NavigationSidebarItem,
   SidebarSection,
 } from "@/web/components/sidebar/types";
+import { useDecoTasksOpen } from "@/web/hooks/use-deco-tasks-open";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   BarChart10,
@@ -29,6 +30,7 @@ export function useProjectSidebarItems(options?: {
   const org = orgContext.slug;
   const isOrgAdminProject = useIsOrgAdmin();
   const currentProject = useProjectContext().project;
+  const [tasksOpen, setTasksOpen] = useDecoTasksOpen();
 
   // The virtual MCP ID for this project (used in /$org/projects/$virtualMcpId routes)
   // Prefer explicit prop (from URL params) over project context
@@ -98,12 +100,8 @@ export function useProjectSidebarItems(options?: {
     key: "tasks",
     label: "Tasks",
     icon: <CheckDone01 />,
-    isActive: isActiveRoute("tasks"),
-    onClick: () =>
-      navigate({
-        to: "/$org/tasks",
-        params: { org },
-      }),
+    isActive: tasksOpen,
+    onClick: () => setTasksOpen((prev) => !prev),
   };
 
   const connectionsItem: NavigationSidebarItem = {
@@ -327,12 +325,8 @@ export function useProjectSidebarItems(options?: {
     key: "tasks",
     label: "Tasks",
     icon: <CheckDone01 />,
-    isActive: isActiveRoute("tasks"),
-    onClick: () =>
-      navigate({
-        to: "/$org/projects/$virtualMcpId/tasks",
-        params: { org, virtualMcpId },
-      }),
+    isActive: tasksOpen,
+    onClick: () => setTasksOpen((prev) => !prev),
   };
 
   const projectWorkflowsItem: NavigationSidebarItem | null =

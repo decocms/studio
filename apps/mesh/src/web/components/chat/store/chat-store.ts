@@ -102,6 +102,9 @@ class ChatStore {
   private renameTaskFn:
     | ((taskId: string, title: string) => Promise<void>)
     | null = null;
+  private setTaskStatusFn:
+    | ((taskId: string, status: string) => Promise<void>)
+    | null = null;
   private createTaskFn: (() => string) | null = null;
 
   constructor() {
@@ -235,11 +238,13 @@ class ChatStore {
     updateMessagesCache: (threadId: string, messages: ChatMessage[]) => void;
     hideTask: (taskId: string) => Promise<void>;
     renameTask: (taskId: string, title: string) => Promise<void>;
+    setTaskStatus: (taskId: string, status: string) => Promise<void>;
     createTask: () => string;
   }): void {
     this.updateMessagesCacheFn = helpers.updateMessagesCache;
     this.hideTaskFn = helpers.hideTask;
     this.renameTaskFn = helpers.renameTask;
+    this.setTaskStatusFn = helpers.setTaskStatus;
     this.createTaskFn = helpers.createTask;
   }
 
@@ -299,6 +304,10 @@ class ChatStore {
 
   async renameTask(taskId: string, title: string): Promise<void> {
     await this.renameTaskFn?.(taskId, title);
+  }
+
+  async setTaskStatus(taskId: string, status: string): Promise<void> {
+    await this.setTaskStatusFn?.(taskId, status);
   }
 
   setActiveThread(threadId: string): void {

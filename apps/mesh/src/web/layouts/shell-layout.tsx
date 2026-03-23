@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Chat } from "@/web/components/chat/index";
 import { ChatPanel } from "@/web/components/chat/side-panel-chat";
+import { TasksSidePanel } from "@/web/components/chat/side-panel-tasks";
 import { KeyboardShortcutsDialog } from "@/web/components/keyboard-shortcuts-dialog";
 import { isModKey } from "@/web/lib/keyboard-shortcuts";
 import { MeshSidebar } from "@/web/components/sidebar";
 import { SplashScreen } from "@/web/components/splash-screen";
 import { MeshUserMenu } from "@/web/components/user-menu.tsx";
 import { useDecoChatOpen } from "@/web/hooks/use-deco-chat-open";
+import { useDecoTasksOpen } from "@/web/hooks/use-deco-tasks-open";
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
 import RequiredAuthLayout from "@/web/layouts/required-auth-layout";
 import { authClient } from "@/web/lib/auth-client";
@@ -24,7 +26,7 @@ import {
 } from "@deco/ui/components/sidebar.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
-import { MessageTextCircle02 } from "@untitledui/icons";
+import { CheckDone01, MessageTextCircle02 } from "@untitledui/icons";
 import {
   ProjectContextProvider,
   ProjectContextProviderProps,
@@ -57,6 +59,36 @@ function PersistentResizablePanel({
       minSize={20}
       className={cn("min-w-0", className)}
       onResize={handleResize}
+      order={3}
+    >
+      {children}
+    </ResizablePanel>
+  );
+}
+
+/**
+ * Persists the width of the tasks panel across reloads.
+ */
+function PersistentTasksResizablePanel({
+  children,
+  className,
+}: PropsWithChildren<{ className?: string }>) {
+  const [_isPending, startTransition] = useTransition();
+  const [tasksPanelWidth, setTasksPanelWidth] = useLocalStorage(
+    LOCALSTORAGE_KEYS.decoTasksPanelWidth(),
+    22,
+  );
+
+  const handleResize = (size: number) =>
+    startTransition(() => setTasksPanelWidth(size));
+
+  return (
+    <ResizablePanel
+      defaultSize={tasksPanelWidth}
+      minSize={20}
+      className={cn("min-w-0", className)}
+      onResize={handleResize}
+      order={1}
     >
       {children}
     </ResizablePanel>
@@ -84,36 +116,89 @@ function PersistentSidebarProvider({ children }: PropsWithChildren) {
   );
 }
 
-function MobileChatFAB({
-  onClick,
-  isOpen,
+function MobileFABs({
+  chatOpen,
+  onChatToggle,
+  tasksOpen,
+  onTasksToggle,
 }: {
-  onClick: () => void;
-  isOpen: boolean;
+  chatOpen: boolean;
+  onChatToggle: () => void;
+  tasksOpen: boolean;
+  onTasksToggle: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "fixed bottom-4 right-4 z-40 flex size-12 items-center justify-center rounded-full shadow-lg transition-colors",
-        "bg-primary text-primary-foreground hover:bg-primary/90",
-        isOpen && "bg-accent text-foreground",
-      )}
-      aria-label="Toggle chat"
-    >
-      <MessageTextCircle02 size={20} />
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={onTasksToggle}
+        className={cn(
+          "fixed bottom-4 left-4 z-40 flex size-12 items-center justify-center rounded-full shadow-lg transition-colors",
+          tasksOpen
+            ? "bg-accent text-foreground"
+            : "bg-primary text-primary-foreground hover:bg-primary/90",
+        )}
+        aria-label="Toggle tasks"
+      >
+        <CheckDone01 size={20} />
+      </button>
+      <button
+        type="button"
+        onClick={onChatToggle}
+        className={cn(
+          "fixed bottom-4 right-4 z-40 flex size-12 items-center justify-center rounded-full shadow-lg transition-colors",
+          chatOpen
+            ? "bg-accent text-foreground"
+            : "bg-primary text-primary-foreground hover:bg-primary/90",
+        )}
+        aria-label="Toggle chat"
+      >
+        <MessageTextCircle02 size={20} />
+      </button>
+    </>
   );
 }
 
 function ShellLayoutInner({ isHomeRoute }: { isHomeRoute: boolean }) {
   const [chatOpen, setChatOpen] = useDecoChatOpen();
+  const [tasksOpen, setTasksOpen] = useDecoTasksOpen();
   const isMobile = useIsMobile();
   const [chatPanelWidth] = useLocalStorage(
     LOCALSTORAGE_KEYS.decoChatPanelWidth(),
     30,
   );
+  const [tasksPanelWidth] = useLocalStorage(
+    LOCALSTORAGE_KEYS.decoTasksPanelWidth(),
+    22,
+  );
+
+  // Track open/close transitions — apply max-w + CSS transition only during
+  // the 200ms animation window, then remove so resize handles work freely.
+  const [tasksAnimating, setTasksAnimating] = useState(false);
+  const [chatAnimating, setChatAnimating] = useState(false);
+  const prevTasksOpen = useRef(tasksOpen);
+  const prevChatOpen = useRef(chatOpen);
+
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    if (prevTasksOpen.current === tasksOpen) return;
+    prevTasksOpen.current = tasksOpen;
+    setTasksAnimating(true);
+    const id = setTimeout(() => setTasksAnimating(false), 220);
+    return () => clearTimeout(id);
+  }, [tasksOpen]);
+
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    if (prevChatOpen.current === chatOpen) return;
+    prevChatOpen.current = chatOpen;
+    setChatAnimating(true);
+    const id = setTimeout(() => setChatAnimating(false), 220);
+    return () => clearTimeout(id);
+  }, [chatOpen]);
+
+  // Either panel open means the content card gets right rounding
+  const hasRightPanel = !isMobile && chatOpen && !isHomeRoute;
 
   return (
     <SidebarLayout
@@ -123,6 +208,7 @@ function ShellLayoutInner({ isHomeRoute }: { isHomeRoute: boolean }) {
           "--sidebar-width": "13.5rem",
           "--sidebar-width-mobile": "11rem",
           "--chat-panel-w": `${chatPanelWidth}cqi`,
+          "--tasks-panel-w": `${tasksPanelWidth}cqi`,
         } as Record<string, string>
       }
     >
@@ -138,19 +224,47 @@ function ShellLayoutInner({ isHomeRoute }: { isHomeRoute: boolean }) {
           className="h-full"
           style={{ overflow: "visible" }}
         >
-          {/* overflow:visible overrides the library's inline overflow:hidden
-              so the card's thin border-l at x=0 isn't clipped at the boundary */}
+          {/* Desktop: Tasks panel on the left */}
+          {!isMobile && (
+            <>
+              <PersistentTasksResizablePanel
+                className={cn(
+                  "overflow-hidden",
+                  tasksAnimating &&
+                    "transition-[max-width] duration-200 ease-[var(--ease-out-quart)]",
+                  tasksOpen
+                    ? tasksAnimating
+                      ? "max-w-[var(--tasks-panel-w)] bg-sidebar"
+                      : "bg-sidebar"
+                    : "max-w-0",
+                )}
+              >
+                <div className="h-full min-w-[var(--tasks-panel-w)] pl-1.5 pr-1.5 pb-1.5 overflow-hidden">
+                  <div className="h-full bg-background rounded-[0.75rem] overflow-hidden border border-sidebar-border shadow-sm">
+                    <TasksSidePanel />
+                  </div>
+                </div>
+              </PersistentTasksResizablePanel>
+              <ResizableHandle className="bg-sidebar" />
+            </>
+          )}
+
+          {/* Main content */}
           <ResizablePanel
             className="min-w-0 flex flex-col"
+            order={2}
             style={{ overflow: "visible" }}
           >
             <div
               className={cn(
                 "flex flex-col flex-1 min-h-0 bg-card overflow-hidden",
-                "border-t border-l border-sidebar-border",
-                "rounded-tl-[0.75rem]",
+                "border-t border-sidebar-border",
                 "transition-[border-radius] duration-200 ease-[var(--ease-out-quart)]",
-                !isMobile && chatOpen && "rounded-tr-[0.75rem] border-r",
+                // Left edge: rounded when tasks panel is open (gap visible), border-l always
+                "border-l",
+                "rounded-tl-[0.75rem]",
+                // Right edge: rounded + border when chat panel is open (gap visible)
+                hasRightPanel && "rounded-tr-[0.75rem] border-r",
                 isMobile && "rounded-tr-[0.75rem] border-r",
               )}
             >
@@ -166,9 +280,13 @@ function ShellLayoutInner({ isHomeRoute }: { isHomeRoute: boolean }) {
               <ResizableHandle className="bg-sidebar" />
               <PersistentResizablePanel
                 className={cn(
-                  "transition-[max-width] duration-200 ease-[var(--ease-out-quart)] overflow-hidden",
+                  "overflow-hidden",
+                  chatAnimating &&
+                    "transition-[max-width] duration-200 ease-[var(--ease-out-quart)]",
                   chatOpen
-                    ? "max-w-[var(--chat-panel-w)] bg-sidebar"
+                    ? chatAnimating
+                      ? "max-w-[var(--chat-panel-w)] bg-sidebar"
+                      : "bg-sidebar"
                     : "max-w-0",
                 )}
               >
@@ -183,16 +301,27 @@ function ShellLayoutInner({ isHomeRoute }: { isHomeRoute: boolean }) {
         </ResizablePanelGroup>
       </SidebarInset>
 
-      {/* Mobile: FAB + bottom Drawer for chat */}
+      {/* Mobile: FABs + bottom Drawers */}
       {!isHomeRoute && isMobile && (
         <>
-          <MobileChatFAB
-            onClick={() => setChatOpen((prev) => !prev)}
-            isOpen={chatOpen}
+          <MobileFABs
+            chatOpen={chatOpen}
+            onChatToggle={() => setChatOpen((prev) => !prev)}
+            tasksOpen={tasksOpen}
+            onTasksToggle={() => setTasksOpen((prev) => !prev)}
           />
           <Drawer open={chatOpen} onOpenChange={setChatOpen} direction="bottom">
             <DrawerContent className="h-[95dvh] max-h-[95dvh]">
               <ChatPanel />
+            </DrawerContent>
+          </Drawer>
+          <Drawer
+            open={tasksOpen}
+            onOpenChange={setTasksOpen}
+            direction="bottom"
+          >
+            <DrawerContent className="h-[95dvh] max-h-[95dvh]">
+              <TasksSidePanel />
             </DrawerContent>
           </Drawer>
         </>

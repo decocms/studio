@@ -20,6 +20,8 @@ export interface Task {
   created_by?: string;
   /** Execution status from server — includes virtual "expired" for stale in_progress tasks */
   status?: ThreadDisplayStatus;
+  /** Connection IDs that have been used in this task, ordered by first appearance */
+  agent_ids?: string[];
 }
 
 export type { ChatMessage } from "../types.ts";

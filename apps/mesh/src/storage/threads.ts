@@ -127,6 +127,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
       description: data.description ?? null,
       status: data.status ?? "completed",
       trigger_id: data.trigger_id ?? null,
+      agent_ids: JSON.stringify(data.agent_ids ?? []),
       created_at: now,
       updated_at: now,
       created_by: data.created_by,
@@ -354,6 +355,25 @@ export class SqlThreadStorage implements ThreadStoragePort {
       updated_at: now,
     }));
 
+    // Extract agent IDs from user messages metadata and merge into thread's agent_ids
+    const incomingAgentIds = unique
+      .filter((m) => m.role === "user" && m.metadata)
+      .map(
+        (m) =>
+          (m.metadata as Record<string, unknown> & { agent?: { id?: string } })
+            ?.agent?.id,
+      )
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+
+    const currentAgentIds = thread.agent_ids ?? [];
+    const mergedAgentIds = [...currentAgentIds];
+    for (const id of incomingAgentIds) {
+      if (!mergedAgentIds.includes(id)) {
+        mergedAgentIds.push(id);
+      }
+    }
+    const agentIdsChanged = mergedAgentIds.length > currentAgentIds.length;
+
     await this.db.transaction().execute(async (trx) => {
       await trx
         .insertInto("thread_messages")
@@ -369,7 +389,12 @@ export class SqlThreadStorage implements ThreadStoragePort {
         .execute();
       await trx
         .updateTable("threads")
-        .set({ updated_at: now })
+        .set({
+          updated_at: now,
+          ...(agentIdsChanged && {
+            agent_ids: JSON.stringify(mergedAgentIds),
+          }),
+        })
         .where("id", "=", threadId)
         .where("organization_id", "=", organizationId)
         .execute();
@@ -434,12 +459,22 @@ export class SqlThreadStorage implements ThreadStoragePort {
     status: string;
     trigger_id?: string | null;
     context_start_message_id?: string | null;
+    agent_ids?: string | null;
     created_at: Date | string;
     updated_at: Date | string;
     created_by: string;
     updated_by: string | null;
     hidden: boolean | number | null;
   }): Thread {
+    let agentIds: string[] = [];
+    if (row.agent_ids) {
+      try {
+        agentIds = JSON.parse(row.agent_ids);
+      } catch {
+        agentIds = [];
+      }
+    }
+
     return {
       id: row.id,
       organization_id: row.organization_id,
@@ -448,6 +483,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
       status: row.status as ThreadStatus,
       trigger_id: row.trigger_id ?? null,
       context_start_message_id: row.context_start_message_id ?? null,
+      agent_ids: agentIds,
       created_at: toIsoString(row.created_at),
       updated_at: toIsoString(row.updated_at),
       created_by: row.created_by,
