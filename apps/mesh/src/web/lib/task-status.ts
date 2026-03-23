@@ -65,7 +65,7 @@ export const STATUS_CONFIG: Record<StatusKey, StatusConfig> = {
     label: "Running",
     verb: "Agent is working",
     icon: Loading01,
-    iconClassName: "text-blue-500 animate-spin",
+    iconClassName: "text-blue-500",
     labelColor: "text-blue-600 dark:text-blue-400",
   },
   completed: {
@@ -156,7 +156,7 @@ const DISPLAY_GROUP_META: Record<
   in_progress: {
     label: "In progress",
     icon: Loading01,
-    iconClassName: "text-blue-500 animate-spin",
+    iconClassName: "text-blue-500",
   },
   done: {
     label: "Done",
@@ -169,12 +169,10 @@ function toDisplayGroupKey(status: string | undefined): DisplayGroupKey {
   switch (status) {
     case "requires_action":
       return "needs_input";
-    case "in_progress":
-    case "failed":
-    case "expired":
-      return "in_progress";
-    default:
+    case "completed":
       return "done";
+    default:
+      return "in_progress";
   }
 }
 
@@ -227,24 +225,54 @@ export function hasPendingUserAsk(
       "type" in part &&
       part.type === "tool-user_ask" &&
       "state" in part &&
-      part.state !== "output-available",
+      part.state === "input-available",
+  );
+}
+
+/**
+ * Check if a task has a pending tool approval request.
+ * Only works when messages are cached in the store.
+ */
+export function hasPendingApproval(
+  messages: ChatMessage[] | undefined,
+): boolean {
+  if (!messages || messages.length === 0) return false;
+  const last = messages.at(-1);
+  if (!last || last.role !== "assistant") return false;
+  return last.parts.some(
+    (part) => "state" in part && part.state === "approval-requested",
   );
 }
 
 /**
  * Get the display verb for a task, considering cached message state.
- * If the task has requires_action status and a pending user_ask, shows "Needs your answer".
+ * Returns null when no verb should be shown (normal in_progress/completed).
+ * Only shows a verb when the task actually needs attention:
+ * - Pending user_ask → "Needs your answer"
+ * - Pending approval → "Needs approval"
+ * - Failed/expired → "Something went wrong" / "Stopped responding"
  */
 export function getTaskVerb(
   task: Task,
   cachedMessages?: ChatMessage[],
-): { verb: string; labelColor: string } {
+): { verb: string; labelColor: string } | null {
   const config = getStatusConfig(task.status);
-  if (task.status === "requires_action" && hasPendingUserAsk(cachedMessages)) {
-    return {
-      verb: "Needs your answer",
-      labelColor: config.labelColor,
-    };
+
+  if (task.status === "requires_action") {
+    if (hasPendingUserAsk(cachedMessages)) {
+      return { verb: "Needs your answer", labelColor: config.labelColor };
+    }
+    if (hasPendingApproval(cachedMessages)) {
+      return { verb: "Needs approval", labelColor: config.labelColor };
+    }
+    // No specific action detected — don't show a generic verb
+    return null;
   }
-  return { verb: config.verb, labelColor: config.labelColor };
+
+  if (task.status === "failed" || task.status === "expired") {
+    return { verb: config.verb, labelColor: config.labelColor };
+  }
+
+  // in_progress, completed — no verb needed
+  return null;
 }

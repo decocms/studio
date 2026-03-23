@@ -36,6 +36,7 @@ export function buildOptimisticTask(id: string): Task {
     title: "New chat", // Empty title until first message generates one
     created_at: now,
     updated_at: now,
+    // agent_ids intentionally omitted — populated on first sendMessage via addAgentToTask
   };
 }
 
@@ -46,5 +47,7 @@ export function findNextAvailableTask(
   tasks: Task[],
   currentTaskId: string,
 ): Task | null {
-  return tasks.find((task) => task.id !== currentTaskId) ?? null;
+  return (
+    tasks.find((task) => task.id !== currentTaskId && !task.hidden) ?? null
+  );
 }

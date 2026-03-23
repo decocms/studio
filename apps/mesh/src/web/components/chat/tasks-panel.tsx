@@ -16,6 +16,7 @@ import {
   isActionable,
   STATUS_CONFIG,
   type DisplayGroup,
+  type StatusKey,
 } from "@/web/lib/task-status";
 import type { Task } from "./task/types";
 import {
@@ -35,24 +36,23 @@ import {
   FilterLines,
   Loading01,
   Plus,
+  Archive,
 } from "@untitledui/icons";
 import { EmptyState } from "@/web/components/empty-state.tsx";
 import { Suspense, useRef, useState } from "react";
 import { ErrorBoundary } from "../error-boundary";
 import { User as UserIcon, Users as UsersIcon } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.js";
 import { Button } from "@deco/ui/components/button.js";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@deco/ui/components/popover.tsx";
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@deco/ui/components/dropdown-menu.js";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -64,7 +64,6 @@ import {
   ContextMenuTrigger,
 } from "@deco/ui/components/context-menu.tsx";
 import type { TaskOwnerFilter } from "./task";
-import type { ConnectionEntity } from "@decocms/mesh-sdk";
 import { useChatStore } from "./store/selectors";
 
 // ────────────────────────────────────────
@@ -159,7 +158,10 @@ function AgentAvatarStack({
   defaultAgent,
 }: {
   agentIds: string[];
-  connectionMap: Map<string, ConnectionEntity>;
+  connectionMap: Map<
+    string,
+    { icon: string | null | undefined; title: string }
+  >;
   defaultAgent: { icon: string | null | undefined; title: string };
 }) {
   const display =
@@ -172,15 +174,30 @@ function AgentAvatarStack({
 
   const extra = Math.max(0, agentIds.length - 2);
 
+  const total = display.length + (extra > 0 ? 1 : 0);
+
   return (
-    <div className="flex -space-x-1 shrink-0">
+    <div className="flex shrink-0">
       {display.map((agent, i) => (
-        <div key={i} className="ring-1 ring-background rounded-full">
+        <div
+          key={i}
+          style={{ zIndex: total - i }}
+          className={cn(
+            "ring-1 ring-background rounded-md transition-all duration-150 ease-out",
+            i > 0 && "-ml-[20px] group-hover/row:-ml-1",
+          )}
+        >
           <AgentAvatar icon={agent.icon} name={agent.title} size="xs" />
         </div>
       ))}
       {extra > 0 && (
-        <div className="flex items-center justify-center size-5 rounded-full bg-muted text-[9px] font-medium text-muted-foreground ring-1 ring-background">
+        <div
+          style={{ zIndex: 0 }}
+          className={cn(
+            "flex items-center justify-center size-6 rounded-md bg-muted text-[9px] font-medium text-muted-foreground ring-1 ring-background transition-all duration-150 ease-out",
+            "-ml-[20px] group-hover/row:-ml-1",
+          )}
+        >
           +{extra}
         </div>
       )}
@@ -207,22 +224,24 @@ function GroupHeader({
     <button
       type="button"
       onClick={onToggle}
-      className="flex items-center gap-2 px-4 py-2 w-full hover:bg-accent/30 transition-colors cursor-pointer"
+      className="group flex items-center gap-1.5 px-4 py-3 w-full hover:bg-accent/30 transition-colors cursor-pointer"
     >
+      <Icon size={14} className={group.iconClassName} />
+      <span className="text-sm font-medium text-muted-foreground">
+        {group.label}
+      </span>
+      {!isOpen && (
+        <span className="text-xs text-muted-foreground/60 tabular-nums">
+          {group.tasks.length}
+        </span>
+      )}
       <ChevronRight
         size={12}
         className={cn(
-          "text-muted-foreground transition-transform duration-150",
+          "text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-all duration-150",
           isOpen && "rotate-90",
         )}
       />
-      <Icon size={14} className={group.iconClassName} />
-      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-        {group.label}
-      </span>
-      <span className="text-xs text-muted-foreground/60 tabular-nums">
-        {group.tasks.length}
-      </span>
     </button>
   );
 }
@@ -240,14 +259,17 @@ function TaskRow({
 }: {
   task: Task;
   isActive: boolean;
-  connectionMap: Map<string, ConnectionEntity>;
+  connectionMap: Map<
+    string,
+    { icon: string | null | undefined; title: string }
+  >;
   defaultAgent: { icon: string | null | undefined; title: string };
   onClick: () => void;
 }) {
   const { setTaskStatus, hideTask } = useChatStable();
   const status = task.status;
   const cachedMessages = useChatStore((s) => s.threadMessages[task.id]);
-  const { verb, labelColor } = getTaskVerb(task, cachedMessages);
+  const taskVerb = getTaskVerb(task, cachedMessages);
 
   const agentIds = task.agent_ids ?? [];
   const firstAgentId = agentIds[0];
@@ -264,7 +286,7 @@ function TaskRow({
       <ContextMenuTrigger asChild>
         <div
           className={cn(
-            "flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors",
+            "group/row relative flex items-center gap-3 px-4 py-3.5 cursor-pointer transition-colors",
             isActive ? "bg-accent" : "hover:bg-accent/50",
           )}
           onClick={onClick}
@@ -286,19 +308,38 @@ function TaskRow({
                 text={task.title || "Untitled"}
                 className="text-sm text-foreground flex-1 min-w-0"
               />
-              <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+              <span className="text-xs text-muted-foreground tabular-nums shrink-0 whitespace-nowrap opacity-100 group-hover/row:opacity-0 transition-opacity">
                 {task.updated_at
                   ? formatTimeAgo(new Date(task.updated_at))
                   : ""}
               </span>
             </div>
-            {/* Line 2: agent name · status verb */}
-            <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            {/* Line 2: agent name · status verb (only when actionable) */}
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
               <span className="truncate">{primaryAgent.title}</span>
-              <span>·</span>
-              <span className={cn("shrink-0", labelColor)}>{verb}</span>
+              {taskVerb && (
+                <>
+                  <span>·</span>
+                  <span className={cn("shrink-0", taskVerb.labelColor)}>
+                    {taskVerb.verb}
+                  </span>
+                </>
+              )}
             </div>
           </div>
+
+          {/* Archive button — shown on hover */}
+          <button
+            type="button"
+            className="absolute right-3 top-1/2 -translate-y-1/2 size-6 flex items-center justify-center rounded-md hover:bg-accent transition-opacity opacity-0 group-hover/row:opacity-100"
+            onClick={(e) => {
+              e.stopPropagation();
+              hideTask(task.id);
+            }}
+            title="Archive"
+          >
+            <Archive size={14} className="text-muted-foreground" />
+          </button>
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-48">
@@ -338,14 +379,10 @@ function TaskRow({
 }
 
 // ────────────────────────────────────────
-// Filter popover
+// Filter dropdown
 // ────────────────────────────────────────
 
-const STATUS_FILTER_OPTIONS = Object.entries(STATUS_CONFIG).map(
-  ([key, cfg]) => ({ key, label: cfg.label }),
-);
-
-function FilterPopover({
+function FilterDropdown({
   statusFilter,
   agentFilter,
   availableAgents,
@@ -354,95 +391,80 @@ function FilterPopover({
   onStatusChange,
   onAgentChange,
 }: {
-  statusFilter: Set<string>;
+  statusFilter: Set<StatusKey>;
   agentFilter: Set<string>;
   availableAgents: string[];
-  connectionMap: Map<string, ConnectionEntity>;
+  connectionMap: Map<
+    string,
+    { icon: string | null | undefined; title: string }
+  >;
   defaultAgent: { icon: string | null | undefined; title: string };
-  onStatusChange: (status: string) => void;
+  onStatusChange: (status: StatusKey) => void;
   onAgentChange: (agentId: string) => void;
 }) {
   const hasFilters = statusFilter.size > 0 || agentFilter.size > 0;
+  const showAgents = availableAgents.length > 1;
 
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          variant="ghost"
-          className="size-7 relative"
-          title="Filter tasks"
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="relative flex size-7 items-center justify-center rounded-md hover:bg-accent transition-colors shrink-0"
+          title="Filter"
         >
-          <FilterLines size={14} className="text-muted-foreground" />
+          <FilterLines
+            size={14}
+            className={cn(
+              hasFilters ? "text-foreground" : "text-muted-foreground/50",
+            )}
+          />
           {hasFilters && (
             <span className="absolute top-1 right-1 size-1.5 rounded-full bg-blue-500" />
           )}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-52 p-3">
-        <div className="flex flex-col gap-3">
-          {/* Status */}
-          <div>
-            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5">
-              Status
-            </p>
-            <div className="flex flex-col gap-1">
-              {STATUS_FILTER_OPTIONS.map(({ key, label }) => (
-                <label
-                  key={key}
-                  className="flex items-center gap-2 cursor-pointer"
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuLabel className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Status
+        </DropdownMenuLabel>
+        {Object.entries(STATUS_CONFIG).map(([key, cfg]) => {
+          const Icon = cfg.icon;
+          return (
+            <DropdownMenuCheckboxItem
+              key={key}
+              checked={statusFilter.has(key as StatusKey)}
+              onCheckedChange={() => onStatusChange(key as StatusKey)}
+            >
+              <Icon size={12} className={cfg.iconClassName} />
+              {cfg.label}
+            </DropdownMenuCheckboxItem>
+          );
+        })}
+        {showAgents && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Agent
+            </DropdownMenuLabel>
+            {availableAgents.map((agentId) => {
+              const conn = connectionMap.get(agentId);
+              const agent = conn ?? defaultAgent;
+              return (
+                <DropdownMenuCheckboxItem
+                  key={agentId}
+                  checked={agentFilter.has(agentId)}
+                  onCheckedChange={() => onAgentChange(agentId)}
                 >
-                  <input
-                    type="checkbox"
-                    checked={statusFilter.has(key)}
-                    onChange={() => onStatusChange(key)}
-                    className="rounded border-border accent-foreground"
-                  />
-                  <span className="text-xs text-foreground">{label}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          {/* Agent — only shown if there are multiple agents in current tasks */}
-          {availableAgents.length > 1 && (
-            <div>
-              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5">
-                Agent
-              </p>
-              <div className="flex flex-col gap-1">
-                {availableAgents.map((agentId) => {
-                  const conn = connectionMap.get(agentId);
-                  const agent = conn
-                    ? { icon: conn.icon, title: conn.title }
-                    : defaultAgent;
-                  return (
-                    <label
-                      key={agentId}
-                      className="flex items-center gap-2 cursor-pointer"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={agentFilter.has(agentId)}
-                        onChange={() => onAgentChange(agentId)}
-                        className="rounded border-border accent-foreground"
-                      />
-                      <AgentAvatar
-                        icon={agent.icon}
-                        name={agent.title}
-                        size="xs"
-                      />
-                      <span className="text-xs text-foreground truncate">
-                        {agent.title}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      </PopoverContent>
-    </Popover>
+                  <AgentAvatar icon={agent.icon} name={agent.title} size="xs" />
+                  <span className="truncate">{agent.title}</span>
+                </DropdownMenuCheckboxItem>
+              );
+            })}
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -456,22 +478,34 @@ interface TaskListContentProps {
 
 export function TaskListContent({ onTaskSelect }: TaskListContentProps) {
   const { activeTaskId, switchToTask } = useChat();
-  const { tasks } = useChatStable();
+  const { tasks, virtualMcps } = useChatStable();
   const { org } = useProjectContext();
 
   const connections = useConnections();
-  const connectionMap = new Map<string, ConnectionEntity>(
-    (connections ?? []).map((c): [string, ConnectionEntity] => [c.id, c]),
-  );
+  // Build a unified agent lookup: connections + virtual MCPs
+  const connectionMap = new Map<
+    string,
+    { icon: string | null | undefined; title: string }
+  >();
+  for (const c of connections ?? []) {
+    connectionMap.set(c.id, { icon: c.icon, title: c.title });
+  }
+  for (const v of virtualMcps) {
+    if (v.id) connectionMap.set(v.id, { icon: v.icon, title: v.title });
+  }
 
   const defaultAgent = getWellKnownDecopilotVirtualMCP(org.id);
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
+  const [statusFilter, setStatusFilter] = useState<Set<StatusKey>>(new Set());
   const [agentFilter, setAgentFilter] = useState<Set<string>>(new Set());
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const visible = tasks.filter((t) => !t.hidden);
+
+  const availableAgents = [
+    ...new Set(visible.flatMap((t) => t.agent_ids ?? [])),
+  ];
 
   const searched = searchQuery.trim()
     ? visible.filter((t) =>
@@ -479,47 +513,20 @@ export function TaskListContent({ onTaskSelect }: TaskListContentProps) {
       )
     : visible;
 
-  // Apply status + agent filters
   const filtered = searched.filter((task) => {
     if (
       statusFilter.size > 0 &&
-      !statusFilter.has(task.status ?? "completed")
-    ) {
+      !statusFilter.has((task.status ?? "completed") as StatusKey)
+    )
       return false;
-    }
-    if (
-      agentFilter.size > 0 &&
-      !task.agent_ids?.some((id) => agentFilter.has(id))
-    ) {
-      return false;
+    if (agentFilter.size > 0) {
+      const taskAgents = task.agent_ids ?? [];
+      if (!taskAgents.some((id) => agentFilter.has(id))) return false;
     }
     return true;
   });
 
   const groups = buildDisplayGroups(filtered);
-
-  // Collect unique agent IDs across all visible tasks for the filter
-  const availableAgents = [
-    ...new Set(visible.flatMap((t) => t.agent_ids ?? [])),
-  ];
-
-  const toggleStatus = (key: string) => {
-    setStatusFilter((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
-  const toggleAgent = (id: string) => {
-    setAgentFilter((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
 
   const toggleGroup = (key: string) => {
     setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -535,8 +542,8 @@ export function TaskListContent({ onTaskSelect }: TaskListContentProps) {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      {/* Search + filter row */}
-      <div className="flex items-center gap-1 px-1">
+      {/* Search + Filter */}
+      <div className="px-2 pt-1 pb-1 flex items-center gap-1">
         <div className="flex-1">
           <CollectionSearch
             value={searchQuery}
@@ -550,14 +557,28 @@ export function TaskListContent({ onTaskSelect }: TaskListContentProps) {
             }}
           />
         </div>
-        <FilterPopover
+        <FilterDropdown
           statusFilter={statusFilter}
           agentFilter={agentFilter}
           availableAgents={availableAgents}
           connectionMap={connectionMap}
           defaultAgent={defaultAgent}
-          onStatusChange={toggleStatus}
-          onAgentChange={toggleAgent}
+          onStatusChange={(s) =>
+            setStatusFilter((prev) => {
+              const next = new Set(prev);
+              if (next.has(s)) next.delete(s);
+              else next.add(s);
+              return next;
+            })
+          }
+          onAgentChange={(a) =>
+            setAgentFilter((prev) => {
+              const next = new Set(prev);
+              if (next.has(a)) next.delete(a);
+              else next.add(a);
+              return next;
+            })
+          }
         />
       </div>
 
@@ -581,7 +602,7 @@ export function TaskListContent({ onTaskSelect }: TaskListContentProps) {
             className="py-12"
           />
         ) : (
-          <div className="flex flex-col">
+          <div className="flex flex-col gap-1">
             {groups.map((group) => {
               const isGroupOpen = !collapsed[group.key];
               return (

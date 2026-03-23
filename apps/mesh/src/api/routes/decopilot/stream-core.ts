@@ -405,7 +405,7 @@ export async function streamCore(
         const shouldGenerateTitle =
           mem.thread.title === DEFAULT_THREAD_TITLE && !isClaudeCode;
         if (shouldGenerateTitle) {
-          genTitle({
+          const titleOp = genTitle({
             abortSignal: registrySignal,
             model: createLanguageModel(
               provider!,
@@ -439,6 +439,7 @@ export async function streamCore(
                 error,
               );
             });
+          pendingOps.push(titleOp);
         }
 
         let reasoningStartAt: Date | null = null;

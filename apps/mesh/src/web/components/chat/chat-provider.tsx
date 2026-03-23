@@ -84,6 +84,10 @@ function ThreadListSync() {
     createTask: () => {
       return taskManagerRef.current.createTask();
     },
+    addAgentToTask: (taskId, agentId) =>
+      taskManagerRef.current.addAgentToTask(taskId, agentId),
+    updateTaskInCache: (taskId, updates) =>
+      taskManagerRef.current.updateTask(taskId, updates),
   });
 
   return null;

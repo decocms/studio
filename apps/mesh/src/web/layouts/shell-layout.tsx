@@ -85,7 +85,7 @@ function PersistentTasksResizablePanel({
   return (
     <ResizablePanel
       defaultSize={tasksPanelWidth}
-      minSize={20}
+      minSize={24}
       className={cn("min-w-0", className)}
       onResize={handleResize}
       order={1}
@@ -239,7 +239,7 @@ function ShellLayoutInner({ isHomeRoute }: { isHomeRoute: boolean }) {
                     : "max-w-0",
                 )}
               >
-                <div className="h-full min-w-[var(--tasks-panel-w)] pl-1.5 pr-1.5 pb-1.5 overflow-hidden">
+                <div className="h-full min-w-[var(--tasks-panel-w)] pr-1.5 pb-1.5 overflow-hidden">
                   <div className="h-full bg-background rounded-[0.75rem] overflow-hidden border border-sidebar-border shadow-sm">
                     <TasksSidePanel />
                   </div>

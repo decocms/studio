@@ -25,6 +25,8 @@ import { useLocalStorage } from "../../../hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "../../../lib/localstorage-keys";
 import { KEYS } from "../../../lib/query-keys";
 import { useDecopilotEvents } from "../../../hooks/use-decopilot-events";
+import { useTaskReadState } from "../../../hooks/use-task-read-state";
+import { chatStore } from "../store/chat-store";
 import {
   addTaskToCache,
   prefetchTaskMessages,
@@ -149,6 +151,7 @@ export function useTaskManager() {
   const { locator, org } = useProjectContext();
   const queryClient = useQueryClient();
   const { prefillCollectionCache } = useCollectionCachePrefill();
+  const { markTaskRead } = useTaskReadState();
 
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
@@ -249,6 +252,7 @@ export function useTaskManager() {
   const switchToTask = async (taskId: string) => {
     await prefetchTaskMessages(queryClient, client, org.id, taskId);
     setActiveTaskId(taskId);
+    markTaskRead(taskId);
   };
 
   /**
@@ -267,8 +271,37 @@ export function useTaskManager() {
   };
 
   /**
+   * Add an agent ID to a task's agent_ids (deduplicated, append-only).
+   * Called optimistically when sending a message so the avatar updates immediately.
+   */
+  const addAgentToTask = (taskId: string, agentId: string) => {
+    // Read current task to get existing agent_ids
+    for (const filter of ["me", "everyone"] as const) {
+      const filterUserId = filter === "me" ? userId : undefined;
+      const cached = queryClient.getQueryData<TasksInfiniteQueryData>(
+        KEYS.tasks(locator, filter, filterUserId),
+      );
+      if (!cached) continue;
+      const task = cached.pages
+        .flatMap((p) => p.items)
+        .find((t) => t.id === taskId);
+      if (!task) continue;
+      const current = task.agent_ids ?? [];
+      if (current.includes(agentId)) return; // Already present
+      updateTaskInCache(
+        queryClient,
+        locator,
+        taskId,
+        { agent_ids: [...current, agentId] },
+        filter,
+        filterUserId,
+      );
+    }
+  };
+
+  /**
    * Set the status of a task
-   * Calls backend to update task status, then updates cache
+   * Calls backend to update task status, then updates both caches
    */
   const setTaskStatus = async (taskId: string, status: string) => {
     try {
@@ -281,17 +314,20 @@ export function useTaskManager() {
           | "completed",
       });
       if (updatedTask) {
-        updateTaskInCache(
-          queryClient,
-          locator,
-          taskId,
-          {
-            status: updatedTask.status,
-            updated_at: updatedTask.updated_at ?? new Date().toISOString(),
-          },
-          ownerFilter,
-          ownerFilter === "me" ? userId : undefined,
-        );
+        const updates = {
+          status: updatedTask.status,
+          updated_at: updatedTask.updated_at ?? new Date().toISOString(),
+        };
+        for (const filter of ["me", "everyone"] as const) {
+          updateTaskInCache(
+            queryClient,
+            locator,
+            taskId,
+            updates,
+            filter,
+            filter === "me" ? userId : undefined,
+          );
+        }
       }
     } catch (error) {
       const err = error as Error;
@@ -435,6 +471,7 @@ export function useTaskManager() {
     createTask,
     switchToTask,
     updateTask,
+    addAgentToTask,
     renameTask,
     hideTask,
     setTaskStatus,

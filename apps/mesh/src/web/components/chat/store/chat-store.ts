@@ -106,6 +106,11 @@ class ChatStore {
     | ((taskId: string, status: string) => Promise<void>)
     | null = null;
   private createTaskFn: (() => string) | null = null;
+  private addAgentToTaskFn: ((taskId: string, agentId: string) => void) | null =
+    null;
+  private updateTaskInCacheFn:
+    | ((taskId: string, updates: Partial<Task>) => void)
+    | null = null;
 
   constructor() {
     this.state = this.defaultState();
@@ -240,12 +245,16 @@ class ChatStore {
     renameTask: (taskId: string, title: string) => Promise<void>;
     setTaskStatus: (taskId: string, status: string) => Promise<void>;
     createTask: () => string;
+    addAgentToTask: (taskId: string, agentId: string) => void;
+    updateTaskInCache: (taskId: string, updates: Partial<Task>) => void;
   }): void {
     this.updateMessagesCacheFn = helpers.updateMessagesCache;
     this.hideTaskFn = helpers.hideTask;
     this.renameTaskFn = helpers.renameTask;
     this.setTaskStatusFn = helpers.setTaskStatus;
     this.createTaskFn = helpers.createTask;
+    this.addAgentToTaskFn = helpers.addAgentToTask;
+    this.updateTaskInCacheFn = helpers.updateTaskInCache;
   }
 
   // ---- Thread operations ----
@@ -332,6 +341,11 @@ class ChatStore {
   }
 
   renameThreadLocally(threadId: string, title: string): void {
+    // Update React Query cache so ThreadListSync doesn't overwrite this change
+    this.updateTaskInCacheFn?.(threadId, {
+      title,
+      updated_at: new Date().toISOString(),
+    });
     const threads = this.state.threads.map((t) =>
       t.id === threadId
         ? { ...t, title, updated_at: new Date().toISOString() }
@@ -536,6 +550,10 @@ class ChatStore {
     const decopilotId = getWellKnownDecopilotVirtualMCP(this.state.org.id).id;
     const selectedAgent = this.state.selectedAgent;
     const effectiveKeyId = this.state.credentialId;
+
+    // Optimistically ensure the selected agent appears in agent_ids
+    const effectiveAgentId = selectedAgent?.id ?? decopilotId;
+    this.addAgentToTaskFn?.(this.state.activeThreadId, effectiveAgentId);
 
     // Determine effective tool approval level for metadata persistence
     const effectiveApprovalLevel =

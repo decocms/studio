@@ -34,13 +34,13 @@ import {
   useConnections,
   useIsOrgAdmin,
   useProjectContext,
-  type ConnectionEntity,
 } from "@decocms/mesh-sdk";
 import {
   CheckDone02,
   ChevronRight,
   Loading01,
   SearchMd,
+  Archive,
 } from "@untitledui/icons";
 import { useNavigate } from "@tanstack/react-router";
 import { Suspense, useRef, useState } from "react";
@@ -105,20 +105,24 @@ function StatusGroupHeader({
     <button
       type="button"
       onClick={onToggle}
-      className="flex items-center gap-2 px-6 py-2.5 w-full hover:bg-accent/30 transition-colors cursor-pointer"
+      className="group flex items-center gap-2 px-6 py-2.5 w-full hover:bg-accent/30 transition-colors cursor-pointer"
     >
+      <Icon size={16} className={group.iconClassName} />
+      <span className="text-sm font-medium text-muted-foreground">
+        {group.label}
+      </span>
+      {!isOpen && (
+        <span className="text-sm text-muted-foreground/60 tabular-nums">
+          {group.tasks.length}
+        </span>
+      )}
       <ChevronRight
         size={14}
         className={cn(
-          "text-muted-foreground transition-transform duration-150",
+          "text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-all duration-150",
           isOpen && "rotate-90",
         )}
       />
-      <Icon size={16} className={group.iconClassName} />
-      <span className="text-sm font-medium text-foreground">{group.label}</span>
-      <span className="text-sm text-muted-foreground tabular-nums">
-        {group.tasks.length}
-      </span>
     </button>
   );
 }
@@ -133,7 +137,10 @@ function AgentAvatarStack({
   defaultAgent,
 }: {
   agentIds: string[];
-  connectionMap: Map<string, ConnectionEntity>;
+  connectionMap: Map<
+    string,
+    { icon: string | null | undefined; title: string }
+  >;
   defaultAgent: { icon: string | null | undefined; title: string };
 }) {
   const display =
@@ -171,11 +178,16 @@ function TaskRow({
   connectionMap,
   defaultAgent,
   onOpen,
+  onArchive,
 }: {
   task: Task;
-  connectionMap: Map<string, ConnectionEntity>;
+  connectionMap: Map<
+    string,
+    { icon: string | null | undefined; title: string }
+  >;
   defaultAgent: { icon: string | null | undefined; title: string };
   onOpen: () => void;
+  onArchive: () => void;
 }) {
   const agentIds = task.agent_ids ?? [];
   const firstAgentId = agentIds[0];
@@ -188,11 +200,11 @@ function TaskRow({
       : defaultAgent;
 
   const cachedMessages = useChatStore((s) => s.threadMessages[task.id]);
-  const { verb, labelColor } = getTaskVerb(task, cachedMessages);
+  const taskVerb = getTaskVerb(task, cachedMessages);
 
   return (
     <div
-      className="flex items-start gap-3 px-6 py-3 hover:bg-accent/40 transition-colors cursor-pointer"
+      className="group/row relative flex items-start gap-3 px-6 py-4 hover:bg-accent/40 transition-colors cursor-pointer"
       onClick={onOpen}
     >
       {/* Agent avatar stack */}
@@ -213,8 +225,12 @@ function TaskRow({
         {/* Line 2: Metadata */}
         <div className="flex items-center gap-1.5 mt-0.5 text-xs text-muted-foreground">
           <span>{primaryAgent.title}</span>
-          <span>·</span>
-          <span className={labelColor}>{verb}</span>
+          {taskVerb && (
+            <>
+              <span>·</span>
+              <span className={taskVerb.labelColor}>{taskVerb.verb}</span>
+            </>
+          )}
           {task.updated_at && (
             <>
               <span>·</span>
@@ -226,9 +242,24 @@ function TaskRow({
         </div>
       </div>
 
-      {/* Right: creator avatar */}
-      <div className="hidden md:flex items-center pt-0.5 shrink-0">
-        {task.created_by && <User id={task.created_by} size="3xs" avatarOnly />}
+      {/* Right: creator avatar + archive on hover */}
+      <div className="flex items-center pt-0.5 shrink-0">
+        <div className="hidden md:block opacity-100 group-hover/row:opacity-0 transition-opacity">
+          {task.created_by && (
+            <User id={task.created_by} size="3xs" avatarOnly />
+          )}
+        </div>
+        <button
+          type="button"
+          className="absolute right-5 top-1/2 -translate-y-1/2 flex size-7 items-center justify-center rounded-md hover:bg-accent transition-opacity opacity-0 group-hover/row:opacity-100"
+          onClick={(e) => {
+            e.stopPropagation();
+            onArchive();
+          }}
+          title="Archive"
+        >
+          <Archive size={14} className="text-muted-foreground" />
+        </button>
       </div>
     </div>
   );
@@ -242,12 +273,20 @@ function TasksPageContent() {
   const { org, project } = useProjectContext();
   const isOrgAdmin = useIsOrgAdmin();
   const navigate = useNavigate();
-  const { switchToTask, tasks } = useChatStable();
+  const { switchToTask, hideTask, tasks, virtualMcps } = useChatStable();
 
   const connections = useConnections();
-  const connectionMap = new Map<string, ConnectionEntity>(
-    (connections ?? []).map((c): [string, ConnectionEntity] => [c.id, c]),
-  );
+  // Build a unified agent lookup: connections + virtual MCPs
+  const connectionMap = new Map<
+    string,
+    { icon: string | null | undefined; title: string }
+  >();
+  for (const c of connections ?? []) {
+    connectionMap.set(c.id, { icon: c.icon, title: c.title });
+  }
+  for (const v of virtualMcps) {
+    if (v.id) connectionMap.set(v.id, { icon: v.icon, title: v.title });
+  }
 
   const [searchQuery, setSearchQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -356,7 +395,7 @@ function TasksPageContent() {
             className="py-20"
           />
         ) : (
-          <div className="flex flex-col">
+          <div className="flex flex-col gap-2">
             {groups.map((group) => {
               const isGroupOpen = !collapsed[group.key];
               return (
@@ -374,6 +413,7 @@ function TasksPageContent() {
                         connectionMap={connectionMap}
                         defaultAgent={defaultAgent}
                         onOpen={() => handleOpen(task.id)}
+                        onArchive={() => hideTask(task.id)}
                       />
                     ))}
                 </div>
