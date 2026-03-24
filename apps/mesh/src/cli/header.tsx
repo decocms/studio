@@ -1,6 +1,8 @@
 import { Box, Text } from "ink";
 import { Spinner } from "@inkjs/ui";
+import { useSyncExternalStore } from "react";
 import pkg from "../../package.json" with { type: "json" };
+import { getCapyFrame, subscribeCapyFrame } from "./capy-animation";
 
 export interface ServiceStatus {
   name: string;
@@ -52,18 +54,42 @@ export function Header({
   serverUrl,
   vibe,
 }: HeaderProps) {
+  const capyFrame = useSyncExternalStore(subscribeCapyFrame, getCapyFrame);
+
   return (
     <Box flexDirection="column" paddingBottom={1}>
-      <Box flexDirection="column">
-        {ASCII_LINES.map((line, i) => (
-          <Text key={i} color={GRADIENT_COLORS[i]}>
-            {line}
-          </Text>
-        ))}
-        <Text dimColor> v{pkg.version}</Text>
+      <Box flexDirection="row" gap={1}>
+        {vibe && (
+          <Box flexDirection="column">
+            {capyFrame.map((line, i) => (
+              <Box key={i} flexDirection="row">
+                {line.map((seg, j) =>
+                  seg.color ? (
+                    <Text key={j} color={seg.color}>
+                      {seg.text}
+                    </Text>
+                  ) : (
+                    <Text key={j}>{seg.text}</Text>
+                  ),
+                )}
+              </Box>
+            ))}
+          </Box>
+        )}
+        <Box flexDirection="column" marginTop={1}>
+          {ASCII_LINES.map((line, i) => (
+            <Text key={i} color={GRADIENT_COLORS[i]}>
+              {line}
+            </Text>
+          ))}
+          <Text dimColor> v{pkg.version}</Text>
+        </Box>
       </Box>
+      <Text dimColor marginBottom={1}>
+        {"─".repeat(80)}
+      </Text>
 
-      <Box marginTop={1}>
+      <Box>
         <Text dimColor>Home: {home}</Text>
       </Box>
 
