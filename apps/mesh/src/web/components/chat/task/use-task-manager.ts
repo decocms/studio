@@ -308,7 +308,6 @@ export function useTaskManager() {
         status: status as
           | "requires_action"
           | "failed"
-          | "expired"
           | "in_progress"
           | "completed",
       });

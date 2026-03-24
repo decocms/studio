@@ -9,7 +9,6 @@
 import { Page } from "@/web/components/page";
 import { useDecoChatOpen } from "@/web/hooks/use-deco-chat-open";
 import { useDecoTasksOpen } from "@/web/hooks/use-deco-tasks-open";
-import { cn } from "@deco/ui/lib/utils.ts";
 import { Loading01, Plus, X } from "@untitledui/icons";
 import { Suspense, useTransition } from "react";
 import { ErrorBoundary } from "../error-boundary";
