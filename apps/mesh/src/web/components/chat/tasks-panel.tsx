@@ -691,7 +691,7 @@ function TasksPanelSkeleton() {
   );
 }
 
-export function TasksPanel({
+function TasksPanel({
   className,
   onTaskSelect,
 }: {

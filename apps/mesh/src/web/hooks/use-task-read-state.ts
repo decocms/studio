@@ -13,7 +13,7 @@ export function useTaskReadState() {
   const { org, project } = useProjectContext();
   const locator = `${org.id}/${project.id}` as const;
 
-  const [viewed, setViewed] = useLocalStorage<ViewedMap>(
+  const [, setViewed] = useLocalStorage<ViewedMap>(
     LOCALSTORAGE_KEYS.taskLastViewed(locator),
     (existing) => existing ?? {},
   );

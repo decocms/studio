@@ -26,7 +26,6 @@ import { LOCALSTORAGE_KEYS } from "../../../lib/localstorage-keys";
 import { KEYS } from "../../../lib/query-keys";
 import { useDecopilotEvents } from "../../../hooks/use-decopilot-events";
 import { useTaskReadState } from "../../../hooks/use-task-read-state";
-import { chatStore } from "../store/chat-store";
 import {
   addTaskToCache,
   prefetchTaskMessages,

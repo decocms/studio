@@ -89,10 +89,6 @@ export function getStatusConfig(status: string | undefined): StatusConfig {
   return STATUS_CONFIG[(status ?? "completed") as StatusKey] ?? UNKNOWN;
 }
 
-export function resolveStatus(task: Task): StatusKey {
-  return (task.status as StatusKey) ?? "completed";
-}
-
 /** "Needs your attention" */
 export function isActionable(status: string | undefined): boolean {
   return (
@@ -103,31 +99,6 @@ export function isActionable(status: string | undefined): boolean {
 /** Not yet done */
 export function isOpen(status: string | undefined): boolean {
   return status === "in_progress" || isActionable(status);
-}
-
-/** Sort: most recently updated first. Urgency is shown as visual indicators only. */
-export function sortByRecency(tasks: Task[]): Task[] {
-  return [...tasks].sort(
-    (a, b) =>
-      new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
-  );
-}
-
-/** Sort: actionable first, then running, then done. Newest first within each. */
-export function sortByUrgency(tasks: Task[]): Task[] {
-  const priority: Record<string, number> = {
-    requires_action: 0,
-    failed: 1,
-    expired: 2,
-    in_progress: 3,
-    completed: 4,
-  };
-  return [...tasks].sort((a, b) => {
-    const pa = priority[resolveStatus(a)] ?? 5;
-    const pb = priority[resolveStatus(b)] ?? 5;
-    if (pa !== pb) return pa - pb;
-    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
-  });
 }
 
 // ============================================================================
@@ -214,9 +185,7 @@ export function buildDisplayGroups(tasks: Task[]): DisplayGroup[] {
  * Check if a task has a pending user_ask tool call (unanswered question).
  * Only works when messages are cached in the store.
  */
-export function hasPendingUserAsk(
-  messages: ChatMessage[] | undefined,
-): boolean {
+function hasPendingUserAsk(messages: ChatMessage[] | undefined): boolean {
   if (!messages || messages.length === 0) return false;
   const last = messages.at(-1);
   if (!last || last.role !== "assistant") return false;
@@ -233,9 +202,7 @@ export function hasPendingUserAsk(
  * Check if a task has a pending tool approval request.
  * Only works when messages are cached in the store.
  */
-export function hasPendingApproval(
-  messages: ChatMessage[] | undefined,
-): boolean {
+function hasPendingApproval(messages: ChatMessage[] | undefined): boolean {
   if (!messages || messages.length === 0) return false;
   const last = messages.at(-1);
   if (!last || last.role !== "assistant") return false;
