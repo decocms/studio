@@ -101,7 +101,7 @@ function TruncatedText({
   );
 }
 
-function OwnerFilter() {
+export function OwnerFilter() {
   const { ownerFilter, setOwnerFilter, isFilterChangePending } =
     useChatStable();
 

@@ -87,7 +87,7 @@ function PersistentTasksResizablePanel({
   return (
     <ResizablePanel
       defaultSize={tasksPanelWidth}
-      minSize={24}
+      minSize={22}
       className={cn("min-w-0", className)}
       onResize={handleResize}
       order={1}

@@ -376,15 +376,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
       )
       .filter((id): id is string => typeof id === "string" && id.length > 0);
 
-    const currentAgentIds = thread.agent_ids ?? [];
-    const mergedAgentIds = [...currentAgentIds];
-    for (const id of incomingAgentIds) {
-      if (!mergedAgentIds.includes(id)) {
-        mergedAgentIds.push(id);
-      }
-    }
-    const agentIdsChanged = mergedAgentIds.length > currentAgentIds.length;
-
     await this.db.transaction().execute(async (trx) => {
       await trx
         .insertInto("thread_messages")
@@ -398,6 +389,34 @@ export class SqlThreadStorage implements ThreadStoragePort {
           })),
         )
         .execute();
+
+      // Lock the thread row inside the transaction to prevent lost-update races
+      // when concurrent saveMessages calls merge agent_ids simultaneously.
+      const locked = await trx
+        .selectFrom("threads")
+        .select("agent_ids")
+        .where("id", "=", threadId)
+        .where("organization_id", "=", organizationId)
+        .forUpdate()
+        .executeTakeFirst();
+
+      let currentAgentIds: string[] = [];
+      if (locked?.agent_ids) {
+        try {
+          currentAgentIds = JSON.parse(locked.agent_ids as unknown as string);
+        } catch {
+          currentAgentIds = [];
+        }
+      }
+
+      const mergedAgentIds = [...currentAgentIds];
+      for (const id of incomingAgentIds) {
+        if (!mergedAgentIds.includes(id)) {
+          mergedAgentIds.push(id);
+        }
+      }
+      const agentIdsChanged = mergedAgentIds.length > currentAgentIds.length;
+
       await trx
         .updateTable("threads")
         .set({

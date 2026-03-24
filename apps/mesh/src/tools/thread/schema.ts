@@ -76,9 +76,11 @@ export const ThreadUpdateDataSchema = z.object({
   description: z.string().nullish().describe("New thread description"),
   hidden: z.boolean().optional().describe("Whether the thread is hidden"),
   status: z
-    .enum(["requires_action", "failed", "expired", "in_progress", "completed"])
+    .enum(["requires_action", "failed", "in_progress", "completed"])
     .optional()
-    .describe("New thread status (user-set override)"),
+    .describe(
+      "New thread status (user-set override). 'expired' is a computed virtual status and cannot be set directly.",
+    ),
 });
 
 export type ThreadUpdateData = z.infer<typeof ThreadUpdateDataSchema>;

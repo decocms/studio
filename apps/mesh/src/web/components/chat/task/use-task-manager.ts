@@ -286,7 +286,7 @@ export function useTaskManager() {
         .find((t) => t.id === taskId);
       if (!task) continue;
       const current = task.agent_ids ?? [];
-      if (current.includes(agentId)) return; // Already present
+      if (current.includes(agentId)) continue; // Already present in this cache
       updateTaskInCache(
         queryClient,
         locator,

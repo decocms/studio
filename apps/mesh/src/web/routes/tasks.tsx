@@ -325,9 +325,7 @@ function TasksPageContent() {
   // Summary counts
   const reviewCount = visible.filter((t) => isActionable(t.status)).length;
   const openCount = visible.filter((t) => isOpen(t.status)).length;
-  const doneCount = visible.filter(
-    (t) => (t.status ?? "completed") === "completed",
-  ).length;
+  const doneCount = visible.filter((t) => t.status === "completed").length;
 
   return (
     <Page>

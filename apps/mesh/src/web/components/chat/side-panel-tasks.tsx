@@ -10,69 +10,11 @@ import { Page } from "@/web/components/page";
 import { useDecoChatOpen } from "@/web/hooks/use-deco-chat-open";
 import { useDecoTasksOpen } from "@/web/hooks/use-deco-tasks-open";
 import { cn } from "@deco/ui/lib/utils.ts";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.js";
-import { Button } from "@deco/ui/components/button.js";
 import { Loading01, Plus, X } from "@untitledui/icons";
-import { User as UserIcon, Users as UsersIcon } from "lucide-react";
 import { Suspense, useTransition } from "react";
 import { ErrorBoundary } from "../error-boundary";
 import { Chat, useChat } from "./index";
-import { useChatStable } from "./context";
-import { TaskListContent } from "./tasks-panel";
-import type { TaskOwnerFilter } from "./task";
-
-function OwnerFilter() {
-  const { ownerFilter, setOwnerFilter, isFilterChangePending } =
-    useChatStable();
-
-  const isFiltered = ownerFilter === "me";
-  const Icon = isFilterChangePending
-    ? Loading01
-    : isFiltered
-      ? UserIcon
-      : UsersIcon;
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          className="size-7"
-          title={isFiltered ? "My tasks" : "All tasks"}
-          disabled={isFilterChangePending}
-        >
-          <Icon
-            size={14}
-            className={cn(
-              isFilterChangePending
-                ? "animate-spin text-muted-foreground"
-                : isFiltered
-                  ? "text-foreground"
-                  : "text-muted-foreground",
-            )}
-          />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuRadioGroup
-          value={ownerFilter}
-          onValueChange={(v) => setOwnerFilter(v as TaskOwnerFilter)}
-        >
-          <DropdownMenuRadioItem value="me">My tasks</DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="everyone">
-            All tasks
-          </DropdownMenuRadioItem>
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
+import { OwnerFilter, TaskListContent } from "./tasks-panel";
 
 function TasksPanelContent() {
   const [, setTasksOpen] = useDecoTasksOpen();
