@@ -39,8 +39,7 @@ import {
   Archive,
 } from "@untitledui/icons";
 import { EmptyState } from "@/web/components/empty-state.tsx";
-import { Suspense, useRef, useState } from "react";
-import { ErrorBoundary } from "../error-boundary";
+import { useRef, useState } from "react";
 import { User as UserIcon, Users as UsersIcon } from "lucide-react";
 import { Button } from "@deco/ui/components/button.js";
 import {
@@ -629,53 +628,6 @@ export function TaskListContent({ onTaskSelect }: TaskListContentProps) {
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-// ────────────────────────────────────────
-// Home page sidebar wrapper
-// ────────────────────────────────────────
-
-function TasksPanelContent({
-  onTaskSelect,
-}: {
-  onTaskSelect?: (taskId: string) => void;
-}) {
-  const { createTask, isChatEmpty } = useChat();
-  const { tasks } = useChatStable();
-
-  const reviewCount = tasks.filter(
-    (t) => !t.hidden && isActionable(t.status),
-  ).length;
-
-  return (
-    <div className="flex flex-col h-full bg-background border-r border-border/50">
-      {/* Header */}
-      <div className="h-11 px-4 flex items-center justify-between shrink-0 border-b border-border/50">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-foreground">Tasks</span>
-          {reviewCount > 0 && (
-            <span className="flex items-center justify-center size-5 rounded-full bg-orange-500 text-white text-[10px] font-semibold tabular-nums">
-              {reviewCount}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-1">
-          <OwnerFilter />
-          <button
-            type="button"
-            onClick={() => createTask()}
-            disabled={isChatEmpty}
-            className="flex size-7 items-center justify-center rounded-md hover:bg-accent transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-            title="New task"
-          >
-            <Plus size={16} className="text-muted-foreground" />
-          </button>
-        </div>
-      </div>
-
-      <TaskListContent onTaskSelect={onTaskSelect} />
     </div>
   );
 }
