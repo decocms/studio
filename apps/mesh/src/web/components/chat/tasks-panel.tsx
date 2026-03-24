@@ -13,7 +13,6 @@ import { formatTimeAgo } from "@/web/lib/format-time";
 import {
   buildDisplayGroups,
   getTaskVerb,
-  isActionable,
   STATUS_CONFIG,
   type DisplayGroup,
   type StatusKey,
@@ -35,7 +34,6 @@ import {
   ChevronRight,
   FilterLines,
   Loading01,
-  Plus,
   Archive,
 } from "@untitledui/icons";
 import { EmptyState } from "@/web/components/empty-state.tsx";
