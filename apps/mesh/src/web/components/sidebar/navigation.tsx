@@ -29,12 +29,12 @@ function SidebarLogoHeader() {
         <img
           src={lightSrc}
           alt="Logo"
-          className="size-4 object-contain dark:hidden"
+          className="size-5 object-contain dark:hidden"
         />
         <img
           src={darkSrc}
           alt="Logo"
-          className="size-4 object-contain hidden dark:block"
+          className="size-5 object-contain hidden dark:block"
         />
       </div>
     </SidebarHeader>
