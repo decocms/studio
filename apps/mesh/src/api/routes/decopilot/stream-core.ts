@@ -387,7 +387,7 @@ async function streamCoreInner(
 
         const builtInTools = isCliAgent
           ? {}
-          : await getBuiltInTools(
+          : getBuiltInTools(
               writer,
               {
                 provider,
@@ -419,20 +419,24 @@ async function streamCoreInner(
           }
         }
 
-        const tools = isCliAgent
-          ? {}
-          : {
-              ...passthroughTools,
-              ...builtInTools,
-              enable_tools: createEnableToolsTool(
-                enabledTools,
-                passthroughToolNames,
-                {
-                  toolApprovalLevel: input.toolApprovalLevel,
-                  toolAnnotations,
-                },
-              ),
-            };
+        const tools = isClaudeCode
+          ? // Claude Code has its own MCP tools, but built-in tools (including
+            // diagnostics) are server-side and must be injected into the stream
+            { ...builtInTools }
+          : isCliAgent
+            ? {}
+            : {
+                ...passthroughTools,
+                ...builtInTools,
+                enable_tools: createEnableToolsTool(
+                  enabledTools,
+                  passthroughToolNames,
+                  {
+                    toolApprovalLevel: input.toolApprovalLevel,
+                    toolAnnotations,
+                  },
+                ),
+              };
 
         // Build composable system prompt array
         const basePrompt = buildBasePlatformPrompt();
@@ -441,7 +445,6 @@ async function streamCoreInner(
           buildToolCatalog(passthroughClient, enabledTools),
           buildPromptCatalog(passthroughClient),
         ]);
-
         // Agent prompt: decopilot-specific or custom agent instructions
         const serverInstructions = passthroughClient.getInstructions();
         const agentPrompt = isDecopilot(input.agent.id)

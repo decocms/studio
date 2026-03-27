@@ -325,6 +325,16 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Set tool list cache after cleanup to avoid previous cleanup nulling the new cache
   setMcpListCache(mcpListCache);
 
+  // Purge all cached MCP tool lists on startup / HMR so newly registered tools
+  // (e.g. diagnostics) are picked up on the next tools/list call.
+  // Non-blocking: fire-and-forget now, and re-run when NATS becomes ready.
+  if (mcpListCache instanceof JetStreamKVMcpListCache) {
+    mcpListCache.purgeAll().catch(() => {});
+    natsProvider?.onReady(() => {
+      mcpListCache.purgeAll().catch(() => {});
+    });
+  }
+
   const threadStorage = new SqlThreadStorage(database.db);
 
   const cancelReactorDeps: RunReactorDeps = {

@@ -42,7 +42,7 @@ const mockWriter = {
   merge: () => {},
 } as never;
 
-function getTools() {
+async function getTools() {
   return getBuiltInTools(mockWriter, mockParams, mockCtx);
 }
 
@@ -52,16 +52,16 @@ describe("user_ask E2E Integration", () => {
   // ============================================================================
 
   describe("Tool Registration", () => {
-    test("tool is registered in getBuiltInTools()", () => {
-      const tools = getTools();
+    test("tool is registered in getBuiltInTools()", async () => {
+      const tools = await getTools();
 
       expect(tools).toBeDefined();
       expect(tools.user_ask).toBeDefined();
       expect(tools.user_ask).toBe(userAskTool);
     });
 
-    test("getBuiltInTools() returns correct ToolSet structure", () => {
-      const tools = getTools();
+    test("getBuiltInTools() returns correct ToolSet structure", async () => {
+      const tools = await getTools();
 
       // ToolSet is Record<string, CoreTool>
       expect(typeof tools).toBe("object");
@@ -74,22 +74,22 @@ describe("user_ask E2E Integration", () => {
   // ============================================================================
 
   describe("Tool Metadata", () => {
-    test("has correct description", () => {
-      const tools = getTools();
+    test("has correct description", async () => {
+      const tools = await getTools();
 
       expect(tools.user_ask?.description).toContain(
         "Ask the user instead of guessing when requirements are ambiguous",
       );
     });
 
-    test("has inputSchema defined", () => {
-      const tools = getTools();
+    test("has inputSchema defined", async () => {
+      const tools = await getTools();
 
       expect(tools.user_ask?.inputSchema).toBeDefined();
     });
 
-    test("has outputSchema defined", () => {
-      const tools = getTools();
+    test("has outputSchema defined", async () => {
+      const tools = await getTools();
 
       expect(tools.user_ask?.outputSchema).toBeDefined();
     });
@@ -112,8 +112,8 @@ describe("user_ask E2E Integration", () => {
   // ============================================================================
 
   describe("Client-Side Only", () => {
-    test("has no execute function", () => {
-      const tools = getTools();
+    test("has no execute function", async () => {
+      const tools = await getTools();
 
       // Client-side tools should not have execute function defined
       // (execute is optional in AI SDK tool type)
@@ -344,9 +344,9 @@ describe("user_ask E2E Integration", () => {
   // ============================================================================
 
   describe("Complete Integration Flow", () => {
-    test("full workflow from registration to validation", () => {
+    test("full workflow from registration to validation", async () => {
       // 1. Get tool from registry
-      const tools = getTools();
+      const tools = await getTools();
       const tool = tools.user_ask;
 
       expect(tool).toBeDefined();
@@ -370,9 +370,9 @@ describe("user_ask E2E Integration", () => {
       expect(outputValidation.success).toBe(true);
     });
 
-    test("choice type workflow with validation", () => {
+    test("choice type workflow with validation", async () => {
       // 1. Get tool
-      const tools = getTools();
+      const tools = await getTools();
       expect(tools.user_ask).toBeDefined();
 
       // 2. Validate choice input
@@ -395,9 +395,9 @@ describe("user_ask E2E Integration", () => {
       expect(outputValidation.success).toBe(true);
     });
 
-    test("confirm type workflow with validation", () => {
+    test("confirm type workflow with validation", async () => {
       // 1. Get tool
-      const tools = getTools();
+      const tools = await getTools();
       expect(tools.user_ask).toBeDefined();
 
       // 2. Validate confirm input

@@ -167,7 +167,9 @@ export function createLazyClient(
   // Proxy non-list operations to the real client (always needs a connection)
   placeholder.callTool = async (params, resultSchema, options) => {
     const real = await getRealClient();
-    return real.callTool(params, resultSchema, options);
+    // Override timeout to 5 minutes for long-running tools (e.g. capture_har with multiple passes)
+    const opts = { timeout: 5 * 60 * 1000, ...options };
+    return real.callTool(params, resultSchema, opts);
   };
 
   placeholder.getPrompt = async (params, options) => {

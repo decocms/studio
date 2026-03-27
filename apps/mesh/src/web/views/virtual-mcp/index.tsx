@@ -1,6 +1,7 @@
 import type { VirtualMCPEntity } from "@/tools/virtual/schema";
 import { getUIResourceUri } from "@/mcp-apps/types.ts";
 import { useChatTask } from "@/web/components/chat/context";
+import { AgentCapabilities } from "./agent-capabilities";
 import { CollectionTabs } from "@/web/components/collections/collection-tabs.tsx";
 import { EmptyState } from "@/web/components/empty-state.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary";
@@ -963,8 +964,16 @@ function VirtualMcpDetailViewWithData({
     settingsConnectionId: null,
   });
 
+  // Agent type detection
+  const isAgent = !!(virtualMcp.metadata as { type?: string } | null)?.type;
+
   // Tab state
-  const validTabIds = ["instructions", "connections", "layout"];
+  const validTabIds = [
+    "instructions",
+    "connections",
+    "layout",
+    ...(isAgent ? ["capabilities"] : []),
+  ];
   const [activeTab, setActiveTab] = useState(() => {
     const stored = localStorage.getItem("agent-detail-tab") || "instructions";
     // Migrate old "sidebar" tab to "layout"
@@ -1366,6 +1375,10 @@ Define step-by-step how the agent should handle requests.
                   ))
                 )}
               </div>
+            )}
+
+            {activeTab === "capabilities" && isAgent && (
+              <AgentCapabilities connections={connections} />
             )}
 
             {activeTab === "layout" && (

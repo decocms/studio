@@ -30,49 +30,60 @@ const mockWriter = {
   merge: () => {},
 } as never;
 
-function getTools() {
+async function getTools() {
   return getBuiltInTools(mockWriter, mockParams, mockCtx);
 }
 
 describe("getBuiltInTools", () => {
-  test("returns ToolSet with user_ask tool", () => {
-    const tools = getTools();
+  test("returns ToolSet with user_ask tool", async () => {
+    const tools = await getTools();
 
     expect(tools).toBeDefined();
     expect(tools.user_ask).toBeDefined();
   });
 
-  test("returns ToolSet with subtask tool", () => {
-    const tools = getTools();
+  test("returns ToolSet with subtask tool", async () => {
+    const tools = await getTools();
 
     expect(tools).toBeDefined();
     expect(tools.subtask).toBeDefined();
   });
 
-  test("user_ask tool has correct description", () => {
-    const tools = getTools();
+  test("user_ask tool has correct description", async () => {
+    const tools = await getTools();
 
     expect(tools.user_ask?.description).toContain(
       "Ask the user instead of guessing when requirements are ambiguous",
     );
   });
 
-  test("user_ask tool has no execute function", () => {
-    const tools = getTools();
+  test("user_ask tool has no execute function", async () => {
+    const tools = await getTools();
 
     // Client-side tools should not have execute function defined
     // (execute is optional in AI SDK tool type)
     expect(tools.user_ask?.execute).toBeUndefined();
   });
 
-  test("subtask tool has execute function", () => {
-    const tools = getTools();
+  test("subtask tool has execute function", async () => {
+    const tools = await getTools();
 
     expect(tools.subtask?.execute).toBeDefined();
   });
 
-  test("returns object matching ToolSet type structure", () => {
-    const tools = getTools();
+  test("does not include diagnostics tools (they live on self MCP)", async () => {
+    const tools = await getTools();
+    const keys = Object.keys(tools);
+
+    // Diagnostics tools (capture_har, screenshot, fetch_page) are on the self MCP,
+    // discovered via passthrough client — not registered as built-in tools.
+    expect(keys).not.toContain("capture_har");
+    expect(keys).not.toContain("screenshot");
+    expect(keys).not.toContain("fetch_page");
+  });
+
+  test("returns object matching ToolSet type structure", async () => {
+    const tools = await getTools();
 
     // ToolSet is Record<string, CoreTool>
     // Each tool should be an object with description, inputSchema, etc.

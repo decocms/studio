@@ -161,7 +161,26 @@ export type MCPMeshTools = typeof ALL_TOOLS;
 // Derive tool name type from ALL_TOOLS
 export type ToolNameFromTools = (typeof ALL_TOOLS)[number]["name"];
 
+// Track orgs whose self-MCP cache has been invalidated this server lifetime.
+// After HMR / restart, new tools (e.g. diagnostics) may not be in the NATS cache.
+const invalidatedOrgs = new Set<string>();
+
+// Track MCP server instances that already have diagnostics tools registered.
+const registeredDiagnostics = new WeakSet<McpServer>();
+
 export const managementMCP = async (ctx: MeshContext) => {
+  if (ctx.organization && !invalidatedOrgs.has(ctx.organization.id)) {
+    invalidatedOrgs.add(ctx.organization.id);
+    try {
+      const { getMcpListCache } = await import("@/mcp-clients/mcp-list-cache");
+      const cache = getMcpListCache();
+      const { WellKnownOrgMCPId } = await import("@decocms/mesh-sdk");
+      const selfId = WellKnownOrgMCPId.SELF(ctx.organization.id);
+      await cache?.invalidate(selfId);
+    } catch (err) {
+      console.warn("[managementMCP] Cache invalidation failed:", err);
+    }
+  }
   // Get enabled plugins for this organization to filter plugin tools
   // Check both org settings (legacy) and all virtual MCPs
   let enabledPlugins: string[] | null = null;
@@ -238,6 +257,95 @@ export const managementMCP = async (ctx: MeshContext) => {
       },
     );
   }
+
+  // Register diagnostics tools for MCP clients (like Claude Code) that discover tools
+  // via the self MCP server's tools/list. Guarded to avoid double-registration.
+  if (!registeredDiagnostics.has(server))
+    try {
+      registeredDiagnostics.add(server);
+      const baseUrl = getBaseUrl();
+      const orgId = ctx.organization?.id ?? "unknown";
+
+      const diagnosticsTools = [
+        {
+          name: "capture_har",
+          tool: createCaptureHarTool(),
+          schema: CaptureHarSchema,
+        },
+        {
+          name: "screenshot",
+          tool: createScreenshotTool(baseUrl, orgId),
+          schema: ScreenshotSchema,
+        },
+        {
+          name: "fetch_page",
+          tool: createFetchPageTool(),
+          schema: FetchPageSchema,
+        },
+        {
+          name: "lighthouse_audit",
+          tool: createLighthouseTool(),
+          schema: LighthouseSchema,
+        },
+        {
+          name: "render_page",
+          tool: createRenderPageTool(),
+          schema: RenderPageSchema,
+        },
+      ];
+
+      for (const dt of diagnosticsTools) {
+        // Use .partial() shape so defaulted fields appear optional to MCP clients.
+        // The handler below runs the full schema.parse() which applies defaults.
+        const inputShape = dt.schema.partial().shape;
+        server.registerTool(
+          dt.name,
+          {
+            description: dt.tool.description ?? "",
+            inputSchema: inputShape,
+          },
+          async (args: Record<string, unknown>) => {
+            try {
+              // Parse through raw Zod schema to apply defaults
+              const parsed = dt.schema.parse(args);
+              const executeFn = dt.tool.execute as (
+                args: unknown,
+                context: unknown,
+              ) => Promise<unknown>;
+              const result = await executeFn(parsed, {
+                toolCallId: "mcp-call",
+                messages: [],
+              });
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text:
+                      typeof result === "string"
+                        ? result
+                        : JSON.stringify(result),
+                  },
+                ],
+              };
+            } catch (error) {
+              const err = error as Error;
+              console.error(`[diagnostics:${dt.name}] ERROR:`, err.message);
+              return {
+                content: [
+                  { type: "text" as const, text: `Error: ${err.message}` },
+                ],
+                isError: true,
+              };
+            }
+          },
+        );
+      }
+    } catch (error) {
+      console.error(
+        "[managementMCP] FAILED to register diagnostics tools:",
+        error,
+      );
+    }
 
   // Register action prompts
   const prompts = getPrompts();

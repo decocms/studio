@@ -34,6 +34,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { ChevronRight, Plus, Users03 } from "@untitledui/icons";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { SiteEditorOnboardingModal } from "@/web/components/home/site-editor-onboarding-modal.tsx";
+import { SiteDiagnosticsRecruitModal } from "@/web/components/home/site-diagnostics-recruit-modal.tsx";
 import { useCreateVirtualMCP } from "@/web/hooks/use-create-virtual-mcp";
 import { usePinnedAgents } from "@/web/hooks/use-pinned-agents";
 import { Suspense, useRef, useState } from "react";
@@ -168,6 +169,12 @@ const SITE_EDITOR_AGENT = {
   icon: "icon://Globe01?color=violet",
 } as const;
 
+const SITE_DIAGNOSTICS_AGENT = {
+  id: "site-diagnostics",
+  title: "Site Diagnostics",
+  icon: "icon://SearchRefraction?color=cyan",
+} as const;
+
 /**
  * Agents list content component
  */
@@ -210,6 +217,7 @@ function AgentsListContent() {
     .filter((a): a is typeof a & { id: string } => a.id !== null && !!a.pinned)
     .map((a) => a.id);
   const { pin } = usePinnedAgents(org.id, serverPinnedIds);
+  const [diagnosticsModalOpen, setDiagnosticsModalOpen] = useState(false);
 
   const recentIds = readRecentAgentIds(locator);
 
@@ -235,6 +243,14 @@ function AgentsListContent() {
     })
     .slice(0, 5);
 
+  // Check if Site Diagnostics agent already exists (already recruited)
+  const hasDiagnostics = agents.some(
+    (a) =>
+      a.title === "Site Diagnostics" ||
+      (a as { metadata?: { type?: string } }).metadata?.type ===
+        "site-diagnostics",
+  );
+
   const hasAgents = agents.length > 0;
 
   return (
@@ -246,6 +262,13 @@ function AgentsListContent() {
             agent={SITE_EDITOR_AGENT}
             onSpecialClick={() => setSiteEditorModalOpen(true)}
           />
+          {!hasDiagnostics && (
+            <AgentPreview
+              key={SITE_DIAGNOSTICS_AGENT.id}
+              agent={SITE_DIAGNOSTICS_AGENT}
+              onSpecialClick={() => setDiagnosticsModalOpen(true)}
+            />
+          )}
           {agents.map((agent) => (
             <AgentPreview
               key={agent.id ?? "default"}
@@ -266,6 +289,11 @@ function AgentsListContent() {
       <SiteEditorOnboardingModal
         open={siteEditorModalOpen}
         onOpenChange={setSiteEditorModalOpen}
+      />
+
+      <SiteDiagnosticsRecruitModal
+        open={diagnosticsModalOpen}
+        onOpenChange={setDiagnosticsModalOpen}
       />
     </>
   );

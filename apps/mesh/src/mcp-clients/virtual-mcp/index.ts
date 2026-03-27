@@ -93,7 +93,6 @@ export async function createVirtualClientFrom(
 ): Promise<Client> {
   // Inclusion mode: use only the connections specified in virtual MCP
   const connectionIds = virtualMcp.connections.map((c) => c.connection_id);
-
   // Load all connections in parallel, plus the VIRTUAL connection itself for
   // legacy virtual-tool definitions that may still be attached to it.
   const connectionPromises = connectionIds.map((connId) =>
@@ -107,7 +106,6 @@ export async function createVirtualClientFrom(
     Promise.all(connectionPromises),
     virtualMcpConnectionPromise,
   ]);
-
   const metadataVirtualTools = (
     (virtualMcp.metadata?.virtualTools ??
       virtualMcp.metadata?.virtual_tools ??
@@ -127,6 +125,22 @@ export async function createVirtualClientFrom(
       conn.status === "active" &&
       !isSelfReferencingVirtual(conn, virtualMcp.id),
   );
+
+  // Rewrite self-MCP connection URLs to use the internal loopback URL.
+  // The stored URL may use a proxy hostname (e.g. kyoto.localhost) that
+  // doesn't resolve from the server process itself.
+  const { getInternalUrl } = await import("@/core/server-constants");
+  const internalUrl = getInternalUrl();
+  for (const conn of loadedConnections) {
+    if (
+      conn.metadata &&
+      typeof conn.metadata === "object" &&
+      (conn.metadata as { type?: string }).type === "self"
+    ) {
+      const selfAlias = conn.connection_url?.split("/mcp/").pop() ?? "self";
+      conn.connection_url = `${internalUrl}/mcp/${selfAlias}`;
+    }
+  }
 
   // Build aggregator options
   const clientOptions: VirtualClientOptions = {

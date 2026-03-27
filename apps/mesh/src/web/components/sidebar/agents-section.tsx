@@ -59,6 +59,7 @@ import { useCreateTaskAndNavigate } from "@/web/hooks/use-create-task-and-naviga
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { SiteEditorOnboardingModal } from "@/web/components/home/site-editor-onboarding-modal.tsx";
+import { SiteDiagnosticsRecruitModal } from "@/web/components/home/site-diagnostics-recruit-modal.tsx";
 import { useAgentBadges } from "@/web/hooks/use-agent-badges";
 
 const SITE_EDITOR_AGENT = {
@@ -67,7 +68,13 @@ const SITE_EDITOR_AGENT = {
   icon: "icon://Globe01?color=violet",
 } as const;
 
-const DEFAULT_AGENTS = [SITE_EDITOR_AGENT];
+const SITE_DIAGNOSTICS_AGENT = {
+  id: "site-diagnostics",
+  title: "Site Diagnostics",
+  icon: "icon://SearchRefraction?color=cyan",
+} as const;
+
+const DEFAULT_AGENTS = [SITE_EDITOR_AGENT, SITE_DIAGNOSTICS_AGENT];
 
 function AgentListItem({
   agent,
@@ -293,9 +300,11 @@ function AgentGridItem({
 function PinAgentPopoverContent({
   onClose,
   onOpenSiteEditorModal,
+  onOpenDiagnosticsModal,
 }: {
   onClose: () => void;
   onOpenSiteEditorModal: () => void;
+  onOpenDiagnosticsModal: () => void;
 }) {
   const [search, setSearch] = useState("");
   const allAgents = useVirtualMCPs();
@@ -313,9 +322,15 @@ function PinAgentPopoverContent({
     .filter((s) => !isDecopilot(s.id))
     .filter((s) => !search || s.title.toLowerCase().includes(lowerSearch));
 
+  // Hide default agents that have already been recruited as real agents
+  const hasDiagnostics = allAgents.some(
+    (a) =>
+      (a as { metadata?: { type?: string } }).metadata?.type ===
+      "site-diagnostics",
+  );
   const filteredDefaults = DEFAULT_AGENTS.filter(
     (a) => !search || a.title.toLowerCase().includes(lowerSearch),
-  );
+  ).filter((a) => !(a.id === SITE_DIAGNOSTICS_AGENT.id && hasDiagnostics));
 
   const handleSelect = (agent: VirtualMCPEntity) => {
     if (!isPinned(agent.id)) {
@@ -331,6 +346,8 @@ function PinAgentPopoverContent({
     setSearch("");
     if (agentId === SITE_EDITOR_AGENT.id) {
       onOpenSiteEditorModal();
+    } else if (agentId === SITE_DIAGNOSTICS_AGENT.id) {
+      onOpenDiagnosticsModal();
     } else {
       navigateToNewTask(agentId);
     }
@@ -439,6 +456,7 @@ function PinAgentPopoverContent({
 function PinAgentPopover() {
   const [open, setOpen] = useState(false);
   const [siteEditorModalOpen, setSiteEditorModalOpen] = useState(false);
+  const [diagnosticsModalOpen, setDiagnosticsModalOpen] = useState(false);
   const isMobile = useIsMobile();
   const { setOpenMobile } = useSidebar();
 
@@ -458,6 +476,7 @@ function PinAgentPopover() {
       <PinAgentPopoverContent
         onClose={handleClose}
         onOpenSiteEditorModal={() => setSiteEditorModalOpen(true)}
+        onOpenDiagnosticsModal={() => setDiagnosticsModalOpen(true)}
       />
     </Suspense>
   );
@@ -506,6 +525,10 @@ function PinAgentPopover() {
       <SiteEditorOnboardingModal
         open={siteEditorModalOpen}
         onOpenChange={setSiteEditorModalOpen}
+      />
+      <SiteDiagnosticsRecruitModal
+        open={diagnosticsModalOpen}
+        onOpenChange={setDiagnosticsModalOpen}
       />
     </>
   );

@@ -3,6 +3,10 @@
  *
  * Client-side and server-side tools for decopilot agent interactions.
  * These use AI SDK tool() function and are registered directly in the decopilot API.
+ *
+ * NOTE: Diagnostics tools (capture_har, screenshot, fetch_page) are NOT here.
+ * They live on the self MCP (tools/index.ts) and are discovered through
+ * the passthrough client like every other MCP tool.
  */
 
 import type { MeshContext, OrganizationScope } from "@/core/mesh-context";

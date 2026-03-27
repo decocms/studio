@@ -200,7 +200,15 @@ export {
   // Virtual MCP factory functions
   getWellKnownDecopilotVirtualMCP,
   getWellKnownDecopilotConnection,
+  getWellKnownSiteDiagnosticsVirtualMCP,
+  getWellKnownSiteDiagnosticsConnection,
   // Decopilot utilities
   isDecopilot,
   getDecopilotId,
+  // Site Diagnostics utilities
+  isSiteDiagnostics,
+  getSiteDiagnosticsId,
+  SITE_DIAGNOSTICS_DESCRIPTION,
+  SITE_DIAGNOSTICS_ICON,
+  SITE_DIAGNOSTICS_INSTRUCTIONS,
 } from "./lib/constants";
