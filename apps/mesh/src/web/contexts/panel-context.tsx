@@ -28,8 +28,13 @@ function usePanelContext() {
 
 export function useChatPanel() {
   const { chatOpen, chatPanelRef, chatPanelWidth } = usePanelContext();
-  const openChat = () =>
+  const openChat = () => {
+    console.log(
+      "[useChatPanel] openChat called, resizing chatPanelRef to",
+      Math.min(chatPanelWidth, 35),
+    );
     chatPanelRef.current?.resize(Math.min(chatPanelWidth, 35));
+  };
   const closeChat = () => chatPanelRef.current?.collapse();
   const setChatOpen = (open: boolean) => {
     if (open) openChat();
