@@ -552,12 +552,21 @@ function ShellLayoutInner({
                       </TooltipTrigger>
                       <TooltipContent
                         side="bottom"
-                        className="flex items-center gap-2"
+                        className="flex items-center gap-1.5"
                       >
                         New task
-                        <kbd className="bg-background/20 rounded px-1 py-0.5 text-[10px] font-mono">
-                          {isMac ? "⇧⌘S" : "⇧Ctrl+S"}
-                        </kbd>
+                        <span className="flex items-center gap-0.5">
+                          {(isMac ? ["⇧", "⌘", "S"] : ["⇧", "Ctrl", "S"]).map(
+                            (key) => (
+                              <kbd
+                                key={key}
+                                className="inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-sm border border-white/20 bg-white/10 text-white/70 text-xs font-mono"
+                              >
+                                {key}
+                              </kbd>
+                            ),
+                          )}
+                        </span>
                       </TooltipContent>
                     </Tooltip>
                   )}

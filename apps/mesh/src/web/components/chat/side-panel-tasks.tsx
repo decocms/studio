@@ -65,11 +65,18 @@ function NewTaskButton({
           <span className="text-foreground">{label}</span>
         </button>
       </TooltipTrigger>
-      <TooltipContent side="right" className="flex items-center gap-2">
+      <TooltipContent side="right" className="flex items-center gap-1.5">
         New task
-        <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-mono text-muted-foreground">
-          {isMac ? "⇧⌘S" : "⇧Ctrl+S"}
-        </kbd>
+        <span className="flex items-center gap-0.5">
+          {(isMac ? ["⇧", "⌘", "S"] : ["⇧", "Ctrl", "S"]).map((key) => (
+            <kbd
+              key={key}
+              className="inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-sm border border-white/20 bg-white/10 text-white/70 text-xs font-mono"
+            >
+              {key}
+            </kbd>
+          ))}
+        </span>
       </TooltipContent>
     </Tooltip>
   );
