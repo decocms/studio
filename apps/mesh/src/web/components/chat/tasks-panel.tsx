@@ -615,7 +615,7 @@ function GroupedTaskList({
         .map((group, index) => {
           const isOpen = !!expanded[group.key];
           return (
-            <div key={group.key} className={index > 0 ? "mt-3" : ""}>
+            <div key={group.key} className={cn(index > 0 && "mt-3")}>
               <GroupHeader
                 label={group.label}
                 icon={group.icon}
