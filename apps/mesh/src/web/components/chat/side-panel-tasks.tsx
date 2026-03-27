@@ -201,14 +201,15 @@ function SpaceIdentityHeader({ project }: { project: VirtualMCPEntity }) {
   };
 
   return (
-    <div className="flex items-center gap-3 pl-3 pr-4 pt-5 pb-3">
+    <div className="flex items-center gap-3 pl-3 pr-4 pt-[10px] pb-3">
       <IconPicker
         value={project.icon}
         onChange={handleIconChange}
         onColorChange={handleColorChange}
         name={project.title || "Space"}
         size="sm"
-        className="shrink-0 self-center"
+        className="shrink-0 self-start"
+        avatarClassName="!size-10 !rounded-xl"
       />
       <div className="flex flex-col flex-1 min-w-0">
         <input
@@ -319,8 +320,8 @@ function TasksPanelSkeleton() {
   return (
     <div className="flex flex-col h-full animate-pulse">
       {/* Header skeleton */}
-      <div className="flex items-center gap-3 pl-3 pr-4 pt-5 pb-3">
-        <Skeleton className="size-8 rounded-lg shrink-0" />
+      <div className="flex items-center gap-3 pl-3 pr-4 pt-[10px] pb-3">
+        <Skeleton className="size-10 rounded-xl shrink-0" />
         <div className="flex flex-col flex-1 min-w-0 gap-1.5">
           <Skeleton className="h-4 w-24" />
           <Skeleton className="h-3 w-36" />

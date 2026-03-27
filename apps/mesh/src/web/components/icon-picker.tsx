@@ -41,6 +41,7 @@ interface IconPickerProps {
   name: string;
   size?: AgentAvatarSize;
   className?: string;
+  avatarClassName?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -60,6 +61,7 @@ export function IconPicker({
   name,
   size = "lg",
   className,
+  avatarClassName,
 }: IconPickerProps) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<PickerTab>("icons");
@@ -118,7 +120,12 @@ export function IconPicker({
             className,
           )}
         >
-          <AgentAvatar icon={value} name={name} size={size} />
+          <AgentAvatar
+            icon={value}
+            name={name}
+            size={size}
+            className={avatarClassName}
+          />
           <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity">
             <Edit05 size={16} className="text-white" />
           </div>
