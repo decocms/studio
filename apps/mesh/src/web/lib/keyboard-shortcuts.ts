@@ -28,12 +28,19 @@ const KEYBOARD_SHORTCUTS = {
     keys: [MOD, "Shift", "L"],
     description: "Toggle plan mode",
   },
+  newTask: {
+    keys: ["Shift", MOD, "S"],
+    description: "New task",
+  },
 } as const satisfies Record<string, Shortcut>;
 
 export const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     label: "General",
-    shortcuts: [KEYBOARD_SHORTCUTS.keyboardShortcuts],
+    shortcuts: [
+      KEYBOARD_SHORTCUTS.keyboardShortcuts,
+      KEYBOARD_SHORTCUTS.newTask,
+    ],
   },
   {
     label: "Editor",

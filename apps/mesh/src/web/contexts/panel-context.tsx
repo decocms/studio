@@ -9,6 +9,7 @@ export interface PanelControls {
   tasksPanelRef: React.RefObject<ImperativePanelHandle | null>;
   mainPanelRef: React.RefObject<ImperativePanelHandle | null>;
   chatPanelWidth: number;
+  onNewTask: React.MutableRefObject<(() => void) | null>;
 }
 
 const PanelContext = createContext<PanelControls | null>(null);
@@ -35,6 +36,11 @@ export function useChatPanel() {
     else closeChat();
   };
   return [chatOpen, setChatOpen] as const;
+}
+
+export function useOnNewTask() {
+  const ctx = useContext(PanelContext);
+  return ctx?.onNewTask ?? null;
 }
 
 export function useTasksPanel() {

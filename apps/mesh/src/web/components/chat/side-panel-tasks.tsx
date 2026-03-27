@@ -9,23 +9,29 @@
 
 import { Page } from "@/web/components/page";
 
-import { useChatPanel } from "@/web/contexts/panel-context";
-import {
-  Browser,
-  Loading01,
-  MessageTextCircle02,
-  Settings01,
-} from "@untitledui/icons";
-import { useMatch } from "@tanstack/react-router";
+import { useChatPanel, useOnNewTask } from "@/web/contexts/panel-context";
+import { Browser, Edit05, Loading01, Settings01 } from "@untitledui/icons";
 import { useVirtualMCPActions, useVirtualMCP } from "@decocms/mesh-sdk";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
-import { Suspense, useRef, useTransition } from "react";
+import {
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useTransition,
+} from "react";
+import { isMac } from "@/web/lib/keyboard-shortcuts";
 import { ErrorBoundary } from "../error-boundary";
 import { Chat } from "./index";
 import { useChatTask } from "./context";
 import { OwnerFilter, TaskListContent } from "./tasks-panel";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 import { IconPicker } from "@/web/components/icon-picker.tsx";
 import { useVirtualMCPURLContext } from "@/web/contexts/virtual-mcp-context";
 
@@ -34,7 +40,7 @@ import { useVirtualMCPURLContext } from "@/web/contexts/virtual-mcp-context";
 // ────────────────────────────────────────
 
 const navItemClass =
-  "flex items-center gap-2.5 mx-2 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors w-[calc(100%-1rem)]";
+  "flex items-center gap-2.5 mx-2 px-3 h-10 rounded-md text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors w-[calc(100%-1rem)]";
 
 function NewTaskButton({
   onClick,
@@ -46,22 +52,32 @@ function NewTaskButton({
   label?: string;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={isPending}
-      className={cn(
-        navItemClass,
-        "disabled:opacity-50 disabled:cursor-not-allowed",
-      )}
-    >
-      {isPending ? (
-        <Loading01 size={14} className="shrink-0 animate-spin" />
-      ) : (
-        <MessageTextCircle02 size={14} className="shrink-0" />
-      )}
-      {label}
-    </button>
+    <Tooltip delayDuration={600}>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={onClick}
+          disabled={isPending}
+          className={cn(
+            navItemClass,
+            "disabled:opacity-50 disabled:cursor-not-allowed",
+          )}
+        >
+          {isPending ? (
+            <Loading01 size={16} className="shrink-0 animate-spin" />
+          ) : (
+            <Edit05 size={16} className="shrink-0" />
+          )}
+          <span className="text-foreground">{label}</span>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="right" className="flex items-center gap-2">
+        New task
+        <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-mono text-muted-foreground">
+          {isMac ? "⇧⌘S" : "⇧Ctrl+S"}
+        </kbd>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -97,10 +113,12 @@ function ProjectViewsSection({ project }: { project: VirtualMCPEntity }) {
           key={`${view.connectionId}-${view.toolName}`}
           type="button"
           onClick={() =>
-            virtualMcpCtx?.openMainView("ext-apps", {
-              id: view.connectionId,
-              toolName: view.toolName,
-            })
+            isExtAppActive(view)
+              ? virtualMcpCtx?.openMainView("default")
+              : virtualMcpCtx?.openMainView("ext-apps", {
+                  id: view.connectionId,
+                  toolName: view.toolName,
+                })
           }
           className={cn(
             navItemClass,
@@ -111,9 +129,11 @@ function ProjectViewsSection({ project }: { project: VirtualMCPEntity }) {
             <img src={view.icon} alt="" className="size-4 rounded shrink-0" />
           ) : (
             // Keep in sync with use-project-sidebar-items.tsx pinned view icon
-            <Browser size={15} className="shrink-0" />
+            <Browser size={16} className="shrink-0" />
           )}
-          <span className="truncate">{view.label || view.toolName}</span>
+          <span className="truncate text-foreground">
+            {view.label || view.toolName}
+          </span>
         </button>
       ))}
     </>
@@ -144,9 +164,9 @@ function SpaceIdentityHeader({ project }: { project: VirtualMCPEntity }) {
 
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.trim();
-    if (value && value !== project.title) {
-      debouncedUpdate("title", { title: value });
-    }
+    // Empty title is not allowed; field will restore to the saved value on next remount
+    if (!value || value === project.title) return;
+    debouncedUpdate("title", { title: value });
   };
 
   const handleDescriptionChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -155,6 +175,15 @@ function SpaceIdentityHeader({ project }: { project: VirtualMCPEntity }) {
       debouncedUpdate("description", { description: value });
     }
   };
+
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect — clears pending debounce timers on unmount; no React 19 alternative for cleanup
+  useEffect(() => {
+    return () => {
+      if (titleTimerRef.current) clearTimeout(titleTimerRef.current);
+      if (descriptionTimerRef.current)
+        clearTimeout(descriptionTimerRef.current);
+    };
+  }, []);
 
   const handleIconChange = (icon: string | null) => {
     actions.update.mutate({ id: project.id, data: { icon } });
@@ -176,7 +205,7 @@ function SpaceIdentityHeader({ project }: { project: VirtualMCPEntity }) {
   };
 
   return (
-    <div className="flex items-center gap-3 px-4 pt-4 pb-2">
+    <div className="flex items-center gap-3 pl-3 pr-4 pt-5 pb-3">
       <IconPicker
         value={project.icon}
         onChange={handleIconChange}
@@ -219,12 +248,7 @@ function TasksPanelContent({
   const virtualMcpCtx = useVirtualMCPURLContext();
   const [isPending, startTransition] = useTransition();
 
-  const agentsMatch = useMatch({
-    from: "/shell/$org/$virtualMcpId",
-    shouldThrow: false,
-  });
-  const virtualMcpId =
-    virtualMcpIdProp ?? agentsMatch?.params.virtualMcpId ?? null;
+  const virtualMcpId = virtualMcpIdProp ?? null;
 
   const virtualMcp = useVirtualMCP(virtualMcpId);
 
@@ -235,9 +259,18 @@ function TasksPanelContent({
     });
   };
 
-  const isSettingsActive =
-    virtualMcpCtx?.mainView?.type === "settings" ||
-    (virtualMcpCtx && virtualMcpCtx.mainView === null);
+  // Register handler so the toolbar button can trigger it even when the panel is collapsed.
+  // useLayoutEffect sets the ref after commit and clears it on unmount to avoid stale closures.
+  const onNewTaskRef = useOnNewTask();
+  useLayoutEffect(() => {
+    if (!onNewTaskRef) return;
+    onNewTaskRef.current = handleNewTask;
+    return () => {
+      onNewTaskRef.current = null;
+    };
+  });
+
+  const isSettingsActive = virtualMcpCtx?.mainView?.type === "settings";
 
   return (
     <div className="flex flex-col h-full">
@@ -268,14 +301,18 @@ function TasksPanelContent({
         {virtualMcp && (
           <button
             type="button"
-            onClick={() => virtualMcpCtx?.openMainView("settings")}
+            onClick={() =>
+              isSettingsActive
+                ? virtualMcpCtx?.openMainView("default")
+                : virtualMcpCtx?.openMainView("settings")
+            }
             className={cn(
               navItemClass,
               isSettingsActive && "bg-accent text-foreground",
             )}
           >
-            <Settings01 size={14} className="shrink-0" />
-            Settings
+            <Settings01 size={16} className="shrink-0" />
+            <span className="text-foreground">Settings</span>
           </button>
         )}
         {virtualMcp && <ProjectViewsSection project={virtualMcp} />}
@@ -297,7 +334,7 @@ function TasksPanelSkeleton() {
   return (
     <div className="flex flex-col h-full animate-pulse">
       {/* Header skeleton */}
-      <div className="flex items-center gap-3 px-4 pt-4 pb-2">
+      <div className="flex items-center gap-3 pl-3 pr-4 pt-5 pb-3">
         <Skeleton className="size-8 rounded-lg shrink-0" />
         <div className="flex flex-col flex-1 min-w-0 gap-1.5">
           <Skeleton className="h-4 w-24" />

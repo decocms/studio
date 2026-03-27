@@ -4,7 +4,7 @@ import { ChatPanel } from "@/web/components/chat/side-panel-chat";
 import { TasksSidePanel } from "@/web/components/chat/side-panel-tasks";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { KeyboardShortcutsDialog } from "@/web/components/keyboard-shortcuts-dialog";
-import { isModKey } from "@/web/lib/keyboard-shortcuts";
+import { isMac, isModKey } from "@/web/lib/keyboard-shortcuts";
 import { MeshSidebar, MeshSidebarMobile } from "@/web/components/sidebar";
 import { SettingsSidebar } from "@/web/layouts/settings-layout";
 import { MeshUserMenu } from "@/web/components/user-menu.tsx";
@@ -25,6 +25,11 @@ import {
   SidebarProvider,
 } from "@deco/ui/components/sidebar.tsx";
 import { Sheet, SheetContent, SheetTitle } from "@deco/ui/components/sheet.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import {
@@ -32,6 +37,7 @@ import {
   ChevronLeft,
   ChevronRight,
   LayoutLeft,
+  Edit05,
   Loading01,
   Menu01,
   MessageTextCircle02,
@@ -107,9 +113,9 @@ function PersistentResizablePanel({
 }
 
 /**
- * Persists the width of the tasks panel across reloads.
+ * Collapsible tasks sidebar panel. Fixed minimum width of 22% — not persisted.
  */
-function PersistentTasksResizablePanel({
+function TasksResizablePanel({
   children,
   panelRef,
   defaultCollapsed,
@@ -126,7 +132,6 @@ function PersistentTasksResizablePanel({
       ref={panelRef}
       defaultSize={defaultCollapsed ? 0 : 22}
       minSize={22}
-      maxSize={22}
       collapsible={true}
       collapsedSize={0}
       onCollapse={onCollapse}
@@ -309,10 +314,13 @@ function ShellLayoutInner({
 
   const showThreePanels = isAgentRoute || isOrgHome;
 
-  // Compute decopilot virtualMcpId for tasks filtering on org home
+  // Compute virtualMcpId for the tasks panel:
+  //   - org home → decopilot agent
+  //   - agent route → the current agent
+  //   - other routes → undefined (global tasks view)
   const tasksVirtualMcpId = isOrgHome
     ? getWellKnownDecopilotVirtualMCP(org.id).id
-    : undefined;
+    : agentVirtualMcpId;
 
   const chatPanelRef = useRef<ImperativePanelHandle>(null);
   const tasksPanelRef = useRef<ImperativePanelHandle>(null);
@@ -355,6 +363,20 @@ function ShellLayoutInner({
 
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
+  const onNewTask = useRef<(() => void) | null>(null);
+
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect — subscribes to document keydown for ⇧⌘S new-task shortcut; DOM event listener has no React 19 alternative
+  useEffect(() => {
+    const handler = (e: globalThis.KeyboardEvent) => {
+      if (isModKey(e) && e.shiftKey && e.code === "KeyS" && !e.repeat) {
+        e.preventDefault();
+        onNewTask.current?.();
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, []);
+
   const panelControls = {
     chatOpen,
     tasksOpen,
@@ -363,6 +385,7 @@ function ShellLayoutInner({
     tasksPanelRef,
     mainPanelRef,
     chatPanelWidth,
+    onNewTask,
   };
 
   // Compute Chat.Provider virtualMcpId
@@ -464,23 +487,50 @@ function ShellLayoutInner({
           className="flex flex-col"
           style={{ background: "transparent", containerType: "inline-size" }}
         >
-          <div className="shrink-0 flex items-center justify-between px-2 h-10">
+          <div className="shrink-0 flex items-center justify-between pl-3.5 pr-2 h-10">
             <div className="flex items-center gap-0.5 min-w-0">
               {showThreePanels && (
-                <button
-                  type="button"
-                  onClick={toggleTasks}
-                  aria-pressed={tasksOpen}
-                  className={cn(
-                    "flex size-7 shrink-0 items-center justify-center rounded-md transition-colors",
-                    tasksOpen
-                      ? "bg-sidebar-accent text-sidebar-foreground"
-                      : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground",
+                <>
+                  <button
+                    type="button"
+                    onClick={toggleTasks}
+                    aria-pressed={tasksOpen}
+                    className={cn(
+                      "flex size-7 shrink-0 items-center justify-center rounded-md transition-colors",
+                      tasksOpen
+                        ? "bg-sidebar-accent text-sidebar-foreground"
+                        : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground",
+                    )}
+                    title="Toggle tasks"
+                  >
+                    <LayoutLeft size={16} />
+                  </button>
+                  {!tasksOpen && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onNewTask.current?.();
+                          }}
+                          aria-label="New task"
+                          className="flex size-7 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors animate-in fade-in-0 zoom-in-95 duration-150"
+                        >
+                          <Edit05 size={16} />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent
+                        side="bottom"
+                        className="flex items-center gap-2"
+                      >
+                        New task
+                        <kbd className="bg-background/20 rounded px-1 py-0.5 text-[10px] font-mono">
+                          {isMac ? "⇧⌘S" : "⇧Ctrl+S"}
+                        </kbd>
+                      </TooltipContent>
+                    </Tooltip>
                   )}
-                  title="Toggle tasks"
-                >
-                  <LayoutLeft size={16} />
-                </button>
+                </>
               )}
               <button
                 type="button"
@@ -559,18 +609,18 @@ function ShellLayoutInner({
                 >
                   {showThreePanels && (
                     <>
-                      <PersistentTasksResizablePanel
+                      <TasksResizablePanel
                         panelRef={tasksPanelRef}
                         defaultCollapsed={!isAgentRoute}
                         onCollapse={() => setTasksOpen(false)}
                         onExpand={() => setTasksOpen(true)}
                       >
-                        <div className="h-full pr-1.5 pb-1.5 overflow-hidden">
+                        <div className="h-full pt-1 pr-1.5 pb-1.5 overflow-hidden">
                           <div className="h-full bg-background rounded-[0.75rem] overflow-hidden border border-sidebar-border shadow-sm">
                             <TasksSidePanel virtualMcpId={tasksVirtualMcpId} />
                           </div>
                         </div>
-                      </PersistentTasksResizablePanel>
+                      </TasksResizablePanel>
                       <ResizableHandle className="bg-sidebar" />
                     </>
                   )}
@@ -656,7 +706,7 @@ function ShellLayoutContent() {
   });
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
 
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect — subscribes to document keydown for ⌘K shortcuts dialog; DOM event listener has no React 19 alternative
   useEffect(() => {
     const handler = (e: globalThis.KeyboardEvent) => {
       if (isModKey(e) && e.code === "KeyK") {
