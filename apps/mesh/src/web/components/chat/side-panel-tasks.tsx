@@ -209,6 +209,8 @@ function SpaceIdentityHeader({ project }: { project: VirtualMCPEntity }) {
         name={project.title || "Space"}
         size="sm+"
         className="shrink-0 self-start"
+        avatarClassName="[&_svg]:w-1/2 [&_svg]:h-1/2"
+        showHoverOverlay={false}
       />
       <div className="flex flex-col flex-1 min-w-0">
         <input
