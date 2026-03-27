@@ -44,12 +44,6 @@ export function useChatNavigation(): ChatNavigation {
     taskId: string,
     opts?: { virtualMcpOverride?: string },
   ) => {
-    console.log("[useChatNavigation] navigateToTask", {
-      taskId,
-      agentsMatch: !!agentsMatch,
-      virtualMcpId,
-      currentPath: window.location.pathname,
-    });
     if (agentsMatch) {
       navigate({
         to: "/$org/$virtualMcpId/",
