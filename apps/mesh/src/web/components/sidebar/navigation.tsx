@@ -65,6 +65,7 @@ function SidebarNavigationItem({ item }: { item: NavigationSidebarItem }) {
         onClick={handleClick}
         isActive={item.isActive}
         tooltip={item.label}
+        className="bg-muted/75"
       >
         <span className="[&>svg]:size-8">{item.icon}</span>
       </SidebarMenuButton>
