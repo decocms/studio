@@ -9,18 +9,11 @@
 
 import { Page } from "@/web/components/page";
 
-import { useChatPanel, useOnNewTask } from "@/web/contexts/panel-context";
+import { useChatPanel } from "@/web/contexts/panel-context";
 import { Browser, Edit05, Loading01, Settings01 } from "@untitledui/icons";
 import { useVirtualMCPActions, useVirtualMCP } from "@decocms/mesh-sdk";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
-import {
-  Suspense,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  useTransition,
-} from "react";
+import { Suspense, useEffect, useRef, useState, useTransition } from "react";
 import { isMac } from "@/web/lib/keyboard-shortcuts";
 import { ErrorBoundary } from "../error-boundary";
 import { Chat } from "./index";
@@ -261,17 +254,6 @@ function TasksPanelContent({
       setChatOpen(true);
     });
   };
-
-  // Register handler so the toolbar button can trigger it even when the panel is collapsed.
-  // useLayoutEffect sets the ref after commit and clears it on unmount to avoid stale closures.
-  const onNewTaskRef = useOnNewTask();
-  useLayoutEffect(() => {
-    if (!onNewTaskRef) return;
-    onNewTaskRef.current = handleNewTask;
-    return () => {
-      onNewTaskRef.current = null;
-    };
-  });
 
   const isSettingsActive = virtualMcpCtx?.mainView?.type === "settings";
 
