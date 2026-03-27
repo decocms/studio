@@ -18,6 +18,7 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
+  useState,
   useTransition,
 } from "react";
 import { isMac } from "@/web/lib/keyboard-shortcuts";
@@ -146,44 +147,46 @@ function ProjectViewsSection({ project }: { project: VirtualMCPEntity }) {
 
 function SpaceIdentityHeader({ project }: { project: VirtualMCPEntity }) {
   const actions = useVirtualMCPActions();
-  const titleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const descriptionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
+  const [title, setTitle] = useState(project.title);
+  const [description, setDescription] = useState(project.description ?? "");
+  const initialRenderRef = useRef(true);
 
-  const debouncedUpdate = (
-    field: "title" | "description",
-    data: Parameters<typeof actions.update.mutate>[0]["data"],
-  ) => {
-    const timerRef = field === "title" ? titleTimerRef : descriptionTimerRef;
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      actions.update.mutate({ id: project.id, data });
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect — debounced title sync
+  useEffect(() => {
+    if (initialRenderRef.current) return;
+    const trimmed = title.trim();
+    if (!trimmed || trimmed === project.title) return;
+    const timer = setTimeout(() => {
+      actions.update.mutate({ id: project.id, data: { title: trimmed } });
     }, 1000);
-  };
+    return () => clearTimeout(timer);
+  }, [title]);
+
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect — debounced description sync
+  useEffect(() => {
+    if (initialRenderRef.current) return;
+    if (description === (project.description ?? "")) return;
+    const timer = setTimeout(() => {
+      actions.update.mutate({
+        id: project.id,
+        data: { description },
+      });
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [description]);
+
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect — skip initial render for debounce effects
+  useEffect(() => {
+    initialRenderRef.current = false;
+  }, []);
 
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.trim();
-    // Empty title is not allowed; field will restore to the saved value on next remount
-    if (!value || value === project.title) return;
-    debouncedUpdate("title", { title: value });
+    setTitle(e.target.value);
   };
 
   const handleDescriptionChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    if (value !== (project.description ?? "")) {
-      debouncedUpdate("description", { description: value });
-    }
+    setDescription(e.target.value);
   };
-
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect — clears pending debounce timers on unmount; no React 19 alternative for cleanup
-  useEffect(() => {
-    return () => {
-      if (titleTimerRef.current) clearTimeout(titleTimerRef.current);
-      if (descriptionTimerRef.current)
-        clearTimeout(descriptionTimerRef.current);
-    };
-  }, []);
 
   const handleIconChange = (icon: string | null) => {
     actions.update.mutate({ id: project.id, data: { icon } });
@@ -217,14 +220,14 @@ function SpaceIdentityHeader({ project }: { project: VirtualMCPEntity }) {
       <div className="flex flex-col flex-1 min-w-0">
         <input
           type="text"
-          defaultValue={project.title}
+          value={title}
           onChange={handleTitleChange}
           placeholder="Space Name"
           className="text-sm font-medium text-foreground bg-transparent border-none outline-none px-1 -mx-1 rounded hover:bg-input/25 focus:bg-input/25 transition-colors w-full truncate"
         />
         <input
           type="text"
-          defaultValue={project.description ?? ""}
+          value={description}
           onChange={handleDescriptionChange}
           placeholder="Add a description..."
           className="text-sm text-muted-foreground bg-transparent border-none outline-none px-1 -mx-1 rounded hover:bg-input/25 focus:bg-input/25 transition-colors w-full truncate"
