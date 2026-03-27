@@ -104,6 +104,7 @@ export function IconPicker({
   const sizeRadius: Record<string, string> = {
     xs: "rounded-md",
     sm: "rounded-lg",
+    "sm+": "rounded-xl",
     md: "rounded-xl",
     lg: "rounded-2xl",
     xl: "rounded-2xl",

@@ -393,6 +393,12 @@ function hashString(input: string): number {
 const SIZES = {
   xs: { container: "w-6 h-6", icon: 14, text: "text-xs", radius: "rounded-md" },
   sm: { container: "w-8 h-8", icon: 16, text: "text-sm", radius: "rounded-lg" },
+  "sm+": {
+    container: "w-10 h-10",
+    icon: 20,
+    text: "text-base",
+    radius: "rounded-xl",
+  },
   md: {
     container: "w-12 h-12",
     icon: 24,

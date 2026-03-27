@@ -207,9 +207,8 @@ function SpaceIdentityHeader({ project }: { project: VirtualMCPEntity }) {
         onChange={handleIconChange}
         onColorChange={handleColorChange}
         name={project.title || "Space"}
-        size="sm"
+        size="sm+"
         className="shrink-0 self-start"
-        avatarClassName="!size-10 !rounded-xl"
       />
       <div className="flex flex-col flex-1 min-w-0">
         <input
