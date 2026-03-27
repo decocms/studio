@@ -3,6 +3,7 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -11,9 +12,21 @@ import {
 } from "@deco/ui/components/sidebar.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import type { NavigationSidebarItem, SidebarSection } from "./types";
 import { SidebarCollapsibleGroup } from "./sidebar-group";
+import { DEFAULT_LOGO, usePublicConfig } from "@/web/hooks/use-public-config";
+
+function SidebarLogoHeader() {
+  const config = usePublicConfig();
+  const logoSrc = config.logo ?? DEFAULT_LOGO;
+
+  return (
+    <SidebarHeader className="flex items-center justify-center h-10 shrink-0 px-0">
+      <img src={logoSrc} alt="Logo" className="size-6 object-contain" />
+    </SidebarHeader>
+  );
+}
 
 interface NavigationSidebarProps {
   sections: SidebarSection[];
@@ -92,10 +105,13 @@ function NavigationSidebarInner({
 }: NavigationSidebarProps) {
   return (
     <Sidebar variant={variant}>
+      <Suspense fallback={<div className="h-10 shrink-0" />}>
+        <SidebarLogoHeader />
+      </Suspense>
       {header}
       <SidebarContent
         className={cn(
-          "flex flex-col flex-1 overflow-x-hidden mt-10 px-2 pb-2 gap-0",
+          "flex flex-col flex-1 overflow-x-hidden px-2 pb-2 gap-0",
           contentClassName,
         )}
       >
