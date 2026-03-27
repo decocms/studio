@@ -19,5 +19,8 @@ export function usePublicConfig(): PublicConfig {
   return data;
 }
 
-/** Default product logo path */
-export const DEFAULT_LOGO = "/logos/deco logo.svg";
+/** Default product logos per color mode */
+export const DEFAULT_LOGO = {
+  light: "/logos/deco logo.svg",
+  dark: "/logos/deco logo negative.svg",
+};

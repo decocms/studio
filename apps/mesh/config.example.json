@@ -103,6 +103,9 @@
     "enabled": false
   },
   "autoCreateOrganizationOnSignup": true,
-  "$comment_logo": "Override the product logo shown in the sidebar. Use a URL or a path served from the public directory. Omit to use the default Deco logo.",
-  "logo": "/logos/deco logo.svg"
+  "$comment_logo": "Override the product logo shown in the sidebar. Use per-mode URLs for light/dark variants. Omit to use the default Deco logo.",
+  "logo": {
+    "light": "/logos/deco logo.svg",
+    "dark": "/logos/deco logo negative.svg"
+  }
 }

@@ -23,10 +23,10 @@ export type PublicConfig = {
    */
   theme?: ThemeConfig;
   /**
-   * Product logo URL shown in the sidebar.
-   * Defaults to the Deco logo if not set.
+   * Product logo shown in the sidebar.
+   * Can be a single URL or per-mode { light, dark } URLs.
    */
-  logo?: string;
+  logo?: string | { light: string; dark: string };
   /**
    * The server's internal URL (localhost:PORT).
    * Used as the OAuth redirect origin when the browser is behind a proxy

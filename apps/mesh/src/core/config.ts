@@ -59,11 +59,11 @@ export interface Config {
    */
   theme?: ThemeConfig;
   /**
-   * Product logo URL shown in the sidebar.
+   * Product logo shown in the sidebar.
    * Defaults to the Deco logo. Override for white-label deployments.
-   * Can be an absolute URL or a path served from the public directory.
+   * Can be a single URL (used for both modes) or per-mode URLs.
    */
-  logo?: string;
+  logo?: string | { light: string; dark: string };
   /**
    * Whether to automatically create an organization when a new user signs up.
    * @default true

@@ -19,12 +19,23 @@ import { DEFAULT_LOGO, usePublicConfig } from "@/web/hooks/use-public-config";
 
 function SidebarLogoHeader() {
   const config = usePublicConfig();
-  const logoSrc = config.logo ?? DEFAULT_LOGO;
+  const logo = config.logo ?? DEFAULT_LOGO;
+  const lightSrc = typeof logo === "string" ? logo : logo.light;
+  const darkSrc = typeof logo === "string" ? logo : logo.dark;
 
   return (
     <SidebarHeader className="flex items-center justify-center h-10 shrink-0 px-2">
       <div className="flex w-full aspect-square items-center justify-center">
-        <img src={logoSrc} alt="Logo" className="size-4 object-contain" />
+        <img
+          src={lightSrc}
+          alt="Logo"
+          className="size-4 object-contain dark:hidden"
+        />
+        <img
+          src={darkSrc}
+          alt="Logo"
+          className="size-4 object-contain hidden dark:block"
+        />
       </div>
     </SidebarHeader>
   );
