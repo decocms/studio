@@ -22,8 +22,10 @@ function SidebarLogoHeader() {
   const logoSrc = config.logo ?? DEFAULT_LOGO;
 
   return (
-    <SidebarHeader className="flex items-center justify-center h-10 shrink-0 px-0">
-      <img src={logoSrc} alt="Logo" className="size-6 object-contain" />
+    <SidebarHeader className="flex items-center justify-center h-10 shrink-0 px-2">
+      <div className="flex w-full aspect-square items-center justify-center">
+        <img src={logoSrc} alt="Logo" className="size-4 object-contain" />
+      </div>
     </SidebarHeader>
   );
 }
