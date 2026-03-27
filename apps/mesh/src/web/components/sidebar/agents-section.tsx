@@ -372,7 +372,7 @@ function PinAgentPopover() {
           <PopoverTrigger asChild>
             <SidebarMenuButton
               tooltip="Browse agents"
-              className="bg-muted/50 hover:bg-muted/80 border border-border"
+              className="bg-sidebar-accent hover:bg-sidebar-accent/80"
             >
               <Plus className="!opacity-100" />
             </SidebarMenuButton>
