@@ -24,7 +24,7 @@ function SidebarLogoHeader() {
   const darkSrc = typeof logo === "string" ? logo : logo.dark;
 
   return (
-    <SidebarHeader className="flex items-center justify-center h-10 shrink-0 px-2">
+    <SidebarHeader className="flex items-center justify-center h-14 shrink-0 px-2">
       <div className="flex w-full aspect-square items-center justify-center">
         <img
           src={lightSrc}
