@@ -126,6 +126,7 @@ interface MonitoringStatsProps {
 interface OverviewTabProps extends MonitoringStatsProps {
   analyticsDateRange: { startDate: string; endDate: string };
   streamingRefetchInterval: number;
+  virtualMcps: ReturnType<typeof useVirtualMCPs>;
 }
 
 /**
@@ -430,6 +431,77 @@ function ModelLeaderboardTable({
   );
 }
 
+function AgentLeaderboardTable({
+  virtualMcps,
+}: {
+  virtualMcps: ReturnType<typeof useVirtualMCPs>;
+}) {
+  const { org } = useProjectContext();
+  const navigate = useNavigate();
+  const agents = (virtualMcps ?? [])
+    .filter((vm) => vm.status === "active")
+    .slice(0, 4);
+
+  if (agents.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
+        No agents configured
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col">
+      {agents.map((agent) => (
+        <div
+          key={agent.id}
+          className="flex items-center h-10 border-b border-border/50 px-3 cursor-pointer hover:bg-accent/50 transition-colors"
+          onClick={() =>
+            navigate({
+              to: "/$org/$virtualMcpId",
+              params: { org: org.slug, virtualMcpId: agent.id ?? "" },
+            })
+          }
+        >
+          <div className="flex flex-1 items-center gap-2 min-w-0">
+            <IntegrationIcon
+              icon={agent.icon}
+              name={agent.title}
+              size="xs"
+              fallbackIcon={<Container />}
+              className="shrink-0 size-6! min-w-6! rounded-md"
+            />
+            <span className="text-sm text-muted-foreground flex-1 truncate">
+              {agent.title}
+            </span>
+          </div>
+          <div className="flex items-center shrink-0 px-3">
+            <span className="text-xs text-foreground/30">
+              {agent.status === "active" ? "Active" : "Inactive"}
+            </span>
+          </div>
+        </div>
+      ))}
+      {(virtualMcps ?? []).filter((vm) => vm.status === "active").length >
+        4 && (
+        <div
+          className="flex items-center h-10 px-4 gap-2 cursor-pointer hover:bg-accent/50 transition-colors"
+          onClick={() =>
+            navigate({
+              to: "/$org/settings/monitor",
+              params: { org: org.slug },
+              search: { tab: "threads" },
+            })
+          }
+        >
+          <span className="text-sm text-muted-foreground">See all</span>
+          <ArrowRight size={16} className="text-muted-foreground" />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function formatMetricValue(
   m: { calls: number; errorRate: number; avgDurationMs: number },
   mode: "requests" | "errors" | "latency",
@@ -569,6 +641,7 @@ function OverviewTabContent({
   isStreaming,
   analyticsDateRange,
   streamingRefetchInterval,
+  virtualMcps,
 }: OverviewTabProps) {
   const interval = getIntervalFromRange(displayDateRange);
   const refetchInterval = isStreaming ? streamingRefetchInterval : false;
@@ -745,7 +818,7 @@ function OverviewTabContent({
         </MonitoringMetricCard>
       </div>
 
-      {/* Row 3: Top Tools + Top Connections — compact list cards */}
+      {/* Row 3: Top Tools + Top Agents — compact list cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card className="p-4 gap-4">
           <span className="text-sm text-foreground/70">Top Tools</span>
@@ -757,13 +830,8 @@ function OverviewTabContent({
         </Card>
 
         <Card className="p-4 gap-4">
-          <span className="text-sm text-foreground/70">Top Connections</span>
-          <ConnectionLeaderboardTable
-            metrics={connectionBreakdown}
-            connections={connections}
-            mode="requests"
-            total={stats.totalCalls}
-          />
+          <span className="text-sm text-foreground/70">Top Agents</span>
+          <AgentLeaderboardTable virtualMcps={virtualMcps} />
         </Card>
       </div>
 
@@ -2648,6 +2716,7 @@ function MonitoringDashboardContent({
             isStreaming={isStreaming}
             analyticsDateRange={analyticsDateRange}
             streamingRefetchInterval={streamingRefetchInterval}
+            virtualMcps={allVirtualMcps}
           />
         </div>
       )}
