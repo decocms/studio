@@ -417,18 +417,28 @@ function AgentLeaderboardTable({
   );
 }
 
-function AutomationsCard() {
+function AutomationsCard({ stats }: { stats: MonitoringStatsData }) {
   const { org } = useProjectContext();
   const navigate = useNavigate();
   const { data: automations } = useAutomationsList();
   const activeAutomations = (automations ?? []).filter((a) => a.active);
   const allAutomations = automations ?? [];
+  const totalTriggers = allAutomations.reduce(
+    (sum, a) => sum + a.trigger_count,
+    0,
+  );
 
   return (
     <MonitoringMetricCard
-      title="Top Automations"
+      title="Automation Runs"
       value={activeAutomations.length.toLocaleString()}
     >
+      <KPIChart
+        data={stats.data}
+        dataKey="calls"
+        colorNum={5}
+        chartHeight="h-[120px] md:h-[180px]"
+      />
       <div className="flex flex-col">
         {allAutomations.length === 0 ? (
           <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
@@ -436,50 +446,59 @@ function AutomationsCard() {
           </div>
         ) : (
           <>
-            {allAutomations.slice(0, 4).map((automation) => (
-              <div
-                key={automation.id}
-                className="flex items-center h-10 border-b border-border/50 px-3 cursor-pointer hover:bg-accent/50 transition-colors"
-                onClick={() => {
-                  if (automation.agent?.id) {
-                    navigate({
-                      to: "/$org/$virtualMcpId",
-                      params: {
-                        org: org.slug,
-                        virtualMcpId: automation.agent.id,
-                      },
-                    });
-                  }
-                }}
-              >
-                <div className="flex flex-1 items-center gap-2 min-w-0">
-                  <div className="size-6 rounded-md border border-border/10 bg-background shadow-sm flex items-center justify-center shrink-0">
-                    <Container size={14} className="text-muted-foreground" />
+            {allAutomations.slice(0, 4).map((automation) => {
+              const pct =
+                totalTriggers > 0
+                  ? ((automation.trigger_count / totalTriggers) * 100).toFixed(
+                      1,
+                    )
+                  : "0.0";
+              return (
+                <div
+                  key={automation.id}
+                  className="flex items-center h-10 border-b border-border/50 px-3 cursor-pointer hover:bg-accent/50 transition-colors"
+                  onClick={() => {
+                    if (automation.agent?.id) {
+                      navigate({
+                        to: "/$org/$virtualMcpId",
+                        params: {
+                          org: org.slug,
+                          virtualMcpId: automation.agent.id,
+                        },
+                      });
+                    }
+                  }}
+                >
+                  <div className="flex flex-1 items-center gap-2 min-w-0">
+                    <div className="size-6 rounded-md border border-border/10 bg-background shadow-sm flex items-center justify-center shrink-0">
+                      <Container size={14} className="text-muted-foreground" />
+                    </div>
+                    <span className="text-sm text-muted-foreground flex-1 truncate">
+                      {automation.name}
+                    </span>
                   </div>
-                  <span className="text-sm text-muted-foreground flex-1 truncate">
-                    {automation.name}
-                  </span>
+                  <div className="flex items-center gap-2 shrink-0 px-3">
+                    <span className="text-sm text-foreground/30 tabular-nums">
+                      {pct}%
+                    </span>
+                    <span className="text-sm text-foreground tabular-nums">
+                      {automation.trigger_count}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0 px-3">
-                  <span className="text-xs text-foreground/30">
-                    {automation.trigger_count}{" "}
-                    {automation.trigger_count === 1 ? "trigger" : "triggers"}
-                  </span>
-                  <span
-                    className={cn(
-                      "text-xs",
-                      automation.active
-                        ? "text-emerald-600"
-                        : "text-foreground/30",
-                    )}
-                  >
-                    {automation.active ? "Active" : "Inactive"}
-                  </span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
             {allAutomations.length > 4 && (
-              <div className="flex items-center h-10 px-4 gap-2 cursor-pointer hover:bg-accent/50 transition-colors">
+              <div
+                className="flex items-center h-10 px-4 gap-2 cursor-pointer hover:bg-accent/50 transition-colors"
+                onClick={() =>
+                  navigate({
+                    to: "/$org/settings/monitor",
+                    params: { org: org.slug },
+                    search: { tab: "audit" },
+                  })
+                }
+              >
                 <span className="text-sm text-muted-foreground">See all</span>
                 <ArrowRight size={16} className="text-muted-foreground" />
               </div>
@@ -781,24 +800,22 @@ function OverviewTabContent({
         </MonitoringMetricCard>
       </div>
 
-      {/* Row 3: Top Agents + Top Automations */}
+      {/* Row 3: Agent Sessions + Automation Runs */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <MonitoringMetricCard
-          title="Top Agents"
-          value={(virtualMcps ?? [])
-            .filter((v) => v.status === "active")
-            .length.toLocaleString()}
+          title="Agent Sessions"
+          value={stats.totalCalls.toLocaleString()}
         >
           <KPIChart
             data={stats.data}
             dataKey="calls"
             colorNum={2}
-            chartHeight="h-[80px] md:h-[120px]"
+            chartHeight="h-[120px] md:h-[180px]"
           />
           <AgentLeaderboardTable virtualMcps={virtualMcps} />
         </MonitoringMetricCard>
 
-        <AutomationsCard />
+        <AutomationsCard stats={stats} />
       </div>
 
       {/* AI Usage section header */}
