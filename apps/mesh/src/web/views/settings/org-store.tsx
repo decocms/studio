@@ -399,10 +399,6 @@ export function OrgStorePage() {
               <div className="flex flex-col gap-6">
                 <div>
                   <Page.Title>Store</Page.Title>
-                  <p className="text-sm text-muted-foreground">
-                    Configure which registries appear in the store and manage
-                    private registries.
-                  </p>
                 </div>
                 <OrgStoreContent />
               </div>

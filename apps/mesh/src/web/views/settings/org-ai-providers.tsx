@@ -761,9 +761,6 @@ function OrgAiProvidersContent() {
 
   return (
     <div className="flex flex-col gap-6">
-      <p className="text-sm text-muted-foreground">
-        Set up AI model providers. Keys are stored encrypted in the vault.
-      </p>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {providers.map((provider, index) => (

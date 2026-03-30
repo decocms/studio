@@ -111,11 +111,6 @@ export function OrgSsoPage() {
               <div className="text-sm text-muted-foreground">Loading...</div>
             ) : (
               <div className="flex flex-col gap-6">
-                <p className="text-sm text-muted-foreground">
-                  Configure OIDC-based SSO for your organization. When enforced,
-                  members must authenticate via SSO to access this organization.
-                </p>
-
                 {/* Status */}
                 {isConfigured && !isEditing && (
                   <div className="flex flex-col gap-4">
