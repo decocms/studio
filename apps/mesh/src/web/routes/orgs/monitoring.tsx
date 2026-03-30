@@ -761,50 +761,68 @@ function OverviewTabContent({
   );
 }
 
+function SkeletonCard({ className }: { className?: string }) {
+  return (
+    <Card className={cn("p-4 gap-8", className)}>
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div className="flex flex-col gap-1">
+          <div className="h-5 w-20 rounded bg-muted animate-pulse" />
+          <div className="h-10 w-14 rounded bg-muted animate-pulse" />
+        </div>
+        <div className="h-8 w-[120px] rounded-md bg-muted animate-pulse" />
+      </div>
+      {/* Content */}
+      <div className="flex flex-col gap-6">
+        {/* Chart */}
+        <div className="h-[180px] w-full rounded bg-muted/60 animate-pulse" />
+        {/* Table rows */}
+        <div className="flex flex-col">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div
+              key={i}
+              className="flex items-center h-10 border-b border-border/50 px-3"
+            >
+              <div className="flex flex-1 items-center gap-2">
+                <div className="size-6 rounded-md bg-muted animate-pulse shrink-0" />
+                <div className="h-4 w-24 rounded bg-muted animate-pulse" />
+              </div>
+              <div className="flex items-center gap-2 px-3">
+                <div className="h-4 w-10 rounded bg-muted animate-pulse" />
+                <div className="h-4 w-10 rounded bg-muted animate-pulse" />
+              </div>
+            </div>
+          ))}
+          <div className="flex items-center h-10 px-4 gap-2">
+            <div className="h-4 w-14 rounded bg-muted animate-pulse" />
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function OverviewTabSkeleton() {
   return (
     <div className="flex flex-col gap-4 px-4 md:px-10 pt-2 pb-6 max-w-[1200px] mx-auto w-full">
-      {/* Tool Calls skeleton */}
-      <Card className="p-4 gap-0">
-        <div className="flex flex-col gap-1">
-          <div className="h-4 w-20 rounded bg-muted animate-pulse" />
-          <div className="h-9 w-16 rounded bg-muted animate-pulse" />
-        </div>
-        <div className="mt-4 h-[180px] w-full rounded bg-muted animate-pulse" />
-        <div className="mt-4 space-y-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="flex items-center h-10 gap-3">
-              <div className="size-6 rounded-md bg-muted animate-pulse" />
-              <div className="h-4 w-24 rounded bg-muted animate-pulse" />
-              <div className="flex-1" />
-              <div className="h-4 w-10 rounded bg-muted animate-pulse" />
-              <div className="h-4 w-10 rounded bg-muted animate-pulse" />
-            </div>
-          ))}
-        </div>
-      </Card>
-      {/* Latency + Errors skeleton */}
+      {/* Tool Calls — full width */}
+      <SkeletonCard />
+      {/* Latency + Errors — half width */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {[0, 1].map((i) => (
-          <Card key={i} className="p-4 gap-0">
-            <div className="flex flex-col gap-1">
-              <div className="h-4 w-16 rounded bg-muted animate-pulse" />
-              <div className="h-9 w-16 rounded bg-muted animate-pulse" />
-            </div>
-            <div className="mt-4 h-[180px] w-full rounded bg-muted animate-pulse" />
-            <div className="mt-4 space-y-2">
-              {Array.from({ length: 4 }).map((_, j) => (
-                <div key={j} className="flex items-center h-10 gap-3">
-                  <div className="size-6 rounded-md bg-muted animate-pulse" />
-                  <div className="h-4 w-20 rounded bg-muted animate-pulse" />
-                  <div className="flex-1" />
-                  <div className="h-4 w-10 rounded bg-muted animate-pulse" />
-                  <div className="h-4 w-10 rounded bg-muted animate-pulse" />
-                </div>
-              ))}
-            </div>
-          </Card>
-        ))}
+        <SkeletonCard />
+        <SkeletonCard />
+      </div>
+      {/* Top Tools + Top Agents — half width */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <SkeletonCard />
+        <SkeletonCard />
+      </div>
+      {/* AI Usage — full width */}
+      <SkeletonCard />
+      {/* AI Latency + AI Errors — half width */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <SkeletonCard />
+        <SkeletonCard />
       </div>
     </div>
   );
@@ -1471,71 +1489,72 @@ function MonitoringLogsTableContent({
 
 function MonitoringLogsTableSkeleton() {
   return (
-    <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-      <div className="flex-1 overflow-auto min-w-0">
-        <div className="min-w-[600px] md:min-w-0 bg-background">
-          <Table className="w-full border-collapse">
-            <TableHeader className="border-b-0 z-20">
-              <TableRow className="h-9 hover:bg-transparent border-b border-border">
-                <TableHead className="w-5" />
-                <TableHead className="pr-2 md:pr-4">
-                  <div className="h-3 w-24 rounded bg-muted animate-pulse" />
-                </TableHead>
-                <TableHead className="w-24 md:w-32 px-2 md:px-3">
-                  <div className="h-3 w-12 rounded bg-muted animate-pulse" />
-                </TableHead>
-                <TableHead className="w-20 md:w-24 px-2 md:px-3">
+    <div className="flex-1 flex flex-col overflow-auto min-w-0">
+      <div className="mx-auto w-full max-w-[1200px] px-4 md:px-10 flex flex-col flex-1 min-h-0">
+        <Table className="w-full border-collapse">
+          <TableHeader className="border-b-0 z-20">
+            <TableRow className="h-9 hover:bg-transparent border-b border-border">
+              <TableHead className="w-12 md:w-16 px-2 md:px-4" />
+              <TableHead className="pr-2 md:pr-4">
+                <div className="h-3 w-24 rounded bg-muted animate-pulse" />
+              </TableHead>
+              <TableHead className="w-24 md:w-32 px-2 md:px-3">
+                <div className="h-3 w-12 rounded bg-muted animate-pulse" />
+              </TableHead>
+              <TableHead className="w-20 md:w-24 px-2 md:px-3">
+                <div className="h-3 w-16 rounded bg-muted animate-pulse" />
+              </TableHead>
+              <TableHead className="w-20 md:w-24 px-2 md:px-3">
+                <div className="h-3 w-10 rounded bg-muted animate-pulse" />
+              </TableHead>
+              <TableHead className="w-20 md:w-28 px-2 md:px-3">
+                <div className="h-3 w-10 rounded bg-muted animate-pulse" />
+              </TableHead>
+              <TableHead className="w-16 md:w-20 px-2 md:px-3">
+                <div className="h-3 w-10 rounded bg-muted animate-pulse ml-auto" />
+              </TableHead>
+              <TableHead className="w-16 md:w-24 px-2 md:px-3 pr-3 md:pr-5">
+                <div className="h-3 w-12 rounded bg-muted animate-pulse ml-auto" />
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {Array.from({ length: 8 }).map((_, i) => (
+              <TableRow
+                key={i}
+                className="h-14 border-b border-border hover:bg-transparent"
+              >
+                <td className="px-2 md:px-4">
+                  <div className="size-5 rounded bg-muted animate-pulse" />
+                </td>
+                <td className="pr-2 md:pr-4">
+                  <div className="space-y-1">
+                    <div className="h-3.5 w-32 rounded bg-muted animate-pulse" />
+                    <div className="h-2.5 w-20 rounded bg-muted animate-pulse" />
+                  </div>
+                </td>
+                <td className="px-2 md:px-3">
                   <div className="h-3 w-16 rounded bg-muted animate-pulse" />
-                </TableHead>
-                <TableHead className="w-20 md:w-24 px-2 md:px-3">
-                  <div className="h-3 w-10 rounded bg-muted animate-pulse" />
-                </TableHead>
-                <TableHead className="w-20 md:w-28 px-2 md:px-3">
-                  <div className="h-3 w-10 rounded bg-muted animate-pulse" />
-                </TableHead>
-                <TableHead className="w-16 md:w-20 px-2 md:px-3">
+                </td>
+                <td className="px-2 md:px-3">
+                  <div className="h-3 w-14 rounded bg-muted animate-pulse" />
+                </td>
+                <td className="px-2 md:px-3">
+                  <div className="h-3 w-16 rounded bg-muted animate-pulse" />
+                </td>
+                <td className="px-2 md:px-3">
+                  <div className="h-3 w-14 rounded bg-muted animate-pulse" />
+                </td>
+                <td className="px-2 md:px-3">
                   <div className="h-3 w-10 rounded bg-muted animate-pulse ml-auto" />
-                </TableHead>
-                <TableHead className="w-16 md:w-24 px-2 md:px-3 pr-3 md:pr-5">
-                  <div className="h-3 w-12 rounded bg-muted animate-pulse ml-auto" />
-                </TableHead>
+                </td>
+                <td className="px-2 md:px-3 pr-3 md:pr-5">
+                  <div className="h-5 w-14 rounded-full bg-muted animate-pulse ml-auto" />
+                </td>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {Array.from({ length: 8 }).map((_, i) => (
-                <TableRow key={i} className="h-12 border-b border-border">
-                  <td>
-                    <div className="size-5 rounded bg-muted animate-pulse" />
-                  </td>
-                  <td className="pr-2 md:pr-4">
-                    <div className="space-y-1">
-                      <div className="h-3.5 w-32 rounded bg-muted animate-pulse" />
-                      <div className="h-2.5 w-20 rounded bg-muted animate-pulse" />
-                    </div>
-                  </td>
-                  <td className="px-2 md:px-3">
-                    <div className="h-3 w-16 rounded bg-muted animate-pulse" />
-                  </td>
-                  <td className="px-2 md:px-3">
-                    <div className="h-3 w-14 rounded bg-muted animate-pulse" />
-                  </td>
-                  <td className="px-2 md:px-3">
-                    <div className="h-3 w-16 rounded bg-muted animate-pulse" />
-                  </td>
-                  <td className="px-2 md:px-3">
-                    <div className="h-3 w-14 rounded bg-muted animate-pulse" />
-                  </td>
-                  <td className="px-2 md:px-3">
-                    <div className="h-3 w-10 rounded bg-muted animate-pulse ml-auto" />
-                  </td>
-                  <td className="px-2 md:px-3 pr-3 md:pr-5">
-                    <div className="h-5 w-14 rounded-full bg-muted animate-pulse ml-auto" />
-                  </td>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+            ))}
+          </TableBody>
+        </Table>
       </div>
     </div>
   );
