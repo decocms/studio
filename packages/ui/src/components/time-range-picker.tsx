@@ -99,18 +99,14 @@ export function TimeRangePicker({
       <PopoverTrigger asChild>
         <Button
           variant="outline"
-          size="sm"
-          className={cn(
-            "h-7 px-3 gap-1.5 min-w-[160px] justify-between",
-            className,
-          )}
+          className={cn("gap-1.5 min-w-[160px] justify-between", className)}
           disabled={disabled}
         >
           <div className="flex items-center gap-1.5">
-            <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+            <Clock className="size-4 text-muted-foreground" />
             <span className="text-sm">{displayText}</span>
           </div>
-          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+          <ChevronDown className="size-4 text-muted-foreground" />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[540px] p-0" align="end" sideOffset={4}>
