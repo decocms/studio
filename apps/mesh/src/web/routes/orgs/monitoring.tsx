@@ -172,15 +172,15 @@ function MonitoringMetricCard({
   className?: string;
 }) {
   return (
-    <Card className={cn("p-4 gap-0", className)}>
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <span className="text-sm text-muted-foreground">{title}</span>
-          <span className="text-3xl font-medium tracking-tight">{value}</span>
+    <Card className={cn("p-4 gap-8", className)}>
+      <div className="flex items-start justify-between">
+        <div className="flex flex-col gap-1 min-w-0 flex-1">
+          <span className="text-sm text-foreground/70">{title}</span>
+          <span className="text-4xl font-normal">{value}</span>
         </div>
         {action && <div className="shrink-0">{action}</div>}
       </div>
-      {children && <div className="flex flex-col gap-4 mt-4">{children}</div>}
+      {children && <div className="flex flex-col gap-6">{children}</div>}
     </Card>
   );
 }
@@ -223,27 +223,36 @@ function ConnectionLeaderboardTable({
         const value = getMetricValue(metric!, mode);
         const pct = total > 0 ? ((value / total) * 100).toFixed(1) : "0.0";
         return (
-          <div key={connection.id} className="flex items-center h-10 gap-3">
-            <IntegrationIcon
-              icon={connection.icon}
-              name={connection.title}
-              size="xs"
-              fallbackIcon={<Container />}
-              className="shrink-0 size-6! min-w-6! rounded-md"
-            />
-            <span className="text-sm flex-1 truncate">{connection.title}</span>
-            <span className="text-sm text-muted-foreground tabular-nums">
-              {pct}%
-            </span>
-            <span className="text-sm font-semibold tabular-nums">
-              {formatMetricValue(metric!, mode)}
-            </span>
+          <div
+            key={connection.id}
+            className="flex items-center h-10 border-b border-border/50 px-3"
+          >
+            <div className="flex flex-1 items-center gap-2 min-w-0">
+              <IntegrationIcon
+                icon={connection.icon}
+                name={connection.title}
+                size="xs"
+                fallbackIcon={<Container />}
+                className="shrink-0 size-6! min-w-6! rounded-md"
+              />
+              <span className="text-sm text-muted-foreground flex-1 truncate">
+                {connection.title}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 px-3">
+              <span className="text-sm text-foreground/30 tabular-nums">
+                {pct}%
+              </span>
+              <span className="text-sm text-foreground tabular-nums">
+                {formatMetricValue(metric!, mode)}
+              </span>
+            </div>
           </div>
         );
       })}
-      <div className="flex items-center h-10">
-        <span className="text-sm text-foreground">See all</span>
-        <ArrowRight size={16} className="ml-2" />
+      <div className="flex items-center h-10 px-4 gap-2">
+        <span className="text-sm text-muted-foreground">See all</span>
+        <ArrowRight size={16} className="text-muted-foreground" />
       </div>
     </div>
   );
@@ -267,24 +276,33 @@ function ToolLeaderboardTable({
       {tools.slice(0, 4).map((tool) => {
         const pct = total > 0 ? ((tool.calls / total) * 100).toFixed(1) : "0.0";
         return (
-          <div key={tool.toolName} className="flex items-center h-10 gap-3">
-            <div className="size-6 rounded-md bg-muted flex items-center justify-center shrink-0">
-              <Container size={14} className="text-muted-foreground" />
+          <div
+            key={tool.toolName}
+            className="flex items-center h-10 border-b border-border/50 px-3"
+          >
+            <div className="flex flex-1 items-center gap-2 min-w-0">
+              <div className="size-6 rounded-md border border-border/10 bg-background shadow-sm flex items-center justify-center shrink-0">
+                <Container size={14} className="text-muted-foreground" />
+              </div>
+              <span className="text-sm text-muted-foreground flex-1 truncate">
+                {tool.toolName}
+              </span>
             </div>
-            <span className="text-sm flex-1 truncate">{tool.toolName}</span>
-            <span className="text-sm text-muted-foreground tabular-nums">
-              {pct}%
-            </span>
-            <span className="text-sm font-semibold tabular-nums">
-              {tool.calls.toLocaleString()}
-            </span>
+            <div className="flex items-center gap-2 shrink-0 px-3">
+              <span className="text-sm text-foreground/30 tabular-nums">
+                {pct}%
+              </span>
+              <span className="text-sm text-foreground tabular-nums">
+                {tool.calls.toLocaleString()}
+              </span>
+            </div>
           </div>
         );
       })}
       {tools.length > 4 && (
-        <div className="flex items-center h-10">
-          <span className="text-sm text-foreground">See all</span>
-          <ArrowRight size={16} className="ml-2" />
+        <div className="flex items-center h-10 px-4 gap-2">
+          <span className="text-sm text-muted-foreground">See all</span>
+          <ArrowRight size={16} className="text-muted-foreground" />
         </div>
       )}
     </div>
@@ -306,24 +324,33 @@ function ModelLeaderboardTable({
         const pct =
           total > 0 ? ((model.calls / total) * 100).toFixed(1) : "0.0";
         return (
-          <div key={model.toolName} className="flex items-center h-10 gap-3">
-            <div className="size-6 rounded-md bg-muted flex items-center justify-center shrink-0">
-              <Container size={14} className="text-muted-foreground" />
+          <div
+            key={model.toolName}
+            className="flex items-center h-10 border-b border-border/50 px-3"
+          >
+            <div className="flex flex-1 items-center gap-2 min-w-0">
+              <div className="size-6 rounded-md border border-border/10 bg-background shadow-sm flex items-center justify-center shrink-0">
+                <Container size={14} className="text-muted-foreground" />
+              </div>
+              <span className="text-sm text-muted-foreground flex-1 truncate">
+                {model.toolName}
+              </span>
             </div>
-            <span className="text-sm flex-1 truncate">{model.toolName}</span>
-            <span className="text-sm text-muted-foreground tabular-nums">
-              {pct}%
-            </span>
-            <span className="text-sm font-semibold tabular-nums">
-              {model.calls.toLocaleString()}
-            </span>
+            <div className="flex items-center gap-2 shrink-0 px-3">
+              <span className="text-sm text-foreground/30 tabular-nums">
+                {pct}%
+              </span>
+              <span className="text-sm text-foreground tabular-nums">
+                {model.calls.toLocaleString()}
+              </span>
+            </div>
           </div>
         );
       })}
       {models.length > 4 && (
-        <div className="flex items-center h-10">
-          <span className="text-sm text-foreground">See all</span>
-          <ArrowRight size={16} className="ml-2" />
+        <div className="flex items-center h-10 px-4 gap-2">
+          <span className="text-sm text-muted-foreground">See all</span>
+          <ArrowRight size={16} className="text-muted-foreground" />
         </div>
       )}
     </div>
@@ -602,7 +629,7 @@ function OverviewTabContent({
               value={latencyMetric}
               onValueChange={(v) => setLatencyMetric(v as "avg" | "p95")}
             >
-              <SelectTrigger className="h-8 w-24 text-xs">
+              <SelectTrigger className="w-[120px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
