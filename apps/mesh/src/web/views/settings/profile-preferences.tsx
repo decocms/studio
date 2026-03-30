@@ -105,7 +105,7 @@ function ProfileSection() {
   if (isPending) return null;
 
   return (
-    <Card className="hover:bg-card p-6">
+    <Card className="p-6">
       <CardHeader className="p-0">
         <CardTitle className="text-sm">Profile</CardTitle>
       </CardHeader>
@@ -182,7 +182,7 @@ function PreferencesSection() {
   ];
 
   return (
-    <Card className="hover:bg-card p-6">
+    <Card className="p-6">
       <CardHeader className="p-0">
         <CardTitle className="text-sm">Preferences</CardTitle>
       </CardHeader>

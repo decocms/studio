@@ -1175,7 +1175,7 @@ Define step-by-step how the agent should handle requests.
             )}
 
             {activeTab === "layout" && (
-              <Card className="hover:bg-card">
+              <Card>
                 <CardContent className="p-0">
                   <LayoutTabContent virtualMcpId={virtualMcp.id} />
                 </CardContent>

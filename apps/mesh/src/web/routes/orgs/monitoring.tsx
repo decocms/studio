@@ -11,7 +11,6 @@ import { ErrorBoundary } from "@/web/components/error-boundary";
 import { MONITORING_CONFIG } from "@/web/components/monitoring/config.ts";
 import { LogRow } from "@/web/components/monitoring/log-row.tsx";
 import {
-  MonitoringStatsRowSkeleton,
   KPIChart,
   type DateRange,
   type MonitoringStatsData,
@@ -19,6 +18,7 @@ import {
 import {
   useMonitoringStats,
   useMonitoringLlmStats,
+  useMonitoringTopTools,
 } from "@/web/components/monitoring/hooks.ts";
 import { useInfiniteScroll } from "@/web/hooks/use-infinite-scroll.ts";
 import { useMembers } from "@/web/hooks/use-members";
@@ -34,12 +34,8 @@ import {
 import { Badge } from "@deco/ui/components/badge.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import {
-  FilterLines,
-  PauseCircle,
-  PlayCircle,
-  Container,
-} from "@untitledui/icons";
+import { Card } from "@deco/ui/components/card.tsx";
+import { FilterLines, Container, ArrowRight } from "@untitledui/icons";
 import { Input } from "@deco/ui/components/input.tsx";
 import { MultiSelect } from "@deco/ui/components/multi-select.tsx";
 import {
@@ -84,12 +80,7 @@ import {
 import { CollectionTabs } from "@/web/components/collections/collection-tabs.tsx";
 import { Switch } from "@deco/ui/components/switch.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
-import {
-  TopTools,
-  type TopChartMetric,
-} from "@/web/components/monitoring/analytics-top-tools.tsx";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
-import { HomeGridCell } from "@/web/routes/orgs/home/home-grid-cell.tsx";
 import {
   Table,
   TableBody,
@@ -110,8 +101,11 @@ interface MonitoringStatsProps {
   status?: "success" | "error";
   connections: ReturnType<typeof useConnections>;
   isStreaming: boolean;
-  selectedMetric: TopChartMetric;
-  onMetricSelect: (metric: TopChartMetric) => void;
+}
+
+interface OverviewTabProps extends MonitoringStatsProps {
+  analyticsDateRange: { startDate: string; endDate: string };
+  streamingRefetchInterval: number;
 }
 
 /**
@@ -141,6 +135,191 @@ function formatTimestampLabel(
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+// ============================================================================
+// Monitoring Card Components (Figma design)
+// ============================================================================
+
+function MonitoringMetricCard({
+  title,
+  value,
+  action,
+  children,
+  className,
+}: {
+  title: string;
+  value: ReactNode;
+  action?: ReactNode;
+  children?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <Card className={cn("p-4 gap-0", className)}>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <span className="text-sm text-muted-foreground">{title}</span>
+          <span className="text-3xl font-medium tracking-tight">{value}</span>
+        </div>
+        {action && <div className="shrink-0">{action}</div>}
+      </div>
+      {children && <div className="flex flex-col gap-4 mt-4">{children}</div>}
+    </Card>
+  );
+}
+
+function ConnectionLeaderboardTable({
+  metrics,
+  connections,
+  mode,
+  total,
+}: {
+  metrics: Array<{
+    connectionId: string;
+    calls: number;
+    errors: number;
+    errorRate: number;
+    avgDurationMs: number;
+  }>;
+  connections: ReturnType<typeof useConnections>;
+  mode: "requests" | "errors" | "latency";
+  total: number;
+}) {
+  const allConnections = connections ?? [];
+  const metricsMap = new Map(metrics.map((m) => [m.connectionId, m]));
+
+  const ranked = allConnections
+    .map((c) => ({ connection: c, metric: metricsMap.get(c.id) }))
+    .filter((item) => item.metric)
+    .sort((a, b) => {
+      const av = getMetricValue(a.metric!, mode);
+      const bv = getMetricValue(b.metric!, mode);
+      return bv - av;
+    })
+    .slice(0, 4);
+
+  if (ranked.length === 0) return null;
+
+  return (
+    <div className="flex flex-col">
+      {ranked.map(({ connection, metric }) => {
+        const value = getMetricValue(metric!, mode);
+        const pct = total > 0 ? ((value / total) * 100).toFixed(1) : "0.0";
+        return (
+          <div key={connection.id} className="flex items-center h-10 gap-3">
+            <IntegrationIcon
+              icon={connection.icon}
+              name={connection.title}
+              size="xs"
+              fallbackIcon={<Container />}
+              className="shrink-0 size-6! min-w-6! rounded-md"
+            />
+            <span className="text-sm flex-1 truncate">{connection.title}</span>
+            <span className="text-sm text-muted-foreground tabular-nums">
+              {pct}%
+            </span>
+            <span className="text-sm font-semibold tabular-nums">
+              {formatMetricValue(metric!, mode)}
+            </span>
+          </div>
+        );
+      })}
+      <div className="flex items-center h-10">
+        <span className="text-sm text-foreground">See all</span>
+        <ArrowRight size={16} className="ml-2" />
+      </div>
+    </div>
+  );
+}
+
+function ToolLeaderboardTable({
+  tools,
+  total,
+}: {
+  tools: Array<{
+    toolName: string;
+    connectionId: string | null;
+    calls: number;
+  }>;
+  total: number;
+}) {
+  if (tools.length === 0) return null;
+
+  return (
+    <div className="flex flex-col">
+      {tools.slice(0, 4).map((tool) => {
+        const pct = total > 0 ? ((tool.calls / total) * 100).toFixed(1) : "0.0";
+        return (
+          <div key={tool.toolName} className="flex items-center h-10 gap-3">
+            <div className="size-6 rounded-md bg-muted flex items-center justify-center shrink-0">
+              <Container size={14} className="text-muted-foreground" />
+            </div>
+            <span className="text-sm flex-1 truncate">{tool.toolName}</span>
+            <span className="text-sm text-muted-foreground tabular-nums">
+              {pct}%
+            </span>
+            <span className="text-sm font-semibold tabular-nums">
+              {tool.calls.toLocaleString()}
+            </span>
+          </div>
+        );
+      })}
+      {tools.length > 4 && (
+        <div className="flex items-center h-10">
+          <span className="text-sm text-foreground">See all</span>
+          <ArrowRight size={16} className="ml-2" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ModelLeaderboardTable({
+  models,
+  total,
+}: {
+  models: Array<{ toolName: string; calls: number }>;
+  total: number;
+}) {
+  if (models.length === 0) return null;
+
+  return (
+    <div className="flex flex-col">
+      {models.slice(0, 4).map((model) => {
+        const pct =
+          total > 0 ? ((model.calls / total) * 100).toFixed(1) : "0.0";
+        return (
+          <div key={model.toolName} className="flex items-center h-10 gap-3">
+            <div className="size-6 rounded-md bg-muted flex items-center justify-center shrink-0">
+              <Container size={14} className="text-muted-foreground" />
+            </div>
+            <span className="text-sm flex-1 truncate">{model.toolName}</span>
+            <span className="text-sm text-muted-foreground tabular-nums">
+              {pct}%
+            </span>
+            <span className="text-sm font-semibold tabular-nums">
+              {model.calls.toLocaleString()}
+            </span>
+          </div>
+        );
+      })}
+      {models.length > 4 && (
+        <div className="flex items-center h-10">
+          <span className="text-sm text-foreground">See all</span>
+          <ArrowRight size={16} className="ml-2" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatMetricValue(
+  m: { calls: number; errorRate: number; avgDurationMs: number },
+  mode: "requests" | "errors" | "latency",
+): string {
+  if (mode === "requests") return m.calls.toLocaleString();
+  if (mode === "errors") return `${m.errorRate.toFixed(1)}%`;
+  return formatDuration(m.avgDurationMs);
+}
+
 function floorToInterval(date: Date, interval: "1m" | "1h" | "1d"): Date {
   const result = new Date(date);
   if (interval === "1d") {
@@ -153,6 +332,22 @@ function floorToInterval(date: Date, interval: "1m" | "1h" | "1d"): Date {
   }
   result.setSeconds(0, 0);
   return result;
+}
+
+type ConnectionMetric = {
+  connectionId: string;
+  calls: number;
+  errors: number;
+  errorRate: number;
+  avgDurationMs: number;
+};
+
+type LeaderboardMode = "requests" | "errors" | "latency";
+
+function getMetricValue(m: ConnectionMetric, mode: LeaderboardMode): number {
+  if (mode === "requests") return m.calls;
+  if (mode === "errors") return m.errorRate;
+  return m.avgDurationMs;
 }
 
 function buildFilledStatsData(
@@ -236,206 +431,16 @@ function buildFilledStatsData(
   return data;
 }
 
-interface ConnectionMetric {
-  connectionId: string;
-  calls: number;
-  errors: number;
-  errorRate: number;
-  avgDurationMs: number;
-}
-
-type LeaderboardMode = "requests" | "errors" | "latency";
-
-function getMetricValue(m: ConnectionMetric, mode: LeaderboardMode): number {
-  if (mode === "requests") return m.calls;
-  if (mode === "errors") return m.errorRate;
-  return m.avgDurationMs;
-}
-
 function formatDuration(ms: number): string {
   if (ms >= 10000) return `${(ms / 1000).toFixed(1)}s`;
   return `${Math.round(ms)}ms`;
 }
 
-function formatMetric(m: ConnectionMetric, mode: LeaderboardMode): string {
-  if (mode === "requests") return m.calls.toLocaleString();
-  if (mode === "errors") return `${m.errorRate.toFixed(1)}%`;
-  return formatDuration(m.avgDurationMs);
-}
+// ============================================================================
+// Overview Tab Component
+// ============================================================================
 
-type StatKPIConfig = {
-  id: string;
-  dataKey:
-    | "calls"
-    | "errors"
-    | "avg"
-    | "p50"
-    | "p95"
-    | ((
-        selected: TopChartMetric,
-      ) => "calls" | "errors" | "avg" | "p50" | "p95");
-  colorNum: number;
-  barColor: string;
-  leaderboardMode: LeaderboardMode;
-  /** Which TopChartMetric values this card "owns" */
-  chartMetrics: TopChartMetric[];
-  renderTitle: (
-    s: MonitoringStatsData,
-    selectedMetric: TopChartMetric,
-  ) => ReactNode;
-  /** Determine next metric when clicked */
-  getNextMetric: (current: TopChartMetric) => TopChartMetric;
-};
-
-const STAT_KPI_CONFIG: StatKPIConfig[] = [
-  {
-    id: "calls",
-    dataKey: "calls",
-    colorNum: 1,
-    barColor: "bg-chart-1",
-    leaderboardMode: "requests",
-    chartMetrics: ["calls"],
-    renderTitle: (s) => (
-      <div className="flex flex-col gap-0.5 md:gap-1">
-        <p className="text-xs md:text-sm text-muted-foreground">Tool Calls</p>
-        <p className="text-sm md:text-lg font-medium">
-          {s.totalCalls.toLocaleString()}
-        </p>
-      </div>
-    ),
-    getNextMetric: () => "calls",
-  },
-  {
-    id: "latency",
-    dataKey: (selected) => (selected === "latency-avg" ? "avg" : "p95"),
-    colorNum: 4,
-    barColor: "bg-chart-4",
-    leaderboardMode: "latency",
-    chartMetrics: ["latency-avg", "latency-p95"],
-    renderTitle: (s, selectedMetric) => (
-      <div className="flex flex-col gap-0.5 md:gap-1">
-        <p className="text-xs md:text-sm text-muted-foreground">Latency</p>
-        <div className="flex items-baseline gap-3">
-          <div
-            className={cn(
-              "pb-0.5",
-              selectedMetric === "latency-avg"
-                ? "border-b-2 border-chart-4"
-                : "border-b-2 border-transparent",
-            )}
-          >
-            <span className="text-sm md:text-lg font-medium">
-              {formatDuration(s.avgDurationMs)}
-            </span>
-            <span className="text-[10px] md:text-xs text-muted-foreground ml-1">
-              avg
-            </span>
-          </div>
-          <div
-            className={cn(
-              "pb-0.5",
-              selectedMetric === "latency-p95"
-                ? "border-b-2 border-chart-4"
-                : "border-b-2 border-transparent",
-            )}
-          >
-            <span className="text-sm md:text-lg font-medium">
-              {formatDuration(s.p95DurationMs)}
-            </span>
-            <span className="text-[10px] md:text-xs text-muted-foreground ml-1">
-              p95
-            </span>
-          </div>
-        </div>
-      </div>
-    ),
-    getNextMetric: (current) =>
-      current === "latency-avg" ? "latency-p95" : "latency-avg",
-  },
-  {
-    id: "errors",
-    dataKey: "errors",
-    colorNum: 3,
-    barColor: "bg-chart-3",
-    leaderboardMode: "errors",
-    chartMetrics: ["errors"],
-    renderTitle: (s) => (
-      <div className="flex flex-col gap-0.5 md:gap-1">
-        <p className="text-xs md:text-sm text-muted-foreground">Errors</p>
-        <p className="text-sm md:text-lg font-medium">
-          {s.totalErrors.toLocaleString()}
-        </p>
-      </div>
-    ),
-    getNextMetric: () => "errors",
-  },
-];
-
-function ConnectionLeaderboard({
-  metrics,
-  connections,
-  mode,
-  barColor,
-}: {
-  metrics: ConnectionMetric[];
-  connections: ReturnType<typeof useConnections>;
-  mode: LeaderboardMode;
-  barColor: string;
-}) {
-  const metricsMap = new Map(
-    metrics.map((metric) => [metric.connectionId, metric]),
-  );
-  const allConnections = connections ?? [];
-
-  const ranked = allConnections
-    .map((c) => ({ connection: c, metric: metricsMap.get(c.id) }))
-    .filter((item) => item.metric)
-    .sort(
-      (a, b) =>
-        getMetricValue(b.metric!, mode) - getMetricValue(a.metric!, mode),
-    )
-    .slice(0, 5);
-
-  const maxValue = ranked[0]?.metric
-    ? getMetricValue(ranked[0].metric, mode)
-    : 1;
-
-  if (ranked.length === 0) return null;
-
-  return (
-    <div className="space-y-1.5 mt-2">
-      {ranked.map(({ connection, metric }) => {
-        const value = getMetricValue(metric!, mode);
-        const pct = maxValue > 0 ? Math.min((value / maxValue) * 100, 100) : 0;
-        return (
-          <div key={connection.id} className="flex items-center gap-1.5">
-            <IntegrationIcon
-              icon={connection.icon}
-              name={connection.title}
-              size="xs"
-              fallbackIcon={<Container />}
-              className="shrink-0 size-4! min-w-4!"
-            />
-            <span className="text-[10px] text-foreground truncate min-w-0 w-20">
-              {connection.title}
-            </span>
-            <div className="relative h-1.5 bg-muted/50 overflow-hidden flex-1">
-              <div
-                className={cn("h-full", barColor)}
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-            <span className="text-[10px] tabular-nums shrink-0 text-foreground">
-              {formatMetric(metric!, mode)}
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function MonitoringStatsContent({
+function OverviewTabContent({
   displayDateRange,
   connectionIds,
   excludeConnectionIds,
@@ -443,10 +448,13 @@ function MonitoringStatsContent({
   status,
   connections,
   isStreaming,
-  selectedMetric,
-  onMetricSelect,
-}: MonitoringStatsProps) {
+  analyticsDateRange,
+  streamingRefetchInterval,
+}: OverviewTabProps) {
   const interval = getIntervalFromRange(displayDateRange);
+  const refetchInterval = isStreaming ? streamingRefetchInterval : false;
+
+  // Tool call stats
   const { data: serverStats } = useMonitoringStats(
     {
       interval,
@@ -457,175 +465,44 @@ function MonitoringStatsContent({
       toolNames: toolName ? [toolName] : undefined,
       status,
     },
+    { refetchInterval },
+  );
+
+  // Top tools
+  const durationMs =
+    displayDateRange.endDate.getTime() - displayDateRange.startDate.getTime();
+  const topToolsInterval =
+    durationMs <= 60 * 60 * 1000
+      ? "1m"
+      : durationMs <= 25 * 60 * 60 * 1000
+        ? "1h"
+        : "1d";
+
+  const { data: topToolsData } = useMonitoringTopTools(
     {
-      refetchInterval: isStreaming
-        ? MONITORING_CONFIG.streamingRefetchInterval
-        : false,
+      interval: topToolsInterval,
+      startDate: analyticsDateRange.startDate,
+      endDate: analyticsDateRange.endDate,
+      topN: 10,
+      connectionIds: connectionIds.length > 0 ? connectionIds : undefined,
+      excludeConnectionIds,
+      toolNames: toolName ? [toolName] : undefined,
+      status,
     },
+    { refetchInterval },
   );
 
-  const stats: MonitoringStatsData = serverStats
-    ? {
-        totalCalls: serverStats.totalCalls,
-        totalErrors: serverStats.totalErrors,
-        avgDurationMs: serverStats.avgDurationMs,
-        p95DurationMs: serverStats.p95DurationMs,
-        data: buildFilledStatsData(
-          serverStats.timeseries,
-          displayDateRange,
-          interval,
-        ),
-      }
-    : {
-        totalCalls: 0,
-        totalErrors: 0,
-        avgDurationMs: 0,
-        p95DurationMs: 0,
-        data: [],
-      };
-
-  return (
-    <div className="border-b border-border">
-      <div className="px-5 py-2 bg-muted/30 border-b border-border">
-        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          Tool Calls
-        </span>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-[0.5px] bg-border flex-shrink-0">
-        {STAT_KPI_CONFIG.map((config) => {
-          const {
-            id,
-            dataKey,
-            colorNum,
-            barColor,
-            leaderboardMode,
-            chartMetrics,
-            renderTitle,
-            getNextMetric,
-          } = config;
-          const isSelected = chartMetrics.includes(selectedMetric);
-          const handleClick = () => {
-            if (isSelected) {
-              // Already selected — cycle sub-metrics
-              onMetricSelect(getNextMetric(selectedMetric));
-            } else {
-              // First click — select the first metric for this card
-              onMetricSelect(chartMetrics[0]!);
-            }
-          };
-          return (
-            <div
-              key={id}
-              className="bg-background relative cursor-pointer"
-              onClick={handleClick}
-            >
-              {isSelected && (
-                <div
-                  className="absolute top-0 left-0 right-0 h-0.5 z-10"
-                  style={{
-                    backgroundColor: `var(--chart-${colorNum})`,
-                  }}
-                />
-              )}
-              <HomeGridCell title={renderTitle(stats, selectedMetric)}>
-                <div className="flex flex-col w-full">
-                  <KPIChart
-                    data={stats.data}
-                    dataKey={
-                      typeof dataKey === "function"
-                        ? dataKey(selectedMetric)
-                        : dataKey
-                    }
-                    colorNum={colorNum}
-                    chartHeight="h-[30px] md:h-[40px]"
-                  />
-                  <ConnectionLeaderboard
-                    metrics={serverStats?.connectionBreakdown ?? []}
-                    connections={connections}
-                    mode={leaderboardMode}
-                    barColor={barColor}
-                  />
-                </div>
-              </HomeGridCell>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-const MonitoringStats = Object.assign(MonitoringStatsContent, {
-  Skeleton: MonitoringStatsRowSkeleton,
-});
-
-// ============================================================================
-// LLM Call Stats Component
-// ============================================================================
-
-interface LlmStatsProps {
-  displayDateRange: DateRange;
-  isStreaming: boolean;
-  selectedMetric: TopChartMetric;
-  onMetricSelect: (metric: TopChartMetric) => void;
-}
-
-function ModelLeaderboard({
-  topTools,
-  barColor,
-}: {
-  topTools: Array<{ toolName: string; calls: number }>;
-  barColor: string;
-}) {
-  if (topTools.length === 0) return null;
-
-  const maxValue = topTools[0]?.calls ?? 1;
-
-  return (
-    <div className="space-y-1.5 mt-2">
-      {topTools.map(({ toolName, calls }) => {
-        const pct = maxValue > 0 ? Math.min((calls / maxValue) * 100, 100) : 0;
-        return (
-          <div key={toolName} className="flex items-center gap-1.5">
-            <span className="text-[10px] text-foreground truncate min-w-0 w-24">
-              {toolName}
-            </span>
-            <div className="relative h-1.5 bg-muted/50 overflow-hidden flex-1">
-              <div
-                className={cn("h-full", barColor)}
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-            <span className="text-[10px] tabular-nums shrink-0 text-foreground">
-              {calls.toLocaleString()}
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function LlmStatsContent({
-  displayDateRange,
-  isStreaming,
-  selectedMetric,
-  onMetricSelect,
-}: LlmStatsProps) {
-  const interval = getIntervalFromRange(displayDateRange);
-  const { data: serverStats } = useMonitoringLlmStats(
+  // AI / LLM stats
+  const { data: llmStats } = useMonitoringLlmStats(
     {
       interval,
       startDate: displayDateRange.startDate.toISOString(),
       endDate: displayDateRange.endDate.toISOString(),
     },
-    {
-      refetchInterval: isStreaming
-        ? MONITORING_CONFIG.streamingRefetchInterval
-        : false,
-    },
+    { refetchInterval },
   );
 
+  // Build filled stats data
   const stats: MonitoringStatsData = serverStats
     ? {
         totalCalls: serverStats.totalCalls,
@@ -646,155 +523,246 @@ function LlmStatsContent({
         data: [],
       };
 
-  const topTools = serverStats?.topTools ?? [];
+  const llmStatsData: MonitoringStatsData = llmStats
+    ? {
+        totalCalls: llmStats.totalCalls,
+        totalErrors: llmStats.totalErrors,
+        avgDurationMs: llmStats.avgDurationMs,
+        p95DurationMs: llmStats.p95DurationMs,
+        data: buildFilledStatsData(
+          llmStats.timeseries,
+          displayDateRange,
+          interval,
+        ),
+      }
+    : {
+        totalCalls: 0,
+        totalErrors: 0,
+        avgDurationMs: 0,
+        p95DurationMs: 0,
+        data: [],
+      };
 
-  const llmKpiConfigs = [
-    {
-      id: "llm-calls",
-      dataKey: "calls" as const,
-      colorNum: 1,
-      barColor: "bg-chart-1",
-      chartMetric: "llm-calls" as TopChartMetric,
-      renderTitle: () => (
-        <div className="flex flex-col gap-0.5 md:gap-1">
-          <p className="text-xs md:text-sm text-muted-foreground">AI Usage</p>
-          <p className="text-sm md:text-lg font-medium">
-            {stats.totalCalls.toLocaleString()}
-          </p>
-        </div>
-      ),
-    },
-    {
-      id: "llm-latency",
-      dataKey: "avg" as const,
-      colorNum: 4,
-      barColor: "bg-chart-4",
-      chartMetric: "llm-latency-avg" as TopChartMetric,
-      renderTitle: () => (
-        <div className="flex flex-col gap-0.5 md:gap-1">
-          <p className="text-xs md:text-sm text-muted-foreground">AI Latency</p>
-          <div className="flex items-baseline gap-3">
-            <div>
-              <span className="text-sm md:text-lg font-medium">
-                {formatDuration(stats.avgDurationMs)}
-              </span>
-              <span className="text-[10px] md:text-xs text-muted-foreground ml-1">
-                avg
-              </span>
-            </div>
-            <div>
-              <span className="text-sm md:text-lg font-medium">
-                {formatDuration(stats.p95DurationMs)}
-              </span>
-              <span className="text-[10px] md:text-xs text-muted-foreground ml-1">
-                p95
-              </span>
-            </div>
-          </div>
-        </div>
-      ),
-    },
-    {
-      id: "llm-errors",
-      dataKey: "errors" as const,
-      colorNum: 3,
-      barColor: "bg-chart-3",
-      chartMetric: "llm-errors" as TopChartMetric,
-      renderTitle: () => (
-        <div className="flex flex-col gap-0.5 md:gap-1">
-          <p className="text-xs md:text-sm text-muted-foreground">AI Errors</p>
-          <p className="text-sm md:text-lg font-medium">
-            {stats.totalErrors.toLocaleString()}
-          </p>
-        </div>
-      ),
-    },
-  ];
+  const topTools = topToolsData?.topTools ?? [];
+  const llmModels = llmStats?.topTools ?? [];
+  const connectionBreakdown = serverStats?.connectionBreakdown ?? [];
+
+  // Latency metric selector
+  const [latencyMetric, setLatencyMetric] = useState<"avg" | "p95">("avg");
 
   return (
-    <div className="border-b border-border">
-      <div className="px-5 py-2 bg-muted/30 border-b border-border">
-        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          AI Usage
-        </span>
+    <div className="flex flex-col gap-4 px-4 md:px-10 py-6 max-w-[1200px] mx-auto w-full overflow-auto">
+      {/* Row 1: Tool Calls — full width */}
+      <MonitoringMetricCard
+        title="Tool Calls"
+        value={stats.totalCalls.toLocaleString()}
+      >
+        <KPIChart
+          data={stats.data}
+          dataKey="calls"
+          colorNum={1}
+          chartHeight="h-[120px] md:h-[180px]"
+        />
+        <ConnectionLeaderboardTable
+          metrics={connectionBreakdown}
+          connections={connections}
+          mode="requests"
+          total={stats.totalCalls}
+        />
+      </MonitoringMetricCard>
+
+      {/* Row 2: Latency + Errors — half width each */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <MonitoringMetricCard
+          title="Latency"
+          value={formatDuration(
+            latencyMetric === "avg" ? stats.avgDurationMs : stats.p95DurationMs,
+          )}
+          action={
+            <Select
+              value={latencyMetric}
+              onValueChange={(v) => setLatencyMetric(v as "avg" | "p95")}
+            >
+              <SelectTrigger className="h-8 w-24 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="avg">Avg</SelectItem>
+                <SelectItem value="p95">P95</SelectItem>
+              </SelectContent>
+            </Select>
+          }
+        >
+          <KPIChart
+            data={stats.data}
+            dataKey={latencyMetric}
+            colorNum={4}
+            chartHeight="h-[120px] md:h-[180px]"
+          />
+          <ConnectionLeaderboardTable
+            metrics={connectionBreakdown}
+            connections={connections}
+            mode="latency"
+            total={stats.totalCalls}
+          />
+        </MonitoringMetricCard>
+
+        <MonitoringMetricCard
+          title="Errors"
+          value={stats.totalErrors.toLocaleString()}
+        >
+          <KPIChart
+            data={stats.data}
+            dataKey="errors"
+            colorNum={3}
+            chartHeight="h-[120px] md:h-[180px]"
+          />
+          <ConnectionLeaderboardTable
+            metrics={connectionBreakdown}
+            connections={connections}
+            mode="errors"
+            total={stats.totalErrors || 1}
+          />
+        </MonitoringMetricCard>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-[0.5px] bg-border flex-shrink-0">
-        {llmKpiConfigs.map(
-          ({ id, dataKey, colorNum, barColor, chartMetric, renderTitle }) => {
-            const isSelected = selectedMetric === chartMetric;
-            return (
-              <div
-                key={id}
-                className="bg-background relative cursor-pointer"
-                onClick={() => onMetricSelect(chartMetric)}
-              >
-                {isSelected && (
-                  <div
-                    className="absolute top-0 left-0 right-0 h-0.5 z-10"
-                    style={{
-                      backgroundColor: `var(--chart-${colorNum})`,
-                    }}
-                  />
-                )}
-                <HomeGridCell title={renderTitle()}>
-                  <div className="flex flex-col w-full">
-                    <KPIChart
-                      data={stats.data}
-                      dataKey={dataKey}
-                      colorNum={colorNum}
-                      chartHeight="h-[30px] md:h-[40px]"
-                    />
-                    <ModelLeaderboard topTools={topTools} barColor={barColor} />
-                  </div>
-                </HomeGridCell>
-              </div>
-            );
-          },
-        )}
+
+      {/* Row 3: Top Tools Used + Top Agents Used */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <MonitoringMetricCard
+          title="Top Tools Used"
+          value={topTools.length.toLocaleString()}
+        >
+          <ToolLeaderboardTable
+            tools={topTools}
+            total={topTools.reduce((sum, t) => sum + t.calls, 0)}
+          />
+        </MonitoringMetricCard>
+
+        <MonitoringMetricCard
+          title="Top Agents Used"
+          value={
+            connectionBreakdown.length > 0
+              ? connectionBreakdown.length.toLocaleString()
+              : "0"
+          }
+        >
+          <ConnectionLeaderboardTable
+            metrics={connectionBreakdown}
+            connections={connections}
+            mode="requests"
+            total={stats.totalCalls}
+          />
+        </MonitoringMetricCard>
+      </div>
+
+      {/* Row 4: AI Usage — full width */}
+      <MonitoringMetricCard
+        title="AI Usage"
+        value={llmStatsData.totalCalls.toLocaleString()}
+      >
+        <KPIChart
+          data={llmStatsData.data}
+          dataKey="calls"
+          colorNum={1}
+          chartHeight="h-[120px] md:h-[180px]"
+        />
+        <ModelLeaderboardTable
+          models={llmModels}
+          total={llmStatsData.totalCalls}
+        />
+      </MonitoringMetricCard>
+
+      {/* Row 5: AI Latency + AI Errors */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <MonitoringMetricCard
+          title="AI Latency"
+          value={formatDuration(llmStatsData.avgDurationMs)}
+          action={
+            <div className="flex items-baseline gap-2 text-xs text-muted-foreground">
+              <span>p95: {formatDuration(llmStatsData.p95DurationMs)}</span>
+            </div>
+          }
+        >
+          <KPIChart
+            data={llmStatsData.data}
+            dataKey="avg"
+            colorNum={4}
+            chartHeight="h-[120px] md:h-[180px]"
+          />
+          <ModelLeaderboardTable
+            models={llmModels}
+            total={llmStatsData.totalCalls}
+          />
+        </MonitoringMetricCard>
+
+        <MonitoringMetricCard
+          title="AI Errors"
+          value={llmStatsData.totalErrors.toLocaleString()}
+        >
+          <KPIChart
+            data={llmStatsData.data}
+            dataKey="errors"
+            colorNum={3}
+            chartHeight="h-[120px] md:h-[180px]"
+          />
+          <ModelLeaderboardTable
+            models={llmModels}
+            total={llmStatsData.totalCalls}
+          />
+        </MonitoringMetricCard>
       </div>
     </div>
   );
 }
 
-function LlmStatsSkeleton() {
+function OverviewTabSkeleton() {
   return (
-    <div className="border-b border-border">
-      <div className="px-5 py-2 bg-muted/30 border-b border-border">
-        <div className="h-3 w-16 rounded bg-muted animate-pulse" />
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-[0.5px] bg-border flex-shrink-0">
-        {[...Array(3)].map((_, i) => (
-          <HomeGridCell
-            key={i}
-            title={
-              <div className="flex flex-col gap-0.5 md:gap-1">
-                <div className="h-4 w-16 rounded bg-muted animate-pulse" />
-                <div className="h-5 md:h-6 w-12 rounded bg-muted animate-pulse" />
-              </div>
-            }
-          >
-            <div className="flex flex-col w-full">
-              <div className="h-[30px] md:h-[40px] w-full rounded bg-muted animate-pulse" />
-              <div className="space-y-1.5 mt-2">
-                {Array.from({ length: 3 }).map((_, j) => (
-                  <div key={j} className="flex items-center gap-1.5">
-                    <div className="h-2.5 w-24 rounded bg-muted animate-pulse" />
-                    <div className="h-1.5 flex-1 bg-muted animate-pulse" />
-                    <div className="h-2.5 w-8 rounded bg-muted animate-pulse shrink-0" />
-                  </div>
-                ))}
-              </div>
+    <div className="flex flex-col gap-4 px-4 md:px-10 py-6 max-w-[1200px] mx-auto w-full">
+      {/* Tool Calls skeleton */}
+      <Card className="p-4 gap-0">
+        <div className="flex flex-col gap-1">
+          <div className="h-4 w-20 rounded bg-muted animate-pulse" />
+          <div className="h-9 w-16 rounded bg-muted animate-pulse" />
+        </div>
+        <div className="mt-4 h-[180px] w-full rounded bg-muted animate-pulse" />
+        <div className="mt-4 space-y-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex items-center h-10 gap-3">
+              <div className="size-6 rounded-md bg-muted animate-pulse" />
+              <div className="h-4 w-24 rounded bg-muted animate-pulse" />
+              <div className="flex-1" />
+              <div className="h-4 w-10 rounded bg-muted animate-pulse" />
+              <div className="h-4 w-10 rounded bg-muted animate-pulse" />
             </div>
-          </HomeGridCell>
+          ))}
+        </div>
+      </Card>
+      {/* Latency + Errors skeleton */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {[0, 1].map((i) => (
+          <Card key={i} className="p-4 gap-0">
+            <div className="flex flex-col gap-1">
+              <div className="h-4 w-16 rounded bg-muted animate-pulse" />
+              <div className="h-9 w-16 rounded bg-muted animate-pulse" />
+            </div>
+            <div className="mt-4 h-[180px] w-full rounded bg-muted animate-pulse" />
+            <div className="mt-4 space-y-2">
+              {Array.from({ length: 4 }).map((_, j) => (
+                <div key={j} className="flex items-center h-10 gap-3">
+                  <div className="size-6 rounded-md bg-muted animate-pulse" />
+                  <div className="h-4 w-20 rounded bg-muted animate-pulse" />
+                  <div className="flex-1" />
+                  <div className="h-4 w-10 rounded bg-muted animate-pulse" />
+                  <div className="h-4 w-10 rounded bg-muted animate-pulse" />
+                </div>
+              ))}
+            </div>
+          </Card>
         ))}
       </div>
     </div>
   );
 }
-
-const LlmStats = Object.assign(LlmStatsContent, {
-  Skeleton: LlmStatsSkeleton,
-});
 
 // ============================================================================
 // Filters Popover Component
@@ -1745,8 +1713,6 @@ function MonitoringDashboardContent({
     ...propertyApiParams,
   };
 
-  const [topChartMetric, setTopChartMetric] = useState<TopChartMetric>("calls");
-
   // Build dateRange strings for analytics components (use display range, not the streaming-extended fetch range)
   const analyticsDateRange = {
     startDate: displayDateRange.startDate.toISOString(),
@@ -1761,10 +1727,32 @@ function MonitoringDashboardContent({
   return (
     <>
       <Page.Body className="pb-0">
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4">
           <Page.Title>Monitoring</Page.Title>
-          {(tab === "overview" || tab === "audit") && (
-            <div className="flex items-center justify-end gap-2">
+          <div className="flex items-center justify-between gap-4">
+            <CollectionTabs
+              tabs={tabs}
+              activeTab={tab}
+              onTabChange={(tabId) =>
+                onTabChange(tabId as "overview" | "audit")
+              }
+            />
+            <div className="flex items-center gap-2">
+              <Button
+                variant={isStreaming ? "secondary" : "outline"}
+                size="sm"
+                className="h-8 gap-1.5 px-3"
+                onClick={onStreamingToggle}
+              >
+                {isStreaming && (
+                  <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+                )}
+                <span>Live</span>
+                {isStreaming && (
+                  <span className="text-muted-foreground text-xs">3s</span>
+                )}
+              </Button>
+
               <FiltersPopover
                 connectionIds={connectionIds}
                 virtualMcpIds={virtualMcpIds}
@@ -1784,40 +1772,19 @@ function MonitoringDashboardContent({
                 <Button
                   variant={aiOnly ? "secondary" : "outline"}
                   size="sm"
-                  className="h-7 px-2 sm:px-3 text-xs"
+                  className="h-8 px-3 text-xs"
                   onClick={() => setAiOnly(!aiOnly)}
                 >
                   AI Usage
                 </Button>
               )}
 
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 w-7 px-0 sm:w-auto sm:px-3 gap-1.5"
-                onClick={onStreamingToggle}
-              >
-                {isStreaming ? (
-                  <PauseCircle size={16} className="animate-pulse" />
-                ) : (
-                  <PlayCircle size={16} />
-                )}
-                <span className="hidden sm:inline">
-                  {isStreaming ? "Streaming" : "Stream"}
-                </span>
-              </Button>
-
               <TimeRangePicker
                 value={{ from, to }}
                 onChange={onTimeRangeChange}
               />
             </div>
-          )}
-          <CollectionTabs
-            tabs={tabs}
-            activeTab={tab}
-            onTabChange={(tabId) => onTabChange(tabId as "overview" | "audit")}
-          />
+          </div>
         </div>
       </Page.Body>
 
@@ -1840,33 +1807,8 @@ function MonitoringDashboardContent({
           membersData={membersData}
         />
       ) : (
-        <div className="flex-1 flex flex-col overflow-auto md:overflow-hidden min-w-0">
-          {/* Top Tools Chart */}
-          <div className="border-b border-border relative z-10">
-            <ErrorBoundary fallback={null}>
-              <Suspense fallback={<TopTools.Skeleton />}>
-                <TopTools.Content
-                  metricsMode={topChartMetric}
-                  dateRange={analyticsDateRange}
-                  connectionIds={connectionIds}
-                  excludeConnectionIds={excludeConnectionIds}
-                  toolName={tool || undefined}
-                  status={
-                    status === "errors"
-                      ? "error"
-                      : status === "success"
-                        ? "success"
-                        : undefined
-                  }
-                  isStreaming={isStreaming}
-                  streamingRefetchInterval={streamingRefetchInterval}
-                />
-              </Suspense>
-            </ErrorBoundary>
-          </div>
-
-          {/* Stats with Connection Leaderboards */}
-          <MonitoringStats
+        <div className="flex-1 flex flex-col overflow-auto min-w-0">
+          <OverviewTabContent
             displayDateRange={displayDateRange}
             connectionIds={connectionIds}
             excludeConnectionIds={excludeConnectionIds}
@@ -1880,16 +1822,8 @@ function MonitoringDashboardContent({
             }
             connections={allConnections}
             isStreaming={isStreaming}
-            selectedMetric={topChartMetric}
-            onMetricSelect={setTopChartMetric}
-          />
-
-          {/* LLM Call Stats */}
-          <LlmStats
-            displayDateRange={displayDateRange}
-            isStreaming={isStreaming}
-            selectedMetric={topChartMetric}
-            onMetricSelect={setTopChartMetric}
+            analyticsDateRange={analyticsDateRange}
+            streamingRefetchInterval={streamingRefetchInterval}
           />
         </div>
       )}
@@ -2019,12 +1953,8 @@ export default function MonitoringDashboard() {
                   <MonitoringLogsTable.Skeleton />
                 </div>
               ) : (
-                <div className="flex-1 flex flex-col overflow-auto md:overflow-hidden">
-                  <div className="border-b border-border">
-                    <TopTools.Skeleton />
-                  </div>
-                  <MonitoringStats.Skeleton />
-                  <LlmStats.Skeleton />
+                <div className="flex-1 flex flex-col overflow-auto">
+                  <OverviewTabSkeleton />
                 </div>
               )}
             </>

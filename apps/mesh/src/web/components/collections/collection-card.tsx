@@ -78,7 +78,7 @@ export function CollectionCard<T extends BaseCollectionEntity>({
   const hasActions = actions && Object.keys(actions).length > 0;
 
   return (
-    <Card className="cursor-pointer transition-colors h-full flex flex-col group relative">
+    <Card className="cursor-pointer transition-colors hover:bg-accent/50 h-full flex flex-col group relative">
       <div className="flex flex-col gap-4 p-6 flex-1">
         <IntegrationIcon
           icon={iconUrl}

@@ -115,7 +115,7 @@ export function OrganizationForm() {
       onSubmit={form.handleSubmit(onSubmit)}
       className="flex flex-col gap-6"
     >
-      <Card className="hover:bg-card p-6">
+      <Card className="p-6">
         <CardHeader className="p-0">
           <CardTitle className="text-sm">Overview</CardTitle>
         </CardHeader>
