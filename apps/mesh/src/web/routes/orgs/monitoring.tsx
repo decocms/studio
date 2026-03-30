@@ -223,8 +223,15 @@ function ConnectionLeaderboardTable({
   return (
     <div className="flex flex-col">
       {ranked.map(({ connection, metric }) => {
-        const value = getMetricValue(metric!, mode);
-        const pct = total > 0 ? ((value / total) * 100).toFixed(1) : "0.0";
+        // For requests: show % of total calls + call count
+        // For errors: show error rate % + error count
+        // For latency: show calls proportion % + latency value
+        const callsPct =
+          total > 0 ? ((metric!.calls / total) * 100).toFixed(1) : "0.0";
+        const displayPct =
+          mode === "errors"
+            ? `${metric!.errorRate.toFixed(1)}%`
+            : `${callsPct}%`;
         return (
           <div
             key={connection.id}
@@ -253,7 +260,7 @@ function ConnectionLeaderboardTable({
             </div>
             <div className="flex items-center gap-2 shrink-0 px-3">
               <span className="text-sm text-foreground/30 tabular-nums">
-                {pct}%
+                {displayPct}
               </span>
               <span className="text-sm text-foreground tabular-nums">
                 {formatMetricValue(metric!, mode)}
