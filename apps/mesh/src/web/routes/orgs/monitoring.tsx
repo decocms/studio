@@ -2507,25 +2507,25 @@ function MonitoringDashboardContent({
               />
             </div>
           </div>
-        </div>
-        {(tab === "audit" || tab === "threads") && (
-          <SearchInput
-            value={searchQuery}
-            onChange={(value) => onUpdateFilters({ search: value })}
-            placeholder={
-              tab === "threads"
-                ? "Search by title\u2026"
-                : "Search by tool name, connection, or error..."
-            }
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                onUpdateFilters({ search: "" });
-                (event.target as HTMLInputElement).blur();
+          {(tab === "audit" || tab === "threads") && (
+            <SearchInput
+              value={searchQuery}
+              onChange={(value) => onUpdateFilters({ search: value })}
+              placeholder={
+                tab === "threads"
+                  ? "Search by title\u2026"
+                  : "Search by tool name, connection, or error..."
               }
-            }}
-            className="w-full md:w-[375px]"
-          />
-        )}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  onUpdateFilters({ search: "" });
+                  (event.target as HTMLInputElement).blur();
+                }
+              }}
+              className="w-full md:w-[375px]"
+            />
+          )}
+        </div>
       </Page.Body>
 
       {tab === "threads" ? (
