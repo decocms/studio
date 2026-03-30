@@ -745,38 +745,36 @@ function OverviewTabContent({
         </MonitoringMetricCard>
       </div>
 
-      {/* Row 3: Top Tools Used + Top Agents Used */}
+      {/* Row 3: Top Tools + Top Connections — compact list cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <MonitoringMetricCard
-          title="Top Tools Used"
-          value={topTools.length.toLocaleString()}
-        >
+        <Card className="p-4 gap-4">
+          <span className="text-sm text-foreground/70">Top Tools</span>
           <ToolLeaderboardTable
             tools={topTools}
             connections={connections}
             total={topTools.reduce((sum, t) => sum + t.calls, 0)}
           />
-        </MonitoringMetricCard>
+        </Card>
 
-        <MonitoringMetricCard
-          title="Top Agents Used"
-          value={
-            connectionBreakdown.length > 0
-              ? connectionBreakdown.length.toLocaleString()
-              : "0"
-          }
-        >
+        <Card className="p-4 gap-4">
+          <span className="text-sm text-foreground/70">Top Connections</span>
           <ConnectionLeaderboardTable
             metrics={connectionBreakdown}
             connections={connections}
             mode="requests"
             total={stats.totalCalls}
           />
-        </MonitoringMetricCard>
+        </Card>
       </div>
 
-      {/* AI Usage section divider */}
-      <div className="border-t border-border" />
+      {/* AI Usage section header */}
+      <div className="flex items-center gap-3 pt-4">
+        <div className="h-px flex-1 bg-border" />
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          AI Usage
+        </span>
+        <div className="h-px flex-1 bg-border" />
+      </div>
 
       {/* AI Usage — 3 cards in a row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
