@@ -92,7 +92,7 @@ export interface MonitoringLogsResponse
 
 export interface MonitoringSearchParams {
   // Tab selection
-  tab?: "overview" | "audit" | "dashboards";
+  tab?: "overview" | "audit" | "dashboards" | "threads";
   // Time range using expressions (from/to)
   from?: string; // e.g., "now-24h", "now-7d", or ISO string
   to?: string; // e.g., "now" or ISO string

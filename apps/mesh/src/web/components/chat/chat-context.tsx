@@ -754,6 +754,10 @@ export function useChatStream(): ChatStreamContextValue {
   return ctx;
 }
 
+export function useOptionalChatStream(): ChatStreamContextValue | null {
+  return useContext(ChatStreamCtx);
+}
+
 export function useChatTask(): ChatTaskContextValue {
   const ctx = useContext(ChatTaskCtx);
   if (!ctx)

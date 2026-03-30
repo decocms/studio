@@ -13,6 +13,7 @@ export {
   ActiveTaskProvider,
   useChatTask,
   useChatStream,
+  useOptionalChatStream,
   useChatPrefs,
   useChatBridge,
   type ChatStreamContextValue,

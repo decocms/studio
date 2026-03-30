@@ -67,7 +67,16 @@ export class OrgScopedThreadStorage {
 
   list(
     createdBy?: string,
-    options?: { limit?: number; offset?: number; virtualMcpId?: string },
+    options?: {
+      limit?: number;
+      offset?: number;
+      virtualMcpId?: string;
+      startDate?: string;
+      endDate?: string;
+      search?: string;
+      status?: string;
+      agentId?: string;
+    },
   ): Promise<{ threads: Thread[]; total: number }> {
     return this.inner.list(this.requireOrg(), createdBy, options);
   }
@@ -237,7 +246,16 @@ export class SqlThreadStorage implements ThreadStoragePort {
   async list(
     organizationId: string,
     createdBy?: string,
-    options?: { limit?: number; offset?: number; virtualMcpId?: string },
+    options?: {
+      limit?: number;
+      offset?: number;
+      virtualMcpId?: string;
+      startDate?: string;
+      endDate?: string;
+      search?: string;
+      status?: string;
+      agentId?: string;
+    },
   ): Promise<{ threads: Thread[]; total: number }> {
     let query = this.db
       .selectFrom("threads")
@@ -251,6 +269,30 @@ export class SqlThreadStorage implements ThreadStoragePort {
     }
     if (options?.virtualMcpId) {
       query = query.where("virtual_mcp_id", "=", options.virtualMcpId);
+    }
+    if (options?.startDate) {
+      // updated_at is stored as ISO text — string comparison is correct for ISO dates
+      query = query.where(
+        "updated_at",
+        ">=",
+        options.startDate as unknown as Date,
+      );
+    }
+    if (options?.endDate) {
+      query = query.where(
+        "updated_at",
+        "<=",
+        options.endDate as unknown as Date,
+      );
+    }
+    if (options?.search) {
+      query = query.where("title", "ilike", `%${options.search}%`);
+    }
+    if (options?.status) {
+      query = query.where("status", "=", options.status as ThreadStatus);
+    }
+    if (options?.agentId) {
+      query = query.where("virtual_mcp_id", "=", options.agentId);
     }
 
     let countQuery = this.db
@@ -268,6 +310,33 @@ export class SqlThreadStorage implements ThreadStoragePort {
         "=",
         options.virtualMcpId,
       );
+    }
+    if (options?.startDate) {
+      countQuery = countQuery.where(
+        "updated_at",
+        ">=",
+        options.startDate as unknown as Date,
+      );
+    }
+    if (options?.endDate) {
+      countQuery = countQuery.where(
+        "updated_at",
+        "<=",
+        options.endDate as unknown as Date,
+      );
+    }
+    if (options?.search) {
+      countQuery = countQuery.where("title", "ilike", `%${options.search}%`);
+    }
+    if (options?.status) {
+      countQuery = countQuery.where(
+        "status",
+        "=",
+        options.status as ThreadStatus,
+      );
+    }
+    if (options?.agentId) {
+      countQuery = countQuery.where("virtual_mcp_id", "=", options.agentId);
     }
 
     if (options?.limit) {

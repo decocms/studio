@@ -6,6 +6,11 @@
 
 import { SearchInput } from "@deco/ui/components/search-input.tsx";
 import { Page } from "@/web/components/page";
+import {
+  MessagePair,
+  useMessagePairs,
+} from "@/web/components/chat/message/pair.tsx";
+import type { ChatMessage } from "@/web/components/chat/types.ts";
 import { EmptyState } from "@/web/components/empty-state.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { MONITORING_CONFIG } from "@/web/components/monitoring/config.ts";
@@ -26,6 +31,8 @@ import { KEYS } from "@/web/lib/query-keys";
 import {
   SELF_MCP_ALIAS_ID,
   WellKnownOrgMCPId,
+  getWellKnownDecopilotVirtualMCP,
+  isDecopilot,
   useConnections,
   useMCPClient,
   useProjectContext,
@@ -55,7 +62,11 @@ import {
   type TimeRange as TimeRangeValue,
 } from "@deco/ui/components/time-range-picker.tsx";
 import { expressionToDate } from "@deco/ui/lib/time-expressions.ts";
-import { useSuspenseInfiniteQuery } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useQuery,
+  useSuspenseInfiniteQuery,
+} from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { type ReactNode, Suspense, useRef, useState } from "react";
 import {
@@ -77,13 +88,21 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
+import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
 import { CollectionTabs } from "@/web/components/collections/collection-tabs.tsx";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@deco/ui/components/sheet.tsx";
 import { Switch } from "@deco/ui/components/switch.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import {
   Table,
   TableBody,
+  TableCell,
   TableHead,
   TableHeader,
   TableRow,
@@ -1254,14 +1273,8 @@ function MonitoringLogsTableContent({
   // Use the infinite scroll hook with loading guard
   const lastLogRef = useInfiniteScroll(onLoadMore, hasMore, isLoadingMore);
 
-  const members = membersData?.data?.members ?? [];
-  type UserInfo = { name?: string | null; image?: string | null };
-  const userMap = new Map<string, UserInfo | undefined>(
-    members.map((m: (typeof members)[number]) => [
-      m.userId as string,
-      m.user as UserInfo | undefined,
-    ]),
-  );
+  const members = getOrgMembers(membersData);
+  const userMap = new Map(members.map((m) => [m.userId, m.user]));
 
   // Create virtual MCP lookup map
   const virtualMcpMap = new Map(virtualMcps.map((vm) => [vm.id, vm]));
@@ -1501,6 +1514,937 @@ const MonitoringLogsTable = Object.assign(MonitoringLogsTableContent, {
   Skeleton: MonitoringLogsTableSkeleton,
 });
 
+// ============================================================================
+// Threads Tab Components
+// ============================================================================
+
+interface ThreadEntity {
+  id: string;
+  title: string;
+  status: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  virtual_mcp_id?: string;
+  run_config?: Record<string, unknown> | null;
+}
+
+interface ThreadMessageEntity {
+  id: string;
+  thread_id: string;
+  role: "user" | "assistant" | "system";
+  parts: Record<string, unknown>[];
+  metadata?: unknown;
+  created_at: string;
+  updated_at: string;
+}
+
+function getThreadAgentId(thread: ThreadEntity): string | null {
+  const runConfig = (thread.run_config ?? {}) as { agent?: { id: string } };
+  return runConfig.agent?.id ?? (thread.virtual_mcp_id || null);
+}
+
+function resolveAgentName(
+  agentId: string | null,
+  virtualMcps: ReturnType<typeof useVirtualMCPs>,
+  connections: ReturnType<typeof useConnections>,
+  fallback: string,
+): string {
+  if (!agentId) return fallback;
+  const found =
+    virtualMcps.find((v) => v.id === agentId) ??
+    connections?.find((c) => c.id === agentId);
+  if (found?.title) return found.title;
+  const orgId = isDecopilot(agentId);
+  if (orgId) return getWellKnownDecopilotVirtualMCP(orgId).title ?? fallback;
+  return agentId;
+}
+
+/** Extract model name from the first assistant message's metadata */
+function extractModelFromMessages(
+  messages: ThreadMessageEntity[],
+): string | null {
+  const firstAssistant = messages.find((m) => m.role === "assistant");
+  if (!firstAssistant?.metadata) return null;
+  const meta = firstAssistant.metadata as {
+    models?: { thinking?: { id?: string; title?: string } };
+  };
+  const thinking = meta.models?.thinking;
+  return thinking?.title ?? thinking?.id ?? null;
+}
+
+interface OrgMember {
+  userId: string;
+  user: { name?: string | null; email?: string | null; image?: string | null };
+}
+
+function getOrgMembers(
+  data: ReturnType<typeof useMembers>["data"] | undefined,
+): OrgMember[] {
+  return ((data?.data?.members ?? []) as OrgMember[]) ?? [];
+}
+
+function ThreadMetaRow({
+  thread,
+  connections,
+  virtualMcps,
+  members,
+  modelName,
+}: {
+  thread: ThreadEntity;
+  connections: ReturnType<typeof useConnections>;
+  virtualMcps: ReturnType<typeof useVirtualMCPs>;
+  members: ReturnType<typeof useMembers>["data"] | undefined;
+  modelName?: string | null;
+}) {
+  const agentId = getThreadAgentId(thread);
+  const agentName = resolveAgentName(agentId, virtualMcps, connections, "");
+
+  const membersList = getOrgMembers(members);
+  const member = membersList.find((m) => m.userId === thread.created_by);
+  const userName =
+    member?.user.name ??
+    member?.user.email ??
+    thread.created_by?.substring(0, 8) ??
+    "—";
+
+  const statusVariant =
+    thread.status === "completed"
+      ? "success"
+      : thread.status === "failed"
+        ? "destructive"
+        : "secondary";
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground mt-0.5">
+      {agentName && (
+        <span>
+          Agent:{" "}
+          <span className="text-foreground font-medium">{agentName}</span>
+        </span>
+      )}
+      {modelName && (
+        <span>
+          Model:{" "}
+          <span className="text-foreground font-medium">{modelName}</span>
+        </span>
+      )}
+      <span>
+        User: <span className="text-foreground font-medium">{userName}</span>
+      </span>
+      <Badge
+        variant={statusVariant as "success" | "destructive" | "secondary"}
+        className="text-[10px] px-1.5 py-0 h-4"
+      >
+        {thread.status}
+      </Badge>
+    </div>
+  );
+}
+
+interface ThreadUsageDisplay {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
+function formatTokenCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return n.toString();
+}
+
+function ThreadRow({
+  thread,
+  members,
+  connections,
+  virtualMcps,
+  modelName,
+  usage,
+  onClick,
+  lastRowRef,
+}: {
+  thread: ThreadEntity;
+  members: ReturnType<typeof useMembers>["data"] | undefined;
+  connections: ReturnType<typeof useConnections>;
+  virtualMcps: ReturnType<typeof useVirtualMCPs>;
+  modelName?: string | null;
+  usage?: ThreadUsageDisplay;
+  onClick: () => void;
+  lastRowRef?: (node: HTMLTableRowElement | null) => void;
+}) {
+  const agentId = getThreadAgentId(thread);
+  const agentName = resolveAgentName(agentId, virtualMcps, connections, "—");
+
+  const membersList = getOrgMembers(members);
+  const member = membersList.find((m) => m.userId === thread.created_by);
+  const userName =
+    member?.user.name ??
+    member?.user.email ??
+    thread.created_by?.substring(0, 8) ??
+    "—";
+
+  const date = new Date(thread.created_at);
+  const dateStr = date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+  const timeStr = date.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  const statusVariant =
+    thread.status === "completed"
+      ? "success"
+      : thread.status === "failed"
+        ? "destructive"
+        : "secondary";
+
+  return (
+    <TableRow
+      ref={lastRowRef}
+      className="h-14 cursor-pointer hover:bg-muted/40 transition-colors"
+      onClick={onClick}
+    >
+      <TableCell className="min-w-0 pr-2 pl-4 md:pr-4">
+        <div className="text-xs font-medium text-foreground truncate">
+          {thread.title}
+        </div>
+      </TableCell>
+      <TableCell className="w-36 px-3 text-xs text-muted-foreground">
+        <div className="truncate">{agentName}</div>
+      </TableCell>
+      <TableCell className="w-36 px-3 text-xs text-muted-foreground">
+        <div className="truncate">{modelName ?? "—"}</div>
+      </TableCell>
+      <TableCell className="w-28 px-3 text-xs text-muted-foreground">
+        <div className="truncate">{userName}</div>
+      </TableCell>
+      <TableCell className="w-24 px-3">
+        <Badge
+          variant={statusVariant as "success" | "destructive" | "secondary"}
+          className="text-xs px-1.5 py-0.5"
+        >
+          {thread.status}
+        </Badge>
+      </TableCell>
+      <TableCell className="w-24 px-3">
+        {usage && usage.totalTokens > 0 ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="text-xs font-mono tabular-nums text-muted-foreground cursor-default">
+                {formatTokenCount(usage.totalTokens)} tok
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="font-mono text-[11px]">
+              <p className="opacity-60 text-[10px] mb-1">tokens</p>
+              <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+                <span className="opacity-60">in</span>
+                <span className="text-right tabular-nums">
+                  {usage.inputTokens.toLocaleString()}
+                </span>
+                <span className="opacity-60">out</span>
+                <span className="text-right tabular-nums">
+                  {usage.outputTokens.toLocaleString()}
+                </span>
+                <span className="opacity-60">total</span>
+                <span className="text-right tabular-nums">
+                  {usage.totalTokens.toLocaleString()}
+                </span>
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        )}
+      </TableCell>
+      <TableCell className="w-20 px-3 text-xs text-muted-foreground">
+        {dateStr}
+      </TableCell>
+      <TableCell className="w-24 px-3 pr-5 text-xs text-muted-foreground">
+        {timeStr}
+      </TableCell>
+    </TableRow>
+  );
+}
+
+const MESSAGES_PAGE_SIZE = 100;
+
+/**
+ * Self-contained conversation panel rendered inside the Suspense boundary.
+ * Owns both the SheetHeader content (so model is derived directly from
+ * messages, no parent-state callback needed) and the paginated message list.
+ */
+function ThreadConversationPanel({
+  client,
+  locator,
+  thread,
+  connections,
+  virtualMcps,
+  members,
+}: {
+  client: ReturnType<typeof useMCPClient>;
+  locator: string;
+  thread: ThreadEntity;
+  connections: ReturnType<typeof useConnections>;
+  virtualMcps: ReturnType<typeof useVirtualMCPs>;
+  members: ReturnType<typeof useMembers>["data"] | undefined;
+}) {
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage } =
+    useSuspenseInfiniteQuery({
+      queryKey: KEYS.threadMessages(locator, thread.id),
+      queryFn: async ({ pageParam = 0 }) => {
+        if (!client) throw new Error("MCP client is not available");
+        const result = (await client.callTool({
+          name: "COLLECTION_THREAD_MESSAGES_LIST",
+          arguments: {
+            thread_id: thread.id,
+            limit: MESSAGES_PAGE_SIZE,
+            offset: pageParam,
+          },
+        })) as { structuredContent?: unknown };
+        return (result.structuredContent ?? result) as {
+          items: ThreadMessageEntity[];
+          totalCount: number;
+          hasMore: boolean;
+        };
+      },
+      initialPageParam: 0 as number,
+      getNextPageParam: (lastPage, allPages) => {
+        const page = lastPage as { items?: ThreadMessageEntity[] } | undefined;
+        const pages = allPages as Array<{ items?: ThreadMessageEntity[] }>;
+        if ((page?.items?.length ?? 0) < MESSAGES_PAGE_SIZE) return undefined;
+        return pages.length * MESSAGES_PAGE_SIZE;
+      },
+      staleTime: 60_000,
+    });
+
+  const allItems = data.pages.flatMap(
+    (p: { items?: ThreadMessageEntity[] }) => p.items ?? [],
+  );
+  const modelName = extractModelFromMessages(allItems);
+
+  const rawMessages = allItems as unknown as ChatMessage[];
+  const messages = rawMessages.filter(
+    (m) => m.role === "user" || m.role === "assistant",
+  );
+  const messagePairs = useMessagePairs(messages);
+
+  const lastMsgRef = useInfiniteScroll(
+    () => {
+      if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+    },
+    hasNextPage ?? false,
+    isFetchingNextPage,
+  );
+
+  return (
+    <>
+      <SheetHeader className="px-4 pt-4 pb-3 border-b border-border shrink-0">
+        <SheetTitle className="text-sm pr-6 leading-snug">
+          {thread.title}
+        </SheetTitle>
+        <ThreadMetaRow
+          thread={thread}
+          connections={connections}
+          virtualMcps={virtualMcps}
+          members={members}
+          modelName={modelName}
+        />
+      </SheetHeader>
+
+      {messages.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+          No messages in this thread
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="flex flex-col min-w-0 max-w-2xl mx-auto w-full">
+            {messagePairs.map((pair, idx) => (
+              <div
+                key={pair.user.id}
+                ref={
+                  idx === messagePairs.length - 1
+                    ? (lastMsgRef as (node: HTMLDivElement | null) => void)
+                    : undefined
+                }
+              >
+                <MessagePair
+                  pair={pair}
+                  isLastPair={idx === messagePairs.length - 1}
+                  status="ready"
+                />
+              </div>
+            ))}
+            {isFetchingNextPage && (
+              <div className="py-4 text-center text-xs text-muted-foreground">
+                Loading more…
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+interface ThreadFiltersPopoverProps {
+  statusFilter: string;
+  userFilter: string;
+  modelFilter: string;
+  agentFilter: string;
+  userOptions: Array<{ id: string; label: string }>;
+  modelOptions: string[];
+  agentOptions: Array<{ id: string; label: string }>;
+  activeCount: number;
+  onStatusChange: (v: string) => void;
+  onUserChange: (v: string) => void;
+  onModelChange: (v: string) => void;
+  onAgentChange: (v: string) => void;
+  onClear: () => void;
+}
+
+function ThreadFiltersPopover({
+  statusFilter,
+  userFilter,
+  modelFilter,
+  agentFilter,
+  userOptions,
+  modelOptions,
+  agentOptions,
+  activeCount,
+  onStatusChange,
+  onUserChange,
+  onModelChange,
+  onAgentChange,
+  onClear,
+}: ThreadFiltersPopoverProps) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 w-7 px-0 sm:w-auto sm:px-3 relative"
+        >
+          <FilterLines size={16} />
+          <span className="hidden sm:inline">Filters</span>
+          {activeCount > 0 && (
+            <>
+              <Badge
+                variant="default"
+                className="sm:hidden absolute -top-1.5 -right-1.5 h-4 min-w-4 px-1 text-[10px] leading-none"
+              >
+                {activeCount}
+              </Badge>
+              <Badge
+                variant="default"
+                className="hidden sm:flex ml-1 h-5 w-5 rounded-full p-0 items-center justify-center text-xs"
+              >
+                {activeCount}
+              </Badge>
+            </>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-[280px]">
+        <div className="space-y-4">
+          <h4 className="font-medium text-sm">Filter Threads</h4>
+
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                Status
+              </label>
+              <Select value={statusFilter} onValueChange={onStatusChange}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="in_progress">In progress</SelectItem>
+                  <SelectItem value="requires_action">
+                    Requires action
+                  </SelectItem>
+                  <SelectItem value="failed">Failed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {agentOptions.length > 0 && (
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                  Agent
+                </label>
+                <MultiSelect
+                  options={agentOptions.map((a) => ({
+                    value: a.id,
+                    label: a.label,
+                  }))}
+                  defaultValue={agentFilter !== "all" ? [agentFilter] : []}
+                  onValueChange={(vals) =>
+                    onAgentChange(vals.length ? vals[0]! : "all")
+                  }
+                  placeholder="All agents"
+                  variant="secondary"
+                  className="w-full"
+                  maxCount={1}
+                />
+              </div>
+            )}
+
+            {userOptions.length > 0 && (
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                  User
+                </label>
+                <MultiSelect
+                  options={userOptions.map((u) => ({
+                    value: u.id,
+                    label: u.label,
+                  }))}
+                  defaultValue={userFilter !== "all" ? [userFilter] : []}
+                  onValueChange={(vals) =>
+                    onUserChange(vals.length ? vals[0]! : "all")
+                  }
+                  placeholder="All users"
+                  variant="secondary"
+                  className="w-full"
+                  maxCount={1}
+                />
+              </div>
+            )}
+
+            {modelOptions.length > 0 && (
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                  Model
+                </label>
+                <MultiSelect
+                  options={modelOptions.map((m) => ({ value: m, label: m }))}
+                  defaultValue={modelFilter !== "all" ? [modelFilter] : []}
+                  onValueChange={(vals) =>
+                    onModelChange(vals.length ? vals[0]! : "all")
+                  }
+                  placeholder="All models"
+                  variant="secondary"
+                  className="w-full"
+                  maxCount={1}
+                />
+              </div>
+            )}
+          </div>
+
+          {activeCount > 0 && (
+            <Button
+              variant="ghost"
+              className="w-full text-sm"
+              onClick={onClear}
+            >
+              Clear all filters
+            </Button>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+interface ThreadsTabContentProps {
+  client: ReturnType<typeof useMCPClient>;
+  locator: string;
+  membersData: ReturnType<typeof useMembers>["data"] | undefined;
+  allConnections: ReturnType<typeof useConnections>;
+  allVirtualMcps: ReturnType<typeof useVirtualMCPs>;
+  dateRange: { startDate: Date; endDate: Date };
+}
+
+const THREADS_PAGE_SIZE = 50;
+
+function ThreadsTabContent({
+  client,
+  locator,
+  membersData,
+  allConnections,
+  allVirtualMcps,
+  dateRange,
+}: ThreadsTabContentProps) {
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+
+  // Filter state
+  const [searchInput, setSearchInput] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [userFilter, setUserFilter] = useState<string>("all");
+  const [modelFilter, setModelFilter] = useState<string>("all");
+  const [agentFilter, setAgentFilter] = useState<string>("all");
+
+  const handleSearchChange = (value: string) => {
+    setSearchInput(value);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(
+      () => setDebouncedSearch(value),
+      300,
+    );
+  };
+
+  const startDate = dateRange.startDate.toISOString();
+  const endDate = dateRange.endDate.toISOString();
+
+  const filterKey = JSON.stringify({
+    startDate,
+    endDate,
+    search: debouncedSearch,
+    status: statusFilter,
+    userId: userFilter,
+    agentId: agentFilter,
+  });
+
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
+    useInfiniteQuery({
+      queryKey: KEYS.threadsInfinite(locator, filterKey),
+      queryFn: async ({ pageParam = 0 }) => {
+        if (!client) throw new Error("MCP client is not available");
+        const result = (await client.callTool({
+          name: "COLLECTION_THREADS_LIST",
+          arguments: {
+            limit: THREADS_PAGE_SIZE,
+            offset: pageParam,
+            startDate,
+            endDate,
+            ...(debouncedSearch ? { search: debouncedSearch } : {}),
+            ...(statusFilter !== "all" ? { status: statusFilter } : {}),
+            ...(userFilter !== "all" ? { userId: userFilter } : {}),
+            ...(agentFilter !== "all" ? { agentId: agentFilter } : {}),
+          },
+        })) as { structuredContent?: unknown };
+        return (result.structuredContent ?? result) as {
+          items: ThreadEntity[];
+          totalCount: number;
+          hasMore: boolean;
+        };
+      },
+      initialPageParam: 0 as number,
+      getNextPageParam: (lastPage, allPages) => {
+        const page = lastPage as { items?: ThreadEntity[] } | undefined;
+        const pages = allPages as Array<{ items?: ThreadEntity[] }>;
+        if ((page?.items?.length ?? 0) < THREADS_PAGE_SIZE) return undefined;
+        return pages.length * THREADS_PAGE_SIZE;
+      },
+      staleTime: 30_000,
+    });
+
+  const { data: modelLogsData } = useQuery({
+    queryKey: KEYS.threadModelLogs(locator, filterKey),
+    queryFn: async () => {
+      if (!client) throw new Error("MCP client is not available");
+      const LOG_BATCH = 500;
+      const allLogs: MonitoringLogsResponse["logs"] = [];
+      let offset = 0;
+      let total = Infinity;
+      while (offset < total) {
+        const raw = (await client.callTool({
+          name: "MONITORING_LOGS_LIST",
+          arguments: {
+            connectionId: "decopilot",
+            startDate,
+            endDate,
+            limit: LOG_BATCH,
+            offset,
+          },
+        })) as { structuredContent?: unknown };
+        const page = (raw.structuredContent ??
+          raw) as MonitoringLogsResponse & {
+          total?: number;
+        };
+        const batch = page.logs ?? [];
+        allLogs.push(...batch);
+        total = page.total ?? allLogs.length;
+        offset += LOG_BATCH;
+        if (batch.length < LOG_BATCH) break;
+      }
+      return { logs: allLogs, total: allLogs.length } as MonitoringLogsResponse;
+    },
+    staleTime: 60_000,
+  });
+
+  interface ThreadUsage {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  }
+
+  const threadModelMap = new Map<string, string>();
+  const threadUsageMap = new Map<string, ThreadUsage>();
+  for (const log of modelLogsData?.logs ?? []) {
+    const tid = log.properties?.thread_id;
+    if (!tid) continue;
+
+    const model = log.properties?.model_title ?? log.toolName;
+    if (model && !threadModelMap.has(tid)) {
+      threadModelMap.set(tid, model);
+    }
+
+    const out = log.output as Record<string, unknown> | null;
+    const totalUsage = out?.totalUsage as Partial<ThreadUsage> | undefined;
+    const inputT =
+      totalUsage?.inputTokens ?? (out?.inputTokens as number | undefined) ?? 0;
+    const outputT =
+      totalUsage?.outputTokens ??
+      (out?.outputTokens as number | undefined) ??
+      0;
+    const totalT =
+      totalUsage?.totalTokens ?? (out?.totalTokens as number | undefined) ?? 0;
+    if (totalT > 0) {
+      const prev = threadUsageMap.get(tid) ?? {
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+      };
+      threadUsageMap.set(tid, {
+        inputTokens: prev.inputTokens + inputT,
+        outputTokens: prev.outputTokens + outputT,
+        totalTokens: prev.totalTokens + totalT,
+      });
+    }
+  }
+
+  const allThreads = (data?.pages ?? []).flatMap(
+    (p: { items?: ThreadEntity[] }) => p.items ?? [],
+  );
+
+  // Client-side model filter (model comes from logs, not threads query)
+  const visibleThreads =
+    modelFilter === "all"
+      ? allThreads
+      : allThreads.filter(
+          (t) => (threadModelMap.get(t.id) ?? "") === modelFilter,
+        );
+
+  const selectedThread = selectedThreadId
+    ? (allThreads.find((t) => t.id === selectedThreadId) ?? null)
+    : null;
+
+  const handleLoadMore = () => {
+    if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+  };
+
+  const lastRowRef = useInfiniteScroll(
+    handleLoadMore,
+    hasNextPage ?? false,
+    isFetchingNextPage,
+  );
+
+  // Unique model options from logs
+  const modelOptions = Array.from(new Set(threadModelMap.values())).sort();
+
+  // User options from members
+  const membersList = getOrgMembers(membersData);
+  const userOptions = membersList.map((m) => ({
+    id: m.userId,
+    label: m.user.name ?? m.user.email ?? m.userId,
+  }));
+
+  // Agent options from virtual MCPs + connections
+  const agentOptions = [
+    ...allVirtualMcps.map((v) => ({ id: v.id, label: v.title ?? v.id })),
+    ...(allConnections ?? []).map((c) => ({
+      id: c.id,
+      label: c.title ?? c.id,
+    })),
+  ];
+
+  const hasActiveFilters =
+    !!searchInput ||
+    statusFilter !== "all" ||
+    userFilter !== "all" ||
+    modelFilter !== "all" ||
+    agentFilter !== "all";
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+      {/* Search + filter bar */}
+      <div className="shrink-0 flex items-center border-b border-border">
+        <CollectionSearch
+          value={searchInput}
+          onChange={handleSearchChange}
+          placeholder="Search by title…"
+          className="flex-1 border-0 border-b-0"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              if (searchDebounceRef.current)
+                clearTimeout(searchDebounceRef.current);
+              setSearchInput("");
+              setDebouncedSearch("");
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
+        />
+        <div className="px-3 shrink-0 border-l border-border h-12 flex items-center">
+          <ThreadFiltersPopover
+            statusFilter={statusFilter}
+            userFilter={userFilter}
+            modelFilter={modelFilter}
+            agentFilter={agentFilter}
+            userOptions={userOptions}
+            modelOptions={modelOptions}
+            agentOptions={agentOptions}
+            activeCount={
+              (statusFilter !== "all" ? 1 : 0) +
+              (userFilter !== "all" ? 1 : 0) +
+              (modelFilter !== "all" ? 1 : 0) +
+              (agentFilter !== "all" ? 1 : 0)
+            }
+            onStatusChange={setStatusFilter}
+            onUserChange={setUserFilter}
+            onModelChange={setModelFilter}
+            onAgentChange={setAgentFilter}
+            onClear={() => {
+              setStatusFilter("all");
+              setUserFilter("all");
+              setModelFilter("all");
+              setAgentFilter("all");
+            }}
+          />
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-auto">
+        {isLoading ? (
+          <div className="flex flex-1 items-center justify-center py-20">
+            <span className="text-sm text-muted-foreground">Loading…</span>
+          </div>
+        ) : visibleThreads.length === 0 ? (
+          <div className="flex flex-1 items-center justify-center py-20">
+            <EmptyState
+              title={
+                hasActiveFilters ? "No matching threads" : "No threads yet"
+              }
+              description={
+                hasActiveFilters
+                  ? "Try adjusting your filters or search query."
+                  : "Threads are created when users chat with agents."
+              }
+            />
+          </div>
+        ) : (
+          <>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="pl-4 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                    Title
+                  </TableHead>
+                  <TableHead className="w-36 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                    Agent
+                  </TableHead>
+                  <TableHead className="w-36 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                    Model
+                  </TableHead>
+                  <TableHead className="w-28 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                    User
+                  </TableHead>
+                  <TableHead className="w-24 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                    Status
+                  </TableHead>
+                  <TableHead className="w-24 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                    Usage
+                  </TableHead>
+                  <TableHead className="w-20 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                    Date
+                  </TableHead>
+                  <TableHead className="w-24 px-3 pr-5 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                    Time
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {visibleThreads.map((thread, idx) => (
+                  <ThreadRow
+                    key={thread.id}
+                    thread={thread}
+                    members={membersData}
+                    connections={allConnections}
+                    virtualMcps={allVirtualMcps}
+                    modelName={threadModelMap.get(thread.id)}
+                    usage={threadUsageMap.get(thread.id)}
+                    onClick={() => setSelectedThreadId(thread.id)}
+                    lastRowRef={
+                      idx === visibleThreads.length - 1
+                        ? (lastRowRef as (
+                            node: HTMLTableRowElement | null,
+                          ) => void)
+                        : undefined
+                    }
+                  />
+                ))}
+              </TableBody>
+            </Table>
+            {isFetchingNextPage && (
+              <div className="py-4 text-center text-sm text-muted-foreground">
+                Loading more...
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      <Sheet
+        open={selectedThreadId !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedThreadId(null);
+        }}
+      >
+        <SheetContent className="sm:max-w-2xl flex flex-col p-0 gap-0">
+          {selectedThread && (
+            <ErrorBoundary
+              fallback={
+                <>
+                  <SheetHeader className="px-4 pt-4 pb-3 border-b border-border shrink-0">
+                    <SheetTitle className="text-sm pr-6 leading-snug">
+                      {selectedThread.title}
+                    </SheetTitle>
+                  </SheetHeader>
+                  <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+                    Failed to load messages
+                  </div>
+                </>
+              }
+            >
+              <Suspense
+                fallback={
+                  <>
+                    <SheetHeader className="px-4 pt-4 pb-3 border-b border-border shrink-0">
+                      <SheetTitle className="text-sm pr-6 leading-snug">
+                        {selectedThread.title}
+                      </SheetTitle>
+                    </SheetHeader>
+                    <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+                      Loading conversation…
+                    </div>
+                  </>
+                }
+              >
+                <ThreadConversationPanel
+                  client={client}
+                  locator={locator}
+                  thread={selectedThread}
+                  connections={allConnections}
+                  virtualMcps={allVirtualMcps}
+                  members={membersData}
+                />
+              </Suspense>
+            </ErrorBoundary>
+          )}
+        </SheetContent>
+      </Sheet>
+    </div>
+  );
+}
+
 interface AuditTabContentProps {
   client: ReturnType<typeof useMCPClient>;
   locator: ReturnType<typeof useProjectContext>["locator"];
@@ -1620,7 +2564,7 @@ function AuditTabContent({
 // ============================================================================
 
 interface MonitoringDashboardContentProps {
-  tab: "overview" | "audit";
+  tab: "overview" | "audit" | "threads";
   dateRange: DateRange;
   displayDateRange: DateRange;
   connectionIds: string[];
@@ -1637,7 +2581,7 @@ interface MonitoringDashboardContentProps {
   onUpdateFilters: (updates: Partial<MonitoringSearchParams>) => void;
   onTimeRangeChange: (range: TimeRangeValue) => void;
   onStreamingToggle: () => void;
-  onTabChange: (tab: "overview" | "audit") => void;
+  onTabChange: (tab: "overview" | "audit" | "threads") => void;
 }
 
 function MonitoringDashboardContent({
@@ -1722,6 +2666,7 @@ function MonitoringDashboardContent({
   const tabs = [
     { id: "overview" as const, label: "Overview" },
     { id: "audit" as const, label: "Audit" },
+    { id: "threads" as const, label: "Threads" },
   ];
 
   return (
@@ -1734,49 +2679,53 @@ function MonitoringDashboardContent({
               tabs={tabs}
               activeTab={tab}
               onTabChange={(tabId) =>
-                onTabChange(tabId as "overview" | "audit")
+                onTabChange(tabId as "overview" | "audit" | "threads")
               }
             />
             <div className="flex items-center gap-2">
-              <Button
-                variant={isStreaming ? "secondary" : "outline"}
-                size="sm"
-                className="h-8 gap-1.5 px-3"
-                onClick={onStreamingToggle}
-              >
-                {isStreaming && (
-                  <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-                )}
-                <span>Live</span>
-                {isStreaming && (
-                  <span className="text-muted-foreground text-xs">3s</span>
-                )}
-              </Button>
+              {tab !== "threads" && (
+                <>
+                  <Button
+                    variant={isStreaming ? "secondary" : "outline"}
+                    size="sm"
+                    className="h-8 gap-1.5 px-3"
+                    onClick={onStreamingToggle}
+                  >
+                    {isStreaming && (
+                      <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+                    )}
+                    <span>Live</span>
+                    {isStreaming && (
+                      <span className="text-muted-foreground text-xs">3s</span>
+                    )}
+                  </Button>
 
-              <FiltersPopover
-                connectionIds={connectionIds}
-                virtualMcpIds={virtualMcpIds}
-                tool={tool}
-                status={status}
-                hideSystem={hideSystem}
-                propertyFilters={propertyFilters}
-                connectionOptions={connectionOptions}
-                virtualMcpOptions={virtualMcpOptions}
-                activeFiltersCount={activeFiltersCount}
-                onUpdateFilters={onUpdateFilters}
-                connectionSearchTerm={connectionSearch}
-                onConnectionSearchChange={setConnectionSearch}
-              />
+                  <FiltersPopover
+                    connectionIds={connectionIds}
+                    virtualMcpIds={virtualMcpIds}
+                    tool={tool}
+                    status={status}
+                    hideSystem={hideSystem}
+                    propertyFilters={propertyFilters}
+                    connectionOptions={connectionOptions}
+                    virtualMcpOptions={virtualMcpOptions}
+                    activeFiltersCount={activeFiltersCount}
+                    onUpdateFilters={onUpdateFilters}
+                    connectionSearchTerm={connectionSearch}
+                    onConnectionSearchChange={setConnectionSearch}
+                  />
 
-              {tab === "audit" && (
-                <Button
-                  variant={aiOnly ? "secondary" : "outline"}
-                  size="sm"
-                  className="h-8 px-3 text-xs"
-                  onClick={() => setAiOnly(!aiOnly)}
-                >
-                  AI Usage
-                </Button>
+                  {tab === "audit" && (
+                    <Button
+                      variant={aiOnly ? "secondary" : "outline"}
+                      size="sm"
+                      className="h-8 px-3 text-xs"
+                      onClick={() => setAiOnly(!aiOnly)}
+                    >
+                      AI Usage
+                    </Button>
+                  )}
+                </>
               )}
 
               <TimeRangePicker
@@ -1788,7 +2737,16 @@ function MonitoringDashboardContent({
         </div>
       </Page.Body>
 
-      {tab === "audit" ? (
+      {tab === "threads" ? (
+        <ThreadsTabContent
+          client={client}
+          locator={locator}
+          membersData={membersData}
+          allConnections={allConnections}
+          allVirtualMcps={allVirtualMcps}
+          dateRange={dateRange}
+        />
+      ) : tab === "audit" ? (
         <AuditTabContent
           client={client}
           locator={locator}
@@ -1931,24 +2889,29 @@ export default function MonitoringDashboard() {
           fallback={
             <>
               <Page.Body className="pb-0">
-                <div className="flex flex-col gap-6">
+                <div className="flex flex-col gap-4">
                   <Page.Title>Monitoring</Page.Title>
                   <CollectionTabs
                     tabs={[
                       { id: "overview", label: "Overview" },
                       { id: "audit", label: "Audit" },
+                      { id: "threads", label: "Threads" },
                     ]}
                     activeTab={tab}
                     onTabChange={(tabId) =>
                       updateFilters({
-                        tab: tabId as "overview" | "audit",
+                        tab: tabId as "overview" | "audit" | "threads",
                       })
                     }
                   />
                 </div>
               </Page.Body>
 
-              {tab === "audit" ? (
+              {tab === "threads" ? (
+                <div className="flex-1 flex flex-col overflow-auto md:overflow-hidden">
+                  <MonitoringLogsTable.Skeleton />
+                </div>
+              ) : tab === "audit" ? (
                 <div className="flex-1 flex flex-col overflow-auto md:overflow-hidden">
                   <MonitoringLogsTable.Skeleton />
                 </div>

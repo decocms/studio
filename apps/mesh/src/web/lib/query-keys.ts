@@ -159,6 +159,14 @@ export const KEYS = {
   monitoringLogsInfinite: (locator: string, paramsKey: string) =>
     ["monitoring", "logs-infinite", locator, paramsKey] as const,
 
+  // Thread queries (scoped by locator)
+  threadsInfinite: (locator: string, paramsKey: string) =>
+    ["threads", "list-infinite", locator, paramsKey] as const,
+  threadMessages: (locator: string, threadId: string) =>
+    ["threads", "messages", locator, threadId] as const,
+  threadModelLogs: (locator: string, dateKey: string) =>
+    ["threads", "model-logs", locator, dateKey] as const,
+
   // Virtual MCP prompts (for ice breakers in chat)
   // null virtualMcpId means default virtual MCP
   virtualMcpPrompts: (virtualMcpId: string | null, orgId: string) =>

@@ -15,7 +15,7 @@ import {
 import { SmartAutoScroll } from "./smart-auto-scroll.tsx";
 import { type DataParts, useFilterParts } from "./use-filter-parts.ts";
 import { addUsage, emptyUsageStats } from "@decocms/mesh-sdk";
-import { useChatStream } from "../context.tsx";
+import { useOptionalChatStream } from "../context.tsx";
 
 type ThinkingStage = "planning" | "thinking";
 
@@ -374,7 +374,7 @@ export function MessageAssistant({
   className,
   isLast = false,
 }: MessageAssistantProps) {
-  const { isRunInProgress } = useChatStream();
+  const { isRunInProgress = false } = useOptionalChatStream() ?? {};
   const isStreaming = status === "streaming";
   const isSubmitted = status === "submitted";
   const isLoading = isStreaming || isSubmitted;
