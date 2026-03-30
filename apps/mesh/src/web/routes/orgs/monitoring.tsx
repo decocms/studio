@@ -23,7 +23,6 @@ import {
 import {
   useMonitoringStats,
   useMonitoringLlmStats,
-  useMonitoringTopTools,
 } from "@/web/components/monitoring/hooks.ts";
 import { useInfiniteScroll } from "@/web/hooks/use-infinite-scroll.ts";
 import { useMembers } from "@/web/hooks/use-members";
@@ -99,6 +98,7 @@ import {
 import { Switch } from "@deco/ui/components/switch.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
 import { getConnectionSlug } from "@/shared/utils/connection-slug";
+import { useAutomationsList } from "@/web/hooks/use-automations";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import {
   Table,
@@ -124,7 +124,6 @@ interface MonitoringStatsProps {
 }
 
 interface OverviewTabProps extends MonitoringStatsProps {
-  analyticsDateRange: { startDate: string; endDate: string };
   streamingRefetchInterval: number;
   virtualMcps: ReturnType<typeof useVirtualMCPs>;
 }
@@ -287,90 +286,6 @@ function ConnectionLeaderboardTable({
   );
 }
 
-function ToolLeaderboardTable({
-  tools,
-  connections,
-  total,
-}: {
-  tools: Array<{
-    toolName: string;
-    connectionId: string | null;
-    calls: number;
-  }>;
-  connections: ReturnType<typeof useConnections>;
-  total: number;
-}) {
-  const { org } = useProjectContext();
-  const navigate = useNavigate();
-  const connectionMap = new Map((connections ?? []).map((c) => [c.id, c]));
-
-  if (tools.length === 0) return null;
-
-  return (
-    <div className="flex flex-col">
-      {tools.slice(0, 4).map((tool) => {
-        const pct = total > 0 ? ((tool.calls / total) * 100).toFixed(1) : "0.0";
-        const conn = tool.connectionId
-          ? connectionMap.get(tool.connectionId)
-          : undefined;
-        return (
-          <div
-            key={tool.toolName}
-            className="flex items-center h-10 border-b border-border/50 px-3 cursor-pointer hover:bg-accent/50 transition-colors"
-            onClick={() => {
-              if (conn) {
-                navigate({
-                  to: "/$org/settings/connections/$appSlug",
-                  params: {
-                    org: org.slug,
-                    appSlug: getConnectionSlug(conn),
-                  },
-                });
-              }
-            }}
-          >
-            <div className="flex flex-1 items-center gap-2 min-w-0">
-              <IntegrationIcon
-                icon={conn?.icon || null}
-                name={tool.toolName}
-                size="xs"
-                fallbackIcon={<Container />}
-                className="shrink-0 size-6! min-w-6! rounded-md"
-              />
-              <span className="text-sm text-muted-foreground flex-1 truncate">
-                {tool.toolName}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 shrink-0 px-3">
-              <span className="text-sm text-foreground/30 tabular-nums">
-                {pct}%
-              </span>
-              <span className="text-sm text-foreground tabular-nums">
-                {tool.calls.toLocaleString()}
-              </span>
-            </div>
-          </div>
-        );
-      })}
-      {tools.length > 4 && (
-        <div
-          className="flex items-center h-10 px-4 gap-2 cursor-pointer hover:bg-accent/50 transition-colors"
-          onClick={() =>
-            navigate({
-              to: "/$org/settings/monitor",
-              params: { org: org.slug },
-              search: { tab: "audit" },
-            })
-          }
-        >
-          <span className="text-sm text-muted-foreground">See all</span>
-          <ArrowRight size={16} className="text-muted-foreground" />
-        </div>
-      )}
-    </div>
-  );
-}
-
 function ModelLeaderboardTable({
   models,
   total,
@@ -499,6 +414,80 @@ function AgentLeaderboardTable({
         </div>
       )}
     </div>
+  );
+}
+
+function AutomationsCard() {
+  const { org } = useProjectContext();
+  const navigate = useNavigate();
+  const { data: automations } = useAutomationsList();
+  const activeAutomations = (automations ?? []).filter((a) => a.active);
+  const allAutomations = automations ?? [];
+
+  return (
+    <MonitoringMetricCard
+      title="Top Automations"
+      value={activeAutomations.length.toLocaleString()}
+    >
+      <div className="flex flex-col">
+        {allAutomations.length === 0 ? (
+          <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
+            No automations configured
+          </div>
+        ) : (
+          <>
+            {allAutomations.slice(0, 4).map((automation) => (
+              <div
+                key={automation.id}
+                className="flex items-center h-10 border-b border-border/50 px-3 cursor-pointer hover:bg-accent/50 transition-colors"
+                onClick={() => {
+                  if (automation.agent?.id) {
+                    navigate({
+                      to: "/$org/$virtualMcpId",
+                      params: {
+                        org: org.slug,
+                        virtualMcpId: automation.agent.id,
+                      },
+                    });
+                  }
+                }}
+              >
+                <div className="flex flex-1 items-center gap-2 min-w-0">
+                  <div className="size-6 rounded-md border border-border/10 bg-background shadow-sm flex items-center justify-center shrink-0">
+                    <Container size={14} className="text-muted-foreground" />
+                  </div>
+                  <span className="text-sm text-muted-foreground flex-1 truncate">
+                    {automation.name}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0 px-3">
+                  <span className="text-xs text-foreground/30">
+                    {automation.trigger_count}{" "}
+                    {automation.trigger_count === 1 ? "trigger" : "triggers"}
+                  </span>
+                  <span
+                    className={cn(
+                      "text-xs",
+                      automation.active
+                        ? "text-emerald-600"
+                        : "text-foreground/30",
+                    )}
+                  >
+                    {automation.active ? "Active" : "Inactive"}
+                  </span>
+                </div>
+              </div>
+            ))}
+            {allAutomations.length > 4 && (
+              <div className="flex items-center h-10 px-4 gap-2 cursor-pointer hover:bg-accent/50 transition-colors">
+                <span className="text-sm text-muted-foreground">See all</span>
+                <ArrowRight size={16} className="text-muted-foreground" />
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </MonitoringMetricCard>
   );
 }
 
@@ -639,7 +628,6 @@ function OverviewTabContent({
   status,
   connections,
   isStreaming,
-  analyticsDateRange,
   streamingRefetchInterval,
   virtualMcps,
 }: OverviewTabProps) {
@@ -652,30 +640,6 @@ function OverviewTabContent({
       interval,
       startDate: displayDateRange.startDate.toISOString(),
       endDate: displayDateRange.endDate.toISOString(),
-      connectionIds: connectionIds.length > 0 ? connectionIds : undefined,
-      excludeConnectionIds,
-      toolNames: toolName ? [toolName] : undefined,
-      status,
-    },
-    { refetchInterval },
-  );
-
-  // Top tools
-  const durationMs =
-    displayDateRange.endDate.getTime() - displayDateRange.startDate.getTime();
-  const topToolsInterval =
-    durationMs <= 60 * 60 * 1000
-      ? "1m"
-      : durationMs <= 25 * 60 * 60 * 1000
-        ? "1h"
-        : "1d";
-
-  const { data: topToolsData } = useMonitoringTopTools(
-    {
-      interval: topToolsInterval,
-      startDate: analyticsDateRange.startDate,
-      endDate: analyticsDateRange.endDate,
-      topN: 10,
       connectionIds: connectionIds.length > 0 ? connectionIds : undefined,
       excludeConnectionIds,
       toolNames: toolName ? [toolName] : undefined,
@@ -735,7 +699,6 @@ function OverviewTabContent({
         data: [],
       };
 
-  const topTools = topToolsData?.topTools ?? [];
   const llmModels = llmStats?.topTools ?? [];
   const connectionBreakdown = serverStats?.connectionBreakdown ?? [];
 
@@ -818,21 +781,24 @@ function OverviewTabContent({
         </MonitoringMetricCard>
       </div>
 
-      {/* Row 3: Top Tools + Top Agents — compact list cards */}
+      {/* Row 3: Top Agents + Top Automations */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card className="p-4 gap-4">
-          <span className="text-sm text-foreground/70">Top Tools</span>
-          <ToolLeaderboardTable
-            tools={topTools}
-            connections={connections}
-            total={topTools.reduce((sum, t) => sum + t.calls, 0)}
+        <MonitoringMetricCard
+          title="Top Agents"
+          value={(virtualMcps ?? [])
+            .filter((v) => v.status === "active")
+            .length.toLocaleString()}
+        >
+          <KPIChart
+            data={stats.data}
+            dataKey="calls"
+            colorNum={2}
+            chartHeight="h-[80px] md:h-[120px]"
           />
-        </Card>
-
-        <Card className="p-4 gap-4">
-          <span className="text-sm text-foreground/70">Top Agents</span>
           <AgentLeaderboardTable virtualMcps={virtualMcps} />
-        </Card>
+        </MonitoringMetricCard>
+
+        <AutomationsCard />
       </div>
 
       {/* AI Usage section header */}
@@ -2576,12 +2542,6 @@ function MonitoringDashboardContent({
     ...propertyApiParams,
   };
 
-  // Build dateRange strings for analytics components (use display range, not the streaming-extended fetch range)
-  const analyticsDateRange = {
-    startDate: displayDateRange.startDate.toISOString(),
-    endDate: displayDateRange.endDate.toISOString(),
-  };
-
   const tabs = [
     { id: "overview" as const, label: "Overview" },
     { id: "audit" as const, label: "Audit" },
@@ -2714,7 +2674,6 @@ function MonitoringDashboardContent({
             }
             connections={allConnections}
             isStreaming={isStreaming}
-            analyticsDateRange={analyticsDateRange}
             streamingRefetchInterval={streamingRefetchInterval}
             virtualMcps={allVirtualMcps}
           />
