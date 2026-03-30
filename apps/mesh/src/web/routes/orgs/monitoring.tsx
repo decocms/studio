@@ -2428,7 +2428,7 @@ function MonitoringDashboardContent({
 
   return (
     <>
-      <Page.Body className="pb-0">
+      <Page.Body className="!pb-3">
         <div className="flex flex-col gap-3">
           <Page.Title>Monitoring</Page.Title>
           <div className="flex items-center justify-between gap-4">
@@ -2636,7 +2636,7 @@ export default function MonitoringDashboard() {
       <ErrorBoundary
         fallback={
           <>
-            <Page.Body className="pb-0">
+            <Page.Body className="!pb-3">
               <Page.Title>Monitoring</Page.Title>
             </Page.Body>
             <Page.Content>
@@ -2660,7 +2660,7 @@ export default function MonitoringDashboard() {
         <Suspense
           fallback={
             <>
-              <Page.Body className="pb-0">
+              <Page.Body className="!pb-3">
                 <div className="flex flex-col gap-4">
                   <Page.Title>Monitoring</Page.Title>
                   <CollectionTabs
