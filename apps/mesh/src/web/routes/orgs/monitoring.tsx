@@ -2489,10 +2489,7 @@ function MonitoringDashboardContent({
             </div>
           </div>
         </div>
-      </Page.Body>
-
-      {(tab === "audit" || tab === "threads") && (
-        <div className="mx-auto w-full max-w-[1200px] px-4 md:px-10 pt-3">
+        {(tab === "audit" || tab === "threads") && (
           <SearchInput
             value={searchQuery}
             onChange={(value) => onUpdateFilters({ search: value })}
@@ -2507,9 +2504,10 @@ function MonitoringDashboardContent({
                 (event.target as HTMLInputElement).blur();
               }
             }}
+            className="w-full md:w-[375px]"
           />
-        </div>
-      )}
+        )}
+      </Page.Body>
 
       {tab === "threads" ? (
         <ThreadsTabContent
