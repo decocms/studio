@@ -2428,8 +2428,8 @@ function MonitoringDashboardContent({
 
   return (
     <>
-      <Page.Body className="!pb-3">
-        <div className="flex flex-col gap-3">
+      <Page.Body className="!pb-4">
+        <div className="flex flex-col gap-5">
           <Page.Title>Monitoring</Page.Title>
           <div className="flex items-center justify-between gap-4">
             <CollectionTabs
