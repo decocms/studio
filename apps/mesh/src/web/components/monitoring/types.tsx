@@ -83,6 +83,7 @@ export interface EnrichedMonitoringLog extends MonitoringLog {
   userName: string;
   userImage: string | undefined;
   virtualMcpName: string | null;
+  virtualMcpIcon: string | null;
 }
 
 export interface MonitoringLogsResponse
@@ -405,154 +406,198 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
     }
   };
 
+  const timestamp = new Date(log.timestamp);
+  const formattedTimestamp = timestamp.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+
   return (
-    <div className="space-y-3 text-sm px-3 md:px-5 py-4 bg-muted/30">
-      {/* Metadata Row: Request ID, User Agent and Virtual MCP */}
-      <div className="flex flex-wrap gap-4 text-xs">
-        <div className="flex items-center gap-1">
-          <span className="font-medium text-muted-foreground">
-            Request ID:{" "}
-          </span>
-          <code className="font-mono text-foreground bg-muted px-1.5 py-0.5 rounded text-[11px]">
-            {log.requestId}
-          </code>
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={handleCopyRequestId}
-            aria-label="Copy request ID"
-            className="h-5 w-5 text-muted-foreground hover:text-foreground"
-          >
-            {copiedRequestId ? <Check size={12} /> : <Copy01 size={12} />}
-          </Button>
+    <div className="text-sm px-5 md:px-6 py-5 space-y-5">
+      {/* Unified info grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+        {/* Timestamp */}
+        <div>
+          <div className="text-xs text-muted-foreground mb-1">Timestamp</div>
+          <div className="text-sm text-foreground">{formattedTimestamp}</div>
         </div>
-        {log.userAgent && (
-          <div>
-            <span className="font-medium text-muted-foreground">Client: </span>
-            <span className="font-mono text-foreground">{log.userAgent}</span>
+
+        {/* Duration */}
+        <div>
+          <div className="text-xs text-muted-foreground mb-1">Duration</div>
+          <div className="text-sm font-mono text-foreground">
+            {log.durationMs}ms
           </div>
-        )}
+        </div>
+
+        {/* User */}
+        <div>
+          <div className="text-xs text-muted-foreground mb-1">User</div>
+          <div className="text-sm text-foreground">{log.userName}</div>
+        </div>
+
+        {/* Agent */}
         {log.virtualMcpName && (
           <div>
-            <span className="font-medium text-muted-foreground">Agent: </span>
-            <span className="text-foreground">{log.virtualMcpName}</span>
+            <div className="text-xs text-muted-foreground mb-1">Agent</div>
+            <div className="text-sm text-foreground">{log.virtualMcpName}</div>
+          </div>
+        )}
+
+        {/* Request ID */}
+        <div>
+          <div className="text-xs text-muted-foreground mb-1">Request ID</div>
+          <div className="flex items-center gap-1">
+            <code className="font-mono text-foreground text-[11px]">
+              {log.requestId}
+            </code>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={handleCopyRequestId}
+              aria-label="Copy request ID"
+              className="h-5 w-5 text-muted-foreground hover:text-foreground"
+            >
+              {copiedRequestId ? <Check size={12} /> : <Copy01 size={12} />}
+            </Button>
+          </div>
+        </div>
+
+        {/* Client */}
+        {log.userAgent && (
+          <div>
+            <div className="text-xs text-muted-foreground mb-1">Client</div>
+            <div className="text-sm font-mono text-foreground">
+              {log.userAgent}
+            </div>
+          </div>
+        )}
+
+        {/* Properties */}
+        {log.properties && Object.keys(log.properties).length > 0 && (
+          <div className="md:col-span-2">
+            <div className="text-xs text-muted-foreground mb-1.5">
+              Properties
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {Object.entries(log.properties).map(([key, value]) => (
+                <Popover key={key}>
+                  <PopoverTrigger asChild>
+                    <Badge
+                      variant="secondary"
+                      className="font-mono text-xs px-2 py-0.5 cursor-pointer hover:bg-secondary/80 transition-colors"
+                    >
+                      {key}={value}
+                    </Badge>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-1" align="end">
+                    <div className="flex flex-col gap-0.5">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="justify-start h-8 px-2 text-xs font-normal focus-visible:ring-0 focus-visible:ring-offset-0"
+                        onClick={() => {
+                          const filter: PropertyFilter = {
+                            key,
+                            operator: "eq",
+                            value,
+                          };
+                          navigate({
+                            to: "/$org/settings/monitor",
+                            params: {
+                              org: org.slug,
+                            },
+                            search: {
+                              propertyFilters: serializePropertyFilters([
+                                filter,
+                              ]),
+                            },
+                          });
+                        }}
+                      >
+                        <FilterLines size={14} className="mr-2" />
+                        Filter by this property
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="justify-start h-8 px-2 text-xs font-normal focus-visible:ring-0 focus-visible:ring-offset-0"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(
+                              `${key}=${value}`,
+                            );
+                            toast.success("Copied filter to clipboard");
+                          } catch {
+                            toast.error("Failed to copy to clipboard");
+                          }
+                        }}
+                      >
+                        <Copy01 size={14} className="mr-2" />
+                        Copy filter
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="justify-start h-8 px-2 text-xs font-normal focus-visible:ring-0 focus-visible:ring-offset-0"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(key);
+                            toast.success("Copied key to clipboard");
+                          } catch {
+                            toast.error("Failed to copy to clipboard");
+                          }
+                        }}
+                      >
+                        <Key01 size={14} className="mr-2" />
+                        Copy key
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="justify-start h-8 px-2 text-xs font-normal focus-visible:ring-0 focus-visible:ring-offset-0"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(value);
+                            toast.success("Copied value to clipboard");
+                          } catch {
+                            toast.error("Failed to copy to clipboard");
+                          }
+                        }}
+                      >
+                        <Type01 size={14} className="mr-2" />
+                        Copy value
+                      </Button>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              ))}
+            </div>
           </div>
         )}
       </div>
-      {/* Properties Row */}
-      {log.properties && Object.keys(log.properties).length > 0 && (
-        <div>
-          <div className="text-xs font-medium text-muted-foreground mb-1.5">
-            Properties
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {Object.entries(log.properties).map(([key, value]) => (
-              <Popover key={key}>
-                <PopoverTrigger asChild>
-                  <Badge
-                    variant="secondary"
-                    className="font-mono text-xs px-2 py-0.5 cursor-pointer hover:bg-secondary/80 transition-colors"
-                  >
-                    {key}={value}
-                  </Badge>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-1" align="end">
-                  <div className="flex flex-col gap-0.5">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="justify-start h-8 px-2 text-xs font-normal focus-visible:ring-0 focus-visible:ring-offset-0"
-                      onClick={() => {
-                        const filter: PropertyFilter = {
-                          key,
-                          operator: "eq",
-                          value,
-                        };
-                        navigate({
-                          to: "/$org/settings/monitor",
-                          params: {
-                            org: org.slug,
-                          },
-                          search: {
-                            propertyFilters: serializePropertyFilters([filter]),
-                          },
-                        });
-                      }}
-                    >
-                      <FilterLines size={14} className="mr-2" />
-                      Filter by this property
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="justify-start h-8 px-2 text-xs font-normal focus-visible:ring-0 focus-visible:ring-offset-0"
-                      onClick={async () => {
-                        try {
-                          await navigator.clipboard.writeText(
-                            `${key}=${value}`,
-                          );
-                          toast.success("Copied filter to clipboard");
-                        } catch {
-                          toast.error("Failed to copy to clipboard");
-                        }
-                      }}
-                    >
-                      <Copy01 size={14} className="mr-2" />
-                      Copy filter
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="justify-start h-8 px-2 text-xs font-normal focus-visible:ring-0 focus-visible:ring-offset-0"
-                      onClick={async () => {
-                        try {
-                          await navigator.clipboard.writeText(key);
-                          toast.success("Copied key to clipboard");
-                        } catch {
-                          toast.error("Failed to copy to clipboard");
-                        }
-                      }}
-                    >
-                      <Key01 size={14} className="mr-2" />
-                      Copy key
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="justify-start h-8 px-2 text-xs font-normal focus-visible:ring-0 focus-visible:ring-offset-0"
-                      onClick={async () => {
-                        try {
-                          await navigator.clipboard.writeText(value);
-                          toast.success("Copied value to clipboard");
-                        } catch {
-                          toast.error("Failed to copy to clipboard");
-                        }
-                      }}
-                    >
-                      <Type01 size={14} className="mr-2" />
-                      Copy value
-                    </Button>
-                  </div>
-                </PopoverContent>
-              </Popover>
-            ))}
-          </div>
-        </div>
-      )}
+
+      {/* Error message */}
       {log.errorMessage && (
         <div>
-          <div className="font-medium text-destructive mb-1">Error Message</div>
+          <div className="text-xs text-destructive mb-1">Error</div>
           <div className="text-destructive font-mono text-xs bg-destructive/10 p-2 rounded break-all">
             {log.errorMessage}
           </div>
         </div>
       )}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+      {/* JSON viewers — stacked */}
+      <div className="space-y-4">
         <div>
-          <div className="rounded-lg bg-muted overflow-hidden border border-border">
-            <div className="flex items-center justify-between p-1 pl-4 bg-transparent border-b border-border">
+          <div className="rounded-lg overflow-hidden border border-border">
+            <div className="flex items-center justify-between p-1 pl-4 border-b border-border">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-mono uppercase text-muted-foreground tracking-widest select-none">
+                <span className="text-xs text-muted-foreground select-none">
                   Input
                 </span>
                 {inputJson.isTruncated && (
@@ -605,7 +650,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                 </Button>
               </div>
             </div>
-            <div className="h-[200px] md:h-[300px] overflow-auto">
+            <div className="h-[200px] md:h-[280px] overflow-auto">
               <MonacoCodeEditor
                 code={inputJson.content}
                 language="json"
@@ -616,10 +661,10 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
           </div>
         </div>
         <div>
-          <div className="rounded-lg bg-muted overflow-hidden border border-border">
-            <div className="flex items-center justify-between p-1 pl-4 bg-transparent border-b border-border">
+          <div className="rounded-lg overflow-hidden border border-border">
+            <div className="flex items-center justify-between p-1 pl-4 border-b border-border">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-mono uppercase text-muted-foreground tracking-widest select-none">
+                <span className="text-xs text-muted-foreground select-none">
                   Output
                 </span>
                 {outputJson.isTruncated && (
@@ -656,7 +701,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                 </Button>
               </div>
             </div>
-            <div className="h-[200px] md:h-[300px] overflow-auto">
+            <div className="h-[200px] md:h-[280px] overflow-auto">
               <MonacoCodeEditor
                 code={outputJson.content}
                 language="json"

@@ -41,7 +41,7 @@ import { Badge } from "@deco/ui/components/badge.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Card } from "@deco/ui/components/card.tsx";
-import { FilterLines, Container, ArrowRight } from "@untitledui/icons";
+import { FilterLines, Container } from "@untitledui/icons";
 import { Input } from "@deco/ui/components/input.tsx";
 import { MultiSelect } from "@deco/ui/components/multi-select.tsx";
 import {
@@ -81,7 +81,14 @@ import {
   propertyFiltersToRaw,
   parseRawPropertyFilters,
 } from "@/web/components/monitoring";
-import { Plus, Trash01, Code01, Grid01 } from "@untitledui/icons";
+import {
+  Plus,
+  Trash01,
+  Code01,
+  Grid01,
+  ChevronUp,
+  ChevronDown,
+} from "@untitledui/icons";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
 import {
   Tooltip,
@@ -99,7 +106,9 @@ import { Switch } from "@deco/ui/components/switch.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
 import { getConnectionSlug } from "@/shared/utils/connection-slug";
 import { useAutomationsList } from "@/web/hooks/use-automations";
+import { STATUS_CONFIG } from "@/web/lib/task-status";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
+import { Avatar } from "@deco/ui/components/avatar.tsx";
 import {
   Table,
   TableBody,
@@ -128,28 +137,54 @@ interface OverviewTabProps extends MonitoringStatsProps {
   virtualMcps: ReturnType<typeof useVirtualMCPs>;
 }
 
-/**
- * Determine the appropriate interval for timeseries queries based on date range.
- */
-function getIntervalFromRange(range: DateRange): "1m" | "1h" | "1d" {
-  const durationMs = range.endDate.getTime() - range.startDate.getTime();
-  const ONE_HOUR = 60 * 60 * 1000;
-  const HOURS_25 = 25 * ONE_HOUR;
+// ── Grafana-style auto-interval ─────────────────────────────────────────────
+// Pick the smallest "nice" bucket >= rawInterval = range / targetSteps.
+// This keeps a roughly constant number of bars regardless of time range.
 
-  if (durationMs <= ONE_HOUR) return "1m";
-  if (durationMs <= HOURS_25) return "1h";
-  return "1d";
+const NICE_INTERVALS: Array<{ ms: number; label: string }> = [
+  { ms: 60_000, label: "1m" },
+  { ms: 120_000, label: "2m" },
+  { ms: 300_000, label: "5m" },
+  { ms: 600_000, label: "10m" },
+  { ms: 900_000, label: "15m" },
+  { ms: 1_800_000, label: "30m" },
+  { ms: 3_600_000, label: "1h" },
+  { ms: 7_200_000, label: "2h" },
+  { ms: 21_600_000, label: "6h" },
+  { ms: 43_200_000, label: "12h" },
+  { ms: 86_400_000, label: "1d" },
+  { ms: 604_800_000, label: "7d" },
+];
+
+const TARGET_STEPS = 40;
+
+function getIntervalFromRange(range: DateRange): string {
+  const durationMs = range.endDate.getTime() - range.startDate.getTime();
+  const rawInterval = durationMs / TARGET_STEPS;
+  const nice = NICE_INTERVALS.find((b) => b.ms >= rawInterval);
+  return nice?.label ?? "1d";
+}
+
+/** Resolve an interval label like "5m" to milliseconds. */
+function intervalToMs(interval: string): number {
+  const entry = NICE_INTERVALS.find((b) => b.label === interval);
+  if (entry) return entry.ms;
+  const match = /^(\d+)([mhd])$/.exec(interval);
+  if (!match) return 60_000;
+  const amount = parseInt(match[1]!, 10);
+  const unit = match[2];
+  if (unit === "h") return amount * 3_600_000;
+  if (unit === "d") return amount * 86_400_000;
+  return amount * 60_000;
 }
 
 /**
- * Format a timestamp label based on the interval.
+ * Format a timestamp label based on interval size.
  */
-function formatTimestampLabel(
-  timestamp: string,
-  interval: "1m" | "1h" | "1d",
-): string {
+function formatTimestampLabel(timestamp: string, interval: string): string {
   const date = new Date(timestamp);
-  if (interval === "1d") {
+  const ms = intervalToMs(interval);
+  if (ms >= 86_400_000) {
     return date.toLocaleDateString([], { month: "short", day: "numeric" });
   }
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -222,7 +257,7 @@ function ConnectionLeaderboardTable({
 
   return (
     <div className="flex flex-col">
-      {ranked.map(({ connection, metric }) => {
+      {ranked.map(({ connection, metric }, idx) => {
         // For requests: show % of total calls + call count
         // For errors: show error rate % + error count
         // For latency: show calls proportion % + latency value
@@ -232,10 +267,14 @@ function ConnectionLeaderboardTable({
           mode === "errors"
             ? `${metric!.errorRate.toFixed(1)}%`
             : `${callsPct}%`;
+        const isLast = idx === ranked.length - 1;
         return (
           <div
             key={connection.id}
-            className="flex items-center h-10 border-b border-border/50 px-3 cursor-pointer hover:bg-accent/50 transition-colors"
+            className={cn(
+              "flex items-center h-10 px-3 cursor-pointer hover:bg-accent/50 transition-colors",
+              !isLast && "border-b border-border/50",
+            )}
             onClick={() =>
               navigate({
                 to: "/$org/settings/connections/$appSlug",
@@ -269,19 +308,6 @@ function ConnectionLeaderboardTable({
           </div>
         );
       })}
-      <div
-        className="flex items-center h-10 px-4 gap-2 cursor-pointer hover:bg-accent/50 transition-colors"
-        onClick={() =>
-          navigate({
-            to: "/$org/settings/monitor",
-            params: { org: org.slug },
-            search: { tab: "audit" },
-          })
-        }
-      >
-        <span className="text-sm text-muted-foreground">See all</span>
-        <ArrowRight size={16} className="text-muted-foreground" />
-      </div>
     </div>
   );
 }
@@ -293,20 +319,21 @@ function ModelLeaderboardTable({
   models: Array<{ toolName: string; calls: number }>;
   total: number;
 }) {
-  const { org } = useProjectContext();
-  const navigate = useNavigate();
-
   if (models.length === 0) return null;
 
   return (
     <div className="flex flex-col">
-      {models.slice(0, 4).map((model) => {
+      {models.slice(0, 4).map((model, idx, arr) => {
         const pct =
           total > 0 ? ((model.calls / total) * 100).toFixed(1) : "0.0";
+        const isLast = idx === arr.length - 1;
         return (
           <div
             key={model.toolName}
-            className="flex items-center h-10 border-b border-border/50 px-3"
+            className={cn(
+              "flex items-center h-10 px-3",
+              !isLast && "border-b border-border/50",
+            )}
           >
             <div className="flex flex-1 items-center gap-2 min-w-0">
               <div className="size-6 rounded-md border border-border/10 bg-background shadow-sm flex items-center justify-center shrink-0">
@@ -327,21 +354,6 @@ function ModelLeaderboardTable({
           </div>
         );
       })}
-      {models.length > 4 && (
-        <div
-          className="flex items-center h-10 px-4 gap-2 cursor-pointer hover:bg-accent/50 transition-colors"
-          onClick={() =>
-            navigate({
-              to: "/$org/settings/monitor",
-              params: { org: org.slug },
-              search: { tab: "audit" },
-            })
-          }
-        >
-          <span className="text-sm text-muted-foreground">See all</span>
-          <ArrowRight size={16} className="text-muted-foreground" />
-        </div>
-      )}
     </div>
   );
 }
@@ -367,10 +379,13 @@ function AgentLeaderboardTable({
 
   return (
     <div className="flex flex-col">
-      {agents.map((agent) => (
+      {agents.map((agent, idx) => (
         <div
           key={agent.id}
-          className="flex items-center h-10 border-b border-border/50 px-3 cursor-pointer hover:bg-accent/50 transition-colors"
+          className={cn(
+            "flex items-center h-10 px-3 cursor-pointer hover:bg-accent/50 transition-colors",
+            idx < agents.length - 1 && "border-b border-border/50",
+          )}
           onClick={() =>
             navigate({
               to: "/$org/$virtualMcpId",
@@ -397,22 +412,6 @@ function AgentLeaderboardTable({
           </div>
         </div>
       ))}
-      {(virtualMcps ?? []).filter((vm) => vm.status === "active").length >
-        4 && (
-        <div
-          className="flex items-center h-10 px-4 gap-2 cursor-pointer hover:bg-accent/50 transition-colors"
-          onClick={() =>
-            navigate({
-              to: "/$org/settings/monitor",
-              params: { org: org.slug },
-              search: { tab: "threads" },
-            })
-          }
-        >
-          <span className="text-sm text-muted-foreground">See all</span>
-          <ArrowRight size={16} className="text-muted-foreground" />
-        </div>
-      )}
     </div>
   );
 }
@@ -446,17 +445,21 @@ function AutomationsCard({ stats }: { stats: MonitoringStatsData }) {
           </div>
         ) : (
           <>
-            {allAutomations.slice(0, 4).map((automation) => {
+            {allAutomations.slice(0, 4).map((automation, idx, arr) => {
               const pct =
                 totalTriggers > 0
                   ? ((automation.trigger_count / totalTriggers) * 100).toFixed(
                       1,
                     )
                   : "0.0";
+              const isLast = idx === arr.length - 1;
               return (
                 <div
                   key={automation.id}
-                  className="flex items-center h-10 border-b border-border/50 px-3 cursor-pointer hover:bg-accent/50 transition-colors"
+                  className={cn(
+                    "flex items-center h-10 px-3 cursor-pointer hover:bg-accent/50 transition-colors",
+                    !isLast && "border-b border-border/50",
+                  )}
                   onClick={() => {
                     if (automation.agent?.id) {
                       navigate({
@@ -488,21 +491,6 @@ function AutomationsCard({ stats }: { stats: MonitoringStatsData }) {
                 </div>
               );
             })}
-            {allAutomations.length > 4 && (
-              <div
-                className="flex items-center h-10 px-4 gap-2 cursor-pointer hover:bg-accent/50 transition-colors"
-                onClick={() =>
-                  navigate({
-                    to: "/$org/settings/monitor",
-                    params: { org: org.slug },
-                    search: { tab: "audit" },
-                  })
-                }
-              >
-                <span className="text-sm text-muted-foreground">See all</span>
-                <ArrowRight size={16} className="text-muted-foreground" />
-              </div>
-            )}
           </>
         )}
       </div>
@@ -519,18 +507,10 @@ function formatMetricValue(
   return formatDuration(m.avgDurationMs);
 }
 
-function floorToInterval(date: Date, interval: "1m" | "1h" | "1d"): Date {
-  const result = new Date(date);
-  if (interval === "1d") {
-    result.setHours(0, 0, 0, 0);
-    return result;
-  }
-  if (interval === "1h") {
-    result.setMinutes(0, 0, 0);
-    return result;
-  }
-  result.setSeconds(0, 0);
-  return result;
+/** Floor a Date to the nearest interval boundary (UTC-aligned). */
+function floorToInterval(date: Date, interval: string): Date {
+  const ms = intervalToMs(interval);
+  return new Date(Math.floor(date.getTime() / ms) * ms);
 }
 
 type ConnectionMetric = {
@@ -549,6 +529,14 @@ function getMetricValue(m: ConnectionMetric, mode: LeaderboardMode): number {
   return m.avgDurationMs;
 }
 
+/**
+ * Build display-ready timeseries from server points.
+ *
+ * Instead of forcing a fixed bucket count and nearest-neighbor merging, we
+ * generate one bucket per interval step across the range and place server
+ * points directly into their matching bucket. Empty gaps are filled with
+ * zeros — honest representation of the data.
+ */
 function buildFilledStatsData(
   points: Array<{
     timestamp: string;
@@ -560,9 +548,13 @@ function buildFilledStatsData(
     p95: number;
   }>,
   range: DateRange,
-  interval: "1m" | "1h" | "1d",
+  interval: string,
 ): MonitoringStatsData["data"] {
-  // Map server points by their floored timestamp
+  const stepMs = intervalToMs(interval);
+  const startMs = floorToInterval(range.startDate, interval).getTime();
+  const endMs = range.endDate.getTime();
+
+  // Index server points by their floored timestamp
   const pointMap = new Map(
     points.map((point) => [
       floorToInterval(new Date(point.timestamp), interval).getTime(),
@@ -570,61 +562,21 @@ function buildFilledStatsData(
     ]),
   );
 
-  // Always generate exactly 20 display buckets
-  const BUCKET_COUNT = 20;
-  const startMs = range.startDate.getTime();
-  const endMs = range.endDate.getTime();
-  const step = (endMs - startMs) / (BUCKET_COUNT - 1);
   const data: MonitoringStatsData["data"] = [];
-  const bucketTimestamps: number[] = [];
-
-  for (let i = 0; i < BUCKET_COUNT; i++) {
-    const ts = Math.round(startMs + i * step);
-    bucketTimestamps.push(ts);
+  for (let ts = startMs; ts <= endMs; ts += stepMs) {
+    const point = pointMap.get(ts);
+    const iso = new Date(ts).toISOString();
     data.push({
-      t: new Date(ts).toISOString(),
+      t: iso,
       ts,
-      label: formatTimestampLabel(new Date(ts).toISOString(), interval),
-      calls: 0,
-      errors: 0,
-      errorRate: 0,
-      avg: 0,
-      p50: 0,
-      p95: 0,
+      label: formatTimestampLabel(iso, interval),
+      calls: point?.calls ?? 0,
+      errors: point?.errors ?? 0,
+      errorRate: point?.errorRate ?? 0,
+      avg: point?.avg ?? 0,
+      p50: point?.p50 ?? 0,
+      p95: point?.p95 ?? 0,
     });
-  }
-
-  // Assign each server point to its nearest display bucket
-  const counts = new Array(BUCKET_COUNT).fill(0);
-  for (const [serverTs, point] of pointMap) {
-    // Find nearest bucket
-    let nearest = 0;
-    let minDist = Math.abs(serverTs - bucketTimestamps[0]!);
-    for (let i = 1; i < bucketTimestamps.length; i++) {
-      const dist = Math.abs(serverTs - bucketTimestamps[i]!);
-      if (dist < minDist) {
-        minDist = dist;
-        nearest = i;
-      }
-    }
-
-    const bucket = data[nearest]!;
-    bucket.calls += point.calls;
-    bucket.errors += point.errors;
-    bucket.errorRate += point.errorRate;
-    bucket.avg += point.avg;
-    bucket.p50 += point.p50;
-    bucket.p95 = Math.max(bucket.p95, point.p95);
-    counts[nearest]++;
-  }
-
-  // Average out rate/latency fields
-  for (let i = 0; i < BUCKET_COUNT; i++) {
-    if (counts[i]! > 0) {
-      data[i]!.errorRate = data[i]!.errorRate / counts[i]!;
-      data[i]!.avg = data[i]!.avg / counts[i]!;
-      data[i]!.p50 = data[i]!.p50 / counts[i]!;
-    }
   }
 
   return data;
@@ -725,7 +677,7 @@ function OverviewTabContent({
   const [latencyMetric, setLatencyMetric] = useState<"avg" | "p95">("avg");
 
   return (
-    <div className="flex flex-col gap-4 px-4 md:px-10 pt-2 pb-6 max-w-[1200px] mx-auto w-full overflow-auto">
+    <div className="flex flex-col gap-4 px-4 md:px-10 pt-0 pb-6 max-w-[1200px] mx-auto w-full overflow-auto">
       {/* Row 1: Tool Calls — full width */}
       <MonitoringMetricCard
         title="Tool Calls"
@@ -736,6 +688,7 @@ function OverviewTabContent({
           dataKey="calls"
           colorNum={1}
           chartHeight="h-[120px] md:h-[180px]"
+          variant="area"
         />
         <ConnectionLeaderboardTable
           metrics={connectionBreakdown}
@@ -906,7 +859,10 @@ function SkeletonCard({ className }: { className?: string }) {
           {Array.from({ length: 4 }).map((_, i) => (
             <div
               key={i}
-              className="flex items-center h-10 border-b border-border/50 px-3"
+              className={cn(
+                "flex items-center h-10 px-3",
+                i < 3 && "border-b border-border/50",
+              )}
             >
               <div className="flex flex-1 items-center gap-2">
                 <div className="size-6 rounded-md bg-muted animate-pulse shrink-0" />
@@ -929,7 +885,7 @@ function SkeletonCard({ className }: { className?: string }) {
 
 function OverviewTabSkeleton() {
   return (
-    <div className="flex flex-col gap-4 px-4 md:px-10 pt-2 pb-6 max-w-[1200px] mx-auto w-full">
+    <div className="flex flex-col gap-4 px-4 md:px-10 pt-8 md:pt-12 pb-6 max-w-[1200px] mx-auto w-full">
       {/* Tool Calls — full width */}
       <SkeletonCard />
       {/* Latency + Errors — half width */}
@@ -1435,9 +1391,7 @@ function MonitoringLogsTableContent({
 }: MonitoringLogsTableProps) {
   const connections = connectionsData ?? [];
   const virtualMcps = virtualMcpsData ?? [];
-  const [selectedLog, setSelectedLog] = useState<EnrichedMonitoringLog | null>(
-    null,
-  );
+  const [selectedLogIndex, setSelectedLogIndex] = useState<number | null>(null);
 
   // Use the infinite scroll hook with loading guard
   const lastLogRef = useInfiniteScroll(onLoadMore, hasMore, isLoadingMore);
@@ -1458,6 +1412,7 @@ function MonitoringLogsTableContent({
       userName: user?.name ?? log.userId ?? "Unknown",
       userImage: user?.image ?? undefined,
       virtualMcpName: virtualMcp?.title ?? null,
+      virtualMcpIcon: virtualMcp?.icon ?? null,
     };
   });
 
@@ -1491,6 +1446,9 @@ function MonitoringLogsTableContent({
 
   // Get connection info
   const connectionMap = new Map(connections.map((c) => [c.id, c]));
+
+  const selectedLog =
+    selectedLogIndex !== null ? (filteredLogs[selectedLogIndex] ?? null) : null;
 
   if (filteredLogs.length === 0) {
     return (
@@ -1536,27 +1494,22 @@ function MonitoringLogsTableContent({
                 </TableHead>
 
                 {/* Agent Column */}
-                <TableHead className="w-24 md:w-32 px-2 md:px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                <TableHead className="w-36 md:w-44 px-2 md:px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
                   Agent
                 </TableHead>
 
                 {/* User name Column */}
-                <TableHead className="w-20 md:w-24 px-2 md:px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                  User Name
+                <TableHead className="w-28 md:w-36 px-2 md:px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                  User
                 </TableHead>
 
-                {/* Date Column */}
-                <TableHead className="w-20 md:w-24 px-2 md:px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                {/* Timestamp Column */}
+                <TableHead className="w-32 md:w-40 px-2 md:px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
                   Date
                 </TableHead>
 
-                {/* Time Column */}
-                <TableHead className="w-20 md:w-28 px-2 md:px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                  Time
-                </TableHead>
-
                 {/* Duration Column */}
-                <TableHead className="w-16 md:w-20 px-2 md:px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide text-right">
+                <TableHead className="w-16 md:w-20 px-2 md:px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
                   Latency
                 </TableHead>
 
@@ -1573,7 +1526,8 @@ function MonitoringLogsTableContent({
                   log={log}
                   connection={connectionMap.get(log.connectionId)}
                   virtualMcpName={log.virtualMcpName ?? ""}
-                  onClick={() => setSelectedLog(log)}
+                  virtualMcpIcon={log.virtualMcpIcon}
+                  onClick={() => setSelectedLogIndex(index)}
                   lastLogRef={
                     index === filteredLogs.length - 1 ? lastLogRef : undefined
                   }
@@ -1585,22 +1539,66 @@ function MonitoringLogsTableContent({
       </div>
 
       <Sheet
-        open={selectedLog !== null}
+        open={selectedLogIndex !== null}
         onOpenChange={(open) => {
-          if (!open) setSelectedLog(null);
+          if (!open) setSelectedLogIndex(null);
         }}
       >
         <SheetContent className="sm:max-w-2xl flex flex-col p-0 gap-0">
-          {selectedLog && (
+          {selectedLog && selectedLogIndex !== null && (
             <>
-              <SheetHeader className="px-4 pt-4 pb-3 border-b border-border shrink-0">
-                <SheetTitle className="text-sm pr-6 leading-snug">
-                  {selectedLog.toolName}
-                  <span className="text-muted-foreground font-normal">
-                    {" "}
-                    — {selectedLog.connectionTitle}
-                  </span>
-                </SheetTitle>
+              <SheetHeader className="px-5 md:px-6 pt-6 pb-5 border-b border-border shrink-0">
+                <div className="flex items-start justify-between gap-3 pr-8">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <IntegrationIcon
+                      icon={
+                        connectionMap.get(selectedLog.connectionId)?.icon ||
+                        null
+                      }
+                      name={selectedLog.connectionTitle}
+                      size="sm"
+                      className="shadow-sm shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <SheetTitle className="text-sm leading-snug truncate">
+                        {selectedLog.toolName}
+                      </SheetTitle>
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                        {selectedLog.connectionTitle}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() =>
+                        setSelectedLogIndex((i) =>
+                          i !== null && i > 0 ? i - 1 : i,
+                        )
+                      }
+                      disabled={selectedLogIndex === 0}
+                      className="h-7 w-7 text-muted-foreground"
+                      aria-label="Previous entry"
+                    >
+                      <ChevronUp size={14} />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() =>
+                        setSelectedLogIndex((i) =>
+                          i !== null && i < filteredLogs.length - 1 ? i + 1 : i,
+                        )
+                      }
+                      disabled={selectedLogIndex === filteredLogs.length - 1}
+                      className="h-7 w-7 text-muted-foreground"
+                      aria-label="Next entry"
+                    >
+                      <ChevronDown size={14} />
+                    </Button>
+                  </div>
+                </div>
               </SheetHeader>
               <div className="flex-1 overflow-y-auto min-h-0">
                 <ExpandedLogContent log={selectedLog} />
@@ -1630,10 +1628,7 @@ function MonitoringLogsTableSkeleton() {
               <TableHead className="w-20 md:w-24 px-2 md:px-3">
                 <div className="h-3 w-16 rounded bg-muted animate-pulse" />
               </TableHead>
-              <TableHead className="w-20 md:w-24 px-2 md:px-3">
-                <div className="h-3 w-10 rounded bg-muted animate-pulse" />
-              </TableHead>
-              <TableHead className="w-20 md:w-28 px-2 md:px-3">
+              <TableHead className="w-32 md:w-40 px-2 md:px-3">
                 <div className="h-3 w-10 rounded bg-muted animate-pulse" />
               </TableHead>
               <TableHead className="w-16 md:w-20 px-2 md:px-3">
@@ -1669,7 +1664,10 @@ function MonitoringLogsTableSkeleton() {
                   <div className="h-3 w-16 rounded bg-muted animate-pulse" />
                 </td>
                 <td className="px-2 md:px-3">
-                  <div className="h-3 w-14 rounded bg-muted animate-pulse" />
+                  <div className="space-y-1">
+                    <div className="h-3 w-14 rounded bg-muted animate-pulse" />
+                    <div className="h-2.5 w-20 rounded bg-muted animate-pulse" />
+                  </div>
                 </td>
                 <td className="px-2 md:px-3">
                   <div className="h-3 w-10 rounded bg-muted animate-pulse ml-auto" />
@@ -1736,6 +1734,18 @@ function resolveAgentName(
   return agentId;
 }
 
+function resolveAgentIcon(
+  agentId: string | null,
+  virtualMcps: ReturnType<typeof useVirtualMCPs>,
+  connections: ReturnType<typeof useConnections>,
+): string | null {
+  if (!agentId) return null;
+  const found =
+    virtualMcps.find((v) => v.id === agentId) ??
+    connections?.find((c) => c.id === agentId);
+  return found?.icon ?? null;
+}
+
 /** Extract model name from the first assistant message's metadata */
 function extractModelFromMessages(
   messages: ThreadMessageEntity[],
@@ -1760,6 +1770,76 @@ function getOrgMembers(
   return ((data?.data?.members ?? []) as OrgMember[]) ?? [];
 }
 
+function ThreadSheetHeader({
+  thread,
+  connections,
+  virtualMcps,
+  selectedIndex,
+  total,
+  onPrev,
+  onNext,
+}: {
+  thread: ThreadEntity;
+  connections: ReturnType<typeof useConnections>;
+  virtualMcps: ReturnType<typeof useVirtualMCPs>;
+  selectedIndex: number;
+  total: number;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  const agentId = getThreadAgentId(thread);
+  const agentName = resolveAgentName(agentId, virtualMcps, connections, "");
+  const agentIcon = resolveAgentIcon(agentId, virtualMcps, connections);
+
+  return (
+    <SheetHeader className="px-5 md:px-6 pt-6 pb-5 border-b border-border shrink-0">
+      <div className="flex items-start justify-between gap-3 pr-8">
+        <div className="flex items-center gap-3 min-w-0">
+          <IntegrationIcon
+            icon={agentIcon}
+            name={agentName || thread.title}
+            size="sm"
+            fallbackIcon={<Container />}
+            className="shadow-sm shrink-0 rounded-md"
+          />
+          <div className="min-w-0">
+            <SheetTitle className="text-sm leading-snug truncate">
+              {thread.title}
+            </SheetTitle>
+            {agentName && (
+              <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                {agentName}
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-0.5 shrink-0">
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={onPrev}
+            disabled={selectedIndex === 0}
+            className="h-7 w-7 text-muted-foreground"
+            aria-label="Previous thread"
+          >
+            <ChevronUp size={14} />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={onNext}
+            disabled={selectedIndex === total - 1}
+            className="h-7 w-7 text-muted-foreground"
+            aria-label="Next thread"
+          >
+            <ChevronDown size={14} />
+          </Button>
+        </div>
+      </div>
+    </SheetHeader>
+  );
+}
+
 function ThreadMetaRow({
   thread,
   connections,
@@ -1775,6 +1855,7 @@ function ThreadMetaRow({
 }) {
   const agentId = getThreadAgentId(thread);
   const agentName = resolveAgentName(agentId, virtualMcps, connections, "");
+  const agentIcon = resolveAgentIcon(agentId, virtualMcps, connections);
 
   const membersList = getOrgMembers(members);
   const member = membersList.find((m) => m.userId === thread.created_by);
@@ -1783,37 +1864,83 @@ function ThreadMetaRow({
     member?.user.email ??
     thread.created_by?.substring(0, 8) ??
     "—";
+  const userImage = member?.user.image ?? undefined;
 
-  const statusVariant =
-    thread.status === "completed"
-      ? "success"
-      : thread.status === "failed"
-        ? "destructive"
-        : "secondary";
+  const date = new Date(thread.created_at);
+  const formattedDate = date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+
+  const statusConfigKey =
+    thread.status === "active" ? "in_progress" : thread.status;
+  const statusCfg =
+    STATUS_CONFIG[statusConfigKey as keyof typeof STATUS_CONFIG] ??
+    STATUS_CONFIG.completed;
+  const StatusIcon = statusCfg.icon;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground mt-0.5">
+    <div className="px-5 md:px-6 py-5 border-b border-border grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 text-sm">
+      {/* Status */}
+      <div>
+        <div className="text-xs text-muted-foreground mb-1">Status</div>
+        <div className="flex items-center gap-1.5">
+          <StatusIcon size={13} className={statusCfg.iconClassName} />
+          <span className={cn("text-sm", statusCfg.labelColor)}>
+            {statusCfg.label}
+          </span>
+        </div>
+      </div>
+
+      {/* Date */}
+      <div>
+        <div className="text-xs text-muted-foreground mb-1">Date</div>
+        <div className="text-sm text-foreground">{formattedDate}</div>
+      </div>
+
+      {/* User */}
+      <div>
+        <div className="text-xs text-muted-foreground mb-1">User</div>
+        <div className="flex items-center gap-2">
+          <Avatar
+            url={userImage}
+            fallback={userName}
+            shape="circle"
+            size="2xs"
+            className="shrink-0"
+          />
+          <span className="text-sm text-foreground">{userName}</span>
+        </div>
+      </div>
+
+      {/* Agent */}
       {agentName && (
-        <span>
-          Agent:{" "}
-          <span className="text-foreground font-medium">{agentName}</span>
-        </span>
+        <div>
+          <div className="text-xs text-muted-foreground mb-1">Agent</div>
+          <div className="flex items-center gap-2">
+            <IntegrationIcon
+              icon={agentIcon}
+              name={agentName}
+              size="xs"
+              fallbackIcon={<Container />}
+              className="shrink-0 size-5! min-w-5! rounded-md"
+            />
+            <span className="text-sm text-foreground">{agentName}</span>
+          </div>
+        </div>
       )}
+
+      {/* Model */}
       {modelName && (
-        <span>
-          Model:{" "}
-          <span className="text-foreground font-medium">{modelName}</span>
-        </span>
+        <div>
+          <div className="text-xs text-muted-foreground mb-1">Model</div>
+          <div className="text-sm text-foreground">{modelName}</div>
+        </div>
       )}
-      <span>
-        User: <span className="text-foreground font-medium">{userName}</span>
-      </span>
-      <Badge
-        variant={statusVariant as "success" | "destructive" | "secondary"}
-        className="text-[10px] px-1.5 py-0 h-4"
-      >
-        {thread.status}
-      </Badge>
     </div>
   );
 }
@@ -1851,6 +1978,7 @@ function ThreadRow({
 }) {
   const agentId = getThreadAgentId(thread);
   const agentName = resolveAgentName(agentId, virtualMcps, connections, "—");
+  const agentIcon = resolveAgentIcon(agentId, virtualMcps, connections);
 
   const membersList = getOrgMembers(members);
   const member = membersList.find((m) => m.userId === thread.created_by);
@@ -1859,6 +1987,7 @@ function ThreadRow({
     member?.user.email ??
     thread.created_by?.substring(0, 8) ??
     "—";
+  const userImage = member?.user.image ?? undefined;
 
   const date = new Date(thread.created_at);
   const dateStr = date.toLocaleDateString("en-US", {
@@ -1870,46 +1999,64 @@ function ThreadRow({
     minute: "2-digit",
   });
 
-  const statusVariant =
-    thread.status === "completed"
-      ? "success"
-      : thread.status === "failed"
-        ? "destructive"
-        : "secondary";
+  const statusConfigKey =
+    thread.status === "active" ? "in_progress" : thread.status;
+  const statusCfg =
+    STATUS_CONFIG[statusConfigKey as keyof typeof STATUS_CONFIG] ??
+    STATUS_CONFIG.completed;
+  const StatusIcon = statusCfg.icon;
 
   return (
     <TableRow
       ref={lastRowRef}
-      className="h-14 cursor-pointer hover:bg-muted/40 transition-colors"
+      className="h-14 md:h-16 cursor-pointer hover:bg-muted/40 transition-colors"
       onClick={onClick}
     >
       <TableCell className="min-w-0 pr-2 pl-4 md:pr-4">
-        <div className="text-xs font-medium text-foreground truncate">
+        <div className="font-medium text-foreground truncate">
           {thread.title}
         </div>
       </TableCell>
-      <TableCell className="w-36 px-3 text-xs text-muted-foreground">
-        <div className="truncate">{agentName}</div>
+      <TableCell className="w-36 px-3 text-muted-foreground">
+        <div className="flex items-center gap-2 min-w-0">
+          <IntegrationIcon
+            icon={agentIcon}
+            name={agentName}
+            size="xs"
+            fallbackIcon={<Container />}
+            className="shrink-0 size-5! min-w-5! rounded-md"
+          />
+          <span className="truncate">{agentName}</span>
+        </div>
       </TableCell>
-      <TableCell className="w-36 px-3 text-xs text-muted-foreground">
+      <TableCell className="w-36 px-3 text-muted-foreground">
         <div className="truncate">{modelName ?? "—"}</div>
       </TableCell>
-      <TableCell className="w-28 px-3 text-xs text-muted-foreground">
-        <div className="truncate">{userName}</div>
+      <TableCell className="w-28 px-3 text-muted-foreground">
+        <div className="flex items-center gap-2 min-w-0">
+          <Avatar
+            url={userImage}
+            fallback={userName}
+            shape="circle"
+            size="2xs"
+            className="shrink-0"
+          />
+          <span className="truncate">{userName}</span>
+        </div>
       </TableCell>
       <TableCell className="w-24 px-3">
-        <Badge
-          variant={statusVariant as "success" | "destructive" | "secondary"}
-          className="text-xs px-1.5 py-0.5"
-        >
-          {thread.status}
-        </Badge>
+        <div className="flex items-center gap-1.5">
+          <StatusIcon size={14} className={statusCfg.iconClassName} />
+          <span className={cn("text-sm", statusCfg.labelColor)}>
+            {statusCfg.label}
+          </span>
+        </div>
       </TableCell>
       <TableCell className="w-24 px-3">
         {usage && usage.totalTokens > 0 ? (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="text-xs font-mono tabular-nums text-muted-foreground cursor-default">
+              <span className="font-mono tabular-nums text-muted-foreground cursor-default">
                 {formatTokenCount(usage.totalTokens)} tok
               </span>
             </TooltipTrigger>
@@ -1932,14 +2079,12 @@ function ThreadRow({
             </TooltipContent>
           </Tooltip>
         ) : (
-          <span className="text-xs text-muted-foreground">—</span>
+          <span className="text-muted-foreground">—</span>
         )}
       </TableCell>
-      <TableCell className="w-20 px-3 text-xs text-muted-foreground">
-        {dateStr}
-      </TableCell>
-      <TableCell className="w-24 px-3 pr-5 text-xs text-muted-foreground">
-        {timeStr}
+      <TableCell className="w-32 px-3 pr-5 text-muted-foreground">
+        <div>{dateStr}</div>
+        <div className="text-xs text-muted-foreground/60">{timeStr}</div>
       </TableCell>
     </TableRow>
   );
@@ -1959,6 +2104,10 @@ function ThreadConversationPanel({
   connections,
   virtualMcps,
   members,
+  selectedIndex,
+  total,
+  onPrev,
+  onNext,
 }: {
   client: ReturnType<typeof useMCPClient>;
   locator: string;
@@ -1966,6 +2115,10 @@ function ThreadConversationPanel({
   connections: ReturnType<typeof useConnections>;
   virtualMcps: ReturnType<typeof useVirtualMCPs>;
   members: ReturnType<typeof useMembers>["data"] | undefined;
+  selectedIndex: number;
+  total: number;
+  onPrev: () => void;
+  onNext: () => void;
 }) {
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useSuspenseInfiniteQuery({
@@ -2017,18 +2170,22 @@ function ThreadConversationPanel({
 
   return (
     <>
-      <SheetHeader className="px-4 pt-4 pb-3 border-b border-border shrink-0">
-        <SheetTitle className="text-sm pr-6 leading-snug">
-          {thread.title}
-        </SheetTitle>
-        <ThreadMetaRow
-          thread={thread}
-          connections={connections}
-          virtualMcps={virtualMcps}
-          members={members}
-          modelName={modelName}
-        />
-      </SheetHeader>
+      <ThreadSheetHeader
+        thread={thread}
+        connections={connections}
+        virtualMcps={virtualMcps}
+        selectedIndex={selectedIndex}
+        total={total}
+        onPrev={onPrev}
+        onNext={onNext}
+      />
+      <ThreadMetaRow
+        thread={thread}
+        connections={connections}
+        virtualMcps={virtualMcps}
+        members={members}
+        modelName={modelName}
+      />
 
       {messages.length === 0 ? (
         <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
@@ -2073,6 +2230,9 @@ interface ThreadsTabContentProps {
   allVirtualMcps: ReturnType<typeof useVirtualMCPs>;
   dateRange: { startDate: Date; endDate: Date };
   searchQuery: string;
+  filterAgentIds?: string[];
+  filterUserIds?: string[];
+  filterStatus?: string;
 }
 
 const THREADS_PAGE_SIZE = 50;
@@ -2085,8 +2245,13 @@ function ThreadsTabContent({
   allVirtualMcps,
   dateRange,
   searchQuery,
+  filterAgentIds,
+  filterUserIds,
+  filterStatus,
 }: ThreadsTabContentProps) {
-  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const [selectedThreadIndex, setSelectedThreadIndex] = useState<number | null>(
+    null,
+  );
 
   const startDate = dateRange.startDate.toISOString();
   const endDate = dateRange.endDate.toISOString();
@@ -2095,6 +2260,9 @@ function ThreadsTabContent({
     startDate,
     endDate,
     search: searchQuery,
+    agentIds: filterAgentIds,
+    userIds: filterUserIds,
+    status: filterStatus,
   });
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
@@ -2110,6 +2278,15 @@ function ThreadsTabContent({
             startDate,
             endDate,
             ...(searchQuery ? { search: searchQuery } : {}),
+            ...(filterAgentIds && filterAgentIds.length > 0
+              ? { agentId: filterAgentIds[0] }
+              : {}),
+            ...(filterUserIds && filterUserIds.length > 0
+              ? { userId: filterUserIds[0] }
+              : {}),
+            ...(filterStatus && filterStatus !== "all"
+              ? { status: filterStatus }
+              : {}),
           },
         })) as { structuredContent?: unknown };
         return (result.structuredContent ?? result) as {
@@ -2133,10 +2310,11 @@ function ThreadsTabContent({
     queryFn: async () => {
       if (!client) throw new Error("MCP client is not available");
       const LOG_BATCH = 500;
+      const MAX_LOGS = 5000;
       const allLogs: MonitoringLogsResponse["logs"] = [];
       let offset = 0;
       let total = Infinity;
-      while (offset < total) {
+      while (offset < total && allLogs.length < MAX_LOGS) {
         const raw = (await client.callTool({
           name: "MONITORING_LOGS_LIST",
           arguments: {
@@ -2203,15 +2381,14 @@ function ThreadsTabContent({
     }
   }
 
-  const allThreads = (data?.pages ?? []).flatMap(
+  const visibleThreads = (data?.pages ?? []).flatMap(
     (p: { items?: ThreadEntity[] }) => p.items ?? [],
   );
 
-  const visibleThreads = allThreads;
-
-  const selectedThread = selectedThreadId
-    ? (allThreads.find((t) => t.id === selectedThreadId) ?? null)
-    : null;
+  const selectedThread =
+    selectedThreadIndex !== null
+      ? (visibleThreads[selectedThreadIndex] ?? null)
+      : null;
 
   const handleLoadMore = () => {
     if (hasNextPage && !isFetchingNextPage) fetchNextPage();
@@ -2223,7 +2400,11 @@ function ThreadsTabContent({
     isFetchingNextPage,
   );
 
-  const hasActiveFilters = !!searchQuery;
+  const hasActiveFilters =
+    !!searchQuery ||
+    (filterAgentIds?.length ?? 0) > 0 ||
+    (filterUserIds?.length ?? 0) > 0 ||
+    (filterStatus && filterStatus !== "all");
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-w-0">
@@ -2269,11 +2450,8 @@ function ThreadsTabContent({
                     <TableHead className="w-24 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
                       Usage
                     </TableHead>
-                    <TableHead className="w-20 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                    <TableHead className="w-32 px-3 pr-5 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
                       Date
-                    </TableHead>
-                    <TableHead className="w-24 px-3 pr-5 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                      Time
                     </TableHead>
                   </TableRow>
                 </TableHeader>
@@ -2287,7 +2465,7 @@ function ThreadsTabContent({
                       virtualMcps={allVirtualMcps}
                       modelName={threadModelMap.get(thread.id)}
                       usage={threadUsageMap.get(thread.id)}
-                      onClick={() => setSelectedThreadId(thread.id)}
+                      onClick={() => setSelectedThreadIndex(idx)}
                       lastRowRef={
                         idx === visibleThreads.length - 1
                           ? (lastRowRef as (
@@ -2310,21 +2488,33 @@ function ThreadsTabContent({
       </div>
 
       <Sheet
-        open={selectedThreadId !== null}
+        open={selectedThreadIndex !== null}
         onOpenChange={(open) => {
-          if (!open) setSelectedThreadId(null);
+          if (!open) setSelectedThreadIndex(null);
         }}
       >
         <SheetContent className="sm:max-w-2xl flex flex-col p-0 gap-0">
-          {selectedThread && (
+          {selectedThread && selectedThreadIndex !== null && (
             <ErrorBoundary
               fallback={
                 <>
-                  <SheetHeader className="px-4 pt-4 pb-3 border-b border-border shrink-0">
-                    <SheetTitle className="text-sm pr-6 leading-snug">
-                      {selectedThread.title}
-                    </SheetTitle>
-                  </SheetHeader>
+                  <ThreadSheetHeader
+                    thread={selectedThread}
+                    connections={allConnections}
+                    virtualMcps={allVirtualMcps}
+                    selectedIndex={selectedThreadIndex}
+                    total={visibleThreads.length}
+                    onPrev={() =>
+                      setSelectedThreadIndex((i) =>
+                        i !== null && i > 0 ? i - 1 : i,
+                      )
+                    }
+                    onNext={() =>
+                      setSelectedThreadIndex((i) =>
+                        i !== null && i < visibleThreads.length - 1 ? i + 1 : i,
+                      )
+                    }
+                  />
                   <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
                     Failed to load messages
                   </div>
@@ -2334,11 +2524,25 @@ function ThreadsTabContent({
               <Suspense
                 fallback={
                   <>
-                    <SheetHeader className="px-4 pt-4 pb-3 border-b border-border shrink-0">
-                      <SheetTitle className="text-sm pr-6 leading-snug">
-                        {selectedThread.title}
-                      </SheetTitle>
-                    </SheetHeader>
+                    <ThreadSheetHeader
+                      thread={selectedThread}
+                      connections={allConnections}
+                      virtualMcps={allVirtualMcps}
+                      selectedIndex={selectedThreadIndex}
+                      total={visibleThreads.length}
+                      onPrev={() =>
+                        setSelectedThreadIndex((i) =>
+                          i !== null && i > 0 ? i - 1 : i,
+                        )
+                      }
+                      onNext={() =>
+                        setSelectedThreadIndex((i) =>
+                          i !== null && i < visibleThreads.length - 1
+                            ? i + 1
+                            : i,
+                        )
+                      }
+                    />
                     <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
                       Loading conversation…
                     </div>
@@ -2352,6 +2556,18 @@ function ThreadsTabContent({
                   connections={allConnections}
                   virtualMcps={allVirtualMcps}
                   members={membersData}
+                  selectedIndex={selectedThreadIndex}
+                  total={visibleThreads.length}
+                  onPrev={() =>
+                    setSelectedThreadIndex((i) =>
+                      i !== null && i > 0 ? i - 1 : i,
+                    )
+                  }
+                  onNext={() =>
+                    setSelectedThreadIndex((i) =>
+                      i !== null && i < visibleThreads.length - 1 ? i + 1 : i,
+                    )
+                  }
                 />
               </Suspense>
             </ErrorBoundary>
@@ -2428,7 +2644,7 @@ function AuditTabContent({
       refetchInterval: isStreaming ? streamingRefetchInterval : false,
     });
 
-  const allLogs = data.pages.flatMap((page) => page.logs ?? []);
+  const realLogs = data.pages.flatMap((page) => page.logs ?? []);
 
   const handleLoadMore = () => {
     if (hasNextPage && !isFetchingNextPage) {
@@ -2447,7 +2663,7 @@ function AuditTabContent({
             tool={tool}
             status={status}
             search={searchQuery}
-            logs={allLogs}
+            logs={realLogs}
             hasMore={hasNextPage ?? false}
             onLoadMore={handleLoadMore}
             isLoadingMore={isFetchingNextPage}
@@ -2458,6 +2674,144 @@ function AuditTabContent({
         </div>
       </div>
     </div>
+  );
+}
+
+// ============================================================================
+// Threads Filters Popover
+// ============================================================================
+
+interface ThreadsFiltersPopoverProps {
+  filterAgentIds: string[];
+  filterUserIds: string[];
+  filterStatus: string;
+  virtualMcpOptions: Array<{ value: string; label: string }>;
+  memberOptions: Array<{ value: string; label: string }>;
+  activeFiltersCount: number;
+  onUpdateFilters: (updates: {
+    filterAgentIds?: string[];
+    filterUserIds?: string[];
+    filterStatus?: string;
+  }) => void;
+}
+
+function ThreadsFiltersPopover({
+  filterAgentIds,
+  filterUserIds,
+  filterStatus,
+  virtualMcpOptions,
+  memberOptions,
+  activeFiltersCount,
+  onUpdateFilters,
+}: ThreadsFiltersPopoverProps) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" className="relative">
+          <FilterLines size={16} />
+          <span className="hidden sm:inline">Filters</span>
+          {activeFiltersCount > 0 && (
+            <>
+              <Badge
+                variant="default"
+                className="sm:hidden absolute -top-1.5 -right-1.5 h-4 min-w-4 px-1 text-[10px] leading-none"
+              >
+                {activeFiltersCount}
+              </Badge>
+              <Badge
+                variant="default"
+                className="hidden sm:flex ml-1 h-5 w-5 rounded-full p-0 items-center justify-center text-xs"
+              >
+                {activeFiltersCount}
+              </Badge>
+            </>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-[280px]">
+        <div className="space-y-4">
+          <h4 className="font-medium text-sm">Filter Threads</h4>
+
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                Agent
+              </label>
+              <MultiSelect
+                options={virtualMcpOptions}
+                defaultValue={filterAgentIds}
+                onValueChange={(values) =>
+                  onUpdateFilters({ filterAgentIds: values })
+                }
+                placeholder="All agents"
+                variant="secondary"
+                className="w-full"
+                maxCount={2}
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                User
+              </label>
+              <MultiSelect
+                options={memberOptions}
+                defaultValue={filterUserIds}
+                onValueChange={(values) =>
+                  onUpdateFilters({ filterUserIds: values })
+                }
+                placeholder="All users"
+                variant="secondary"
+                className="w-full"
+                maxCount={2}
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                Status
+              </label>
+              <Select
+                value={filterStatus}
+                onValueChange={(value) =>
+                  onUpdateFilters({ filterStatus: value })
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="failed">Failed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {activeFiltersCount > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full"
+              onClick={() => {
+                onUpdateFilters({
+                  filterAgentIds: [],
+                  filterUserIds: [],
+                  filterStatus: "all",
+                });
+                setOpen(false);
+              }}
+            >
+              Clear all filters
+            </Button>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -2516,14 +2870,40 @@ function MonitoringDashboardContent({
   const searchFilteredConnections = useConnections({
     searchTerm: connectionSearch || undefined,
   });
-  const connectionOptions = (searchFilteredConnections ?? []).map((conn) => ({
-    value: conn.id,
-    label: conn.title || conn.id,
-  }));
-  const virtualMcpOptions = allVirtualMcps.map((vm) => ({
-    value: vm.id ?? "",
-    label: vm.title ?? "Decopilot",
-  }));
+  const connectionOptions = (searchFilteredConnections ?? []).map((conn) => {
+    const icon = conn.icon;
+    const name = conn.title || conn.id;
+    return {
+      value: conn.id,
+      label: name,
+      icon: ({ className }: { className?: string }) => (
+        <IntegrationIcon
+          icon={icon}
+          name={name}
+          size="xs"
+          fallbackIcon={<Container />}
+          className={cn("size-4! min-w-4! rounded-sm shrink-0", className)}
+        />
+      ),
+    };
+  });
+  const virtualMcpOptions = allVirtualMcps.map((vm) => {
+    const icon = vm.icon;
+    const name = vm.title ?? "Decopilot";
+    return {
+      value: vm.id ?? "",
+      label: name,
+      icon: ({ className }: { className?: string }) => (
+        <IntegrationIcon
+          icon={icon}
+          name={name}
+          size="xs"
+          fallbackIcon={<Container />}
+          className={cn("size-4! min-w-4! rounded-sm shrink-0", className)}
+        />
+      ),
+    };
+  });
 
   const { pageSize, streamingRefetchInterval } = MONITORING_CONFIG;
   const { org, locator } = useProjectContext();
@@ -2540,17 +2920,41 @@ function MonitoringDashboardContent({
     ? [WellKnownOrgMCPId.SELF(org.id)]
     : undefined;
 
-  const [aiOnly, setAiOnly] = useState(false);
+  // Threads-specific filter state
+  const [threadFilterAgentIds, setThreadFilterAgentIds] = useState<string[]>(
+    [],
+  );
+  const [threadFilterUserIds, setThreadFilterUserIds] = useState<string[]>([]);
+  const [threadFilterStatus, setThreadFilterStatus] = useState("all");
+
+  const threadActiveFiltersCount =
+    (threadFilterAgentIds.length > 0 ? 1 : 0) +
+    (threadFilterUserIds.length > 0 ? 1 : 0) +
+    (threadFilterStatus !== "all" ? 1 : 0);
+
+  const memberOptions = getOrgMembers(membersData).map((m) => {
+    const label = m.user.name ?? m.user.email ?? m.userId;
+    const url = m.user.image ?? undefined;
+    return {
+      value: m.userId,
+      label,
+      icon: ({ className }: { className?: string }) => (
+        <Avatar
+          url={url}
+          fallback={label}
+          shape="circle"
+          size="2xs"
+          className={cn("shrink-0", className)}
+        />
+      ),
+    };
+  });
 
   // Base params for filtering (without pagination)
   const baseParams = {
     startDate: dateRange.startDate.toISOString(),
     endDate: dateRange.endDate.toISOString(),
-    connectionId: aiOnly
-      ? "decopilot"
-      : connectionIds.length === 1
-        ? connectionIds[0]
-        : undefined,
+    connectionId: connectionIds.length === 1 ? connectionIds[0] : undefined,
     excludeConnectionIds,
     virtualMcpId: virtualMcpIds.length === 1 ? virtualMcpIds[0] : undefined,
     toolName: tool || undefined,
@@ -2609,16 +3013,30 @@ function MonitoringDashboardContent({
                     connectionSearchTerm={connectionSearch}
                     onConnectionSearchChange={setConnectionSearch}
                   />
-
-                  {tab === "audit" && (
-                    <Button
-                      variant={aiOnly ? "secondary" : "outline"}
-                      onClick={() => setAiOnly(!aiOnly)}
-                    >
-                      AI Usage
-                    </Button>
-                  )}
                 </>
+              )}
+
+              {tab === "threads" && (
+                <ThreadsFiltersPopover
+                  filterAgentIds={threadFilterAgentIds}
+                  filterUserIds={threadFilterUserIds}
+                  filterStatus={threadFilterStatus}
+                  virtualMcpOptions={virtualMcpOptions}
+                  memberOptions={memberOptions}
+                  activeFiltersCount={threadActiveFiltersCount}
+                  onUpdateFilters={({
+                    filterAgentIds,
+                    filterUserIds,
+                    filterStatus,
+                  }) => {
+                    if (filterAgentIds !== undefined)
+                      setThreadFilterAgentIds(filterAgentIds);
+                    if (filterUserIds !== undefined)
+                      setThreadFilterUserIds(filterUserIds);
+                    if (filterStatus !== undefined)
+                      setThreadFilterStatus(filterStatus);
+                  }}
+                />
               )}
 
               <TimeRangePicker
@@ -2657,6 +3075,9 @@ function MonitoringDashboardContent({
           allVirtualMcps={allVirtualMcps}
           dateRange={dateRange}
           searchQuery={searchQuery}
+          filterAgentIds={threadFilterAgentIds}
+          filterUserIds={threadFilterUserIds}
+          filterStatus={threadFilterStatus}
         />
       ) : tab === "audit" ? (
         <AuditTabContent
@@ -2779,18 +3200,11 @@ export default function MonitoringDashboard() {
               <Page.Title>Monitoring</Page.Title>
             </Page.Body>
             <Page.Content>
-              <div className="flex flex-col overflow-auto md:overflow-hidden h-full">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-[0.5px] bg-border shrink-0 border-b">
-                  <div className="bg-background p-5 text-sm text-muted-foreground">
-                    Failed to load monitoring data
-                  </div>
-                </div>
-                <div className="flex-1 flex items-center justify-center">
-                  <EmptyState
-                    title="Failed to load logs"
-                    description="There was an error loading the monitoring data. Please try again."
-                  />
-                </div>
+              <div className="flex-1 flex items-center justify-center h-full">
+                <EmptyState
+                  title="Failed to load monitoring data"
+                  description="There was an error loading the monitoring data. Please try again."
+                />
               </div>
             </Page.Content>
           </>

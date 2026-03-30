@@ -33,10 +33,11 @@ export const MONITORING_STATS = defineTool({
       .optional()
       .describe("Filter by end date (ISO 8601 datetime string)"),
     interval: z
-      .enum(["1m", "1h", "1d"])
+      .string()
+      .regex(/^\d+[mhd]$/)
       .optional()
       .describe(
-        "Bucket interval for timeseries data. When provided, returns timeseries array.",
+        "Bucket interval for timeseries data (e.g. 1m, 5m, 2h, 1d). When provided, returns timeseries array.",
       ),
     connectionIds: z
       .array(z.string())

@@ -21,13 +21,13 @@ interface MonitoringMetricFilters extends Record<string, unknown> {
 }
 
 interface MonitoringStatsParams extends MonitoringMetricFilters {
-  interval: "1m" | "1h" | "1d";
+  interval: string;
   startDate: string;
   endDate: string;
 }
 
 interface MonitoringTopToolsParams extends MonitoringMetricFilters {
-  interval: "1m" | "1h" | "1d";
+  interval: string;
   startDate: string;
   endDate: string;
   topN: number;
@@ -135,7 +135,7 @@ export function useMonitoringTopTools(
 }
 
 interface MonitoringLlmStatsParams {
-  interval: "1m" | "1h" | "1d";
+  interval: string;
   startDate: string;
   endDate: string;
 }
