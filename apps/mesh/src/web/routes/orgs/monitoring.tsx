@@ -570,7 +570,7 @@ function OverviewTabContent({
   const [latencyMetric, setLatencyMetric] = useState<"avg" | "p95">("avg");
 
   return (
-    <div className="flex flex-col gap-4 px-4 md:px-10 py-6 max-w-[1200px] mx-auto w-full overflow-auto">
+    <div className="flex flex-col gap-4 px-4 md:px-10 pt-2 pb-6 max-w-[1200px] mx-auto w-full overflow-auto">
       {/* Row 1: Tool Calls — full width */}
       <MonitoringMetricCard
         title="Tool Calls"
@@ -736,7 +736,7 @@ function OverviewTabContent({
 
 function OverviewTabSkeleton() {
   return (
-    <div className="flex flex-col gap-4 px-4 md:px-10 py-6 max-w-[1200px] mx-auto w-full">
+    <div className="flex flex-col gap-4 px-4 md:px-10 pt-2 pb-6 max-w-[1200px] mx-auto w-full">
       {/* Tool Calls skeleton */}
       <Card className="p-4 gap-0">
         <div className="flex flex-col gap-1">
@@ -2266,130 +2266,132 @@ function ThreadsTabContent({
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-      {/* Search + filter bar */}
-      <div className="shrink-0 flex items-center border-b border-border">
-        <CollectionSearch
-          value={searchInput}
-          onChange={handleSearchChange}
-          placeholder="Search by title…"
-          className="flex-1 border-0 border-b-0"
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              if (searchDebounceRef.current)
-                clearTimeout(searchDebounceRef.current);
-              setSearchInput("");
-              setDebouncedSearch("");
-              (e.target as HTMLInputElement).blur();
-            }
-          }}
-        />
-        <div className="px-3 shrink-0 border-l border-border h-12 flex items-center">
-          <ThreadFiltersPopover
-            statusFilter={statusFilter}
-            userFilter={userFilter}
-            modelFilter={modelFilter}
-            agentFilter={agentFilter}
-            userOptions={userOptions}
-            modelOptions={modelOptions}
-            agentOptions={agentOptions}
-            activeCount={
-              (statusFilter !== "all" ? 1 : 0) +
-              (userFilter !== "all" ? 1 : 0) +
-              (modelFilter !== "all" ? 1 : 0) +
-              (agentFilter !== "all" ? 1 : 0)
-            }
-            onStatusChange={setStatusFilter}
-            onUserChange={setUserFilter}
-            onModelChange={setModelFilter}
-            onAgentChange={setAgentFilter}
-            onClear={() => {
-              setStatusFilter("all");
-              setUserFilter("all");
-              setModelFilter("all");
-              setAgentFilter("all");
+      <div className="mx-auto w-full max-w-[1200px] px-4 md:px-10 flex flex-col flex-1 min-h-0">
+        {/* Search + filter bar */}
+        <div className="shrink-0 flex items-center border-b border-border">
+          <CollectionSearch
+            value={searchInput}
+            onChange={handleSearchChange}
+            placeholder="Search by title…"
+            className="flex-1 border-0 border-b-0"
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                if (searchDebounceRef.current)
+                  clearTimeout(searchDebounceRef.current);
+                setSearchInput("");
+                setDebouncedSearch("");
+                (e.target as HTMLInputElement).blur();
+              }
             }}
           />
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-auto">
-        {isLoading ? (
-          <div className="flex flex-1 items-center justify-center py-20">
-            <span className="text-sm text-muted-foreground">Loading…</span>
-          </div>
-        ) : visibleThreads.length === 0 ? (
-          <div className="flex flex-1 items-center justify-center py-20">
-            <EmptyState
-              title={
-                hasActiveFilters ? "No matching threads" : "No threads yet"
+          <div className="px-3 shrink-0 border-l border-border h-12 flex items-center">
+            <ThreadFiltersPopover
+              statusFilter={statusFilter}
+              userFilter={userFilter}
+              modelFilter={modelFilter}
+              agentFilter={agentFilter}
+              userOptions={userOptions}
+              modelOptions={modelOptions}
+              agentOptions={agentOptions}
+              activeCount={
+                (statusFilter !== "all" ? 1 : 0) +
+                (userFilter !== "all" ? 1 : 0) +
+                (modelFilter !== "all" ? 1 : 0) +
+                (agentFilter !== "all" ? 1 : 0)
               }
-              description={
-                hasActiveFilters
-                  ? "Try adjusting your filters or search query."
-                  : "Threads are created when users chat with agents."
-              }
+              onStatusChange={setStatusFilter}
+              onUserChange={setUserFilter}
+              onModelChange={setModelFilter}
+              onAgentChange={setAgentFilter}
+              onClear={() => {
+                setStatusFilter("all");
+                setUserFilter("all");
+                setModelFilter("all");
+                setAgentFilter("all");
+              }}
             />
           </div>
-        ) : (
-          <>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="pl-4 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                    Title
-                  </TableHead>
-                  <TableHead className="w-36 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                    Agent
-                  </TableHead>
-                  <TableHead className="w-36 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                    Model
-                  </TableHead>
-                  <TableHead className="w-28 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                    User
-                  </TableHead>
-                  <TableHead className="w-24 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                    Status
-                  </TableHead>
-                  <TableHead className="w-24 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                    Usage
-                  </TableHead>
-                  <TableHead className="w-20 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                    Date
-                  </TableHead>
-                  <TableHead className="w-24 px-3 pr-5 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                    Time
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {visibleThreads.map((thread, idx) => (
-                  <ThreadRow
-                    key={thread.id}
-                    thread={thread}
-                    members={membersData}
-                    connections={allConnections}
-                    virtualMcps={allVirtualMcps}
-                    modelName={threadModelMap.get(thread.id)}
-                    usage={threadUsageMap.get(thread.id)}
-                    onClick={() => setSelectedThreadId(thread.id)}
-                    lastRowRef={
-                      idx === visibleThreads.length - 1
-                        ? (lastRowRef as (
-                            node: HTMLTableRowElement | null,
-                          ) => void)
-                        : undefined
-                    }
-                  />
-                ))}
-              </TableBody>
-            </Table>
-            {isFetchingNextPage && (
-              <div className="py-4 text-center text-sm text-muted-foreground">
-                Loading more...
-              </div>
-            )}
-          </>
-        )}
+        </div>
+
+        <div className="flex-1 overflow-auto">
+          {isLoading ? (
+            <div className="flex flex-1 items-center justify-center py-20">
+              <span className="text-sm text-muted-foreground">Loading…</span>
+            </div>
+          ) : visibleThreads.length === 0 ? (
+            <div className="flex flex-1 items-center justify-center py-20">
+              <EmptyState
+                title={
+                  hasActiveFilters ? "No matching threads" : "No threads yet"
+                }
+                description={
+                  hasActiveFilters
+                    ? "Try adjusting your filters or search query."
+                    : "Threads are created when users chat with agents."
+                }
+              />
+            </div>
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="pl-4 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                      Title
+                    </TableHead>
+                    <TableHead className="w-36 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                      Agent
+                    </TableHead>
+                    <TableHead className="w-36 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                      Model
+                    </TableHead>
+                    <TableHead className="w-28 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                      User
+                    </TableHead>
+                    <TableHead className="w-24 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                      Status
+                    </TableHead>
+                    <TableHead className="w-24 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                      Usage
+                    </TableHead>
+                    <TableHead className="w-20 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                      Date
+                    </TableHead>
+                    <TableHead className="w-24 px-3 pr-5 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                      Time
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {visibleThreads.map((thread, idx) => (
+                    <ThreadRow
+                      key={thread.id}
+                      thread={thread}
+                      members={membersData}
+                      connections={allConnections}
+                      virtualMcps={allVirtualMcps}
+                      modelName={threadModelMap.get(thread.id)}
+                      usage={threadUsageMap.get(thread.id)}
+                      onClick={() => setSelectedThreadId(thread.id)}
+                      lastRowRef={
+                        idx === visibleThreads.length - 1
+                          ? (lastRowRef as (
+                              node: HTMLTableRowElement | null,
+                            ) => void)
+                          : undefined
+                      }
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+              {isFetchingNextPage && (
+                <div className="py-4 text-center text-sm text-muted-foreground">
+                  Loading more...
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       <Sheet
@@ -2522,38 +2524,40 @@ function AuditTabContent({
   };
 
   return (
-    <div className="flex-1 flex flex-col overflow-auto md:overflow-hidden min-w-0">
-      {/* Search Bar */}
-      <div className="px-10 pt-4">
-        <SearchInput
-          value={searchQuery}
-          onChange={(value) => onUpdateFilters({ search: value })}
-          placeholder="Search by tool name, connection, or error..."
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              onUpdateFilters({ search: "" });
-              (event.target as HTMLInputElement).blur();
-            }
-          }}
-        />
-      </div>
+    <div className="flex-1 flex flex-col overflow-auto min-w-0">
+      <div className="mx-auto w-full max-w-[1200px] px-4 md:px-10 flex flex-col flex-1 min-h-0">
+        {/* Search Bar */}
+        <div className="pt-4 pb-2">
+          <SearchInput
+            value={searchQuery}
+            onChange={(value) => onUpdateFilters({ search: value })}
+            placeholder="Search by tool name, connection, or error..."
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                onUpdateFilters({ search: "" });
+                (event.target as HTMLInputElement).blur();
+              }
+            }}
+          />
+        </div>
 
-      {/* Logs Table */}
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <MonitoringLogsTable
-          connectionIds={connectionIds}
-          virtualMcpIds={virtualMcpIds}
-          tool={tool}
-          status={status}
-          search={searchQuery}
-          logs={allLogs}
-          hasMore={hasNextPage ?? false}
-          onLoadMore={handleLoadMore}
-          isLoadingMore={isFetchingNextPage}
-          connections={allConnections}
-          virtualMcps={allVirtualMcps}
-          membersData={membersData}
-        />
+        {/* Logs Table */}
+        <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+          <MonitoringLogsTable
+            connectionIds={connectionIds}
+            virtualMcpIds={virtualMcpIds}
+            tool={tool}
+            status={status}
+            search={searchQuery}
+            logs={allLogs}
+            hasMore={hasNextPage ?? false}
+            onLoadMore={handleLoadMore}
+            isLoadingMore={isFetchingNextPage}
+            connections={allConnections}
+            virtualMcps={allVirtualMcps}
+            membersData={membersData}
+          />
+        </div>
       </div>
     </div>
   );
