@@ -70,6 +70,7 @@ import {
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { type ReactNode, Suspense, useRef, useState } from "react";
 import {
+  ExpandedLogContent,
   type EnrichedMonitoringLog,
   type MonitoringLogsResponse,
   type MonitoringSearchParams,
@@ -88,7 +89,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
-import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
 import { CollectionTabs } from "@/web/components/collections/collection-tabs.tsx";
 import {
   Sheet,
@@ -919,11 +919,7 @@ function FiltersPopover({
   return (
     <Popover open={filterPopoverOpen} onOpenChange={setFilterPopoverOpen}>
       <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 w-7 px-0 sm:w-auto sm:px-3 relative"
-        >
+        <Button variant="outline" className="relative">
           <FilterLines size={16} />
           <span className="hidden sm:inline">Filters</span>
           {activeFiltersCount > 0 && (
@@ -1268,7 +1264,9 @@ function MonitoringLogsTableContent({
 }: MonitoringLogsTableProps) {
   const connections = connectionsData ?? [];
   const virtualMcps = virtualMcpsData ?? [];
-  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [selectedLog, setSelectedLog] = useState<EnrichedMonitoringLog | null>(
+    null,
+  );
 
   // Use the infinite scroll hook with loading guard
   const lastLogRef = useInfiniteScroll(onLoadMore, hasMore, isLoadingMore);
@@ -1320,18 +1318,6 @@ function MonitoringLogsTableContent({
     );
   }
 
-  const toggleRow = (log: EnrichedMonitoringLog) => {
-    setExpandedRows((prev) => {
-      const next = new Set(prev);
-      if (next.has(log.id)) {
-        next.delete(log.id);
-      } else {
-        next.add(log.id);
-      }
-      return next;
-    });
-  };
-
   // Get connection info
   const connectionMap = new Map(connections.map((c) => [c.id, c]));
 
@@ -1370,9 +1356,6 @@ function MonitoringLogsTableContent({
           <Table className="w-full border-collapse">
             <TableHeader className="border-b-0 z-20">
               <TableRow className="h-9 hover:bg-transparent border-b border-border">
-                {/* Expand Icon Column */}
-                <TableHead className="w-10 md:w-12 px-2 md:px-4" />
-
                 {/* Connection Icon Column */}
                 <TableHead className="w-5" />
 
@@ -1417,10 +1400,9 @@ function MonitoringLogsTableContent({
                 <LogRow
                   key={log.id}
                   log={log}
-                  isExpanded={expandedRows.has(log.id)}
                   connection={connectionMap.get(log.connectionId)}
                   virtualMcpName={log.virtualMcpName ?? ""}
-                  onToggle={() => toggleRow(log)}
+                  onClick={() => setSelectedLog(log)}
                   lastLogRef={
                     index === filteredLogs.length - 1 ? lastLogRef : undefined
                   }
@@ -1430,6 +1412,32 @@ function MonitoringLogsTableContent({
           </Table>
         </div>
       </div>
+
+      <Sheet
+        open={selectedLog !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedLog(null);
+        }}
+      >
+        <SheetContent className="sm:max-w-2xl flex flex-col p-0 gap-0">
+          {selectedLog && (
+            <>
+              <SheetHeader className="px-4 pt-4 pb-3 border-b border-border shrink-0">
+                <SheetTitle className="text-sm pr-6 leading-snug">
+                  {selectedLog.toolName}
+                  <span className="text-muted-foreground font-normal">
+                    {" "}
+                    — {selectedLog.connectionTitle}
+                  </span>
+                </SheetTitle>
+              </SheetHeader>
+              <div className="flex-1 overflow-y-auto min-h-0">
+                <ExpandedLogContent log={selectedLog} />
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
@@ -1442,7 +1450,6 @@ function MonitoringLogsTableSkeleton() {
           <Table className="w-full border-collapse">
             <TableHeader className="border-b-0 z-20">
               <TableRow className="h-9 hover:bg-transparent border-b border-border">
-                <TableHead className="w-10 md:w-12 px-2 md:px-4" />
                 <TableHead className="w-5" />
                 <TableHead className="pr-2 md:pr-4">
                   <div className="h-3 w-24 rounded bg-muted animate-pulse" />
@@ -1470,9 +1477,6 @@ function MonitoringLogsTableSkeleton() {
             <TableBody>
               {Array.from({ length: 8 }).map((_, i) => (
                 <TableRow key={i} className="h-12 border-b border-border">
-                  <td className="px-2 md:px-4">
-                    <div className="size-4 rounded bg-muted animate-pulse" />
-                  </td>
                   <td>
                     <div className="size-5 rounded bg-muted animate-pulse" />
                   </td>
@@ -1889,169 +1893,6 @@ function ThreadConversationPanel({
   );
 }
 
-interface ThreadFiltersPopoverProps {
-  statusFilter: string;
-  userFilter: string;
-  modelFilter: string;
-  agentFilter: string;
-  userOptions: Array<{ id: string; label: string }>;
-  modelOptions: string[];
-  agentOptions: Array<{ id: string; label: string }>;
-  activeCount: number;
-  onStatusChange: (v: string) => void;
-  onUserChange: (v: string) => void;
-  onModelChange: (v: string) => void;
-  onAgentChange: (v: string) => void;
-  onClear: () => void;
-}
-
-function ThreadFiltersPopover({
-  statusFilter,
-  userFilter,
-  modelFilter,
-  agentFilter,
-  userOptions,
-  modelOptions,
-  agentOptions,
-  activeCount,
-  onStatusChange,
-  onUserChange,
-  onModelChange,
-  onAgentChange,
-  onClear,
-}: ThreadFiltersPopoverProps) {
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 w-7 px-0 sm:w-auto sm:px-3 relative"
-        >
-          <FilterLines size={16} />
-          <span className="hidden sm:inline">Filters</span>
-          {activeCount > 0 && (
-            <>
-              <Badge
-                variant="default"
-                className="sm:hidden absolute -top-1.5 -right-1.5 h-4 min-w-4 px-1 text-[10px] leading-none"
-              >
-                {activeCount}
-              </Badge>
-              <Badge
-                variant="default"
-                className="hidden sm:flex ml-1 h-5 w-5 rounded-full p-0 items-center justify-center text-xs"
-              >
-                {activeCount}
-              </Badge>
-            </>
-          )}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-[280px]">
-        <div className="space-y-4">
-          <h4 className="font-medium text-sm">Filter Threads</h4>
-
-          <div className="space-y-3">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                Status
-              </label>
-              <Select value={statusFilter} onValueChange={onStatusChange}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All statuses</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="in_progress">In progress</SelectItem>
-                  <SelectItem value="requires_action">
-                    Requires action
-                  </SelectItem>
-                  <SelectItem value="failed">Failed</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {agentOptions.length > 0 && (
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                  Agent
-                </label>
-                <MultiSelect
-                  options={agentOptions.map((a) => ({
-                    value: a.id,
-                    label: a.label,
-                  }))}
-                  defaultValue={agentFilter !== "all" ? [agentFilter] : []}
-                  onValueChange={(vals) =>
-                    onAgentChange(vals.length ? vals[0]! : "all")
-                  }
-                  placeholder="All agents"
-                  variant="secondary"
-                  className="w-full"
-                  maxCount={1}
-                />
-              </div>
-            )}
-
-            {userOptions.length > 0 && (
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                  User
-                </label>
-                <MultiSelect
-                  options={userOptions.map((u) => ({
-                    value: u.id,
-                    label: u.label,
-                  }))}
-                  defaultValue={userFilter !== "all" ? [userFilter] : []}
-                  onValueChange={(vals) =>
-                    onUserChange(vals.length ? vals[0]! : "all")
-                  }
-                  placeholder="All users"
-                  variant="secondary"
-                  className="w-full"
-                  maxCount={1}
-                />
-              </div>
-            )}
-
-            {modelOptions.length > 0 && (
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                  Model
-                </label>
-                <MultiSelect
-                  options={modelOptions.map((m) => ({ value: m, label: m }))}
-                  defaultValue={modelFilter !== "all" ? [modelFilter] : []}
-                  onValueChange={(vals) =>
-                    onModelChange(vals.length ? vals[0]! : "all")
-                  }
-                  placeholder="All models"
-                  variant="secondary"
-                  className="w-full"
-                  maxCount={1}
-                />
-              </div>
-            )}
-          </div>
-
-          {activeCount > 0 && (
-            <Button
-              variant="ghost"
-              className="w-full text-sm"
-              onClick={onClear}
-            >
-              Clear all filters
-            </Button>
-          )}
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
 interface ThreadsTabContentProps {
   client: ReturnType<typeof useMCPClient>;
   locator: string;
@@ -2059,6 +1900,7 @@ interface ThreadsTabContentProps {
   allConnections: ReturnType<typeof useConnections>;
   allVirtualMcps: ReturnType<typeof useVirtualMCPs>;
   dateRange: { startDate: Date; endDate: Date };
+  searchQuery: string;
 }
 
 const THREADS_PAGE_SIZE = 50;
@@ -2070,26 +1912,9 @@ function ThreadsTabContent({
   allConnections,
   allVirtualMcps,
   dateRange,
+  searchQuery,
 }: ThreadsTabContentProps) {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
-
-  // Filter state
-  const [searchInput, setSearchInput] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [userFilter, setUserFilter] = useState<string>("all");
-  const [modelFilter, setModelFilter] = useState<string>("all");
-  const [agentFilter, setAgentFilter] = useState<string>("all");
-
-  const handleSearchChange = (value: string) => {
-    setSearchInput(value);
-    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-    searchDebounceRef.current = setTimeout(
-      () => setDebouncedSearch(value),
-      300,
-    );
-  };
 
   const startDate = dateRange.startDate.toISOString();
   const endDate = dateRange.endDate.toISOString();
@@ -2097,10 +1922,7 @@ function ThreadsTabContent({
   const filterKey = JSON.stringify({
     startDate,
     endDate,
-    search: debouncedSearch,
-    status: statusFilter,
-    userId: userFilter,
-    agentId: agentFilter,
+    search: searchQuery,
   });
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
@@ -2115,10 +1937,7 @@ function ThreadsTabContent({
             offset: pageParam,
             startDate,
             endDate,
-            ...(debouncedSearch ? { search: debouncedSearch } : {}),
-            ...(statusFilter !== "all" ? { status: statusFilter } : {}),
-            ...(userFilter !== "all" ? { userId: userFilter } : {}),
-            ...(agentFilter !== "all" ? { agentId: agentFilter } : {}),
+            ...(searchQuery ? { search: searchQuery } : {}),
           },
         })) as { structuredContent?: unknown };
         return (result.structuredContent ?? result) as {
@@ -2216,13 +2035,7 @@ function ThreadsTabContent({
     (p: { items?: ThreadEntity[] }) => p.items ?? [],
   );
 
-  // Client-side model filter (model comes from logs, not threads query)
-  const visibleThreads =
-    modelFilter === "all"
-      ? allThreads
-      : allThreads.filter(
-          (t) => (threadModelMap.get(t.id) ?? "") === modelFilter,
-        );
+  const visibleThreads = allThreads;
 
   const selectedThread = selectedThreadId
     ? (allThreads.find((t) => t.id === selectedThreadId) ?? null)
@@ -2238,81 +2051,11 @@ function ThreadsTabContent({
     isFetchingNextPage,
   );
 
-  // Unique model options from logs
-  const modelOptions = Array.from(new Set(threadModelMap.values())).sort();
-
-  // User options from members
-  const membersList = getOrgMembers(membersData);
-  const userOptions = membersList.map((m) => ({
-    id: m.userId,
-    label: m.user.name ?? m.user.email ?? m.userId,
-  }));
-
-  // Agent options from virtual MCPs + connections
-  const agentOptions = [
-    ...allVirtualMcps.map((v) => ({ id: v.id, label: v.title ?? v.id })),
-    ...(allConnections ?? []).map((c) => ({
-      id: c.id,
-      label: c.title ?? c.id,
-    })),
-  ];
-
-  const hasActiveFilters =
-    !!searchInput ||
-    statusFilter !== "all" ||
-    userFilter !== "all" ||
-    modelFilter !== "all" ||
-    agentFilter !== "all";
+  const hasActiveFilters = !!searchQuery;
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-w-0">
       <div className="mx-auto w-full max-w-[1200px] px-4 md:px-10 flex flex-col flex-1 min-h-0">
-        {/* Search + filter bar */}
-        <div className="shrink-0 flex items-center border-b border-border">
-          <CollectionSearch
-            value={searchInput}
-            onChange={handleSearchChange}
-            placeholder="Search by title…"
-            className="flex-1 border-0 border-b-0"
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                if (searchDebounceRef.current)
-                  clearTimeout(searchDebounceRef.current);
-                setSearchInput("");
-                setDebouncedSearch("");
-                (e.target as HTMLInputElement).blur();
-              }
-            }}
-          />
-          <div className="px-3 shrink-0 border-l border-border h-12 flex items-center">
-            <ThreadFiltersPopover
-              statusFilter={statusFilter}
-              userFilter={userFilter}
-              modelFilter={modelFilter}
-              agentFilter={agentFilter}
-              userOptions={userOptions}
-              modelOptions={modelOptions}
-              agentOptions={agentOptions}
-              activeCount={
-                (statusFilter !== "all" ? 1 : 0) +
-                (userFilter !== "all" ? 1 : 0) +
-                (modelFilter !== "all" ? 1 : 0) +
-                (agentFilter !== "all" ? 1 : 0)
-              }
-              onStatusChange={setStatusFilter}
-              onUserChange={setUserFilter}
-              onModelChange={setModelFilter}
-              onAgentChange={setAgentFilter}
-              onClear={() => {
-                setStatusFilter("all");
-                setUserFilter("all");
-                setModelFilter("all");
-                setAgentFilter("all");
-              }}
-            />
-          </div>
-        </div>
-
         <div className="flex-1 overflow-auto">
           {isLoading ? (
             <div className="flex flex-1 items-center justify-center py-20">
@@ -2459,7 +2202,6 @@ interface AuditTabContentProps {
   tool: string;
   status: string;
   searchQuery: string;
-  onUpdateFilters: (updates: Partial<MonitoringSearchParams>) => void;
   allConnections: ReturnType<typeof useConnections>;
   allVirtualMcps: ReturnType<typeof useVirtualMCPs>;
   membersData: ReturnType<typeof useMembers>["data"];
@@ -2477,7 +2219,6 @@ function AuditTabContent({
   tool,
   status,
   searchQuery,
-  onUpdateFilters,
   allConnections,
   allVirtualMcps,
   membersData,
@@ -2526,21 +2267,6 @@ function AuditTabContent({
   return (
     <div className="flex-1 flex flex-col overflow-auto min-w-0">
       <div className="mx-auto w-full max-w-[1200px] px-4 md:px-10 flex flex-col flex-1 min-h-0">
-        {/* Search Bar */}
-        <div className="pt-4 pb-2">
-          <SearchInput
-            value={searchQuery}
-            onChange={(value) => onUpdateFilters({ search: value })}
-            placeholder="Search by tool name, connection, or error..."
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                onUpdateFilters({ search: "" });
-                (event.target as HTMLInputElement).blur();
-              }
-            }}
-          />
-        </div>
-
         {/* Logs Table */}
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
           <MonitoringLogsTable
@@ -2676,7 +2402,7 @@ function MonitoringDashboardContent({
   return (
     <>
       <Page.Body className="pb-0">
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3">
           <Page.Title>Monitoring</Page.Title>
           <div className="flex items-center justify-between gap-4">
             <CollectionTabs
@@ -2691,8 +2417,7 @@ function MonitoringDashboardContent({
                 <>
                   <Button
                     variant={isStreaming ? "secondary" : "outline"}
-                    size="sm"
-                    className="h-8 gap-1.5 px-3"
+                    className="gap-1.5"
                     onClick={onStreamingToggle}
                   >
                     {isStreaming && (
@@ -2722,8 +2447,6 @@ function MonitoringDashboardContent({
                   {tab === "audit" && (
                     <Button
                       variant={aiOnly ? "secondary" : "outline"}
-                      size="sm"
-                      className="h-8 px-3 text-xs"
                       onClick={() => setAiOnly(!aiOnly)}
                     >
                       AI Usage
@@ -2741,6 +2464,26 @@ function MonitoringDashboardContent({
         </div>
       </Page.Body>
 
+      {(tab === "audit" || tab === "threads") && (
+        <div className="mx-auto w-full max-w-[1200px] px-4 md:px-10 pt-3">
+          <SearchInput
+            value={searchQuery}
+            onChange={(value) => onUpdateFilters({ search: value })}
+            placeholder={
+              tab === "threads"
+                ? "Search by title\u2026"
+                : "Search by tool name, connection, or error..."
+            }
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                onUpdateFilters({ search: "" });
+                (event.target as HTMLInputElement).blur();
+              }
+            }}
+          />
+        </div>
+      )}
+
       {tab === "threads" ? (
         <ThreadsTabContent
           client={client}
@@ -2749,6 +2492,7 @@ function MonitoringDashboardContent({
           allConnections={allConnections}
           allVirtualMcps={allVirtualMcps}
           dateRange={dateRange}
+          searchQuery={searchQuery}
         />
       ) : tab === "audit" ? (
         <AuditTabContent
@@ -2763,7 +2507,6 @@ function MonitoringDashboardContent({
           tool={tool}
           status={status}
           searchQuery={searchQuery}
-          onUpdateFilters={onUpdateFilters}
           allConnections={allConnections}
           allVirtualMcps={allVirtualMcps}
           membersData={membersData}
