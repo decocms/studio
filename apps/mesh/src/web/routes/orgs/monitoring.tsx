@@ -98,6 +98,7 @@ import {
 } from "@deco/ui/components/sheet.tsx";
 import { Switch } from "@deco/ui/components/switch.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
+import { getConnectionSlug } from "@/shared/utils/connection-slug";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import {
   Table,
@@ -202,6 +203,8 @@ function ConnectionLeaderboardTable({
   mode: "requests" | "errors" | "latency";
   total: number;
 }) {
+  const { org } = useProjectContext();
+  const navigate = useNavigate();
   const allConnections = connections ?? [];
   const metricsMap = new Map(metrics.map((m) => [m.connectionId, m]));
 
@@ -225,7 +228,16 @@ function ConnectionLeaderboardTable({
         return (
           <div
             key={connection.id}
-            className="flex items-center h-10 border-b border-border/50 px-3"
+            className="flex items-center h-10 border-b border-border/50 px-3 cursor-pointer hover:bg-accent/50 transition-colors"
+            onClick={() =>
+              navigate({
+                to: "/$org/settings/connections/$appSlug",
+                params: {
+                  org: org.slug,
+                  appSlug: getConnectionSlug(connection),
+                },
+              })
+            }
           >
             <div className="flex flex-1 items-center gap-2 min-w-0">
               <IntegrationIcon
@@ -250,7 +262,16 @@ function ConnectionLeaderboardTable({
           </div>
         );
       })}
-      <div className="flex items-center h-10 px-4 gap-2">
+      <div
+        className="flex items-center h-10 px-4 gap-2 cursor-pointer hover:bg-accent/50 transition-colors"
+        onClick={() =>
+          navigate({
+            to: "/$org/settings/monitor",
+            params: { org: org.slug },
+            search: { tab: "audit" },
+          })
+        }
+      >
         <span className="text-sm text-muted-foreground">See all</span>
         <ArrowRight size={16} className="text-muted-foreground" />
       </div>
@@ -260,6 +281,7 @@ function ConnectionLeaderboardTable({
 
 function ToolLeaderboardTable({
   tools,
+  connections,
   total,
 }: {
   tools: Array<{
@@ -267,23 +289,46 @@ function ToolLeaderboardTable({
     connectionId: string | null;
     calls: number;
   }>;
+  connections: ReturnType<typeof useConnections>;
   total: number;
 }) {
+  const { org } = useProjectContext();
+  const navigate = useNavigate();
+  const connectionMap = new Map((connections ?? []).map((c) => [c.id, c]));
+
   if (tools.length === 0) return null;
 
   return (
     <div className="flex flex-col">
       {tools.slice(0, 4).map((tool) => {
         const pct = total > 0 ? ((tool.calls / total) * 100).toFixed(1) : "0.0";
+        const conn = tool.connectionId
+          ? connectionMap.get(tool.connectionId)
+          : undefined;
         return (
           <div
             key={tool.toolName}
-            className="flex items-center h-10 border-b border-border/50 px-3"
+            className="flex items-center h-10 border-b border-border/50 px-3 cursor-pointer hover:bg-accent/50 transition-colors"
+            onClick={() => {
+              if (conn) {
+                navigate({
+                  to: "/$org/settings/connections/$appSlug",
+                  params: {
+                    org: org.slug,
+                    appSlug: getConnectionSlug(conn),
+                  },
+                });
+              }
+            }}
           >
             <div className="flex flex-1 items-center gap-2 min-w-0">
-              <div className="size-6 rounded-md border border-border/10 bg-background shadow-sm flex items-center justify-center shrink-0">
-                <Container size={14} className="text-muted-foreground" />
-              </div>
+              <IntegrationIcon
+                icon={conn?.icon || null}
+                name={tool.toolName}
+                size="xs"
+                fallbackIcon={<Container />}
+                className="shrink-0 size-6! min-w-6! rounded-md"
+              />
               <span className="text-sm text-muted-foreground flex-1 truncate">
                 {tool.toolName}
               </span>
@@ -300,7 +345,16 @@ function ToolLeaderboardTable({
         );
       })}
       {tools.length > 4 && (
-        <div className="flex items-center h-10 px-4 gap-2">
+        <div
+          className="flex items-center h-10 px-4 gap-2 cursor-pointer hover:bg-accent/50 transition-colors"
+          onClick={() =>
+            navigate({
+              to: "/$org/settings/monitor",
+              params: { org: org.slug },
+              search: { tab: "audit" },
+            })
+          }
+        >
           <span className="text-sm text-muted-foreground">See all</span>
           <ArrowRight size={16} className="text-muted-foreground" />
         </div>
@@ -316,6 +370,9 @@ function ModelLeaderboardTable({
   models: Array<{ toolName: string; calls: number }>;
   total: number;
 }) {
+  const { org } = useProjectContext();
+  const navigate = useNavigate();
+
   if (models.length === 0) return null;
 
   return (
@@ -348,7 +405,16 @@ function ModelLeaderboardTable({
         );
       })}
       {models.length > 4 && (
-        <div className="flex items-center h-10 px-4 gap-2">
+        <div
+          className="flex items-center h-10 px-4 gap-2 cursor-pointer hover:bg-accent/50 transition-colors"
+          onClick={() =>
+            navigate({
+              to: "/$org/settings/monitor",
+              params: { org: org.slug },
+              search: { tab: "audit" },
+            })
+          }
+        >
           <span className="text-sm text-muted-foreground">See all</span>
           <ArrowRight size={16} className="text-muted-foreground" />
         </div>
@@ -680,6 +746,7 @@ function OverviewTabContent({
         >
           <ToolLeaderboardTable
             tools={topTools}
+            connections={connections}
             total={topTools.reduce((sum, t) => sum + t.calls, 0)}
           />
         </MonitoringMetricCard>
@@ -701,39 +768,41 @@ function OverviewTabContent({
         </MonitoringMetricCard>
       </div>
 
-      {/* Row 4: AI Usage — full width */}
-      <MonitoringMetricCard
-        title="AI Usage"
-        value={llmStatsData.totalCalls.toLocaleString()}
-      >
-        <KPIChart
-          data={llmStatsData.data}
-          dataKey="calls"
-          colorNum={1}
-          chartHeight="h-[120px] md:h-[180px]"
-        />
-        <ModelLeaderboardTable
-          models={llmModels}
-          total={llmStatsData.totalCalls}
-        />
-      </MonitoringMetricCard>
+      {/* AI Usage section divider */}
+      <div className="border-t border-border" />
 
-      {/* Row 5: AI Latency + AI Errors */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* AI Usage — 3 cards in a row */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <MonitoringMetricCard
+          title="AI Calls"
+          value={llmStatsData.totalCalls.toLocaleString()}
+        >
+          <KPIChart
+            data={llmStatsData.data}
+            dataKey="calls"
+            colorNum={1}
+            chartHeight="h-[80px] md:h-[120px]"
+          />
+          <ModelLeaderboardTable
+            models={llmModels}
+            total={llmStatsData.totalCalls}
+          />
+        </MonitoringMetricCard>
+
         <MonitoringMetricCard
           title="AI Latency"
           value={formatDuration(llmStatsData.avgDurationMs)}
           action={
-            <div className="flex items-baseline gap-2 text-xs text-muted-foreground">
-              <span>p95: {formatDuration(llmStatsData.p95DurationMs)}</span>
-            </div>
+            <span className="text-xs text-muted-foreground">
+              p95: {formatDuration(llmStatsData.p95DurationMs)}
+            </span>
           }
         >
           <KPIChart
             data={llmStatsData.data}
             dataKey="avg"
             colorNum={4}
-            chartHeight="h-[120px] md:h-[180px]"
+            chartHeight="h-[80px] md:h-[120px]"
           />
           <ModelLeaderboardTable
             models={llmModels}
@@ -749,7 +818,7 @@ function OverviewTabContent({
             data={llmStatsData.data}
             dataKey="errors"
             colorNum={3}
-            chartHeight="h-[120px] md:h-[180px]"
+            chartHeight="h-[80px] md:h-[120px]"
           />
           <ModelLeaderboardTable
             models={llmModels}
@@ -817,10 +886,11 @@ function OverviewTabSkeleton() {
         <SkeletonCard />
         <SkeletonCard />
       </div>
-      {/* AI Usage — full width */}
-      <SkeletonCard />
-      {/* AI Latency + AI Errors — half width */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* AI divider */}
+      <div className="border-t border-border" />
+      {/* AI Usage — 3 cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <SkeletonCard />
         <SkeletonCard />
         <SkeletonCard />
       </div>
