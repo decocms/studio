@@ -56,13 +56,11 @@
     "@tanstack/react-virtual": "^3.13.21",
     "ai-sdk-provider-claude-code": "^3.4.4",
     "ai-sdk-provider-codex-cli": "^1.1.0",
-    "chrome-har": "^1.1.1",
     "dompurify": "^3.3.1",
     "embedded-postgres": "^18.3.0-beta.16",
     "ink": "^6.8.0",
     "kysely": "^0.28.12",
     "nats": "^2.29.3",
-    "puppeteer-core": "^24.40.0",
     "quickjs-emscripten-core": "^0.31.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

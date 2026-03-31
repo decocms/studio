@@ -53,7 +53,7 @@
     },
     "apps/mesh": {
       "name": "decocms",
-      "version": "2.227.0",
+      "version": "2.229.2",
       "bin": {
         "deco": "./dist/server/cli.js",
       },
