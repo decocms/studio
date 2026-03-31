@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { ALL_TOOLS } from "./index";
-import { MANAGEMENT_TOOLS } from "./registry";
+import { MANAGEMENT_TOOLS } from "./registry-metadata";
 
 describe("Tool Registry Sync", () => {
   it("should have MANAGEMENT_TOOLS entries for all core tools in ALL_TOOLS", () => {

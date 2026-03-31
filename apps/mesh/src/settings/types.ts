@@ -15,6 +15,7 @@ export interface Settings {
   // Database
   databaseUrl: string;
   databasePgSsl: boolean;
+  databasePoolMax: number;
 
   // Auth & Secrets
   betterAuthSecret: string;

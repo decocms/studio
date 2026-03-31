@@ -429,7 +429,7 @@ function CreditsBalance({ providerId }: { providerId: string }) {
   );
 }
 
-export function ProviderCard({
+function ProviderCard({
   provider,
   keys,
 }: {
@@ -753,30 +753,31 @@ export function ProviderCard({
   );
 }
 
-function OrgAiProvidersContent() {
+export function ProviderCardGrid() {
   const aiProviders = useAiProviders();
   const allKeys = useAiProviderKeys();
-  const providers = aiProviders?.providers ?? [];
-  const isEven = providers.length % 2 === 0;
+  const providers: AiProvider[] = aiProviders?.providers ?? [];
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {providers.map((provider) => (
+        <ProviderCard
+          key={provider.id}
+          provider={provider}
+          keys={allKeys.filter((k) => k.providerId === provider.id)}
+        />
+      ))}
+    </div>
+  );
+}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {providers.map((provider, index) => (
-          <div
-            key={provider.id}
-            className={cn(
-              isEven && index === providers.length - 1 && "lg:col-span-2",
-            )}
-          >
-            <ProviderCard
-              provider={provider}
-              keys={allKeys.filter((k) => k.providerId === provider.id)}
-            />
-          </div>
-        ))}
-      </div>
+function OrgAiProvidersContent() {
+  return (
+    <div className="flex flex-col gap-6">
+      <p className="text-sm text-muted-foreground">
+        Set up AI model providers. Keys are stored encrypted in the vault.
+      </p>
+      <ProviderCardGrid />
     </div>
   );
 }

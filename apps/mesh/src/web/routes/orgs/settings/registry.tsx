@@ -2,8 +2,7 @@ import { lazy, Suspense } from "react";
 import { Loading01 } from "@untitledui/icons";
 
 const RegistryLayout = lazy(
-  () =>
-    import("mesh-plugin-private-registry/client/components/registry-layout"),
+  () => import("@/web/views/registry/registry-layout"),
 );
 
 export default function SettingsRegistryPage() {

@@ -76,10 +76,18 @@ function getSsl(): boolean {
   }
 }
 
+function getPoolMax(): number {
+  try {
+    return getSettings().databasePoolMax;
+  } catch {
+    return 10; // Settings not yet initialized (e.g., during pipeline migrations)
+  }
+}
+
 function createPostgresDatabase(connectionString: string): MeshDatabase {
   const pool = new Pool({
     connectionString,
-    max: 10,
+    max: getPoolMax(),
     ssl: getSsl(),
     ...defaultPoolOptions,
   });
@@ -107,7 +115,7 @@ export function getDbDialect(databaseUrl?: string): Dialect {
   return new PostgresDialect({
     pool: new Pool({
       connectionString: url,
-      max: 10,
+      max: getPoolMax(),
       ssl: getSsl(),
       ...defaultPoolOptions,
     }),

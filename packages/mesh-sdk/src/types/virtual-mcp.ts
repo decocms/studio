@@ -76,6 +76,7 @@ const VirtualMcpUISchema = z.object({
         })
         .nullable()
         .optional(),
+      chatDefaultOpen: z.boolean().nullable().optional(),
     })
     .nullable()
     .optional(),

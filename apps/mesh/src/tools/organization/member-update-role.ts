@@ -68,6 +68,9 @@ export const ORGANIZATION_MEMBER_UPDATE_ROLE = defineTool({
       throw new Error("Failed to update member role");
     }
 
+    // Invalidate cached role
+    ctx.invalidateMemberRole?.(result.userId, organizationId);
+
     // Convert dates to ISO strings for JSON Schema compatibility
     return {
       ...result,

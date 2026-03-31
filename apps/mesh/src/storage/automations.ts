@@ -103,6 +103,18 @@ export interface AutomationsStorage {
   markRunFailed(taskId: string): Promise<void>;
   updateTriggerLastRunAt(triggerId: string, lastRunAt: string): Promise<void>;
   deactivateAutomation(id: string): Promise<void>;
+  /**
+   * Force-fail zombie automation runs: threads that are in_progress with no
+   * run_config (never picked up by streamCore) and linked to an automation
+   * trigger, older than `maxAgeMs`.
+   *
+   * These threads are invisible to orphan recovery (which requires run_config)
+   * and the reaper (which only checks in-memory state). They permanently block
+   * per-automation concurrency slots after a crash or rolling deploy.
+   *
+   * @returns number of threads force-failed
+   */
+  failZombieAutomationRuns(maxAgeMs: number): Promise<number>;
 }
 
 // ============================================================================
@@ -681,6 +693,20 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       .where("id", "=", id)
       .where("active", "=", true)
       .execute();
+  }
+
+  async failZombieAutomationRuns(maxAgeMs: number): Promise<number> {
+    const cutoff = new Date(Date.now() - maxAgeMs);
+    const result = await this.db
+      .updateTable("threads")
+      .set({ status: "failed", updated_at: new Date().toISOString() })
+      .where("status", "=", "in_progress")
+      .where("run_config", "is", null)
+      .where("trigger_id", "is not", null)
+      .where("created_at", "<=", cutoff.toISOString() as unknown as Date)
+      .executeTakeFirst();
+
+    return Number(result.numUpdatedRows ?? 0n);
   }
 }
 

@@ -55,7 +55,6 @@ import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
-  useVirtualMCP,
 } from "@decocms/mesh-sdk";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Outlet, useMatch, useRouterState } from "@tanstack/react-router";
@@ -67,6 +66,7 @@ import { useSound } from "../hooks/use-sound";
 import { switch005Sound } from "@deco/ui/lib/switch-005.ts";
 import { SsoRequiredScreen } from "../components/sso-required-screen";
 import { VirtualMCPProvider } from "@/web/providers/virtual-mcp-provider";
+import { usePinnedViewLayout } from "@/web/hooks/use-pinned-view-layout";
 
 /**
  * This component persists the width of the chat panel across reloads.
@@ -333,6 +333,8 @@ function AgentPanelGroup({
   tasksPanelRef,
   mainPanelRef,
   chatPanelRef,
+  chatDefaultCollapsed,
+  mainDefaultCollapsed,
   setTasksOpen,
   setMainOpen,
   setChatOpen,
@@ -345,32 +347,15 @@ function AgentPanelGroup({
   tasksPanelRef: React.RefObject<ImperativePanelHandle | null>;
   mainPanelRef: React.RefObject<ImperativePanelHandle | null>;
   chatPanelRef: React.RefObject<ImperativePanelHandle | null>;
+  chatDefaultCollapsed: boolean;
+  mainDefaultCollapsed: boolean;
   setTasksOpen: (open: boolean) => void;
   setMainOpen: (open: boolean) => void;
   setChatOpen: (open: boolean) => void;
 }) {
-  const entity = useVirtualMCP(agentVirtualMcpId);
-
-  // Resolve mainDisabled: hide main panel when default view is "chat" or unset
-  const agentHomeMatch = useMatch({
-    from: "/shell/$org/$virtualMcpId/",
-    shouldThrow: false,
-  });
-  const hasMainParam = !!agentHomeMatch?.search.main;
-  const layoutConfig = (
-    entity?.metadata?.ui as Record<string, unknown> | null | undefined
-  )?.layout as { defaultMainView?: { type: string } } | null | undefined;
-  const defaultMainViewType = layoutConfig?.defaultMainView?.type ?? null;
-  // Main panel is hidden when: no explicit ?main param AND (no default view OR default is "chat")
-  const mainHidden =
-    isAgentRoute &&
-    !!agentHomeMatch &&
-    !hasMainParam &&
-    (!defaultMainViewType || defaultMainViewType === "chat");
-
   return (
     <ResizablePanelGroup
-      key={`${agentVirtualMcpId ?? "none"}-${mainHidden}`}
+      key={`${agentVirtualMcpId ?? "none"}-${mainDefaultCollapsed}-${chatDefaultCollapsed}`}
       direction="horizontal"
       className="flex-1 min-h-0 pb-1 pr-1 pl-0 pt-0"
       style={{ overflow: "visible" }}
@@ -388,6 +373,7 @@ function AgentPanelGroup({
                 <TasksSidePanel
                   virtualMcpId={tasksVirtualMcpId}
                   hideProjectHeader={isOrgHome}
+                  showAutomations={!isOrgHome}
                 />
               </div>
             </div>
@@ -396,11 +382,12 @@ function AgentPanelGroup({
         </>
       )}
 
-      {!isOrgHome && !mainHidden && (
+      {!isOrgHome && (
         <ResizablePanel
           ref={mainPanelRef}
           className="min-w-0 flex flex-col"
           order={2}
+          defaultSize={mainDefaultCollapsed ? 0 : undefined}
           style={{ overflow: "visible" }}
           collapsible={isAgentRoute}
           collapsedSize={0}
@@ -438,21 +425,21 @@ function AgentPanelGroup({
 
       {showThreePanels && (
         <>
-          {!isOrgHome && !mainHidden && (
-            <ResizableHandle className="bg-sidebar" />
-          )}
+          {!isOrgHome && <ResizableHandle className="bg-sidebar" />}
           <PersistentResizablePanel
             key={
               isOrgHome
                 ? "chat-home"
-                : mainHidden
+                : mainDefaultCollapsed
                   ? "chat-no-main"
-                  : "chat-default"
+                  : chatDefaultCollapsed
+                    ? "chat-hidden"
+                    : "chat-default"
             }
             panelRef={chatPanelRef}
-            defaultCollapsed={false}
+            defaultCollapsed={chatDefaultCollapsed}
             defaultFullWidth={isOrgHome}
-            defaultSizeOverride={mainHidden ? 78 : undefined}
+            defaultSizeOverride={mainDefaultCollapsed ? 78 : undefined}
             onCollapse={() => setChatOpen(false)}
             onExpand={() => setChatOpen(true)}
           >
@@ -493,13 +480,10 @@ function ShellLayoutInner({
   });
   const agentVirtualMcpId = agentsMatch?.params.virtualMcpId;
 
-  // Check if we're on the agent home route with no ?main param
-  const agentHomeMatch = useMatch({
-    from: "/shell/$org/$virtualMcpId/",
-    shouldThrow: false,
-  });
-  const mainDisabled =
-    isAgentRoute && !!agentHomeMatch && !agentHomeMatch.search.main;
+  const { chatDefaultCollapsed, mainDefaultCollapsed } = usePinnedViewLayout(
+    agentVirtualMcpId,
+    isAgentRoute,
+  );
 
   const showThreePanels = isAgentRoute || isOrgHome;
 
@@ -524,9 +508,7 @@ function ShellLayoutInner({
   // The onCollapse/onExpand callbacks on each panel sync the open state back.
 
   const playSwitchSound = useSound(switch005Sound);
-  const expandedCount = [tasksOpen, !mainDisabled && mainOpen, chatOpen].filter(
-    Boolean,
-  ).length;
+  const expandedCount = [tasksOpen, mainOpen, chatOpen].filter(Boolean).length;
 
   const toggleTasks = () => {
     if (tasksOpen && expandedCount <= 1) return;
@@ -538,7 +520,6 @@ function ShellLayoutInner({
     }
   };
   const toggleMain = () => {
-    if (mainDisabled) return;
     if (mainOpen && expandedCount <= 1) return;
     playSwitchSound();
     if (mainOpen) {
@@ -623,6 +604,7 @@ function ShellLayoutInner({
                 <TasksSidePanel
                   virtualMcpId={showThreePanels ? tasksVirtualMcpId : undefined}
                   hideProjectHeader={isOrgHome}
+                  showAutomations={!isOrgHome}
                 />
               </div>
             </div>
@@ -647,7 +629,7 @@ function ShellLayoutInner({
                 <div className="flex-1 min-h-0 overflow-hidden">
                   {isOrgHome ? (
                     <ActiveTaskBoundary variant="home" />
-                  ) : mainDisabled ? (
+                  ) : mainDefaultCollapsed ? (
                     <ActiveTaskBoundary />
                   ) : (
                     <Outlet />
@@ -766,10 +748,10 @@ function ShellLayoutInner({
                   type="button"
                   onClick={toggleMain}
                   aria-pressed={mainOpen}
-                  disabled={isOrgHome || mainDisabled}
+                  disabled={isOrgHome}
                   className={cn(
                     "flex size-7 items-center justify-center rounded-md transition-colors",
-                    isOrgHome || mainDisabled
+                    isOrgHome
                       ? "text-sidebar-foreground/30 cursor-not-allowed"
                       : mainOpen
                         ? "bg-sidebar-accent text-sidebar-foreground"
@@ -822,6 +804,8 @@ function ShellLayoutInner({
                   tasksPanelRef={tasksPanelRef}
                   mainPanelRef={mainPanelRef}
                   chatPanelRef={chatPanelRef}
+                  chatDefaultCollapsed={chatDefaultCollapsed}
+                  mainDefaultCollapsed={mainDefaultCollapsed}
                   setTasksOpen={setTasksOpen}
                   setMainOpen={setMainOpen}
                   setChatOpen={setChatOpen}

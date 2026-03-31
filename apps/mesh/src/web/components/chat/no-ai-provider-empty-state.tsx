@@ -1,42 +1,7 @@
 import { Suspense } from "react";
 import { CpuChip01 } from "@untitledui/icons";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
-import {
-  ProviderCard,
-  type AiProvider,
-} from "@/web/views/settings/org-ai-providers";
-import {
-  useAiProviders,
-  useAiProviderKeys,
-} from "@/web/hooks/collections/use-ai-providers";
-import { cn } from "@deco/ui/lib/utils.ts";
-
-function ProviderList() {
-  const aiProviders = useAiProviders();
-  const allKeys = useAiProviderKeys();
-  const providers: AiProvider[] = aiProviders?.providers ?? [];
-  const isEven = providers.length % 2 === 0;
-
-  return (
-    <div className="@container w-full">
-      <div className="grid grid-cols-1 @lg:grid-cols-2 gap-4 w-full">
-        {providers.map((provider, index) => (
-          <div
-            key={provider.id}
-            className={cn(
-              isEven && index === providers.length - 1 && "@lg:col-span-2",
-            )}
-          >
-            <ProviderCard
-              provider={provider}
-              keys={allKeys.filter((k) => k.providerId === provider.id)}
-            />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+import { ProviderCardGrid } from "@/web/views/settings/org-ai-providers";
 
 interface NoAiProviderEmptyStateProps {
   title?: string;
@@ -60,15 +25,13 @@ export function NoAiProviderEmptyState({
       </div>
       <Suspense
         fallback={
-          <div className="@container w-full">
-            <div className="grid grid-cols-1 @lg:grid-cols-2 gap-4 w-full">
-              <Skeleton className="h-32 w-full rounded-lg" />
-              <Skeleton className="h-32 w-full rounded-lg" />
-            </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 w-full">
+            <Skeleton className="h-32 w-full rounded-lg" />
+            <Skeleton className="h-32 w-full rounded-lg" />
           </div>
         }
       >
-        <ProviderList />
+        <ProviderCardGrid />
       </Suspense>
     </div>
   );

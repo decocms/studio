@@ -237,6 +237,7 @@ import type { AutomationsStorage } from "../storage/automations";
 import type { TriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
 import type { OrgSsoConfigStorage } from "../storage/org-sso-config";
 import type { OrgSsoSessionStorage } from "../storage/org-sso-sessions";
+import type { RegistryStorage } from "../storage/registry";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
@@ -273,6 +274,7 @@ export interface MeshStorage {
   virtualMcpPluginConfigs: VirtualMcpPluginConfigStoragePort;
   orgSsoConfig: OrgSsoConfigStorage;
   orgSsoSessions: OrgSsoSessionStorage;
+  registry: RegistryStorage;
 }
 
 // ============================================================================
@@ -345,6 +347,9 @@ export interface MeshContext {
     transport: T,
     key: string,
   ) => Promise<Client>;
+
+  // Invalidate cached member role (call after role mutations)
+  invalidateMemberRole?: (userId: string, organizationId: string) => void;
 
   // Revalidation promises from SWR cache — awaited in middleware before ctx goes out of scope
   pendingRevalidations: Promise<void>[];

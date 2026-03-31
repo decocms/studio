@@ -531,12 +531,14 @@ function GroupedTaskList({
   activeGroupKey,
   activeTaskId,
   virtualMcpId,
+  showAutomations = true,
   onTaskSelect,
 }: {
   groups: ReturnType<typeof buildDisplayGroups>;
   activeGroupKey: string | null;
   activeTaskId: string | null;
   virtualMcpId?: string | null;
+  showAutomations?: boolean;
   onTaskSelect: (task: Task) => void;
 }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>(() => {
@@ -584,7 +586,7 @@ function GroupedTaskList({
             </div>
           );
         })}
-      {virtualMcpId && (
+      {virtualMcpId && showAutomations && (
         <div className="mt-3">
           <IncomingSection virtualMcpId={virtualMcpId} />
         </div>
@@ -631,11 +633,13 @@ function GroupedTaskList({
 interface TaskListContentProps {
   onTaskSelect?: (taskId: string) => void;
   virtualMcpId?: string | null;
+  showAutomations?: boolean;
 }
 
 export function TaskListContent({
   onTaskSelect,
   virtualMcpId,
+  showAutomations = true,
 }: TaskListContentProps) {
   const { openTask, ownerFilter } = useChatTask();
 
@@ -685,6 +689,7 @@ export function TaskListContent({
         activeGroupKey={activeGroupKey}
         activeTaskId={taskId}
         virtualMcpId={virtualMcpId}
+        showAutomations={showAutomations}
         onTaskSelect={handleSelect}
       />
     </div>

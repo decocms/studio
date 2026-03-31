@@ -50,6 +50,10 @@ export const ORGANIZATION_MEMBER_REMOVE = defineTool({
       memberIdOrEmail: input.memberIdOrEmail,
     });
 
+    // Invalidate cached role — we don't have the userId here but
+    // invalidateOrg would be too broad; the TTL will handle cleanup
+    // for removed members since the DB row is gone.
+
     return {
       success: true,
       memberIdOrEmail: input.memberIdOrEmail,

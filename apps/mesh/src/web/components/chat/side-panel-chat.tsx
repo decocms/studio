@@ -23,7 +23,10 @@ import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
 
 // ---------- Import deco.cx Banner ----------
 
-const DECO_BANNER_GRADIENT = `url("data:image/svg+xml;utf8,<svg viewBox='0 0 500 64' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='none'><rect x='0' y='0' height='100%' width='100%' fill='url(%23grad)' opacity='0.6'/><defs><radialGradient id='grad' gradientUnits='userSpaceOnUse' cx='0' cy='0' r='10' gradientTransform='matrix(55.083 -7.55 1.4151 14.867 -37.917 86)'><stop stop-color='rgba(165,149,255,1)' offset='0.0045422'/><stop stop-color='rgba(210,202,255,1)' offset='0.16426'/><stop stop-color='rgba(255,255,255,1)' offset='0.32398'/><stop stop-color='rgba(255,255,255,0.3)' offset='0.68776'/><stop stop-color='rgba(255,224,139,0.3)' offset='0.74761'/><stop stop-color='rgba(255,209,80,0.3)' offset='0.77753'/><stop stop-color='rgba(255,193,22,0.3)' offset='0.80745'/><stop stop-color='rgba(208,236,26,1)' offset='0.96307'/></radialGradient></defs></svg>")`;
+const DECO_BANNER_GRADIENT = [
+  "radial-gradient(ellipse 25% 220% at -5% 120%, rgba(165,149,255,0.35) 0%, transparent 100%)",
+  "radial-gradient(ellipse 25% 220% at 105% -20%, rgba(208,236,26,0.32) 0%, transparent 100%)",
+].join(", ");
 const DECO_BANNER_TEXTURE = "/decotexture.svg";
 
 function ImportDecoSiteBanner({ onClick }: { onClick: () => void }) {
@@ -32,17 +35,14 @@ function ImportDecoSiteBanner({ onClick }: { onClick: () => void }) {
       type="button"
       onClick={onClick}
       className="w-full relative flex items-center gap-4 px-4 py-4 rounded-lg border border-border bg-background overflow-hidden transition-colors text-left cursor-pointer group"
-      style={{
-        backgroundImage: DECO_BANNER_GRADIENT,
-        backgroundSize: "100% 100%",
-      }}
+      style={{ backgroundImage: DECO_BANNER_GRADIENT }}
     >
       <div className="relative shrink-0 p-1.5 bg-[var(--brand-green-light)] rounded-lg border border-border">
         <IntegrationIcon
           icon="/logos/deco%20logo.svg"
           name="deco.cx"
           size="xs"
-          className="border-0 rounded-none"
+          className="border-0 rounded-none bg-transparent"
         />
       </div>
       <p className="flex-1 relative text-sm font-medium text-foreground leading-none whitespace-nowrap">

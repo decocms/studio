@@ -4,7 +4,8 @@ import type {
   SidebarSection,
 } from "@/web/components/sidebar/types";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { Browser, Dataflow03, Home01 } from "@untitledui/icons";
+import { Dataflow03, Home01, LayoutLeft } from "@untitledui/icons";
+import { getIconComponent, parseIconString } from "../components/agent-icon";
 import { useTasksPanel } from "@/web/contexts/panel-context";
 import { pluginRootSidebarItems, pluginSidebarGroups } from "../index.tsx";
 import { PLUGIN_ID as WORKFLOWS_PLUGIN_ID } from "mesh-plugin-workflows/shared";
@@ -119,29 +120,35 @@ export function useProjectSidebarItems(): SidebarSection[] {
 
   // Build pinned views sidebar items
   // Pinned views are scoped to the virtual MCP
-  const pinnedViewItems: NavigationSidebarItem[] = pinnedViews.map((view) => ({
-    key: `app-${view.connectionId}-${view.toolName}`,
-    label: view.label || view.toolName,
-    icon: view.icon ? (
-      <img src={view.icon} alt="" className="size-4 rounded" />
-    ) : (
-      // Keep in sync with side-panel-tasks.tsx pinned view icon
-      <Browser />
-    ),
-    isActive: isActiveRoute(
-      `apps/${view.connectionId}/${encodeURIComponent(view.toolName)}`,
-    ),
-    onClick: () =>
-      navigate({
-        to: "/$org/$virtualMcpId/apps/$connectionId/$toolName",
-        params: {
-          org,
-          virtualMcpId,
-          connectionId: view.connectionId,
-          toolName: view.toolName,
-        },
-      }),
-  }));
+  const pinnedViewItems: NavigationSidebarItem[] = pinnedViews.map((view) => {
+    const parsed = parseIconString(view.icon);
+    const IconComp =
+      parsed.type === "icon" ? getIconComponent(parsed.name) : null;
+    return {
+      key: `app-${view.connectionId}-${view.toolName}`,
+      label: view.label || view.toolName,
+      icon: IconComp ? (
+        <IconComp size={16} className="text-muted-foreground" />
+      ) : parsed.type === "url" ? (
+        <img src={parsed.url} alt="" className="size-4 rounded" />
+      ) : (
+        <LayoutLeft size={16} className="text-muted-foreground" />
+      ),
+      isActive: isActiveRoute(
+        `apps/${view.connectionId}/${encodeURIComponent(view.toolName)}`,
+      ),
+      onClick: () =>
+        navigate({
+          to: "/$org/$virtualMcpId/apps/$connectionId/$toolName",
+          params: {
+            org,
+            virtualMcpId,
+            connectionId: view.connectionId,
+            toolName: view.toolName,
+          },
+        }),
+    };
+  });
 
   const pinnedViewsSection: SidebarSection | null =
     pinnedViewItems.length > 0

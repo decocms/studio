@@ -386,7 +386,7 @@ async function ensurePluginEventSubscriptions(
 /**
  * Check if any registered plugins handle events.
  */
-export function hasPluginEventHandlers(): boolean {
+function hasPluginEventHandlers(): boolean {
   return serverPlugins.some((p) => p.onEvents);
 }
 

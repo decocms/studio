@@ -31,7 +31,8 @@ import * as AutomationTools from "./automations";
 import * as UserTools from "./user";
 import * as AiProvidersTools from "./ai-providers";
 import { getPrompts, getResources } from "./guides";
-import { ToolName } from "./registry";
+import * as RegistryTools from "./registry/index";
+import { ToolName } from "./registry-metadata";
 // Core tools - always available
 const CORE_TOOLS = [
   OrganizationTools.ORGANIZATION_CREATE,
@@ -128,6 +129,9 @@ const CORE_TOOLS = [
   AiProvidersTools.AI_PROVIDER_TOPUP_URL,
   AiProvidersTools.AI_PROVIDER_CREDITS,
   AiProvidersTools.AI_PROVIDER_CLI_ACTIVATE,
+
+  // Registry tools
+  ...RegistryTools.tools,
 ] as const satisfies { name: ToolName }[];
 
 // Plugin tools - collected at startup, gated by org settings at runtime
@@ -145,7 +149,7 @@ interface CombinedTool {
   execute: (input: unknown, ctx: MeshContext) => Promise<unknown>;
 }
 
-// All available tools - core + plugin tools
+// All available tools — core + plugin tools
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const ALL_TOOLS: CombinedTool[] = [
   ...(CORE_TOOLS as unknown as CombinedTool[]),

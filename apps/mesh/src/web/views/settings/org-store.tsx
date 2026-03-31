@@ -1,7 +1,8 @@
 import { Suspense, useState } from "react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
+import { useNavigate, useParams } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { AlertCircle, Plus, Trash01 } from "@untitledui/icons";
+import { AlertCircle, ChevronRight, Plus, Trash01 } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Card } from "@deco/ui/components/card.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
@@ -140,6 +141,7 @@ function RegistryCard({
   enabled,
   onToggle,
   onDelete,
+  href,
 }: {
   name: string;
   description: string;
@@ -147,22 +149,33 @@ function RegistryCard({
   enabled: boolean;
   onToggle: (enabled: boolean) => void;
   onDelete?: () => void;
+  href?: string;
 }) {
+  const navigate = useNavigate();
+  const { org } = useParams({ from: "/shell/$org" });
+
+  const handleClick = () => {
+    if (href) {
+      navigate({ to: href, params: { org } });
+    } else {
+      onToggle(!enabled);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.currentTarget === e.target && (e.key === "Enter" || e.key === " ")) {
+      e.preventDefault();
+      handleClick();
+    }
+  };
+
   return (
     <div
       role="button"
       tabIndex={0}
       className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-muted/30 transition-colors"
-      onClick={() => onToggle(!enabled)}
-      onKeyDown={(e) => {
-        if (
-          e.currentTarget === e.target &&
-          (e.key === "Enter" || e.key === " ")
-        ) {
-          e.preventDefault();
-          onToggle(!enabled);
-        }
-      }}
+      onClick={handleClick}
+      onKeyDown={handleKeyDown}
     >
       {icon ? (
         <img
@@ -217,20 +230,19 @@ function RegistryCard({
           onClick={(e) => e.stopPropagation()}
           onCheckedChange={(checked) => onToggle(checked)}
         />
+        {href && <ChevronRight size={14} className="text-muted-foreground" />}
       </div>
     </div>
   );
 }
 
 function OrgStoreContent() {
-  const { org, project } = useProjectContext();
+  const { org } = useProjectContext();
   const registryConnections = useRegistryConnections();
   const connectionActions = useConnectionActions();
   const { registryConfig, isRegistryEnabled, updateRegistryConfig } =
     useRegistrySettings();
   const queryClient = useQueryClient();
-  const enabledPlugins = project.enabledPlugins ?? [];
-  const hasPrivateRegistryPlugin = enabledPlugins.includes("private-registry");
 
   const [showAddForm, setShowAddForm] = useState(false);
 
@@ -313,14 +325,13 @@ function OrgStoreContent() {
         <h3 className="text-sm font-medium text-muted-foreground">
           Private Registries
         </h3>
-        {hasPrivateRegistryPlugin && (
-          <RegistryCard
-            name="Private Registry"
-            description="Your organization's private MCP registry (plugin)"
-            enabled={isRegistryEnabled("self")}
-            onToggle={(enabled) => handleToggle("self", enabled)}
-          />
-        )}
+        <RegistryCard
+          name="Private Registry"
+          description="Your organization's private MCP registry"
+          enabled={isRegistryEnabled("self")}
+          onToggle={(enabled) => handleToggle("self", enabled)}
+          href="/$org/settings/store/registry"
+        />
         {privateRegistries.map((registry) => (
           <RegistryCard
             key={registry.id}

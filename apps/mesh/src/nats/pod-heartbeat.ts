@@ -39,7 +39,18 @@ export class NatsPodHeartbeat implements PodHeartbeat {
   constructor(private readonly deps: NatsPodHeartbeatDeps) {}
 
   async init(): Promise<void> {
-    if (this.initPromise) return this.initPromise;
+    // Stop old watcher and clear stale state so we re-create from scratch
+    if (this.watchAbortController) {
+      this.watchAbortController.abort();
+      this.watchAbortController = null;
+    }
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer);
+      this.refreshTimer = null;
+    }
+    this.kv = null;
+    this.initPromise = null;
+
     const js = this.deps.getJetStream();
     if (!js) return; // NATS not ready — heartbeat disabled until re-init
     this.initPromise = js.views

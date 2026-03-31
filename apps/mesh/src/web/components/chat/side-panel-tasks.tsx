@@ -8,9 +8,10 @@
  */
 
 import { Page } from "@/web/components/page";
+import { getIconComponent, parseIconString } from "../agent-icon";
 
 import { useChatPanel } from "@/web/contexts/panel-context";
-import { Browser, Edit05, Loading01, Settings01 } from "@untitledui/icons";
+import { Edit05, LayoutLeft, Loading01, Settings01 } from "@untitledui/icons";
 import { useVirtualMCPActions, useVirtualMCP } from "@decocms/mesh-sdk";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
 import { Suspense, useEffect, useRef, useState, useTransition } from "react";
@@ -83,6 +84,24 @@ function NewTaskButton({
 }
 
 // ────────────────────────────────────────
+// Pinned view icon — renders icon:// as plain stroke, falls back to Browser icon
+// ────────────────────────────────────────
+
+function PinnedViewIcon({ icon }: { icon: string | null | undefined }) {
+  const parsed = parseIconString(icon);
+  if (parsed.type === "icon") {
+    const IconComp = getIconComponent(parsed.name);
+    if (IconComp) {
+      return <IconComp size={16} className="shrink-0 text-muted-foreground" />;
+    }
+  }
+  if (parsed.type === "url") {
+    return <img src={parsed.url} alt="" className="size-4 rounded shrink-0" />;
+  }
+  return <LayoutLeft size={16} className="shrink-0 text-muted-foreground" />;
+}
+
+// ────────────────────────────────────────
 // Views section — pinned UIs for the project
 // ────────────────────────────────────────
 
@@ -126,13 +145,8 @@ function ProjectViewsSection({ project }: { project: VirtualMCPEntity }) {
             isExtAppActive(view) && "bg-accent text-foreground",
           )}
         >
-          {view.icon ? (
-            <img src={view.icon} alt="" className="size-4 rounded shrink-0" />
-          ) : (
-            // Keep in sync with use-project-sidebar-items.tsx pinned view icon
-            <Browser size={16} className="shrink-0" />
-          )}
-          <span className="truncate text-foreground">
+          <PinnedViewIcon icon={view.icon} />
+          <span className="truncate text-foreground capitalize">
             {view.label || view.toolName}
           </span>
         </button>
@@ -245,9 +259,11 @@ function SpaceIdentityHeader({ project }: { project: VirtualMCPEntity }) {
 function TasksPanelContent({
   virtualMcpId: virtualMcpIdProp,
   hideProjectHeader,
+  showAutomations,
 }: {
   virtualMcpId?: string;
   hideProjectHeader?: boolean;
+  showAutomations?: boolean;
 }) {
   const [chatOpen, setChatOpen] = useChatPanel();
   const { createTask, openTask } = useChatTask();
@@ -318,6 +334,7 @@ function TasksPanelContent({
       {/* Task list */}
       <TaskListContent
         virtualMcpId={virtualMcpId}
+        showAutomations={showAutomations}
         onTaskSelect={(taskId) => {
           openTask(taskId);
           setChatOpen(true);
@@ -367,9 +384,11 @@ function TasksPanelSkeleton() {
 export function TasksSidePanel({
   virtualMcpId,
   hideProjectHeader,
+  showAutomations,
 }: {
   virtualMcpId?: string;
   hideProjectHeader?: boolean;
+  showAutomations?: boolean;
 }) {
   return (
     <ErrorBoundary fallback={<Chat.Skeleton />}>
@@ -377,6 +396,7 @@ export function TasksSidePanel({
         <TasksPanelContent
           virtualMcpId={virtualMcpId}
           hideProjectHeader={hideProjectHeader}
+          showAutomations={showAutomations}
         />
       </Suspense>
     </ErrorBoundary>

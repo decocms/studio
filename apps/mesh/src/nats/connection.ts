@@ -11,7 +11,12 @@
  * Consumers should use onReady() to defer work until the connection is available.
  */
 
-import { connect, type JetStreamClient, type NatsConnection } from "nats";
+import {
+  Events,
+  connect,
+  type JetStreamClient,
+  type NatsConnection,
+} from "nats";
 
 const BASE_DELAY_MS = 100;
 const MAX_DELAY_MS = 3_000;
@@ -61,16 +66,26 @@ export function createNatsConnectionProvider(
   }
 
   function fireReady(): void {
-    console.log(
-      `[NatsProvider] fireReady: ${readyCallbacks.length} callbacks queued`,
-    );
-    for (const cb of readyCallbacks.splice(0)) {
+    console.log(`[NatsProvider] fireReady: ${readyCallbacks.length} callbacks`);
+    for (const cb of readyCallbacks) {
       try {
         cb();
       } catch {
         // swallow callback errors
       }
     }
+  }
+
+  function monitorStatus(conn: NatsConnection): void {
+    (async () => {
+      for await (const s of conn.status()) {
+        if (s.type === Events.Reconnect) {
+          console.log("[NatsProvider] Reconnected, re-firing ready callbacks");
+          js = null; // invalidate cached JetStream client
+          fireReady();
+        }
+      }
+    })().catch(() => {});
   }
 
   async function connectWithRetry(url: string | string[]): Promise<void> {
@@ -87,6 +102,7 @@ export function createNatsConnectionProvider(
           `[NatsProvider] Connected to ${nc.getServer()} after ${attempt} attempt(s)`,
         );
         js = null; // invalidate cached JetStream client for fresh connection
+        monitorStatus(nc);
         fireReady();
         return;
       } catch {
@@ -126,15 +142,14 @@ export function createNatsConnectionProvider(
     },
 
     onReady(callback: () => void): void {
+      readyCallbacks.push(callback);
       if (checkConnected()) {
         try {
           callback();
         } catch {
           // swallow callback errors (consistent with fireReady)
         }
-        return;
       }
-      readyCallbacks.push(callback);
     },
 
     async drain(): Promise<void> {

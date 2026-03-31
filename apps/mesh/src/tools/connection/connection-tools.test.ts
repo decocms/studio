@@ -91,6 +91,7 @@ describe("Connection Tools", () => {
         orgSsoConfig: null as never,
         orgSsoSessions: null as never,
         triggerCallbackTokens: null as never,
+        registry: null as never,
       },
       vault,
       authInstance: null as never,

@@ -34,6 +34,7 @@ export function createClaudeCodeModel(
     NonNullable<Parameters<typeof createClaudeCode>[0]>["defaultSettings"]
   > = {
     mcpServers: options?.mcpServers,
+    cwd: process.cwd(),
   };
 
   switch (options?.toolApprovalLevel) {

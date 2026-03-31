@@ -2,7 +2,7 @@ import {
   getPermissionOptions,
   getToolsByCategory,
   type ToolName,
-} from "@/tools/registry";
+} from "@/tools/registry-metadata";
 import { DEFAULT_LOGO, PROVIDER_LOGOS } from "@/web/utils/ai-providers-logos";
 import { ToolSetSelector } from "@/web/components/tool-set-selector.tsx";
 import { useMembers } from "@/web/hooks/use-members";

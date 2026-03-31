@@ -1,12 +1,10 @@
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
 import { CollectionTabs } from "@/web/components/collections/collection-tabs.tsx";
 import { ConnectionCard } from "@/web/components/connections/connection-card.tsx";
-import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import type { RegistryItem } from "@/web/components/store/types";
 import { useInfiniteScroll } from "@/web/hooks/use-infinite-scroll";
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
-import { useStoreDiscovery } from "@/web/hooks/use-store-discovery";
 import {
   authenticateMcp,
   isConnectionAuthenticated,
@@ -16,8 +14,8 @@ import { authClient } from "@/web/lib/auth-client";
 import { extractConnectionData } from "@/web/utils/extract-connection-data";
 import { getConnectionSlug } from "@/shared/utils/connection-slug";
 import { getGitHubAvatarUrl } from "@/web/utils/github";
-import { inferRegistryListToolName } from "@/web/utils/registry-utils";
-import { useRegistryConnections } from "@/web/hooks/use-registry-connections";
+import { useEnabledRegistries } from "@/web/hooks/use-enabled-registries";
+import { useMergedStoreDiscovery } from "@/web/hooks/use-merged-store-discovery";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   Dialog,
@@ -25,12 +23,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@deco/ui/components/dialog.tsx";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   type ConnectionEntity,
@@ -47,7 +39,6 @@ import {
 import {
   Check,
   CheckVerified02,
-  ChevronDown,
   Container,
   Loading01,
   Plus,
@@ -262,36 +253,14 @@ function AddConnectionDialogContent({
     ) ?? [];
   const grouped = groupConnections(allConnections);
 
-  // Registry / catalog - use server-side binding filter
-  const registryConnections = useRegistryConnections().sort((a, b) => {
-    const isSelfA = a.app_name === "@deco/management-mcp";
-    const isSelfB = b.app_name === "@deco/management-mcp";
-    if (isSelfA && !isSelfB) return 1;
-    if (!isSelfA && isSelfB) return -1;
-    return 0;
-  });
-  const [selectedRegistryId, setSelectedRegistryId] = useLocalStorage<string>(
-    LOCALSTORAGE_KEYS.selectedRegistry(org.slug),
-    (existing) => existing ?? "",
-  );
-  const registryConnection =
-    (selectedRegistryId
-      ? registryConnections.find((r) => r.id === selectedRegistryId)
-      : undefined) ?? registryConnections[0];
-  const registryId = registryConnection?.id ?? "";
-  const registryListToolName = registryId
-    ? inferRegistryListToolName(registryId, org.id)
-    : "";
-  const registryDiscovery = useStoreDiscovery({
-    registryId,
-    listToolName: registryListToolName,
-    search: searchLower,
-  });
+  // Registry / catalog - merge all enabled registries (same as connections page)
+  const enabledRegistries = useEnabledRegistries();
+  const mergedDiscovery = useMergedStoreDiscovery(enabledRegistries);
 
   const catalogSentinelRef = useInfiniteScroll(
-    registryDiscovery.loadMore,
-    registryDiscovery.hasMore,
-    registryDiscovery.isLoadingMore,
+    mergedDiscovery.loadMore,
+    mergedDiscovery.hasMore,
+    mergedDiscovery.isLoadingMore,
   );
 
   const connectedSentinelRef = useInfiniteScroll(
@@ -306,7 +275,7 @@ function AddConnectionDialogContent({
 
   const catalogItems =
     activeTab === "all" || searchLower
-      ? registryDiscovery.items.filter((item) => {
+      ? mergedDiscovery.items.filter((item: RegistryItem) => {
           if (!searchLower) return true;
           const meshMeta = item._meta?.["mcp.mesh"] as
             | Record<string, string>
@@ -337,13 +306,13 @@ function AddConnectionDialogContent({
       : [];
 
   const verifiedCatalogItems = catalogItems.filter(
-    (item) =>
+    (item: RegistryItem) =>
       item.verified ||
       item._meta?.["mcp.mesh"]?.verified ||
       item.meta?.verified,
   );
   const otherCatalogItems = catalogItems.filter(
-    (item) =>
+    (item: RegistryItem) =>
       !item.verified &&
       !item._meta?.["mcp.mesh"]?.verified &&
       !item.meta?.verified,
@@ -429,7 +398,7 @@ function AddConnectionDialogContent({
 
   return (
     <>
-      {/* Tabs + Registry selector */}
+      {/* Tabs */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
         <CollectionTabs
           tabs={[
@@ -439,67 +408,6 @@ function AddConnectionDialogContent({
           activeTab={activeTab}
           onTabChange={(id) => setActiveTab(id as ConnectionTab)}
         />
-        {registryConnections.length > 0 && (
-          <div
-            className={cn(
-              activeTab !== "all" && "invisible pointer-events-none",
-            )}
-          >
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-2 gap-1.5 text-sm font-normal"
-                >
-                  {(() => {
-                    const active =
-                      registryConnections.find(
-                        (rc) =>
-                          rc.id ===
-                          (selectedRegistryId || registryConnections[0]?.id),
-                      ) ?? registryConnections[0];
-                    return (
-                      <>
-                        <IntegrationIcon
-                          icon={active?.icon}
-                          name={active?.title ?? ""}
-                          size="2xs"
-                          className="shrink-0 rounded-sm"
-                        />
-                        <span>{active?.title}</span>
-                      </>
-                    );
-                  })()}
-                  <ChevronDown size={14} className="text-muted-foreground" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {registryConnections.map((rc) => (
-                  <DropdownMenuItem
-                    key={rc.id}
-                    onClick={() => setSelectedRegistryId(rc.id)}
-                    className={cn(
-                      selectedRegistryId === rc.id ||
-                        (!selectedRegistryId &&
-                          rc.id === registryConnections[0]?.id)
-                        ? "bg-accent"
-                        : "",
-                    )}
-                  >
-                    <IntegrationIcon
-                      icon={rc.icon}
-                      name={rc.title}
-                      size="2xs"
-                      className="shrink-0 rounded-sm"
-                    />
-                    {rc.title}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        )}
       </div>
 
       {/* Content grid */}
@@ -610,11 +518,12 @@ function AddConnectionDialogContent({
           {otherCatalogItems.map(renderCatalogItem)}
 
           {/* Infinite scroll sentinel */}
-          {(activeTab === "all" || searchLower) && registryId && (
-            <div ref={catalogSentinelRef} className="col-span-full h-4" />
-          )}
           {(activeTab === "all" || searchLower) &&
-            registryDiscovery.isLoadingMore && (
+            enabledRegistries.length > 0 && (
+              <div ref={catalogSentinelRef} className="col-span-full h-4" />
+            )}
+          {(activeTab === "all" || searchLower) &&
+            mergedDiscovery.isLoadingMore && (
               <div className="col-span-full flex justify-center py-6">
                 <Loading01
                   size={24}

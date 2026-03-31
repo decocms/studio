@@ -11,15 +11,11 @@ import type { RegistryItem } from "@/web/components/store/types";
 import { useInfiniteScroll } from "@/web/hooks/use-infinite-scroll";
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
-import { useRegistryConnections } from "@/web/hooks/use-registry-connections";
-import { useRegistrySettings } from "@/web/hooks/use-registry-settings";
+import { useEnabledRegistries } from "@/web/hooks/use-enabled-registries";
 import { useListState } from "@/web/hooks/use-list-state";
 import { authClient } from "@/web/lib/auth-client";
 import { useAuthConfig } from "@/web/providers/auth-config-provider";
-import {
-  useMergedStoreDiscovery,
-  type RegistrySource,
-} from "@/web/hooks/use-merged-store-discovery";
+import { useMergedStoreDiscovery } from "@/web/hooks/use-merged-store-discovery";
 import { getGitHubAvatarUrl } from "@/web/utils/github";
 import { getConnectionSlug } from "@/shared/utils/connection-slug";
 import { slugify } from "@/shared/utils/slugify";
@@ -1006,27 +1002,8 @@ function OrgMcpsContent() {
     setSelectedIds(new Set());
   };
 
-  // Registry lookup: use org settings to determine which registries are enabled
-  const registryConnections = useRegistryConnections();
-  const { isRegistryEnabled } = useRegistrySettings();
-  const enabledRegistries: RegistrySource[] = registryConnections
-    .filter((c) => isRegistryEnabled(c.id))
-    .map((c) => ({ id: c.id, title: c.title, icon: c.icon }));
-
-  // When the private-registry plugin is enabled and toggled on in store settings,
-  // include it as a store source (runs on self MCP, exposes REGISTRY_ITEM_LIST)
-  const enabledPlugins = useProjectContext().project.enabledPlugins ?? [];
-  if (
-    enabledPlugins.includes("private-registry") &&
-    isRegistryEnabled(SELF_MCP_ALIAS_ID)
-  ) {
-    enabledRegistries.push({
-      id: SELF_MCP_ALIAS_ID,
-      title: "Private Registry",
-      icon: null,
-    });
-  }
-
+  // Registry / catalog - merge all enabled registries
+  const enabledRegistries = useEnabledRegistries();
   const mergedDiscovery = useMergedStoreDiscovery(enabledRegistries);
   const registryItems = mergedDiscovery.items;
 

@@ -10,7 +10,7 @@
  */
 
 import { getSettings } from "../settings";
-import { getToolsByCategory } from "@/tools/registry";
+import { getToolsByCategory } from "@/tools/registry-metadata";
 import { sso } from "@better-auth/sso";
 import { organization } from "@decocms/better-auth/plugins";
 import { betterAuth, BetterAuthOptions } from "better-auth";

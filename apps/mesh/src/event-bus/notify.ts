@@ -10,10 +10,7 @@
  */
 
 import { ContextFactory } from "@/core/context-factory";
-import {
-  hasPluginEventHandlers,
-  routeEventsToPlugins,
-} from "@/core/plugin-loader";
+import { routeEventsToPlugins } from "@/core/plugin-loader";
 import { createClientPool } from "@/mcp-clients/outbound/client-pool";
 import { EventSubscriberBinding } from "@decocms/bindings";
 import type { ServerPluginEventContext } from "@decocms/bindings/server-plugin";
@@ -55,8 +52,8 @@ function orgIdFromSelfConnection(connectionId: string): string {
 export function createNotifySubscriber(): NotifySubscriberFn {
   return async (connectionId, events) => {
     try {
-      // Check if this is a SELF connection and plugins have event handlers
-      if (isSelfConnection(connectionId) && hasPluginEventHandlers()) {
+      // Check if this is a SELF connection — handle first-class features and plugin events
+      if (isSelfConnection(connectionId)) {
         const orgId = orgIdFromSelfConnection(connectionId);
         const ctx = await ContextFactory.create();
 
@@ -110,6 +107,40 @@ export function createNotifySubscriber(): NotifySubscriberFn {
             };
           },
         };
+
+        // Handle registry monitor events (first-class feature)
+        const registryEvents = events.filter(
+          (e) => e.type === "registry.monitor.scheduled",
+        );
+        if (registryEvents.length > 0) {
+          const { parseMonitorConfig } = await import(
+            "@/tools/registry/monitor-schemas"
+          );
+          const proxy = await pluginCtx.createMCPProxy(connectionId);
+          try {
+            for (const event of registryEvents) {
+              const eventData =
+                event.data && typeof event.data === "object"
+                  ? (event.data as Record<string, unknown>)
+                  : {};
+              const rawConfig =
+                eventData.config && typeof eventData.config === "object"
+                  ? eventData.config
+                  : {};
+              const config = parseMonitorConfig(rawConfig);
+              await proxy.callTool({
+                name: "REGISTRY_MONITOR_RUN_START",
+                arguments: { config },
+              });
+            }
+          } finally {
+            await proxy.close();
+          }
+          // If all events were registry events, we're done
+          if (registryEvents.length === events.length) {
+            return { success: true };
+          }
+        }
 
         // Route to plugin handlers
         const handled = await routeEventsToPlugins(events, pluginCtx);

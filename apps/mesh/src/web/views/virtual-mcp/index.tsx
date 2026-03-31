@@ -24,7 +24,6 @@ import {
   AlertDialogTitle,
 } from "@deco/ui/components/alert-dialog.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
-import { Card, CardContent } from "@deco/ui/components/card.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import {
   Select,
@@ -68,6 +67,7 @@ import {
 import { Suspense, useReducer, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { SimpleIconPicker } from "../../components/simple-icon-picker";
 import { Page } from "@/web/components/page";
 import { AddConnectionDialog } from "./add-connection-dialog";
 import { DependencySelectionDialog } from "./dependency-selection-dialog";
@@ -419,6 +419,7 @@ interface PinnedView {
 }
 
 interface ConnectionWithTools {
+  fetchOk: boolean;
   id: string;
   title: string;
   icon: string | null;
@@ -465,6 +466,7 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
               .filter((t) => !!getUIResourceUri(t._meta))
               .map((t) => ({ name: t.name, description: t.description }));
             return {
+              fetchOk: true,
               id: connId,
               title: item?.title ?? connId,
               icon: item?.icon ?? null,
@@ -472,6 +474,7 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
             };
           } catch {
             return {
+              fetchOk: false,
               id: connId,
               title: connId,
               icon: null,
@@ -480,12 +483,14 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
           }
         }),
       );
-      // Only include connections that have interactive tools
-      return results.filter((c) => c.uiTools.length > 0);
+      return results;
     },
   });
 
-  const connectionsData: ConnectionWithTools[] = connectionsWithTools ?? [];
+  // Only show connections with interactive tools in the UI
+  const connectionsData: ConnectionWithTools[] = (
+    connectionsWithTools ?? []
+  ).filter((c) => c.uiTools.length > 0);
 
   // Current pinned views from virtual MCP metadata
   const uiMeta = virtualMcp?.metadata?.ui as
@@ -497,6 +502,7 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
             id?: string;
             toolName?: string;
           } | null;
+          chatDefaultOpen?: boolean | null;
         } | null;
       }
     | null
@@ -504,17 +510,20 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   const serverPinned: PinnedView[] = uiMeta?.pinnedViews ?? [];
   const serverDefaultMain = uiMeta?.layout?.defaultMainView ?? null;
+  const serverChatDefaultOpen = uiMeta?.layout?.chatDefaultOpen ?? false;
+
+  const serverDefaultMainKey = (() => {
+    if (!serverDefaultMain || serverDefaultMain.type === "chat") return "chat";
+    if (serverDefaultMain.type === "settings") return "settings";
+    return `${serverDefaultMain.type}:${serverDefaultMain.id ?? ""}:${serverDefaultMain.toolName ?? ""}`;
+  })();
 
   const [pinnedViews, setPinnedViews] = useState<PinnedView[]>(serverPinned);
-  const [defaultMainView, setDefaultMainView] = useState<string>(() => {
-    if (!serverDefaultMain || serverDefaultMain.type === "chat") {
-      return "chat";
-    }
-    if (serverDefaultMain.type === "settings") {
-      return "settings";
-    }
-    return `${serverDefaultMain.type}:${serverDefaultMain.id ?? ""}:${serverDefaultMain.toolName ?? ""}`;
-  });
+  const [defaultMainView, setDefaultMainView] =
+    useState<string>(serverDefaultMainKey);
+  const [chatDefaultOpen, setChatDefaultOpen] = useState<boolean>(
+    serverChatDefaultOpen,
+  );
   const [isSaving, setIsSaving] = useState(false);
 
   // Parse default main view from composite key
@@ -527,8 +536,87 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
     return null;
   };
 
+  // Reconcile orphaned pinned views once tool data is available.
+  // Only remove pins whose connection was successfully fetched but no longer
+  // exposes the pinned tool. Pins for connections that failed to fetch are
+  // kept to avoid permanent deletion from transient errors.
+  const reconciledRef = useRef(false);
+  if (
+    connectionsWithTools &&
+    connectionsWithTools.length > 0 &&
+    !reconciledRef.current
+  ) {
+    reconciledRef.current = true;
+
+    // Build set of connection IDs that were successfully fetched.
+    // Pins for connections that failed to fetch are kept to avoid
+    // permanent deletion from transient errors.
+    const fetchedOkIds = new Set(
+      (connectionsWithTools ?? []).filter((c) => c.fetchOk).map((c) => c.id),
+    );
+    const validKeys = new Set(
+      connectionsData.flatMap((c) => c.uiTools.map((t) => `${c.id}:${t.name}`)),
+    );
+
+    // Only filter pins for connections we successfully got data for
+    const validPinned = serverPinned.filter(
+      (pv) =>
+        !fetchedOkIds.has(pv.connectionId) ||
+        validKeys.has(`${pv.connectionId}:${pv.toolName}`),
+    );
+
+    if (validPinned.length !== serverPinned.length) {
+      setPinnedViews(validPinned);
+
+      // If the default view was an ext-app that got removed, reset to chat
+      let nextDefault = defaultMainView;
+      if (
+        serverDefaultMain?.type === "ext-apps" &&
+        !validPinned.some(
+          (pv) =>
+            pv.connectionId === serverDefaultMain.id &&
+            pv.toolName === serverDefaultMain.toolName,
+        )
+      ) {
+        nextDefault = "chat";
+        setDefaultMainView(nextDefault);
+      }
+
+      // Persist cleaned pins; revert local state on failure
+      client
+        .callTool({
+          name: "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
+          arguments: {
+            virtualMcpId,
+            pinnedViews: validPinned,
+            layout: {
+              defaultMainView: parseDefaultMainView(nextDefault),
+            },
+          },
+        })
+        .then((result) => {
+          unwrapToolResult(result);
+          queryClient.invalidateQueries({
+            predicate: (query) =>
+              Array.isArray(query.queryKey) &&
+              query.queryKey.includes("collection") &&
+              query.queryKey.includes("VIRTUAL_MCP"),
+          });
+        })
+        .catch(() => {
+          // Revert to server state so UI stays consistent
+          setPinnedViews(serverPinned);
+          setDefaultMainView(serverDefaultMainKey);
+        });
+    }
+  }
+
   // Auto-save helper that persists given state
-  const saveLayout = (nextPinned: PinnedView[], nextDefaultMain: string) => {
+  const saveLayout = (
+    nextPinned: PinnedView[],
+    nextDefaultMain: string,
+    nextChatDefaultOpen?: boolean,
+  ) => {
     setIsSaving(true);
     const doSave = async () => {
       try {
@@ -537,7 +625,10 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
           arguments: {
             virtualMcpId,
             pinnedViews: nextPinned,
-            layout: { defaultMainView: parseDefaultMainView(nextDefaultMain) },
+            layout: {
+              defaultMainView: parseDefaultMainView(nextDefaultMain),
+              chatDefaultOpen: nextChatDefaultOpen ?? chatDefaultOpen,
+            },
           },
         });
         unwrapToolResult(result);
@@ -560,11 +651,7 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
     doSave();
   };
 
-  const handleTogglePin = (
-    connectionId: string,
-    toolName: string,
-    connectionIcon: string | null,
-  ) => {
+  const handleTogglePin = (connectionId: string, toolName: string) => {
     const pinned = pinnedViews.some(
       (v) => v.connectionId === connectionId && v.toolName === toolName,
     );
@@ -583,7 +670,12 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
     } else {
       nextPinned = [
         ...pinnedViews,
-        { connectionId, toolName, label: toolName, icon: connectionIcon },
+        {
+          connectionId,
+          toolName,
+          label: toolName.replace(/_/g, " "),
+          icon: null,
+        },
       ];
     }
     setPinnedViews(nextPinned);
@@ -608,6 +700,26 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
     saveLayout(pinnedViews, defaultMainView);
   };
 
+  const handleIconChange = (
+    connectionId: string,
+    toolName: string,
+    icon: string | null,
+  ) => {
+    setPinnedViews((prev) =>
+      prev.map((v) =>
+        v.connectionId === connectionId && v.toolName === toolName
+          ? { ...v, icon }
+          : v,
+      ),
+    );
+    const nextPinned = pinnedViews.map((v) =>
+      v.connectionId === connectionId && v.toolName === toolName
+        ? { ...v, icon }
+        : v,
+    );
+    saveLayout(nextPinned, defaultMainView);
+  };
+
   const handleDefaultMainViewChange = (value: string) => {
     setDefaultMainView(value);
     saveLayout(pinnedViews, value);
@@ -630,20 +742,14 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
   }
 
   return (
-    <div className="px-6 py-4 space-y-6">
-      {/* Default main view */}
-      <div>
-        <h3 className="text-sm font-medium text-foreground mb-2">
-          Default view
-        </h3>
-        <p className="text-xs text-muted-foreground mb-3">
-          The view shown in the central panel when opening this space.
-        </p>
+    <div className="px-6 py-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-foreground">Main view</span>
         <Select
           value={defaultMainView}
           onValueChange={handleDefaultMainViewChange}
         >
-          <SelectTrigger className="w-56 h-8 text-sm">
+          <SelectTrigger className="w-48 h-8 text-sm">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -654,6 +760,29 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
             ))}
           </SelectContent>
         </Select>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-foreground">Show chat</span>
+        <Tooltip delayDuration={0}>
+          <TooltipTrigger asChild>
+            <span>
+              <Switch
+                checked={defaultMainView === "chat" ? true : chatDefaultOpen}
+                disabled={defaultMainView === "chat"}
+                onCheckedChange={(checked) => {
+                  setChatDefaultOpen(checked);
+                  saveLayout(pinnedViews, defaultMainView, checked);
+                }}
+              />
+            </span>
+          </TooltipTrigger>
+          {defaultMainView === "chat" && (
+            <TooltipContent side="top">
+              Chat is always shown when it is the default view
+            </TooltipContent>
+          )}
+        </Tooltip>
       </div>
 
       {/* Pinned views */}
@@ -669,17 +798,17 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
         </p>
       )}
       {connectionsData.map((conn) => (
-        <div key={conn.id}>
-          <div className="flex items-center gap-2 mb-3">
+        <div key={conn.id} className="mt-2">
+          <div className="flex items-center gap-2 mb-2">
             <IntegrationIcon
               icon={conn.icon}
               name={conn.title}
-              size="2xs"
+              size="xs"
               className="shrink-0"
             />
-            <h3 className="text-sm font-medium text-foreground">
+            <span className="text-sm font-medium text-muted-foreground">
               {conn.title}
-            </h3>
+            </span>
           </div>
           {conn.uiTools.length > 0 && (
             <div className="flex flex-col">
@@ -693,60 +822,38 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
                 return (
                   <div
                     key={tool.name}
-                    className="flex flex-col border-b border-border last:border-0"
+                    className="flex items-center justify-between gap-3 py-1.5"
                   >
-                    <div
-                      className="flex items-center justify-between gap-6 py-3 cursor-pointer"
-                      onClick={() =>
-                        handleTogglePin(conn.id, tool.name, conn.icon)
-                      }
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-foreground">
-                          {tool.name}
-                        </p>
-                        {tool.description && (
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {tool.description}
-                          </p>
-                        )}
-                      </div>
-                      <div
-                        onClick={(e) => e.stopPropagation()}
-                        className="shrink-0"
-                      >
-                        <Switch
-                          checked={pinned}
-                          onCheckedChange={() =>
-                            handleTogglePin(conn.id, tool.name, conn.icon)
-                          }
-                          disabled={isSaving}
-                        />
-                      </div>
+                    <div className="min-w-0 flex-1 flex items-center gap-2">
+                      <SimpleIconPicker
+                        value={pinnedView?.icon ?? null}
+                        onChange={(icon) =>
+                          handleIconChange(conn.id, tool.name, icon)
+                        }
+                        disabled={!pinned || isSaving}
+                      />
+                      <Input
+                        value={
+                          pinned && pinnedView
+                            ? pinnedView.label
+                            : tool.name.replace(/_/g, " ")
+                        }
+                        onChange={(e) =>
+                          handleLabelChange(conn.id, tool.name, e.target.value)
+                        }
+                        onBlur={handleLabelBlur}
+                        className="h-7 text-sm w-40 capitalize"
+                        disabled={!pinned || isSaving}
+                        readOnly={!pinned}
+                      />
                     </div>
-                    {pinned && pinnedView && (
-                      <div
-                        className="pb-3 pl-0 flex items-center gap-3"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <label className="text-xs text-muted-foreground w-12 shrink-0">
-                          Label
-                        </label>
-                        <Input
-                          value={pinnedView.label}
-                          onChange={(e) =>
-                            handleLabelChange(
-                              conn.id,
-                              tool.name,
-                              e.target.value,
-                            )
-                          }
-                          onBlur={handleLabelBlur}
-                          className="h-8 text-sm w-56"
-                          disabled={isSaving}
-                        />
-                      </div>
-                    )}
+                    <Switch
+                      checked={pinned}
+                      onCheckedChange={() =>
+                        handleTogglePin(conn.id, tool.name)
+                      }
+                      disabled={isSaving}
+                    />
                   </div>
                 );
               })}
@@ -754,6 +861,27 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
           )}
         </div>
       ))}
+
+      <div className="flex justify-end">
+        <Tooltip delayDuration={0}>
+          <TooltipTrigger asChild>
+            <Button
+              onClick={() => {
+                const url = new URL(window.location.href);
+                const taskId = url.searchParams.get("taskId");
+                url.search = "";
+                if (taskId) {
+                  url.searchParams.set("taskId", taskId);
+                }
+                window.location.href = url.toString();
+              }}
+            >
+              Test layout
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Test agent page layout</TooltipContent>
+        </Tooltip>
+      </div>
     </div>
   );
 }
@@ -1175,11 +1303,7 @@ Define step-by-step how the agent should handle requests.
             )}
 
             {activeTab === "layout" && (
-              <Card>
-                <CardContent className="p-0">
-                  <LayoutTabContent virtualMcpId={virtualMcp.id} />
-                </CardContent>
-              </Card>
+              <LayoutTabContent virtualMcpId={virtualMcp.id} />
             )}
           </div>
         </Page.Body>

@@ -18,6 +18,7 @@ import { getCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 import { endTime, startTime, timing } from "hono/timing";
 import { auth } from "../auth";
+import { createMemberRoleCache } from "../auth/member-role-cache";
 import {
   ContextFactory,
   createMeshContextFactory,
@@ -80,7 +81,7 @@ import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
 import { getLogsDir, getTracesDir, getMetricsDir } from "../monitoring/schema";
 import {
   AutomationCronWorker,
-  AutomationJobStream,
+  automationJobStream,
   EventTriggerEngine,
   Semaphore,
 } from "../automations";
@@ -175,7 +176,10 @@ import {
   oAuthProtectedResourceMetadata,
 } from "better-auth/plugins";
 import { MiddlewareHandler } from "hono/types";
-import { getToolsByCategory, MANAGEMENT_TOOLS } from "../tools/registry";
+import {
+  getToolsByCategory,
+  MANAGEMENT_TOOLS,
+} from "../tools/registry-metadata";
 import { Env } from "./hono-env";
 import { devLogger } from "./utils/dev-logger";
 import { streamSSE } from "hono/streaming";
@@ -752,6 +756,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Create context factory with the provided database and event bus
   // Context factory only needs the Kysely instance, not the full MeshDatabase
+  const memberRoleCache = createMemberRoleCache({ ttlMs: 2 * 60 * 1000 });
   const factory = await createMeshContextFactory({
     db: database.db,
     auth,
@@ -764,6 +769,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     },
     eventBus,
     modelListCache,
+    memberRoleCache,
   });
   ContextFactory.set(factory);
 
@@ -838,21 +844,21 @@ export async function createApp(options: CreateAppOptions = {}) {
   let cronTimer: ReturnType<typeof setInterval> | null = null;
 
   if (natsProvider) {
-    const automationJobStream = new AutomationJobStream({
+    const natsOpts = {
       getConnection: () => natsProvider!.getConnection(),
       getJetStream: () => natsProvider!.getJetStream(),
-    });
+    };
 
     const cronWorker = new AutomationCronWorker(
       automationsStorage,
-      automationJobStream,
+      automationJobStream.publish,
     );
 
     const cronPollIntervalMs = 10_000;
 
     const startJobStream = async () => {
       const t0 = Date.now();
-      await automationJobStream.init();
+      await automationJobStream.init(natsOpts);
       console.log(
         `[AutomationJobStream] init completed in ${Date.now() - t0}ms`,
       );
@@ -1397,6 +1403,22 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   mountPluginRoutes(app, { db: database.db as any, vault });
+
+  // Private Registry public routes (first-class feature)
+  const { publicPublishRequestRoutes, publicMCPServerRoutes } = await import(
+    "@/api/routes/registry"
+  );
+  const registryRouteCtx = {
+    db: database.db as any,
+    vault: {
+      encrypt: (value: string) => vault.encrypt(value),
+      decrypt: (value: string) => vault.decrypt(value),
+    },
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  publicPublishRequestRoutes(app as any, registryRouteCtx);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  publicMCPServerRoutes(app as any, registryRouteCtx);
 
   // ============================================================================
   // 404 Handler

@@ -31,6 +31,14 @@ import { createAutomationsStorage } from "../storage/automations";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
 import { OrgSsoConfigStorage } from "../storage/org-sso-config";
 import { OrgSsoSessionStorage } from "../storage/org-sso-sessions";
+import {
+  RegistryItemStorage,
+  PublishRequestStorage,
+  PublishApiKeyStorage,
+  MonitorRunStorage,
+  MonitorResultStorage,
+  MonitorConnectionStorage,
+} from "../storage/registry";
 import { TagStorage } from "../storage/tags";
 import type { Database, Permission } from "../storage/types";
 import { UserStorage } from "../storage/user";
@@ -47,6 +55,7 @@ import type {
 // ============================================================================
 
 import type { EventBus } from "../event-bus/interface";
+import type { MemberRoleCache } from "../auth/member-role-cache";
 
 // ============================================================================
 // Helper Functions
@@ -98,6 +107,7 @@ export interface MeshContextConfig {
   };
   eventBus: EventBus;
   modelListCache?: ModelListCache;
+  memberRoleCache?: MemberRoleCache;
 }
 
 // ============================================================================
@@ -456,6 +466,7 @@ async function authenticateRequest(
   auth: BetterAuthInstance,
   db: Kysely<Database>,
   timings: FactoryOptions["timings"] = DEFAULT_TIMINGS,
+  memberRoleCache?: MemberRoleCache,
 ): Promise<{
   user?: AuthenticatedUser;
   role?: string;
@@ -510,6 +521,11 @@ async function authenticateRequest(
           }
         : undefined;
 
+      // Cache the role for future requests
+      if (membership && role) {
+        memberRoleCache?.set(userId, membership.organizationId, role);
+      }
+
       // Fetch role permissions for MCP OAuth sessions (non-browser)
       let permissions: Permission | undefined;
       if (membership && role) {
@@ -547,17 +563,28 @@ async function authenticateRequest(
         let role: string | undefined;
         const organizationId = meshJwtPayload.metadata?.organizationId;
         if (meshJwtPayload.sub && organizationId) {
-          const membership = await timings.measure(
-            "auth_query_membership",
-            () =>
-              db
-                .selectFrom("member")
-                .select(["member.role"])
-                .where("member.userId", "=", meshJwtPayload.sub)
-                .where("member.organizationId", "=", organizationId)
-                .executeTakeFirst(),
+          const cachedRole = memberRoleCache?.get(
+            meshJwtPayload.sub,
+            organizationId,
           );
-          role = membership?.role;
+          if (cachedRole) {
+            role = cachedRole;
+          } else {
+            const membership = await timings.measure(
+              "auth_query_membership",
+              () =>
+                db
+                  .selectFrom("member")
+                  .select(["member.role"])
+                  .where("member.userId", "=", meshJwtPayload.sub)
+                  .where("member.organizationId", "=", organizationId)
+                  .executeTakeFirst(),
+            );
+            role = membership?.role;
+            if (role) {
+              memberRoleCache?.set(meshJwtPayload.sub, organizationId, role);
+            }
+          }
         }
 
         let organization: OrganizationContext | undefined;
@@ -625,17 +652,25 @@ async function authenticateRequest(
         let role: string | undefined;
         const userId = result.key.userId;
         if (userId && orgMetadata?.id) {
-          const membership = await timings.measure(
-            "auth_query_membership",
-            () =>
-              db
-                .selectFrom("member")
-                .select(["member.role"])
-                .where("member.userId", "=", userId)
-                .where("member.organizationId", "=", orgMetadata.id)
-                .executeTakeFirst(),
-          );
-          role = membership?.role;
+          const cachedRole = memberRoleCache?.get(userId, orgMetadata.id);
+          if (cachedRole) {
+            role = cachedRole;
+          } else {
+            const membership = await timings.measure(
+              "auth_query_membership",
+              () =>
+                db
+                  .selectFrom("member")
+                  .select(["member.role"])
+                  .where("member.userId", "=", userId)
+                  .where("member.organizationId", "=", orgMetadata.id)
+                  .executeTakeFirst(),
+            );
+            role = membership?.role;
+            if (userId && role) {
+              memberRoleCache?.set(userId, orgMetadata.id, role);
+            }
+          }
         }
 
         return {
@@ -849,6 +884,14 @@ export async function createMeshContextFactory(
     triggerCallbackTokens: new KyselyTriggerCallbackTokenStorage(config.db),
     orgSsoConfig: new OrgSsoConfigStorage(config.db, vault),
     orgSsoSessions: new OrgSsoSessionStorage(config.db),
+    registry: {
+      items: new RegistryItemStorage(config.db as any),
+      publishRequests: new PublishRequestStorage(config.db as any),
+      publishApiKeys: new PublishApiKeyStorage(config.db as any),
+      monitorRuns: new MonitorRunStorage(config.db as any),
+      monitorResults: new MonitorResultStorage(config.db as any),
+      monitorConnections: new MonitorConnectionStorage(config.db as any),
+    },
     // Note: Organizations, teams, members, roles managed by Better Auth organization plugin
     // Note: Policies handled by Better Auth permissions directly
     // Note: API keys (tokens) managed by Better Auth API Key plugin
@@ -869,7 +912,13 @@ export async function createMeshContextFactory(
     const clientPool = createClientPool();
     // Authenticate request (OAuth session or API key)
     const authResult = req
-      ? await authenticateRequest(req, config.auth, config.db, timings)
+      ? await authenticateRequest(
+          req,
+          config.auth,
+          config.db,
+          timings,
+          config.memberRoleCache,
+        )
       : { user: undefined };
 
     // Resolve caller connection ID: explicit header takes priority, then fall
@@ -978,6 +1027,10 @@ export async function createMeshContextFactory(
       createMCPProxy: async (conn: string | ConnectionEntity) => {
         return await createMCPProxy(conn, ctx);
       },
+      invalidateMemberRole: config.memberRoleCache
+        ? (userId: string, organizationId: string) =>
+            config.memberRoleCache!.invalidate(userId, organizationId)
+        : undefined,
       getOrCreateClient: clientPool,
       pendingRevalidations: [],
     };
