@@ -905,22 +905,6 @@ export async function createApp(options: CreateAppOptions = {}) {
       }
     };
 
-    const startJobStreamWithRetry = async (maxRetries = 5) => {
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-          await startJobStream();
-          return;
-        } catch (err) {
-          if (attempt === maxRetries) throw err;
-          const delay = Math.min(1000 * 2 ** (attempt - 1), 10_000);
-          console.warn(
-            `[AutomationJobStream] Start attempt ${attempt}/${maxRetries} failed, retrying in ${delay}ms`,
-          );
-          await new Promise((r) => setTimeout(r, delay));
-        }
-      }
-    };
-
     // Attempt immediate start
     startJobStreamWithRetry().catch(() => {});
 
