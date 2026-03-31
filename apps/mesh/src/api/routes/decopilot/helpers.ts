@@ -94,12 +94,8 @@ export async function toolsFromMCP(
   options?: { disableOutputTruncation?: boolean },
 ): Promise<ToolSet> {
   const truncate = !options?.disableOutputTruncation;
-  const tList = performance.now();
   const list = await client.listTools();
   const visibleTools = list.tools.filter(isToolVisibleToModel);
-  console.log(
-    `[toolsFromMCP] listTools: ${Math.round(performance.now() - tList)}ms (${list.tools.length} total, ${visibleTools.length} visible)`,
-  );
 
   const toolEntries = visibleTools.map((t) => {
     const { name, title, description, inputSchema, annotations, _meta } = t;

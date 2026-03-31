@@ -73,19 +73,6 @@ export class JetStreamKVMcpListCache implements McpListCache {
     }
   }
 
-  /** Purge all cached entries — used on server startup/HMR to ensure fresh data. */
-  async purgeAll(): Promise<void> {
-    if (!this.kv) return;
-    try {
-      const keys = await this.kv.keys();
-      for await (const key of keys) {
-        await this.kv.delete(key).catch(() => {});
-      }
-    } catch {
-      // best-effort
-    }
-  }
-
   async invalidate(connectionId: string): Promise<void> {
     if (!this.kv) return;
     const types: McpListType[] = ["tools", "resources", "prompts"];

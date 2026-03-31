@@ -325,16 +325,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Set tool list cache after cleanup to avoid previous cleanup nulling the new cache
   setMcpListCache(mcpListCache);
 
-  // Purge all cached MCP tool lists on startup / HMR so newly registered tools
-  // (e.g. diagnostics) are picked up on the next tools/list call.
-  // Non-blocking: fire-and-forget now, and re-run when NATS becomes ready.
-  if (mcpListCache instanceof JetStreamKVMcpListCache) {
-    mcpListCache.purgeAll().catch(() => {});
-    natsProvider?.onReady(() => {
-      mcpListCache.purgeAll().catch(() => {});
-    });
-  }
-
   const threadStorage = new SqlThreadStorage(database.db);
 
   const cancelReactorDeps: RunReactorDeps = {
@@ -897,6 +887,22 @@ export async function createApp(options: CreateAppOptions = {}) {
       console.log(
         `[AutomationJobStream] cronWorker.start() completed in ${Date.now() - t1}ms`,
       );
+    };
+
+    const startJobStreamWithRetry = async (maxRetries = 5) => {
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          await startJobStream();
+          return;
+        } catch (err) {
+          if (attempt === maxRetries) throw err;
+          const delay = Math.min(1000 * 2 ** (attempt - 1), 10_000);
+          console.warn(
+            `[AutomationJobStream] Start attempt ${attempt}/${maxRetries} failed, retrying in ${delay}ms`,
+          );
+          await new Promise((r) => setTimeout(r, delay));
+        }
+      }
     };
 
     const startJobStreamWithRetry = async (maxRetries = 5) => {
