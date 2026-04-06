@@ -21,7 +21,7 @@ interface FileUploaderProps {
 /**
  * Processes a file by converting it to base64 and inserting it into the editor.
  */
-async function processFile(
+export async function processFile(
   editor: Editor,
   selectedModel: AiProviderModel | null,
   file: File,
@@ -219,7 +219,7 @@ export function FileUploadButton({
     }
   };
 
-  if (!editor) {
+  if (!editor || !modelSupportsFilesValue) {
     return null;
   }
 
@@ -231,7 +231,7 @@ export function FileUploadButton({
         multiple
         className="hidden"
         onChange={handleFileSelect}
-        disabled={isStreaming || !modelSupportsFilesValue}
+        disabled={isStreaming}
       />
       <Tooltip>
         <TooltipTrigger asChild>
@@ -239,21 +239,17 @@ export function FileUploadButton({
             type="button"
             className={cn(
               "flex items-center justify-center size-8 rounded-md border border-border text-muted-foreground/75 transition-colors shrink-0",
-              isStreaming || !modelSupportsFilesValue
+              isStreaming
                 ? "cursor-not-allowed opacity-50"
                 : "cursor-pointer hover:text-muted-foreground",
             )}
-            disabled={isStreaming || !modelSupportsFilesValue}
+            disabled={isStreaming}
             onClick={() => fileInputRef.current?.click()}
           >
             <Attachment01 size={16} />
           </button>
         </TooltipTrigger>
-        <TooltipContent side="top">
-          {!modelSupportsFilesValue
-            ? "Selected model does not support files"
-            : "Add file"}
-        </TooltipContent>
+        <TooltipContent side="top">Add file</TooltipContent>
       </Tooltip>
     </>
   );

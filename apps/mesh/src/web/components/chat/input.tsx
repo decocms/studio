@@ -26,6 +26,7 @@ import {
   Edit01,
   Lock01,
   Stop,
+  Upload01,
   Users03,
   XCircle,
 } from "@untitledui/icons";
@@ -42,7 +43,9 @@ import {
   VirtualMCPSelector,
   type VirtualMCPInfo,
 } from "./select-virtual-mcp";
-import { FileUploadButton } from "./tiptap/file";
+import { modelSupportsFiles } from "./select-model";
+import { FileUploadButton, processFile } from "./tiptap/file";
+import { useCurrentEditor, type Editor } from "@tiptap/react";
 import {
   TiptapInput,
   TiptapProvider,
@@ -348,6 +351,51 @@ function PlanModeToggle({ disabled }: { disabled?: boolean }) {
 }
 
 // ============================================================================
+// FileDropZone - Overlay that catches file drops from anywhere on the window
+// ============================================================================
+
+function FileDropZone({
+  isDraggingOver,
+  supportsFiles,
+  editorRef,
+}: {
+  isDraggingOver: boolean;
+  supportsFiles: boolean;
+  editorRef: React.RefObject<Editor | null>;
+}) {
+  const { editor } = useCurrentEditor();
+
+  // Keep the ref in sync so the window drop handler can access the editor
+  editorRef.current = editor;
+
+  return (
+    <div
+      className={cn(
+        "absolute inset-0 z-20 rounded-xl flex flex-col items-center justify-center gap-2 bg-muted border-2 border-dashed transition-opacity",
+        isDraggingOver ? "opacity-100" : "opacity-0 pointer-events-none",
+        supportsFiles
+          ? "border-primary/40 text-primary/70"
+          : "border-destructive/30 text-destructive/70",
+      )}
+    >
+      {supportsFiles ? (
+        <>
+          <Upload01 size={24} />
+          <span className="text-sm font-medium">Drop files here</span>
+        </>
+      ) : (
+        <>
+          <Lock01 size={24} />
+          <span className="text-sm font-medium">
+            This model does not support files
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
 // ChatInput - Merged component with virtual MCP wrapper, banners, and selectors
 // ============================================================================
 
@@ -432,6 +480,68 @@ export function ChatInput({
     (lastUsage?.totalTokens ?? 0) - (lastUsage?.reasoningTokens ?? 0);
 
   const playClickSound = useSound(clickSoftSound);
+
+  const supportsFiles = modelSupportsFiles(selectedModel);
+
+  // Ref to the editor instance, kept in sync by FileDropZone
+  const editorRef = useRef<Editor | null>(null);
+  const selectedModelRef = useRef(selectedModel);
+  selectedModelRef.current = selectedModel;
+
+  // Window-level drag detection for file drop zone
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const dragCounterRef = useRef(0);
+
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    const onDragEnter = (e: DragEvent) => {
+      if (e.dataTransfer?.types.includes("Files")) {
+        e.preventDefault();
+        dragCounterRef.current++;
+        setIsDraggingOver(true);
+      }
+    };
+    const onDragLeave = (e: DragEvent) => {
+      e.preventDefault();
+      dragCounterRef.current--;
+      if (dragCounterRef.current === 0) {
+        setIsDraggingOver(false);
+      }
+    };
+    const onDragOver = (e: DragEvent) => {
+      if (e.dataTransfer?.types.includes("Files")) {
+        e.preventDefault();
+      }
+    };
+    const onDrop = (e: DragEvent) => {
+      e.preventDefault();
+      dragCounterRef.current = 0;
+      setIsDraggingOver(false);
+
+      const editor = editorRef.current;
+      const model = selectedModelRef.current;
+      if (!editor || !modelSupportsFiles(model)) return;
+
+      const files = e.dataTransfer?.files;
+      if (!files || files.length === 0) return;
+
+      const { from } = editor.state.selection;
+      for (const file of Array.from(files)) {
+        void processFile(editor, model, file, from);
+      }
+    };
+
+    window.addEventListener("dragenter", onDragEnter);
+    window.addEventListener("dragleave", onDragLeave);
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragenter", onDragEnter);
+      window.removeEventListener("dragleave", onDragLeave);
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, []);
 
   const canSubmit =
     !isStreaming &&
@@ -575,6 +685,12 @@ export function ChatInput({
                   : "border-transparent shadow-[0px_10px_28px_0px_rgba(0,0,0,0.06)] ring-1 ring-black/5 dark:ring-white/10",
               )}
             >
+              <FileDropZone
+                isDraggingOver={isDraggingOver}
+                supportsFiles={supportsFiles}
+                editorRef={editorRef}
+              />
+
               <div className="group/input relative flex flex-col gap-2 flex-1">
                 {/* Input Area with Tiptap */}
                 <TiptapInput

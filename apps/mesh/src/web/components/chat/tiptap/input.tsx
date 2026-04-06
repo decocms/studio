@@ -24,6 +24,7 @@ function buildExtensions(placeholderRef: React.RefObject<string | undefined>) {
       blockquote: false,
       codeBlock: false,
       horizontalRule: false,
+      dropcursor: false,
     }),
     Placeholder.configure({
       placeholder: () =>
