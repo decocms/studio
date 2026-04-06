@@ -32,7 +32,7 @@ import {
 } from "@untitledui/icons";
 import type { DynamicToolUIPart, ToolUIPart } from "ai";
 import type React from "react";
-import { Suspense, useContext } from "react";
+import { Suspense, useContext, useLayoutEffect, useRef } from "react";
 import { ErrorBoundary } from "@/web/components/error-boundary.tsx";
 import { PanelContext } from "@/web/contexts/panel-context.tsx";
 import { getToolPartErrorText, safeStringify } from "../utils.ts";
@@ -202,6 +202,21 @@ export function GenericToolCallPart({
 
   const hasMCPApp = !!uiResourceUri && part.state === "output-available";
   const sourceId = connectionId ? `${connectionId}:${toolName}` : null;
+
+  // Auto-expand the main panel the first time a tool with UI becomes ready,
+  // so the user sees the full interface even when only the chat panel is open.
+  const hasAutoExpandedRef = useRef(false);
+  useLayoutEffect(() => {
+    if (
+      hasMCPApp &&
+      !hasAutoExpandedRef.current &&
+      panelControls &&
+      !panelControls.mainOpen
+    ) {
+      hasAutoExpandedRef.current = true;
+      panelControls.mainPanelRef.current?.expand();
+    }
+  });
 
   const handleAppMessage = (params: McpUiMessageRequest["params"]) => {
     const doc = contentBlocksToTiptapDoc(params.content);
