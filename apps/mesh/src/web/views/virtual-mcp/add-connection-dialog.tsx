@@ -60,6 +60,7 @@ interface AddConnectionDialogProps {
   onOpenChange: (open: boolean) => void;
   addedConnectionIds: Set<string>;
   onAdd: (connectionId: string) => void;
+  defaultTab?: "all" | "connected";
 }
 
 // ---------------------------------------------------------------------------
@@ -76,6 +77,7 @@ function AddConnectionDialogContent({
   connectingItemId,
   search,
   onCreateConnection,
+  defaultTab = "connected",
 }: {
   addedConnectionIds: Set<string>;
   onAdd: (connectionId: string) => void;
@@ -84,6 +86,7 @@ function AddConnectionDialogContent({
   connectingItemId: string | null;
   search: string;
   onCreateConnection: () => void;
+  defaultTab?: "all" | "connected";
 }) {
   const { org } = useProjectContext();
   const deferredSearch = useDeferredValue(search);
@@ -91,8 +94,9 @@ function AddConnectionDialogContent({
   const searchLower = deferredSearch.toLowerCase();
 
   const [activeTab, setActiveTab] = useLocalStorage<ConnectionTab>(
-    LOCALSTORAGE_KEYS.connectionsTab(org.slug) + ":agent-modal",
-    (existing) => existing ?? "connected",
+    LOCALSTORAGE_KEYS.connectionsTab(org.slug) +
+      (defaultTab === "all" ? ":home-modal" : ":agent-modal"),
+    (existing) => existing ?? defaultTab,
   );
 
   // Connections - server-side search with infinite scroll
@@ -453,6 +457,7 @@ export function AddConnectionDialog({
   onOpenChange,
   addedConnectionIds,
   onAdd,
+  defaultTab,
 }: AddConnectionDialogProps) {
   const [connectingItemId, setConnectingItemId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -686,6 +691,7 @@ export function AddConnectionDialog({
             connectingItemId={connectingItemId}
             search={search}
             onCreateConnection={() => setCreateOpen(true)}
+            defaultTab={defaultTab}
           />
         </Suspense>
       </DialogContent>
