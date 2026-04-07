@@ -24,7 +24,7 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { Loading01, Plus } from "@untitledui/icons";
+import { Loading01, Plus, RefreshCcw01 } from "@untitledui/icons";
 import { useRef, useState } from "react";
 import { User as UserIcon, Users as UsersIcon } from "lucide-react";
 import {
@@ -53,7 +53,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@deco/ui/components/alert-dialog.tsx";
-import { Trash01 } from "@untitledui/icons";
+import { Archive, Trash01 } from "@untitledui/icons";
 import { useSound } from "@/web/hooks/use-sound.ts";
 import { question004Sound } from "@deco/ui/lib/question-004.ts";
 
@@ -156,7 +156,7 @@ function TaskRow({
   return (
     <div
       className={cn(
-        "group/row relative flex items-center gap-2 mx-2 px-3 h-10 rounded-md w-[calc(100%-1rem)] cursor-pointer transition-colors",
+        "group/row relative flex items-center gap-2 mx-2 px-3 h-10 rounded-md w-[calc(100%-1rem)] cursor-pointer",
         isActive ? "bg-accent" : "hover:bg-accent/50",
       )}
       onClick={onClick}
@@ -168,7 +168,7 @@ function TaskRow({
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="shrink-0 flex items-center justify-center size-6 rounded-md hover:bg-accent/80 transition-colors"
+                className="shrink-0 flex items-center justify-center size-6 rounded-md hover:bg-accent/80"
                 onClick={(e) => e.stopPropagation()}
               >
                 <StatusIcon
@@ -212,7 +212,7 @@ function TaskRow({
           text={task.title || "Untitled"}
           className="text-sm text-muted-foreground flex-1 min-w-0"
         />
-        <span className="text-xs text-muted-foreground tabular-nums shrink-0 whitespace-nowrap opacity-100 group-hover/row:opacity-0 transition-opacity">
+        <span className="text-xs text-muted-foreground tabular-nums shrink-0 whitespace-nowrap group-hover/row:invisible">
           {task.updated_at ? formatTimeAgo(new Date(task.updated_at)) : ""}
         </span>
       </div>
@@ -220,7 +220,7 @@ function TaskRow({
       {/* Archive button — shown on hover */}
       <button
         type="button"
-        className="absolute right-3 top-1/2 -translate-y-1/2 size-6 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground opacity-0 group-hover/row:opacity-100 transition-opacity"
+        className="absolute right-3 top-1/2 -translate-y-1/2 size-6 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground invisible group-hover/row:visible"
         onClick={(e) => {
           e.stopPropagation();
           playSound();
@@ -228,7 +228,7 @@ function TaskRow({
         }}
         title="Archive"
       >
-        <Trash01 size={14} />
+        <Archive size={14} />
       </button>
     </div>
   );
@@ -251,9 +251,10 @@ function AutomationRow({
 
   return (
     <div
-      className="group/row relative flex items-center gap-3 mx-2 px-3 h-10 rounded-md w-[calc(100%-1rem)] cursor-pointer transition-colors hover:bg-accent/50"
+      className="group/row relative flex items-center gap-2 mx-2 px-3 h-10 rounded-md w-[calc(100%-1rem)] cursor-pointer hover:bg-accent/50"
       onClick={onClick}
     >
+      <RefreshCcw01 size={16} className="shrink-0 text-muted-foreground" />
       <span
         className={cn(
           "text-sm truncate flex-1 min-w-0",
@@ -350,8 +351,8 @@ function IncomingSection({ virtualMcpId }: { virtualMcpId: string }) {
   return (
     <div>
       {/* Section header */}
-      <div className="group/incoming flex items-center gap-2 mx-2 px-3 h-10 w-[calc(100%-1rem)]">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground/60">
+      <div className="flex items-center gap-2 mx-2 px-3 h-8 mt-2 w-[calc(100%-1rem)]">
+        <span className="text-xs font-medium text-muted-foreground/60">
           Automations
         </span>
         <span className="flex-1" />
@@ -429,14 +430,12 @@ function IncomingSection({ virtualMcpId }: { virtualMcpId: string }) {
 
 interface TaskListContentProps {
   onTaskSelect?: (taskId: string) => void;
-  onTaskCreate?: () => void;
   virtualMcpId?: string | null;
   showAutomations?: boolean;
 }
 
 export function TaskListContent({
   onTaskSelect,
-  onTaskCreate,
   virtualMcpId,
   showAutomations = true,
 }: TaskListContentProps) {
@@ -480,25 +479,10 @@ export function TaskListContent({
         )}
 
         {/* Tasks section header */}
-        <div className="group/tasks flex items-center gap-2 mx-2 px-3 h-10 w-[calc(100%-1rem)]">
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground/60">
+        <div className="flex items-center gap-2 mx-2 px-3 h-8 mt-2 w-[calc(100%-1rem)]">
+          <span className="text-xs font-medium text-muted-foreground/60">
             Tasks
           </span>
-          <span className="flex-1" />
-          {onTaskCreate && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span
-                  role="button"
-                  className="flex size-7 shrink-0 items-center justify-center rounded-md transition-all text-muted-foreground hover:bg-accent hover:text-foreground cursor-pointer"
-                  onClick={onTaskCreate}
-                >
-                  <Plus size={16} />
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>New task</TooltipContent>
-            </Tooltip>
-          )}
         </div>
 
         {/* Task rows — always visible */}
