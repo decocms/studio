@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { registerTestHooks, testState } from "../lib/setup";
-import { mcpCall } from "../lib/mesh-client";
+import { mcpCall } from "../lib/studio-client";
 
 registerTestHooks();
 

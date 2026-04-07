@@ -1,3 +1,7 @@
+import {
+  displayToolName,
+  getGatewayClientId,
+} from "@decocms/mcp-utils/aggregate";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   Dialog,
@@ -84,7 +88,10 @@ export function PromptArgsDialog({
       <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {prompt.title || prompt.name.replace(/_/g, " ")}
+            <span className="capitalize">
+              {prompt.title ||
+                displayToolName(prompt.name, getGatewayClientId(prompt._meta))}
+            </span>
           </DialogTitle>
           {prompt.description && (
             <p className="text-sm text-muted-foreground">

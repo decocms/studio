@@ -1,3 +1,5 @@
+import { formatDuration } from "@/web/lib/format-time.ts";
+
 export type ToolPartStatus =
   | "input-streaming"
   | "input-available"
@@ -28,22 +30,23 @@ export function formatToolMetrics(metrics: ToolCallMetrics): string | null {
   }
 
   if (metrics.latencySeconds != null) {
-    parts.push(`${metrics.latencySeconds.toFixed(1)}s`);
+    parts.push(formatDuration(metrics.latencySeconds));
   }
 
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 /**
- * Convert a tool name to a friendly display name.
- * Converts SCREAMING_SNAKE_CASE or snake_case to Title Case.
- * Edge cases: empty string returns "", single word returns title-cased word.
+ * Convert a name to Title Case: replaces `_` and `-` with spaces, lowercases,
+ * then capitalizes each word.
  */
-export function getFriendlyToolName(toolName: string): string {
-  if (!toolName) return "";
-  return toolName
-    .split(/[_-]/)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+export function toTitleCase(name: string): string {
+  if (!name) return "";
+  return name
+    .replace(/[_-]/g, " ")
+    .toLowerCase()
+    .split(" ")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
 }
 

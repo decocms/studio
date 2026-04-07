@@ -16,6 +16,13 @@ import {
 
 import type { ToolDefinition } from "@decocms/mesh-sdk";
 import { useMCPClient, useProjectContext } from "@decocms/mesh-sdk";
+import {
+  getGatewayClientId,
+  stripToolNamespace,
+} from "@decocms/mcp-utils/aggregate";
+import { stripMcpServerPrefix } from "@/web/lib/tool-namespace";
+import { useToolDefinitionLookup } from "@/web/hooks/use-tool-definition-lookup";
+import { toTitleCase } from "./utils.tsx";
 import type {
   McpUiMessageRequest,
   McpUiUpdateModelContextRequest,
@@ -24,6 +31,7 @@ import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import {
   AlertCircle,
   Atom02,
+  Expand06,
   Eye,
   Globe02,
   LayersTwo01,
@@ -35,9 +43,10 @@ import type React from "react";
 import { Suspense, useContext } from "react";
 import { ErrorBoundary } from "@/web/components/error-boundary.tsx";
 import { PanelContext } from "@/web/contexts/panel-context.tsx";
+
 import { getToolPartErrorText, safeStringify } from "../utils.ts";
 import { ToolCallShell } from "./common.tsx";
-import { getEffectiveState, getFriendlyToolName } from "./utils.tsx";
+import { getEffectiveState } from "./utils.tsx";
 
 interface GenericToolCallPartProps {
   part: ToolUIPart | DynamicToolUIPart;
@@ -161,13 +170,14 @@ export function GenericToolCallPart({
   toolMeta,
 }: GenericToolCallPartProps) {
   // Extract tool name with proper dynamic-tool handling
-  const toolName =
+  const rawToolName =
     "toolName" in part && typeof part.toolName === "string"
       ? part.toolName
       : part.type === "dynamic-tool"
         ? "Dynamic Tool"
         : part.type.replace("tool-", "") || "Tool";
-  const friendlyName = getFriendlyToolName(toolName);
+  // Strip mcp__<server>__ prefix (e.g. mcp__cms__conn-abc_hello → conn-abc_hello)
+  const mcpStrippedName = stripMcpServerPrefix(rawToolName);
 
   const chatStream = useOptionalChatStream();
   const chatPrefs = useOptionalChatPrefs();
@@ -176,19 +186,7 @@ export function GenericToolCallPart({
   // Panel context may not be available when rendering read-only thread history
   // (e.g. monitoring Threads tab), so we read the context directly.
   const panelControls = useContext(PanelContext);
-  const setChatOpen = panelControls
-    ? (open: boolean) => {
-        if (open) {
-          panelControls.chatPanelRef.current?.resize(
-            Math.min(panelControls.chatPanelWidth, 35),
-          );
-        } else {
-          panelControls.chatPanelRef.current?.collapse();
-        }
-      }
-    : undefined;
-
-  const uiResourceUri = getUIResourceUri(toolMeta);
+  const setChatOpen = panelControls?.setChatOpen;
 
   const connectionId =
     toolMeta &&
@@ -200,8 +198,32 @@ export function GenericToolCallPart({
       ? String(toolMeta.connectionId)
       : (chatPrefs?.selectedVirtualMcp?.id ?? null);
 
+  // Look up tool definition from virtual MCP's listTools.
+  // Single source of truth for _meta, title, gatewayClientId, uiResourceUri.
+  const { toolDef } = useToolDefinitionLookup(
+    connectionId ? rawToolName : null,
+    connectionId,
+    org.id,
+  );
+  const meta = toolDef?._meta ?? toolMeta;
+  const gatewayClientId = getGatewayClientId(meta);
+  const toolName = stripToolNamespace(mcpStrippedName, gatewayClientId);
+  const friendlyName = toolDef?.title ?? toTitleCase(toolName);
+  const uiResourceUri = getUIResourceUri(meta);
+
   const hasMCPApp = !!uiResourceUri && part.state === "output-available";
-  const sourceId = connectionId ? `${connectionId}:${toolName}` : null;
+  const sourceId = connectionId ? `${connectionId}:${rawToolName}` : null;
+  const isDestructive = !!annotations?.destructiveHint;
+  const canOpenInPanel =
+    hasMCPApp && !!panelControls && !!connectionId && !isDestructive;
+
+  const handleOpenInPanel = () => {
+    if (!connectionId || !panelControls) return;
+    panelControls.openMainView("ext-apps", {
+      id: connectionId,
+      toolName: rawToolName,
+    });
+  };
 
   const handleAppMessage = (params: McpUiMessageRequest["params"]) => {
     const doc = contentBlocksToTiptapDoc(params.content);
@@ -265,59 +287,73 @@ export function GenericToolCallPart({
         state={effectiveState}
         detail={detail || null}
       />
-      {hasMCPApp && uiResourceUri && connectionId && org?.id && (
-        <ErrorBoundary
-          fallback={({ resetError }) => (
-            <div className="mt-2 flex items-center gap-2 px-3 py-2.5 border border-dashed border-destructive/30 bg-destructive/5 rounded-lg">
-              <AlertCircle size={16} className="shrink-0 text-destructive" />
-              <span className="flex-1 text-xs text-destructive font-medium">
-                Failed to load <span className="font-mono">{friendlyName}</span>{" "}
-                app
-              </span>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs gap-1.5 shrink-0"
-                onClick={resetError}
-              >
-                <RefreshCw01 className="size-3.5" />
-                Retry
-              </Button>
-            </div>
-          )}
-        >
-          <Suspense
-            fallback={
-              <div className="mt-2 flex items-center justify-center h-12 border border-border/75 rounded-lg overflow-hidden p-3">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                  <span className="text-sm">Loading app...</span>
-                </div>
-              </div>
-            }
+      {canOpenInPanel && (
+        <div className="flex justify-end mt-1.5 mb-1">
+          <button
+            type="button"
+            onClick={handleOpenInPanel}
+            className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground rounded-md [@media(hover:hover)]:hover:bg-accent/50 [@media(hover:hover)]:hover:text-foreground transition-colors"
           >
-            <MCPAppRenderer
-              uiResourceUri={uiResourceUri}
-              connectionId={connectionId}
-              orgId={org.id}
-              toolName={toolName}
-              toolInput={part.input}
-              toolResult={part.output}
-              toolMeta={toolMeta as Record<string, unknown> | undefined}
-              onMessage={handleAppMessage}
-              onUpdateModelContext={
-                sourceId && chatPrefs
-                  ? (params) => chatPrefs.setAppContext(sourceId, params)
-                  : undefined
+            <Expand06 className="size-3.5" />
+            Open in panel
+          </button>
+        </div>
+      )}
+      {hasMCPApp && uiResourceUri && connectionId && org?.id && (
+        <>
+          <ErrorBoundary
+            fallback={({ resetError }) => (
+              <div className="mt-2 flex items-center gap-2 px-3 py-2.5 border border-dashed border-destructive/30 bg-destructive/5 rounded-lg">
+                <AlertCircle size={16} className="shrink-0 text-destructive" />
+                <span className="flex-1 text-xs text-destructive font-medium">
+                  Failed to load{" "}
+                  <span className="font-mono">{friendlyName}</span> app
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1.5 shrink-0"
+                  onClick={resetError}
+                >
+                  <RefreshCw01 className="size-3.5" />
+                  Retry
+                </Button>
+              </div>
+            )}
+          >
+            <Suspense
+              fallback={
+                <div className="mt-2 flex items-center justify-center h-12 border border-border/75 rounded-lg overflow-hidden p-3">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    <span className="text-sm">Loading app...</span>
+                  </div>
+                </div>
               }
-              onTeardown={
-                sourceId && chatPrefs
-                  ? () => chatPrefs.clearAppContext(sourceId)
-                  : undefined
-              }
-            />
-          </Suspense>
-        </ErrorBoundary>
+            >
+              <MCPAppRenderer
+                uiResourceUri={uiResourceUri}
+                connectionId={connectionId}
+                orgId={org.id}
+                toolName={toolName}
+                toolInput={part.input}
+                toolResult={part.output}
+                toolMeta={meta as Record<string, unknown> | undefined}
+                onMessage={handleAppMessage}
+                onUpdateModelContext={
+                  sourceId && chatPrefs
+                    ? (params) => chatPrefs.setAppContext(sourceId, params)
+                    : undefined
+                }
+                onTeardown={
+                  sourceId && chatPrefs
+                    ? () => chatPrefs.clearAppContext(sourceId)
+                    : undefined
+                }
+              />
+            </Suspense>
+          </ErrorBoundary>
+        </>
       )}
     </div>
   );
@@ -336,6 +372,79 @@ interface MCPAppRendererProps {
     params: McpUiUpdateModelContextRequest["params"],
   ) => void;
   onTeardown?: () => void;
+}
+
+/**
+ * Check if a value is a Codex mcpToolCall envelope.
+ * Codex wraps MCP tool calls in { type: "mcpToolCall", ... } objects.
+ */
+function isMcpToolCallEnvelope(
+  value: unknown,
+): value is { type: "mcpToolCall"; [key: string]: unknown } {
+  return (
+    typeof value === "object" &&
+    value != null &&
+    "type" in value &&
+    (value as Record<string, unknown>).type === "mcpToolCall"
+  );
+}
+
+/**
+ * Normalize tool input across providers.
+ * Codex wraps input in { type: "mcpToolCall", arguments: { ... } } —
+ * unwrap to get the actual tool arguments.
+ */
+function normalizeToolInput(
+  input: unknown,
+): Record<string, unknown> | undefined {
+  if (input == null) return undefined;
+  if (isMcpToolCallEnvelope(input)) {
+    return (input.arguments as Record<string, unknown>) ?? undefined;
+  }
+  return input as Record<string, unknown>;
+}
+
+/**
+ * Normalize a tool result to CallToolResult format.
+ * - Standard AI SDK tools: already a CallToolResult
+ * - Claude Code dynamic tools: raw parsed JSON (no wrapper)
+ * - Codex: { type: "mcpToolCall", result: CallToolResult, ... } wrapped
+ *   inside structuredContent
+ */
+function normalizeToolResult(output: unknown): CallToolResult | undefined {
+  if (output == null) return undefined;
+
+  // Codex: output itself is the mcpToolCall envelope
+  if (isMcpToolCallEnvelope(output) && output.result != null) {
+    return output.result as CallToolResult;
+  }
+
+  // Already a CallToolResult (has content array with MCP content blocks)
+  if (
+    typeof output === "object" &&
+    "content" in output &&
+    Array.isArray((output as CallToolResult).content)
+  ) {
+    const arr = (output as CallToolResult).content;
+    if (
+      arr.length > 0 &&
+      typeof arr[0] === "object" &&
+      arr[0] != null &&
+      "type" in arr[0]
+    ) {
+      return output as CallToolResult;
+    }
+  }
+
+  // Wrap raw value (Claude Code) in CallToolResult format
+  const text = typeof output === "string" ? output : JSON.stringify(output);
+  return {
+    structuredContent:
+      typeof output === "object" && !Array.isArray(output)
+        ? (output as Record<string, unknown>)
+        : undefined,
+    content: [{ type: "text", text }],
+  };
 }
 
 function MCPAppRenderer({
@@ -363,8 +472,8 @@ function MCPAppRenderer({
       <MCPAppIframeRenderer
         resourceURI={uiResourceUri}
         toolInfo={{ tool: toolDef }}
-        toolInput={toolInput as Record<string, unknown> | undefined}
-        toolResult={toolResult as CallToolResult | undefined}
+        toolInput={normalizeToolInput(toolInput)}
+        toolResult={normalizeToolResult(toolResult)}
         client={client}
         onMessage={onMessage}
         onUpdateModelContext={onUpdateModelContext}

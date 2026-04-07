@@ -5,7 +5,7 @@ import { CollectionTabs } from "@/web/components/collections/collection-tabs.tsx
 import { EmptyState } from "@/web/components/empty-state.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
-import { useChatPanel } from "@/web/contexts/panel-context";
+import { useTaskActions } from "@/web/contexts/panel-context";
 import { usePreferences } from "@/web/hooks/use-preferences";
 import { useMCPAuthStatus } from "@/web/hooks/use-mcp-auth-status";
 import { authenticateMcp } from "@/web/lib/mcp-oauth";
@@ -973,15 +973,14 @@ function VirtualMcpDetailViewWithData({
   });
 
   // Chat hooks
-  const [, setChatOpen] = useChatPanel();
   const [preferences, setPreferences] = usePreferences();
-  const { createTask, createTaskWithMessage } = useChatTask();
+  const { createTaskWithMessage } = useChatTask();
+  const { createNewTask } = useTaskActions();
 
   const handleImprovePrompt = () => {
     const currentInstructions = form.getValues("metadata.instructions");
     if (!currentInstructions?.trim()) return;
 
-    setChatOpen(true);
     setPreferences({ ...preferences, toolApprovalLevel: "plan" });
 
     createTaskWithMessage({
@@ -998,8 +997,7 @@ function VirtualMcpDetailViewWithData({
   };
 
   const handleTestAgent = () => {
-    setChatOpen(true);
-    createTask();
+    createNewTask();
   };
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

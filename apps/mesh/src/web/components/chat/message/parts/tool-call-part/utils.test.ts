@@ -1,23 +1,29 @@
 import { describe, expect, test } from "bun:test";
-import { formatToolMetrics, getFriendlyToolName } from "./utils.tsx";
+import { formatToolMetrics, toTitleCase } from "./utils.tsx";
 
-describe("getFriendlyToolName", () => {
+describe("toTitleCase", () => {
   test("converts SCREAMING_SNAKE_CASE to Title Case", () => {
-    expect(getFriendlyToolName("SCREAMING_SNAKE_CASE")).toBe(
-      "Screaming Snake Case",
-    );
+    expect(toTitleCase("SCREAMING_SNAKE_CASE")).toBe("Screaming Snake Case");
   });
 
   test("converts snake_case to Title Case", () => {
-    expect(getFriendlyToolName("some_tool")).toBe("Some Tool");
+    expect(toTitleCase("some_tool")).toBe("Some Tool");
+  });
+
+  test("converts kebab-case to Title Case", () => {
+    expect(toTitleCase("some-tool")).toBe("Some Tool");
   });
 
   test("returns empty string for empty input", () => {
-    expect(getFriendlyToolName("")).toBe("");
+    expect(toTitleCase("")).toBe("");
   });
 
   test("returns title-cased single word", () => {
-    expect(getFriendlyToolName("SINGLE")).toBe("Single");
+    expect(toTitleCase("SINGLE")).toBe("Single");
+  });
+
+  test("handles mixed separators", () => {
+    expect(toTitleCase("hello_world-foo")).toBe("Hello World Foo");
   });
 });
 

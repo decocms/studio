@@ -19,6 +19,9 @@ describe("DEFAULT_CSP", () => {
   it("does not include frame-ancestors (invalid in meta tags, enforced by srcdoc sandbox)", () => {
     expect(DEFAULT_CSP).not.toContain("frame-ancestors");
   });
+  it("allows media from any source", () => {
+    expect(DEFAULT_CSP).toContain("media-src * data: blob:");
+  });
   it("does not include self in font-src", () => {
     expect(DEFAULT_CSP).not.toContain("font-src 'self'");
     expect(DEFAULT_CSP).toContain("font-src data:");
@@ -79,7 +82,7 @@ describe("injectCSP", () => {
 describe("injectCSP with resourceCsp", () => {
   const html = "<head></head>";
 
-  it("adds resourceDomains to script-src, style-src, img-src, font-src", () => {
+  it("adds resourceDomains to script-src, style-src, img-src, media-src, font-src", () => {
     const result = injectCSP(html, {
       resourceCsp: {
         resourceDomains: ["https://cdn.example.com"],
@@ -92,6 +95,7 @@ describe("injectCSP with resourceCsp", () => {
       "style-src 'unsafe-inline' https://cdn.example.com",
     );
     expect(result).toContain("img-src * data: blob: https://cdn.example.com");
+    expect(result).toContain("media-src * data: blob: https://cdn.example.com");
     expect(result).toContain("font-src data: https://cdn.example.com");
   });
 

@@ -18,7 +18,6 @@ import {
   type TriggerDefinition,
 } from "@/web/hooks/use-automations";
 import { useChatTask, useChatPrefs } from "@/web/components/chat/context";
-import { useChatPanel } from "@/web/contexts/panel-context";
 import { usePreferences } from "@/web/hooks/use-preferences";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
@@ -299,7 +298,6 @@ export function SettingsTab({
     credentialId: chatCredentialId,
     selectedModel: chatModel,
   } = useChatPrefs();
-  const [, setChatOpen] = useChatPanel();
   const [preferences, setPreferences] = usePreferences();
   const initialTiptapDoc =
     (automation.messages?.[0] as { metadata?: Metadata } | undefined)?.metadata
@@ -323,7 +321,6 @@ export function SettingsTab({
       .join("\n");
     if (!instructionsText.trim()) return;
 
-    setChatOpen(true);
     setPreferences({ ...preferences, toolApprovalLevel: "plan" });
 
     createTaskWithMessage({
@@ -453,7 +450,6 @@ export function SettingsTab({
       setModel({ ...selectedModel, keyId: watchConnectionId });
     }
 
-    setChatOpen(true);
     setPreferences({ ...preferences, toolApprovalLevel: "auto" });
 
     const parts = derivePartsFromTiptapDoc(tiptapDoc);

@@ -5,6 +5,7 @@ export const DEFAULT_CSP = [
   "script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'",
   "style-src 'unsafe-inline'",
   "img-src * data: blob:",
+  "media-src * data: blob:",
   "font-src data:",
   "connect-src 'none'",
   "frame-src 'none'",
@@ -110,6 +111,9 @@ function buildCSPPolicy(options: CSPInjectorOptions): string {
     hasResourceDomains
       ? `img-src * data: blob: ${rd}`
       : "img-src * data: blob:",
+    hasResourceDomains
+      ? `media-src * data: blob: ${rd}`
+      : "media-src * data: blob:",
     hasResourceDomains ? `font-src data: ${rd}` : "font-src data:",
     hasConnectDomains
       ? `connect-src ${connectDomains.join(" ")}`

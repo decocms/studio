@@ -16,6 +16,7 @@ import { SmartAutoScroll } from "./smart-auto-scroll.tsx";
 import { type DataParts, useFilterParts } from "./use-filter-parts.ts";
 import { addUsage, emptyUsageStats } from "@decocms/mesh-sdk";
 import { useOptionalChatStream } from "../context.tsx";
+import { formatDuration } from "../../../lib/format-time.ts";
 
 type ThinkingStage = "planning" | "thinking";
 
@@ -86,7 +87,7 @@ function LiveTimer({ since }: { since: number }) {
 
   return (
     <span className="tabular-nums text-sm font-mono text-muted-foreground/50">
-      {(elapsed / 1000).toFixed(1)}s
+      {formatDuration(elapsed / 1000)}
     </span>
   );
 }
@@ -164,7 +165,7 @@ function ThoughtSummary({
 
   const thoughtMessage = duration
     ? duration / 1000 > 1
-      ? `Thought for ${(duration / 1000).toFixed(1)}s`
+      ? `Thought for ${formatDuration(duration / 1000)}`
       : "Thought"
     : "Thought";
 

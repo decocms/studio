@@ -12,16 +12,12 @@ import {
   SettingsSidebar,
   SettingsSidebarMobile,
 } from "@/web/layouts/settings-layout";
-import {
-  PanelContextProvider,
-  useChatPanel,
-} from "@/web/contexts/panel-context";
+import { PanelContextProvider } from "@/web/contexts/panel-context";
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
 import RequiredAuthLayout from "@/web/layouts/required-auth-layout";
 import { authClient } from "@/web/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import {
-  type ImperativePanelHandle,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
@@ -51,6 +47,7 @@ import {
   LayoutRight,
 } from "@untitledui/icons";
 import {
+  getDecopilotId,
   getWellKnownDecopilotVirtualMCP,
   ProjectContextProvider,
   SELF_MCP_ALIAS_ID,
@@ -63,11 +60,12 @@ import { PropsWithChildren, Suspense, useTransition } from "react";
 import { KEYS } from "../lib/query-keys";
 import { useOrgSsoStatus } from "../hooks/use-org-sso";
 import { useStatusSounds } from "../hooks/use-status-sounds";
-import { useSound } from "../hooks/use-sound";
-import { question004Sound } from "@deco/ui/lib/question-004.ts";
 import { SsoRequiredScreen } from "../components/sso-required-screen";
 import { VirtualMCPProvider } from "@/web/providers/virtual-mcp-provider";
-import { usePinnedViewLayout } from "@/web/hooks/use-pinned-view-layout";
+import {
+  computeDefaultSizes,
+  useLayoutState,
+} from "@/web/hooks/use-layout-state";
 
 /**
  * This component persists the width of the chat panel across reloads.
@@ -75,45 +73,27 @@ import { usePinnedViewLayout } from "@/web/hooks/use-pinned-view-layout";
  */
 function PersistentResizablePanel({
   children,
-  panelRef,
-  defaultCollapsed,
-  defaultFullWidth,
-  defaultSizeOverride,
-  onCollapse,
-  onExpand,
+  defaultSize,
 }: PropsWithChildren<{
-  panelRef: React.RefObject<ImperativePanelHandle | null>;
-  defaultCollapsed: boolean;
-  defaultFullWidth?: boolean;
-  defaultSizeOverride?: number;
-  onCollapse: () => void;
-  onExpand: () => void;
+  defaultSize: number;
 }>) {
   const [_isPending, startTransition] = useTransition();
-  const [chatPanelWidth, setChatPanelWidth] = useLocalStorage(
+  const [, setChatPanelWidth] = useLocalStorage(
     LOCALSTORAGE_KEYS.decoChatPanelWidth(),
     25,
   );
 
   const handleResize = (size: number) =>
     startTransition(() => {
-      if (size > 0 && !defaultFullWidth) setChatPanelWidth(size);
+      if (size > 0) setChatPanelWidth(size);
     });
-
-  const savedWidth = Math.min(chatPanelWidth, 35);
-  const defaultSize =
-    defaultSizeOverride ??
-    (defaultCollapsed ? 0 : defaultFullWidth ? 100 : savedWidth);
 
   return (
     <ResizablePanel
-      ref={panelRef}
       defaultSize={defaultSize}
       minSize={20}
       collapsible={true}
       collapsedSize={0}
-      onCollapse={onCollapse}
-      onExpand={onExpand}
       className="min-w-0 overflow-hidden bg-sidebar"
       onResize={handleResize}
       order={3}
@@ -128,25 +108,16 @@ function PersistentResizablePanel({
  */
 function TasksResizablePanel({
   children,
-  panelRef,
-  defaultCollapsed,
-  onCollapse,
-  onExpand,
+  defaultSize,
 }: PropsWithChildren<{
-  panelRef: React.RefObject<ImperativePanelHandle | null>;
-  defaultCollapsed: boolean;
-  onCollapse?: () => void;
-  onExpand?: () => void;
+  defaultSize: number;
 }>) {
   return (
     <ResizablePanel
-      ref={panelRef}
-      defaultSize={defaultCollapsed ? 0 : 22}
+      defaultSize={defaultSize}
       minSize={22}
       collapsible={true}
       collapsedSize={0}
-      onCollapse={onCollapse}
-      onExpand={onExpand}
       className="min-w-0 overflow-hidden bg-sidebar"
       order={1}
     >
@@ -278,21 +249,17 @@ function ActiveTaskBoundary({
 }
 
 /**
- * Bridges createTask from inside Chat.Provider to the toolbar ref
- * so the ⇧⌘S shortcut and sidebar button can create tasks.
+ * Bridges createNewTask to the toolbar ref so the ⇧⌘S shortcut can create tasks.
  */
 function NewTaskBridge({
   onNewTaskRef,
+  createNewTask,
 }: {
   onNewTaskRef: React.MutableRefObject<(() => void) | null>;
+  createNewTask: () => void;
 }) {
-  const { createTask } = useChatTask();
-  const [chatOpen, setChatOpen] = useChatPanel();
   useLayoutEffect(() => {
-    onNewTaskRef.current = () => {
-      createTask();
-      if (!chatOpen) setChatOpen(true);
-    };
+    onNewTaskRef.current = createNewTask;
     return () => {
       onNewTaskRef.current = null;
     };
@@ -301,160 +268,107 @@ function NewTaskBridge({
 }
 
 /**
- * Resolves whether the main panel should render based on ?main param and entity's defaultMainView.
- * Keyed by virtualMcpId so the entire panel group remounts per agent with correct layout.
+ * Unified 3-panel layout for both org home and agent routes.
+ * Panel sizes and visibility are driven by useLayoutState (URL querystring).
+ * Keyed by virtualMcpId + panel open/closed state so the panel group remounts
+ * with correct deterministic sizes when any panel is toggled.
  */
-function AgentPanelGroup({
-  agentVirtualMcpId,
-  isAgentRoute,
-  isOrgHome,
-  showThreePanels,
+function UnifiedPanelGroup({
+  virtualMcpId,
+  isDecopilot,
   tasksVirtualMcpId,
-  tasksPanelRef,
-  mainPanelRef,
-  chatPanelRef,
-  setTasksOpen,
-  setMainOpen,
-  setChatOpen,
+  tasksOpen,
+  mainOpen,
+  chatOpen,
 }: {
-  agentVirtualMcpId: string | undefined;
-  isAgentRoute: boolean;
-  isOrgHome: boolean;
-  showThreePanels: boolean;
-  tasksVirtualMcpId: string | undefined;
-  tasksPanelRef: React.RefObject<ImperativePanelHandle | null>;
-  mainPanelRef: React.RefObject<ImperativePanelHandle | null>;
-  chatPanelRef: React.RefObject<ImperativePanelHandle | null>;
-  setTasksOpen: (open: boolean) => void;
-  setMainOpen: (open: boolean) => void;
-  setChatOpen: (open: boolean) => void;
+  virtualMcpId: string;
+  isDecopilot: boolean;
+  tasksVirtualMcpId: string;
+  tasksOpen: boolean;
+  mainOpen: boolean;
+  chatOpen: boolean;
 }) {
-  const { chatDefaultCollapsed, mainDefaultCollapsed } = usePinnedViewLayout(
-    agentVirtualMcpId,
-    isAgentRoute,
-  );
+  const sizes = computeDefaultSizes({ tasksOpen, mainOpen, chatOpen });
+
   return (
     <ResizablePanelGroup
-      key={`${agentVirtualMcpId ?? "none"}-${mainDefaultCollapsed}-${chatDefaultCollapsed}`}
+      key={`${virtualMcpId}-${tasksOpen}-${mainOpen}-${chatOpen}`}
       direction="horizontal"
       className="flex-1 min-h-0 pb-1 pr-1 pl-0 pt-0"
       style={{ overflow: "visible" }}
     >
-      {showThreePanels && (
-        <>
-          <TasksResizablePanel
-            panelRef={tasksPanelRef}
-            defaultCollapsed={!isAgentRoute}
-            onCollapse={() => setTasksOpen(false)}
-            onExpand={() => setTasksOpen(true)}
-          >
-            <div className="h-full p-0.5 overflow-hidden">
-              <div className="h-full bg-background rounded-[0.75rem] overflow-hidden border border-sidebar-border shadow-sm">
-                <TasksSidePanel
-                  virtualMcpId={tasksVirtualMcpId}
-                  hideProjectHeader={isOrgHome}
-                  showAutomations={!isOrgHome}
-                />
-              </div>
-            </div>
-          </TasksResizablePanel>
-          <ResizableHandle className="bg-sidebar" />
-        </>
-      )}
-
-      {!isOrgHome && (
-        <ResizablePanel
-          ref={mainPanelRef}
-          className="min-w-0 flex flex-col"
-          order={2}
-          defaultSize={mainDefaultCollapsed ? 0 : undefined}
-          style={{ overflow: "visible" }}
-          collapsible={isAgentRoute}
-          collapsedSize={0}
-          minSize={isAgentRoute ? 20 : undefined}
-          onCollapse={() => setMainOpen(false)}
-          onExpand={() => setMainOpen(true)}
-        >
-          <div className="h-full p-0.5 overflow-hidden">
-            <div
-              className={cn(
-                "flex flex-col h-full min-h-0 bg-card overflow-hidden",
-                "border border-sidebar-border shadow-sm",
-                "transition-[border-radius] duration-200 ease-[var(--ease-out-quart)]",
-                "rounded-[0.75rem]",
-              )}
-            >
-              <Suspense
-                fallback={
-                  <div className="flex-1 flex items-center justify-center">
-                    <Loading01
-                      size={20}
-                      className="animate-spin text-muted-foreground"
-                    />
-                  </div>
-                }
-              >
-                <div className="flex-1 overflow-hidden rounded-[inherit]">
-                  <Outlet />
-                </div>
-              </Suspense>
-            </div>
+      <TasksResizablePanel defaultSize={sizes.tasks}>
+        <div className="h-full p-0.5 overflow-hidden">
+          <div className="h-full bg-background rounded-[0.75rem] overflow-hidden border border-sidebar-border shadow-sm">
+            <TasksSidePanel
+              virtualMcpId={tasksVirtualMcpId}
+              hideProjectHeader={isDecopilot}
+              showAutomations={!isDecopilot}
+            />
           </div>
-        </ResizablePanel>
-      )}
+        </div>
+      </TasksResizablePanel>
+      <ResizableHandle className="bg-sidebar" />
 
-      {showThreePanels && (
-        <>
-          {!isOrgHome && <ResizableHandle className="bg-sidebar" />}
-          <PersistentResizablePanel
-            key={
-              isOrgHome
-                ? "chat-home"
-                : mainDefaultCollapsed
-                  ? "chat-no-main"
-                  : chatDefaultCollapsed
-                    ? "chat-hidden"
-                    : "chat-default"
-            }
-            panelRef={chatPanelRef}
-            defaultCollapsed={chatDefaultCollapsed}
-            defaultFullWidth={isOrgHome}
-            defaultSizeOverride={mainDefaultCollapsed ? 78 : undefined}
-            onCollapse={() => setChatOpen(false)}
-            onExpand={() => setChatOpen(true)}
+      <ResizablePanel
+        className="min-w-0 flex flex-col"
+        order={2}
+        defaultSize={sizes.main}
+        style={{ overflow: "visible" }}
+        collapsible={true}
+        collapsedSize={0}
+        minSize={20}
+      >
+        <div className="h-full p-0.5 overflow-hidden">
+          <div
+            className={cn(
+              "flex flex-col h-full min-h-0 bg-card overflow-hidden",
+              "border border-sidebar-border shadow-sm",
+              "transition-[border-radius] duration-200 ease-[var(--ease-out-quart)]",
+              "rounded-[0.75rem]",
+            )}
           >
-            <div className="h-full p-0.5">
-              <div className="h-full bg-background rounded-[0.75rem] overflow-hidden border border-sidebar-border shadow-sm">
-                <ActiveTaskBoundary variant={isOrgHome ? "home" : undefined} />
+            <Suspense
+              fallback={
+                <div className="flex-1 flex items-center justify-center">
+                  <Loading01
+                    size={20}
+                    className="animate-spin text-muted-foreground"
+                  />
+                </div>
+              }
+            >
+              <div className="flex flex-1 items-center overflow-hidden rounded-[inherit]">
+                <Outlet />
               </div>
-            </div>
-          </PersistentResizablePanel>
-        </>
-      )}
+            </Suspense>
+          </div>
+        </div>
+      </ResizablePanel>
+
+      <ResizableHandle className="bg-sidebar" />
+      <PersistentResizablePanel defaultSize={sizes.chat}>
+        <div className="h-full p-0.5">
+          <div className="h-full bg-background rounded-[0.75rem] overflow-hidden border border-sidebar-border shadow-sm">
+            <ActiveTaskBoundary variant={isDecopilot ? "home" : undefined} />
+          </div>
+        </div>
+      </PersistentResizablePanel>
     </ResizablePanelGroup>
   );
 }
 
 function MobileAgentContent({
-  agentVirtualMcpId,
-  isAgentRoute,
-  isOrgHome,
+  isDecopilot,
+  mainOpen,
 }: {
-  agentVirtualMcpId: string | undefined;
-  isAgentRoute: boolean;
-  isOrgHome: boolean;
+  isDecopilot: boolean;
+  mainOpen: boolean;
 }) {
-  const { mainDefaultCollapsed } = usePinnedViewLayout(
-    agentVirtualMcpId,
-    isAgentRoute,
-  );
-
   return (
     <div className="flex-1 min-h-0 overflow-hidden">
-      {isOrgHome ? (
-        <ActiveTaskBoundary variant="home" />
-      ) : mainDefaultCollapsed ? (
-        <ActiveTaskBoundary />
+      {isDecopilot || !mainOpen ? (
+        <ActiveTaskBoundary variant={isDecopilot ? "home" : undefined} />
       ) : (
         <Outlet />
       )}
@@ -462,23 +376,15 @@ function MobileAgentContent({
   );
 }
 
-function ShellLayoutInner({
-  isAgentRoute,
-  isOrgHome,
-  isSettingsRoute,
-}: {
-  isAgentRoute: boolean;
-  isOrgHome: boolean;
-  isSettingsRoute: boolean;
-}) {
-  const [chatOpen, setChatOpen] = useState(true);
-  const [tasksOpen, setTasksOpen] = useState(false);
-  const [mainOpen, setMainOpen] = useState(true);
+function ShellLayoutInner({ isSettingsRoute }: { isSettingsRoute: boolean }) {
   const isMobile = useIsMobile();
   const { org } = useProjectContext();
 
   // Org-wide SSE sound notifications
   useStatusSounds(org.id);
+
+  // Layout state from URL querystring
+  const layout = useLayoutState();
 
   // Extract virtualMcpId from route for agent context
   const agentsMatch = useMatch({
@@ -486,59 +392,19 @@ function ShellLayoutInner({
     shouldThrow: false,
   });
   const agentVirtualMcpId = agentsMatch?.params.virtualMcpId;
+  const isAgentRoute = !!agentsMatch && !isSettingsRoute;
 
+  // Determine the effective virtualMcpId (agent or decopilot)
+  const virtualMcpId =
+    agentVirtualMcpId ?? getWellKnownDecopilotVirtualMCP(org.id).id;
+  const isDecopilot = virtualMcpId === getDecopilotId(org.id);
+
+  // Org home or agent route → show 3-panel layout
+  const isOrgHome = !agentVirtualMcpId && !isSettingsRoute;
   const showThreePanels = isAgentRoute || isOrgHome;
 
-  // Compute virtualMcpId for the tasks panel:
-  //   - org home → decopilot agent
-  //   - agent route → the current agent
-  //   - other routes → undefined (global tasks view)
-  const tasksVirtualMcpId = isOrgHome
-    ? getWellKnownDecopilotVirtualMCP(org.id).id
-    : agentVirtualMcpId;
-
-  const chatPanelRef = useRef<ImperativePanelHandle>(null);
-  const tasksPanelRef = useRef<ImperativePanelHandle>(null);
-  const mainPanelRef = useRef<ImperativePanelHandle>(null);
-  const [chatPanelWidth] = useLocalStorage(
-    LOCALSTORAGE_KEYS.decoChatPanelWidth(),
-    25,
-  );
-
-  // --- Toggle handlers with all-panels-collapsed guard ---
-  // Use imperative panel API to resize panels directly.
-  // The onCollapse/onExpand callbacks on each panel sync the open state back.
-
-  const playSwitchSound = useSound(question004Sound);
-  const expandedCount = [tasksOpen, mainOpen, chatOpen].filter(Boolean).length;
-
-  const toggleTasks = () => {
-    if (tasksOpen && expandedCount <= 1) return;
-    playSwitchSound();
-    if (tasksOpen) {
-      tasksPanelRef.current?.collapse();
-    } else {
-      tasksPanelRef.current?.expand();
-    }
-  };
-  const toggleMain = () => {
-    if (mainOpen && expandedCount <= 1) return;
-    playSwitchSound();
-    if (mainOpen) {
-      mainPanelRef.current?.collapse();
-    } else {
-      mainPanelRef.current?.expand();
-    }
-  };
-  const toggleChat = () => {
-    if (chatOpen && expandedCount <= 1) return;
-    playSwitchSound();
-    if (chatOpen) {
-      chatPanelRef.current?.collapse();
-    } else {
-      chatPanelRef.current?.resize(Math.min(chatPanelWidth, 35));
-    }
-  };
+  // Tasks panel virtualMcpId
+  const tasksVirtualMcpId = virtualMcpId;
 
   const { setOpenMobile, openMobile: mobileSidebarOpen } = useSidebar();
   const setMobileSidebarOpen = setOpenMobile;
@@ -558,23 +424,29 @@ function ShellLayoutInner({
   }, []);
 
   const panelControls = {
-    chatOpen,
-    tasksOpen,
-    mainOpen,
-    chatPanelRef,
-    tasksPanelRef,
-    mainPanelRef,
-    chatPanelWidth,
+    chatOpen: layout.chatOpen,
+    tasksOpen: layout.tasksOpen,
+    mainOpen: layout.mainOpen,
     onNewTask,
+    setChatOpen: (open: boolean) => {
+      if (open) layout.openChat();
+      else layout.toggleChat();
+    },
+    setTasksOpen: (open: boolean) => {
+      if (open && !layout.tasksOpen) layout.toggleTasks();
+      else if (!open && layout.tasksOpen) layout.toggleTasks();
+    },
+    setTaskId: layout.setTaskId,
+    createNewTask: layout.createNewTask,
+    openMainView: layout.openMainView,
+    closeMainView: layout.closeMainView,
   };
 
-  // Compute Chat.Provider virtualMcpId
-  const chatVirtualMcpId =
-    agentVirtualMcpId ?? getWellKnownDecopilotVirtualMCP(org.id).id;
+  // Chat.Provider virtualMcpId
+  const chatVirtualMcpId = virtualMcpId;
 
-  // On org home, provide the decopilot ID so VirtualMCPProvider is available
-  const providerVirtualMcpId =
-    agentVirtualMcpId ?? (isOrgHome ? chatVirtualMcpId : undefined);
+  // VirtualMCPProvider scope: agent routes and org home (decopilot)
+  const providerVirtualMcpId = showThreePanels ? virtualMcpId : undefined;
 
   // --- Mobile layout: full-screen with hamburger toolbar ---
   if (isMobile) {
@@ -605,8 +477,8 @@ function ShellLayoutInner({
               <div className="flex-1 min-w-0 overflow-hidden">
                 <TasksSidePanel
                   virtualMcpId={showThreePanels ? tasksVirtualMcpId : undefined}
-                  hideProjectHeader={isOrgHome}
-                  showAutomations={!isOrgHome}
+                  hideProjectHeader={isDecopilot}
+                  showAutomations={!isDecopilot}
                 />
               </div>
             </div>
@@ -624,14 +496,16 @@ function ShellLayoutInner({
                 key={chatVirtualMcpId}
                 virtualMcpId={chatVirtualMcpId}
               >
-                <NewTaskBridge onNewTaskRef={onNewTask} />
+                <NewTaskBridge
+                  onNewTaskRef={onNewTask}
+                  createNewTask={layout.createNewTask}
+                />
                 <MobileToolbar
                   onOpenSidebar={() => setMobileSidebarOpen(true)}
                 />
                 <MobileAgentContent
-                  agentVirtualMcpId={agentVirtualMcpId}
-                  isAgentRoute={isAgentRoute}
-                  isOrgHome={isOrgHome}
+                  isDecopilot={isDecopilot}
+                  mainOpen={layout.mainOpen}
                 />
                 {mobileSidebarSheet}
               </Chat.Provider>
@@ -728,11 +602,11 @@ function ShellLayoutInner({
                   <div className="mx-1 h-4 w-px bg-sidebar-foreground/20" />
                   <button
                     type="button"
-                    onClick={toggleTasks}
-                    aria-pressed={tasksOpen}
+                    onClick={layout.toggleTasks}
+                    aria-pressed={layout.tasksOpen}
                     className={cn(
                       "flex size-7 shrink-0 items-center justify-center rounded-md transition-colors",
-                      tasksOpen
+                      layout.tasksOpen
                         ? "bg-sidebar-accent text-sidebar-foreground"
                         : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground",
                     )}
@@ -742,16 +616,13 @@ function ShellLayoutInner({
                   </button>
                   <button
                     type="button"
-                    onClick={toggleMain}
-                    aria-pressed={mainOpen}
-                    disabled={isOrgHome}
+                    onClick={layout.toggleMain}
+                    aria-pressed={layout.mainOpen}
                     className={cn(
                       "flex size-7 items-center justify-center rounded-md transition-colors",
-                      isOrgHome
-                        ? "text-sidebar-foreground/30 cursor-not-allowed"
-                        : mainOpen
-                          ? "bg-sidebar-accent text-sidebar-foreground"
-                          : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground",
+                      layout.mainOpen
+                        ? "bg-sidebar-accent text-sidebar-foreground"
+                        : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground",
                     )}
                     title="Toggle content"
                   >
@@ -759,11 +630,11 @@ function ShellLayoutInner({
                   </button>
                   <button
                     type="button"
-                    onClick={toggleChat}
-                    aria-pressed={chatOpen}
+                    onClick={layout.toggleChat}
+                    aria-pressed={layout.chatOpen}
                     className={cn(
                       "flex size-7 items-center justify-center rounded-md transition-colors",
-                      chatOpen
+                      layout.chatOpen
                         ? "bg-sidebar-accent text-sidebar-foreground"
                         : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground",
                     )}
@@ -791,20 +662,45 @@ function ShellLayoutInner({
                 key={chatVirtualMcpId}
                 virtualMcpId={chatVirtualMcpId}
               >
-                <NewTaskBridge onNewTaskRef={onNewTask} />
-                <AgentPanelGroup
-                  agentVirtualMcpId={agentVirtualMcpId}
-                  isAgentRoute={isAgentRoute}
-                  isOrgHome={isOrgHome}
-                  showThreePanels={showThreePanels}
-                  tasksVirtualMcpId={tasksVirtualMcpId}
-                  tasksPanelRef={tasksPanelRef}
-                  mainPanelRef={mainPanelRef}
-                  chatPanelRef={chatPanelRef}
-                  setTasksOpen={setTasksOpen}
-                  setMainOpen={setMainOpen}
-                  setChatOpen={setChatOpen}
+                <NewTaskBridge
+                  onNewTaskRef={onNewTask}
+                  createNewTask={layout.createNewTask}
                 />
+                {showThreePanels ? (
+                  <UnifiedPanelGroup
+                    virtualMcpId={virtualMcpId}
+                    isDecopilot={isDecopilot}
+                    tasksVirtualMcpId={tasksVirtualMcpId}
+                    tasksOpen={layout.tasksOpen}
+                    mainOpen={layout.mainOpen}
+                    chatOpen={layout.chatOpen}
+                  />
+                ) : (
+                  <div className="flex-1 min-h-0 p-0.5 pb-1 pr-1">
+                    <div
+                      className={cn(
+                        "flex flex-col h-full min-h-0 bg-card overflow-hidden",
+                        "border border-sidebar-border shadow-sm",
+                        "rounded-[0.75rem]",
+                      )}
+                    >
+                      <Suspense
+                        fallback={
+                          <div className="flex-1 flex items-center justify-center">
+                            <Loading01
+                              size={20}
+                              className="animate-spin text-muted-foreground"
+                            />
+                          </div>
+                        }
+                      >
+                        <div className="flex flex-1 items-center overflow-hidden rounded-[inherit]">
+                          <Outlet />
+                        </div>
+                      </Suspense>
+                    </div>
+                  </div>
+                )}
               </Chat.Provider>
             </VirtualMCPScope>
           </Suspense>
@@ -818,10 +714,6 @@ function ShellLayoutContent() {
   const orgMatch = useMatch({ from: "/shell/$org", shouldThrow: false });
   const org = orgMatch?.params.org;
   const routerState = useRouterState();
-  const agentsMatch = useMatch({
-    from: "/shell/$org/$virtualMcpId",
-    shouldThrow: false,
-  });
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — subscribes to document keydown for ⌘K shortcuts dialog; DOM event listener has no React 19 alternative
@@ -835,15 +727,6 @@ function ShellLayoutContent() {
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
   }, []);
-
-  // Check if we're on an agent route (/$org/$virtualMcpId) but not settings
-  const isAgentRoute =
-    !!agentsMatch && !routerState.location.pathname.includes("/settings");
-
-  // Check if we're on the org home route (/$org or /$org/)
-  const isOrgHome =
-    routerState.location.pathname === `/${org}` ||
-    routerState.location.pathname === `/${org}/`;
 
   // Check if we're on settings routes (/$org/settings/*)
   const isSettingsRoute = routerState.location.pathname.startsWith(
@@ -895,11 +778,7 @@ function ShellLayoutContent() {
     <ShellProjectProvider org={{ ...activeOrg, logo: activeOrg.logo ?? null }}>
       <PersistentSidebarProvider defaultOpen={isSettingsRoute}>
         <div className="flex flex-col h-dvh overflow-hidden">
-          <ShellLayoutInner
-            isAgentRoute={isAgentRoute}
-            isOrgHome={isOrgHome}
-            isSettingsRoute={isSettingsRoute}
-          />
+          <ShellLayoutInner isSettingsRoute={isSettingsRoute} />
         </div>
       </PersistentSidebarProvider>
 

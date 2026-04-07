@@ -44,36 +44,27 @@ export function useChatNavigation(): ChatNavigation {
     taskId: string,
     opts?: { virtualMcpOverride?: string },
   ) => {
-    if (agentsMatch) {
-      navigate({
-        to: "/$org/$virtualMcpId/",
-        params: {
-          org: org.slug,
-          virtualMcpId,
-        },
-        search: (prev: Record<string, unknown>) => {
-          const next: Record<string, unknown> = { ...prev, taskId };
-          if (opts?.virtualMcpOverride) {
-            next.virtualMcpOverride = opts.virtualMcpOverride;
-          } else {
-            delete next.virtualMcpOverride;
-          }
-          return next;
-        },
-      });
-    } else {
-      navigate({
-        search: (prev: Record<string, unknown>) => {
-          const next: Record<string, unknown> = { ...prev, taskId };
-          if (opts?.virtualMcpOverride) {
-            next.virtualMcpOverride = opts.virtualMcpOverride;
-          } else {
-            delete next.virtualMcpOverride;
-          }
-          return next;
-        },
-      } as never);
-    }
+    // Reset all panel state — only preserve taskId + tasks panel visibility.
+    // This ensures panel layout defaults kick in for the new task.
+    const routeBase = agentsMatch
+      ? ("/$org/$virtualMcpId/" as const)
+      : ("/$org/" as const);
+    const params = agentsMatch
+      ? { org: org.slug, virtualMcpId }
+      : { org: org.slug };
+
+    navigate({
+      to: routeBase,
+      params,
+      search: (prev: Record<string, unknown>) => {
+        const next: Record<string, unknown> = { taskId };
+        if (prev.tasks) next.tasks = prev.tasks;
+        if (opts?.virtualMcpOverride) {
+          next.virtualMcpOverride = opts.virtualMcpOverride;
+        }
+        return next;
+      },
+    });
   };
 
   const setVirtualMcpOverride = (id: string | null) => {

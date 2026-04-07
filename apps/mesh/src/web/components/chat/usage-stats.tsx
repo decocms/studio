@@ -7,6 +7,7 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { Activity } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
 import type { UsageStats as UsageStatsType } from "@/web/lib/usage-utils.ts";
+import { formatDuration } from "@/web/lib/format-time.ts";
 
 const RING_SIZE = 16;
 const RING_STROKE = 2.5;
@@ -73,21 +74,21 @@ export function MessageStatsBar({ usage, duration }: MessageStatsBarProps) {
 
   if (!hasDuration && !hasCost && !hasTokens) return null;
 
-  const durationSecs = hasDuration ? (duration! / 1000).toFixed(1) : null;
+  const durationLabel = hasDuration ? formatDuration(duration! / 1000) : null;
 
   return (
     <div className="flex items-center gap-1.5 shrink-0">
-      {durationSecs && (
+      {durationLabel && (
         <Tooltip>
           <TooltipTrigger asChild>
             <span className="tabular-nums text-sm font-mono text-muted-foreground cursor-default [@media(hover:hover)]:hover:text-foreground transition-colors select-none">
-              {durationSecs}s
+              {durationLabel}
             </span>
           </TooltipTrigger>
           <TooltipContent side="top" className="font-mono text-[11px]">
             <p className="opacity-60 text-[10px] mb-1">thinking</p>
             <span className="tabular-nums">
-              {(duration! / 1000).toFixed(2)}s
+              {formatDuration(duration! / 1000)}
             </span>
             {(usage?.reasoningTokens ?? 0) > 0 && (
               <span className="ml-2 opacity-50">

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { subSeconds } from "date-fns";
-import { formatTimeAgo } from "./format-time";
+import { formatDuration, formatTimeAgo } from "./format-time";
 
 describe("formatTimeAgo", () => {
   test("returns <1m for dates less than 60 seconds ago", () => {
@@ -48,5 +48,25 @@ describe("formatTimeAgo", () => {
     const now = new Date();
     expect(formatTimeAgo(subSeconds(now, 31536000))).toBe("1y ago");
     expect(formatTimeAgo(subSeconds(now, 63072000))).toBe("2y ago");
+  });
+});
+
+describe("formatDuration", () => {
+  test("formats seconds under 60", () => {
+    expect(formatDuration(0)).toBe("0.0s");
+    expect(formatDuration(1.23)).toBe("1.2s");
+    expect(formatDuration(59.9)).toBe("59.9s");
+  });
+
+  test("formats minutes and seconds at 60+", () => {
+    expect(formatDuration(60)).toBe("1m 0.0s");
+    expect(formatDuration(61.5)).toBe("1m 1.5s");
+    expect(formatDuration(125.7)).toBe("2m 5.7s");
+    expect(formatDuration(3661)).toBe("61m 1.0s");
+  });
+
+  test("does not produce 60.0s at minute boundaries", () => {
+    expect(formatDuration(119.95)).toBe("2m 0.0s");
+    expect(formatDuration(179.96)).toBe("3m 0.0s");
   });
 });

@@ -6,6 +6,10 @@
  */
 
 import { useChatTask } from "@/web/components/chat/context";
+import {
+  useMainViewActions,
+  useTaskActions,
+} from "@/web/contexts/panel-context";
 import { useVirtualMCPURLContext } from "@/web/contexts/virtual-mcp-context";
 import { formatTimeAgo, formatTimeUntil } from "@/web/lib/format-time";
 import {
@@ -296,6 +300,7 @@ function AutomationRow({
 
 function IncomingSection({ virtualMcpId }: { virtualMcpId: string }) {
   const virtualMcpCtx = useVirtualMCPURLContext();
+  const { openMainView } = useMainViewActions();
   const { data: allAutomations } = useAutomationsList(virtualMcpId);
   const createMutation = useAutomationCreate();
   const deleteMutation = useAutomationDelete();
@@ -313,9 +318,9 @@ function IncomingSection({ virtualMcpId }: { virtualMcpId: string }) {
 
   const navigateToAutomation = (automationId?: string) => {
     if (automationId) {
-      virtualMcpCtx?.openMainView("automation", { id: automationId });
+      openMainView("automation", { id: automationId });
     } else {
-      virtualMcpCtx?.openMainView("default");
+      openMainView("default");
     }
   };
 
@@ -339,7 +344,7 @@ function IncomingSection({ virtualMcpId }: { virtualMcpId: string }) {
         currentView?.type === "automation" &&
         currentView.id === deleteTarget.id
       ) {
-        virtualMcpCtx?.openMainView("default");
+        openMainView("default");
       }
     } catch {
       // silently fail
@@ -441,7 +446,8 @@ export function TaskListContent({
   virtualMcpId,
   showAutomations = true,
 }: TaskListContentProps) {
-  const { openTask, ownerFilter } = useChatTask();
+  const { ownerFilter } = useChatTask();
+  const { setTaskId } = useTaskActions();
 
   // Read taskId directly from router (seeded by validateSearch)
   const search = useSearch({ strict: false }) as { taskId?: string };
@@ -468,7 +474,7 @@ export function TaskListContent({
     if (onTaskSelect) {
       onTaskSelect(task.id);
     } else {
-      openTask(task.id);
+      setTaskId(task.id);
     }
   };
 

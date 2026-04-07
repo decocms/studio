@@ -169,6 +169,11 @@ export const KEYS = {
   threadModelLogs: (locator: string, dateKey: string) =>
     ["threads", "model-logs", locator, dateKey] as const,
 
+  // Virtual MCP tools (for tool definition lookup in chat)
+  // null virtualMcpId means default virtual MCP
+  virtualMcpTools: (virtualMcpId: string | null, orgId: string) =>
+    ["virtual-mcp", orgId, virtualMcpId ?? "default", "tools"] as const,
+
   // Virtual MCP prompts (for ice breakers in chat)
   // null virtualMcpId means default virtual MCP
   virtualMcpPrompts: (virtualMcpId: string | null, orgId: string) =>

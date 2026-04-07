@@ -14,7 +14,8 @@ import {
   usePreferences,
   type ToolApprovalLevel,
 } from "@/web/hooks/use-preferences.ts";
-import { getFriendlyToolName } from "../message/parts/tool-call-part/utils.tsx";
+import { toTitleCase } from "../message/parts/tool-call-part/utils.tsx";
+import { stripMcpServerPrefix } from "@/web/lib/tool-namespace";
 import { HighlightCard, Pagination } from "./card";
 
 // ============================================================================
@@ -279,7 +280,7 @@ export function extractPendingApprovals(
         approvalId: part.approval.id,
         toolCallId: part.toolCallId,
         toolName,
-        friendlyName: getFriendlyToolName(toolName),
+        friendlyName: toTitleCase(stripMcpServerPrefix(toolName)),
         input: part.input,
       });
     }

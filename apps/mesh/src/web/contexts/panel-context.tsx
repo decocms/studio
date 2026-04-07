@@ -1,15 +1,19 @@
 import { createContext, useContext } from "react";
-import type { ImperativePanelHandle } from "@deco/ui/components/resizable.tsx";
 
 export interface PanelControls {
   chatOpen: boolean;
   tasksOpen: boolean;
   mainOpen: boolean;
-  chatPanelRef: React.RefObject<ImperativePanelHandle | null>;
-  tasksPanelRef: React.RefObject<ImperativePanelHandle | null>;
-  mainPanelRef: React.RefObject<ImperativePanelHandle | null>;
-  chatPanelWidth: number;
   onNewTask: React.MutableRefObject<(() => void) | null>;
+  setChatOpen: (open: boolean) => void;
+  setTasksOpen: (open: boolean) => void;
+  setTaskId: (taskId: string) => void;
+  createNewTask: () => void;
+  openMainView: (
+    view: string,
+    opts?: { id?: string; toolName?: string },
+  ) => void;
+  closeMainView: () => void;
 }
 
 export const PanelContext = createContext<PanelControls | null>(null);
@@ -27,27 +31,21 @@ function usePanelContext() {
 }
 
 export function useChatPanel() {
-  const { chatOpen, chatPanelRef, chatPanelWidth } = usePanelContext();
-  const openChat = () => {
-    console.log(
-      "[useChatPanel] openChat called, resizing chatPanelRef to",
-      Math.min(chatPanelWidth, 35),
-    );
-    chatPanelRef.current?.resize(Math.min(chatPanelWidth, 35));
-  };
-  const closeChat = () => chatPanelRef.current?.collapse();
-  const setChatOpen = (open: boolean) => {
-    if (open) openChat();
-    else closeChat();
-  };
+  const { chatOpen, setChatOpen } = usePanelContext();
   return [chatOpen, setChatOpen] as const;
 }
 
 export function useTasksPanel() {
-  const { tasksOpen, tasksPanelRef } = usePanelContext();
-  const setTasksOpen = (open: boolean) => {
-    if (open) tasksPanelRef.current?.expand();
-    else tasksPanelRef.current?.collapse();
-  };
+  const { tasksOpen, setTasksOpen } = usePanelContext();
   return [tasksOpen, setTasksOpen] as const;
+}
+
+export function useMainViewActions() {
+  const { openMainView, closeMainView } = usePanelContext();
+  return { openMainView, closeMainView };
+}
+
+export function useTaskActions() {
+  const { setTaskId, createNewTask } = usePanelContext();
+  return { setTaskId, createNewTask };
 }

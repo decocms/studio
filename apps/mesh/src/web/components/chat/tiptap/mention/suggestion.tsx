@@ -1,5 +1,9 @@
 "use client";
 
+import {
+  displayToolName,
+  getGatewayClientId,
+} from "@decocms/mcp-utils/aggregate";
 import { Spinner } from "@deco/ui/components/spinner.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
@@ -130,7 +134,8 @@ const MentionItem = <T extends BaseItem>({
   isLoading,
   ref,
 }: MentionItemProps<T>) => {
-  const name = (item.title || item.name).replace(/_/g, " ");
+  const clientId = getGatewayClientId((item as Record<string, unknown>)._meta);
+  const name = item.title || displayToolName(item.name, clientId);
   const description = item.description || null;
 
   return (
@@ -147,7 +152,9 @@ const MentionItem = <T extends BaseItem>({
     >
       <div className="flex flex-col gap-0.5 flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
-          <span className="font-medium flex items-center truncate">{name}</span>
+          <span className="font-medium flex items-center truncate capitalize">
+            {name}
+          </span>
           {isLoading && <Spinner size="xs" />}
         </div>
         {description && (

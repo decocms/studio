@@ -1,6 +1,11 @@
 import { describe, it, expect, mock } from "bun:test";
 import type { IClient } from "../client-like.ts";
-import { GatewayClient, slugify } from "./gateway-client.ts";
+import {
+  GatewayClient,
+  displayToolName,
+  slugify,
+  stripToolNamespace,
+} from "./gateway-client.ts";
 
 function createMockClient(
   tools: { name: string }[] = [],
@@ -64,6 +69,43 @@ describe("slugify", () => {
     expect(slugify("a--b__c")).toBe("a-b-c");
     expect(slugify("---leading-trailing---")).toBe("leading-trailing");
     expect(slugify("simple")).toBe("simple");
+  });
+});
+
+describe("stripToolNamespace", () => {
+  it("strips clientId prefix", () => {
+    expect(stripToolNamespace("my-conn_SOME_TOOL", "my-conn")).toBe(
+      "SOME_TOOL",
+    );
+  });
+
+  it("returns unchanged when no clientId", () => {
+    expect(stripToolNamespace("SOME_TOOL")).toBe("SOME_TOOL");
+  });
+
+  it("returns unchanged when clientId does not match", () => {
+    expect(stripToolNamespace("other_SOME_TOOL", "my-conn")).toBe(
+      "other_SOME_TOOL",
+    );
+  });
+
+  it("strips real connection ID prefix", () => {
+    expect(
+      stripToolNamespace(
+        "conn-dvitqc2ooobdzmrd5ky24_hello_world",
+        "conn-dvitqc2ooobdzmrd5ky24",
+      ),
+    ).toBe("hello_world");
+  });
+});
+
+describe("displayToolName", () => {
+  it("strips clientId prefix and formats for display", () => {
+    expect(displayToolName("my-conn_SOME_TOOL", "my-conn")).toBe("some tool");
+  });
+
+  it("returns formatted name when no clientId", () => {
+    expect(displayToolName("SOME_TOOL")).toBe("some tool");
   });
 });
 

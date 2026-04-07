@@ -1,3 +1,7 @@
+import {
+  getGatewayClientId,
+  stripToolNamespace,
+} from "@decocms/mcp-utils/aggregate";
 import { KEYS } from "@/web/lib/query-keys";
 import {
   getPrompt,
@@ -39,6 +43,7 @@ async function fetchAndInsertPrompt(
   range: Range,
   client: Client,
   promptName: string,
+  clientId: string | undefined,
   values?: PromptArgumentValues,
 ) {
   try {
@@ -46,7 +51,7 @@ async function fetchAndInsertPrompt(
 
     insertMention(editor, range, {
       id: promptName,
-      name: promptName,
+      name: stripToolNamespace(promptName, clientId),
       metadata: result.messages,
       char: "/",
     });
@@ -84,15 +89,23 @@ export const PromptsMention = ({
 
     // No arguments - fetch and insert directly
     if (!client) return;
-    await fetchAndInsertPrompt(editor, range, client, item.name);
+    const clientId = getGatewayClientId(item._meta);
+    await fetchAndInsertPrompt(editor, range, client, item.name, clientId);
   };
 
   const handleDialogSubmit = async (values: PromptArgumentValues) => {
     if (!activePrompt || !client) return;
 
     const { range, item: prompt } = activePrompt;
-
-    await fetchAndInsertPrompt(editor, range, client, prompt.name, values);
+    const clientId = getGatewayClientId(prompt._meta);
+    await fetchAndInsertPrompt(
+      editor,
+      range,
+      client,
+      prompt.name,
+      clientId,
+      values,
+    );
     setActivePrompt(null);
   };
 

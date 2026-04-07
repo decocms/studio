@@ -32,7 +32,7 @@ function PageRoot({
   return (
     <div
       className={cn(
-        "flex flex-col h-full bg-background overflow-hidden",
+        "flex flex-col h-full w-full bg-background overflow-hidden",
         className,
       )}
     >

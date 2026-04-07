@@ -36,13 +36,15 @@ app.post("/connections/:connectionId/oauth-token", async (c) => {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
+  const organizationId = ctx.organization?.id;
+  if (!organizationId) {
+    return c.json({ error: "Organization context required" }, 403);
+  }
+
   // Verify connection exists and user has access
-  // Pass organizationId to ensure the user has access to this connection
-  // Connections are scoped to organizations, and ctx.storage.connections.findById
-  // enforces this check if organizationId is provided.
   const connection = await ctx.storage.connections.findById(
     connectionId,
-    ctx.organization?.id,
+    organizationId,
   );
   if (!connection) {
     return c.json({ error: "Connection not found" }, 404);
@@ -146,6 +148,20 @@ app.delete("/connections/:connectionId/oauth-token", async (c) => {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
+  const organizationId = ctx.organization?.id;
+  if (!organizationId) {
+    return c.json({ error: "Organization context required" }, 403);
+  }
+
+  // Verify connection exists and belongs to the user's organization
+  const connection = await ctx.storage.connections.findById(
+    connectionId,
+    organizationId,
+  );
+  if (!connection) {
+    return c.json({ error: "Connection not found" }, 404);
+  }
+
   const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);
   await tokenStorage.delete(connectionId);
 
@@ -164,6 +180,20 @@ app.get("/connections/:connectionId/oauth-token/status", async (c) => {
   const userId = ctx.auth.user?.id ?? ctx.auth.apiKey?.userId ?? null;
   if (!userId) {
     return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const organizationId = ctx.organization?.id;
+  if (!organizationId) {
+    return c.json({ error: "Organization context required" }, 403);
+  }
+
+  // Verify connection exists and belongs to the user's organization
+  const connection = await ctx.storage.connections.findById(
+    connectionId,
+    organizationId,
+  );
+  if (!connection) {
+    return c.json({ error: "Connection not found" }, 404);
   }
 
   const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);

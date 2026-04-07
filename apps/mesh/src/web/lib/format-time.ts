@@ -22,3 +22,20 @@ export function formatTimeUntil(date: Date): string {
   if (seconds < 604800) return `in ${Math.floor(seconds / 86400)}d`;
   return `in ${Math.floor(seconds / 604800)}w`;
 }
+
+/**
+ * Format a duration in seconds into a human-readable string.
+ * - Under 60s: "12.3s"
+ * - 60s and above: "2m 3.1s"
+ */
+export function formatDuration(seconds: number): string {
+  if (seconds < 60) {
+    return `${seconds.toFixed(1)}s`;
+  }
+  // Round the remainder first to avoid ".toFixed(1)" pushing 59.95 → "60.0"
+  const remainder = Math.round((seconds % 60) * 10) / 10;
+  const carry = remainder >= 60 ? 1 : 0;
+  const mins = Math.floor(seconds / 60) + carry;
+  const secs = carry ? 0 : remainder;
+  return `${mins}m ${secs.toFixed(1)}s`;
+}

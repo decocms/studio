@@ -578,7 +578,7 @@ async function streamCoreInner(
             resolveClaudeCodeModelId(input.models.thinking.id),
             {
               mcpServers: {
-                mesh: {
+                cms: {
                   type: "http",
                   url: mcpUrl,
                   headers: {
@@ -609,7 +609,7 @@ async function streamCoreInner(
             resolveCodexModelId(input.models.thinking.id),
             {
               mcpServers: {
-                mesh: {
+                cms: {
                   transport: "http",
                   url: mcpUrl,
                   headers: {

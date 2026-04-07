@@ -3,6 +3,9 @@
  *
  * The actual provider logic lives in VirtualMCPProvider.
  * This file exports the context, hooks, and types consumed by components.
+ *
+ * Navigation actions (openMainView, openTask) have moved to useLayoutState
+ * and useChatNavigation respectively.
  */
 
 import { createContext, use } from "react";
@@ -28,11 +31,6 @@ export type MainView =
 export interface VirtualMCPContextValue {
   virtualMcpId: string;
   mainView: MainView;
-  openMainView: (
-    main: "default" | MainViewType,
-    opts?: { id?: string; toolName?: string; [key: string]: unknown },
-  ) => void;
-  openTask: (taskId: string) => void;
 }
 
 // ---------------------------------------------------------------------------

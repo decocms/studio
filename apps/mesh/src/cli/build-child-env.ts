@@ -70,6 +70,9 @@ export function buildChildEnv(
     DECO_SUPABASE_URL: settings.decoSupabaseUrl,
     DECO_SUPABASE_SERVICE_KEY: settings.decoSupabaseServiceKey,
 
+    // TLS: propagate custom CA certificates (e.g. RDS CA bundles)
+    NODE_EXTRA_CA_CERTS: process.env.NODE_EXTRA_CA_CERTS,
+
     // Runtime: workers suppress the Ink TUI and ASCII banner
     DECO_CLI: "1",
     DECO_NO_TUI: "true",

@@ -10,7 +10,10 @@
 import { Page } from "@/web/components/page";
 import { getIconComponent, parseIconString } from "../agent-icon";
 
-import { useChatPanel } from "@/web/contexts/panel-context";
+import {
+  useMainViewActions,
+  useTaskActions,
+} from "@/web/contexts/panel-context";
 import { Edit05, LayoutLeft, Loading01, Settings01 } from "@untitledui/icons";
 import { useVirtualMCPActions, useVirtualMCP } from "@decocms/mesh-sdk";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
@@ -18,7 +21,6 @@ import { Suspense, useEffect, useRef, useState, useTransition } from "react";
 import { isMac } from "@/web/lib/keyboard-shortcuts";
 import { ErrorBoundary } from "../error-boundary";
 import { Chat } from "./index";
-import { useChatTask } from "./context";
 import { OwnerFilter, TaskListContent } from "./tasks-panel";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
@@ -107,6 +109,7 @@ function PinnedViewIcon({ icon }: { icon: string | null | undefined }) {
 
 function ProjectViewsSection({ project }: { project: VirtualMCPEntity }) {
   const virtualMcpCtx = useVirtualMCPURLContext();
+  const { openMainView } = useMainViewActions();
 
   const pinnedViews =
     ((project.metadata?.ui as Record<string, unknown> | null | undefined)
@@ -134,8 +137,8 @@ function ProjectViewsSection({ project }: { project: VirtualMCPEntity }) {
           type="button"
           onClick={() =>
             isExtAppActive(view)
-              ? virtualMcpCtx?.openMainView("default")
-              : virtualMcpCtx?.openMainView("ext-apps", {
+              ? openMainView("default")
+              : openMainView("ext-apps", {
                   id: view.connectionId,
                   toolName: view.toolName,
                 })
@@ -265,9 +268,9 @@ function TasksPanelContent({
   hideProjectHeader?: boolean;
   showAutomations?: boolean;
 }) {
-  const [chatOpen, setChatOpen] = useChatPanel();
-  const { createTask, openTask } = useChatTask();
   const virtualMcpCtx = useVirtualMCPURLContext();
+  const { openMainView } = useMainViewActions();
+  const { createNewTask, setTaskId } = useTaskActions();
   const [isPending, startTransition] = useTransition();
   const virtualMcpId = virtualMcpIdProp ?? null;
 
@@ -275,8 +278,7 @@ function TasksPanelContent({
 
   const handleNewTask = () => {
     startTransition(() => {
-      createTask();
-      if (!chatOpen) setChatOpen(true);
+      createNewTask();
     });
   };
 
@@ -313,8 +315,8 @@ function TasksPanelContent({
             type="button"
             onClick={() =>
               isSettingsActive
-                ? virtualMcpCtx.openMainView("default")
-                : virtualMcpCtx.openMainView("settings")
+                ? openMainView("default")
+                : openMainView("settings")
             }
             className={cn(
               navItemClass,
@@ -336,8 +338,7 @@ function TasksPanelContent({
         showAutomations={showAutomations}
         onTaskCreate={handleNewTask}
         onTaskSelect={(taskId) => {
-          openTask(taskId);
-          setChatOpen(true);
+          setTaskId(taskId);
         }}
       />
     </div>

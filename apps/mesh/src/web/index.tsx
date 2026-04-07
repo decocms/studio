@@ -188,7 +188,11 @@ const orgHomeRoute = createRoute({
     view: z.string().optional(),
     main: z.string().optional(),
     id: z.string().optional(),
+    toolName: z.string().optional(),
     virtualMcpOverride: z.string().optional(),
+    tasks: z.number().optional(),
+    mainOpen: z.number().optional(),
+    chat: z.number().optional(),
   }),
   component: lazyRouteComponent(() => import("./routes/orgs/home/page.tsx")),
 });
@@ -419,7 +423,11 @@ const agentHomeRoute = createRoute({
       .transform((v) => v ?? crypto.randomUUID()),
     main: z.string().optional(),
     id: z.string().optional(),
+    toolName: z.string().optional(),
     virtualMcpOverride: z.string().optional(),
+    tasks: z.number().optional(),
+    mainOpen: z.number().optional(),
+    chat: z.number().optional(),
   }),
   component: lazyRouteComponent(() => import("./routes/agent-home.tsx")),
 });

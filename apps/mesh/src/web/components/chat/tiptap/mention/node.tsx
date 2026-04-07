@@ -1,3 +1,4 @@
+import { toTitleCase } from "@/web/components/chat/message/parts/tool-call-part/utils.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { JSONContent, Node } from "@tiptap/core";
 import {
@@ -77,10 +78,11 @@ function MentionNodeView(props: NodeViewProps) {
           ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
           : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
         isSelected && "outline-2 outline-blue-300 outline-offset-0",
+        "capitalize",
       )}
     >
       {char}
-      {name}
+      {name ? toTitleCase(name) : ""}
     </NodeViewWrapper>
   );
 }

@@ -4,10 +4,10 @@
  * Combines:
  * 1. Entity fetch (useVirtualMCP) — Suspense-based
  * 2. ProjectContextProvider override (agent-scoped)
- * 3. VirtualMCPContext (URL-driven mainView, openMainView, openTask)
+ * 3. VirtualMCPContext (URL-driven mainView)
  *
- * Rendered conditionally in ShellLayoutInner — only on agent routes.
- * Chat.Provider sits ABOVE this provider and receives virtualMcpId directly.
+ * Navigation actions (openMainView, openTask) have moved to useLayoutState
+ * and useChatNavigation respectively.
  */
 
 import { Suspense, type ReactNode } from "react";
@@ -45,7 +45,6 @@ function VirtualMCPProviderContent({
   });
 
   const orgSlug = agentsMatch?.params.org ?? orgHomeMatch?.params.org ?? "";
-  const isAgentRoute = !!agentsMatch;
 
   // Fetch entity (Suspense-based — resolved before render)
   const entity = useVirtualMCP(virtualMcpId);
@@ -79,13 +78,10 @@ function VirtualMCPProviderContent({
   }
 
   // --- VirtualMCPContext: URL-driven state ---
-  // Read search params from router state (route-agnostic)
-
   const search = useSearch({ strict: false }) as {
     main?: string;
     id?: string;
     toolName?: string;
-    taskId?: string;
   };
 
   // Derive mainView from URL search params
@@ -104,56 +100,9 @@ function VirtualMCPProviderContent({
     mainView = null;
   }
 
-  // Navigate to the correct route depending on context
-  const routeBase = isAgentRoute
-    ? ("/$org/$virtualMcpId/" as const)
-    : ("/$org/" as const);
-  const params = isAgentRoute
-    ? { org: orgSlug, virtualMcpId }
-    : { org: orgSlug };
-
-  const openTask: VirtualMCPContextValue["openTask"] = (taskId) => {
-    navigate({
-      to: routeBase,
-      params,
-      search: (prev: Record<string, unknown>) => ({ ...prev, taskId }),
-    });
-  };
-
-  const openMainView: VirtualMCPContextValue["openMainView"] = (main, opts) => {
-    if (main === "default") {
-      navigate({
-        to: routeBase,
-        params,
-        search: (prev: Record<string, unknown>) => {
-          // Preserve taskId when resetting main view
-          return prev.taskId ? { taskId: prev.taskId } : {};
-        },
-        replace: true,
-      });
-      return;
-    }
-
-    navigate({
-      to: routeBase,
-      params,
-      search: (prev: Record<string, unknown>) => {
-        const next: Record<string, unknown> = { main };
-        if (opts?.id) next.id = opts.id;
-        if (opts?.toolName) next.toolName = opts.toolName;
-        // Preserve taskId so switching main view doesn't reset the active thread
-        if (prev.taskId) next.taskId = prev.taskId;
-        return next;
-      },
-      replace: true,
-    });
-  };
-
   const virtualMcpContextValue: VirtualMCPContextValue = {
     virtualMcpId,
     mainView,
-    openMainView,
-    openTask,
   };
 
   return (
