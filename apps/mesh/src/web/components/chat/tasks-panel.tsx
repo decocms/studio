@@ -382,22 +382,16 @@ function IncomingSection({ virtualMcpId }: { virtualMcpId: string }) {
       </div>
 
       {/* Automation rows — always visible */}
-      {automations.length > 0 ? (
-        automations.map((automation) => (
-          <AutomationRow
-            key={automation.id}
-            automation={automation}
-            onClick={() => navigateToAutomation(automation.id)}
-            onDelete={() =>
-              setDeleteTarget({ id: automation.id, name: automation.name })
-            }
-          />
-        ))
-      ) : (
-        <div className="mx-2 px-2 py-3 text-xs text-muted-foreground/60">
-          No automations
-        </div>
-      )}
+      {automations.map((automation) => (
+        <AutomationRow
+          key={automation.id}
+          automation={automation}
+          onClick={() => navigateToAutomation(automation.id)}
+          onDelete={() =>
+            setDeleteTarget({ id: automation.id, name: automation.name })
+          }
+        />
+      ))}
 
       <AlertDialog
         open={!!deleteTarget}
@@ -509,20 +503,14 @@ export function TaskListContent({
         </div>
 
         {/* Task rows — always visible */}
-        {visible.length > 0 ? (
-          visible.map((task) => (
-            <TaskRow
-              key={task.id}
-              task={task}
-              isActive={task.id === taskId}
-              onClick={() => handleSelect(task)}
-            />
-          ))
-        ) : (
-          <div className="mx-2 px-2 py-3 text-xs text-muted-foreground/60">
-            No tasks
-          </div>
-        )}
+        {visible.map((task) => (
+          <TaskRow
+            key={task.id}
+            task={task}
+            isActive={task.id === taskId}
+            onClick={() => handleSelect(task)}
+          />
+        ))}
       </div>
     </div>
   );
