@@ -430,12 +430,14 @@ function IncomingSection({ virtualMcpId }: { virtualMcpId: string }) {
 
 interface TaskListContentProps {
   onTaskSelect?: (taskId: string) => void;
+  onTaskCreate?: () => void;
   virtualMcpId?: string | null;
   showAutomations?: boolean;
 }
 
 export function TaskListContent({
   onTaskSelect,
+  onTaskCreate,
   virtualMcpId,
   showAutomations = true,
 }: TaskListContentProps) {
@@ -483,6 +485,21 @@ export function TaskListContent({
           <span className="text-xs font-medium text-muted-foreground/60">
             Tasks
           </span>
+          <span className="flex-1" />
+          {onTaskCreate && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  role="button"
+                  className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground cursor-pointer"
+                  onClick={onTaskCreate}
+                >
+                  <Plus size={16} />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>New task</TooltipContent>
+            </Tooltip>
+          )}
         </div>
 
         {/* Task rows — always visible */}

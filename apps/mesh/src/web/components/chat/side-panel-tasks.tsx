@@ -35,7 +35,7 @@ import { useVirtualMCPURLContext } from "@/web/contexts/virtual-mcp-context";
 // ────────────────────────────────────────
 
 const navItemClass =
-  "flex items-center gap-2.5 mx-2 px-3 h-10 rounded-md text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors w-[calc(100%-1rem)]";
+  "flex items-center gap-2.5 mx-2 px-3 h-10 rounded-md text-sm text-muted-foreground hover:bg-accent hover:text-foreground w-[calc(100%-1rem)]";
 
 function NewTaskButton({
   onClick,
@@ -334,6 +334,7 @@ function TasksPanelContent({
       <TaskListContent
         virtualMcpId={virtualMcpId}
         showAutomations={showAutomations}
+        onTaskCreate={handleNewTask}
         onTaskSelect={(taskId) => {
           openTask(taskId);
           setChatOpen(true);
