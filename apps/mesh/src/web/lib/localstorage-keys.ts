@@ -16,6 +16,8 @@ export const LOCALSTORAGE_KEYS = {
     `mesh:chat:selectedMode:${locator}`,
   chatSelectedKeyId: (locator: ProjectLocator) =>
     `mesh:chat:selectedKeyId:${locator}`,
+  chatSelectedImageModel: (locator: ProjectLocator) =>
+    `mesh:chat:selectedImageModel:${locator}`,
   assistantChatActiveTask: (locator: ProjectLocator) =>
     `mesh:assistant-chat:active-task:${locator}`,
   decoChatPanelWidth: () => `mesh:decochat:panel-width`,

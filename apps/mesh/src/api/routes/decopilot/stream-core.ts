@@ -487,9 +487,24 @@ async function streamCoreInner(
               "</plan-mode>"
             : null;
 
+        // Image generation system prompt injection
+        const imageGenPrompt = input.models.image
+          ? "<image-generation>\n" +
+            "You have image generation enabled. When the user asks you to create, generate, draw, " +
+            "design, or illustrate an image, use the `generate_image` tool.\n\n" +
+            "Write detailed, descriptive prompts for the image model. Include style, composition, " +
+            "colors, lighting, and subject matter details to get the best results.\n\n" +
+            "IMPORTANT: After calling `generate_image`, the image is automatically displayed to the user " +
+            "by the UI. Do NOT include the image URL, data URI, or any markdown image syntax in your " +
+            "text response. Just describe what was generated in plain text.\n\n" +
+            `Image model: ${input.models.image.title ?? input.models.image.id}\n` +
+            "</image-generation>"
+          : null;
+
         const systemPrompts = [
           basePrompt,
           planModePrompt,
+          imageGenPrompt,
           toolCatalog,
           promptCatalog,
           agentPrompt,

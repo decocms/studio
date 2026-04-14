@@ -66,6 +66,7 @@ const ModelsSchema = z
     ),
     coding: ModelInfoSchema.optional().describe("Good coding model"),
     fast: ModelInfoSchema.optional().describe("Cheap model for simple tasks"),
+    image: ModelInfoSchema.optional().describe("Image generation model"),
   })
   .loose();
 

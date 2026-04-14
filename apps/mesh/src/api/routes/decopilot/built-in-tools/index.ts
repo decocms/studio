@@ -17,6 +17,7 @@ import { createOpenInAgentTool } from "./open-in-agent";
 import { createSubtaskTool } from "./subtask";
 import { userAskTool } from "./user-ask";
 import { proposePlanTool } from "./propose-plan";
+import { createGenerateImageTool } from "./generate-image";
 import type { ModelsConfig } from "../types";
 import type { MeshProvider } from "@/ai-providers/types";
 
@@ -102,6 +103,14 @@ function buildAllTools(
       ctx,
     );
   }
+  // generate_image requires a provider and an image model selection
+  if (provider && models.image) {
+    tools.generate_image = createGenerateImageTool({
+      provider,
+      imageModelInfo: models.image,
+      writer,
+    });
+  }
   return tools as {
     user_ask: typeof userAskTool;
     propose_plan: typeof proposePlanTool;
@@ -112,6 +121,7 @@ function buildAllTools(
     read_resource: ReturnType<typeof createReadResourceTool>;
     read_prompt: ReturnType<typeof createReadPromptTool>;
     open_in_agent: ReturnType<typeof createOpenInAgentTool>;
+    generate_image: ReturnType<typeof createGenerateImageTool>;
   };
 }
 

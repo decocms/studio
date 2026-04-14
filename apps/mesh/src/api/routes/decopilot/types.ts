@@ -38,6 +38,11 @@ export type ChatMessage = UIMessage<
     "thread-title": {
       title: string;
     };
+    "generate-image": {
+      toolCallId: string;
+      images: Array<{ base64: string; mediaType: string }>;
+      prompt: string;
+    };
   },
   {
     [K in keyof BuiltInToolSet]: InferUITool<BuiltInToolSet[K]>;
@@ -66,6 +71,7 @@ export interface ModelsConfig {
   thinking: ModelInfo;
   coding?: ModelInfo;
   fast?: ModelInfo;
+  image?: ModelInfo;
 }
 
 // ============================================================================

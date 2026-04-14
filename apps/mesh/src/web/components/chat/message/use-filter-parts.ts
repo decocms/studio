@@ -22,9 +22,15 @@ export interface ToolSubtaskMetadata {
   models: ModelsConfig;
 }
 
+export interface GenerateImageData {
+  images: Array<{ base64: string; mediaType: string }>;
+  prompt: string;
+}
+
 export interface DataParts {
   toolMetadata: Map<string, ToolMetadata>;
   toolSubtaskMetadata: Map<string, ToolSubtaskMetadata>;
+  generateImageData: Map<string, GenerateImageData>;
 }
 
 export interface ReasoningGroup {
@@ -47,6 +53,7 @@ export function useFilterParts(message: ChatMessage | null) {
   const reasoningIndices = new Set<number>();
   const toolMetadata = new Map<string, ToolMetadata>();
   const toolSubtaskMetadata = new Map<string, ToolSubtaskMetadata>();
+  const generateImageData = new Map<string, GenerateImageData>();
 
   if (message) {
     let currentGroup: ReasoningGroup | null = null;
@@ -101,6 +108,15 @@ export function useFilterParts(message: ChatMessage | null) {
           (p as { id: string }).id,
           (p as { data: ToolSubtaskMetadata }).data,
         );
+      }
+
+      if (p.type === "data-generate-image" && "data" in p) {
+        const data = (p as { data: GenerateImageData & { toolCallId: string } })
+          .data;
+        generateImageData.set(data.toolCallId, {
+          images: data.images,
+          prompt: data.prompt,
+        });
       }
     }
   }
@@ -157,6 +173,6 @@ export function useFilterParts(message: ChatMessage | null) {
   return {
     reasoningGroups,
     renderOrder,
-    dataParts: { toolMetadata, toolSubtaskMetadata },
+    dataParts: { toolMetadata, toolSubtaskMetadata, generateImageData },
   };
 }

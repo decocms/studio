@@ -20,6 +20,7 @@ import {
   Check,
   ChevronDown,
   Edit01,
+  Image01,
   Lock01,
   Microphone01,
   Plus,
@@ -314,8 +315,14 @@ export function ChatInput({
   const { messages, isStreaming, isRunInProgress, sendMessage, stop } =
     useChatStream();
   const { taskId, tasks } = useChatTask();
-  const { selectedModel, selectedVirtualMcp, isModelsLoading, tiptapDocRef } =
-    useChatPrefs();
+  const {
+    selectedModel,
+    selectedVirtualMcp,
+    isModelsLoading,
+    tiptapDocRef,
+    imageModel,
+    setImageModel,
+  } = useChatPrefs();
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
 
@@ -641,6 +648,30 @@ export function ChatInput({
                           >
                             <BookOpen01 size={14} className="shrink-0" />
                             Plan mode
+                            <X
+                              size={14}
+                              className="shrink-0 hidden group-hover:block"
+                            />
+                          </button>
+                        )}
+                        {imageModel && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              playSwitchSound();
+                              setImageModel(null);
+                            }}
+                            className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-pink-600 dark:text-pink-400 hover:bg-pink-500/10 group whitespace-nowrap animate-in fade-in duration-200"
+                          >
+                            <Image01 size={14} className="shrink-0" />
+                            <span className="max-w-[120px] truncate">
+                              {imageModel.title.includes(": ")
+                                ? imageModel.title
+                                    .split(": ")
+                                    .slice(1)
+                                    .join(": ")
+                                : imageModel.title}
+                            </span>
                             <X
                               size={14}
                               className="shrink-0 hidden group-hover:block"

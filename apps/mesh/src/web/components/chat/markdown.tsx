@@ -8,6 +8,7 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { Button } from "@deco/ui/components/button.tsx";
 import { markdownComponents as sharedMarkdownComponents } from "@deco/ui/components/markdown.tsx";
 import { Check, Copy01 } from "@untitledui/icons";
+import { ImageLightbox } from "./image-lightbox.tsx";
 // @ts-ignore - correct
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism/index.js";
 
@@ -130,12 +131,26 @@ function Table(props: React.HTMLAttributes<HTMLTableElement>) {
 const remarkPluginsMemo = [remarkGfm];
 const rehypePluginsMemo = [rehypeRaw];
 
-// Extend shared markdown components with chat-specific overrides (table with CSV copy)
+// Extend shared markdown components with chat-specific overrides (table with CSV copy, image lightbox)
 const markdownComponents = {
   ...sharedMarkdownComponents,
   table: (props: React.HTMLAttributes<HTMLTableElement>) => (
     <Table {...props} />
   ),
+  img: (props: React.ImgHTMLAttributes<HTMLImageElement>) => {
+    const { src, alt, ...rest } = props;
+    if (!src) return <img {...props} />;
+    return (
+      <ImageLightbox src={src} alt={alt ?? "Image"}>
+        <img
+          {...rest}
+          src={src}
+          alt={alt}
+          className="max-w-full rounded-lg border border-border hover:border-foreground/20 transition-colors"
+        />
+      </ImageLightbox>
+    );
+  },
 } as typeof sharedMarkdownComponents;
 
 const MemoizedMarkdownBlock = memo(

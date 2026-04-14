@@ -123,6 +123,9 @@ export interface ChatPrefsContextValue {
   allModelsConnections: ReturnType<typeof useAiProviderKeys>;
   isModelsLoading: boolean;
   selectedVirtualMcp: VirtualMCPInfo | null;
+  /** Selected image generation model (null = image gen disabled) */
+  imageModel: AiProviderModel | null;
+  setImageModel: (model: AiProviderModel | null) => void;
   appContexts: Record<string, string>;
   setAppContext: (sourceId: string, params: SetAppContextParams) => void;
   clearAppContext: (sourceId: string) => void;
@@ -217,6 +220,13 @@ export function ChatContextProvider({
   const [storedCredentialId, setStoredCredentialId] = useLocalStorage<
     string | null
   >(LOCALSTORAGE_KEYS.chatSelectedKeyId(locator), null);
+
+  // Image model selection (localStorage-backed)
+  const [storedImageModel, setStoredImageModel] =
+    useLocalStorage<AiProviderModel | null>(
+      LOCALSTORAGE_KEYS.chatSelectedImageModel(locator),
+      null,
+    );
 
   // AI provider keys and models
   const keys = useAiProviderKeys();
@@ -438,6 +448,8 @@ export function ChatContextProvider({
     allModelsConnections: keys,
     isModelsLoading,
     selectedVirtualMcp,
+    imageModel: storedImageModel,
+    setImageModel: setStoredImageModel,
     appContexts,
     setAppContext,
     clearAppContext,
@@ -485,7 +497,8 @@ export function ActiveTaskProvider({
 }: PropsWithChildren<{ taskId: string }>) {
   const { virtualMcpId, tasks, pendingMessage, clearPendingMessage } =
     useChatTask();
-  const { selectedModel, appContexts, setTiptapDoc, setModel } = useChatPrefs();
+  const { selectedModel, imageModel, appContexts, setTiptapDoc, setModel } =
+    useChatPrefs();
   const internals = useContext(TaskInternalsCtx);
   if (!internals) {
     throw new Error(
@@ -638,6 +651,9 @@ export function ActiveTaskProvider({
         credentialId: model.keyId ?? effectiveKeyId ?? "",
         thinking: toMetadataModelInfo(model),
         fast: toMetadataModelInfo(model),
+        ...(imageModel && {
+          image: toMetadataModelInfo(imageModel),
+        }),
       },
     };
 

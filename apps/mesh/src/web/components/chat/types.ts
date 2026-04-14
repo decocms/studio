@@ -71,6 +71,7 @@ export interface Metadata {
     thinking: MetadataModelInfo;
     coding?: MetadataModelInfo;
     fast?: MetadataModelInfo;
+    image?: MetadataModelInfo;
   };
   agent?: ChatAgentConfig;
   user?: ChatUserConfig;

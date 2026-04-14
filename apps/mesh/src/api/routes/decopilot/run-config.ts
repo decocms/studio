@@ -36,6 +36,7 @@ export const PersistedRunConfigSchema = z.object({
     thinking: PersistedModelInfoSchema,
     coding: PersistedModelInfoSchema.optional(),
     fast: PersistedModelInfoSchema.optional(),
+    image: PersistedModelInfoSchema.optional(),
   }),
   agent: z.object({ id: z.string() }),
   temperature: z.number(),
@@ -67,5 +68,6 @@ export function toModelsConfig(models: PersistedRunConfig["models"]) {
     thinking: toModelInfo(models.thinking),
     ...(models.coding && { coding: toModelInfo(models.coding) }),
     ...(models.fast && { fast: toModelInfo(models.fast) }),
+    ...(models.image && { image: toModelInfo(models.image) }),
   };
 }
