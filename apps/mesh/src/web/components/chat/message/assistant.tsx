@@ -24,6 +24,7 @@ import {
   BrandContextPart,
   BrandContextGetPart,
   BrandContextListPart,
+  RenderHtmlPart,
 } from "./parts/tool-call-part/index.ts";
 import { NextActionChip } from "./next-action-chip.tsx";
 import { SmartAutoScroll } from "./smart-auto-scroll.tsx";
@@ -458,6 +459,8 @@ function MessagePart({
           streamingText={dataParts.webSearchStreaming.get(part.toolCallId)}
         />
       );
+    case "tool-render_html":
+      return <RenderHtmlPart part={part} />;
     case "tool-subtask": {
       const subtaskProps = {
         part,

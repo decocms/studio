@@ -31,6 +31,7 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   propose_plan: { readOnly: true, destructive: false },
   enable_tool: { readOnly: true, destructive: false },
   todo_write: { readOnly: false, destructive: false },
+  render_html: { readOnly: true, destructive: false },
 };
 import { createReadToolOutputTool } from "./read-tool-output";
 import { createReadPromptTool } from "./prompts";
@@ -50,6 +51,7 @@ import { createWebSearchTool } from "./web-search";
 import { createTakeScreenshotTool, type PendingImage } from "./take-screenshot";
 import { createScrapeUrlTool } from "./scrape-url";
 import { createInspectPageTool } from "./inspect-page";
+import { createRenderHtmlTool } from "./render-html";
 import type { ModelsConfig } from "../../../api/routes/decopilot/types";
 import type { MeshProvider } from "@/ai-providers/types";
 
@@ -163,6 +165,7 @@ async function buildAllTools(
       passthroughClient,
       toolOutputMap,
     }),
+    render_html: createRenderHtmlTool(),
   };
   // VM file tools — six LLM-visible tools (read/write/edit/grep/glob/bash)
   // always registered when a vmContext is provided. The handle is resolved
@@ -330,6 +333,7 @@ async function buildAllTools(
     take_screenshot: ReturnType<typeof createTakeScreenshotTool>;
     scrape_url: ReturnType<typeof createScrapeUrlTool>;
     inspect_page: ReturnType<typeof createInspectPageTool>;
+    render_html: ReturnType<typeof createRenderHtmlTool>;
   };
 }
 
