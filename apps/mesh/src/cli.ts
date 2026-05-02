@@ -66,6 +66,14 @@ const { values, positionals } = parseArgs({
     },
     target: { type: "string" },
     env: { type: "string", short: "e" },
+    "no-autostart": {
+      type: "boolean",
+      default: false,
+    },
+    "no-open": {
+      type: "boolean",
+      default: false,
+    },
   },
   allowPositionals: true,
 });
@@ -94,6 +102,8 @@ Server Options:
   --vibe                Play synthwave soundtrack while running
   -h, --help            Show this help message
   -v, --version         Show version
+  --no-autostart        Skip auto-launching an MCP project from the cwd
+  --no-open             Don't auto-open the browser to the agent chat
 
 Dev Options:
   --vite-port <port>    Vite dev server port (default: 4000)
@@ -372,7 +382,21 @@ if (noTui) {
   }
 
   const { startServer } = await import("./cli/commands/serve");
-  await startServer({ ...serveOptions, noTui: true });
+  const { port: studioPort } = await startServer({
+    ...serveOptions,
+    noTui: true,
+  });
+
+  if (!values["no-autostart"] && process.env.DECOCMS_NO_AUTOSTART !== "1") {
+    const { waitForSeed } = await import("./auth/local-mode");
+    await waitForSeed();
+    const { maybeAutostartFromCwd } = await import("./cli/autostart");
+    await maybeAutostartFromCwd({
+      cwd: process.cwd(),
+      studioPort,
+      open: values["no-open"] !== true,
+    });
+  }
 } else {
   // Ink UI mode
   const { render } = await import("ink");
@@ -400,5 +424,16 @@ if (noTui) {
     startVibe(decoHome);
   }
 
-  await startServer(serveOptions);
+  const { port: studioPort } = await startServer(serveOptions);
+
+  if (!values["no-autostart"] && process.env.DECOCMS_NO_AUTOSTART !== "1") {
+    const { waitForSeed } = await import("./auth/local-mode");
+    await waitForSeed();
+    const { maybeAutostartFromCwd } = await import("./cli/autostart");
+    await maybeAutostartFromCwd({
+      cwd: process.cwd(),
+      studioPort,
+      open: values["no-open"] !== true,
+    });
+  }
 }

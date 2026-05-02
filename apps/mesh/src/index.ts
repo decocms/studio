@@ -267,6 +267,14 @@ async function gracefulShutdown(signal: string) {
     // 1. Mark as shutting down — readiness returns 503 immediately
     app.markShuttingDown();
 
+    // Stop any autostart child processes (mcp dev servers we spawned).
+    try {
+      const { getAutostartChildren } = await import("./cli/autostart");
+      for (const c of getAutostartChildren()) c.kill();
+    } catch {
+      // autostart module never loaded — nothing to kill
+    }
+
     // 2. Close ingress first so port 7070 frees immediately — next `bun dev`
     //    shouldn't have to wait out our drain.
     for (const s of ingressServers) s.close();

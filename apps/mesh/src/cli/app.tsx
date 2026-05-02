@@ -42,6 +42,7 @@ export function App({ home }: { home: string }) {
         home={home}
         serverUrl={state.serverUrl}
         vibe={state.vibe}
+        autostartProject={state.autostartProject}
       />
 
       {state.viewMode === "config" ? (

@@ -11,12 +11,20 @@ export interface ServiceStatus {
   port: number;
 }
 
+export interface HeaderAutostartProject {
+  name: string;
+  status: "starting" | "ready" | "failed";
+  chatUrl: string | null;
+  error?: string;
+}
+
 interface HeaderProps {
   services: ServiceStatus[];
   migrationsStatus: "pending" | "done";
   home: string;
   serverUrl: string | null;
   vibe?: boolean;
+  autostartProject?: HeaderAutostartProject | null;
 }
 
 const ASCII_LINES = [
@@ -84,6 +92,7 @@ export function Header({
   home,
   serverUrl,
   vibe,
+  autostartProject,
 }: HeaderProps) {
   const capyFrame = useSyncExternalStore(subscribeCapyFrame, getCapyFrame);
   const matrixGrid = useSyncExternalStore(subscribeMatrixGrid, getMatrixGrid);
@@ -168,6 +177,34 @@ export function Header({
           <Text dimColor>Starting...</Text>
         )}
       </Box>
+
+      {autostartProject && (
+        <Box flexDirection="column" marginTop={1}>
+          <Box gap={1}>
+            <Text color="magenta">▶</Text>
+            <Text>Autostart:</Text>
+            <Text bold>{autostartProject.name}</Text>
+            {autostartProject.status === "starting" && <Spinner label="" />}
+            {autostartProject.status === "failed" && (
+              <Text color="red">failed</Text>
+            )}
+            {autostartProject.status === "ready" && (
+              <Text color="green">ready</Text>
+            )}
+          </Box>
+          {autostartProject.chatUrl && (
+            <Text>
+              {"  "}Chat: <Text color="cyan">{autostartProject.chatUrl}</Text>
+            </Text>
+          )}
+          {autostartProject.error && (
+            <Text dimColor>
+              {"  "}
+              {autostartProject.error}
+            </Text>
+          )}
+        </Box>
+      )}
 
       <Box gap={2}>
         <Text dimColor>

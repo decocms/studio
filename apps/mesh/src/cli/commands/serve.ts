@@ -133,7 +133,9 @@ export function interceptConsoleForTui() {
   };
 }
 
-export async function startServer(options: ServeOptions): Promise<void> {
+export async function startServer(
+  options: ServeOptions,
+): Promise<{ port: number }> {
   const port = await findAvailablePort(Number(options.port));
 
   const { settings, services } = await buildSettings({
@@ -208,4 +210,5 @@ export async function startServer(options: ServeOptions): Promise<void> {
   await import("../../index");
 
   setServerUrl(`http://localhost:${settings.port}`);
+  return { port: Number(settings.port) };
 }

@@ -8,6 +8,13 @@ import type { LogEntry } from "./log-emitter";
 
 const MAX_LOGS = 500;
 
+export interface AutostartProjectState {
+  name: string;
+  status: "starting" | "ready" | "failed";
+  chatUrl: string | null;
+  error?: string;
+}
+
 interface CliState {
   services: ServiceStatus[];
   migrationsStatus: "pending" | "done";
@@ -18,6 +25,7 @@ interface CliState {
   logFlow: boolean;
   vibe: boolean;
   dataDir: string | null;
+  autostartProject: AutostartProjectState | null;
 }
 
 let state: CliState = {
@@ -33,6 +41,7 @@ let state: CliState = {
   logFlow: false,
   vibe: false,
   dataDir: null,
+  autostartProject: null,
 };
 
 const listeners = new Set<() => void>();
@@ -65,6 +74,11 @@ export function setMigrationsDone() {
 
 export function setServerUrl(url: string) {
   state = { ...state, serverUrl: url };
+  emit();
+}
+
+export function setAutostartProject(p: AutostartProjectState | null) {
+  state = { ...state, autostartProject: p };
   emit();
 }
 
