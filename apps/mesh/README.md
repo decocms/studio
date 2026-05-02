@@ -1,448 +1,259 @@
-# Studio
+# deco Studio
 
-> **Context Management System for AI Applications**
+> Open-source control plane for your AI agents.
 
-Studio is an open-source platform that centralizes **Model Context Protocol (MCP)** connection management for teams and organizations. It provides secure credential storage, fine-grained access control, and unified observability for AI tool orchestration.
+This is the full-stack [deco Studio](https://decocms.com/studio) app — a Hono API server, React 19 admin UI, and built-in MCP management tools — published to npm as [`decocms`](https://www.npmjs.com/package/decocms) (also installable as [`decostudio`](https://www.npmjs.com/package/decostudio)).
 
-## What is Studio?
+Studio centralizes Model Context Protocol (MCP) traffic for teams: agents, connections, projects, observability, and a token vault behind one governed endpoint.
 
-When AI assistants use tools via the Model Context Protocol, managing connections across a team becomes challenging:
+## What it does
 
-- **Connection sprawl**: Each MCP service has its own auth, config, and credentials
-- **Credential sharing**: Sharing access means sharing passwords or API keys
-- **No audit trail**: Who called which tool, when, and with what result?
-- **Tool isolation**: MCP services can't compose or share dependencies 
-
-Studio solves these problems by acting as a **secure proxy** between AI clients and MCP services:
-
-```
-┌─────────────────┐     ┌──────────────┐     ┌─────────────────┐
-│  Claude Desktop │────▶│   MCP Mesh   │────▶│  Gmail MCP      │
-│  Cursor Agent   │     │   (Proxy)    │     │  Slack MCP      │
-│  Custom Client  │     │              │────▶│  GitHub MCP     │
-└─────────────────┘     └──────────────┘     └─────────────────┘
-                              │
-                    ┌─────────┴──────────┐
-                    │ - Authentication   │
-                    │ - Authorization    │
-                    │ - Credential Vault │
-                    │ - Audit Logging    │
-                    │ - Observability    │
-                    └────────────────────┘
-```
-
-## Features
-
-### ✅ Implemented
-
-- **Organization Management** — Create orgs, invite members, assign roles
-- **Connection Registry** — Register and manage MCP connections
-- **Secure Credential Vault** — AES-256-GCM encrypted credential storage
-- **MCP Proxy** — Proxy requests to downstream MCPs with credential injection
-- **OAuth 2.1 Server** — Full MCP OAuth spec compliance (PKCE, Dynamic Client Registration)
-- **Management Tools via MCP** — All admin operations exposed as MCP tools
-- **Web Dashboard** — React UI for managing orgs, connections, and members
-- **Multi-DB Support** — SQLite (default), PostgreSQL, MySQL via Kysely
-- **OpenTelemetry** — Distributed tracing and Prometheus metrics
-- **Magic Link Auth** — Passwordless authentication via email
-- **SSO Support** — Google, GitHub, and SAML providers
-
-### 🚧 Planned
-
-- [ ] MCP Bindings (protocol-level interfaces for tool abstraction)
-- [ ] Tool composition across connections
-- [ ] Webhook events
-- [ ] CLI tool
+- **Agents** — browse, hire, and compose specialized AI agents with tracked skills and cost attribution
+- **Connections** — register MCP services with one-click OAuth; route traffic through one governed endpoint with auth, proxy, and audit
+- **Projects** — group agents and connections around a goal; the UI adapts to what's inside
+- **Virtual MCPs** — compose and expose governed toolsets as new MCP endpoints (full-context, smart selection, or sandboxed code execution)
+- **Token vault** — AES-256-GCM encrypted credential storage; share access without sharing credentials
+- **Event bus** — pub/sub between connections (CloudEvents v1.0) with at-least-once delivery, scheduled and cron events
+- **Bindings** — capability contracts so tools target interfaces, not specific implementations
+- **Access control** — RBAC via Better Auth (OAuth 2.1 + SSO + API keys), workspace and project scoped
+- **Observability** — OpenTelemetry traces, metrics, and logs; cost attribution per connection and agent
 
 ## Quick Start
 
-### Prerequisites
-
-- [Bun](https://bun.sh) runtime (v1.0+)
-
-### Run Locally (Zero Config)
+The fastest way to run Studio is via npm — no clone required:
 
 ```bash
-# Clone the repository
-git clone https://github.com/deco-cx/admin.git
-cd admin/apps/mesh
+bunx decostudio
+```
 
-# Install dependencies
+This boots Studio at [http://localhost:3000](http://localhost:3000) with embedded PostgreSQL. Private by default. Data lives in `~/deco/`.
+
+```bash
+bunx decostudio -p 8080            # custom port
+bunx decostudio --home ~/my-app    # custom data directory
+bunx decostudio dev                # dev mode (Vite hot reload + Ink TUI)
+bunx decostudio init my-app        # scaffold a new MCP app
+bunx decostudio services up        # manage local services (Postgres, NATS)
+bunx decostudio --help             # full CLI reference
+```
+
+## Run from source
+
+```bash
+git clone https://github.com/decocms/studio.git
+cd studio
 bun install
-
-# Run database migrations
-bun run migrate
-
-# Start the server
-bun run dev
+bun run dev          # client + server with hot reload (from repo root)
 ```
 
-### Run with NATS (Optional)
-
-By default, the event bus uses polling to wake up workers. For lower latency and better multi-replica coordination, you can run a local [NATS](https://nats.io) server instead.
-
-**Install nats-server:**
+Or from inside `apps/mesh/`:
 
 ```bash
-# macOS
-brew install nats-server
-
-# Other platforms — see https://docs.nats.io/running-a-nats-service/introduction/installation
+bun run --cwd apps/mesh dev:client     # Vite dev server (port 4000)
+bun run --cwd apps/mesh dev:server     # Hono server with hot reload
+bun run --cwd apps/mesh migrate        # Kysely migrations
+bun run --cwd apps/mesh better-auth:migrate  # Better Auth tables
 ```
 
-**Start NATS:**
+### Optional: run NATS for low-latency event bus
+
+By default, the event bus uses polling to wake up workers. For lower latency and better multi-replica coordination, run a local [NATS](https://nats.io) server:
 
 ```bash
+brew install nats-server  # macOS — see https://docs.nats.io for other platforms
 nats-server
 ```
 
-**Add to your `.env` file:**
-
-```bash
-NATS_URL=nats://localhost:4222
-```
-
-When `NATS_URL` is set, mesh automatically switches to the NATS notify strategy. Polling remains active as a safety net.
-
----
-
-The server starts at `http://localhost:3000` with:
-- 📋 Health check: `http://localhost:3000/health`
-- 🔐 Auth endpoints: `http://localhost:3000/api/auth/*`
-- 🔧 MCP endpoint: `http://localhost:3000/mcp`
-- 📊 Metrics: `http://localhost:3000/metrics`
-
-A SQLite database is automatically created at `./data/mesh.db`. 
+Then set `NATS_URL=nats://localhost:4222` in your `.env`. Studio automatically switches to the NATS notify strategy; polling stays active as a safety net.
 
 ## Architecture
+
+```
+┌─────────────────┐     ┌──────────────┐     ┌─────────────────┐
+│  Cursor / Claude│────▶│ deco Studio  │────▶│  GitHub MCP     │
+│  VS Code / Custom     │   (Proxy)    │     │  Slack MCP      │
+└─────────────────┘     └──────────────┘────▶│  Your APIs      │
+                              │              └─────────────────┘
+                    ┌─────────┴──────────┐
+                    │ Auth & RBAC        │
+                    │ Token Vault        │
+                    │ Event Bus          │
+                    │ Audit & Observability │
+                    └────────────────────┘
+```
 
 ### Project Structure
 
 ```
 apps/mesh/
 ├── src/
-│   ├── api/                    # Hono HTTP server
-│   │   ├── routes/
-│   │   │   ├── auth.ts         # Custom auth endpoints
-│   │   │   ├── management.ts   # MCP management server
-│   │   │   ├── models.ts       # LLM provider routing
-│   │   │   └── proxy.ts        # MCP proxy server
-│   │   └── utils/
-│   │       └── mcp.ts          # MCP server builder
-│   │
-│   ├── auth/                   # Better Auth configuration
-│   │   ├── index.ts            # Auth instance
-│   │   ├── jwt.ts              # JWT utilities
-│   │   ├── oauth-providers.ts  # Social login providers
-│   │   └── sso.ts              # SAML SSO
-│   │
-│   ├── core/                   # Core abstractions
-│   │   ├── access-control.ts   # Permission checking
-│   │   ├── context-factory.ts  # StudioContext factory
-│   │   ├── define-tool.ts      # Tool definition helper
-│   │   └── studio-context.ts     # Request context type
-│   │
-│   ├── database/               # Kysely database setup
-│   ├── encryption/             # Credential vault (AES-256-GCM)
-│   ├── observability/          # OpenTelemetry setup
-│   ├── storage/                # Database adapters
-│   │
-│   ├── tools/                  # MCP management tools
-│   │   ├── connection/         # CONNECTION_* tools
-│   │   ├── organization/       # ORGANIZATION_* tools
-│   │   └── database/           # DATABASE_* tools
-│   │
-│   └── web/                    # React frontend
-│       ├── components/
-│       ├── hooks/
-│       ├── layouts/
-│       ├── providers/
-│       └── routes/
-│
-├── migrations/                 # Kysely migrations
-├── spec/                       # Design specifications
-│   └── 001.md                  # Full mesh spec
-└── data/                       # SQLite database (gitignored)
+│   ├── api/             # Hono HTTP + MCP proxy routes
+│   ├── auth/            # Better Auth (OAuth 2.1 + SSO + API keys)
+│   ├── core/            # MeshContext, AccessControl, defineTool
+│   ├── tools/           # Built-in MCP management tools
+│   │                    # (connection, organization, eventbus, virtual,
+│   │                    #  monitoring, ai-providers, automations, …)
+│   ├── storage/         # Kysely DB adapters
+│   ├── event-bus/       # Pub/sub event delivery (NATS + polling)
+│   ├── encryption/      # Token vault & credential management
+│   ├── observability/   # OpenTelemetry tracing & metrics
+│   └── web/             # React 19 admin UI (Vite + TanStack Router)
+├── migrations/          # Kysely migrations
+├── scripts/             # Build & bundle scripts
+└── spec/                # Design specs
 ```
 
 ### Tech Stack
 
 | Layer | Technology |
-|-------|------------|
-| Runtime | Bun |
-| Server | Hono |
-| Database | Kysely (SQLite/PostgreSQL/MySQL) |
-| Auth | Better Auth (+ MCP, API Key, Organization plugins) |
-| Frontend | React 19, TanStack Router, TanStack Query |
-| Styling | Tailwind CSS v4 |
-| MCP | @modelcontextprotocol/sdk |
-| Observability | OpenTelemetry, Prometheus |
+|---|---|
+| Runtime | Bun (Node-compatible) |
+| API | Hono |
+| Database | Kysely → embedded PostgreSQL (dev) / PostgreSQL (prod) |
+| Auth | Better Auth (OAuth 2.1, SSO, API keys, Organization plugin) |
+| Frontend | React 19 + TanStack Router + TanStack Query |
+| Styling | Tailwind CSS v4 + shadcn |
+| MCP | `@modelcontextprotocol/sdk` |
+| Observability | OpenTelemetry + Prometheus |
 
-## API Reference
+## API
 
-### MCP Endpoints
+### Management API (`/mcp`)
 
-#### Management API (`/mcp`)
-
-Exposes organization and connection management tools via MCP protocol:
+Exposes Studio's built-in management tools (organization, connection, project, event bus, monitoring, virtual MCPs, …) over the MCP protocol. Discover the full list at runtime:
 
 ```bash
-# List tools
 curl -X POST http://localhost:3000/mcp \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
 ```
 
-**Available Tools:**
+### Proxy API (`/mcp/:connectionId`)
 
-| Tool | Description |
-|------|-------------|
-| `ORGANIZATION_CREATE` | Create a new organization |
-| `ORGANIZATION_LIST` | List user's organizations |
-| `ORGANIZATION_GET` | Get organization details |
-| `ORGANIZATION_UPDATE` | Update organization |
-| `ORGANIZATION_DELETE` | Delete organization |
-| `ORGANIZATION_MEMBER_ADD` | Add member to organization |
-| `ORGANIZATION_MEMBER_REMOVE` | Remove member |
-| `ORGANIZATION_MEMBER_LIST` | List members |
-| `ORGANIZATION_MEMBER_UPDATE_ROLE` | Update member role |
-| `COLLECTION_CONNECTIONS_CREATE` | Register MCP connection |
-| `COLLECTION_CONNECTIONS_LIST` | List connections |
-| `COLLECTION_CONNECTIONS_GET` | Get connection details |
-| `COLLECTION_CONNECTIONS_UPDATE` | Update connection |
-| `COLLECTION_CONNECTIONS_DELETE` | Delete connection |
-| `CONNECTION_TEST` | Test connection health |
-| `CONNECTION_CONFIGURE` | Configure connection |
-
-#### Proxy API (`/mcp/:connectionId`)
-
-Proxies requests to downstream MCP services:
+Proxies requests to downstream MCP services with credential injection, permission checks, and audit logging:
 
 ```bash
-# Call a tool on a connected MCP service
 curl -X POST http://localhost:3000/mcp/conn_abc123 \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"SEND_EMAIL","arguments":{...}},"id":1}'
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"SEND_EMAIL","arguments":{}},"id":1}'
 ```
 
-The proxy:
-1. Validates your token
-2. Checks permissions for the tool
-3. Retrieves and decrypts the connection's credentials
-4. Forwards the request with proper auth
-5. Logs the request to audit trail
+The proxy validates the token, checks permissions for the tool, decrypts the connection's credentials, forwards the request, and writes the call to the audit trail.
 
-### OAuth Discovery
+### OAuth 2.1
 
-Studio implements the full MCP OAuth specification:
+Studio implements the full MCP OAuth specification (Authorization Server, Resource Server, Dynamic Client Registration, PKCE):
 
-```bash
-# Protected Resource Metadata
-GET /.well-known/oauth-protected-resource
-
-# Authorization Server Metadata  
-GET /.well-known/oauth-authorization-server
-
-# Dynamic Client Registration
+```
+GET  /.well-known/oauth-protected-resource
+GET  /.well-known/oauth-authorization-server
 POST /api/auth/register
 ```
 
 ## Configuration
 
-### Environment Variables
+Environment variables (all optional — Studio auto-generates secrets and uses sensible defaults):
 
 ```bash
-# Database (optional - defaults to SQLite)
-DATABASE_URL=postgresql://user:pass@host:5432/mesh
-
-# Server port (optional - defaults to 3000)
-PORT=3000
-
-# Encryption key for credential vault (auto-generated if not set)
-ENCRYPTION_KEY=your-32-byte-key
-
-# Remote ClickHouse URL for production monitoring queries (optional)
-# When set, spans are exported via OTLP (to an OTel Collector) and queries
-# go to this ClickHouse instance. When unset, spans are written as NDJSON
-# files to ~/deco/system/monitoring and queried locally via chdb.
-CLICKHOUSE_URL=http://localhost:8123
+PORT=3000                           # Server port
+DATA_DIR=~/deco/                    # Data directory (DB, vault, monitoring spans)
+DATABASE_URL=postgresql://…         # External Postgres (omit to use embedded)
+BETTER_AUTH_SECRET=<32 bytes>       # Auth signing secret
+ENCRYPTION_KEY=<32 bytes>           # Credential vault key
+NATS_URL=nats://localhost:4222      # Optional: enable NATS notify strategy
+NODE_ENV=production                 # Production mode
+CLICKHOUSE_URL=http://localhost:8123  # Optional: remote ClickHouse for prod monitoring
 ```
 
-### Auth Configuration
-
-Create `auth-config.json` for custom auth providers:
-
-```json
-{
-  "emailAndPassword": {
-    "enabled": true
-  },
-  "socialProviders": {
-    "google": {
-      "clientId": "your-google-client-id",
-      "clientSecret": "your-google-client-secret"
-    },
-    "github": {
-      "clientId": "your-github-client-id",
-      "clientSecret": "your-github-client-secret"
-    }
-  },
-  "magicLinkConfig": {
-    "enabled": true,
-    "emailProviderId": "resend-primary"
-  },
-  "emailProviders": [
-    {
-      "id": "resend-primary",
-      "provider": "resend",
-      "config": {
-        "apiKey": "your-resend-api-key",
-        "fromEmail": "noreply@yourdomain.com"
-      }
-    }
-  ]
-}
-```
-
-See `auth-config.example.json` for a complete example.
+Custom auth providers (Google, GitHub, SAML, magic-link, …) live in `auth-config.json`. See [`auth-config.example.json`](./auth-config.example.json) for the full shape.
 
 ## Development
 
-### Scripts
-
 ```bash
-# Development (hot reload)
-bun run dev
-
-# Run tests
-bun run test
-
-# Type check
-bun run check
-
-# Build for production
-bun run build:client
-bun run build:server
-
-# Run production build
-bun run start
-
-# Database migrations
-bun run migrate
-bun run better-auth:migrate  # Better Auth tables
+bun run dev               # client + server (with migrations)
+bun run dev:client        # Vite only
+bun run dev:server        # Hono only
+bun run check             # TypeScript
+bun run test              # Bun test runner
+bun run build:client      # production client bundle
+bun run build:server      # production server + CLI bundle
+bun run start             # run production build
 ```
 
-### Testing
-
-Tests use Bun's built-in test runner:
+Tests are co-located (`*.test.ts`). Run a single file:
 
 ```bash
-# Run all tests
-bun test
-
-# Run specific test file
 bun test src/core/access-control.test.ts
-
-# Watch mode
-bun test --watch
 ```
 
 ## Deployment
 
 ### Docker
 
-```dockerfile
-FROM oven/bun:1 AS builder
-WORKDIR /app
-COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile
-COPY . .
-RUN bun run build:client && bun run build:server
+Pre-built multi-arch images (amd64, arm64) are published on every release:
 
-FROM oven/bun:1-slim
-WORKDIR /app
-COPY --from=builder /app/dist ./dist
-CMD ["bun", "run", "dist/server/server.js"]
+```bash
+docker run -d \
+  -p 3000:3000 \
+  -v studio-data:/app/data \
+  --name studio \
+  ghcr.io/decocms/studio/mesh:latest
 ```
 
-### Docker Compose
+### Compose with external Postgres
 
 ```yaml
-version: '3.8'
-services:
-  mesh:
-    build: .
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./data:/app/data
-      - ./auth-config.json:/app/auth-config.json
-    environment:
-      - NODE_ENV=production
-```
-
-### With PostgreSQL
-
-```yaml
-version: '3.8'
 services:
   postgres:
     image: postgres:16
     environment:
-      POSTGRES_DB: mesh
-      POSTGRES_USER: mesh
+      POSTGRES_DB: studio
+      POSTGRES_USER: studio
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  mesh:
-    build: .
-    depends_on:
-      - postgres
+  studio:
+    image: ghcr.io/decocms/studio/mesh:latest
+    depends_on: [postgres]
     environment:
-      DATABASE_URL: postgresql://mesh:${DB_PASSWORD}@postgres:5432/mesh
-    ports:
-      - "3000:3000"
+      DATABASE_URL: postgresql://studio:${DB_PASSWORD}@postgres:5432/studio
+    ports: ["3000:3000"]
+    volumes:
+      - studio-data:/app/data
 
 volumes:
   postgres_data:
+  studio-data:
+```
+
+### Kubernetes (Helm)
+
+```bash
+helm install deco-studio oci://ghcr.io/decocms/chart-deco-studio \
+  --version <version> -n deco-studio --create-namespace
 ```
 
 ## Specification
 
-For the complete technical specification, see [`spec/001.md`](./spec/001.md).
+The complete design spec lives at [`spec/001.md`](./spec/001.md): MCP-native API architecture, OAuth 2.1 implementation, organization-based access control, MCP Bindings, OpenTelemetry observability, database schema, and self-hosting guide.
 
-Key topics covered:
-- MCP-native API architecture
-- OAuth 2.1 implementation (Authorization Server, Resource Server, Client)
-- Organization-based access control
-- MCP Bindings concept
-- OpenTelemetry observability
-- Database schema design
-- Self-hosting guide
-
-## Contributing
-
-We welcome contributions! Please see our [Contributing Guide](../../CONTRIBUTING.md).
-
-### Development Setup
-
-1. Fork and clone the repository
-2. Install dependencies: `bun install`
-3. Start development server: `bun run dev`
-4. Make changes and add tests
-5. Submit a pull request
+Product docs: [docs.decocms.com](https://docs.decocms.com/).
 
 ## License
 
-MIT License - see [LICENSE](../../LICENSE.md) for details.
+[Deco CMS Sustainable Use License v1.1](../../LICENSE.md).
+
+- Free to self-host for internal use
+- Free for client projects (agencies, SIs)
+- Commercial license required for SaaS or revenue-generating production systems
+
+Questions: [builders@decocms.com](mailto:builders@decocms.com)
 
 ---
 
 <p align="center">
-  Built with 💚 by <a href="https://decocms.com">decocms.com</a>
+  Built with care by the <a href="https://decocms.com">deco</a> community
 </p>
-
-
