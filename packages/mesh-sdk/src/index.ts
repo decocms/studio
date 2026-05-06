@@ -73,8 +73,10 @@ export {
   useVirtualMCPs,
   useVirtualMCP,
   useVirtualMCPActions,
+  useVirtualMCPsLastUsed,
   type VirtualMCPFilter,
   type UseVirtualMCPsOptions,
+  type VirtualMCPLastUsed,
 } from "./hooks";
 
 // Types

@@ -4,6 +4,7 @@ import {
   useProjectContext,
   useVirtualMCPActions,
   useVirtualMCPs,
+  useVirtualMCPsLastUsed,
 } from "@decocms/mesh-sdk";
 import { Page } from "@/web/components/page";
 import { ProjectCard } from "@/web/components/project-card";
@@ -61,6 +62,10 @@ export default function AgentsListPage() {
       s.id !== org.id &&
       (s.title.toLowerCase().includes(lowerSearch) ||
         s.description?.toLowerCase().includes(lowerSearch)),
+  );
+
+  const { data: lastUsedMap } = useVirtualMCPsLastUsed(
+    filteredAgents.map((a) => a.id),
   );
 
   const confirmDelete = async () => {
@@ -223,6 +228,7 @@ export default function AgentsListPage() {
                   <ProjectCard
                     key={agent.id}
                     project={agent}
+                    lastUsedAt={lastUsedMap?.get(agent.id)?.last_used_at}
                     onDeleteClick={() =>
                       setDeleteTarget({
                         id: agent.id,
