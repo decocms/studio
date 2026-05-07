@@ -545,6 +545,7 @@ export function SettingsTab({
       },
       messages: tiptapDocToMessages(tiptapDoc),
       temperature: 0,
+      silent: true,
     };
 
     try {
