@@ -121,18 +121,16 @@ export function moveTile(
   const target = tiles.find((t) => t.id === id);
   if (!target) return tiles;
 
-  // The drop point we care about is the top-left of the dragged tile.
   const dropX = Math.max(0, Math.min(GRID_COLS - target.w, to.x));
   const dropY = Math.max(0, to.y);
 
-  // If the drop center lands inside exactly one existing tile, swap with
-  // it. Center-point is more forgiving than the top-left for chunky tiles.
+  // Center-point swap detection. More forgiving than top-left.
   const centerX = dropX + Math.floor(target.w / 2);
   const centerY = dropY + Math.floor(target.h / 2);
   const occupant = tileAtPoint(tiles, id, centerX, centerY);
 
   if (occupant && occupant.w === target.w && occupant.h === target.h) {
-    // Same size → clean swap.
+    // Same size → clean swap, no other tiles touched.
     return tiles.map((t) => {
       if (t.id === id) return { ...t, x: occupant.x, y: occupant.y };
       if (t.id === occupant.id) return { ...t, x: target.x, y: target.y };
@@ -140,19 +138,15 @@ export function moveTile(
     });
   }
 
-  if (occupant) {
-    // Different size → put dragged tile at occupant's anchor and let
-    // compaction relocate the occupant downward. Still smoother than the
-    // pure push-down, since the visual slot the user aimed at is honoured.
-    const moved = clampX({ ...target, x: occupant.x, y: occupant.y });
-    const displaced = { ...occupant, y: occupant.y + target.h };
-    const others = tiles.filter((t) => t.id !== id && t.id !== occupant.id);
-    return compactBoard(resolveCollisions(moved, [displaced, ...others]));
-  }
-
+  // Otherwise: place the tile exactly where the user dropped it. We do
+  // NOT compact the board afterwards — compacting pulls every tile to
+  // the top, which makes "drop into an empty cell at row 5" snap right
+  // back to row 0. Resolve only the collisions caused by this single
+  // move; the rest of the board keeps the layout the user already
+  // arranged.
   const moved = clampX({ ...target, x: dropX, y: dropY });
   const others = tiles.filter((t) => t.id !== id);
-  return compactBoard(resolveCollisions(moved, others));
+  return resolveCollisions(moved, others);
 }
 
 export function resizeTile(
@@ -164,7 +158,7 @@ export function resizeTile(
   if (!target) return tiles;
   const resized = clampX({ ...target, w: size.w, h: size.h });
   const others = tiles.filter((t) => t.id !== id);
-  return compactBoard(resolveCollisions(resized, others));
+  return resolveCollisions(resized, others);
 }
 
 export function insertTile(
@@ -172,11 +166,13 @@ export function insertTile(
   tile: Omit<TileInstance, "x" | "y">,
 ): TileInstance[] {
   const slot = findFirstFreeSlot(tiles, tile.w, tile.h);
-  return compactBoard([...tiles, { ...tile, x: slot.x, y: slot.y }]);
+  return [...tiles, { ...tile, x: slot.x, y: slot.y }];
 }
 
 export function removeTile(tiles: TileInstance[], id: string): TileInstance[] {
-  return compactBoard(tiles.filter((t) => t.id !== id));
+  // Removing leaves a gap on purpose. The user can fill it with another
+  // tile or reset to the starter layout if they want a clean rearrange.
+  return tiles.filter((t) => t.id !== id);
 }
 
 export function pixelDeltaToCellDelta(

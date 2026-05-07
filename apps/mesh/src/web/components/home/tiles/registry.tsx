@@ -204,8 +204,10 @@ export function renderTileContent(
   props: Parameters<TileDefinition["render"]>[0],
 ) {
   const def = getTileDefinition(type);
-  if (!def) return <UnknownTile {...props} />;
-  return def.render(props);
+  // Mount the renderer as a real component so its hooks live in their
+  // own boundary instead of being folded into the caller's hook tally.
+  const Renderer = def?.render ?? UnknownTile;
+  return <Renderer {...props} />;
 }
 
 export const CATEGORY_LABELS: Record<string, string> = {

@@ -120,7 +120,7 @@ describe("insertTile / removeTile", () => {
     });
   });
 
-  it("removes and recompacts", () => {
+  it("removes and leaves the gap so the user's layout stays put", () => {
     const board = [
       tile("a", 0, 0, 1, 1),
       tile("b", 0, 1, 1, 1),
@@ -128,7 +128,9 @@ describe("insertTile / removeTile", () => {
     ];
     const out = removeTile(board, "b");
     expect(out).toHaveLength(2);
+    const a = out.find((t) => t.id === "a")!;
     const c = out.find((t) => t.id === "c")!;
-    expect(c.y).toBe(1);
+    expect(a.y).toBe(0);
+    expect(c.y).toBe(2);
   });
 });

@@ -260,6 +260,11 @@ function BoardTile({
   onRemove,
 }: BoardTileProps) {
   const def = getTileDefinition(tile.type);
+  // Capture the renderer once and let React mount it as its own component
+  // boundary. Calling def.render(props) directly folds its hooks into
+  // BoardTile's tally and will trigger "Rendered more hooks…" the moment
+  // the renderer's hook count drifts.
+  const Renderer = def?.render;
 
   const {
     setNodeRef,
@@ -315,12 +320,11 @@ function BoardTile({
         )}
         <div className="h-full overflow-hidden">
           <TileErrorBoundary>
-            {def
-              ? def.render({ instance: tile, isEditMode })
-              : renderTileContent(tile.type, {
-                  instance: tile,
-                  isEditMode,
-                })}
+            {Renderer ? (
+              <Renderer instance={tile} isEditMode={isEditMode} />
+            ) : (
+              renderTileContent(tile.type, { instance: tile, isEditMode })
+            )}
           </TileErrorBoundary>
         </div>
       </div>
