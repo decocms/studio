@@ -92,6 +92,27 @@ export function findFirstFreeSlot(
   return { x: 0, y: maxRows };
 }
 
+/**
+ * Returns a tile in `tiles` (excluding `excludeId`) whose rect contains the
+ * point (px, py) in cell coordinates, if any. Used to detect "drop on top
+ * of another tile → swap" instead of push-down.
+ */
+function tileAtPoint(
+  tiles: TileInstance[],
+  excludeId: string,
+  px: number,
+  py: number,
+): TileInstance | undefined {
+  return tiles.find(
+    (t) =>
+      t.id !== excludeId &&
+      px >= t.x &&
+      px < t.x + t.w &&
+      py >= t.y &&
+      py < t.y + t.h,
+  );
+}
+
 export function moveTile(
   tiles: TileInstance[],
   id: string,
@@ -99,7 +120,37 @@ export function moveTile(
 ): TileInstance[] {
   const target = tiles.find((t) => t.id === id);
   if (!target) return tiles;
-  const moved = clampX({ ...target, x: to.x, y: Math.max(0, to.y) });
+
+  // The drop point we care about is the top-left of the dragged tile.
+  const dropX = Math.max(0, Math.min(GRID_COLS - target.w, to.x));
+  const dropY = Math.max(0, to.y);
+
+  // If the drop center lands inside exactly one existing tile, swap with
+  // it. Center-point is more forgiving than the top-left for chunky tiles.
+  const centerX = dropX + Math.floor(target.w / 2);
+  const centerY = dropY + Math.floor(target.h / 2);
+  const occupant = tileAtPoint(tiles, id, centerX, centerY);
+
+  if (occupant && occupant.w === target.w && occupant.h === target.h) {
+    // Same size → clean swap.
+    return tiles.map((t) => {
+      if (t.id === id) return { ...t, x: occupant.x, y: occupant.y };
+      if (t.id === occupant.id) return { ...t, x: target.x, y: target.y };
+      return t;
+    });
+  }
+
+  if (occupant) {
+    // Different size → put dragged tile at occupant's anchor and let
+    // compaction relocate the occupant downward. Still smoother than the
+    // pure push-down, since the visual slot the user aimed at is honoured.
+    const moved = clampX({ ...target, x: occupant.x, y: occupant.y });
+    const displaced = { ...occupant, y: occupant.y + target.h };
+    const others = tiles.filter((t) => t.id !== id && t.id !== occupant.id);
+    return compactBoard(resolveCollisions(moved, [displaced, ...others]));
+  }
+
+  const moved = clampX({ ...target, x: dropX, y: dropY });
   const others = tiles.filter((t) => t.id !== id);
   return compactBoard(resolveCollisions(moved, others));
 }

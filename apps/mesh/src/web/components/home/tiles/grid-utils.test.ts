@@ -70,6 +70,15 @@ describe("moveTile", () => {
     const a = out.find((t) => t.id === "a")!;
     expect(a.x).toBe(2); // 3 - 1
   });
+
+  it("swaps when dropping a same-size tile on top of another", () => {
+    const board = [tile("a", 0, 0, 1, 1), tile("b", 2, 0, 1, 1)];
+    const out = moveTile(board, "a", { x: 2, y: 0 });
+    const a = out.find((t) => t.id === "a")!;
+    const b = out.find((t) => t.id === "b")!;
+    expect(a).toMatchObject({ x: 2, y: 0 });
+    expect(b).toMatchObject({ x: 0, y: 0 });
+  });
 });
 
 describe("resizeTile", () => {

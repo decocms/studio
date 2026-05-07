@@ -1,12 +1,20 @@
 /**
- * Tile board — the 12-column drag/resize grid that backs the
- * "tiles" home layout. Pure presentation: takes a board + mutators
- * from `useHomeBoard` and renders read-only or edit-mode chrome.
+ * Tile board — the 3-column drag/resize grid that backs the home
+ * "tiles" area. Pure presentation: takes a board + mutators from
+ * `useHomeBoard` and renders read-only or edit-mode chrome.
  *
- * Drag math: each tile's pixel-delta from dnd-kit is converted to a
- * cell-delta using the live grid cell width (read on drag end). The
- * tile's new {x,y} is committed via `moveTile`, which compacts the
- * board so neighbours stay tidy.
+ * Edit-mode mechanics:
+ *   - A CSS-grid skeleton of dashed cells renders behind the tiles so
+ *     the user sees the 3-col structure before they drop something.
+ *   - dnd-kit handles the pointer drag. Cell width is captured from
+ *     the live board element on drag start (refs, not container
+ *     queries) so the DragOverlay matches the tile's exact size.
+ *   - Drop math: pointer pixel-delta → cell-delta. The dropped slot is
+ *     committed via `moveTile`, which swaps with an occupant tile when
+ *     possible (smoother than push-down) and otherwise compacts the
+ *     board.
+ *   - Tile positions animate via CSS transitions on left/top/width/
+ *     height so neighbours slide cleanly when the board reflows.
  */
 
 import {
@@ -35,6 +43,7 @@ import {
 import {
   ALL_SIZES,
   GRID_COLS,
+  GRID_GAP_PX,
   ROW_HEIGHT_PX,
   SIZE_LABELS,
   SIZE_PRESETS,
@@ -51,6 +60,11 @@ interface TileBoardProps {
   onRemove: (id: string) => void;
 }
 
+interface DragState {
+  cellWidth: number;
+  cellHeight: number;
+}
+
 export function TileBoard({
   board,
   isEditMode,
@@ -61,6 +75,7 @@ export function TileBoard({
   const isMobile = useIsMobile();
   const boardRef = useRef<HTMLDivElement | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [dragState, setDragState] = useState<DragState | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -69,26 +84,41 @@ export function TileBoard({
     useSensor(KeyboardSensor),
   );
 
-  const totalRows = board.tiles.reduce(
+  // Always render at least a couple of empty rows in edit mode so the
+  // skeleton has something to draw against and the user can drop tiles
+  // into space below the existing content.
+  const filledRows = board.tiles.reduce(
     (max, t) => Math.max(max, t.y + t.h),
-    isEditMode ? 6 : 1,
+    0,
   );
+  const totalRows = isEditMode
+    ? Math.max(filledRows + 2, 4)
+    : Math.max(filledRows, 1);
+
+  const captureDragState = (): DragState | null => {
+    const rect = boardRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    return {
+      cellWidth: rect.width / GRID_COLS,
+      cellHeight: ROW_HEIGHT_PX,
+    };
+  };
 
   const onDragStart = (e: DragStartEvent) => {
     setActiveId(String(e.active.id));
+    setDragState(captureDragState());
   };
 
   const onDragEnd = (event: DragEndEvent) => {
-    setActiveId(null);
     const id = String(event.active.id);
+    const state = dragState ?? captureDragState();
+    setActiveId(null);
+    setDragState(null);
+    if (!state || state.cellWidth <= 0) return;
     const tile = board.tiles.find((t) => t.id === id);
     if (!tile) return;
-    const rect = boardRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const cellWidth = rect.width / GRID_COLS;
-    if (cellWidth <= 0) return;
-    const dx = Math.round(event.delta.x / cellWidth);
-    const dy = Math.round(event.delta.y / ROW_HEIGHT_PX);
+    const dx = Math.round(event.delta.x / state.cellWidth);
+    const dy = Math.round(event.delta.y / state.cellHeight);
     if (dx === 0 && dy === 0) return;
     onMove(id, { x: tile.x + dx, y: tile.y + dy });
   };
@@ -99,8 +129,8 @@ export function TileBoard({
         {board.tiles.map((tile) => (
           <div
             key={tile.id}
-            className="bg-background border border-border rounded-[0.75rem] overflow-hidden"
-            style={{ minHeight: ROW_HEIGHT_PX * Math.max(2, tile.h) }}
+            className="bg-background border border-border rounded-2xl overflow-hidden"
+            style={{ minHeight: ROW_HEIGHT_PX }}
           >
             <TileErrorBoundary>
               {renderTileContent(tile.type, {
@@ -126,16 +156,13 @@ export function TileBoard({
     >
       <div
         ref={boardRef}
-        className={cn(
-          "relative w-full",
-          isEditMode &&
-            "bg-[radial-gradient(circle_at_center,var(--border)_1px,transparent_1px)] bg-[size:32px_32px]",
-        )}
+        className="relative w-full"
         style={{
           height: totalRows * ROW_HEIGHT_PX,
-          minHeight: ROW_HEIGHT_PX * 4,
+          minHeight: isEditMode ? ROW_HEIGHT_PX * 4 : ROW_HEIGHT_PX,
         }}
       >
+        {isEditMode && <GridSkeleton rows={totalRows} />}
         {board.tiles.map((tile) => (
           <BoardTile
             key={tile.id}
@@ -150,14 +177,18 @@ export function TileBoard({
       <DragOverlay
         dropAnimation={null}
         style={{
-          width: activeTile
-            ? `calc((100cqw - 5rem) / ${GRID_COLS} * ${activeTile.w})`
-            : undefined,
-          height: activeTile ? activeTile.h * ROW_HEIGHT_PX : undefined,
+          width:
+            activeTile && dragState
+              ? activeTile.w * dragState.cellWidth - GRID_GAP_PX
+              : undefined,
+          height:
+            activeTile && dragState
+              ? activeTile.h * dragState.cellHeight - GRID_GAP_PX
+              : undefined,
         }}
       >
         {activeTile && (
-          <div className="bg-background border border-primary rounded-[0.75rem] shadow-2xl ring-2 ring-primary/40 h-full overflow-hidden opacity-95">
+          <div className="bg-background border border-primary rounded-2xl shadow-2xl ring-2 ring-primary/40 h-full overflow-hidden opacity-95">
             <TileErrorBoundary>
               {renderTileContent(activeTile.type, {
                 instance: activeTile,
@@ -168,6 +199,37 @@ export function TileBoard({
         )}
       </DragOverlay>
     </DndContext>
+  );
+}
+
+/**
+ * A pure-CSS grid of dashed cells covering the full board. Sits behind
+ * the tiles in edit mode so the user can see where things will snap.
+ */
+function GridSkeleton({ rows }: { rows: number }) {
+  const cells: { x: number; y: number }[] = [];
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < GRID_COLS; x++) {
+      cells.push({ x, y });
+    }
+  }
+  return (
+    <div
+      className="absolute inset-0 grid pointer-events-none"
+      style={{
+        gridTemplateColumns: `repeat(${GRID_COLS}, minmax(0, 1fr))`,
+        gridTemplateRows: `repeat(${rows}, ${ROW_HEIGHT_PX}px)`,
+        padding: GRID_GAP_PX / 2,
+        gap: GRID_GAP_PX,
+      }}
+    >
+      {cells.map((c) => (
+        <div
+          key={`${c.x}-${c.y}`}
+          className="rounded-2xl border border-dashed border-border/50"
+        />
+      ))}
+    </div>
   );
 }
 
@@ -203,12 +265,18 @@ function BoardTile({
   const top = tile.y * ROW_HEIGHT_PX;
   const height = tile.h * ROW_HEIGHT_PX;
 
+  const isCurrentlyDragging = dragging || isDragging;
+
   return (
     <div
       ref={setNodeRef}
       className={cn(
-        "absolute p-1.5 transition-opacity",
-        (dragging || isDragging) && "opacity-30",
+        "absolute p-1 will-change-[left,top,width,height,opacity]",
+        // Smooth slide when neighbours reflow; skip during drag so the
+        // pointer-following transform reads as immediate.
+        !isCurrentlyDragging &&
+          "transition-[left,top,width,height,opacity] duration-200 ease-out",
+        isCurrentlyDragging && "opacity-30",
       )}
       style={{ left, top, width, height }}
     >
