@@ -47,13 +47,28 @@ function ProfileSection() {
 
   const { schedule: scheduleSave, flush: flushAndSave } = useDebouncedAutosave({
     save: async () => {
-      if (!form.formState.isDirty) return;
-      const { name } = form.getValues();
+      // Read live dirty state from control._formState (Proxy lag workaround).
+      const liveDirtyFields = (
+        form.control as unknown as {
+          _formState: { dirtyFields: Record<string, unknown> };
+        }
+      )._formState.dirtyFields;
+      if (Object.keys(liveDirtyFields).length === 0) return;
+
+      const values = form.getValues();
+      const previousDefaults = (
+        form.control as unknown as { _defaultValues: ProfileFormValues }
+      )._defaultValues;
+
+      // Rebase pre-mutate so an edit during the in-flight save that returns
+      // a value to its pre-save default still registers as dirty.
+      form.reset(values, { keepValues: true });
+
       try {
-        await authClient.updateUser({ name });
+        await authClient.updateUser({ name: values.name });
         track("profile_updated", { fields: ["name"] });
-        form.reset({ name });
       } catch {
+        form.reset(previousDefaults, { keepValues: true });
         toast.error("Failed to update profile");
       }
     },

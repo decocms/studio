@@ -53,7 +53,7 @@ import {
   XClose,
   Zap,
 } from "@untitledui/icons";
-import { Suspense, useRef, useState } from "react";
+import { Suspense, useEffect, useReducer, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { useDebouncedAutosave } from "@/web/hooks/use-debounced-autosave.ts";
 import { toast } from "sonner";
@@ -80,6 +80,36 @@ interface SettingsFormData {
   // When set, the server resolves the model from the live tier slot at run
   // time, so credential_id / model_id act as a display snapshot only.
   tier: SimpleModeTier | "";
+}
+
+type EditSession = {
+  start: number;
+  fields: Set<string>;
+  saveCount: number;
+};
+
+type EditSessionAction =
+  | { type: "accumulate"; now: number; fields: string[] }
+  | { type: "reset" };
+
+function editSessionReducer(
+  state: EditSession | null,
+  action: EditSessionAction,
+): EditSession | null {
+  switch (action.type) {
+    case "accumulate": {
+      const base: EditSession = state ?? {
+        start: action.now,
+        fields: new Set(),
+        saveCount: 0,
+      };
+      const fields = new Set(base.fields);
+      for (const f of action.fields) fields.add(f);
+      return { ...base, fields, saveCount: base.saveCount + 1 };
+    }
+    case "reset":
+      return null;
+  }
 }
 
 // ============================================================================
@@ -335,12 +365,14 @@ export function SettingsTab({
   const [cronInput, setCronInput] = useState("");
   const [showEventForm, setShowEventForm] = useState(false);
   const [isImproving, setIsImproving] = useState(false);
-  const editorInitializedRef = useRef(false);
-  const tiptapDirtyRef = useRef(false);
-  // The save runs from a debounced setTimeout. Reading state through a closure
-  // there would give us the value from the render that scheduled the timer,
-  // not the latest keystroke — that's how trailing characters got lost.
-  const tiptapDocRef = useRef<Metadata["tiptapDoc"]>(initialTiptapDoc);
+  // The editor's first setTiptapDoc call is the mount-time normalization,
+  // not a user edit — we skip it so it doesn't mark dirty / autosave.
+  const [editorInitialized, setEditorInitialized] = useState(false);
+  // Tiptap is not in the RHF form (mount normalization would mark dirty
+  // before the user has typed anything). We track tiptap-dirty here and
+  // mix it into saveForm's "should we send?" decision alongside RHF's
+  // dirtyFields.
+  const [tiptapDirty, setTiptapDirty] = useState(false);
 
   const handleImprovePrompt = async () => {
     if (isImproving) return;
@@ -353,7 +385,7 @@ export function SettingsTab({
 
     setIsImproving(true);
     try {
-      flushEditSession();
+      forceSessionFlush();
       track("automation_improve_clicked", {
         automation_id: automationId,
         agent_id: agentId,
@@ -423,143 +455,146 @@ export function SettingsTab({
   const handleSimpleModeTierSelect = (tier: SimpleModeTier) => {
     const slot = simpleMode.chat[tier];
     if (!slot) return;
-    form.setValue("credential_id", slot.keyId);
-    form.setValue("model_id", slot.modelId);
-    form.setValue("tier", tier);
-    markFormDirty("credential_id");
-    markFormDirty("model_id");
-    markFormDirty("tier");
-    scheduleSave();
+    form.setValue("credential_id", slot.keyId, { shouldDirty: true });
+    form.setValue("model_id", slot.modelId, { shouldDirty: true });
+    form.setValue("tier", tier, { shouldDirty: true });
   };
 
   // Session-based tracking for automation_updated. Auto-saves persist every
   // ~1s but we only emit one PostHog event per edit-session (aggregated
   // fields + save_count + edit_duration_ms). A session ends after 30s of
   // quiet, or on explicit flush (tab-leave, improve, test).
-  const editSessionStartRef = useRef<number | null>(null);
-  const editSessionFieldsRef = useRef<Set<string>>(new Set());
-  const editSessionSaveCountRef = useRef(0);
-  const editSessionFlushRef = useRef<ReturnType<typeof setTimeout> | null>(
+  const [editSession, dispatchEditSession] = useReducer(
+    editSessionReducer,
     null,
   );
-  const EDIT_SESSION_QUIET_MS = 30_000;
 
   const flushEditSession = () => {
-    if (editSessionFlushRef.current) {
-      clearTimeout(editSessionFlushRef.current);
-      editSessionFlushRef.current = null;
-    }
-    if (editSessionStartRef.current === null) return;
+    if (editSession === null) return;
     track("automation_updated", {
       automation_id: automationId,
       agent_id: agentId,
-      fields: Array.from(editSessionFieldsRef.current),
-      save_count: editSessionSaveCountRef.current,
-      edit_duration_ms: Date.now() - editSessionStartRef.current,
+      fields: Array.from(editSession.fields),
+      save_count: editSession.saveCount,
+      edit_duration_ms: Date.now() - editSession.start,
     });
-    editSessionStartRef.current = null;
-    editSessionFieldsRef.current = new Set();
-    editSessionSaveCountRef.current = 0;
-  };
-
-  // Track which form fields have been edited since the last successful save.
-  // We don't read formState.dirtyFields because RHF's lazy proxy subscriptions
-  // make it easy to silently miss fields that aren't read during render — that
-  // is exactly how the title autosave regressed.
-  const formDirtyFieldsRef = useRef<Set<keyof SettingsFormData>>(new Set());
-
-  const markFormDirty = (field: keyof SettingsFormData) => {
-    formDirtyFieldsRef.current.add(field);
+    dispatchEditSession({ type: "reset" });
   };
 
   const saveForm = async (): Promise<boolean> => {
-    const dirtyFormKeys = Array.from(formDirtyFieldsRef.current);
-    const hasDirtyFields = dirtyFormKeys.length > 0;
-    if (!hasDirtyFields && !tiptapDirtyRef.current) return true;
-    const tiptapWasDirty = tiptapDirtyRef.current;
-    tiptapDirtyRef.current = false;
-    formDirtyFieldsRef.current = new Set();
+    // form.formState is a Proxy over React state. When saveForm runs
+    // synchronously after setValue (e.g. via flushAndSave), React hasn't
+    // processed the batched update yet and form.formState.dirtyFields
+    // returns the previous render's snapshot — empty on the first edit — so
+    // the save would bail. Read control._formState.dirtyFields for the live
+    // value. Same gotcha as virtual-mcp.
+    const liveDirtyFields = (
+      form.control as unknown as {
+        _formState: { dirtyFields: Record<string, unknown> };
+      }
+    )._formState.dirtyFields;
+    const dirtyKeys = Object.keys(liveDirtyFields);
+    if (dirtyKeys.length === 0 && !tiptapDirty) return true;
 
     const values = form.getValues();
-    const tiptapDocAtSave = tiptapDocRef.current;
+    const coercedCredentialId =
+      values.credential_id && values.model_id ? values.credential_id : "";
+    const coercedModelId =
+      values.credential_id && values.model_id ? values.model_id : "";
+
+    // Reflect coercion in the form so the UI matches what we're persisting.
+    // shouldDirty is left as the default (false) — these aren't user edits;
+    // the rebase below will adopt them as the new baseline.
+    if (coercedCredentialId !== values.credential_id) {
+      form.setValue("credential_id", coercedCredentialId);
+    }
+    if (coercedModelId !== values.model_id) {
+      form.setValue("model_id", coercedModelId);
+    }
+
+    const formData = form.getValues();
+    const previousDefaults = (
+      form.control as unknown as { _defaultValues: SettingsFormData }
+    )._defaultValues;
+
+    // Rebase the dirty baseline pre-mutate so an edit during the in-flight
+    // save that returns a value to its pre-save default still registers as
+    // dirty. keepValues preserves user view; only _defaultValues advances.
+    form.reset(formData, { keepValues: true });
+    const tiptapWasDirty = tiptapDirty;
+    setTiptapDirty(false);
+
+    // Persist `tier` only when we have a confident signal: an explicit form
+    // value (set via the tier dropdown) or a saved model that actually
+    // matches a configured slot. Legacy automations whose model doesn't
+    // match any slot are NOT silently re-pinned to the default tier on
+    // incidental edits — that would change which model the run path uses
+    // with no UI signal.
+    const tierToPersist: SimpleModeTier | undefined = simpleMode.enabled
+      ? formData.tier || slotMatchedTier
+      : formData.tier || undefined;
+
+    const updatePayload = {
+      id: automationId,
+      name: formData.name,
+      active: formData.active,
+      models: {
+        credentialId: coercedCredentialId,
+        thinking: { id: coercedModelId },
+        ...(tierToPersist ? { tier: tierToPersist } : {}),
+      },
+      messages: tiptapDocToMessages(tiptapDoc),
+      temperature: 0,
+    };
+
     try {
-      const coercedCredentialId =
-        values.credential_id && values.model_id ? values.credential_id : "";
-      const coercedModelId =
-        values.credential_id && values.model_id ? values.model_id : "";
-
-      // Persist `tier` only when we have a confident signal: an explicit
-      // form value (set via the tier dropdown) or a saved model that
-      // actually matches a configured slot. Legacy automations whose model
-      // doesn't match any slot are NOT silently re-pinned to the default
-      // tier on incidental edits — that would change which model the run
-      // path uses with no UI signal.
-      const tierToPersist: SimpleModeTier | undefined = simpleMode.enabled
-        ? values.tier || slotMatchedTier
-        : values.tier || undefined;
-
-      const updatePayload = {
-        id: automationId,
-        name: values.name,
-        active: values.active,
-        models: {
-          credentialId: coercedCredentialId,
-          thinking: {
-            id: coercedModelId,
-          },
-          ...(tierToPersist ? { tier: tierToPersist } : {}),
-        },
-        messages: tiptapDocToMessages(tiptapDocAtSave),
-        temperature: 0,
-      };
       await updateMutation.mutateAsync(updatePayload);
-
-      // Accumulate into the edit session.
-      if (editSessionStartRef.current === null) {
-        editSessionStartRef.current = Date.now();
-      }
-      for (const k of dirtyFormKeys) editSessionFieldsRef.current.add(k);
-      if (tiptapWasDirty) editSessionFieldsRef.current.add("messages");
-      editSessionSaveCountRef.current += 1;
-      if (editSessionFlushRef.current) {
-        clearTimeout(editSessionFlushRef.current);
-      }
-      editSessionFlushRef.current = setTimeout(
-        flushEditSession,
-        EDIT_SESSION_QUIET_MS,
-      );
-
-      if (coercedCredentialId !== values.credential_id) {
-        form.setValue("credential_id", coercedCredentialId);
-      }
-      if (coercedModelId !== values.model_id) {
-        form.setValue("model_id", coercedModelId);
-      }
-      return true;
     } catch {
-      tiptapDirtyRef.current = true;
-      for (const key of dirtyFormKeys) formDirtyFieldsRef.current.add(key);
+      // Roll back the rebase so user edits remain dirty for the next attempt.
+      form.reset(previousDefaults, { keepValues: true });
+      if (tiptapWasDirty) setTiptapDirty(true);
       return false;
     }
+
+    const fields = [...dirtyKeys];
+    if (tiptapWasDirty) fields.push("messages");
+    dispatchEditSession({ type: "accumulate", now: Date.now(), fields });
+    scheduleSessionFlush();
+    return true;
   };
 
   const { schedule: scheduleSave, flush: flushAndSave } = useDebouncedAutosave({
     save: saveForm,
   });
 
-  const debouncedSave = (field?: keyof SettingsFormData) => {
-    if (field) markFormDirty(field);
-    scheduleSave();
-  };
+  const { schedule: scheduleSessionFlush, flush: forceSessionFlush } =
+    useDebouncedAutosave({
+      delayMs: 30_000,
+      save: async () => flushEditSession(),
+    });
+
+  // form.watch(callback) fires on value changes via setValue, but not on
+  // form.reset({ keepValues: true }) (which only emits state, no `values`
+  // key) — so saveForm's pre-mutate rebase does NOT loop. Edit handlers can
+  // just call form.setValue with shouldDirty:true and trust this
+  // subscription to schedule the save. flushAndSave remains for explicit
+  // "save NOW" semantics.
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    const sub = form.watch(() => scheduleSave());
+    return () => sub.unsubscribe();
+    // scheduleSave is stable for our purpose: its closure mediates through
+    // stable refs inside useDebouncedAutosave.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const setTiptapDoc = (doc: Metadata["tiptapDoc"]) => {
-    tiptapDocRef.current = doc;
     setTiptapDocRaw(doc);
-    if (!editorInitializedRef.current) {
-      editorInitializedRef.current = true;
+    if (!editorInitialized) {
+      setEditorInitialized(true);
       return;
     }
-    tiptapDirtyRef.current = true;
+    setTiptapDirty(true);
     scheduleSave();
   };
 
@@ -569,7 +604,7 @@ export function SettingsTab({
       agent_id: agentId,
     });
     const saved = await flushAndSave();
-    flushEditSession();
+    forceSessionFlush();
     if (!saved) return;
 
     if (!tiptapDoc) {
@@ -614,10 +649,6 @@ export function SettingsTab({
               render={({ field }) => (
                 <Input
                   {...field}
-                  onChange={(e) => {
-                    field.onChange(e);
-                    debouncedSave("name");
-                  }}
                   placeholder="Automation name"
                   className="border border-transparent shadow-none px-0 text-lg font-medium h-auto focus-visible:ring-0 focus-visible:border-border bg-transparent flex-1"
                   style={{ boxShadow: "none" }}
@@ -644,8 +675,7 @@ export function SettingsTab({
                   checked={field.value}
                   onCheckedChange={(checked) => {
                     field.onChange(checked);
-                    markFormDirty("active");
-                    setTimeout(() => flushAndSave(), 0);
+                    flushAndSave();
                   }}
                   className="cursor-pointer"
                 />
@@ -843,19 +873,17 @@ export function SettingsTab({
                     isLoading={isModelsLoading}
                     credentialId={watchConnectionId || null}
                     onCredentialChange={(id) => {
-                      form.setValue("credential_id", id ?? "");
-                      form.setValue("model_id", "");
-                      form.setValue("tier", "");
-                      markFormDirty("credential_id");
-                      markFormDirty("model_id");
-                      markFormDirty("tier");
-                      scheduleSave();
+                      form.setValue("credential_id", id ?? "", {
+                        shouldDirty: true,
+                      });
+                      form.setValue("model_id", "", { shouldDirty: true });
+                      form.setValue("tier", "", { shouldDirty: true });
                     }}
                     onModelChange={(model) => {
-                      form.setValue("model_id", model.modelId);
-                      form.setValue("tier", "");
-                      markFormDirty("tier");
-                      debouncedSave("model_id");
+                      form.setValue("model_id", model.modelId, {
+                        shouldDirty: true,
+                      });
+                      form.setValue("tier", "", { shouldDirty: true });
                     }}
                     placeholder="Model"
                   />

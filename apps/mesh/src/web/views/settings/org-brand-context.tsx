@@ -565,22 +565,43 @@ function ExpandableBrandEntry({
         arguments: merged,
       });
     },
-    onSuccess: (_res, values) => {
-      track("brand_updated", {
-        brand_id: brand.id,
-        fields: Object.keys(form.formState.dirtyFields),
-      });
-      form.reset(values);
-      onChanged();
-    },
     onError: () => toast.error("Failed to save brand context"),
   });
 
   const { schedule: scheduleSave, flush: flushAndSave } = useDebouncedAutosave({
     delayMs: 500,
     save: async () => {
-      if (!form.formState.isDirty) return;
-      await updateBrandMutation.mutateAsync(form.getValues());
+      // Read live dirty state from control._formState. form.formState is a
+      // Proxy over React state and lags by one render inside synchronous
+      // event handlers — the same gotcha that hit virtual-mcp.
+      const liveDirtyFields = (
+        form.control as unknown as {
+          _formState: { dirtyFields: Record<string, unknown> };
+        }
+      )._formState.dirtyFields;
+      const dirtyKeys = Object.keys(liveDirtyFields);
+      if (dirtyKeys.length === 0) return;
+
+      const values = form.getValues();
+      const previousDefaults = (
+        form.control as unknown as { _defaultValues: BrandFormData }
+      )._defaultValues;
+
+      // Rebase defaults to the snapshot we're about to send. An edit during
+      // the in-flight save that returns a value to its pre-save default still
+      // registers as dirty for the next save. keepValues preserves the user's
+      // current view; only _defaultValues advances. Replaces the post-mutate
+      // form.reset(values) which used to stomp user edits made mid-flight.
+      form.reset(values, { keepValues: true });
+
+      try {
+        await updateBrandMutation.mutateAsync(values);
+        track("brand_updated", { brand_id: brand.id, fields: dirtyKeys });
+        onChanged();
+      } catch {
+        // Roll back the rebase so user edits remain dirty for the next save.
+        form.reset(previousDefaults, { keepValues: true });
+      }
     },
   });
 

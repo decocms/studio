@@ -163,10 +163,32 @@ export function OrganizationForm() {
 
   const { schedule: scheduleSave, flush: flushAndSave } = useDebouncedAutosave({
     save: async () => {
-      if (!form.formState.isDirty) return;
+      // Read live dirty state from control._formState (Proxy lag workaround).
+      const liveDirtyFields = (
+        form.control as unknown as {
+          _formState: { dirtyFields: Record<string, unknown> };
+        }
+      )._formState.dirtyFields;
+      if (Object.keys(liveDirtyFields).length === 0) return;
       const valid = await form.trigger();
       if (!valid) return;
-      await updateOrgMutation.mutateAsync(form.getValues());
+
+      const values = form.getValues();
+      const previousDefaults = (
+        form.control as unknown as {
+          _defaultValues: OrganizationSettingsFormValues;
+        }
+      )._defaultValues;
+
+      // Rebase pre-mutate so edits during the in-flight save are tracked
+      // against the snapshot we're sending, not the pre-save baseline.
+      form.reset(values, { keepValues: true });
+
+      try {
+        await updateOrgMutation.mutateAsync(values);
+      } catch {
+        form.reset(previousDefaults, { keepValues: true });
+      }
     },
   });
 
