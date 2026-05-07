@@ -99,11 +99,7 @@ function AgentPreview({
       type="button"
       onClick={handleClick}
       className={cn(
-        "flex flex-col items-center gap-3 p-2 rounded-lg",
-        "transition-colors",
-        "cursor-pointer",
-        "w-[100px] shrink-0",
-        "group",
+        "group flex flex-col items-start gap-3 rounded-2xl bg-muted/30 dark:bg-muted/20 hover:bg-muted hover:border-primary/40 border border-transparent transition-colors text-left p-4 w-[136px] shrink-0",
       )}
       aria-label={`Select agent ${agent.title}`}
     >
@@ -111,10 +107,9 @@ function AgentPreview({
         icon={agent.icon}
         name={agent.title}
         size="md"
-        fallbackIcon={<Users03 size={24} />}
-        className="transition-transform group-hover:scale-110"
+        fallbackIcon={<Users03 size={20} />}
       />
-      <p className="text-xs sm:text-sm text-foreground text-center leading-tight line-clamp-2 break-words w-full">
+      <p className="text-[13px] font-medium text-foreground leading-tight line-clamp-2 break-words tracking-tight">
         {agent.title}
       </p>
     </button>
@@ -132,11 +127,7 @@ function SeeAllButton() {
     <button
       type="button"
       className={cn(
-        "flex flex-col items-center gap-3 p-2 rounded-lg",
-        "transition-colors",
-        "cursor-pointer",
-        "w-[100px] shrink-0",
-        "group",
+        "group flex flex-col items-start gap-3 rounded-2xl bg-muted/30 dark:bg-muted/20 hover:bg-muted hover:border-primary/40 border border-transparent transition-colors text-left p-4 w-[136px] shrink-0",
       )}
       aria-label="See all agents"
       onClick={() => {
@@ -144,10 +135,10 @@ function SeeAllButton() {
         navigate({ to: "/$org/settings/agents", params: { org: org.slug } });
       }}
     >
-      <div className="size-12 rounded-xl bg-accent flex items-center justify-center shrink-0 transition-transform group-hover:scale-110">
-        <ChevronRight size={20} className="text-foreground" />
+      <div className="size-12 rounded-xl bg-background border border-border flex items-center justify-center shrink-0">
+        <ChevronRight size={20} className="text-muted-foreground" />
       </div>
-      <p className="text-xs sm:text-sm text-foreground text-center leading-tight">
+      <p className="text-[13px] font-medium text-foreground leading-tight tracking-tight">
         See all
       </p>
     </button>
@@ -171,19 +162,15 @@ function CreateAgentButton() {
       }}
       disabled={isCreating}
       className={cn(
-        "flex flex-col items-center gap-3 p-2 rounded-lg",
-        "transition-colors",
-        "cursor-pointer",
-        "w-[100px] shrink-0",
-        "group",
+        "group flex flex-col items-start gap-3 rounded-2xl bg-muted/30 dark:bg-muted/20 hover:bg-muted hover:border-primary/40 border border-dashed border-border/60 transition-colors text-left p-4 w-[136px] shrink-0",
         "disabled:opacity-50 disabled:cursor-not-allowed",
       )}
       aria-label="Create agent"
     >
-      <div className="size-12 rounded-xl bg-background border-2 border-dashed border-border flex items-center justify-center shrink-0 transition-transform group-hover:scale-110">
+      <div className="size-12 rounded-xl bg-background border border-border flex items-center justify-center shrink-0">
         <Plus size={20} className="text-muted-foreground" />
       </div>
-      <p className="text-xs sm:text-sm text-foreground text-center leading-tight">
+      <p className="text-[13px] font-medium text-foreground leading-tight tracking-tight">
         Create agent
       </p>
     </button>
@@ -519,7 +506,7 @@ function AgentsListContent() {
   return (
     <>
       <div className="w-full max-md:overflow-x-auto max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden">
-        <div className="flex flex-wrap justify-center gap-1.5 max-md:flex-nowrap max-md:justify-start md:max-h-52 md:overflow-hidden">
+        <div className="flex flex-wrap justify-center gap-2 max-md:flex-nowrap max-md:justify-start md:max-h-32 md:overflow-hidden">
           {tiles.map(renderTile)}
           <CreateAgentButton />
           {hasAgents && <SeeAllButton />}
@@ -574,14 +561,14 @@ function AgentsListContent() {
 function AgentsListSkeleton() {
   return (
     <div className="w-full max-md:overflow-x-auto max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden">
-      <div className="flex flex-wrap justify-center gap-1.5 max-md:flex-nowrap max-md:justify-start md:max-h-52 md:overflow-hidden">
+      <div className="flex flex-wrap justify-center gap-2 max-md:flex-nowrap max-md:justify-start md:max-h-32 md:overflow-hidden">
         {Array.from({ length: 7 }).map((_, i) => (
           <div
             key={i}
-            className="flex flex-col items-center gap-3 p-2 w-[100px] shrink-0"
+            className="flex flex-col items-start gap-3 rounded-2xl bg-muted/30 dark:bg-muted/20 p-4 w-[136px] shrink-0"
           >
             <Skeleton className="size-12 rounded-xl shrink-0" />
-            <Skeleton className="h-3 sm:h-4 w-full" />
+            <Skeleton className="h-3 w-3/4" />
           </div>
         ))}
       </div>
