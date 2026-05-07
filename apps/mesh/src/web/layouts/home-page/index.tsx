@@ -233,7 +233,7 @@ export function HomePage() {
 
         {/* Bottom: tile board (only when there are tiles) */}
         {hasTiles ? (
-          <div className="w-full mt-12 mx-auto max-w-[1280px] px-4 pb-10">
+          <div className="w-full mt-20 mx-auto max-w-[1280px] px-4 pb-10">
             <TileBoard
               board={boardApi.board}
               isEditMode={isEditMode}

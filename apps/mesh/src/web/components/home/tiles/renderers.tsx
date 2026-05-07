@@ -53,9 +53,11 @@ function TileFrame({
   return (
     <div className="flex h-full flex-col p-5 gap-5 min-h-0">
       <div className="flex items-center justify-between gap-2 shrink-0">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span className="text-muted-foreground shrink-0">{icon}</span>
-          <span className="text-sm font-medium text-foreground truncate">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="flex size-7 items-center justify-center rounded-md bg-background text-muted-foreground shrink-0 border border-border/60">
+            {icon}
+          </span>
+          <span className="text-[13px] font-medium text-foreground/90 truncate tracking-tight">
             {title}
           </span>
         </div>
@@ -200,31 +202,35 @@ const MOCK_RECENT_TASKS = [
   { id: "t4", title: "Audit GitHub Actions costs", status: "blocked" },
 ];
 
-const TASK_STATUS_COLOR: Record<string, string> = {
-  "in-progress": "bg-primary/15 text-primary",
-  review: "bg-warning/15 text-warning",
-  blocked: "bg-destructive/15 text-destructive",
+const TASK_DOT: Record<string, string> = {
+  "in-progress": "bg-primary",
+  review: "bg-amber-500",
+  blocked: "bg-rose-500",
+};
+
+const TASK_LABEL: Record<string, string> = {
+  "in-progress": "In progress",
+  review: "Review",
+  blocked: "Blocked",
 };
 
 export function RecentTasksTile(_props: TileRenderProps) {
   return (
     <TileFrame title="Recent tasks" icon={<Clock size={14} />}>
-      <ul className="flex flex-col gap-1">
+      <ul className="flex flex-col gap-3">
         {MOCK_RECENT_TASKS.map((t) => (
-          <li
-            key={t.id}
-            className="flex items-center justify-between gap-3 py-2 border-b border-border/60 last:border-0"
-          >
-            <span className="text-sm text-foreground truncate flex-1">
-              {t.title}
-            </span>
+          <li key={t.id} className="flex items-center gap-2.5 min-w-0">
             <span
               className={cn(
-                "text-[10px] px-2 py-0.5 rounded-full capitalize font-medium",
-                TASK_STATUS_COLOR[t.status] ?? "bg-muted text-muted-foreground",
+                "size-1.5 rounded-full shrink-0",
+                TASK_DOT[t.status] ?? "bg-muted-foreground/40",
               )}
-            >
-              {t.status.replace("-", " ")}
+            />
+            <span className="text-[13px] text-foreground truncate flex-1">
+              {t.title}
+            </span>
+            <span className="text-[11px] text-muted-foreground shrink-0">
+              {TASK_LABEL[t.status] ?? t.status}
             </span>
           </li>
         ))}
@@ -306,18 +312,18 @@ export function ConnectionsOverviewTile(_props: TileRenderProps) {
           }),
       }}
     >
-      <div className="flex flex-col gap-4 flex-1 min-h-0 justify-between">
-        <div className="grid grid-cols-3 gap-2 text-center">
+      <div className="flex flex-col gap-5 flex-1 min-h-0 justify-between">
+        <div className="flex items-baseline gap-5">
           <Stat label="Active" value={active} tone="ok" />
           <Stat label="Inactive" value={inactive} tone="muted" />
           <Stat label="Errors" value={error} tone="bad" />
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1.5">
           {preview.map((c) => (
             <span
               key={c.id}
               title={c.title}
-              className="size-9 rounded-lg border border-border overflow-hidden shrink-0"
+              className="size-8 rounded-md bg-background overflow-hidden shrink-0 border border-border/60"
             >
               <IntegrationIcon
                 icon={c.icon ?? undefined}
@@ -347,18 +353,21 @@ function Stat({
   value: number;
   tone: "ok" | "bad" | "muted";
 }) {
-  const colour =
+  const dot =
     tone === "ok"
-      ? "text-primary"
+      ? "bg-emerald-500"
       : tone === "bad"
-        ? "text-destructive"
-        : "text-foreground";
+        ? "bg-rose-500"
+        : "bg-muted-foreground/40";
   return (
-    <div className="flex flex-col items-center justify-center rounded-lg bg-muted/40 py-3">
-      <span className={cn("text-lg font-semibold", colour)}>{value}</span>
-      <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
-        {label}
+    <div className="flex flex-col gap-1 min-w-0">
+      <span className="text-2xl font-semibold text-foreground leading-none tabular-nums tracking-tight">
+        {value}
       </span>
+      <div className="flex items-center gap-1.5">
+        <span className={cn("size-1.5 rounded-full shrink-0", dot)} />
+        <span className="text-[11px] text-muted-foreground">{label}</span>
+      </div>
     </div>
   );
 }
@@ -405,18 +414,18 @@ export function ShortcutsTile(_props: TileRenderProps) {
 
   return (
     <TileFrame title="Shortcuts" icon={<Star01 size={14} />}>
-      <div className="grid grid-cols-2 grid-rows-2 gap-3 flex-1 min-h-0">
+      <div className="grid grid-cols-2 grid-rows-2 gap-2 flex-1 min-h-0">
         {DEFAULT_SHORTCUTS.map((s) => (
           <button
             key={s.id}
             type="button"
             onClick={() => goTo(s.id)}
-            className="flex h-full flex-col items-start justify-between gap-3 rounded-lg border border-border bg-muted/30 hover:bg-muted hover:border-primary/30 transition-colors text-left p-4 min-h-0"
+            className="flex h-full flex-col items-start justify-between gap-3 rounded-lg bg-background hover:bg-background/80 transition-colors text-left p-4 min-h-0 border border-border/60 hover:border-primary/40"
           >
-            <span className="flex size-8 items-center justify-center rounded-md bg-background text-foreground border border-border">
+            <span className="flex size-8 items-center justify-center rounded-md bg-muted/50 text-foreground">
               {s.icon}
             </span>
-            <span className="text-sm font-medium text-foreground">
+            <span className="text-[13px] font-medium text-foreground">
               {s.label}
             </span>
           </button>
@@ -442,7 +451,7 @@ export function NotesTile({ instance: _instance }: TileRenderProps) {
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder="Quick scratchpad…"
-        className="flex-1 resize-none border-0 bg-transparent px-0 py-0 text-sm focus-visible:ring-0 focus-visible:ring-offset-0"
+        className="flex-1 resize-none rounded-lg bg-background border border-border/60 text-[13px] focus-visible:ring-1 focus-visible:ring-primary/30 focus-visible:ring-offset-0"
       />
     </TileFrame>
   );
@@ -450,33 +459,48 @@ export function NotesTile({ instance: _instance }: TileRenderProps) {
 
 /* ---------- studio.stats ---------- */
 
-const MOCK_STATS = [
-  { label: "Tasks today", value: 14, delta: "+3" },
-  { label: "Tools called", value: 287, delta: "+42" },
-  { label: "Connections", value: 12, delta: "0" },
-  { label: "Tokens (24h)", value: "118k", delta: "−5%" },
+type StatDelta = "up" | "down" | "flat";
+
+const MOCK_STATS: {
+  label: string;
+  value: string | number;
+  delta: string;
+  trend: StatDelta;
+}[] = [
+  { label: "Tasks today", value: 14, delta: "+3", trend: "up" },
+  { label: "Tools called", value: 287, delta: "+42", trend: "up" },
+  { label: "Connections", value: 12, delta: "0", trend: "flat" },
+  { label: "Tokens (24h)", value: "118k", delta: "−5%", trend: "down" },
 ];
+
+const TREND_TONE: Record<StatDelta, string> = {
+  up: "text-emerald-600 dark:text-emerald-400",
+  down: "text-rose-600 dark:text-rose-400",
+  flat: "text-muted-foreground",
+};
 
 export function StatsTile(_props: TileRenderProps) {
   return (
     <TileFrame title="Workspace stats" icon={<TrendUp02 size={14} />}>
-      <div className="grid grid-cols-2 grid-rows-2 gap-3 flex-1 min-h-0">
+      <div className="grid grid-cols-2 grid-rows-2 gap-x-6 gap-y-4 flex-1 min-h-0">
         {MOCK_STATS.map((s) => (
-          <div
-            key={s.label}
-            className="flex flex-col justify-between rounded-lg bg-muted/40 px-4 py-3 min-h-0"
-          >
-            <span className="text-2xl font-semibold text-foreground leading-none">
-              {s.value}
-            </span>
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[10px] text-muted-foreground uppercase tracking-wide truncate">
-                {s.label}
+          <div key={s.label} className="flex flex-col gap-1.5 min-h-0">
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-semibold text-foreground leading-none tabular-nums tracking-tight">
+                {s.value}
               </span>
-              <span className="text-[10px] text-muted-foreground shrink-0">
+              <span
+                className={cn(
+                  "text-[11px] font-medium tabular-nums",
+                  TREND_TONE[s.trend],
+                )}
+              >
                 {s.delta}
               </span>
             </div>
+            <span className="text-[11px] text-muted-foreground truncate">
+              {s.label}
+            </span>
           </div>
         ))}
       </div>
@@ -517,14 +541,13 @@ export function GithubActivityTile(_props: TileRenderProps) {
   return (
     <TileFrame title="GitHub activity" icon={<GitBranch01 size={14} />}>
       <ScrollArea className="flex-1 -mx-2">
-        <ul className="flex flex-col px-2">
+        <ul className="flex flex-col gap-3 px-2">
           {MOCK_COMMITS.map((c) => (
-            <li
-              key={c.id}
-              className="py-2 border-b border-border last:border-0"
-            >
-              <p className="text-sm text-foreground truncate">{c.message}</p>
-              <p className="text-xs text-muted-foreground">
+            <li key={c.id} className="flex flex-col gap-0.5 min-w-0">
+              <p className="text-[13px] text-foreground truncate">
+                {c.message}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
                 {c.author} · {c.when} ago
               </p>
             </li>
@@ -553,30 +576,27 @@ const MOCK_ISSUES = [
 ];
 
 const PRIORITY_COLOR: Record<string, string> = {
-  urgent: "bg-destructive/15 text-destructive",
-  high: "bg-warning/15 text-warning",
-  med: "bg-primary/10 text-primary",
-  low: "bg-muted text-muted-foreground",
+  urgent: "text-rose-600 dark:text-rose-400",
+  high: "text-amber-600 dark:text-amber-400",
+  med: "text-primary",
+  low: "text-muted-foreground",
 };
 
 export function LinearIssuesTile(_props: TileRenderProps) {
   return (
     <TileFrame title="My issues" icon={<AlertCircle size={14} />}>
-      <ul className="flex flex-col gap-1">
+      <ul className="flex flex-col gap-3">
         {MOCK_ISSUES.map((i) => (
-          <li
-            key={i.id}
-            className="flex items-center gap-3 py-2 min-w-0 border-b border-border/60 last:border-0"
-          >
+          <li key={i.id} className="flex items-center gap-2.5 min-w-0">
             <span
               className={cn(
-                "shrink-0 text-[10px] px-2 py-0.5 rounded-md font-mono",
+                "shrink-0 text-[10px] font-mono tabular-nums tracking-tight",
                 PRIORITY_COLOR[i.priority],
               )}
             >
               {i.id}
             </span>
-            <span className="text-sm text-foreground truncate flex-1">
+            <span className="text-[13px] text-foreground truncate flex-1">
               {i.title}
             </span>
           </li>
@@ -597,14 +617,15 @@ const MOCK_EVENTS = [
 export function CalendarTile(_props: TileRenderProps) {
   return (
     <TileFrame title="Today" icon={<Calendar size={14} />}>
-      <ul className="flex flex-col gap-3">
+      <ul className="flex flex-col gap-3.5">
         {MOCK_EVENTS.map((e) => (
-          <li key={e.id} className="flex items-start gap-3">
-            <span className="mt-1.5 size-1.5 rounded-full bg-primary shrink-0" />
-            <div className="min-w-0">
-              <p className="text-sm text-foreground truncate">{e.title}</p>
-              <p className="text-xs text-muted-foreground">{e.at}</p>
-            </div>
+          <li key={e.id} className="flex items-center gap-3 min-w-0">
+            <span className="text-[11px] text-muted-foreground tabular-nums shrink-0 w-[88px]">
+              {e.at.split(" — ")[0]}
+            </span>
+            <span className="text-[13px] text-foreground truncate flex-1">
+              {e.title}
+            </span>
           </li>
         ))}
       </ul>

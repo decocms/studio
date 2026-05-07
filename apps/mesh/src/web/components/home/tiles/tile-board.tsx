@@ -214,8 +214,8 @@ function BoardTile({
     >
       <div
         className={cn(
-          "relative h-full bg-background border border-border rounded-[0.75rem] overflow-hidden",
-          isEditMode && "ring-1 ring-border hover:ring-primary/40",
+          "relative h-full bg-muted/30 dark:bg-muted/20 rounded-2xl overflow-hidden border border-transparent",
+          isEditMode && "border-border hover:border-primary/40",
         )}
       >
         {isEditMode && (
