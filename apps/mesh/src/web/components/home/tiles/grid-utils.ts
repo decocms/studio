@@ -129,8 +129,10 @@ export function moveTile(
   const centerY = dropY + Math.floor(target.h / 2);
   const occupant = tileAtPoint(tiles, id, centerX, centerY);
 
+  // Same-size occupant → preserve both anchors exactly so the user sees
+  // a clean swap. We deliberately skip compaction here; the result is
+  // already gap-free by construction.
   if (occupant && occupant.w === target.w && occupant.h === target.h) {
-    // Same size → clean swap, no other tiles touched.
     return tiles.map((t) => {
       if (t.id === id) return { ...t, x: occupant.x, y: occupant.y };
       if (t.id === occupant.id) return { ...t, x: target.x, y: target.y };
@@ -138,15 +140,12 @@ export function moveTile(
     });
   }
 
-  // Otherwise: place the tile exactly where the user dropped it. We do
-  // NOT compact the board afterwards — compacting pulls every tile to
-  // the top, which makes "drop into an empty cell at row 5" snap right
-  // back to row 0. Resolve only the collisions caused by this single
-  // move; the rest of the board keeps the layout the user already
-  // arranged.
+  // Otherwise: place at the drop position, resolve collisions, then
+  // compact so neighbours pack against the top of the board. This is
+  // what stops "drop tile far below" leaving a sea of empty cells above.
   const moved = clampX({ ...target, x: dropX, y: dropY });
   const others = tiles.filter((t) => t.id !== id);
-  return resolveCollisions(moved, others);
+  return compactBoard(resolveCollisions(moved, others));
 }
 
 export function resizeTile(
@@ -158,7 +157,7 @@ export function resizeTile(
   if (!target) return tiles;
   const resized = clampX({ ...target, w: size.w, h: size.h });
   const others = tiles.filter((t) => t.id !== id);
-  return resolveCollisions(resized, others);
+  return compactBoard(resolveCollisions(resized, others));
 }
 
 export function insertTile(
@@ -166,13 +165,11 @@ export function insertTile(
   tile: Omit<TileInstance, "x" | "y">,
 ): TileInstance[] {
   const slot = findFirstFreeSlot(tiles, tile.w, tile.h);
-  return [...tiles, { ...tile, x: slot.x, y: slot.y }];
+  return compactBoard([...tiles, { ...tile, x: slot.x, y: slot.y }]);
 }
 
 export function removeTile(tiles: TileInstance[], id: string): TileInstance[] {
-  // Removing leaves a gap on purpose. The user can fill it with another
-  // tile or reset to the starter layout if they want a clean rearrange.
-  return tiles.filter((t) => t.id !== id);
+  return compactBoard(tiles.filter((t) => t.id !== id));
 }
 
 export function pixelDeltaToCellDelta(
