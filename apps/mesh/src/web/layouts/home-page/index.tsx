@@ -1,3 +1,14 @@
+/**
+ * Home page — one page, two regions:
+ *   1. Top:    chat composer + agents strip (unchanged from today's home).
+ *   2. Bottom: customisable tile board. Empty by default; tiles appear
+ *              when the user pins them.
+ *
+ * There is no mode toggle. The tile area is hidden until the user adds
+ * something. A subtle "Customize" button in the toolbar opens edit mode
+ * for the tile area only.
+ */
+
 import { AgentsList } from "@/web/components/home/agents-list.tsx";
 import { Chat } from "@/web/components/chat";
 import { NoAiProviderEmptyState } from "@/web/components/chat/no-ai-provider-empty-state";
@@ -13,21 +24,12 @@ import {
   LayoutAlt04,
   Plus,
   Settings02,
-  Stars01,
-  X,
+  Trash01,
 } from "@untitledui/icons";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -105,25 +107,13 @@ function useIsDecoUser() {
 }
 
 export function HomePage() {
-  const { org } = useProjectContext();
-  const board = useHomeBoard(org.slug);
-
-  if (board.board.layout === "tiles") {
-    return <TilesHome boardApi={board} />;
-  }
-  return <SimpleHome boardApi={board} />;
-}
-
-/* ------------------------------- Simple ------------------------------- */
-
-function SimpleHome({
-  boardApi,
-}: {
-  boardApi: ReturnType<typeof useHomeBoard>;
-}) {
   const { data: session } = authClient.useSession();
+  const { org } = useProjectContext();
+  const boardApi = useHomeBoard(org.slug);
   const [importOpen, setImportOpen] = useState(false);
-  const [introOpen, setIntroOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [isEditMode, setEditMode] = useState(false);
+
   const isDecoUser = useIsDecoUser();
   const isMobile = useIsMobile();
   const allKeys = useAiProviderKeys();
@@ -144,6 +134,7 @@ function SimpleHome({
   }
 
   const userName = session?.user?.name?.split(" ")[0] || "there";
+  const hasTiles = boardApi.board.tiles.length > 0;
 
   const showEyebrow =
     hasDecoKey && isInitialFreeCredit && balanceDollars != null;
@@ -153,8 +144,8 @@ function SimpleHome({
   if (isMobile) {
     return (
       <>
-        <div className="flex-1 relative flex flex-col items-center px-4">
-          <div className="flex-1 flex flex-col items-center justify-center w-full">
+        <div className="flex-1 relative flex flex-col items-center px-4 overflow-y-auto">
+          <div className="flex flex-col items-center justify-center w-full pt-12 pb-6">
             {showEyebrow && (
               <div className="mb-4">
                 <Chat.CreditsEyebrow balanceDollars={balanceDollars} />
@@ -173,8 +164,19 @@ function SimpleHome({
             <AgentsList />
             <Chat.Input showConnectionsBanner />
           </div>
+          {hasTiles && (
+            <div className="w-full pb-6">
+              <TileBoard
+                board={boardApi.board}
+                isEditMode={false}
+                onMove={boardApi.moveTile}
+                onResize={boardApi.resizeTile}
+                onRemove={boardApi.removeTile}
+              />
+            </div>
+          )}
           {isDecoUser && (
-            <div className="w-full">
+            <div className="w-full pb-4">
               <ImportDecoSiteBanner onClick={() => setImportOpen(true)} />
             </div>
           )}
@@ -187,21 +189,25 @@ function SimpleHome({
   return (
     <>
       <Toolbar.Right>
-        <button
-          type="button"
-          onClick={() => setIntroOpen(true)}
-          className="flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-          title="Customize your home"
-        >
-          <LayoutAlt04 size={14} />
-          Customize
-        </button>
+        <CustomizeToolbar
+          isEditMode={isEditMode}
+          hasTiles={hasTiles}
+          onEnter={() => setEditMode(true)}
+          onExit={() => setEditMode(false)}
+          onAdd={() => setAddOpen(true)}
+          onResetToStarter={boardApi.resetToStarter}
+          onClearAll={() => {
+            boardApi.clearAll();
+            setEditMode(false);
+          }}
+        />
       </Toolbar.Right>
 
-      <div className="flex-1 relative flex flex-col items-center px-10 overflow-y-auto">
-        <div className="flex-1 flex flex-col items-center justify-center w-full">
+      <div className="flex-1 relative flex flex-col overflow-y-auto">
+        {/* Top: chat + agents (always rendered, identical to today) */}
+        <div className="flex flex-col items-center px-10 pt-10">
           <div className="flex flex-col items-center w-full max-w-[672px]">
-            <div className="text-center mb-10">
+            <div className="text-center mb-8">
               {showEyebrow && (
                 <div className="mb-4">
                   <Chat.CreditsEyebrow balanceDollars={balanceDollars} />
@@ -220,249 +226,167 @@ function SimpleHome({
               <Chat.Input showConnectionsBanner />
             </div>
           </div>
-          <div className="w-full mt-10 mx-auto">
+          <div className="w-full mt-8 mx-auto">
             <AgentsList />
           </div>
-          <div className="w-full mt-10 mx-auto max-w-[672px]">
-            <button
-              type="button"
-              onClick={() => setIntroOpen(true)}
-              className="w-full flex items-center gap-3 rounded-lg border border-dashed border-border bg-background/40 hover:bg-muted/50 hover:border-primary/40 transition-colors px-4 py-3 text-left"
-            >
-              <span className="flex size-8 items-center justify-center rounded-md bg-primary/10 text-primary shrink-0">
-                <Stars01 size={14} />
-              </span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground">
-                  Make this your home
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Pin tiles from your agents and connected apps.
-                </p>
-              </div>
-              <span className="text-xs text-muted-foreground shrink-0">
-                Try it
-              </span>
-              <ArrowRight size={14} className="text-muted-foreground" />
-            </button>
-          </div>
         </div>
-        {isDecoUser && (
-          <div className="absolute bottom-6 left-0 right-0 px-10">
+
+        {/* Bottom: tile board (only when there are tiles) */}
+        {hasTiles ? (
+          <div className="w-full mt-8 mx-auto max-w-[1280px] px-4 pb-6">
+            <TileBoard
+              board={boardApi.board}
+              isEditMode={isEditMode}
+              onMove={boardApi.moveTile}
+              onResize={boardApi.resizeTile}
+              onRemove={boardApi.removeTile}
+            />
+          </div>
+        ) : (
+          <EmptyHint
+            visible={!isDecoUser}
+            onAdd={() => {
+              setEditMode(true);
+              setAddOpen(true);
+            }}
+            onUseStarter={() => {
+              boardApi.resetToStarter();
+              setEditMode(true);
+            }}
+          />
+        )}
+
+        {isDecoUser && !hasTiles && (
+          <div className="px-10 pb-6 pt-10">
             <div className="w-full max-w-[500px] mx-auto">
               <ImportDecoSiteBanner onClick={() => setImportOpen(true)} />
             </div>
           </div>
         )}
       </div>
+
       <ImportFromDecoDialog open={importOpen} onOpenChange={setImportOpen} />
-      <CustomizeIntroDialog
-        open={introOpen}
-        onOpenChange={setIntroOpen}
-        onConfirm={(seed) => {
-          boardApi.switchToTiles(seed);
-          setIntroOpen(false);
+      <TileAddSheet
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        onAdd={(tile) => {
+          boardApi.addTile(tile);
+          // Newly added tile means we have at least one — keep edit mode
+          // on so the user can immediately move/resize it.
         }}
       />
     </>
   );
 }
 
-function CustomizeIntroDialog({
-  open,
-  onOpenChange,
-  onConfirm,
+function CustomizeToolbar({
+  isEditMode,
+  hasTiles,
+  onEnter,
+  onExit,
+  onAdd,
+  onResetToStarter,
+  onClearAll,
 }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onConfirm: (seed: "starter" | "empty") => void;
+  isEditMode: boolean;
+  hasTiles: boolean;
+  onEnter: () => void;
+  onExit: () => void;
+  onAdd: () => void;
+  onResetToStarter: () => void;
+  onClearAll: () => void;
 }) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Stars01 size={16} />
-            Make this your home
-          </DialogTitle>
-          <DialogDescription>
-            Switch to a customisable board with tiles. Pin recent agents, stats,
-            and dashboards from your connected apps.
-          </DialogDescription>
-        </DialogHeader>
-        <ul className="flex flex-col gap-2 my-2 text-sm text-muted-foreground">
-          <li className="flex items-start gap-2">
-            <span className="mt-1 size-1 rounded-full bg-foreground shrink-0" />
-            Drag tiles to rearrange, pick from four sizes.
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="mt-1 size-1 rounded-full bg-foreground shrink-0" />
-            Switch back any time — your simple home is one click away.
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="mt-1 size-1 rounded-full bg-foreground shrink-0" />
-            Some tile data is mocked while we wire up real sources.
-          </li>
-        </ul>
-        <DialogFooter className="gap-2 sm:gap-2">
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Stay simple
-          </Button>
-          <Button variant="outline" onClick={() => onConfirm("empty")}>
-            Start blank
-          </Button>
-          <Button onClick={() => onConfirm("starter")} className="gap-1.5">
-            Try the tile board
-            <ArrowRight size={14} />
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/* ------------------------------- Tiles ------------------------------- */
-
-function TilesHome({
-  boardApi,
-}: {
-  boardApi: ReturnType<typeof useHomeBoard>;
-}) {
-  const isMobile = useIsMobile();
-  const [isEditMode, setEditMode] = useState(false);
-  const [addOpen, setAddOpen] = useState(false);
-
-  return (
-    <>
-      {!isMobile && (
-        <Toolbar.Right>
-          {isEditMode ? (
-            <>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setAddOpen(true)}
-                className="gap-1.5 h-7 text-xs"
-              >
-                <Plus size={14} />
-                Add tile
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className="flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-                    title="Board options"
-                  >
-                    <Settings02 size={14} />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuLabel>Board</DropdownMenuLabel>
-                  <DropdownMenuItem onSelect={boardApi.resetToStarter}>
-                    Reset to starter layout
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      boardApi.switchToSimple();
-                      setEditMode(false);
-                    }}
-                  >
-                    Switch to simple home
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <Button
-                size="sm"
-                onClick={() => setEditMode(false)}
-                className="gap-1.5 h-7 text-xs"
-              >
-                Done
-              </Button>
-            </>
-          ) : (
+  if (isEditMode) {
+    return (
+      <>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onAdd}
+          className="gap-1.5 h-7 text-xs"
+        >
+          <Plus size={14} />
+          Add tile
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
             <button
               type="button"
-              onClick={() => setEditMode(true)}
-              className="flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-              title="Customize"
+              className="flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+              title="Board options"
             >
-              <LayoutAlt04 size={14} />
-              Customize
+              <Settings02 size={14} />
             </button>
-          )}
-        </Toolbar.Right>
-      )}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>Home tiles</DropdownMenuLabel>
+            <DropdownMenuItem onSelect={onResetToStarter}>
+              Use starter layout
+            </DropdownMenuItem>
+            {hasTiles && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onSelect={onClearAll}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash01 size={14} className="mr-2" />
+                  Remove all tiles
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Button size="sm" onClick={onExit} className="gap-1.5 h-7 text-xs">
+          Done
+        </Button>
+      </>
+    );
+  }
 
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        <div className="mx-auto w-full max-w-[1280px] px-4 py-4">
-          {isMobile && (
-            <div className="mb-4 rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
-              Open Studio on desktop to drag, resize, and customize your tiles.
-            </div>
-          )}
-
-          {boardApi.board.tiles.length === 0 ? (
-            <EmptyTileBoard
-              onAdd={() => setAddOpen(true)}
-              onSwitchToSimple={boardApi.switchToSimple}
-              onResetToStarter={boardApi.resetToStarter}
-            />
-          ) : (
-            <TileBoard
-              board={boardApi.board}
-              isEditMode={isEditMode && !isMobile}
-              onMove={boardApi.moveTile}
-              onResize={boardApi.resizeTile}
-              onRemove={boardApi.removeTile}
-            />
-          )}
-        </div>
-      </div>
-
-      <TileAddSheet
-        open={addOpen}
-        onOpenChange={setAddOpen}
-        onAdd={boardApi.addTile}
-      />
-    </>
+  return (
+    <button
+      type="button"
+      onClick={onEnter}
+      className="flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+      title="Customize your home"
+    >
+      <LayoutAlt04 size={14} />
+      Customize
+    </button>
   );
 }
 
-function EmptyTileBoard({
+function EmptyHint({
+  visible,
   onAdd,
-  onSwitchToSimple,
-  onResetToStarter,
+  onUseStarter,
 }: {
+  visible: boolean;
   onAdd: () => void;
-  onSwitchToSimple: () => void;
-  onResetToStarter: () => void;
+  onUseStarter: () => void;
 }) {
+  if (!visible) return null;
   return (
-    <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
-      <span className="flex size-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-        <LayoutAlt04 size={20} />
-      </span>
-      <div>
-        <h3 className="text-lg font-medium text-foreground">
-          Your board is empty
-        </h3>
-        <p className="text-sm text-muted-foreground max-w-md">
-          Add tiles from the catalog to start composing your home.
-        </p>
-      </div>
-      <div className="flex gap-2">
-        <Button onClick={onAdd} className="gap-1.5">
+    <div className="w-full mt-10 mx-auto max-w-[672px] px-10 pb-6">
+      <div className="rounded-xl border border-dashed border-border bg-background/40 px-4 py-3 flex items-center gap-3">
+        <span className="flex size-7 items-center justify-center rounded-md bg-primary/10 text-primary shrink-0">
+          <LayoutAlt04 size={14} />
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-foreground">
+            Pin tiles to your home
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Recent tasks, dashboards, notes — anything you want here every day.
+          </p>
+        </div>
+        <Button size="sm" variant="outline" onClick={onUseStarter}>
+          Use starter
+        </Button>
+        <Button size="sm" onClick={onAdd} className="gap-1.5">
           <Plus size={14} />
-          Add a tile
-        </Button>
-        <Button variant="outline" onClick={onResetToStarter}>
-          Use starter layout
-        </Button>
-        <Button variant="ghost" onClick={onSwitchToSimple} className="gap-1.5">
-          <X size={14} />
-          Back to simple home
+          Add tile
         </Button>
       </div>
     </div>

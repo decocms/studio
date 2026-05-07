@@ -1,23 +1,24 @@
 /**
- * Single source of truth for the user's home board. Persists to
- * localStorage today; the [board, setBoard] pair shape is intentionally
- * sync-friendly so we can later swap the backing store for a server
- * mutation without changing any callsite.
+ * Single source of truth for the user's home tile board. Persists to
+ * localStorage today; the [board, setBoard] pair is sync-friendly so we
+ * can swap the backing store for a server mutation without changing any
+ * callsite.
+ *
+ * The home page itself always renders chat + agents on top — those are
+ * not tiles. This board only governs the customisable area below.
  */
 
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
 import { authClient } from "@/web/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
-import type { HomeBoard, HomeLayoutMode, TileInstance } from "./types";
-import { createSimpleBoard, createStarterTilesBoard } from "./seed";
+import type { HomeBoard, TileInstance } from "./types";
+import { createEmptyBoard, createStarterBoard } from "./seed";
 import { insertTile, moveTile, removeTile, resizeTile } from "./grid-utils";
 
 export interface UseHomeBoardResult {
   board: HomeBoard;
-  setLayout: (mode: HomeLayoutMode) => void;
-  switchToTiles: (seed?: "starter" | "empty") => void;
-  switchToSimple: () => void;
   resetToStarter: () => void;
+  clearAll: () => void;
   addTile: (tile: Omit<TileInstance, "x" | "y">) => void;
   removeTile: (id: string) => void;
   moveTile: (id: string, to: { x: number; y: number }) => void;
@@ -25,19 +26,19 @@ export interface UseHomeBoardResult {
   updateTileConfig: (id: string, patch: Record<string, unknown>) => void;
 }
 
-const DEFAULT_BOARD: HomeBoard = createSimpleBoard();
+const DEFAULT_BOARD: HomeBoard = createEmptyBoard();
 
-function migrate(existing: HomeBoard | undefined): HomeBoard {
+/**
+ * Migrate stored boards. v1 had a `layout: "simple" | "tiles"` field —
+ * we drop it and keep whatever tiles the user had. A v1 board with an
+ * empty tiles array (the simple-mode default) becomes an empty v2 board,
+ * which renders identically to today's chat-centric home.
+ */
+function migrate(existing: unknown): HomeBoard {
   if (!existing || typeof existing !== "object") return DEFAULT_BOARD;
-  if (existing.version !== 1) return DEFAULT_BOARD;
-  if (existing.layout !== "simple" && existing.layout !== "tiles") {
-    return DEFAULT_BOARD;
-  }
-  return {
-    version: 1,
-    layout: existing.layout,
-    tiles: Array.isArray(existing.tiles) ? existing.tiles : [],
-  };
+  const obj = existing as Record<string, unknown>;
+  const tiles = Array.isArray(obj.tiles) ? (obj.tiles as TileInstance[]) : [];
+  return { version: 2, tiles };
 }
 
 export function useHomeBoard(orgSlug: string): UseHomeBoardResult {
@@ -50,17 +51,8 @@ export function useHomeBoard(orgSlug: string): UseHomeBoardResult {
 
   return {
     board,
-    setLayout: (mode) => setBoard((prev) => ({ ...prev, layout: mode })),
-    switchToTiles: (seed = "starter") =>
-      setBoard((prev) => {
-        if (prev.tiles.length > 0) return { ...prev, layout: "tiles" };
-        if (seed === "empty") {
-          return { version: 1, layout: "tiles", tiles: [] };
-        }
-        return createStarterTilesBoard();
-      }),
-    switchToSimple: () => setBoard((prev) => ({ ...prev, layout: "simple" })),
-    resetToStarter: () => setBoard(createStarterTilesBoard()),
+    resetToStarter: () => setBoard(createStarterBoard()),
+    clearAll: () => setBoard(createEmptyBoard()),
     addTile: (tile) =>
       setBoard((prev) => ({ ...prev, tiles: insertTile(prev.tiles, tile) })),
     removeTile: (id) =>

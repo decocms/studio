@@ -1,7 +1,12 @@
 /**
- * Default board seeding. The first time a user opts in we want them to
- * land on something that *looks* like a real dashboard so they can see
- * what the system is for, not on an empty canvas with an "Add" button.
+ * Board factories. The home is a single page: chat + agents render on top
+ * unconditionally, the board below renders only when there are tiles. So
+ * an empty board is the natural new-user state — no seeding required.
+ *
+ * `createStarterBoard` is offered explicitly via the "Use starter layout"
+ * affordance in edit mode for users who want a head start. It excludes
+ * tiles already present at the top of the page (welcome, quick-chat,
+ * recent-agents) and focuses on real dashboard content.
  */
 
 import { SIZE_PRESETS } from "./constants";
@@ -29,33 +34,26 @@ function tile(
   };
 }
 
-export function createSimpleBoard(): HomeBoard {
-  return { version: 1, layout: "simple", tiles: [] };
+export function createEmptyBoard(): HomeBoard {
+  return { version: 2, tiles: [] };
 }
 
-export function createStarterTilesBoard(): HomeBoard {
-  // Bento layout, all rows fill 12 cols cleanly:
-  //   row 0–1:  Welcome                      (W: 12)
-  //   row 2–4:  Recent agents | tasks | conn (M+M+M = 4+4+4)
-  //   row 5–7:  Quick chat   | Shortcuts     (L+L = 6+6)
-  //   row 8–10: Stats | GitHub | Linear      (M+M+M = 4+4+4)
+export function createStarterBoard(): HomeBoard {
+  // Dashboard-focused starter, all rows fill 12 cols cleanly:
+  //   row 0–2: Recent tasks | Connections | Stats     (M+M+M)
+  //   row 3–5: GitHub       | Linear      | Calendar  (M+M+M)
+  //   row 6–8: Notes (L)    | Shortcuts (L)            (L+L)
   return {
-    version: 1,
-    layout: "tiles",
+    version: 2,
     tiles: [
-      tile("studio.welcome", { x: 0, y: 0 }, "W"),
-      tile("studio.recent-agents", { x: 0, y: 2 }, "M"),
-      tile("studio.recent-tasks", { x: 4, y: 2 }, "M"),
-      tile("studio.connections-overview", { x: 8, y: 2 }, "M"),
-      tile("studio.quick-chat", { x: 0, y: 5 }, "L"),
-      tile("studio.shortcuts", { x: 6, y: 5 }, "L"),
-      tile("studio.stats", { x: 0, y: 8 }, "M"),
-      tile("mock.github.activity", { x: 4, y: 8 }, "M"),
-      tile("mock.linear.issues", { x: 8, y: 8 }, "M"),
+      tile("studio.recent-tasks", { x: 0, y: 0 }, "M"),
+      tile("studio.connections-overview", { x: 4, y: 0 }, "M"),
+      tile("studio.stats", { x: 8, y: 0 }, "M"),
+      tile("mock.github.activity", { x: 0, y: 3 }, "M"),
+      tile("mock.linear.issues", { x: 4, y: 3 }, "M"),
+      tile("mock.calendar.upcoming", { x: 8, y: 3 }, "M"),
+      tile("studio.notes", { x: 0, y: 6 }, "L"),
+      tile("studio.shortcuts", { x: 6, y: 6 }, "L"),
     ],
   };
-}
-
-export function createEmptyTilesBoard(): HomeBoard {
-  return { version: 1, layout: "tiles", tiles: [] };
 }

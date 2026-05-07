@@ -57,10 +57,12 @@ export interface TileInstance {
   config?: Record<string, unknown>;
 }
 
-export type HomeLayoutMode = "simple" | "tiles";
-
+/**
+ * The user's home is a single page: chat + agents on top, then this tile
+ * board below. The board is empty by default — tiles appear when the user
+ * pins them. There is no "mode" to switch between.
+ */
 export interface HomeBoard {
-  version: 1;
-  layout: HomeLayoutMode;
+  version: 2;
   tiles: TileInstance[];
 }
