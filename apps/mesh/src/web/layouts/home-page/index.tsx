@@ -145,7 +145,7 @@ export function HomePage() {
     return (
       <>
         <div className="flex-1 relative flex flex-col items-center px-4 overflow-y-auto">
-          <div className="flex flex-col items-center justify-center w-full pt-20 pb-8">
+          <div className="flex flex-col items-center justify-center w-full pt-28 pb-8">
             {showEyebrow && (
               <div className="mb-4">
                 <Chat.CreditsEyebrow balanceDollars={balanceDollars} />
@@ -205,7 +205,7 @@ export function HomePage() {
 
       <div className="flex-1 relative flex flex-col overflow-y-auto">
         {/* Top: chat + agents (always rendered, identical to today) */}
-        <div className="flex flex-col items-center px-10 pt-24 pb-4">
+        <div className="flex flex-col items-center px-10 pt-40 pb-4">
           <div className="flex flex-col items-center w-full max-w-[672px]">
             <div className="text-center mb-10">
               {showEyebrow && (
