@@ -15,9 +15,9 @@ import type { UsageStats } from "@/web/lib/usage-utils.ts";
 import { formatDuration } from "@/web/lib/format-time.ts";
 import { parseMeshStorageKey } from "@/api/routes/decopilot/mesh-storage-uri";
 
-function resolveImageSrc(uri: string, orgId: string): string {
+function resolveImageSrc(uri: string, orgSlug: string): string {
   const key = parseMeshStorageKey(uri);
-  if (key !== null) return `/api/${orgId}/files/${key}`;
+  if (key !== null) return `/api/${orgSlug}/files/${key}`;
   // data: URIs or any other URL — use as-is
   return uri;
 }
@@ -57,8 +57,14 @@ function extractUsage(
   };
 }
 
-function ReferenceImageChip({ uri, orgId }: { uri: string; orgId: string }) {
-  const src = resolveImageSrc(uri, orgId);
+function ReferenceImageChip({
+  uri,
+  orgSlug,
+}: {
+  uri: string;
+  orgSlug: string;
+}) {
+  const src = resolveImageSrc(uri, orgSlug);
   const label =
     parseMeshStorageKey(uri) !== null
       ? uri.slice(uri.lastIndexOf("/") + 1)
@@ -147,7 +153,9 @@ export function GenerateImagePart({ part, latency }: GenerateImagePartProps) {
               </span>
               {refImages.map((ref, i) => {
                 const raw = (ref.uri ?? ref.url)!;
-                return <ReferenceImageChip key={i} uri={raw} orgId={org.id} />;
+                return (
+                  <ReferenceImageChip key={i} uri={raw} orgSlug={org.slug} />
+                );
               })}
             </div>
           )}
@@ -157,7 +165,7 @@ export function GenerateImagePart({ part, latency }: GenerateImagePartProps) {
         {images.map((img, i) => {
           const raw = img.uri ?? img.url;
           if (!raw) return null;
-          const src = resolveImageSrc(raw, org.id);
+          const src = resolveImageSrc(raw, org.slug);
           return (
             <ImageLightbox
               key={i}
