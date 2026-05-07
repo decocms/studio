@@ -24,9 +24,21 @@ function isNonEmptyWithoutGit(dir: string): boolean {
   }
 }
 
+// Git progress lines use bare \r (no \n) to overwrite the same terminal line.
+// Log aggregators strip \r, collapsing all updates into one unreadable blob.
+// Normalise \r → \r\n so each update becomes its own log line while still
+// giving the user live progress feedback.
+function normalizeCarriageReturns(data: string): string {
+  return data.replace(/\r(?!\n)/g, "\r\n");
+}
+
 function runStep(cmd: string, deps: CloneDeps): Promise<number> {
   deps.onChunk("setup", `$ ${cmd}\r\n`);
-  return spawnSetupStep(cmd, deps.onChunk, deps.dropPrivileges);
+  const normalized: CloneDeps = {
+    ...deps,
+    onChunk: (src, data) => deps.onChunk(src, normalizeCarriageReturns(data)),
+  };
+  return spawnSetupStep(cmd, normalized.onChunk, deps.dropPrivileges);
 }
 
 const TRANSIENT_ERRORS = [
