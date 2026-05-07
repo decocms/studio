@@ -162,7 +162,7 @@ export function TileBoard({
           minHeight: isEditMode ? ROW_HEIGHT_PX * 4 : ROW_HEIGHT_PX,
         }}
       >
-        {isEditMode && <GridSkeleton rows={totalRows} />}
+        {isEditMode && <GridSkeleton rows={totalRows} tiles={board.tiles} />}
         {board.tiles.map((tile) => (
           <BoardTile
             key={tile.id}
@@ -203,31 +203,42 @@ export function TileBoard({
 }
 
 /**
- * A pure-CSS grid of dashed cells covering the full board. Sits behind
- * the tiles in edit mode so the user can see where things will snap.
+ * Renders a dashed cell at every grid slot that isn't covered by a tile.
+ * Sits behind the tiles in edit mode and only shows real empty drop
+ * targets — no ghost lines bleeding through translucent tiles.
  */
-function GridSkeleton({ rows }: { rows: number }) {
-  const cells: { x: number; y: number }[] = [];
+function GridSkeleton({
+  rows,
+  tiles,
+}: {
+  rows: number;
+  tiles: TileInstance[];
+}) {
+  const isCovered = (x: number, y: number) =>
+    tiles.some((t) => x >= t.x && x < t.x + t.w && y >= t.y && y < t.y + t.h);
+
+  const empties: { x: number; y: number }[] = [];
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < GRID_COLS; x++) {
-      cells.push({ x, y });
+      if (!isCovered(x, y)) empties.push({ x, y });
     }
   }
+
   return (
-    <div
-      className="absolute inset-0 grid pointer-events-none"
-      style={{
-        gridTemplateColumns: `repeat(${GRID_COLS}, minmax(0, 1fr))`,
-        gridTemplateRows: `repeat(${rows}, ${ROW_HEIGHT_PX}px)`,
-        padding: GRID_GAP_PX / 2,
-        gap: GRID_GAP_PX,
-      }}
-    >
-      {cells.map((c) => (
+    <div className="absolute inset-0 pointer-events-none">
+      {empties.map((c) => (
         <div
           key={`${c.x}-${c.y}`}
-          className="rounded-2xl border border-dashed border-border/50"
-        />
+          className="absolute p-1"
+          style={{
+            left: `${(c.x / GRID_COLS) * 100}%`,
+            top: c.y * ROW_HEIGHT_PX,
+            width: `${(1 / GRID_COLS) * 100}%`,
+            height: ROW_HEIGHT_PX,
+          }}
+        >
+          <div className="h-full w-full rounded-2xl border border-dashed border-border/60" />
+        </div>
       ))}
     </div>
   );
