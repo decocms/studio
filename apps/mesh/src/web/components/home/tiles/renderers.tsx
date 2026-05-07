@@ -25,6 +25,7 @@ import {
   BookOpen01,
   Calendar,
   Clock,
+  Coins04,
   GitBranch01,
   Globe02,
   Lightning01,
@@ -724,6 +725,67 @@ export function ReliabilityAgentTile(_props: TileRenderProps) {
           <span>{total} total · last 14 days</span>
           <span>now</span>
         </div>
+      </div>
+    </TileFrame>
+  );
+}
+
+/* ---------- agent.app-frame ---------- */
+
+/**
+ * Stand-in for an MCP-app-contributed tile rendered inside an iframe.
+ * The TileFrame header shows the app name; the iframe body renders the
+ * app's own UI. Padding around the iframe is intentionally tighter than
+ * the header padding so the embedded view feels like an inset surface
+ * rather than a paragraph of content.
+ *
+ * srcdoc + sandbox="" — no scripts, no same-origin, no forms. The mock
+ * is plain HTML/CSS, theme-aware via prefers-color-scheme.
+ */
+
+const APP_FRAME_DOC = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+:root{color-scheme:light dark;--bg:hsl(0 0% 100%);--fg:hsl(240 10% 4%);--muted:hsl(240 5% 96%);--muted-fg:hsl(240 4% 46%);--accent:hsl(259 67% 56%);--row-line:hsl(240 4% 90%);}
+@media(prefers-color-scheme:dark){:root{--bg:hsl(240 10% 6%);--fg:hsl(0 0% 98%);--muted:hsl(240 4% 14%);--muted-fg:hsl(240 5% 65%);--accent:hsl(259 67% 70%);--row-line:hsl(240 4% 18%);}}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;}
+body{font-family:-apple-system,BlinkMacSystemFont,Inter,sans-serif;background:var(--bg);color:var(--fg);font-size:13px;line-height:1.4;padding:14px 16px;overflow:hidden;}
+.kpi{display:flex;gap:20px;margin-bottom:14px;}
+.metric{flex:1;min-width:0;}
+.value{font-size:22px;font-weight:600;letter-spacing:-0.02em;line-height:1;margin-bottom:4px;font-variant-numeric:tabular-nums;}
+.delta{font-size:11px;color:var(--accent);font-weight:500;margin-left:6px;}
+.label{font-size:10px;color:var(--muted-fg);text-transform:uppercase;letter-spacing:0.04em;}
+.list{display:flex;flex-direction:column;}
+.row{display:flex;align-items:center;justify-content:space-between;padding:8px 2px;border-top:1px solid var(--row-line);}
+.row:first-child{border-top:0;}
+.row .name{font-weight:500;}
+.row .meta{color:var(--muted-fg);font-variant-numeric:tabular-nums;}
+.dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);margin-right:8px;vertical-align:middle;}
+.title{font-size:11px;color:var(--muted-fg);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;}
+</style></head><body>
+<div class="kpi">
+  <div class="metric"><div class="value">$12,480<span class="delta">+8.2%</span></div><div class="label">Revenue</div></div>
+  <div class="metric"><div class="value">142</div><div class="label">Charges</div></div>
+  <div class="metric"><div class="value">98.6%</div><div class="label">Success</div></div>
+</div>
+<div class="title">Latest charges</div>
+<div class="list">
+  <div class="row"><span><span class="dot"></span>Acme Corp</span><span class="meta">$1,200 · 14:02</span></div>
+  <div class="row"><span><span class="dot"></span>Globex</span><span class="meta">$840 · 13:45</span></div>
+  <div class="row"><span><span class="dot"></span>Initech</span><span class="meta">$2,400 · 13:21</span></div>
+  <div class="row"><span><span class="dot"></span>Umbrella</span><span class="meta">$390 · 12:58</span></div>
+</div>
+</body></html>`;
+
+export function AppFrameTile(_props: TileRenderProps) {
+  return (
+    <TileFrame title="Stripe payments" icon={<Coins04 size={14} />}>
+      <div className="flex-1 min-h-0 -mx-3 -mb-3 rounded-xl overflow-hidden bg-background border border-border/60">
+        <iframe
+          title="Stripe payments app"
+          srcDoc={APP_FRAME_DOC}
+          sandbox=""
+          className="w-full h-full block border-0"
+        />
       </div>
     </TileFrame>
   );

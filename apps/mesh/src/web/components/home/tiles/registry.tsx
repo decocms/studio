@@ -14,6 +14,7 @@ import {
   BookOpen01,
   Calendar,
   Clock,
+  Coins04,
   GitBranch01,
   Globe02,
   Lightning01,
@@ -27,6 +28,7 @@ import {
 import type { TileDefinition } from "./types";
 import {
   AnalyticsChartTile,
+  AppFrameTile,
   CalendarTile,
   ConnectionsOverviewTile,
   GithubActivityTile,
@@ -142,6 +144,19 @@ export const TILE_CATALOG: TileDefinition[] = [
     supportedSizes: ["M", "L", "XL", "W"],
     defaultSize: "XL",
     render: ReliabilityAgentTile,
+  },
+  {
+    type: "agent.app-frame",
+    source: "agent",
+    sourceId: "stripe-mock",
+    title: "Stripe payments",
+    description:
+      "An MCP app rendering inside the home — same chrome, content via iframe. (Mocked)",
+    icon: <Coins04 size={14} />,
+    category: "data",
+    supportedSizes: ["M", "L", "XL", "W"],
+    defaultSize: "XL",
+    render: AppFrameTile,
   },
   {
     type: "mock.github.activity",
