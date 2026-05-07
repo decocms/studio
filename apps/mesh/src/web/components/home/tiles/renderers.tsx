@@ -11,7 +11,6 @@ import { authClient } from "@/web/lib/auth-client";
 import { useNavigate } from "@tanstack/react-router";
 import { useProjectContext, useConnections } from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
-import { Badge } from "@deco/ui/components/badge.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
@@ -43,29 +42,22 @@ import type { TileRenderProps } from "./types";
 function TileFrame({
   title,
   icon,
-  badge,
   action,
   children,
-  hint,
 }: {
   title: string;
   icon: ReactNode;
-  badge?: ReactNode;
   action?: { label: string; onClick: () => void };
   children: ReactNode;
-  hint?: string;
 }) {
   return (
-    <div className="flex h-full flex-col p-4 gap-3 min-h-0">
+    <div className="flex h-full flex-col p-5 gap-4 min-h-0">
       <div className="flex items-center justify-between gap-2 shrink-0">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="flex size-6 items-center justify-center rounded-md bg-muted text-muted-foreground shrink-0">
-            {icon}
-          </span>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-muted-foreground shrink-0">{icon}</span>
           <span className="text-sm font-medium text-foreground truncate">
             {title}
           </span>
-          {badge}
         </div>
         {action && (
           <button
@@ -79,18 +71,7 @@ function TileFrame({
         )}
       </div>
       <div className="flex-1 min-h-0 flex flex-col">{children}</div>
-      {hint && (
-        <p className="text-[10px] text-muted-foreground/70 shrink-0">{hint}</p>
-      )}
     </div>
-  );
-}
-
-function MockBadge() {
-  return (
-    <Badge variant="outline" className="text-[10px] h-4 px-1.5 font-normal">
-      Mock
-    </Badge>
   );
 }
 
@@ -129,8 +110,8 @@ export function WelcomeTile({ instance: _instance }: TileRenderProps) {
   ];
 
   return (
-    <div className="flex h-full items-center justify-between gap-6 p-5 bg-gradient-to-br from-primary/5 via-background to-background rounded-[0.75rem]">
-      <div className="flex flex-col gap-1 min-w-0">
+    <div className="flex h-full items-center justify-between gap-8 p-6 bg-gradient-to-br from-primary/5 via-background to-background rounded-[0.75rem]">
+      <div className="flex flex-col gap-2 min-w-0">
         <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
           <Stars01 size={12} />
           <span>Welcome back</span>
@@ -184,12 +165,12 @@ export function RecentAgentsTile(_props: TileRenderProps) {
           navigate({ to: "/$org/settings/agents", params: { org: org.slug } }),
       }}
     >
-      <ul className="flex flex-col gap-1 -mx-2">
+      <ul className="flex flex-col gap-0.5 -mx-2">
         {MOCK_RECENT_AGENTS.map((a) => (
           <li key={a.id}>
             <button
               type="button"
-              className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md hover:bg-muted transition-colors text-left"
+              className="flex items-center gap-3 w-full px-2 py-2 rounded-md hover:bg-muted transition-colors text-left"
               onClick={() => {
                 const taskId = crypto.randomUUID();
                 navigate({
@@ -227,23 +208,19 @@ const TASK_STATUS_COLOR: Record<string, string> = {
 
 export function RecentTasksTile(_props: TileRenderProps) {
   return (
-    <TileFrame
-      title="Recent tasks"
-      icon={<Clock size={14} />}
-      badge={<MockBadge />}
-    >
-      <ul className="flex flex-col gap-2">
+    <TileFrame title="Recent tasks" icon={<Clock size={14} />}>
+      <ul className="flex flex-col gap-1">
         {MOCK_RECENT_TASKS.map((t) => (
           <li
             key={t.id}
-            className="flex items-center justify-between gap-2 py-1"
+            className="flex items-center justify-between gap-3 py-2 border-b border-border/60 last:border-0"
           >
             <span className="text-sm text-foreground truncate flex-1">
               {t.title}
             </span>
             <span
               className={cn(
-                "text-[10px] px-1.5 py-0.5 rounded-md capitalize",
+                "text-[10px] px-2 py-0.5 rounded-full capitalize font-medium",
                 TASK_STATUS_COLOR[t.status] ?? "bg-muted text-muted-foreground",
               )}
             >
@@ -275,7 +252,7 @@ export function QuickChatTile(_props: TileRenderProps) {
 
   return (
     <TileFrame title="Quick chat" icon={<Lightning01 size={14} />}>
-      <div className="flex flex-col gap-2 flex-1 min-h-0">
+      <div className="flex flex-col gap-3 flex-1 min-h-0">
         <Textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -329,7 +306,7 @@ export function ConnectionsOverviewTile(_props: TileRenderProps) {
           }),
       }}
     >
-      <div className="flex flex-col gap-3 flex-1 min-h-0 justify-between">
+      <div className="flex flex-col gap-4 flex-1 min-h-0 justify-between">
         <div className="grid grid-cols-3 gap-2 text-center">
           <Stat label="Active" value={active} tone="ok" />
           <Stat label="Inactive" value={inactive} tone="muted" />
@@ -340,7 +317,7 @@ export function ConnectionsOverviewTile(_props: TileRenderProps) {
             <span
               key={c.id}
               title={c.title}
-              className="size-9 rounded-md border border-border overflow-hidden shrink-0"
+              className="size-9 rounded-lg border border-border overflow-hidden shrink-0"
             >
               <IntegrationIcon
                 icon={c.icon ?? undefined}
@@ -377,7 +354,7 @@ function Stat({
         ? "text-destructive"
         : "text-foreground";
   return (
-    <div className="flex flex-col items-center justify-center rounded-md bg-muted/40 py-2">
+    <div className="flex flex-col items-center justify-center rounded-lg bg-muted/40 py-3">
       <span className={cn("text-lg font-semibold", colour)}>{value}</span>
       <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
         {label}
@@ -428,13 +405,13 @@ export function ShortcutsTile(_props: TileRenderProps) {
 
   return (
     <TileFrame title="Shortcuts" icon={<Star01 size={14} />}>
-      <div className="grid grid-cols-2 grid-rows-2 gap-2 flex-1 min-h-0">
+      <div className="grid grid-cols-2 grid-rows-2 gap-3 flex-1 min-h-0">
         {DEFAULT_SHORTCUTS.map((s) => (
           <button
             key={s.id}
             type="button"
             onClick={() => goTo(s.id)}
-            className="flex h-full flex-col items-start justify-between gap-2 rounded-lg border border-border bg-muted/30 hover:bg-muted hover:border-primary/30 transition-colors text-left p-3 min-h-0"
+            className="flex h-full flex-col items-start justify-between gap-3 rounded-lg border border-border bg-muted/30 hover:bg-muted hover:border-primary/30 transition-colors text-left p-4 min-h-0"
           >
             <span className="flex size-8 items-center justify-center rounded-md bg-background text-foreground border border-border">
               {s.icon}
@@ -465,7 +442,7 @@ export function NotesTile({ instance: _instance }: TileRenderProps) {
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder="Quick scratchpad…"
-        className="flex-1 resize-none border-0 bg-transparent px-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+        className="flex-1 resize-none border-0 bg-transparent px-0 py-0 text-sm focus-visible:ring-0 focus-visible:ring-offset-0"
       />
     </TileFrame>
   );
@@ -482,16 +459,12 @@ const MOCK_STATS = [
 
 export function StatsTile(_props: TileRenderProps) {
   return (
-    <TileFrame
-      title="Workspace stats"
-      icon={<TrendUp02 size={14} />}
-      badge={<MockBadge />}
-    >
-      <div className="grid grid-cols-2 grid-rows-2 gap-2 flex-1 min-h-0">
+    <TileFrame title="Workspace stats" icon={<TrendUp02 size={14} />}>
+      <div className="grid grid-cols-2 grid-rows-2 gap-3 flex-1 min-h-0">
         {MOCK_STATS.map((s) => (
           <div
             key={s.label}
-            className="flex flex-col justify-between rounded-md bg-muted/30 px-3 py-2 min-h-0"
+            className="flex flex-col justify-between rounded-lg bg-muted/40 px-4 py-3 min-h-0"
           >
             <span className="text-2xl font-semibold text-foreground leading-none">
               {s.value}
@@ -542,11 +515,7 @@ const MOCK_COMMITS = [
 
 export function GithubActivityTile(_props: TileRenderProps) {
   return (
-    <TileFrame
-      title="GitHub activity"
-      icon={<GitBranch01 size={14} />}
-      badge={<MockBadge />}
-    >
+    <TileFrame title="GitHub activity" icon={<GitBranch01 size={14} />}>
       <ScrollArea className="flex-1 -mx-2">
         <ul className="flex flex-col px-2">
           {MOCK_COMMITS.map((c) => (
@@ -592,17 +561,16 @@ const PRIORITY_COLOR: Record<string, string> = {
 
 export function LinearIssuesTile(_props: TileRenderProps) {
   return (
-    <TileFrame
-      title="My issues"
-      icon={<AlertCircle size={14} />}
-      badge={<MockBadge />}
-    >
-      <ul className="flex flex-col gap-1.5">
+    <TileFrame title="My issues" icon={<AlertCircle size={14} />}>
+      <ul className="flex flex-col gap-1">
         {MOCK_ISSUES.map((i) => (
-          <li key={i.id} className="flex items-center gap-2 py-1 min-w-0">
+          <li
+            key={i.id}
+            className="flex items-center gap-3 py-2 min-w-0 border-b border-border/60 last:border-0"
+          >
             <span
               className={cn(
-                "shrink-0 text-[10px] px-1.5 py-0.5 rounded-md font-mono",
+                "shrink-0 text-[10px] px-2 py-0.5 rounded-md font-mono",
                 PRIORITY_COLOR[i.priority],
               )}
             >
@@ -628,15 +596,11 @@ const MOCK_EVENTS = [
 
 export function CalendarTile(_props: TileRenderProps) {
   return (
-    <TileFrame
-      title="Today"
-      icon={<Calendar size={14} />}
-      badge={<MockBadge />}
-    >
-      <ul className="flex flex-col gap-2">
+    <TileFrame title="Today" icon={<Calendar size={14} />}>
+      <ul className="flex flex-col gap-3">
         {MOCK_EVENTS.map((e) => (
-          <li key={e.id} className="flex items-start gap-2">
-            <span className="mt-1 size-1.5 rounded-full bg-primary shrink-0" />
+          <li key={e.id} className="flex items-start gap-3">
+            <span className="mt-1.5 size-1.5 rounded-full bg-primary shrink-0" />
             <div className="min-w-0">
               <p className="text-sm text-foreground truncate">{e.title}</p>
               <p className="text-xs text-muted-foreground">{e.at}</p>
@@ -667,11 +631,7 @@ export function AnalyticsChartTile(_props: TileRenderProps) {
     .join(" ");
 
   return (
-    <TileFrame
-      title="Page views"
-      icon={<Globe02 size={14} />}
-      badge={<MockBadge />}
-    >
+    <TileFrame title="Page views" icon={<Globe02 size={14} />}>
       <div className="flex flex-col gap-2 flex-1 justify-end">
         <div className="flex items-baseline justify-between">
           <span className="text-2xl font-semibold text-foreground">42.1k</span>
