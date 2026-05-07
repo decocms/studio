@@ -51,7 +51,7 @@ function TileFrame({
   children: ReactNode;
 }) {
   return (
-    <div className="flex h-full flex-col p-5 gap-4 min-h-0">
+    <div className="flex h-full flex-col p-5 gap-5 min-h-0">
       <div className="flex items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="text-muted-foreground shrink-0">{icon}</span>
