@@ -396,7 +396,7 @@ function TilesHome({
       )}
 
       <div className="flex-1 min-h-0 overflow-y-auto">
-        <div className="mx-auto w-full max-w-[1280px] px-6 py-6">
+        <div className="mx-auto w-full max-w-[1280px] px-4 py-4">
           {isMobile && (
             <div className="mb-4 rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
               Open Studio on desktop to drag, resize, and customize your tiles.

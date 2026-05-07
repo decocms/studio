@@ -34,19 +34,24 @@ export function createSimpleBoard(): HomeBoard {
 }
 
 export function createStarterTilesBoard(): HomeBoard {
+  // Bento layout, all rows fill 12 cols cleanly:
+  //   row 0–1:  Welcome                      (W: 12)
+  //   row 2–4:  Recent agents | tasks | conn (M+M+M = 4+4+4)
+  //   row 5–7:  Quick chat   | Shortcuts     (L+L = 6+6)
+  //   row 8–10: Stats | GitHub | Linear      (M+M+M = 4+4+4)
   return {
     version: 1,
     layout: "tiles",
     tiles: [
       tile("studio.welcome", { x: 0, y: 0 }, "W"),
-      tile("studio.recent-agents", { x: 0, y: 3 }, "M"),
-      tile("studio.recent-tasks", { x: 4, y: 3 }, "M"),
-      tile("studio.connections-overview", { x: 8, y: 3 }, "M"),
-      tile("studio.quick-chat", { x: 0, y: 6 }, "L"),
-      tile("studio.shortcuts", { x: 6, y: 6 }, "M"),
-      tile("studio.stats", { x: 0, y: 10 }, "M"),
-      tile("mock.github.activity", { x: 4, y: 10 }, "M"),
-      tile("mock.linear.issues", { x: 8, y: 10 }, "M"),
+      tile("studio.recent-agents", { x: 0, y: 2 }, "M"),
+      tile("studio.recent-tasks", { x: 4, y: 2 }, "M"),
+      tile("studio.connections-overview", { x: 8, y: 2 }, "M"),
+      tile("studio.quick-chat", { x: 0, y: 5 }, "L"),
+      tile("studio.shortcuts", { x: 6, y: 5 }, "L"),
+      tile("studio.stats", { x: 0, y: 8 }, "M"),
+      tile("mock.github.activity", { x: 4, y: 8 }, "M"),
+      tile("mock.linear.issues", { x: 8, y: 8 }, "M"),
     ],
   };
 }

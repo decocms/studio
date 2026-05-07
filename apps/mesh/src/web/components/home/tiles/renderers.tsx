@@ -56,13 +56,13 @@ function TileFrame({
   hint?: string;
 }) {
   return (
-    <div className="flex h-full flex-col p-4 gap-3 min-h-0">
+    <div className="flex h-full flex-col p-3.5 gap-2.5 min-h-0">
       <div className="flex items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="flex size-6 items-center justify-center rounded-md bg-muted text-muted-foreground shrink-0">
+          <span className="flex size-5 items-center justify-center rounded text-muted-foreground shrink-0">
             {icon}
           </span>
-          <span className="text-sm font-medium text-foreground truncate">
+          <span className="text-[13px] font-medium text-foreground truncate">
             {title}
           </span>
           {badge}
@@ -129,19 +129,21 @@ export function WelcomeTile({ instance: _instance }: TileRenderProps) {
   ];
 
   return (
-    <div className="flex h-full flex-col p-6 gap-4 justify-center bg-gradient-to-br from-primary/5 via-background to-background rounded-[0.75rem]">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Stars01 size={14} />
-        <span>Welcome back</span>
+    <div className="flex h-full items-center justify-between gap-6 p-5 bg-gradient-to-br from-primary/5 via-background to-background rounded-[0.75rem]">
+      <div className="flex flex-col gap-1 min-w-0">
+        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <Stars01 size={12} />
+          <span>Welcome back</span>
+        </div>
+        <h2 className="text-xl font-medium text-foreground truncate">
+          Hello, {userName}.
+        </h2>
+        <p className="text-xs text-muted-foreground max-w-md">
+          Pin the things you check every day. Drop tiles from agents and apps
+          you've connected.
+        </p>
       </div>
-      <h2 className="text-2xl font-medium text-foreground">
-        Hello, {userName}.
-      </h2>
-      <p className="text-sm text-muted-foreground max-w-md">
-        Your home is yours. Pin the things you check every day, drop tiles from
-        agents and apps you've connected.
-      </p>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 shrink-0">
         {actions.map((a) => (
           <Button
             key={a.label}
@@ -278,12 +280,12 @@ export function QuickChatTile(_props: TileRenderProps) {
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder="What's on your mind?"
-          className="flex-1 resize-none min-h-0"
+          className="flex-1 resize-none min-h-0 text-sm"
           onKeyDown={(e) => {
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
           }}
         />
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between shrink-0">
           <span className="text-[10px] text-muted-foreground">
             ⌘ + Enter to send
           </span>
@@ -291,7 +293,7 @@ export function QuickChatTile(_props: TileRenderProps) {
             size="sm"
             onClick={submit}
             disabled={!draft.trim()}
-            className="gap-1"
+            className="gap-1 h-7"
           >
             Send
             <ArrowRight size={12} />
@@ -327,18 +329,18 @@ export function ConnectionsOverviewTile(_props: TileRenderProps) {
           }),
       }}
     >
-      <div className="flex flex-col gap-3 flex-1 min-h-0">
+      <div className="flex flex-col gap-3 flex-1 min-h-0 justify-between">
         <div className="grid grid-cols-3 gap-2 text-center">
           <Stat label="Active" value={active} tone="ok" />
           <Stat label="Inactive" value={inactive} tone="muted" />
           <Stat label="Errors" value={error} tone="bad" />
         </div>
-        <div className="flex flex-wrap gap-1.5 min-h-0">
+        <div className="flex flex-wrap gap-2">
           {preview.map((c) => (
             <span
               key={c.id}
               title={c.title}
-              className="size-7 rounded-md border border-border overflow-hidden"
+              className="size-9 rounded-md border border-border overflow-hidden shrink-0"
             >
               <IntegrationIcon
                 icon={c.icon ?? undefined}
@@ -426,15 +428,15 @@ export function ShortcutsTile(_props: TileRenderProps) {
 
   return (
     <TileFrame title="Shortcuts" icon={<Star01 size={14} />}>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 grid-rows-2 gap-2 flex-1 min-h-0">
         {DEFAULT_SHORTCUTS.map((s) => (
           <button
             key={s.id}
             type="button"
             onClick={() => goTo(s.id)}
-            className="flex flex-col items-start justify-between gap-2 rounded-lg border border-border bg-background p-3 hover:bg-muted transition-colors text-left aspect-square"
+            className="flex h-full flex-col items-start justify-between gap-2 rounded-lg border border-border bg-muted/30 hover:bg-muted hover:border-primary/30 transition-colors text-left p-3 min-h-0"
           >
-            <span className="flex size-7 items-center justify-center rounded-md bg-muted text-foreground">
+            <span className="flex size-8 items-center justify-center rounded-md bg-background text-foreground border border-border">
               {s.icon}
             </span>
             <span className="text-sm font-medium text-foreground">
@@ -485,17 +487,20 @@ export function StatsTile(_props: TileRenderProps) {
       icon={<TrendUp02 size={14} />}
       badge={<MockBadge />}
     >
-      <div className="grid grid-cols-2 gap-3 flex-1 content-center">
+      <div className="grid grid-cols-2 grid-rows-2 gap-2 flex-1 min-h-0">
         {MOCK_STATS.map((s) => (
-          <div key={s.label} className="flex flex-col">
-            <span className="text-xl font-semibold text-foreground">
+          <div
+            key={s.label}
+            className="flex flex-col justify-between rounded-md bg-muted/30 px-3 py-2 min-h-0"
+          >
+            <span className="text-2xl font-semibold text-foreground leading-none">
               {s.value}
             </span>
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wide truncate">
                 {s.label}
               </span>
-              <span className="text-[10px] text-muted-foreground">
+              <span className="text-[10px] text-muted-foreground shrink-0">
                 {s.delta}
               </span>
             </div>

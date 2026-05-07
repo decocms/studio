@@ -102,7 +102,7 @@ export const TILE_CATALOG: TileDefinition[] = [
     icon: <Star01 size={14} />,
     category: "shortcuts",
     supportedSizes: ["M", "L"],
-    defaultSize: "M",
+    defaultSize: "L",
     render: ShortcutsTile,
   },
   {

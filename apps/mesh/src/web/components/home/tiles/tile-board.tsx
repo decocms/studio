@@ -207,14 +207,14 @@ function BoardTile({
     <div
       ref={setNodeRef}
       className={cn(
-        "absolute p-1.5 transition-opacity",
+        "absolute p-1 transition-opacity",
         (dragging || isDragging) && "opacity-30",
       )}
       style={{ left, top, width, height }}
     >
       <div
         className={cn(
-          "relative h-full bg-background border border-border rounded-[0.75rem] overflow-hidden",
+          "relative h-full bg-background border border-border/80 rounded-[0.75rem] overflow-hidden",
           isEditMode && "ring-1 ring-border hover:ring-primary/40",
         )}
       >
