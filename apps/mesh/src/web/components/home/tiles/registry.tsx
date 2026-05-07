@@ -27,6 +27,7 @@ import {
 } from "@untitledui/icons";
 import type { TileDefinition } from "./types";
 import {
+  AgentCardTile,
   AnalyticsChartTile,
   AppFrameTile,
   CalendarTile,
@@ -44,7 +45,79 @@ import {
   WelcomeTile,
 } from "./renderers";
 
+interface AgentCardSeed {
+  id: string;
+  title: string;
+  icon: string;
+  description: string;
+}
+
+const AGENT_CATALOG: AgentCardSeed[] = [
+  {
+    id: "site-editor",
+    title: "deco Site Editor",
+    icon: "/logos/deco%20logo.svg#agentcolor=brand-green",
+    description: "Edit and ship changes to your deco site, conversation-first.",
+  },
+  {
+    id: "site-diagnostics",
+    title: "Site Diagnostics",
+    icon: "icon://SearchRefraction?color=cyan",
+    description: "Health check your site — broken links, slow pages, errors.",
+  },
+  {
+    id: "ai-image",
+    title: "Image Creator",
+    icon: "icon://Image01?color=rose",
+    description: "Generate, edit, and iterate on visuals from a prompt.",
+  },
+  {
+    id: "ai-research",
+    title: "Web Researcher",
+    icon: "icon://SearchMd?color=green",
+    description: "Run multi-source web research and summarise the findings.",
+  },
+  {
+    id: "lean-canvas",
+    title: "Lean Canvas",
+    icon: "icon://FileCheck02?color=green",
+    description: "Build a Lean Canvas for any product idea in minutes.",
+  },
+  {
+    id: "studio-pack",
+    title: "Studio Pack",
+    icon: "icon://Package?color=blue",
+    description: "Recruit a curated set of agents for studio work.",
+  },
+  {
+    id: "self-healing-storefront",
+    title: "Self-healing Storefront",
+    icon: "icon://Zap?color=amber",
+    description: "Watches your storefront and fixes issues as they appear.",
+  },
+];
+
+const AGENT_CARD_ENTRIES: TileDefinition[] = AGENT_CATALOG.map((a) => ({
+  type: `agent.card.${a.id}`,
+  source: "agent",
+  sourceId: a.id,
+  title: a.title,
+  description: a.description,
+  icon: <Users03 size={14} />,
+  category: "agents",
+  supportedSizes: ["S", "M", "L", "XL"],
+  defaultSize: "S",
+  defaultConfig: {
+    templateId: a.id,
+    title: a.title,
+    icon: a.icon,
+    description: a.description,
+  },
+  render: AgentCardTile,
+}));
+
 export const TILE_CATALOG: TileDefinition[] = [
+  ...AGENT_CARD_ENTRIES,
   {
     type: "studio.welcome",
     source: "system",
@@ -227,6 +300,7 @@ export function renderTileContent(
 
 export const CATEGORY_LABELS: Record<string, string> = {
   essentials: "Essentials",
+  agents: "Agents",
   activity: "Activity",
   stats: "Stats",
   shortcuts: "Shortcuts",
@@ -236,6 +310,7 @@ export const CATEGORY_LABELS: Record<string, string> = {
 
 export const CATEGORY_ORDER: TileDefinition["category"][] = [
   "essentials",
+  "agents",
   "activity",
   "stats",
   "shortcuts",

@@ -9,7 +9,6 @@
  * for the tile area only.
  */
 
-import { AgentsList } from "@/web/components/home/agents-list.tsx";
 import { Chat } from "@/web/components/chat";
 import { NoAiProviderEmptyState } from "@/web/components/chat/no-ai-provider-empty-state";
 import { ImportFromDecoDialog } from "@/web/components/import-from-deco-dialog.tsx";
@@ -161,7 +160,6 @@ export function HomePage() {
             </p>
           </div>
           <div className="w-full flex flex-col gap-4 pb-8">
-            <AgentsList />
             <Chat.Input showConnectionsBanner />
           </div>
           {hasTiles && (
@@ -225,9 +223,6 @@ export function HomePage() {
             <div className="w-full">
               <Chat.Input showConnectionsBanner />
             </div>
-          </div>
-          <div className="w-full mt-10 mx-auto">
-            <AgentsList />
           </div>
         </div>
 

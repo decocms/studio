@@ -59,7 +59,7 @@ export function TileAddSheet({ open, onOpenChange, onAdd }: Props) {
       type: def.type,
       w: size.w,
       h: size.h,
-      config: {},
+      config: def.defaultConfig ? { ...def.defaultConfig } : {},
     });
     onOpenChange(false);
   };

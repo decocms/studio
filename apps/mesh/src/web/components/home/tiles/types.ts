@@ -23,6 +23,7 @@ export type TileSource = "system" | "agent" | "mcp";
 
 export type TileCategory =
   | "essentials"
+  | "agents"
   | "activity"
   | "stats"
   | "shortcuts"
@@ -44,6 +45,12 @@ export interface TileDefinition {
   category: TileCategory;
   supportedSizes: TileSizeKey[];
   defaultSize: TileSizeKey;
+  /**
+   * Initial config baked into a TileInstance when it's added from the
+   * catalog. Used by tile types that need per-instance metadata
+   * (e.g., agent.card carries the agent's templateId, title, icon).
+   */
+  defaultConfig?: Record<string, unknown>;
   render: (props: TileRenderProps) => ReactNode;
 }
 

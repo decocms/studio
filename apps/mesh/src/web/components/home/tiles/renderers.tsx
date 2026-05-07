@@ -635,6 +635,67 @@ export function CalendarTile(_props: TileRenderProps) {
   );
 }
 
+/* ---------- agent.card ---------- */
+
+interface AgentCardConfig {
+  templateId?: string;
+  agentId?: string;
+  title?: string;
+  description?: string;
+  icon?: string;
+  fallbackIcon?: string;
+}
+
+export function AgentCardTile({ instance }: TileRenderProps) {
+  const navigate = useNavigate();
+  const { org } = useProjectContext();
+  const config = (instance.config ?? {}) as AgentCardConfig;
+  const title = config.title ?? "Agent";
+  const description = config.description;
+  const icon = config.icon;
+  const refId = config.agentId ?? config.templateId;
+
+  const handleClick = () => {
+    const taskId = crypto.randomUUID();
+    navigate({
+      to: "/$org/$taskId",
+      params: { org: org.slug, taskId },
+      search: refId ? { virtualmcpid: refId } : undefined,
+    });
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      className="group flex h-full w-full flex-col items-start justify-between gap-3 p-5 text-left min-h-0"
+      aria-label={`Open ${title}`}
+    >
+      <div className="flex items-center justify-between gap-3 w-full">
+        <IntegrationIcon
+          icon={icon}
+          name={title}
+          size="md"
+          fallbackIcon={<Users03 size={20} />}
+        />
+        <span className="flex size-7 items-center justify-center rounded-md bg-background/0 text-muted-foreground/0 group-hover:bg-background group-hover:text-foreground border border-transparent group-hover:border-border/60 transition-colors">
+          <ArrowRight size={14} />
+        </span>
+      </div>
+      <div className="flex flex-col gap-1 min-w-0 w-full">
+        <p className="text-[15px] font-medium text-foreground tracking-tight leading-tight truncate">
+          {title}
+        </p>
+        {description && (
+          <p className="text-[12px] text-muted-foreground line-clamp-2 leading-snug">
+            {description}
+          </p>
+        )}
+      </div>
+    </button>
+  );
+}
+
 /* ---------- agent.reliability ---------- */
 
 const RELIABILITY_ERRORS = [3, 2, 8, 5, 3, 12, 4, 2, 1, 5, 3, 7, 2, 1];
