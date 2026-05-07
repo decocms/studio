@@ -637,6 +637,12 @@ export function CalendarTile(_props: TileRenderProps) {
 
 /* ---------- agent.card ---------- */
 
+interface AgentTask {
+  id: string;
+  title: string;
+  status?: "in-progress" | "review" | "blocked" | "done";
+}
+
 interface AgentCardConfig {
   templateId?: string;
   agentId?: string;
@@ -644,7 +650,21 @@ interface AgentCardConfig {
   description?: string;
   icon?: string;
   fallbackIcon?: string;
+  /**
+   * Optional running tasks for this agent. Mocked in the catalog/seed
+   * today; will be wired to live agent activity later. When present
+   * and the tile has vertical room (h >= 2), they replace the
+   * description as the card body so the agent feels "alive".
+   */
+  tasks?: AgentTask[];
 }
+
+const AGENT_TASK_DOT: Record<string, string> = {
+  "in-progress": "bg-primary",
+  review: "bg-amber-500",
+  blocked: "bg-rose-500",
+  done: "bg-emerald-500",
+};
 
 export function AgentCardTile({ instance }: TileRenderProps) {
   const navigate = useNavigate();
@@ -654,6 +674,14 @@ export function AgentCardTile({ instance }: TileRenderProps) {
   const description = config.description;
   const icon = config.icon;
   const refId = config.agentId ?? config.templateId;
+  const tasks = config.tasks ?? [];
+
+  // Vertical room drives what we render under the header. 1×1 stays
+  // icon + title only; 1×2 and larger fit a body (tasks if any, else
+  // description).
+  const hasBody = instance.h >= 2 || instance.w >= 2;
+  const showTasks = hasBody && tasks.length > 0;
+  const showDescription = hasBody && !showTasks && Boolean(description);
 
   const handleClick = () => {
     const taskId = crypto.randomUUID();
@@ -668,26 +696,49 @@ export function AgentCardTile({ instance }: TileRenderProps) {
     <button
       type="button"
       onClick={handleClick}
-      className="group flex h-full w-full flex-col items-start justify-between gap-3 p-5 text-left min-h-0"
+      className="group flex h-full w-full flex-col items-start justify-between gap-4 p-5 text-left min-h-0"
       aria-label={`Open ${title}`}
     >
-      <div className="flex items-center justify-between gap-3 w-full">
+      <div className="flex items-center justify-between gap-3 w-full shrink-0">
         <IntegrationIcon
           icon={icon}
           name={title}
           size="md"
           fallbackIcon={<Users03 size={20} />}
         />
-        <span className="flex size-7 items-center justify-center rounded-md bg-background/0 text-muted-foreground/0 group-hover:bg-background group-hover:text-foreground border border-transparent group-hover:border-border/60 transition-colors">
+        <span className="flex size-7 items-center justify-center rounded-md text-muted-foreground/0 group-hover:bg-background group-hover:text-foreground border border-transparent group-hover:border-border/60 transition-colors">
           <ArrowRight size={14} />
         </span>
       </div>
-      <div className="flex flex-col gap-1 min-w-0 w-full">
+      <div className="flex flex-col gap-2 min-w-0 w-full flex-1 min-h-0 justify-end">
         <p className="text-[15px] font-medium text-foreground tracking-tight leading-tight truncate">
           {title}
         </p>
-        {description && (
-          <p className="text-[12px] text-muted-foreground line-clamp-2 leading-snug">
+        {showTasks && (
+          <ul className="flex flex-col gap-2 min-w-0">
+            {tasks.slice(0, instance.h >= 2 ? 3 : 2).map((t) => (
+              <li key={t.id} className="flex items-center gap-2.5 min-w-0">
+                <span
+                  className={cn(
+                    "size-1.5 rounded-full shrink-0",
+                    AGENT_TASK_DOT[t.status ?? "in-progress"] ??
+                      "bg-muted-foreground/40",
+                  )}
+                />
+                <span className="text-[12px] text-foreground/90 truncate">
+                  {t.title}
+                </span>
+              </li>
+            ))}
+            {tasks.length > 3 && instance.h >= 2 && (
+              <li className="text-[11px] text-muted-foreground">
+                +{tasks.length - 3} more
+              </li>
+            )}
+          </ul>
+        )}
+        {showDescription && (
+          <p className="text-[12px] text-muted-foreground line-clamp-3 leading-snug">
             {description}
           </p>
         )}

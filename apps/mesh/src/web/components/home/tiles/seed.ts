@@ -66,11 +66,23 @@ const AGENT_SEEDS = {
     title: "deco Site Editor",
     icon: "/logos/deco%20logo.svg#agentcolor=brand-green",
     description: "Edit and ship changes to your deco site, conversation-first.",
+    tasks: [
+      { id: "se-1", title: "Refresh hero copy", status: "in-progress" },
+      { id: "se-2", title: "Wire up new pricing page", status: "review" },
+      { id: "se-3", title: "Patch missing OG images", status: "in-progress" },
+    ],
   },
   "ai-image": {
     title: "Image Creator",
     icon: "icon://Image01?color=rose",
     description: "Generate, edit, and iterate on visuals from a prompt.",
+    tasks: [
+      {
+        id: "ai-1",
+        title: "Generating: 'launch banner'",
+        status: "in-progress",
+      },
+    ],
   },
   "ai-research": {
     title: "Web Researcher",
@@ -80,25 +92,26 @@ const AGENT_SEEDS = {
 } as const;
 
 export function createStarterBoard(): HomeBoard {
-  // 3-col bento. A featured pair on top, agent cards in the middle,
-  // then compact tiles at the bottom.
-  //   row 0–1: Recent tasks (1×2)  | Reliability Agent (2×2)
-  //   row 2:   Site Editor (S)     | Image Creator (S)   | Web Researcher (S)
-  //   row 3:   Connections (2×1)                         | Stats (1×1)
-  //   row 4:   GitHub (1×1)        | Linear (1×1)        | Today (1×1)
+  // 3-col bento. Agents are the headline at the top — clickable cards
+  // showing live activity if they have any. Below that, the dashboard
+  // tiles.
+  //   row 0–1: Site Editor (1×2)  | Image Creator (1×2) | Web Researcher (1×2)
+  //   row 2–3: Recent tasks (1×2) | Reliability Agent (2×2)
+  //   row 4:   Connections (2×1)                        | Stats (1×1)
+  //   row 5:   GitHub (1×1)       | Linear (1×1)        | Today (1×1)
   return {
     version: 3,
     tiles: [
-      tile("studio.recent-tasks", { x: 0, y: 0 }, "M"),
-      tile("agent.reliability", { x: 1, y: 0 }, "XL"),
-      agentTile("site-editor", { x: 0, y: 2 }, "S"),
-      agentTile("ai-image", { x: 1, y: 2 }, "S"),
-      agentTile("ai-research", { x: 2, y: 2 }, "S"),
-      tile("studio.connections-overview", { x: 0, y: 3 }, "L"),
-      tile("studio.stats", { x: 2, y: 3 }, "S"),
-      tile("mock.github.activity", { x: 0, y: 4 }, "S"),
-      tile("mock.linear.issues", { x: 1, y: 4 }, "S"),
-      tile("mock.calendar.upcoming", { x: 2, y: 4 }, "S"),
+      agentTile("site-editor", { x: 0, y: 0 }, "M"),
+      agentTile("ai-image", { x: 1, y: 0 }, "M"),
+      agentTile("ai-research", { x: 2, y: 0 }, "M"),
+      tile("studio.recent-tasks", { x: 0, y: 2 }, "M"),
+      tile("agent.reliability", { x: 1, y: 2 }, "XL"),
+      tile("studio.connections-overview", { x: 0, y: 4 }, "L"),
+      tile("studio.stats", { x: 2, y: 4 }, "S"),
+      tile("mock.github.activity", { x: 0, y: 5 }, "S"),
+      tile("mock.linear.issues", { x: 1, y: 5 }, "S"),
+      tile("mock.calendar.upcoming", { x: 2, y: 5 }, "S"),
     ],
   };
 }

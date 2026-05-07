@@ -50,6 +50,7 @@ interface AgentCardSeed {
   title: string;
   icon: string;
   description: string;
+  tasks?: { id: string; title: string; status: string }[];
 }
 
 const AGENT_CATALOG: AgentCardSeed[] = [
@@ -58,18 +59,33 @@ const AGENT_CATALOG: AgentCardSeed[] = [
     title: "deco Site Editor",
     icon: "/logos/deco%20logo.svg#agentcolor=brand-green",
     description: "Edit and ship changes to your deco site, conversation-first.",
+    tasks: [
+      { id: "se-1", title: "Refresh hero copy", status: "in-progress" },
+      { id: "se-2", title: "Wire up new pricing page", status: "review" },
+      { id: "se-3", title: "Patch missing OG images", status: "in-progress" },
+    ],
   },
   {
     id: "site-diagnostics",
     title: "Site Diagnostics",
     icon: "icon://SearchRefraction?color=cyan",
     description: "Health check your site — broken links, slow pages, errors.",
+    tasks: [
+      { id: "sd-1", title: "Crawling /docs (47%)", status: "in-progress" },
+    ],
   },
   {
     id: "ai-image",
     title: "Image Creator",
     icon: "icon://Image01?color=rose",
     description: "Generate, edit, and iterate on visuals from a prompt.",
+    tasks: [
+      {
+        id: "ai-1",
+        title: "Generating: 'launch banner'",
+        status: "in-progress",
+      },
+    ],
   },
   {
     id: "ai-research",
@@ -94,6 +110,10 @@ const AGENT_CATALOG: AgentCardSeed[] = [
     title: "Self-healing Storefront",
     icon: "icon://Zap?color=amber",
     description: "Watches your storefront and fixes issues as they appear.",
+    tasks: [
+      { id: "sh-1", title: "Auto-retry: cart webhook", status: "review" },
+      { id: "sh-2", title: "Patched: stuck checkout flow", status: "done" },
+    ],
   },
 ];
 
@@ -112,6 +132,7 @@ const AGENT_CARD_ENTRIES: TileDefinition[] = AGENT_CATALOG.map((a) => ({
     title: a.title,
     icon: a.icon,
     description: a.description,
+    ...(a.tasks ? { tasks: a.tasks } : {}),
   },
   render: AgentCardTile,
 }));
