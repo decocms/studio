@@ -28,8 +28,8 @@ export const createThreadOutputsRoutes = () => {
     if (!userId) {
       throw new HTTPException(401, { message: "Unauthorized" });
     }
-    const orgId = ctx.organization?.id;
-    if (!orgId) {
+    const orgSlug = ctx.organization?.slug;
+    if (!orgSlug) {
       throw new HTTPException(400, { message: "Organization required" });
     }
 
@@ -75,7 +75,7 @@ export const createThreadOutputsRoutes = () => {
           filename,
           size: o.size,
           uploadedAt: o.lastModified?.toISOString(),
-          downloadUrl: `${ctx.baseUrl}/api/${encodeURIComponent(orgId)}/files/${encodedKey}`,
+          downloadUrl: `${ctx.baseUrl}/api/${encodeURIComponent(orgSlug)}/files/${encodedKey}`,
         };
       }),
     });

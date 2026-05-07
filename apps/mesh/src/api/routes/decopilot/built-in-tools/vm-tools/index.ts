@@ -94,11 +94,11 @@ function sanitizeFilename(name: string): string | null {
  */
 function toFileDownloadUrl(
   baseUrl: string,
-  orgId: string,
+  orgSlug: string,
   key: string,
 ): string {
   const encodedKey = key.split("/").map(encodeURIComponent).join("/");
-  return `${baseUrl}/api/${encodeURIComponent(orgId)}/files/${encodedKey}`;
+  return `${baseUrl}/api/${encodeURIComponent(orgSlug)}/files/${encodedKey}`;
 }
 
 export type { VmToolsParams } from "./types";
@@ -293,9 +293,9 @@ export function createVmTools(params: VmToolsParams) {
     description: SHARE_WITH_USER_DESCRIPTION,
     inputSchema: zodSchema(ShareWithUserInputSchema),
     execute: async (input) => {
-      const orgId = ctx.organization?.id;
+      const orgSlug = ctx.organization?.slug;
       const storage = ctx.objectStorage;
-      if (!orgId || !storage) {
+      if (!orgSlug || !storage) {
         throw new Error("Object storage is not configured for this org");
       }
       const filename = sanitizeFilename(
@@ -313,7 +313,7 @@ export function createVmTools(params: VmToolsParams) {
       return {
         key,
         filename,
-        downloadUrl: toFileDownloadUrl(ctx.baseUrl, orgId, key),
+        downloadUrl: toFileDownloadUrl(ctx.baseUrl, orgSlug, key),
       };
     },
   });
