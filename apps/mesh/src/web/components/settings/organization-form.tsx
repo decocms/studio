@@ -139,6 +139,7 @@ export function OrganizationForm() {
       queryClient.invalidateQueries({
         queryKey: KEYS.activeOrganization(org.slug),
       });
+      toast.success("Organization updated successfully");
 
       if (data?.data?.slug && data.data.slug !== org.slug) {
         navigate({

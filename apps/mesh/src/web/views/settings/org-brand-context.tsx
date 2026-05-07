@@ -597,6 +597,7 @@ function ExpandableBrandEntry({
       try {
         await updateBrandMutation.mutateAsync(values);
         track("brand_updated", { brand_id: brand.id, fields: dirtyKeys });
+        toast.success("Brand context updated successfully");
         onChanged();
       } catch {
         // Roll back the rebase so user edits remain dirty for the next save.

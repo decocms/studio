@@ -272,16 +272,10 @@ export function useAutomationActions() {
   });
 
   const update = useMutation({
-    // `silent` lets autosave callers opt out of the success toast (which
-    // would otherwise pop every ~1s while typing). The error toast still
-    // fires so the user is notified of save failures.
-    mutationFn: async (
-      input: Record<string, unknown> & { silent?: boolean },
-    ) => {
-      const { silent: _silent, ...args } = input;
+    mutationFn: async (input: Record<string, unknown>) => {
       const result = (await client.callTool({
         name: "AUTOMATION_UPDATE",
-        arguments: args,
+        arguments: input,
       })) as { structuredContent?: unknown };
       return (result.structuredContent ?? result) as { id: string };
     },
@@ -290,7 +284,7 @@ export function useAutomationActions() {
       if (typeof variables.id === "string") {
         invalidateOne(variables.id);
       }
-      if (!variables.silent) toast.success("Automation updated successfully");
+      toast.success("Automation updated successfully");
     },
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);

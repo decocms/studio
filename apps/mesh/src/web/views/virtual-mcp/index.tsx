@@ -1159,7 +1159,6 @@ function VirtualMcpDetailViewWithData({
     await actions.update.mutateAsync({
       id: virtualMcp.id,
       data: formData,
-      silent: true,
     });
 
     // Accumulate into the current edit session and (re)schedule a flush

@@ -67,6 +67,7 @@ function ProfileSection() {
       try {
         await authClient.updateUser({ name: values.name });
         track("profile_updated", { fields: ["name"] });
+        toast.success("Profile updated successfully");
       } catch {
         form.reset(previousDefaults, { keepValues: true });
         toast.error("Failed to update profile");

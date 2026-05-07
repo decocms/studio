@@ -419,17 +419,7 @@ export function useCollectionActions<T extends CollectionEntity>(
   });
 
   const update = useMutation({
-    // `silent` lets autosave callers opt out of the success toast (which
-    // would otherwise pop every ~1s while typing). The error toast still
-    // fires so the user is notified of save failures.
-    mutationFn: async ({
-      id,
-      data,
-    }: {
-      id: string;
-      data: Partial<T>;
-      silent?: boolean;
-    }) => {
+    mutationFn: async ({ id, data }: { id: string; data: Partial<T> }) => {
       const result = await client.callTool({
         name: updateToolName,
         arguments: { id, data } satisfies CollectionUpdateInput<T>,
@@ -438,9 +428,9 @@ export function useCollectionActions<T extends CollectionEntity>(
 
       return payload.item;
     },
-    onSuccess: (_data, vars) => {
+    onSuccess: () => {
       invalidateCollection();
-      if (!vars.silent) toast.success("Item updated successfully");
+      toast.success("Item updated successfully");
     },
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
