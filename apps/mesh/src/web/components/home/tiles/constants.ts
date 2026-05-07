@@ -8,11 +8,11 @@ import type { TileSize, TileSizeKey } from "./types";
 export const GRID_COLS = 3;
 
 /**
- * Vertical cell size. 200px makes a 1×1 tile a comfortable card and a
- * 1×2 a properly tall list column. With max 2-row tall tiles, vertical
- * rhythm stays clean.
+ * Vertical cell size. 240px gives a 1×1 a card-like feel (roughly 7:4
+ * landscape on a 1280px-wide board) and makes a 1×2 a properly tall
+ * list column without dominating the viewport.
  */
-export const ROW_HEIGHT_PX = 200;
+export const ROW_HEIGHT_PX = 240;
 
 export const GRID_GAP_PX = 12;
 
