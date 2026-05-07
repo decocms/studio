@@ -15,10 +15,6 @@ jobs:
   build-push:
     name: Build & Push studio-sandbox image
     runs-on: ubuntu-latest
-    # `[release]:` commits come from the auto-bump bot and don't actually
-    # change the sandbox source — skip them to avoid republishing the same
-    # version on every release tag bump.
-    if: ${{ !startsWith(github.event.head_commit.message, '[release]:') }}
     permissions:
       contents: read
       packages: write
