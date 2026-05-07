@@ -12,7 +12,7 @@
 
 import type { ReactNode } from "react";
 
-export type TileSizeKey = "S" | "M" | "L" | "W";
+export type TileSizeKey = "S" | "M" | "L" | "XL" | "W";
 
 export interface TileSize {
   w: number;
@@ -63,6 +63,6 @@ export interface TileInstance {
  * pins them. There is no "mode" to switch between.
  */
 export interface HomeBoard {
-  version: 2;
+  version: 3;
   tiles: TileInstance[];
 }

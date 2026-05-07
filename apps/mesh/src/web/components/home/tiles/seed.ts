@@ -35,26 +35,24 @@ function tile(
 }
 
 export function createEmptyBoard(): HomeBoard {
-  return { version: 2, tiles: [] };
+  return { version: 3, tiles: [] };
 }
 
 export function createStarterBoard(): HomeBoard {
-  // Dashboard-focused starter. The wide pair sits in the middle to break
-  // up the rhythm — narrow rows above/below frame a wider centerpiece.
-  //   row 0–2: Recent tasks | Connections | Stats     (M+M+M)
-  //   row 3–5: Notes (L)    | Shortcuts (L)            (L+L)
-  //   row 6–8: GitHub       | Linear      | Calendar  (M+M+M)
+  // 3-col bento. A featured pair on top, then compact tiles below.
+  //   row 0–1: Recent tasks (1×2)  | Reliability Agent (2×2)
+  //   row 2:   Connections (2×1)   | Stats (1×1)
+  //   row 3:   GitHub (1×1)        | Linear (1×1)        | Today (1×1)
   return {
-    version: 2,
+    version: 3,
     tiles: [
       tile("studio.recent-tasks", { x: 0, y: 0 }, "M"),
-      tile("studio.connections-overview", { x: 4, y: 0 }, "M"),
-      tile("studio.stats", { x: 8, y: 0 }, "M"),
-      tile("studio.notes", { x: 0, y: 3 }, "L"),
-      tile("studio.shortcuts", { x: 6, y: 3 }, "L"),
-      tile("mock.github.activity", { x: 0, y: 6 }, "M"),
-      tile("mock.linear.issues", { x: 4, y: 6 }, "M"),
-      tile("mock.calendar.upcoming", { x: 8, y: 6 }, "M"),
+      tile("agent.reliability", { x: 1, y: 0 }, "XL"),
+      tile("studio.connections-overview", { x: 0, y: 2 }, "L"),
+      tile("studio.stats", { x: 2, y: 2 }, "S"),
+      tile("mock.github.activity", { x: 0, y: 3 }, "S"),
+      tile("mock.linear.issues", { x: 1, y: 3 }, "S"),
+      tile("mock.calendar.upcoming", { x: 2, y: 3 }, "S"),
     ],
   };
 }

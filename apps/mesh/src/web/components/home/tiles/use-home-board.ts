@@ -29,16 +29,36 @@ export interface UseHomeBoardResult {
 const DEFAULT_BOARD: HomeBoard = createEmptyBoard();
 
 /**
- * Migrate stored boards. v1 had a `layout: "simple" | "tiles"` field —
- * we drop it and keep whatever tiles the user had. A v1 board with an
- * empty tiles array (the simple-mode default) becomes an empty v2 board,
- * which renders identically to today's chat-centric home.
+ * Migrate stored boards.
+ *
+ * - v1 had a `layout: "simple" | "tiles"` field that we dropped in v2.
+ * - v3 collapsed the grid from 12 cols to 3 cols and capped tile height
+ *   at 2 rows (was 3). v2 tile positions/sizes get scaled down by 4 on
+ *   the x-axis so the previous starter board's M/L/W tiles map cleanly
+ *   to the new S/M/L/XL/W presets:
+ *     v2 4x3 (M) → v3 1x2 (M)
+ *     v2 6x3 (L) → v3 2x2 (XL)
+ *     v2 12x2 (W) → v3 3x1 (W)
+ *     v2 3x2 (S) → v3 1x1 (S)
+ *   compactBoard at write time handles any residual overlap.
  */
 function migrate(existing: unknown): HomeBoard {
   if (!existing || typeof existing !== "object") return DEFAULT_BOARD;
   const obj = existing as Record<string, unknown>;
-  const tiles = Array.isArray(obj.tiles) ? (obj.tiles as TileInstance[]) : [];
-  return { version: 2, tiles };
+  const rawTiles = Array.isArray(obj.tiles)
+    ? (obj.tiles as TileInstance[])
+    : [];
+  const fromV12Cols =
+    obj.version === undefined || obj.version === 1 || obj.version === 2;
+  const tiles: TileInstance[] = fromV12Cols
+    ? rawTiles.map((t) => ({
+        ...t,
+        x: Math.min(2, Math.max(0, Math.round((t.x ?? 0) / 4))),
+        w: Math.min(3, Math.max(1, Math.round((t.w ?? 4) / 4))),
+        h: Math.min(2, Math.max(1, (t.h ?? 2) >= 3 ? 2 : 1)),
+      }))
+    : rawTiles;
+  return { version: 3, tiles };
 }
 
 export function useHomeBoard(orgSlug: string): UseHomeBoardResult {

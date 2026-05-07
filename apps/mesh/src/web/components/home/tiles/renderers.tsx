@@ -6,7 +6,7 @@
  */
 
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { authClient } from "@/web/lib/auth-client";
 import { useNavigate } from "@tanstack/react-router";
 import { useProjectContext, useConnections } from "@decocms/mesh-sdk";
@@ -30,6 +30,7 @@ import {
   Lightning01,
   MessageCircle01,
   Server01,
+  ShieldTick,
   Star01,
   Stars01,
   Tool01,
@@ -629,6 +630,101 @@ export function CalendarTile(_props: TileRenderProps) {
           </li>
         ))}
       </ul>
+    </TileFrame>
+  );
+}
+
+/* ---------- agent.reliability ---------- */
+
+const RELIABILITY_ERRORS = [3, 2, 8, 5, 3, 12, 4, 2, 1, 5, 3, 7, 2, 1];
+
+export function ReliabilityAgentTile(_props: TileRenderProps) {
+  const gradientId = useId();
+  const data = RELIABILITY_ERRORS;
+  const today = data[data.length - 1] ?? 0;
+  const yesterday = data[data.length - 2] ?? 0;
+  const total = data.reduce((sum, v) => sum + v, 0);
+  const delta =
+    yesterday > 0 ? Math.round(((today - yesterday) / yesterday) * 100) : 0;
+  const max = Math.max(1, ...data);
+  const w = 320;
+  const h = 100;
+  const stepX = w / (data.length - 1);
+  const points = data.map((v, i) => ({
+    x: i * stepX,
+    y: h - (v / max) * h,
+  }));
+  const linePath = points
+    .map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`)
+    .join(" ");
+  const areaPath = `${linePath} L${w},${h} L0,${h} Z`;
+  const lastPoint = points[points.length - 1]!;
+
+  const trendTone =
+    delta < 0
+      ? "text-emerald-600 dark:text-emerald-400"
+      : delta > 0
+        ? "text-rose-600 dark:text-rose-400"
+        : "text-muted-foreground";
+  const trendLabel =
+    delta === 0 ? "no change" : `${delta > 0 ? "+" : ""}${delta}%`;
+
+  return (
+    <TileFrame title="Reliability Agent" icon={<ShieldTick size={14} />}>
+      <div className="flex flex-col gap-4 flex-1 min-h-0">
+        <div className="flex items-baseline justify-between gap-3">
+          <div className="flex items-baseline gap-2">
+            <span className="text-3xl font-semibold text-foreground tabular-nums tracking-tight leading-none">
+              {today}
+            </span>
+            <span className="text-[11px] text-muted-foreground">
+              errors today
+            </span>
+          </div>
+          <span
+            className={cn(
+              "text-[11px] font-medium tabular-nums shrink-0",
+              trendTone,
+            )}
+          >
+            {trendLabel} vs yesterday
+          </span>
+        </div>
+        <div className="flex-1 min-h-0 flex items-end">
+          <svg
+            viewBox={`0 0 ${w} ${h}`}
+            className="w-full h-full text-rose-500"
+            preserveAspectRatio="none"
+            aria-hidden
+          >
+            <defs>
+              <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stopColor="currentColor" stopOpacity="0.18" />
+                <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            <path d={areaPath} fill={`url(#${gradientId})`} />
+            <path
+              d={linePath}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.5}
+              vectorEffect="non-scaling-stroke"
+            />
+            <circle
+              cx={lastPoint.x}
+              cy={lastPoint.y}
+              r={3}
+              fill="currentColor"
+            />
+          </svg>
+        </div>
+        <div className="flex items-center justify-between text-[10px] text-muted-foreground tabular-nums">
+          <span>{data.length}d ago</span>
+          <span>{total} total · last 14 days</span>
+          <span>now</span>
+        </div>
+      </div>
     </TileFrame>
   );
 }

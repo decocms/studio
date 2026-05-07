@@ -5,38 +5,42 @@
 
 import type { TileSize, TileSizeKey } from "./types";
 
-export const GRID_COLS = 12;
+export const GRID_COLS = 3;
 
 /**
- * Vertical cell size. 96px gives tiles real breathing room — an M (4×3)
- * is 288px tall, plenty for headers, content, and hover affordances
- * without feeling cramped.
+ * Vertical cell size. 200px makes a 1×1 tile a comfortable card and a
+ * 1×2 a properly tall list column. With max 2-row tall tiles, vertical
+ * rhythm stays clean.
  */
-export const ROW_HEIGHT_PX = 96;
+export const ROW_HEIGHT_PX = 200;
 
 export const GRID_GAP_PX = 12;
 
 /**
- * Tile sizes, all expressed in 12-col cells. The 4 sizes line up cleanly:
- * - S (3×2) — quarter-row mini card
- * - M (4×3) — third-row standard card (the bento workhorse)
- * - L (6×3) — half-row landscape (chats, charts, dual-pane lists)
- * - W (12×2) — full-bleed hero strip (welcome, banners)
+ * Tile sizes, all expressed in 3-col cells. Coarse on purpose — keeping
+ * the grid simple and bento-like:
+ * - S  (1×1) — small square card
+ * - M  (1×2) — single column, double tall (lists)
+ * - L  (2×1) — two cols wide, one row tall (landscape)
+ * - XL (2×2) — chunky square (hero charts, primary content)
+ * - W  (3×1) — full-width strip (banners, welcome)
  */
 export const SIZE_PRESETS: Record<TileSizeKey, TileSize> = {
-  S: { w: 3, h: 2 },
-  M: { w: 4, h: 3 },
-  L: { w: 6, h: 3 },
-  W: { w: 12, h: 2 },
+  S: { w: 1, h: 1 },
+  M: { w: 1, h: 2 },
+  L: { w: 2, h: 1 },
+  XL: { w: 2, h: 2 },
+  W: { w: 3, h: 1 },
 };
 
 export const SIZE_LABELS: Record<TileSizeKey, string> = {
   S: "Small",
-  M: "Medium",
-  L: "Large",
-  W: "Wide",
+  M: "Tall",
+  L: "Wide",
+  XL: "Large",
+  W: "Banner",
 };
 
-export const ALL_SIZES: TileSizeKey[] = ["S", "M", "L", "W"];
+export const ALL_SIZES: TileSizeKey[] = ["S", "M", "L", "XL", "W"];
 
 export const MOBILE_BREAKPOINT_COLS = 1;
