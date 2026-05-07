@@ -56,13 +56,13 @@ function TileFrame({
   hint?: string;
 }) {
   return (
-    <div className="flex h-full flex-col p-3.5 gap-2.5 min-h-0">
+    <div className="flex h-full flex-col p-4 gap-3 min-h-0">
       <div className="flex items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="flex size-5 items-center justify-center rounded text-muted-foreground shrink-0">
+          <span className="flex size-6 items-center justify-center rounded-md bg-muted text-muted-foreground shrink-0">
             {icon}
           </span>
-          <span className="text-[13px] font-medium text-foreground truncate">
+          <span className="text-sm font-medium text-foreground truncate">
             {title}
           </span>
           {badge}

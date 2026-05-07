@@ -8,19 +8,20 @@ import type { TileSize, TileSizeKey } from "./types";
 export const GRID_COLS = 12;
 
 /**
- * Vertical cell size. 80px keeps tiles tall enough for content without
- * dominating the viewport — a 12×2 hero is 160px, an M (4×3) is 240px.
+ * Vertical cell size. 96px gives tiles real breathing room — an M (4×3)
+ * is 288px tall, plenty for headers, content, and hover affordances
+ * without feeling cramped.
  */
-export const ROW_HEIGHT_PX = 80;
+export const ROW_HEIGHT_PX = 96;
 
-export const GRID_GAP_PX = 8;
+export const GRID_GAP_PX = 12;
 
 /**
  * Tile sizes, all expressed in 12-col cells. The 4 sizes line up cleanly:
  * - S (3×2) — quarter-row mini card
  * - M (4×3) — third-row standard card (the bento workhorse)
  * - L (6×3) — half-row landscape (chats, charts, dual-pane lists)
- * - W (12×2) — full-bleed hero (welcome, banners)
+ * - W (12×2) — full-bleed hero strip (welcome, banners)
  */
 export const SIZE_PRESETS: Record<TileSizeKey, TileSize> = {
   S: { w: 3, h: 2 },
