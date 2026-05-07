@@ -145,7 +145,7 @@ export function HomePage() {
     return (
       <>
         <div className="flex-1 relative flex flex-col items-center px-4 overflow-y-auto">
-          <div className="flex flex-col items-center justify-center w-full pt-12 pb-6">
+          <div className="flex flex-col items-center justify-center w-full pt-16 pb-8">
             {showEyebrow && (
               <div className="mb-4">
                 <Chat.CreditsEyebrow balanceDollars={balanceDollars} />
@@ -160,12 +160,12 @@ export function HomePage() {
               What's on your mind, {userName}?
             </p>
           </div>
-          <div className="w-full flex flex-col gap-4 pb-4">
+          <div className="w-full flex flex-col gap-4 pb-8">
             <AgentsList />
             <Chat.Input showConnectionsBanner />
           </div>
           {hasTiles && (
-            <div className="w-full pb-6">
+            <div className="w-full pb-8">
               <TileBoard
                 board={boardApi.board}
                 isEditMode={false}
@@ -205,9 +205,9 @@ export function HomePage() {
 
       <div className="flex-1 relative flex flex-col overflow-y-auto">
         {/* Top: chat + agents (always rendered, identical to today) */}
-        <div className="flex flex-col items-center px-10 pt-10">
+        <div className="flex flex-col items-center px-10 pt-16 pb-4">
           <div className="flex flex-col items-center w-full max-w-[672px]">
-            <div className="text-center mb-8">
+            <div className="text-center mb-10">
               {showEyebrow && (
                 <div className="mb-4">
                   <Chat.CreditsEyebrow balanceDollars={balanceDollars} />
@@ -226,14 +226,14 @@ export function HomePage() {
               <Chat.Input showConnectionsBanner />
             </div>
           </div>
-          <div className="w-full mt-8 mx-auto">
+          <div className="w-full mt-10 mx-auto">
             <AgentsList />
           </div>
         </div>
 
         {/* Bottom: tile board (only when there are tiles) */}
         {hasTiles ? (
-          <div className="w-full mt-8 mx-auto max-w-[1280px] px-4 pb-6">
+          <div className="w-full mt-12 mx-auto max-w-[1280px] px-4 pb-10">
             <TileBoard
               board={boardApi.board}
               isEditMode={isEditMode}
