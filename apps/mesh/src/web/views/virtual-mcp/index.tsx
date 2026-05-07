@@ -78,7 +78,7 @@ import {
   Trash01,
   XClose,
 } from "@untitledui/icons";
-import { Suspense, useReducer, useRef, useState } from "react";
+import { Suspense, useEffect, useReducer, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { useDebouncedAutosave } from "@/web/hooks/use-debounced-autosave.ts";
 import { toast } from "sonner";
@@ -132,6 +132,49 @@ function dialogReducer(state: DialogState, action: DialogAction): DialogState {
       };
     default:
       return state;
+  }
+}
+
+type EditSession = {
+  start: number;
+  fields: Set<string>;
+  saveCount: number;
+  instructionsLength: number | null;
+};
+
+type EditSessionAction =
+  | {
+      type: "accumulate";
+      now: number;
+      fields: string[];
+      instructionsLength: number | null;
+    }
+  | { type: "reset" };
+
+function editSessionReducer(
+  state: EditSession | null,
+  action: EditSessionAction,
+): EditSession | null {
+  switch (action.type) {
+    case "accumulate": {
+      const base: EditSession = state ?? {
+        start: action.now,
+        fields: new Set(),
+        saveCount: 0,
+        instructionsLength: null,
+      };
+      const fields = new Set(base.fields);
+      for (const f of action.fields) fields.add(f);
+      return {
+        ...base,
+        fields,
+        saveCount: base.saveCount + 1,
+        instructionsLength:
+          action.instructionsLength ?? base.instructionsLength,
+      };
+    }
+    case "reset":
+      return null;
   }
 }
 
@@ -533,12 +576,10 @@ interface ConnectionWithTools {
 function LayoutTabContent({
   virtualMcpId,
   form,
-  debouncedSave,
   flushAndSave,
 }: {
   virtualMcpId: string;
   form: VirtualMcpFormReturn;
-  debouncedSave: () => void;
   flushAndSave: () => Promise<unknown>;
 }) {
   const { org } = useProjectContext();
@@ -701,8 +742,6 @@ function LayoutTabContent({
       ) {
         writeLayout({ defaultMainView: { type: "chat" } });
       }
-
-      debouncedSave();
     }
   }
 
@@ -746,7 +785,6 @@ function LayoutTabContent({
           : v,
       ),
     );
-    debouncedSave();
   };
 
   const handleLabelBlur = () => {
@@ -1038,7 +1076,7 @@ function VirtualMcpDetailViewWithData({
 
     setIsImproving(true);
     try {
-      flushEditSession();
+      forceSessionFlush();
       track("agent_instructions_improve_clicked", {
         agent_id: virtualMcp.id,
         instructions_length: currentInstructions.length,
@@ -1063,7 +1101,7 @@ function VirtualMcpDetailViewWithData({
   };
 
   const handleTestAgent = () => {
-    flushEditSession();
+    forceSessionFlush();
     track("agent_test_clicked", { agent_id: virtualMcp.id });
     createNewTask();
   };
@@ -1071,69 +1109,90 @@ function VirtualMcpDetailViewWithData({
   // Session-based tracking for agent_updated. Auto-saves persist every ~1s but
   // we only emit one PostHog event per edit-session (aggregated fields +
   // save_count + edit_duration_ms). A session ends after 30s of quiet.
-  const editSessionStartRef = useRef<number | null>(null);
-  const editSessionFieldsRef = useRef<Set<string>>(new Set());
-  const editSessionSaveCountRef = useRef(0);
-  const editSessionInstructionsLengthRef = useRef<number | null>(null);
-  const editSessionFlushRef = useRef<ReturnType<typeof setTimeout> | null>(
+  const [editSession, dispatchEditSession] = useReducer(
+    editSessionReducer,
     null,
   );
-  const EDIT_SESSION_QUIET_MS = 30_000;
 
   const flushEditSession = () => {
-    if (editSessionFlushRef.current) {
-      clearTimeout(editSessionFlushRef.current);
-      editSessionFlushRef.current = null;
-    }
-    if (editSessionStartRef.current === null) return;
+    if (editSession === null) return;
     track("agent_updated", {
       agent_id: virtualMcp.id,
-      fields: Array.from(editSessionFieldsRef.current),
-      instructions_length: editSessionInstructionsLengthRef.current,
-      save_count: editSessionSaveCountRef.current,
-      edit_duration_ms: Date.now() - editSessionStartRef.current,
+      fields: Array.from(editSession.fields),
+      instructions_length: editSession.instructionsLength,
+      save_count: editSession.saveCount,
+      edit_duration_ms: Date.now() - editSession.start,
     });
-    editSessionStartRef.current = null;
-    editSessionFieldsRef.current = new Set();
-    editSessionSaveCountRef.current = 0;
-    editSessionInstructionsLengthRef.current = null;
+    dispatchEditSession({ type: "reset" });
   };
 
+  const { schedule: scheduleSessionFlush, flush: forceSessionFlush } =
+    useDebouncedAutosave({
+      delayMs: 30_000,
+      save: async () => flushEditSession(),
+    });
+
   const saveForm = async () => {
-    const dirtyKeys = Object.keys(form.formState.dirtyFields);
+    // form.formState is a Proxy over React state. When saveForm runs
+    // synchronously after setValue (e.g. via flushAndSave), React hasn't
+    // processed the batched state update yet and form.formState.dirtyFields
+    // returns the previous render's snapshot — empty on the first edit — so
+    // the save would bail. Read control._formState.dirtyFields for the live,
+    // synchronously-updated value.
+    const dirtyKeys = Object.keys(
+      (
+        form.control as unknown as {
+          _formState: { dirtyFields: Record<string, unknown> };
+        }
+      )._formState.dirtyFields,
+    );
     if (dirtyKeys.length === 0) return;
     const instructionsDirty = dirtyKeys.includes("metadata");
 
     const formData = form.getValues();
-    const data = await actions.update.mutateAsync({
+    // Rebase the dirty baseline to the snapshot we're about to send so that
+    // an edit during the in-flight save that returns a value to its pre-save
+    // default still registers as dirty. keepValues preserves the user's
+    // current form values; only _defaultValues advances.
+    form.reset(formData, { keepValues: true });
+
+    await actions.update.mutateAsync({
       id: virtualMcp.id,
       data: formData,
     });
 
-    // Accumulate into the current edit session.
-    if (editSessionStartRef.current === null) {
-      editSessionStartRef.current = Date.now();
-    }
-    for (const k of dirtyKeys) editSessionFieldsRef.current.add(k);
-    editSessionSaveCountRef.current += 1;
-    if (instructionsDirty) {
-      editSessionInstructionsLengthRef.current =
-        formData.metadata?.instructions?.length ?? 0;
-    }
-    if (editSessionFlushRef.current) {
-      clearTimeout(editSessionFlushRef.current);
-    }
-    editSessionFlushRef.current = setTimeout(
-      flushEditSession,
-      EDIT_SESSION_QUIET_MS,
-    );
-
-    form.reset(data);
+    // Accumulate into the current edit session and (re)schedule a flush
+    // 30s after the last save.
+    dispatchEditSession({
+      type: "accumulate",
+      now: Date.now(),
+      fields: dirtyKeys,
+      instructionsLength: instructionsDirty
+        ? (formData.metadata?.instructions?.length ?? 0)
+        : null,
+    });
+    scheduleSessionFlush();
   };
 
   const { schedule: debouncedSave, flush: flushAndSave } = useDebouncedAutosave(
     { save: saveForm },
   );
+
+  // form.watch(callback) fires whenever a value changes via setValue, but not
+  // on form.reset({ keepValues: true }) (which only emits state, no `values`
+  // key) — so saveForm's pre-mutate rebase does NOT loop. Edit handlers
+  // can just call form.setValue and trust this subscription to schedule the
+  // save. flushAndSave remains for explicit "save NOW" semantics (blurs,
+  // toggles).
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    const sub = form.watch(() => debouncedSave());
+    return () => sub.unsubscribe();
+    // debouncedSave is stable for our purpose: its closure only mediates
+    // through stable refs inside useDebouncedAutosave, so the mount-time
+    // reference stays valid for the component's lifetime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleOpenAddDialog = () => {
     track("connections_dialog_opened", {
@@ -1161,7 +1220,6 @@ function VirtualMcpDetailViewWithData({
       ],
       { shouldDirty: true },
     );
-    debouncedSave();
     dispatch({ type: "SET_ADD_DIALOG_OPEN", payload: false });
 
     // Auto-trigger OAuth if the connection needs authorization
@@ -1183,7 +1241,6 @@ function VirtualMcpDetailViewWithData({
     const current = form.getValues("connections");
     const filtered = current.filter((c) => c.connection_id !== connectionId);
     form.setValue("connections", filtered, { shouldDirty: true });
-    debouncedSave();
   };
 
   const handleSwitchInstance = (oldId: string, newId: string) => {
@@ -1200,7 +1257,6 @@ function VirtualMcpDetailViewWithData({
       ),
       { shouldDirty: true },
     );
-    debouncedSave();
   };
 
   const handleNewInstance = async (connectionId: string) => {
@@ -1384,7 +1440,6 @@ Define step-by-step how the agent should handle requests.
 </workflows>`;
     const next = current.trim() ? `${current}\n\n${template}` : template;
     form.setValue("metadata.instructions", next, { shouldDirty: true });
-    debouncedSave();
   };
 
   const addedConnectionIds = new Set(connections.map((c) => c.connection_id));
@@ -1392,7 +1447,7 @@ Define step-by-step how the agent should handle requests.
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const handleDelete = async () => {
-    flushEditSession();
+    forceSessionFlush();
     try {
       await actions.delete.mutateAsync(virtualMcp.id);
       track("agent_deleted", {
@@ -1475,7 +1530,6 @@ Define step-by-step how the agent should handle requests.
                       value={field.value ?? ""}
                       onChange={(e) => {
                         field.onChange(e);
-                        debouncedSave();
                       }}
                       onBlur={() => {
                         field.onBlur();
@@ -1497,7 +1551,6 @@ Define step-by-step how the agent should handle requests.
                       value={field.value ?? ""}
                       onChange={(e) => {
                         field.onChange(e);
-                        debouncedSave();
                       }}
                       onBlur={() => {
                         field.onBlur();
@@ -1666,7 +1719,6 @@ Define step-by-step how the agent should handle requests.
                       value={field.value ?? ""}
                       onChange={(e) => {
                         field.onChange(e);
-                        debouncedSave();
                       }}
                       onBlur={() => {
                         field.onBlur();
@@ -1701,7 +1753,6 @@ Define step-by-step how the agent should handle requests.
             <LayoutTabContent
               virtualMcpId={virtualMcp.id}
               form={form}
-              debouncedSave={debouncedSave}
               flushAndSave={flushAndSave}
             />
 
@@ -1801,7 +1852,6 @@ Define step-by-step how the agent should handle requests.
                   value={field.value ?? ""}
                   onChange={(e) => {
                     field.onChange(e);
-                    debouncedSave();
                   }}
                   onBlur={() => {
                     field.onBlur();

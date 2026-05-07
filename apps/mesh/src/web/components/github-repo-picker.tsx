@@ -8,6 +8,7 @@ import { Checkbox } from "@deco/ui/components/checkbox.tsx";
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Suspense, useDeferredValue, useState } from "react";
+import { useDebouncedValue } from "@/web/hooks/use-debounced-value.ts";
 import {
   useMutation,
   useQuery,
@@ -669,7 +670,8 @@ function RepoBrowser({
   hideAutoRespondCheckbox?: boolean;
 }) {
   const [query, setQuery] = useState("");
-  const deferredQuery = useDeferredValue(query);
+  const debouncedQuery = useDebouncedValue(query, 300);
+  const deferredQuery = useDeferredValue(debouncedQuery);
   const isStale = query !== deferredQuery;
 
   return (
@@ -755,11 +757,15 @@ function RepoList({
       installation.login,
       query,
     ),
-    queryFn: async () => {
-      const result = await githubClient.callTool({
-        name: "search_repositories",
-        arguments: { query: searchQuery, page: 1, perPage: 30 },
-      });
+    queryFn: async ({ signal }) => {
+      const result = await githubClient.callTool(
+        {
+          name: "search_repositories",
+          arguments: { query: searchQuery, page: 1, perPage: 30 },
+        },
+        undefined,
+        { signal },
+      );
       const content = (result as { content?: Array<{ text?: string }> })
         .content?.[0]?.text;
       if (!content) throw new Error("No response from search_repositories");
