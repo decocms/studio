@@ -19,7 +19,7 @@ import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { SearchMd } from "@untitledui/icons";
 import { useState } from "react";
-import { CATEGORY_LABELS, CATEGORY_ORDER, TILE_CATALOG } from "./registry";
+import { CATEGORY_LABELS, CATEGORY_ORDER, useTileCatalog } from "./registry";
 import { SIZE_PRESETS } from "./constants";
 import type { TileDefinition, TileInstance } from "./types";
 
@@ -47,9 +47,10 @@ const SOURCE_TONE: Record<string, string> = {
 
 export function TileAddSheet({ open, onOpenChange, onAdd }: Props) {
   const [query, setQuery] = useState("");
+  const catalog = useTileCatalog();
 
   const lower = query.trim().toLowerCase();
-  const filtered = TILE_CATALOG.filter((d) => {
+  const filtered = catalog.filter((d) => {
     if (!lower) return true;
     return (
       d.title.toLowerCase().includes(lower) ||
@@ -149,10 +150,6 @@ function CatalogRow({
 }) {
   const sourceTone = SOURCE_TONE[def.source] ?? SOURCE_TONE.system!;
   const sourceLabel = SOURCE_LABEL[def.source] ?? "System";
-  const config = def.defaultConfig as
-    | { icon?: string; description?: string }
-    | undefined;
-  const previewIcon = config?.icon;
 
   return (
     <button
@@ -160,24 +157,8 @@ function CatalogRow({
       onClick={() => onAdd(def)}
       className="group flex w-full items-start gap-3 rounded-xl border border-border/60 bg-background p-3.5 hover:bg-muted/40 hover:border-primary/40 transition-colors text-left"
     >
-      <span className="flex size-10 items-center justify-center rounded-lg bg-muted/60 text-foreground shrink-0 overflow-hidden border border-border/60">
-        {previewIcon ? (
-          <img
-            src={
-              previewIcon.startsWith("/") || previewIcon.startsWith("http")
-                ? previewIcon
-                : ""
-            }
-            alt=""
-            aria-hidden
-            className="size-5 object-contain"
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.display = "none";
-            }}
-          />
-        ) : (
-          def.icon
-        )}
+      <span className="flex size-9 items-center justify-center shrink-0">
+        {def.icon}
       </span>
       <div className="flex-1 min-w-0 flex flex-col gap-1">
         <div className="flex items-center gap-2 min-w-0">

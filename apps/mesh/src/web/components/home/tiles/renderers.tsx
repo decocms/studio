@@ -24,7 +24,7 @@ import { IntegrationIcon } from "@/web/components/integration-icon";
 import { useTasks } from "@/web/components/chat/task/use-task-manager";
 import { getStatusConfig } from "@/web/lib/task-status";
 import { useAgentRecruit } from "./agent-recruit-provider";
-import type { AgentSeedId } from "./agent-seeds";
+import { STUDIO_AGENT, type AgentSeedId } from "./agent-seeds";
 import {
   Activity,
   ArrowRight,
@@ -38,17 +38,6 @@ import {
   Zap,
 } from "@untitledui/icons";
 import type { TileRenderProps } from "./types";
-
-/**
- * Studio Agent — the meta-agent that surfaces views of the workspace
- * itself (recent tasks, agents, connections, stats). Tiles attributed
- * to this identity render with the same agent-card layout as any
- * other agent tile so the visual language stays consistent.
- */
-const STUDIO_AGENT = {
-  icon: "icon://Stars01?color=violet",
-  name: "Studio Agent",
-} as const;
 
 interface AgentIdentity {
   icon: string;
@@ -652,6 +641,68 @@ export function AgentCardTile({ instance }: TileRenderProps) {
           </p>
         )}
       </AgentTileFrame>
+    </button>
+  );
+}
+
+/* ---------- agent.tool-view ---------- */
+
+/**
+ * A tile that points at a specific tool view exposed by an installed
+ * agent (entries from `metadata.ui.layout.tabs` or `metadata.ui.pinnedViews`).
+ * The card shows the agent + view name; clicking opens a thread with
+ * that agent's main panel pinned to the right tab — same surface the
+ * agent's own settings page uses for its layout.
+ */
+interface AgentToolViewConfig {
+  agentId?: string;
+  agentTitle?: string;
+  agentIcon?: string;
+  /** "tab:<id>" or "app:<connectionId>:<toolName>" */
+  mainTabId?: string;
+  viewLabel?: string;
+  viewIcon?: string;
+}
+
+export function AgentToolViewTile({ instance }: TileRenderProps) {
+  const navigate = useNavigate();
+  const { org } = useProjectContext();
+  const config = (instance.config ?? {}) as AgentToolViewConfig;
+  const agentTitle = config.agentTitle ?? "Agent";
+  const agentIcon = config.agentIcon ?? "";
+  const viewLabel = config.viewLabel ?? "View";
+  const refId = config.agentId;
+
+  const handleClick = () => {
+    if (!refId) return;
+    const taskId = crypto.randomUUID();
+    navigate({
+      to: "/$org/$taskId",
+      params: { org: org.slug, taskId },
+      search: {
+        virtualmcpid: refId,
+        ...(config.mainTabId ? { main: config.mainTabId } : {}),
+      } as never,
+    });
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      className="h-full w-full text-left"
+      aria-label={`Open ${agentTitle} — ${viewLabel}`}
+    >
+      <AgentDataTileFrame
+        agent={{ icon: agentIcon, name: agentTitle }}
+        title={viewLabel}
+      >
+        <div className="flex-1 flex items-center justify-center text-center">
+          <p className="text-[12px] text-muted-foreground line-clamp-3 leading-snug">
+            Open the {viewLabel.toLowerCase()} view from {agentTitle}.
+          </p>
+        </div>
+      </AgentDataTileFrame>
     </button>
   );
 }

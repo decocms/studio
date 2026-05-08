@@ -23,6 +23,7 @@ export type TileSource = "system" | "agent" | "mcp";
 
 export type TileCategory =
   | "essentials"
+  | "studio"
   | "agents"
   | "activity"
   | "stats"

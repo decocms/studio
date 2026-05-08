@@ -12,6 +12,18 @@ export interface AgentSeed {
   description: string;
 }
 
+/**
+ * Identity used by Studio's own data tiles — recent tasks, recent
+ * agents, connections, and workspace stats. The four read from the
+ * same hooks as the rest of the app and present as a single "agent".
+ */
+export const STUDIO_AGENT = {
+  id: "studio-agent",
+  icon: "icon://Stars01?color=violet",
+  name: "Studio Agent",
+  description: "Live views of your Studio workspace.",
+} as const;
+
 export const AGENT_SEEDS = [
   {
     id: "site-editor",
