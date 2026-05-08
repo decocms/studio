@@ -83,7 +83,7 @@ export function MainPanelTabsBar({
   };
 
   return (
-    <div className="flex items-center min-w-0 ml-auto gap-0.5">
+    <div className="flex items-center min-w-0 gap-0.5">
       {visible.map((tab) => (
         <HeaderTabButton
           key={tab.id}
