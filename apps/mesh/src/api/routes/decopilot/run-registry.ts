@@ -24,14 +24,7 @@ import { meter } from "@/observability";
 export type { RunReactorDeps };
 
 const REAP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-// Deep-research runs (Gemini Deep Research, OpenAI o-series web research)
-// routinely exceed 30 minutes. The previous 30-minute cap force-failed those
-// mid-flight while the underlying provider job kept running, leaving users
-// with a "failed" thread and no recovery path. 90 minutes covers the long
-// tail of legitimate research runs while still catching genuine zombies
-// (the reaper is the last line of defense; orphan recovery and explicit
-// FINISH events are the primary ones).
-const MAX_RUN_AGE_MS = 90 * 60 * 1000; // 90 minutes
+const MAX_RUN_AGE_MS = 30 * 60 * 1000; // 30 minutes
 
 /** Events that mark a new inflight run. */
 const INFLIGHT_START_EVENTS = new Set(["RUN_STARTED", "RUN_RESUMED"]);
