@@ -138,8 +138,45 @@ export const TILE_CATALOG: TileDefinition[] = [
 
 const BY_TYPE = new Map(TILE_CATALOG.map((t) => [t.type, t]));
 
+/**
+ * Tile types created at runtime (one per installed agent / agent tool
+ * view) aren't in the static catalog, but pinned instances reference
+ * them by their full type string. Match on the prefix and return a
+ * minimal synthetic def so TileSlot can route to the right renderer
+ * even after a reload.
+ */
+function getDynamicTileDefinition(type: string): TileDefinition | undefined {
+  if (type.startsWith("agent.tool-view.")) {
+    return {
+      type,
+      source: "agent",
+      title: "Agent view",
+      description: "",
+      icon: null,
+      category: "agents",
+      supportedSizes: ["S", "M", "L", "XL"],
+      defaultSize: "M",
+      render: AgentToolViewTile,
+    };
+  }
+  if (type.startsWith("agent.card.installed.")) {
+    return {
+      type,
+      source: "agent",
+      title: "Agent",
+      description: "",
+      icon: null,
+      category: "agents",
+      supportedSizes: ["S", "M", "L", "XL"],
+      defaultSize: "S",
+      render: AgentCardTile,
+    };
+  }
+  return undefined;
+}
+
 export function getTileDefinition(type: string): TileDefinition | undefined {
-  return BY_TYPE.get(type);
+  return BY_TYPE.get(type) ?? getDynamicTileDefinition(type);
 }
 
 export function renderTileContent(
