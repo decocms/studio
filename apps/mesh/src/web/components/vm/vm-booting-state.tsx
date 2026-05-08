@@ -391,6 +391,8 @@ const LIFECYCLE_COPY: Record<
 function failureCopy(phase: Extract<ClaimPhase, { kind: "failed" }>): {
   headline: string;
   body: string;
+  retryLabel?: string;
+  hideViewLogs?: boolean;
 } {
   switch (phase.reason) {
     case "image-pull-backoff":
@@ -412,6 +414,13 @@ function failureCopy(phase: Extract<ClaimPhase, { kind: "failed" }>): {
       return {
         headline: "Sandbox claim was never posted",
         body: phase.message,
+      };
+    case "sandbox-evicted":
+      return {
+        headline: "Sandbox was removed",
+        body: "The sandbox is no longer running. Start a new one to continue.",
+        retryLabel: "Start new sandbox",
+        hideViewLogs: true,
       };
     case "reconciler-error":
       return {
@@ -452,17 +461,19 @@ function ClaimLifecycleView({
             onClick={onRetry}
             className="rounded-md border border-foreground/15 bg-background px-3 py-1.5 text-xs font-medium hover:bg-foreground/[0.04] transition-colors"
           >
-            Try again
+            {copy.retryLabel ?? "Try again"}
           </button>
         )}
-        <button
-          type="button"
-          onClick={onViewLogs}
-          className="flex items-center gap-1.5 text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors duration-200"
-        >
-          <Terminal size={11} />
-          View logs
-        </button>
+        {!copy.hideViewLogs && (
+          <button
+            type="button"
+            onClick={onViewLogs}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors duration-200"
+          >
+            <Terminal size={11} />
+            View logs
+          </button>
+        )}
       </div>
     );
   }
