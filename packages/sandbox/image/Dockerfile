@@ -44,6 +44,13 @@ RUN pip3 install --break-system-packages --no-cache-dir \
 ENV LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8
 
+# Convert silent stalls (NAT instance replacement, PMTUD blackholes, mid-stream
+# packet drops) into fast errors that the daemon's clone retry loop can catch.
+# Without this, libcurl waits on TCP keepalive (~2h default) and the clone
+# hangs at "Receiving objects" indefinitely.
+RUN git config --system http.lowSpeedLimit 1000 \
+  && git config --system http.lowSpeedTime 30
+
 # Non-root sandbox user. The bun image comes with a 'bun' user (UID 1000),
 # but we drop privileges further by replacing it with a 'sandbox' user.
 RUN userdel --remove bun \

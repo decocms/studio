@@ -47,6 +47,13 @@ const TRANSIENT_ERRORS = [
   "unexpected disconnect",
   "Connection reset by peer",
   "Connection timed out",
+  // libcurl CURLE_OPERATION_TIMEDOUT triggered by http.lowSpeedLimit/Time —
+  // fires when the egress NAT silently drops in-flight packets (e.g. fck-nat
+  // ASG instance refresh) and the stream stalls below the threshold.
+  "Operation too slow",
+  "transfer closed with",
+  "RPC failed",
+  "the remote end hung up",
 ];
 const CLONE_MAX_RETRIES = 3;
 const CLONE_RETRY_DELAY_MS = 3000;
