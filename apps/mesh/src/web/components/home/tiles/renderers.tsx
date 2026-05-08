@@ -27,19 +27,90 @@ import {
   Activity,
   ArrowRight,
   BookOpen01,
-  Clock,
   MessageCircle01,
   Server01,
   Star01,
   Stars01,
   Tool01,
-  TrendUp02,
   Users03,
   Zap,
 } from "@untitledui/icons";
 import type { TileRenderProps } from "./types";
 
-function TileFrame({
+/**
+ * Studio Agent — the meta-agent that surfaces views of the workspace
+ * itself (recent tasks, agents, connections, stats). Tiles attributed
+ * to this identity render with the same agent-card layout as any
+ * other agent tile so the visual language stays consistent.
+ */
+const STUDIO_AGENT = {
+  icon: "icon://Stars01?color=violet",
+  name: "Studio Agent",
+} as const;
+
+interface AgentIdentity {
+  icon: string;
+  name: string;
+}
+
+/**
+ * Frame shared by every agent-attributed tile (Studio Agent's data
+ * views and the agent.card type). Mirrors the agent-card layout:
+ *   row 1 — agent avatar + optional action chip
+ *   row 2 — agent name eyebrow (small muted) + view title (primary)
+ *   row 3 — body
+ *
+ * `eyebrow` lets agent.card tiles suppress the redundant "Image
+ * Creator / Image Creator" pair when the view title is just the
+ * agent name.
+ */
+function AgentTileFrame({
+  agent,
+  title,
+  eyebrow,
+  action,
+  children,
+}: {
+  agent: AgentIdentity;
+  title: string;
+  eyebrow?: string | false;
+  action?: { label: string; onClick: () => void };
+  children: ReactNode;
+}) {
+  const showEyebrow = eyebrow !== false;
+  const eyebrowText = typeof eyebrow === "string" ? eyebrow : agent.name;
+  return (
+    <div className="flex h-full flex-col p-5 gap-4 min-h-0">
+      <div className="flex items-center justify-between gap-3 shrink-0">
+        <AgentAvatar icon={agent.icon} name={agent.name} size="sm+" />
+        {action && (
+          <button
+            type="button"
+            onClick={action.onClick}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
+          >
+            {action.label}
+            <ArrowRight size={12} />
+          </button>
+        )}
+      </div>
+      <div className="flex flex-col gap-0.5 shrink-0 min-w-0">
+        {showEyebrow && (
+          <p className="text-[11px] text-muted-foreground tracking-tight truncate">
+            {eyebrowText}
+          </p>
+        )}
+        <p className="text-[15px] font-medium text-foreground tracking-tight leading-tight truncate">
+          {title}
+        </p>
+      </div>
+      <div className="flex-1 min-h-0 flex flex-col">{children}</div>
+    </div>
+  );
+}
+
+/** Frame for system tiles that don't belong to an agent. */
+function SystemTileFrame({
   title,
   icon,
   action,
@@ -165,9 +236,9 @@ export function RecentAgentsTile(_props: TileRenderProps) {
     .slice(0, RECENT_AGENT_LIMIT);
 
   return (
-    <TileFrame
+    <AgentTileFrame
+      agent={STUDIO_AGENT}
       title="Recent agents"
-      icon={<Users03 size={14} />}
       action={{
         label: "All",
         onClick: () =>
@@ -201,7 +272,7 @@ export function RecentAgentsTile(_props: TileRenderProps) {
           ))}
         </ul>
       )}
-    </TileFrame>
+    </AgentTileFrame>
   );
 }
 
@@ -221,7 +292,7 @@ export function RecentTasksTile(_props: TileRenderProps) {
   const recent = tasks.slice(0, RECENT_TASK_LIMIT);
 
   return (
-    <TileFrame title="Recent tasks" icon={<Clock size={14} />}>
+    <AgentTileFrame agent={STUDIO_AGENT} title="Recent tasks">
       {recent.length === 0 ? (
         <EmptyBody>No tasks yet — start a chat to begin one.</EmptyBody>
       ) : (
@@ -255,7 +326,7 @@ export function RecentTasksTile(_props: TileRenderProps) {
           })}
         </ul>
       )}
-    </TileFrame>
+    </AgentTileFrame>
   );
 }
 
@@ -274,9 +345,9 @@ export function ConnectionsOverviewTile(_props: TileRenderProps) {
   const preview = connections.slice(0, CONNECTION_PREVIEW_LIMIT);
 
   return (
-    <TileFrame
+    <AgentTileFrame
+      agent={STUDIO_AGENT}
       title="Connections"
-      icon={<Server01 size={14} />}
       action={{
         label: "Manage",
         onClick: () =>
@@ -314,7 +385,7 @@ export function ConnectionsOverviewTile(_props: TileRenderProps) {
           )}
         </div>
       </div>
-    </TileFrame>
+    </AgentTileFrame>
   );
 }
 
@@ -387,7 +458,7 @@ export function ShortcutsTile(_props: TileRenderProps) {
   };
 
   return (
-    <TileFrame title="Shortcuts" icon={<Star01 size={14} />}>
+    <SystemTileFrame title="Shortcuts" icon={<Star01 size={14} />}>
       <div className="grid grid-cols-2 grid-rows-2 gap-2 flex-1 min-h-0">
         {DEFAULT_SHORTCUTS.map((s) => (
           <button
@@ -405,7 +476,7 @@ export function ShortcutsTile(_props: TileRenderProps) {
           </button>
         ))}
       </div>
-    </TileFrame>
+    </SystemTileFrame>
   );
 }
 
@@ -420,14 +491,14 @@ export function NotesTile({ instance: _instance }: TileRenderProps) {
   );
 
   return (
-    <TileFrame title="Notes" icon={<BookOpen01 size={14} />}>
+    <SystemTileFrame title="Notes" icon={<BookOpen01 size={14} />}>
       <Textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder="Quick scratchpad…"
         className="flex-1 resize-none rounded-lg bg-background border border-border/60 text-[13px] focus-visible:ring-1 focus-visible:ring-primary/30 focus-visible:ring-offset-0"
       />
-    </TileFrame>
+    </SystemTileFrame>
   );
 }
 
@@ -453,7 +524,7 @@ export function StatsTile(_props: TileRenderProps) {
   ];
 
   return (
-    <TileFrame title="Workspace stats" icon={<TrendUp02 size={14} />}>
+    <AgentTileFrame agent={STUDIO_AGENT} title="Workspace stats">
       <div className="grid grid-cols-2 grid-rows-2 gap-x-6 gap-y-4 flex-1 min-h-0">
         {cards.map((s) => (
           <div key={s.label} className="flex flex-col gap-1.5 min-h-0">
@@ -466,7 +537,7 @@ export function StatsTile(_props: TileRenderProps) {
           </div>
         ))}
       </div>
-    </TileFrame>
+    </AgentTileFrame>
   );
 }
 
@@ -486,7 +557,7 @@ export function AgentCardTile({ instance }: TileRenderProps) {
   const config = (instance.config ?? {}) as AgentCardConfig;
   const title = config.title ?? "Agent";
   const description = config.description;
-  const icon = config.icon;
+  const icon = config.icon ?? "";
   const refId = config.agentId ?? config.templateId;
 
   const hasBody = instance.h >= 2 || instance.w >= 2;
@@ -504,25 +575,20 @@ export function AgentCardTile({ instance }: TileRenderProps) {
     <button
       type="button"
       onClick={handleClick}
-      className="group flex h-full w-full flex-col items-start justify-between gap-4 p-5 text-left min-h-0"
+      className="h-full w-full text-left"
       aria-label={`Open ${title}`}
     >
-      <div className="flex items-center justify-between gap-3 w-full shrink-0">
-        <AgentAvatar icon={icon} name={title} size="sm+" />
-        <span className="flex size-7 items-center justify-center rounded-md text-muted-foreground/0 group-hover:bg-background group-hover:text-foreground border border-transparent group-hover:border-border/60 transition-colors">
-          <ArrowRight size={14} />
-        </span>
-      </div>
-      <div className="flex flex-col gap-2 min-w-0 w-full flex-1 min-h-0 justify-end">
-        <p className="text-[15px] font-medium text-foreground tracking-tight leading-tight truncate">
-          {title}
-        </p>
+      <AgentTileFrame
+        agent={{ icon, name: title }}
+        title={title}
+        eyebrow={false}
+      >
         {hasBody && description && (
           <p className="text-[12px] text-muted-foreground line-clamp-3 leading-snug">
             {description}
           </p>
         )}
-      </div>
+      </AgentTileFrame>
     </button>
   );
 }
@@ -531,14 +597,14 @@ export function AgentCardTile({ instance }: TileRenderProps) {
 
 export function UnknownTile({ instance }: TileRenderProps) {
   return (
-    <TileFrame title="Unknown tile" icon={<Zap size={14} />}>
+    <SystemTileFrame title="Unknown tile" icon={<Zap size={14} />}>
       <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center">
         <p className="text-sm text-muted-foreground">
           Tile type <code className="text-foreground">{instance.type}</code>{" "}
           isn't installed.
         </p>
       </div>
-    </TileFrame>
+    </SystemTileFrame>
   );
 }
 
