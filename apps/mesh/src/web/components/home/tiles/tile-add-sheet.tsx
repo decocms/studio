@@ -110,7 +110,7 @@ export function TileAddSheet({ open, onOpenChange, onAdd }: Props) {
                 return (
                   <section key={cat} className="flex flex-col gap-3">
                     <div className="flex items-baseline justify-between">
-                      <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      <h3 className="text-[11px] font-medium text-muted-foreground tracking-tight">
                         {CATEGORY_LABELS[cat]}
                       </h3>
                       <span className="text-[10px] text-muted-foreground/70 tabular-nums">
@@ -199,7 +199,7 @@ function CatalogRow({
           {def.description}
         </p>
       </div>
-      <span className="text-[10px] text-muted-foreground/70 uppercase tracking-wide shrink-0 mt-0.5 tabular-nums">
+      <span className="text-[10px] text-muted-foreground/70 shrink-0 mt-0.5 tabular-nums">
         {def.defaultSize}
       </span>
     </button>
