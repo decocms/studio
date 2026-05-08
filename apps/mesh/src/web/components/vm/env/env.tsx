@@ -170,28 +170,19 @@ export function EnvContent({ daemonOpen = false }: { daemonOpen?: boolean }) {
 
   const vmEvents = useVmEvents();
 
-  // A terminal `sandbox-evicted` phase means the sandbox is gone and the user
-  // must manually start a new one. Treat it as idle so the Run button appears,
-  // regardless of whether vmData still has a stale entry.
-  const isEvicted =
-    vmEvents.phase?.kind === "failed" &&
-    vmEvents.phase.reason === "sandbox-evicted";
-
   const vmStartPending = useIsVmStartPending(
     inset?.entity?.id,
     currentBranch ?? undefined,
   );
   const derivedStatus: ViewStatus = vmEvents.suspended
     ? "suspended"
-    : isEvicted
-      ? "idle"
-      : vmEvents.notFound
-        ? "creating"
-        : vmData
-          ? "running"
-          : vmStartPending
-            ? "creating"
-            : "idle";
+    : vmEvents.notFound
+      ? "creating"
+      : vmData
+        ? "running"
+        : vmStartPending
+          ? "creating"
+          : "idle";
   const status: ViewStatus = override ?? derivedStatus;
 
   // Clear the override when the derived state catches up.
@@ -339,10 +330,6 @@ export function EnvContent({ daemonOpen = false }: { daemonOpen?: boolean }) {
     scriptsAppliedRef.current = false;
     setOpenScriptTabs([]);
     setActiveTab("setup");
-    // Reconnect the SSE so lifecycle events from the new sandbox are received.
-    // Required after a terminal `failed` phase (e.g. sandbox-evicted) which
-    // permanently closes the stream until resetConnection() is called.
-    vmEvents.resetConnection();
 
     try {
       if (!inset?.entity) throw new Error("No virtual MCP context");
@@ -465,12 +452,6 @@ export function EnvContent({ daemonOpen = false }: { daemonOpen?: boolean }) {
                 className="text-muted-foreground shrink-0"
               />
             </a>
-          )}
-
-          {isEvicted && (
-            <p className="text-xs text-muted-foreground text-center">
-              Sandbox was removed. Start a new one to continue.
-            </p>
           )}
 
           <div className="flex flex-wrap items-end justify-between gap-2 w-full">

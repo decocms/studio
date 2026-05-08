@@ -1,6 +1,6 @@
 {
   "name": "@decocms/sandbox",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "type": "module",
   "description": "Sandbox runner for isolated per-user containerised tool execution",
   "scripts": {
@@ -11,7 +11,6 @@
   },
   "exports": {
     "./shared": "./shared.ts",
-    "./daemon": "./daemon/event-types.ts",
     "./runner": "./server/runner/index.ts",
     "./runner/agent-sandbox": "./server/runner/agent-sandbox/index.ts",
     "./runner/freestyle": "./server/runner/freestyle/index.ts"
