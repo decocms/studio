@@ -634,35 +634,49 @@ export class SqlThreadStorage implements ThreadStoragePort {
     organizationId: string,
     podId: string,
   ): Promise<boolean> {
-    // Claim any in-progress run not already owned by this pod.
-    // Matches both orphaned (NULL) and stale-pod (different pod) runs.
-    // Uses raw SQL for the OR because Kysely's eb.or with IS NULL + != can
-    // behave unexpectedly on some PG drivers.
+    // Claim any in-progress run, regardless of which pod is recorded as the
+    // current owner. Callers MUST verify that this pod's RunRegistry has no
+    // live entry for `taskId` before invoking this — that's the orphan
+    // precondition. Same-pod claims are intentionally allowed because:
+    //
+    //   1. K8s rolling restarts re-use the StatefulSet pod name, so a
+    //      previous incarnation may have left `run_owner_pod = currentPodId`
+    //      while the new process has an empty registry.
+    //   2. If the run was projected out of memory (e.g. a transient DB
+    //      failure in the reactor between in-memory projection and the
+    //      `run_owner_pod = NULL` write on terminal status), the same pod is
+    //      the only authority that can recover it without restarting.
+    //
+    // Excluding same-pod claims here used to lock those threads in
+    // `in_progress` indefinitely on single-pod self-hosted deploys.
     const result = await this.db
       .updateTable("threads")
       .set({ run_owner_pod: podId, updated_at: new Date().toISOString() })
       .where("id", "=", taskId)
       .where("organization_id", "=", organizationId)
       .where("status", "=", "in_progress")
-      .where(({ eb, or }) =>
-        or([eb("run_owner_pod", "is", null), eb("run_owner_pod", "!=", podId)]),
-      )
       .executeTakeFirst();
     return (result?.numUpdatedRows ?? 0n) > 0n;
   }
 
-  async listOrphanedRuns(currentPodId: string): Promise<Thread[]> {
+  async listOrphanedRuns(_currentPodId: string): Promise<Thread[]> {
+    // Lists every in_progress thread with a persisted run_config, regardless
+    // of which pod is recorded as the current owner. Intended for the
+    // startup recovery sweep, which runs against a registry that is empty
+    // by construction — anything in the DB is recoverable from this
+    // process's perspective.
+    //
+    // Filtering out same-pod owners (the previous behavior) was a bug for
+    // K8s StatefulSet rolling restarts, where the new pod re-uses the
+    // previous incarnation's POD_NAME. Those runs were silently skipped
+    // until something else (a user revisit hitting /attach) recovered them.
+    //
+    // The `_currentPodId` parameter is retained for interface compatibility.
     const rows = await this.db
       .selectFrom("threads")
       .selectAll()
       .where("status", "=", "in_progress")
       .where("run_config", "is not", null)
-      .where((eb) =>
-        eb.or([
-          eb("run_owner_pod", "is", null),
-          eb("run_owner_pod", "!=", currentPodId),
-        ]),
-      )
       .orderBy("run_started_at", "asc")
       .limit(100)
       .execute();

@@ -562,7 +562,9 @@ describe("RunRegistry", () => {
   // reapStaleRuns
   // -------------------------------------------------------------------------
   describe("reapStaleRuns", () => {
-    const MAX_RUN_AGE_MS = 30 * 60 * 1000;
+    // Keep this in sync with the constant in run-registry.ts. (Not exported
+    // to avoid widening the module surface for a single test.)
+    const MAX_RUN_AGE_MS = 90 * 60 * 1000;
 
     it("reaps a run past MAX_RUN_AGE_MS and triggers reactor side-effects", async () => {
       const deps = makeNoopDeps();

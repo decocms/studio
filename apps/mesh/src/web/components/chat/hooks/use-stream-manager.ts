@@ -18,6 +18,7 @@ export function useStreamManager(
   threadId: string,
   chat: UseChatHelpers<ChatMessage>,
   threadStatus: ThreadDisplayStatus | undefined,
+  onResumeSuccess?: () => void,
 ) {
   const { locator, org } = useProjectContext();
   const queryClient = useQueryClient();
@@ -33,6 +34,12 @@ export function useStreamManager(
     resumeFailCountRef.current = 0;
     resumeInFlightRef.current = false;
   }
+
+  // Latest callback in a ref so the closure inside `tryResumeStream` always
+  // sees the current function without forcing the subscribe identity to
+  // change on every render.
+  const onResumeSuccessRef = useRef(onResumeSuccess);
+  onResumeSuccessRef.current = onResumeSuccess;
 
   const invalidateThreadList = () => {
     queryClient.invalidateQueries({ queryKey: KEYS.tasksPrefix(locator) });
@@ -74,6 +81,16 @@ export function useStreamManager(
       .then(() => {
         resumeInFlightRef.current = false;
         resumeFailCountRef.current = 0;
+        // Successful resume — surface to the parent so it can clear any
+        // "network error" banner left over from the disconnect that caused
+        // this resume in the first place.
+        try {
+          onResumeSuccessRef.current?.();
+        } catch (err) {
+          // Callback errors are non-fatal — log but don't break the resume
+          // bookkeeping above.
+          console.error("[chat] onResumeSuccess threw", err);
+        }
       })
       .catch((err: unknown) => {
         console.error("[chat] resumeStream error", err);

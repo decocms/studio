@@ -215,6 +215,29 @@ describe("SqlThreadStorage", () => {
         // Should not have been claimed
         expect(loaded?.run_owner_pod).toBeNull();
       });
+
+      it("claims when run is recorded against the SAME pod (registry-lost recovery)", async () => {
+        // Repro of the bug that pinned threads in_progress on single-pod
+        // self-hosted deploys: the run record still names the current pod,
+        // but the in-memory registry no longer has it (e.g. K8s rolling
+        // restart, transient reactor write failure). The orphan-resume path
+        // must still be able to re-claim. Caller is responsible for
+        // verifying the registry doesn't hold the run before invoking.
+        const thread = await storage.create({
+          organization_id: "org_1",
+          created_by: "user_1",
+          status: "in_progress",
+        });
+        await storage.update(thread.id, "org_1", {
+          run_owner_pod: "pod-1",
+        });
+
+        await storage.claimOrphanedRun(thread.id, "org_1", "pod-1");
+
+        const loaded = await storage.get(thread.id, "org_1");
+        expect(loaded?.run_owner_pod).toBe("pod-1");
+        expect(loaded?.status).toBe("in_progress");
+      });
     });
 
     describe("listOrphanedRuns", () => {
@@ -257,6 +280,26 @@ describe("SqlThreadStorage", () => {
         const orphans = await storage.listOrphanedRuns("current-pod");
         const found = orphans.find((t) => t.id === thread.id);
         expect(found).toBeUndefined();
+      });
+
+      it("returns threads owned by the same pod (StatefulSet restart)", async () => {
+        // K8s StatefulSet pod names are stable across restarts; the new
+        // process must still discover orphans left by the previous
+        // incarnation that ran under the same name. Recovery happens at
+        // boot when the registry is empty, so listing same-pod entries is
+        // safe.
+        const thread = await storage.create({
+          organization_id: "org_1",
+          created_by: "user_1",
+          status: "in_progress",
+        });
+        await storage.update(thread.id, "org_1", {
+          run_config: { agent: { id: "a" } },
+          run_owner_pod: "current-pod",
+        });
+        const orphans = await storage.listOrphanedRuns("current-pod");
+        const found = orphans.find((t) => t.id === thread.id);
+        expect(found).toBeDefined();
       });
     });
 
