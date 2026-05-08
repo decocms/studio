@@ -71,6 +71,11 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
       }
     }
 
+    // Cron triggers don't need a pre-allocated id; let the storage layer
+    // generate one. Event triggers need it to call TRIGGER_CONFIGURE
+    // before the row exists.
+    let pendingTriggerId: string | undefined;
+
     if (input.type === "event") {
       if (!input.connection_id) {
         throw new Error("connection_id is required for event triggers");
@@ -88,9 +93,13 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
         throw new Error("Connection not found");
       }
 
-      // Build a temporary trigger object for configureTriggerOnMcp
+      // Pre-allocate the trigger id so configureTriggerOnMcp can pass
+      // it as `subscriptionId`. The same id is reused on the addTrigger
+      // insert below — keeps the MCP-side subscription record and the
+      // DB row in lockstep.
+      const triggerId = crypto.randomUUID();
       const tempTrigger = {
-        id: "",
+        id: triggerId,
         automation_id: input.automation_id,
         type: "event" as const,
         cron_expression: null,
@@ -114,6 +123,7 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
           `Failed to configure trigger on connection: ${result.error}`,
         );
       }
+      pendingTriggerId = triggerId;
     }
 
     // Compute next_run_at for cron triggers
@@ -127,6 +137,7 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
 
     // Insert trigger record
     const trigger = await ctx.storage.automations.addTrigger({
+      id: pendingTriggerId,
       automation_id: input.automation_id,
       type: input.type,
       cron_expression: input.type === "cron" ? input.cron_expression : null,

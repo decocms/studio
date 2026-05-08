@@ -52,7 +52,12 @@ export const AUTOMATION_DELETE = defineTool({
 
     await Promise.allSettled(
       eventTriggers.map(async (trigger) => {
-        const result = await configureTriggerOnMcp(ctx, trigger, false);
+        const result = await configureTriggerOnMcp(
+          ctx,
+          trigger,
+          false,
+          ctx.storage.triggerCallbackTokens,
+        );
         if (!result.success) {
           console.warn(
             `Failed to disable trigger ${trigger.id}: ${result.error}`,

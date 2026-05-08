@@ -996,6 +996,7 @@ export interface TriggerCallbackTokenTable {
   id: string;
   organization_id: string;
   connection_id: string;
+  subscription_id: string;
   token_hash: string;
   created_at: ColumnType<Date, Date | string, never>;
 }

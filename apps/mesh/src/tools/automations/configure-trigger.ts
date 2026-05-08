@@ -1,9 +1,20 @@
 /**
  * Shared helper for configuring triggers on MCP connections.
  *
- * Calls TRIGGER_CONFIGURE on the target connection to enable/disable
- * an event trigger. When enabling, generates a callback token and URL
- * so the external MCP can call back to Mesh when the trigger fires.
+ * Calls TRIGGER_CONFIGURE on the target connection to enable/disable an
+ * event trigger. Each trigger is identified by `trigger.id`, which is
+ * passed to the MCP as `subscriptionId` so multiple subscriptions can
+ * coexist on the same `(connection, event_type)` without overwriting
+ * each other's callback credentials.
+ *
+ * Persistence and the MCP call are kept in sync with two-phase commits:
+ *   - On enable: generate a token pair, call TRIGGER_CONFIGURE, then
+ *     persist the hash. On timeout we still persist (the MCP may have
+ *     accepted) so future callbacks can authenticate. On a definitive
+ *     error we skip persistence.
+ *   - On disable: call TRIGGER_CONFIGURE, then delete the token row by
+ *     subscription. Sibling subscriptions on the same connection are
+ *     untouched.
  */
 
 import type { MeshContext } from "@/core/mesh-context";
@@ -22,12 +33,20 @@ export async function configureTriggerOnMcp(
   if (trigger.type !== "event" || !trigger.connection_id)
     return { success: true };
 
+  if (!trigger.id) {
+    return {
+      success: false,
+      error: "trigger.id required to configure subscription on MCP",
+    };
+  }
+
   const connection = await ctx.storage.connections.findById(
     trigger.connection_id,
   );
   if (!connection) return { success: true }; // Connection may have been deleted
 
   const organizationId = ctx.organization?.id;
+  const subscriptionId = trigger.id;
 
   try {
     const mcpClient = await clientFromConnection(connection, ctx, true);
@@ -61,6 +80,7 @@ export async function configureTriggerOnMcp(
           enabled,
           callbackUrl,
           callbackToken,
+          subscriptionId,
         }),
         timeoutPromise,
       ]);
@@ -68,11 +88,12 @@ export async function configureTriggerOnMcp(
       if (timedOut && enabled && tokenStorage && organizationId && tokenHash) {
         // Timeout is ambiguous — the MCP may still accept the token.
         // Persist the hash so future callbacks can authenticate.
-        await tokenStorage.persistTokenHash(
+        await tokenStorage.persistTokenHash({
           organizationId,
-          trigger.connection_id,
+          connectionId: trigger.connection_id,
+          subscriptionId,
           tokenHash,
-        );
+        });
       }
       // On definitive (non-timeout) failure, skip persistence —
       // the MCP rejected the call, old token (if any) is still valid.
@@ -84,17 +105,15 @@ export async function configureTriggerOnMcp(
     // creates the trigger record (the MCP is already listening).
     try {
       if (enabled && tokenStorage && organizationId && tokenHash) {
-        await tokenStorage.persistTokenHash(
+        await tokenStorage.persistTokenHash({
           organizationId,
-          trigger.connection_id,
+          connectionId: trigger.connection_id,
+          subscriptionId,
           tokenHash,
-        );
+        });
       }
-      if (!enabled && tokenStorage && organizationId) {
-        await tokenStorage.deleteByConnection(
-          trigger.connection_id,
-          organizationId,
-        );
+      if (!enabled && tokenStorage) {
+        await tokenStorage.deleteBySubscription(subscriptionId);
       }
     } catch (dbErr) {
       console.error(

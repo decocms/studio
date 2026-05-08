@@ -36,6 +36,13 @@ export interface UpdateAutomationInput {
 }
 
 export interface CreateTriggerInput {
+  /**
+   * Optional pre-allocated id. Callers that need to reference the trigger
+   * before insertion (e.g. event triggers calling `configureTriggerOnMcp`
+   * with a stable subscriptionId) generate the uuid upfront and pass it
+   * here so the configure call and the insert agree on the id.
+   */
+  id?: string;
   automation_id: string;
   type: "cron" | "event";
   cron_expression?: string | null;
@@ -77,6 +84,15 @@ export interface AutomationsStorage {
     automationId: string,
   ): Promise<{ success: boolean }>;
   listTriggers(automationId: string): Promise<AutomationTrigger[]>;
+  /**
+   * List every trigger bound to a connection in an organization. Used
+   * during connection deletion to disable each subscription on the MCP
+   * before the connection record disappears.
+   */
+  listTriggersByConnection(
+    connectionId: string,
+    organizationId: string,
+  ): Promise<AutomationTrigger[]>;
   findTriggerById(triggerId: string): Promise<AutomationTrigger | null>;
   findActiveEventTriggers(
     connectionId: string,
@@ -335,7 +351,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
 
   async addTrigger(input: CreateTriggerInput): Promise<AutomationTrigger> {
     const now = new Date().toISOString();
-    const id = crypto.randomUUID();
+    const id = input.id ?? crypto.randomUUID();
 
     const row = {
       id,
@@ -378,6 +394,32 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       .selectAll()
       .where("automation_id", "=", automationId)
       .orderBy("created_at", "asc")
+      .execute();
+
+    return rows.map(triggerFromDbRow);
+  }
+
+  async listTriggersByConnection(
+    connectionId: string,
+    organizationId: string,
+  ): Promise<AutomationTrigger[]> {
+    const rows = await this.db
+      .selectFrom("automation_triggers as t")
+      .innerJoin("automations as a", "a.id", "t.automation_id")
+      .select([
+        "t.id",
+        "t.automation_id",
+        "t.type",
+        "t.cron_expression",
+        "t.connection_id",
+        "t.event_type",
+        "t.params",
+        "t.last_run_at",
+        "t.next_run_at",
+        "t.created_at",
+      ])
+      .where("t.connection_id", "=", connectionId)
+      .where("a.organization_id", "=", organizationId)
       .execute();
 
     return rows.map(triggerFromDbRow);

@@ -91,6 +91,40 @@ export const COLLECTION_CONNECTIONS_DELETE = defineTool({
       }
     }
 
+    // Cascade trigger subscriptions on the MCP side BEFORE deleting the
+    // connection. Once the connection row is gone we can no longer build
+    // an MCP client for it (configureTriggerOnMcp short-circuits on a
+    // missing connection), so the disable signal would never reach the
+    // MCP and its KV would accumulate orphaned trigger state.
+    //
+    // Imported dynamically to avoid a module evaluation cycle between
+    // tools/index.ts and tools/automations/configure-trigger.ts.
+    const boundTriggers = await ctx.storage.automations.listTriggersByConnection(
+      input.id,
+      organization.id,
+    );
+    const eventTriggers = boundTriggers.filter((t) => t.type === "event");
+    if (eventTriggers.length > 0) {
+      const { configureTriggerOnMcp } = await import(
+        "../automations/configure-trigger"
+      );
+      await Promise.allSettled(
+        eventTriggers.map(async (trigger) => {
+          const result = await configureTriggerOnMcp(
+            ctx,
+            trigger,
+            false,
+            ctx.storage.triggerCallbackTokens,
+          );
+          if (!result.success) {
+            console.warn(
+              `[connection/delete] Failed to disable trigger ${trigger.id} on MCP: ${result.error}`,
+            );
+          }
+        }),
+      );
+    }
+
     // Delete connection
     await ctx.storage.connections.delete(input.id);
 
