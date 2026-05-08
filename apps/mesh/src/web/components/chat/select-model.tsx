@@ -800,9 +800,14 @@ function ConnectionModelList({
   filterModels?: (m: AiProviderModel) => boolean;
 }) {
   const { models: rawModels } = useAiProviderModels(keyId);
+  // When no explicit filter is given, hide async-research-only models
+  // (e.g. Gemini Deep Research). They aren't usable as a Thinking/Coding/
+  // Fast model — the agent loop's `streamText` rejects them. Callers that
+  // want to expose them (the deep-research slot) pass their own filter that
+  // opts them back in.
   const allModels = filterModelsProp
     ? rawModels.filter(filterModelsProp)
-    : rawModels;
+    : rawModels.filter((m) => m.asyncResearch !== true);
   const [shortlistSet, setShortlistSet] = useState<Set<string>>(
     () => (keyId ? readShortlist(keyId) : null) ?? DEFAULT_SHORTLIST,
   );

@@ -46,7 +46,6 @@ interface ShareButtonProps {
 
 interface ShareWithNameProps extends ShareButtonProps {
   serverName: string;
-  organizationId: string;
 }
 
 /**
@@ -88,12 +87,7 @@ function CopyUrlButton({ url, agentId }: ShareButtonProps) {
 /**
  * Install on Cursor Button Component
  */
-function InstallCursorButton({
-  url,
-  serverName,
-  agentId,
-  organizationId,
-}: ShareWithNameProps) {
+function InstallCursorButton({ url, serverName, agentId }: ShareWithNameProps) {
   const handleInstall = () => {
     track("agent_connect_action", {
       agent_id: agentId,
@@ -105,7 +99,6 @@ function InstallCursorButton({
       url: url,
       headers: {
         "x-mesh-client": "Cursor",
-        "x-org-id": organizationId,
       },
     };
     const base64Config = utf8ToBase64(
@@ -141,12 +134,7 @@ function InstallCursorButton({
 /**
  * Install on Claude Code Button Component
  */
-function InstallClaudeButton({
-  url,
-  serverName,
-  agentId,
-  organizationId,
-}: ShareWithNameProps) {
+function InstallClaudeButton({ url, serverName, agentId }: ShareWithNameProps) {
   const [copied, setCopied] = useState(false);
 
   const handleInstall = async () => {
@@ -160,7 +148,6 @@ function InstallClaudeButton({
       url: url,
       headers: {
         "x-mesh-client": "Claude Code",
-        "x-org-id": organizationId,
       },
     };
     const configJson = JSON.stringify(connectionConfig, null, 2);
@@ -207,6 +194,7 @@ function TypegenSectionInner({ virtualMcp }: { virtualMcp: VirtualMCPEntity }) {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -394,9 +382,10 @@ export function VirtualMCPShareModal({
   onOpenChange: (open: boolean) => void;
   virtualMcp: VirtualMCPEntity;
 }) {
+  const { org } = useProjectContext();
   // Virtual MCPs (agents) are accessed via the virtual-mcp endpoint
   const virtualMcpUrl = new URL(
-    `/mcp/virtual-mcp/${virtualMcp.id}`,
+    `/api/${org.slug}/mcp/virtual-mcp/${virtualMcp.id}`,
     window.location.origin,
   );
 
@@ -416,13 +405,11 @@ export function VirtualMCPShareModal({
             url={virtualMcpUrl.href}
             serverName={serverName}
             agentId={virtualMcp.id}
-            organizationId={virtualMcp.organization_id}
           />
           <InstallClaudeButton
             url={virtualMcpUrl.href}
             serverName={serverName}
             agentId={virtualMcp.id}
-            organizationId={virtualMcp.organization_id}
           />
         </div>
       </div>

@@ -3,24 +3,40 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
+import { useVmChunkHandler, useVmEvents } from "../hooks/use-vm-events";
 
 interface VmTerminalProps {
+  /**
+   * Log source this terminal renders ("setup", "daemon", or a script name
+   * like "dev"). The terminal pulls the replay buffer at mount and subscribes
+   * to live chunks for this source. Self-contained — no parent-side routing.
+   */
+  source: string;
   onReady?: (terminal: Terminal) => void;
   onSelectionChange?: (hasSelection: boolean, getText: () => string) => void;
-  initialData?: string;
   className?: string;
 }
 
 export function VmTerminal({
+  source,
   onReady,
   onSelectionChange,
-  initialData,
   className,
 }: VmTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const onSelectionChangeRef = useRef(onSelectionChange);
   onSelectionChangeRef.current = onSelectionChange;
+  const vmEvents = useVmEvents();
+  // Stable ref so the chunk handler (registered once on mount) always sees
+  // the current source; no dep churn on prop changes.
+  const sourceRef = useRef(source);
+  sourceRef.current = source;
+
+  useVmChunkHandler((chunkSource, data) => {
+    if (chunkSource !== sourceRef.current) return;
+    terminalRef.current?.write(data);
+  });
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — xterm.js lifecycle: create on mount, dispose on unmount
   useEffect(() => {
@@ -77,8 +93,12 @@ export function VmTerminal({
 
     terminal.open(el);
     fitAddon.fit();
-    if (initialData) {
-      terminal.write(initialData);
+    // Replay anything the buffer has accumulated for this source — covers
+    // chunks that arrived before the tab mounted (e.g. clone output that
+    // streamed during the "creating" status phase).
+    const replay = vmEvents.getBuffer(source);
+    if (replay) {
+      terminal.write(replay);
     }
     terminalRef.current = terminal;
     onReady?.(terminal);
@@ -99,7 +119,7 @@ export function VmTerminal({
       terminalRef.current = null;
       terminal.dispose();
     };
-    // oxlint-disable-next-line react-hooks/exhaustive-deps — mount-only: initialData and onReady are consumed once during terminal setup
+    // oxlint-disable-next-line react-hooks/exhaustive-deps — mount-only: source/vmEvents/onReady are consumed once during terminal setup
   }, []);
 
   return (

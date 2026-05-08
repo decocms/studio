@@ -1,7 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { spawnPty } from "./pty-spawn";
 
-describe("spawnPty", () => {
+// forkpty(3) is unavailable in GitHub Actions containers.
+describe.skipIf(!!process.env.CI)("spawnPty", () => {
   it("runs a command in a PTY and streams its output", async () => {
     const child = spawnPty({ cmd: "echo hello-pty" });
     const chunks: string[] = [];

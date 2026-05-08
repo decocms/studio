@@ -2,12 +2,6 @@ import { isModKey } from "@/web/lib/keyboard-shortcuts";
 import { calculateUsageStats } from "@/web/lib/usage-utils.ts";
 import { AUTOSEND_QUERY_VALUE, writeStoredAutosend } from "@/web/lib/autosend";
 import { Button } from "@deco/ui/components/button.tsx";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   getWellKnownDecopilotVirtualMCP,
@@ -16,16 +10,13 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowUp,
-  Atom01,
   BookOpen01,
   Check,
   Globe02,
   Image01,
-  Lightning01,
   Lock01,
   Microphone01,
   Plus,
-  Stars01,
   Stop,
   Upload01,
   X,
@@ -42,6 +33,7 @@ import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import { ChatHighlight } from "./highlight";
 import { ModelSelector } from "./select-model";
 import { getSupportedFileTypesLabel, modelSupportsFiles } from "./select-model";
+import { SimpleModeTierDropdown } from "./simple-mode-tier-dropdown";
 import type { AiProviderModel } from "@/web/hooks/collections/use-ai-providers";
 import {
   FileUploadButton,
@@ -67,76 +59,6 @@ import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dial
 import { ConnectionsBanner } from "./connections-banner";
 import { useVoiceInput } from "@/web/hooks/use-voice-input.ts";
 import { VoiceWaveform } from "./voice-input";
-
-// ============================================================================
-// SimpleModeTierDropdown
-// ============================================================================
-
-const TIER_OPTIONS = [
-  {
-    value: "fast" as const,
-    label: "Fast",
-    Icon: Lightning01,
-    description: "Quicker responses",
-  },
-  {
-    value: "smart" as const,
-    label: "Smart",
-    Icon: Stars01,
-    description: "Balanced quality",
-  },
-  {
-    value: "thinking" as const,
-    label: "Thinking",
-    Icon: Atom01,
-    description: "Deeper reasoning",
-  },
-] as const;
-
-function SimpleModeTierDropdown({
-  tier,
-  onSelect,
-}: {
-  tier: "fast" | "smart" | "thinking";
-  onSelect: (t: "fast" | "smart" | "thinking") => void;
-}) {
-  const current =
-    TIER_OPTIONS.find((o) => o.value === tier) ?? TIER_OPTIONS[1]!;
-  const Icon = current.Icon;
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="default"
-          className="text-muted-foreground hover:text-foreground"
-        >
-          <Icon size={14} />
-          <span className="hidden sm:inline">{current.label}</span>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-52 p-1.5">
-        {TIER_OPTIONS.map(({ value, label, Icon: TierIcon, description }) => (
-          <DropdownMenuItem key={value} onSelect={() => onSelect(value)}>
-            <TierIcon size={16} className="text-muted-foreground" />
-            <div className="flex flex-col gap-0.5 flex-1">
-              <span>{label}</span>
-              <span className="text-xs text-muted-foreground font-normal">
-                {description}
-              </span>
-            </div>
-            {tier === value && (
-              <span className="text-xs text-muted-foreground font-medium">
-                On
-              </span>
-            )}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
 
 // ============================================================================
 // useWindowFileDrop - Reusable hook for window-level file drag & drop
@@ -259,7 +181,7 @@ function FileDropZone({
 
 /**
  * Submit handler for the home composer. No active task exists; we write
- * the tiptap doc to localStorage and navigate to a fresh /$org/$taskId.
+ * the tiptap doc to sessionStorage and navigate to a fresh /$org/$taskId.
  * The new task page's useEnsureTask creates the thread (server-side
  * idempotent on id) and ActiveTaskProvider's autosend consumer fires
  * sendMessage on mount.
@@ -278,7 +200,7 @@ function useHomeSubmit() {
     const newId = crypto.randomUUID();
     const targetVmcp =
       virtualMcp?.id ?? getWellKnownDecopilotVirtualMCP(org.id).id;
-    writeStoredAutosend(localStorage, locator, newId, { tiptapDoc });
+    writeStoredAutosend(sessionStorage, locator, newId, { tiptapDoc });
     navigate({
       to: "/$org/$taskId",
       params: { org: org.slug, taskId: newId },

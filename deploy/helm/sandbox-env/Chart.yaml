@@ -9,7 +9,7 @@ description: |
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
-version: 0.5.2
+version: 0.6.1
 # appVersion tracks the studio-sandbox image version (image.tag default).
-appVersion: "0.2.1"
+appVersion: "0.3.0"
 kubeVersion: ">=1.30.0-0"

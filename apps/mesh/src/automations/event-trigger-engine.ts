@@ -16,6 +16,71 @@ import {
 } from "./fire";
 import type { Semaphore } from "./semaphore";
 
+type ParamMatcher =
+  | { op: "eq"; value: unknown }
+  | { op: "contains"; value: string }
+  | { op: "in"; value: unknown[] };
+
+function isParamMatcher(v: unknown): v is ParamMatcher {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
+  const op = (v as { op?: unknown }).op;
+  if (op !== "eq" && op !== "contains" && op !== "in") return false;
+  if (op === "in") return Array.isArray((v as { value?: unknown }).value);
+  if (op === "contains")
+    return typeof (v as { value?: unknown }).value === "string";
+  return "value" in v;
+}
+
+function caseInsensitiveContains(haystack: string, needle: string): boolean {
+  return haystack.toLowerCase().includes(needle.toLowerCase());
+}
+
+function paramMatchesField(fieldValue: unknown, paramValue: unknown): boolean {
+  // Explicit operator object — { op, value }.
+  if (isParamMatcher(paramValue)) {
+    if (paramValue.op === "eq") {
+      return scalarMatchesField(fieldValue, paramValue.value);
+    }
+    if (paramValue.op === "contains") {
+      if (typeof fieldValue === "string") {
+        return caseInsensitiveContains(fieldValue, paramValue.value);
+      }
+      if (Array.isArray(fieldValue)) {
+        return fieldValue.some(
+          (el) =>
+            typeof el === "string" &&
+            caseInsensitiveContains(el, paramValue.value),
+        );
+      }
+      return false;
+    }
+    if (paramValue.op === "in") {
+      const allowed = paramValue.value;
+      if (Array.isArray(fieldValue)) {
+        return fieldValue.some((el) => allowed.includes(el));
+      }
+      return allowed.includes(fieldValue);
+    }
+    return false;
+  }
+
+  // Back-compat: scalar param value. Accept array data via `.includes`
+  // sugar, fall back to strict equality otherwise. Reject param values
+  // that aren't comparable (objects/arrays without an explicit op) so
+  // malformed params don't silently match.
+  if (typeof paramValue === "object" && paramValue !== null) {
+    return false;
+  }
+  return scalarMatchesField(fieldValue, paramValue);
+}
+
+function scalarMatchesField(fieldValue: unknown, scalar: unknown): boolean {
+  if (Array.isArray(fieldValue)) {
+    return fieldValue.includes(scalar);
+  }
+  return fieldValue === scalar;
+}
+
 export class EventTriggerEngine {
   private static MAX_AUTOMATION_DEPTH = 3;
   private static MAX_EVENT_PAYLOAD_BYTES = 1_048_576; // 1MB
@@ -110,8 +175,27 @@ export class EventTriggerEngine {
   }
 
   /**
-   * Subset matching: all trigger params must exist and equal in event data.
-   * Extra fields in event data are ignored.
+   * Subset matching: every trigger param must be satisfied against the
+   * corresponding key in event data. Extra fields in event data are
+   * ignored.
+   *
+   * Supported param value shapes (per key):
+   *
+   *   "x"                              — exact equality (back-compat)
+   *   { op: "eq",       value: "x"   } — exact equality (explicit)
+   *   { op: "contains", value: "x"   } — substring (case-insensitive)
+   *                                       on string data; element check
+   *                                       on array data
+   *   { op: "in",       value: [...] } — any-of: data must equal one of
+   *                                       (or, if data is an array, must
+   *                                       overlap with) the listed values
+   *
+   * Array sugar for the back-compat string form: if `data[key]` is an
+   * array of strings/numbers and the param value is a scalar, we treat
+   * it as `array.includes(value)`. This is what unlocks filters like
+   * `labelIds: "INBOX"` on a Gmail message whose `labelIds` is
+   * `["INBOX", "IMPORTANT"]` — without breaking any existing strict-
+   * equal usage (an array would never `===` a scalar).
    */
   private paramsMatch(
     triggerParams: string | null,
@@ -134,12 +218,14 @@ export class EventTriggerEngine {
       return false;
     }
 
-    const params = parsed as Record<string, string>;
+    const params = parsed as Record<string, unknown>;
     if (Object.keys(params).length === 0) return true;
     if (typeof eventData !== "object" || eventData === null) return false;
 
     const data = eventData as Record<string, unknown>;
-    return Object.entries(params).every(([key, value]) => data[key] === value);
+    return Object.entries(params).every(([key, paramValue]) =>
+      paramMatchesField(data[key], paramValue),
+    );
   }
 
   /**

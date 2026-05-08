@@ -40,6 +40,7 @@ export const AI_PROVIDERS_LIST_MODELS = defineTool({
             output: z.coerce.number(),
           })
           .nullish(),
+        asyncResearch: z.boolean().optional(),
       }),
     ),
   }),

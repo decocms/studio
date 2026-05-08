@@ -10,7 +10,7 @@ export interface AutosendPayload {
   createdAt: number;
 }
 
-export type AutosendStatus = "pending" | "sending" | "sent";
+export type AutosendStatus = "pending" | "sending";
 
 export interface StoredAutosendPayload extends AutosendPayload {
   status: AutosendStatus;
@@ -26,7 +26,7 @@ export function autosendStorageKey(
 }
 
 function isValidStatus(status: unknown): status is AutosendStatus {
-  return status === "pending" || status === "sending" || status === "sent";
+  return status === "pending" || status === "sending";
 }
 
 function parseStoredAutosend(
@@ -99,13 +99,10 @@ export function claimStoredAutosend(
   return { message: payload.message, createdAt: payload.createdAt };
 }
 
-export function markStoredAutosendSent(
+export function clearStoredAutosend(
   storage: StorageLike,
   locator: ProjectLocator | string,
   taskId: string,
 ): void {
-  const key = autosendStorageKey(locator, taskId);
-  const payload = readStoredAutosend(storage, locator, taskId);
-  if (!payload) return;
-  storage.setItem(key, JSON.stringify({ ...payload, status: "sent" }));
+  storage.removeItem(autosendStorageKey(locator, taskId));
 }

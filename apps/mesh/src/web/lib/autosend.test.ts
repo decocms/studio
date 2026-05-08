@@ -4,7 +4,7 @@ import {
   AUTOSEND_QUERY_VALUE,
   autosendStorageKey,
   claimStoredAutosend,
-  markStoredAutosendSent,
+  clearStoredAutosend,
   readStoredAutosend,
   writeStoredAutosend,
   type AutosendPayload,
@@ -108,7 +108,7 @@ describe("autosend storage", () => {
     expect(readStoredAutosend(storage, "org/project", "task-1")).toBeNull();
   });
 
-  test("mark sent stores sent status", () => {
+  test("clear removes the stored payload", () => {
     const storage = new MemoryStorage();
     writeStoredAutosend(
       storage,
@@ -118,10 +118,11 @@ describe("autosend storage", () => {
       1_700_000_000_000,
     );
 
-    markStoredAutosendSent(storage, "org/project", "task-1");
+    clearStoredAutosend(storage, "org/project", "task-1");
 
-    expect(readStoredAutosend(storage, "org/project", "task-1")?.status).toBe(
-      "sent",
+    expect(readStoredAutosend(storage, "org/project", "task-1")).toBeNull();
+    expect(storage.getItem(autosendStorageKey("org/project", "task-1"))).toBe(
+      null,
     );
   });
 

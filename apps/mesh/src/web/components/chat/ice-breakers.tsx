@@ -360,7 +360,11 @@ function IceBreakersContent({ connectionId }: { connectionId: string | null }) {
   const { org } = useProjectContext();
 
   // Fetch prompts from the aggregated virtual MCP
-  const client = useMCPClient({ connectionId, orgId: org.id });
+  const client = useMCPClient({
+    connectionId,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
   const { data } = useMCPPromptsList({ client, staleTime: 60000 });
   const prompts = data?.prompts ?? [];
 

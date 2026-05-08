@@ -122,6 +122,19 @@ export interface SandboxResource {
   };
   status?: {
     conditions?: SandboxCondition[];
+    /**
+     * SandboxClaim-only — set by the operator to the name of the Sandbox
+     * the claim was bound to. For warm-pool claims this is the *pool*
+     * pod's name (e.g. `studio-sandbox-kind-abcde`), NOT the claim name.
+     * Source of truth for "which pod did the operator pick" — under the
+     * v0.4.x adoption race, the operator can also create a same-named
+     * cold-path Sandbox alongside the adopted pool one; only this status
+     * field reliably points at the actually-bound pod.
+     */
+    sandbox?: {
+      name?: string;
+      podIPs?: string[];
+    };
   };
 }
 
@@ -455,6 +468,43 @@ export async function getSandboxClaim(
     "json",
   );
   return found ?? undefined;
+}
+
+/**
+ * Poll the SandboxClaim until `status.sandbox.name` is populated, returning
+ * the bound Sandbox's name. The operator (v0.4.x) writes this in two paths:
+ * cold-start (claim's own template-rendered Sandbox, name == claim name)
+ * and warm-pool adoption (an existing pool Sandbox, name = pool pod's
+ * generated name). Mesh must use this value, not the claim name, because
+ * the v0.4.x adoption reconciler has a status-update conflict race that
+ * sometimes also creates a stray same-named cold-path Sandbox alongside
+ * the adopted pool one — only `status.sandbox.name` points at the
+ * actually-bound pod.
+ *
+ * Polling beats a watch here because the status field flips a single time
+ * shortly after claim creation; a long-lived stream isn't worth the
+ * complexity for a sub-second wait. Default timeout 60s tolerates a
+ * controller-pod restart in the middle of the create.
+ */
+export async function waitForClaimAdoptedSandbox(
+  kc: KubeConfig,
+  namespace: string,
+  claimName: string,
+  timeoutSeconds = 60,
+): Promise<string> {
+  const deadline = Date.now() + timeoutSeconds * 1000;
+  const intervalMs = 200;
+  while (Date.now() < deadline) {
+    const claim = await getSandboxClaim(kc, namespace, claimName).catch(
+      () => undefined,
+    );
+    const name = claim?.status?.sandbox?.name;
+    if (name) return name;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  throw new SandboxTimeoutError(
+    `SandboxClaim ${claimName} did not record an adopted Sandbox (status.sandbox.name) within ${timeoutSeconds}s`,
+  );
 }
 
 // ---- HTTPRoute (Gateway API) ------------------------------------------------

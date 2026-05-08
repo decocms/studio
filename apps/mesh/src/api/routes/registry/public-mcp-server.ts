@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import type { Context } from "hono";
 import type { ServerPluginContext } from "@decocms/bindings/server-plugin";
 import { withRuntime } from "@decocms/runtime";
 import { createTool } from "@decocms/runtime/tools";
@@ -123,20 +123,25 @@ function createPublicMCPTools(storage: RegistryItemStorage, orgId: string) {
 }
 
 /**
- * Mount public MCP server for the registry at /org/:orgSlug/registry
+ * Build the public-MCP handler. The returned handler resolves the org slug
+ * from either `:orgSlug` (legacy) or `:org` (new `/api/:org/...`) so it can
+ * be mounted at both paths. It does its own org lookup; auth is not required.
+ *
+ * The returned handler also accepts the prefix to strip when rewriting the
+ * inner MCP path, since the legacy and new prefixes differ.
  */
-export function publicMCPServerRoutes(
-  app: Hono,
+export function createPublicMCPHandler(
   ctx: ServerPluginContext,
-): void {
-  // Use db as any to access both plugin tables and core tables like organization
+): (c: Context) => Promise<Response> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = ctx.db as any;
   const storage = new RegistryItemStorage(db);
 
-  // Mount MCP server at /org/:orgSlug/registry/*
-  app.all("/org/:orgSlug/registry/*", async (c) => {
-    const orgSlug = c.req.param("orgSlug");
+  return async (c) => {
+    const orgSlug = c.req.param("orgSlug") ?? c.req.param("org");
+    if (!orgSlug) {
+      return c.json({ error: "Organization not found" }, 404);
+    }
 
     // Lookup organization by slug
     const org = await db
@@ -155,10 +160,15 @@ export function publicMCPServerRoutes(
       tools,
     });
 
-    // Rewrite the request URL to remove the /org/:orgSlug/registry prefix
-    // MCP server expects paths like /mcp, so we forward the remaining path
+    // Rewrite the request URL to remove the route prefix (everything up to
+    // and including `/registry`). Works for both legacy
+    // `/org/:orgSlug/registry/*` and new `/api/:org/registry/*`.
     const originalUrl = new URL(c.req.url);
-    const mcpPath = c.req.path.replace(`/org/${orgSlug}/registry`, "");
+    const registryIdx = c.req.path.indexOf("/registry");
+    const mcpPath =
+      registryIdx >= 0
+        ? c.req.path.slice(registryIdx + "/registry".length)
+        : "";
     const newUrl = new URL(mcpPath || "/", originalUrl.origin);
 
     // Copy query params
@@ -187,5 +197,5 @@ export function publicMCPServerRoutes(
       IS_LOCAL: false,
     };
     return await mcpServer.fetch(newRequest, env, c);
-  });
+  };
 }

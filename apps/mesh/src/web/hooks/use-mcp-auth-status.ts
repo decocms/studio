@@ -18,7 +18,10 @@ export function useMCPAuthStatus({
   connectionId: string;
 }): McpAuthStatus {
   const { org } = useProjectContext();
-  const mcpProxyUrl = new URL(`/mcp/${connectionId}`, window.location.origin);
+  const mcpProxyUrl = new URL(
+    `/api/${org.slug}/mcp/${connectionId}`,
+    window.location.origin,
+  );
   const { data: authStatus } = useSuspenseQuery({
     queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
     queryFn: () =>

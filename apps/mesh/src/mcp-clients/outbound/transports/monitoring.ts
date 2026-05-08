@@ -6,7 +6,7 @@
  */
 
 import type { MeshContext } from "@/core/mesh-context";
-import { trace, context } from "@opentelemetry/api";
+import { trace, context, type Context } from "@opentelemetry/api";
 import type { Span } from "@opentelemetry/api";
 import type {
   JSONRPCMessage,
@@ -41,12 +41,16 @@ interface InflightRequest {
 
 export class MonitoringTransport extends WrapperTransport {
   private inflightRequests = new Map<string | number, InflightRequest>();
+  private requestContext: Context;
 
   constructor(
     innerTransport: Transport,
     private options: MonitoringTransportOptions,
   ) {
     super(innerTransport);
+    // Capture the active OTel context at construction time so spans created
+    // during async message handling are correctly parented to the HTTP request.
+    this.requestContext = context.active();
   }
 
   protected override async handleOutgoingMessage(
@@ -82,18 +86,23 @@ export class MonitoringTransport extends WrapperTransport {
       toolArguments = params.arguments as Record<string, unknown> | undefined;
     }
 
-    // Start OpenTelemetry span for tool calls
+    // Start OpenTelemetry span for tool calls, explicitly parented to the
+    // context captured at construction time to survive async context loss.
     let span: Span | undefined;
     if (request.method === "tools/call" && toolName) {
-      span = ctx.tracer.startSpan("mcp.proxy.callTool", {
-        attributes: {
-          "connection.id": connectionId,
-          "tool.name": toolName,
-          "request.id": ctx.metadata.requestId,
-          "jsonrpc.id": request.id,
-          "jsonrpc.method": request.method,
+      span = ctx.tracer.startSpan(
+        "mcp.proxy.callTool",
+        {
+          attributes: {
+            "connection.id": connectionId,
+            "tool.name": toolName,
+            "request.id": ctx.metadata.requestId,
+            "jsonrpc.id": request.id,
+            "jsonrpc.method": request.method,
+          },
         },
-      });
+        this.requestContext,
+      );
     }
 
     // Only track if request has an ID

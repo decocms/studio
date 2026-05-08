@@ -298,6 +298,8 @@ interface FullTokenResult {
  */
 export async function authenticateMcp(params: {
   connectionId: string;
+  /** Organization slug — used to build the org-scoped /api/:org/mcp/... URL. */
+  orgSlug?: string;
   /** Mesh server URL - optional, defaults to window.location.origin (for external apps, provide your Mesh server URL) */
   meshUrl?: string;
   clientName?: string;
@@ -310,7 +312,10 @@ export async function authenticateMcp(params: {
   windowMode?: OAuthWindowMode;
 }): Promise<AuthenticateMcpResult> {
   const baseUrl = params.meshUrl ?? window.location.origin;
-  const serverUrl = new URL(`/mcp/${params.connectionId}`, baseUrl);
+  const path = params.orgSlug
+    ? `/api/${encodeURIComponent(params.orgSlug)}/mcp/${params.connectionId}`
+    : `/mcp/${params.connectionId}`;
+  const serverUrl = new URL(path, baseUrl);
   const provider = new McpOAuthProvider({
     serverUrl: serverUrl.href,
     clientName: params.clientName,
@@ -700,14 +705,32 @@ function getCurrentOrigin(): string | undefined {
 }
 
 /**
- * Extract connection ID from MCP proxy URL
+ * Extract connection ID from MCP proxy URL.
+ * Supports both legacy `/mcp/:id` and org-scoped `/api/:org/mcp/:id` paths.
  */
 function extractConnectionIdFromUrl(url: string): string | null {
   try {
     // Use current origin as base for relative URLs (browser only)
     const base = getCurrentOrigin();
     const urlObj = base ? new URL(url, base) : new URL(url);
-    const match = urlObj.pathname.match(/^\/mcp\/([^/]+)/);
+    const orgScoped = urlObj.pathname.match(/^\/api\/[^/]+\/mcp\/([^/]+)/);
+    if (orgScoped) return orgScoped[1] ?? null;
+    const legacy = urlObj.pathname.match(/^\/mcp\/([^/]+)/);
+    return legacy?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extract org slug from an org-scoped MCP proxy URL (`/api/:org/mcp/...`).
+ * Returns null for legacy `/mcp/...` URLs.
+ */
+function extractOrgSlugFromUrl(url: string): string | null {
+  try {
+    const base = getCurrentOrigin();
+    const urlObj = base ? new URL(url, base) : new URL(url);
+    const match = urlObj.pathname.match(/^\/api\/([^/]+)\/mcp\//);
     return match?.[1] ?? null;
   } catch {
     return null;
@@ -717,23 +740,22 @@ function extractConnectionIdFromUrl(url: string): string | null {
 /**
  * Check if connection has a stored OAuth token
  * @param connectionId - The connection ID to check
+ * @param orgSlug - Organization slug used to build the org-scoped path
  * @param apiBaseUrl - Base URL for the API call (optional, defaults to relative path)
- * @param orgId - Organization ID, sent as x-org-id (required by the status endpoint)
  */
 async function checkOAuthTokenStatus(
   connectionId: string,
+  orgSlug: string,
   apiBaseUrl?: string,
-  orgId?: string,
 ): Promise<{ hasToken: boolean }> {
   try {
-    const path = `/api/connections/${connectionId}/oauth-token/status`;
+    const path = `/api/${encodeURIComponent(orgSlug)}/connections/${connectionId}/oauth-token/status`;
     const url = apiBaseUrl ? new URL(path, apiBaseUrl).href : path;
     const currentOrigin = getCurrentOrigin();
     const isSameOrigin =
       !apiBaseUrl || new URL(apiBaseUrl).origin === currentOrigin;
     const response = await fetch(url, {
       credentials: isSameOrigin ? "include" : "omit", // Don't send cookies for cross-origin
-      headers: orgId ? { "x-org-id": orgId } : undefined,
     });
     if (!response.ok) {
       return { hasToken: false };
@@ -747,20 +769,20 @@ async function checkOAuthTokenStatus(
 
 /**
  * Check if an MCP connection is authenticated and whether it supports OAuth
- * @param params.url - The MCP URL to check
+ * @param params.url - The org-scoped MCP URL to check (`/api/:org/mcp/...`)
  * @param params.token - Authorization token (optional)
- * @param params.orgId - Organization ID, sent as x-org-id (required for browser-session calls; the proxy returns 403 without it)
+ * @param params.orgId - Organization ID (deprecated; org is now resolved from the URL path)
  * @param params.meshUrl - Mesh server URL for API calls (optional, defaults to URL origin)
  */
 export async function isConnectionAuthenticated({
   url,
   token,
-  orgId,
+  orgId: _orgId,
   meshUrl,
 }: {
   url: string;
   token: string | null;
-  /** Organization ID - required for browser-session calls. Sent as x-org-id header. */
+  /** @deprecated Org is resolved from the URL path; this is kept for call-site compatibility. */
   orgId?: string;
   /** Mesh server URL for API calls - optional, defaults to extracting from url parameter */
   meshUrl?: string;
@@ -771,9 +793,6 @@ export async function isConnectionAuthenticated({
     headers.set("Accept", "application/json, text/event-stream");
     if (token) {
       headers.set("Authorization", `Bearer ${token}`);
-    }
-    if (orgId) {
-      headers.set("x-org-id", orgId);
     }
 
     const response = await fetch(url, {
@@ -796,6 +815,7 @@ export async function isConnectionAuthenticated({
 
     // Extract connection ID for OAuth token status check
     const connectionId = extractConnectionIdFromUrl(url);
+    const orgSlug = extractOrgSlugFromUrl(url);
     // Determine base URL for API calls (meshUrl > URL origin > current origin)
     // Use current origin as base for relative URLs (browser only)
     const base = getCurrentOrigin();
@@ -804,9 +824,10 @@ export async function isConnectionAuthenticated({
 
     if (response.ok) {
       // Check if we have an OAuth token stored for this connection
-      const oauthStatus = connectionId
-        ? await checkOAuthTokenStatus(connectionId, apiBaseUrl, orgId)
-        : { hasToken: false };
+      const oauthStatus =
+        connectionId && orgSlug
+          ? await checkOAuthTokenStatus(connectionId, orgSlug, apiBaseUrl)
+          : { hasToken: false };
 
       return {
         isAuthenticated: true,

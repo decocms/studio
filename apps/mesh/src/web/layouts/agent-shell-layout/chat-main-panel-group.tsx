@@ -23,6 +23,7 @@ import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import { computeChatMainSizes } from "@/web/hooks/use-layout-state";
 import { ChatCenterPanel } from "@/web/layouts/chat-center-panel";
 import { MainPanelContent } from "@/web/layouts/main-panel-tabs";
+import { ErrorBoundary } from "@/web/components/error-boundary";
 
 function PersistentChatPanel({
   children,
@@ -129,7 +130,9 @@ export function ChatMainPanelGroup({
             )}
           >
             <div className="flex-1 min-h-0 overflow-hidden">
-              <MainPanelContent taskId={taskId} virtualMcpId={virtualMcpId} />
+              <ErrorBoundary>
+                <MainPanelContent taskId={taskId} virtualMcpId={virtualMcpId} />
+              </ErrorBoundary>
             </div>
           </div>
         </div>

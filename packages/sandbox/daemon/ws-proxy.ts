@@ -7,13 +7,16 @@
  * triggers a full-page reload as recovery — the user sees the page load
  * then immediately reload, in a loop.
  *
- * On upgrade we stash the rewritten in-pod target URL (plus the client's
- * negotiated subprotocols) in ws.data, then open the upstream WS on the
+ * On upgrade we stash the upstream port, path/query, and the client's
+ * negotiated subprotocols in ws.data, then open the upstream WS on the
  * `open` callback and bridge frames in both directions. Subprotocols
  * (`vite-hmr`, `vite-ping`, …) are forwarded — Vite ignores connections
- * that drop them.
+ * that drop them. The upstream loopback (IPv4 vs IPv6) is picked by a
+ * TCP probe before connecting, so a mid-handshake failure never silently
+ * retries on the other family.
  */
 import type { ServerWebSocket } from "bun";
+import { bracketHost, pickLoopback } from "./loopback";
 
 /**
  * Cap on frames buffered between client upgrade and upstream WS open. The
@@ -24,8 +27,10 @@ import type { ServerWebSocket } from "bun";
 const MAX_PENDING_FRAMES = 256;
 
 export interface WsProxyData {
-  /** Full upstream URL — `ws://localhost:<devPort><path>?<search>`. */
-  target: string;
+  /** Upstream dev-server port. Null when no port is known at upgrade time. */
+  port: number | null;
+  /** Path + query of the upgrade request, forwarded verbatim. */
+  pathQuery: string;
   /** Subprotocols the client advertised on the upgrade request. */
   protocols: string[] | undefined;
   upstream: WebSocket | null;
@@ -38,14 +43,16 @@ export interface WsUpgraderOptions {
 }
 
 export function makeWsUpgrader(
-  getDevPort: () => number,
+  getDevPort: () => number | null,
   opts: WsUpgraderOptions = {},
 ) {
   return {
-    /** Build the per-connection state attached to ws.data at upgrade time. */
+    /** Build the per-connection state attached to ws.data at upgrade time.
+     *  Falls back to `port=null` when no upstream port is known; `open()`
+     *  closes the client immediately rather than connecting to a guess. */
     upgradeData(req: Request): WsProxyData {
       const url = new URL(req.url);
-      const target = `ws://localhost:${getDevPort()}${url.pathname}${url.search}`;
+      const port = getDevPort();
       const protoHeader = req.headers.get("sec-websocket-protocol");
       const protocols = protoHeader
         ? protoHeader
@@ -53,37 +60,23 @@ export function makeWsUpgrader(
             .map((s) => s.trim())
             .filter(Boolean)
         : undefined;
-      return { target, protocols, upstream: null, pending: [] };
+      return {
+        port,
+        pathQuery: `${url.pathname}${url.search}`,
+        protocols,
+        upstream: null,
+        pending: [],
+      };
     },
 
     open(ws: ServerWebSocket<WsProxyData>): void {
-      const upstream = new WebSocket(ws.data.target, ws.data.protocols);
-      upstream.binaryType = "arraybuffer";
-      ws.data.upstream = upstream;
-
-      upstream.addEventListener("open", () => {
-        for (const frame of ws.data.pending) {
-          try {
-            upstream.send(frame as never);
-          } catch {}
-        }
-        ws.data.pending.length = 0;
-      });
-      upstream.addEventListener("message", (e) => {
+      if (ws.data.port === null) {
         try {
-          ws.send(e.data as never);
+          ws.close(1011, "no upstream dev server");
         } catch {}
-      });
-      upstream.addEventListener("close", () => {
-        try {
-          ws.close();
-        } catch {}
-      });
-      upstream.addEventListener("error", () => {
-        try {
-          ws.close();
-        } catch {}
-      });
+        return;
+      }
+      void connectUpstream(ws);
     },
 
     message(ws: ServerWebSocket<WsProxyData>, message: string | Buffer): void {
@@ -118,3 +111,45 @@ export function makeWsUpgrader(
 }
 
 export type WsUpgrader = ReturnType<typeof makeWsUpgrader>;
+
+async function connectUpstream(
+  ws: ServerWebSocket<WsProxyData>,
+): Promise<void> {
+  const port = ws.data.port;
+  if (port === null) return;
+  const host = await pickLoopback(port);
+  if (host === null) {
+    try {
+      ws.close(1011, "upstream not reachable");
+    } catch {}
+    return;
+  }
+  const target = `ws://${bracketHost(host)}:${port}${ws.data.pathQuery}`;
+  const upstream = new WebSocket(target, ws.data.protocols);
+  upstream.binaryType = "arraybuffer";
+  ws.data.upstream = upstream;
+
+  upstream.addEventListener("open", () => {
+    for (const frame of ws.data.pending) {
+      try {
+        upstream.send(frame as never);
+      } catch {}
+    }
+    ws.data.pending.length = 0;
+  });
+  upstream.addEventListener("message", (e) => {
+    try {
+      ws.send(e.data as never);
+    } catch {}
+  });
+  upstream.addEventListener("close", () => {
+    try {
+      ws.close();
+    } catch {}
+  });
+  upstream.addEventListener("error", () => {
+    try {
+      ws.close();
+    } catch {}
+  });
+}

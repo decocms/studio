@@ -15,39 +15,20 @@ jobs:
   build-push:
     name: Build & Push studio-sandbox image
     runs-on: ubuntu-latest
-    # `[release]:` commits come from the auto-bump bot and don't actually
-    # change the sandbox source — skip them to avoid republishing the same
-    # version on every release tag bump.
-    if: ${{ !startsWith(github.event.head_commit.message, '[release]:') }}
     permissions:
       contents: read
       packages: write
-      # OIDC token for keyless cosign signing (Sigstore Fulcio).
       id-token: write
-      # Required to attach SLSA provenance / SBOM attestations.
       attestations: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.3.5"
-
-      - name: Install dependencies
-        run: bun install
-
-      # The Dockerfile copies daemon/dist/daemon.js into the image, so the
-      # bundle has to exist before `docker build` runs.
-      - name: Build daemon bundle
-        run: bun run --cwd=packages/sandbox build
-
       - name: Read sandbox version
         id: version
         run: |
-          VERSION=$(bun -e "console.log(require('./packages/sandbox/package.json').version)")
+          VERSION=$(python3 -c "import json; print(json.load(open('packages/sandbox/package.json'))['version'])")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Log in to GitHub Container Registry
@@ -57,18 +38,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Skip republishing if the version tag already exists in GHCR. Without
-      # this guard, every push to main that touches packages/sandbox/**
-      # (including release-bump commits that get filtered above, but also
-      # docs-only changes inside the package) silently mutates the image
-      # under a tag consumers may already be pinning.
+      # Fast-fail: skip the entire build if this version is already published.
+      # Keeps docs-only or test-only changes to packages/sandbox from
+      # re-pushing the same image under a tag consumers may already be pinning.
       - name: Check if version tag already exists
         id: tag-check
         run: |
-          set -euo pipefail
-          TOKEN=$(echo -n "${{ secrets.GITHUB_TOKEN }}" | base64)
           STATUS=$(curl -sS -o /dev/null -w "%{http_code}" \
-            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             "https://${{ env.REGISTRY }}/v2/${{ env.IMAGE_NAME }}/manifests/${{ steps.version.outputs.version }}")
           if [ "${STATUS}" = "200" ]; then
             echo "exists=true" >> $GITHUB_OUTPUT
@@ -77,18 +54,23 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Set up QEMU
+      - name: Setup Bun
         if: steps.tag-check.outputs.exists != 'true'
-        uses: docker/setup-qemu-action@v3
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.5"
 
-      - name: Set up Docker Buildx
+      - name: Install dependencies
         if: steps.tag-check.outputs.exists != 'true'
-        uses: docker/setup-buildx-action@v3
+        run: bun install
 
-      # `:latest` is intentionally only emitted on manual workflow_dispatch
-      # runs. Branch pushes get the version tag + sha tag, never `:latest`,
-      # so chart consumers who pin against `:latest` at least know it was a
-      # deliberate human action that moved it.
+      # The Dockerfile copies daemon/dist/daemon.js into the image.
+      - name: Build daemon bundle
+        if: steps.tag-check.outputs.exists != 'true'
+        run: bun run --cwd=packages/sandbox build
+
+      # `:latest` is only emitted on manual workflow_dispatch runs so
+      # pinned consumers know it was a deliberate human action.
       - name: Extract metadata (tags, labels)
         id: meta
         if: steps.tag-check.outputs.exists != 'true'
@@ -99,6 +81,10 @@ jobs:
             type=raw,value=${{ steps.version.outputs.version }}
             type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' }}
             type=sha,format=short
+
+      - name: Set up Docker Buildx
+        if: steps.tag-check.outputs.exists != 'true'
+        uses: docker/setup-buildx-action@v3
 
       - name: Build and push Docker image
         id: build
@@ -112,14 +98,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
 
-      # Keyless cosign signing — verifies provenance via Sigstore's public
-      # transparency log without requiring long-lived signing keys. Verify
-      # downstream with:
-      #   cosign verify ghcr.io/decocms/studio/studio-sandbox:<tag> \
-      #     --certificate-identity-regexp 'https://github.com/decocms/studio/.*' \
-      #     --certificate-oidc-issuer https://token.actions.githubusercontent.com
       - name: Install cosign
         if: steps.tag-check.outputs.exists != 'true'
         uses: sigstore/cosign-installer@v3

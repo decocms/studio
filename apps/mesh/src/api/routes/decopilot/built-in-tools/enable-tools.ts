@@ -11,7 +11,14 @@ import { z } from "zod";
 const enableToolsInputSchema = z.object({
   tools: z
     .array(z.string())
-    .describe("List of tool names to enable from the available tools catalog"),
+    .optional()
+    .describe("Specific tool names to enable"),
+  connections: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Connection IDs from <available-connections> — enables all tools in those connections",
+    ),
 });
 
 /**
@@ -19,11 +26,13 @@ const enableToolsInputSchema = z.object({
  *
  * @param enabledTools - Shared set that tracks which tools have been enabled
  * @param availableToolNames - Set of all tool names from the passthrough client
+ * @param connectionToolsMap - Map of connection ID → safe tool names in that connection
  * @param options - Optional config for plan-mode gating
  */
 export function createEnableToolsTool(
   enabledTools: Set<string>,
   availableToolNames: Set<string>,
+  connectionToolsMap: Map<string, string[]>,
   options?: {
     isPlanMode?: boolean;
     toolAnnotations?: Map<string, { readOnlyHint?: boolean }>;
@@ -34,16 +43,27 @@ export function createEnableToolsTool(
       "Enable tools from the available tools catalog so they can be called in subsequent steps. " +
       "Call this before using any tool listed in <available-connections>.\n\n" +
       "Usage notes:\n" +
-      "- Batch related tools in a single call to minimize round-trips.\n" +
-      "- Enable only the tools you need for your next step — you can always enable more later.\n" +
+      "- Pass connection IDs from <available-connections> to enable all tools in a connection at once.\n" +
+      "- Pass specific tool names to enable individual tools.\n" +
       "- Built-in tools (user_ask, subtask, agent_search, read_tool_output) are always available and do not need enabling.",
     inputSchema: enableToolsInputSchema,
-    execute: async ({ tools }) => {
+    execute: async ({ tools = [], connections = [] }) => {
       const enabled: string[] = [];
       const notFound: string[] = [];
       const blocked: string[] = [];
 
-      for (const name of tools) {
+      // Expand connection IDs to their tool names
+      const toolsToEnable = [...tools];
+      for (const connId of connections) {
+        const connTools = connectionToolsMap.get(connId);
+        if (!connTools || connTools.length === 0) {
+          notFound.push(connId);
+          continue;
+        }
+        toolsToEnable.push(...connTools);
+      }
+
+      for (const name of toolsToEnable) {
         if (!availableToolNames.has(name)) {
           notFound.push(name);
           continue;

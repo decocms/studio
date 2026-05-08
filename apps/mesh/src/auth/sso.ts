@@ -11,6 +11,14 @@ export interface MicrosoftSSOConfig {
   scopes: string[];
 }
 
+export interface GoogleSSOConfig {
+  domain: string;
+  providerId: "google";
+  GOOGLE_CLIENT_ID: string;
+  GOOGLE_CLIENT_SECRET: string;
+  scopes: string[];
+}
+
 const createMicrosoftSSO = (config: MicrosoftSSOConfig) => {
   return {
     trustEmailVerified: true,
@@ -40,6 +48,43 @@ const createMicrosoftSSO = (config: MicrosoftSSOConfig) => {
             extraFields: {
               emailVerified: "email_verified",
               oid: "oid",
+            },
+          },
+        },
+      },
+    ],
+  };
+};
+
+const createGoogleSSO = (config: GoogleSSOConfig) => {
+  return {
+    trustEmailVerified: true,
+    defaultSSO: [
+      {
+        domain: config.domain,
+        providerId: config.providerId,
+        oidcConfig: {
+          issuer: "https://accounts.google.com",
+          pkce: true,
+          clientId: config.GOOGLE_CLIENT_ID,
+          clientSecret: config.GOOGLE_CLIENT_SECRET,
+          discoveryEndpoint:
+            "https://accounts.google.com/.well-known/openid-configuration",
+          authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
+          tokenEndpoint: "https://oauth2.googleapis.com/token",
+          jwksEndpoint: "https://www.googleapis.com/oauth2/v3/certs",
+          userInfoEndpoint: "https://openidconnect.googleapis.com/v1/userinfo",
+          tokenEndpointAuthentication: "client_secret_post" as const,
+          scopes: config.scopes,
+          mapping: {
+            id: "sub",
+            email: "email",
+            emailVerified: "email_verified",
+            name: "name",
+            image: "picture",
+            extraFields: {
+              emailVerified: "email_verified",
+              hd: "hd",
             },
           },
         },
@@ -138,7 +183,12 @@ export const createSSOConfig = (config: SSOConfig) => {
   if (config.providerId === "microsoft") {
     return createMicrosoftSSO(config);
   }
-  throw new Error(`Unsupported provider: ${config.providerId}`);
+  if (config.providerId === "google") {
+    return createGoogleSSO(config);
+  }
+  throw new Error(
+    `Unsupported provider: ${(config as { providerId: string }).providerId}`,
+  );
 };
 
-export type SSOConfig = MicrosoftSSOConfig;
+export type SSOConfig = MicrosoftSSOConfig | GoogleSSOConfig;

@@ -23,6 +23,7 @@ export function useWorkflowStart() {
   const client = useMCPClient({
     connectionId,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const { mutateAsync: startWorkflowMutation, isPending } =
     useMCPToolCallMutation({
@@ -70,6 +71,7 @@ export function useWorkflowCancel() {
   const client = useMCPClient({
     connectionId,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const { mutateAsync: cancelWorkflowMutation, isPending: isCancelling } =
     useMCPToolCallMutation({ client });
@@ -97,6 +99,7 @@ export function useWorkflowResume() {
   const client = useMCPClient({
     connectionId,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const { mutateAsync: resumeWorkflowMutation, isPending: isResuming } =
     useMCPToolCallMutation({ client });

@@ -41,11 +41,29 @@ const inflightStarts = new Map<string, Promise<VmStartResult>>();
 const startKey = (args: VmStartArgs) =>
   `${args.virtualMcpId}::${args.branch ?? ""}`;
 
+// Tracks (virtualMcpId, branch) pairs explicitly stopped by the user.
+// Prevents self-heal from restarting a VM the user just stopped: the SSE
+// "gone" event can race the vmMap query refetch and arrive while vmEntry
+// is still stale in the cache, making deadVmId non-null and triggering
+// an unwanted self-heal. Cleared on any VM_START so normal auto-start
+// resumes after an explicit user restart.
+const userStoppedVms = new Set<string>();
+
+export const vmUserStop = {
+  mark: (virtualMcpId: string, branch: string) =>
+    userStoppedVms.add(`${virtualMcpId}::${branch}`),
+  clear: (virtualMcpId: string, branch: string) =>
+    userStoppedVms.delete(`${virtualMcpId}::${branch}`),
+  isStopped: (virtualMcpId: string, branch: string) =>
+    userStoppedVms.has(`${virtualMcpId}::${branch}`),
+};
+
 export function useVmStart(client: MinimalMcpClient) {
   const queryClient = useQueryClient();
   return useMutation<VmStartResult, Error, VmStartArgs>({
     mutationKey: VM_START_MUTATION_KEY,
     mutationFn: async (args) => {
+      if (args.branch) vmUserStop.clear(args.virtualMcpId, args.branch);
       const key = startKey(args);
       const existing = inflightStarts.get(key);
       if (existing) return existing;

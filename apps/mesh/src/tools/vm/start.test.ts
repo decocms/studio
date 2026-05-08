@@ -60,7 +60,14 @@ mock.module("../../sandbox/lifecycle", () => ({
   getRunnerByKind: (_ctx: unknown, kind: "docker" | "freestyle") =>
     kind === "docker" ? mockDockerRunner : mockRunner,
   getSharedRunnerIfInit: () => mockRunner,
+  getOrInitSharedRunner: async () => mockRunner,
   asDockerRunner: () => null,
+  // Bun's mock.module persists across test files in the same shard. Other
+  // tests in the shard (e.g. oauth-proxy.e2e.test.ts) load app.ts which
+  // imports subscribeLifecycle from this module — keep the export shape
+  // complete so subsequent loads don't hit "Export named ... not found".
+  subscribeLifecycle: () => ({ unsubscribe: () => {} }),
+  __resetSharedLifecyclesForTesting: () => {},
 }));
 
 const { DownstreamTokenStorage: RealDownstreamTokenStorage } = await import(

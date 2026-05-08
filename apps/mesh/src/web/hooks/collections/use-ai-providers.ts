@@ -34,6 +34,7 @@ export function useAiProviders() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const { data } = useSuspenseQuery({
@@ -57,6 +58,7 @@ export function useAiProviderKeys() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const { data } = useSuspenseQuery({
@@ -80,6 +82,7 @@ export function useAiProviderModels(keyId: string | undefined) {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const { data, isLoading } = useQuery({
@@ -104,6 +107,7 @@ export function useSuspenseAiProviderModels(keyId: string) {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const { data } = useSuspenseQuery({

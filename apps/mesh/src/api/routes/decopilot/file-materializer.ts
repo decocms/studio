@@ -29,10 +29,10 @@ import {
 /** Build the stable redirect URL the UI / tools use to access a file. */
 function toFileRedirectUrl(
   baseUrl: string,
-  orgId: string,
+  orgSlug: string,
   key: string,
 ): string {
-  return `${baseUrl}/api/${orgId}/files/${key}`;
+  return `${baseUrl}/api/${orgSlug}/files/${key}`;
 }
 
 /**
@@ -169,7 +169,8 @@ export async function uploadFileParts(
   ctx: MeshContext,
 ): Promise<ChatMessage[]> {
   if (!ctx.organization) return messages;
-  const orgId = ctx.organization.id;
+  const orgSlug = ctx.organization.slug;
+  if (!orgSlug) return messages;
 
   const lastUserIdx = messages.findLastIndex((m) => m.role === "user");
   if (lastUserIdx === -1) return messages;
@@ -216,7 +217,7 @@ export async function uploadFileParts(
       return {
         dataUrl: part.url,
         meshStorageUrl: toMeshStorageUri(uploadedKey),
-        redirectUrl: toFileRedirectUrl(ctx.baseUrl, orgId, uploadedKey),
+        redirectUrl: toFileRedirectUrl(ctx.baseUrl, orgSlug, uploadedKey),
         filename,
       };
     }),

@@ -34,9 +34,9 @@
       "ignoreDependencies": ["sonner"]
     },
     "packages/sandbox": {
-      // daemon/entry.ts is bundled via `bun build daemon/entry.ts` into a
-      // standalone binary that runs inside the sandbox VM. Without marking
-      // it as an entry, knip treats the whole daemon graph as unused.
+      // daemon/entry.ts is bundled via `bun build` into a standalone binary
+      // that runs inside sandbox VMs. Without marking it as an entry, knip
+      // treats the whole daemon graph as unused.
       "entry": ["daemon/entry.ts"]
     },
     "packages/typegen": {}

@@ -21,6 +21,7 @@ import { useBranches } from "./use-branches";
 
 interface Props {
   orgId: string;
+  orgSlug: string;
   userId: string;
   connectionId: string;
   owner: string;
@@ -36,6 +37,7 @@ interface Props {
  */
 export function BranchPicker({
   orgId,
+  orgSlug,
   userId,
   connectionId,
   owner,
@@ -48,6 +50,7 @@ export function BranchPicker({
 
   const { yours, others, isLoading, isError } = useBranches({
     orgId,
+    orgSlug,
     userId,
     connectionId,
     vmMap,

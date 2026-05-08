@@ -37,6 +37,8 @@ export function useChatNavigation(): ChatNavigation {
         const vmcp = opts?.virtualMcpId ?? prev.virtualmcpid;
         if (vmcp) next.virtualmcpid = vmcp;
         if (prev.tasks) next.tasks = prev.tasks;
+        if (prev.main) next.main = prev.main;
+        if (prev.chat) next.chat = prev.chat;
         if (opts?.autosend) next.autosend = AUTOSEND_QUERY_VALUE;
         return next;
       },

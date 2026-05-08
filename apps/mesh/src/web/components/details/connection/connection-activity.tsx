@@ -47,11 +47,21 @@ const CHART_CONFIG = {
 interface ActivityChartProps {
   connectionId: string;
   orgId: string;
+  orgSlug: string;
   timeframe: Timeframe;
 }
 
-function ActivityChart({ connectionId, orgId, timeframe }: ActivityChartProps) {
-  const client = useMCPClient({ connectionId: SELF_MCP_ALIAS_ID, orgId });
+function ActivityChart({
+  connectionId,
+  orgId,
+  orgSlug,
+  timeframe,
+}: ActivityChartProps) {
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId,
+    orgSlug,
+  });
   const dateRange = getDateRange(timeframe);
 
   const { data } = useSuspenseQuery({
@@ -217,6 +227,7 @@ export function ConnectionActivity({ connectionId }: ConnectionActivityProps) {
         <ActivityChart
           connectionId={connectionId}
           orgId={org.id}
+          orgSlug={org.slug}
           timeframe={timeframe}
         />
       </Suspense>

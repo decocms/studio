@@ -11,8 +11,10 @@ const DEFAULT_CLIENT_INFO = {
 export interface CreateMcpClientOptions {
   /** Connection ID - use SELF_MCP_ALIAS_ID for the self/management MCP (ALL_TOOLS), or any connectionId for other MCPs */
   connectionId: string | null;
-  /** Organization ID - required, transforms to x-org-id header */
+  /** Organization ID - required for query-key scoping */
   orgId: string;
+  /** Organization slug - required, used to build the /api/:org/mcp URL */
+  orgSlug: string;
   /** Authorization token - optional */
   token?: string | null;
   /** Mesh server URL - optional, defaults to window.location.origin (for external apps, provide your Mesh server URL) */
@@ -28,10 +30,14 @@ export interface UseMcpClientOptionalOptions
 }
 
 /**
- * Build the MCP URL from connectionId and optional meshUrl
- * Uses /mcp/:connectionId for all servers
+ * Build the MCP URL from connectionId and optional meshUrl.
+ * Uses /api/:org/mcp/:connectionId for all servers (org-scoped routing).
  */
-function buildMcpUrl(connectionId: string | null, meshUrl?: string): string {
+function buildMcpUrl(
+  connectionId: string | null,
+  orgSlug: string,
+  meshUrl?: string,
+): string {
   const baseUrl =
     meshUrl ??
     (typeof window !== "undefined" ? window.location.origin : undefined);
@@ -41,7 +47,10 @@ function buildMcpUrl(connectionId: string | null, meshUrl?: string): string {
     );
   }
 
-  const path = connectionId ? `/mcp/${connectionId}` : "/mcp";
+  const orgPath = `/api/${encodeURIComponent(orgSlug)}`;
+  const path = connectionId
+    ? `${orgPath}/mcp/${connectionId}`
+    : `${orgPath}/mcp`;
   return new URL(path, baseUrl).href;
 }
 
@@ -55,10 +64,11 @@ function buildMcpUrl(connectionId: string | null, meshUrl?: string): string {
 export async function createMCPClient({
   connectionId,
   orgId,
+  orgSlug,
   token,
   meshUrl,
 }: CreateMcpClientOptions): Promise<Client> {
-  const url = buildMcpUrl(connectionId, meshUrl);
+  const url = buildMcpUrl(connectionId, orgSlug, meshUrl);
 
   const client = new Client(DEFAULT_CLIENT_INFO, {
     capabilities: {
@@ -79,7 +89,6 @@ export async function createMCPClient({
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json, text/event-stream",
-        "x-org-id": orgId,
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
     },
@@ -112,6 +121,7 @@ export async function createMCPClient({
 export function useMCPClient({
   connectionId,
   orgId,
+  orgSlug,
   token,
   meshUrl,
 }: UseMcpClientOptions): Client {
@@ -124,7 +134,8 @@ export function useMCPClient({
 
   const { data: client } = useSuspenseQuery({
     queryKey,
-    queryFn: () => createMCPClient({ connectionId, orgId, token, meshUrl }),
+    queryFn: () =>
+      createMCPClient({ connectionId, orgId, orgSlug, token, meshUrl }),
     staleTime: Infinity, // Keep client alive while query is active
     gcTime: 0, // Clean up immediately when query is inactive
   });
@@ -146,6 +157,7 @@ export function useMCPClient({
 export function useMCPClientOptional({
   connectionId,
   orgId,
+  orgSlug,
   token,
   meshUrl,
 }: UseMcpClientOptionalOptions): Client | null {
@@ -168,6 +180,7 @@ export function useMCPClientOptional({
       return createMCPClient({
         connectionId: connectionId as string | null,
         orgId,
+        orgSlug,
         token,
         meshUrl,
       });

@@ -23,6 +23,7 @@ export function ChecksTab({ pr, connectionId, owner, repo }: Props) {
 
   const checksQuery = useChecks({
     orgId: org.id,
+    orgSlug: org.slug,
     connectionId,
     owner,
     repo,

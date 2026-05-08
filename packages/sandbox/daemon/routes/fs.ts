@@ -3,7 +3,6 @@ import path from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { spawn } from "node:child_process";
-import { DECO_UID, DECO_GID } from "../constants";
 import { safePath } from "../paths";
 import { parseBase64JsonBody, jsonResponse } from "./body-parser";
 
@@ -16,18 +15,20 @@ import { parseBase64JsonBody, jsonResponse } from "./body-parser";
 const TRANSFER_DEADLINE_MS = 5 * 60_000;
 
 export interface FsDeps {
+  /** Workspace root — the safety clamp for resolved paths. */
   appRoot: string;
-  /** If true, spawn rg with uid:gid=1000. Falsey in tests. */
-  dropPrivileges?: boolean;
+  /**
+   * Default base for resolving relative paths and as the cwd for
+   * grep/glob. Typically `<appRoot>/repo` so the LLM's path UX matches
+   * bash's cwd.
+   */
+  repoDir: string;
 }
 
 function spawnOpts(
-  deps: FsDeps,
   extra: Record<string, unknown> = {},
 ): Record<string, unknown> {
-  return deps.dropPrivileges
-    ? { uid: DECO_UID, gid: DECO_GID, ...extra }
-    : { ...extra };
+  return { ...extra };
 }
 
 /** Cap on bytes returned for image responses. ~5MB matches Anthropic's
@@ -88,11 +89,16 @@ function sniffImageMediaType(probe: Buffer): string | null {
 /**
  * Resolves a user-supplied path. Absolute paths pass through as-is — OS
  * permissions already gate what the sandbox user can read. Relative paths
- * are resolved against `appRoot` for the project-relative UX.
+ * are resolved against `repoDir` (matching the bash cwd) and clamped to
+ * `appRoot` (the workspace) so siblings like `../tmp/app/dev` reach.
  */
-function resolveReadPath(appRoot: string, userPath: string): string | null {
+function resolveReadPath(
+  appRoot: string,
+  repoDir: string,
+  userPath: string,
+): string | null {
   if (path.isAbsolute(userPath)) return userPath;
-  return safePath(appRoot, userPath);
+  return safePath(appRoot, repoDir, userPath);
 }
 
 export function makeReadHandler(deps: FsDeps) {
@@ -103,7 +109,11 @@ export function makeReadHandler(deps: FsDeps) {
     } catch (e) {
       return jsonResponse({ error: (e as Error).message }, 400);
     }
-    const filePath = resolveReadPath(deps.appRoot, body.path ?? "");
+    const filePath = resolveReadPath(
+      deps.appRoot,
+      deps.repoDir,
+      body.path ?? "",
+    );
     if (!filePath)
       return jsonResponse({ error: "Path escapes project root" }, 400);
 
@@ -173,7 +183,7 @@ export function makeWriteHandler(deps: FsDeps) {
     }
     if (typeof body.content !== "string")
       return jsonResponse({ error: "content is required" }, 400);
-    const filePath = safePath(deps.appRoot, body.path ?? "");
+    const filePath = safePath(deps.appRoot, deps.repoDir, body.path ?? "");
     if (!filePath) return jsonResponse({ error: "Path escapes app root" }, 400);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, body.content, "utf-8");
@@ -197,7 +207,7 @@ export function makeEditHandler(deps: FsDeps) {
     } catch (e) {
       return jsonResponse({ error: (e as Error).message }, 400);
     }
-    const filePath = safePath(deps.appRoot, body.path ?? "");
+    const filePath = safePath(deps.appRoot, deps.repoDir, body.path ?? "");
     if (!filePath) return jsonResponse({ error: "Path escapes app root" }, 400);
     if (!body.old_string || typeof body.old_string !== "string")
       return jsonResponse({ error: "old_string is required" }, 400);
@@ -253,8 +263,8 @@ export function makeGrepHandler(deps: FsDeps) {
     if (!body.pattern)
       return jsonResponse({ error: "pattern is required" }, 400);
     const searchPath = body.path
-      ? safePath(deps.appRoot, body.path)
-      : deps.appRoot;
+      ? safePath(deps.appRoot, deps.repoDir, body.path)
+      : deps.repoDir;
     if (!searchPath)
       return jsonResponse({ error: "Path escapes app root" }, 400);
     const args: string[] = [];
@@ -272,8 +282,8 @@ export function makeGrepHandler(deps: FsDeps) {
     const child = spawn(
       "rg",
       args,
-      spawnOpts(deps, {
-        cwd: deps.appRoot,
+      spawnOpts({
+        cwd: deps.repoDir,
         stdio: ["ignore", "pipe", "pipe"],
       }) as Parameters<typeof spawn>[2],
     );
@@ -301,10 +311,22 @@ export function makeGrepHandler(deps: FsDeps) {
     child.stderr!.on("data", (chunk: Buffer) => {
       stderr += chunk.toString("utf-8");
     });
+    let spawnError: Error | null = null;
     const code: number | null = await new Promise((resolve) => {
       child.on("close", (c) => resolve(c));
-      child.on("error", () => resolve(-1));
+      child.on("error", (err) => {
+        spawnError = err;
+        resolve(-1);
+      });
     });
+    if (spawnError) {
+      return jsonResponse(
+        {
+          error: `grep unavailable: ${(spawnError as Error).message}. Install ripgrep ("brew install ripgrep") or use bash + grep.`,
+        },
+        500,
+      );
+    }
     if (code !== null && code > 1)
       return jsonResponse(
         { error: stderr || `rg failed with code ${code}` },
@@ -332,7 +354,7 @@ export function makeWriteFromUrlHandler(deps: FsDeps) {
     if (typeof body.url !== "string" || !body.url) {
       return jsonResponse({ error: "url is required" }, 400);
     }
-    const filePath = safePath(deps.appRoot, body.path ?? "");
+    const filePath = safePath(deps.appRoot, deps.repoDir, body.path ?? "");
     if (!filePath) return jsonResponse({ error: "Path escapes app root" }, 400);
 
     // The URL here is mesh-minted (presigned GET to S3/R2) — the model
@@ -437,7 +459,11 @@ export function makeUploadToUrlHandler(deps: FsDeps) {
     if (typeof body.url !== "string" || !body.url) {
       return jsonResponse({ error: "url is required" }, 400);
     }
-    const filePath = resolveReadPath(deps.appRoot, body.path ?? "");
+    const filePath = resolveReadPath(
+      deps.appRoot,
+      deps.repoDir,
+      body.path ?? "",
+    );
     if (!filePath) {
       return jsonResponse({ error: "Path escapes project root" }, 400);
     }
@@ -508,6 +534,19 @@ export function makeUploadToUrlHandler(deps: FsDeps) {
   };
 }
 
+// Skipped during glob walk. node_modules/.git noise drowns out useful
+// matches and isn't what the LLM ever wants to grep through.
+const GLOB_EXCLUDE_DIRS = new Set([
+  "node_modules",
+  ".git",
+  ".next",
+  "dist",
+  "build",
+  ".turbo",
+  ".cache",
+]);
+const GLOB_RESULT_LIMIT = 1000;
+
 export function makeGlobHandler(deps: FsDeps) {
   return async (req: Request): Promise<Response> => {
     let body: { pattern?: string; path?: string };
@@ -519,42 +558,33 @@ export function makeGlobHandler(deps: FsDeps) {
     if (!body.pattern)
       return jsonResponse({ error: "pattern is required" }, 400);
     const searchPath = body.path
-      ? safePath(deps.appRoot, body.path)
-      : deps.appRoot;
+      ? safePath(deps.appRoot, deps.repoDir, body.path)
+      : deps.repoDir;
     if (!searchPath)
       return jsonResponse({ error: "Path escapes app root" }, 400);
-    const child = spawn(
-      "rg",
-      ["--files", "--glob", body.pattern, searchPath],
-      spawnOpts(deps, {
-        cwd: deps.appRoot,
-        stdio: ["ignore", "pipe", "pipe"],
-      }) as Parameters<typeof spawn>[2],
-    );
-    let stdout = "";
-    child.stdout!.on("data", (c: Buffer) => {
-      stdout += c.toString("utf-8");
-    });
-    let stderr = "";
-    child.stderr!.on("data", (c: Buffer) => {
-      stderr += c.toString("utf-8");
-    });
-    const code: number | null = await new Promise((resolve) => {
-      child.on("close", (c) => resolve(c));
-      child.on("error", () => resolve(-1));
-    });
-    if (code !== null && code > 1)
-      return jsonResponse(
-        { error: stderr || `rg failed with code ${code}` },
-        500,
-      );
-    const files = stdout
-      .split("\n")
-      .filter(Boolean)
-      .slice(0, 1000)
-      .map((f) =>
-        f.startsWith(`${deps.appRoot}/`) ? f.slice(deps.appRoot.length + 1) : f,
-      );
+
+    // Bun.Glob — no external binary dependency. Returns paths relative
+    // to `cwd`, which we re-anchor to repoDir for consistent UX.
+    const glob = new Bun.Glob(body.pattern);
+    const files: string[] = [];
+    try {
+      for await (const rel of glob.scan({
+        cwd: searchPath,
+        onlyFiles: true,
+        followSymlinks: false,
+      })) {
+        if (rel.split("/").some((seg) => GLOB_EXCLUDE_DIRS.has(seg))) continue;
+        const abs = path.join(searchPath, rel);
+        files.push(
+          abs.startsWith(`${deps.repoDir}/`)
+            ? abs.slice(deps.repoDir.length + 1)
+            : abs,
+        );
+        if (files.length >= GLOB_RESULT_LIMIT) break;
+      }
+    } catch (e) {
+      return jsonResponse({ error: (e as Error).message }, 500);
+    }
     return jsonResponse({ files });
   };
 }

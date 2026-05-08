@@ -196,7 +196,7 @@ export class KyselySandboxRunnerStateStore implements RunnerStateStore {
       } catch (err) {
         if (isStatementTimeoutError(err)) {
           throw new Error(
-            `sandbox advisory lock busy >${LOCK_WAIT_MS}ms for user=${id.userId} projectRef=${id.projectRef} kind=${kind} — another provisioner is slow or stuck; retry shortly`,
+            `sandbox advisory lock busy >${LOCK_WAIT_MS}ms for user=${id.userId} projectRef=${id.projectRef} kind=${kind} — provisioner is slow or stuck; retry shortly`,
           );
         }
         throw err;
@@ -207,7 +207,7 @@ export class KyselySandboxRunnerStateStore implements RunnerStateStore {
   }
 }
 
-/** Generous enough to cover a cold freestyle.vms.create; short enough that a stuck holder isn't invisible. */
+/** Generous enough to cover agent-sandbox waitForSandboxReady (180s) + buffer; short enough that a stuck holder isn't invisible. */
 const LOCK_WAIT_MS = 90_000;
 
 /** pg SQLSTATE 57014 = query_canceled — what `statement_timeout` raises. */

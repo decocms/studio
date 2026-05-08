@@ -9,11 +9,11 @@ const SOUND_STATUSES = new Set(["completed", "failed", "requires_action"]);
  * Subscribe to org-wide SSE thread status events and play corresponding sounds.
  * Mount once at the app layout level.
  */
-export function useStatusSounds(orgId: string) {
+export function useStatusSounds(orgSlug: string) {
   const [preferences] = usePreferences();
 
   useDecopilotEvents({
-    orgId,
+    orgSlug,
     onTaskStatus: (event) => {
       if (!preferences.enableSounds) return;
       if (!SOUND_STATUSES.has(event.data.status)) return;

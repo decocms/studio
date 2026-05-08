@@ -13,9 +13,9 @@ Goal: create a background workflow that runs the right agent with the correct tr
 Read docs://automations.md for trigger types and workflow patterns. Read docs://platform.md if you need context on how automations relate to agents.
 
 Recommended tool order:
-1. Use COLLECTION_VIRTUAL_MCP_LIST or COLLECTION_VIRTUAL_MCP_GET to identify the agent that should run.
+1. Use COLLECTION_VIRTUAL_MCP_LIST or COLLECTION_VIRTUAL_MCP_GET to identify the agent that should run — its id is the \`virtual_mcp_id\` for AUTOMATION_CREATE.
 2. If the trigger type or payload is unclear, use user_ask.
-3. Use AUTOMATION_CREATE with a clear title, description, and agent.
+3. Use AUTOMATION_CREATE with a clear title, description, and \`virtual_mcp_id\`.
 4. Use AUTOMATION_TRIGGER_ADD to attach the schedule, event trigger, or webhook.
 5. Use AUTOMATION_GET to verify the saved automation and trigger state.
 6. Optionally use AUTOMATION_RUN to test the automation when appropriate.
@@ -39,9 +39,9 @@ Read docs://automations.md for trigger semantics and design patterns.
 
 Recommended tool order:
 1. Use AUTOMATION_LIST or AUTOMATION_GET to locate the automation.
-2. Use COLLECTION_VIRTUAL_MCP_GET if you need to confirm the assigned agent context.
+2. Use COLLECTION_VIRTUAL_MCP_GET if you need to confirm the assigned agent context (the automation's \`virtual_mcp_id\`).
 3. Use user_ask if the requested trigger or behavior change is not exact.
-4. Use AUTOMATION_UPDATE for metadata or agent changes.
+4. Use AUTOMATION_UPDATE for metadata changes (the assigned agent is immutable; create a new automation if you need a different one).
 5. Use AUTOMATION_TRIGGER_ADD then AUTOMATION_TRIGGER_REMOVE if the trigger itself must change (add before remove so the automation is never left untriggered if the add fails).
 6. Use AUTOMATION_GET to confirm the final state.
 7. Optionally use AUTOMATION_RUN to validate the updated workflow.
@@ -49,7 +49,6 @@ Recommended tool order:
 Checks:
 - Treat trigger changes as consequential because they alter future executions.
 - Be explicit about whether an old trigger is being replaced or removed.
-- Verify the updated automation still points to the intended agent.
 - If the workflow is testable, validate it after the change.
 `,
   },

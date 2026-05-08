@@ -91,6 +91,7 @@ export function ToolsPopover({
   const client = useMCPClient({
     connectionId: virtualMcpId,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const queryKey = KEYS.virtualMcpPrompts(virtualMcpId, org.id);
 

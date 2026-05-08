@@ -7,7 +7,11 @@ import { EmptyState } from "@/web/components/empty-state.tsx";
 import { useAutomations } from "@/web/hooks/use-automations";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
 import { AutomationListRow } from "@/web/views/automations/automation-list-row";
-import { useVirtualMCPs, useProjectContext } from "@decocms/mesh-sdk";
+import {
+  getDecopilotId,
+  useVirtualMCPs,
+  useProjectContext,
+} from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { track } from "@/web/lib/posthog-client";
 
@@ -25,19 +29,21 @@ export default function SettingsAutomationsPage() {
   const filtered = automations.filter((a) => {
     if (!lowerSearch) return true;
     if (a.name.toLowerCase().includes(lowerSearch)) return true;
-    const agent = a.agent ? agentMap.get(a.agent.id) : undefined;
+    const agent = agentMap.get(a.virtual_mcp_id);
     if (agent && agent.title.toLowerCase().includes(lowerSearch)) return true;
     return false;
   });
 
-  const handleRowClick = (automationId: string, agentId: string | null) => {
-    if (!agentId) return;
+  const handleRowClick = (automationId: string, agentId: string) => {
+    // Fall back to Decopilot when the automation's virtual_mcp_id no longer
+    // resolves (orphaned reference); otherwise the detail panel can't mount.
+    const target = agentMap.has(agentId) ? agentId : getDecopilotId(org.id);
     track("automations_list_row_clicked", {
       automation_id: automationId,
-      agent_id: agentId,
+      agent_id: target,
       source: "settings_automations",
     });
-    navigateToAgent(agentId, {
+    navigateToAgent(target, {
       search: { main: "automation:" + automationId },
     });
   };
@@ -92,7 +98,7 @@ export default function SettingsAutomationsPage() {
                   key={a.id}
                   automation={a}
                   showAgent
-                  onClick={() => handleRowClick(a.id, a.agent?.id ?? null)}
+                  onClick={() => handleRowClick(a.id, a.virtual_mcp_id)}
                 />
               ))}
             </div>

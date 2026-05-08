@@ -37,6 +37,7 @@ const STALE = 30_000;
 
 interface RepoArgs {
   orgId: string;
+  orgSlug: string;
   connectionId: string;
   owner: string;
   repo: string;
@@ -90,6 +91,7 @@ export function usePrByBranch(args: RepoArgs & { branch: string | null }) {
   const client = useMCPClient({
     connectionId: args.connectionId,
     orgId: args.orgId,
+    orgSlug: args.orgSlug,
   });
 
   return useMCPToolCallQuery<PrSummary | null>({
@@ -140,6 +142,7 @@ export function usePrFiles(
   const client = useMCPClient({
     connectionId: args.connectionId,
     orgId: args.orgId,
+    orgSlug: args.orgSlug,
   });
 
   return useMCPToolCallQuery<PrFile[]>({
@@ -186,6 +189,7 @@ export function useChecks(
   const client = useMCPClient({
     connectionId: args.connectionId,
     orgId: args.orgId,
+    orgSlug: args.orgSlug,
   });
 
   return useMCPToolCallQuery<CheckRun[]>({
@@ -243,6 +247,7 @@ export function usePrComments(
   const client = useMCPClient({
     connectionId: args.connectionId,
     orgId: args.orgId,
+    orgSlug: args.orgSlug,
   });
 
   return useMCPToolCallQuery<PrComment[]>({

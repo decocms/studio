@@ -31,6 +31,7 @@ export function useImageUpload(connectionId?: string): UseImageUploadResult {
   const client = useMCPClient({
     connectionId: storageConnectionId ?? "noop",
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const uploadImage = async (

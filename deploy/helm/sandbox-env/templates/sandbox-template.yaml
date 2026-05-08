@@ -14,9 +14,14 @@ metadata:
   labels:
     {{- include "sandbox-env.sandboxLabels" . | nindent 4 }}
 spec:
-  # Claims inject DAEMON_TOKEN per-provision via SandboxClaim.spec.env. The
-  # template carries no shared secret; leakage of the template compromises
-  # nothing on its own.
+  # The operator's controller rejects per-claim env outright when
+  # `claim.spec.warmpool != "none"`, so warm-pool consumption requires
+  # all claim env to come from the template. We bake a *sentinel* bearer
+  # token (rendered into a Secret by sandbox-sentinel-secret.yaml) and
+  # rotate to a per-claim token post-bind via mesh's first
+  # POST /_decopilot_vm/config call. envVarsInjectionPolicy stays Allowed
+  # so single-env deploys that haven't yet adopted the sentinel can still
+  # provision cold (warmpool=none) with claim env.
   envVarsInjectionPolicy: Allowed
   # The CRD defaults to Managed, which makes the operator install its own
   # NetworkPolicy that only allows ingress from pods labeled
@@ -79,11 +84,15 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           workingDir: /app
           env:
-            - name: DAEMON_PORT
-              value: "9000"
             - name: WORKDIR
               value: "/app"
-            # DAEMON_TOKEN is injected per-claim via SandboxClaim.spec.env.
+            - name: DAEMON_PORT
+              value: "9000"
+            - name: DAEMON_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sandbox-env.sentinelSecretName" . }}
+                  key: daemonToken
             {{- if .Values.readOnlyRootFilesystem }}
             # With RO rootfs + emptyDir on /app, the mount root is owned
             # root:1000 (fsGroup). Git 2.35+'s "dubious ownership" check
@@ -110,17 +119,17 @@ spec:
             capabilities:
               drop: ["ALL"]
             readOnlyRootFilesystem: {{ .Values.readOnlyRootFilesystem }}
-          {{- if .Values.readOnlyRootFilesystem }}
           volumeMounts:
+            {{- if .Values.readOnlyRootFilesystem }}
             - name: workdir
               mountPath: /app
             - name: tmp
               mountPath: /tmp
+            {{- end }}
             - name: home
               mountPath: /home/sandbox
-          {{- end }}
-      {{- if .Values.readOnlyRootFilesystem }}
       volumes:
+        {{- if .Values.readOnlyRootFilesystem }}
         # Sized to match the per-container ephemeral-storage limit shape;
         # individual mounts get a slice. Adjust if a workload needs more.
         - name: workdir
@@ -129,7 +138,7 @@ spec:
         - name: tmp
           emptyDir:
             sizeLimit: 1Gi
+        {{- end }}
         - name: home
           emptyDir:
             sizeLimit: 2Gi
-      {{- end }}

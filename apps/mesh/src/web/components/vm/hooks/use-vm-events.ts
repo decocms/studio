@@ -9,6 +9,7 @@ import {
 
 export type {
   BranchStatus,
+  BranchStatusReady,
   ChunkHandler,
   ReloadHandler,
   VmStatus,

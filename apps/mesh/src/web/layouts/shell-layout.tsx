@@ -39,7 +39,7 @@ function ShellProjectProvider({
   org: NonNullable<Parameters<typeof ProjectContextProvider>[0]["org"]>;
   children: React.ReactNode;
 }) {
-  const orgSettings = useOrganizationSettingsSuspense(org.id);
+  const orgSettings = useOrganizationSettingsSuspense(org.id, org.slug);
 
   const project = {
     id: org.id,
@@ -196,8 +196,8 @@ function ShellLayoutContent() {
       // Fetch org data without persisting it as the session's active org.
       // Per Better Auth's org plugin docs, persisting active org to the
       // session breaks multi-tab usage because the session row is shared
-      // across tabs. We rely on the URL slug + per-request x-org-id header
-      // for routing instead.
+      // across tabs. We rely on the URL slug (mounted under /api/:org/...)
+      // for org resolution instead.
       const { data } = await authClient.organization.getFullOrganization({
         query: { organizationSlug: org },
       });
@@ -216,7 +216,8 @@ function ShellLayoutContent() {
 
   // Check org-level SSO enforcement (must be before early returns to satisfy Rules of Hooks)
   const orgId = activeOrg?.id;
-  const { data: ssoStatus } = useOrgSsoStatus(orgId);
+  const orgSlug = activeOrg?.slug;
+  const { data: ssoStatus } = useOrgSsoStatus(orgId, orgSlug);
 
   if (!activeOrg) {
     return <SplashScreen />;
@@ -226,6 +227,7 @@ function ShellLayoutContent() {
     return (
       <SsoRequiredScreen
         orgId={activeOrg.id}
+        orgSlug={activeOrg.slug}
         orgName={activeOrg.name}
         domain={ssoStatus.domain}
       />

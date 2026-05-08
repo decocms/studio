@@ -158,6 +158,7 @@ export function ToolSetSelector({
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const PAGE_SIZE = 100;

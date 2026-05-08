@@ -26,11 +26,6 @@ export const AUTOMATION_UPDATE = defineTool({
     id: z.string(),
     name: z.string().min(1).max(255).optional(),
     active: z.boolean().optional(),
-    agent: z
-      .object({
-        id: z.string(),
-      })
-      .optional(),
     messages: z
       .union([
         z.string(),
@@ -77,6 +72,11 @@ export const AUTOMATION_UPDATE = defineTool({
         }),
         coding: z.object({ id: z.string() }).optional(),
         fast: z.object({ id: z.string() }).optional(),
+        // Simple Mode tier intent. When set and Simple Mode is active for
+        // the org, the run path resolves the model from the live tier slot.
+        // credentialId / thinking.id are the fallback used when Simple Mode
+        // is off or the slot is unset.
+        tier: z.enum(["fast", "smart", "thinking"]).optional(),
       })
       .loose()
       .optional(),
@@ -106,8 +106,6 @@ export const AUTOMATION_UPDATE = defineTool({
     const updateData: Record<string, unknown> = {};
     if (input.name !== undefined) updateData.name = input.name;
     if (input.active !== undefined) updateData.active = input.active;
-    if (input.agent !== undefined)
-      updateData.agent = JSON.stringify(input.agent);
     if (input.messages !== undefined) {
       const normalizedMessages = normalizeMessages(input.messages);
       updateData.messages = JSON.stringify(normalizedMessages);

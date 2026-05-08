@@ -85,7 +85,7 @@ function ConnectionRow({
     queryKey: KEYS.monitorConnectionAuthProbe(connectionId),
     queryFn: async () =>
       isConnectionAuthenticated({
-        url: `/mcp/${connectionId}`,
+        url: `/api/${org.slug}/mcp/${connectionId}`,
         token: null,
         orgId: org.id,
       }),
@@ -154,6 +154,7 @@ function ConnectionRow({
       toast.info(`Opening authentication window for "${title}"...`);
       const authResult = await authenticateMcp({
         connectionId,
+        orgSlug: org.slug,
         clientName: `MCP Test - ${title}`,
         timeout: 180000,
         scope: "offline_access",
@@ -167,12 +168,11 @@ function ConnectionRow({
       // Save OAuth tokens
       if (authResult.tokenInfo) {
         const res = await fetch(
-          `/api/connections/${connectionId}/oauth-token`,
+          `/api/${org.slug}/connections/${connectionId}/oauth-token`,
           {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "x-org-id": org.id,
             },
             credentials: "include",
             body: JSON.stringify({
@@ -208,10 +208,10 @@ function ConnectionRow({
   };
 
   const saveTokenInternal = async (token: string) => {
-    const res = await fetch("/mcp/self", {
+    const res = await fetch(`/api/${org.slug}/mcp/self`, {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json", "x-org-id": org.id },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: 1,

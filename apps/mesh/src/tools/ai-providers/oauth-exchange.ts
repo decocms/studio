@@ -19,7 +19,7 @@ export const AI_PROVIDER_OAUTH_EXCHANGE = defineTool({
     stateToken: z
       .string()
       .describe("The stateToken returned by AI_PROVIDER_OAUTH_URL"),
-    label: z.string().min(1).max(100).default("Connected via OAuth"),
+    label: z.string().min(1).max(100),
   }),
   outputSchema: providerKeyOutputSchema,
   handler: async (input, ctx) => {

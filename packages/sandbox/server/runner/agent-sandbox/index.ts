@@ -18,7 +18,6 @@ export type {
   SandboxClaimEnvVar,
   SandboxCondition,
   SandboxResource,
-  WaitForSandboxReadyResult,
 } from "./client";
 export { AgentSandboxRunner } from "./runner";
 export type { AgentSandboxRunnerOptions } from "./runner";

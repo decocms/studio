@@ -27,7 +27,7 @@ Four runner backends live behind the common `SandboxRunner` interface
   runner is selected.
 - **agent-sandbox** (`./runner/agent-sandbox`) — one `SandboxClaim` per sandbox
   against the [kubernetes-sigs/agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox)
-  operator. Mesh talks to pods via apiserver port-forward in dev; in prod,
+  operator. Studio talks to pods via apiserver port-forward in dev; in prod,
   `previewUrlPattern` switches the preview URL to real ingress and skips the
   dev forward.
 

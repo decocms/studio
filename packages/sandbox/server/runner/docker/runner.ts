@@ -11,6 +11,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { DAEMON_PORT, DEFAULT_IMAGE, sleep } from "../../../shared";
 import {
   daemonBash,
+  postConfig,
   probeDaemonHealth,
   proxyDaemonRequest,
   waitForDaemonReady,
@@ -26,6 +27,7 @@ import { ensureSandboxImage } from "../../image-build";
 import {
   Inflight,
   applyPreviewPattern,
+  buildConfigPayload,
   computeHandle,
   hashSandboxId,
   withSandboxLock,
@@ -301,35 +303,32 @@ export class DockerSandboxRunner implements SandboxRunner {
     const workdir = DEFAULT_WORKDIR;
     const image = opts.image ?? this.defaultImage;
     const devContainerPort = opts.workload?.devPort ?? DEFAULT_DEV_PORT;
-    const runtime = opts.workload?.runtime ?? "node";
-    const packageManager = opts.workload?.packageManager ?? null;
-    const repo = opts.repo ?? null;
-    const repoLabel = repo
-      ? (repo.displayName ?? deriveRepoLabel(repo.cloneUrl))
-      : null;
 
-    // Full env contract — daemon's orchestrator owns clone + install +
-    // dev-server start; no external bootstrap call needed. See
-    // `packages/sandbox/daemon/config.ts` for the reader.
+    // Bootstrap-only env: identity + ports. Repo + workload are pushed via
+    // POST /_decopilot_vm/config after the daemon is healthy. opts.env is
+    // spread last to match the host runner's escape-hatch semantics —
+    // overriding daemon bootstrap names is rare and breaks things, but the
+    // hatch stays.
     const env: Record<string, string> = {
       DAEMON_TOKEN: token,
       DAEMON_BOOT_ID: daemonBootId,
       APP_ROOT: workdir,
       PROXY_PORT: String(DAEMON_PORT),
-      DEV_PORT: String(devContainerPort),
-      RUNTIME: runtime,
-      ...(repo
-        ? {
-            CLONE_URL: repo.cloneUrl,
-            REPO_NAME: repoLabel ?? "",
-            BRANCH: repo.branch ?? "",
-            GIT_USER_NAME: repo.userName,
-            GIT_USER_EMAIL: repo.userEmail,
-          }
-        : {}),
-      ...(packageManager ? { PACKAGE_MANAGER: packageManager } : {}),
       ...(opts.env ?? {}),
     };
+    const configPayload = buildConfigPayload({
+      runtime: opts.workload?.runtime ?? "node",
+      packageManager: opts.workload?.packageManager
+        ? {
+            name: opts.workload.packageManager,
+            ...(opts.workload.packageManagerPath
+              ? { path: opts.workload.packageManagerPath }
+              : {}),
+          }
+        : null,
+      repo: opts.repo ?? null,
+      port: devContainerPort,
+    });
 
     // Shared singleton; awaits any background build kicked off by the CLI.
     log("ensureSandboxImage start");
@@ -404,6 +403,11 @@ export class DockerSandboxRunner implements SandboxRunner {
     log("waitForDaemonReady start", { daemonUrl });
     try {
       await waitForDaemonReady(daemonUrl);
+      if (configPayload) {
+        log("postConfig start", { daemonUrl });
+        await postConfig(daemonUrl, token, configPayload);
+        log("postConfig ok");
+      }
     } catch (err) {
       log("waitForDaemonReady failed", {
         err: err instanceof Error ? err.message : String(err),
@@ -676,16 +680,5 @@ export class DockerSandboxRunner implements SandboxRunner {
       .trim();
     if (tail) parts.push(`logs:\n${tail}`);
     return parts.length ? ` (${parts.join(" ")})` : "";
-  }
-}
-
-/** Fallback for when callers don't provide `repo.displayName`. */
-function deriveRepoLabel(cloneUrl: string): string {
-  try {
-    const u = new URL(cloneUrl);
-    const trimmed = u.pathname.replace(/^\/+/, "").replace(/\.git$/, "");
-    return trimmed || u.hostname;
-  } catch {
-    return cloneUrl;
   }
 }

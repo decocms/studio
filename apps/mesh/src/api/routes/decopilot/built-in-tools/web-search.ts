@@ -17,7 +17,10 @@
 
 import { tool, zodSchema, streamText, type UIMessageStreamWriter } from "ai";
 import { z } from "zod";
-import type { MeshProvider } from "@/ai-providers/types";
+import {
+  AsyncResearchTerminalError,
+  type MeshProvider,
+} from "@/ai-providers/types";
 import type { MeshContext } from "@/core/mesh-context";
 import { sanitizeProviderMetadata } from "@decocms/mesh-sdk";
 import type { ModelInfo } from "../types";
@@ -44,9 +47,12 @@ export function createWebSearchTool(
     deepResearchModelInfo: ModelInfo;
     ctx: MeshContext;
     toolOutputMap: Map<string, string>;
+    /** Current thread/task id — used to find or persist Gemini interactions. */
+    taskId: string;
   },
 ) {
-  const { provider, deepResearchModelInfo, ctx, toolOutputMap } = params;
+  const { provider, deepResearchModelInfo, ctx, toolOutputMap, taskId } =
+    params;
 
   return tool({
     description:
@@ -58,71 +64,161 @@ export function createWebSearchTool(
     execute: async (input, options) => {
       const startTime = performance.now();
       try {
-        const model = provider.aiSdk.languageModel(deepResearchModelInfo.id);
+        const modelId = deepResearchModelInfo.id;
+        const asyncResearch = provider.asyncResearch;
+        const useAsyncResearch = asyncResearch?.canHandle(modelId) === true;
 
-        const result = streamText({
-          model,
-          prompt: input.query,
-          abortSignal: options.abortSignal,
-        });
-
-        // Accumulate text while streaming to the UI.
-        // The AI SDK replaces data parts with the same id on each write,
-        // so we send the full accumulated text (not just the delta).
-        // Throttled to limit wire overhead.
         let fullText = "";
-        let lastSendTime = 0;
-        const THROTTLE_MS = 50;
+        let citations: Array<{ url: string; title?: string }> = [];
+        let inputTokens = 0;
+        let outputTokens = 0;
+        let safeProviderMeta:
+          | ReturnType<typeof sanitizeProviderMetadata>
+          | undefined;
 
-        for await (const chunk of result.textStream) {
-          fullText += chunk;
-          const now = Date.now();
-          if (now - lastSendTime >= THROTTLE_MS) {
-            lastSendTime = now;
-            (writer as any).write({
-              type: "data-web-search",
-              id: options.toolCallId,
-              data: { text: fullText },
+        const writeProgress = (text: string) => {
+          (writer as any).write({
+            type: "data-web-search",
+            id: options.toolCallId,
+            data: { text },
+          });
+        };
+
+        if (useAsyncResearch && asyncResearch) {
+          const providerId = provider.info.id;
+
+          // Resume path: if a previous run for this (thread, provider, model,
+          // query) already submitted a job and never reached terminal state,
+          // resume that one instead of paying for a fresh job.
+          const existing = await ctx.storage.threads.findInflightAsyncJob(
+            taskId,
+            providerId,
+            modelId,
+            input.query,
+          );
+          let jobId: string;
+          if (existing) {
+            jobId = existing.jobId;
+          } else {
+            const started = await asyncResearch.start({
+              modelId,
+              query: input.query,
+              abortSignal: options.abortSignal,
+            });
+            jobId = started.jobId;
+            // Persist BEFORE polling — if the pod dies during the wait, the
+            // next pod that retries this tool call will find this row.
+            await ctx.storage.threads.addInflightAsyncJob(taskId, {
+              toolCallId: options.toolCallId,
+              provider: providerId,
+              modelId,
+              query: input.query,
+              jobId,
+              startedAt: new Date().toISOString(),
             });
           }
-        }
-        // Final flush to ensure all text is sent
-        (writer as any).write({
-          type: "data-web-search",
-          id: options.toolCallId,
-          data: { text: fullText },
-        });
 
-        const [usage, sources, providerMetadata] = await Promise.all([
-          result.usage,
-          result.sources,
-          result.providerMetadata,
-        ]);
-        const inputTokens = usage.inputTokens ?? 0;
-        const outputTokens = usage.outputTokens ?? 0;
-        const safeProviderMeta = sanitizeProviderMetadata(
-          providerMetadata as Record<string, unknown> | undefined,
-        );
+          let lastSendTime = 0;
+          const THROTTLE_MS = 50;
 
-        // Normalize sources into a simple { url, title } array for the UI.
-        const citations: Array<{ url: string; title?: string }> = [];
-        if (sources && Array.isArray(sources)) {
-          for (const s of sources) {
-            if (
-              s &&
-              typeof s === "object" &&
-              "sourceType" in s &&
-              s.sourceType === "url" &&
-              "url" in s &&
-              typeof s.url === "string"
-            ) {
-              citations.push({
-                url: s.url,
-                title:
-                  "title" in s && typeof s.title === "string"
-                    ? s.title
-                    : undefined,
-              });
+          // Only delete the persisted handle when we know the provider-side
+          // job is gone (success OR terminal provider failure). Transient
+          // errors (network, 5xx) keep the row so the next attempt can
+          // reconnect to the still-running job rather than spawning a fresh
+          // expensive duplicate.
+          let providerJobGone = false;
+          try {
+            const result = await asyncResearch.resume({
+              jobId,
+              abortSignal: options.abortSignal,
+              onProgress: (transcript: string) => {
+                const now = Date.now();
+                if (now - lastSendTime >= THROTTLE_MS) {
+                  lastSendTime = now;
+                  writeProgress(transcript);
+                }
+              },
+            });
+            providerJobGone = true;
+            fullText = result.text;
+            citations = result.citations;
+            inputTokens = result.usage.inputTokens;
+            outputTokens = result.usage.outputTokens;
+            // Final flush with the report only — drops the *thinking* prefix
+            // streamed during the run.
+            writeProgress(fullText);
+          } catch (err) {
+            if (err instanceof AsyncResearchTerminalError) {
+              providerJobGone = true;
+            }
+            throw err;
+          } finally {
+            if (providerJobGone) {
+              await ctx.storage.threads.removeInflightAsyncJob(
+                taskId,
+                providerId,
+                modelId,
+                input.query,
+              );
+            }
+          }
+        } else {
+          const model = provider.aiSdk.languageModel(deepResearchModelInfo.id);
+
+          const result = streamText({
+            model,
+            prompt: input.query,
+            abortSignal: options.abortSignal,
+          });
+
+          // Accumulate text while streaming to the UI.
+          // The AI SDK replaces data parts with the same id on each write,
+          // so we send the full accumulated text (not just the delta).
+          // Throttled to limit wire overhead.
+          let lastSendTime = 0;
+          const THROTTLE_MS = 50;
+
+          for await (const chunk of result.textStream) {
+            fullText += chunk;
+            const now = Date.now();
+            if (now - lastSendTime >= THROTTLE_MS) {
+              lastSendTime = now;
+              writeProgress(fullText);
+            }
+          }
+          // Final flush to ensure all text is sent
+          writeProgress(fullText);
+
+          const [usage, sources, providerMetadata] = await Promise.all([
+            result.usage,
+            result.sources,
+            result.providerMetadata,
+          ]);
+          inputTokens = usage.inputTokens ?? 0;
+          outputTokens = usage.outputTokens ?? 0;
+          safeProviderMeta = sanitizeProviderMetadata(
+            providerMetadata as Record<string, unknown> | undefined,
+          );
+
+          // Normalize sources into a simple { url, title } array for the UI.
+          if (sources && Array.isArray(sources)) {
+            for (const s of sources) {
+              if (
+                s &&
+                typeof s === "object" &&
+                "sourceType" in s &&
+                s.sourceType === "url" &&
+                "url" in s &&
+                typeof s.url === "string"
+              ) {
+                citations.push({
+                  url: s.url,
+                  title:
+                    "title" in s && typeof s.title === "string"
+                      ? s.title
+                      : undefined,
+                });
+              }
             }
           }
         }

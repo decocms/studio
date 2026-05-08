@@ -338,9 +338,10 @@ describe("AccessControl", () => {
 
       await ac.check();
 
-      expect(mockBoundAuth.hasPermission).toHaveBeenCalledWith({
-        self: ["TEST_TOOL"],
-      });
+      expect(mockBoundAuth.hasPermission).toHaveBeenCalledWith(
+        { self: ["TEST_TOOL"] },
+        undefined, // No path-resolved org passed, so options is undefined
+      );
       expect(ac.granted()).toBe(true);
     });
 

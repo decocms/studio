@@ -5,7 +5,7 @@
 
 ## Overview
 
-Extend the plugin system to support root-level public routes, then create a Mesh plugin (`mesh-plugin-monitoring-share`) that enables sharing read-only, data-scoped monitoring dashboards with external clients via presigned URLs.
+Extend the plugin system to support root-level public routes, then create a Studio plugin (`mesh-plugin-monitoring-share`) that enables sharing read-only, data-scoped monitoring dashboards with external clients via presigned URLs.
 
 ### Key Features
 - Presigned URLs with embedded tokens (no login required, time-limited)

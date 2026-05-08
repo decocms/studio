@@ -45,8 +45,12 @@ import { useChatBridge, useChatTask } from "@/web/components/chat/context";
 import { usePanelActions } from "@/web/layouts/shell-layout";
 import { VmErrorState } from "../vm-error-state";
 import { VmSuspendedState } from "../vm-suspended-state";
-import { useVmChunkHandler, useVmEvents } from "../hooks/use-vm-events";
-import { useIsVmStartPending, useVmStart } from "../hooks/use-vm-start";
+import { useVmEvents } from "../hooks/use-vm-events";
+import {
+  useIsVmStartPending,
+  useVmStart,
+  vmUserStop,
+} from "../hooks/use-vm-start";
 import { VmTerminal } from "./terminal";
 import type { Terminal as XTerminal } from "@xterm/xterm";
 import { EmptyState } from "../../empty-state";
@@ -75,16 +79,6 @@ type ViewStatus =
   | "error";
 
 const WELL_KNOWN_STARTERS = ["dev", "start"];
-
-/**
- * Browser talks to the daemon directly via previewUrl (same host that serves
- * the iframe). Trailing slash stripped because callers append `/_decopilot_vm/...`.
- * The daemon serves this surface unauthenticated.
- */
-function resolveDaemonBaseUrl(entry: VmMapEntry | undefined): string | null {
-  if (!entry?.previewUrl) return null;
-  return entry.previewUrl.replace(/\/$/, "");
-}
 
 export function EnvContent({ daemonOpen = false }: { daemonOpen?: boolean }) {
   const { org } = useProjectContext();
@@ -122,9 +116,12 @@ export function EnvContent({ daemonOpen = false }: { daemonOpen?: boolean }) {
   const [statusLabel, setStatusLabel] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [execInFlight, setExecInFlight] = useState(false);
-  const [killedProcesses, setKilledProcesses] = useState<Set<string>>(
-    new Set(),
-  );
+  // Tracks scripts whose kill request is in flight or whose underlying
+  // running-state hasn't yet caught up with the kill — drives the
+  // transient "Stopping…" affordance on the run/restart button. Cleared
+  // either by the sync prune below (state confirms not-running) or by
+  // handleKill itself on request error (revert to "Restart").
+  const [killingScripts, setKillingScripts] = useState<Set<string>>(new Set());
   const startingRef = useRef(false);
   const startedAtRef = useRef<number>(Date.now());
 
@@ -168,17 +165,10 @@ export function EnvContent({ daemonOpen = false }: { daemonOpen?: boolean }) {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
-  const handleChunk = (source: string, data: string) => {
-    const term = terminalRefs.current.get(source);
-    if (term) {
-      term.write(data);
-    }
-  };
-
   const vmEvents = useVmEvents();
-  useVmChunkHandler(handleChunk);
 
   const vmStartPending = useIsVmStartPending(
     inset?.entity?.id,
@@ -205,6 +195,22 @@ export function EnvContent({ daemonOpen = false }: { daemonOpen?: boolean }) {
       setOverride(null);
     }
   }, [derivedStatus, override]);
+
+  // Prune `killingScripts` entries once SSE confirms the process stopped:
+  // checks activeProcesses uniformly across all script types.
+  // Render-time setState is fine here — React bails out when the next set is equal.
+  if (killingScripts.size > 0) {
+    let changed = false;
+    const next = new Set(killingScripts);
+    for (const name of killingScripts) {
+      const stillRunning = vmEvents.activeProcesses.includes(name);
+      if (!stillRunning) {
+        next.delete(name);
+        changed = true;
+      }
+    }
+    if (changed) setKillingScripts(next);
+  }
 
   // Self-heal stale vmMap entries: SSE probe flips notFound on 404, VM_START
   // writes a fresh entry. Dedup by dead vmId to avoid looping on repeat 404s.
@@ -256,38 +262,50 @@ export function EnvContent({ daemonOpen = false }: { daemonOpen?: boolean }) {
   };
 
   const handleExec = async (scriptName: string) => {
-    if (execInFlight || !vmData) return;
+    if (execInFlight || !vmData || !virtualMcpId || !currentBranch) return;
     setExecInFlight(true);
     try {
-      const base = resolveDaemonBaseUrl(existingVm);
-      if (!base) throw new Error("No VM");
-      const res = await fetch(`${base}/_decopilot_vm/exec/${scriptName}`, {
-        method: "POST",
-      });
+      const qs = new URLSearchParams({
+        virtualMcpId,
+        branch: currentBranch,
+      }).toString();
+      const res = await fetch(
+        `/api/${encodeURIComponent(org.slug)}/vm-exec/exec/${encodeURIComponent(scriptName)}?${qs}`,
+        { method: "POST" },
+      );
       if (!res.ok) throw new Error(`Exec failed: ${res.statusText}`);
-      setKilledProcesses((prev) => {
-        const next = new Set(prev);
-        next.delete(scriptName);
-        return next;
-      });
     } finally {
       setExecInFlight(false);
     }
   };
 
   const handleKill = async (scriptName: string) => {
-    if (execInFlight || !vmData) return;
-    setExecInFlight(true);
+    if (!vmData || !virtualMcpId || !currentBranch) return;
+    if (killingScripts.has(scriptName)) return;
+    setKillingScripts((prev) => {
+      const next = new Set(prev);
+      next.add(scriptName);
+      return next;
+    });
     try {
-      const base = resolveDaemonBaseUrl(existingVm);
-      if (!base) throw new Error("No VM");
-      const res = await fetch(`${base}/_decopilot_vm/kill/${scriptName}`, {
-        method: "POST",
-      });
+      const qs = new URLSearchParams({
+        virtualMcpId,
+        branch: currentBranch,
+      }).toString();
+      const res = await fetch(
+        `/api/${encodeURIComponent(org.slug)}/vm-exec/kill/${encodeURIComponent(scriptName)}?${qs}`,
+        { method: "POST" },
+      );
       if (!res.ok) throw new Error(`Kill failed: ${res.statusText}`);
-      setKilledProcesses((prev) => new Set(prev).add(scriptName));
-    } finally {
-      setExecInFlight(false);
+      // Leave the entry in `killingScripts`; the render-time prune below
+      // clears it once SSE confirms the process is no longer running.
+    } catch {
+      setKillingScripts((prev) => {
+        const next = new Set(prev);
+        next.delete(scriptName);
+        return next;
+      });
+      toast.error(`Failed to stop ${scriptName}`);
     }
   };
 
@@ -302,6 +320,9 @@ export function EnvContent({ daemonOpen = false }: { daemonOpen?: boolean }) {
   const handleStart = async () => {
     if (startingRef.current) return;
     startingRef.current = true;
+    if (inset?.entity?.id && currentBranch) {
+      vmUserStop.clear(inset.entity.id, currentBranch);
+    }
     startedAtRef.current = Date.now();
     setOverride("creating");
     setStatusLabel("Connecting...");
@@ -346,6 +367,8 @@ export function EnvContent({ daemonOpen = false }: { daemonOpen?: boolean }) {
     setOverride("stopping");
 
     const virtualMcpId = inset?.entity?.id;
+    if (virtualMcpId && branchToStop)
+      vmUserStop.mark(virtualMcpId, branchToStop);
     if (virtualMcpId && branchToStop) {
       try {
         await client.callTool({
@@ -364,10 +387,6 @@ export function EnvContent({ daemonOpen = false }: { daemonOpen?: boolean }) {
   };
 
   const githubRepo = useActiveGithubRepo();
-
-  if (!githubRepo) {
-    return null;
-  }
 
   const runtime = (
     inset?.entity?.metadata as
@@ -405,32 +424,35 @@ export function EnvContent({ daemonOpen = false }: { daemonOpen?: boolean }) {
     }
   };
 
-  // State 2: Repo connected, VM stopped — show config + Start
+  // VM stopped — show config + Start. Repo card only renders when one is connected;
+  // the daemon supports a blank-clone bootstrap so the rest of the panel still works.
   if (status === "idle" || status === "stopping") {
     const isStopping = status === "stopping";
     return (
       <div className="flex flex-col items-center justify-center w-full h-full p-6">
         <div className="flex flex-col gap-4 w-full max-w-xs">
-          <a
-            href={`https://github.com/${githubRepo.owner}/${githubRepo.name}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-3 p-4 rounded-lg border border-border hover:bg-accent/50 transition-colors"
-          >
-            <GitHubIcon size={24} />
-            <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-              <span className="text-sm font-medium truncate">
-                {githubRepo.owner}/{githubRepo.name}
-              </span>
-              <span className="text-xs text-muted-foreground truncate">
-                github.com/{githubRepo.owner}/{githubRepo.name}
-              </span>
-            </div>
-            <LinkExternal01
-              size={14}
-              className="text-muted-foreground shrink-0"
-            />
-          </a>
+          {githubRepo && (
+            <a
+              href={`https://github.com/${githubRepo.owner}/${githubRepo.name}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 p-4 rounded-lg border border-border hover:bg-accent/50 transition-colors"
+            >
+              <GitHubIcon size={24} />
+              <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                <span className="text-sm font-medium truncate">
+                  {githubRepo.owner}/{githubRepo.name}
+                </span>
+                <span className="text-xs text-muted-foreground truncate">
+                  github.com/{githubRepo.owner}/{githubRepo.name}
+                </span>
+              </div>
+              <LinkExternal01
+                size={14}
+                className="text-muted-foreground shrink-0"
+              />
+            </a>
+          )}
 
           <div className="flex flex-wrap items-end justify-between gap-2 w-full">
             <div className="flex flex-col gap-1">
@@ -462,7 +484,7 @@ export function EnvContent({ daemonOpen = false }: { daemonOpen?: boolean }) {
               </Label>
               <Input
                 id="env-port"
-                placeholder="3000"
+                placeholder="3001"
                 className="w-20 h-8"
                 defaultValue={runtime?.port ?? ""}
                 onBlur={(e) =>
@@ -611,48 +633,57 @@ export function EnvContent({ daemonOpen = false }: { daemonOpen?: boolean }) {
               activeTab !== "daemon" &&
               openScriptTabs.includes(activeTab) &&
               (() => {
-                const isRunning =
-                  vmEvents.activeProcesses.includes(activeTab) &&
-                  !killedProcesses.has(activeTab);
+                const isRunning = vmEvents.activeProcesses.includes(activeTab);
+                const isKilling = killingScripts.has(activeTab);
+                // Hide the dropdown chevron during the Stopping… window so a
+                // second Stop click can't double-fire while the first is in
+                // flight; the prune effect removes it once SSE confirms idle.
+                const showRunningAffordance = isRunning && !isKilling;
+                const busy = execInFlight || isKilling;
+                const onRun = () => handleExec(activeTab);
+                const onStop = () => handleKill(activeTab);
+                const label = execInFlight
+                  ? "Running..."
+                  : isKilling
+                    ? "Stopping..."
+                    : isRunning
+                      ? "Restart"
+                      : "Run";
                 return (
                   <div className="flex items-center">
                     <button
                       type="button"
-                      disabled={execInFlight}
-                      onClick={() => handleExec(activeTab)}
+                      disabled={busy}
+                      onClick={onRun}
                       className={cn(
                         "flex items-center gap-1 border border-border px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50",
-                        isRunning ? "rounded-l-md border-r-0" : "rounded-md",
+                        showRunningAffordance
+                          ? "rounded-l-md border-r-0"
+                          : "rounded-md",
                       )}
                     >
-                      {execInFlight ? (
+                      {busy ? (
                         <Loading01 size={12} className="animate-spin" />
                       ) : (
                         <Play size={12} />
                       )}
-                      {execInFlight
-                        ? "Running..."
-                        : isRunning
-                          ? "Restart"
-                          : "Run"}
+                      {label}
                     </button>
-                    {isRunning && (
+                    {showRunningAffordance && (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <button
                             type="button"
-                            disabled={execInFlight}
+                            disabled={busy}
                             className="flex items-center self-stretch rounded-r-md border border-border px-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
                           >
                             <ChevronDown size={12} />
                           </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => handleKill(activeTab)}
-                          >
+                          <DropdownMenuItem onClick={onStop}>
                             <StopCircle size={12} />
-                            Stop Process
+                            Stop
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -671,13 +702,13 @@ export function EnvContent({ daemonOpen = false }: { daemonOpen?: boolean }) {
             >
               {vmEvents.hasData(tab) || tab === "setup" || tab === "daemon" ? (
                 <VmTerminal
+                  source={tab}
                   onReady={(t) => {
                     terminalRefs.current.set(tab, t);
                   }}
                   onSelectionChange={(has, getText) =>
                     handleSelectionChange(tab, has, getText)
                   }
-                  initialData={vmEvents.getBuffer(tab)}
                   className="h-full"
                 />
               ) : (

@@ -12,7 +12,7 @@ import path from "node:path";
 import type { SandboxRunner } from "@decocms/sandbox/runner";
 import { maybeTruncate } from "./common";
 import {
-  BASH_DESCRIPTION,
+  buildBashDescription,
   BashInputSchema,
   COPY_TO_SANDBOX_DESCRIPTION,
   CopyToSandboxInputSchema,
@@ -94,31 +94,45 @@ function sanitizeFilename(name: string): string | null {
  */
 function toFileDownloadUrl(
   baseUrl: string,
-  orgId: string,
+  orgSlug: string,
   key: string,
 ): string {
   const encodedKey = key.split("/").map(encodeURIComponent).join("/");
-  return `${baseUrl}/api/${encodeURIComponent(orgId)}/files/${encodedKey}`;
+  return `${baseUrl}/api/${encodeURIComponent(orgSlug)}/files/${encodedKey}`;
 }
 
 export type { VmToolsParams } from "./types";
 
+/**
+ * Exported because the config tools (`get_vm_config` / `set_vm_config`) live
+ * in a sibling file but speak the same `/_decopilot_vm/*` wire — base64
+ * JSON bodies, identical error mapping, identical "sandbox is not running"
+ * surface. Keeping one helper avoids drift between the two callers.
+ */
 async function daemonRequest(
   runner: SandboxRunner,
   handle: string,
   path: string,
-  body: Record<string, unknown>,
+  body: Record<string, unknown> | null,
+  method: "GET" | "POST" | "PUT" = "POST",
 ): Promise<unknown> {
   let res: Response;
   try {
-    const b64Body = Buffer.from(JSON.stringify(body), "utf-8").toString(
-      "base64",
-    );
-    res = await runner.proxyDaemonRequest(handle, path, {
-      method: "POST",
+    const init: {
+      method: string;
+      headers: Headers;
+      body: string | null;
+    } = {
+      method,
       headers: new Headers({ "content-type": "application/json" }),
-      body: b64Body,
-    });
+      body: null,
+    };
+    // GET/HEAD must not carry a body; the runners' proxy strips it anyway,
+    // but constructing it is wasteful and obscures intent.
+    if (method !== "GET" && body !== null) {
+      init.body = Buffer.from(JSON.stringify(body), "utf-8").toString("base64");
+    }
+    res = await runner.proxyDaemonRequest(handle, path, init);
   } catch {
     throw new Error(
       "The sandbox is not running. Ask the user to start it by clicking the server button (left side of the header bar).",
@@ -173,9 +187,13 @@ export function createVmTools(params: VmToolsParams) {
     threadId,
   } = params;
   const approvalFor = (mutating: boolean) => (mutating ? needsApproval : false);
-  const call = async (daemonPath: string, input: Record<string, unknown>) => {
+  const call = async (
+    daemonPath: string,
+    input: Record<string, unknown>,
+    method: "POST" | "PUT" = "POST",
+  ) => {
     const handle = await ensureHandle();
-    return daemonRequest(runner, handle, daemonPath, input);
+    return daemonRequest(runner, handle, daemonPath, input, method);
   };
 
   const read = tool({
@@ -248,7 +266,7 @@ export function createVmTools(params: VmToolsParams) {
 
   const bash = tool({
     needsApproval: approvalFor(TOOL_APPROVAL.bash),
-    description: BASH_DESCRIPTION,
+    description: buildBashDescription(),
     inputSchema: zodSchema(BashInputSchema),
     execute: async (input) => {
       const result = await call("/_decopilot_vm/bash", input);
@@ -275,9 +293,9 @@ export function createVmTools(params: VmToolsParams) {
     description: SHARE_WITH_USER_DESCRIPTION,
     inputSchema: zodSchema(ShareWithUserInputSchema),
     execute: async (input) => {
-      const orgId = ctx.organization?.id;
+      const orgSlug = ctx.organization?.slug;
       const storage = ctx.objectStorage;
-      if (!orgId || !storage) {
+      if (!orgSlug || !storage) {
         throw new Error("Object storage is not configured for this org");
       }
       const filename = sanitizeFilename(
@@ -295,7 +313,7 @@ export function createVmTools(params: VmToolsParams) {
       return {
         key,
         filename,
-        downloadUrl: toFileDownloadUrl(ctx.baseUrl, orgId, key),
+        downloadUrl: toFileDownloadUrl(ctx.baseUrl, orgSlug, key),
       };
     },
   });

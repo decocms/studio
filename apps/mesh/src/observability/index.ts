@@ -27,10 +27,20 @@ import { enableFetchInstrumentation } from "./instrumentations/fetch";
 import { NDJSONLogExporter } from "../monitoring/ndjson-log-exporter";
 import { NDJSONMetricExporter } from "../monitoring/ndjson-metric-exporter";
 import { NDJSONTraceExporter } from "../monitoring/ndjson-trace-exporter";
-import { getLogsDir, getMetricsDir, getTracesDir } from "../monitoring/schema";
+import {
+  getLogsDir,
+  getMetricsDir,
+  getTracesDir,
+  MONITORING_LOG_ATTR,
+} from "../monitoring/schema";
+import { truncateString } from "../monitoring/truncate-string";
 import { getSettings } from "../settings";
 
-import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
+import {
+  BatchLogRecordProcessor,
+  type LogRecordProcessor,
+  type SdkLogRecord,
+} from "@opentelemetry/sdk-logs";
 import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import {
@@ -42,7 +52,74 @@ import {
 // Constants
 const DEBUG_QS = "__d";
 const REQUEST_CONTEXT_KEY = createContextKey("Current request");
-const HEAD_SAMPLER_RATIO = 0.1; // 10% sampling by default
+const HEAD_SAMPLER_RATIO = 1.0; // 100% sampling — all errors must reach HyperDX
+
+// Wraps a LogRecordProcessor and samples non-error records at `ratio`.
+// ERROR/FATAL severity always passes through regardless of ratio.
+class SampledLogRecordProcessor implements LogRecordProcessor {
+  constructor(
+    private inner: LogRecordProcessor,
+    private ratio: number,
+  ) {}
+
+  onEmit(
+    record: SdkLogRecord,
+    context?: import("@opentelemetry/api").Context,
+  ): void {
+    const isError =
+      record.severityNumber !== undefined &&
+      record.severityNumber >= SeverityNumber.ERROR;
+    if (isError || Math.random() < this.ratio) {
+      this.inner.onEmit(record, context);
+    }
+  }
+
+  forceFlush(): Promise<void> {
+    return this.inner.forceFlush();
+  }
+
+  shutdown(): Promise<void> {
+    return this.inner.shutdown();
+  }
+}
+
+// Truncates mesh.monitoring.output to 500 bytes before forwarding to the
+// wrapped exporter (OTLP/HyperDX). The NDJSON local exporter receives the
+// full value because it wraps a different inner processor.
+class TruncateMonitoringOutputProcessor implements LogRecordProcessor {
+  constructor(
+    private inner: LogRecordProcessor,
+    private maxBytes: number,
+  ) {}
+
+  onEmit(
+    record: SdkLogRecord,
+    context?: import("@opentelemetry/api").Context,
+  ): void {
+    const outputKey = MONITORING_LOG_ATTR.OUTPUT;
+    const output = record.attributes?.[outputKey];
+    if (typeof output === "string" && output.length > this.maxBytes) {
+      const truncated = truncateString(output, this.maxBytes);
+      this.inner.onEmit(
+        {
+          ...record,
+          attributes: { ...record.attributes, [outputKey]: truncated },
+        } as SdkLogRecord,
+        context,
+      );
+    } else {
+      this.inner.onEmit(record, context);
+    }
+  }
+
+  forceFlush(): Promise<void> {
+    return this.inner.forceFlush();
+  }
+
+  shutdown(): Promise<void> {
+    return this.inner.shutdown();
+  }
+}
 
 // Sampler types - inline to avoid module resolution issues
 interface Sampler {
@@ -244,6 +321,15 @@ export function initObservability(): void {
       })
     : null;
 
+  if (
+    !process.env.OTEL_RESOURCE_ATTRIBUTES?.includes("deployment.environment")
+  ) {
+    const env = process.env.STUDIO_ENV ?? process.env.NODE_ENV ?? "unknown";
+    process.env.OTEL_RESOURCE_ATTRIBUTES = process.env.OTEL_RESOURCE_ATTRIBUTES
+      ? `${process.env.OTEL_RESOURCE_ATTRIBUTES},deployment.environment=${env}`
+      : `deployment.environment=${env}`;
+  }
+
   const sdk = new NodeSDK({
     serviceName: _settings.otelServiceName,
     traceExporter,
@@ -265,7 +351,18 @@ export function initObservability(): void {
     ],
     logRecordProcessors: [
       ...(_settings.clickhouseUrl
-        ? [new BatchLogRecordProcessor(new OTLPLogExporter())]
+        ? (() => {
+            const isProd =
+              (process.env.STUDIO_ENV ?? process.env.NODE_ENV) === "prod" ||
+              process.env.NODE_ENV === "production";
+            const logSampleRatio = isProd ? 1.0 : 0.1;
+            const batch = new BatchLogRecordProcessor(new OTLPLogExporter());
+            const truncated = new TruncateMonitoringOutputProcessor(
+              batch,
+              8_000,
+            );
+            return [new SampledLogRecordProcessor(truncated, logSampleRatio)];
+          })()
         : []),
       ...(monitoringLogExporter
         ? [
@@ -286,8 +383,8 @@ export function initObservability(): void {
   // The module-level `meter` and `tracer` were evaluated before sdk.start()
   // and point to NoopMeter/NoopTracer. Reassigning ensures all callers that
   // import these get working instruments.
-  meter = metrics.getMeter("mesh", "1.0.0");
-  tracer = trace.getTracer("mesh", "1.0.0");
+  meter = metrics.getMeter("studio", "1.0.0");
+  tracer = trace.getTracer("studio", "1.0.0");
 
   // Enable custom Bun fetch instrumentation (must be after SDK start)
   // This wraps global fetch with tracing since Bun's fetch doesn't use undici
@@ -299,7 +396,7 @@ export function initObservability(): void {
 /**
  * Get tracer instance
  */
-export let tracer = trace.getTracer("mesh", "1.0.0");
+export let tracer = trace.getTracer("studio", "1.0.0");
 
 /**
  * Get meter instance.
@@ -308,12 +405,12 @@ export let tracer = trace.getTracer("mesh", "1.0.0");
  * The module-level call returns a NoopMeter when evaluated before the SDK
  * starts; the reassignment ensures all subsequent callers get a real meter.
  */
-export let meter = metrics.getMeter("mesh", "1.0.0");
+export let meter = metrics.getMeter("studio", "1.0.0");
 
 /**
  * Get logger instance
  */
-const logger = logs.getLogger("mesh", "1.0.0");
+const logger = logs.getLogger("studio", "1.0.0");
 
 /**
  * Helper to emit a log record with current trace context

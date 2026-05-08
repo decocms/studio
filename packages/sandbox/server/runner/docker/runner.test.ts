@@ -458,10 +458,29 @@ describe("DockerSandboxRunner.ensure() — resume from persisted state", () => {
   });
 });
 
-describe("DockerSandboxRunner.ensure() — env contract for unified daemon", () => {
-  it("plumbs repo + workload into container env so daemon owns clone/install/start", async () => {
+describe("DockerSandboxRunner.ensure() — config bootstrap contract", () => {
+  it("plumbs only daemon-identity env into the container, then POSTs repo + workload via /_decopilot_vm/config", async () => {
     const { exec, calls } = makeExec(defaultResponder);
-    installFetch(() => healthOkResponse());
+    const fetchCalls: FetchCall[] = [];
+    globalThis.fetch = mock(async (input: unknown, init?: unknown) => {
+      const call: FetchCall = {
+        input: String(input),
+        init: (init ?? {}) as RequestInit & { duplex?: string },
+      };
+      fetchCalls.push(call);
+      if (call.input.endsWith("/health")) return healthOkResponse();
+      if (call.input.endsWith("/_decopilot_vm/config")) {
+        return new Response(
+          JSON.stringify({
+            bootId: "test-boot-id",
+            transition: "first-bootstrap",
+            config: {},
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response("", { status: 204 });
+    }) as unknown as typeof fetch;
 
     const runner = new DockerSandboxRunner({
       image: "test-image:latest",
@@ -482,7 +501,6 @@ describe("DockerSandboxRunner.ensure() — env contract for unified daemon", () 
     expect(runCall).toBeDefined();
     const runArgs = runCall!.args;
 
-    // Collect all -e KEY=VALUE pairs into a map for easier assertions.
     const envs = new Map<string, string>();
     for (let i = 0; i < runArgs.length - 1; i++) {
       if (runArgs[i] === "-e") {
@@ -492,38 +510,60 @@ describe("DockerSandboxRunner.ensure() — env contract for unified daemon", () 
       }
     }
 
-    // Daemon identity.
     expect(envs.get("DAEMON_TOKEN")).toMatch(/^[0-9a-f]{48}$/);
-    expect(envs.get("DAEMON_BOOT_ID")).toMatch(
-      /^[0-9a-f-]{36}$/i, // uuid v4
-    );
-
-    // Ports + filesystem.
+    expect(envs.get("DAEMON_BOOT_ID")).toMatch(/^[0-9a-f-]{36}$/i);
     expect(envs.get("APP_ROOT")).toBe("/app");
     expect(envs.get("PROXY_PORT")).toBe("9000");
-    expect(envs.get("DEV_PORT")).toBe("3000");
 
-    // Runtime + package manager.
-    expect(envs.get("RUNTIME")).toBe("bun");
-    expect(envs.get("PACKAGE_MANAGER")).toBe("bun");
-
-    // Clone + git identity (this is the load-bearing fix).
-    expect(envs.get("CLONE_URL")).toBe(
-      "https://x-access-token:TOKEN@github.com/o/r.git",
-    );
-    expect(envs.get("BRANCH")).toBe("feat/abc-123");
-    expect(envs.get("REPO_NAME")).toBe("o/r");
-    expect(envs.get("GIT_USER_NAME")).toBe("Octo Cat");
-    expect(envs.get("GIT_USER_EMAIL")).toBe("octo@example.com");
-
-    // Dead names from before the unified-daemon refactor must not leak through.
+    expect(envs.has("DEV_PORT")).toBe(false);
+    expect(envs.has("RUNTIME")).toBe(false);
+    expect(envs.has("PACKAGE_MANAGER")).toBe(false);
+    expect(envs.has("INTENT")).toBe(false);
+    expect(envs.has("CLONE_URL")).toBe(false);
+    expect(envs.has("BRANCH")).toBe(false);
+    expect(envs.has("REPO_NAME")).toBe(false);
+    expect(envs.has("GIT_USER_NAME")).toBe(false);
+    expect(envs.has("GIT_USER_EMAIL")).toBe(false);
     expect(envs.has("WORKDIR")).toBe(false);
     expect(envs.has("DAEMON_PORT")).toBe(false);
+
+    const configCall = fetchCalls.find((c) =>
+      c.input.endsWith("/_decopilot_vm/config"),
+    );
+    expect(configCall).toBeDefined();
+    expect(configCall!.init.method).toBe("POST");
+    expect(
+      (configCall!.init.headers as Record<string, string>).Authorization,
+    ).toMatch(/^Bearer [0-9a-f]{48}$/);
+
+    const body = JSON.parse(
+      Buffer.from(configCall!.init.body as string, "base64").toString("utf-8"),
+    );
+    expect(body.git?.repository?.cloneUrl).toBe(
+      "https://x-access-token:TOKEN@github.com/o/r.git",
+    );
+    expect(body.git?.repository?.branch).toBe("feat/abc-123");
+    expect(body.git?.repository?.repoName).toBe("o/r");
+    expect(body.git?.identity?.userName).toBe("Octo Cat");
+    expect(body.git?.identity?.userEmail).toBe("octo@example.com");
+    expect(body.application?.runtime).toBe("bun");
+    expect(body.application?.packageManager?.name).toBe("bun");
+    expect(body.application?.port).toBe(3000);
+    expect(body.application?.intent).toBeUndefined();
   });
 
-  it("omits repo + PACKAGE_MANAGER env when caller doesn't provide them", async () => {
+  it("skips POST /config when caller provides neither repo nor workload", async () => {
     const { exec, calls } = makeExec(defaultResponder);
-    installFetch(() => healthOkResponse());
+    const fetchCalls: FetchCall[] = [];
+    globalThis.fetch = mock(async (input: unknown, init?: unknown) => {
+      const call: FetchCall = {
+        input: String(input),
+        init: (init ?? {}) as RequestInit & { duplex?: string },
+      };
+      fetchCalls.push(call);
+      if (call.input.endsWith("/health")) return healthOkResponse();
+      return new Response("", { status: 204 });
+    }) as unknown as typeof fetch;
 
     const runner = new DockerSandboxRunner({
       image: "test-image:latest",
@@ -537,20 +577,14 @@ describe("DockerSandboxRunner.ensure() — env contract for unified daemon", () 
       .filter((v): v is string => v !== null);
     const keys = envPairs.map((p) => p.slice(0, p.indexOf("=")));
 
-    expect(keys).not.toContain("CLONE_URL");
-    expect(keys).not.toContain("BRANCH");
-    expect(keys).not.toContain("GIT_USER_NAME");
-    expect(keys).not.toContain("GIT_USER_EMAIL");
-    expect(keys).not.toContain("REPO_NAME");
-    expect(keys).not.toContain("PACKAGE_MANAGER");
-
-    // Daemon still gets its minimum to boot.
     expect(keys).toContain("DAEMON_TOKEN");
     expect(keys).toContain("DAEMON_BOOT_ID");
     expect(keys).toContain("APP_ROOT");
     expect(keys).toContain("PROXY_PORT");
-    expect(keys).toContain("DEV_PORT");
-    expect(keys).toContain("RUNTIME");
+
+    expect(
+      fetchCalls.some((c) => c.input.endsWith("/_decopilot_vm/config")),
+    ).toBe(false);
   });
 });
 

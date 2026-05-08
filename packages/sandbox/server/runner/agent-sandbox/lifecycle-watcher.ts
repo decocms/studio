@@ -213,6 +213,16 @@ export async function* watchClaimLifecycle(
   const deadlineMs = Math.max(0, schedulingTimeoutMs - (now() - startedAt));
   const deadlineTimer = setTimeout(() => push("tick"), deadlineMs + 100);
 
+  // Resolved to the actual pod name when watchPod first observes the pod.
+  // For cold-start the pod name equals claimName; for warm-pool adoption the
+  // operator binds a pool pod whose generated name differs from the claim.
+  // watchEvents needs the real pod name so its involvedObject.name fieldSelector
+  // hits the right events.
+  let resolvePodName!: (name: string) => void;
+  const podNamePromise = new Promise<string>((r) => {
+    resolvePodName = r;
+  });
+
   // Run watches concurrently. They each push signals into the queue and
   // never throw out of the watch loop — closure is via `controller.abort()`.
   const watches = Promise.allSettled([
@@ -224,6 +234,7 @@ export async function* watchClaimLifecycle(
       state,
       push,
       now,
+      resolvePodName,
     ),
     watchSandbox(
       opts.kc,
@@ -237,6 +248,7 @@ export async function* watchClaimLifecycle(
       opts.kc,
       opts.namespace,
       opts.claimName,
+      podNamePromise,
       controller.signal,
       state,
       push,
@@ -506,6 +518,7 @@ async function watchPod(
   state: State,
   push: (k: SignalKind) => void,
   now: () => number,
+  onPodName: (name: string) => void,
 ): Promise<void> {
   // labelSelector pins to mesh-managed claims; fieldSelector by name is
   // belt-and-suspenders (operator names pod after the claim).
@@ -520,8 +533,13 @@ async function watchPod(
     label: `pod/${claimName}`,
     onEvent: (envelope) => {
       if (envelope.type !== "ADDED" && envelope.type !== "MODIFIED") return;
+      // No name-equality guard: in warm-pool mode the adopted pod's name
+      // is the pool pod's generated name (e.g. `studio-sandbox-kind-abcde`),
+      // not the claim handle. The labelSelector above already pins to the
+      // pod the operator stamped with `sandbox-handle=<claimName>`, so the
+      // first match IS the right pod regardless of its name.
       const pod = envelope.object;
-      if (pod.metadata?.name !== claimName) return;
+      if (pod.metadata?.name) onPodName(pod.metadata.name);
       applyPodSnapshot(pod, state, now);
       push("pod");
     },
@@ -560,19 +578,19 @@ async function watchSandbox(
   push: (k: SignalKind) => void,
 ): Promise<void> {
   const path =
-    `/apis/${K8S_CONSTANTS.SANDBOX_API_GROUP}/${K8S_CONSTANTS.SANDBOX_API_VERSION}` +
-    `/namespaces/${encodeURIComponent(namespace)}/${K8S_CONSTANTS.SANDBOX_PLURAL}` +
+    `/apis/${K8S_CONSTANTS.CLAIM_API_GROUP}/${K8S_CONSTANTS.CLAIM_API_VERSION}` +
+    `/namespaces/${encodeURIComponent(namespace)}/${K8S_CONSTANTS.CLAIM_PLURAL}` +
     `?watch=true&fieldSelector=${encodeURIComponent(`metadata.name=${claimName}`)}`;
 
   return runWatch<SandboxResource>({
     kc,
     path,
     signal,
-    label: `sandbox/${claimName}`,
+    label: `sandboxclaim/${claimName}`,
     onEvent: (envelope) => {
       if (envelope.type !== "ADDED" && envelope.type !== "MODIFIED") return;
-      const sandbox = envelope.object;
-      const ready = sandbox.status?.conditions?.find((c) => c.type === "Ready");
+      const claim = envelope.object;
+      const ready = claim.status?.conditions?.find((c) => c.type === "Ready");
       if (!ready) return;
       if (ready.status === "True") {
         state.sandbox.ready = true;
@@ -592,21 +610,36 @@ async function watchEvents(
   kc: KubeConfig,
   namespace: string,
   claimName: string,
+  podNamePromise: Promise<string>,
   signal: AbortSignal,
   state: State,
   push: (k: SignalKind) => void,
   now: () => number,
 ): Promise<void> {
-  // K8s field selectors don't support arbitrary boolean composition; the
-  // closest we can get server-side is `involvedObject.name=<podName>`,
-  // which (because pod name === claim name in our world) is a tight filter.
-  // Kind=Pod is appended because event objects can target many kinds and
-  // we don't want to react to e.g. SandboxClaim events here (those go via
-  // the Sandbox CR watch).
+  // Resolve the actual pod name before subscribing to events. For cold-start
+  // the pod name equals claimName so this is a no-op; for warm-pool adoption
+  // the operator binds a pool pod whose name differs from the claim handle,
+  // and involvedObject.name must match the real pod name to receive events.
+  // Falls back to claimName if the signal aborts before a pod is seen.
+  const podName = await Promise.race([
+    podNamePromise,
+    new Promise<string>((resolve) => {
+      if (signal.aborted) {
+        resolve(claimName);
+        return;
+      }
+      signal.addEventListener("abort", () => resolve(claimName), {
+        once: true,
+      });
+    }),
+  ]);
+
+  if (signal.aborted) return;
+
   const path =
     `/api/v1/namespaces/${encodeURIComponent(namespace)}/events` +
     `?watch=true&fieldSelector=${encodeURIComponent(
-      `involvedObject.name=${claimName},involvedObject.kind=Pod`,
+      `involvedObject.name=${podName},involvedObject.kind=Pod`,
     )}`;
 
   return runWatch<KubeEvent>({

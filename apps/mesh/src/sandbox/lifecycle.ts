@@ -91,6 +91,18 @@ function readEnvName(): string | undefined {
   return raw && raw.trim() !== "" ? raw : undefined;
 }
 
+// Shared bearer baked into the SandboxTemplate's pod env via the
+// sandbox-env helm chart's Secret. Set on the mesh side from the same
+// Secret so both ends agree on what the warm-pool sentinel is.
+//
+// Presence flips AgentSandboxRunner into warm-pool mode (claims with
+// `warmpool: "default"` + empty env; per-claim token rotated post-bind).
+// Empty/unset → legacy cold-start path with per-claim env injection.
+function readSandboxSentinelToken(): string | undefined {
+  const raw = process.env.STUDIO_SANDBOX_SENTINEL_TOKEN;
+  return raw && raw.trim() !== "" ? raw : undefined;
+}
+
 // Per-claim HTTPRoute attaches to this Gateway. When NAME + NAMESPACE are
 // set alongside STUDIO_SANDBOX_PREVIEW_URL_PATTERN, mesh mints one
 // HTTPRoute per SandboxClaim so the wildcard Gateway can route directly
@@ -162,6 +174,7 @@ async function instantiate(
         sandboxTemplateName: readSandboxTemplateName(),
         envName: readEnvName(),
         previewGateway: readPreviewGateway(),
+        sentinelToken: readSandboxSentinelToken(),
         meter,
       });
     }

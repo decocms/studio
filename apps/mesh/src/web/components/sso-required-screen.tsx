@@ -3,17 +3,18 @@ import { Lock01 } from "@untitledui/icons";
 
 export interface SsoRequiredScreenProps {
   orgId: string;
+  orgSlug: string;
   orgName?: string;
   domain?: string;
 }
 
 export function SsoRequiredScreen({
-  orgId,
+  orgSlug,
   orgName,
   domain,
 }: SsoRequiredScreenProps) {
   const handleSsoLogin = () => {
-    window.location.href = `/api/org-sso/authorize?orgId=${encodeURIComponent(orgId)}`;
+    window.location.href = `/api/${encodeURIComponent(orgSlug)}/sso/authorize`;
   };
 
   const handleGoBack = () => {

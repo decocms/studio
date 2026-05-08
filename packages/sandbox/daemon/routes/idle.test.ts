@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { __resetActivityForTests, bumpActivity } from "../activity";
+import {
+  __resetActivityForTests,
+  bumpActivity,
+  markClaimed,
+} from "../activity";
 import { makeIdleHandler } from "./idle";
 
 describe("makeIdleHandler", () => {
@@ -15,9 +19,22 @@ describe("makeIdleHandler", () => {
     const body = (await resp.json()) as {
       lastActivityAt: string;
       idleMs: number;
+      claimed: boolean;
     };
     expect(body.lastActivityAt).toBe(new Date(t0).toISOString());
     expect(typeof body.idleMs).toBe("number");
     expect(body.idleMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("claimed=false until markClaimed() is called", async () => {
+    __resetActivityForTests();
+    const handler = makeIdleHandler();
+    const before = (await handler().json()) as { claimed: boolean };
+    expect(before.claimed).toBe(false);
+    markClaimed();
+    const after = (await handler().json()) as { claimed: boolean };
+    expect(after.claimed).toBe(true);
+    // Reset for other tests.
+    __resetActivityForTests();
   });
 });

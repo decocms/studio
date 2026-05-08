@@ -3,7 +3,11 @@ import { useInsetContext } from "@/web/layouts/agent-shell-layout";
 import { authClient } from "@/web/lib/auth-client";
 import { useToggleEnvPanel } from "@/web/hooks/use-toggle-env-panel";
 import { useChatTask } from "@/web/components/chat/context";
-import { useMCPClient, SELF_MCP_ALIAS_ID } from "@decocms/mesh-sdk";
+import {
+  useMCPClient,
+  useProjectContext,
+  SELF_MCP_ALIAS_ID,
+} from "@decocms/mesh-sdk";
 
 import type { VmMapEntry } from "@decocms/mesh-sdk";
 import {
@@ -42,11 +46,13 @@ import { useVmEvents, useVmReloadHandler } from "../hooks/use-vm-events";
 import {
   useIsVmStartPending,
   useVmStart,
+  vmUserStop,
   type VmStartArgs,
 } from "../hooks/use-vm-start";
 import { VmSuspendedState } from "../vm-suspended-state";
 import { VmBootingState } from "../vm-booting-state";
 import { VmErrorState } from "../vm-error-state";
+import { computePreviewState } from "./preview-state";
 import { track } from "@/web/lib/posthog-client";
 
 type PreviewViewMode = "preview" | "visual";
@@ -96,26 +102,26 @@ export function PreviewContent() {
   const hasHtmlPreview = vmEvents.status.htmlSupport;
   const suspended = vmEvents.suspended;
 
-  // Gate iframe on upstream readiness to avoid the daemon's "Server is
-  // starting..." placeholder; keep mounted once ever-ready so HMR hiccups
-  // don't re-show the boot screen. `at` uses server-stamped
-  // vmEntry.createdAt so the timer survives remounts.
-  const bootTrackedRef = useRef<{ url: string; at: number; ready: boolean }>({
-    url: "",
-    at: 0,
-    ready: false,
-  });
-  if (previewUrl && bootTrackedRef.current.url !== previewUrl) {
-    bootTrackedRef.current = {
+  // Install ran, dev script is intentionally stopped (paused) — treat as paused,
+  // not booting. Otherwise on remount the booting overlay falsely flashes
+  // "Installing packages…" even though the server isn't starting.
+  const appPaused = vmEvents.intent.state === "paused";
+
+  // The daemon's status enum (booting/online/offline) is itself the
+  // "ever-responded" latch — offline means we saw a response and lost it,
+  // and htmlSupport is sticky on offline at the source.
+
+  // Latch the boot-overlay timer's `since` to the first time previewUrl
+  // appeared, keyed on previewUrl so a new VM resets it. Rendering inline
+  // with a `Date.now()` fallback would reset the elapsed reading on every
+  // render whenever vmEntry.createdAt is missing.
+  const bootSinceRef = useRef<{ url: string; at: number }>({ url: "", at: 0 });
+  if (previewUrl && bootSinceRef.current.url !== previewUrl) {
+    bootSinceRef.current = {
       url: previewUrl,
       at: vmEntry?.createdAt ?? Date.now(),
-      ready: false,
     };
   }
-  if (previewUrl && vmEvents.status.ready && !bootTrackedRef.current.ready) {
-    bootTrackedRef.current.ready = true;
-  }
-  const booting = !!previewUrl && !bootTrackedRef.current.ready && !suspended;
 
   // Cover the gap between VM_START being submitted and vmMap populating a
   // previewUrl; otherwise the empty "No server running" state flashes while
@@ -128,9 +134,11 @@ export function PreviewContent() {
   //   self-heal:  once per dead vmId (don't loop on repeat 404s; new vmId OK)
   // A shared ref would conflate them.
   const virtualMcpId = inset?.entity?.id ?? null;
+  const { org } = useProjectContext();
   const mcpClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: inset?.entity?.organization_id ?? "",
+    orgSlug: org.slug,
   });
   const startVm = useVmStart(mcpClient);
   const lastStartError = startVm.error?.message ?? null;
@@ -143,18 +151,22 @@ export function PreviewContent() {
   } else if (previewUrl) {
     startingSinceRef.current = 0;
   }
-  const starting = vmStartPending && !previewUrl && !suspended;
   const autoStartedForTaskRef = useRef<string | null>(null);
   const reprovisionedForVmIdRef = useRef<string | null>(null);
 
   const claimPhase = vmEvents.phase;
-  // Only meaningful during the pre-previewUrl gap (VM_START mutation
-  // resolved → vmMap refetch lands). Once previewUrl is set, the booting
-  // overlay is driven by `booting` and dismisses on ready=true; if we kept
-  // lifecycleActive=true here, the overlay would never dismiss because
-  // `claimPhase` stays at `ready` for the lifetime of the SSE.
-  const lifecycleActive =
-    !previewUrl && !!claimPhase && claimPhase.kind !== "failed";
+
+  const previewState = computePreviewState({
+    previewUrl,
+    status: vmEvents.status.status,
+    htmlSupport: vmEvents.status.htmlSupport,
+    suspended,
+    appPaused,
+    vmStartPending,
+    lastStartError,
+    claimPhase,
+    notFound: vmEvents.notFound,
+  });
 
   // ref-latest pattern: effects below depend only on upstream signals, not
   // on this closure's churning captures (branch, mutation, setter).
@@ -210,9 +222,12 @@ export function PreviewContent() {
     if (!deadVmId || !virtualMcpId) return;
     if (lastStartError || startVm.isPending) return;
     if (reprovisionedForVmIdRef.current === deadVmId) return;
+    // Don't self-heal a VM the user explicitly stopped: the SSE "gone" event
+    // can arrive before the vmMap query refetch clears the stale entry.
+    if (branch && vmUserStop.isStopped(virtualMcpId, branch)) return;
     reprovisionedForVmIdRef.current = deadVmId;
     triggerStartRef.current("self-heal");
-  }, [deadVmId, virtualMcpId, lastStartError, startVm.isPending]);
+  }, [deadVmId, virtualMcpId, lastStartError, startVm.isPending, branch]);
 
   const retryAutoStart = () => {
     autoStartedForTaskRef.current = null;
@@ -299,7 +314,7 @@ export function PreviewContent() {
 
   return (
     <div className="flex flex-col w-full h-full">
-      {previewUrl && (
+      {previewState.kind === "iframe" && (
         <div className="flex h-12 shrink-0 items-center gap-4 border-b border-border/60 px-3 md:px-4">
           {/* Group 1: view mode toggle */}
           {hasHtmlPreview && (
@@ -367,7 +382,9 @@ export function PreviewContent() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => window.open(previewUrl, "_blank", "noopener")}
+                  onClick={() =>
+                    window.open(previewState.previewUrl, "_blank", "noopener")
+                  }
                 >
                   <LinkExternal01 size={14} />
                 </Button>
@@ -395,7 +412,7 @@ export function PreviewContent() {
       )}
 
       <div className="flex-1 relative overflow-hidden">
-        {!previewUrl && !starting && !lastStartError && !lifecycleActive && (
+        {previewState.kind === "idle" && (
           <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-background">
             <Monitor04 size={48} className="text-muted-foreground/40" />
             <h3 className="text-lg font-medium">Preview</h3>
@@ -409,34 +426,51 @@ export function PreviewContent() {
           </div>
         )}
 
-        {lastStartError && (
+        {previewState.kind === "error" && (
           <div className="absolute inset-0 z-40 flex items-center justify-center bg-background">
-            <VmErrorState errorMsg={lastStartError} onRetry={retryAutoStart} />
+            <VmErrorState
+              errorMsg={previewState.error}
+              onRetry={retryAutoStart}
+            />
           </div>
         )}
 
-        {!lastStartError && suspended && (
+        {previewState.kind === "suspended" && (
           <div className="absolute inset-0 z-30 bg-background/80 backdrop-blur-sm">
             <VmSuspendedState onResume={openEnv} />
           </div>
         )}
 
-        {!lastStartError &&
-          (booting || starting || lifecycleActive || vmEvents.notFound) && (
-            <div className="absolute inset-0 z-30 flex items-center justify-center bg-background">
-              <VmBootingState
-                since={
-                  booting ? bootTrackedRef.current.at : startingSinceRef.current
-                }
-                hasSetupData={vmEvents.hasData("setup")}
-                scripts={vmEvents.scripts}
-                activeProcesses={vmEvents.activeProcesses}
-                onViewLogs={openEnv}
-                claimPhase={previewUrl ? null : claimPhase}
-                onRetry={retryAutoStart}
-              />
-            </div>
-          )}
+        {previewState.kind === "booting" && (
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-background">
+            <VmBootingState
+              since={
+                previewUrl ? bootSinceRef.current.at : startingSinceRef.current
+              }
+              hasSetupData={vmEvents.hasData("setup")}
+              scripts={vmEvents.scripts}
+              activeProcesses={vmEvents.activeProcesses}
+              onViewLogs={openEnv}
+              claimPhase={previewUrl ? null : claimPhase}
+              onRetry={retryAutoStart}
+            />
+          </div>
+        )}
+
+        {previewState.kind === "no-html" && (
+          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-background">
+            <Server01 size={48} className="text-muted-foreground/40" />
+            <h3 className="text-lg font-medium">No web page at this URL</h3>
+            <p className="text-sm text-muted-foreground text-center max-w-sm">
+              The server is running, but doesn't serve a web page at /. This
+              preview only renders web pages.
+            </p>
+            <Button onClick={openEnv}>
+              <Server01 size={14} />
+              View Logs
+            </Button>
+          </div>
+        )}
 
         {viewMode === "visual" && !visualElement && (
           <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full border border-violet-400/40 bg-violet-500/90 px-3 py-1 text-xs font-medium text-white shadow-md backdrop-blur-sm pointer-events-none select-none">
@@ -450,13 +484,13 @@ export function PreviewContent() {
             onDismiss={() => setVisualElement(null)}
           />
         )}
-        {previewUrl && !booting && !vmEvents.notFound && (
+        {previewState.kind === "iframe" && (
           <iframe
             // Key on previewUrl: `src` mutations don't reliably refetch in all
             // browsers and leak in-frame state across branches.
-            key={previewUrl}
+            key={previewState.previewUrl}
             ref={previewIframeRef}
-            src={previewUrl}
+            src={previewState.previewUrl}
             className="w-full h-full border-0"
             title="Dev Server Preview"
             onLoad={() => {

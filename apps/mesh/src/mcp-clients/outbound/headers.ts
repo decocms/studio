@@ -8,6 +8,7 @@
 import { extractConnectionPermissions } from "@/auth/configuration-scopes";
 import { issueMeshToken } from "@/auth/jwt";
 import type { MeshContext } from "@/core/mesh-context";
+import { SpanStatusCode } from "@opentelemetry/api";
 import { refreshAccessToken } from "@/oauth/token-refresh";
 import { resolveOriginTokenEndpoint } from "@/oauth/resolve-token-endpoint";
 import { DownstreamTokenStorage } from "@/storage/downstream-token";
@@ -49,6 +50,33 @@ function stripBindingMetadata(
  * @returns Headers object ready to be used in HTTP requests
  */
 export async function buildRequestHeaders(
+  connection: ConnectionEntity,
+  ctx: MeshContext,
+  superUser: boolean,
+): Promise<Record<string, string>> {
+  return ctx.tracer.startActiveSpan(
+    "mesh.connection.build_headers",
+    { attributes: { "connection.id": connection.id } },
+    async (span) => {
+      try {
+        const result = await _buildRequestHeaders(connection, ctx, superUser);
+        span.setStatus({ code: SpanStatusCode.OK });
+        return result;
+      } catch (err) {
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: (err as Error).message,
+        });
+        span.recordException(err as Error);
+        throw err;
+      } finally {
+        span.end();
+      }
+    },
+  );
+}
+
+async function _buildRequestHeaders(
   connection: ConnectionEntity,
   ctx: MeshContext,
   superUser: boolean,

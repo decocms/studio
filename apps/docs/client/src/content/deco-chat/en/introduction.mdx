@@ -17,12 +17,12 @@ If MCP is the standard interface for tool access, deco CMS is the **production l
 **Official links:**
 
 - **deco CMS**: [decocms.com](https://www.decocms.com/)
-- **The MCP Mesh**: [decocms.com/mesh](https://www.decocms.com/mesh)
+- **Studio**: [decocms.com/studio](https://www.decocms.com/studio)
 - **MCP Studio**: [decocms.com/mcp-studio](https://www.decocms.com/mcp-studio)
 
 If you know us from before (as **deco.cx**) and you’re looking for **headless CMS + storefront** capabilities, visit [deco.cx](https://www.decocms.com/use-case/deco-cx). See the deco.cx docs at [docs.deco.cx](https://docs.deco.cx/en/getting-started/overview).
 
-## Start with the MCP Mesh
+## Start with Studio
 
 Choose one:
 
@@ -87,9 +87,9 @@ The application will be available at `http://localhost:8080`.
 
 **More details:** [Kubernetes: Helm Chart](/latest/en/mcp-mesh/deploy/kubernetes-helm-chart)
 
-## Learn the Mesh (concepts + product surfaces)
+## Learn Studio (concepts + product surfaces)
 
-- **[MCP Mesh Overview](/latest/en/mcp-mesh/overview)**
+- **[Studio Overview](/latest/en/mcp-mesh/overview)**
 - **[Quickstart](/latest/en/mcp-mesh/quickstart)**
 - **[Concepts](/latest/en/mcp-mesh/concepts)**
 - **[MCP Servers (Connections)](/latest/en/mcp-mesh/mcp-servers)**
@@ -100,10 +100,10 @@ The application will be available at `http://localhost:8080`.
 <Callout type="warning">
   **Docs split (quick guide):**
 
-  - **The MCP Mesh** → Self-hosting, deploying, and operating the Mesh (recommended).
+  - **Studio** → Self-hosting, deploying, and operating Studio (recommended).
   - **Legacy Admin** → If you’re using `admin.decocms.com` (still supported, **deprecated soon**).
 
-  We’re launching **MCP Studio** (on top of the Mesh), which will bring the current SaaS admin capabilities to the Mesh (including a hosted option by us) and replace the legacy SaaS over time.
+  We’re launching **MCP Studio** (on top of Studio), which will bring the current SaaS admin capabilities to Studio (including a hosted option by us) and replace the legacy SaaS over time.
 </Callout>
 
 ## Problem: the production gap
@@ -118,16 +118,16 @@ As tool surfaces and teams grow, most orgs run into the same production constrai
 
 For more context on our platform-level thesis, read [The architecture of an AI-native company](https://www.decocms.com/blog/post/ai-native-company).
 
-## Platform structure: Mesh → Studio → Apps & Store
+## Platform structure: Studio → Studio → Apps & Store
 
-### The MCP Mesh (foundation)
+### Studio (foundation)
 An open-source **control plane for MCP traffic**. It sits between your MCP clients (Cursor, Claude, VS Code, custom agents) and your MCP servers, providing a unified layer for auth, policy, and observability.
 
 ### MCP Studio (development)
 A no-code admin + SDK to package MCP capabilities as reusable building blocks.
 
 <Callout type="info">
-  **Coming soon:** This is the successor to the current SaaS admin, built on top of the MCP Mesh.
+  **Coming soon:** This is the successor to the current SaaS admin, built on top of Studio.
 </Callout>
 
 ### MCP Apps & Store (distribution)

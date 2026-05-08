@@ -210,6 +210,7 @@ export function GenericToolCallPart({
     connectionId ? rawToolName : null,
     connectionId,
     org.id,
+    org.slug,
   );
   const meta = toolDef?._meta ?? toolMeta;
   const gatewayClientId = getGatewayClientId(meta);
@@ -383,6 +384,7 @@ export function GenericToolCallPart({
                 uiResourceUri={uiResourceUri}
                 connectionId={connectionId}
                 orgId={org.id}
+                orgSlug={org.slug}
                 toolName={toolName}
                 toolInput={part.input}
                 toolResult={part.output}
@@ -414,6 +416,7 @@ interface MCPAppRendererProps {
   uiResourceUri: string;
   connectionId: string;
   orgId: string;
+  orgSlug: string;
   toolName: string;
   toolInput: unknown;
   toolResult: unknown;
@@ -505,6 +508,7 @@ function MCPAppRenderer({
   uiResourceUri,
   connectionId,
   orgId,
+  orgSlug,
   toolName,
   toolInput,
   toolResult,
@@ -514,7 +518,7 @@ function MCPAppRenderer({
   onTeardown,
   onRequestDisplayMode,
 }: MCPAppRendererProps) {
-  const client = useMCPClient({ connectionId, orgId });
+  const client = useMCPClient({ connectionId, orgId, orgSlug });
 
   const toolDef: Tool = {
     name: toolName,

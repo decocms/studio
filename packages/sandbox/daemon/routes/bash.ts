@@ -1,72 +1,73 @@
-import { spawn } from "node:child_process";
-import { DECO_UID, DECO_GID } from "../constants";
-import { parseBase64JsonBody, jsonResponse } from "./body-parser";
+import type { TaskManager } from "../process/task-manager";
+import { jsonResponse, parseBase64JsonBody } from "./body-parser";
+import { awaitTaskResponse } from "./tasks";
+
+const DEFAULT_TIMEOUT_MS = 30_000;
+const MAX_TIMEOUT_MS = 15 * 60 * 1000;
+
+export type BashMode = "await" | "background";
 
 export interface BashDeps {
-  appRoot: string;
-  dropPrivileges?: boolean;
-  env?: NodeJS.ProcessEnv;
+  /** Default cwd for unscoped commands. Typically `<appRoot>/repo` (the repo). */
+  repoDir: string;
+  taskManager: TaskManager;
+  env?: Record<string, string>;
 }
 
+interface BashBody {
+  command?: string;
+  timeout?: number;
+  cwd?: string;
+  env?: Record<string, string>;
+  mode?: BashMode;
+}
+
+/**
+ * Modes:
+ *   - "await" (default): runs to completion and returns the full
+ *     stdout/stderr/exitCode body. This is the legacy bash behavior.
+ *   - "background": returns the taskId immediately. Caller can poll
+ *     /_decopilot_vm/tasks/:id, stream output, or kill via the tasks API.
+ */
 export function makeBashHandler(deps: BashDeps) {
   return async (req: Request): Promise<Response> => {
-    let body: { command?: string; timeout?: number };
+    let body: BashBody;
     try {
-      body = (await parseBase64JsonBody(req)) as typeof body;
+      body = (await parseBase64JsonBody(req)) as BashBody;
     } catch (e) {
       return jsonResponse({ error: (e as Error).message }, 400);
     }
-
     if (!body.command || typeof body.command !== "string") {
       return jsonResponse({ error: "command is required" }, 400);
     }
 
-    const timeout = Math.min(body.timeout ?? 30000, 120000);
-    const opts: Parameters<typeof spawn>[2] = {
-      cwd: deps.appRoot,
-      stdio: ["ignore", "pipe", "pipe"],
-      env: deps.env,
-    };
+    const mode: BashMode = body.mode === "background" ? "background" : "await";
+    const timeout = clampTimeout(body.timeout, mode);
+    const env = body.env ? { ...(deps.env ?? {}), ...body.env } : deps.env;
 
-    if (deps.dropPrivileges) {
-      (opts as { uid: number; gid: number }).uid = DECO_UID;
-      (opts as { uid: number; gid: number }).gid = DECO_GID;
+    const task = await deps.taskManager.spawn({
+      command: body.command,
+      cwd: body.cwd ?? deps.repoDir,
+      env,
+      mode: "pipe",
+      timeoutMs: timeout,
+      label: `$ ${body.command}`,
+    });
+
+    if (mode === "background") {
+      return jsonResponse({ taskId: task.id, status: task.status });
     }
 
-    const child = spawn("bash", ["-c", body.command], opts);
-
-    let stdout = "";
-    let stderr = "";
-    let killed = false;
-
-    child.stdout?.on("data", (c: Buffer) => {
-      stdout += c.toString("utf-8");
+    return awaitTaskResponse(deps.taskManager, task.id, {
+      timedOutExitCode: -1,
     });
-
-    child.stderr?.on("data", (c: Buffer) => {
-      stderr += c.toString("utf-8");
-    });
-
-    const timer = setTimeout(() => {
-      killed = true;
-      try {
-        child.kill("SIGKILL");
-      } catch {}
-    }, timeout);
-
-    const exitCode: number = await new Promise((resolve) => {
-      child.on("close", (code) => {
-        clearTimeout(timer);
-        resolve(killed ? -1 : (code ?? 1));
-      });
-
-      child.on("error", (err) => {
-        clearTimeout(timer);
-        stderr += (stderr ? "\n" : "") + `spawn error: ${err.message}`;
-        resolve(-1);
-      });
-    });
-
-    return jsonResponse({ stdout, stderr, exitCode });
   };
+}
+
+function clampTimeout(raw: number | undefined, mode: BashMode): number {
+  const fallback = DEFAULT_TIMEOUT_MS;
+  const requested = typeof raw === "number" && raw > 0 ? raw : fallback;
+  // Background tasks may run longer; cap at 15 min (matches TaskManager TTL).
+  const ceiling = mode === "background" ? MAX_TIMEOUT_MS : 120_000;
+  return Math.min(requested, ceiling);
 }

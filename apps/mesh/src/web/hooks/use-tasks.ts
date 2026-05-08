@@ -30,6 +30,7 @@ export function useTaskActions() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const queryClient = useQueryClient();
   const actions = useCollectionActions<Task>(org.id, "THREADS", client);

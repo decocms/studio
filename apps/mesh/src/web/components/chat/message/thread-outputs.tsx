@@ -2,7 +2,7 @@
  * ThreadOutputs — download chips for files the model has shared back
  * to the user via the `share_with_user` tool. Files live under
  * `model-outputs/<thread_id>/` and are listed by
- * `GET /api/threads/:threadId/outputs`. The query is invalidated on
+ * `GET /api/:org/threads/:threadId/outputs`. The query is invalidated on
  * assistant-turn completion (see useStreamManager + chat onFinish).
  *
  * Attribution caveat: outputs are aggregated under the *last* assistant
@@ -30,14 +30,12 @@ interface ThreadOutputsResponse {
 
 async function fetchThreadOutputs(
   threadId: string,
-  orgId: string,
+  orgSlug: string,
 ): Promise<ThreadOutput[]> {
   const res = await fetch(
-    `/api/threads/${encodeURIComponent(threadId)}/outputs`,
+    `/api/${orgSlug}/threads/${encodeURIComponent(threadId)}/outputs`,
     {
       credentials: "include",
-      // mesh resolves the active org from x-org-id; without it the route 400s.
-      headers: { "x-org-id": orgId },
     },
   );
   if (!res.ok) {
@@ -57,7 +55,7 @@ export function ThreadOutputs({ threadId }: { threadId: string }) {
   const { org } = useProjectContext();
   const { data: outputs } = useQuery({
     queryKey: KEYS.threadOutputs(threadId),
-    queryFn: () => fetchThreadOutputs(threadId, org.id),
+    queryFn: () => fetchThreadOutputs(threadId, org.slug),
     // Stale immediately so refetch on invalidation is fresh.
     staleTime: 0,
   });

@@ -429,7 +429,7 @@ function SettingsInset() {
   const { org } = useProjectContext();
 
   // Org-wide SSE sound notifications
-  useStatusSounds(org.id);
+  useStatusSounds(org.slug);
 
   const { setOpenMobile, openMobile: mobileSidebarOpen } = useSidebar();
 

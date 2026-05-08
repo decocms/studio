@@ -60,6 +60,7 @@ export const AtMention = ({ editor, virtualMcpId }: AtMentionProps) => {
   const client = useMCPClient({
     connectionId: virtualMcpId,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const resourcesQueryKey = KEYS.virtualMcpResources(virtualMcpId, org.id);
 

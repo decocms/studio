@@ -111,7 +111,11 @@ export function AppViewContent({
   args?: Record<string, unknown>;
 }) {
   const { org } = useProjectContext();
-  const client = useMCPClient({ connectionId, orgId: org.id });
+  const client = useMCPClient({
+    connectionId,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
   const { data: toolsResult } = useMCPToolsList({ client });
 
   const decodedToolName = stripMcpServerPrefix(decodeURIComponent(toolName));

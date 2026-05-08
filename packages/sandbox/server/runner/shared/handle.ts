@@ -38,7 +38,7 @@ export function computeHandle(
   const hashLen = opts.hashLen ?? DEFAULT_HASH_LEN;
   const hash = hashSandboxId(id, hashLen);
   const slug = slugifyBranch(branch);
-  return slug ? `${slug}-${hash}` : hash;
+  return slug ? `${slug}-${hash}` : `s-${hash}`;
 }
 
 function slugifyBranch(branch: string | null | undefined): string {

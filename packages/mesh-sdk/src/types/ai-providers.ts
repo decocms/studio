@@ -49,6 +49,14 @@ export interface AiProviderModel {
   costs: AiProviderModelCosts | null;
   /** When true the upstream provider has flagged this model as deprecated. */
   deprecated?: boolean;
+  /**
+   * When true, this model can ONLY be used through the provider's
+   * `AsyncResearchProvider` capability (e.g. Gemini Deep Research via the
+   * Interactions API). It is unusable as a Thinking/Coding/Fast/Image model
+   * because `streamText` / `generateContent` will reject it. UIs should
+   * restrict it to the deep-research slot.
+   */
+  asyncResearch?: boolean;
   /** Client-side only — the credential key ID used to fetch this model. */
   keyId?: string;
 }

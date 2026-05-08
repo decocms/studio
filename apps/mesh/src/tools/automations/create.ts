@@ -27,10 +27,7 @@ export const AUTOMATION_CREATE = defineTool({
   },
   inputSchema: z.object({
     name: z.string().min(1).max(255),
-    virtual_mcp_id: z.string().optional().nullable(),
-    agent: z.object({
-      id: z.string(),
-    }),
+    virtual_mcp_id: z.string(),
     messages: z.union([
       z.string(),
       z.array(
@@ -75,6 +72,11 @@ export const AUTOMATION_CREATE = defineTool({
         }),
         coding: z.object({ id: z.string() }).optional(),
         fast: z.object({ id: z.string() }).optional(),
+        // Simple Mode tier intent. When set and Simple Mode is active for
+        // the org, the run path resolves the model from the live tier slot.
+        // credentialId / thinking.id are the fallback used when Simple Mode
+        // is off or the slot is unset.
+        tier: z.enum(["fast", "smart", "thinking"]).optional(),
       })
       .loose()
       .optional(),
@@ -126,12 +128,11 @@ export const AUTOMATION_CREATE = defineTool({
       organization_id: organization.id,
       created_by: userId,
       name: input.name,
-      agent: JSON.stringify(input.agent),
       messages: JSON.stringify(normalizedMessages),
       models: JSON.stringify(models),
       temperature: input.temperature,
       active: input.active,
-      virtual_mcp_id: input.virtual_mcp_id ?? null,
+      virtual_mcp_id: input.virtual_mcp_id,
     });
 
     posthog.capture({
@@ -141,8 +142,7 @@ export const AUTOMATION_CREATE = defineTool({
       properties: {
         organization_id: organization.id,
         automation_id: automation.id,
-        agent_id: input.agent.id,
-        has_virtual_mcp: !!input.virtual_mcp_id,
+        virtual_mcp_id: input.virtual_mcp_id,
         active: automation.active,
         model_id: models.thinking.id,
       },

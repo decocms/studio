@@ -1,7 +1,7 @@
 /**
  * useDecopilotEvents — Subscribe to typed decopilot SSE events
  *
- * Connects to the /org/:orgId/watch SSE endpoint, parses incoming events
+ * Connects to the /api/:org/watch SSE endpoint, parses incoming events
  * into the discriminated DecopilotSSEEvent union, filters by taskId when
  * provided, and dispatches to typed handlers.
  *
@@ -26,11 +26,9 @@ import { createSSESubscription } from "./create-sse-subscription";
 // ============================================================================
 
 const decopilotSSE = createSSESubscription({
-  // EventSource can't set headers, so x-org-id rides as a query param;
-  // authenticateRequest reads it as a fallback when the header is absent.
-  buildUrl: (orgId) => {
+  buildUrl: (orgSlug) => {
     const typesParam = ALL_DECOPILOT_EVENT_TYPES.join(",");
-    return `/org/${orgId}/watch?types=${typesParam}&x-org-id=${encodeURIComponent(orgId)}`;
+    return `/api/${encodeURIComponent(orgSlug)}/watch?types=${typesParam}`;
   },
   eventTypes: [...ALL_DECOPILOT_EVENT_TYPES],
 });
@@ -42,8 +40,8 @@ const getSnapshot = () => 0;
 // ============================================================================
 
 export interface UseDecopilotEventsOptions {
-  /** Organization ID for the SSE endpoint */
-  orgId: string;
+  /** Organization slug for the SSE endpoint */
+  orgSlug: string;
   /** Only fire handlers for events matching this task (omit for all tasks) */
   taskId?: string;
   /** Disable the SSE connection (default: true) */
@@ -75,7 +73,7 @@ interface CallbacksRef {
  */
 export function useDecopilotEvents(options: UseDecopilotEventsOptions): void {
   const {
-    orgId,
+    orgSlug,
     taskId,
     enabled = true,
     onStep,
@@ -91,25 +89,25 @@ export function useDecopilotEvents(options: UseDecopilotEventsOptions): void {
   });
   callbacksRef.current = { taskId, onStep, onFinish, onTaskStatus };
 
-  // `subscribe` only depends on `enabled` and `orgId` so the EventSource
+  // `subscribe` only depends on `enabled` and `orgSlug` so the EventSource
   // connection is not torn down when callbacks or taskId change.
   const subscribeRef = useRef<
     ((onStoreChange: () => void) => () => void) | null
   >(null);
 
   const prevEnabled = useRef(enabled);
-  const prevOrgId = useRef(orgId);
+  const prevOrgSlug = useRef(orgSlug);
 
   if (
     !subscribeRef.current ||
     prevEnabled.current !== enabled ||
-    prevOrgId.current !== orgId
+    prevOrgSlug.current !== orgSlug
   ) {
     prevEnabled.current = enabled;
-    prevOrgId.current = orgId;
+    prevOrgSlug.current = orgSlug;
 
     subscribeRef.current = (onStoreChange: () => void) => {
-      if (!enabled || !orgId) {
+      if (!enabled || !orgSlug) {
         return () => {};
       }
 
@@ -139,7 +137,7 @@ export function useDecopilotEvents(options: UseDecopilotEventsOptions): void {
         onStoreChange();
       };
 
-      return decopilotSSE.subscribe(orgId, handler);
+      return decopilotSSE.subscribe(orgSlug, handler);
     };
   }
 

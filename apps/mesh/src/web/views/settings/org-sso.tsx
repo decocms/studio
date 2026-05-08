@@ -24,10 +24,10 @@ import { track } from "@/web/lib/posthog-client";
 
 export function OrgSsoPage() {
   const { org } = useProjectContext();
-  const { data: ssoData, isLoading } = useOrgSsoConfig(org.id);
-  const saveMutation = useSaveOrgSsoConfig(org.id);
-  const deleteMutation = useDeleteOrgSsoConfig(org.id);
-  const enforceMutation = useToggleSsoEnforcement(org.id);
+  const { data: ssoData, isLoading } = useOrgSsoConfig(org.id, org.slug);
+  const saveMutation = useSaveOrgSsoConfig(org.id, org.slug);
+  const deleteMutation = useDeleteOrgSsoConfig(org.id, org.slug);
+  const enforceMutation = useToggleSsoEnforcement(org.id, org.slug);
 
   const [formState, setFormState] = useState({
     issuer: "",
@@ -189,7 +189,7 @@ export function OrgSsoPage() {
                           size="sm"
                           onClick={() => {
                             window.open(
-                              `/api/org-sso/authorize?orgId=${org.id}`,
+                              `/api/${org.slug}/sso/authorize`,
                               "_blank",
                             );
                           }}

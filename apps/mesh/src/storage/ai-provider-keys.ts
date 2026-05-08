@@ -178,6 +178,33 @@ export class AIProviderKeyStorage {
     };
   }
 
+  async updateLabel(
+    keyId: string,
+    organizationId: string,
+    label: string,
+  ): Promise<ProviderKeyInfo> {
+    const row = await this.db
+      .updateTable("ai_provider_keys")
+      .set({ label })
+      .where("id", "=", keyId)
+      .where("organization_id", "=", organizationId)
+      .returning([
+        "id",
+        "provider_id",
+        "label",
+        "preset_id",
+        "organization_id",
+        "created_by",
+        "created_at",
+      ])
+      .executeTakeFirst();
+
+    if (!row) {
+      throw new Error(`AI provider key ${keyId} not found`);
+    }
+    return this.rowToKeyInfo(row);
+  }
+
   async delete(keyId: string, organizationId: string): Promise<void> {
     const result = await this.db
       .deleteFrom("ai_provider_keys")

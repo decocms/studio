@@ -56,6 +56,7 @@ function SidebarEmptyState() {
           <div className="mt-2">
             <BranchPicker
               orgId={org.id}
+              orgSlug={org.slug}
               userId={userId}
               connectionId={githubRepo.connectionId!}
               owner={githubRepo.owner}

@@ -37,6 +37,7 @@ export function PrSubTabs({ pr, connectionId, owner, repo }: Props) {
   const { org } = useProjectContext();
   const filesQuery = usePrFiles({
     orgId: org.id,
+    orgSlug: org.slug,
     connectionId,
     owner,
     repo,

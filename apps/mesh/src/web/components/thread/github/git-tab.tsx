@@ -101,6 +101,7 @@ export function GitTab({ virtualMcpId }: { virtualMcpId: string }) {
   return (
     <GitTabContent
       orgId={org.id}
+      orgSlug={org.slug}
       connectionId={githubRepo.connectionId}
       owner={githubRepo.owner}
       repo={githubRepo.name}
@@ -111,6 +112,7 @@ export function GitTab({ virtualMcpId }: { virtualMcpId: string }) {
 
 interface ContentProps {
   orgId: string;
+  orgSlug: string;
   connectionId: string;
   owner: string;
   repo: string;
@@ -118,7 +120,7 @@ interface ContentProps {
 }
 
 function GitTabContent(props: ContentProps) {
-  const { orgId, connectionId, owner, repo, branch } = props;
+  const { orgId, orgSlug, connectionId, owner, repo, branch } = props;
 
   const {
     data: pr,
@@ -126,6 +128,7 @@ function GitTabContent(props: ContentProps) {
     isError,
   } = usePrByBranch({
     orgId,
+    orgSlug,
     connectionId,
     owner,
     repo,

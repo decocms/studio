@@ -104,8 +104,13 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
   const client = useMCPClient({
     connectionId: virtualMcpId,
     orgId: org.id,
+    orgSlug: org.slug,
   });
-  const promptToConnection = usePromptConnectionMap(virtualMcpId, org.id);
+  const promptToConnection = usePromptConnectionMap(
+    virtualMcpId,
+    org.id,
+    org.slug,
+  );
   const promptToConnectionRef = useRef(promptToConnection);
   promptToConnectionRef.current = promptToConnection;
 

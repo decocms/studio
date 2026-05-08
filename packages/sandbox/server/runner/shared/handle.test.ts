@@ -39,29 +39,29 @@ describe("computeHandle", () => {
     expect(match![1]!.endsWith("-")).toBe(false);
   });
 
-  it("returns a bare 5-char hash when branch is null", () => {
+  it("returns s-<hash> when branch is null (DNS-1035: must start with letter)", () => {
     const handle = computeHandle(ID, null);
-    expect(handle).toMatch(/^[0-9a-f]{5}$/);
+    expect(handle).toMatch(/^s-[0-9a-f]{5}$/);
   });
 
-  it("returns a bare 5-char hash when branch is undefined", () => {
+  it("returns s-<hash> when branch is undefined", () => {
     const handle = computeHandle(ID);
-    expect(handle).toMatch(/^[0-9a-f]{5}$/);
+    expect(handle).toMatch(/^s-[0-9a-f]{5}$/);
   });
 
-  it("returns a bare 5-char hash when branch is empty string", () => {
+  it("returns s-<hash> when branch is empty string", () => {
     const handle = computeHandle(ID, "");
-    expect(handle).toMatch(/^[0-9a-f]{5}$/);
+    expect(handle).toMatch(/^s-[0-9a-f]{5}$/);
   });
 
-  it("returns a bare 5-char hash when branch sanitizes to empty", () => {
+  it("returns s-<hash> when branch sanitizes to empty", () => {
     const handle = computeHandle(ID, "///");
-    expect(handle).toMatch(/^[0-9a-f]{5}$/);
+    expect(handle).toMatch(/^s-[0-9a-f]{5}$/);
   });
 
-  it("returns a bare 5-char hash when branch is whitespace-only", () => {
+  it("returns s-<hash> when branch is whitespace-only", () => {
     const handle = computeHandle(ID, "   ");
-    expect(handle).toMatch(/^[0-9a-f]{5}$/);
+    expect(handle).toMatch(/^s-[0-9a-f]{5}$/);
   });
 
   it("is deterministic for the same (id, branch) pair", () => {
@@ -94,9 +94,9 @@ describe("computeHandle", () => {
     expect(handle.endsWith(`-${hashSandboxId(ID, 16)}`)).toBe(true);
   });
 
-  it("returns a bare hash of the requested length when branch is empty", () => {
+  it("returns s-<hash> of the requested length when branch is empty", () => {
     const handle = computeHandle(ID, null, { hashLen: 16 });
-    expect(handle).toMatch(/^[0-9a-f]{16}$/);
-    expect(handle).toBe(hashSandboxId(ID, 16));
+    expect(handle).toMatch(/^s-[0-9a-f]{16}$/);
+    expect(handle).toBe(`s-${hashSandboxId(ID, 16)}`);
   });
 });

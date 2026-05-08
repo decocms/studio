@@ -27,7 +27,8 @@ export function MergeSplitButton({ prNumber, disabled, send }: Props) {
     <div className="inline-flex items-stretch rounded-md">
       <Button
         size="sm"
-        className="rounded-r-none border-r border-primary-foreground/20"
+        variant="success"
+        className="rounded-r-none border-r border-success-foreground/20"
         disabled={disabled}
         onClick={squash}
       >
@@ -37,6 +38,7 @@ export function MergeSplitButton({ prNumber, disabled, send }: Props) {
         <DropdownMenuTrigger asChild>
           <Button
             size="sm"
+            variant="success"
             className="rounded-l-none px-2"
             disabled={disabled}
             aria-label="More actions"

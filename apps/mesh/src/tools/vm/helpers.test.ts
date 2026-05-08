@@ -9,7 +9,7 @@ describe("resolveRuntimeConfig", () => {
 
     expect(result.packageManager).toBeNull();
     expect(result.runtime).toBeNull();
-    expect(result.port).toBe("3000");
+    expect(result.port).toBeNull();
     expect(result.runtimeBinPath).toBeNull();
   });
 
@@ -80,9 +80,9 @@ describe("resolveRuntimeConfig", () => {
     expect(result.runtimeBinPath).toBe("/opt/deno/bin");
   });
 
-  it("defaults port to 3000", () => {
+  it("port is null when not explicitly set", () => {
     const metadata: VmMetadata = { runtime: { selected: "npm" } };
     const result = resolveRuntimeConfig(metadata);
-    expect(result.port).toBe("3000");
+    expect(result.port).toBeNull();
   });
 });

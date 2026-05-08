@@ -28,7 +28,7 @@ import { useChat as useAIChat, type UseChatHelpers } from "@ai-sdk/react";
 import {
   AUTOSEND_QUERY_VALUE,
   claimStoredAutosend,
-  markStoredAutosendSent,
+  clearStoredAutosend,
   writeStoredAutosend,
 } from "@/web/lib/autosend";
 import {
@@ -712,9 +712,6 @@ export function ChatContextProvider({
     transportRef.current = new DefaultChatTransport<UIMessage<Metadata>>({
       api: `/api/${org.slug}/decopilot/stream`,
       credentials: "include",
-      // mesh resolves the active org from x-org-id, not session state — see
-      // shell-layout.tsx and core/context-factory.ts (auth_query_membership_from_header).
-      headers: { "x-org-id": org.id },
       prepareReconnectToStreamRequest: ({ id }) => ({
         api: `/api/${org.slug}/decopilot/attach/${id}`,
       }),
@@ -812,7 +809,7 @@ export function ChatContextProvider({
     const newId = crypto.randomUUID();
     const targetVmcp = params.virtualMcpId ?? virtualMcpId;
     const carryBranch = targetVmcp === virtualMcpId ? currentBranch : null;
-    writeStoredAutosend(localStorage, locator, newId, params.message);
+    writeStoredAutosend(sessionStorage, locator, newId, params.message);
     void taskActions.create
       .mutateAsync({
         id: newId,
@@ -1070,7 +1067,7 @@ export function ActiveTaskProvider({
     messages.length > 0;
 
   // Stream manager (SSE + resume) — task-scoped
-  useStreamManager(taskId, org.id, chat, thread?.status);
+  useStreamManager(taskId, chat, thread?.status);
 
   // sendMessage — captures context at call time
   async function sendMessageInternal(params: SendMessageParams): Promise<void> {
@@ -1165,7 +1162,6 @@ export function ActiveTaskProvider({
       const res = await fetch(`/api/${org.slug}/decopilot/cancel/${taskId}`, {
         method: "POST",
         credentials: "include",
-        headers: { "x-org-id": org.id },
       });
       // 404 means the thread was never persisted (optimistic-only) — nothing to cancel
       if (res.status === 404) return;
@@ -1201,7 +1197,7 @@ export function ActiveTaskProvider({
   };
 
   // Autosend consumer: the URL carries only `autosend=true`; the message
-  // body lives in localStorage keyed by locator + taskId. It only boots empty
+  // body lives in sessionStorage keyed by locator + taskId. It only boots empty
   // threads, and the stored status gates duplicate sends across remounts.
   const autosendSearch = useSearch({ strict: false }) as { autosend?: string };
   const shouldAutosend = autosendSearch.autosend === AUTOSEND_QUERY_VALUE;
@@ -1210,11 +1206,11 @@ export function ActiveTaskProvider({
     if (!shouldAutosend) return;
     if (messages.length > 0) return;
 
-    const payload = claimStoredAutosend(localStorage, locator, taskId);
+    const payload = claimStoredAutosend(sessionStorage, locator, taskId);
     if (!payload) return;
 
     void sendMessageInternal(payload.message).then(() => {
-      markStoredAutosendSent(localStorage, locator, taskId);
+      clearStoredAutosend(sessionStorage, locator, taskId);
     });
     // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- storage status, not function identity, gates duplicate sends
   }, [shouldAutosend, messages.length, locator, taskId, sendMessageInternal]);

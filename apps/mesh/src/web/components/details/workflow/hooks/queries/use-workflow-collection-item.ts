@@ -24,6 +24,7 @@ export function usePollingWorkflowExecution(executionId?: string) {
   const client = useMCPClient({
     connectionId: connection.id,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const { data, isLoading } = useMCPToolCallQuery<ExecutionQueryResult>({
@@ -58,6 +59,7 @@ export function useExecutionCompletedStep(
   const client = useMCPClient({
     connectionId: connection.id,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const isEnabled = (options?.enabled ?? true) && !!executionId && !!stepName;

@@ -22,7 +22,11 @@ import type { RegistryItem } from "@/web/components/store/types";
 export function useRegistryApp(appId: string, options?: { enabled?: boolean }) {
   const { org } = useProjectContext();
   const registryId = WellKnownOrgMCPId.REGISTRY(org.id);
-  const client = useMCPClient({ connectionId: registryId, orgId: org.id });
+  const client = useMCPClient({
+    connectionId: registryId,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
 
   return useMCPToolCallQuery<RegistryItem | null>({
     client,

@@ -54,7 +54,7 @@ export function MainPanelContent({
     return <PreviewTab virtualMcpId={virtualMcpId} />;
   }
   if (automationTabParsed) {
-    return <AutomationTab tabId={activeTab} virtualMcpId={virtualMcpId} />;
+    return <AutomationTab tabId={activeTab} />;
   }
 
   const pinnedView = parsePinnedViewTabId(activeTab);

@@ -66,6 +66,9 @@ export function buildChildEnv(
     // Observability
     OTEL_SERVICE_NAME: settings.otelServiceName,
     CLICKHOUSE_URL: settings.clickhouseUrl,
+    OTEL_EXPORTER_OTLP_ENDPOINT: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
+    OTEL_EXPORTER_OTLP_PROTOCOL: process.env.OTEL_EXPORTER_OTLP_PROTOCOL,
+    OTEL_RESOURCE_ATTRIBUTES: process.env.OTEL_RESOURCE_ATTRIBUTES,
 
     // External service credentials
     DECO_SUPABASE_URL: settings.decoSupabaseUrl,
@@ -82,6 +85,7 @@ export function buildChildEnv(
       process.env.STUDIO_SANDBOX_PREVIEW_GATEWAY_NAME,
     STUDIO_SANDBOX_PREVIEW_GATEWAY_NAMESPACE:
       process.env.STUDIO_SANDBOX_PREVIEW_GATEWAY_NAMESPACE,
+    STUDIO_SANDBOX_SENTINEL_TOKEN: process.env.STUDIO_SANDBOX_SENTINEL_TOKEN,
     KUBERNETES_SERVICE_HOST: process.env.KUBERNETES_SERVICE_HOST,
     KUBERNETES_SERVICE_PORT: process.env.KUBERNETES_SERVICE_PORT,
     FREESTYLE_API_KEY: process.env.FREESTYLE_API_KEY,

@@ -20,6 +20,7 @@ import type { MeshContext } from "@/core/mesh-context";
 import type { AutomationsStorage } from "@/storage/automations";
 import type { Automation } from "@/storage/types";
 import { buildStreamRequest } from "./build-stream-request";
+import { resolveTierOverride } from "./resolve-tier-override";
 import type { Semaphore } from "./semaphore";
 
 // ============================================================================
@@ -122,7 +123,17 @@ export async function fireAutomation(opts: {
 
     let runError: string | undefined;
     try {
-      const request = buildStreamRequest(automation, triggerId, taskId);
+      // For tier-based automations, resolve the live model from the org's
+      // current Simple Mode slot — fetches fresh capabilities / limits /
+      // title from the AI provider so downstream gates (model-compat,
+      // max-tokens cap) see the right metadata.
+      const tierOverride = await resolveTierOverride(ctx, automation);
+      const request = buildStreamRequest(
+        automation,
+        triggerId,
+        taskId,
+        tierOverride,
+      );
       if (contextMessages) {
         request.messages = [
           ...request.messages,

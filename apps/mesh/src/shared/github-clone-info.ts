@@ -1,7 +1,13 @@
 /**
  * Authenticated clone URL + git identity from a connection's OAuth token.
- * Falls back to generic defaults on /user failure so callers never block
- * on a flaky upstream.
+ * The token is baked into the URL — `git clone` then stores it on the
+ * remote so subsequent fetch/pull/push from inside the sandbox keep
+ * working with no further plumbing.
+ *
+ * The token is set once per sandbox. If it expires or is revoked, the
+ * sandbox must be destroyed and recreated — studio does not push token
+ * updates to running daemons. Falls back to generic identity defaults on
+ * /user failure so callers never block on a flaky upstream.
  */
 
 import type { Kysely } from "kysely";

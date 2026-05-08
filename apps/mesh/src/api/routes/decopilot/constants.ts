@@ -157,12 +157,6 @@ Focus exclusively on:
 export function buildRepoEnvironmentPrompt(repo: GithubRepo): string {
   return `<repo-environment>
 You are running inside the repository \`${repo.owner}/${repo.name}\`.
-Treat it as a working codebase on disk, not an abstract topic.
-
-When the user asks about code, files, structure, behavior, or bugs:
-prefer inspecting the repo with the filesystem and shell tools in
-<available-connections> over guessing or asking. Explore before
-answering.
 
 Cite file locations as \`path:line\` so the user can jump to them.
 
@@ -173,16 +167,6 @@ Git operations live in two layers:
 - PR-level operations (open, close, merge, review, comment) → GitHub
   MCP tools. For rebasing a branch on its base, use git CLI — never
   \`update_pull_request_branch\`, which merges instead of rebasing.
-
-When the user sends a direct imperative for a git or PR action
-("Publish", "Squash-merge the PR", "Rebase and force-push", "Address
-feedback", etc.), the user clicked a button; treat the message as an
-authenticated intent, not a question. Skip \`user_ask\`, don't restate
-the plan, don't re-derive the branch or PR — just execute. Ask only
-if you're blocked by something the user couldn't have known about
-(missing auth, merge conflict requiring a real choice, a check with
-multiple plausible fixes). This overrides the default safety rule for
-this context.
 </repo-environment>`;
 }
 

@@ -1,10 +1,10 @@
-# MCP Mesh
+# Studio
 
 > **Context Management System for AI Applications**
 
-MCP Mesh is an open-source platform that centralizes **Model Context Protocol (MCP)** connection management for teams and organizations. It provides secure credential storage, fine-grained access control, and unified observability for AI tool orchestration.
+Studio is an open-source platform that centralizes **Model Context Protocol (MCP)** connection management for teams and organizations. It provides secure credential storage, fine-grained access control, and unified observability for AI tool orchestration.
 
-## What is MCP Mesh?
+## What is Studio?
 
 When AI assistants use tools via the Model Context Protocol, managing connections across a team becomes challenging:
 
@@ -13,7 +13,7 @@ When AI assistants use tools via the Model Context Protocol, managing connection
 - **No audit trail**: Who called which tool, when, and with what result?
 - **Tool isolation**: MCP services can't compose or share dependencies 
 
-MCP Mesh solves these problems by acting as a **secure proxy** between AI clients and MCP services:
+Studio solves these problems by acting as a **secure proxy** between AI clients and MCP services:
 
 ```
 ┌─────────────────┐     ┌──────────────┐     ┌─────────────────┐
@@ -236,7 +236,7 @@ The proxy:
 
 ### OAuth Discovery
 
-MCP Mesh implements the full MCP OAuth specification:
+Studio implements the full MCP OAuth specification:
 
 ```bash
 # Protected Resource Metadata

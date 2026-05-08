@@ -28,4 +28,70 @@ Self-hosted deployments load an `auth-config.json` file at startup (see your dep
 - `BETTER_AUTH_SECRET` (required)
 - `BETTER_AUTH_URL` / `BASE_URL` (recommended to set explicitly in production)
 
+## Deployment-wide SSO (OIDC)
+
+For self-hosted deployments where every user should authenticate through a
+single corporate Identity Provider, you can wire up SSO via environment
+variables. This is **a deployment-wide SSO**: the configured provider becomes
+the default for all logins matching the configured email domain — there's no
+per-org setup, no admin UI step. It's the right fit when you're running deco
+Studio for a single company and want SSO enforced from day one.
+
+If instead you want per-organization SSO (each org bringing its own IdP from
+the admin UI), don't set these env vars — use the in-app **Settings → SSO**
+flow.
+
+<Callout type="info">
+  Only one deployment-wide SSO provider can be active at a time. If both
+  Microsoft and Google envs are set, **Microsoft takes precedence**.
+</Callout>
+
+### Common variables
+
+| Variable | Description |
+| --- | --- |
+| `AUTH_SSO_DOMAIN` | Email domain that triggers SSO (e.g. `acme.com`). Required. |
+| `AUTH_SSO_SCOPES` | Comma-separated scopes. Default: `openid,email,profile`. |
+
+### Microsoft (Entra ID / Azure AD)
+
+```bash
+AUTH_SSO_DOMAIN=acme.com
+AUTH_SSO_MS_TENANT_ID=<azure-tenant-id>
+AUTH_SSO_MS_CLIENT_ID=<azure-app-client-id>
+AUTH_SSO_MS_CLIENT_SECRET=<azure-app-client-secret>
+```
+
+In the Azure portal, register an application and add the **Redirect URI**:
+
+```
+https://<your-domain>/api/auth/sso/callback/microsoft
+```
+
+### Google (Workspace)
+
+```bash
+AUTH_SSO_DOMAIN=acme.com
+AUTH_SSO_GOOGLE_CLIENT_ID=<google-oauth-client-id>
+AUTH_SSO_GOOGLE_CLIENT_SECRET=<google-oauth-client-secret>
+```
+
+In the Google Cloud Console, create an **OAuth 2.0 Client ID** of type *Web
+application* and add the **Authorized redirect URI**:
+
+```
+https://<your-domain>/api/auth/sso/callback/google
+```
+
+For Workspace tenants, restrict the OAuth consent screen to your organization
+so only users from your domain can sign in.
+
+### Social login vs. SSO
+
+These env vars wire up **OIDC SSO** (the `@better-auth/sso` plugin). They are
+separate from the **social login** buttons configured via `auth-config.json`
+(`socialProviders.google`, `socialProviders.github`) or via
+`AUTH_GOOGLE_CLIENT_ID` / `AUTH_GITHUB_CLIENT_ID`. Social login lets users
+authenticate with their personal account; deployment-wide SSO routes everyone
+matching `AUTH_SSO_DOMAIN` through the corporate IdP.
 

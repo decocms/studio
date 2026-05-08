@@ -8,6 +8,7 @@ import { Checkbox } from "@deco/ui/components/checkbox.tsx";
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Suspense, useDeferredValue, useState } from "react";
+import { useDebouncedValue } from "@/web/hooks/use-debounced-value.ts";
 import {
   useMutation,
   useQuery,
@@ -176,10 +177,12 @@ function PickerContent({
   const githubClient = useMCPClient({
     connectionId: effectiveConnection?.id ?? "",
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const selfClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const getFileContent = async (
@@ -303,7 +306,6 @@ function PickerContent({
       arguments: {
         name: `${repo.name}: auto-respond to issues`,
         virtual_mcp_id: virtualMcpId,
-        agent: { id: virtualMcpId },
         messages: automationInstructions,
         active: true,
       },
@@ -498,6 +500,7 @@ function PickerContent({
       <InstallationPicker
         connectionId={effectiveConnection.id}
         orgId={org.id}
+        orgSlug={org.slug}
         onSelect={onSelectInstallation}
         showBackButton={githubConnections.length > 1}
         onBack={() => setSelectedConnection(null)}
@@ -509,6 +512,7 @@ function PickerContent({
     <RepoBrowser
       connectionId={effectiveConnection.id}
       orgId={org.id}
+      orgSlug={org.slug}
       installation={selectedInstallation}
       onSelectRepo={(repo) => importMutation.mutate(repo)}
       isSaving={importMutation.isPending}
@@ -522,12 +526,14 @@ function PickerContent({
 function InstallationPicker({
   connectionId,
   orgId,
+  orgSlug,
   onSelect,
   showBackButton,
   onBack,
 }: {
   connectionId: string;
   orgId: string;
+  orgSlug: string;
   onSelect: (installation: GitHubInstallation) => void;
   showBackButton: boolean;
   onBack: () => void;
@@ -535,6 +541,7 @@ function InstallationPicker({
   const selfClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId,
+    orgSlug,
   });
 
   const installationsQuery = useQuery({
@@ -644,6 +651,7 @@ function InstallationPicker({
 function RepoBrowser({
   connectionId,
   orgId,
+  orgSlug,
   installation,
   onSelectRepo,
   isSaving,
@@ -653,6 +661,7 @@ function RepoBrowser({
 }: {
   connectionId: string;
   orgId: string;
+  orgSlug: string;
   installation: GitHubInstallation;
   onSelectRepo: (repo: Repo) => void;
   isSaving: boolean;
@@ -661,7 +670,8 @@ function RepoBrowser({
   hideAutoRespondCheckbox?: boolean;
 }) {
   const [query, setQuery] = useState("");
-  const deferredQuery = useDeferredValue(query);
+  const debouncedQuery = useDebouncedValue(query, 300);
+  const deferredQuery = useDeferredValue(debouncedQuery);
   const isStale = query !== deferredQuery;
 
   return (
@@ -692,6 +702,7 @@ function RepoBrowser({
           <RepoList
             connectionId={connectionId}
             orgId={orgId}
+            orgSlug={orgSlug}
             installation={installation}
             query={deferredQuery}
             onSelectRepo={onSelectRepo}
@@ -718,6 +729,7 @@ function RepoBrowser({
 function RepoList({
   connectionId,
   orgId,
+  orgSlug,
   installation,
   query,
   onSelectRepo,
@@ -725,12 +737,13 @@ function RepoList({
 }: {
   connectionId: string;
   orgId: string;
+  orgSlug: string;
   installation: GitHubInstallation;
   query: string;
   onSelectRepo: (repo: Repo) => void;
   isSaving: boolean;
 }) {
-  const githubClient = useMCPClient({ connectionId, orgId });
+  const githubClient = useMCPClient({ connectionId, orgId, orgSlug });
 
   const qualifier = installation.type === "User" ? "user" : "org";
   const searchQuery = query
@@ -744,11 +757,15 @@ function RepoList({
       installation.login,
       query,
     ),
-    queryFn: async () => {
-      const result = await githubClient.callTool({
-        name: "search_repositories",
-        arguments: { query: searchQuery, page: 1, perPage: 30 },
-      });
+    queryFn: async ({ signal }) => {
+      const result = await githubClient.callTool(
+        {
+          name: "search_repositories",
+          arguments: { query: searchQuery, page: 1, perPage: 30 },
+        },
+        undefined,
+        { signal },
+      );
       const content = (result as { content?: Array<{ text?: string }> })
         .content?.[0]?.text;
       if (!content) throw new Error("No response from search_repositories");

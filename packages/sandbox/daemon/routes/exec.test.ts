@@ -1,67 +1,97 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { TenantConfigStore } from "../config-store";
 import { Broadcaster } from "../events/broadcast";
-import { ProcessManager } from "../process/run-process";
-import { SetupOrchestrator } from "../setup/orchestrator";
+import { TaskManager } from "../process/task-manager";
 import { makeExecHandler } from "./exec";
-import type { Config } from "../types";
 
-const cfg: Config = {
-  appRoot: "/tmp/x",
-  packageManager: "npm",
-  devPort: 3000,
-  pathPrefix: "",
-  cloneUrl: "https://github.com/example/repo.git",
-  repoName: "repo",
-  branch: "main",
-  gitUserName: "test",
-  gitUserEmail: "test@example.com",
-  runtime: "node",
-  daemonToken: "x".repeat(32),
-  daemonBootId: "b",
-  proxyPort: 9000,
-};
-
-function req(name: string): Request {
-  return new Request(`http://x/_decopilot_vm/exec/${name}`, {
-    method: "POST",
-  });
+function req(name: string, body?: object): Request {
+  const init: RequestInit = { method: "POST" };
+  if (body !== undefined) {
+    init.body = Buffer.from(JSON.stringify(body), "utf-8").toString("base64");
+  }
+  return new Request(`http://x/_decopilot_vm/exec/${name}`, init);
 }
 
 describe("exec handler", () => {
-  it("setup: returns 409 when setupRunning", async () => {
-    const b = new Broadcaster(100);
-    const pm = new ProcessManager({ broadcaster: b, dropPrivileges: false });
-    const orch = new SetupOrchestrator({
-      config: cfg,
-      broadcaster: b,
-      processManager: pm,
+  let appRoot: string;
+  let logsDir: string;
+  let taskManager: TaskManager;
+  let store: TenantConfigStore;
+  let broadcaster: Broadcaster;
+
+  beforeEach(() => {
+    appRoot = mkdtempSync(join(tmpdir(), "exec-root-"));
+    logsDir = mkdtempSync(join(tmpdir(), "exec-logs-"));
+    taskManager = new TaskManager({
+      logsDir,
+      ttlMs: 60_000,
+      reapIntervalMs: 60_000,
     });
+    store = new TenantConfigStore();
+    broadcaster = new Broadcaster(64 * 1024);
+  });
+
+  afterEach(() => {
+    taskManager.shutdown();
+    rmSync(appRoot, { recursive: true, force: true });
+    rmSync(logsDir, { recursive: true, force: true });
+  });
+
+  it("rejects 409 when no application is configured", async () => {
     const h = makeExecHandler({
-      config: cfg,
-      processManager: pm,
-      orchestrator: orch,
-      setupState: orch.state,
+      repoDir: appRoot,
+      store,
+      taskManager,
+      broadcaster,
     });
-    orch.state.running = true;
-    const res = await h(req("setup"));
+    const res = await h(req("dev"));
     expect(res.status).toBe(409);
   });
 
-  it("<unknown>: returns 400 when setup not done", async () => {
-    const b = new Broadcaster(100);
-    const pm = new ProcessManager({ broadcaster: b, dropPrivileges: false });
-    const orch = new SetupOrchestrator({
-      config: cfg,
-      broadcaster: b,
-      processManager: pm,
+  it("rejects 404 when script is not in package.json", async () => {
+    writeFileSync(
+      join(appRoot, "package.json"),
+      JSON.stringify({ scripts: { test: "echo test" } }),
+    );
+    await store.apply({
+      application: {
+        packageManager: { name: "npm" },
+        runtime: "node",
+      },
     });
     const h = makeExecHandler({
-      config: cfg,
-      processManager: pm,
-      orchestrator: orch,
-      setupState: orch.state,
+      repoDir: appRoot,
+      store,
+      taskManager,
+      broadcaster,
     });
     const res = await h(req("dev"));
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(404);
+  });
+
+  it("returns taskId for valid script (background mode default)", async () => {
+    writeFileSync(
+      join(appRoot, "package.json"),
+      JSON.stringify({ scripts: { test: "echo hi" } }),
+    );
+    await store.apply({
+      application: {
+        packageManager: { name: "npm" },
+        runtime: "node",
+      },
+    });
+    const h = makeExecHandler({
+      repoDir: appRoot,
+      store,
+      taskManager,
+      broadcaster,
+    });
+    const res = await h(req("test"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { taskId: string };
+    expect(typeof body.taskId).toBe("string");
   });
 });

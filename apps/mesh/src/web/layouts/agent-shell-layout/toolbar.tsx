@@ -125,12 +125,7 @@ function ToolbarCenter({ children }: { children: ReactNode }) {
 
 function ToolbarTabsSlot() {
   const { setTabsEl } = useToolbarCtx();
-  return (
-    <div
-      ref={setTabsEl}
-      className="shrink-0 flex items-center overflow-x-auto"
-    />
-  );
+  return <div ref={setTabsEl} className="shrink-0 flex items-center" />;
 }
 
 function ToolbarTabs({ children }: { children: ReactNode }) {

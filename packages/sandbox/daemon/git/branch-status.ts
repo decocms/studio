@@ -1,59 +1,111 @@
 import fs from "node:fs";
 import type { Broadcaster } from "../events/broadcast";
-import type { Config, BranchStatus } from "../types";
-import { gitSync } from "./git-sync";
+import type { BranchStatus, BranchStatusReady, Config } from "../types";
+import { gitSync as rawGitSync } from "./git-sync";
+
+const gitSync = (args: string[], opts: Parameters<typeof rawGitSync>[1]) =>
+  rawGitSync(["-c", "safe.directory=*", ...args], opts);
 
 export class BranchStatusMonitor {
-  private last: BranchStatus | null = null;
+  private last: BranchStatus = { kind: "initializing" };
   private timer: ReturnType<typeof setTimeout> | null = null;
   private watcher: ReturnType<typeof fs.watch> | null = null;
+  private pollFallback: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private readonly config: Config,
     private readonly broadcaster: Broadcaster,
   ) {}
 
-  getLast(): BranchStatus | null {
+  getLast(): BranchStatus {
     return this.last;
   }
 
-  emit(): void {
+  /** Set a non-ready phase. Always broadcasts when the kind/payload changed. */
+  setPhase(next: Exclude<BranchStatus, BranchStatusReady>): void {
+    if (this.equal(this.last, next)) return;
+    this.last = next;
+    this.broadcast(next);
+  }
+
+  /**
+   * Compute git status and enter 'ready'. Idempotent: skips broadcast when
+   * the computed status equals the last 'ready' value. Starts the .git
+   * watcher on first call.
+   */
+  markReady(): void {
     const next = this.compute();
     if (!next) return;
-    if (this.last && JSON.stringify(this.last) === JSON.stringify(next)) {
-      return;
-    }
+    if (this.equal(this.last, next)) return;
     this.last = next;
+    this.broadcast(next);
+    this.ensureWatch();
+  }
+
+  /** Stop the .git watcher and any polling fallback. */
+  stop(): void {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    if (this.watcher) {
+      this.watcher.close();
+      this.watcher = null;
+    }
+    if (this.pollFallback) {
+      clearInterval(this.pollFallback);
+      this.pollFallback = null;
+    }
+  }
+
+  private broadcast(s: BranchStatus): void {
     this.broadcaster.broadcastEvent("branch-status", {
       type: "branch-status",
-      ...next,
+      ...s,
     });
   }
 
-  schedule(): void {
+  private equal(a: BranchStatus, b: BranchStatus): boolean {
+    return JSON.stringify(a) === JSON.stringify(b);
+  }
+
+  private schedule(): void {
     if (this.timer) return;
     this.timer = setTimeout(() => {
       this.timer = null;
-      this.emit();
+      // fs.watch fires meaningfully only once we're already in 'ready';
+      // ignore otherwise (orchestrator owns non-ready transitions).
+      if (this.last.kind === "ready") this.markReady();
     }, 250);
   }
 
-  watch(): void {
-    if (this.watcher) return;
-    const gitDir = `${this.config.appRoot}/.git`;
+  private ensureWatch(): void {
+    if (this.watcher || this.pollFallback) return;
+    const gitDir = `${this.config.repoDir}/.git`;
     try {
       this.watcher = fs.watch(gitDir, { recursive: true }, () =>
         this.schedule(),
       );
+      // Swallow errors (e.g. ENOENT when .git is removed during shutdown)
+      // — without this the FSWatcher emits an unhandled 'error' event.
+      this.watcher.on("error", () => {});
     } catch {
-      setInterval(() => this.emit(), 5000);
+      this.pollFallback = setInterval(() => {
+        if (this.last.kind === "ready") this.markReady();
+      }, 5000);
     }
   }
 
-  private compute(): BranchStatus | null {
+  private compute(): BranchStatusReady | null {
     const run = (args: string[]) => {
       try {
-        return gitSync(args, { cwd: this.config.appRoot });
+        return gitSync(args, {
+          cwd: this.config.repoDir,
+          // Pin discovery to repoDir so a parent .git (e.g. the host's
+          // workspace tree containing .deco/sandboxes/<handle>/repo) can't
+          // hijack the lookup and report the wrong branch.
+          env: { ...process.env, GIT_CEILING_DIRECTORIES: this.config.repoDir },
+        });
       } catch {
         return "";
       }
@@ -93,6 +145,7 @@ export class BranchStatusMonitor {
       }
       const headSha = run(["rev-parse", branchRef]);
       return {
+        kind: "ready",
         branch,
         base,
         workingTreeDirty: dirty,

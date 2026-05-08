@@ -16,11 +16,10 @@ const MAX_RESUME_RETRIES = 3;
 
 export function useStreamManager(
   threadId: string,
-  orgId: string,
   chat: UseChatHelpers<ChatMessage>,
   threadStatus: ThreadDisplayStatus | undefined,
 ) {
-  const { locator } = useProjectContext();
+  const { locator, org } = useProjectContext();
   const queryClient = useQueryClient();
 
   // Per-mount in-flight guard (NOT module-scoped — useChat is per-mount, not
@@ -117,7 +116,7 @@ export function useStreamManager(
 
   // Task-scoped SSE (for stream resume on this specific task)
   useDecopilotEvents({
-    orgId,
+    orgSlug: org.slug,
     taskId: threadId,
     onStep: () => tryResumeStream("sse-step"),
     onFinish: () => {

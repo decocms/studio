@@ -85,10 +85,7 @@ export const VM_START = defineTool({
       ctx,
     );
 
-    const githubRepo = (metadata as GithubRepoMeta).githubRepo;
-    if (!githubRepo) {
-      throw new Error("No GitHub repo connected");
-    }
+    const githubRepo = (metadata as GithubRepoMeta).githubRepo ?? null;
 
     const runnerKind = resolveRunnerKindFromEnv();
     await reapStaleRunner(ctx, existing, runnerKind);
@@ -223,7 +220,8 @@ async function provisionSandbox(
     throw new Error("GitHub connection id missing on virtual MCP metadata");
   }
 
-  let { runtime, packageManager, port } = resolveRuntimeConfig(metadata);
+  let { runtime, packageManager, port, packageManagerPath } =
+    resolveRuntimeConfig(metadata);
 
   // Skip clone + lockfile probe entirely when no repo is connected — the
   // sandbox boots blank (Docker only; freestyle requires a baked clone).
@@ -285,13 +283,17 @@ async function provisionSandbox(
   }
 
   // Missing workload = clone-only. Freestyle treats it as "node, no install,
-  // no dev server"; Docker lets the runner pick its default.
+  // no dev server"; Docker lets the runner pick its default. `devPort` is
+  // omitted unless the user explicitly pinned one — leaves runners free to
+  // assign a unique dynamic port (host runner needs this; multiple sandboxes
+  // share the host network and can't all bind 3000).
   const workload: Workload | undefined =
     runtime && packageManager
       ? {
           runtime,
           packageManager,
-          devPort: Number(port),
+          ...(port !== null ? { devPort: Number(port) } : {}),
+          ...(packageManagerPath ? { packageManagerPath } : {}),
         }
       : undefined;
 

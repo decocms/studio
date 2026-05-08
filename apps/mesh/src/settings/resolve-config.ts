@@ -73,7 +73,7 @@ export function resolveConfig(
 
     // Observability
     clickhouseUrl: envVars.CLICKHOUSE_URL,
-    otelServiceName: envVars.OTEL_SERVICE_NAME || "mesh",
+    otelServiceName: envVars.OTEL_SERVICE_NAME || "studio",
 
     // Config files
     configPath: envVars.CONFIG_PATH || "./config.json",

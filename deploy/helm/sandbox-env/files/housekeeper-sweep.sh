@@ -57,6 +57,7 @@ YAML
 #   __not_found__     HTTP 404
 #   __server_error__  HTTP 5xx
 #   __bad_shape__     HTTP 200 but no parseable idleMs
+#   __unclaimed__     HTTP 200 but claimed=false (warm-pool pod awaiting first workload)
 probe_daemon() {
   ip="$1"
   body=$(mktemp)
@@ -71,6 +72,16 @@ probe_daemon() {
   fi
   case "$code" in
     2*)
+      # Warm-pool pods boot with claimed=false and must not be reaped before
+      # mesh delivers a workload via POST /_decopilot_vm/config. Older daemons
+      # omit the field; treat absent as claimed=true to preserve existing
+      # behaviour on cold-start deployments.
+      claimed=$(sed -n 's/.*"claimed"[[:space:]]*:[[:space:]]*\(true\|false\).*/\1/p' "$body")
+      if [ "$claimed" = "false" ]; then
+        rm -f "$body"
+        echo "__unclaimed__"
+        return
+      fi
       idle=$(sed -n 's/.*"idleMs"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$body")
       rm -f "$body"
       case "$idle" in
@@ -183,6 +194,10 @@ while IFS='|' read -r CLAIM READY REASON; do
 
   RESULT=$(probe_daemon "$POD_IP")
   case "$RESULT" in
+    __unclaimed__)
+      log "skip claim=$CLAIM reason=unclaimed (warm-pool pod awaiting first workload)"
+      skipped=$((skipped + 1))
+      ;;
     __unreachable__|__not_found__|__server_error__|__bad_shape__)
       log "skip claim=$CLAIM reason=probe-failed detail=$RESULT"
       skipped=$((skipped + 1))

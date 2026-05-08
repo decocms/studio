@@ -293,3 +293,12 @@ process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 // Bun keeps the process alive after terminal close — without SIGHUP we
 // accumulate zombies still holding port 7070.
 process.on("SIGHUP", () => gracefulShutdown("SIGHUP"));
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[process] Unhandled rejection:", reason);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("[process] Uncaught exception:", err);
+  gracefulShutdown("uncaughtException");
+});

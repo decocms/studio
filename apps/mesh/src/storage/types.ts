@@ -736,6 +736,21 @@ export {
   type ThreadStatus,
 } from "@decocms/mesh-sdk";
 
+export interface InflightAsyncJob {
+  /** Tool call that submitted this job (for diagnostics; not the resume key). */
+  toolCallId: string;
+  /** Adapter id that owns this job — must equal `MeshProvider.info.id`. */
+  provider: string;
+  /** Provider-side model id, e.g. `deep-research-preview-04-2026`. */
+  modelId: string;
+  /** Original query text — used together with provider+modelId to deduplicate on resume. */
+  query: string;
+  /** Adapter-opaque handle (e.g. Gemini interaction id) — passed back to `resume()`. */
+  jobId: string;
+  /** ISO timestamp set when the job was submitted. */
+  startedAt: string;
+}
+
 export interface ThreadTable {
   id: string;
   organization_id: string;
@@ -755,6 +770,17 @@ export interface ThreadTable {
     Date | null,
     Date | string | null,
     Date | string | null
+  >;
+  /**
+   * Long-running provider jobs (`AsyncResearchProvider`) still in flight for
+   * this thread. Each entry is removed when the underlying job reaches a
+   * terminal state. Surviving entries are how a fresh pod re-attaches to a
+   * job after a crash.
+   */
+  inflight_async_jobs: ColumnType<
+    InflightAsyncJob[] | null,
+    string | null,
+    string | null
   >;
   /** Virtual MCP (agent) this thread was initiated with */
   virtual_mcp_id: string;
@@ -796,6 +822,7 @@ export interface Thread {
   run_owner_pod: string | null;
   run_config: Record<string, unknown> | null;
   run_started_at: string | null;
+  inflight_async_jobs: InflightAsyncJob[] | null;
   /** Virtual MCP (agent) this thread was initiated with */
   virtual_mcp_id: string;
   /** Git branch this thread is pinned to (GitHub-linked virtualmcps only) */
@@ -896,11 +923,10 @@ export interface AutomationTable {
   name: string;
   active: boolean;
   created_by: string;
-  agent: string; // JSON string: { id, mode }
   messages: string; // JSON string: UIMessage[]
   models: string; // JSON string: { connectionId, thinking, coding?, fast? }
   temperature: number;
-  virtual_mcp_id: string | null;
+  virtual_mcp_id: string;
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
@@ -914,11 +940,10 @@ export interface Automation {
   name: string;
   active: boolean;
   created_by: string;
-  agent: string;
   messages: string;
   models: string;
   temperature: number;
-  virtual_mcp_id: string | null;
+  virtual_mcp_id: string;
   created_at: string;
   updated_at: string;
 }

@@ -1,16 +1,23 @@
+import type { UpstreamStatus } from "../probe";
+import type { BranchStatus } from "../types";
 import type { Broadcaster } from "./broadcast";
 import { sseFormat } from "./sse-format";
 
 export interface SseHandshakeDeps {
   broadcaster: Broadcaster;
   getLastStatus: () => {
-    ready: boolean;
-    htmlSupport: boolean;
+    status: UpstreamStatus;
     port: number | null;
+    htmlSupport: boolean;
   };
   getDiscoveredScripts: () => string[] | null;
-  getActiveProcesses: () => string[];
-  getLastBranchStatus: () => unknown | null;
+  getActiveTasks: () => Array<{
+    id: string;
+    command: string;
+    logName?: string;
+  }>;
+  getIntent: () => { state: "running" | "paused"; reason?: string };
+  getLastBranchStatus: () => BranchStatus;
   maxClients: number;
 }
 
@@ -54,23 +61,28 @@ export function makeSseStream(
 
       c.enqueue(
         sseFormat(
-          "processes",
+          "tasks",
           JSON.stringify({
-            type: "processes",
-            active: deps.getActiveProcesses(),
+            type: "tasks",
+            active: deps.getActiveTasks(),
           }),
         ),
       );
 
+      c.enqueue(
+        sseFormat(
+          "intent",
+          JSON.stringify({ type: "intent", ...deps.getIntent() }),
+        ),
+      );
+
       const lastBranch = deps.getLastBranchStatus();
-      if (lastBranch) {
-        c.enqueue(
-          sseFormat(
-            "branch-status",
-            JSON.stringify({ type: "branch-status", ...lastBranch }),
-          ),
-        );
-      }
+      c.enqueue(
+        sseFormat(
+          "branch-status",
+          JSON.stringify({ type: "branch-status", ...lastBranch }),
+        ),
+      );
 
       deps.broadcaster.register(controller);
 

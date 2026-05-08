@@ -1,5 +1,5 @@
 /**
- * Single SSE connection to mesh's `/api/vm-events`, fanned out via context.
+ * Single SSE connection to mesh's `/api/:org/vm-events`, fanned out via context.
  *
  * Keyed on `(virtualMcpId, branch)` — mesh derives the userId from the
  * authenticated session and composes the same claim handle a racing
@@ -38,12 +38,17 @@ import type {
 
 export type { ClaimFailureReason, ClaimPhase };
 
+import type { UpstreamStatus } from "../upstream-status";
+export type { UpstreamStatus };
+
 export interface VmStatus {
-  ready: boolean;
+  status: UpstreamStatus;
+  port: number | null;
   htmlSupport: boolean;
 }
 
-export interface BranchStatus {
+export interface BranchStatusReady {
+  kind: "ready";
   branch: string;
   base: string;
   workingTreeDirty: boolean;
@@ -53,6 +58,14 @@ export interface BranchStatus {
   /** HEAD sha (falls back to origin/<branch>). Empty if the daemon couldn't compute it. */
   headSha: string;
 }
+
+export type BranchStatus =
+  | { kind: "initializing" }
+  | { kind: "cloning" }
+  | { kind: "clone-failed"; error: string }
+  | { kind: "checking-out"; to: string }
+  | { kind: "checkout-failed"; error: string }
+  | BranchStatusReady;
 
 export type ChunkHandler = (source: string, data: string) => void;
 export type ReloadHandler = () => void;
@@ -72,6 +85,8 @@ export interface VmEventsValue {
   notFound: boolean;
   scripts: string[];
   activeProcesses: string[];
+  intent: { state: "running" | "paused"; reason?: string };
+  installing: boolean;
   branchStatus: BranchStatus | null;
   getBuffer: (source: string) => string;
   hasData: (source: string) => boolean;
@@ -82,11 +97,13 @@ export interface VmEventsValue {
 
 const DEFAULT_VALUE: VmEventsValue = {
   phase: null,
-  status: { ready: false, htmlSupport: false },
+  status: { status: "booting", port: null, htmlSupport: false },
   suspended: false,
   notFound: false,
   scripts: [],
   activeProcesses: [],
+  intent: { state: "running" },
+  installing: false,
   branchStatus: null,
   getBuffer: () => "",
   hasData: () => false,
@@ -127,6 +144,9 @@ const DAEMON_EVENT_TYPES = [
   "status",
   "scripts",
   "processes",
+  "tasks",
+  "intent",
+  "phases",
   "reload",
   "branch-status",
 ] as const;
@@ -143,13 +163,19 @@ export function VmEventsProvider({
   const { org } = useProjectContext();
   const [phase, setPhase] = useState<ClaimPhase | null>(null);
   const [status, setStatus] = useState<VmStatus>({
-    ready: false,
+    status: "booting",
+    port: null,
     htmlSupport: false,
   });
   const [suspended, setSuspended] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const [scripts, setScripts] = useState<string[]>([]);
   const [activeProcesses, setActiveProcesses] = useState<string[]>([]);
+  const [intent, setIntent] = useState<{
+    state: "running" | "paused";
+    reason?: string;
+  }>({ state: "running" });
+  const [installing, setInstalling] = useState(false);
   const [branchStatus, setBranchStatus] = useState<BranchStatus | null>(null);
   // Bumped on log chunks so getBuffer/hasData consumers re-render; buffer
   // mutation alone doesn't.
@@ -158,6 +184,7 @@ export function VmEventsProvider({
   const buffers = useRef(new Map<string, ChunkBuffer>());
   const chunkHandlers = useRef(new Set<ChunkHandler>());
   const reloadHandlers = useRef(new Set<ReloadHandler>());
+  const prevPortRef = useRef<number | null>(null);
 
   const getOrCreateBuffer = (source: string) => {
     let buf = buffers.current.get(source);
@@ -172,23 +199,22 @@ export function VmEventsProvider({
   useEffect(() => {
     // Reset on key change so stale data doesn't linger across branches.
     setPhase(null);
-    setStatus({ ready: false, htmlSupport: false });
+    setStatus({ status: "booting", port: null, htmlSupport: false });
+    prevPortRef.current = null;
     setSuspended(false);
     setNotFound(false);
     setScripts([]);
     setActiveProcesses([]);
+    setIntent({ state: "running" });
+    setInstalling(false);
     setBranchStatus(null);
     buffers.current.clear();
 
     if (!virtualMcpId || !branch) return;
 
-    // EventSource can't set custom headers, so x-org-id rides as a query
-    // param. authenticateRequest reads it as a fallback when the header is
-    // absent.
     const sseUrl =
-      `/api/vm-events?virtualMcpId=${encodeURIComponent(virtualMcpId)}` +
-      `&branch=${encodeURIComponent(branch)}` +
-      `&x-org-id=${encodeURIComponent(org.id)}`;
+      `/api/${encodeURIComponent(org.slug)}/vm-events?virtualMcpId=${encodeURIComponent(virtualMcpId)}` +
+      `&branch=${encodeURIComponent(branch)}`;
 
     let disposed = false;
     let reconnectAttempt = 0;
@@ -236,21 +262,21 @@ export function VmEventsProvider({
       // The sandbox is gone (idle-evicted, VM_DELETE'd, or its pod terminated
       // and mesh has stopped finding the handle). Everything we've cached is
       // about to be stale, so reset:
-      //   - phase: residual `ready` would otherwise keep `lifecycleActive`
+      //   - phase: residual state would otherwise keep `lifecycleActive`
       //     stuck on "Almost ready" in the booting overlay even though
       //     nothing is starting.
       //   - status / scripts / processes / branchStatus / log buffers: these
-      //     describe a sandbox that no longer exists. preview.tsx's
-      //     `bootTrackedRef` keys on previewUrl, so flipping `status.ready`
-      //     to false ensures the next provisioned sandbox is treated as a
-      //     fresh boot rather than instantly-ready.
+      //     describe a sandbox that no longer exists. Resetting to "booting"
+      //     ensures the next provisioned sandbox goes through the boot flow.
       // `notFound = true` then drives preview.tsx's self-heal flow when a
       // vmEntry exists; the empty "Start Server" state when it doesn't.
       setNotFound(true);
       setPhase(null);
-      setStatus({ ready: false, htmlSupport: false });
+      setStatus({ status: "booting", port: null, htmlSupport: false });
       setScripts([]);
       setActiveProcesses([]);
+      setIntent({ state: "running" });
+      setInstalling(false);
       setBranchStatus(null);
       buffers.current.clear();
     };
@@ -273,14 +299,64 @@ export function VmEventsProvider({
           }
           setLogTick((t) => t + 1);
         } else if (e.type === "status") {
+          const s = data.status;
+          const newPort = typeof data.port === "number" ? data.port : null;
+          const prevPort = prevPortRef.current;
+          prevPortRef.current = newPort;
           setStatus({
-            ready: Boolean(data.ready),
+            status:
+              s === "online" || s === "offline" || s === "booting"
+                ? s
+                : "booting",
+            port: newPort,
             htmlSupport: Boolean(data.htmlSupport),
           });
+          // Proxy retargeted to a different active port — the iframe is stuck on
+          // whatever page it last loaded. Force-reload so it picks up the new backend.
+          if (prevPort !== null && newPort !== null && prevPort !== newPort) {
+            for (const fn of reloadHandlers.current) {
+              try {
+                fn();
+              } catch {
+                // swallow
+              }
+            }
+          }
         } else if (e.type === "scripts") {
           setScripts(data.scripts ?? []);
         } else if (e.type === "processes") {
           setActiveProcesses(data.active ?? []);
+        } else if (e.type === "tasks") {
+          // Daemon's task-manager surface; map to the activeProcesses array
+          // of script names so the UI's Run/Restart button can render
+          // against running script tabs. Match on `logName` — set by
+          // /exec/<name> via the spec — instead of regex-parsing `command`,
+          // which breaks for any task with trailing args (e.g. `bun run
+          // format -- --fix`).
+          const active = Array.isArray(data.active)
+            ? (data.active as Array<{ logName?: string }>)
+                .map((j) => j?.logName ?? "")
+                .filter(Boolean)
+            : [];
+          setActiveProcesses(active);
+        } else if (e.type === "intent") {
+          const next = data as {
+            state?: "running" | "paused";
+            reason?: string;
+          };
+          if (next.state === "running" || next.state === "paused") {
+            setIntent({ state: next.state, reason: next.reason });
+          }
+        } else if (e.type === "phases") {
+          const phases =
+            (
+              data as {
+                phases?: Array<{ name: string; status: string }>;
+              }
+            ).phases ?? [];
+          setInstalling(
+            phases.some((p) => p.name === "install" && p.status === "running"),
+          );
         } else if (e.type === "reload") {
           for (const fn of reloadHandlers.current) {
             try {
@@ -290,15 +366,49 @@ export function VmEventsProvider({
             }
           }
         } else if (e.type === "branch-status") {
-          setBranchStatus({
-            branch: String(data.branch ?? ""),
-            base: String(data.base ?? "main"),
-            workingTreeDirty: Boolean(data.workingTreeDirty),
-            unpushed: Number(data.unpushed ?? 0),
-            aheadOfBase: Number(data.aheadOfBase ?? 0),
-            behindBase: Number(data.behindBase ?? 0),
-            headSha: String(data.headSha ?? ""),
-          });
+          const kind = String(data.kind ?? "initializing");
+          switch (kind) {
+            case "ready":
+              setBranchStatus({
+                kind: "ready",
+                branch: String(data.branch ?? ""),
+                base: String(data.base ?? "main"),
+                workingTreeDirty: Boolean(data.workingTreeDirty),
+                unpushed: Number(data.unpushed ?? 0),
+                aheadOfBase: Number(data.aheadOfBase ?? 0),
+                behindBase: Number(data.behindBase ?? 0),
+                headSha: String(data.headSha ?? ""),
+              });
+              break;
+            case "initializing":
+              setBranchStatus({ kind: "initializing" });
+              break;
+            case "cloning":
+              setBranchStatus({ kind: "cloning" });
+              break;
+            case "clone-failed":
+              setBranchStatus({
+                kind: "clone-failed",
+                error: String(data.error ?? ""),
+              });
+              break;
+            case "checkout-failed":
+              setBranchStatus({
+                kind: "checkout-failed",
+                error: String(data.error ?? ""),
+              });
+              break;
+            case "checking-out":
+              setBranchStatus({
+                kind: "checking-out",
+                to: String(data.to ?? ""),
+              });
+              break;
+            default:
+              console.warn("[vm-events] unknown branch-status kind:", kind);
+              setBranchStatus({ kind: "initializing" });
+              break;
+          }
         }
       } catch {
         // ignore parse errors
@@ -359,7 +469,7 @@ export function VmEventsProvider({
       if (reconnectTimer) clearTimeout(reconnectTimer);
       clearSuspendTimer();
     };
-  }, [virtualMcpId, branch, org.id]);
+  }, [virtualMcpId, branch, org.slug]);
 
   const value: VmEventsValue = {
     phase,
@@ -368,6 +478,8 @@ export function VmEventsProvider({
     notFound,
     scripts,
     activeProcesses,
+    intent,
+    installing,
     branchStatus,
     getBuffer: (source: string) => buffers.current.get(source)?.get() ?? "",
     hasData: (source: string) =>

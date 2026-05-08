@@ -1,6 +1,7 @@
 import { Suspense, useState, useEffect } from "react";
 import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import { Controller, useForm } from "react-hook-form";
+import { useDebouncedAutosave } from "@/web/hooks/use-debounced-autosave.ts";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -13,6 +14,9 @@ import {
   AlertCircle,
   CheckCircle,
   RefreshCw01,
+  Edit01,
+  Check,
+  X,
 } from "@untitledui/icons";
 import { Page } from "@/web/components/page";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -98,7 +102,49 @@ function KeyList({
   isDeleting: boolean;
 }) {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [editTarget, setEditTarget] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState("");
   const targetKey = keys.find((k) => k.id === deleteTarget);
+
+  const { org } = useProjectContext();
+  const queryClient = useQueryClient();
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+
+  const { mutate: updateLabel, isPending: isUpdating } = useMutation({
+    mutationFn: async ({ keyId, label }: { keyId: string; label: string }) => {
+      await client.callTool({
+        name: "AI_PROVIDER_KEY_UPDATE",
+        arguments: { keyId, label },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: KEYS.aiProviderKeys(org.id) });
+      setEditTarget(null);
+    },
+    onError: () => {
+      toast.error("Failed to update key label");
+    },
+  });
+
+  const startEdit = (key: AiProviderKey) => {
+    setEditTarget(key.id);
+    setEditLabel(key.label);
+  };
+
+  const cancelEdit = () => {
+    setEditTarget(null);
+    setEditLabel("");
+  };
+
+  const confirmEdit = (keyId: string) => {
+    const trimmed = editLabel.trim();
+    if (!trimmed) return;
+    updateLabel({ keyId, label: trimmed });
+  };
 
   return (
     <div className="flex flex-col gap-2 mt-4">
@@ -107,24 +153,74 @@ function KeyList({
           key={key.id}
           className="flex items-center justify-between p-2 rounded-md bg-muted/50 text-sm"
         >
-          <div className="flex items-center gap-2 overflow-hidden">
+          <div className="flex items-center gap-2 overflow-hidden flex-1 min-w-0">
             <Key01 size={14} className="text-muted-foreground shrink-0" />
-            <span className="font-medium truncate">{key.label}</span>
-            <span className="text-xs text-muted-foreground shrink-0">
-              added {formatDistanceToNow(new Date(key.createdAt))} ago
-            </span>
+            {editTarget === key.id ? (
+              <input
+                autoFocus
+                className="font-medium bg-transparent border-b border-border outline-none flex-1 min-w-0"
+                value={editLabel}
+                onChange={(e) => setEditLabel(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") confirmEdit(key.id);
+                  if (e.key === "Escape") cancelEdit();
+                }}
+              />
+            ) : (
+              <>
+                <span className="font-medium truncate">{key.label}</span>
+                <span className="text-xs text-muted-foreground shrink-0">
+                  added {formatDistanceToNow(new Date(key.createdAt))} ago
+                </span>
+              </>
+            )}
           </div>
-          {/* Stop propagation so trash click doesn't trigger card's onClick */}
-          <div onClick={(e) => e.stopPropagation()}>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 text-muted-foreground hover:text-destructive"
-              disabled={isDeleting}
-              onClick={() => setDeleteTarget(key.id)}
-            >
-              <Trash01 size={14} />
-            </Button>
+          {/* Stop propagation so clicks don't trigger card's onClick */}
+          <div
+            className="flex items-center gap-0.5 shrink-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {editTarget === key.id ? (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                  disabled={isUpdating || !editLabel.trim()}
+                  onClick={() => confirmEdit(key.id)}
+                >
+                  <Check size={14} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                  onClick={cancelEdit}
+                >
+                  <X size={14} />
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                  onClick={() => startEdit(key)}
+                >
+                  <Edit01 size={14} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                  disabled={isDeleting}
+                  onClick={() => setDeleteTarget(key.id)}
+                >
+                  <Trash01 size={14} />
+                </Button>
+              </>
+            )}
           </div>
         </div>
       ))}
@@ -184,6 +280,7 @@ function ConnectApiKeyForm({
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const queryClient = useQueryClient();
   const [showKey, setShowKey] = useState(false);
@@ -303,6 +400,7 @@ function ConnectOpenAICompatibleForm({
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const queryClient = useQueryClient();
   const [showKey, setShowKey] = useState(false);
@@ -453,6 +551,7 @@ function ProviderCard({
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const queryClient = useQueryClient();
   const [isConnectFormOpen, setIsConnectFormOpen] = useState(false);
@@ -496,7 +595,7 @@ function ProviderCard({
           providerId: provider.id,
           code,
           stateToken,
-          label: "Connected via OAuth",
+          label: provider.name,
         },
       })) as { isError?: boolean; content?: { text?: string }[] };
       if (result?.isError) {
@@ -826,6 +925,7 @@ function OpenAICompatiblePresetCard({
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const queryClient = useQueryClient();
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -1030,6 +1130,7 @@ function QuickTopUp() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const [customOpen, setCustomOpen] = useState(false);
 
@@ -1165,6 +1266,7 @@ function DecoCreditsHero() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const queryClient = useQueryClient();
   const allKeys = useAiProviderKeys();
@@ -1320,6 +1422,7 @@ const filterImageModels = (m: AiProviderModel) =>
   m.capabilities?.includes("image") === true;
 
 const filterWebResearchModels = (m: AiProviderModel) => {
+  if (m.asyncResearch === true) return true;
   const n = m.modelId.toLowerCase().replace(/[^a-z0-9]/g, "");
   return n.includes("sonar") || n.includes("deepresearch");
 };
@@ -1452,27 +1555,29 @@ function SimpleModeSection() {
     isSuccess,
   } = useUpdateSimpleMode();
 
-  // Autosave: watch form state; 250ms after the last dirty change, persist.
-  // The debounce coalesces multi-field writes from handleToggle and Effect 2
-  // into a single mutation. The save callback is inlined so the effect's
-  // deps only reference library-stable values (updateSimpleMode/form) and
-  // query-stable ones (simpleMode).
-  const watched = form.watch();
   const isDirty = form.formState.isDirty;
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect — autosave subscribes to derived form state over time
-  useEffect(() => {
-    if (!isDirty) return;
-    const id = setTimeout(() => {
-      updateSimpleMode(watched, {
-        onSuccess: () => form.reset(watched, { keepValues: true }),
+
+  // Autosave: 250ms after the last `schedule()` call, persist. The debounce
+  // coalesces multi-field writes from handleToggle and Effect 2 into a
+  // single mutation. We can't gate on `formState.isDirty` here: handleToggle
+  // calls `form.reset(...)` to seed defaults (which rebases the dirty
+  // baseline) and the `values: simpleMode` prop resyncs the form on every
+  // cache update — both clear the flag before the timer fires, swallowing
+  // the save. Each `schedule()` call is the explicit save intent; nothing
+  // inside `save` re-schedules so there's no feedback loop.
+  const { schedule: scheduleAutosave } = useDebouncedAutosave({
+    delayMs: 250,
+    save: async () => {
+      const values = form.getValues();
+      updateSimpleMode(values, {
+        onSuccess: () => form.reset(values, { keepValues: true }),
         onError: (err) => {
           form.reset(simpleMode);
           toast.error(`Failed to save: ${err.message}`);
         },
       });
-    }, 250);
-    return () => clearTimeout(id);
-  }, [watched, isDirty, updateSimpleMode, form, simpleMode]);
+    },
+  });
 
   // Lazily load models for the first 3 keys so we can pre-fill defaults.
   // Hooks can't run in loops; capping at 3 is sufficient for defaults —
@@ -1509,6 +1614,7 @@ function SimpleModeSection() {
     } else {
       form.setValue("enabled", enabled, { shouldDirty: true });
     }
+    scheduleAutosave();
   };
 
   // Effect 1: Clear form when all providers are removed.
@@ -1621,7 +1727,10 @@ function SimpleModeSection() {
                       <SimpleModeModelRow
                         slot={field.value}
                         defaultKeyId={allKeys[0]?.id ?? null}
-                        onSlotChange={(slot) => field.onChange(slot)}
+                        onSlotChange={(slot) => {
+                          field.onChange(slot);
+                          scheduleAutosave();
+                        }}
                       />
                     }
                   />
@@ -1640,7 +1749,10 @@ function SimpleModeSection() {
                       slot={field.value}
                       defaultKeyId={allKeys[0]?.id ?? null}
                       filterModels={filterImageModels}
-                      onSlotChange={(slot) => field.onChange(slot)}
+                      onSlotChange={(slot) => {
+                        field.onChange(slot);
+                        scheduleAutosave();
+                      }}
                     />
                   }
                 />
@@ -1657,7 +1769,10 @@ function SimpleModeSection() {
                       slot={field.value}
                       defaultKeyId={allKeys[0]?.id ?? null}
                       filterModels={filterWebResearchModels}
-                      onSlotChange={(slot) => field.onChange(slot)}
+                      onSlotChange={(slot) => {
+                        field.onChange(slot);
+                        scheduleAutosave();
+                      }}
                     />
                   }
                 />
@@ -1678,11 +1793,13 @@ function OrgAiProvidersContent() {
 
   return (
     <>
+      {allKeys.length > 0 && (
+        <Suspense fallback={<Skeleton className="h-16 w-full" />}>
+          <SimpleModeSection />
+        </Suspense>
+      )}
       <DecoCreditsHero />
       <ProviderCardGrid hideProviderId={hasDecoKey ? "deco" : undefined} />
-      <Suspense fallback={<Skeleton className="h-16 w-full" />}>
-        <SimpleModeSection />
-      </Suspense>
     </>
   );
 }

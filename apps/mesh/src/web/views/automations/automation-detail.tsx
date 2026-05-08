@@ -10,6 +10,11 @@ import {
   type AiProviderModel,
 } from "@/web/hooks/collections/use-ai-providers.ts";
 import { ModelSelector } from "@/web/components/chat/select-model.tsx";
+import {
+  SimpleModeTierDropdown,
+  type SimpleModeTier,
+} from "@/web/components/chat/simple-mode-tier-dropdown.tsx";
+import { useSimpleMode } from "@/web/hooks/use-organization-settings";
 import { User } from "@/web/components/user/user.tsx";
 import {
   useAutomation,
@@ -17,7 +22,11 @@ import {
   useTriggerList,
   type TriggerDefinition,
 } from "@/web/hooks/use-automations";
-import { useChatTask, useChatPrefs } from "@/web/components/chat/context";
+import {
+  useChatTask,
+  useChatPrefs,
+  useChatBridge,
+} from "@/web/components/chat/context";
 import { usePreferences } from "@/web/hooks/use-preferences";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
@@ -28,10 +37,13 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import {
-  getDecopilotId,
+  StudioPackAgentId,
   useConnections,
   useProjectContext,
 } from "@decocms/mesh-sdk";
+import { usePanelActions } from "@/web/layouts/shell-layout";
+import { useEnsureStudioPack } from "@/web/components/home/use-ensure-studio-pack";
+import { buildImprovePromptDoc } from "@/web/components/chat/tiptap/build-improve-prompt-doc";
 import {
   ArrowLeft,
   ArrowUp,
@@ -42,8 +54,9 @@ import {
   XClose,
   Zap,
 } from "@untitledui/icons";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useReducer, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
+import { useDebouncedAutosave } from "@/web/hooks/use-debounced-autosave.ts";
 import { toast } from "sonner";
 import type { Metadata } from "@/web/components/chat/types.ts";
 import {
@@ -64,6 +77,40 @@ interface SettingsFormData {
   active: boolean;
   credential_id: string;
   model_id: string;
+  // Empty string when the automation isn't pinned to a Simple Mode tier.
+  // When set, the server resolves the model from the live tier slot at run
+  // time, so credential_id / model_id act as a display snapshot only.
+  tier: SimpleModeTier | "";
+}
+
+type EditSession = {
+  start: number;
+  fields: Set<string>;
+  saveCount: number;
+};
+
+type EditSessionAction =
+  | { type: "accumulate"; now: number; fields: string[] }
+  | { type: "reset" };
+
+function editSessionReducer(
+  state: EditSession | null,
+  action: EditSessionAction,
+): EditSession | null {
+  switch (action.type) {
+    case "accumulate": {
+      const base: EditSession = state ?? {
+        start: action.now,
+        fields: new Set(),
+        saveCount: 0,
+      };
+      const fields = new Set(base.fields);
+      for (const f of action.fields) fields.add(f);
+      return { ...base, fields, saveCount: base.saveCount + 1 };
+    }
+    case "reset":
+      return null;
+  }
 }
 
 // ============================================================================
@@ -281,17 +328,15 @@ function EventTriggerForm({
 export function SettingsTab({
   automationId,
   automation,
-  virtualMcpId,
   onBack,
   onDelete,
 }: {
   automationId: string;
   automation: NonNullable<ReturnType<typeof useAutomation>["data"]>;
-  virtualMcpId: string;
   onBack?: () => void;
   onDelete?: () => void;
 }) {
-  const agentId = automation.agent?.id ?? virtualMcpId;
+  const agentId = automation.virtual_mcp_id;
   const { org } = useProjectContext();
   const { update: updateMutation, triggerAdd: addTrigger } =
     useAutomationActions();
@@ -302,10 +347,14 @@ export function SettingsTab({
   const { createTaskWithMessage } = useChatTask();
   const {
     setModel,
+    setSimpleModeTier,
     credentialId: chatCredentialId,
     selectedModel: chatModel,
-    setChatMode,
   } = useChatPrefs();
+  const simpleMode = useSimpleMode();
+  const { setChatOpen } = usePanelActions();
+  const { sendMessage } = useChatBridge();
+  const ensureStudioPack = useEnsureStudioPack();
   const [preferences, setPreferences] = usePreferences();
   const initialTiptapDoc =
     (automation.messages?.[0] as { metadata?: Metadata } | undefined)?.metadata
@@ -316,15 +365,18 @@ export function SettingsTab({
   const [showCustomCron, setShowCustomCron] = useState(false);
   const [cronInput, setCronInput] = useState("");
   const [showEventForm, setShowEventForm] = useState(false);
-  const editorInitializedRef = useRef(false);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const tiptapDirtyRef = useRef(false);
-  // The save runs from a debounced setTimeout. Reading state through a closure
-  // there would give us the value from the render that scheduled the timer,
-  // not the latest keystroke — that's how trailing characters got lost.
-  const tiptapDocRef = useRef<Metadata["tiptapDoc"]>(initialTiptapDoc);
+  const [isImproving, setIsImproving] = useState(false);
+  // The editor's first setTiptapDoc call is the mount-time normalization,
+  // not a user edit — we skip it so it doesn't mark dirty / autosave.
+  const [editorInitialized, setEditorInitialized] = useState(false);
+  // Tiptap is not in the RHF form (mount normalization would mark dirty
+  // before the user has typed anything). We track tiptap-dirty here and
+  // mix it into saveForm's "should we send?" decision alongside RHF's
+  // dirtyFields.
+  const [tiptapDirty, setTiptapDirty] = useState(false);
 
-  const handleImprovePrompt = () => {
+  const handleImprovePrompt = async () => {
+    if (isImproving) return;
     const parts = derivePartsFromTiptapDoc(tiptapDoc);
     const instructionsText = parts
       .filter((p): p is { type: "text"; text: string } => p.type === "text")
@@ -332,32 +384,38 @@ export function SettingsTab({
       .join("\n");
     if (!instructionsText.trim()) return;
 
-    flushEditSession();
-    track("automation_improve_clicked", {
-      automation_id: automationId,
-      agent_id: agentId,
-      instructions_length: instructionsText.length,
-    });
+    setIsImproving(true);
+    try {
+      forceSessionFlush();
+      track("automation_improve_clicked", {
+        automation_id: automationId,
+        agent_id: agentId,
+        instructions_length: instructionsText.length,
+      });
 
-    setChatMode("plan");
+      await ensureStudioPack(["studio-automation-manager"]);
 
-    createTaskWithMessage({
-      virtualMcpId: getDecopilotId(org.id),
-      message: {
-        parts: [
-          {
-            type: "text",
-            text: `/writing-prompts for automation with id ${automationId}. The current message is\n\n<message>\n${instructionsText}\n</message>`,
-          },
-        ],
-      },
-    });
+      setChatOpen(true);
+
+      await sendMessage({
+        tiptapDoc: buildImprovePromptDoc({
+          managerAgentId: StudioPackAgentId.AUTOMATION_MANAGER(org.id),
+          managerName: "Automation Manager",
+          kind: "automation",
+          id: automationId,
+          instructions: instructionsText,
+        }),
+      });
+    } finally {
+      setIsImproving(false);
+    }
   };
 
   const defaultCredentialId =
     automation.models?.credentialId || chatCredentialId || "";
   const defaultModelId =
     automation.models?.thinking?.id || chatModel?.modelId || "";
+  const defaultTier: SimpleModeTier | "" = automation.models?.tier ?? "";
 
   const form = useForm<SettingsFormData>({
     defaultValues: {
@@ -365,6 +423,7 @@ export function SettingsTab({
       active: automation.active,
       credential_id: defaultCredentialId,
       model_id: defaultModelId,
+      tier: defaultTier,
     },
   });
 
@@ -378,159 +437,167 @@ export function SettingsTab({
   const selectedModel: AiProviderModel | null =
     models.find((m) => m.modelId === watchModelId) ?? null;
 
+  const watchTier = form.watch("tier");
+  // The slot the saved credential/model actually correspond to, if any.
+  // Used both for the dropdown label and to decide whether saving is safe
+  // to auto-pin a legacy automation — we only persist `tier` when we know
+  // with certainty which slot the existing model matches.
+  const slotMatchedTier = (["fast", "smart", "thinking"] as const).find(
+    (t) =>
+      simpleMode.chat[t]?.modelId === watchModelId &&
+      simpleMode.chat[t]?.keyId === watchConnectionId,
+  );
+  // Persisted tier (from automation.models.tier) wins so the dropdown stays
+  // truthful even when slots are reconfigured server-side. Falls back to
+  // slot-match, then to "smart" as a final default for the dropdown label.
+  const activeSimpleModeTier: SimpleModeTier =
+    watchTier || slotMatchedTier || "smart";
+
+  const handleSimpleModeTierSelect = (tier: SimpleModeTier) => {
+    const slot = simpleMode.chat[tier];
+    if (!slot) return;
+    form.setValue("credential_id", slot.keyId, { shouldDirty: true });
+    form.setValue("model_id", slot.modelId, { shouldDirty: true });
+    form.setValue("tier", tier, { shouldDirty: true });
+  };
+
   // Session-based tracking for automation_updated. Auto-saves persist every
   // ~1s but we only emit one PostHog event per edit-session (aggregated
   // fields + save_count + edit_duration_ms). A session ends after 30s of
   // quiet, or on explicit flush (tab-leave, improve, test).
-  const editSessionStartRef = useRef<number | null>(null);
-  const editSessionFieldsRef = useRef<Set<string>>(new Set());
-  const editSessionSaveCountRef = useRef(0);
-  const editSessionFlushRef = useRef<ReturnType<typeof setTimeout> | null>(
+  const [editSession, dispatchEditSession] = useReducer(
+    editSessionReducer,
     null,
   );
-  const EDIT_SESSION_QUIET_MS = 30_000;
 
   const flushEditSession = () => {
-    if (editSessionFlushRef.current) {
-      clearTimeout(editSessionFlushRef.current);
-      editSessionFlushRef.current = null;
-    }
-    if (editSessionStartRef.current === null) return;
+    if (editSession === null) return;
     track("automation_updated", {
       automation_id: automationId,
       agent_id: agentId,
-      fields: Array.from(editSessionFieldsRef.current),
-      save_count: editSessionSaveCountRef.current,
-      edit_duration_ms: Date.now() - editSessionStartRef.current,
+      fields: Array.from(editSession.fields),
+      save_count: editSession.saveCount,
+      edit_duration_ms: Date.now() - editSession.start,
     });
-    editSessionStartRef.current = null;
-    editSessionFieldsRef.current = new Set();
-    editSessionSaveCountRef.current = 0;
+    dispatchEditSession({ type: "reset" });
   };
 
   const saveForm = async (): Promise<boolean> => {
-    const hasDirtyFields = Object.keys(form.formState.dirtyFields).length > 0;
-    if (!hasDirtyFields && !tiptapDirtyRef.current) return true;
-    const dirtyFormKeys = Object.keys(form.formState.dirtyFields);
-    const tiptapWasDirty = tiptapDirtyRef.current;
-    tiptapDirtyRef.current = false;
+    // form.formState is a Proxy over React state. When saveForm runs
+    // synchronously after setValue (e.g. via flushAndSave), React hasn't
+    // processed the batched update yet and form.formState.dirtyFields
+    // returns the previous render's snapshot — empty on the first edit — so
+    // the save would bail. Read control._formState.dirtyFields for the live
+    // value. Same gotcha as virtual-mcp.
+    const liveDirtyFields = (
+      form.control as unknown as {
+        _formState: { dirtyFields: Record<string, unknown> };
+      }
+    )._formState.dirtyFields;
+    const dirtyKeys = Object.keys(liveDirtyFields);
+    if (dirtyKeys.length === 0 && !tiptapDirty) return true;
 
     const values = form.getValues();
-    const tiptapDocAtSave = tiptapDocRef.current;
+    const coercedCredentialId =
+      values.credential_id && values.model_id ? values.credential_id : "";
+    const coercedModelId =
+      values.credential_id && values.model_id ? values.model_id : "";
+
+    // Reflect coercion in the form so the UI matches what we're persisting.
+    // shouldDirty is left as the default (false) — these aren't user edits;
+    // the rebase below will adopt them as the new baseline.
+    if (coercedCredentialId !== values.credential_id) {
+      form.setValue("credential_id", coercedCredentialId);
+    }
+    if (coercedModelId !== values.model_id) {
+      form.setValue("model_id", coercedModelId);
+    }
+
+    const formData = form.getValues();
+    const previousDefaults = (
+      form.control as unknown as { _defaultValues: SettingsFormData }
+    )._defaultValues;
+
+    // Rebase the dirty baseline pre-mutate so an edit during the in-flight
+    // save that returns a value to its pre-save default still registers as
+    // dirty. keepValues preserves user view; only _defaultValues advances.
+    form.reset(formData, { keepValues: true });
+    const tiptapWasDirty = tiptapDirty;
+    setTiptapDirty(false);
+
+    // Persist `tier` only when we have a confident signal: an explicit form
+    // value (set via the tier dropdown) or a saved model that actually
+    // matches a configured slot. Legacy automations whose model doesn't
+    // match any slot are NOT silently re-pinned to the default tier on
+    // incidental edits — that would change which model the run path uses
+    // with no UI signal.
+    const tierToPersist: SimpleModeTier | undefined = simpleMode.enabled
+      ? formData.tier || slotMatchedTier
+      : formData.tier || undefined;
+
+    const updatePayload = {
+      id: automationId,
+      name: formData.name,
+      active: formData.active,
+      models: {
+        credentialId: coercedCredentialId,
+        thinking: { id: coercedModelId },
+        ...(tierToPersist ? { tier: tierToPersist } : {}),
+      },
+      messages: tiptapDocToMessages(tiptapDoc),
+      temperature: 0,
+    };
+
     try {
-      const coercedCredentialId =
-        values.credential_id && values.model_id ? values.credential_id : "";
-      const coercedModelId =
-        values.credential_id && values.model_id ? values.model_id : "";
-
-      const updatePayload = {
-        id: automationId,
-        name: values.name,
-        active: values.active,
-        agent: {
-          id: agentId,
-        },
-        models: {
-          credentialId: coercedCredentialId,
-          thinking: {
-            id: coercedModelId,
-          },
-        },
-        messages: tiptapDocToMessages(tiptapDocAtSave),
-        temperature: 0,
-      };
       await updateMutation.mutateAsync(updatePayload);
-
-      // Accumulate into the edit session.
-      if (editSessionStartRef.current === null) {
-        editSessionStartRef.current = Date.now();
-      }
-      for (const k of dirtyFormKeys) editSessionFieldsRef.current.add(k);
-      if (tiptapWasDirty) editSessionFieldsRef.current.add("messages");
-      editSessionSaveCountRef.current += 1;
-      if (editSessionFlushRef.current) {
-        clearTimeout(editSessionFlushRef.current);
-      }
-      editSessionFlushRef.current = setTimeout(
-        flushEditSession,
-        EDIT_SESSION_QUIET_MS,
-      );
-
-      // keepDirtyValues: any field the user kept editing during the in-flight
-      // mutation stays at its current value AND keeps its dirty flag, so the
-      // queued debouncedSave actually persists those edits on its next fire.
-      // Without this, reset would clear dirty state and the next saveForm
-      // would early-return on hasDirtyFields=false, stranding the keystrokes
-      // in the UI but never sending them to the server.
-      form.reset(
-        {
-          ...values,
-          credential_id: coercedCredentialId,
-          model_id: coercedModelId,
-        },
-        { keepDirtyValues: true },
-      );
-      return true;
     } catch {
-      tiptapDirtyRef.current = true;
+      // Roll back the rebase so user edits remain dirty for the next attempt.
+      form.reset(previousDefaults, { keepValues: true });
+      if (tiptapWasDirty) setTiptapDirty(true);
       return false;
     }
+
+    const fields = [...dirtyKeys];
+    if (tiptapWasDirty) fields.push("messages");
+    dispatchEditSession({ type: "accumulate", now: Date.now(), fields });
+    scheduleSessionFlush();
+    return true;
   };
 
-  // Always-fresh ref to saveForm so debounced timers and the form-watch
-  // subscription (which is registered once) call the latest closure that reads
-  // current state, not whichever closure happened to be in scope at scheduling
-  // time.
-  const saveFormRef = useRef(saveForm);
-  saveFormRef.current = saveForm;
+  const { schedule: scheduleSave, flush: flushAndSave } = useDebouncedAutosave({
+    save: saveForm,
+  });
 
-  const debouncedSave = () => {
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      saveTimerRef.current = null;
-      saveFormRef.current();
-    }, 1000);
-  };
-
-  const flushAndSave = async () => {
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
-    return saveFormRef.current();
-  };
-
-  const setTiptapDoc = (doc: Metadata["tiptapDoc"]) => {
-    tiptapDocRef.current = doc;
-    setTiptapDocRaw(doc);
-    if (!editorInitializedRef.current) {
-      editorInitializedRef.current = true;
-      return;
-    }
-    tiptapDirtyRef.current = true;
-    debouncedSave();
-  };
-
-  const watchSubscribedRef = useRef(false);
-  if (!watchSubscribedRef.current) {
-    watchSubscribedRef.current = true;
-    form.watch(() => {
-      debouncedSave();
+  const { schedule: scheduleSessionFlush, flush: forceSessionFlush } =
+    useDebouncedAutosave({
+      delayMs: 30_000,
+      save: async () => flushEditSession(),
     });
-  }
 
-  // Flush any pending save on unmount so navigating away within the 1s
-  // debounce window doesn't drop the last edit.
+  // form.watch(callback) fires on value changes via setValue, but not on
+  // form.reset({ keepValues: true }) (which only emits state, no `values`
+  // key) — so saveForm's pre-mutate rebase does NOT loop. Edit handlers can
+  // just call form.setValue with shouldDirty:true and trust this
+  // subscription to schedule the save. flushAndSave remains for explicit
+  // "save NOW" semantics.
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {
-    return () => {
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = null;
-        saveFormRef.current();
-      }
-    };
+    const sub = form.watch(() => scheduleSave());
+    return () => sub.unsubscribe();
+    // scheduleSave is stable for our purpose: its closure mediates through
+    // stable refs inside useDebouncedAutosave.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const setTiptapDoc = (doc: Metadata["tiptapDoc"]) => {
+    setTiptapDocRaw(doc);
+    if (!editorInitialized) {
+      setEditorInitialized(true);
+      return;
+    }
+    setTiptapDirty(true);
+    scheduleSave();
+  };
 
   const handleRunClick = async () => {
     track("automation_test_clicked", {
@@ -538,7 +605,7 @@ export function SettingsTab({
       agent_id: agentId,
     });
     const saved = await flushAndSave();
-    flushEditSession();
+    forceSessionFlush();
     if (!saved) return;
 
     if (!tiptapDoc) {
@@ -546,10 +613,13 @@ export function SettingsTab({
       return;
     }
 
-    if (selectedModel && watchConnectionId) {
+    if (simpleMode.enabled) {
+      setSimpleModeTier(activeSimpleModeTier);
+    } else if (selectedModel && watchConnectionId) {
       setModel({ ...selectedModel, keyId: watchConnectionId });
     }
 
+    setChatOpen(true);
     setPreferences({ ...preferences, toolApprovalLevel: "auto" });
 
     const parts = derivePartsFromTiptapDoc(tiptapDoc);
@@ -574,11 +644,17 @@ export function SettingsTab({
         {/* Header: Name + Status + Creator */}
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between gap-4">
-            <Input
-              {...form.register("name")}
-              placeholder="Automation name"
-              className="border border-transparent shadow-none px-0 text-lg font-medium h-auto focus-visible:ring-0 focus-visible:border-border bg-transparent flex-1"
-              style={{ boxShadow: "none" }}
+            <Controller
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <Input
+                  {...field}
+                  placeholder="Automation name"
+                  className="border border-transparent shadow-none px-0 text-lg font-medium h-auto focus-visible:ring-0 focus-visible:border-border bg-transparent flex-1"
+                  style={{ boxShadow: "none" }}
+                />
+              )}
             />
             {onDelete && (
               <Button
@@ -600,7 +676,7 @@ export function SettingsTab({
                   checked={field.value}
                   onCheckedChange={(checked) => {
                     field.onChange(checked);
-                    setTimeout(() => flushAndSave(), 0);
+                    flushAndSave();
                   }}
                   className="cursor-pointer"
                 />
@@ -766,7 +842,7 @@ export function SettingsTab({
               variant="outline"
               size="sm"
               className="h-7 gap-1.5 px-2 text-xs"
-              disabled={!tiptapDoc}
+              disabled={isImproving || !tiptapDoc}
               onClick={handleImprovePrompt}
             >
               <Stars01 size={13} />
@@ -802,23 +878,32 @@ export function SettingsTab({
               />
 
               <div className="flex items-center justify-end gap-1.5 p-2.5">
-                <ModelSelector
-                  model={selectedModel}
-                  isLoading={isModelsLoading}
-                  credentialId={watchConnectionId || null}
-                  onCredentialChange={(id) => {
-                    form.setValue("credential_id", id ?? "", {
-                      shouldDirty: true,
-                    });
-                    form.setValue("model_id", "", { shouldDirty: true });
-                  }}
-                  onModelChange={(model) =>
-                    form.setValue("model_id", model.modelId, {
-                      shouldDirty: true,
-                    })
-                  }
-                  placeholder="Model"
-                />
+                {simpleMode.enabled ? (
+                  <SimpleModeTierDropdown
+                    tier={activeSimpleModeTier}
+                    onSelect={handleSimpleModeTierSelect}
+                  />
+                ) : (
+                  <ModelSelector
+                    model={selectedModel}
+                    isLoading={isModelsLoading}
+                    credentialId={watchConnectionId || null}
+                    onCredentialChange={(id) => {
+                      form.setValue("credential_id", id ?? "", {
+                        shouldDirty: true,
+                      });
+                      form.setValue("model_id", "", { shouldDirty: true });
+                      form.setValue("tier", "", { shouldDirty: true });
+                    }}
+                    onModelChange={(model) => {
+                      form.setValue("model_id", model.modelId, {
+                        shouldDirty: true,
+                      });
+                      form.setValue("tier", "", { shouldDirty: true });
+                    }}
+                    placeholder="Model"
+                  />
+                )}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button

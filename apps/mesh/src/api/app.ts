@@ -35,24 +35,33 @@ import {
   tracingMiddleware,
 } from "../observability";
 import authRoutes from "./routes/auth";
-import orgSsoRoutes from "./routes/org-sso";
+import { createSsoRoutes } from "./routes/org-sso";
 import { createDecopilotRoutes } from "./routes/decopilot";
-import downstreamTokenRoutes from "./routes/downstream-token";
-import { vmEventsRoutes } from "./routes/vm-events";
-import decoSitesRoutes from "./routes/deco-sites";
-import virtualMcpRoutes from "./routes/virtual-mcp";
-import oauthProxyRoutes, {
+import { createDownstreamTokenRoutes } from "./routes/downstream-token";
+import { logDeprecatedRoute } from "./middleware/log-deprecated-route";
+import { resolveOrgFromPath } from "./middleware/resolve-org-from-path";
+import { createOrgScopedApi } from "./routes/org-scoped";
+import { createVmEventsRoutes } from "./routes/vm-events";
+import {
+  createDecoSitesOrgRoutes,
+  createDecoSitesUserRoutes,
+} from "./routes/deco-sites";
+import { createVirtualMcpRoutes } from "./routes/virtual-mcp";
+import {
+  createLegacyWellKnownProtectedResourceRoutes,
+  createWellKnownAuthServerRoutes,
   fetchAuthorizationServerMetadata,
   fetchProtectedResourceMetadata,
+  protectedResourceMetadataHandler,
 } from "./routes/oauth-proxy";
 import openaiCompatRoutes from "./routes/openai-compat";
-import proxyRoutes from "./routes/proxy";
+import { createProxyRoutes } from "./routes/proxy";
 import { createKVRoutes } from "./routes/kv";
 import { createTriggerCallbackRoutes } from "./routes/trigger-callback";
 import publicConfigRoutes from "./routes/public-config";
 import filesRoutes from "./routes/files";
-import threadOutputsRoutes from "./routes/thread-outputs";
-import selfRoutes from "./routes/self";
+import { createThreadOutputsRoutes } from "./routes/thread-outputs";
+import { createSelfRoutes } from "./routes/self";
 import { shouldSkipMeshContext, SYSTEM_PATHS } from "./utils/paths";
 import {
   mountPluginRoutes,
@@ -211,6 +220,423 @@ function buildDecoOAuthParams(projectLocator: string | null): URLSearchParams {
 
   return params;
 }
+
+// ============================================================================
+// Inline route handlers (extracted to named functions so they can be
+// dual-mounted at both the legacy paths and the new `/api/:org/...` paths.)
+// ============================================================================
+
+/**
+ * Handle OAuth-proxy requests for an MCP connection.
+ *
+ * On the org-scoped mount (`/api/:org/oauth-proxy/...`) `resolveOrgFromPath`
+ * has populated `ctx.organization`; we scope the connection lookup to it so
+ * slug-spoofing (asking under org A for a connection that belongs to org B)
+ * returns null. The legacy `/oauth-proxy/...` mount has no org in the URL and
+ * does an unscoped lookup — using the session's `activeOrganizationId` there
+ * would silently 404 multi-org users whose active session org differs from
+ * the connection's owner.
+ */
+const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
+  const connectionId = c.req.param("connectionId");
+  if (!connectionId) {
+    return c.json({ error: "Missing connectionId" }, 400);
+  }
+  // Extract endpoint from path: /oauth-proxy/conn_xxx/register -> register
+  // Filter empty parts to handle trailing slashes
+  const pathParts = c.req.path.split("/").filter(Boolean);
+  const endpoint = pathParts[pathParts.length - 1];
+
+  // Get or create context
+  let ctx = c.get("meshContext");
+  if (!ctx) {
+    ctx = await ContextFactory.create(c.req.raw);
+    c.set("meshContext", ctx);
+  }
+
+  const orgScope = c.req.param("org") ? ctx.organization?.id : undefined;
+  const connection = await ctx.storage.connections.findById(
+    connectionId,
+    orgScope,
+  );
+  if (!connection?.connection_url) {
+    return c.json({ error: "Connection not found" }, 404);
+  }
+
+  // Get origin auth server - tries Protected Resource Metadata first, then falls back to origin root
+  const resourceRes = await fetchProtectedResourceMetadata(
+    connection.connection_url,
+  );
+
+  let originAuthServer: string | undefined;
+  const connUrl = new URL(connection.connection_url);
+
+  if (resourceRes.ok) {
+    // Origin has Protected Resource Metadata - use authorization_servers from it
+    const resourceData = (await resourceRes.json()) as {
+      authorization_servers?: string[];
+    };
+    originAuthServer = resourceData.authorization_servers?.[0];
+  }
+
+  // Fall back to origin root if:
+  // - Origin doesn't have Protected Resource Metadata (like Apify)
+  // - Or metadata exists but has empty/missing authorization_servers
+  // Many servers expose /.well-known/oauth-authorization-server at the root even without RFC 9728
+  if (!originAuthServer) {
+    originAuthServer = connUrl.origin;
+  }
+
+  // Get OAuth endpoints from auth server metadata - uses shared function that tries all formats
+  const authServerRes =
+    await fetchAuthorizationServerMetadata(originAuthServer);
+  if (!authServerRes.ok) {
+    return c.json({ error: "Failed to get auth server metadata" }, 502);
+  }
+  const endpoints = (await authServerRes.json()) as {
+    authorization_endpoint?: string;
+    token_endpoint?: string;
+    registration_endpoint?: string;
+  };
+
+  // Map endpoint name to URL
+  let originEndpointUrl: string | undefined;
+  if (endpoint === "authorize") {
+    originEndpointUrl = endpoints.authorization_endpoint;
+  } else if (endpoint === "token") {
+    originEndpointUrl = endpoints.token_endpoint;
+  } else if (endpoint === "register") {
+    originEndpointUrl = endpoints.registration_endpoint;
+  }
+
+  if (!originEndpointUrl) {
+    return c.json({ error: `Unknown OAuth endpoint: ${endpoint}` }, 404);
+  }
+
+  // Build URL with query string
+  const targetUrl = new URL(originEndpointUrl);
+  const reqUrl = new URL(c.req.url);
+  targetUrl.search = reqUrl.search;
+
+  // For authorize endpoint, REDIRECT instead of proxying
+  // The browser needs to navigate directly to the auth server so that:
+  // 1. CSS/JS loads correctly from the origin
+  // 2. Cookies are set on the correct domain
+  // 3. The user can interact with the consent screen
+  if (endpoint === "authorize") {
+    // Validate redirect_uri to prevent OAuth hijacking — only allow our own origin.
+    // Use .get() to grab the first value, then .set() to canonicalize to exactly
+    // one redirect_uri param, preventing parser-differential bypasses via duplicates.
+    const redirectUri = targetUrl.searchParams.get("redirect_uri");
+    if (redirectUri) {
+      const allowedOrigin = getSettings().baseUrl ?? reqUrl.origin;
+      try {
+        const redirectUrl = new URL(redirectUri);
+        const allowedOriginObj = new URL(allowedOrigin);
+
+        // Check if redirect_uri origin matches the allowed origin
+        const isAllowed =
+          redirectUrl.origin === allowedOriginObj.origin ||
+          // Allow localhost for development
+          redirectUrl.hostname === "localhost";
+
+        if (!isAllowed) {
+          return c.json(
+            {
+              error: "invalid_request",
+              error_description: "redirect_uri is not allowed",
+            },
+            400,
+          );
+        }
+      } catch {
+        return c.json(
+          {
+            error: "invalid_request",
+            error_description: "redirect_uri is malformed",
+          },
+          400,
+        );
+      }
+      // Collapse any duplicate redirect_uri params to the single validated value
+      targetUrl.searchParams.set("redirect_uri", redirectUri);
+    }
+
+    // IMPORTANT: Rewrite the 'resource' parameter to point to the origin MCP endpoint
+    // Some auth servers (like Supabase) validate that the resource is their actual endpoint,
+    // not our proxy. We keep the proxy URL for redirect_uri since that's where we handle the callback.
+    if (targetUrl.searchParams.has("resource")) {
+      targetUrl.searchParams.set("resource", connection.connection_url);
+    }
+
+    // Add smart OAuth params for deco-hosted MCPs to skip org/project selection
+    // Wrapped in try-catch to ensure OAuth redirect proceeds even if smart params fail
+    if (isDecoHostedMcp(connection.connection_url)) {
+      try {
+        const projectLocator = await getDecoStoreProjectLocator(
+          ctx,
+          connection.organization_id,
+        );
+        const smartParams = buildDecoOAuthParams(projectLocator);
+        for (const [key, value] of smartParams) {
+          targetUrl.searchParams.set(key, value);
+        }
+      } catch (error) {
+        console.warn(
+          "[oauth-proxy] Failed to get smart OAuth params, proceeding without:",
+          error,
+        );
+      }
+    }
+
+    return c.redirect(targetUrl.toString(), 302);
+  }
+
+  // Forward headers for token/register endpoints
+  const headers: Record<string, string> = {
+    Accept: c.req.header("Accept") || "application/json",
+  };
+  const contentType = c.req.header("Content-Type");
+  if (contentType) headers["Content-Type"] = contentType;
+  const authorization = c.req.header("Authorization");
+  if (authorization) headers["Authorization"] = authorization;
+
+  // For token endpoint, we may need to rewrite the 'resource' parameter in the body
+  // (same reason as authorize: auth servers validate it's their actual endpoint)
+  let requestBody: BodyInit | undefined;
+  if (c.req.method !== "GET" && c.req.method !== "HEAD") {
+    if (
+      endpoint === "token" &&
+      contentType?.includes("application/x-www-form-urlencoded")
+    ) {
+      // Parse form body and rewrite resource if present
+      const formData = await c.req.formData();
+      if (formData.has("resource")) {
+        formData.set("resource", connection.connection_url);
+      }
+      // Convert back to URLSearchParams for form-urlencoded
+      const params = new URLSearchParams();
+      for (const [key, value] of formData.entries()) {
+        params.append(key, value.toString());
+      }
+      requestBody = params.toString();
+    } else if (
+      endpoint === "register" &&
+      // Media types are case-insensitive (RFC 7231 §3.1.1.1) — normalize so
+      // `Application/JSON` etc. don't bypass the injection.
+      contentType
+        ?.toLowerCase()
+        .includes("application/json")
+    ) {
+      // Inject the connection's owning org into the DCR `metadata` field so the
+      // downstream MCP App can scope the registered OAuth client to a tenant
+      // without depending on user session state. RFC 7591 §2 reserves
+      // `metadata` for arbitrary client metadata extensions; downstream servers
+      // that don't recognize the field MUST ignore it.
+      // Gated on JSON content type so non-JSON DCR bodies (spec-violating but
+      // possible) get byte-perfect passthrough via the raw-body branch below
+      // instead of a lossy UTF-8 decode/re-encode round trip.
+      const org = await ctx.db
+        .selectFrom("organization")
+        .select(["id", "slug", "name"])
+        .where("id", "=", connection.organization_id)
+        .executeTakeFirst();
+      const rawText = await c.req.text();
+      let parsed: unknown = {};
+      try {
+        parsed = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        // Body isn't JSON — pass through unchanged so origin returns its own
+        // 400, rather than us masking the client error.
+        requestBody = rawText;
+      }
+      // Only mutate plain objects. Arrays, null, and primitives are non-spec
+      // for DCR and would either throw on property assignment (null/primitive)
+      // or be silently dropped by `JSON.stringify` (array). Pass them through
+      // and let origin return the appropriate 4xx.
+      const isPlainObject =
+        typeof parsed === "object" && parsed !== null && !Array.isArray(parsed);
+      if (requestBody === undefined && !isPlainObject) {
+        requestBody = rawText;
+      }
+      if (requestBody === undefined) {
+        const obj = parsed as Record<string, unknown>;
+        const existingMetadata =
+          obj.metadata && typeof obj.metadata === "object"
+            ? (obj.metadata as Record<string, unknown>)
+            : {};
+        obj.metadata = {
+          ...existingMetadata,
+          organization_id: connection.organization_id,
+          ...(org?.slug ? { organization_slug: org.slug } : {}),
+          ...(org?.name ? { organization_name: org.name } : {}),
+        };
+        requestBody = JSON.stringify(obj);
+        headers["Content-Type"] = "application/json";
+      }
+    } else {
+      // For other content types, pass through as-is
+      requestBody = c.req.raw.body ?? undefined;
+    }
+  }
+
+  // Proxy the request (token and register endpoints only)
+  const response = await fetch(targetUrl.toString(), {
+    method: c.req.method,
+    headers,
+    body: requestBody,
+    // @ts-expect-error - duplex needed for streaming
+    duplex: "half",
+    redirect: "manual",
+  });
+
+  // Copy response headers, excluding hop-by-hop and encoding headers
+  // Note: Node.js fetch auto-decompresses, so content-encoding/content-length would be wrong
+  const responseHeaders = new Headers();
+  const excludedHeaders = [
+    "connection",
+    "keep-alive",
+    "transfer-encoding",
+    "content-encoding",
+    "content-length",
+  ];
+  for (const [key, value] of response.headers.entries()) {
+    if (!excludedHeaders.includes(key.toLowerCase())) {
+      responseHeaders.set(key, value);
+    }
+  }
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: responseHeaders,
+  });
+};
+
+/**
+ * Publish a public event for an org.
+ * Resolves the org from `ctx.organization.id` (set by `resolveOrgFromPath`
+ * on the `/api/:org/...` mount) or, when missing, from the legacy
+ * `:organizationId` path param.
+ */
+const eventsHandler: MiddlewareHandler<Env> = async (c) => {
+  const ctx = c.var.meshContext;
+  const orgId = ctx.organization?.id ?? c.req.param("organizationId");
+  if (!orgId) {
+    return c.json({ error: "organization id missing" }, 400);
+  }
+  await ctx.eventBus.publish(orgId, WellKnownOrgMCPId.SELF(orgId), {
+    data: await c.req.json(),
+    type: `public:${c.req.param("type")}`,
+    subject: c.req.query("subject"),
+    deliverAt: c.req.query("deliverAt"),
+    cron: c.req.query("cron"),
+  });
+  return c.json({ success: true });
+};
+
+/**
+ * SSE watch endpoint — streams events for an organization in real time.
+ * Resolves the org from `ctx.organization.id` (set by `resolveOrgFromPath`
+ * on the `/api/:org/watch` mount) or from the legacy `:organizationId`
+ * path param. Auth is required either way.
+ */
+const watchHandler: MiddlewareHandler<Env> = async (c) => {
+  const meshContext = c.var.meshContext;
+
+  // Require authentication (user session or API key)
+  const userId = meshContext.auth.user?.id ?? meshContext.auth.apiKey?.userId;
+  if (!userId) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  // Prefer org resolved from path (new mount); fall back to legacy param.
+  const orgId =
+    meshContext.organization?.id ?? c.req.param("organizationId") ?? null;
+  if (!orgId) {
+    return c.json({ error: "organization id missing" }, 400);
+  }
+
+  // On the legacy path the middleware doesn't enforce membership; check that
+  // the authenticated user has access to the requested organization. (On the
+  // new path `resolveOrgFromPath` already enforced this and `orgId` came from
+  // `ctx.organization.id`, so the comparison is trivially true.)
+  if (orgId !== meshContext.organization?.id) {
+    return c.json({ error: "Forbidden access to organization" }, 403);
+  }
+
+  // Optional type filter: ?types=workflow.*,public.* (comma-separated patterns)
+  const typesParam = c.req.query("types");
+  const typePatterns = typesParam
+    ? typesParam
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean)
+    : null;
+
+  const listenerId = crypto.randomUUID();
+
+  return streamSSE(c, async (stream) => {
+    // Send initial connection event
+    await stream.writeSSE({
+      event: "connected",
+      data: JSON.stringify({
+        listenerId,
+        organizationId: orgId,
+        typePatterns,
+        connectedAt: new Date().toISOString(),
+      }),
+    });
+
+    // Register listener with the SSE hub
+    const registered = sseHub.add({
+      id: listenerId,
+      organizationId: orgId,
+      typePatterns: typePatterns?.length ? typePatterns : null,
+      push: (event: SSEEvent) => {
+        // Write to the SSE stream — fire-and-forget
+        stream
+          .writeSSE({
+            id: event.id,
+            event: event.type,
+            data: JSON.stringify(event),
+          })
+          .catch(() => {
+            // Stream broken — remove immediately so no further events are
+            // attempted. onAbort handles interval cleanup.
+            sseHub.remove(orgId, listenerId);
+          });
+      },
+    });
+
+    if (!registered) {
+      await stream.writeSSE({
+        event: "error",
+        data: JSON.stringify({
+          error: "Too many connections",
+          message: "SSE connection limit reached. Try again later.",
+        }),
+      });
+      return;
+    }
+
+    // Send periodic keepalive comments to detect dead connections
+    const keepaliveInterval = setInterval(() => {
+      stream.writeSSE({ event: "keepalive", data: "" }).catch(() => {
+        clearInterval(keepaliveInterval);
+      });
+    }, 30_000);
+
+    // Cleanup when the client disconnects and keep the stream open
+    await new Promise<void>((resolve) => {
+      stream.onAbort(() => {
+        clearInterval(keepaliveInterval);
+        sseHub.remove(orgId, listenerId);
+        resolve();
+      });
+    });
+  });
+};
 
 // Create serializer for Prometheus text format (shared across instances)
 const prometheusSerializer = new PrometheusSerializer();
@@ -585,237 +1011,61 @@ export async function createApp(options: CreateAppOptions = {}) {
   // OAuth Proxy Routes (for proxying OAuth to origin MCP servers)
   // MUST be defined BEFORE the wildcard OAuth routes below
   // ============================================================================
-  app.route("/", oauthProxyRoutes);
 
-  // OAuth endpoint proxy - defined directly here because app.route() doesn't work reliably
-  // for this route pattern. Using wildcard pattern to capture endpoint.
-  app.all("/oauth-proxy/:connectionId/*", async (c) => {
-    const connectionId = c.req.param("connectionId");
-    // Extract endpoint from path: /oauth-proxy/conn_xxx/register -> register
-    // Filter empty parts to handle trailing slashes
-    const pathParts = c.req.path.split("/").filter(Boolean);
-    const endpoint = pathParts[pathParts.length - 1];
+  // OAuth Protected-Resource discovery metadata — proxied from the origin MCP
+  // server. The legacy server-URL shape (`/mcp/:id`) gets a deprecation log;
+  // the resource-relative shape for the new `/api/:org/mcp/:id` family is
+  // mounted via `createOrgScopedApi` below.
+  const legacyWellKnownProtectedResource =
+    createLegacyWellKnownProtectedResourceRoutes();
+  legacyWellKnownProtectedResource.use("*", logDeprecatedRoute);
+  app.route("/", legacyWellKnownProtectedResource);
 
-    // Get or create context
-    let ctx = c.get("meshContext");
-    if (!ctx) {
-      ctx = await ContextFactory.create(c.req.raw);
-      c.set("meshContext", ctx);
-    }
+  // Well-known *prefix* discovery for the new org-scoped server URL shape.
+  // RFC 9728 Format 2 anchors `/.well-known/oauth-protected-resource` at the
+  // origin and appends the resource path, so the SDK probes
+  // `/.well-known/oauth-protected-resource/api/:org/mcp/:connectionId` — that
+  // path lives at the URL root, NOT under the `/api/:org` sub-app, and must
+  // not be tagged as a deprecated route. The handler reads the org slug from
+  // the path via `detectOrgSlugFromPath`.
+  app.get(
+    "/.well-known/oauth-protected-resource/api/:org/mcp/:connectionId",
+    protectedResourceMetadataHandler,
+  );
 
-    // Get connection URL
-    const connection = await ctx.storage.connections.findById(connectionId);
-    if (!connection?.connection_url) {
-      return c.json({ error: "Connection not found" }, 404);
-    }
+  // Auth-server metadata stays at the legacy global path indefinitely —
+  // third-party OAuth providers may have this URL registered as a
+  // redirect_uri base, so we don't migrate or log deprecation here.
+  app.route("/", createWellKnownAuthServerRoutes());
 
-    // Get origin auth server - tries Protected Resource Metadata first, then falls back to origin root
-    const resourceRes = await fetchProtectedResourceMetadata(
-      connection.connection_url,
-    );
+  // OAuth endpoint proxy — legacy mount with deprecation log. The new
+  // canonical mount lives under `/api/:org/oauth-proxy/...` (registered via
+  // `createOrgScopedApi` below) and gets cross-org enforcement for free.
+  app.use("/oauth-proxy/:connectionId/*", logDeprecatedRoute);
+  app.all("/oauth-proxy/:connectionId/*", oauthProxyHandler);
 
-    let originAuthServer: string | undefined;
-    const connUrl = new URL(connection.connection_url);
-
-    if (resourceRes.ok) {
-      // Origin has Protected Resource Metadata - use authorization_servers from it
-      const resourceData = (await resourceRes.json()) as {
-        authorization_servers?: string[];
-      };
-      originAuthServer = resourceData.authorization_servers?.[0];
-    }
-
-    // Fall back to origin root if:
-    // - Origin doesn't have Protected Resource Metadata (like Apify)
-    // - Or metadata exists but has empty/missing authorization_servers
-    // Many servers expose /.well-known/oauth-authorization-server at the root even without RFC 9728
-    if (!originAuthServer) {
-      originAuthServer = connUrl.origin;
-    }
-
-    // Get OAuth endpoints from auth server metadata - uses shared function that tries all formats
-    const authServerRes =
-      await fetchAuthorizationServerMetadata(originAuthServer);
-    if (!authServerRes.ok) {
-      return c.json({ error: "Failed to get auth server metadata" }, 502);
-    }
-    const endpoints = (await authServerRes.json()) as {
-      authorization_endpoint?: string;
-      token_endpoint?: string;
-      registration_endpoint?: string;
-    };
-
-    // Map endpoint name to URL
-    let originEndpointUrl: string | undefined;
-    if (endpoint === "authorize") {
-      originEndpointUrl = endpoints.authorization_endpoint;
-    } else if (endpoint === "token") {
-      originEndpointUrl = endpoints.token_endpoint;
-    } else if (endpoint === "register") {
-      originEndpointUrl = endpoints.registration_endpoint;
-    }
-
-    if (!originEndpointUrl) {
-      return c.json({ error: `Unknown OAuth endpoint: ${endpoint}` }, 404);
-    }
-
-    // Build URL with query string
-    const targetUrl = new URL(originEndpointUrl);
-    const reqUrl = new URL(c.req.url);
-    targetUrl.search = reqUrl.search;
-
-    // For authorize endpoint, REDIRECT instead of proxying
-    // The browser needs to navigate directly to the auth server so that:
-    // 1. CSS/JS loads correctly from the origin
-    // 2. Cookies are set on the correct domain
-    // 3. The user can interact with the consent screen
-    if (endpoint === "authorize") {
-      // Validate redirect_uri to prevent OAuth hijacking — only allow our own origin.
-      // Use .get() to grab the first value, then .set() to canonicalize to exactly
-      // one redirect_uri param, preventing parser-differential bypasses via duplicates.
-      const redirectUri = targetUrl.searchParams.get("redirect_uri");
-      if (redirectUri) {
-        const allowedOrigin = getSettings().baseUrl ?? reqUrl.origin;
-        try {
-          const redirectUrl = new URL(redirectUri);
-          const allowedOriginObj = new URL(allowedOrigin);
-
-          // Check if redirect_uri origin matches the allowed origin
-          const isAllowed =
-            redirectUrl.origin === allowedOriginObj.origin ||
-            // Allow localhost for development
-            redirectUrl.hostname === "localhost";
-
-          if (!isAllowed) {
-            return c.json(
-              {
-                error: "invalid_request",
-                error_description: "redirect_uri is not allowed",
-              },
-              400,
-            );
-          }
-        } catch {
-          return c.json(
-            {
-              error: "invalid_request",
-              error_description: "redirect_uri is malformed",
-            },
-            400,
-          );
-        }
-        // Collapse any duplicate redirect_uri params to the single validated value
-        targetUrl.searchParams.set("redirect_uri", redirectUri);
-      }
-
-      // IMPORTANT: Rewrite the 'resource' parameter to point to the origin MCP endpoint
-      // Some auth servers (like Supabase) validate that the resource is their actual endpoint,
-      // not our proxy. We keep the proxy URL for redirect_uri since that's where we handle the callback.
-      if (targetUrl.searchParams.has("resource")) {
-        targetUrl.searchParams.set("resource", connection.connection_url);
-      }
-
-      // Add smart OAuth params for deco-hosted MCPs to skip org/project selection
-      // Wrapped in try-catch to ensure OAuth redirect proceeds even if smart params fail
-      if (isDecoHostedMcp(connection.connection_url)) {
-        try {
-          const projectLocator = await getDecoStoreProjectLocator(
-            ctx,
-            connection.organization_id,
-          );
-          const smartParams = buildDecoOAuthParams(projectLocator);
-          for (const [key, value] of smartParams) {
-            targetUrl.searchParams.set(key, value);
-          }
-        } catch (error) {
-          console.warn(
-            "[oauth-proxy] Failed to get smart OAuth params, proceeding without:",
-            error,
-          );
-        }
-      }
-
-      return c.redirect(targetUrl.toString(), 302);
-    }
-
-    // Forward headers for token/register endpoints
-    const headers: Record<string, string> = {
-      Accept: c.req.header("Accept") || "application/json",
-    };
-    const contentType = c.req.header("Content-Type");
-    if (contentType) headers["Content-Type"] = contentType;
-    const authorization = c.req.header("Authorization");
-    if (authorization) headers["Authorization"] = authorization;
-
-    // For token endpoint, we may need to rewrite the 'resource' parameter in the body
-    // (same reason as authorize: auth servers validate it's their actual endpoint)
-    let requestBody: BodyInit | undefined;
-    if (c.req.method !== "GET" && c.req.method !== "HEAD") {
-      if (
-        endpoint === "token" &&
-        contentType?.includes("application/x-www-form-urlencoded")
-      ) {
-        // Parse form body and rewrite resource if present
-        const formData = await c.req.formData();
-        if (formData.has("resource")) {
-          formData.set("resource", connection.connection_url);
-        }
-        // Convert back to URLSearchParams for form-urlencoded
-        const params = new URLSearchParams();
-        for (const [key, value] of formData.entries()) {
-          params.append(key, value.toString());
-        }
-        requestBody = params.toString();
-      } else {
-        // For other content types, pass through as-is
-        requestBody = c.req.raw.body ?? undefined;
-      }
-    }
-
-    // Proxy the request (token and register endpoints only)
-    const response = await fetch(targetUrl.toString(), {
-      method: c.req.method,
-      headers,
-      body: requestBody,
-      // @ts-expect-error - duplex needed for streaming
-      duplex: "half",
-      redirect: "manual",
-    });
-
-    // Copy response headers, excluding hop-by-hop and encoding headers
-    // Note: Node.js fetch auto-decompresses, so content-encoding/content-length would be wrong
-    const responseHeaders = new Headers();
-    const excludedHeaders = [
-      "connection",
-      "keep-alive",
-      "transfer-encoding",
-      "content-encoding",
-      "content-length",
-    ];
-    for (const [key, value] of response.headers.entries()) {
-      if (!excludedHeaders.includes(key.toLowerCase())) {
-        responseHeaders.set(key, value);
-      }
-    }
-
-    return new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: responseHeaders,
-    });
-  });
-
-  // Mount OAuth discovery metadata endpoints
+  // Better-Auth-served Protected Resource Metadata for the gateway-style MCP
+  // URL family. The handler is the same regardless of which path it's mounted
+  // at (Better Auth derives the resource from `baseURL`), so the legacy and
+  // new mounts share the same closure. Legacy mount gets the deprecation log.
+  const betterAuthProtectedResourceHandler: MiddlewareHandler<Env> = async (
+    c,
+  ) => {
+    const handleOAuthProtectedResourceMetadata =
+      getHandleOAuthProtectedResourceMetadata();
+    const res = await handleOAuthProtectedResourceMetadata(c.req.raw);
+    const data = (await res.json()) as ResourceServerMetadata;
+    return Response.json(data, res);
+  };
+  app.use(
+    "/mcp/:gateway?/:connectionId/.well-known/oauth-protected-resource/*",
+    logDeprecatedRoute,
+  );
   app.get(
     "/mcp/:gateway?/:connectionId/.well-known/oauth-protected-resource/*",
-    async (c) => {
-      const handleOAuthProtectedResourceMetadata =
-        getHandleOAuthProtectedResourceMetadata();
-      const res = await handleOAuthProtectedResourceMetadata(c.req.raw);
-      const data = (await res.json()) as ResourceServerMetadata;
-      return Response.json(data, res);
-    },
+    betterAuthProtectedResourceHandler,
   );
+
   const authorizationServerHandler: MiddlewareHandler<Env> = async (c) => {
     const handleOAuthDiscoveryMetadata = getHandleOAuthDiscoveryMetadata();
     const res = await handleOAuthDiscoveryMetadata(c.req.raw);
@@ -823,6 +1073,8 @@ export async function createApp(options: CreateAppOptions = {}) {
     return Response.json(data, res);
   };
 
+  // RFC 8414 mandates this exact path location, so it stays global per the
+  // org-scoped-API plan (no `/api/:org/...` mount, no deprecation log).
   app.get(
     "/.well-known/oauth-authorization-server/*/:gateway?/:connectionId?",
     authorizationServerHandler,
@@ -1236,6 +1488,17 @@ export async function createApp(options: CreateAppOptions = {}) {
     }
   });
 
+  // Apply path-based org resolution to the pre-existing org-scoped routes
+  // that aren't under createOrgScopedApi: decopilot, OpenAI compat, files.
+  // These use ensureOrganization() to read ctx.organization, which would
+  // otherwise be undefined now that the frontend no longer sends x-org-id
+  // headers. We can't apply this globally to /api/:org/* because legacy
+  // unscoped routes like /api/connections/:id/... also match that pattern
+  // (where :org matches "connections" etc).
+  app.use("/api/:org/decopilot/*", resolveOrgFromPath);
+  app.use("/api/:org/v1/*", resolveOrgFromPath);
+  app.use("/api/:org/files/*", resolveOrgFromPath);
+
   // ============================================================================
   // Server-side SSO Enforcement Middleware
   // ============================================================================
@@ -1280,8 +1543,15 @@ export async function createApp(options: CreateAppOptions = {}) {
     return next();
   });
 
-  // Organization-level SSO routes (must be after context middleware)
-  app.route("/api/org-sso", orgSsoRoutes);
+  // Organization-level SSO routes (must be after context middleware).
+  // Legacy mount at /api/org-sso with deprecation log; the new
+  // /api/:org/org-sso mount is wired in a later task.
+  const legacyOrgSso = new Hono<{
+    Variables: { meshContext: MeshContext };
+  }>();
+  legacyOrgSso.use("*", logDeprecatedRoute);
+  legacyOrgSso.route("/", createSsoRoutes());
+  app.route("/api/org-sso", legacyOrgSso);
 
   // Get all management tools (for OAuth consent UI)
   app.get("/api/tools/management", (c) => {
@@ -1337,14 +1607,23 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Virtual MCP / Agent routes (must be before proxy to match /mcp/gateway and /mcp/virtual-mcp before /mcp/:connectionId)
   // /mcp/gateway/:virtualMcpId (backward compat) or /mcp/virtual-mcp/:virtualMcpId
-  app.route("/mcp", virtualMcpRoutes);
+  const legacyVirtualMcp = new Hono<Env>();
+  legacyVirtualMcp.use("*", logDeprecatedRoute);
+  legacyVirtualMcp.route("/", createVirtualMcpRoutes());
+  app.route("/mcp", legacyVirtualMcp);
 
   // Self MCP routes (at /mcp/self) - exposes all management tools
-  app.route("/mcp/self", selfRoutes);
+  const legacySelf = new Hono<Env>();
+  legacySelf.use("*", logDeprecatedRoute);
+  legacySelf.route("/", createSelfRoutes());
+  app.route("/mcp/self", legacySelf);
 
   // MCP Proxy routes (connection-specific)
   // Note: SELF MCP ({org}_self) is handled by proxy.ts with special case detection
-  app.route("/mcp", proxyRoutes);
+  const legacyProxy = new Hono<Env>();
+  legacyProxy.use("*", logDeprecatedRoute);
+  legacyProxy.route("/", createProxyRoutes());
+  app.route("/mcp", legacyProxy);
 
   // Measure LLM models route latency
   app.use("/api/:org/models/*", async (c, next) => {
@@ -1368,145 +1647,144 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.route("/api", filesRoutes);
 
   // Thread outputs (model-shared files surfaced as download chips in the chat)
-  app.route("/api", threadOutputsRoutes);
+  // Legacy mount at /api/* with deprecation log; the new /api/:org/* mount
+  // is wired in a later task.
+  const legacyThreadOutputsRoutes = new Hono<{
+    Variables: { meshContext: MeshContext };
+  }>();
+  legacyThreadOutputsRoutes.use("*", logDeprecatedRoute);
+  legacyThreadOutputsRoutes.route("/", createThreadOutputsRoutes());
+  app.route("/api", legacyThreadOutputsRoutes);
 
   // OpenAI-compatible LLM API routes
   app.route("/api", openaiCompatRoutes);
 
-  // Trigger callback endpoint (external MCPs → Mesh automations)
-  app.route(
-    "/api",
+  // Trigger callback endpoint (external MCPs → Mesh automations).
+  // Legacy mount at /api/trigger-callback with deprecation log; the new
+  // /api/:org/trigger-callback mount is wired in a later task.
+  const legacyTriggerCallback = new Hono<{
+    Variables: { meshContext: MeshContext };
+  }>();
+  legacyTriggerCallback.use("*", logDeprecatedRoute);
+  legacyTriggerCallback.route(
+    "/",
     createTriggerCallbackRoutes({
       tokenStorage: triggerCallbackTokenStorage,
       eventTriggerEngine,
     }),
   );
+  app.route("/api", legacyTriggerCallback);
 
   // KV store (org-scoped, for external MCPs to persist state)
+  // Legacy mount at /api/* with deprecation log; the new /api/:org/* mount
+  // is wired in a later task.
   const kvStorage = new KyselyKVStorage(database.db);
-  app.route("/api", createKVRoutes({ kvStorage }));
+  const legacyKVRoutes = new Hono<{
+    Variables: { meshContext: MeshContext };
+  }>();
+  legacyKVRoutes.use("*", logDeprecatedRoute);
+  legacyKVRoutes.route("/", createKVRoutes({ kvStorage }));
+  app.route("/api", legacyKVRoutes);
 
-  // Public Events endpoint
-  app.post("/org/:organizationId/events/:type", async (c) => {
-    const orgId = c.req.param("organizationId");
-    await c.var.meshContext.eventBus.publish(
-      orgId,
-      WellKnownOrgMCPId.SELF(orgId),
-      {
-        data: await c.req.json(),
-        type: `public:${c.req.param("type")}`,
-        subject: c.req.query("subject"),
-        deliverAt: c.req.query("deliverAt"),
-        cron: c.req.query("cron"),
-      },
-    );
-    return c.json({ success: true });
-  });
+  // Public Events endpoint — legacy mount with deprecation log. New mount
+  // lives at `POST /api/:org/events/:type` (registered via createOrgScopedApi).
+  app.use("/org/:organizationId/events/:type", logDeprecatedRoute);
+  app.post("/org/:organizationId/events/:type", eventsHandler);
 
   // ============================================================================
   // SSE Watch Endpoint — stream events for an organization in real time
+  // (Legacy mount with deprecation log. New mount lives at
+  // `GET /api/:org/watch` via createOrgScopedApi.)
   // ============================================================================
 
-  app.get("/org/:organizationId/watch", async (c) => {
-    const meshContext = c.var.meshContext;
-
-    // Require authentication (user session or API key)
-    const userId = meshContext.auth.user?.id ?? meshContext.auth.apiKey?.userId;
-    if (!userId) {
-      return c.json({ error: "Unauthorized" }, 401);
-    }
-
-    const orgId = c.req.param("organizationId");
-
-    // check that the authenticated user has access to the requested organization
-    if (orgId !== meshContext.organization?.id) {
-      return c.json({ error: "Forbidden access to organization" }, 403);
-    }
-
-    // Optional type filter: ?types=workflow.*,public.* (comma-separated patterns)
-    const typesParam = c.req.query("types");
-    const typePatterns = typesParam
-      ? typesParam
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean)
-      : null;
-
-    const listenerId = crypto.randomUUID();
-
-    return streamSSE(c, async (stream) => {
-      // Send initial connection event
-      await stream.writeSSE({
-        event: "connected",
-        data: JSON.stringify({
-          listenerId,
-          organizationId: orgId,
-          typePatterns,
-          connectedAt: new Date().toISOString(),
-        }),
-      });
-
-      // Register listener with the SSE hub
-      const registered = sseHub.add({
-        id: listenerId,
-        organizationId: orgId,
-        typePatterns: typePatterns?.length ? typePatterns : null,
-        push: (event: SSEEvent) => {
-          // Write to the SSE stream — fire-and-forget
-          stream
-            .writeSSE({
-              id: event.id,
-              event: event.type,
-              data: JSON.stringify(event),
-            })
-            .catch(() => {
-              // Stream broken — remove immediately so no further events are
-              // attempted. onAbort handles interval cleanup.
-              sseHub.remove(orgId, listenerId);
-            });
-        },
-      });
-
-      if (!registered) {
-        await stream.writeSSE({
-          event: "error",
-          data: JSON.stringify({
-            error: "Too many connections",
-            message: "SSE connection limit reached. Try again later.",
-          }),
-        });
-        return;
-      }
-
-      // Send periodic keepalive comments to detect dead connections
-      const keepaliveInterval = setInterval(() => {
-        stream.writeSSE({ event: "keepalive", data: "" }).catch(() => {
-          clearInterval(keepaliveInterval);
-        });
-      }, 30_000);
-
-      // Cleanup when the client disconnects and keep the stream open
-      await new Promise<void>((resolve) => {
-        stream.onAbort(() => {
-          clearInterval(keepaliveInterval);
-          sseHub.remove(orgId, listenerId);
-          resolve();
-        });
-      });
-    });
-  });
+  app.use("/org/:organizationId/watch", logDeprecatedRoute);
+  app.get("/org/:organizationId/watch", watchHandler);
 
   // Downstream token management routes
-  app.route("/api", downstreamTokenRoutes);
+  // Legacy mount at /api/* with deprecation log; the new /api/:org/* mount
+  // is wired in a later task.
+  const legacyDownstreamTokenRoutes = new Hono<{
+    Variables: { meshContext: MeshContext };
+  }>();
+  legacyDownstreamTokenRoutes.use("*", logDeprecatedRoute);
+  legacyDownstreamTokenRoutes.route("/", createDownstreamTokenRoutes());
+  app.route("/api", legacyDownstreamTokenRoutes);
 
   // Deco.cx sites list (requires meshContext / auth)
-  app.route("/api/deco-sites", decoSitesRoutes);
+  // /profile is user-scoped (no org), stays mounted permanently — no
+  // deprecation log.
+  app.route("/api/deco-sites", createDecoSitesUserRoutes());
+
+  // Org-scoped deco-sites routes (GET /, POST /connection). Currently mounted
+  // at /api/deco-sites with a deprecation log; the new /api/:org/deco-sites
+  // mount is wired in a later task.
+  const legacyDecoSitesOrg = new Hono<{
+    Variables: { meshContext: MeshContext };
+  }>();
+  legacyDecoSitesOrg.use("*", logDeprecatedRoute);
+  legacyDecoSitesOrg.route("/", createDecoSitesOrgRoutes());
+  app.route("/api/deco-sites", legacyDecoSitesOrg);
 
   // Unified VM events SSE — single auth-gated stream that emits pre-Ready
   // lifecycle phases, then proxies the daemon's `/_decopilot_vm/events` once
   // the sandbox is up. Replaces the prior split between `/api/vm-lifecycle`
   // and the browser's direct daemon EventSource.
-  app.route("/api/vm-events", vmEventsRoutes);
+  // Legacy mount at /api/vm-events with deprecation log; the new
+  // /api/:org/vm-events mount is wired in a later task.
+  const legacyVmEvents = new Hono<{
+    Variables: { meshContext: MeshContext };
+  }>();
+  legacyVmEvents.use("*", logDeprecatedRoute);
+  legacyVmEvents.route("/", createVmEventsRoutes());
+  app.route("/api/vm-events", legacyVmEvents);
+
+  // ============================================================================
+  // Private Registry public routes (first-class feature)
+  // Registered BEFORE the org-scoped sub-app so the more specific
+  // `/api/:org/registry/*` mounts win over the catch-all org sub-app.
+  // These are PUBLIC endpoints — they do their own org lookup and must NOT
+  // go through `resolveOrgFromPath` (which would enforce membership).
+  // ============================================================================
+
+  const { createPublishRequestHandler, createPublicMCPHandler } = await import(
+    "@/api/routes/registry"
+  );
+  const registryRouteCtx = {
+    db: database.db as any,
+    vault: {
+      encrypt: (value: string) => vault.encrypt(value),
+      decrypt: (value: string) => vault.decrypt(value),
+    },
+  };
+  const publishRequestHandler = createPublishRequestHandler(registryRouteCtx);
+  const publicMCPHandler = createPublicMCPHandler(registryRouteCtx);
+
+  // Legacy mounts (with deprecation log)
+  app.use("/org/:orgRef/registry/publish-request", logDeprecatedRoute);
+  app.post("/org/:orgRef/registry/publish-request", publishRequestHandler);
+  app.use("/org/:orgSlug/registry/*", logDeprecatedRoute);
+  app.all("/org/:orgSlug/registry/*", publicMCPHandler);
+
+  // New canonical mounts (no deprecation log; mounted at the top level so they
+  // resolve their own org and bypass `resolveOrgFromPath`).
+  app.post("/api/:org/registry/publish-request", publishRequestHandler);
+  app.all("/api/:org/registry/*", publicMCPHandler);
+
+  // New canonical org-scoped API surface — all routes that depend on org context
+  // live here. Old routes still work (with deprecation logs) until the cleanup
+  // PR removes them after the deprecation window.
+  const orgScopedApi = createOrgScopedApi({
+    kvStorage,
+    tokenStorage: triggerCallbackTokenStorage,
+    eventTriggerEngine,
+    mountDevAssets: usesLocalObjectStorage(),
+    mcpAuth,
+    oauthProxyHandler,
+    eventsHandler,
+    watchHandler,
+    betterAuthProtectedResourceHandler,
+  });
+  app.route("/api/:org", orgScopedApi);
 
   // ============================================================================
   // Server Plugin Routes
@@ -1520,22 +1798,6 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   mountPluginRoutes(app, { db: database.db as any, vault });
-
-  // Private Registry public routes (first-class feature)
-  const { publicPublishRequestRoutes, publicMCPServerRoutes } = await import(
-    "@/api/routes/registry"
-  );
-  const registryRouteCtx = {
-    db: database.db as any,
-    vault: {
-      encrypt: (value: string) => vault.encrypt(value),
-      decrypt: (value: string) => vault.decrypt(value),
-    },
-  };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  publicPublishRequestRoutes(app as any, registryRouteCtx);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  publicMCPServerRoutes(app as any, registryRouteCtx);
 
   // ============================================================================
   // 404 Handler

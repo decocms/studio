@@ -154,3 +154,37 @@ to drop the env scope. README has copy-paste values.
 {{- define "sandbox-env.housekeeperPodSelector" -}}
 {{- printf "studio.decocms.com/role=claimed,studio.decocms.com/env=%s" (include "sandbox-env.envName" .) -}}
 {{- end }}
+
+{{/*
+Sentinel-token Secret name. Holds the bearer baked into pool-pod env via
+`valueFrom.secretKeyRef`; mesh reads the same secret out-of-band (env var
+sourced from this Secret in the studio chart) so both sides agree on the
+sentinel without it landing in any chart values.yaml.
+*/}}
+{{- define "sandbox-env.sentinelSecretName" -}}
+{{- printf "studio-sandbox-sentinel-%s" (include "sandbox-env.envName" .) -}}
+{{- end }}
+
+{{/*
+Sentinel token. Priority order:
+  1. .Values.sentinel.token — explicit value supplied by CI/operator so
+     both charts (sandbox-env + studio) can be deployed with the same token
+     without an extraction step.
+  2. Existing Secret — preserves the token across `helm upgrade` so
+     rotating is an explicit opt-in (delete the Secret + re-upgrade).
+  3. randAlphaNum 64 — generated on first install when neither of the
+     above is present.
+*/}}
+{{- define "sandbox-env.sentinelToken" -}}
+{{- if and .Values.sentinel .Values.sentinel.token (ne .Values.sentinel.token "") -}}
+{{- .Values.sentinel.token -}}
+{{- else -}}
+{{- $name := include "sandbox-env.sentinelSecretName" . -}}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace $name -}}
+{{- if and $existing $existing.data $existing.data.daemonToken -}}
+{{- $existing.data.daemonToken | b64dec -}}
+{{- else -}}
+{{- randAlphaNum 64 -}}
+{{- end -}}
+{{- end -}}
+{{- end }}

@@ -38,6 +38,7 @@ export function useEnsureTask(id: string, virtualMcpId: string): State {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const queryClient = useQueryClient();
 

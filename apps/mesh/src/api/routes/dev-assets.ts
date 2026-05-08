@@ -15,12 +15,11 @@ import { Hono } from "hono";
 import { createHmac } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import type { MeshContext } from "../../core/mesh-context";
 import { getSettings } from "../../settings";
 
 // Base directory for dev assets (relative to cwd)
 const DEV_ASSETS_BASE_DIR = "./data/assets";
-
-const app = new Hono();
 
 // ============================================================================
 // Utility Functions
@@ -129,137 +128,178 @@ export function getContentType(key: string): string {
 // Routes
 // ============================================================================
 
-/**
- * GET /api/dev-assets/:orgId/* - Download a file
- *
- * Query params:
- * - expires: Unix timestamp when URL expires
- * - signature: HMAC signature
- * - method: Must be "GET"
- */
-app.get("/:orgId/*", async (c) => {
-  const orgId = c.req.param("orgId");
-  // Get the path after /:orgId/
-  const key = c.req.path.replace(`/api/dev-assets/${orgId}/`, "");
+type DevAssetsVariables = { meshContext: MeshContext };
 
-  if (!orgId || !key) {
-    return c.json({ error: "Missing orgId or key" }, 400);
-  }
+interface CreateDevAssetsRoutesOptions {
+  /**
+   * When `true`, the routes are mounted at `/*` and the org id is read from
+   * `meshContext.organization.id` (set by the `resolveOrgFromPath` middleware).
+   * When `false`, the routes are mounted at `/:orgId/*` and the org id is read
+   * from the path param — preserves the legacy `/api/dev-assets/:orgId/*`
+   * behaviour.
+   */
+  orgFromPath: boolean;
+}
 
-  // Validate query params
-  const expiresStr = c.req.query("expires");
-  const signature = c.req.query("signature");
-  const method = c.req.query("method");
+export const createDevAssetsRoutes = (opts: CreateDevAssetsRoutesOptions) => {
+  const app = new Hono<{ Variables: DevAssetsVariables }>();
 
-  if (!expiresStr || !signature || method !== "GET") {
-    return c.json({ error: "Invalid or missing signature parameters" }, 400);
-  }
+  const path = opts.orgFromPath ? "/*" : "/:orgId/*";
 
-  const expires = parseInt(expiresStr, 10);
-  if (!Number.isFinite(expires)) {
-    return c.json({ error: "Invalid expires parameter" }, 400);
-  }
+  /**
+   * GET /api/dev-assets/:orgId/* (or /api/:org/dev-assets/* in org-scoped mode)
+   * Download a file.
+   *
+   * Query params:
+   * - expires: Unix timestamp when URL expires
+   * - signature: HMAC signature
+   * - method: Must be "GET"
+   */
+  app.get(path, async (c) => {
+    const orgId = opts.orgFromPath
+      ? c.get("meshContext")?.organization?.id
+      : c.req.param("orgId");
 
-  const now = Math.floor(Date.now() / 1000);
-
-  // Check expiration
-  if (expires < now) {
-    return c.json({ error: "URL has expired" }, 403);
-  }
-
-  // Verify signature
-  if (!verifySignature(orgId, key, expires, "GET", signature)) {
-    return c.json({ error: "Invalid signature" }, 403);
-  }
-
-  // Get the file
-  const filePath = getFilePath(orgId, key);
-
-  try {
-    const file = Bun.file(filePath);
-    const exists = await file.exists();
-
-    if (!exists) {
-      return c.json({ error: "File not found" }, 404);
+    if (!orgId) {
+      return c.json({ error: "Missing organization context" }, 500);
     }
 
-    const contentType = getContentType(key);
+    // Get the path after the org segment.
+    const prefix = opts.orgFromPath
+      ? `/api/${c.req.param("org") ?? ""}/dev-assets/`
+      : `/api/dev-assets/${orgId}/`;
+    const key = c.req.path.replace(prefix, "");
 
-    return new Response(file.stream(), {
-      headers: {
-        "Content-Type": contentType,
-        "Content-Length": file.size.toString(),
-        "Cache-Control": "private, max-age=3600",
-      },
-    });
-  } catch (err) {
-    console.error("Error serving file:", err);
-    return c.json({ error: "Failed to read file" }, 500);
-  }
-});
+    if (!key) {
+      return c.json({ error: "Missing key" }, 400);
+    }
 
-/**
- * PUT /api/dev-assets/:orgId/* - Upload a file
- *
- * Query params:
- * - expires: Unix timestamp when URL expires
- * - signature: HMAC signature
- * - method: Must be "PUT"
- */
-app.put("/:orgId/*", async (c) => {
-  const orgId = c.req.param("orgId");
-  // Get the path after /:orgId/
-  const key = c.req.path.replace(`/api/dev-assets/${orgId}/`, "");
+    // Validate query params
+    const expiresStr = c.req.query("expires");
+    const signature = c.req.query("signature");
+    const method = c.req.query("method");
 
-  if (!orgId || !key) {
-    return c.json({ error: "Missing orgId or key" }, 400);
-  }
+    if (!expiresStr || !signature || method !== "GET") {
+      return c.json({ error: "Invalid or missing signature parameters" }, 400);
+    }
 
-  // Validate query params
-  const expiresStr = c.req.query("expires");
-  const signature = c.req.query("signature");
-  const method = c.req.query("method");
+    const expires = parseInt(expiresStr, 10);
+    if (!Number.isFinite(expires)) {
+      return c.json({ error: "Invalid expires parameter" }, 400);
+    }
 
-  if (!expiresStr || !signature || method !== "PUT") {
-    return c.json({ error: "Invalid or missing signature parameters" }, 400);
-  }
+    const now = Math.floor(Date.now() / 1000);
 
-  const expires = parseInt(expiresStr, 10);
-  if (!Number.isFinite(expires)) {
-    return c.json({ error: "Invalid expires parameter" }, 400);
-  }
+    // Check expiration
+    if (expires < now) {
+      return c.json({ error: "URL has expired" }, 403);
+    }
 
-  const now = Math.floor(Date.now() / 1000);
+    // Verify signature
+    if (!verifySignature(orgId, key, expires, "GET", signature)) {
+      return c.json({ error: "Invalid signature" }, 403);
+    }
 
-  // Check expiration
-  if (expires < now) {
-    return c.json({ error: "URL has expired" }, 403);
-  }
+    // Get the file
+    const filePath = getFilePath(orgId, key);
 
-  // Verify signature
-  if (!verifySignature(orgId, key, expires, "PUT", signature)) {
-    return c.json({ error: "Invalid signature" }, 403);
-  }
+    try {
+      const file = Bun.file(filePath);
+      const exists = await file.exists();
 
-  // Get the file path and ensure directory exists
-  const filePath = getFilePath(orgId, key);
-  const dir = dirname(filePath);
+      if (!exists) {
+        return c.json({ error: "File not found" }, 404);
+      }
 
-  try {
-    // Create directory if it doesn't exist
-    await mkdir(dir, { recursive: true });
+      const contentType = getContentType(key);
 
-    // Read the request body
-    const body = await c.req.arrayBuffer();
+      return new Response(file.stream(), {
+        headers: {
+          "Content-Type": contentType,
+          "Content-Length": file.size.toString(),
+          "Cache-Control": "private, max-age=3600",
+        },
+      });
+    } catch (err) {
+      console.error("Error serving file:", err);
+      return c.json({ error: "Failed to read file" }, 500);
+    }
+  });
 
-    // Write the file
-    await writeFile(filePath, Buffer.from(body));
+  /**
+   * PUT /api/dev-assets/:orgId/* (or /api/:org/dev-assets/* in org-scoped mode)
+   * Upload a file.
+   *
+   * Query params:
+   * - expires: Unix timestamp when URL expires
+   * - signature: HMAC signature
+   * - method: Must be "PUT"
+   */
+  app.put(path, async (c) => {
+    const orgId = opts.orgFromPath
+      ? c.get("meshContext")?.organization?.id
+      : c.req.param("orgId");
 
-    return c.json({ success: true, key });
-  } catch (err) {
-    console.error("Error saving file:", err);
-    return c.json({ error: "Failed to save file" }, 500);
-  }
-});
+    if (!orgId) {
+      return c.json({ error: "Missing organization context" }, 500);
+    }
 
-export default app;
+    // Get the path after the org segment.
+    const prefix = opts.orgFromPath
+      ? `/api/${c.req.param("org") ?? ""}/dev-assets/`
+      : `/api/dev-assets/${orgId}/`;
+    const key = c.req.path.replace(prefix, "");
+
+    if (!key) {
+      return c.json({ error: "Missing key" }, 400);
+    }
+
+    // Validate query params
+    const expiresStr = c.req.query("expires");
+    const signature = c.req.query("signature");
+    const method = c.req.query("method");
+
+    if (!expiresStr || !signature || method !== "PUT") {
+      return c.json({ error: "Invalid or missing signature parameters" }, 400);
+    }
+
+    const expires = parseInt(expiresStr, 10);
+    if (!Number.isFinite(expires)) {
+      return c.json({ error: "Invalid expires parameter" }, 400);
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+
+    // Check expiration
+    if (expires < now) {
+      return c.json({ error: "URL has expired" }, 403);
+    }
+
+    // Verify signature
+    if (!verifySignature(orgId, key, expires, "PUT", signature)) {
+      return c.json({ error: "Invalid signature" }, 403);
+    }
+
+    // Get the file path and ensure directory exists
+    const filePath = getFilePath(orgId, key);
+    const dir = dirname(filePath);
+
+    try {
+      // Create directory if it doesn't exist
+      await mkdir(dir, { recursive: true });
+
+      // Read the request body
+      const body = await c.req.arrayBuffer();
+
+      // Write the file
+      await writeFile(filePath, Buffer.from(body));
+
+      return c.json({ success: true, key });
+    } catch (err) {
+      console.error("Error saving file:", err);
+      return c.json({ error: "Failed to save file" }, 500);
+    }
+  });
+
+  return app;
+};

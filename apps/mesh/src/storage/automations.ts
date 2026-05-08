@@ -21,17 +21,15 @@ export interface CreateAutomationInput {
   name: string;
   active?: boolean;
   created_by: string;
-  agent: string; // JSON
   messages: string; // JSON
   models: string; // JSON
   temperature?: number;
-  virtual_mcp_id?: string | null;
+  virtual_mcp_id: string;
 }
 
 export interface UpdateAutomationInput {
   name?: string;
   active?: boolean;
-  agent?: string;
   messages?: string;
   models?: string;
   temperature?: number;
@@ -131,11 +129,10 @@ function automationFromDbRow(row: {
   name: string;
   active: boolean | number;
   created_by: string;
-  agent: string;
   messages: string;
   models: string;
   temperature: number;
-  virtual_mcp_id?: string | null;
+  virtual_mcp_id: string;
   created_at: Date | string;
   updated_at: Date | string;
 }): Automation {
@@ -145,11 +142,10 @@ function automationFromDbRow(row: {
     name: row.name,
     active: !!row.active,
     created_by: row.created_by,
-    agent: row.agent,
     messages: row.messages,
     models: row.models,
     temperature: row.temperature,
-    virtual_mcp_id: row.virtual_mcp_id ?? null,
+    virtual_mcp_id: row.virtual_mcp_id,
     created_at: toIsoString(row.created_at),
     updated_at: toIsoString(row.updated_at),
   };
@@ -198,11 +194,10 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       name: input.name,
       active: input.active ?? true,
       created_by: input.created_by,
-      agent: input.agent,
       messages: input.messages,
       models: input.models,
       temperature: input.temperature ?? 0.5,
-      virtual_mcp_id: input.virtual_mcp_id ?? null,
+      virtual_mcp_id: input.virtual_mcp_id,
       created_at: now,
       updated_at: now,
     };
@@ -254,7 +249,6 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         "a.name",
         "a.active",
         "a.created_by",
-        "a.agent",
         "a.messages",
         "a.models",
         "a.temperature",
@@ -266,10 +260,8 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       .select((eb) => eb.fn.min("t.next_run_at").as("nearest_next_run_at"))
       .where("a.organization_id", "=", organizationId);
 
-    if (virtualMcpId !== undefined) {
-      query = virtualMcpId
-        ? query.where("a.virtual_mcp_id", "=", virtualMcpId)
-        : query.where("a.virtual_mcp_id", "is", null);
+    if (virtualMcpId) {
+      query = query.where("a.virtual_mcp_id", "=", virtualMcpId);
     }
 
     const rows = await query
@@ -279,7 +271,6 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         "a.name",
         "a.active",
         "a.created_by",
-        "a.agent",
         "a.messages",
         "a.models",
         "a.temperature",
@@ -309,7 +300,6 @@ class KyselyAutomationsStorage implements AutomationsStorage {
 
     if (input.name !== undefined) updateData.name = input.name;
     if (input.active !== undefined) updateData.active = input.active;
-    if (input.agent !== undefined) updateData.agent = input.agent;
     if (input.messages !== undefined) updateData.messages = input.messages;
     if (input.models !== undefined) updateData.models = input.models;
     if (input.temperature !== undefined)
@@ -426,10 +416,10 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         "a.name as a_name",
         "a.active as a_active",
         "a.created_by as a_created_by",
-        "a.agent as a_agent",
         "a.messages as a_messages",
         "a.models as a_models",
         "a.temperature as a_temperature",
+        "a.virtual_mcp_id as a_virtual_mcp_id",
         "a.created_at as a_created_at",
         "a.updated_at as a_updated_at",
       ])
@@ -448,10 +438,10 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         name: row.a_name,
         active: row.a_active,
         created_by: row.a_created_by,
-        agent: row.a_agent,
         messages: row.a_messages,
         models: row.a_models,
         temperature: row.a_temperature,
+        virtual_mcp_id: row.a_virtual_mcp_id,
         created_at: row.a_created_at,
         updated_at: row.a_updated_at,
       }),
@@ -479,10 +469,10 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         "a.name as a_name",
         "a.active as a_active",
         "a.created_by as a_created_by",
-        "a.agent as a_agent",
         "a.messages as a_messages",
         "a.models as a_models",
         "a.temperature as a_temperature",
+        "a.virtual_mcp_id as a_virtual_mcp_id",
         "a.created_at as a_created_at",
         "a.updated_at as a_updated_at",
       ])
@@ -498,10 +488,10 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         name: row.a_name,
         active: row.a_active,
         created_by: row.a_created_by,
-        agent: row.a_agent,
         messages: row.a_messages,
         models: row.a_models,
         temperature: row.a_temperature,
+        virtual_mcp_id: row.a_virtual_mcp_id,
         created_at: row.a_created_at,
         updated_at: row.a_updated_at,
       }),
@@ -532,10 +522,10 @@ class KyselyAutomationsStorage implements AutomationsStorage {
           "a.name as a_name",
           "a.active as a_active",
           "a.created_by as a_created_by",
-          "a.agent as a_agent",
           "a.messages as a_messages",
           "a.models as a_models",
           "a.temperature as a_temperature",
+          "a.virtual_mcp_id as a_virtual_mcp_id",
           "a.created_at as a_created_at",
           "a.updated_at as a_updated_at",
         ])
@@ -555,10 +545,10 @@ class KyselyAutomationsStorage implements AutomationsStorage {
           name: row.a_name,
           active: row.a_active,
           created_by: row.a_created_by,
-          agent: row.a_agent,
           messages: row.a_messages,
           models: row.a_models,
           temperature: row.a_temperature,
+          virtual_mcp_id: row.a_virtual_mcp_id,
           created_at: row.a_created_at,
           updated_at: row.a_updated_at,
         }),
@@ -653,7 +643,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
           description: null,
           status: "in_progress",
           trigger_id: triggerId,
-          virtual_mcp_id: automation.virtual_mcp_id ?? "",
+          virtual_mcp_id: automation.virtual_mcp_id,
           hidden: false,
           created_at: now,
           updated_at: now,

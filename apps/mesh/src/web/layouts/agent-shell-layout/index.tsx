@@ -164,6 +164,7 @@ function VmEventsBridge({
   const autoStartClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const { mutate: triggerAutoStart } = useVmStart(autoStartClient);
   // Attempt at most one auto-start per (branch, mount). A user VM_DELETE
@@ -175,7 +176,12 @@ function VmEventsBridge({
     if (!hasActiveGithubRepo) return;
     if (!userId) return;
     if (!currentBranch) return;
-    if (vmMap?.[userId]?.[currentBranch]) return;
+    if (vmMap?.[userId]?.[currentBranch]) {
+      // VM is already running — record the branch so a user stop won't
+      // re-trigger auto-start within this mount.
+      autoStartAttemptedRef.current.add(currentBranch);
+      return;
+    }
     if (autoStartAttemptedRef.current.has(currentBranch)) return;
     autoStartAttemptedRef.current.add(currentBranch);
     triggerAutoStart(
@@ -216,7 +222,7 @@ function AgentInsetProvider() {
   const { org } = useProjectContext();
   const tasksOpen = useOptionalTasksPanelState()?.tasksOpen ?? false;
 
-  useStatusSounds(org.id);
+  useStatusSounds(org.slug);
 
   const params = useParams({ strict: false }) as {
     org?: string;

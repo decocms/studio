@@ -39,6 +39,7 @@ import type {
 } from "@opentelemetry/api";
 import {
   daemonBash,
+  postConfig,
   probeDaemonHealth,
   proxyDaemonRequest,
   waitForDaemonReady,
@@ -46,6 +47,7 @@ import {
 import {
   Inflight,
   applyPreviewPattern,
+  buildConfigPayload,
   computeHandle as composeBranchHandle,
   withSandboxLock,
 } from "../shared";
@@ -69,6 +71,7 @@ import {
   getSandboxClaim,
   HTTPROUTE_CONSTANTS,
   patchSandboxClaimShutdown,
+  waitForClaimAdoptedSandbox,
   waitForSandboxClaimGone,
   waitForSandboxReady,
   type HttpRoute,
@@ -104,22 +107,18 @@ const DAEMON_TOKEN_BYTES = 32;
 
 /**
  * Env keys mesh owns and a caller's `opts.env` MUST NOT shadow. DAEMON_TOKEN
- * is the secrecy boundary; the rest configure the daemon's bootstrap and
- * silently overriding any of them would break clone/install/dev-server start.
+ * is the secrecy boundary; the rest configure the daemon's bootstrap (paths
+ * + ports) — silently overriding any of them would break daemon startup.
+ *
+ * Workload (clone URL, branch, package manager, runtime, intent, dev port)
+ * is no longer env-injected: it's POSTed to `/_decopilot_vm/config` after
+ * the daemon comes up healthy. See `buildConfigPayload`.
  */
 const RESERVED_ENV_KEYS = new Set([
   "DAEMON_TOKEN",
   "DAEMON_BOOT_ID",
   "APP_ROOT",
   "PROXY_PORT",
-  "DEV_PORT",
-  "RUNTIME",
-  "CLONE_URL",
-  "REPO_NAME",
-  "BRANCH",
-  "GIT_USER_NAME",
-  "GIT_USER_EMAIL",
-  "PACKAGE_MANAGER",
 ]);
 
 const DEFAULT_IDLE_TTL_MS = 15 * 60 * 1000;
@@ -197,7 +196,19 @@ interface RunnerTenant {
 interface K8sRecord {
   id: SandboxId;
   handle: string;
-  podName: string;
+  /**
+   * The Sandbox CR the operator actually bound to this claim, taken from
+   * `claim.status.sandbox.name`. Equals `handle` on cold-start (operator
+   * names cold Sandboxes after the claim) but diverges on warm-pool
+   * adoption — pool sandboxes carry their generated names like
+   * `studio-sandbox-kind-abcde`. Mesh routes preview traffic via the
+   * Service named after this (the operator-managed Service that targets
+   * the *actually-bound* pod), not via the same-named cold-path
+   * duplicate the v0.4.x adoption race occasionally leaves behind.
+   * In agent-sandbox the pod name always matches this (the operator names
+   * the Pod after the Sandbox CR), so this doubles as the port-forward target.
+   */
+  adoptedSandboxName: string;
   token: string;
   workdir: string;
   daemonUrl: string;
@@ -229,7 +240,9 @@ interface K8sRecord {
 }
 
 interface PersistedK8sState {
-  podName: string;
+  adoptedSandboxName: string;
+  /** @deprecated back-compat with rows written before warm-pool support. */
+  podName?: string;
   token: string;
   workdir: string;
   workload?: Workload | null;
@@ -255,6 +268,28 @@ export interface AgentSandboxRunnerOptions {
   namespace?: string;
   /** SandboxTemplate all claims reference. */
   sandboxTemplateName?: string;
+  /**
+   * Shared sentinel token baked into the SandboxTemplate's pod env (via the
+   * sandbox-env helm chart's Secret). Presence flips the runner into
+   * warm-pool mode:
+   *   - claims are created with `warmpool: "default"` and `spec.env: []`
+   *     (the operator rejects per-claim env when warmpool != "none"),
+   *   - mesh's first contact with the daemon authenticates with the
+   *     sentinel and rotates to a per-claim token via
+   *     `auth.rotateToken` on POST /_decopilot_vm/config,
+   *   - subsequent calls use the per-claim token (persisted in
+   *     RunnerStateStore.state.token).
+   *
+   * When undefined, the runner falls back to env-injected per-claim tokens
+   * with `warmpool: "none"` — the legacy cold-start path. Useful for
+   * deployments that haven't (yet) adopted the chart's sentinel Secret.
+   *
+   * Trust window: between pod boot and the first rotation call, the
+   * sentinel is the only auth on the daemon. NetworkPolicy is the
+   * secrecy boundary in that window — same boundary that gates every
+   * other mesh→daemon request.
+   */
+  sentinelToken?: string;
   /**
    * Studio environment name. When set, stamped as
    * `studio.decocms.com/env=<envName>` on claims/pods/HTTPRoutes so the
@@ -333,6 +368,15 @@ export class AgentSandboxRunner implements SandboxRunner {
    * adopt, and delete.
    */
   private readonly previewGateway: { name: string; namespace: string } | null;
+  /**
+   * Non-null = warm-pool mode (see `AgentSandboxRunnerOptions.sentinelToken`).
+   * Treated as the bearer token for the *first* daemon contact only;
+   * mesh rotates to a per-claim token via `auth.rotateToken` immediately
+   * after, and persists the new token. Empty/whitespace strings are
+   * collapsed to null at construction so a misconfigured env var doesn't
+   * silently flip modes with an unusable token.
+   */
+  private readonly sentinelToken: string | null;
   private closed = false;
 
   constructor(opts: AgentSandboxRunnerOptions = {}) {
@@ -356,6 +400,8 @@ export class AgentSandboxRunner implements SandboxRunner {
       opts.previewGateway && opts.previewUrlPattern
         ? { ...opts.previewGateway }
         : null;
+    const trimmedSentinel = opts.sentinelToken?.trim() ?? "";
+    this.sentinelToken = trimmedSentinel.length > 0 ? trimmedSentinel : null;
   }
 
   // ---- SandboxRunner surface ------------------------------------------------
@@ -448,6 +494,19 @@ export class AgentSandboxRunner implements SandboxRunner {
     init: ProxyRequestInit,
   ): Promise<Response> {
     const rec = await this.getRecord(handle);
+
+    // rehydrate failed (port-forward is pod-local); route via in-cluster Service instead.
+    if (!rec && this.previewUrlPattern && this.stateStore) {
+      const row = await this.stateStore.getByHandle(RUNNER_KIND, handle);
+      const state = row?.state as Partial<PersistedK8sState> | undefined;
+      const token = state?.token;
+      if (row && token) {
+        const adoptedName = state?.adoptedSandboxName ?? handle;
+        const daemonUrl = `http://${adoptedName}.${this.namespace}.svc.cluster.local:${DAEMON_CONTAINER_PORT}`;
+        return proxyDaemonRequest(daemonUrl, token, path, init);
+      }
+    }
+
     if (!rec) {
       return new Response(JSON.stringify({ error: "sandbox not found" }), {
         status: 404,
@@ -499,12 +558,19 @@ export class AgentSandboxRunner implements SandboxRunner {
    */
   async resolvePreviewUpstreamUrl(handle: string): Promise<string | null> {
     if (this.previewUrlPattern) {
-      // Production mode: synthesize the in-cluster Service URL from the
-      // handle. We deliberately don't pre-validate that the claim is still
-      // alive — every preview request would pay a K8s API call. When the
+      // Production mode: synthesize the in-cluster Service URL. The Service
+      // we target is the operator-managed one for the *adopted* Sandbox —
+      // on warm-pool adoption this is the pool pod's Service (e.g.
+      // `studio-sandbox-kind-abcde`), NOT the same-named cold-path
+      // orphan the v0.4.x adoption race occasionally leaves alongside.
+      // Records cache hit is O(1); cache miss (cold mesh) falls through to
+      // a single state-store row read, then to `handle` as a last resort.
+      // We deliberately don't pre-validate that the claim is still alive
+      // — every preview request would pay a K8s API call. When the
       // sandbox has been evicted, the downstream fetch fails and
       // `proxyPreviewRequest` catches it + drives resurrection from there.
-      return `http://${handle}.${this.namespace}.svc.cluster.local:${DAEMON_CONTAINER_PORT}`;
+      const serviceName = await this.resolveServiceNameForHandle(handle);
+      return `http://${serviceName}.${this.namespace}.svc.cluster.local:${DAEMON_CONTAINER_PORT}`;
     }
     const rec = await this.getRecord(handle);
     if (rec) return rec.daemonUrl;
@@ -514,6 +580,35 @@ export class AgentSandboxRunner implements SandboxRunner {
     // sandbox back to make any progress.
     const resurrected = await this.resurrectByHandle(handle);
     return resurrected ? resurrected.daemonUrl : null;
+  }
+
+  /**
+   * Resolve the operator-managed Service name we should route preview
+   * traffic to for `handle`. See `resolvePreviewUpstreamUrl` and
+   * `K8sRecord.adoptedSandboxName` for why this differs from the claim
+   * name on warm-pool adoption.
+   *
+   * Cache layers, cheapest first: in-memory records map, then state-store
+   * (one DB row), then a `handle` fallback. Falling back to `handle` is
+   * wrong for a warm-pool sandbox (it points at the cold-path duplicate's
+   * Service), but the only path that lands here is "mesh just restarted
+   * AND state-store doesn't have the row" — at which point the downstream
+   * fetch will fail and `proxyPreviewRequest`'s catch arm runs the
+   * resurrection flow, which repopulates records with the right name.
+   */
+  private async resolveServiceNameForHandle(handle: string): Promise<string> {
+    const cached = this.records.get(handle);
+    if (cached) return cached.adoptedSandboxName;
+    if (this.stateStore) {
+      const persisted = await this.stateStore
+        .getByHandle(RUNNER_KIND, handle)
+        .catch(() => null);
+      const adoptedName = (
+        persisted?.state as Partial<PersistedK8sState> | undefined
+      )?.adoptedSandboxName;
+      if (adoptedName) return adoptedName;
+    }
+    return handle;
   }
 
   /**
@@ -795,17 +890,6 @@ export class AgentSandboxRunner implements SandboxRunner {
     return this.toSandbox(rec);
   }
 
-  /**
-   * Compose the env block the daemon's orchestrator reads to clone, install,
-   * and start the dev server. Mirrors the docker runner's contract; reader is
-   * `packages/sandbox/daemon/config.ts`.
-   *
-   * Caller-supplied `opts.env` is layered first so the bootstrap keys defined
-   * here (and listed in RESERVED_ENV_KEYS) always win — an intercepted
-   * DAEMON_TOKEN would compromise the sandbox; an intercepted DEV_PORT would
-   * just break the boot. We warn — not throw — to match the docker runner's
-   * permissive shape.
-   */
   private buildEnvMap(
     opts: EnsureOptions,
     boot: { token: string; daemonBootId: string; workdir: string },
@@ -822,31 +906,12 @@ export class AgentSandboxRunner implements SandboxRunner {
       );
     }
 
-    const repo = opts.repo;
-    const repoLabel = repo
-      ? (repo.displayName ?? deriveRepoLabel(repo.cloneUrl))
-      : null;
-
     return {
       ...callerEnv,
       DAEMON_TOKEN: boot.token,
       DAEMON_BOOT_ID: boot.daemonBootId,
       APP_ROOT: boot.workdir,
       PROXY_PORT: String(DAEMON_CONTAINER_PORT),
-      DEV_PORT: String(opts.workload?.devPort ?? DEFAULT_DEV_PORT),
-      RUNTIME: opts.workload?.runtime ?? "node",
-      ...(repo
-        ? {
-            CLONE_URL: repo.cloneUrl,
-            REPO_NAME: repoLabel ?? "",
-            BRANCH: repo.branch ?? "",
-            GIT_USER_NAME: repo.userName,
-            GIT_USER_EMAIL: repo.userEmail,
-          }
-        : {}),
-      ...(opts.workload?.packageManager
-        ? { PACKAGE_MANAGER: opts.workload.packageManager }
-        : {}),
     };
   }
 
@@ -855,7 +920,17 @@ export class AgentSandboxRunner implements SandboxRunner {
     opts: EnsureOptions,
     boot: { token: string; daemonBootId: string; workdir: string },
   ): SandboxClaim {
-    const envMap = this.buildEnvMap(opts, boot);
+    // Warm-pool mode: the operator rejects claim.spec.env outright when
+    // warmpool != "none". Mesh delivers the per-claim secret post-bind via
+    // POST /_decopilot_vm/config + auth.rotateToken instead.
+    const warmPoolMode = this.sentinelToken !== null;
+    const envEntries = warmPoolMode
+      ? []
+      : Object.entries(this.buildEnvMap(opts, boot))
+          // Sorted so `kubectl diff` doesn't churn across runs that pass the
+          // same env in different insertion orders.
+          .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+          .map(([name, value]) => ({ name, value }));
     return {
       apiVersion: `${K8S_CONSTANTS.CLAIM_API_GROUP}/${K8S_CONSTANTS.CLAIM_API_VERSION}`,
       kind: "SandboxClaim",
@@ -886,15 +961,8 @@ export class AgentSandboxRunner implements SandboxRunner {
             ...(this.envName ? { [LABEL_KEYS.env]: this.envName } : {}),
           }),
         },
-        // `valueFrom.secretKeyRef` isn't supported on SandboxClaim env; RBAC
-        // on the namespace is the secrecy boundary. Warm-pool off because the
-        // operator rejects custom env on warm-pooled claims. Sorted by name
-        // so `kubectl diff` / claim audit entries don't churn across runs
-        // that pass the same env in different insertion orders.
-        env: Object.entries(envMap)
-          .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-          .map(([name, value]) => ({ name, value })),
-        warmpool: "none",
+        env: envEntries,
+        warmpool: warmPoolMode ? "default" : "none",
         lifecycle: {
           shutdownPolicy: "Delete",
           shutdownTime: this.computeShutdownTime(),
@@ -935,11 +1003,50 @@ export class AgentSandboxRunner implements SandboxRunner {
         throw err;
       }
     }
-    const { podName } = await waitForSandboxReady(
-      this.kubeConfig,
-      this.namespace,
-      handle,
-    );
+    // Two-step bind resolution. The operator's reconciler picks an adopted
+    // Sandbox first (warm-pool pod or, on cold-start, a freshly-rendered
+    // one) and writes its name into `claim.status.sandbox.name`. We wait
+    // for that field, then watch the named Sandbox for Ready.
+    //
+    // Cold-only would let us watch by `metadata.name=<handle>` directly
+    // (operator names cold Sandboxes after the claim), but warm-pool
+    // adoption picks a pre-existing pool name like
+    // `studio-sandbox-kind-abcde` instead — and worse, agent-sandbox
+    // v0.4.x has a status-update conflict race that occasionally also
+    // creates a stray same-named cold-path Sandbox alongside the adopted
+    // pool one. Watching by `<handle>` would talk to that orphan and miss
+    // the actually-bound pool pod (the daemon that actually runs the
+    // workload). `claim.status.sandbox.name` is the only signal that
+    // points at the right one across both shapes.
+    //
+    // Either bind step can time out — `waitForClaimAdoptedSandbox` if the
+    // operator never writes status.sandbox.name (controller crashed,
+    // overloaded warm pool exhaustion, etc.), `waitForSandboxReady` if
+    // the bound pod never reaches Ready (image pull stall, scheduling
+    // failure, kubelet pressure). On either failure we have to delete
+    // the orphan claim — leaving it would leak a pod and, worse, the
+    // caller's next `ensure()` would adopt-or-recreate against a stuck
+    // half-bound claim. Probe results: 3 concurrent ensure() against a
+    // size-1 warm pool tripped the 180s readiness timeout on one claim
+    // under kind resource pressure, leaving the SandboxClaim behind.
+    let adoptedSandboxName: string;
+    try {
+      adoptedSandboxName = await waitForClaimAdoptedSandbox(
+        this.kubeConfig,
+        this.namespace,
+        handle,
+      );
+      await waitForSandboxReady(
+        this.kubeConfig,
+        this.namespace,
+        adoptedSandboxName,
+      );
+    } catch (err) {
+      await deleteSandboxClaim(this.kubeConfig, this.namespace, handle).catch(
+        () => {},
+      );
+      throw err;
+    }
 
     // Patch the operator-created Service to declare port 9000, then mint the
     // per-claim HTTPRoute. Both happen before the port-forward opens so that,
@@ -950,8 +1057,12 @@ export class AgentSandboxRunner implements SandboxRunner {
     // either step fails the claim is healthy but unroutable — roll back so
     // the caller's retry hits a clean slate.
     try {
-      await this.ensureServicePortForHandle(handle);
-      await this.ensureHttpRouteForHandle(handle, opts.tenant ?? null);
+      await this.ensureServicePortForAdoptedSandbox(adoptedSandboxName);
+      await this.ensureHttpRouteForHandle(
+        handle,
+        adoptedSandboxName,
+        opts.tenant ?? null,
+      );
     } catch (err) {
       await deleteSandboxClaim(this.kubeConfig, this.namespace, handle).catch(
         () => {},
@@ -960,13 +1071,43 @@ export class AgentSandboxRunner implements SandboxRunner {
     }
 
     const daemonForward = await this.openForwarder(
-      podName,
+      adoptedSandboxName,
       DAEMON_CONTAINER_PORT,
       handle,
     );
     const daemonUrl = `http://127.0.0.1:${daemonForward.localPort}`;
+    const configPayload = buildConfigPayload({
+      runtime: opts.workload?.runtime ?? "node",
+      packageManager: opts.workload?.packageManager
+        ? {
+            name: opts.workload.packageManager,
+            ...(opts.workload.packageManagerPath
+              ? { path: opts.workload.packageManagerPath }
+              : {}),
+          }
+        : null,
+      repo: opts.repo ?? null,
+      port: opts.workload?.devPort ?? DEFAULT_DEV_PORT,
+    });
+    // Warm-pool path: pod boots with the SandboxTemplate's sentinel token;
+    // mesh authenticates the first /config call with the sentinel and
+    // rotates to `token` (per-claim) atomically with the workload patch.
+    // After this call returns, only `token` is accepted on the daemon.
+    //
+    // Cold path: per-claim token was injected via env, daemon already
+    // accepts `token`; no rotation needed.
+    let resolvedBootId: string = daemonBootId;
     try {
       await waitForDaemonReady(daemonUrl);
+      if (this.sentinelToken !== null) {
+        const probedHealth = await probeDaemonHealth(daemonUrl);
+        if (probedHealth) resolvedBootId = probedHealth.bootId;
+        await postConfig(daemonUrl, this.sentinelToken, configPayload ?? {}, {
+          rotateToken: token,
+        });
+      } else if (configPayload) {
+        await postConfig(daemonUrl, token, configPayload);
+      }
     } catch (err) {
       this.closeForwarder(daemonForward);
       await this.deleteHttpRouteIfManaged(handle).catch(() => {});
@@ -979,13 +1120,13 @@ export class AgentSandboxRunner implements SandboxRunner {
     return {
       id,
       handle,
-      podName,
+      adoptedSandboxName,
       token,
       workdir,
       daemonUrl,
       daemonForward,
       workload: opts.workload ?? null,
-      daemonBootId,
+      daemonBootId: resolvedBootId,
       tenant: opts.tenant ?? null,
       ensureOpts: stripEnsureOpts(opts),
     };
@@ -994,29 +1135,53 @@ export class AgentSandboxRunner implements SandboxRunner {
   /**
    * No-op when `previewGateway` isn't configured. Otherwise Server-Side
    * Apply port 9000 (named "daemon") onto the operator-created Service
-   * `<handle>`. The agent-sandbox operator (v0.4.x) ships Services with
-   * empty `spec.ports`, which makes Istio refuse to register an upstream
-   * cluster — `ensureServicePort` doc has the full rationale. Idempotent:
-   * once mesh owns `spec.ports[name=daemon]` (first SSA), subsequent calls
-   * with the same body are recorded as no-ops by the API server.
+   * for the *adopted* Sandbox. The agent-sandbox operator (v0.4.x) ships
+   * Services with empty `spec.ports`, which makes Istio refuse to register
+   * an upstream cluster — `ensureServicePort` doc has the full rationale.
+   * Idempotent: once mesh owns `spec.ports[name=daemon]` (first SSA),
+   * subsequent calls with the same body are recorded as no-ops by the API
+   * server.
+   *
+   * Targets `adoptedSandboxName`, NOT `handle`. On warm-pool adoption these
+   * differ: the adopted Sandbox carries its pool-generated name (e.g.
+   * `studio-sandbox-kind-abcde`) and so does its operator-managed Service.
+   * The cold-path duplicate Sandbox the v0.4.x adoption race occasionally
+   * creates also has a Service (named after the claim), but it backs the
+   * unconfigured cold-path pod — patching that one would route preview
+   * traffic to the wrong daemon.
    */
-  private async ensureServicePortForHandle(handle: string): Promise<void> {
+  private async ensureServicePortForAdoptedSandbox(
+    adoptedSandboxName: string,
+  ): Promise<void> {
     if (!this.previewGateway || !this.previewUrlPattern) return;
-    await ensureServicePort(this.kubeConfig, this.namespace, handle, {
-      name: "daemon",
-      port: DAEMON_CONTAINER_PORT,
-      targetPort: DAEMON_CONTAINER_PORT,
-    });
+    await ensureServicePort(
+      this.kubeConfig,
+      this.namespace,
+      adoptedSandboxName,
+      {
+        name: "daemon",
+        port: DAEMON_CONTAINER_PORT,
+        targetPort: DAEMON_CONTAINER_PORT,
+      },
+    );
   }
 
   /**
    * No-op when `previewGateway` isn't configured. Otherwise PUT-or-create
-   * the HTTPRoute that maps `<handle>.<base>` → operator Service `<handle>`
+   * an HTTPRoute that maps `<handle>.<base>` → Service `<adoptedSandboxName>`
    * port 9000. createHttpRoute swallows 409, so this is safe to call from
    * both fresh-provision and adopt-backfill paths.
+   *
+   * Route name and hostname stay tied to `handle` so the public preview
+   * URL is stable across pool re-adoptions and so cleanup
+   * (`deleteHttpRouteIfManaged`) can find the route by handle. The
+   * backendRef switches to `adoptedSandboxName` for the same reason
+   * `ensureServicePortForAdoptedSandbox` does — we want traffic to land on
+   * the actually-bound pool pod, not the operator's cold-path orphan.
    */
   private async ensureHttpRouteForHandle(
     handle: string,
+    adoptedSandboxName: string,
     tenant: RunnerTenant | null,
   ): Promise<void> {
     if (!this.previewGateway || !this.previewUrlPattern) return;
@@ -1056,7 +1221,7 @@ export class AgentSandboxRunner implements SandboxRunner {
               {
                 group: "",
                 kind: "Service",
-                name: handle,
+                name: adoptedSandboxName,
                 port: DAEMON_CONTAINER_PORT,
               },
             ],
@@ -1085,7 +1250,8 @@ export class AgentSandboxRunner implements SandboxRunner {
     persisted: { handle: string; state: Record<string, unknown> },
   ): Promise<K8sRecord | null> {
     const state = persisted.state as Partial<PersistedK8sState>;
-    if (!state.podName || !state.token) return null;
+    if ((!state.adoptedSandboxName && !state.podName) || !state.token)
+      return null;
 
     const claim = await getSandboxClaim(
       this.kubeConfig,
@@ -1094,11 +1260,24 @@ export class AgentSandboxRunner implements SandboxRunner {
     ).catch(() => undefined);
     if (!claim || !isSandboxReady(claim)) return null;
 
-    // Pod name may have changed (operator recreated the pod). Trust the claim
-    // annotation over the persisted value.
-    const currentPodName = readPodName(claim) ?? state.podName;
+    // Persisted `adoptedSandboxName` is missing on rows written before
+    // warm-pool support — those rows describe cold-path sandboxes whose
+    // Service name equals `handle`. Fall back to `handle` so existing
+    // claims keep routing correctly. Cross-check `claim.status.sandbox.name`
+    // first: the operator can update it (e.g. on pod recreation), and
+    // routing must follow that.
+    // Cross-check claim.status.sandbox.name first: the operator can update
+    // it (e.g. on pod recreation). Fall back to persisted adoptedSandboxName,
+    // then state.podName (back-compat with pre-warm-pool rows), then handle.
+    // In agent-sandbox the pod name always equals the Sandbox CR name, so
+    // adoptedSandboxName is the correct port-forward target.
+    const adoptedSandboxName =
+      claim.status?.sandbox?.name ??
+      state.adoptedSandboxName ??
+      state.podName ??
+      handle;
 
-    const live = await this.openAndProbeDaemon(currentPodName, handle);
+    const live = await this.openAndProbeDaemon(adoptedSandboxName, handle);
     if (!live) return null;
 
     // Pod bounced but the daemon's orchestrator handles re-bootstrap itself
@@ -1112,7 +1291,7 @@ export class AgentSandboxRunner implements SandboxRunner {
     return {
       id,
       handle,
-      podName: currentPodName,
+      adoptedSandboxName,
       token: state.token,
       workdir: state.workdir ?? DEFAULT_WORKDIR,
       daemonUrl: live.daemonUrl,
@@ -1130,12 +1309,18 @@ export class AgentSandboxRunner implements SandboxRunner {
     claim: SandboxResource,
   ): Promise<K8sRecord | null> {
     if (!isSandboxReady(claim)) return null;
-    const podName = readPodName(claim);
-    if (!podName) return null;
+    const adoptedSandboxName = claim.status?.sandbox?.name ?? handle;
+    // Warm-pool mode keeps `claim.spec.env: []` so the per-claim token is
+    // not recoverable from the cluster — it lives only in the state-store.
+    // When the state-store is wiped (the trigger that brings us into
+    // adopt), there's no way to retrieve it. Returning null falls through
+    // to delete + reprovision; the pool releases the pod, the operator
+    // allocates a fresh one, and mesh rotates a new token onto it.
+    if (this.sentinelToken !== null) return null;
     const token = readClaimDaemonToken(claim);
     if (!token) return null;
 
-    const live = await this.openAndProbeDaemon(podName, handle);
+    const live = await this.openAndProbeDaemon(adoptedSandboxName, handle);
     if (!live) return null;
 
     const tenant = readClaimTenant(claim);
@@ -1149,12 +1334,18 @@ export class AgentSandboxRunner implements SandboxRunner {
     // immediately after will already see a working cluster on the gateway
     // side.
     if (this.previewGateway) {
-      await this.ensureServicePortForHandle(handle).catch((err) => {
-        console.warn(
-          `[${LOG_LABEL}] Service port backfill failed for ${handle}: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      });
-      await this.ensureHttpRouteForHandle(handle, tenant).catch((err) => {
+      await this.ensureServicePortForAdoptedSandbox(adoptedSandboxName).catch(
+        (err) => {
+          console.warn(
+            `[${LOG_LABEL}] Service port backfill failed for ${handle}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        },
+      );
+      await this.ensureHttpRouteForHandle(
+        handle,
+        adoptedSandboxName,
+        tenant,
+      ).catch((err) => {
         console.warn(
           `[${LOG_LABEL}] HTTPRoute backfill failed for ${handle}: ${err instanceof Error ? err.message : String(err)}`,
         );
@@ -1164,7 +1355,7 @@ export class AgentSandboxRunner implements SandboxRunner {
     return {
       id,
       handle,
-      podName,
+      adoptedSandboxName,
       token,
       workdir: DEFAULT_WORKDIR,
       daemonUrl: live.daemonUrl,
@@ -1299,7 +1490,10 @@ export class AgentSandboxRunner implements SandboxRunner {
   // ---- Identity + preview URL ----------------------------------------------
 
   private computeHandle(id: SandboxId, branch: string | null): string {
-    return composeBranchHandle(id, branch);
+    // hashLen=16 (~64 bits) per handle.ts: runners that expose the handle as
+    // a public hostname must use longer hashes to resist brute-force. Also
+    // prevents DB handle collisions across users on the no-branch path.
+    return composeBranchHandle(id, branch, { hashLen: 16 });
   }
 
   // Local mode: route preview traffic through the daemon port-forward, not
@@ -1332,7 +1526,7 @@ export class AgentSandboxRunner implements SandboxRunner {
   ): Promise<void> {
     if (!ops) return;
     const state: PersistedK8sState = {
-      podName: rec.podName,
+      adoptedSandboxName: rec.adoptedSandboxName,
       token: rec.token,
       workdir: rec.workdir,
       workload: rec.workload,
@@ -1545,14 +1739,6 @@ function readClaimDaemonToken(claim: SandboxResource): string | null {
   return null;
 }
 
-function readPodName(resource: SandboxResource): string | null {
-  return (
-    resource.metadata?.annotations?.[K8S_CONSTANTS.POD_NAME_ANNOTATION] ??
-    resource.metadata?.name ??
-    null
-  );
-}
-
 function deterministicLocalPort(handle: string, containerPort: number): number {
   const hash = createHash("sha256")
     .update(`${handle}:${containerPort}`)
@@ -1694,16 +1880,5 @@ function previewHostnameForHandle(
     return new URL(applyPreviewPattern(pattern, handle)).hostname || null;
   } catch {
     return null;
-  }
-}
-
-/** Fallback for when callers don't provide `repo.displayName`. */
-function deriveRepoLabel(cloneUrl: string): string {
-  try {
-    const u = new URL(cloneUrl);
-    const trimmed = u.pathname.replace(/^\/+/, "").replace(/\.git$/, "");
-    return trimmed || u.hostname;
-  } catch {
-    return cloneUrl;
   }
 }

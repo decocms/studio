@@ -22,7 +22,9 @@ import {
   createUIMessageStream,
   stepCountIs,
   streamText,
+  tool,
 } from "ai";
+import { z } from "zod";
 import { getBuiltInTools, type PendingImage } from "./built-in-tools";
 import { createEnableToolsTool } from "./built-in-tools/enable-tools";
 import {
@@ -69,6 +71,18 @@ import { traced, tracer } from "@/observability";
 import { getPodId } from "@/core/pod-identity";
 import { getSharedRunner } from "@/sandbox/lifecycle";
 
+function stringifyError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error !== null) {
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return "[unserializable object]";
+    }
+  }
+  return String(error);
+}
+
 /**
  * Classify a stream error into a small, stable taxonomy for analytics.
  * Consumers (dashboards) can rely on these values being consistent across
@@ -88,7 +102,7 @@ function classifyStreamError(
   | "unknown" {
   if (error instanceof Error && error.name === "AbortError") return "aborted";
   const msg = (
-    error instanceof Error ? error.message : String(error)
+    error instanceof Error ? error.message : stringifyError(error)
   ).toLowerCase();
   if (
     /insufficient|no credits|out of credits|balance|payment|quota exceeded|402/i.test(
@@ -268,6 +282,28 @@ async function streamCoreInner(
       );
     }
 
+    // Guard: async-research-only models (e.g. Gemini Deep Research) cannot
+    // drive `streamText`. They only work via the AsyncResearchProvider path
+    // routed through the `web_search` tool. Detect early and surface a clear
+    // error instead of letting Google's opaque "This model only supports
+    // Interactions API" bubble up from deep inside the agent loop.
+    if (provider?.asyncResearch) {
+      const slots: Array<["thinking" | "coding" | "fast" | "image", string]> = [
+        ["thinking", input.models.thinking.id],
+      ];
+      if (input.models.coding) slots.push(["coding", input.models.coding.id]);
+      if (input.models.fast) slots.push(["fast", input.models.fast.id]);
+      if (input.models.image) slots.push(["image", input.models.image.id]);
+      for (const [slot, modelId] of slots) {
+        if (provider.asyncResearch.canHandle(modelId)) {
+          throw new Error(
+            `Model "${modelId}" can only be used as a Deep Research model. ` +
+              `It is not usable as the ${slot} model — set it in the Deep Research slot instead.`,
+          );
+        }
+      }
+    }
+
     const saveMessagesToThread = async (
       ...messages: (ChatMessage | undefined)[]
     ) => {
@@ -439,11 +475,16 @@ async function streamCoreInner(
       execute: async ({ writer }) => {
         const modeConfig = resolveModeConfig(input.mode, { isCliAgent });
 
+        // superUser=true: the user is already authenticated as an org member,
+        // the virtual MCP enforces which connections are in scope, and the
+        // per-tool AuthTransport check would block every non-public connection
+        // tool (GitHub, Slack, etc.) for users who don't have explicit per-tool
+        // permissions configured — the wrong enforcement layer for chat.
         const passthroughClient = await createVirtualClientFrom(
           virtualMcp,
           ctx,
           "passthrough",
-          false,
+          true,
           { listTimeoutMs: 1_000 },
         );
 
@@ -513,6 +554,7 @@ async function streamCoreInner(
                 pendingImages,
                 passthroughClient,
                 vmContext,
+                taskId: mem.thread.id,
               },
               ctx,
             );
@@ -541,14 +583,29 @@ async function streamCoreInner(
           }
         }
 
+        // Build connection title map once — used by catalog, list_connection_tools, and enable_tools.
+        const connectionTitleMap = isCliAgent
+          ? new Map<string, string>()
+          : passthroughClient.getConnectionTitleMap();
+
+        // Declared before tools so enable_tools can close over it.
+        // Populated after buildToolCatalog runs below (before streamText starts).
+        const connectionToolsMap = new Map<string, string[]>();
+
         const tools = isCliAgent
           ? {}
           : {
               ...passthroughTools,
               ...builtInTools,
+              list_connection_tools: createListConnectionToolsTool(
+                passthroughClient,
+                passthroughNameMap,
+                connectionTitleMap,
+              ),
               enable_tools: createEnableToolsTool(
                 enabledTools,
                 passthroughToolNames,
+                connectionToolsMap,
                 {
                   isPlanMode: modeConfig.isPlanMode,
                   toolAnnotations,
@@ -559,10 +616,21 @@ async function streamCoreInner(
         // Build composable system prompt array
         const basePrompt = buildBasePlatformPrompt();
 
-        const [toolCatalog, promptCatalog] = await Promise.all([
-          buildToolCatalog(passthroughClient, enabledTools, passthroughNameMap),
+        const [catalogResult, promptCatalog] = await Promise.all([
+          buildToolCatalog(
+            passthroughClient,
+            enabledTools,
+            passthroughNameMap,
+            connectionTitleMap,
+          ),
           buildPromptCatalog(passthroughClient),
         ]);
+
+        // Populate connectionToolsMap in-place so enable_tools closure sees it
+        for (const [k, v] of catalogResult.connectionToolsMap.entries()) {
+          connectionToolsMap.set(k, v);
+        }
+        const toolCatalog = catalogResult.catalog;
 
         // Agent prompt: decopilot-specific or custom agent instructions
         const serverInstructions = passthroughClient.getInstructions();
@@ -580,6 +648,19 @@ async function streamCoreInner(
         const repoEnvironmentPrompt = vmMetadata?.githubRepo
           ? buildRepoEnvironmentPrompt(vmMetadata.githubRepo)
           : null;
+
+        // Step-0 system prompt: includes the tool catalog for initial discovery.
+        // The catalog is built once before streamText runs — it's already stale by step 1
+        // (doesn't reflect tools the model enables mid-turn), so subsequent steps use
+        // systemPromptsBase which omits it to keep context lean.
+        const systemPromptsBase = [
+          basePrompt,
+          planModePrompt,
+          webSearchPrompt,
+          repoEnvironmentPrompt,
+          promptCatalog,
+          agentPrompt,
+        ].filter((s): s is string => Boolean(s?.trim()));
 
         const systemPrompts = [
           basePrompt,
@@ -663,6 +744,12 @@ async function streamCoreInner(
         let lastProviderMetadata: Record<string, unknown> | undefined;
         let codingAgentSessionId: string | undefined;
         let codingAgentProvider: string | undefined;
+        let stepAccumulatedUsage = {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+        };
+        let stepAccumulatedCost = 0;
         llmCallStartTime = Date.now();
 
         // Build language model based on provider type
@@ -857,6 +944,7 @@ async function streamCoreInner(
 
                       let activeToolNames = [
                         ...builtInToolNames,
+                        "list_connection_tools",
                         "enable_tools",
                         ...enabledTools,
                       ];
@@ -868,7 +956,8 @@ async function streamCoreInner(
                           // Built-in tools and enable_tools are always allowed
                           if (
                             builtInToolNames.includes(name) ||
-                            name === "enable_tools"
+                            name === "enable_tools" ||
+                            name === "list_connection_tools"
                           ) {
                             return true;
                           }
@@ -893,6 +982,18 @@ async function streamCoreInner(
                             type: "tool" as const,
                             toolName: forcedToolName as never,
                           },
+                        }),
+                        // From step 1 onwards, drop the tool catalog from the system
+                        // prompt. The catalog is already in the model's context from
+                        // step 0, and is stale (built before this turn started).
+                        ...(!isFirstStep && {
+                          system: [
+                            ...systemPromptsBase.map((content) => ({
+                              role: "system" as const,
+                              content,
+                            })),
+                            ...processedSystemMessages,
+                          ],
                         }),
                       };
                     };
@@ -921,7 +1022,7 @@ async function streamCoreInner(
               llmSpan.setStatus({ code: SpanStatusCode.OK });
               llmSpan.end();
 
-              if (registrySignal.aborted) return;
+              // Always record usage even on abort — tokens were already consumed.
               const durationMs = Date.now() - (llmCallStartTime ?? Date.now());
               llmCallLogged = true;
               recordLlmCallMetrics({
@@ -969,10 +1070,14 @@ async function streamCoreInner(
                 requestId: ctx.metadata.requestId,
                 userAgent: ctx.metadata.userAgent ?? null,
               });
+
+              if (registrySignal.aborted) return;
             },
             onError: async (error) => {
               const err =
-                error instanceof Error ? error : new Error(String(error));
+                error instanceof Error
+                  ? error
+                  : new Error(stringifyError(error));
               llmSpan.setStatus({
                 code: SpanStatusCode.ERROR,
                 message: err.message,
@@ -1008,7 +1113,9 @@ async function streamCoreInner(
                   durationMs,
                   isError: true,
                   errorMessage:
-                    error instanceof Error ? error.message : String(error),
+                    error instanceof Error
+                      ? error.message
+                      : stringifyError(error),
                   userId: input.userId,
                   requestId: ctx.metadata.requestId,
                   userAgent: ctx.metadata.userAgent ?? null,
@@ -1016,11 +1123,81 @@ async function streamCoreInner(
               }
               throw error;
             },
+            onAbort: async ({ steps }) => {
+              if (!steps.length || llmCallLogged) return;
+              llmCallLogged = true;
+              const durationMs = Date.now() - (llmCallStartTime ?? Date.now());
+              const abortTotalUsage = steps.reduce(
+                (acc, s) => ({
+                  inputTokens: acc.inputTokens + (s.usage.inputTokens ?? 0),
+                  outputTokens: acc.outputTokens + (s.usage.outputTokens ?? 0),
+                  totalTokens: acc.totalTokens + (s.usage.totalTokens ?? 0),
+                }),
+                { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+              );
+              const lastStepUsage = steps[steps.length - 1]!.usage;
+              recordLlmCallMetrics({
+                ctx,
+                organizationId: input.organizationId,
+                modelId: input.models.thinking.id,
+                durationMs,
+                isError: false,
+                inputTokens: abortTotalUsage.inputTokens,
+                outputTokens: abortTotalUsage.outputTokens,
+              });
+              monitorLlmCall({
+                ctx,
+                organizationId: input.organizationId,
+                agentId: input.agent.id,
+                modelId: input.models.thinking.id,
+                modelTitle:
+                  input.models.thinking.title ?? input.models.thinking.id,
+                credentialId: input.models.credentialId,
+                taskId: mem.thread.id,
+                durationMs,
+                isError: false,
+                finishReason: "abort",
+                usage: {
+                  inputTokens: lastStepUsage.inputTokens ?? 0,
+                  outputTokens: lastStepUsage.outputTokens ?? 0,
+                  totalTokens: lastStepUsage.totalTokens ?? 0,
+                },
+                totalUsage: abortTotalUsage,
+                request: undefined,
+                response: undefined,
+                userId: input.userId,
+                requestId: ctx.metadata.requestId,
+                userAgent: ctx.metadata.userAgent ?? null,
+              });
+
+              // Re-push accumulated usage to the client. On abort the SDK
+              // resets message.metadata to its pre-stream state, so we
+              // explicitly write it here before the stream closes.
+              if (abortTotalUsage.totalTokens > 0) {
+                writer.write({
+                  type: "message-metadata",
+                  messageMetadata: {
+                    usage: {
+                      inputTokens: abortTotalUsage.inputTokens,
+                      outputTokens: abortTotalUsage.outputTokens,
+                      totalTokens: abortTotalUsage.totalTokens,
+                      ...(stepAccumulatedCost > 0 && {
+                        providerMetadata: {
+                          openrouter: {
+                            usage: { cost: stepAccumulatedCost },
+                          },
+                        },
+                      }),
+                    },
+                  },
+                });
+              }
+            },
           });
         } catch (err) {
           llmSpan.setStatus({
             code: SpanStatusCode.ERROR,
-            message: err instanceof Error ? err.message : String(err),
+            message: err instanceof Error ? err.message : stringifyError(err),
           });
           if (err instanceof Error) llmSpan.recordException(err);
           llmSpan.end();
@@ -1047,6 +1224,14 @@ async function streamCoreInner(
                   },
                 },
                 created_at: new Date(),
+                _request: {
+                  systemSections: systemPrompts.map((p) => ({
+                    chars: p.length,
+                    preview: p.slice(0, 80).replace(/\s+/g, " "),
+                  })),
+                  tools: Object.keys(tools).length,
+                  activeTools: builtInToolNames.length + 1 + enabledTools.size,
+                },
                 thread_id: mem.thread.id,
               };
             }
@@ -1078,7 +1263,39 @@ async function streamCoreInner(
                 ).threadId;
                 codingAgentProvider = "codex";
               }
-              return;
+              stepAccumulatedUsage = {
+                inputTokens:
+                  stepAccumulatedUsage.inputTokens +
+                  (part.usage?.inputTokens ?? 0),
+                outputTokens:
+                  stepAccumulatedUsage.outputTokens +
+                  (part.usage?.outputTokens ?? 0),
+                totalTokens:
+                  stepAccumulatedUsage.totalTokens +
+                  (part.usage?.totalTokens ?? 0),
+              };
+              const stepCost = (
+                part.providerMetadata?.openrouter as
+                  | { usage?: { cost?: number } }
+                  | undefined
+              )?.usage?.cost;
+              if (stepCost != null) {
+                stepAccumulatedCost += stepCost;
+              }
+              return {
+                usage: {
+                  inputTokens: stepAccumulatedUsage.inputTokens,
+                  outputTokens: stepAccumulatedUsage.outputTokens,
+                  totalTokens: stepAccumulatedUsage.totalTokens,
+                  ...(stepAccumulatedCost > 0 && {
+                    providerMetadata: {
+                      openrouter: {
+                        usage: { cost: stepAccumulatedCost },
+                      },
+                    },
+                  }),
+                },
+              };
             }
 
             if (part.type === "finish") {
@@ -1088,22 +1305,56 @@ async function streamCoreInner(
                 lastProviderMetadata ??
                 (part as { providerMetadata?: Record<string, unknown> })
                   .providerMetadata;
-              const usage = totalUsage
+              // Merge accumulated per-step cost into the final provider metadata.
+              // Per-step cost is tracked in stepAccumulatedCost from finish-step events.
+              const finalProviderMeta =
+                stepAccumulatedCost > 0 && providerMeta
+                  ? {
+                      ...providerMeta,
+                      openrouter: {
+                        ...((providerMeta.openrouter as Record<
+                          string,
+                          unknown
+                        >) ?? {}),
+                        usage: {
+                          ...(((
+                            providerMeta.openrouter as Record<string, unknown>
+                          )?.usage as Record<string, unknown>) ?? {}),
+                          cost: stepAccumulatedCost,
+                        },
+                      },
+                    }
+                  : providerMeta;
+              // On abort the SDK emits finish with totalUsage = 0.
+              // Fall back to stepAccumulatedUsage so we don't overwrite the
+              // per-step metadata that was already sent to the client.
+              const effectiveUsage =
+                totalUsage &&
+                ((totalUsage.inputTokens ?? 0) > 0 ||
+                  (totalUsage.outputTokens ?? 0) > 0)
+                  ? totalUsage
+                  : stepAccumulatedUsage.totalTokens > 0
+                    ? stepAccumulatedUsage
+                    : totalUsage;
+              const usage = effectiveUsage
                 ? {
-                    inputTokens: totalUsage.inputTokens ?? 0,
-                    outputTokens: totalUsage.outputTokens ?? 0,
-                    reasoningTokens: totalUsage.reasoningTokens ?? undefined,
-                    totalTokens: totalUsage.totalTokens ?? 0,
+                    inputTokens: effectiveUsage.inputTokens ?? 0,
+                    outputTokens: effectiveUsage.outputTokens ?? 0,
+                    reasoningTokens:
+                      (totalUsage as { reasoningTokens?: number } | null)
+                        ?.reasoningTokens ?? undefined,
+                    totalTokens: effectiveUsage.totalTokens ?? 0,
                     providerMetadata: sanitizeProviderMetadata(
-                      provider && providerMeta
+                      provider && finalProviderMeta
                         ? {
-                            ...providerMeta,
+                            ...finalProviderMeta,
                             [provider]: {
-                              ...((providerMeta[provider] as object) ?? {}),
+                              ...((finalProviderMeta[provider] as object) ??
+                                {}),
                               reasoning_details: undefined,
                             },
                           }
-                        : providerMeta,
+                        : finalProviderMeta,
                     ),
                   }
                 : undefined;
@@ -1242,7 +1493,7 @@ async function streamCoreInner(
             duration_ms: Date.now() - streamStartAt,
             error_category: classifyStreamError(error),
             error_message:
-              error instanceof Error ? error.message : String(error),
+              error instanceof Error ? error.message : stringifyError(error),
             is_resume: input.isResume ?? false,
           },
         });
@@ -1323,7 +1574,7 @@ function sanitizeStreamError(error: unknown): string {
     }
     return error.message;
   }
-  return String(error);
+  return stringifyError(error);
 }
 
 /**
@@ -1347,7 +1598,12 @@ function reconstructEnabledTools(
         const result = part.result as { enabled?: string[] };
         if (Array.isArray(result.enabled)) {
           for (const name of result.enabled) {
-            if (availableToolNames.has(name)) {
+            // Normalize stored names: old threads may have hyphenated names
+            // (e.g. conn-togsm0..._tool) while current safe names use underscores.
+            const normalized = name.replace(/[^a-zA-Z0-9_]/g, "_");
+            if (availableToolNames.has(normalized)) {
+              enabled.add(normalized);
+            } else if (availableToolNames.has(name)) {
               enabled.add(name);
             }
           }
@@ -1358,23 +1614,14 @@ function reconstructEnabledTools(
   return enabled;
 }
 
-const REDUNDANT_PREFIXES =
-  /^(this tool |use this to |allows you to |a tool that |a tool to |tool to |tool that )/i;
-
-function trimToolDescription(desc: string, maxLen = 80): string {
-  let trimmed = desc.replace(REDUNDANT_PREFIXES, "").trim();
-  if (trimmed.length > 0) {
-    trimmed = trimmed[0]!.toUpperCase() + trimmed.slice(1);
-  }
-  if (trimmed.length > maxLen) {
-    return trimmed.slice(0, maxLen - 1) + "…";
-  }
-  return trimmed;
-}
+const CATALOG_PREVIEW_COUNT = 5;
 
 /**
- * Build a compact tool catalog for the system prompt, grouped by connection.
- * Format: <available-connections><connection name="..." id="...">TOOL|desc</connection></available-connections>
+ * Build a compact connection-level catalog for the system prompt.
+ * Shows each connection's name, id, tool count, and up to 5 representative
+ * tool names so the model can route to the right connection without needing
+ * a list_connection_tools round trip.
+ * Also returns connectionToolsMap for enable_tools({ connections }) expansion.
  */
 async function buildToolCatalog(
   client: {
@@ -1388,41 +1635,147 @@ async function buildToolCatalog(
   },
   enabledTools: Set<string>,
   nameMap: Map<string, string>,
-): Promise<string | null> {
+  connectionTitleMap: Map<string, string>,
+): Promise<{
+  catalog: string | null;
+  connectionToolsMap: Map<string, string[]>;
+}> {
   const { tools } = await client.listTools();
 
   const connections = new Map<
     string,
-    { name: string; id: string; lines: string[] }
+    { name: string; totalCount: number; preview: string[] }
   >();
+  const connectionToolsMap = new Map<string, string[]>();
 
   for (const t of tools) {
     const safeName = nameMap.get(t.name);
-    if (!safeName || enabledTools.has(safeName)) continue;
+    if (!safeName) continue;
     if (!isToolVisibleToModel(t)) continue;
 
-    const connId = (t._meta?.connectionId as string) ?? "unknown";
-    const connName = connId;
-    const desc = trimToolDescription(t.description ?? "");
+    const connId = (t._meta?.gatewayClientId as string) ?? "unknown";
+    const prefix = `${connId}_`;
+    const shortName = safeName.startsWith(prefix)
+      ? safeName.slice(prefix.length)
+      : safeName;
+
+    // Track all tools per connection for enable_tools expansion
+    let toolList = connectionToolsMap.get(connId);
+    if (!toolList) {
+      toolList = [];
+      connectionToolsMap.set(connId, toolList);
+    }
+    toolList.push(safeName);
+
+    // Only include in catalog if not already enabled
+    if (enabledTools.has(safeName)) continue;
 
     let group = connections.get(connId);
     if (!group) {
-      group = { name: connName, id: connId, lines: [] };
+      group = {
+        name: connectionTitleMap.get(connId) ?? connId,
+        totalCount: 0,
+        preview: [],
+      };
       connections.set(connId, group);
     }
-    group.lines.push(`${safeName}|${desc}`);
+    group.totalCount++;
+    if (group.preview.length < CATALOG_PREVIEW_COUNT) {
+      group.preview.push(shortName);
+    }
   }
 
-  if (connections.size === 0) return null;
+  const pending = [...connections.entries()].filter(
+    ([, g]) => g.totalCount > 0,
+  );
+  if (pending.length === 0) return { catalog: null, connectionToolsMap };
 
-  const sections: string[] = [];
-  for (const { name, id, lines } of connections.values()) {
-    sections.push(
-      `<connection name="${escapeXmlAttr(name)}" id="${escapeXmlAttr(id)}">\n${lines.join("\n")}\n</connection>`,
-    );
-  }
+  const lines = pending.map(([id, { name, totalCount, preview }]) => {
+    const more = totalCount - preview.length;
+    const hint = preview.join(", ") + (more > 0 ? `, +${more} more` : "");
+    return `<connection name="${escapeXmlAttr(name)}" id="${escapeXmlAttr(id)}" tools="${totalCount}">${escapeXmlAttr(hint)}</connection>`;
+  });
 
-  return `\n\n<available-connections>\n${sections.join("\n")}\n</available-connections>`;
+  return {
+    catalog: `\n\n<available-connections>\n${lines.join("\n")}\n</available-connections>`,
+    connectionToolsMap,
+  };
+}
+
+/**
+ * Creates the list_connection_tools built-in tool.
+ * Returns tool names and descriptions for a given connection ID so the model
+ * can discover what's available before deciding what to enable.
+ */
+function createListConnectionToolsTool(
+  client: {
+    listTools(): Promise<{
+      tools: Array<{
+        name: string;
+        description?: string;
+        _meta?: Record<string, unknown>;
+      }>;
+    }>;
+  },
+  nameMap: Map<string, string>,
+  connectionTitleMap: Map<string, string>,
+) {
+  return tool({
+    description:
+      "List the tools available in a specific connection, including their names and descriptions. " +
+      "Call this to discover what a connection can do before enabling tools with enable_tools.",
+    inputSchema: z.object({
+      connection_id: z
+        .string()
+        .describe("The connection id from <available-connections>"),
+    }),
+    execute: async ({ connection_id }) => {
+      const { tools } = await client.listTools();
+      const result: { name: string; safe_name: string; description: string }[] =
+        [];
+      // The model may pass a normalized (underscore) version of the connection
+      // id, but _meta.gatewayClientId still has the original (hyphenated) form.
+      // Build a lookup that matches either form.
+      const normalizedInput = connection_id
+        .replace(/[^a-zA-Z0-9_]/g, "_")
+        .toLowerCase();
+      for (const t of tools) {
+        const safeName = nameMap.get(t.name);
+        if (!safeName) continue;
+        if (!isToolVisibleToModel(t)) continue;
+        const connId = (t._meta?.gatewayClientId as string) ?? "unknown";
+        const normalizedConnId = connId
+          .replace(/[^a-zA-Z0-9_]/g, "_")
+          .toLowerCase();
+        if (normalizedConnId !== normalizedInput && connId !== connection_id) {
+          continue;
+        }
+        // Use the safe name's prefix to derive the short name
+        const safePrefix = `${normalizedConnId}_`;
+        const shortName = safeName.toLowerCase().startsWith(safePrefix)
+          ? safeName.slice(safePrefix.length)
+          : safeName;
+        result.push({
+          name: shortName,
+          safe_name: safeName,
+          description: t.description ?? "",
+        });
+      }
+      // Resolve connection name: try original id first, then normalized lookup
+      const connName =
+        connectionTitleMap.get(connection_id) ??
+        [...connectionTitleMap.entries()].find(
+          ([id]) =>
+            id.replace(/[^a-zA-Z0-9_]/g, "_").toLowerCase() === normalizedInput,
+        )?.[1] ??
+        connection_id;
+      return {
+        connection: connName,
+        connection_id,
+        tools: result,
+      };
+    },
+  });
 }
 
 function escapeXmlAttr(s: string): string {

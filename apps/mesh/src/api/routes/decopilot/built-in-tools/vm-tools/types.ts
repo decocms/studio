@@ -28,4 +28,10 @@ export interface VmToolsParams {
    * `model-outputs/<threadId>/<filename>` so the chat UI can list them.
    */
   readonly threadId: string;
+  /**
+   * Virtual MCP ID. `set_vm_config` mirrors packageManager / previewPort
+   * back to the Virtual MCP metadata so new branch sandboxes are
+   * provisioned with the updated workload rather than stale defaults.
+   */
+  readonly virtualMcpId: string;
 }

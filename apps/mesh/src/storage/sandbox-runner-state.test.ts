@@ -75,7 +75,7 @@ describe("KyselySandboxRunnerStateStore", () => {
     expect(rows[0]!.count).toBe("1");
   });
 
-  it("put rejects duplicate handle across different (user, project, kind)", async () => {
+  it("put allows duplicate handle across different (user, project, kind)", async () => {
     const id1 = mkId("dup-handle-a");
     const id2 = mkId("dup-handle-b");
     const sharedHandle = "shared-handle-conflict";
@@ -85,12 +85,14 @@ describe("KyselySandboxRunnerStateStore", () => {
       state: { which: "a" },
     });
 
+    // Migration 074 dropped the unique constraint on handle — different
+    // runners can legitimately share a handle (hash entropy collisions).
     await expect(
       store.put(id2, "freestyle", {
         handle: sharedHandle,
         state: { which: "b" },
       }),
-    ).rejects.toThrow();
+    ).resolves.toBeUndefined();
   });
 
   it("delete removes the row", async () => {

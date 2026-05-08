@@ -20,6 +20,7 @@ export interface UseBranchesResult {
 
 interface UseBranchesArgs {
   orgId: string;
+  orgSlug: string;
   userId: string;
   connectionId: string | null | undefined;
   vmMap: VmMap | undefined;
@@ -78,6 +79,7 @@ function extractBranches(r: unknown): RawBranchesResponse {
  */
 export function useBranches({
   orgId,
+  orgSlug,
   userId,
   connectionId,
   vmMap,
@@ -88,6 +90,7 @@ export function useBranches({
   const client = useMCPClient({
     connectionId: connectionId ?? null,
     orgId,
+    orgSlug,
   });
 
   const { data, isLoading, isError } = useMCPToolCallQuery<RawBranchesResponse>(

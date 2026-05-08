@@ -44,6 +44,7 @@ describe("probeDaemonHealth", () => {
           JSON.stringify({
             ready: true,
             bootId: "boot-123",
+            configured: true,
             setup: { running: false, done: true },
           }),
           { status: 200, headers: { "content-type": "application/json" } },
@@ -53,6 +54,7 @@ describe("probeDaemonHealth", () => {
     expect(result).toEqual({
       ready: true,
       bootId: "boot-123",
+      configured: true,
       setup: { running: false, done: true },
     });
   });

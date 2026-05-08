@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Controller, useForm, type UseFormReturn } from "react-hook-form";
 import {
   useProjectContext,
   useMCPClient,
@@ -8,13 +9,10 @@ import {
 import {
   ChevronDown,
   ChevronRight,
-  Edit03,
   LinkExternal01,
-  Check,
   Plus,
   Star01,
   Trash01,
-  X,
   Globe02,
   Zap,
 } from "@untitledui/icons";
@@ -37,6 +35,7 @@ import { Page } from "@/web/components/page";
 import { KEYS } from "@/web/lib/query-keys";
 import { unwrapToolResult } from "@/web/lib/unwrap-tool-result";
 import { usePublicConfig } from "@/web/hooks/use-public-config";
+import { useDebouncedAutosave } from "@/web/hooks/use-debounced-autosave.ts";
 import { track } from "@/web/lib/posthog-client";
 
 // --- Types ---
@@ -71,70 +70,48 @@ type BrandContext = {
   isDefault?: boolean;
 };
 
-// --- Editable card ---
+// --- Section card wrapper (visual container only — autosave handles saves) ---
 
 function BrandCard({
   title,
   children,
-  onEdit,
-  editing,
-  onSave,
-  onCancel,
   className,
 }: {
   title: string;
   children: React.ReactNode;
-  onEdit?: () => void;
-  editing?: boolean;
-  onSave?: () => void;
-  onCancel?: () => void;
   className?: string;
 }) {
   return (
     <div
       className={cn(
-        "group relative rounded-2xl border border-border/60 bg-background p-5",
-        editing && "ring-2 ring-ring/30",
+        "rounded-2xl border border-border/60 bg-background p-5",
         className,
       )}
     >
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4">
         <span className="text-xs font-medium text-muted-foreground">
           {title}
         </span>
-        {editing ? (
-          <div className="flex gap-1">
-            <button
-              type="button"
-              onClick={onCancel}
-              className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted hover:bg-muted-foreground/15"
-            >
-              <X size={13} className="text-muted-foreground" />
-            </button>
-            <button
-              type="button"
-              onClick={onSave}
-              className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 hover:bg-primary/20"
-            >
-              <Check size={13} className="text-primary" />
-            </button>
-          </div>
-        ) : (
-          onEdit && (
-            <button
-              type="button"
-              onClick={onEdit}
-              className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted opacity-0 transition-opacity duration-150 hover:bg-muted-foreground/15 group-hover:opacity-100"
-            >
-              <Edit03 size={13} className="text-muted-foreground" />
-            </button>
-          )
-        )}
       </div>
       {children}
     </div>
   );
 }
+
+// --- Form data covering all editable brand fields ---
+
+interface BrandFormData {
+  name: string;
+  domain: string;
+  overview: string;
+  logo: string;
+  favicon: string;
+  ogImage: string;
+  fonts: BrandFonts;
+  colors: BrandColors;
+}
+
+type BrandFormReturn = UseFormReturn<BrandFormData>;
 
 // --- Auto-extract banner ---
 
@@ -188,272 +165,218 @@ function AutoExtractBanner({
   );
 }
 
-// --- Section: Company Overview (editable) ---
+// --- Section: Company Overview ---
 
 function OverviewSection({
-  brand,
-  onSave,
+  form,
+  onFieldChange,
+  onFieldCommit,
 }: {
-  brand: Partial<BrandContext>;
-  onSave: (data: Partial<BrandContext>) => void;
+  form: BrandFormReturn;
+  onFieldChange: () => void;
+  onFieldCommit: () => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(brand.name ?? "");
-  const [domain, setDomain] = useState(brand.domain ?? "");
-  const [overview, setOverview] = useState(brand.overview ?? "");
-
-  const startEdit = () => {
-    setName(brand.name ?? "");
-    setDomain(brand.domain ?? "");
-    setOverview(brand.overview ?? "");
-    setEditing(true);
-  };
-
-  const save = () => {
-    onSave({ name, domain, overview });
-    setEditing(false);
-  };
-
-  const isEmpty = !brand.name && !brand.domain && !brand.overview;
+  const domain = form.watch("domain");
 
   return (
-    <BrandCard
-      title="Company Overview"
-      onEdit={startEdit}
-      editing={editing}
-      onSave={save}
-      onCancel={() => setEditing(false)}
-    >
-      {editing ? (
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-xs text-muted-foreground">
-                Company name
-              </label>
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Acme Corp"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-muted-foreground">
-                Domain
-              </label>
-              <Input
-                value={domain}
-                onChange={(e) => setDomain(e.target.value)}
-                placeholder="acme.com"
-              />
-            </div>
-          </div>
+    <BrandCard title="Company Overview">
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="mb-1 block text-xs text-muted-foreground">
-              Overview
+              Company name
             </label>
-            <Textarea
-              value={overview}
-              onChange={(e) => setOverview(e.target.value)}
-              placeholder="Brief description of what the company does..."
-              rows={3}
+            <Controller
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <Input
+                  {...field}
+                  onChange={(e) => {
+                    field.onChange(e);
+                    onFieldChange();
+                  }}
+                  onBlur={() => {
+                    field.onBlur();
+                    onFieldCommit();
+                  }}
+                  placeholder="Acme Corp"
+                />
+              )}
+            />
+          </div>
+          <div>
+            <label className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+              <span>Domain</span>
+              {domain && (
+                <a
+                  href={`https://${domain}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 transition-colors hover:text-foreground"
+                >
+                  <LinkExternal01 size={10} />
+                  open
+                </a>
+              )}
+            </label>
+            <Controller
+              control={form.control}
+              name="domain"
+              render={({ field }) => (
+                <Input
+                  {...field}
+                  onChange={(e) => {
+                    field.onChange(e);
+                    onFieldChange();
+                  }}
+                  onBlur={() => {
+                    field.onBlur();
+                    onFieldCommit();
+                  }}
+                  placeholder="acme.com"
+                />
+              )}
             />
           </div>
         </div>
-      ) : isEmpty ? (
-        <p className="text-sm text-muted-foreground/60">
-          No company info yet. Click edit to add your company name, domain, and
-          overview.
-        </p>
-      ) : (
-        <>
-          <div className="mb-3 flex items-start justify-between gap-4">
-            <h2 className="text-xl font-semibold leading-tight text-foreground">
-              {brand.name}
-            </h2>
-            {brand.domain && (
-              <a
-                href={`https://${brand.domain}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-0.5 flex shrink-0 items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
-              >
-                <LinkExternal01 size={11} />
-                {brand.domain}
-              </a>
+        <div>
+          <label className="mb-1 block text-xs text-muted-foreground">
+            Overview
+          </label>
+          <Controller
+            control={form.control}
+            name="overview"
+            render={({ field }) => (
+              <Textarea
+                {...field}
+                onChange={(e) => {
+                  field.onChange(e);
+                  onFieldChange();
+                }}
+                onBlur={() => {
+                  field.onBlur();
+                  onFieldCommit();
+                }}
+                placeholder="Brief description of what the company does..."
+                rows={3}
+              />
             )}
-          </div>
-          {brand.overview && (
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              {brand.overview}
-            </p>
-          )}
-        </>
-      )}
+          />
+        </div>
+      </div>
     </BrandCard>
   );
 }
 
 // --- Section: Logos ---
 
-function LogosSection({
-  brand,
-  onSave,
+const CHECKERED_BG = {
+  backgroundImage:
+    "linear-gradient(45deg, #e5e7eb 25%, transparent 25%, transparent 75%, #e5e7eb 75%), linear-gradient(45deg, #e5e7eb 25%, transparent 25%, transparent 75%, #e5e7eb 75%)",
+  backgroundSize: "8px 8px",
+  backgroundPosition: "0 0, 4px 4px",
+  backgroundColor: "#fff",
+};
+
+function LogoFieldRow({
+  form,
+  name,
+  label,
+  imgClassName = "h-full w-full object-contain p-3",
+  onFieldChange,
+  onFieldCommit,
 }: {
-  brand: Partial<BrandContext>;
-  onSave: (data: Partial<BrandContext>) => void;
+  form: BrandFormReturn;
+  name: "logo" | "favicon" | "ogImage";
+  label: string;
+  imgClassName?: string;
+  onFieldChange: () => void;
+  onFieldCommit: () => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [logo, setLogo] = useState(brand.logo ?? "");
-  const [favicon, setFavicon] = useState(brand.favicon ?? "");
-  const [ogImage, setOgImage] = useState(brand.ogImage ?? "");
-
-  const startEdit = () => {
-    setLogo(brand.logo ?? "");
-    setFavicon(brand.favicon ?? "");
-    setOgImage(brand.ogImage ?? "");
-    setEditing(true);
-  };
-
-  const save = () => {
-    onSave({
-      logo: logo || null,
-      favicon: favicon || null,
-      ogImage: ogImage || null,
-    });
-    setEditing(false);
-  };
-
-  const hasLogos = brand.logo || brand.favicon || brand.ogImage;
-
+  const value = form.watch(name);
   return (
-    <BrandCard
-      title="Logos & Images"
-      onEdit={startEdit}
-      editing={editing}
-      onSave={save}
-      onCancel={() => setEditing(false)}
-    >
-      {editing ? (
-        <div className="space-y-3">
-          <div>
-            <label className="mb-1 block text-xs text-muted-foreground">
-              Logo URL
-            </label>
+    <div className="flex items-start gap-3">
+      <div
+        className="flex aspect-video w-28 shrink-0 items-center justify-center overflow-hidden rounded-xl"
+        style={CHECKERED_BG}
+      >
+        {value ? (
+          <img
+            src={value}
+            alt={label}
+            className={imgClassName}
+            loading="lazy"
+          />
+        ) : (
+          <span className="text-[10px] text-muted-foreground/70">
+            No {label.toLowerCase()}
+          </span>
+        )}
+      </div>
+      <div className="flex-1">
+        <label className="mb-1 block text-xs text-muted-foreground">
+          {label} URL
+        </label>
+        <Controller
+          control={form.control}
+          name={name}
+          render={({ field }) => (
             <Input
-              value={logo}
-              onChange={(e) => setLogo(e.target.value)}
+              {...field}
+              onChange={(e) => {
+                field.onChange(e);
+                onFieldChange();
+              }}
+              onBlur={() => {
+                field.onBlur();
+                onFieldCommit();
+              }}
               placeholder="https://..."
             />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-muted-foreground">
-              Favicon URL
-            </label>
-            <Input
-              value={favicon}
-              onChange={(e) => setFavicon(e.target.value)}
-              placeholder="https://..."
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-muted-foreground">
-              OG Image URL
-            </label>
-            <Input
-              value={ogImage}
-              onChange={(e) => setOgImage(e.target.value)}
-              placeholder="https://..."
-            />
-          </div>
-        </div>
-      ) : hasLogos ? (
-        <div className="grid grid-cols-3 gap-3">
-          <div className="flex flex-col gap-1.5">
-            <div
-              className="flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl"
-              style={{
-                backgroundImage:
-                  "linear-gradient(45deg, #e5e7eb 25%, transparent 25%, transparent 75%, #e5e7eb 75%), linear-gradient(45deg, #e5e7eb 25%, transparent 25%, transparent 75%, #e5e7eb 75%)",
-                backgroundSize: "8px 8px",
-                backgroundPosition: "0 0, 4px 4px",
-                backgroundColor: "#fff",
-              }}
-            >
-              {brand.logo ? (
-                <img
-                  src={brand.logo}
-                  alt="Logo"
-                  className="h-full w-full object-contain p-3"
-                />
-              ) : (
-                <span className="text-[10px] text-muted-foreground/70">
-                  No logo
-                </span>
-              )}
-            </div>
-            <span className="text-[10px] text-muted-foreground">Logo</span>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <div
-              className="flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl"
-              style={{
-                backgroundImage:
-                  "linear-gradient(45deg, #e5e7eb 25%, transparent 25%, transparent 75%, #e5e7eb 75%), linear-gradient(45deg, #e5e7eb 25%, transparent 25%, transparent 75%, #e5e7eb 75%)",
-                backgroundSize: "8px 8px",
-                backgroundPosition: "0 0, 4px 4px",
-                backgroundColor: "#fff",
-              }}
-            >
-              {brand.favicon ? (
-                <img
-                  src={brand.favicon}
-                  alt="Favicon"
-                  className="h-12 w-12 object-contain"
-                />
-              ) : (
-                <span className="text-[10px] text-muted-foreground/70">
-                  No favicon
-                </span>
-              )}
-            </div>
-            <span className="text-[10px] text-muted-foreground">Favicon</span>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <div
-              className="flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl"
-              style={{
-                backgroundImage:
-                  "linear-gradient(45deg, #e5e7eb 25%, transparent 25%, transparent 75%, #e5e7eb 75%), linear-gradient(45deg, #e5e7eb 25%, transparent 25%, transparent 75%, #e5e7eb 75%)",
-                backgroundSize: "8px 8px",
-                backgroundPosition: "0 0, 4px 4px",
-                backgroundColor: "#fff",
-              }}
-            >
-              {brand.ogImage ? (
-                <img
-                  src={brand.ogImage}
-                  alt="OG"
-                  className="h-full w-full object-contain"
-                  loading="lazy"
-                />
-              ) : (
-                <span className="text-[10px] text-muted-foreground/70">
-                  No SEO image
-                </span>
-              )}
-            </div>
-            <span className="text-[10px] text-muted-foreground">
-              SEO / OG image
-            </span>
-          </div>
-        </div>
-      ) : (
-        <p className="text-sm text-muted-foreground/60">
-          No logos added yet. Click edit to add logo, favicon, and OG image
-          URLs.
-        </p>
-      )}
+          )}
+        />
+      </div>
+    </div>
+  );
+}
+
+function LogosSection({
+  form,
+  onFieldChange,
+  onFieldCommit,
+}: {
+  form: BrandFormReturn;
+  onFieldChange: () => void;
+  onFieldCommit: () => void;
+}) {
+  return (
+    <BrandCard title="Logos & Images">
+      <div className="space-y-3">
+        <LogoFieldRow
+          form={form}
+          name="logo"
+          label="Logo"
+          onFieldChange={onFieldChange}
+          onFieldCommit={onFieldCommit}
+        />
+        <LogoFieldRow
+          form={form}
+          name="favicon"
+          label="Favicon"
+          imgClassName="h-12 w-12 object-contain"
+          onFieldChange={onFieldChange}
+          onFieldCommit={onFieldCommit}
+        />
+        <LogoFieldRow
+          form={form}
+          name="ogImage"
+          label="SEO / OG image"
+          imgClassName="h-full w-full object-contain"
+          onFieldChange={onFieldChange}
+          onFieldCommit={onFieldCommit}
+        />
+      </div>
     </BrandCard>
   );
 }
@@ -467,77 +390,59 @@ const FONT_ROLES = [
 ];
 
 function FontsSection({
-  brand,
-  onSave,
+  form,
+  onFieldChange,
+  onFieldCommit,
 }: {
-  brand: Partial<BrandContext>;
-  onSave: (data: Partial<BrandContext>) => void;
+  form: BrandFormReturn;
+  onFieldChange: () => void;
+  onFieldCommit: () => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [fonts, setFonts] = useState<BrandFonts>(brand.fonts ?? {});
-
-  const startEdit = () => {
-    setFonts(brand.fonts ?? {});
-    setEditing(true);
-  };
-
-  const save = () => {
-    const hasAny = Object.values(fonts).some((v) => v?.trim());
-    onSave({ fonts: hasAny ? fonts : null });
-    setEditing(false);
-  };
-
-  const hasFonts =
-    brand.fonts && Object.values(brand.fonts).some((v) => v?.trim());
-
   return (
-    <BrandCard
-      title="Fonts"
-      onEdit={startEdit}
-      editing={editing}
-      onSave={save}
-      onCancel={() => setEditing(false)}
-    >
-      {editing ? (
-        <div className="space-y-2">
-          {FONT_ROLES.map(({ key, label }) => (
+    <BrandCard title="Fonts">
+      <div className="space-y-2">
+        {FONT_ROLES.map(({ key, label }) => {
+          const fieldName = `fonts.${key}` as const;
+          const value = form.watch(fieldName);
+          return (
             <div key={key}>
-              <label className="mb-1 block text-xs text-muted-foreground">
-                {label}
-              </label>
-              <Input
-                value={fonts[key] ?? ""}
-                onChange={(e) => setFonts({ ...fonts, [key]: e.target.value })}
-                placeholder={`Font family for ${label.toLowerCase()}`}
-              />
-            </div>
-          ))}
-        </div>
-      ) : hasFonts ? (
-        <div className="space-y-3">
-          {FONT_ROLES.filter(({ key }) => brand.fonts?.[key]).map(
-            ({ key, label }) => (
-              <div key={key} className="flex items-center gap-3">
-                <span className="w-9 text-xl font-medium leading-none text-foreground">
+              <label className="mb-1 flex items-center gap-3 text-xs text-muted-foreground">
+                <span className="w-7 text-base font-medium leading-none text-foreground">
                   Aa
                 </span>
-                <div>
-                  <p className="text-sm font-medium leading-none text-foreground">
-                    {brand.fonts![key]}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {label}
-                  </p>
-                </div>
-              </div>
-            ),
-          )}
-        </div>
-      ) : (
-        <p className="text-sm text-muted-foreground/60">
-          No fonts defined. Click edit to add your brand fonts.
-        </p>
-      )}
+                <span>{label}</span>
+                {value && (
+                  <span
+                    className="ml-auto truncate text-foreground"
+                    style={{ fontFamily: value }}
+                  >
+                    {value}
+                  </span>
+                )}
+              </label>
+              <Controller
+                control={form.control}
+                name={fieldName}
+                render={({ field }) => (
+                  <Input
+                    {...field}
+                    value={field.value ?? ""}
+                    onChange={(e) => {
+                      field.onChange(e);
+                      onFieldChange();
+                    }}
+                    onBlur={() => {
+                      field.onBlur();
+                      onFieldCommit();
+                    }}
+                    placeholder={`Font family for ${label.toLowerCase()}`}
+                  />
+                )}
+              />
+            </div>
+          );
+        })}
+      </div>
     </BrandCard>
   );
 }
@@ -553,91 +458,61 @@ const COLOR_ROLES = [
 ];
 
 function ColorsSection({
-  brand,
-  onSave,
+  form,
+  onFieldChange,
+  onFieldCommit,
 }: {
-  brand: Partial<BrandContext>;
-  onSave: (data: Partial<BrandContext>) => void;
+  form: BrandFormReturn;
+  onFieldChange: () => void;
+  onFieldCommit: () => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [colors, setColors] = useState<BrandColors>(brand.colors ?? {});
-
-  const startEdit = () => {
-    setColors(brand.colors ?? {});
-    setEditing(true);
-  };
-
-  const save = () => {
-    const hasAny = Object.values(colors).some((v) => v?.trim());
-    onSave({ colors: hasAny ? colors : null });
-    setEditing(false);
-  };
-
-  const hasColors =
-    brand.colors && Object.values(brand.colors).some((v) => v?.trim());
-
   return (
-    <BrandCard
-      title="Colors"
-      onEdit={startEdit}
-      editing={editing}
-      onSave={save}
-      onCancel={() => setEditing(false)}
-    >
-      {editing ? (
-        <div className="space-y-2">
-          {COLOR_ROLES.map(({ key, label }) => (
-            <div key={key} className="flex items-center gap-2">
-              <input
-                type="color"
-                value={colors[key] ?? "#000000"}
-                onChange={(e) =>
-                  setColors({ ...colors, [key]: e.target.value })
-                }
-                className="h-9 w-9 shrink-0 cursor-pointer rounded-lg border border-border bg-transparent p-0.5"
-              />
-              <Input
-                value={colors[key] ?? ""}
-                onChange={(e) =>
-                  setColors({ ...colors, [key]: e.target.value })
-                }
-                placeholder="#000000"
-                className="w-28"
-              />
-              <span className="flex-1 text-xs text-muted-foreground">
-                {label}
-              </span>
-            </div>
-          ))}
-        </div>
-      ) : hasColors ? (
-        <div className="flex flex-wrap gap-4">
-          {COLOR_ROLES.filter(({ key }) => brand.colors?.[key]).map(
-            ({ key, label }) => (
-              <div key={key} className="flex flex-col items-center gap-2">
-                <div
-                  className="h-14 w-14 rounded-full shadow-sm"
-                  style={{
-                    backgroundColor: brand.colors![key],
-                    border:
-                      brand.colors![key] === "#FFFFFF"
-                        ? "1px solid #e5e7eb"
-                        : undefined,
-                  }}
-                />
-                <p className="font-mono text-[10px] text-muted-foreground">
-                  {brand.colors![key]}
-                </p>
-                <p className="text-[10px] text-muted-foreground">{label}</p>
-              </div>
-            ),
-          )}
-        </div>
-      ) : (
-        <p className="text-sm text-muted-foreground/60">
-          No colors defined. Click edit to add your brand palette.
-        </p>
-      )}
+    <BrandCard title="Colors">
+      <div className="space-y-2">
+        {COLOR_ROLES.map(({ key, label }) => {
+          const fieldName = `colors.${key}` as const;
+          return (
+            <Controller
+              key={key}
+              control={form.control}
+              name={fieldName}
+              render={({ field }) => (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={field.value ?? "#000000"}
+                    onChange={(e) => {
+                      field.onChange(e.target.value);
+                      onFieldChange();
+                    }}
+                    onBlur={() => {
+                      field.onBlur();
+                      onFieldCommit();
+                    }}
+                    className="h-9 w-9 shrink-0 cursor-pointer rounded-lg border border-border bg-transparent p-0.5"
+                  />
+                  <Input
+                    value={field.value ?? ""}
+                    onChange={(e) => {
+                      field.onChange(e.target.value);
+                      onFieldChange();
+                    }}
+                    onBlur={() => {
+                      field.onBlur();
+                      onFieldCommit();
+                    }}
+                    placeholder="#000000"
+                    className="w-28"
+                  />
+                  <span className="flex-1 text-xs text-muted-foreground">
+                    {label}
+                  </span>
+                </div>
+              )}
+            />
+          );
+        })}
+      </div>
     </BrandCard>
   );
 }
@@ -656,34 +531,79 @@ function ExpandableBrandEntry({
   const [expanded, setExpanded] = useState(brand.isDefault ?? false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
-  const { mutate: saveBrand } = useMutation({
-    mutationFn: async (data: Partial<BrandContext>) => {
+  const form = useForm<BrandFormData>({
+    values: {
+      name: brand.name ?? "",
+      domain: brand.domain ?? "",
+      overview: brand.overview ?? "",
+      logo: brand.logo ?? "",
+      favicon: brand.favicon ?? "",
+      ogImage: brand.ogImage ?? "",
+      fonts: brand.fonts ?? {},
+      colors: brand.colors ?? {},
+    },
+  });
+
+  const updateBrandMutation = useMutation({
+    mutationFn: async (values: BrandFormData) => {
+      const fontsHasAny = Object.values(values.fonts).some((v) => v?.trim());
+      const colorsHasAny = Object.values(values.colors).some((v) => v?.trim());
       const merged = {
         id: brand.id,
-        name: data.name ?? brand.name ?? "",
-        domain: data.domain ?? brand.domain ?? "",
-        overview: data.overview ?? brand.overview ?? "",
-        logo: "logo" in data ? data.logo : brand.logo,
-        favicon: "favicon" in data ? data.favicon : brand.favicon,
-        ogImage: "ogImage" in data ? data.ogImage : brand.ogImage,
-        fonts: "fonts" in data ? data.fonts : brand.fonts,
-        colors: "colors" in data ? data.colors : brand.colors,
-        images: "images" in data ? data.images : brand.images,
+        name: values.name,
+        domain: values.domain,
+        overview: values.overview,
+        logo: values.logo || null,
+        favicon: values.favicon || null,
+        ogImage: values.ogImage || null,
+        fonts: fontsHasAny ? values.fonts : null,
+        colors: colorsHasAny ? values.colors : null,
+        images: brand.images,
       };
       await client.callTool({
         name: "BRAND_CONTEXT_UPDATE",
         arguments: merged,
       });
     },
-    onSuccess: (_res, data) => {
-      track("brand_updated", {
-        brand_id: brand.id,
-        fields: Object.keys(data),
-      });
-      onChanged();
-      toast.success("Brand context saved");
-    },
     onError: () => toast.error("Failed to save brand context"),
+  });
+
+  const { schedule: scheduleSave, flush: flushAndSave } = useDebouncedAutosave({
+    delayMs: 500,
+    save: async () => {
+      // Read live dirty state from control._formState. form.formState is a
+      // Proxy over React state and lags by one render inside synchronous
+      // event handlers — the same gotcha that hit virtual-mcp.
+      const liveDirtyFields = (
+        form.control as unknown as {
+          _formState: { dirtyFields: Record<string, unknown> };
+        }
+      )._formState.dirtyFields;
+      const dirtyKeys = Object.keys(liveDirtyFields);
+      if (dirtyKeys.length === 0) return;
+
+      const values = form.getValues();
+      const previousDefaults = (
+        form.control as unknown as { _defaultValues: BrandFormData }
+      )._defaultValues;
+
+      // Rebase defaults to the snapshot we're about to send. An edit during
+      // the in-flight save that returns a value to its pre-save default still
+      // registers as dirty for the next save. keepValues preserves the user's
+      // current view; only _defaultValues advances. Replaces the post-mutate
+      // form.reset(values) which used to stomp user edits made mid-flight.
+      form.reset(values, { keepValues: true });
+
+      try {
+        await updateBrandMutation.mutateAsync(values);
+        track("brand_updated", { brand_id: brand.id, fields: dirtyKeys });
+        toast.success("Brand context updated successfully");
+        onChanged();
+      } catch {
+        // Roll back the rebase so user edits remain dirty for the next save.
+        form.reset(previousDefaults, { keepValues: true });
+      }
+    },
   });
 
   const { mutate: deleteBrand, isPending: isDeleting } = useMutation({
@@ -864,11 +784,27 @@ function ExpandableBrandEntry({
       {/* Expanded content */}
       {expanded && (
         <div className="space-y-3 px-5 pb-5">
-          <OverviewSection brand={brand} onSave={saveBrand} />
-          <LogosSection brand={brand} onSave={saveBrand} />
+          <OverviewSection
+            form={form}
+            onFieldChange={scheduleSave}
+            onFieldCommit={flushAndSave}
+          />
+          <LogosSection
+            form={form}
+            onFieldChange={scheduleSave}
+            onFieldCommit={flushAndSave}
+          />
           <div className="grid grid-cols-2 gap-3">
-            <ColorsSection brand={brand} onSave={saveBrand} />
-            <FontsSection brand={brand} onSave={saveBrand} />
+            <ColorsSection
+              form={form}
+              onFieldChange={scheduleSave}
+              onFieldCommit={flushAndSave}
+            />
+            <FontsSection
+              form={form}
+              onFieldChange={scheduleSave}
+              onFieldCommit={flushAndSave}
+            />
           </div>
         </div>
       )}
@@ -928,6 +864,7 @@ export function OrgBrandContextPage() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const queryClient = useQueryClient();
 

@@ -81,7 +81,36 @@ export function spawnPty(opts: PtySpawnOpts): PtyHandle {
   if (typeof opts.gid === "number")
     (spawnOpts as Record<string, unknown>).gid = opts.gid;
 
-  const raw = ptySpawn("sh", ["-c", opts.cmd], spawnOpts);
+  // forkpty(3) can fail transiently in CI containers under PTY pressure
+  // (concurrent test files allocating PTYs faster than the kernel reaps them).
+  // Retry a few times before giving up — production callers also benefit from
+  // resilience to brief PTY exhaustion.
+  let raw!: ReturnType<typeof ptySpawn>;
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      raw = ptySpawn("sh", ["-c", opts.cmd], spawnOpts);
+      lastErr = undefined;
+      break;
+    } catch (err) {
+      lastErr = err;
+      // Brief sync pause before retry: 50ms × attempt+1.
+      // Bun.sleepSync is preferred when available; fall back to a busy-wait.
+      const pauseMs = 50 * (attempt + 1);
+      const sleepSync = (
+        globalThis as { Bun?: { sleepSync?: (ms: number) => void } }
+      ).Bun?.sleepSync;
+      if (sleepSync) {
+        sleepSync(pauseMs);
+      } else {
+        const end = Date.now() + pauseMs;
+        while (Date.now() < end) {
+          // intentional spin
+        }
+      }
+    }
+  }
+  if (lastErr) throw lastErr;
 
   const pid = raw.pid;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

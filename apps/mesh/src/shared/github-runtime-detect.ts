@@ -23,7 +23,7 @@ const LOCKFILES: Array<{ path: string; pm: PackageManager }> = [
   { path: "pnpm-lock.yaml", pm: "pnpm" },
   { path: "yarn.lock", pm: "yarn" },
   { path: "package-lock.json", pm: "npm" },
-  { path: "package.json", pm: "npm" },
+  { path: "package.json", pm: "bun" },
 ];
 
 const PORT_SOURCES: Partial<Record<PackageManager, string[]>> = {
@@ -83,7 +83,6 @@ export async function detectRepoRuntime(
     devPort = extractDevPort(cache.get(path) ?? null);
     if (devPort) break;
   }
-
   return { packageManager: hit.pm, devPort };
 }
 

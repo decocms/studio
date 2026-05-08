@@ -346,7 +346,7 @@ describe("Organization Tools", () => {
   });
 
   describe("ORGANIZATION_UPDATE", () => {
-    it("should update organization", async () => {
+    it("should update organization name and description", async () => {
       const mockAuth = createMockAuth();
       const ctx = createMockContext(mockAuth);
 
@@ -354,7 +354,7 @@ describe("Organization Tools", () => {
         {
           id: "org_123",
           name: "Updated Name",
-          slug: "updated-slug",
+          description: "Updated description",
         },
         ctx,
       );
@@ -364,13 +364,34 @@ describe("Organization Tools", () => {
           organizationId: "org_123",
           data: expect.objectContaining({
             name: "Updated Name",
-            slug: "updated-slug",
+            metadata: { description: "Updated description" },
           }),
         },
         headers: expect.any(Headers),
       });
 
       expect(result.slug).toBe("updated-org");
+    });
+
+    it("should not propagate slug to updateOrganization (slug is immutable)", async () => {
+      const mockAuth = createMockAuth();
+      const ctx = createMockContext(mockAuth);
+
+      await ORGANIZATION_UPDATE.execute(
+        // Cast through unknown because slug is no longer in the input schema
+        // but a misbehaving caller could still pass it at runtime.
+        {
+          id: "org_123",
+          name: "Updated Name",
+          slug: "should-be-ignored",
+        } as unknown as { id: string; name: string },
+        ctx,
+      );
+
+      const call = mockAuth.api.updateOrganization.mock.calls[0]?.[0];
+      expect(call?.body?.data).toBeDefined();
+      expect(call?.body?.data?.slug).toBeUndefined();
+      expect(call?.body?.data?.name).toBe("Updated Name");
     });
   });
 

@@ -1,6 +1,6 @@
 # @decocms/mesh-sdk
 
-SDK for building external apps that integrate with Mesh MCP servers. Provides React hooks and utilities for managing connections, authenticating with OAuth, and calling MCP tools.
+SDK for building external apps that integrate with Studio MCP servers. Provides React hooks and utilities for managing connections, authenticating with OAuth, and calling MCP tools.
 
 ## Installation
 
@@ -22,7 +22,7 @@ npm install sonner
 
 ### 1. Create an API Key
 
-In Mesh, call the `API_KEY_CREATE` tool to create an API key with the appropriate scopes for the connections you want to access. The API key will be used to authenticate your external app.
+In Studio, call the `API_KEY_CREATE` tool to create an API key with the appropriate scopes for the connections you want to access. The API key will be used to authenticate your external app.
 
 ```typescript
 // Example: Create an API key via MCP
@@ -35,7 +35,7 @@ await client.callTool({
 });
 ```
 
-### 2. Server-Side: Connect to Mesh
+### 2. Server-Side: Connect to Studio
 
 ```typescript
 // server.ts (Node.js / Bun / your backend)
@@ -213,12 +213,12 @@ const result = await specificClient.callTool({
 
 ### `createMCPClient(options)` - Server-Side
 
-Creates and connects an MCP client to a Mesh server. **Use on server only** - don't expose your API key to the client.
+Creates and connects an MCP client to a Studio server. **Use on server only** - don't expose your API key to the client.
 
 ```typescript
 // server-side only
 const client = await createMCPClient({
-  meshUrl: "https://mesh.example.com",  // Required for external apps
+  meshUrl: "https://studio.example.com",  // Required for external apps
   connectionId: "self",                  // "self" for management API, or connection ID
   orgId: "org_xxx",                      // Organization ID
   token: process.env.MESH_API_KEY,       // API key from environment
@@ -227,7 +227,7 @@ const client = await createMCPClient({
 
 ### `useMCPClient(options)` - Client-Side (Same-Origin Only)
 
-React hook version of `createMCPClient`. Uses Suspense. **Only use when running on the same origin as Mesh** (e.g., inside the Mesh app itself).
+React hook version of `createMCPClient`. Uses Suspense. **Only use when running on the same origin as Studio** (e.g., inside Studio app itself).
 
 ```typescript
 // client-side - only for same-origin apps
@@ -249,7 +249,7 @@ Triggers OAuth authentication flow for an MCP connection. **This runs client-sid
 ```typescript
 // client-side - safe to use in browser
 const result = await authenticateMcp({
-  meshUrl: "https://mesh.example.com",  // Required for external apps
+  meshUrl: "https://studio.example.com",  // Required for external apps
   connectionId: "conn_xxx",              // Connection to authenticate
   callbackUrl: "https://your-app.com/oauth/callback",  // Your OAuth callback URL
   timeout: 120000,                       // Timeout in ms (default: 120000)
@@ -274,9 +274,9 @@ Check if a connection is authenticated. Can be used on either server or client.
 
 ```typescript
 const status = await isConnectionAuthenticated({
-  url: "https://mesh.example.com/mcp/conn_xxx",
+  url: "https://studio.example.com/mcp/conn_xxx",
   token: "bearer_token",  // Optional
-  meshUrl: "https://mesh.example.com",  // For API calls
+  meshUrl: "https://studio.example.com",  // For API calls
 });
 
 console.log(status.isAuthenticated);  // boolean
@@ -286,7 +286,7 @@ console.log(status.hasOAuthToken);    // boolean
 
 ### Collection Hooks - Client-Side (Same-Origin Only)
 
-When using with `ProjectContextProvider`, you get access to collection hooks. **Only use when running on the same origin as Mesh** (e.g., inside the Mesh app or plugins).
+When using with `ProjectContextProvider`, you get access to collection hooks. **Only use when running on the same origin as Studio** (e.g., inside Studio app or plugins).
 
 ```typescript
 // client-side - only for same-origin apps (inside Mesh)

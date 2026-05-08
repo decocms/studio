@@ -1,6 +1,7 @@
 import { useProjectContext, useVirtualMCP } from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Separator } from "@deco/ui/components/separator.tsx";
+import { Spinner } from "@deco/ui/components/spinner.tsx";
 import {
   Tooltip,
   TooltipContent,
@@ -25,10 +26,10 @@ interface Props {
  * PR state. The button never performs the action directly; clicks send a
  * templated prompt into the chat for the agent to execute.
  *
- * Gated on `!!githubRepo?.connectionId && !!branch` (the caller also gates).
- * When the VM is not yet connected (no branchStatus event received), renders
- * null — avoids flashing a misleading label before we know the working-tree
- * state.
+ * Gated on `!!githubRepo?.connectionId && !!branch`. Once GitHub is wired
+ * up, the button always renders — disabled status pills (Loading…, Up to
+ * date, Published, Awaiting review, Running tests…) cover the cases where
+ * there is no actionable next step.
  */
 export function HeaderActions({ virtualMcpId }: Props) {
   const { org } = useProjectContext();
@@ -42,6 +43,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
 
   const prQuery = usePrByBranch({
     orgId: org.id,
+    orgSlug: org.slug,
     connectionId: githubRepo?.connectionId ?? "",
     owner: githubRepo?.owner ?? "",
     repo: githubRepo?.name ?? "",
@@ -51,6 +53,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
 
   const checksQuery = useChecks({
     orgId: org.id,
+    orgSlug: org.slug,
     connectionId: githubRepo?.connectionId ?? "",
     owner: githubRepo?.owner ?? "",
     repo: githubRepo?.name ?? "",
@@ -59,6 +62,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
 
   const reviewsQuery = usePrReviews({
     orgId: org.id,
+    orgSlug: org.slug,
     connectionId: githubRepo?.connectionId ?? "",
     owner: githubRepo?.owner ?? "",
     repo: githubRepo?.name ?? "",
@@ -72,9 +76,8 @@ export function HeaderActions({ virtualMcpId }: Props) {
     pr,
     checks: checksQuery.data ?? [],
     reviews: reviewsQuery.data ?? null,
+    loading: prQuery.isPending,
   });
-
-  if (!button) return null;
 
   const send = (text: string) =>
     chat.sendMessage({ parts: [{ type: "text", text }] });
@@ -143,7 +146,9 @@ function HeaderButtonRenderer(props: {
 }) {
   const { button, isStreaming } = props;
   const disabled = Boolean(button.disabled) || isStreaming;
-  const tooltipLabel = isStreaming ? "Chat is running" : null;
+  const tooltipLabel = isStreaming
+    ? "Chat is running"
+    : (button.tooltip ?? null);
 
   if (button.action === "merge-split" && props.prNumber != null) {
     return (
@@ -161,10 +166,11 @@ function HeaderButtonRenderer(props: {
     <WithTooltip label={tooltipLabel}>
       <Button
         size="sm"
-        variant={button.disabled ? "outline" : "default"}
+        variant={button.variant}
         disabled={disabled}
         onClick={() => props.onActivate(button.action)}
       >
+        {button.loading ? <Spinner size="xs" variant="default" /> : null}
         {button.label}
       </Button>
     </WithTooltip>

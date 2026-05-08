@@ -12,11 +12,14 @@ import {
 } from "@/web/hooks/use-automations";
 import { AutomationListRow } from "./automation-list-row";
 import { track } from "@/web/lib/posthog-client";
+import { useChatPrefs } from "@/web/components/chat/context";
 
 export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
   const navigate = useNavigate();
   const { data: automations = [] } = useAutomations(virtualMcpId);
   const { create } = useAutomationActions();
+  const { selectedModel: chatModel, credentialId: chatCredentialId } =
+    useChatPrefs();
   const [search, setSearch] = useState("");
 
   const lowerSearch = search.toLowerCase();
@@ -40,8 +43,12 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
       virtual_mcp_id: virtualMcpId,
       existing_count: automations.length,
     });
+    const modelDefaults =
+      chatModel?.modelId && chatCredentialId
+        ? { credentialId: chatCredentialId, modelId: chatModel.modelId }
+        : null;
     const created = await create.mutateAsync(
-      buildDefaultAutomationInput(virtualMcpId),
+      buildDefaultAutomationInput(virtualMcpId, modelDefaults),
     );
     goToDetail(created.id);
   };

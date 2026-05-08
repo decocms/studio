@@ -17,6 +17,7 @@ import type {
 } from "../tools/virtual/schema";
 import type {
   BrandContext,
+  InflightAsyncJob,
   MonitoringLog,
   OrganizationDomain,
   OrganizationSettings,
@@ -90,6 +91,34 @@ export interface ThreadStoragePort {
 
   /** Release ownership for all runs owned by this pod (graceful shutdown). */
   orphanRunsByPod(podId: string): Promise<string[]>;
+
+  /** Append an entry to threads.inflight_async_jobs. Atomic via jsonb concat. */
+  addInflightAsyncJob(
+    taskId: string,
+    organizationId: string,
+    entry: InflightAsyncJob,
+  ): Promise<void>;
+
+  /**
+   * Find an in-flight async job for this thread matching provider + modelId + query.
+   * Returns the most recently submitted match, or null.
+   */
+  findInflightAsyncJob(
+    taskId: string,
+    organizationId: string,
+    provider: string,
+    modelId: string,
+    query: string,
+  ): Promise<InflightAsyncJob | null>;
+
+  /** Remove all entries matching provider + modelId + query from threads.inflight_async_jobs. */
+  removeInflightAsyncJob(
+    taskId: string,
+    organizationId: string,
+    provider: string,
+    modelId: string,
+    query: string,
+  ): Promise<void>;
 
   // Message operations - upserts by id (updates existing rows)
   saveMessages(data: ThreadMessage[], organizationId: string): Promise<void>;

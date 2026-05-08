@@ -35,6 +35,7 @@ const STALE = 30_000;
 
 interface Args {
   orgId: string;
+  orgSlug: string;
   connectionId: string;
   owner: string;
   repo: string;
@@ -45,6 +46,7 @@ export function usePrReviews(args: Args) {
   const client = useMCPClient({
     connectionId: args.connectionId,
     orgId: args.orgId,
+    orgSlug: args.orgSlug,
   });
 
   return useMCPToolCallQuery<PrReviewSignals | null>({

@@ -5,11 +5,10 @@
  * The agent's system prompt (buildRepoEnvironmentPrompt) already carries:
  * - Which repo is active (owner/name)
  * - The git-CLI-vs-GitHub-tools split
- * - The global "button click is authenticated intent" override
  *
  * Templates add the specific PR number / branch name where it saves the
- * agent a discovery round-trip, plus a per-prompt reinforcement of the
- * "don't ask, execute" posture.
+ * agent a discovery round-trip, plus a `BUTTON_CONFIRMED` suffix that tells
+ * the agent the user clicked deliberately — execute, don't ask.
  */
 
 export interface TemplateContext {
@@ -20,10 +19,9 @@ export interface TemplateContext {
 }
 
 /**
- * Suffix appended to every template. Belt-and-suspenders reinforcement on
- * top of the <repo-environment> override in the system prompt: reminds the
- * agent that the user triggered this by clicking a UI button, so user_ask
- * is not needed unless a real blocker shows up.
+ * Suffix appended to every template. Reminds the agent that the user
+ * triggered this by clicking a UI button, so `user_ask` is not needed unless
+ * a real blocker shows up.
  */
 const BUTTON_CONFIRMED =
   "The user clicked this action deliberately — execute directly. Do not call user_ask unless you hit an actual problem outside the scope of this intent (missing auth, unresolvable conflict, a check with multiple plausible fixes).";

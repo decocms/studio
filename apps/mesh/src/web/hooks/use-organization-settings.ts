@@ -80,6 +80,7 @@ function useOrganizationSettings<T = OrganizationSettings>(
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   return useQuery({
@@ -111,10 +112,12 @@ function useOrganizationSettings<T = OrganizationSettings>(
  */
 export function useOrganizationSettingsSuspense(
   orgId: string,
+  orgSlug: string,
 ): OrganizationSettings {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId,
+    orgSlug,
   });
 
   const { data } = useSuspenseQuery({
@@ -167,6 +170,7 @@ export function useUpdateOrganizationSettings(): UseMutationResult<
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const queryClient = useQueryClient();
 

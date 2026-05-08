@@ -28,8 +28,14 @@ export interface Sandbox {
 export interface Workload {
   runtime: "node" | "bun" | "deno";
   packageManager: "npm" | "pnpm" | "yarn" | "bun" | "deno";
-  /** Container-internal dev port. */
-  devPort: number;
+  /**
+   * User-pinned dev port. Omit when the user hasn't chosen one — runners
+   * pick a free port (host runner: avoids collisions across co-tenant
+   * sandboxes; container runners: fall back to their own default).
+   */
+  devPort?: number;
+  /** Subdirectory inside the repo where the package manager manifest lives (e.g. `apps/web`). */
+  packageManagerPath?: string;
 }
 
 export interface EnsureOptions {
@@ -38,6 +44,14 @@ export interface EnsureOptions {
    * ignore (not error). `branch` post-clone: fetch-from-origin-or-create.
    */
   repo?: {
+    /**
+     * Clone URL. May embed an OAuth credential via userinfo (e.g.
+     * `https://x-access-token:TOKEN@github.com/...`) — `git clone` stores
+     * the credential on the remote so subsequent fetch/pull/push from
+     * inside the sandbox work without further plumbing. The token is
+     * frozen for the lifetime of the sandbox: to refresh, destroy and
+     * recreate.
+     */
     cloneUrl: string;
     userName: string;
     userEmail: string;

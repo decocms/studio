@@ -1,7 +1,7 @@
 /**
  * useWorkflowSSE — Subscribe to workflow SSE events and invalidate queries
  *
- * Connects to the /org/:orgId/watch?types=workflow.* SSE endpoint and
+ * Connects to the /api/:org/watch?types=workflow.* SSE endpoint and
  * invalidates the relevant React Query caches when workflow events arrive.
  * This replaces polling for real-time workflow execution updates.
  *
@@ -29,10 +29,8 @@ const WORKFLOW_EVENT_TYPES = [
 ];
 
 const workflowSSE = createSSESubscription({
-  // EventSource can't set headers, so x-org-id rides as a query param;
-  // authenticateRequest reads it as a fallback when the header is absent.
-  buildUrl: (orgId) =>
-    `/org/${orgId}/watch?types=workflow.*&x-org-id=${encodeURIComponent(orgId)}`,
+  buildUrl: (orgSlug) =>
+    `/api/${encodeURIComponent(orgSlug)}/watch?types=workflow.*`,
   eventTypes: WORKFLOW_EVENT_TYPES,
 });
 
@@ -93,6 +91,7 @@ export function useWorkflowSSE(): void {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
   const orgId = org.id;
+  const orgSlug = org.slug;
 
   const subscribe = (onStoreChange: () => void) => {
     let clients = queryClients.get(orgId);
@@ -107,7 +106,7 @@ export function useWorkflowSSE(): void {
       onStoreChange();
     };
 
-    const unsubscribe = workflowSSE.subscribe(orgId, handler);
+    const unsubscribe = workflowSSE.subscribe(orgSlug, handler);
 
     return () => {
       unsubscribe();
