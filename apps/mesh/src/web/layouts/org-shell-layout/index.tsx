@@ -12,21 +12,62 @@ import {
   SidebarInset,
   SidebarLayout,
   SidebarProvider,
+  useSidebar,
 } from "@deco/ui/components/sidebar.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
-import { Loading01 } from "@untitledui/icons";
+import { Sheet, SheetContent, SheetTitle } from "@deco/ui/components/sheet.tsx";
+import { Loading01, Menu01 } from "@untitledui/icons";
 import { Outlet, useParams } from "@tanstack/react-router";
-import { StudioSidebar } from "@/web/components/sidebar";
+import { StudioSidebar, StudioSidebarMobile } from "@/web/components/sidebar";
 import { ChatPrefsProvider } from "@/web/components/chat/context";
 import { TasksPanelStateProvider } from "@/web/hooks/use-tasks-panel-state";
 import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
 import { TasksPanelColumn } from "@/web/layouts/agent-shell-layout/tasks-panel-column";
+import { TasksPanel } from "@/web/layouts/tasks-panel";
 
 function RouteFallback() {
   return (
     <div className="flex-1 flex items-center justify-center">
       <Loading01 size={20} className="animate-spin text-muted-foreground" />
     </div>
+  );
+}
+
+function MobileHomeToolbar() {
+  const { setOpenMobile, openMobile } = useSidebar();
+  return (
+    <>
+      <div className="shrink-0 flex items-center px-2 h-12 bg-background border-b border-border">
+        <button
+          type="button"
+          onClick={() => setOpenMobile(true)}
+          className="flex size-8 shrink-0 items-center justify-center rounded-md text-foreground/60 hover:bg-accent hover:text-foreground transition-colors"
+          aria-label="Open menu"
+        >
+          <Menu01 size={20} />
+        </button>
+      </div>
+      <Sheet open={openMobile} onOpenChange={setOpenMobile}>
+        <SheetContent
+          side="left"
+          hideCloseButton
+          className="w-[calc(100vw-3rem)] sm:max-w-md! p-0"
+        >
+          <SheetTitle className="sr-only">Navigation</SheetTitle>
+          <div className="flex h-full">
+            <div
+              className="w-14 shrink-0 bg-sidebar flex flex-col items-center border-r border-border overflow-y-auto group/sidebar"
+              data-state="collapsed"
+            >
+              <StudioSidebarMobile onClose={() => setOpenMobile(false)} />
+            </div>
+            <div className="flex-1 min-w-0 overflow-hidden">
+              <TasksPanel />
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }
 
@@ -57,9 +98,12 @@ export default function OrgShellLayout() {
             <ChatPrefsProvider>
               <TasksPanelStateProvider>
                 {isMobile ? (
-                  <Suspense fallback={<RouteFallback />}>
-                    <Outlet />
-                  </Suspense>
+                  <>
+                    {!hasTaskRoute && <MobileHomeToolbar />}
+                    <Suspense fallback={<RouteFallback />}>
+                      <Outlet />
+                    </Suspense>
+                  </>
                 ) : (
                   <Toolbar>
                     <Toolbar.Header>

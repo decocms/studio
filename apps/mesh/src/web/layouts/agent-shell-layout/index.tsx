@@ -37,7 +37,14 @@ import { StudioSidebarMobile } from "@/web/components/sidebar";
 import { useSidebar } from "@deco/ui/components/sidebar.tsx";
 import { Sheet, SheetContent, SheetTitle } from "@deco/ui/components/sheet.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
-import { AlertCircle, Loading01, Menu01 } from "@untitledui/icons";
+import {
+  AlertCircle,
+  Edit05,
+  Loading01,
+  Menu01,
+  MessageCircle01,
+} from "@untitledui/icons";
+import { cn } from "@deco/ui/lib/utils.js";
 import {
   getWellKnownDecopilotVirtualMCP,
   SELF_MCP_ALIAS_ID,
@@ -58,6 +65,7 @@ import { useOptionalTasksPanelState } from "@/web/hooks/use-tasks-panel-state";
 import { Toolbar } from "./toolbar";
 import { ChatMainPanelGroup } from "./chat-main-panel-group";
 import { ToggleButtons } from "./toggle-buttons";
+import { MainPanelContent } from "@/web/layouts/main-panel-tabs";
 import { MainPanelTabsBar } from "@/web/layouts/main-panel-tabs/main-panel-tabs-bar";
 import { VirtualMcpHeaderInfo } from "../../views/virtual-mcp/header-info.tsx";
 import { VmEventsProvider } from "@/web/components/vm/hooks/vm-events-context.tsx";
@@ -118,17 +126,58 @@ function NewTaskBridge({
   return null;
 }
 
-function MobileToolbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
+function MobileToolbar({
+  onOpenSidebar,
+  virtualMcpId,
+  taskId,
+  mainOpen,
+  onToggleMain,
+  onNewTask,
+}: {
+  onOpenSidebar: () => void;
+  virtualMcpId: string;
+  taskId: string;
+  mainOpen: boolean;
+  onToggleMain: () => void;
+  onNewTask: () => void;
+}) {
   return (
-    <div className="shrink-0 flex items-center justify-between px-3 h-12 bg-background border-b border-border">
+    <div className="shrink-0 flex items-center gap-1 px-2 h-12 bg-background border-b border-border">
       <button
         type="button"
         onClick={onOpenSidebar}
-        className="flex size-8 items-center justify-center rounded-md text-foreground/60 hover:bg-accent hover:text-foreground transition-colors"
+        className="flex size-8 shrink-0 items-center justify-center rounded-md text-foreground/60 hover:bg-accent hover:text-foreground transition-colors"
         aria-label="Open menu"
       >
         <Menu01 size={20} />
       </button>
+      <div className="flex-1 min-w-0 overflow-x-auto [scrollbar-width:none]">
+        <MainPanelTabsBar virtualMcpId={virtualMcpId} taskId={taskId} />
+      </div>
+      <div className="flex items-center gap-0.5 shrink-0">
+        <button
+          type="button"
+          onClick={onToggleMain}
+          aria-pressed={!mainOpen}
+          className={cn(
+            "flex size-7 shrink-0 items-center justify-center rounded-md transition-colors",
+            !mainOpen
+              ? "bg-accent text-foreground"
+              : "text-foreground/60 hover:bg-accent hover:text-foreground",
+          )}
+          title="Chat"
+        >
+          <MessageCircle01 size={16} />
+        </button>
+        <button
+          type="button"
+          onClick={onNewTask}
+          className="flex size-7 shrink-0 items-center justify-center rounded-md text-foreground/60 hover:bg-accent hover:text-foreground transition-colors"
+          title="New task"
+        >
+          <Edit05 size={16} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -382,9 +431,42 @@ function AgentInsetProvider() {
                 onNewTaskRef={onNewTask}
                 createNewTask={layout.createNewTask}
               />
-              <MobileToolbar onOpenSidebar={() => setMobileSidebarOpen(true)} />
+              <MobileToolbar
+                onOpenSidebar={() => setMobileSidebarOpen(true)}
+                virtualMcpId={chatVirtualMcpId}
+                taskId={layout.taskId}
+                mainOpen={layout.mainOpen}
+                onToggleMain={layout.toggleMain}
+                onNewTask={layout.createNewTask}
+              />
               <div className="flex-1 min-h-0 overflow-hidden">
-                <ActiveTaskBoundary />
+                {layout.mainOpen ? (
+                  <ErrorBoundary
+                    fallback={
+                      <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+                        Something went wrong. Try refreshing.
+                      </div>
+                    }
+                  >
+                    <Suspense
+                      fallback={
+                        <div className="h-full flex items-center justify-center">
+                          <Loading01
+                            size={20}
+                            className="animate-spin text-muted-foreground"
+                          />
+                        </div>
+                      }
+                    >
+                      <MainPanelContent
+                        taskId={layout.taskId}
+                        virtualMcpId={chatVirtualMcpId}
+                      />
+                    </Suspense>
+                  </ErrorBoundary>
+                ) : (
+                  <ActiveTaskBoundary />
+                )}
               </div>
               {mobileSidebarSheet}
             </VmEventsBridge>
