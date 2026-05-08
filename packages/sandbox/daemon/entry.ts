@@ -393,7 +393,13 @@ process.on("SIGTERM", () => {
         cwd: bootConfig.repoDir,
       });
       gitSync(
-        ["-c", "safe.directory=*", "commit", "--allow-empty", "-m", "autosave"],
+        [
+          "-c",
+          "safe.directory=*",
+          "commit",
+          "-m",
+          `chore(daemon): sync all local changes to remote on shutdown`,
+        ],
         { cwd: bootConfig.repoDir },
       );
       gitSync(["-c", "safe.directory=*", "push", "origin", branch], {
