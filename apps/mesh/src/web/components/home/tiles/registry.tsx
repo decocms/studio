@@ -1,124 +1,40 @@
 /**
- * Static tile registry. The catalog UI iterates over `TILE_CATALOG`;
- * the board renderer looks up by `type` via `getTileDefinition`.
- *
- * When tile contributions from MCP apps land, this becomes a hook that
- * merges static + dynamic definitions. Today every entry ships with the
- * app and the icons are mocked.
- *
- * Sizes use the 3-col grid: S 1×1, M 1×2, L 2×1, XL 2×2, W 3×1.
+ * Static tile registry. Sizes use the 3-col grid:
+ *   S 1×1, M 1×2, L 2×1, XL 2×2, W 3×1.
  */
 
 import {
-  AlertCircle,
   BookOpen01,
-  Calendar,
   Clock,
-  Coins04,
-  GitBranch01,
-  Globe02,
   Lightning01,
   Server01,
-  ShieldTick,
   Star01,
   Stars01,
   TrendUp02,
   Users03,
 } from "@untitledui/icons";
+import { AGENT_SEEDS, agentCardType } from "./agent-seeds";
 import type { TileDefinition } from "./types";
 import {
   AgentCardTile,
-  AnalyticsChartTile,
-  AppFrameTile,
-  CalendarTile,
   ConnectionsOverviewTile,
-  GithubActivityTile,
-  LinearIssuesTile,
   NotesTile,
   QuickChatTile,
   RecentAgentsTile,
   RecentTasksTile,
-  ReliabilityAgentTile,
   ShortcutsTile,
   StatsTile,
   UnknownTile,
   WelcomeTile,
 } from "./renderers";
 
-interface AgentCardSeed {
-  id: string;
-  title: string;
-  icon: string;
-  description: string;
-  tasks?: { id: string; title: string; status: string }[];
-}
+const STUDIO_AGENT_SOURCE = {
+  source: "agent",
+  sourceId: "studio-agent",
+} as const;
 
-const AGENT_CATALOG: AgentCardSeed[] = [
-  {
-    id: "site-editor",
-    title: "deco Site Editor",
-    icon: "/logos/deco%20logo.svg#agentcolor=brand-green",
-    description: "Edit and ship changes to your deco site, conversation-first.",
-    tasks: [
-      { id: "se-1", title: "Refresh hero copy", status: "in-progress" },
-      { id: "se-2", title: "Wire up new pricing page", status: "review" },
-      { id: "se-3", title: "Patch missing OG images", status: "in-progress" },
-    ],
-  },
-  {
-    id: "site-diagnostics",
-    title: "Site Diagnostics",
-    icon: "icon://SearchRefraction?color=cyan",
-    description: "Health check your site — broken links, slow pages, errors.",
-    tasks: [
-      { id: "sd-1", title: "Crawling /docs (47%)", status: "in-progress" },
-    ],
-  },
-  {
-    id: "ai-image",
-    title: "Image Creator",
-    icon: "icon://Image01?color=rose",
-    description: "Generate, edit, and iterate on visuals from a prompt.",
-    tasks: [
-      {
-        id: "ai-1",
-        title: "Generating: 'launch banner'",
-        status: "in-progress",
-      },
-    ],
-  },
-  {
-    id: "ai-research",
-    title: "Web Researcher",
-    icon: "icon://SearchMd?color=green",
-    description: "Run multi-source web research and summarise the findings.",
-  },
-  {
-    id: "lean-canvas",
-    title: "Lean Canvas",
-    icon: "icon://FileCheck02?color=green",
-    description: "Build a Lean Canvas for any product idea in minutes.",
-  },
-  {
-    id: "studio-pack",
-    title: "Studio Pack",
-    icon: "icon://Package?color=blue",
-    description: "Recruit a curated set of agents for studio work.",
-  },
-  {
-    id: "self-healing-storefront",
-    title: "Self-healing Storefront",
-    icon: "icon://Zap?color=amber",
-    description: "Watches your storefront and fixes issues as they appear.",
-    tasks: [
-      { id: "sh-1", title: "Auto-retry: cart webhook", status: "review" },
-      { id: "sh-2", title: "Patched: stuck checkout flow", status: "done" },
-    ],
-  },
-];
-
-const AGENT_CARD_ENTRIES: TileDefinition[] = AGENT_CATALOG.map((a) => ({
-  type: `agent.card.${a.id}`,
+const AGENT_CARD_ENTRIES: TileDefinition[] = AGENT_SEEDS.map((a) => ({
+  type: agentCardType(a.id),
   source: "agent",
   sourceId: a.id,
   title: a.title,
@@ -132,7 +48,6 @@ const AGENT_CARD_ENTRIES: TileDefinition[] = AGENT_CATALOG.map((a) => ({
     title: a.title,
     icon: a.icon,
     description: a.description,
-    ...(a.tasks ? { tasks: a.tasks } : {}),
   },
   render: AgentCardTile,
 }));
@@ -152,7 +67,7 @@ export const TILE_CATALOG: TileDefinition[] = [
   },
   {
     type: "studio.recent-agents",
-    source: "system",
+    ...STUDIO_AGENT_SOURCE,
     title: "Recent agents",
     description: "Jump back into agents you've used recently.",
     icon: <Users03 size={14} />,
@@ -163,7 +78,7 @@ export const TILE_CATALOG: TileDefinition[] = [
   },
   {
     type: "studio.recent-tasks",
-    source: "system",
+    ...STUDIO_AGENT_SOURCE,
     title: "Recent tasks",
     description: "Your in-progress conversations.",
     icon: <Clock size={14} />,
@@ -185,7 +100,7 @@ export const TILE_CATALOG: TileDefinition[] = [
   },
   {
     type: "studio.connections-overview",
-    source: "system",
+    ...STUDIO_AGENT_SOURCE,
     title: "Connections",
     description: "Status and grid of your connected MCPs.",
     icon: <Server01 size={14} />,
@@ -218,87 +133,14 @@ export const TILE_CATALOG: TileDefinition[] = [
   },
   {
     type: "studio.stats",
-    source: "system",
+    ...STUDIO_AGENT_SOURCE,
     title: "Workspace stats",
-    description: "KPIs for tasks, tools, and tokens.",
+    description: "Live counts of agents, connections, and errors.",
     icon: <TrendUp02 size={14} />,
     category: "stats",
     supportedSizes: ["S", "M", "L", "XL"],
     defaultSize: "S",
     render: StatsTile,
-  },
-  {
-    type: "agent.reliability",
-    source: "agent",
-    sourceId: "reliability-agent",
-    title: "Reliability Agent",
-    description: "Errors over the last 14 days, with delta from yesterday.",
-    icon: <ShieldTick size={14} />,
-    category: "data",
-    supportedSizes: ["M", "L", "XL", "W"],
-    defaultSize: "XL",
-    render: ReliabilityAgentTile,
-  },
-  {
-    type: "agent.app-frame",
-    source: "agent",
-    sourceId: "stripe-mock",
-    title: "Stripe payments",
-    description:
-      "An MCP app rendering inside the home — same chrome, content via iframe. (Mocked)",
-    icon: <Coins04 size={14} />,
-    category: "data",
-    supportedSizes: ["M", "L", "XL", "W"],
-    defaultSize: "XL",
-    render: AppFrameTile,
-  },
-  {
-    type: "mock.github.activity",
-    source: "mcp",
-    sourceId: "mock-github",
-    title: "GitHub activity",
-    description: "Recent commits across your repos. (Mocked)",
-    icon: <GitBranch01 size={14} />,
-    category: "activity",
-    supportedSizes: ["S", "M", "L", "XL"],
-    defaultSize: "M",
-    render: GithubActivityTile,
-  },
-  {
-    type: "mock.linear.issues",
-    source: "mcp",
-    sourceId: "mock-linear",
-    title: "Linear issues",
-    description: "Issues assigned to you. (Mocked)",
-    icon: <AlertCircle size={14} />,
-    category: "workflow",
-    supportedSizes: ["S", "M", "L", "XL"],
-    defaultSize: "M",
-    render: LinearIssuesTile,
-  },
-  {
-    type: "mock.calendar.upcoming",
-    source: "mcp",
-    sourceId: "mock-google-calendar",
-    title: "Today's calendar",
-    description: "Your next meetings. (Mocked)",
-    icon: <Calendar size={14} />,
-    category: "activity",
-    supportedSizes: ["S", "M", "L", "XL"],
-    defaultSize: "S",
-    render: CalendarTile,
-  },
-  {
-    type: "mock.analytics.chart",
-    source: "mcp",
-    sourceId: "mock-analytics",
-    title: "Page views",
-    description: "Traffic over the last 24h. (Mocked)",
-    icon: <Globe02 size={14} />,
-    category: "data",
-    supportedSizes: ["M", "L", "XL", "W"],
-    defaultSize: "L",
-    render: AnalyticsChartTile,
   },
 ];
 
@@ -313,8 +155,6 @@ export function renderTileContent(
   props: Parameters<TileDefinition["render"]>[0],
 ) {
   const def = getTileDefinition(type);
-  // Mount the renderer as a real component so its hooks live in their
-  // own boundary instead of being folded into the caller's hook tally.
   const Renderer = def?.render ?? UnknownTile;
   return <Renderer {...props} />;
 }

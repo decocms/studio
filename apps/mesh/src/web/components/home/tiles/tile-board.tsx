@@ -48,9 +48,9 @@ import {
   SIZE_LABELS,
   SIZE_PRESETS,
 } from "./constants";
-import { getTileDefinition, renderTileContent } from "./registry";
+import { getTileDefinition } from "./registry";
+import { TileSlot } from "./tile-slot";
 import type { HomeBoard, TileInstance, TileSizeKey } from "./types";
-import { TileErrorBoundary } from "./tile-error-boundary";
 
 interface TileBoardProps {
   board: HomeBoard;
@@ -132,12 +132,7 @@ export function TileBoard({
             className="bg-background border border-border rounded-2xl overflow-hidden"
             style={{ minHeight: ROW_HEIGHT_PX }}
           >
-            <TileErrorBoundary>
-              {renderTileContent(tile.type, {
-                instance: tile,
-                isEditMode: false,
-              })}
-            </TileErrorBoundary>
+            <TileSlot tile={tile} isEditMode={false} />
           </div>
         ))}
       </div>
@@ -189,12 +184,7 @@ export function TileBoard({
       >
         {activeTile && (
           <div className="bg-background border border-primary rounded-2xl shadow-2xl ring-2 ring-primary/40 h-full overflow-hidden opacity-95">
-            <TileErrorBoundary>
-              {renderTileContent(activeTile.type, {
-                instance: activeTile,
-                isEditMode: true,
-              })}
-            </TileErrorBoundary>
+            <TileSlot tile={activeTile} isEditMode={true} />
           </div>
         )}
       </DragOverlay>
@@ -259,13 +249,6 @@ function BoardTile({
   onResize,
   onRemove,
 }: BoardTileProps) {
-  const def = getTileDefinition(tile.type);
-  // Capture the renderer once and let React mount it as its own component
-  // boundary. Calling def.render(props) directly folds its hooks into
-  // BoardTile's tally and will trigger "Rendered more hooks…" the moment
-  // the renderer's hook count drifts.
-  const Renderer = def?.render;
-
   const {
     setNodeRef,
     attributes,
@@ -319,13 +302,7 @@ function BoardTile({
           </>
         )}
         <div className="h-full overflow-hidden">
-          <TileErrorBoundary>
-            {Renderer ? (
-              <Renderer instance={tile} isEditMode={isEditMode} />
-            ) : (
-              renderTileContent(tile.type, { instance: tile, isEditMode })
-            )}
-          </TileErrorBoundary>
+          <TileSlot tile={tile} isEditMode={isEditMode} />
         </div>
       </div>
     </div>

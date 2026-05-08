@@ -4,11 +4,11 @@
  * an empty board is the natural new-user state — no seeding required.
  *
  * `createStarterBoard` is offered explicitly via the "Use starter layout"
- * affordance in edit mode for users who want a head start. It excludes
- * tiles already present at the top of the page (welcome, quick-chat,
- * recent-agents) and focuses on real dashboard content.
+ * affordance in edit mode for users who want a head start. All tiles in
+ * the starter render real Studio data — no mocks.
  */
 
+import { type AgentSeedId, agentCardType, getAgentSeed } from "./agent-seeds";
 import { SIZE_PRESETS } from "./constants";
 import type { HomeBoard, TileInstance } from "./types";
 
@@ -34,71 +34,29 @@ function tile(
   };
 }
 
+function agentTile(
+  agentId: AgentSeedId,
+  pos: { x: number; y: number },
+  sizeKey: keyof typeof SIZE_PRESETS,
+): TileInstance {
+  const seed = getAgentSeed(agentId);
+  return tile(agentCardType(agentId), pos, sizeKey, {
+    templateId: agentId,
+    title: seed.title,
+    icon: seed.icon,
+    description: seed.description,
+  });
+}
+
 export function createEmptyBoard(): HomeBoard {
   return { version: 3, tiles: [] };
 }
 
-function agentTile(
-  agentId: keyof typeof AGENT_SEEDS,
-  pos: { x: number; y: number },
-  sizeKey: keyof typeof SIZE_PRESETS,
-): TileInstance {
-  const seed = AGENT_SEEDS[agentId];
-  const size = SIZE_PRESETS[sizeKey];
-  return {
-    id: newId(),
-    type: `agent.card.${agentId}`,
-    x: pos.x,
-    y: pos.y,
-    w: size.w,
-    h: size.h,
-    config: {
-      templateId: agentId,
-      title: seed.title,
-      icon: seed.icon,
-      description: seed.description,
-    },
-  };
-}
-
-const AGENT_SEEDS = {
-  "site-editor": {
-    title: "deco Site Editor",
-    icon: "/logos/deco%20logo.svg#agentcolor=brand-green",
-    description: "Edit and ship changes to your deco site, conversation-first.",
-    tasks: [
-      { id: "se-1", title: "Refresh hero copy", status: "in-progress" },
-      { id: "se-2", title: "Wire up new pricing page", status: "review" },
-      { id: "se-3", title: "Patch missing OG images", status: "in-progress" },
-    ],
-  },
-  "ai-image": {
-    title: "Image Creator",
-    icon: "icon://Image01?color=rose",
-    description: "Generate, edit, and iterate on visuals from a prompt.",
-    tasks: [
-      {
-        id: "ai-1",
-        title: "Generating: 'launch banner'",
-        status: "in-progress",
-      },
-    ],
-  },
-  "ai-research": {
-    title: "Web Researcher",
-    icon: "icon://SearchMd?color=green",
-    description: "Run multi-source web research and summarise the findings.",
-  },
-} as const;
-
 export function createStarterBoard(): HomeBoard {
-  // 3-col bento. Agents are the headline at the top — clickable cards
-  // showing live activity if they have any. Below that, the dashboard
-  // tiles.
-  //   row 0–1: Site Editor (1×2)  | Image Creator (1×2) | Web Researcher (1×2)
-  //   row 2–3: Recent tasks (1×2) | Reliability Agent (2×2)
-  //   row 4:   Connections (2×1)                        | Stats (1×1)
-  //   row 5:   GitHub (1×1)       | Linear (1×1)        | Today (1×1)
+  // 3-col bento, real-data only.
+  //   row 0–1: Site Editor (M)    | Image Creator (M)   | Web Researcher (M)
+  //   row 2–3: Recent tasks (M)   | Workspace stats (XL)
+  //   row 4:   Connections (W)
   return {
     version: 3,
     tiles: [
@@ -106,12 +64,8 @@ export function createStarterBoard(): HomeBoard {
       agentTile("ai-image", { x: 1, y: 0 }, "M"),
       agentTile("ai-research", { x: 2, y: 0 }, "M"),
       tile("studio.recent-tasks", { x: 0, y: 2 }, "M"),
-      tile("agent.reliability", { x: 1, y: 2 }, "XL"),
-      tile("studio.connections-overview", { x: 0, y: 4 }, "L"),
-      tile("studio.stats", { x: 2, y: 4 }, "S"),
-      tile("mock.github.activity", { x: 0, y: 5 }, "S"),
-      tile("mock.linear.issues", { x: 1, y: 5 }, "S"),
-      tile("mock.calendar.upcoming", { x: 2, y: 5 }, "S"),
+      tile("studio.stats", { x: 1, y: 2 }, "XL"),
+      tile("studio.connections-overview", { x: 0, y: 4 }, "W"),
     ],
   };
 }
