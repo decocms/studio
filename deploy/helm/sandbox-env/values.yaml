@@ -131,6 +131,24 @@ affinity: {}
 #         app.kubernetes.io/name: studio-sandbox-<envName>
 topologySpreadConstraints: []
 
+# DNS resolver options for sandbox pods. The Kubernetes default (ndots:5)
+# causes every external lookup to generate up to 8 queries (4 search-domain
+# expansions × A+AAAA) before reaching the absolute form. On EKS this burns
+# into the 1024 pps/ENI AWS VPC DNS rate limit and causes intermittent git
+# clone / npm install failures under load. Set ndots:1 to send external
+# hostnames (github.com, registry.npmjs.org, …) directly to the absolute
+# form. Safe for sandbox pods: the NetworkPolicy blocks all in-cluster egress
+# except port 53 to CoreDNS, so search-domain expansions that resolve to
+# private IPs would be unreachable regardless.
+#
+# Recommended for production:
+#
+# dnsConfig:
+#   options:
+#     - name: ndots
+#       value: "1"
+dnsConfig: {}
+
 # ── sandbox-pod hardening ──────────────────────────────────────────────
 # User namespace remap (`spec.hostUsers: false`): UID 1000 inside the pod
 # maps to a high, unprivileged subordinate UID on the node, so a

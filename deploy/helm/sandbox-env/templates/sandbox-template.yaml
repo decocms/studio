@@ -64,6 +64,10 @@ spec:
       topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- if not .Values.hostUsers }}
       # User namespace remap: UID 1000 inside the pod maps to a high
       # subordinate UID on the node, so a container escape lands as a
