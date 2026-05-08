@@ -1,0 +1,16 @@
+apiVersion: v2
+name: chart-deco-studio
+description: A Helm chart for deco Studio self-hosted deployment
+type: application
+version: 0.6.2
+appVersion: "latest"
+
+dependencies:
+  - name: nats
+    version: "2.12.5"
+    repository: "https://nats-io.github.io/k8s/helm/charts/"
+    condition: nats.enabled
+  - name: opentelemetry-collector
+    version: "0.147.2"
+    repository: "https://open-telemetry.github.io/opentelemetry-helm-charts"
+    condition: otel.collector.enabled

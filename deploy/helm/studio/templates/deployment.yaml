@@ -1,0 +1,208 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "chart-deco-studio.fullname" . }}
+  labels:
+    {{- include "chart-deco-studio.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  strategy:
+    type: {{ include "chart-deco-studio.deploymentStrategy" . }}
+    {{- $strategyType := include "chart-deco-studio.deploymentStrategy" . }}
+    {{- if eq $strategyType "RollingUpdate" }}
+    rollingUpdate:
+      {{- if and .Values.strategy .Values.strategy.rollingUpdate }}
+      {{- toYaml .Values.strategy.rollingUpdate | nindent 6 }}
+      {{- else }}
+      maxSurge: 1
+      maxUnavailable: 0
+      {{- end }}
+    {{- end }}
+  selector:
+    matchLabels:
+      {{- include "chart-deco-studio.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "chart-deco-studio.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- if .Values.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "chart-deco-studio.serviceAccountName" . }}
+      securityContext:
+        {{- include "chart-deco-studio.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.image.repository }}{{- if and .Values.image.tag (hasPrefix "sha256:" .Values.image.tag) }}@{{ .Values.image.tag }}{{- else }}:{{ .Values.image.tag | default .Chart.AppVersion }}{{- end }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.image.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.targetPort | default 3000 }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "chart-deco-studio.fullname" . }}-config
+            - secretRef:
+                name: {{ include "chart-deco-studio.secretName" . }}
+          env:
+            {{- if .Values.otel.enabled }}
+            {{- if .Values.otel.protocol }}
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: {{ .Values.otel.protocol | quote }}
+            {{- end }}
+            {{- if .Values.otel.service }}
+            - name: OTEL_SERVICE_NAME
+              value: {{ .Values.otel.service | quote }}
+            {{- end }}
+            {{- if .Values.otel.endpoint }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.otel.endpoint | quote }}
+            {{- else if .Values.otel.collector.enabled }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ printf "http://%s-opentelemetry-collector:4318" .Release.Name | quote }}
+            {{- end }}
+            {{- if and .Values.otel.headers (or (not .Values.otel.collector.enabled) .Values.otel.endpoint) }}
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              value: {{ include "chart-deco-studio.otelHeaders" . | quote }}
+            {{- end }}
+            {{- if .Values.otel.attributes }}
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: {{ include "chart-deco-studio.otelAttributes" . | quote }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.lifecycle }}
+          lifecycle:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.configMap.meshConfig.DATA_DIR | default "/app/data" }}
+            {{- if and (eq (lower (default "sqlite" .Values.database.engine)) "postgresql") .Values.database.caCert }}
+            - name: ca-cert
+              mountPath: /etc/ssl/certs
+              readOnly: true
+            {{- end }}
+          {{- with .Values.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- if .Values.s3Sync.enabled }}
+        - name: s3-sync
+          image: "{{ .Values.s3Sync.image.repository }}:{{ .Values.s3Sync.image.tag }}"
+          imagePullPolicy: {{ .Values.s3Sync.image.pullPolicy }}
+          command: ["/bin/sh", "/scripts/sync.sh"]
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.s3Sync.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.configMap.meshConfig.DATA_DIR | default "/app/data" }}
+            - name: s3-sync-script
+              mountPath: /scripts
+              readOnly: true
+      {{- end }}
+      {{- with .Values.extraContainers }}
+      {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        {{- if and (eq (lower (default "sqlite" .Values.database.engine)) "postgresql") .Values.database.caCert }}
+        - name: ca-cert
+          configMap:
+            name: {{ include "chart-deco-studio.fullname" . }}-ca-cert
+            items:
+              - key: ca-cert.pem
+                path: ca-cert.pem
+        {{- end }}
+        {{- if .Values.persistence.enabled }}
+        - name: data
+          {{- if .Values.persistence.claimName }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.claimName }}
+          {{- else }}
+          persistentVolumeClaim:
+            claimName: {{ include "chart-deco-studio.fullname" . }}-data
+          {{- end }}
+        {{- else }}
+        - name: data
+          emptyDir:
+            sizeLimit: {{ .Values.persistence.emptyDirSizeLimit | default "10Gi" }}
+        {{- end }}
+        {{- if .Values.s3Sync.enabled }}
+        - name: s3-sync-script
+          configMap:
+            name: {{ include "chart-deco-studio.fullname" . }}-s3-sync
+            defaultMode: 0755
+            items:
+              - key: sync.sh
+                path: sync.sh
+        {{- end }}
+        {{- with .Values.volumes }}
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if and .Values.topologySpreadConstraints (gt (len .Values.topologySpreadConstraints) 0) }}
+      topologySpreadConstraints:
+        {{- range .Values.topologySpreadConstraints }}
+        - {{- if not .labelSelector }}
+          {{- fail "labelSelector é obrigatório em topologySpreadConstraints. Especifique explicitamente os labels." }}
+          {{- else }}
+          labelSelector:
+            {{- toYaml .labelSelector | nindent 12 }}
+          {{- end }}
+          maxSkew: {{ .maxSkew }}
+          topologyKey: {{ .topologyKey }}
+          whenUnsatisfiable: {{ .whenUnsatisfiable }}
+        {{- end }}
+      {{- end }}

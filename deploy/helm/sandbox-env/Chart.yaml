@@ -1,0 +1,15 @@
+apiVersion: v2
+name: sandbox-env
+description: |
+  Studio-side resources that consume the agent-sandbox operator: the
+  shared SandboxTemplate, mesh runner RBAC, sandbox-pod NetworkPolicy,
+  optional SandboxWarmPool, and optional preview Gateway / HTTPRoute /
+  Certificate. Install one release per environment (dev / staging /
+  prod / ...). Resource names are suffixed with `envName` so multiple
+  releases coexist in the shared `agent-sandbox-system` namespace.
+  Requires the sandbox-operator chart to already be installed.
+type: application
+version: 0.6.1
+# appVersion tracks the studio-sandbox image version (image.tag default).
+appVersion: "0.3.0"
+kubeVersion: ">=1.30.0-0"

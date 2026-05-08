@@ -1,0 +1,157 @@
+{{- if .Values.networkPolicy.enabled }}
+# NetworkPolicy for mesh sandbox pods in THIS environment.
+#
+# Scope: selects pods in agent-sandbox-system labeled
+# app.kubernetes.io/name=studio-sandbox-<envName>. Applies both ingress and
+# egress rules, so egress is deny-by-default (policyType Egress with only
+# allowed rules). The label match is per-env so a release in env A doesn't
+# accidentally allow ingress from env B's mesh into env A's pods.
+#
+# Threat model: workload is arbitrary user code. Egress must not reach IMDS
+# (169.254.169.254 / fd00:ec2::254), in-cluster RFC1918 services, or
+# link-local addresses. Combine with EKS IMDSv2 hop-limit=1 at the node
+# level — this policy alone is not sufficient on clouds where IMDS is
+# reachable via hop.
+#
+# OTel side note: the sandbox image does not currently emit OTLP traffic.
+# If a future daemon revision pushes telemetry out-of-pod, add an explicit
+# egress rule for the in-cluster collector (or use
+# `networkPolicy.extraEgress`); the default-deny stance here will
+# otherwise silently drop it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "sandbox-env.sandboxName" . }}
+  namespace: agent-sandbox-system
+  labels:
+    {{- include "sandbox-env.sandboxLabels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "sandbox-env.sandboxName" . }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Daemon port (9000) — mesh server pods call this for control-plane
+    # operations (tool exec, log streaming) when path-2 in-cluster routing
+    # is used. The control plane also reaches the daemon over the API
+    # server's port-forward channel, which doesn't transit a Pod IP and
+    # therefore doesn't need a NetworkPolicy rule; this entry covers the
+    # direct-Service path.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.mesh.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.mesh.podSelectorLabels | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 9000
+    {{- if .Values.previewGateway.enabled }}
+    # Per-claim HTTPRoutes in `agent-sandbox-system` route `*.<domain>`
+    # traffic from the wildcard Gateway directly to each sandbox's headless
+    # Service:9000. The actual sender is the gateway controller's data plane
+    # Pod, which lives in `previewGateway.namespace` (Istio default:
+    # `istio-system`). Without this rule the route attaches but the Envoy
+    # proxy can't reach the sandbox pod and the browser sees a connect
+    # timeout. Mesh is no longer in this path.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.previewGateway.namespace }}
+      ports:
+        - protocol: TCP
+          port: 9000
+    {{- end }}
+    {{- if .Values.housekeeper.enabled }}
+    # Housekeeper probes /_decopilot_vm/idle. Same namespace as pods, so
+    # podSelector alone is enough (no namespaceSelector).
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ include "sandbox-env.housekeeperName" . }}
+      ports:
+        - protocol: TCP
+          port: 9000
+    {{- end }}
+    {{- with .Values.networkPolicy.previewGatewayNamespace }}
+    # DEPRECATED — direct ingress on dev port 3000 from a configured
+    # gateway namespace. Only needed for setups that route preview traffic
+    # *around* mesh (no daemon CSP/HMR rewrites). The standard Istio
+    # Gateway API path lands on port 9000 via mesh and doesn't need this.
+    # Slated for removal in a future chart version.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . }}
+      ports:
+        - protocol: TCP
+          port: 3000
+    {{- end }}
+  egress:
+    # CoreDNS — UDP + TCP 53.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Public internet on 443 (HTTPS only) with IMDS, RFC1918, and link-local
+    # blocked. Covers bun install, git clone over HTTPS, external APIs
+    # without opening the sandbox to in-cluster services.
+    #
+    # Plaintext port 80 is *not* allowed by default — bun, npm, and git over
+    # HTTPS don't need it, and allowing it widens the MITM-on-egress surface.
+    # Installs that need a package mirror over HTTP can grant it via
+    # `networkPolicy.extraEgress` (see values.yaml).
+    #
+    # 100.64.0.0/10 is shared address space (RFC 6598). Some carriers and
+    # K8s networking flavors put pod IPs there (Kops/Kubenet on AWS; some
+    # GKE configurations); EKS with the AWS VPC CNI uses VPC ranges
+    # (10.0.0.0/8) and is already covered above. Keeping the 100.64.0.0/10
+    # exclusion is harmless on EKS and necessary on the others.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 169.254.0.0/16   # link-local + IPv4 IMDSv2
+              - 10.0.0.0/8       # RFC1918
+              - 172.16.0.0/12    # RFC1918
+              - 192.168.0.0/16   # RFC1918
+              - 100.64.0.0/10    # shared address space (RFC 6598)
+      ports:
+        - protocol: TCP
+          port: 443
+    # IPv6 egress on dual-stack clusters (EKS dual-stack, GKE, etc.).
+    # Without this rule, an IPv6-enabled pod can reach in-cluster
+    # ULA-addressed Services and the IPv6 IMDS endpoint
+    # (fd00:ec2::254 on AWS) bypassing the IPv4 exclusions above.
+    # Single-stack IPv4 clusters ignore the rule, so it is safe to leave
+    # in by default.
+    - to:
+        - ipBlock:
+            cidr: ::/0
+            except:
+              - fe80::/10        # link-local
+              - fc00::/7         # ULA (in-cluster IPv6 Service ranges, ULA Pod CIDRs)
+              - fd00:ec2::/96    # AWS IPv6 IMDS prefix
+      ports:
+        - protocol: TCP
+          port: 443
+    {{- with .Values.networkPolicy.extraEgress }}
+    # Operator-supplied egress rules. Use to grant the sandbox controlled
+    # access to in-cluster services it shouldn't reach by default — for
+    # example, an in-cluster OTel collector at
+    # `<release>-opentelemetry-collector.<release-ns>.svc:4318` if a future
+    # daemon revision emits OTLP. Each entry is a NetworkPolicyEgressRule.
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}

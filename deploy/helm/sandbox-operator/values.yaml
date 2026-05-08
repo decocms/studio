@@ -1,0 +1,12 @@
+# Default values for the sandbox-operator chart.
+#
+# This chart deliberately exposes NO tunables. It is a thin packaging of
+# the vendored upstream kubernetes-sigs/agent-sandbox operator + CRDs.
+# All Studio-specific configuration (sandbox image, resource ceilings,
+# NetworkPolicy egress, preview Gateway, warm pool, ...) lives in the
+# companion sandbox-env chart, which is installed once per environment
+# alongside this one.
+#
+# If you need to override the controller image, replicas, or args, edit
+# templates/agent-sandbox-manifest.yaml — but prefer re-running
+# vendor.sh against a newer upstream release first.

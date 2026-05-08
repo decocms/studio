@@ -1,0 +1,165 @@
+name: Release sandbox Helm charts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "deploy/helm/sandbox-operator/**"
+      - "deploy/helm/sandbox-env/**"
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  # OCI charts in ghcr.io live at <registry>/<owner>/<name>:<tag>. Helm
+  # treats the parent path as the "repo" (here ghcr.io/decocms/studio/charts)
+  # and the chart name+version as ref. Argo CD's helm source supports this
+  # natively via repoURL=<registry>/<owner>/<name> + chart=<chart-name>.
+  OCI_REPO: oci://ghcr.io/${{ github.repository }}/charts
+
+jobs:
+  release:
+    name: Package & push ${{ matrix.chart }}
+    runs-on: ubuntu-latest
+    # Run sandbox-operator and sandbox-env in parallel — independent OCI
+    # tags, no shared mutable state.
+    strategy:
+      fail-fast: false
+      matrix:
+        chart: [sandbox-operator, sandbox-env]
+    # `[release]:` commits come from the auto-bump bot and don't actually
+    # change chart contents — skip them so we don't republish the same
+    # version.
+    if: ${{ !startsWith(github.event.head_commit.message, '[release]:') }}
+    permissions:
+      contents: read
+      packages: write
+      # OIDC token for keyless cosign signing (Sigstore Fulcio).
+      id-token: write
+      # Required to attach SLSA provenance attestations.
+      attestations: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+
+      - name: Read chart version
+        id: version
+        env:
+          CHART_PATH: deploy/helm/${{ matrix.chart }}
+        run: |
+          set -euo pipefail
+          VERSION=$(awk '/^version:/{print $2; exit}' "${CHART_PATH}/Chart.yaml")
+          NAME=$(awk '/^name:/{print $2; exit}' "${CHART_PATH}/Chart.yaml")
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "name=${NAME}" >> "${GITHUB_OUTPUT}"
+          echo "path=${CHART_PATH}" >> "${GITHUB_OUTPUT}"
+          echo "::notice::Chart ${NAME} version ${VERSION}"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Skip republishing if the version tag already exists. Without this
+      # guard, every push to main that touches the chart silently mutates
+      # the chart under a tag consumers may already be pinning.
+      - name: Check if chart version already exists
+        id: tag-check
+        run: |
+          set -euo pipefail
+          # `helm show chart` against an OCI ref hits the registry; success
+          # means the tag is published.
+          if helm show chart "${OCI_REPO}/${{ steps.version.outputs.name }}" \
+              --version "${{ steps.version.outputs.version }}" \
+              >/dev/null 2>&1; then
+            echo "exists=true" >> "${GITHUB_OUTPUT}"
+            echo "::notice::Chart ${{ steps.version.outputs.name }}-${{ steps.version.outputs.version }} already published — skipping. Bump ${{ steps.version.outputs.path }}/Chart.yaml version to publish."
+          else
+            echo "exists=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Package chart
+        if: steps.tag-check.outputs.exists != 'true'
+        id: package
+        run: |
+          set -euo pipefail
+          helm package "${{ steps.version.outputs.path }}" --destination dist
+          PACKAGE="dist/${{ steps.version.outputs.name }}-${{ steps.version.outputs.version }}.tgz"
+          echo "package=${PACKAGE}" >> "${GITHUB_OUTPUT}"
+
+      - name: Push chart to OCI registry
+        if: steps.tag-check.outputs.exists != 'true'
+        id: push
+        run: |
+          set -euo pipefail
+          PUSH_OUT=$(helm push "${{ steps.package.outputs.package }}" "${OCI_REPO}" 2>&1)
+          echo "${PUSH_OUT}"
+          DIGEST=$(echo "${PUSH_OUT}" | awk '/Digest:/{print $2}')
+          if [ -z "${DIGEST}" ]; then
+            echo "::error::Could not extract digest from helm push output"
+            exit 1
+          fi
+          echo "digest=${DIGEST}" >> "${GITHUB_OUTPUT}"
+
+      # Keyless cosign signing for parity with the image release workflow.
+      # Verifies provenance via Sigstore's public transparency log without
+      # long-lived keys. Verify downstream with:
+      #   cosign verify ghcr.io/decocms/studio/charts/<chart>:<tag> \
+      #     --certificate-identity-regexp 'https://github.com/decocms/studio/.*' \
+      #     --certificate-oidc-issuer https://token.actions.githubusercontent.com
+      - name: Install cosign
+        if: steps.tag-check.outputs.exists != 'true'
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign chart with cosign
+        if: steps.tag-check.outputs.exists != 'true'
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          NAME: ${{ steps.version.outputs.name }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          REF="${{ env.REGISTRY }}/${{ github.repository }}/charts/${NAME}@${DIGEST}"
+          cosign sign --yes "${REF}"
+
+      - name: Generate SLSA build provenance
+        if: steps.tag-check.outputs.exists != 'true'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ github.repository }}/charts/${{ steps.version.outputs.name }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      - name: Release summary
+        if: steps.tag-check.outputs.exists != 'true'
+        run: |
+          {
+            echo "## Helm chart published"
+            echo ""
+            echo "**${{ steps.version.outputs.name }} ${{ steps.version.outputs.version }}**"
+            echo ""
+            echo "### Install"
+            echo '```bash'
+            if [ "${{ matrix.chart }}" = "sandbox-operator" ]; then
+              echo "helm install sandbox-operator ${OCI_REPO}/${{ steps.version.outputs.name }} \\"
+              echo "  --version ${{ steps.version.outputs.version }} \\"
+              echo "  --namespace agent-sandbox-system --create-namespace"
+            else
+              echo "helm install sandbox-env-<envName> ${OCI_REPO}/${{ steps.version.outputs.name }} \\"
+              echo "  --version ${{ steps.version.outputs.version }} \\"
+              echo "  --namespace agent-sandbox-system \\"
+              echo "  --set envName=<envName> \\"
+              echo "  --set mesh.namespace=<studio-namespace> \\"
+              echo "  --set mesh.serviceAccountName=<studio-release-name> \\"
+              echo "  --set mesh.serviceName=<studio-release-name> \\"
+              echo "  --set mesh.servicePort=80"
+            fi
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"

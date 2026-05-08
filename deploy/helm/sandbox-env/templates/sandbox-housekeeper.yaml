@@ -1,0 +1,147 @@
+{{- if .Values.housekeeper.enabled }}
+{{- /*
+Idle-reap housekeeper for studio sandbox claims. See values.yaml for the
+behavior contract; sweep logic lives in files/housekeeper-sweep.sh.
+*/ -}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "sandbox-env.housekeeperName" . }}-script
+  namespace: agent-sandbox-system
+  labels:
+    {{- include "sandbox-env.labels" . | nindent 4 }}
+data:
+  sweep.sh: |
+{{ .Files.Get "files/housekeeper-sweep.sh" | indent 4 }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "sandbox-env.housekeeperName" . }}
+  namespace: agent-sandbox-system
+  labels:
+    {{- include "sandbox-env.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "sandbox-env.housekeeperName" . }}
+  namespace: agent-sandbox-system
+  labels:
+    {{- include "sandbox-env.labels" . | nindent 4 }}
+rules:
+  # patch = annotate + spec.lifecycle.shutdownTime (graceful Idle reap);
+  # delete = ReconcilerError fall-through where shutdownTime is unhonored.
+  - apiGroups: ["extensions.agents.x-k8s.io"]
+    resources: ["sandboxclaims"]
+    verbs: ["get", "list", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["list"]
+  # Reap events outlive the claim object — used for post-mortem.
+  # events.k8s.io/v1 is the current API; legacy `[""] events` is deprecated.
+  # `kubectl get events` aggregates from both, so consumers are unaffected.
+  - apiGroups: ["events.k8s.io"]
+    resources: ["events"]
+    verbs: ["create"]
+  # list = orphan HTTPRoute GC pass + per-claim reap deletes.
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes"]
+    verbs: ["list", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "sandbox-env.housekeeperName" . }}
+  namespace: agent-sandbox-system
+  labels:
+    {{- include "sandbox-env.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "sandbox-env.housekeeperName" . }}
+    namespace: agent-sandbox-system
+roleRef:
+  kind: Role
+  name: {{ include "sandbox-env.housekeeperName" . }}
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "sandbox-env.housekeeperName" . }}
+  namespace: agent-sandbox-system
+  labels:
+    {{- include "sandbox-env.labels" . | nindent 4 }}
+  annotations:
+    # Rolls the CronJob spec when sweep.sh changes so the next run picks
+    # up new logic without an explicit redeploy.
+    checksum/script: {{ .Files.Get "files/housekeeper-sweep.sh" | sha256sum }}
+spec:
+  schedule: {{ .Values.housekeeper.schedule | quote }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: {{ .Values.housekeeper.startingDeadlineSeconds }}
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: {{ .Values.housekeeper.activeDeadlineSeconds }}
+      ttlSecondsAfterFinished: {{ .Values.housekeeper.ttlSecondsAfterFinished }}
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: {{ include "sandbox-env.housekeeperName" . }}
+        spec:
+          serviceAccountName: {{ include "sandbox-env.housekeeperName" . }}
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 1001
+            fsGroup: 1001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: housekeeper
+              image: {{ .Values.housekeeper.image.repository }}:{{ .Values.housekeeper.image.tag }}
+              imagePullPolicy: {{ .Values.housekeeper.image.pullPolicy }}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                {{- toYaml .Values.housekeeper.resources | nindent 16 }}
+              env:
+                - name: RUN_ID
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.name
+                - name: NS
+                  value: agent-sandbox-system
+                - name: TTL_MS
+                  value: {{ mul .Values.housekeeper.idleTtlSeconds 1000 | quote }}
+                - name: PROBE_TIMEOUT_SEC
+                  value: {{ .Values.housekeeper.probeTimeoutSeconds | quote }}
+                - name: CLAIM_SELECTOR
+                  value: {{ default (include "sandbox-env.housekeeperClaimSelector" .) .Values.housekeeper.claimSelector | quote }}
+                - name: POD_SELECTOR
+                  value: {{ default (include "sandbox-env.housekeeperPodSelector" .) .Values.housekeeper.podSelector | quote }}
+              command: ["/bin/sh", "/scripts/sweep.sh"]
+              volumeMounts:
+                - name: script
+                  mountPath: /scripts
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: script
+              configMap:
+                name: {{ include "sandbox-env.housekeeperName" . }}-script
+                defaultMode: 0555
+                items:
+                  - key: sweep.sh
+                    path: sweep.sh
+            - name: tmp
+              emptyDir: {}
+{{- end }}

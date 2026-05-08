@@ -1,0 +1,144 @@
+# Shared SandboxTemplate consumed by every SandboxClaim the mesh runner
+# creates for THIS environment. Resource ceilings come from values.resources.
+#
+# Hardcoded to the operator's own namespace (agent-sandbox-system) — the CRDs
+# ship with that as the install target, and the operator's RBAC watches it by
+# default. The template *name* is suffixed with envName so multiple
+# environments' SandboxTemplates coexist; mesh in this env must reference
+# the suffixed name via STUDIO_SANDBOX_TEMPLATE_NAME.
+apiVersion: extensions.agents.x-k8s.io/v1alpha1
+kind: SandboxTemplate
+metadata:
+  name: {{ include "sandbox-env.sandboxName" . }}
+  namespace: agent-sandbox-system
+  labels:
+    {{- include "sandbox-env.sandboxLabels" . | nindent 4 }}
+spec:
+  # The operator's controller rejects per-claim env outright when
+  # `claim.spec.warmpool != "none"`, so warm-pool consumption requires
+  # all claim env to come from the template. We bake a *sentinel* bearer
+  # token (rendered into a Secret by sandbox-sentinel-secret.yaml) and
+  # rotate to a per-claim token post-bind via mesh's first
+  # POST /_decopilot_vm/config call. envVarsInjectionPolicy stays Allowed
+  # so single-env deploys that haven't yet adopted the sentinel can still
+  # provision cold (warmpool=none) with claim env.
+  envVarsInjectionPolicy: Allowed
+  # The CRD defaults to Managed, which makes the operator install its own
+  # NetworkPolicy that only allows ingress from pods labeled
+  # `app: sandbox-router`. That's intended for Istio-style sidecar routing
+  # and silently blocks the mesh → daemon path the preview-proxy depends on.
+  # We surface the netpol via templates/sandbox-network-policy.yaml instead
+  # (gated by `networkPolicy.enabled`), so flag the operator's policy off.
+  networkPolicyManagement: Unmanaged
+  podTemplate:
+    metadata:
+      labels:
+        # Per-env name so each env's NetworkPolicy podSelector matches only
+        # its own pods. Mesh runner stamps the same value via
+        # SandboxClaim.additionalPodMetadata (driven by
+        # STUDIO_SANDBOX_TEMPLATE_NAME pointing at the env-suffixed
+        # template) — keep these in lockstep.
+        app.kubernetes.io/name: {{ include "sandbox-env.sandboxName" . }}
+        # Do NOT set `studio.decocms.com/role` here. The operator (v0.4.2+)
+        # rejects claims whose additionalPodMetadata defines a label key
+        # already present in the template — even when the values differ —
+        # with "metadata override conflict". The runner sets role=claimed
+        # via additionalPodMetadata, so the template must leave that key
+        # undefined. Warm-pool pods end up without the role label;
+        # dashboards filter by absence-of-handle instead.
+    spec:
+      automountServiceAccountToken: false
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if not .Values.hostUsers }}
+      # User namespace remap: UID 1000 inside the pod maps to a high
+      # subordinate UID on the node, so a container escape lands as a
+      # nobody-user, not as a real node UID. Requires K8s 1.30+ and a
+      # containerd/kernel that support userns (EKS default AMIs are fine).
+      hostUsers: false
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: sandbox
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          workingDir: /app
+          env:
+            - name: WORKDIR
+              value: "/app"
+            - name: DAEMON_PORT
+              value: "9000"
+            - name: DAEMON_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sandbox-env.sentinelSecretName" . }}
+                  key: daemonToken
+            {{- if .Values.readOnlyRootFilesystem }}
+            # With RO rootfs + emptyDir on /app, the mount root is owned
+            # root:1000 (fsGroup). Git 2.35+'s "dubious ownership" check
+            # would refuse to operate. Disable the check inside the
+            # sandbox — single-tenant pod, no untrusted same-pod user.
+            - name: GIT_CONFIG_COUNT
+              value: "1"
+            - name: GIT_CONFIG_KEY_0
+              value: "safe.directory"
+            - name: GIT_CONFIG_VALUE_0
+              value: "*"
+            {{- end }}
+          ports:
+            - name: daemon
+              containerPort: 9000
+              protocol: TCP
+            - name: dev
+              containerPort: 3000
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: {{ .Values.readOnlyRootFilesystem }}
+          volumeMounts:
+            {{- if .Values.readOnlyRootFilesystem }}
+            - name: workdir
+              mountPath: /app
+            - name: tmp
+              mountPath: /tmp
+            {{- end }}
+            - name: home
+              mountPath: /home/sandbox
+      volumes:
+        {{- if .Values.readOnlyRootFilesystem }}
+        # Sized to match the per-container ephemeral-storage limit shape;
+        # individual mounts get a slice. Adjust if a workload needs more.
+        - name: workdir
+          emptyDir:
+            sizeLimit: 5Gi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi
+        {{- end }}
+        - name: home
+          emptyDir:
+            sizeLimit: 2Gi

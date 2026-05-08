@@ -1,0 +1,30 @@
+{{- if .Values.previewGateway.enabled }}
+{{- $domain := required "previewGateway.domain is required when previewGateway.enabled=true" .Values.previewGateway.domain }}
+{{- $issuer := required "previewGateway.clusterIssuer is required when previewGateway.enabled=true" .Values.previewGateway.clusterIssuer }}
+{{- $gwNamespace := .Values.previewGateway.namespace }}
+{{- $tlsSecretName := include "sandbox-env.previewTlsSecretName" . }}
+# Wildcard cert for the sandbox preview Gateway. cert-manager places the
+# Secret in the gateway namespace so the Gateway listener can mount it
+# without a cross-namespace reference.
+#
+# DNS-01 is the only solver that can validate a wildcard SAN, so the
+# referenced ClusterIssuer must be DNS-01 (e.g. Cloudflare, Route53). The
+# chart does not template the ClusterIssuer itself — the API tokens
+# required to provision DNS records are per-cluster infra, not chart
+# config. See README.md for a Cloudflare DNS-01 ClusterIssuer template.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "sandbox-env.previewName" . }}
+  namespace: {{ $gwNamespace }}
+  labels:
+    {{- include "sandbox-env.sandboxPreviewLabels" . | nindent 4 }}
+spec:
+  secretName: {{ $tlsSecretName }}
+  issuerRef:
+    kind: ClusterIssuer
+    name: {{ $issuer | quote }}
+  commonName: {{ printf "*.%s" $domain | quote }}
+  dnsNames:
+    - {{ printf "*.%s" $domain | quote }}
+{{- end }}

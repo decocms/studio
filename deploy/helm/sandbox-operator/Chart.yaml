@@ -1,0 +1,14 @@
+apiVersion: v2
+name: sandbox-operator
+description: |
+  Pure upstream kubernetes-sigs/agent-sandbox operator + CRDs (vendored —
+  upstream does not publish a Helm chart as of v0.4.2). Installs the
+  Namespace, ServiceAccount, Deployment, Service, and ClusterRoles /
+  ClusterRoleBindings the operator needs. No Studio-specific resources
+  live in this chart — see deploy/helm/sandbox-env for those.
+type: application
+# Chart version is independent of upstream agent-sandbox. Bump on any change.
+version: 0.1.0
+# Tracks the upstream agent-sandbox release pinned by vendor.sh.
+appVersion: "0.4.2"
+kubeVersion: ">=1.30.0-0"

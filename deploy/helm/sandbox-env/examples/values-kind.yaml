@@ -1,0 +1,65 @@
+# Local kind cluster overrides for the sandbox-env chart. Pair with the
+# sandbox-operator chart (which installs the operator + CRDs).
+
+# ── env identity ───────────────────────────────────────────────────────
+# kind clusters typically only have one studio install, so a fixed env
+# name is fine.
+envName: "kind"
+
+# ── sandbox image (built locally + `kind load`ed) ──────────────────────
+image:
+  repository: studio-sandbox
+  tag: local
+  pullPolicy: Never
+
+# ── modest sandbox limits for laptop kind ──────────────────────────────
+# Bump back up when stress-testing.
+resources:
+  requests:
+    cpu: "100m"
+    memory: "512Mi"
+  limits:
+    cpu: "1"
+    memory: "3Gi"
+
+# ── networkPolicy ──────────────────────────────────────────────────────
+# kindnet enforces NetworkPolicy as of kind v0.27 (kindnetd v1.x). Leave
+# the chart's policy on so studio → sandbox traffic on port 9000 is
+# explicitly allow-listed; otherwise the operator-managed default (only
+# `app: sandbox-router` ingress, locked off via networkPolicyManagement:
+# Unmanaged in the SandboxTemplate) would re-block everything. Older
+# kindnet builds (pre-0.27) ignore the policy and the rule is inert —
+# safe either way.
+networkPolicy:
+  enabled: true
+
+# ── pod hardening (relaxed for kind) ───────────────────────────────────
+# Plain host-users mode. userns remap requires K8s 1.30+ on a kernel that
+# supports it; kind nodes can vary. Keep simple for local dev.
+hostUsers: true
+readOnlyRootFilesystem: false
+
+# ── no preview Gateway in kind ─────────────────────────────────────────
+# Mesh's HTTP edge handles preview routing in-process via
+# apps/mesh/src/sandbox/preview-proxy.ts: it reads the Host header,
+# extracts the sandbox handle, and reverse-proxies to the in-cluster
+# daemon Service.
+previewGateway:
+  enabled: false
+
+# ── warm pool off in kind ──────────────────────────────────────────────
+warmPool:
+  enabled: false
+
+# ── mesh cross-references (point at the kind studio install) ───────────
+# studio kind install conventionally lands in `deco-studio` namespace
+# with release name `deco-studio`. Override here if you `helm install`
+# studio under a different name/namespace.
+mesh:
+  namespace: "deco-studio"
+  serviceAccountName: "deco-studio"
+  serviceName: "deco-studio"
+  servicePort: 80
+  podSelectorLabels:
+    app.kubernetes.io/name: "chart-deco-studio"
+    app.kubernetes.io/instance: "deco-studio"
