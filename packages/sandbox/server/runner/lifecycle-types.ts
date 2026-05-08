@@ -18,6 +18,7 @@ export type ClaimFailureReason =
   | "crash-loop-backoff"
   | "scheduling-timeout"
   | "claim-never-created"
+  | "sandbox-evicted"
   | "reconciler-error"
   | "unknown";
 

@@ -233,6 +233,7 @@ export function PreviewContent() {
     autoStartedForTaskRef.current = null;
     reprovisionedForVmIdRef.current = null;
     startVm.reset();
+    vmEvents.resetConnection();
     triggerStartRef.current("auto-start");
   };
 
@@ -451,7 +452,9 @@ export function PreviewContent() {
               scripts={vmEvents.scripts}
               activeProcesses={vmEvents.activeProcesses}
               onViewLogs={openEnv}
-              claimPhase={previewUrl ? null : claimPhase}
+              claimPhase={
+                previewUrl && claimPhase?.kind !== "failed" ? null : claimPhase
+              }
               onRetry={retryAutoStart}
             />
           </div>
