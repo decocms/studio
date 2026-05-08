@@ -8,9 +8,9 @@
  *   1. `event: phase` — `ClaimPhase` JSON for the pre-Ready lifecycle.
  *      Surfaces what's happening between VM_START posting a SandboxClaim
  *      and the daemon coming online (capacity wait, image pull, etc).
- *   2. `event: log|status|scripts|tasks|intent|phases|branch-status|transition`
- *      — passthrough from the in-pod daemon's `/_decopilot_vm/events`. Event
- *      types are defined in `@decocms/sandbox/daemon` (DaemonEventMap).
+ *   2. `event: log/status/scripts/processes/reload/branch-status` — passthrough
+ *      from the in-pod daemon's `/_decopilot_vm/events`. Same wire format the
+ *      browser used to consume directly.
  *
  *   3. `event: gone` — synthetic. Mesh's upstream daemon fetch returned 404
  *      (sandbox handle missing → operator-evicted on idle TTL). Mapped to
@@ -38,20 +38,34 @@ import type {
 
 export type { ClaimFailureReason, ClaimPhase };
 
-import type {
-  BranchStatus,
-  BranchStatusReady,
-  DaemonEventType,
-  UpstreamStatus,
-} from "@decocms/sandbox/daemon";
-
-export type { BranchStatus, BranchStatusReady, UpstreamStatus };
+import type { UpstreamStatus } from "../upstream-status";
+export type { UpstreamStatus };
 
 export interface VmStatus {
   status: UpstreamStatus;
   port: number | null;
   htmlSupport: boolean;
 }
+
+export interface BranchStatusReady {
+  kind: "ready";
+  branch: string;
+  base: string;
+  workingTreeDirty: boolean;
+  unpushed: number;
+  aheadOfBase: number;
+  behindBase: number;
+  /** HEAD sha (falls back to origin/<branch>). Empty if the daemon couldn't compute it. */
+  headSha: string;
+}
+
+export type BranchStatus =
+  | { kind: "initializing" }
+  | { kind: "cloning" }
+  | { kind: "clone-failed"; error: string }
+  | { kind: "checking-out"; to: string }
+  | { kind: "checkout-failed"; error: string }
+  | BranchStatusReady;
 
 export type ChunkHandler = (source: string, data: string) => void;
 export type ReloadHandler = () => void;
@@ -79,13 +93,6 @@ export interface VmEventsValue {
   subscribeChunks: (handler: ChunkHandler) => () => void;
   /** "reload" SSE fires on config edits framework HMR doesn't watch. */
   subscribeReload: (handler: ReloadHandler) => () => void;
-  /**
-   * Force-reconnect the SSE stream. Call after manually triggering VM_START
-   * (e.g. from a "Start new sandbox" retry button) so the new lifecycle
-   * events are received — a terminal `failed` phase closes the connection
-   * permanently until this is called.
-   */
-  resetConnection: () => void;
 }
 
 const DEFAULT_VALUE: VmEventsValue = {
@@ -102,7 +109,6 @@ const DEFAULT_VALUE: VmEventsValue = {
   hasData: () => false,
   subscribeChunks: () => () => {},
   subscribeReload: () => () => {},
-  resetConnection: () => {},
 };
 
 export const VmEventsContext = createContext<VmEventsValue>(DEFAULT_VALUE);
@@ -133,16 +139,17 @@ const SUSPENDED_AFTER_ERROR_MS = 60_000;
 const BASE_RECONNECT_DELAY_MS = 1_000;
 const MAX_RECONNECT_DELAY_MS = 30_000;
 
-const DAEMON_EVENT_TYPES: ReadonlyArray<DaemonEventType> = [
+const DAEMON_EVENT_TYPES = [
   "log",
   "status",
   "scripts",
+  "processes",
   "tasks",
   "intent",
   "phases",
+  "reload",
   "branch-status",
-  "transition",
-];
+] as const;
 
 export function VmEventsProvider({
   virtualMcpId,
@@ -173,9 +180,6 @@ export function VmEventsProvider({
   // Bumped on log chunks so getBuffer/hasData consumers re-render; buffer
   // mutation alone doesn't.
   const [, setLogTick] = useState(0);
-  // Bumped by resetConnection() to force the SSE effect to re-run and
-  // re-establish the connection after a terminal failure + manual retry.
-  const [connectionKey, setConnectionKey] = useState(0);
 
   const buffers = useRef(new Map<string, ChunkBuffer>());
   const chunkHandlers = useRef(new Set<ChunkHandler>());
@@ -193,7 +197,7 @@ export function VmEventsProvider({
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — SSE subscription lifecycle requires cleanup on unmount; single EventSource with reconnect logic
   useEffect(() => {
-    // Reset on key change so stale data doesn't linger across branches/retries.
+    // Reset on key change so stale data doesn't linger across branches.
     setPhase(null);
     setStatus({ status: "booting", port: null, htmlSupport: false });
     prevPortRef.current = null;
@@ -320,6 +324,8 @@ export function VmEventsProvider({
           }
         } else if (e.type === "scripts") {
           setScripts(data.scripts ?? []);
+        } else if (e.type === "processes") {
+          setActiveProcesses(data.active ?? []);
         } else if (e.type === "tasks") {
           // Daemon's task-manager surface; map to the activeProcesses array
           // of script names so the UI's Run/Restart button can render
@@ -351,6 +357,14 @@ export function VmEventsProvider({
           setInstalling(
             phases.some((p) => p.name === "install" && p.status === "running"),
           );
+        } else if (e.type === "reload") {
+          for (const fn of reloadHandlers.current) {
+            try {
+              fn();
+            } catch {
+              // swallow
+            }
+          }
         } else if (e.type === "branch-status") {
           const kind = String(data.kind ?? "initializing");
           switch (kind) {
@@ -455,11 +469,7 @@ export function VmEventsProvider({
       if (reconnectTimer) clearTimeout(reconnectTimer);
       clearSuspendTimer();
     };
-  }, [virtualMcpId, branch, org.slug, connectionKey]);
-
-  const resetConnection = () => {
-    setConnectionKey((k) => k + 1);
-  };
+  }, [virtualMcpId, branch, org.slug]);
 
   const value: VmEventsValue = {
     phase,
@@ -486,7 +496,6 @@ export function VmEventsProvider({
         reloadHandlers.current.delete(handler);
       };
     },
-    resetConnection,
   };
 
   return <VmEventsContext value={value}>{children}</VmEventsContext>;

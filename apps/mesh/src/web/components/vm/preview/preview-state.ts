@@ -42,16 +42,17 @@ export function computePreviewState(input: PreviewStateInput): PreviewState {
   if (input.suspended || input.appPaused) {
     return { kind: "suspended" };
   }
-  if (input.claimPhase?.kind === "failed" && !input.vmStartPending) {
-    return { kind: "booting" };
-  }
   if (input.notFound) {
     return { kind: "booting" };
   }
   if (!input.previewUrl && input.vmStartPending) {
     return { kind: "booting" };
   }
-  if (!input.previewUrl && input.claimPhase != null) {
+  if (
+    !input.previewUrl &&
+    input.claimPhase &&
+    input.claimPhase.kind !== "failed"
+  ) {
     return { kind: "booting" };
   }
   if (!input.previewUrl) {
