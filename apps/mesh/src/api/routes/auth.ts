@@ -7,6 +7,7 @@
 
 import { Hono } from "hono";
 import { getConnInfo } from "hono/bun";
+import { posthog } from "../../posthog";
 import { getSettings } from "../../settings";
 import {
   auth,
@@ -56,8 +57,8 @@ export type AuthConfig = {
         enabled: false;
       };
   /**
-   * Whether STDIO connections are allowed.
-   * Disabled by default in production unless UNSAFE_ALLOW_STDIO_TRANSPORT=true
+   * Whether STDIO connections are allowed. Only true in local mode, since
+   * STDIO transports spawn arbitrary local commands.
    */
   stdioEnabled: boolean;
   /**
@@ -67,73 +68,46 @@ export type AuthConfig = {
   localMode: boolean;
 };
 
-/**
- * Auth Configuration Endpoint
- *
- * Returns information about available authentication methods
- *
- * Route: GET /api/auth/custom/config
- */
-app.get("/config", async (c) => {
-  try {
-    const socialProviders = Object.keys(authConfig.socialProviders ?? {});
-    const hasSocialProviders = socialProviders.length > 0;
-    const providers = socialProviders.map((name) => ({
-      name,
-      icon: KNOWN_OAUTH_PROVIDERS[name as OAuthProvider].icon,
-    }));
+export function buildAuthConfig(): AuthConfig {
+  const socialProviders = Object.keys(authConfig.socialProviders ?? {});
+  const hasSocialProviders = socialProviders.length > 0;
+  const providers = socialProviders.map((name) => ({
+    name,
+    icon: KNOWN_OAUTH_PROVIDERS[name as OAuthProvider].icon,
+  }));
 
-    // STDIO is enabled in local mode, in non-production environments,
-    // or when explicitly allowed via UNSAFE_ALLOW_STDIO_TRANSPORT
-    const settings = getSettings();
-    const stdioEnabled =
-      settings.localMode ||
-      settings.nodeEnv !== "production" ||
-      settings.unsafeAllowStdioTransport;
+  // STDIO is only available in local mode — see outbound/index.ts STDIO case.
+  const stdioEnabled = getSettings().localMode;
 
-    const config: AuthConfig = {
-      emailAndPassword: {
-        enabled: authConfig.emailAndPassword?.enabled ?? false,
-      },
-      magicLink: {
-        enabled: authConfig.magicLinkConfig?.enabled ?? false,
-      },
-      emailOtp: {
-        enabled: authConfig.emailOtpConfig?.enabled ?? false,
-      },
-      resetPassword: {
-        enabled: resetPasswordEnabled,
-      },
-      socialProviders: {
-        enabled: hasSocialProviders,
-        providers: providers,
-      },
-      sso: authConfig.ssoConfig
-        ? {
-            enabled: true,
-            providerId: authConfig.ssoConfig.providerId,
-          }
-        : {
-            enabled: false,
-          },
-      stdioEnabled,
-      localMode: isLocalMode(),
-    };
-
-    return c.json({ success: true, config });
-  } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : "Failed to load auth config";
-
-    return c.json(
-      {
-        success: false,
-        error: errorMessage,
-      },
-      500,
-    );
-  }
-});
+  return {
+    emailAndPassword: {
+      enabled: authConfig.emailAndPassword?.enabled ?? false,
+    },
+    magicLink: {
+      enabled: authConfig.magicLinkConfig?.enabled ?? false,
+    },
+    emailOtp: {
+      enabled: authConfig.emailOtpConfig?.enabled ?? false,
+    },
+    resetPassword: {
+      enabled: resetPasswordEnabled,
+    },
+    socialProviders: {
+      enabled: hasSocialProviders,
+      providers: providers,
+    },
+    sso: authConfig.ssoConfig
+      ? {
+          enabled: true,
+          providerId: authConfig.ssoConfig.providerId,
+        }
+      : {
+          enabled: false,
+        },
+    stdioEnabled,
+    localMode: isLocalMode(),
+  };
+}
 
 /**
  * Local Mode Auto-Session Endpoint
@@ -335,8 +309,20 @@ app.post("/domain-join", async (c) => {
       }
     }
 
+    posthog.capture({
+      distinctId: session.user.id,
+      event: "organization_domain_joined",
+      groups: { organization: org.id },
+      properties: {
+        organization_id: org.id,
+        organization_slug: org.slug,
+        email_domain: emailDomain,
+      },
+    });
+
     return c.json({ success: true, slug: org.slug });
   } catch (error) {
+    posthog.captureException(error, session.user.id);
     console.error("[Auth] Domain join failed:", error);
     return c.json(
       { success: false, error: "Failed to join organization" },
@@ -524,12 +510,46 @@ app.post("/domain-setup", async (c) => {
       console.error("[Auth] Brand extraction failed (non-fatal):", brandError);
     }
 
+    posthog.identify({
+      distinctId: session.user.id,
+      properties: {
+        email: session.user.email,
+        $set: { email: session.user.email },
+        $set_once: { first_organization_created_at: new Date().toISOString() },
+      },
+    });
+
+    posthog.groupIdentify({
+      groupType: "organization",
+      groupKey: orgId,
+      properties: {
+        name: orgResult.slug ?? baseSlug,
+        slug: orgResult.slug ?? baseSlug,
+        email_domain: emailDomain,
+        brand_extracted: brandExtracted,
+        created_at: new Date().toISOString(),
+      },
+    });
+
+    posthog.capture({
+      distinctId: session.user.id,
+      event: "organization_created",
+      groups: { organization: orgId },
+      properties: {
+        organization_id: orgId,
+        organization_slug: orgResult.slug ?? baseSlug,
+        email_domain: emailDomain,
+        brand_extracted: brandExtracted,
+      },
+    });
+
     return c.json({
       success: true,
       slug: orgResult.slug ?? baseSlug,
       brandExtracted,
     });
   } catch (error) {
+    posthog.captureException(error, session.user?.id);
     console.error("[Auth] Domain setup failed:", error);
     return c.json(
       { success: false, error: "Failed to set up organization" },

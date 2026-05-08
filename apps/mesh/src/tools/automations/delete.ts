@@ -6,8 +6,13 @@
  */
 
 import { z } from "zod";
+import { posthog } from "../../posthog";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth, requireOrganization } from "../../core/mesh-context";
+import {
+  getUserId,
+  requireAuth,
+  requireOrganization,
+} from "../../core/mesh-context";
 import { configureTriggerOnMcp } from "./configure-trigger";
 
 export const AUTOMATION_DELETE = defineTool({
@@ -61,6 +66,20 @@ export const AUTOMATION_DELETE = defineTool({
       input.id,
       organization.id,
     );
+
+    const userId = getUserId(ctx);
+    if (userId) {
+      posthog.capture({
+        distinctId: userId,
+        event: "automation_deleted",
+        groups: { organization: organization.id },
+        properties: {
+          organization_id: organization.id,
+          automation_id: input.id,
+          trigger_count: triggers.length,
+        },
+      });
+    }
 
     return { success };
   },

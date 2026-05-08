@@ -15,15 +15,14 @@
  */
 
 import { createServerFromClient, getDecopilotId } from "@decocms/mesh-sdk";
+import { SpanStatusCode } from "@opentelemetry/api";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { Hono } from "hono";
 import type { MeshContext } from "../../core/mesh-context";
 import { MCP_TOOL_CALL_TIMEOUT_MS } from "@/core/constants";
 import { createVirtualClientFrom } from "../../mcp-clients/virtual-mcp";
 import type { Env } from "../hono-env";
-
-// Define Hono variables type
-const app = new Hono<Env>();
+import { guardResponseStream } from "../utils/stream-guard";
 
 // ============================================================================
 // Route Handler (shared between /gateway and /virtual-mcp endpoints for backward compat)
@@ -70,9 +69,28 @@ export async function handleVirtualMcpRequest(
       return c.json({ error: "Agent ID or organization ID is required" }, 400);
     }
 
-    const virtualMcp = await ctx.storage.virtualMcps.findById(
-      virtualId,
-      organizationId ?? undefined,
+    const virtualMcp = await ctx.tracer.startActiveSpan(
+      "mesh.virtual_mcp.lookup",
+      { attributes: { "virtual_mcp.id": virtualId } },
+      async (span) => {
+        try {
+          const result = await ctx.storage.virtualMcps.findById(
+            virtualId,
+            organizationId ?? undefined,
+          );
+          span.setStatus({ code: SpanStatusCode.OK });
+          return result;
+        } catch (err) {
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: (err as Error).message,
+          });
+          span.recordException(err as Error);
+          throw err;
+        } finally {
+          span.end();
+        }
+      },
     );
 
     if (!virtualMcp) {
@@ -122,10 +140,29 @@ export async function handleVirtualMcpRequest(
     }
 
     // Create client from entity (always passthrough)
-    const client = await createVirtualClientFrom(
-      virtualMcp,
-      ctx,
-      "passthrough",
+    const client = await ctx.tracer.startActiveSpan(
+      "mesh.virtual_mcp.create_client",
+      { attributes: { "virtual_mcp.id": virtualMcp.id ?? "decopilot" } },
+      async (span) => {
+        try {
+          const result = await createVirtualClientFrom(
+            virtualMcp,
+            ctx,
+            "passthrough",
+          );
+          span.setStatus({ code: SpanStatusCode.OK });
+          return result;
+        } catch (err) {
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: (err as Error).message,
+          });
+          span.recordException(err as Error);
+          throw err;
+        } finally {
+          span.end();
+        }
+      },
     );
 
     // Build ImplementationSchema-compatible server info
@@ -156,7 +193,11 @@ export async function handleVirtualMcpRequest(
     // Connect server to transport
     await server.connect(transport);
 
-    return await transport.handleRequest(c.req.raw);
+    const response = await transport.handleRequest(c.req.raw);
+    return guardResponseStream(
+      response,
+      `virtual-mcp:${virtualMcp.id ?? "decopilot"}`,
+    );
   } catch (error) {
     const err = error as Error;
     console.error("[virtual-mcp] Error handling virtual MCP request:", err);
@@ -171,30 +212,34 @@ export async function handleVirtualMcpRequest(
 // Route Handlers
 // ============================================================================
 
-/**
- * Virtual MCP endpoint (backward compatible /mcp/gateway/:virtualMcpId)
- *
- * Route: POST /mcp/gateway/:virtualMcpId?
- * - If virtualMcpId is provided: use that specific Virtual MCP
- * - If virtualMcpId is omitted: use Decopilot agent (default agent)
- */
-app.all("/gateway/:virtualMcpId?", async (c) => {
-  const virtualMcpId =
-    c.req.param("virtualMcpId") || c.req.header("x-virtual-mcp-id");
-  return handleVirtualMcpRequest(c, virtualMcpId);
-});
+export const createVirtualMcpRoutes = () => {
+  const app = new Hono<Env>();
 
-/**
- * Virtual MCP endpoint (new canonical /mcp/virtual-mcp/:virtualMcpId)
- *
- * Route: POST /mcp/virtual-mcp/:virtualMcpId?
- * - If virtualMcpId is provided: use that specific virtual MCP
- * - If virtualMcpId is omitted: use Decopilot agent (default agent)
- */
-app.all("/virtual-mcp/:virtualMcpId?", async (c) => {
-  const virtualMcpId =
-    c.req.param("virtualMcpId") || c.req.header("x-virtual-mcp-id");
-  return handleVirtualMcpRequest(c, virtualMcpId);
-});
+  /**
+   * Virtual MCP endpoint (backward compatible /mcp/gateway/:virtualMcpId)
+   *
+   * Route: POST /mcp/gateway/:virtualMcpId?
+   * - If virtualMcpId is provided: use that specific Virtual MCP
+   * - If virtualMcpId is omitted: use Decopilot agent (default agent)
+   */
+  app.all("/gateway/:virtualMcpId?", async (c) => {
+    const virtualMcpId =
+      c.req.param("virtualMcpId") || c.req.header("x-virtual-mcp-id");
+    return handleVirtualMcpRequest(c, virtualMcpId);
+  });
 
-export default app;
+  /**
+   * Virtual MCP endpoint (new canonical /mcp/virtual-mcp/:virtualMcpId)
+   *
+   * Route: POST /mcp/virtual-mcp/:virtualMcpId?
+   * - If virtualMcpId is provided: use that specific virtual MCP
+   * - If virtualMcpId is omitted: use Decopilot agent (default agent)
+   */
+  app.all("/virtual-mcp/:virtualMcpId?", async (c) => {
+    const virtualMcpId =
+      c.req.param("virtualMcpId") || c.req.header("x-virtual-mcp-id");
+    return handleVirtualMcpRequest(c, virtualMcpId);
+  });
+
+  return app;
+};

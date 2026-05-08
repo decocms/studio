@@ -1,5 +1,5 @@
 import { useRegistryConnections } from "@/web/hooks/use-registry-connections";
-import { useRegistrySettings } from "@/web/hooks/use-registry-settings";
+import { useIsRegistryEnabled } from "@/web/hooks/use-organization-settings";
 import { type RegistrySource } from "@/web/hooks/use-merged-store-discovery";
 import { SELF_MCP_ALIAS_ID, useProjectContext } from "@decocms/mesh-sdk";
 
@@ -9,7 +9,7 @@ import { SELF_MCP_ALIAS_ID, useProjectContext } from "@decocms/mesh-sdk";
  */
 export function useEnabledRegistries(): RegistrySource[] {
   const registryConnections = useRegistryConnections();
-  const { isRegistryEnabled } = useRegistrySettings();
+  const isRegistryEnabled = useIsRegistryEnabled();
   const enabledPlugins = useProjectContext().project.enabledPlugins ?? [];
 
   const enabledRegistries: RegistrySource[] = registryConnections

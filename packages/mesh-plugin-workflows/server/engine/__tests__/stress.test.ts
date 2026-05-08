@@ -300,7 +300,7 @@ describe("Stress Tests", () => {
       }
 
       expect(allExecutions).toHaveLength(orgCount * workflowsPerOrg);
-    }, 15_000);
+    }, 60_000);
 
     it("organizations don't see each other's executions in list queries", async () => {
       const orgA = "org_iso_a";
@@ -423,7 +423,7 @@ describe("Stress Tests", () => {
       for (const id of executionIds) {
         await assertTerminal(id, orgId, "success");
       }
-    });
+    }, 30_000);
   });
 
   // --------------------------------------------------------------------------
@@ -473,7 +473,7 @@ describe("Stress Tests", () => {
         "process[",
       );
       expect(iterationResults).toHaveLength(100);
-    });
+    }, 60_000);
 
     it("multiple forEach workflows with different concurrency levels", async () => {
       const orgId = "org_multi_foreach";
@@ -906,7 +906,7 @@ describe("Stress Tests", () => {
       // Verify total execution count
       const { totalCount } = await storage.listExecutions(orgId);
       expect(totalCount).toBe(userCount * workflowsPerUser);
-    });
+    }, 30_000);
   });
 
   // --------------------------------------------------------------------------

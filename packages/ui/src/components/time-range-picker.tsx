@@ -45,7 +45,6 @@ export function TimeRangePicker({
   const [validationError, setValidationError] = React.useState<string | null>(
     null,
   );
-
   // Sync local state when prop changes (action during render)
   const prevValueRef = React.useRef({ from: value.from, to: value.to });
   if (
@@ -58,8 +57,11 @@ export function TimeRangePicker({
   }
 
   const handleQuickRangeSelect = (range: QuickRange) => {
-    onChange({ from: range.from, to: range.to });
+    prevValueRef.current = { from: range.from, to: range.to };
+    setLocalFrom(range.from);
+    setLocalTo(range.to);
     setOpen(false);
+    onChange({ from: range.from, to: range.to });
   };
 
   const handleApply = () => {
@@ -109,7 +111,16 @@ export function TimeRangePicker({
           <ChevronDown className="size-4 text-muted-foreground" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[540px] p-0" align="end" sideOffset={4}>
+      <PopoverContent
+        className="w-[540px] p-0"
+        align="end"
+        sideOffset={4}
+        onCloseAutoFocus={(e) => e.preventDefault()}
+        // Instant exit animation prevents the popover from "blinking" when a
+        // re-render (triggered by route navigation) restarts the CSS exit
+        // animation while the portal is still in the DOM.
+        style={!open ? { animationDuration: "0s" } : undefined}
+      >
         <div className="flex">
           {/* Left: Absolute time range */}
           <div className="flex-1 p-4 border-r">

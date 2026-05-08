@@ -1,3 +1,4 @@
+import type { GithubRepo } from "@decocms/mesh-sdk";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 
 /** Message ID generator. Use as closure where a () => string is expected (e.g. toUIMessageStreamResponse). */
@@ -9,16 +10,21 @@ export const DEFAULT_THREAD_TITLE = "New chat";
 
 export const PARENT_STEP_LIMIT = 30;
 export const SUBAGENT_STEP_LIMIT = 15;
-export const SUBAGENT_EXCLUDED_TOOLS = ["user_ask", "subtask", "open_in_agent"];
+export const SUBAGENT_EXCLUDED_TOOLS = ["user_ask", "subtask"];
 
 /**
  * Base platform prompt — shared by all agents (decopilot and custom).
  * Covers: platform concepts, tool usage, default workflow, safety, output style.
  */
 export function buildBasePlatformPrompt(): string {
+  const now = new Date();
+  const currentDate = now.toISOString().split("T")[0];
+
   return `<platform>
 You are an AI agent running on Deco CMS — a control plane for connecting
 AI agents to external services via the Model Context Protocol (MCP).
+
+Current date: ${currentDate}
 
 Building blocks:
 - **Connections** — tool providers that connect to external services
@@ -141,6 +147,27 @@ Focus exclusively on:
 - Agent tools (create, update virtual MCPs)
 - Automation tools (create, configure triggers)
 </scope>`;
+}
+
+/**
+ * Repo environment prompt — injected when the active virtual MCP has a
+ * GitHub repository linked (and therefore exposes the VM/filesystem/shell
+ * tool suite).
+ */
+export function buildRepoEnvironmentPrompt(repo: GithubRepo): string {
+  return `<repo-environment>
+You are running inside the repository \`${repo.owner}/${repo.name}\`.
+
+Cite file locations as \`path:line\` so the user can jump to them.
+
+Git operations live in two layers:
+- Working tree, history, commits, branches, pushes → BASH + git CLI
+  inside the VM. The repo is already cloned and checked out; never
+  re-clone.
+- PR-level operations (open, close, merge, review, comment) → GitHub
+  MCP tools. For rebasing a branch on its base, use git CLI — never
+  \`update_pull_request_branch\`, which merges instead of rebasing.
+</repo-environment>`;
 }
 
 export const TITLE_GENERATOR_PROMPT = `Generate a concise, sentence-case title (3-7 words) that captures the main topic or goal of this session. Use sentence case: capitalize only the first word and proper nouns.

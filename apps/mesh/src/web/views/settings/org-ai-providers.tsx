@@ -1,6 +1,7 @@
 import { Suspense, useState, useEffect } from "react";
 import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
+import { useDebouncedAutosave } from "@/web/hooks/use-debounced-autosave.ts";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -11,12 +12,22 @@ import {
   Eye,
   EyeOff,
   AlertCircle,
+  CheckCircle,
   RefreshCw01,
+  Edit01,
+  Check,
+  X,
 } from "@untitledui/icons";
 import { Page } from "@/web/components/page";
 import { Button } from "@deco/ui/components/button.tsx";
-import { Card } from "@deco/ui/components/card.tsx";
+import {
+  SettingsCard,
+  SettingsCardItem,
+  SettingsPage,
+  SettingsSection,
+} from "@/web/components/settings/settings-section";
 import { Input } from "@deco/ui/components/input.tsx";
+import { Switch } from "@deco/ui/components/switch.tsx";
 import {
   ToggleGroup,
   ToggleGroupItem,
@@ -44,16 +55,31 @@ import {
 import {
   useAiProviders,
   useAiProviderKeys,
+  useAiProviderModels,
   type AiProviderKey,
+  type AiProviderModel,
 } from "@/web/hooks/collections/use-ai-providers";
 import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
+  pickSimpleModeDefaults,
 } from "@decocms/mesh-sdk";
 import { KEYS } from "@/web/lib/query-keys";
+import { track } from "@/web/lib/posthog-client";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ErrorBoundary } from "@/web/components/error-boundary";
+import {
+  useSimpleMode,
+  useUpdateSimpleMode,
+  type SimpleModeConfig,
+} from "@/web/hooks/use-organization-settings";
+import { SimpleModeConfigSchema } from "@/tools/organization/schema";
+import { ModelSelector } from "@/web/components/chat/select-model";
+import {
+  OPENAI_COMPATIBLE_PRESETS,
+  type OpenAICompatiblePreset,
+} from "@/web/utils/openai-compatible-presets";
 
 function ErrorFallback({ error }: { error: Error }) {
   return (
@@ -76,7 +102,49 @@ function KeyList({
   isDeleting: boolean;
 }) {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [editTarget, setEditTarget] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState("");
   const targetKey = keys.find((k) => k.id === deleteTarget);
+
+  const { org } = useProjectContext();
+  const queryClient = useQueryClient();
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+
+  const { mutate: updateLabel, isPending: isUpdating } = useMutation({
+    mutationFn: async ({ keyId, label }: { keyId: string; label: string }) => {
+      await client.callTool({
+        name: "AI_PROVIDER_KEY_UPDATE",
+        arguments: { keyId, label },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: KEYS.aiProviderKeys(org.id) });
+      setEditTarget(null);
+    },
+    onError: () => {
+      toast.error("Failed to update key label");
+    },
+  });
+
+  const startEdit = (key: AiProviderKey) => {
+    setEditTarget(key.id);
+    setEditLabel(key.label);
+  };
+
+  const cancelEdit = () => {
+    setEditTarget(null);
+    setEditLabel("");
+  };
+
+  const confirmEdit = (keyId: string) => {
+    const trimmed = editLabel.trim();
+    if (!trimmed) return;
+    updateLabel({ keyId, label: trimmed });
+  };
 
   return (
     <div className="flex flex-col gap-2 mt-4">
@@ -85,24 +153,74 @@ function KeyList({
           key={key.id}
           className="flex items-center justify-between p-2 rounded-md bg-muted/50 text-sm"
         >
-          <div className="flex items-center gap-2 overflow-hidden">
+          <div className="flex items-center gap-2 overflow-hidden flex-1 min-w-0">
             <Key01 size={14} className="text-muted-foreground shrink-0" />
-            <span className="font-medium truncate">{key.label}</span>
-            <span className="text-xs text-muted-foreground shrink-0">
-              added {formatDistanceToNow(new Date(key.createdAt))} ago
-            </span>
+            {editTarget === key.id ? (
+              <input
+                autoFocus
+                className="font-medium bg-transparent border-b border-border outline-none flex-1 min-w-0"
+                value={editLabel}
+                onChange={(e) => setEditLabel(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") confirmEdit(key.id);
+                  if (e.key === "Escape") cancelEdit();
+                }}
+              />
+            ) : (
+              <>
+                <span className="font-medium truncate">{key.label}</span>
+                <span className="text-xs text-muted-foreground shrink-0">
+                  added {formatDistanceToNow(new Date(key.createdAt))} ago
+                </span>
+              </>
+            )}
           </div>
-          {/* Stop propagation so trash click doesn't trigger card's onClick */}
-          <div onClick={(e) => e.stopPropagation()}>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 text-muted-foreground hover:text-destructive"
-              disabled={isDeleting}
-              onClick={() => setDeleteTarget(key.id)}
-            >
-              <Trash01 size={14} />
-            </Button>
+          {/* Stop propagation so clicks don't trigger card's onClick */}
+          <div
+            className="flex items-center gap-0.5 shrink-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {editTarget === key.id ? (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                  disabled={isUpdating || !editLabel.trim()}
+                  onClick={() => confirmEdit(key.id)}
+                >
+                  <Check size={14} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                  onClick={cancelEdit}
+                >
+                  <X size={14} />
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                  onClick={() => startEdit(key)}
+                >
+                  <Edit01 size={14} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                  disabled={isDeleting}
+                  onClick={() => setDeleteTarget(key.id)}
+                >
+                  <Trash01 size={14} />
+                </Button>
+              </>
+            )}
           </div>
         </div>
       ))}
@@ -162,6 +280,7 @@ function ConnectApiKeyForm({
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const queryClient = useQueryClient();
   const [showKey, setShowKey] = useState(false);
@@ -225,7 +344,7 @@ function ConnectApiKeyForm({
             type={showKey ? "text" : "password"}
             placeholder="sk-..."
             {...register("apiKey")}
-            className="h-8 text-sm pr-8"
+            className="ph-no-capture h-8 text-sm pr-8"
           />
           <button
             type="button"
@@ -269,9 +388,11 @@ const openaiCompatibleFormSchema = z.object({
 type OpenAICompatibleFormData = z.infer<typeof openaiCompatibleFormSchema>;
 
 function ConnectOpenAICompatibleForm({
+  preset,
   onCancel,
   onSuccess,
 }: {
+  preset?: OpenAICompatiblePreset;
   onCancel: () => void;
   onSuccess: () => void;
 }) {
@@ -279,6 +400,7 @@ function ConnectOpenAICompatibleForm({
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const queryClient = useQueryClient();
   const [showKey, setShowKey] = useState(false);
@@ -306,8 +428,9 @@ function ConnectOpenAICompatibleForm({
         name: "AI_PROVIDER_KEY_CREATE",
         arguments: {
           providerId: "openai-compatible",
-          label: data.label || data.baseUrl,
+          label: data.label || preset?.name || data.baseUrl,
           apiKey: encodedKey,
+          ...(preset ? { presetId: preset.id } : {}),
         },
       });
     },
@@ -322,6 +445,12 @@ function ConnectOpenAICompatibleForm({
     },
   });
 
+  const labelPlaceholder = preset
+    ? `e.g. ${preset.name} prod, ${preset.name} dev`
+    : "e.g. My OpenAI-compatible server";
+  const baseUrlPlaceholder =
+    preset?.baseUrlPlaceholder ?? "http://localhost:4000/v1";
+
   return (
     <form
       onSubmit={handleSubmit((data) => createKey(data))}
@@ -332,7 +461,7 @@ function ConnectOpenAICompatibleForm({
           Label
         </label>
         <Input
-          placeholder="e.g. LiteLLM, Ollama"
+          placeholder={labelPlaceholder}
           {...register("label")}
           className="h-8 text-sm"
         />
@@ -343,7 +472,7 @@ function ConnectOpenAICompatibleForm({
         </label>
         <Input
           type="url"
-          placeholder="http://localhost:4000/v1"
+          placeholder={baseUrlPlaceholder}
           {...register("baseUrl")}
           className="h-8 text-sm"
         />
@@ -353,14 +482,17 @@ function ConnectOpenAICompatibleForm({
       </div>
       <div className="space-y-1">
         <label className="text-xs font-medium text-muted-foreground">
-          API Key <span className="text-muted-foreground/60">(optional)</span>
+          API Key{" "}
+          <span className="text-muted-foreground/60">
+            ({preset?.apiKeyRecommended ? "recommended" : "optional"})
+          </span>
         </label>
         <div className="relative">
           <Input
             type={showKey ? "text" : "password"}
             placeholder="sk-..."
             {...register("apiKey")}
-            className="h-8 text-sm pr-8"
+            className="ph-no-capture h-8 text-sm pr-8"
           />
           <button
             type="button"
@@ -371,6 +503,10 @@ function ConnectOpenAICompatibleForm({
           </button>
         </div>
       </div>
+
+      {preset?.helpText && (
+        <p className="text-xs text-muted-foreground">{preset.helpText}</p>
+      )}
 
       {error && <p className="text-xs text-destructive">{error.message}</p>}
 
@@ -415,6 +551,7 @@ function ProviderCard({
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const queryClient = useQueryClient();
   const [isConnectFormOpen, setIsConnectFormOpen] = useState(false);
@@ -458,7 +595,7 @@ function ProviderCard({
           providerId: provider.id,
           code,
           stateToken,
-          label: "Connected via OAuth",
+          label: provider.name,
         },
       })) as { isError?: boolean; content?: { text?: string }[] };
       if (result?.isError) {
@@ -467,6 +604,7 @@ function ProviderCard({
       }
     },
     onSuccess: () => {
+      track("ai_provider_oauth_succeeded", { provider_id: provider.id });
       queryClient.invalidateQueries({ queryKey: KEYS.aiProviderKeys(org.id) });
       queryClient.invalidateQueries({ queryKey: KEYS.aiProviders(org.id) });
       toast.success(`${provider.name} connected successfully`);
@@ -474,6 +612,10 @@ function ProviderCard({
       setOauthStateToken(null);
     },
     onError: (err) => {
+      track("ai_provider_oauth_failed", {
+        provider_id: provider.id,
+        error: err.message,
+      });
       toast.error(`OAuth connection failed: ${err.message}`);
       setIsOAuthPending(false);
       setOauthStateToken(null);
@@ -497,9 +639,14 @@ function ProviderCard({
     },
     onSuccess: (data) => {
       if (!data?.activated) {
+        track("ai_provider_cli_activate_failed", {
+          provider_id: provider.id,
+          error: data?.error ?? "unknown",
+        });
         toast.error(data?.error ?? "CLI activation failed");
         return;
       }
+      track("ai_provider_cli_activated", { provider_id: provider.id });
       queryClient.invalidateQueries({
         queryKey: KEYS.aiProviderKeys(org.id),
       });
@@ -508,7 +655,13 @@ function ProviderCard({
       });
       toast.success(`${provider.name} activated`);
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => {
+      track("ai_provider_cli_activate_failed", {
+        provider_id: provider.id,
+        error: err.message,
+      });
+      toast.error(err.message);
+    },
   });
 
   const { mutate: provisionKey, isPending: isProvisioning } = useMutation({
@@ -526,11 +679,18 @@ function ProviderCard({
       }
     },
     onSuccess: () => {
+      track("ai_provider_provision_succeeded", {
+        provider_id: provider.id,
+      });
       queryClient.invalidateQueries({ queryKey: KEYS.aiProviderKeys(org.id) });
       queryClient.invalidateQueries({ queryKey: KEYS.aiProviders(org.id) });
       toast.success(`${provider.name} connected successfully`);
     },
     onError: (err) => {
+      track("ai_provider_provision_failed", {
+        provider_id: provider.id,
+        error: err.message,
+      });
       toast.error(`Failed to connect ${provider.name}: ${err.message}`);
     },
   });
@@ -539,11 +699,19 @@ function ProviderCard({
   useEffect(() => {
     if (!isOAuthPending || !oauthStateToken) return;
 
+    // Local flag — once the popup posts back and exchangeOAuth starts, the
+    // exchange has its own onSuccess/onError handlers. Without this, a slow
+    // exchange (>2min) would race the timeout and fire a false-positive
+    // ai_provider_oauth_failed{error:"timeout"} alongside the eventual
+    // ai_provider_oauth_succeeded.
+    let exchangeStarted = false;
+
     const handleMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type === "AI_PROVIDER_OAUTH_CALLBACK") {
         const { code, stateToken } = event.data;
         if (stateToken === oauthStateToken) {
+          exchangeStarted = true;
           exchangeOAuth({ code, stateToken });
         } else {
           console.error("State token mismatch");
@@ -556,20 +724,22 @@ function ProviderCard({
 
     window.addEventListener("message", handleMessage);
 
-    // Timeout after 2 minutes
+    // 2-minute popup-wait timeout. Distinct from exchange-failure: this means
+    // the user never came back from the OAuth popup. Tracked as a separate
+    // event so funnel math stays clean.
     const timeoutId = setTimeout(() => {
-      if (isOAuthPending) {
-        setIsOAuthPending(false);
-        setOauthStateToken(null);
-        toast.error("Connection timed out");
-      }
+      if (exchangeStarted) return;
+      track("ai_provider_oauth_timeout", { provider_id: provider.id });
+      setIsOAuthPending(false);
+      setOauthStateToken(null);
+      toast.error("Connection timed out");
     }, 120000);
 
     return () => {
       window.removeEventListener("message", handleMessage);
       clearTimeout(timeoutId);
     };
-  }, [isOAuthPending, oauthStateToken, exchangeOAuth]);
+  }, [isOAuthPending, oauthStateToken, exchangeOAuth, provider.id]);
 
   const supportsProvision = !!provider.supportsProvision;
   const supportsOAuth = provider.supportedMethods.includes("oauth-pkce");
@@ -579,14 +749,32 @@ function ProviderCard({
     if (isConnectFormOpen || isOAuthPending || isActivating || isProvisioning)
       return;
     if (isCliActivate) {
-      if (!isActive) activateCli();
+      if (!isActive) {
+        track("ai_provider_connect_clicked", {
+          provider_id: provider.id,
+          method: "cli-activate",
+        });
+        activateCli();
+      }
       return;
     }
     if (supportsProvision) {
+      track("ai_provider_connect_clicked", {
+        provider_id: provider.id,
+        method: "provision",
+      });
       provisionKey();
     } else if (supportsOAuth) {
+      track("ai_provider_connect_clicked", {
+        provider_id: provider.id,
+        method: "oauth-pkce",
+      });
       handleConnectOAuth();
     } else if (supportsApiKey) {
+      track("ai_provider_connect_clicked", {
+        provider_id: provider.id,
+        method: "api-key",
+      });
       setIsConnectFormOpen(true);
     }
   };
@@ -620,92 +808,69 @@ function ProviderCard({
     }
   };
 
+  const loadingText = isActivating
+    ? "Checking CLI..."
+    : isProvisioning
+      ? "Connecting..."
+      : isOAuthPending
+        ? "Authorizing..."
+        : null;
+
+  const statusText =
+    loadingText ??
+    (isActive && isCliActivate
+      ? `Authenticated via ${provider.name} CLI`
+      : provider.description);
+
   return (
     <>
-      <Card
+      <SettingsCardItem
+        icon={
+          provider.logo ? (
+            <img
+              src={provider.logo}
+              alt={provider.name}
+              className="size-8 rounded-md object-contain dark:bg-white dark:p-0.5"
+            />
+          ) : (
+            <Avatar
+              fallback={provider.name.charAt(0)}
+              className="size-8 bg-primary/10 text-primary"
+            />
+          )
+        }
+        title={
+          <span className="flex items-center gap-2">
+            {provider.name}
+            {isActive && !isCliActivate && !loadingText && (
+              <span className="text-xs font-normal text-muted-foreground">
+                {keys.length} key{keys.length !== 1 ? "s" : ""} configured
+                {provider.supportsCredits ? " · Managed above" : ""}
+              </span>
+            )}
+          </span>
+        }
+        description={statusText}
+        onClick={
+          !isOAuthPending && !isActivating && !isProvisioning
+            ? handleCardClick
+            : undefined
+        }
         className={cn(
-          "p-4 flex flex-col gap-3 transition-colors relative",
-          isActive && "border-primary/20",
-          !isOAuthPending &&
-            !isActivating &&
-            !isProvisioning &&
-            "cursor-pointer hover:bg-muted/30",
           (isOAuthPending || isActivating || isProvisioning) && "cursor-wait",
         )}
-        onClick={handleCardClick}
+        action={
+          <div className="flex items-center gap-2">
+            {isActive && (
+              <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+            )}
+          </div>
+        }
       >
-        {isActive && (
-          <div className="absolute top-4 right-4 w-2 h-2 rounded-full bg-green-500" />
+        {isActive && !isCliActivate && (
+          <KeyList keys={keys} onDelete={deleteKey} isDeleting={isDeleting} />
         )}
-
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            {provider.logo ? (
-              <img
-                src={provider.logo}
-                alt={provider.name}
-                className="size-8 rounded-md object-contain dark:bg-white dark:rounded-md dark:p-0.5"
-              />
-            ) : (
-              <Avatar
-                fallback={provider.name.charAt(0)}
-                className="size-8 bg-primary/10 text-primary"
-              />
-            )}
-            <div>
-              <h3 className="font-medium text-base">{provider.name}</h3>
-              <p className="text-sm text-muted-foreground line-clamp-1">
-                {isActivating
-                  ? "Checking CLI..."
-                  : isProvisioning
-                    ? "Connecting..."
-                    : isOAuthPending
-                      ? "Authorizing..."
-                      : provider.description}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {isActive && (
-          <div className="mt-1">
-            {isCliActivate ? (
-              <>
-                <p className="text-xs text-muted-foreground">
-                  Authenticated via {provider.name} CLI
-                </p>
-                <KeyList
-                  keys={keys}
-                  onDelete={deleteKey}
-                  isDeleting={isDeleting}
-                />
-              </>
-            ) : (
-              <>
-                {/* Hide balance + top-up for deco — the hero section shows it */}
-                {!provider.supportsCredits && (
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-medium text-muted-foreground">
-                      {keys.length} key{keys.length !== 1 ? "s" : ""} configured
-                    </p>
-                  </div>
-                )}
-                {provider.supportsCredits && (
-                  <p className="text-xs text-muted-foreground">
-                    {keys.length} key{keys.length !== 1 ? "s" : ""} configured
-                    &middot; Managed above
-                  </p>
-                )}
-                <KeyList
-                  keys={keys}
-                  onDelete={deleteKey}
-                  isDeleting={isDeleting}
-                />
-              </>
-            )}
-          </div>
-        )}
-      </Card>
+      </SettingsCardItem>
 
       <Dialog
         open={isConnectFormOpen}
@@ -740,6 +905,134 @@ function ProviderCard({
   );
 }
 
+/**
+ * Card for an OpenAI-compatible "preset" (LiteLLM, Ollama, ...) or the generic
+ * Custom fallback (preset = null). All keys are stored under
+ * providerId="openai-compatible"; the preset_id column distinguishes them so
+ * users can configure many of each.
+ */
+function OpenAICompatiblePresetCard({
+  preset,
+  keys,
+  fallbackLogo,
+}: {
+  preset: OpenAICompatiblePreset | null;
+  keys: AiProviderKey[];
+  /** Used for the Custom (preset = null) card — shows the openai-compatible provider's default logo. */
+  fallbackLogo?: string | null;
+}) {
+  const { org } = useProjectContext();
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+  const queryClient = useQueryClient();
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const isActive = keys.length > 0;
+
+  const displayName = preset?.name ?? "Custom OpenAI Compatible";
+  const description =
+    preset?.description ?? "Connect any OpenAI-compatible endpoint by URL";
+  const logo = preset?.logo ?? fallbackLogo;
+
+  const { mutate: deleteKey, isPending: isDeleting } = useMutation({
+    mutationFn: async (keyId: string) => {
+      await client.callTool({
+        name: "AI_PROVIDER_KEY_DELETE",
+        arguments: { keyId },
+      });
+      return keyId;
+    },
+    onSuccess: (deletedKeyId) => {
+      queryClient.invalidateQueries({ queryKey: KEYS.aiProviderKeys(org.id) });
+      queryClient.invalidateQueries({ queryKey: KEYS.aiProviders(org.id) });
+      queryClient.invalidateQueries({
+        queryKey: KEYS.aiProviderModels(org.id, deletedKeyId),
+      });
+      toast.success("Connection deleted");
+    },
+    onError: (err) => {
+      toast.error(`Failed to delete connection: ${err.message}`);
+    },
+  });
+
+  return (
+    <>
+      <SettingsCardItem
+        icon={
+          logo ? (
+            <img
+              src={logo}
+              alt={displayName}
+              className="size-8 rounded-md object-contain dark:bg-white dark:p-0.5"
+            />
+          ) : (
+            <Avatar
+              fallback={displayName.charAt(0)}
+              className="size-8 bg-primary/10 text-primary"
+            />
+          )
+        }
+        title={
+          <span className="flex items-center gap-2">
+            {displayName}
+            {isActive && (
+              <span className="text-xs font-normal text-muted-foreground">
+                {keys.length} connection{keys.length !== 1 ? "s" : ""}{" "}
+                configured
+              </span>
+            )}
+          </span>
+        }
+        description={description}
+        onClick={() => {
+          if (!isFormOpen) {
+            track("ai_provider_connect_clicked", {
+              provider_id: "openai-compatible",
+              preset_id: preset?.id ?? null,
+              method: "api-key",
+            });
+            setIsFormOpen(true);
+          }
+        }}
+        action={
+          isActive ? (
+            <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+          ) : undefined
+        }
+      >
+        {isActive && (
+          <KeyList keys={keys} onDelete={deleteKey} isDeleting={isDeleting} />
+        )}
+      </SettingsCardItem>
+
+      <Dialog
+        open={isFormOpen}
+        onOpenChange={(open) => {
+          if (!open) setIsFormOpen(false);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Connect {displayName}</DialogTitle>
+            <DialogDescription>
+              {preset
+                ? `Add a ${preset.name} connection. Multiple connections of the same kind are supported.`
+                : "Enter the base URL and optional API key for any OpenAI-compatible endpoint."}
+            </DialogDescription>
+          </DialogHeader>
+          <ConnectOpenAICompatibleForm
+            preset={preset ?? undefined}
+            onCancel={() => setIsFormOpen(false)}
+            onSuccess={() => setIsFormOpen(false)}
+          />
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 export function ProviderCardGrid({
   hideProviderId,
 }: {
@@ -754,37 +1047,73 @@ export function ProviderCardGrid({
     p.supportedMethods.includes("cli-activate"),
   );
   const cloudProviders = providers.filter(
-    (p) => !p.supportedMethods.includes("cli-activate"),
+    (p) =>
+      !p.supportedMethods.includes("cli-activate") &&
+      p.id !== "openai-compatible",
+  );
+
+  // Keys for the openai-compatible provider, split per preset id (null = Custom).
+  const openaiCompatibleKeys = allKeys.filter(
+    (k) => k.providerId === "openai-compatible",
+  );
+  const showOpenAICompatibleSection = hideProviderId !== "openai-compatible";
+  const openaiCompatibleProvider = (aiProviders?.providers ?? []).find(
+    (p) => p.id === "openai-compatible",
   );
 
   return (
-    <div className="flex flex-col gap-5 w-full">
+    <div className="flex flex-col gap-6 w-full">
       {localProviders.length > 0 && (
-        <div className="relative rounded-xl border border-lime-400/30 bg-gradient-to-br from-lime-50/50 via-transparent to-yellow-50/30 dark:from-lime-950/20 dark:to-yellow-950/10 p-4">
-          <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-lime-400/5 to-yellow-400/5 pointer-events-none" />
-          <p className="text-xs font-medium text-lime-700 dark:text-lime-400 mb-3 relative">
-            Local models — use your existing AI provider
-          </p>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 relative">
-            {localProviders.map((provider) => (
+        <SettingsSection>
+          <div className="relative rounded-xl border border-lime-400/30 bg-gradient-to-br from-lime-50/50 via-transparent to-yellow-50/30 dark:from-lime-950/20 dark:to-yellow-950/10 p-4">
+            <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-lime-400/5 to-yellow-400/5 pointer-events-none" />
+            <p className="text-xs font-medium text-lime-700 dark:text-lime-400 mb-3 relative">
+              Local models — use your existing AI provider
+            </p>
+            <SettingsCard className="relative">
+              {localProviders.map((provider) => (
+                <ProviderCard
+                  key={provider.id}
+                  provider={provider}
+                  keys={allKeys.filter((k) => k.providerId === provider.id)}
+                />
+              ))}
+            </SettingsCard>
+          </div>
+        </SettingsSection>
+      )}
+      <SettingsSection>
+        <SettingsCard>
+          {[
+            ...cloudProviders.map((provider) => (
               <ProviderCard
                 key={provider.id}
                 provider={provider}
                 keys={allKeys.filter((k) => k.providerId === provider.id)}
               />
-            ))}
-          </div>
-        </div>
-      )}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {cloudProviders.map((provider) => (
-          <ProviderCard
-            key={provider.id}
-            provider={provider}
-            keys={allKeys.filter((k) => k.providerId === provider.id)}
-          />
-        ))}
-      </div>
+            )),
+            ...(showOpenAICompatibleSection
+              ? [
+                  ...OPENAI_COMPATIBLE_PRESETS.map((preset) => (
+                    <OpenAICompatiblePresetCard
+                      key={preset.id}
+                      preset={preset}
+                      keys={openaiCompatibleKeys.filter(
+                        (k) => k.presetId === preset.id,
+                      )}
+                    />
+                  )),
+                  <OpenAICompatiblePresetCard
+                    key="custom"
+                    preset={null}
+                    keys={openaiCompatibleKeys.filter((k) => !k.presetId)}
+                    fallbackLogo={openaiCompatibleProvider?.logo}
+                  />,
+                ]
+              : []),
+          ]}
+        </SettingsCard>
+      </SettingsSection>
     </div>
   );
 }
@@ -801,6 +1130,7 @@ function QuickTopUp() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const [customOpen, setCustomOpen] = useState(false);
 
@@ -936,6 +1266,7 @@ function DecoCreditsHero() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const queryClient = useQueryClient();
   const allKeys = useAiProviderKeys();
@@ -986,107 +1317,471 @@ function DecoCreditsHero() {
     balanceDollars != null ? `$${balanceDollars.toFixed(2)}` : "—";
 
   return (
-    <div
-      className={cn(
-        "relative rounded-xl overflow-hidden",
-        "border border-border",
-        "bg-gradient-to-br from-background via-muted/30 to-background",
-      )}
-    >
-      <div className="relative p-6">
-        {/* Provider identity */}
-        <div className="flex items-center justify-between mb-5">
-          <div className="flex items-center gap-3">
-            <img
-              src="/logos/deco%20logo.svg"
-              alt="Deco AI Gateway"
-              className="size-9 rounded-lg object-contain dark:bg-white dark:p-0.5"
-            />
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">
-                Deco AI Gateway
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                Access to 100+ models
-              </p>
+    <SettingsSection title="Deco AI Gateway">
+      <SettingsCard>
+        <div className="px-5 py-5 flex flex-col gap-5">
+          {/* Provider info and disconnect button */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <img
+                src="/logos/deco%20logo.svg"
+                alt="Deco AI Gateway"
+                className="size-9 rounded-lg object-contain dark:bg-white dark:p-0.5"
+              />
+              <div>
+                <p className="text-xs text-muted-foreground">
+                  Access to 100+ models
+                </p>
+              </div>
             </div>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-xs text-muted-foreground hover:text-destructive"
-            onClick={() => setConfirmDisconnect(true)}
-            disabled={isDisconnecting}
-          >
-            Disconnect
-          </Button>
-        </div>
-
-        <AlertDialog
-          open={confirmDisconnect}
-          onOpenChange={setConfirmDisconnect}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Disconnect Deco AI Gateway</AlertDialogTitle>
-              <AlertDialogDescription>
-                This will remove the Deco AI Gateway from this workspace. Your
-                credit balance is preserved and will be available if you
-                reconnect.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={() => disconnect()}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              >
-                Disconnect
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-
-        {/* Balance */}
-        <div className="flex items-baseline gap-2">
-          {isLoading || isFetching ? (
-            <Skeleton className="h-9 w-24" />
-          ) : (
-            <span
-              className={cn(
-                "text-3xl font-semibold tabular-nums tracking-tight",
-                balanceDollars != null && creditColorClass(balanceDollars),
-              )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-muted-foreground hover:text-destructive"
+              onClick={() => setConfirmDisconnect(true)}
+              disabled={isDisconnecting}
             >
-              {displayBalance}
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => refetch()}
-            disabled={isFetching}
-            className="text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors p-1 rounded-md hover:bg-muted/50"
-            aria-label="Refresh balance"
-          >
-            <RefreshCw01
-              size={14}
-              className={cn(isFetching && "animate-spin")}
-            />
-          </button>
-        </div>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Available credit balance
-        </p>
+              Disconnect
+            </Button>
+          </div>
 
-        {/* Quick top-up */}
-        <div className="mt-5 pt-4 border-t border-border/60">
-          <p className="text-xs font-medium text-muted-foreground mb-2.5">
-            Add credits
-          </p>
-          <QuickTopUp />
+          <AlertDialog
+            open={confirmDisconnect}
+            onOpenChange={setConfirmDisconnect}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Disconnect Deco AI Gateway</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will remove the Deco AI Gateway from this workspace. Your
+                  credit balance is preserved and will be available if you
+                  reconnect.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => disconnect()}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Disconnect
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          {/* Balance */}
+          <div className="flex flex-col gap-2 pt-2">
+            <div className="flex items-baseline gap-2">
+              {isLoading || isFetching ? (
+                <Skeleton className="h-9 w-24" />
+              ) : (
+                <span
+                  className={cn(
+                    "text-3xl font-semibold tabular-nums tracking-tight",
+                    balanceDollars != null && creditColorClass(balanceDollars),
+                  )}
+                >
+                  {displayBalance}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => refetch()}
+                disabled={isFetching}
+                className="text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors p-1 rounded-md hover:bg-muted/50"
+                aria-label="Refresh balance"
+              >
+                <RefreshCw01
+                  size={14}
+                  className={cn(isFetching && "animate-spin")}
+                />
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Available credit balance
+            </p>
+          </div>
+
+          {/* Quick top-up */}
+          <div className="pt-4 border-t border-border/60">
+            <p className="text-xs font-medium text-muted-foreground mb-2.5">
+              Add credits
+            </p>
+            <QuickTopUp />
+          </div>
         </div>
-      </div>
-    </div>
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
+// ── Simple Model Mode ────────────────────────────────────────────────
+
+const filterImageModels = (m: AiProviderModel) =>
+  m.capabilities?.includes("image") === true;
+
+const filterWebResearchModels = (m: AiProviderModel) => {
+  if (m.asyncResearch === true) return true;
+  const n = m.modelId.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return n.includes("sonar") || n.includes("deepresearch");
+};
+
+type TierKey = "fast" | "smart" | "thinking";
+
+const TIER_LABELS: Record<TierKey, string> = {
+  fast: "Fast",
+  smart: "Smart",
+  thinking: "Thinking",
+};
+
+const TIER_DESCRIPTIONS: Record<TierKey, string> = {
+  fast: "Fastest responses, best for quick tasks",
+  smart: "Balanced speed and capability",
+  thinking: "Most capable, best for complex tasks",
+};
+
+function SimpleModeModelRow({
+  slot,
+  onSlotChange,
+  filterModels,
+  defaultKeyId,
+}: {
+  slot: SimpleModeConfig["chat"]["fast"];
+  onSlotChange: (slot: SimpleModeConfig["chat"]["fast"]) => void;
+  filterModels?: (m: AiProviderModel) => boolean;
+  defaultKeyId: string | null;
+}) {
+  const allKeys = useAiProviderKeys();
+  const [localCredentialId, setLocalCredentialId] = useState<string | null>(
+    slot?.keyId ?? defaultKeyId,
+  );
+
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    if (slot?.keyId) setLocalCredentialId(slot.keyId);
+  }, [slot?.keyId]);
+
+  const activeKeyId = localCredentialId ?? defaultKeyId;
+  const slotKey = activeKeyId
+    ? allKeys.find((k) => k.id === activeKeyId)
+    : null;
+
+  const { models: activeModels, isLoading: isLoadingModels } =
+    useAiProviderModels(filterModels ? (activeKeyId ?? undefined) : undefined);
+  const hasFilteredModels = filterModels
+    ? isLoadingModels || activeModels.some(filterModels)
+    : true;
+
+  const resolvedModel: AiProviderModel | null = slot
+    ? ({
+        modelId: slot.modelId,
+        title: slot.title ?? slot.modelId,
+        keyId: slot.keyId,
+        providerId: slotKey?.providerId ?? "deco",
+        description: null,
+        logo: null,
+        capabilities: [],
+        limits: null,
+        costs: null,
+      } as AiProviderModel)
+    : null;
+
+  if (filterModels && !hasFilteredModels) {
+    return (
+      <p className="text-xs text-muted-foreground italic">
+        Not available with current provider
+      </p>
+    );
+  }
+
+  return (
+    <ModelSelector
+      variant="bordered"
+      placeholder="Pick model"
+      model={resolvedModel}
+      credentialId={activeKeyId}
+      filterModels={filterModels}
+      onCredentialChange={(keyId) => setLocalCredentialId(keyId)}
+      onModelChange={(m) => {
+        const keyId = m.keyId ?? activeKeyId ?? "";
+        setLocalCredentialId(keyId);
+        onSlotChange({ keyId, modelId: m.modelId, title: m.title });
+      }}
+    />
+  );
+}
+
+function AutosaveStatus({
+  isPending,
+  showSaved,
+}: {
+  isPending: boolean;
+  showSaved: boolean;
+}) {
+  if (isPending) {
+    return (
+      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+        <RefreshCw01 size={12} className="animate-spin" />
+        Saving…
+      </span>
+    );
+  }
+  if (showSaved) {
+    return (
+      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+        <CheckCircle size={12} />
+        Saved
+      </span>
+    );
+  }
+  return null;
+}
+
+function SimpleModeSection() {
+  const allKeys = useAiProviderKeys();
+  const simpleMode = useSimpleMode();
+  const hasProvider = allKeys.length > 0;
+
+  const form = useForm<SimpleModeConfig>({
+    resolver: zodResolver(SimpleModeConfigSchema),
+    values: simpleMode,
+    mode: "onChange",
+  });
+
+  const {
+    mutate: updateSimpleMode,
+    isPending,
+    isSuccess,
+  } = useUpdateSimpleMode();
+
+  const isDirty = form.formState.isDirty;
+
+  // Autosave: 250ms after the last `schedule()` call, persist. The debounce
+  // coalesces multi-field writes from handleToggle and Effect 2 into a
+  // single mutation. We can't gate on `formState.isDirty` here: handleToggle
+  // calls `form.reset(...)` to seed defaults (which rebases the dirty
+  // baseline) and the `values: simpleMode` prop resyncs the form on every
+  // cache update — both clear the flag before the timer fires, swallowing
+  // the save. Each `schedule()` call is the explicit save intent; nothing
+  // inside `save` re-schedules so there's no feedback loop.
+  const { schedule: scheduleAutosave } = useDebouncedAutosave({
+    delayMs: 250,
+    save: async () => {
+      const values = form.getValues();
+      updateSimpleMode(values, {
+        onSuccess: () => form.reset(values, { keepValues: true }),
+        onError: (err) => {
+          form.reset(simpleMode);
+          toast.error(`Failed to save: ${err.message}`);
+        },
+      });
+    },
+  });
+
+  // Lazily load models for the first 3 keys so we can pre-fill defaults.
+  // Hooks can't run in loops; capping at 3 is sufficient for defaults —
+  // the user can always pick manually.
+  const key0 = allKeys[0];
+  const key1 = allKeys[1];
+  const key2 = allKeys[2];
+  const { models: models0 } = useAiProviderModels(key0?.id);
+  const { models: models1 } = useAiProviderModels(key1?.id);
+  const { models: models2 } = useAiProviderModels(key2?.id);
+
+  const handleToggle = (enabled: boolean) => {
+    const currentChat = form.getValues("chat");
+    if (
+      enabled &&
+      !currentChat.fast &&
+      !currentChat.smart &&
+      !currentChat.thinking
+    ) {
+      const modelsByKeyId: Record<string, AiProviderModel[]> = {};
+      if (key0?.id) modelsByKeyId[key0.id] = models0;
+      if (key1?.id) modelsByKeyId[key1.id] = models1;
+      if (key2?.id) modelsByKeyId[key2.id] = models2;
+      const defaults = pickSimpleModeDefaults(allKeys, modelsByKeyId);
+      form.reset(
+        {
+          enabled: true,
+          chat: defaults.chat,
+          image: defaults.image,
+          webResearch: defaults.webResearch,
+        },
+        { keepDirty: true },
+      );
+    } else {
+      form.setValue("enabled", enabled, { shouldDirty: true });
+    }
+    scheduleAutosave();
+  };
+
+  // Effect 1: Clear form when all providers are removed.
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect — reacts to async provider list changes
+  useEffect(() => {
+    if (!hasProvider) {
+      form.reset({
+        enabled: false,
+        chat: { fast: null, smart: null, thinking: null },
+        image: null,
+        webResearch: null,
+      });
+    }
+  }, [hasProvider, form]);
+
+  // Effect 2: Fill null slots with defaults once models finish loading,
+  // and clear slots whose keyId no longer exists in allKeys (stale provider).
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect — reacts to async model list loading
+  useEffect(() => {
+    const current = form.getValues();
+    if (!current.enabled) return;
+
+    const validKeyIds = new Set(allKeys.map((k) => k.id));
+    const modelsByKeyId: Record<string, AiProviderModel[]> = {};
+    if (key0?.id) modelsByKeyId[key0.id] = models0;
+    if (key1?.id) modelsByKeyId[key1.id] = models1;
+    if (key2?.id) modelsByKeyId[key2.id] = models2;
+
+    const isStale = (slot: SimpleModeConfig["chat"]["fast"]) =>
+      slot != null && !validKeyIds.has(slot.keyId);
+
+    const clearedChat = {
+      fast: isStale(current.chat.fast) ? null : current.chat.fast,
+      smart: isStale(current.chat.smart) ? null : current.chat.smart,
+      thinking: isStale(current.chat.thinking) ? null : current.chat.thinking,
+    };
+    const clearedImage = isStale(current.image) ? null : current.image;
+    const clearedWebResearch = isStale(current.webResearch)
+      ? null
+      : current.webResearch;
+
+    const needsFill =
+      !clearedChat.fast ||
+      !clearedChat.smart ||
+      !clearedChat.thinking ||
+      !clearedImage ||
+      !clearedWebResearch;
+
+    const chatUnchanged =
+      clearedChat.fast === current.chat.fast &&
+      clearedChat.smart === current.chat.smart &&
+      clearedChat.thinking === current.chat.thinking;
+    if (!needsFill && chatUnchanged) return;
+
+    const defaults = pickSimpleModeDefaults(allKeys, modelsByKeyId);
+    form.reset(
+      {
+        ...current,
+        chat: {
+          fast: clearedChat.fast ?? defaults.chat.fast,
+          smart: clearedChat.smart ?? defaults.chat.smart,
+          thinking: clearedChat.thinking ?? defaults.chat.thinking,
+        },
+        image: clearedImage ?? defaults.image,
+        webResearch: clearedWebResearch ?? defaults.webResearch,
+      },
+      { keepDirty: true },
+    );
+  }, [form, allKeys, models0, models1, models2, key0?.id, key1?.id, key2?.id]);
+
+  const enabled = form.watch("enabled");
+  const effectiveEnabled = enabled && hasProvider;
+
+  return (
+    <SettingsSection title="Simple model mode">
+      <SettingsCard>
+        <SettingsCardItem
+          title="Enable simple model mode"
+          description={
+            hasProvider
+              ? "Replace the model picker with a Fast / Smart / Thinking toggle for all members of this org."
+              : "Connect an AI provider above to enable this feature."
+          }
+          action={
+            <div className="flex items-center gap-3">
+              <AutosaveStatus
+                isPending={isPending}
+                showSaved={isSuccess && !isDirty}
+              />
+              <Switch
+                checked={effectiveEnabled}
+                onCheckedChange={handleToggle}
+                disabled={isPending || !hasProvider}
+              />
+            </div>
+          }
+        />
+        {effectiveEnabled && (
+          <>
+            {(["fast", "smart", "thinking"] as TierKey[]).map((tier) => (
+              <Controller
+                key={tier}
+                control={form.control}
+                name={`chat.${tier}` as const}
+                render={({ field }) => (
+                  <SettingsCardItem
+                    title={TIER_LABELS[tier]}
+                    description={TIER_DESCRIPTIONS[tier]}
+                    action={
+                      <SimpleModeModelRow
+                        slot={field.value}
+                        defaultKeyId={allKeys[0]?.id ?? null}
+                        onSlotChange={(slot) => {
+                          field.onChange(slot);
+                          scheduleAutosave();
+                        }}
+                      />
+                    }
+                  />
+                )}
+              />
+            ))}
+            <div className="h-px bg-border mx-5" />
+            <Controller
+              control={form.control}
+              name="image"
+              render={({ field }) => (
+                <SettingsCardItem
+                  title="Image"
+                  action={
+                    <SimpleModeModelRow
+                      slot={field.value}
+                      defaultKeyId={allKeys[0]?.id ?? null}
+                      filterModels={filterImageModels}
+                      onSlotChange={(slot) => {
+                        field.onChange(slot);
+                        scheduleAutosave();
+                      }}
+                    />
+                  }
+                />
+              )}
+            />
+            <Controller
+              control={form.control}
+              name="webResearch"
+              render={({ field }) => (
+                <SettingsCardItem
+                  title="Web research"
+                  action={
+                    <SimpleModeModelRow
+                      slot={field.value}
+                      defaultKeyId={allKeys[0]?.id ?? null}
+                      filterModels={filterWebResearchModels}
+                      onSlotChange={(slot) => {
+                        field.onChange(slot);
+                        scheduleAutosave();
+                      }}
+                    />
+                  }
+                />
+              )}
+            />
+          </>
+        )}
+      </SettingsCard>
+    </SettingsSection>
   );
 }
 
@@ -1097,15 +1792,15 @@ function OrgAiProvidersContent() {
   const hasDecoKey = allKeys.some((k) => k.providerId === "deco");
 
   return (
-    <div className="flex flex-col gap-6">
+    <>
+      {allKeys.length > 0 && (
+        <Suspense fallback={<Skeleton className="h-16 w-full" />}>
+          <SimpleModeSection />
+        </Suspense>
+      )}
       <DecoCreditsHero />
-      <div>
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
-          Providers
-        </p>
-        <ProviderCardGrid hideProviderId={hasDecoKey ? "deco" : undefined} />
-      </div>
-    </div>
+      <ProviderCardGrid hideProviderId={hasDecoKey ? "deco" : undefined} />
+    </>
   );
 }
 
@@ -1114,7 +1809,7 @@ export function OrgAiProvidersPage() {
     <Page>
       <Page.Content>
         <Page.Body>
-          <div className="flex flex-col gap-6">
+          <SettingsPage>
             <Page.Title>AI Providers</Page.Title>
             <ErrorBoundary
               fallback={({ error }) => (
@@ -1127,7 +1822,7 @@ export function OrgAiProvidersPage() {
                 <OrgAiProvidersContent />
               </Suspense>
             </ErrorBoundary>
-          </div>
+          </SettingsPage>
         </Page.Body>
       </Page.Content>
     </Page>

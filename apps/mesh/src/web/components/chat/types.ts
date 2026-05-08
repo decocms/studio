@@ -62,6 +62,7 @@ export interface MetadataModelInfo {
     text?: boolean;
     tools?: boolean;
     reasoning?: boolean;
+    file?: boolean;
   };
   limits?: { contextWindow?: number; maxOutputTokens?: number };
 }
@@ -81,6 +82,8 @@ export interface Metadata {
   user?: ChatUserConfig;
   created_at?: string | Date;
   thread_id?: string;
+  /** Git branch to pin this thread to on creation. GitHub-linked vms only. */
+  branch?: string | null;
   title?: string;
   /** System prompt to prepend to messages at the transport layer */
   system?: string;
@@ -101,9 +104,16 @@ export interface Metadata {
     outputTokens?: number;
     totalTokens?: number;
     reasoningTokens?: number;
+    /** End-of-turn context-window fill (for the % ring). Sibling `totalTokens` is cumulative billed tokens. */
+    contextTokens?: number;
     providerMetadata?: {
       [key: string]: unknown;
     };
+  };
+  /** Runtime-reported per-turn limits (Claude Code). Takes precedence over catalog `limits`. */
+  modelLimits?: {
+    contextWindow: number;
+    maxOutputTokens: number;
   };
 }
 

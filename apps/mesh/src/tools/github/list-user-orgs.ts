@@ -1,42 +1,14 @@
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
-import { refreshAccessToken } from "@/oauth/token-refresh";
+import {
+  canRefresh,
+  PROACTIVE_REFRESH_BUFFER_MS,
+  RECONNECT_ERROR,
+  refreshAndStore,
+} from "@/oauth/token-refresh";
 import { DownstreamTokenStorage } from "../../storage/downstream-token";
-import type { DownstreamToken } from "../../storage/types";
 
 const GITHUB_API = "https://api.github.com";
-const PROACTIVE_REFRESH_BUFFER_MS = 5 * 60 * 1000;
-
-const RECONNECT_ERROR =
-  "GitHub token refresh failed — reconnect the mcp-github integration.";
-
-function canRefresh(token: DownstreamToken): boolean {
-  return !!token.refreshToken && !!token.tokenEndpoint && !!token.clientId;
-}
-
-async function refreshAndStore(
-  token: DownstreamToken,
-  tokenStorage: DownstreamTokenStorage,
-): Promise<string | null> {
-  const result = await refreshAccessToken(token);
-  if (!result.success || !result.accessToken) {
-    await tokenStorage.delete(token.connectionId);
-    return null;
-  }
-  await tokenStorage.upsert({
-    connectionId: token.connectionId,
-    accessToken: result.accessToken,
-    refreshToken: result.refreshToken ?? token.refreshToken,
-    scope: result.scope ?? token.scope,
-    expiresAt: result.expiresIn
-      ? new Date(Date.now() + result.expiresIn * 1000)
-      : null,
-    clientId: token.clientId,
-    clientSecret: token.clientSecret,
-    tokenEndpoint: token.tokenEndpoint,
-  });
-  return result.accessToken;
-}
 
 export const GITHUB_LIST_USER_ORGS = defineTool({
   name: "GITHUB_LIST_USER_ORGS",
@@ -121,10 +93,12 @@ export const GITHUB_LIST_USER_ORGS = defineTool({
       // expired before our clock said so). Try one refresh + retry before
       // giving up. Applies to any page — a token can be invalidated
       // between pages of a long installations listing.
+      // Deletion of the cached row is delegated to `refreshAndStore`, which
+      // only deletes on a definitive `400 invalid_grant`. Transient OAuth
+      // failures leave the row intact so a later request can recover.
       if (res.status === 401) {
         const current = await tokenStorage.get(input.connectionId);
         if (!current || !canRefresh(current)) {
-          await tokenStorage.delete(input.connectionId);
           throw new Error(RECONNECT_ERROR);
         }
         const refreshed = await refreshAndStore(current, tokenStorage);
@@ -134,7 +108,6 @@ export const GITHUB_LIST_USER_ORGS = defineTool({
         accessToken = refreshed;
         res = await fetchPage(accessToken);
         if (res.status === 401) {
-          await tokenStorage.delete(input.connectionId);
           throw new Error(RECONNECT_ERROR);
         }
       }

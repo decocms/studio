@@ -1,9 +1,9 @@
 import { useState } from "react";
+import { DomainSettings } from "@/web/components/settings/domain-settings";
 import { toast } from "sonner";
 import { Page } from "@/web/components/page";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
 import { Switch } from "@deco/ui/components/switch.tsx";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import {
@@ -12,14 +12,22 @@ import {
   useDeleteOrgSsoConfig,
   useToggleSsoEnforcement,
 } from "@/web/hooks/use-org-sso";
-import { CheckCircle, AlertCircle, Trash01 } from "@untitledui/icons";
+import {
+  SettingsCard,
+  SettingsCardActions,
+  SettingsCardItem,
+  SettingsPage,
+  SettingsSection,
+} from "@/web/components/settings/settings-section";
+import { Trash01 } from "@untitledui/icons";
+import { track } from "@/web/lib/posthog-client";
 
 export function OrgSsoPage() {
   const { org } = useProjectContext();
-  const { data: ssoData, isLoading } = useOrgSsoConfig(org.id);
-  const saveMutation = useSaveOrgSsoConfig(org.id);
-  const deleteMutation = useDeleteOrgSsoConfig(org.id);
-  const enforceMutation = useToggleSsoEnforcement(org.id);
+  const { data: ssoData, isLoading } = useOrgSsoConfig(org.id, org.slug);
+  const saveMutation = useSaveOrgSsoConfig(org.id, org.slug);
+  const deleteMutation = useDeleteOrgSsoConfig(org.id, org.slug);
+  const enforceMutation = useToggleSsoEnforcement(org.id, org.slug);
 
   const [formState, setFormState] = useState({
     issuer: "",
@@ -70,6 +78,10 @@ export function OrgSsoPage() {
         domain: formState.domain,
         enforced: config?.enforced ?? false,
       });
+      track(isConfigured ? "sso_config_updated" : "sso_configured", {
+        organization_id: org.id,
+        email_domain: formState.domain,
+      });
       toast.success("SSO configuration saved");
       setIsEditing(false);
     } catch (err) {
@@ -83,6 +95,7 @@ export function OrgSsoPage() {
     if (!confirm("Are you sure you want to remove SSO configuration?")) return;
     try {
       await deleteMutation.mutateAsync();
+      track("sso_config_removed", { organization_id: org.id });
       toast.success("SSO configuration removed");
       setIsEditing(false);
     } catch {
@@ -93,6 +106,10 @@ export function OrgSsoPage() {
   const handleEnforceToggle = async (enforced: boolean) => {
     try {
       await enforceMutation.mutateAsync(enforced);
+      track("sso_enforcement_toggled", {
+        organization_id: org.id,
+        enforced,
+      });
       toast.success(
         enforced ? "SSO enforcement enabled" : "SSO enforcement disabled",
       );
@@ -105,135 +122,117 @@ export function OrgSsoPage() {
     <Page>
       <Page.Content>
         <Page.Body>
-          <div className="flex flex-col gap-6">
-            <Page.Title>Single Sign-On</Page.Title>
+          <SettingsPage>
+            <Page.Title>Security</Page.Title>
+            <DomainSettings />
             {isLoading ? (
               <div className="text-sm text-muted-foreground">Loading...</div>
             ) : (
-              <div className="flex flex-col gap-6">
+              <>
                 {/* Status */}
                 {isConfigured && !isEditing && (
-                  <div className="flex flex-col gap-4">
-                    <div className="flex items-center gap-2 p-3 rounded-md bg-muted/50">
-                      <CheckCircle size={16} className="text-green-600" />
-                      <span className="text-sm font-medium">
-                        SSO Configured
-                      </span>
-                      <span className="text-xs text-muted-foreground ml-auto">
-                        {config!.issuer}
-                      </span>
-                    </div>
-
-                    <div className="flex flex-col gap-3 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Provider</span>
-                        <span className="font-medium">{config!.issuer}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Client ID</span>
-                        <span className="font-mono text-xs">
-                          {config!.clientId}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Domain</span>
-                        <span className="font-medium">{config!.domain}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Scopes</span>
-                        <span className="font-mono text-xs">
-                          {config!.scopes.join(" ")}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Enforce toggle */}
-                    <div className="flex items-center justify-between p-3 rounded-md border border-border">
-                      <div>
-                        <p className="text-sm font-medium">Enforce SSO</p>
-                        <p className="text-xs text-muted-foreground">
-                          Require all members to authenticate via SSO
-                        </p>
-                      </div>
-                      <Switch
-                        checked={config!.enforced}
-                        onCheckedChange={handleEnforceToggle}
-                        disabled={enforceMutation.isPending}
+                  <SettingsSection title="Single Sign-On">
+                    <SettingsCard>
+                      <SettingsCardItem
+                        title="Provider"
+                        action={
+                          <span className="font-medium">{config!.issuer}</span>
+                        }
                       />
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={startEditing}
-                      >
-                        Edit configuration
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          window.open(
-                            `/api/org-sso/authorize?orgId=${org.id}`,
-                            "_blank",
-                          );
-                        }}
-                      >
-                        Test SSO
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleDelete}
-                        disabled={deleteMutation.isPending}
-                        className="text-destructive hover:text-destructive ml-auto"
-                      >
-                        <Trash01 size={14} />
-                        Remove
-                      </Button>
-                    </div>
-                  </div>
+                      <SettingsCardItem
+                        title="Client ID"
+                        action={
+                          <span className="font-mono text-xs">
+                            {config!.clientId}
+                          </span>
+                        }
+                      />
+                      <SettingsCardItem
+                        title="Domain"
+                        action={
+                          <span className="font-medium">{config!.domain}</span>
+                        }
+                      />
+                      <SettingsCardItem
+                        title="Scopes"
+                        action={
+                          <span className="font-mono text-xs">
+                            {config!.scopes.join(" ")}
+                          </span>
+                        }
+                      />
+                      <div className="h-px bg-border mx-5" />
+                      <SettingsCardItem
+                        title="Enforce SSO"
+                        description="Require all members to authenticate via SSO"
+                        action={
+                          <Switch
+                            checked={config!.enforced}
+                            onCheckedChange={handleEnforceToggle}
+                            disabled={enforceMutation.isPending}
+                          />
+                        }
+                      />
+                      <SettingsCardActions>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleDelete}
+                          disabled={deleteMutation.isPending}
+                          className="text-destructive hover:text-destructive mr-auto"
+                        >
+                          <Trash01 size={14} />
+                          Remove
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            window.open(
+                              `/api/${org.slug}/sso/authorize`,
+                              "_blank",
+                            );
+                          }}
+                        >
+                          Test SSO
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={startEditing}
+                        >
+                          Edit configuration
+                        </Button>
+                      </SettingsCardActions>
+                    </SettingsCard>
+                  </SettingsSection>
                 )}
 
                 {/* Form (new config or editing) */}
                 {(!isConfigured || isEditing) && (
-                  <div className="flex flex-col gap-4">
-                    {!isConfigured && (
-                      <div className="flex items-center gap-2 p-3 rounded-md bg-muted/50">
-                        <AlertCircle
-                          size={16}
-                          className="text-muted-foreground"
-                        />
-                        <span className="text-sm text-muted-foreground">
-                          SSO is not configured for this organization.
-                        </span>
-                      </div>
-                    )}
-
-                    <div className="flex flex-col gap-5">
-                      <div className="flex flex-col gap-1.5">
-                        <Label htmlFor="sso-issuer">Issuer URL</Label>
-                        <Input
-                          id="sso-issuer"
-                          placeholder="https://login.microsoftonline.com/{tenant}/v2.0"
-                          value={formState.issuer}
-                          onChange={(e) =>
-                            setFormState((s) => ({
-                              ...s,
-                              issuer: e.target.value,
-                            }))
-                          }
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          The OIDC issuer URL of your identity provider.
-                        </p>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-5">
-                        <div className="flex flex-col gap-1.5">
-                          <Label htmlFor="sso-client-id">Client ID</Label>
+                  <SettingsSection title="Single Sign-On">
+                    <SettingsCard>
+                      <SettingsCardItem
+                        title="Issuer URL"
+                        description="The OIDC issuer URL of your identity provider."
+                        action={
+                          <Input
+                            id="sso-issuer"
+                            placeholder="https://login.microsoftonline.com/{tenant}/v2.0"
+                            value={formState.issuer}
+                            onChange={(e) =>
+                              setFormState((s) => ({
+                                ...s,
+                                issuer: e.target.value,
+                              }))
+                            }
+                            className="w-[280px]"
+                          />
+                        }
+                      />
+                      <SettingsCardItem
+                        title="Client ID"
+                        action={
                           <Input
                             id="sso-client-id"
                             placeholder="your-client-id"
@@ -244,18 +243,18 @@ export function OrgSsoPage() {
                                 clientId: e.target.value,
                               }))
                             }
+                            className="w-[280px]"
                           />
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <Label htmlFor="sso-client-secret">
-                            Client Secret
-                            {isEditing && isConfigured && (
-                              <span className="text-muted-foreground font-normal ml-1">
-                                (leave empty to keep current)
-                              </span>
-                            )}
-                          </Label>
+                        }
+                      />
+                      <SettingsCardItem
+                        title="Client Secret"
+                        description={
+                          isEditing && isConfigured
+                            ? "Leave empty to keep current"
+                            : undefined
+                        }
+                        action={
                           <Input
                             id="sso-client-secret"
                             type="password"
@@ -267,13 +266,14 @@ export function OrgSsoPage() {
                                 clientSecret: e.target.value,
                               }))
                             }
+                            className="w-[280px]"
                           />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-5">
-                        <div className="flex flex-col gap-1.5">
-                          <Label htmlFor="sso-domain">Email Domain</Label>
+                        }
+                      />
+                      <SettingsCardItem
+                        title="Email Domain"
+                        description="The email domain this SSO provider covers."
+                        action={
                           <Input
                             id="sso-domain"
                             placeholder="company.com"
@@ -284,14 +284,13 @@ export function OrgSsoPage() {
                                 domain: e.target.value,
                               }))
                             }
+                            className="w-[280px]"
                           />
-                          <p className="text-xs text-muted-foreground">
-                            The email domain that this SSO provider covers.
-                          </p>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <Label htmlFor="sso-scopes">Scopes</Label>
+                        }
+                      />
+                      <SettingsCardItem
+                        title="Scopes"
+                        action={
                           <Input
                             id="sso-scopes"
                             placeholder="openid email profile"
@@ -302,56 +301,56 @@ export function OrgSsoPage() {
                                 scopes: e.target.value,
                               }))
                             }
+                            className="w-[280px]"
                           />
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col gap-1.5">
-                        <Label htmlFor="sso-discovery">
-                          Discovery Endpoint{" "}
-                          <span className="text-muted-foreground font-normal">
-                            (optional)
-                          </span>
-                        </Label>
-                        <Input
-                          id="sso-discovery"
-                          placeholder="Auto-detected from issuer"
-                          value={formState.discoveryEndpoint}
-                          onChange={(e) =>
-                            setFormState((s) => ({
-                              ...s,
-                              discoveryEndpoint: e.target.value,
-                            }))
-                          }
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2 pt-2">
-                      <Button
-                        onClick={handleSave}
-                        disabled={saveMutation.isPending}
-                      >
-                        {saveMutation.isPending
-                          ? "Saving..."
-                          : isEditing
-                            ? "Update"
-                            : "Configure SSO"}
-                      </Button>
-                      {isEditing && (
+                        }
+                      />
+                      <SettingsCardItem
+                        title="Discovery Endpoint"
+                        description="Optional — auto-detected from issuer if omitted."
+                        action={
+                          <Input
+                            id="sso-discovery"
+                            placeholder="Auto-detected from issuer"
+                            value={formState.discoveryEndpoint}
+                            onChange={(e) =>
+                              setFormState((s) => ({
+                                ...s,
+                                discoveryEndpoint: e.target.value,
+                              }))
+                            }
+                            className="w-[280px]"
+                          />
+                        }
+                      />
+                      <SettingsCardActions>
+                        {isEditing && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setIsEditing(false)}
+                          >
+                            Cancel
+                          </Button>
+                        )}
                         <Button
-                          variant="ghost"
-                          onClick={() => setIsEditing(false)}
+                          onClick={handleSave}
+                          disabled={saveMutation.isPending}
+                          size="sm"
                         >
-                          Cancel
+                          {saveMutation.isPending
+                            ? "Saving..."
+                            : isEditing
+                              ? "Update"
+                              : "Configure SSO"}
                         </Button>
-                      )}
-                    </div>
-                  </div>
+                      </SettingsCardActions>
+                    </SettingsCard>
+                  </SettingsSection>
                 )}
-              </div>
+              </>
             )}
-          </div>
+          </SettingsPage>
         </Page.Body>
       </Page.Content>
     </Page>

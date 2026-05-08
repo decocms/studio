@@ -14,8 +14,9 @@ const mockParams: BuiltinToolParams = {
     connectionId: "conn_test",
     thinking: { id: "model_test" },
   } as never,
-  userId: "user_test",
   toolOutputMap: new Map(),
+  pendingImages: [],
+  taskId: "task_test",
   passthroughClient: {
     listTools: () => Promise.resolve({ tools: [] }),
     callTool: () => Promise.resolve({ content: [] }),
@@ -36,44 +37,44 @@ function getTools() {
 }
 
 describe("getBuiltInTools", () => {
-  test("returns ToolSet with user_ask tool", () => {
-    const tools = getTools();
+  test("returns ToolSet with user_ask tool", async () => {
+    const tools = await getTools();
 
     expect(tools).toBeDefined();
     expect(tools.user_ask).toBeDefined();
   });
 
-  test("returns ToolSet with subtask tool", () => {
-    const tools = getTools();
+  test("returns ToolSet with subtask tool", async () => {
+    const tools = await getTools();
 
     expect(tools).toBeDefined();
     expect(tools.subtask).toBeDefined();
   });
 
-  test("user_ask tool has correct description", () => {
-    const tools = getTools();
+  test("user_ask tool has correct description", async () => {
+    const tools = await getTools();
 
     expect(tools.user_ask?.description).toContain(
       "Ask the user instead of guessing when requirements are ambiguous",
     );
   });
 
-  test("user_ask tool has no execute function", () => {
-    const tools = getTools();
+  test("user_ask tool has no execute function", async () => {
+    const tools = await getTools();
 
     // Client-side tools should not have execute function defined
     // (execute is optional in AI SDK tool type)
     expect(tools.user_ask?.execute).toBeUndefined();
   });
 
-  test("subtask tool has execute function", () => {
-    const tools = getTools();
+  test("subtask tool has execute function", async () => {
+    const tools = await getTools();
 
     expect(tools.subtask?.execute).toBeDefined();
   });
 
-  test("returns object matching ToolSet type structure", () => {
-    const tools = getTools();
+  test("returns object matching ToolSet type structure", async () => {
+    const tools = await getTools();
 
     // ToolSet is Record<string, CoreTool>
     // Each tool should be an object with description, inputSchema, etc.
@@ -84,5 +85,11 @@ describe("getBuiltInTools", () => {
     const userAskTool = tools.user_ask;
     expect(userAskTool).toHaveProperty("description");
     expect(typeof userAskTool?.description).toBe("string");
+  });
+
+  test("does not include open_in_agent tool", () => {
+    const tools = getTools();
+
+    expect(Object.keys(tools)).not.toContain("open_in_agent");
   });
 });

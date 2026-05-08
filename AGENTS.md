@@ -8,7 +8,7 @@ This file provides guidance when working with code in this repository, including
 
 ## Overview
 
-MCP Mesh is an open-source control plane for Model Context Protocol (MCP) traffic. It provides a unified layer for authentication, routing, and observability between MCP clients (Cursor, Claude, VS Code) and MCP servers. The system is built as a monorepo using Bun workspaces with TypeScript, Hono (API), and React 19 (UI).
+Studio is an open-source control plane for Model Context Protocol (MCP) traffic. It provides a unified layer for authentication, routing, and observability between MCP clients (Cursor, Claude, VS Code) and MCP servers. The system is built as a monorepo using Bun workspaces with TypeScript, Hono (API), and React 19 (UI).
 
 ## Commands
 
@@ -150,7 +150,7 @@ export const EXAMPLE_TOOL = defineTool({
 
 ### Project Structure & Module Organization
 
-The workspace is managed via Bun workspaces. The main application lives in `apps/mesh/` and contains the full-stack MCP Mesh implementation (Hono API server + Vite/React client). Documentation site lives in `apps/docs/` (Astro-based).
+The workspace is managed via Bun workspaces. The main application lives in `apps/mesh/` and contains the full-stack Studio implementation (Hono API server + Vite/React client). Documentation site lives in `apps/docs/` (Astro-based).
 
 **apps/mesh/** - Main full-stack application
 - `src/api/` - Hono HTTP routes + MCP proxy routes
@@ -377,6 +377,26 @@ PRs should include:
 5. **Formatting**: The pre-commit hook will reject commits if code isn't formatted with Biome
 6. **Never modify knip configuration** (`knip.json`, `knip.config.ts`, etc.) to silence warnings. Knip warnings indicate dead code, unused exports, or unused dependencies—these are code smells that should be fixed by removing the unused code/export/dependency, not by adding exclusions to the knip config.
 7. **CI errors are always on your branch**. The `main` branch CI always passes. When CI fails, the problem is in the code you changed—do not assume it's a pre-existing issue or a flaky test. Investigate and fix your code.
+
+## API Path Convention
+
+All org-scoped API routes use the canonical shape `/api/:org/...` where `:org` is the
+organization slug. The `resolveOrgFromPath` middleware (`apps/mesh/src/api/middleware/resolve-org-from-path.ts`)
+looks up the org by slug, verifies the authenticated principal is a member, and sets
+`ctx.organization`. Returns 404 for unknown slugs, 403 for non-members.
+
+The legacy unscoped routes (e.g., `/api/connections/:id/oauth-token`, `/mcp/:connectionId`,
+`/oauth-proxy/:connectionId/*`) are still mounted with a `logDeprecatedRoute` middleware
+that emits `console.log("deprecated route", { route, method, org, user, ua })`. They will
+be removed in a follow-up PR after the deprecation window. **New code MUST use the
+org-scoped paths**; new frontend code MUST NOT send `x-org-id` or `x-org-slug` headers
+for migrated routes (the org slug is in the URL path).
+
+The aggregator that mounts every org-scoped sub-router lives at
+`apps/mesh/src/api/routes/org-scoped.ts`. Add new org-scoped routes there.
+
+Org slugs are **immutable** — `ORGANIZATION_UPDATE` rejects slug changes — so URLs remain
+stable.
 
 ## License
 

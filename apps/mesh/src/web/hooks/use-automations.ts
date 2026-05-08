@@ -83,6 +83,7 @@ export function useTriggerList(connectionId: string | undefined) {
   const client = useMCPClient({
     connectionId: connectionId ?? SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   return useQuery({
@@ -113,7 +114,7 @@ export interface AutomationListItem {
   created_by: string;
   created_at: string;
   trigger_count: number;
-  agent: { id: string } | null;
+  virtual_mcp_id: string;
   nearest_next_run_at: string | null;
 }
 
@@ -136,11 +137,12 @@ export interface AutomationDetail {
   created_by: string;
   created_at: string;
   updated_at: string;
-  agent: { id: string };
+  virtual_mcp_id: string;
   messages: unknown[];
   models: {
     credentialId: string;
     thinking: { id: string; [key: string]: unknown };
+    tier?: "fast" | "smart" | "thinking";
     [key: string]: unknown;
   };
   temperature: number;
@@ -161,6 +163,7 @@ export function useAutomations(
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   return useQuery({
@@ -190,6 +193,7 @@ export function useAutomation(id: string) {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   return useQuery({
@@ -212,12 +216,19 @@ export function useAutomation(id: string) {
 // Helpers
 // ============================================================================
 
-export function buildDefaultAutomationInput(virtualMcpId?: string) {
+export function buildDefaultAutomationInput(
+  virtualMcpId: string,
+  modelDefaults?: { credentialId: string; modelId: string } | null,
+) {
   return {
     name: "New Automation",
-    agent: virtualMcpId ? { id: virtualMcpId } : undefined,
     messages: [],
-    models: { credentialId: "", thinking: { id: "" } },
+    models: modelDefaults
+      ? {
+          credentialId: modelDefaults.credentialId,
+          thinking: { id: modelDefaults.modelId },
+        }
+      : { credentialId: "", thinking: { id: "" } },
     temperature: 0.5,
     active: true,
     virtual_mcp_id: virtualMcpId,
@@ -233,6 +244,7 @@ export function useAutomationActions() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const queryClient = useQueryClient();
 
@@ -255,11 +267,11 @@ export function useAutomationActions() {
     },
     onSuccess: () => {
       invalidateAll();
+      toast.success("Automation created successfully");
     },
-    onError: (error) => {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to create automation",
-      );
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(`Failed to create automation: ${message}`);
     },
   });
 
@@ -276,11 +288,11 @@ export function useAutomationActions() {
       if (typeof variables.id === "string") {
         invalidateOne(variables.id);
       }
+      toast.success("Automation updated successfully");
     },
-    onError: (error) => {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to update automation",
-      );
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(`Failed to update automation: ${message}`);
     },
   });
 
@@ -295,11 +307,11 @@ export function useAutomationActions() {
     onSuccess: (_data, id) => {
       queryClient.removeQueries({ queryKey: KEYS.automation(org.id, id) });
       invalidateAll();
+      toast.success("Automation deleted successfully");
     },
-    onError: (error) => {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to delete automation",
-      );
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(`Failed to delete automation: ${message}`);
     },
   });
 

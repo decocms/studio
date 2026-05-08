@@ -18,6 +18,7 @@ import type { Editor } from "@tiptap/react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { BaseItem, insertMention, OnSelectProps, Suggestion } from "./mention";
+import { track } from "@/web/lib/posthog-client";
 
 interface AtMentionProps {
   editor: Editor;
@@ -59,12 +60,17 @@ export const AtMention = ({ editor, virtualMcpId }: AtMentionProps) => {
   const client = useMCPClient({
     connectionId: virtualMcpId,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const resourcesQueryKey = KEYS.virtualMcpResources(virtualMcpId, org.id);
 
   const [mode, setMode] = useState<AtMode>("categories");
   const modeRef = useRef(mode);
   modeRef.current = mode;
+
+  // Track picker open → close outcome so we can measure abandonment.
+  const pickerOpenedAtRef = useRef<number | null>(null);
+  const pickerHadSelectionRef = useRef(false);
 
   // Reset mode when menu closes/opens (query key changes signal re-render)
   const queryKey = ["at-mention", org.id, virtualMcpId ?? "default", mode];
@@ -73,6 +79,16 @@ export const AtMention = ({ editor, virtualMcpId }: AtMentionProps) => {
     item,
     range,
   }: OnSelectProps<AtItem>): Promise<void | false> => {
+    track("chat_picker_item_selected", {
+      picker: "@",
+      item_kind: item.kind,
+      item_name: item.name,
+    });
+    // Category clicks drill deeper — don't mark as final selection yet.
+    if (item.kind !== "category") {
+      pickerHadSelectionRef.current = true;
+    }
+
     if (item.kind === "category") {
       // Drill into category — keep menu open
       setMode(item.name === "agents" ? "agents" : "resources");
@@ -233,7 +249,21 @@ export const AtMention = ({ editor, virtualMcpId }: AtMentionProps) => {
   };
 
   const handleOpenChange = (open: boolean) => {
-    if (!open) {
+    if (open) {
+      // Fires when the @ picker dropdown actually renders (TipTap's onStart).
+      // NOT when a literal "@" is typed — e.g. inside an email address the
+      // picker won't open so the event won't fire.
+      pickerOpenedAtRef.current = Date.now();
+      pickerHadSelectionRef.current = false;
+      track("chat_picker_opened", { picker: "@" });
+    } else {
+      const openedAt = pickerOpenedAtRef.current;
+      track("chat_picker_closed", {
+        picker: "@",
+        outcome: pickerHadSelectionRef.current ? "selected" : "dismissed",
+        duration_ms: openedAt ? Date.now() - openedAt : null,
+      });
+      pickerOpenedAtRef.current = null;
       setMode("categories");
     }
   };

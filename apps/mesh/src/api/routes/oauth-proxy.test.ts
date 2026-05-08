@@ -445,18 +445,45 @@ describe("OAuth Proxy Routes", () => {
   });
 
   describe("Authorization Server Metadata Proxy", () => {
+    // Default org slug used by mocked connections. The handler emits OAuth
+    // endpoint URLs under `/api/${slug}/oauth-proxy/...` so it can route DCR
+    // through `resolveOrgFromPath`. Tests that assert the rewritten URLs use
+    // this slug.
+    const TEST_ORG_SLUG = "org-test";
+
+    const mockOrgDb = (slug: string | null) => ({
+      selectFrom: () => ({
+        select: () => ({
+          where: () => ({
+            executeTakeFirst: () =>
+              slug ? Promise.resolve({ slug }) : Promise.resolve(undefined),
+          }),
+        }),
+      }),
+    });
+
     const mockConnectionWithAuthServer = (
-      connection: { connection_url?: string } | null,
+      connection:
+        | ({ connection_url?: string; organization_id?: string } | null)
+        | undefined,
       protectedResourceResponse?: Response,
+      orgSlug: string | null = TEST_ORG_SLUG,
     ) => {
       (ContextFactory.create as ReturnType<typeof mock>).mockImplementation(
         () =>
           Promise.resolve({
             storage: {
               connections: {
-                findById: mock(() => Promise.resolve(connection)),
+                findById: mock(() =>
+                  Promise.resolve(
+                    connection
+                      ? { organization_id: "org_test", ...connection }
+                      : connection,
+                  ),
+                ),
               },
             },
+            db: mockOrgDb(orgSlug),
           }),
       );
 
@@ -502,10 +529,12 @@ describe("OAuth Proxy Routes", () => {
                 findById: mock(() =>
                   Promise.resolve({
                     connection_url: "https://origin.example.com/mcp",
+                    organization_id: "org_test",
                   }),
                 ),
               },
             },
+            db: mockOrgDb(TEST_ORG_SLUG),
           }),
       );
 
@@ -552,12 +581,13 @@ describe("OAuth Proxy Routes", () => {
         authorization_endpoint: string;
         token_endpoint: string;
       };
-      // URLs should be rewritten to go through our proxy
+      // URLs are rewritten through our proxy under the org-scoped mount so DCR
+      // benefits from `resolveOrgFromPath` membership enforcement.
       expect(body.authorization_endpoint).toBe(
-        "http://localhost:3000/oauth-proxy/conn_123/authorize",
+        `http://localhost:3000/api/${TEST_ORG_SLUG}/oauth-proxy/conn_123/authorize`,
       );
       expect(body.token_endpoint).toBe(
-        "http://localhost:3000/oauth-proxy/conn_123/token",
+        `http://localhost:3000/api/${TEST_ORG_SLUG}/oauth-proxy/conn_123/token`,
       );
     });
 
@@ -580,18 +610,45 @@ describe("OAuth Proxy Routes", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
 
-      // Should rewrite endpoints to our proxy
+      // Endpoints are rewritten under the org-scoped mount so DCR / token /
+      // authorize benefit from `resolveOrgFromPath` cross-org enforcement.
       expect(body.authorization_endpoint).toBe(
-        "http://localhost:3000/oauth-proxy/conn_123/authorize",
+        `http://localhost:3000/api/${TEST_ORG_SLUG}/oauth-proxy/conn_123/authorize`,
       );
       expect(body.token_endpoint).toBe(
-        "http://localhost:3000/oauth-proxy/conn_123/token",
+        `http://localhost:3000/api/${TEST_ORG_SLUG}/oauth-proxy/conn_123/token`,
       );
       expect(body.registration_endpoint).toBe(
-        "http://localhost:3000/oauth-proxy/conn_123/register",
+        `http://localhost:3000/api/${TEST_ORG_SLUG}/oauth-proxy/conn_123/register`,
       );
       // Should preserve issuer
       expect(body.issuer).toBe("https://origin.example.com");
+    });
+
+    test("falls back to legacy proxy path when connection has no resolvable org slug", async () => {
+      // Defensive: orphaned connections (org row missing) keep working via the
+      // legacy mount instead of emitting `/api//oauth-proxy/...` URLs.
+      mockConnectionWithAuthServer(
+        { connection_url: "https://origin.example.com/mcp" },
+        new Response(
+          JSON.stringify({
+            resource: "https://origin.example.com/mcp",
+            authorization_servers: ["https://origin.example.com"],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+        null, // org lookup returns no slug
+      );
+
+      const res = await app.request(
+        "http://localhost:3000/.well-known/oauth-authorization-server/oauth-proxy/conn_123",
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { authorization_endpoint: string };
+      expect(body.authorization_endpoint).toBe(
+        "http://localhost:3000/oauth-proxy/conn_123/authorize",
+      );
     });
 
     test("handles root path auth server without trailing slash", async () => {

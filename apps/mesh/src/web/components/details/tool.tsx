@@ -64,7 +64,7 @@ import { contentBlocksToTiptapDoc } from "@/mcp-apps/content-blocks.ts";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { ToolAnnotationBadges } from "@/web/components/tools/tools-list.tsx";
 import {
-  useChatBridge,
+  useOptionalChatStream,
   useOptionalChatPrefs,
 } from "@/web/components/chat/context.tsx";
 import { usePanelActions } from "@/web/layouts/shell-layout";
@@ -202,7 +202,7 @@ function ToolDetailsAuthenticated({
 
   const { org } = useProjectContext();
   const connection = useConnection(connectionId);
-  const { sendMessage } = useChatBridge();
+  const chatStream = useOptionalChatStream();
   const chatPrefs = useOptionalChatPrefs();
   const { setChatOpen } = usePanelActions();
   const sourceId = `${connectionId}:${toolName}`;
@@ -210,6 +210,7 @@ function ToolDetailsAuthenticated({
   const client = useMCPClient({
     connectionId,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const toolsQuery = useMCPToolsListQuery({ client });
@@ -219,10 +220,11 @@ function ToolDetailsAuthenticated({
   const uiResourceUri = getUIResourceUri(tool?._meta);
 
   const handleAppMessage = (params: McpUiMessageRequest["params"]) => {
+    if (!chatStream) return;
     const doc = contentBlocksToTiptapDoc(params.content);
     if (doc.content.length > 0) {
       setChatOpen(true);
-      sendMessage({ tiptapDoc: doc });
+      chatStream.sendMessage({ tiptapDoc: doc });
     }
   };
 

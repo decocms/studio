@@ -30,6 +30,7 @@ import {
 } from "better-auth/plugins/organization/access";
 
 import { getConfig } from "@/core/config";
+import { posthog } from "@/posthog";
 import { getBaseUrl } from "@/core/server-constants";
 import { createAccessControl, Role } from "@decocms/better-auth/plugins/access";
 import { getDb, getDatabaseUrl, getDbDialect } from "../database";
@@ -39,6 +40,7 @@ import { createEmailSender, findEmailProvider } from "./email-providers";
 import { emailButton, emailParagraph, emailTemplate } from "./email-template";
 import { createMagicLinkConfig } from "./magic-link";
 import { seedOrgDb } from "./org";
+import { identifyAuthenticatedUser } from "./posthog-identify";
 import { ADMIN_ROLES } from "./roles";
 import { createSSOConfig } from "./sso";
 
@@ -133,7 +135,7 @@ if (
 
     sendInvitationEmail = async (data) => {
       const inviterName = data.inviter.user?.name || data.inviter.user?.email;
-      const acceptUrl = `${getBaseUrl()}/auth/accept-invitation?invitationId=${data.invitation.id}&redirectTo=/`;
+      const acceptUrl = `${getBaseUrl()}/auth/accept-invitation?invitationId=${data.invitation.id}&redirectTo=/${data.organization.slug}`;
 
       await sendEmail({
         to: data.email,
@@ -433,6 +435,30 @@ export const auth = betterAuth({
     user: {
       create: {
         after: async (user) => {
+          // Tag the PostHog person record with email/name BEFORE the
+          // user_signed_up capture so that event lands on a person record
+          // that already has $set: { email } applied.
+          identifyAuthenticatedUser({
+            id: user.id,
+            email: user.email,
+            name: user.name ?? null,
+            emailVerified: !!user.emailVerified,
+          });
+
+          // Top-of-funnel signup event. Fires once per new user account,
+          // before any org is created. Use this (not organization_created)
+          // to measure raw signup volume.
+          posthog.capture({
+            distinctId: user.id,
+            event: "user_signed_up",
+            properties: {
+              email: user.email,
+              email_domain: user.email?.split("@")[1]?.toLowerCase() ?? null,
+              email_verified: !!user.emailVerified,
+              has_name: !!user.name,
+            },
+          });
+
           // Domain-based handling for verified corporate emails.
           // 1. If an org claimed the domain with auto-join → add as member
           // 2. If corporate but unclaimed → skip default org creation so
@@ -482,13 +508,39 @@ export const auth = betterAuth({
             const orgSlug = slugify(orgName);
 
             try {
-              await auth.api.createOrganization({
+              const created = await auth.api.createOrganization({
                 body: {
                   name: orgName,
                   slug: orgSlug,
                   userId: user.id,
                 },
               });
+
+              // Group identify for team-level analytics.
+              const orgId =
+                (created as { id?: string } | null)?.id ?? undefined;
+              if (orgId) {
+                posthog.groupIdentify({
+                  groupType: "organization",
+                  groupKey: orgId,
+                  properties: {
+                    name: orgName,
+                    slug: orgSlug,
+                    created_at: new Date().toISOString(),
+                    created_via: "signup_default",
+                  },
+                });
+                posthog.capture({
+                  distinctId: user.id,
+                  event: "organization_created",
+                  groups: { organization: orgId },
+                  properties: {
+                    organization_id: orgId,
+                    organization_slug: orgSlug,
+                    created_via: "signup_default",
+                  },
+                });
+              }
               return;
             } catch (error) {
               const isConflictError =
@@ -503,6 +555,31 @@ export const auth = betterAuth({
               }
             }
           }
+        },
+      },
+    },
+    session: {
+      create: {
+        // Re-identify on every successful login (email/password, OTP,
+        // magic link, SSO). PostHog merges person properties server-side,
+        // so this is idempotent and provides automatic backfill for
+        // existing users whose person records were created before
+        // posthog.identify was wired into the auth flow.
+        after: async (session) => {
+          const row = await getDb()
+            .db.selectFrom("user")
+            .select(["id", "email", "name", "emailVerified"])
+            .where("id", "=", session.userId)
+            .executeTakeFirst();
+
+          if (!row) return;
+
+          identifyAuthenticatedUser({
+            id: row.id,
+            email: row.email,
+            name: row.name ?? null,
+            emailVerified: !!row.emailVerified,
+          });
         },
       },
     },

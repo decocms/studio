@@ -9,7 +9,7 @@
  * - Base URL derivation
  */
 
-import type { Meter, Tracer } from "@opentelemetry/api";
+import { SpanStatusCode, type Meter, type Tracer } from "@opentelemetry/api";
 import type { Kysely } from "kysely";
 import { verifyMeshToken } from "../auth/jwt";
 import { CredentialVault } from "../encryption/credential-vault";
@@ -155,13 +155,14 @@ interface AuthenticatedUser {
   email?: string;
   emailVerified?: boolean;
   name?: string;
+  image?: string;
   role?: string;
 }
 
 // Type for the hasPermission API (from @decocms/better-auth organization plugin)
 type HasPermissionAPI = (params: {
   headers: Headers;
-  body: { permission: Permission };
+  body: { permission: Permission; organizationId?: string };
 }) => Promise<{ success?: boolean; error?: unknown } | null>;
 
 /**
@@ -244,6 +245,7 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
   return {
     hasPermission: async (
       requestedPermission: Permission,
+      options?: { organizationId?: string },
     ): Promise<boolean> => {
       // Built-in roles bypass all permission checks
       if (
@@ -264,11 +266,19 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
         return false;
       }
 
+      // When organizationId is provided (e.g. via path-resolved org middleware),
+      // pass it to Better Auth so it overrides the session-based active org.
+      // Without this, signup races in CI cause "No active organization" 403s
+      // even when the path slug points at a valid org the user belongs to.
+      const orgIdOverride = options?.organizationId
+        ? { organizationId: options.organizationId }
+        : {};
+
       try {
         // Check exact permission first: { resource: [tool] }
         const exactResult = await hasPermissionApi({
           headers,
-          body: { permission: requestedPermission },
+          body: { permission: requestedPermission, ...orgIdOverride },
         });
 
         if (exactResult?.success === true) {
@@ -284,7 +294,7 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
 
         const wildcardResult = await hasPermissionApi({
           headers,
-          body: { permission: wildcardPermission },
+          body: { permission: wildcardPermission, ...orgIdOverride },
         });
 
         return wildcardResult?.success === true;
@@ -499,11 +509,18 @@ async function authenticateRequest(
     if (session) {
       const userId = session.userId;
 
-      // For MCP OAuth sessions, we need to query the database directly
-      // because getFullOrganization requires a browser session (cookies)
-      // Query user's first organization membership
-      const membership = await timings.measure("auth_query_membership", () =>
-        db
+      // For MCP OAuth sessions we need to query the database directly because
+      // getFullOrganization requires a browser session (cookies). The OAuth
+      // grant doesn't carry org context, so prefer an explicit hint from the
+      // request (x-org-id / x-org-slug) and fall back to the user's first
+      // membership only when no hint is given. Without the hint, multi-org
+      // users get a non-deterministic pick and end up with the wrong
+      // ctx.organization on every request that doesn't target their first org.
+      const orgIdHint = req.headers.get("x-org-id");
+      const orgSlugHint = req.headers.get("x-org-slug");
+
+      const membership = await timings.measure("auth_query_membership", () => {
+        const base = db
           .selectFrom("member")
           .innerJoin("organization", "organization.id", "member.organizationId")
           .select([
@@ -513,9 +530,20 @@ async function authenticateRequest(
             "organization.slug as orgSlug",
             "organization.name as orgName",
           ])
-          .where("member.userId", "=", userId)
-          .executeTakeFirst(),
-      );
+          .where("member.userId", "=", userId);
+
+        if (orgIdHint) {
+          return base
+            .where("organization.id", "=", orgIdHint)
+            .executeTakeFirst();
+        }
+        if (orgSlugHint) {
+          return base
+            .where("organization.slug", "=", orgSlugHint)
+            .executeTakeFirst();
+        }
+        return base.executeTakeFirst();
+      });
 
       const role = membership?.role;
       const organization = membership
@@ -710,7 +738,13 @@ async function authenticateRequest(
     const session = (await timings.measure("auth_get_session", () =>
       auth.api.getSession({ headers: sessionHeaders }),
     )) as {
-      user: { id: string; email: string; emailVerified: boolean };
+      user: {
+        id: string;
+        email: string;
+        emailVerified: boolean;
+        name?: string;
+        image?: string | null;
+      };
       session: { activeOrganizationId?: string };
     } | null;
 
@@ -718,7 +752,72 @@ async function authenticateRequest(
       let organization: OrganizationContext | undefined;
       let role: string | undefined;
 
-      if (session.session.activeOrganizationId) {
+      // Prefer per-request org header (x-org-id / x-org-slug) over
+      // session.activeOrganizationId. The session row stores a single active
+      // org shared across all browser tabs, so switching orgs in one tab
+      // would otherwise leak into requests from other tabs. The frontend
+      // sends x-org-id derived from the URL (/$org) on every MCP call.
+      //
+      // Fall back to query params on GET requests for SSE endpoints —
+      // `EventSource` can't set custom headers, so SSE callers append
+      // `?x-org-id=...` instead. GET-only restricts the surface to read paths
+      // (mutations always have a body and never go through EventSource).
+      // Membership is still verified below.
+      let requestedOrgId = req.headers.get("x-org-id");
+      let requestedOrgSlug = req.headers.get("x-org-slug");
+      if (
+        !requestedOrgId &&
+        !requestedOrgSlug &&
+        req.method.toUpperCase() === "GET"
+      ) {
+        try {
+          const params = new URL(req.url).searchParams;
+          requestedOrgId = params.get("x-org-id");
+          requestedOrgSlug = params.get("x-org-slug");
+        } catch {
+          // Malformed URL — leave both null and fall through to session state
+        }
+      }
+
+      if (requestedOrgId || requestedOrgSlug) {
+        const membership = await timings.measure(
+          "auth_query_membership_from_header",
+          () => {
+            let q = db
+              .selectFrom("member")
+              .innerJoin(
+                "organization",
+                "organization.id",
+                "member.organizationId",
+              )
+              .select([
+                "member.role",
+                "organization.id as orgId",
+                "organization.slug as orgSlug",
+                "organization.name as orgName",
+              ])
+              .where("member.userId", "=", session.user.id);
+            if (requestedOrgId) {
+              q = q.where("organization.id", "=", requestedOrgId);
+            } else if (requestedOrgSlug) {
+              q = q.where("organization.slug", "=", requestedOrgSlug);
+            }
+            return q.executeTakeFirst();
+          },
+        );
+
+        if (membership) {
+          organization = {
+            id: membership.orgId,
+            slug: membership.orgSlug,
+            name: membership.orgName,
+          };
+          role = membership.role;
+        }
+        // If header was provided but no membership matched, leave
+        // organization undefined so downstream access checks fail closed
+        // (403) rather than silently falling back to session state.
+      } else if (session.session.activeOrganizationId) {
         // Get full organization data (includes members with roles)
 
         const orgData = (await timings.measure(
@@ -768,6 +867,8 @@ async function authenticateRequest(
           id: session.user.id,
           email: session.user.email,
           emailVerified: !!session.user.emailVerified,
+          name: session.user.name,
+          image: session.user.image ?? undefined,
           role,
         },
         role,
@@ -926,12 +1027,30 @@ export async function createMeshContextFactory(
     const clientPool = createClientPool();
     // Authenticate request (OAuth session or API key)
     const authResult = req
-      ? await authenticateRequest(
-          req,
-          config.auth,
-          config.db,
-          timings,
-          config.memberRoleCache,
+      ? await config.observability.tracer.startActiveSpan(
+          "mesh.auth",
+          async (span) => {
+            try {
+              const result = await authenticateRequest(
+                req,
+                config.auth,
+                config.db,
+                timings,
+                config.memberRoleCache,
+              );
+              span.setStatus({ code: SpanStatusCode.OK });
+              return result;
+            } catch (err) {
+              span.setStatus({
+                code: SpanStatusCode.ERROR,
+                message: (err as Error).message,
+              });
+              span.recordException(err as Error);
+              throw err;
+            } finally {
+              span.end();
+            }
+          },
         )
       : { user: undefined };
 
@@ -982,6 +1101,8 @@ export async function createMeshContextFactory(
       boundAuth, // Bound auth client for permission checks
       authResult.role, // Role from session (for built-in role bypass)
       "self", // Default connectionId for management APIs (matches permission resource key)
+      undefined, // getToolMeta set later by defineTool
+      organization?.id, // Path-resolved/auth-resolved org for permission checks
     );
 
     const storage = {
@@ -994,15 +1115,15 @@ export async function createMeshContextFactory(
       config.modelListCache,
     );
 
-    // Create org-scoped object storage if S3 is configured and org is available.
-    // In development without S3, fall back to DevObjectStorage (local filesystem).
+    // Create org-scoped object storage. Use S3 when configured, otherwise fall
+    // back to DevObjectStorage (local filesystem) so the OBJECT_STORAGE binding
+    // still resolves on self-host setups without S3.
     const s3Service = getObjectStorageS3Service();
-    const objectStorage =
-      s3Service && organization
+    const objectStorage = !organization
+      ? null
+      : s3Service
         ? createBoundObjectStorage(s3Service, organization.id)
-        : getSettings().nodeEnv === "development" && organization
-          ? new DevObjectStorage(organization.id, baseUrl)
-          : null;
+        : new DevObjectStorage(organization.id, baseUrl);
 
     const ctx: MeshContext = {
       timings,

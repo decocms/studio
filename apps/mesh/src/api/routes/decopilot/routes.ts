@@ -6,6 +6,7 @@
  */
 
 import type { MeshContext } from "@/core/mesh-context";
+import { posthog } from "@/posthog";
 import {
   consumeStream,
   createUIMessageStream,
@@ -153,6 +154,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         temperature,
         memory: memoryConfig,
         thread_id,
+        branch,
         toolApprovalLevel,
         mode,
       } = await validateRequest(c);
@@ -202,10 +204,24 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           userId,
           taskId: resolvedThreadId,
           windowSize,
+          branch: branch ?? null,
         },
         ctx,
         { runRegistry, streamBuffer, cancelBroadcast },
       );
+
+      posthog.capture({
+        distinctId: userId,
+        event: "chat_message_started",
+        groups: { organization: organization.id },
+        properties: {
+          organization_id: organization.id,
+          agent_id: agent,
+          mode,
+          thread_id: resolvedThreadId,
+          credential_id: models.credentialId,
+        },
+      });
 
       return createUIMessageStreamResponse({
         stream: result.stream,
@@ -223,6 +239,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         return c.json({ error: "Request aborted" }, 400);
       }
 
+      posthog.captureException(err);
       console.error("[decopilot:stream] Failed", {
         error: err instanceof Error ? err.message : JSON.stringify(err),
         stack: err instanceof Error ? err.stack : undefined,
@@ -248,6 +265,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         temperature,
         memory: memoryConfig,
         thread_id,
+        branch,
         toolApprovalLevel,
         mode,
       } = await validateRequest(c);
@@ -297,6 +315,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           userId,
           taskId: resolvedThreadId,
           windowSize,
+          branch: branch ?? null,
         },
         ctx,
         { runRegistry, streamBuffer, cancelBroadcast },

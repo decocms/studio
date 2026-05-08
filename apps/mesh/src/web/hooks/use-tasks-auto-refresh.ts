@@ -13,7 +13,7 @@ export function useTasksAutoRefresh() {
   const queryClient = useQueryClient();
 
   useDecopilotEvents({
-    orgId: org.id,
+    orgSlug: org.slug,
     onTaskStatus: () => {
       queryClient.invalidateQueries({
         queryKey: KEYS.tasksPrefix(locator),

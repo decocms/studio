@@ -1,11 +1,10 @@
 import type { ComponentType, SVGProps } from "react";
 import {
-  BookOpen01,
+  GitBranch01,
   Globe01,
   LayoutAlt04,
   Lightning01,
   Terminal,
-  ZapSquare,
 } from "@untitledui/icons";
 import { getIconComponent, parseIconString } from "../../components/agent-icon";
 
@@ -19,20 +18,18 @@ export type TabIcon =
   | { kind: "fallback" };
 
 export type SystemTabId =
-  | "instructions"
-  | "connections"
+  | "settings"
   | "automations"
-  | "layout"
   | "env"
-  | "preview";
+  | "preview"
+  | "git";
 
 export const SYSTEM_TAB_ICONS: Record<SystemTabId, IconComponent> = {
-  instructions: BookOpen01,
-  connections: ZapSquare,
+  settings: LayoutAlt04,
   automations: Lightning01,
-  layout: LayoutAlt04,
   env: Terminal,
   preview: Globe01,
+  git: GitBranch01,
 };
 
 type ConnectionLike = { id: string; icon: string | null };

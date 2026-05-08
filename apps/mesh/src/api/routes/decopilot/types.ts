@@ -64,6 +64,7 @@ export interface ModelInfo {
     text?: boolean;
     tools?: boolean;
     reasoning?: boolean;
+    file?: boolean;
   };
   provider?: string | null;
   limits?: { contextWindow?: number; maxOutputTokens?: number };

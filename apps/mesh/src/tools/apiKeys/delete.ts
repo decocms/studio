@@ -5,6 +5,7 @@
  * Only allows deleting keys that belong to the current organization.
  */
 
+import { posthog } from "../../posthog";
 import { defineTool } from "../../core/define-tool";
 import { getUserId, requireAuth } from "../../core/mesh-context";
 import { ApiKeyDeleteInputSchema, ApiKeyDeleteOutputSchema } from "./schema";
@@ -67,6 +68,18 @@ export const API_KEY_DELETE = defineTool({
 
     // Delete the API key via Better Auth
     await ctx.boundAuth.apiKey.delete(input.keyId);
+
+    if (currentOrgId) {
+      posthog.capture({
+        distinctId: userId,
+        event: "api_key_deleted",
+        groups: { organization: currentOrgId },
+        properties: {
+          key_id: input.keyId,
+          organization_id: currentOrgId,
+        },
+      });
+    }
 
     return {
       success: true,

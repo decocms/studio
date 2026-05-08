@@ -21,7 +21,7 @@ import { clientFromConnection } from "../../mcp-clients";
 import {
   createDevAssetsConnectionEntity,
   isDevAssetsConnection,
-  isDevMode,
+  usesLocalObjectStorage,
 } from "./dev-assets";
 import { ConnectionEntitySchema } from "./schema";
 
@@ -54,8 +54,11 @@ export const COLLECTION_CONNECTIONS_GET = defineTool({
     // Check authorization
     await ctx.access.check();
 
-    // In dev mode, check if this is the dev-assets connection
-    if (isDevMode() && isDevAssetsConnection(input.id, organization.id)) {
+    // Resolve the dev-assets pseudo-connection when local object storage is in use
+    if (
+      usesLocalObjectStorage() &&
+      isDevAssetsConnection(input.id, organization.id)
+    ) {
       return {
         item: createDevAssetsConnectionEntity(organization.id, getBaseUrl()),
       };

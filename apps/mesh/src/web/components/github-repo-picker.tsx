@@ -4,9 +4,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@deco/ui/components/dialog.tsx";
+import { Checkbox } from "@deco/ui/components/checkbox.tsx";
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Suspense, useDeferredValue, useState } from "react";
+import { useDebouncedValue } from "@/web/hooks/use-debounced-value.ts";
 import {
   useMutation,
   useQuery,
@@ -41,7 +43,7 @@ interface GitHubInstallation {
   type: string;
 }
 
-interface Repo {
+export interface Repo {
   owner: string;
   name: string;
   fullName: string;
@@ -51,12 +53,24 @@ interface Repo {
   updatedAt: string;
 }
 
+export interface GitHubImportPayload {
+  virtualMcpId: string;
+  repo: Repo;
+  connectionId: string;
+}
+
 export function GitHubRepoPicker({
   open,
   onOpenChange,
+  title = "Import from GitHub",
+  hideAutoRespondCheckbox = false,
+  onImportComplete,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  title?: string;
+  hideAutoRespondCheckbox?: boolean;
+  onImportComplete?: (payload: GitHubImportPayload) => void;
 }) {
   const [preferences] = usePreferences();
   const [selectedInstallation, setSelectedInstallation] =
@@ -70,7 +84,7 @@ export function GitHubRepoPicker({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[560px] h-[85svh] sm:h-[520px] p-0 gap-0 overflow-hidden flex flex-col">
         <DialogHeader className="sr-only">
-          <DialogTitle>Import from GitHub</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         <div className="flex items-center h-12 border-b border-border px-4 gap-3 shrink-0">
           {selectedInstallation ? (
@@ -96,7 +110,7 @@ export function GitHubRepoPicker({
             <>
               <GitHubIcon className="size-4 text-foreground shrink-0" />
               <span className="text-sm font-medium text-foreground">
-                Import from GitHub
+                {title}
               </span>
             </>
           )}
@@ -116,6 +130,8 @@ export function GitHubRepoPicker({
               onComplete={() => onOpenChange(false)}
               selectedInstallation={selectedInstallation}
               onSelectInstallation={setSelectedInstallation}
+              hideAutoRespondCheckbox={hideAutoRespondCheckbox}
+              onImportComplete={onImportComplete}
             />
           </Suspense>
         </div>
@@ -128,16 +144,24 @@ function PickerContent({
   onComplete,
   selectedInstallation,
   onSelectInstallation,
+  hideAutoRespondCheckbox,
+  onImportComplete,
 }: {
   onComplete: () => void;
   selectedInstallation: GitHubInstallation | null;
   onSelectInstallation: (inst: GitHubInstallation | null) => void;
+  hideAutoRespondCheckbox?: boolean;
+  onImportComplete?: (payload: GitHubImportPayload) => void;
 }) {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
   const navigateToAgent = useNavigateToAgent();
   const [selectedConnection, setSelectedConnection] =
     useState<ConnectionEntity | null>(null);
+  const [autoRespondToIssues, setAutoRespondToIssues] = useState(true);
+  const effectiveAutoRespond = hideAutoRespondCheckbox
+    ? true
+    : autoRespondToIssues;
 
   const githubConnections = useConnections({ slug: "mcp-github" });
 
@@ -153,10 +177,12 @@ function PickerContent({
   const githubClient = useMCPClient({
     connectionId: effectiveConnection?.id ?? "",
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const selfClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const getFileContent = async (
@@ -191,91 +217,113 @@ function PickerContent({
     }
   };
 
+  // Runtime detection moved server-side into VM_START (see
+  // github-runtime-detect.ts). Here we only pull AGENTS.md / CLAUDE.md so the
+  // agent has instructions ready even before the first VM boots.
   const detectRepoFiles = (virtualMcpId: string, repo: Repo) => {
-    const allPaths = [
-      "AGENTS.md",
-      "CLAUDE.md",
-      "deno.json",
-      "deno.jsonc",
-      "bun.lock",
-      "bunfig.toml",
-      "pnpm-lock.yaml",
-      "yarn.lock",
-      "package-lock.json",
-      "package.json",
-    ];
-
-    Promise.all(
-      allPaths.map(async (p) => [p, await getFileContent(repo, p)] as const),
-    )
-      .then(async (entries) => {
-        const files = new Map(entries);
-
-        const instructions =
-          files.get("AGENTS.md") ?? files.get("CLAUDE.md") ?? null;
-
-        const runtimeFiles: Array<{ file: string; pm: string }> = [
-          { file: "deno.json", pm: "deno" },
-          { file: "deno.jsonc", pm: "deno" },
-          { file: "bun.lock", pm: "bun" },
-          { file: "bunfig.toml", pm: "bun" },
-          { file: "pnpm-lock.yaml", pm: "pnpm" },
-          { file: "yarn.lock", pm: "yarn" },
-          { file: "package-lock.json", pm: "npm" },
-          { file: "package.json", pm: "npm" },
-        ];
-        let detected: string | null = null;
-        for (const { file, pm } of runtimeFiles) {
-          if (files.get(file) !== null) {
-            detected = pm;
-            break;
-          }
-        }
-
-        let devPort = "";
-        if (detected) {
-          const extractPort = (content: string | null) => {
-            if (!content) return "";
-            try {
-              const parsed = JSON.parse(content) as {
-                tasks?: Record<string, string>;
-                scripts?: Record<string, string>;
-              };
-              const cmds = parsed.tasks ?? parsed.scripts ?? {};
-              const devCmd = cmds.dev ?? cmds.start ?? "";
-              const portMatch = devCmd.match(/(?:--port|PORT=|:)(\d{4,5})/);
-              return portMatch?.[1] ?? "";
-            } catch {
-              return "";
-            }
-          };
-          if (detected === "deno") {
-            devPort =
-              extractPort(files.get("deno.json") ?? null) ||
-              extractPort(files.get("deno.jsonc") ?? null);
-          } else {
-            devPort = extractPort(files.get("package.json") ?? null);
-          }
-        }
-
+    Promise.all([
+      getFileContent(repo, "AGENTS.md"),
+      getFileContent(repo, "CLAUDE.md"),
+    ])
+      .then(async ([agents, claude]) => {
+        const instructions = agents ?? claude ?? null;
+        if (!instructions) return;
         await selfClient.callTool({
           name: "COLLECTION_VIRTUAL_MCP_UPDATE",
           arguments: {
             id: virtualMcpId,
-            data: {
-              metadata: {
-                instructions,
-                runtime: { selected: detected, port: devPort || null },
-              },
-            },
+            data: { metadata: { instructions } },
           },
         });
-
         invalidateVirtualMcpQueries(queryClient, org.id);
       })
       .catch((err) => {
-        console.error("GitHub repo file detection failed:", err);
+        console.error("GitHub instructions fetch failed:", err);
       });
+  };
+
+  const setupIssueAutomation = async ({
+    virtualMcpId,
+    repo,
+    connectionId,
+  }: {
+    virtualMcpId: string;
+    repo: Repo;
+    connectionId: string;
+  }) => {
+    const triggerListResult = (await githubClient.callTool({
+      name: "TRIGGER_LIST",
+      arguments: {},
+    })) as { structuredContent?: unknown };
+
+    const triggerPayload = (triggerListResult.structuredContent ??
+      triggerListResult) as {
+      triggers?: Array<{
+        type: string;
+        params?: Array<{ name: string }> | Record<string, unknown>;
+        paramsSchema?: Record<string, unknown>;
+      }>;
+    };
+
+    const issueTrigger =
+      triggerPayload.triggers?.find((t) => t.type === "github.issues.opened") ??
+      triggerPayload.triggers?.find((t) => {
+        const type = t.type.toLowerCase();
+        return (
+          /\bissues?\./.test(type) &&
+          (type.endsWith(".opened") || type.endsWith(".created"))
+        );
+      });
+
+    if (!issueTrigger) {
+      throw new Error("No issue-created trigger exposed by GitHub connection");
+    }
+
+    const paramNames = new Set<string>();
+    if (Array.isArray(issueTrigger.params)) {
+      for (const p of issueTrigger.params) paramNames.add(p.name);
+    } else if (issueTrigger.params && typeof issueTrigger.params === "object") {
+      for (const k of Object.keys(issueTrigger.params)) paramNames.add(k);
+    }
+    if (issueTrigger.paramsSchema) {
+      for (const k of Object.keys(issueTrigger.paramsSchema)) paramNames.add(k);
+    }
+
+    const params: Record<string, string> = {};
+    if (paramNames.has("repo")) {
+      params.repo = `${repo.owner}/${repo.name}`;
+    } else {
+      if (paramNames.has("owner")) params.owner = repo.owner;
+      if (paramNames.has("name")) params.name = repo.name;
+      if (paramNames.has("repository"))
+        params.repository = `${repo.owner}/${repo.name}`;
+    }
+
+    const automationInstructions = `A new GitHub issue has been opened in ${repo.owner}/${repo.name}. Read the issue details, explore the relevant code in the repository, create a new branch, implement the fix or feature requested, and open a pull request that resolves the issue. Reference the issue number in the PR description.`;
+
+    const automationResult = (await selfClient.callTool({
+      name: "AUTOMATION_CREATE",
+      arguments: {
+        name: `${repo.name}: auto-respond to issues`,
+        virtual_mcp_id: virtualMcpId,
+        messages: automationInstructions,
+        active: true,
+      },
+    })) as { structuredContent?: unknown };
+
+    const automationPayload = (automationResult.structuredContent ??
+      automationResult) as { id: string };
+
+    await selfClient.callTool({
+      name: "AUTOMATION_TRIGGER_ADD",
+      arguments: {
+        automation_id: automationPayload.id,
+        type: "event",
+        connection_id: connectionId,
+        event_type: issueTrigger.type,
+        params,
+      },
+    });
   };
 
   const importMutation = useMutation({
@@ -302,9 +350,10 @@ function PickerContent({
                 installationId: selectedInstallation.installationId,
                 connectionId,
               },
-              activeVms: {},
               instructions: null,
-              runtime: null,
+              // runtime is resolved server-side inside VM_START's lockfile
+              // probe (github-runtime-detect.ts). Writing a client-side
+              // sentinel here only re-created the race the probe fixed.
               ui: {
                 pinnedViews: null,
                 layout: {
@@ -323,15 +372,29 @@ function PickerContent({
         item: { id: string; title: string };
       };
 
+      const virtualMcpId = payload.item.id;
+
+      if (effectiveAutoRespond) {
+        await setupIssueAutomation({
+          virtualMcpId,
+          repo,
+          connectionId,
+        }).catch((err) => {
+          console.error("Failed to set up issue automation:", err);
+          toast.warning(
+            "Imported repo, but failed to set up issue auto-response. You can add the trigger manually from the automations view.",
+          );
+        });
+      }
+
       return {
-        virtualMcpId: payload.item.id,
+        virtualMcpId,
         repo,
+        connectionId,
         item: payload.item,
       };
     },
-    onSuccess: ({ virtualMcpId, repo, item }) => {
-      toast.success(`Imported ${repo.name} from GitHub`);
-
+    onSuccess: ({ virtualMcpId, repo, connectionId, item }) => {
       queryClient.setQueryData(
         KEYS.collectionItem(
           selfClient,
@@ -344,11 +407,17 @@ function PickerContent({
       );
       invalidateVirtualMcpQueries(queryClient, org.id);
 
+      detectRepoFiles(virtualMcpId, repo);
+
+      if (onImportComplete) {
+        onImportComplete({ virtualMcpId, repo, connectionId });
+        return;
+      }
+
+      toast.success(`Imported ${repo.name} from GitHub`);
       onComplete();
       localStorage.setItem("mesh:sidebar-open", JSON.stringify(false));
       navigateToAgent(virtualMcpId);
-
-      detectRepoFiles(virtualMcpId, repo);
     },
     onError: (error) => {
       toast.error(
@@ -431,6 +500,7 @@ function PickerContent({
       <InstallationPicker
         connectionId={effectiveConnection.id}
         orgId={org.id}
+        orgSlug={org.slug}
         onSelect={onSelectInstallation}
         showBackButton={githubConnections.length > 1}
         onBack={() => setSelectedConnection(null)}
@@ -442,9 +512,13 @@ function PickerContent({
     <RepoBrowser
       connectionId={effectiveConnection.id}
       orgId={org.id}
+      orgSlug={org.slug}
       installation={selectedInstallation}
       onSelectRepo={(repo) => importMutation.mutate(repo)}
       isSaving={importMutation.isPending}
+      autoRespondToIssues={autoRespondToIssues}
+      onAutoRespondChange={setAutoRespondToIssues}
+      hideAutoRespondCheckbox={hideAutoRespondCheckbox}
     />
   );
 }
@@ -452,12 +526,14 @@ function PickerContent({
 function InstallationPicker({
   connectionId,
   orgId,
+  orgSlug,
   onSelect,
   showBackButton,
   onBack,
 }: {
   connectionId: string;
   orgId: string;
+  orgSlug: string;
   onSelect: (installation: GitHubInstallation) => void;
   showBackButton: boolean;
   onBack: () => void;
@@ -465,6 +541,7 @@ function InstallationPicker({
   const selfClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId,
+    orgSlug,
   });
 
   const installationsQuery = useQuery({
@@ -574,18 +651,27 @@ function InstallationPicker({
 function RepoBrowser({
   connectionId,
   orgId,
+  orgSlug,
   installation,
   onSelectRepo,
   isSaving,
+  autoRespondToIssues,
+  onAutoRespondChange,
+  hideAutoRespondCheckbox,
 }: {
   connectionId: string;
   orgId: string;
+  orgSlug: string;
   installation: GitHubInstallation;
   onSelectRepo: (repo: Repo) => void;
   isSaving: boolean;
+  autoRespondToIssues: boolean;
+  onAutoRespondChange: (value: boolean) => void;
+  hideAutoRespondCheckbox?: boolean;
 }) {
   const [query, setQuery] = useState("");
-  const deferredQuery = useDeferredValue(query);
+  const debouncedQuery = useDebouncedValue(query, 300);
+  const deferredQuery = useDeferredValue(debouncedQuery);
   const isStale = query !== deferredQuery;
 
   return (
@@ -616,6 +702,7 @@ function RepoBrowser({
           <RepoList
             connectionId={connectionId}
             orgId={orgId}
+            orgSlug={orgSlug}
             installation={installation}
             query={deferredQuery}
             onSelectRepo={onSelectRepo}
@@ -623,6 +710,18 @@ function RepoBrowser({
           />
         </Suspense>
       </div>
+
+      {!hideAutoRespondCheckbox && (
+        <label className="flex items-center gap-2 px-4 py-3 border-t border-border shrink-0 cursor-pointer select-none">
+          <Checkbox
+            checked={autoRespondToIssues}
+            onCheckedChange={(checked) => onAutoRespondChange(checked === true)}
+          />
+          <span className="text-xs text-foreground">
+            Auto-respond to new issues with a PR
+          </span>
+        </label>
+      )}
     </div>
   );
 }
@@ -630,6 +729,7 @@ function RepoBrowser({
 function RepoList({
   connectionId,
   orgId,
+  orgSlug,
   installation,
   query,
   onSelectRepo,
@@ -637,12 +737,13 @@ function RepoList({
 }: {
   connectionId: string;
   orgId: string;
+  orgSlug: string;
   installation: GitHubInstallation;
   query: string;
   onSelectRepo: (repo: Repo) => void;
   isSaving: boolean;
 }) {
-  const githubClient = useMCPClient({ connectionId, orgId });
+  const githubClient = useMCPClient({ connectionId, orgId, orgSlug });
 
   const qualifier = installation.type === "User" ? "user" : "org";
   const searchQuery = query
@@ -656,11 +757,15 @@ function RepoList({
       installation.login,
       query,
     ),
-    queryFn: async () => {
-      const result = await githubClient.callTool({
-        name: "search_repositories",
-        arguments: { query: searchQuery, page: 1, perPage: 30 },
-      });
+    queryFn: async ({ signal }) => {
+      const result = await githubClient.callTool(
+        {
+          name: "search_repositories",
+          arguments: { query: searchQuery, page: 1, perPage: 30 },
+        },
+        undefined,
+        { signal },
+      );
       const content = (result as { content?: Array<{ text?: string }> })
         .content?.[0]?.text;
       if (!content) throw new Error("No response from search_repositories");

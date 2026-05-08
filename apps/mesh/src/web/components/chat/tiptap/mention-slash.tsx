@@ -32,6 +32,7 @@ import {
   type PromptArgumentValues,
 } from "../dialog-prompt-arguments.tsx";
 import { BaseItem, insertMention, OnSelectProps, Suggestion } from "./mention";
+import { track } from "@/web/lib/posthog-client";
 
 interface SlashMentionProps {
   editor: Editor;
@@ -103,8 +104,13 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
   const client = useMCPClient({
     connectionId: virtualMcpId,
     orgId: org.id,
+    orgSlug: org.slug,
   });
-  const promptToConnection = usePromptConnectionMap(virtualMcpId, org.id);
+  const promptToConnection = usePromptConnectionMap(
+    virtualMcpId,
+    org.id,
+    org.slug,
+  );
   const promptToConnectionRef = useRef(promptToConnection);
   promptToConnectionRef.current = promptToConnection;
 
@@ -121,10 +127,21 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
     null,
   );
 
+  // Track picker open → close outcome so we can measure abandonment.
+  const pickerOpenedAtRef = useRef<number | null>(null);
+  const pickerHadSelectionRef = useRef(false);
+
   const handleItemSelect = async ({
     item,
     range,
   }: OnSelectProps<SlashItem>) => {
+    track("chat_picker_item_selected", {
+      picker: "/",
+      item_kind: item.kind,
+      item_name: item.name,
+    });
+    pickerHadSelectionRef.current = true;
+
     if (!client) return;
 
     if (item.kind === "prompt") {
@@ -230,6 +247,24 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
         queryKey={queryKey}
         queryFn={fetchItems}
         onSelect={handleItemSelect}
+        onOpenChange={(open) => {
+          // Fires when the / picker dropdown actually renders (TipTap's
+          // onStart). NOT when a literal "/" is typed — e.g. inside a URL
+          // the picker won't open so the event won't fire.
+          if (open) {
+            pickerOpenedAtRef.current = Date.now();
+            pickerHadSelectionRef.current = false;
+            track("chat_picker_opened", { picker: "/" });
+          } else {
+            const openedAt = pickerOpenedAtRef.current;
+            track("chat_picker_closed", {
+              picker: "/",
+              outcome: pickerHadSelectionRef.current ? "selected" : "dismissed",
+              duration_ms: openedAt ? Date.now() - openedAt : null,
+            });
+            pickerOpenedAtRef.current = null;
+          }
+        }}
       />
       <PromptArgsDialog
         prompt={dialogPrompt}

@@ -23,17 +23,17 @@ import { DownstreamTokenStorage } from "../../storage/downstream-token";
 import { ConnectionStorage } from "../../storage/connection";
 import type { BoundAuthClient, MeshContext } from "../../core/mesh-context";
 import type { EventBus } from "../../event-bus/interface";
-import type { TokenRefreshResult } from "@/oauth/token-refresh";
+import type { TokenRefreshResult } from "@/oauth/refresh-access-token";
 
 const mockRefreshAccessToken =
   vi.fn<
     (
       ...args: Parameters<
-        typeof import("@/oauth/token-refresh").refreshAccessToken
+        typeof import("@/oauth/refresh-access-token").refreshAccessToken
       >
     ) => Promise<TokenRefreshResult>
   >();
-mock.module("@/oauth/token-refresh", () => ({
+mock.module("@/oauth/refresh-access-token", () => ({
   refreshAccessToken: mockRefreshAccessToken,
 }));
 
@@ -275,7 +275,7 @@ describe("GITHUB_LIST_USER_ORGS", () => {
     expect(persisted?.refreshToken).toBe("rt2");
   });
 
-  it("deletes the cached token and throws when proactive refresh fails", async () => {
+  it("deletes the cached token and throws when proactive refresh fails permanently (invalid_grant)", async () => {
     await tokenStorage.upsert({
       connectionId,
       accessToken: "stale-token",
@@ -289,7 +289,10 @@ describe("GITHUB_LIST_USER_ORGS", () => {
 
     mockRefreshAccessToken.mockResolvedValueOnce({
       success: false,
-      error: "invalid_grant",
+      permanent: true,
+      status: 400,
+      errorCode: "invalid_grant",
+      error: "refresh token revoked",
     });
 
     installHandler();
@@ -299,6 +302,40 @@ describe("GITHUB_LIST_USER_ORGS", () => {
     ).rejects.toThrow(/reconnect/i);
 
     expect(await tokenStorage.get(connectionId)).toBeNull();
+    expect(fetchCalls).toHaveLength(0);
+  });
+
+  it("preserves the cached token and throws when proactive refresh fails transiently (5xx)", async () => {
+    // The whole point of the fix: a 500 from the OAuth server must not
+    // wipe the user's auth — the refresh_token might still be valid.
+    await tokenStorage.upsert({
+      connectionId,
+      accessToken: "stale-token",
+      refreshToken: "rt",
+      scope: "repo",
+      expiresAt: new Date(Date.now() - 60 * 1000),
+      clientId: "cid",
+      clientSecret: "csecret",
+      tokenEndpoint: "https://github.com/login/oauth/access_token",
+    });
+
+    mockRefreshAccessToken.mockResolvedValueOnce({
+      success: false,
+      permanent: false,
+      status: 500,
+      errorCode: "server_error",
+      error: "Failed to process token request",
+    });
+
+    installHandler();
+
+    await expect(
+      GITHUB_LIST_USER_ORGS.execute({ connectionId }, ctx),
+    ).rejects.toThrow(/reconnect/i);
+
+    const persisted = await tokenStorage.get(connectionId);
+    expect(persisted).not.toBeNull();
+    expect(persisted?.refreshToken).toBe("rt");
     expect(fetchCalls).toHaveLength(0);
   });
 
@@ -352,7 +389,11 @@ describe("GITHUB_LIST_USER_ORGS", () => {
     expect(persisted?.accessToken).toBe("fresh-token");
   });
 
-  it("deletes the token and throws reconnect error when retry after 401 still fails", async () => {
+  it("throws reconnect error without deleting the row when retry after 401 still 401s", async () => {
+    // The refresh succeeded, so the refresh_token is fine. Even if GitHub
+    // keeps returning 401 with the new access_token, deleting the cached
+    // row would lose the (still-valid) refresh_token. Throw the reconnect
+    // error so the user re-OAuths, which will overwrite the row anyway.
     await tokenStorage.upsert({
       connectionId,
       accessToken: "seemingly-valid-token",
@@ -382,10 +423,12 @@ describe("GITHUB_LIST_USER_ORGS", () => {
     ).rejects.toThrow(/reconnect/i);
 
     expect(fetchCalls).toHaveLength(2);
-    expect(await tokenStorage.get(connectionId)).toBeNull();
+    const persisted = await tokenStorage.get(connectionId);
+    expect(persisted).not.toBeNull();
+    expect(persisted?.accessToken).toBe("fresh-token");
   });
 
-  it("deletes the token and throws when reactive refresh itself fails", async () => {
+  it("deletes the token and throws when reactive refresh fails permanently", async () => {
     await tokenStorage.upsert({
       connectionId,
       accessToken: "seemingly-valid-token",
@@ -399,7 +442,10 @@ describe("GITHUB_LIST_USER_ORGS", () => {
 
     mockRefreshAccessToken.mockResolvedValueOnce({
       success: false,
-      error: "invalid_grant",
+      permanent: true,
+      status: 400,
+      errorCode: "invalid_grant",
+      error: "refresh token revoked",
     });
 
     installHandler(() => github401());
@@ -410,6 +456,41 @@ describe("GITHUB_LIST_USER_ORGS", () => {
 
     expect(fetchCalls).toHaveLength(1);
     expect(await tokenStorage.get(connectionId)).toBeNull();
+  });
+
+  it("preserves the cached token when reactive refresh fails transiently", async () => {
+    // GitHub returned 401 (current access_token is bad), but the OAuth
+    // server's refresh endpoint returned a 5xx. The refresh_token may still
+    // be valid — keep it so the next request can try to refresh again.
+    await tokenStorage.upsert({
+      connectionId,
+      accessToken: "seemingly-valid-token",
+      refreshToken: "rt",
+      scope: "repo",
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      clientId: "cid",
+      clientSecret: "csecret",
+      tokenEndpoint: "https://github.com/login/oauth/access_token",
+    });
+
+    mockRefreshAccessToken.mockResolvedValueOnce({
+      success: false,
+      permanent: false,
+      status: 500,
+      errorCode: "server_error",
+      error: "Failed to process token request",
+    });
+
+    installHandler(() => github401());
+
+    await expect(
+      GITHUB_LIST_USER_ORGS.execute({ connectionId }, ctx),
+    ).rejects.toThrow(/reconnect/i);
+
+    expect(fetchCalls).toHaveLength(1);
+    const persisted = await tokenStorage.get(connectionId);
+    expect(persisted).not.toBeNull();
+    expect(persisted?.refreshToken).toBe("rt");
   });
 
   it("throws a clear error when no GitHub token is stored", async () => {

@@ -8,6 +8,7 @@ on:
       - "packages/runtime/**"
       - "packages/mesh-plugin-*/**"
       - "packages/mesh-sdk/**"
+      - "packages/sandbox/**"
   workflow_dispatch:
     inputs:
       deploy_to_production:

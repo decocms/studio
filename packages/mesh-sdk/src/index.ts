@@ -116,6 +116,11 @@ export {
   type VirtualMCPConnection,
   type VirtualMcpUILayout,
   type VirtualMcpUILayoutTab,
+  VmMapSchema,
+  type VmMap,
+  VmMapEntrySchema,
+  type VmMapEntry,
+  type GithubRepo,
   // Decopilot event types
   THREAD_STATUSES,
   THREAD_DISPLAY_STATUSES,
@@ -158,8 +163,15 @@ export { KEYS } from "./lib/query-keys";
 export {
   DEFAULT_MODEL_PREFERENCES,
   FAST_MODEL_PREFERENCES,
+  SMART_MODEL_PREFERENCES,
+  THINKING_MODEL_PREFERENCES,
+  IMAGE_MODEL_PREFERENCES,
+  WEB_RESEARCH_MODEL_PREFERENCES,
   selectDefaultModel,
   getFastModel,
+  pickSimpleModeDefaults,
+  type SimpleModeModelSlot,
+  type SimpleModeDefaults,
 } from "./lib/default-model";
 
 // MCP OAuth utilities

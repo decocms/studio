@@ -3,6 +3,7 @@ import type { GuidePrompt, GuideResource } from "./index";
 export const prompts: GuidePrompt[] = [
   {
     name: "ai-providers-setup",
+    title: "Set Up AI Provider",
     description: "Set up an AI provider so the workspace can use its models.",
     text: `# Set up AI provider
 

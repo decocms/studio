@@ -62,6 +62,10 @@ export const authEnvSchema = z
     AUTH_SSO_MS_CLIENT_ID: z.string().optional(),
     AUTH_SSO_MS_CLIENT_SECRET: z.string().optional(),
     AUTH_SSO_SCOPES: csv(["openid", "email", "profile"]),
+
+    // SSO (Google)
+    AUTH_SSO_GOOGLE_CLIENT_ID: z.string().optional(),
+    AUTH_SSO_GOOGLE_CLIENT_SECRET: z.string().optional(),
   })
   .transform((env) => {
     // ── Social providers ───────────────────────────────────────────
@@ -119,6 +123,14 @@ export const authEnvSchema = z
         MS_TENANT_ID: env.AUTH_SSO_MS_TENANT_ID ?? "",
         MS_CLIENT_ID: env.AUTH_SSO_MS_CLIENT_ID,
         MS_CLIENT_SECRET: env.AUTH_SSO_MS_CLIENT_SECRET ?? "",
+        scopes: env.AUTH_SSO_SCOPES,
+      };
+    } else if (env.AUTH_SSO_GOOGLE_CLIENT_ID && env.AUTH_SSO_DOMAIN) {
+      ssoConfig = {
+        providerId: "google" as const,
+        domain: env.AUTH_SSO_DOMAIN,
+        GOOGLE_CLIENT_ID: env.AUTH_SSO_GOOGLE_CLIENT_ID,
+        GOOGLE_CLIENT_SECRET: env.AUTH_SSO_GOOGLE_CLIENT_SECRET ?? "",
         scopes: env.AUTH_SSO_SCOPES,
       };
     }

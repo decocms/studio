@@ -9,8 +9,13 @@ import {
   createCollectionDeleteOutputSchema,
 } from "@decocms/bindings/collections";
 import { z } from "zod";
+import { posthog } from "../../posthog";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth, requireOrganization } from "../../core/mesh-context";
+import {
+  getUserId,
+  requireAuth,
+  requireOrganization,
+} from "../../core/mesh-context";
 import { getMcpListCache } from "../../mcp-clients/mcp-list-cache";
 import { ConnectionEntitySchema } from "./schema";
 
@@ -107,6 +112,22 @@ export const COLLECTION_CONNECTIONS_DELETE = defineTool({
     getMcpListCache()
       ?.invalidate(input.id)
       .catch(() => {});
+
+    const userId = getUserId(ctx);
+    if (userId) {
+      posthog.capture({
+        distinctId: userId,
+        event: "connection_deleted",
+        groups: { organization: organization.id },
+        properties: {
+          connection_id: connection.id,
+          connection_type: connection.connection_type,
+          app_name: connection.app_name ?? null,
+          organization_id: organization.id,
+          forced: input.force ?? false,
+        },
+      });
+    }
 
     return {
       item: connection,

@@ -1,12 +1,11 @@
 /**
  * Dev Assets Connection Utilities
  *
- * Shared utilities for the dev-only local file storage connection.
- * This connection is injected in dev mode to provide object storage
- * functionality without requiring an external S3 bucket.
+ * Shared utilities for the local file storage connection that is injected
+ * whenever no external S3 bucket is configured.
  */
 
-import { getSettings } from "../../settings";
+import { getObjectStorageS3Service } from "../../object-storage/factory";
 import { OBJECT_STORAGE_BINDING } from "@decocms/bindings/object-storage";
 import {
   getWellKnownDevAssetsConnection,
@@ -33,10 +32,13 @@ const DEV_ASSETS_TOOLS: ToolDefinition[] = OBJECT_STORAGE_BINDING.map(
 );
 
 /**
- * Check if we're running in dev mode
+ * True when this mesh instance falls back to DevObjectStorage (local
+ * filesystem) because no external S3 bucket is configured. The dev-assets
+ * pseudo-connection must be visible whenever this is true so that tools
+ * depending on the OBJECT_STORAGE binding still resolve.
  */
-export function isDevMode(): boolean {
-  return getSettings().nodeEnv !== "production";
+export function usesLocalObjectStorage(): boolean {
+  return getObjectStorageS3Service() === null;
 }
 
 /**
@@ -51,8 +53,8 @@ export function isDevAssetsConnection(
 
 /**
  * Create a dev-assets connection entity for local file storage.
- * This is injected in dev mode to provide object storage functionality
- * without requiring an external S3 bucket.
+ * Injected whenever S3 is not configured to provide object storage
+ * functionality without requiring an external bucket.
  */
 export function createDevAssetsConnectionEntity(
   orgId: string,

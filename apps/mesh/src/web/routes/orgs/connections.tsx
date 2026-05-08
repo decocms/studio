@@ -102,6 +102,7 @@ import {
 } from "@untitledui/icons";
 import { Suspense, useState } from "react";
 import { useForm } from "react-hook-form";
+import { track } from "@/web/lib/posthog-client";
 import {
   connectionFormSchema,
   type ConnectionFormData,
@@ -580,6 +581,9 @@ function CatalogItemCard({
   };
 
   const handleCommunityConfirm = () => {
+    track("connections_community_warning_confirmed", {
+      registry_item_id: item.id,
+    });
     setCommunityWarningOpen(false);
     if (pendingAction === "connect") {
       onConnect(item);
@@ -763,6 +767,11 @@ function ConnectionResults({
 
   const handleInlineConnect = async (item: RegistryItem) => {
     if (!org || !session?.user?.id) return;
+    track("connection_add_clicked", {
+      action: "connect_new",
+      registry_item_id: item.id,
+      source: "connections_page",
+    });
     setConnectingItemId(item.id);
 
     try {
@@ -793,27 +802,44 @@ function ConnectionResults({
       const { id } = await actions.create.mutateAsync(connectionData);
 
       // Handle OAuth flow
-      const mcpProxyUrl = new URL(`/mcp/${id}`, window.location.origin);
+      const mcpProxyUrl = new URL(
+        `/api/${org.slug}/mcp/${id}`,
+        window.location.origin,
+      );
       const authStatus = await isConnectionAuthenticated({
         url: mcpProxyUrl.href,
         token: null,
+        orgId: org.id,
       });
 
       if (authStatus.supportsOAuth && !authStatus.isAuthenticated) {
         const { token, tokenInfo, error } = await authenticateMcp({
           connectionId: id,
+          orgSlug: org.slug,
+          scope: "offline_access",
         });
         if (error || !token) {
+          track("connection_oauth_failed", {
+            connection_id: id,
+            flow: "connections_page_connect",
+            error: error ?? "no_token",
+          });
           toast.error(`Authentication failed: ${error ?? "no token received"}`);
           return;
         } else {
+          track("connection_oauth_succeeded", {
+            connection_id: id,
+            flow: "connections_page_connect",
+          });
           if (tokenInfo) {
             try {
               const response = await fetch(
-                `/api/connections/${id}/oauth-token`,
+                `/api/${org.slug}/connections/${id}/oauth-token`,
                 {
                   method: "POST",
-                  headers: { "Content-Type": "application/json" },
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
                   credentials: "include",
                   body: JSON.stringify({
                     accessToken: tokenInfo.accessToken,
@@ -866,6 +892,7 @@ function ConnectionResults({
   const selfClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const invalidateConnections = () => {
@@ -885,6 +912,7 @@ function ConnectionResults({
   const handleBulkDelete = async () => {
     setBulkDeleteOpen(false);
     const ids = [...selectedIds];
+    track("connections_bulk_delete", { count: ids.length });
     let deleted = 0;
 
     for (const id of ids) {
@@ -906,6 +934,10 @@ function ConnectionResults({
 
   const handleBulkToggleStatus = async (status: "active" | "inactive") => {
     const ids = [...selectedIds];
+    track("connections_bulk_status_toggled", {
+      count: ids.length,
+      to_status: status,
+    });
     let updated = 0;
 
     for (const id of ids) {
@@ -927,6 +959,10 @@ function ConnectionResults({
   const handleAddToAgent = async (agentId: string) => {
     const agent = agents.find((a) => a.id === agentId);
     if (!agent || !selfClient) return;
+    track("connections_bulk_add_to_agent", {
+      agent_id: agentId,
+      count: selectedIds.size,
+    });
 
     const existingConnIds = new Set(
       agent.connections.map((c) => c.connection_id),
@@ -1290,6 +1326,9 @@ function OrgMcpsContent() {
   const isCreating = search.action === "create";
 
   const openCreateDialog = () => {
+    track("connections_custom_dialog_opened", {
+      source: "connections_page",
+    });
     navigate({
       to: "/$org/settings/connections",
       params: { org: org.slug },
@@ -1340,6 +1379,10 @@ function OrgMcpsContent() {
     }
 
     const newId = generatePrefixedId("conn");
+    track("connection_custom_created", {
+      connection_type: connectionType,
+      ui_type: data.ui_type,
+    });
     // Create new connection
     await actions.create.mutateAsync({
       id: newId,
@@ -1952,7 +1995,13 @@ function OrgMcpsContent() {
                   { id: "connected", label: "Connected" },
                 ]}
                 activeTab={activeTab}
-                onTabChange={(id) => setActiveTab(id as ConnectionTab)}
+                onTabChange={(id) => {
+                  const next = id as ConnectionTab;
+                  if (next !== activeTab) {
+                    track("connections_page_tab_changed", { to_tab: next });
+                  }
+                  setActiveTab(next);
+                }}
               />
               <Suspense
                 fallback={

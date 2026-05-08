@@ -1,6 +1,6 @@
 # @decocms/typegen
 
-Generate typed TypeScript clients for [Mesh](https://github.com/decocms/mesh) Virtual MCPs.
+Generate typed TypeScript clients for [Studio](https://github.com/decocms/mesh) Virtual MCPs.
 
 ## Usage
 

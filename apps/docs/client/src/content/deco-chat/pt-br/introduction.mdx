@@ -17,12 +17,12 @@ Se MCP é a interface padrão para acesso a tools, o deco CMS é a **camada de p
 **Links oficiais:**
 
 - **deco CMS**: [decocms.com](https://www.decocms.com/)
-- **O MCP Mesh**: [decocms.com/mesh](https://www.decocms.com/mesh)
+- **O Studio**: [decocms.com/studio](https://www.decocms.com/studio)
 - **MCP Studio**: [decocms.com/mcp-studio](https://www.decocms.com/mcp-studio)
 
 Se você conheceu a gente antes, como **deco.cx**, e está buscando **headless CMS + storefront**, visite [deco.cx](https://www.decocms.com/use-case/deco-cx). Veja a documentação do deco.cx em [docs.deco.cx](https://docs.deco.cx/en/getting-started/overview).
 
-## Comece pelo MCP Mesh
+## Comece pelo Studio
 
 Escolha uma opção:
 
@@ -87,7 +87,7 @@ A aplicação ficará disponível em `http://localhost:8080`.
 
 **Mais detalhes:** [Kubernetes: Helm Chart](/pt-br/mcp-mesh/deploy/kubernetes-helm-chart)
 
-## Aprenda o Mesh (conceitos + superfícies do produto)
+## Aprenda o Studio (conceitos + superfícies do produto)
 
 - **[Visão geral](/pt-br/mcp-mesh/overview)**
 - **[Quickstart](/pt-br/mcp-mesh/quickstart)**
@@ -101,10 +101,10 @@ A aplicação ficará disponível em `http://localhost:8080`.
 <Callout type="warning">
   **Divisão da documentação (guia rápido):**
 
-  - **O MCP Mesh** → Auto-hospedagem, deploy e operação do Mesh (recomendado).
+  - **O Studio** → Auto-hospedagem, deploy e operação do Studio (recomendado).
   - **Admin Legado** → Se você usa `admin.decocms.com` (ainda suportado, **em breve descontinuado**).
 
-  Estamos lançando o **MCP Studio** (em cima do Mesh), que vai trazer as capacidades do admin SaaS atual para o Mesh (incluindo uma versão hospedada por nós) e substituir o SaaS legado ao longo do tempo.
+  Estamos lançando o **MCP Studio** (em cima do Studio), que vai trazer as capacidades do admin SaaS atual para o Studio (incluindo uma versão hospedada por nós) e substituir o SaaS legado ao longo do tempo.
 </Callout>
 
 ## Problema: a lacuna entre demo e produção
@@ -119,16 +119,16 @@ IA é fácil de demonstrar e difícil de **operar**.
 
 Para contexto sobre a visão da plataforma, leia [The architecture of an AI-native company](https://www.decocms.com/blog/post/ai-native-company).
 
-## Estrutura da plataforma: Mesh → Studio → Apps & Store
+## Estrutura da plataforma: Studio → Studio → Apps & Store
 
-### O MCP Mesh (fundação)
+### O Studio (fundação)
 Um **control plane** open-source para tráfego MCP. Ele fica entre seus clientes MCP (Cursor, Claude, VS Code, agentes customizados) e seus servidores MCP, oferecendo uma camada unificada de auth, policy e observabilidade.
 
 ### MCP Studio (desenvolvimento)
 Um admin no-code + SDK para empacotar capacidades MCP como blocos reutilizáveis.
 
 <Callout type="info">
-  **Em breve:** este é o sucessor do admin SaaS atual, construído em cima do MCP Mesh.
+  **Em breve:** este é o sucessor do admin SaaS atual, construído em cima do Studio.
 </Callout>
 
 ### MCP Apps & Store (distribuição)

@@ -5,6 +5,7 @@
  */
 
 import { z } from "zod";
+import { posthog } from "../../posthog";
 import { defineTool } from "../../core/define-tool";
 import {
   requireAuth,
@@ -46,6 +47,25 @@ export const AUTOMATION_RUN = defineTool({
     }
 
     const result = await ctx.automationRunner(input.id, org.id, userId);
+
+    posthog.capture({
+      distinctId: userId,
+      event: "automation_run",
+      groups: { organization: org.id },
+      properties: {
+        organization_id: org.id,
+        automation_id: input.id,
+        thread_id: "taskId" in result ? result.taskId : undefined,
+        status:
+          "skipped" in result
+            ? "skipped"
+            : "error" in result
+              ? "error"
+              : "started",
+        skip_reason: "skipped" in result ? result.skipped : undefined,
+        error_message: "error" in result ? result.error : undefined,
+      },
+    });
 
     if ("skipped" in result) {
       return { skipped: result.skipped };

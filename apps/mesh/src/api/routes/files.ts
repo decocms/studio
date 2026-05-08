@@ -19,7 +19,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { MeshContext } from "@/core/mesh-context";
 import { generatePresignedGetUrl } from "./decopilot/file-materializer";
-import { isDevMode } from "@/tools/connection/dev-assets";
+import { usesLocalObjectStorage } from "@/tools/connection/dev-assets";
 
 type Variables = { meshContext: MeshContext };
 
@@ -48,9 +48,9 @@ app.get("/:org/files/*", async (c) => {
     throw new HTTPException(503, { message: "Object storage not configured" });
   }
 
-  // In dev mode, DevObjectStorage returns data: URIs which browsers can't
-  // follow as 302 redirects. Serve the bytes inline instead.
-  if (presignedUrl.startsWith("data:") && isDevMode()) {
+  // DevObjectStorage returns data: URIs which browsers can't follow as 302
+  // redirects. Serve the bytes inline instead.
+  if (presignedUrl.startsWith("data:") && usesLocalObjectStorage()) {
     const match = presignedUrl.match(/^data:([^;]+);base64,(.+)$/s);
     if (!match) {
       throw new HTTPException(500, {

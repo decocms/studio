@@ -25,6 +25,7 @@ import { useMainPanelTabs, type Tab } from "./use-main-panel-tabs";
 import { selectTabSlots } from "./select-tab-slots";
 import { HeaderTabButton } from "./header-tab-button";
 import { TabOverflowMenu } from "./tab-overflow-menu";
+import { track } from "@/web/lib/posthog-client";
 
 const MAX_VISIBLE_TABS = 6;
 
@@ -58,6 +59,14 @@ export function MainPanelTabsBar({
   );
 
   const handleSelect = (id: string) => {
+    const clicked = tabs.find((t) => t.id === id);
+    const wasActive = effectiveActiveId === id && mainOpen;
+    track("main_panel_tab_clicked", {
+      virtual_mcp_id: virtualMcpId,
+      tab_id: id,
+      tab_kind: clicked?.kind ?? null,
+      was_active: wasActive,
+    });
     if (id === "automations") {
       const target = resolveAutomationsPillClickTarget({
         activeTab,

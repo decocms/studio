@@ -24,6 +24,8 @@ export interface Task {
   virtual_mcp_id?: string;
   /** True when this task was triggered by an automation */
   fromAutomation?: boolean;
+  /** Git branch associated with this thread, when the vMCP is GitHub-linked. */
+  branch?: string | null;
 }
 
 export type { ChatMessage } from "../types.ts";

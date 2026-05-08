@@ -29,6 +29,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@deco/ui/components/dialog.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   type ConnectionEntity,
@@ -52,12 +57,15 @@ import {
 } from "@untitledui/icons";
 import { Suspense, useDeferredValue, useState } from "react";
 import { toast } from "sonner";
+import { track } from "@/web/lib/posthog-client";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 type ConnectionDialogMode = "add" | "browse";
+
+type AttachMode = "existing" | "clone" | "new" | "custom";
 
 type ConnectionDialogProps = {
   open: boolean;
@@ -67,11 +75,14 @@ type ConnectionDialogProps = {
 } & (
   | {
       mode?: "add";
+      /** Agent ID for `agent_connection_attached` tracking. */
+      agentId: string;
       addedConnectionIds: Set<string>;
       onAdd: (connectionId: string) => void;
     }
   | {
       mode: "browse";
+      agentId?: undefined;
       addedConnectionIds?: undefined;
       onAdd?: undefined;
     }
@@ -85,6 +96,7 @@ type ConnectionTab = "all" | "connected";
 
 function ConnectionDialogContent({
   mode = "add",
+  agentId,
   addedConnectionIds,
   onAdd,
   onCloneAndAdd,
@@ -96,6 +108,7 @@ function ConnectionDialogContent({
   defaultTab = "connected",
 }: {
   mode?: ConnectionDialogMode;
+  agentId?: string;
   addedConnectionIds: Set<string>;
   onAdd: (connectionId: string) => void;
   onCloneAndAdd: (base: ConnectionEntity) => void;
@@ -109,7 +122,7 @@ function ConnectionDialogContent({
   const { org } = useProjectContext();
   const deferredSearch = useDeferredValue(search);
   const isSearchStale = search !== deferredSearch;
-  const searchLower = deferredSearch.toLowerCase();
+  const searchLower = deferredSearch.trim().toLowerCase();
 
   const [activeTab, setActiveTab] = useLocalStorage<ConnectionTab>(
     LOCALSTORAGE_KEYS.connectionsTab(org.slug) +
@@ -117,11 +130,19 @@ function ConnectionDialogContent({
     (existing) => existing ?? defaultTab,
   );
 
+  const handleTabChange = (nextTab: ConnectionTab) => {
+    if (nextTab !== activeTab) {
+      track("connections_dialog_tab_changed", { to_tab: nextTab });
+    }
+    setActiveTab(nextTab);
+  };
+
   // Connections - server-side search with infinite scroll
   const PAGE_SIZE = 100;
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const where = deferredSearch?.trim()
@@ -222,11 +243,32 @@ function ConnectionDialogContent({
 
   const showCatalog = activeTab === "all" || !!searchLower;
 
-  // Catalog items, excluding apps already shown as connected cards
+  // Catalog items, excluding apps already shown as connected cards.
+  // The client-side search filter is a safety net: `useMergedStoreDiscovery`
+  // uses `keepPreviousData`, so the previous query's results (sorted with
+  // verified items first) stay visible while a new search request is in
+  // flight. Without this filter, the user sees unrelated items that happened
+  // to be in the previous page.
   const catalogItems = showCatalog
     ? mergedDiscovery.items.filter((item: RegistryItem) => {
         const appName = getRegistryItemAppName(item);
-        return !(appName && connectedAppNames.has(appName));
+        if (appName && connectedAppNames.has(appName)) return false;
+        if (!searchLower) return true;
+        const meshMeta = item._meta?.["mcp.mesh"];
+        const haystack = [
+          item.title,
+          item.description,
+          item.name,
+          item.server?.title,
+          item.server?.description,
+          item.server?.name,
+          meshMeta?.friendly_name,
+          meshMeta?.friendlyName,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(searchLower);
       })
     : [];
 
@@ -281,7 +323,14 @@ function ConnectionDialogContent({
               <Check size={11} /> Connected
             </Badge>
           }
-          onClick={() => onBrowseNavigate?.(slug)}
+          onClick={() => {
+            track("connection_browse_clicked", {
+              app_name: firstInstance.app_name ?? null,
+              connection_id: firstInstance.id,
+              instances_count: connections.length,
+            });
+            onBrowseNavigate?.(slug);
+          }}
         />
       );
     }
@@ -307,8 +356,26 @@ function ConnectionDialogContent({
               onClick={(e) => {
                 e.stopPropagation();
                 if (availableInstance) {
+                  track("connection_add_clicked", {
+                    action: "use_existing",
+                    app_name: firstInstance.app_name ?? null,
+                    connection_id: availableInstance.id,
+                  });
+                  if (agentId) {
+                    track("agent_connection_attached", {
+                      agent_id: agentId,
+                      connection_id: availableInstance.id,
+                      app_name: firstInstance.app_name ?? null,
+                      mode: "existing",
+                    });
+                  }
                   onAdd(availableInstance.id);
                 } else {
+                  track("connection_add_clicked", {
+                    action: "clone",
+                    app_name: firstInstance.app_name ?? null,
+                    base_connection_id: firstInstance.id,
+                  });
                   onCloneAndAdd(firstInstance);
                 }
               }}
@@ -323,9 +390,7 @@ function ConnectionDialogContent({
 
   // Render a catalog item card — no instances yet
   const renderCatalogItem = (item: RegistryItem) => {
-    const meshMeta = item._meta?.["mcp.mesh"] as
-      | Record<string, string>
-      | undefined;
+    const meshMeta = item._meta?.["mcp.mesh"];
     const title =
       meshMeta?.friendlyName ||
       meshMeta?.friendly_name ||
@@ -340,6 +405,9 @@ function ConnectionDialogContent({
       item.server?.icons?.[0]?.src ||
       getGitHubAvatarUrl(item.server?.repository) ||
       null;
+    const isOfficial = meshMeta?.official === true;
+    const isVerified = meshMeta?.verified === true;
+    const isMadeByDeco = meshMeta?.owner === "deco";
 
     return (
       <ConnectionCard
@@ -348,24 +416,71 @@ function ConnectionDialogContent({
         fallbackIcon={<Container />}
         headerActionsAlwaysVisible
         headerActions={
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 px-3 text-xs font-medium"
-            disabled={connectingItemId !== null}
-            onClick={(e) => {
-              e.stopPropagation();
-              onConnectAndAdd(item);
-            }}
-          >
-            {connectingItemId === item.id ? (
-              <Loading01 size={14} className="animate-spin" />
-            ) : mode === "browse" ? (
-              "Connect"
-            ) : (
-              "Add"
+          <div className="flex items-center gap-1.5">
+            {isMadeByDeco && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex items-center justify-center size-5 rounded-md bg-muted shrink-0">
+                    <img
+                      src="/logos/deco logo.svg"
+                      alt="Made by Deco"
+                      className="size-3"
+                    />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Built and maintained by Deco</TooltipContent>
+              </Tooltip>
             )}
-          </Button>
+            {!isMadeByDeco && isOfficial && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" size="icon">
+                    <CheckVerified02 />
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Built and maintained by the official vendor
+                </TooltipContent>
+              </Tooltip>
+            )}
+            {!isMadeByDeco && !isOfficial && isVerified && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" size="icon">
+                    <CheckVerified02 />
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>Verified by the Deco team</TooltipContent>
+              </Tooltip>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-3 text-xs font-medium"
+              disabled={connectingItemId !== null}
+              onClick={(e) => {
+                e.stopPropagation();
+                track("connection_add_clicked", {
+                  action: "connect_new",
+                  registry_item_id: item.id,
+                  app_name:
+                    meshMeta?.friendlyName ||
+                    item.server?.name ||
+                    item.name ||
+                    null,
+                });
+                onConnectAndAdd(item);
+              }}
+            >
+              {connectingItemId === item.id ? (
+                <Loading01 size={14} className="animate-spin" />
+              ) : mode === "browse" ? (
+                "Connect"
+              ) : (
+                "Add"
+              )}
+            </Button>
+          </div>
         }
       />
     );
@@ -382,13 +497,16 @@ function ConnectionDialogContent({
               { id: "connected", label: "Connected" },
             ]}
             activeTab={activeTab}
-            onTabChange={(id) => setActiveTab(id as ConnectionTab)}
+            onTabChange={(id) => handleTabChange(id as ConnectionTab)}
           />
           <Button
             variant="outline"
             size="sm"
             className="h-7 px-2 text-sm"
-            onClick={onCreateConnection}
+            onClick={() => {
+              track("connections_dialog_custom_clicked");
+              onCreateConnection();
+            }}
           >
             <Plus size={12} />
             Custom Connection
@@ -505,12 +623,27 @@ export function AddConnectionDialog({
   ...rest
 }: ConnectionDialogProps) {
   const mode: ConnectionDialogMode = rest.mode ?? "add";
+  const agentId = "agentId" in rest ? rest.agentId : undefined;
   const addedConnectionIds =
     "addedConnectionIds" in rest
       ? (rest.addedConnectionIds ?? new Set<string>())
       : new Set<string>();
   const onAdd =
     "onAdd" in rest && rest.onAdd ? rest.onAdd : (_id: string) => {};
+
+  const trackAttach = (
+    id: string,
+    appName: string | null,
+    attachMode: AttachMode,
+  ) => {
+    if (!agentId) return;
+    track("agent_connection_attached", {
+      agent_id: agentId,
+      connection_id: id,
+      app_name: appName,
+      mode: attachMode,
+    });
+  };
 
   const [connectingItemId, setConnectingItemId] = useState<string | null>(null);
   const [search, setSearch] = useState(initialSearch);
@@ -550,38 +683,58 @@ export function AddConnectionDialog({
       const id = created.id;
 
       // Handle OAuth if needed
-      const mcpProxyUrl = new URL(`/mcp/${id}`, window.location.origin);
+      const mcpProxyUrl = new URL(
+        `/api/${org.slug}/mcp/${id}`,
+        window.location.origin,
+      );
       const authStatus = await isConnectionAuthenticated({
         url: mcpProxyUrl.href,
         token: null,
+        orgId: org.id,
       });
 
       if (authStatus.supportsOAuth && !authStatus.isAuthenticated) {
         const { token, tokenInfo, error } = await authenticateMcp({
           connectionId: id,
+          orgSlug: org.slug,
+          scope: "offline_access",
         });
         if (error || !token) {
+          track("connection_oauth_failed", {
+            connection_id: id,
+            flow: "clone",
+            error: error ?? "no_token",
+          });
           toast.error(`Authentication failed: ${error ?? "no token received"}`);
           // Clean up the orphaned connection
           await connectionActions.delete.mutateAsync(id);
           return;
         }
+        track("connection_oauth_succeeded", {
+          connection_id: id,
+          flow: "clone",
+        });
         if (tokenInfo) {
           try {
-            const response = await fetch(`/api/connections/${id}/oauth-token`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              credentials: "include",
-              body: JSON.stringify({
-                accessToken: tokenInfo.accessToken,
-                refreshToken: tokenInfo.refreshToken,
-                expiresIn: tokenInfo.expiresIn,
-                scope: tokenInfo.scope,
-                clientId: tokenInfo.clientId,
-                clientSecret: tokenInfo.clientSecret,
-                tokenEndpoint: tokenInfo.tokenEndpoint,
-              }),
-            });
+            const response = await fetch(
+              `/api/${org.slug}/connections/${id}/oauth-token`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                credentials: "include",
+                body: JSON.stringify({
+                  accessToken: tokenInfo.accessToken,
+                  refreshToken: tokenInfo.refreshToken,
+                  expiresIn: tokenInfo.expiresIn,
+                  scope: tokenInfo.scope,
+                  clientId: tokenInfo.clientId,
+                  clientSecret: tokenInfo.clientSecret,
+                  tokenEndpoint: tokenInfo.tokenEndpoint,
+                }),
+              },
+            );
             if (!response.ok) {
               await connectionActions.update.mutateAsync({
                 id,
@@ -607,6 +760,7 @@ export function AddConnectionDialog({
         });
       }
 
+      trackAttach(id, base.app_name ?? null, "clone");
       onAdd(id);
     } catch (err) {
       console.error("Failed to add connection:", err);
@@ -648,38 +802,61 @@ export function AddConnectionDialog({
       const { id } = await connectionActions.create.mutateAsync(connectionData);
 
       // Handle OAuth flow
-      const mcpProxyUrl = new URL(`/mcp/${id}`, window.location.origin);
+      const mcpProxyUrl = new URL(
+        `/api/${org.slug}/mcp/${id}`,
+        window.location.origin,
+      );
       const authStatus = await isConnectionAuthenticated({
         url: mcpProxyUrl.href,
         token: null,
+        orgId: org.id,
       });
 
       if (authStatus.supportsOAuth && !authStatus.isAuthenticated) {
         const { token, tokenInfo, error } = await authenticateMcp({
           connectionId: id,
+          orgSlug: org.slug,
+          scope: "offline_access",
         });
         if (error || !token) {
-          toast.error(`Authentication failed: ${error ?? "no token received"}`);
+          track("connection_oauth_failed", {
+            connection_id: id,
+            flow: "connect_new",
+            error: error ?? "no_token",
+          });
+          toast.warning("Couldn't sign in to this connection", {
+            description: `It was added to your agent, but its sign-in setup looks off. You can try authenticating again later from the connection's settings. (${error ?? "no token received"})`,
+          });
+          trackAttach(id, connectionData.app_name ?? null, "new");
           onAdd(id);
           return;
         }
+        track("connection_oauth_succeeded", {
+          connection_id: id,
+          flow: "connect_new",
+        });
 
         if (tokenInfo) {
           try {
-            const response = await fetch(`/api/connections/${id}/oauth-token`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              credentials: "include",
-              body: JSON.stringify({
-                accessToken: tokenInfo.accessToken,
-                refreshToken: tokenInfo.refreshToken,
-                expiresIn: tokenInfo.expiresIn,
-                scope: tokenInfo.scope,
-                clientId: tokenInfo.clientId,
-                clientSecret: tokenInfo.clientSecret,
-                tokenEndpoint: tokenInfo.tokenEndpoint,
-              }),
-            });
+            const response = await fetch(
+              `/api/${org.slug}/connections/${id}/oauth-token`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                credentials: "include",
+                body: JSON.stringify({
+                  accessToken: tokenInfo.accessToken,
+                  refreshToken: tokenInfo.refreshToken,
+                  expiresIn: tokenInfo.expiresIn,
+                  scope: tokenInfo.scope,
+                  clientId: tokenInfo.clientId,
+                  clientSecret: tokenInfo.clientSecret,
+                  tokenEndpoint: tokenInfo.tokenEndpoint,
+                }),
+              },
+            );
             if (!response.ok) {
               await connectionActions.update.mutateAsync({
                 id,
@@ -709,6 +886,7 @@ export function AddConnectionDialog({
         toast.success("Connected");
       }
 
+      trackAttach(id, connectionData.app_name ?? null, "new");
       onAdd(id);
     } catch (err) {
       console.error("Failed to connect:", err);
@@ -747,6 +925,7 @@ export function AddConnectionDialog({
         >
           <ConnectionDialogContent
             mode={mode}
+            agentId={agentId}
             addedConnectionIds={addedConnectionIds}
             onAdd={onAdd}
             onCloneAndAdd={handleCloneAndAdd}
@@ -767,30 +946,49 @@ export function AddConnectionDialog({
           setCreateOpen(false);
 
           // Handle OAuth if needed (same flow as handleConnectAndAdd)
-          const mcpProxyUrl = new URL(`/mcp/${id}`, window.location.origin);
+          const mcpProxyUrl = new URL(
+            `/api/${org.slug}/mcp/${id}`,
+            window.location.origin,
+          );
           const authStatus = await isConnectionAuthenticated({
             url: mcpProxyUrl.href,
             token: null,
+            orgId: org.id,
           });
 
           if (authStatus.supportsOAuth && !authStatus.isAuthenticated) {
             const { token, tokenInfo, error } = await authenticateMcp({
               connectionId: id,
+              orgSlug: org.slug,
+              scope: "offline_access",
             });
             if (error || !token) {
-              toast.error(
-                `Authentication failed: ${error ?? "no token received"}`,
-              );
-              await connectionActions.delete.mutateAsync(id);
+              track("connection_oauth_failed", {
+                connection_id: id,
+                flow: "custom_create",
+                error: error ?? "no_token",
+              });
+              toast.warning("Couldn't sign in to this connection", {
+                description: `It was added to your agent, but its sign-in setup looks off. You can try authenticating again later from the connection's settings. (${error ?? "no token received"})`,
+              });
+              trackAttach(id, null, "custom");
+              onAdd(id);
+              onOpenChange(false);
               return;
             }
+            track("connection_oauth_succeeded", {
+              connection_id: id,
+              flow: "custom_create",
+            });
             if (tokenInfo) {
               try {
                 const response = await fetch(
-                  `/api/connections/${id}/oauth-token`,
+                  `/api/${org.slug}/connections/${id}/oauth-token`,
                   {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: {
+                      "Content-Type": "application/json",
+                    },
                     credentials: "include",
                     body: JSON.stringify({
                       accessToken: tokenInfo.accessToken,
@@ -831,6 +1029,9 @@ export function AddConnectionDialog({
             });
           }
 
+          // app_name unknown for custom-create; record null and let the
+          // server-side connection_created backfill the breakdown.
+          trackAttach(id, null, "custom");
           onAdd(id);
           onOpenChange(false);
         }}

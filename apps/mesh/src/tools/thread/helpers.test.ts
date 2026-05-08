@@ -14,7 +14,7 @@ const BASE_THREAD: Thread = {
   created_at: "2025-01-01T00:00:00.000Z",
   updated_at: "2025-01-01T00:00:00.000Z",
   created_by: "user_test",
-  updated_by: null,
+  updated_by: undefined,
   hidden: null,
   status: "completed",
   trigger_id: null,
@@ -22,7 +22,9 @@ const BASE_THREAD: Thread = {
   run_owner_pod: null,
   run_config: null,
   run_started_at: null,
+  inflight_async_jobs: null,
   virtual_mcp_id: "",
+  branch: null,
   metadata: {},
 };
 

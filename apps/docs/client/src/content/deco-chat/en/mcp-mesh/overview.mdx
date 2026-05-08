@@ -6,9 +6,9 @@ icon: Network
 
 import Callout from "../../../../components/ui/Callout.astro";
 
-## What is the MCP Mesh?
+## What is Studio?
 
-The **MCP Mesh** is a **control plane for MCP traffic**. It sits between MCP clients (Cursor, Claude Desktop, custom agents) and MCP servers, providing a centralized layer for **authentication, authorization, credential management, and observability**.
+The **Studio** is a **control plane for MCP traffic**. It sits between MCP clients (Cursor, Claude Desktop, custom agents) and MCP servers, providing a centralized layer for **authentication, authorization, credential management, and observability**.
 
 ## The problem
 
@@ -19,7 +19,7 @@ When MCP moves from a few PoCs to production usage, teams start paying an “int
 - **Operational blind spots**: no unified logs/traces to debug failures end-to-end
 - **Tool surface explosion**: too many tools increases context size, latency, and tool-selection errors
 
-The Mesh centralizes these concerns once, so you can operate MCP traffic like any other production surface.
+Studio centralizes these concerns once, so you can operate MCP traffic like any other production surface.
 
 ## High-level architecture
 
@@ -33,7 +33,7 @@ The Mesh centralizes these concerns once, so you can operate MCP traffic like an
                         └──────────────────┘
 ```
 
-## What the Mesh centralizes
+## What Studio centralizes
 
 - **Routing + execution**: which MCP to call and how to authenticate it
 - **Policy enforcement**: who can access which tools (and through which agents)
@@ -51,7 +51,7 @@ The Mesh centralizes these concerns once, so you can operate MCP traffic like an
 - **Deploy**: self-host locally (npx / Docker Compose) or on Kubernetes (Helm).
 
 <Callout type="info">
-  We’re releasing the MCP Mesh to the open-source community in **December 2025**.
+  We’re releasing Studio to the open-source community in **December 2025**.
   It’s new, so these docs reflect what exists **in production today** — but we ship new features every week and will keep updating this documentation as those features land. 
 </Callout>
 

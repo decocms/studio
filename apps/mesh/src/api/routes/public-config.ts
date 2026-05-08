@@ -10,6 +10,7 @@ import { getConfig, getThemeConfig, type ThemeConfig } from "@/core/config";
 import { isLocalMode } from "@/auth/local-mode";
 import { getInternalUrl } from "@/core/server-constants";
 import { getSettings } from "@/settings";
+import { buildAuthConfig, type AuthConfig } from "@/api/routes/auth";
 
 const app = new Hono();
 
@@ -43,13 +44,34 @@ export type PublicConfig = {
    * Requires FIRECRAWL_API_KEY to be configured.
    */
   brandExtractEnabled?: boolean;
+  /**
+   * Authentication methods available on this deployment.
+   * Replaces the previous /api/auth/custom/config endpoint.
+   */
+  auth: AuthConfig;
+  /**
+   * PostHog frontend config. `null` when POSTHOG_KEY is unset so the
+   * client can disable analytics cleanly without checking for `undefined`.
+   */
+  posthog: { key: string; host: string } | null;
 };
+
+const POSTHOG_DEFAULT_HOST = "https://us.i.posthog.com";
+
+function buildPosthogConfig(): PublicConfig["posthog"] {
+  const key = process.env.POSTHOG_KEY;
+  if (!key) return null;
+  return {
+    key,
+    host: process.env.POSTHOG_HOST ?? POSTHOG_DEFAULT_HOST,
+  };
+}
 
 /**
  * Public Configuration Endpoint
  *
- * Returns UI customization settings that don't require authentication.
- * This includes theme overrides and other public settings.
+ * Returns UI customization settings, auth methods, and analytics config.
+ * No authentication required — fetched by the SPA on boot.
  *
  * Route: GET /api/config
  */
@@ -61,6 +83,8 @@ app.get("/", (c) => {
     ...(isLocalMode() && { internalUrl: getInternalUrl() }),
     ...(getSettings().enableDecoImport && { enableDecoImport: true }),
     brandExtractEnabled: !!getSettings().firecrawlApiKey,
+    auth: buildAuthConfig(),
+    posthog: buildPosthogConfig(),
   };
 
   return c.json({ success: true, config });

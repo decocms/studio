@@ -19,9 +19,10 @@ export function ensureModelCompatibility(
   models: ModelsConfig,
   messages: MessageWithParts[],
 ): void {
-  const modelHasVision = models.thinking.capabilities?.vision ?? false;
+  const caps = models.thinking.capabilities;
+  const modelSupportsFiles = (caps?.vision ?? false) || (caps?.file ?? false);
 
-  if (!modelHasVision) {
+  if (!modelSupportsFiles) {
     const hasFiles = messages.some((message) =>
       message.parts?.some((part) => part.type === "file"),
     );

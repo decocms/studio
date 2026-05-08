@@ -35,6 +35,16 @@ export class OrganizationSettingsStorage
           ? JSON.parse(record.registry_config)
           : record.registry_config
         : null,
+      simple_mode: record.simple_mode
+        ? typeof record.simple_mode === "string"
+          ? JSON.parse(record.simple_mode)
+          : record.simple_mode
+        : null,
+      default_home_agents: record.default_home_agents
+        ? typeof record.default_home_agents === "string"
+          ? JSON.parse(record.default_home_agents)
+          : record.default_home_agents
+        : null,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };
@@ -45,7 +55,11 @@ export class OrganizationSettingsStorage
     data?: Partial<
       Pick<
         OrganizationSettings,
-        "sidebar_items" | "enabled_plugins" | "registry_config"
+        | "sidebar_items"
+        | "enabled_plugins"
+        | "registry_config"
+        | "simple_mode"
+        | "default_home_agents"
       >
     >,
   ): Promise<OrganizationSettings> {
@@ -59,6 +73,12 @@ export class OrganizationSettingsStorage
     const registryConfigJson = data?.registry_config
       ? JSON.stringify(data.registry_config)
       : null;
+    const simpleModeJson = data?.simple_mode
+      ? JSON.stringify(data.simple_mode)
+      : null;
+    const defaultHomeAgentsJson = data?.default_home_agents
+      ? JSON.stringify(data.default_home_agents)
+      : null;
 
     await this.db
       .insertInto("organization_settings")
@@ -67,6 +87,8 @@ export class OrganizationSettingsStorage
         sidebar_items: sidebarItemsJson,
         enabled_plugins: enabledPluginsJson,
         registry_config: registryConfigJson,
+        simple_mode: simpleModeJson,
+        default_home_agents: defaultHomeAgentsJson,
         createdAt: now,
         updatedAt: now,
       })
@@ -75,6 +97,10 @@ export class OrganizationSettingsStorage
           sidebar_items: sidebarItemsJson ? sidebarItemsJson : undefined,
           enabled_plugins: enabledPluginsJson ? enabledPluginsJson : undefined,
           registry_config: registryConfigJson ? registryConfigJson : undefined,
+          simple_mode: simpleModeJson ? simpleModeJson : undefined,
+          default_home_agents: defaultHomeAgentsJson
+            ? defaultHomeAgentsJson
+            : undefined,
           updatedAt: now,
         }),
       )
@@ -88,6 +114,8 @@ export class OrganizationSettingsStorage
         sidebar_items: data?.sidebar_items ?? null,
         enabled_plugins: data?.enabled_plugins ?? null,
         registry_config: data?.registry_config ?? null,
+        simple_mode: data?.simple_mode ?? null,
+        default_home_agents: data?.default_home_agents ?? null,
         createdAt: now,
         updatedAt: now,
       };

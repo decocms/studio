@@ -7,13 +7,6 @@ import { KEYS } from "../../../lib/query-keys";
 import type { ChatMessage, Task, TasksQueryData } from "./types.ts";
 import { TASK_CONSTANTS } from "./types.ts";
 
-export interface TaskCacheFilters {
-  owner: "me" | "automation" | "all";
-  status: "open" | "archived";
-  virtualMcpId?: string;
-  userId?: string | null;
-}
-
 /**
  * Update task across every cached task list where it appears.
  * Returns true if the task was found (and updated) in any cache entry.
@@ -41,6 +34,7 @@ export function updateTaskInCache(
         updated_at: updates.updated_at ?? current.updated_at,
         hidden: updates.hidden ?? current.hidden,
         status: updates.status ?? current.status,
+        branch: "branch" in updates ? updates.branch : current.branch,
       };
 
       const items = [...data.items];
@@ -50,41 +44,6 @@ export function updateTaskInCache(
     },
   );
   return found;
-}
-
-/**
- * Add task optimistically to the cache
- */
-export function addTaskToCache(
-  queryClient: QueryClient,
-  locator: string,
-  task: Task,
-  filters: TaskCacheFilters,
-): void {
-  const queryKey = KEYS.tasks(locator, filters);
-
-  const currentData = queryClient.getQueryData<TasksQueryData>(queryKey);
-
-  if (!currentData) {
-    queryClient.setQueryData(queryKey, {
-      items: [task],
-      hasMore: false,
-      totalCount: 1,
-    });
-    return;
-  }
-
-  // Check if task already exists in cache
-  const taskExists = currentData.items.some((t) => t.id === task.id);
-  if (taskExists) {
-    return;
-  }
-
-  queryClient.setQueryData(queryKey, {
-    ...currentData,
-    items: [task, ...currentData.items],
-    totalCount: (currentData.totalCount ?? currentData.items.length) + 1,
-  });
 }
 
 /**

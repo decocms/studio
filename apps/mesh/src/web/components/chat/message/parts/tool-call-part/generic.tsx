@@ -28,6 +28,7 @@ import { stripMcpServerPrefix } from "@/web/lib/tool-namespace";
 import { useToolDefinitionLookup } from "@/web/hooks/use-tool-definition-lookup";
 import { toTitleCase } from "./utils.tsx";
 import type {
+  McpUiDisplayMode,
   McpUiMessageRequest,
   McpUiUpdateModelContextRequest,
 } from "@modelcontextprotocol/ext-apps";
@@ -42,6 +43,7 @@ import {
   RefreshCw01,
   XClose,
 } from "@untitledui/icons";
+import { TOOL_DISPLAY_MAP } from "./tool-display-map.ts";
 import type { DynamicToolUIPart, ToolUIPart } from "ai";
 import type React from "react";
 import { Suspense } from "react";
@@ -208,11 +210,14 @@ export function GenericToolCallPart({
     connectionId ? rawToolName : null,
     connectionId,
     org.id,
+    org.slug,
   );
   const meta = toolDef?._meta ?? toolMeta;
   const gatewayClientId = getGatewayClientId(meta);
   const toolName = stripToolNamespace(mcpStrippedName, gatewayClientId);
-  const friendlyName = toolDef?.title ?? toTitleCase(toolName);
+  const toolDisplay = TOOL_DISPLAY_MAP[toolName];
+  const friendlyName =
+    toolDef?.title ?? toolDisplay?.label ?? toTitleCase(toolName);
   const uiResourceUri = getUIResourceUri(meta);
 
   const hasMCPApp = !!uiResourceUri && part.state === "output-available";
@@ -242,6 +247,16 @@ export function GenericToolCallPart({
       }),
       replace: true,
     });
+  };
+
+  const handleRequestDisplayMode = (
+    mode: McpUiDisplayMode,
+  ): McpUiDisplayMode => {
+    if (mode === "fullscreen" && canOpenInPanel) {
+      handleOpenInPanel();
+      return "fullscreen";
+    }
+    return "inline";
   };
 
   const handleAppMessage = (params: McpUiMessageRequest["params"]) => {
@@ -302,15 +317,15 @@ export function GenericToolCallPart({
   return (
     <div>
       <ToolCallShell
-        icon={
-          isCancelled ? (
-            <XClose />
-          ) : hasMCPApp ? (
-            <LayersTwo01 className="size-4 text-muted-foreground" />
-          ) : (
-            <Atom02 className="size-4 text-muted-foreground" />
-          )
-        }
+        icon={(() => {
+          if (isCancelled) return <XClose />;
+          if (hasMCPApp)
+            return <LayersTwo01 className="size-4 text-muted-foreground" />;
+          const MappedIcon = toolDisplay?.icon;
+          if (MappedIcon)
+            return <MappedIcon className="size-4 text-muted-foreground" />;
+          return <Atom02 className="size-4 text-muted-foreground" />;
+        })()}
         iconDestructive={isCancelled}
         trailing={
           <AnnotationBadges annotations={annotations} toolMeta={toolMeta} />
@@ -369,6 +384,7 @@ export function GenericToolCallPart({
                 uiResourceUri={uiResourceUri}
                 connectionId={connectionId}
                 orgId={org.id}
+                orgSlug={org.slug}
                 toolName={toolName}
                 toolInput={part.input}
                 toolResult={part.output}
@@ -384,6 +400,9 @@ export function GenericToolCallPart({
                     ? () => chatPrefs.clearAppContext(sourceId)
                     : undefined
                 }
+                onRequestDisplayMode={
+                  canOpenInPanel ? handleRequestDisplayMode : undefined
+                }
               />
             </Suspense>
           </ErrorBoundary>
@@ -397,6 +416,7 @@ interface MCPAppRendererProps {
   uiResourceUri: string;
   connectionId: string;
   orgId: string;
+  orgSlug: string;
   toolName: string;
   toolInput: unknown;
   toolResult: unknown;
@@ -406,6 +426,9 @@ interface MCPAppRendererProps {
     params: McpUiUpdateModelContextRequest["params"],
   ) => void;
   onTeardown?: () => void;
+  onRequestDisplayMode?: (
+    mode: McpUiDisplayMode,
+  ) => McpUiDisplayMode | Promise<McpUiDisplayMode>;
 }
 
 /**
@@ -485,6 +508,7 @@ function MCPAppRenderer({
   uiResourceUri,
   connectionId,
   orgId,
+  orgSlug,
   toolName,
   toolInput,
   toolResult,
@@ -492,8 +516,9 @@ function MCPAppRenderer({
   onMessage,
   onUpdateModelContext,
   onTeardown,
+  onRequestDisplayMode,
 }: MCPAppRendererProps) {
-  const client = useMCPClient({ connectionId, orgId });
+  const client = useMCPClient({ connectionId, orgId, orgSlug });
 
   const toolDef: Tool = {
     name: toolName,
@@ -513,6 +538,7 @@ function MCPAppRenderer({
         onMessage={onMessage}
         onUpdateModelContext={onUpdateModelContext}
         onTeardown={onTeardown}
+        onRequestDisplayMode={onRequestDisplayMode}
       />
     </div>
   );

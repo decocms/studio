@@ -124,6 +124,10 @@ function getConfigSections(e: Settings): ConfigSection[] {
           value: !!process.env.AUTH_SSO_MS_CLIENT_ID,
         },
         {
+          key: "AUTH_SSO_GOOGLE_CLIENT_ID",
+          value: !!process.env.AUTH_SSO_GOOGLE_CLIENT_ID,
+        },
+        {
           key: "AUTH_MAGIC_LINK_ENABLED",
           value: process.env.AUTH_MAGIC_LINK_ENABLED === "true",
         },
@@ -147,15 +151,6 @@ function getConfigSections(e: Settings): ConfigSection[] {
     {
       title: "Config Files",
       entries: [{ key: "CONFIG_PATH", value: e.configPath }],
-    },
-    {
-      title: "Transport",
-      entries: [
-        {
-          key: "UNSAFE_ALLOW_STDIO_TRANSPORT",
-          value: e.unsafeAllowStdioTransport,
-        },
-      ],
     },
     {
       title: "AI Gateway",

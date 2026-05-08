@@ -1,6 +1,0 @@
-{{- /*
-This file only runs chart-level validations and renders no resources.
-*/ -}}
-{{- include "chart-deco-studio.validate" . -}}
-{{- include "chart-deco-studio.validateOtel" . -}}
-

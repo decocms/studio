@@ -14,12 +14,14 @@ export const LOCALSTORAGE_KEYS = {
     `mesh:chat:selectedModel:${locator}`,
   chatSelectedMode: (locator: ProjectLocator) =>
     `mesh:chat:selectedMode:${locator}`,
-  chatSelectedKeyId: (locator: ProjectLocator) =>
-    `mesh:chat:selectedKeyId:${locator}`,
   chatSelectedImageModel: (locator: ProjectLocator) =>
     `mesh:chat:selectedImageModel:${locator}`,
   chatSelectedDeepResearchModel: (locator: ProjectLocator) =>
     `mesh:chat:selectedDeepResearchModel:${locator}`,
+  chatSimpleModeTier: (locator: ProjectLocator) =>
+    `mesh:chat:simpleModeTier:${locator}`,
+  chatAutosend: (locator: ProjectLocator | string, taskId: string) =>
+    `mesh:chat:autosend:${locator}:${taskId}`,
   assistantChatActiveTask: (locator: ProjectLocator) =>
     `mesh:assistant-chat:active-task:${locator}`,
   decoChatPanelWidth: () => `mesh:decochat:panel-width`,

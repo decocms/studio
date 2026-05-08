@@ -5,8 +5,9 @@
  */
 
 import { z } from "zod";
+import { posthog } from "../../posthog";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth } from "../../core/mesh-context";
+import { getUserId, requireAuth } from "../../core/mesh-context";
 
 export const ORGANIZATION_MEMBER_UPDATE_ROLE = defineTool({
   name: "ORGANIZATION_MEMBER_UPDATE_ROLE",
@@ -70,6 +71,23 @@ export const ORGANIZATION_MEMBER_UPDATE_ROLE = defineTool({
 
     // Invalidate cached role
     ctx.invalidateMemberRole?.(result.userId, organizationId);
+
+    const actorId = getUserId(ctx);
+    if (actorId) {
+      posthog.capture({
+        distinctId: actorId,
+        event: "organization_member_role_updated",
+        groups: { organization: organizationId },
+        properties: {
+          organization_id: organizationId,
+          member_id: input.memberId,
+          target_user_id: result.userId,
+          new_role: Array.isArray(input.role)
+            ? input.role.join(",")
+            : input.role,
+        },
+      });
+    }
 
     // Convert dates to ISO strings for JSON Schema compatibility
     return {

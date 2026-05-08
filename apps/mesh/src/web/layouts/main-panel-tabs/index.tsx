@@ -11,14 +11,13 @@
 import { Suspense, lazy } from "react";
 import { Loading01 } from "@untitledui/icons";
 import { useMainPanelTabs } from "./use-main-panel-tabs";
-import { InstructionsTab } from "./instructions-tab";
-import { ConnectionsTab } from "./connections-tab";
-import { LayoutTab } from "./layout-tab";
+import { SettingsTab } from "./settings-tab";
+import { GitTab } from "@/web/components/thread/github/git-tab";
 import { PreviewTab } from "./preview-tab";
 import { EnvTab } from "./env-tab";
 import { AutomationTab } from "./automation-tab";
 import { AutomationsListTab } from "./automations-list-tab";
-import { parsePinnedViewTabId } from "./tab-id";
+import { isLegacySettingsTab, parsePinnedViewTabId } from "./tab-id";
 
 const AppViewContent = lazy(() =>
   import("@/web/routes/project-app-view").then((m) => ({
@@ -33,22 +32,20 @@ export function MainPanelContent({
   taskId: string;
   virtualMcpId: string;
 }) {
-  const { activeTab, layoutTabs, automationTabParsed } = useMainPanelTabs({
-    virtualMcpId,
-    taskId,
-  });
+  const { activeTab, layoutTabs, expandedTools, automationTabParsed } =
+    useMainPanelTabs({
+      virtualMcpId,
+      taskId,
+    });
 
-  if (activeTab === "instructions") {
-    return <InstructionsTab virtualMcpId={virtualMcpId} />;
+  if (isLegacySettingsTab(activeTab)) {
+    return <SettingsTab virtualMcpId={virtualMcpId} />;
   }
-  if (activeTab === "connections") {
-    return <ConnectionsTab virtualMcpId={virtualMcpId} />;
+  if (activeTab === "git") {
+    return <GitTab virtualMcpId={virtualMcpId} />;
   }
   if (activeTab === "automations") {
     return <AutomationsListTab virtualMcpId={virtualMcpId} />;
-  }
-  if (activeTab === "layout") {
-    return <LayoutTab virtualMcpId={virtualMcpId} />;
   }
   if (activeTab === "env") {
     return <EnvTab virtualMcpId={virtualMcpId} />;
@@ -57,15 +54,20 @@ export function MainPanelContent({
     return <PreviewTab virtualMcpId={virtualMcpId} />;
   }
   if (automationTabParsed) {
-    return <AutomationTab tabId={activeTab} virtualMcpId={virtualMcpId} />;
+    return <AutomationTab tabId={activeTab} />;
   }
 
   const pinnedView = parsePinnedViewTabId(activeTab);
   if (pinnedView) {
+    const expandedTool = expandedTools.find(
+      (t) =>
+        t.appId === pinnedView.connectionId &&
+        t.toolName === pinnedView.toolName,
+    );
     return (
       <Suspense
         fallback={
-          <div className="flex-1 flex items-center justify-center">
+          <div className="h-full w-full flex items-center justify-center">
             <Loading01
               size={20}
               className="animate-spin text-muted-foreground"
@@ -77,6 +79,7 @@ export function MainPanelContent({
           key={activeTab}
           connectionId={pinnedView.connectionId}
           toolName={pinnedView.toolName}
+          args={expandedTool?.args}
         />
       </Suspense>
     );
@@ -87,7 +90,7 @@ export function MainPanelContent({
     return (
       <Suspense
         fallback={
-          <div className="flex-1 flex items-center justify-center">
+          <div className="h-full w-full flex items-center justify-center">
             <Loading01
               size={20}
               className="animate-spin text-muted-foreground"
@@ -99,10 +102,11 @@ export function MainPanelContent({
           key={activeTab}
           connectionId={agentTab.view.appId}
           toolName={agentTab.id}
+          args={agentTab.view.args}
         />
       </Suspense>
     );
   }
 
-  return <InstructionsTab virtualMcpId={virtualMcpId} />;
+  return <SettingsTab virtualMcpId={virtualMcpId} />;
 }

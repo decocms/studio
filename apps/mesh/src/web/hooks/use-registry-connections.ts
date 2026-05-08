@@ -14,11 +14,11 @@ import {
   useProjectContext,
   WellKnownOrgMCPId,
 } from "@decocms/mesh-sdk";
-import { useRegistrySettings } from "./use-registry-settings";
+import { useRegistryConfig } from "./use-organization-settings";
 
 export function useRegistryConnections() {
   const { org } = useProjectContext();
-  const { registryConfig } = useRegistrySettings();
+  const registryConfig = useRegistryConfig();
 
   // Well-known registries are always included
   const decoStoreId = WellKnownOrgMCPId.REGISTRY(org.id);

@@ -1,7 +1,7 @@
 /**
  * VM Tools
  *
- * Tools for Freestyle VM management (app-only, not visible to AI models).
+ * Tools for VM lifecycle management (app-only, not visible to AI models).
  */
 
 export { VM_START } from "./start";

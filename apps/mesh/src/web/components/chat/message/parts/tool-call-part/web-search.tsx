@@ -18,9 +18,9 @@ import {
 } from "@decocms/mesh-sdk";
 import { parseMeshStorageKey } from "@/api/routes/decopilot/mesh-storage-uri";
 
-function resolveStorageUri(uri: string, orgId: string): string {
+function resolveStorageUri(uri: string, orgSlug: string): string {
   const key = parseMeshStorageKey(uri);
-  if (key !== null) return `/api/${orgId}/files/${key}`;
+  if (key !== null) return `/api/${orgSlug}/files/${key}`;
   return uri;
 }
 
@@ -180,7 +180,7 @@ export function WebSearchPart({
 
   // Resolve blob-stored content for large results
   const blobUrl = result?.uri
-    ? resolveStorageUri(result.uri, org.id)
+    ? resolveStorageUri(result.uri, org.slug)
     : undefined;
 
   const { data: blobContent } = useQuery({

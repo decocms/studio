@@ -3,6 +3,7 @@ import type { GuidePrompt, GuideResource } from "./index";
 export const prompts: GuidePrompt[] = [
   {
     name: "virtual-tools-create",
+    title: "Create Virtual Tools",
     description: "Add a sandboxed JavaScript tool to an agent.",
     text: `# Create virtual tool
 
@@ -28,6 +29,7 @@ Checks:
   },
   {
     name: "virtual-tools-update",
+    title: "Update Virtual Tools",
     description: "Modify a virtual tool's code or schema safely.",
     text: `# Update virtual tool
 

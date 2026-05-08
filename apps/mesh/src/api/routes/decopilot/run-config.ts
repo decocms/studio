@@ -19,6 +19,7 @@ const PersistedModelInfoSchema = z.object({
       text: z.boolean().optional(),
       tools: z.boolean().optional(),
       reasoning: z.boolean().optional(),
+      file: z.boolean().optional(),
     })
     .passthrough()
     .optional(),

@@ -82,7 +82,6 @@ services:
       BETTER_AUTH_URL: http://localhost:3000
       BASE_URL: http://localhost:3000
       DECOCMS_LOCAL_MODE: "true"
-      DECOCMS_ALLOW_LOCAL_PROD: "true"
       ENCRYPTION_KEY: test-encryption-key-32chars-long!
       DATA_DIR: /app/data
       NUM_THREADS: "4"

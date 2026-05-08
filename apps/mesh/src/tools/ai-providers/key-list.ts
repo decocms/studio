@@ -24,6 +24,7 @@ export const AI_PROVIDER_KEY_LIST = defineTool({
         id: z.string(),
         providerId: z.string(),
         label: z.string(),
+        presetId: z.string().nullable(),
         createdBy: z.string(),
         createdAt: z.string(),
       }),

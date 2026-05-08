@@ -7,17 +7,15 @@ import {
   useProjectContext,
 } from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@deco/ui/components/card.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
 import { Switch } from "@deco/ui/components/switch.tsx";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { track } from "@/web/lib/posthog-client";
+import {
+  SettingsCard,
+  SettingsCardItem,
+  SettingsSection,
+} from "@/web/components/settings/settings-section";
 
 interface DomainData {
   domain: string | null;
@@ -31,6 +29,7 @@ export function DomainSettings() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const { data, isPending } = useQuery<DomainData>({
@@ -64,10 +63,19 @@ export function DomainSettings() {
       return unwrapToolResult(result);
     },
     onSuccess: () => {
+      track("organization_domain_claimed", {
+        organization_id: org.id,
+        email_domain: userDomain,
+      });
       invalidate();
       toast.success("Domain claimed");
     },
     onError: (err) => {
+      track("organization_domain_claim_failed", {
+        organization_id: org.id,
+        email_domain: userDomain,
+        error: err instanceof Error ? err.message : String(err),
+      });
       toast.error(
         err instanceof Error ? err.message : "Failed to claim domain",
       );
@@ -83,10 +91,19 @@ export function DomainSettings() {
       return unwrapToolResult(result);
     },
     onSuccess: () => {
+      track("organization_domain_cleared", {
+        organization_id: org.id,
+        email_domain: currentDomain,
+      });
       invalidate();
       toast.success("Domain removed");
     },
     onError: (err) => {
+      track("organization_domain_clear_failed", {
+        organization_id: org.id,
+        email_domain: currentDomain,
+        error: err instanceof Error ? err.message : String(err),
+      });
       toast.error(
         err instanceof Error ? err.message : "Failed to remove domain",
       );
@@ -96,6 +113,10 @@ export function DomainSettings() {
   const toggleAutoJoinMutation = useMutation({
     mutationFn: async (enabled: boolean) => {
       if (!currentDomain) return;
+      track("organization_auto_join_toggled", {
+        organization_id: org.id,
+        enabled,
+      });
       const result = await client.callTool({
         name: "ORGANIZATION_DOMAIN_UPDATE",
         arguments: { autoJoinEnabled: enabled },
@@ -107,6 +128,10 @@ export function DomainSettings() {
       toast.success("Auto-join setting updated");
     },
     onError: (err) => {
+      track("organization_auto_join_toggle_failed", {
+        organization_id: org.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
       toast.error(
         err instanceof Error ? err.message : "Failed to update auto-join",
       );
@@ -118,25 +143,13 @@ export function DomainSettings() {
   }
 
   return (
-    <Card className="p-6">
-      <CardHeader className="p-0">
-        <CardTitle className="text-sm">Email Domain</CardTitle>
-        <CardDescription className="text-xs">
-          Claim your company's email domain so new users with matching emails
-          can automatically join this organization.
-        </CardDescription>
-      </CardHeader>
-
-      <CardContent className="flex flex-col gap-4 p-0 pt-4">
-        {currentDomain ? (
-          <>
-            <div className="flex items-center gap-3">
-              <div className="flex-1">
-                <Label className="text-xs text-muted-foreground">
-                  Claimed domain
-                </Label>
-                <p className="text-sm font-medium">{currentDomain}</p>
-              </div>
+    <SettingsSection title="Email domain">
+      {currentDomain ? (
+        <SettingsCard>
+          <SettingsCardItem
+            title={currentDomain}
+            description="Claimed domain"
+            action={
               <Button
                 variant="outline"
                 size="sm"
@@ -145,16 +158,12 @@ export function DomainSettings() {
               >
                 Remove
               </Button>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div>
-                <Label className="text-xs">Auto-join</Label>
-                <p className="text-xs text-muted-foreground">
-                  Users with @{currentDomain} emails will automatically join
-                  this organization on signup.
-                </p>
-              </div>
+            }
+          />
+          <SettingsCardItem
+            title="Auto-join"
+            description={`Users with @${currentDomain} emails will automatically join this organization on signup.`}
+            action={
               <Switch
                 checked={autoJoinEnabled}
                 onCheckedChange={(checked) =>
@@ -162,30 +171,33 @@ export function DomainSettings() {
                 }
                 disabled={toggleAutoJoinMutation.isPending}
               />
-            </div>
-          </>
-        ) : canClaim ? (
-          <div className="flex items-center gap-3">
-            <div className="flex-1">
-              <Label className="text-xs text-muted-foreground">
-                Your domain
-              </Label>
-              <p className="text-sm font-medium">{userDomain}</p>
-            </div>
-            <Button
-              size="sm"
-              onClick={() => setDomainMutation.mutate()}
-              disabled={setDomainMutation.isPending}
-            >
-              {setDomainMutation.isPending ? "Claiming..." : "Claim Domain"}
-            </Button>
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            No corporate email domain detected.
-          </p>
-        )}
-      </CardContent>
-    </Card>
+            }
+          />
+        </SettingsCard>
+      ) : canClaim ? (
+        <SettingsCard>
+          <SettingsCardItem
+            title={userDomain}
+            description="Let new users with matching emails auto-join this org."
+            action={
+              <Button
+                size="sm"
+                onClick={() => setDomainMutation.mutate()}
+                disabled={setDomainMutation.isPending}
+              >
+                {setDomainMutation.isPending ? "Claiming..." : "Claim domain"}
+              </Button>
+            }
+          />
+        </SettingsCard>
+      ) : (
+        <SettingsCard>
+          <SettingsCardItem
+            title="No domain detected"
+            description="Sign in with a corporate email to claim a domain for your organization."
+          />
+        </SettingsCard>
+      )}
+    </SettingsSection>
   );
 }

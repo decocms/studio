@@ -15,6 +15,7 @@ import { KEYS } from "@/web/lib/query-keys";
 export function usePromptConnectionMap(
   virtualMcpId: string | null,
   orgId: string,
+  orgSlug: string,
 ): Map<string, ConnectionEntity> {
   const virtualMcp = useVirtualMCP(virtualMcpId);
   const allConnections = useConnections();
@@ -34,6 +35,7 @@ export function usePromptConnectionMap(
             const client = await createMCPClient({
               connectionId: connId,
               orgId,
+              orgSlug,
             });
             const result = await listPrompts(client);
             for (const p of result.prompts) {

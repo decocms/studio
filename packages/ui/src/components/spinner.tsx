@@ -8,7 +8,8 @@ const variants = cva("animate-spin", {
       default: "fill-primary text-gray-200",
       destructive: "fill-destructive text-gray-200",
       secondary: "fill-secondary text-gray-200",
-      special: "fill-special text-backround",
+      success: "fill-success text-gray-200",
+      special: "fill-special text-background",
     },
     size: {
       default: "h-7 w-7",

@@ -128,6 +128,31 @@ export async function createBetterAuthTables(
     .addColumn("createdAt", "text", (col) => col.notNull())
     .execute();
 
+  // organizationRole / organizationResource (Better Auth organization plugin
+  // with dynamicAccessControl enabled). Mirrors the schema produced by
+  // `getMigrations()` so tests can query custom roles like prod.
+  await db.schema
+    .createTable("organizationRole")
+    .ifNotExists()
+    .addColumn("id", "text", (col) => col.primaryKey())
+    .addColumn("organizationId", "text", (col) => col.notNull())
+    .addColumn("role", "text", (col) => col.notNull())
+    .addColumn("permission", "text", (col) => col.notNull())
+    .addColumn("createdAt", "text", (col) => col.notNull())
+    .addColumn("updatedAt", "text")
+    .execute();
+
+  await db.schema
+    .createTable("organizationResource")
+    .ifNotExists()
+    .addColumn("id", "text", (col) => col.primaryKey())
+    .addColumn("organizationId", "text", (col) => col.notNull())
+    .addColumn("resource", "text", (col) => col.notNull())
+    .addColumn("permissions", "text", (col) => col.notNull())
+    .addColumn("createdAt", "text", (col) => col.notNull())
+    .addColumn("updatedAt", "text")
+    .execute();
+
   // API Key table (Better Auth API key plugin)
   await db.schema
     .createTable("apiKey")

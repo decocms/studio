@@ -3,9 +3,9 @@ import BaseHead from "../components/ui/BaseHead.astro";
 import Footer from "../components/ui/Footer.astro";
 import Sidebar from "../components/ui/Sidebar.astro";
 import TableOfContents from "../components/ui/TableOfContents.astro";
-import { Logo } from "../components/atoms/Logo";
 import { Icon } from "../components/atoms/Icon";
 import { LanguageSelector } from "../components/ui/LanguageSelector";
+import { ProductSwitcher } from "../components/ui/ProductSwitcher";
 import { ThemeToggle } from "../components/ui/ThemeToggle";
 import { getCollection } from "astro:content";
 import { siteConfig } from "../config/site";
@@ -286,7 +286,7 @@ const editUrl = doc
               >
                 <Icon name="Menu" size={24} />
               </button>
-              <Logo width={67} height={28} client:load />
+              <ProductSwitcher client:load />
             </div>
             <div class="flex items-center gap-2">
               <LanguageSelector client:load locale={locale} className="w-32" />

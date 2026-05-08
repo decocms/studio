@@ -23,7 +23,6 @@ function makeAutomation(overrides?: Partial<Automation>): Automation {
     name: "Test Automation",
     active: true,
     created_by: USER_ID,
-    agent: JSON.stringify({ id: "agent_1" }),
     messages: JSON.stringify([
       {
         id: "m1",
@@ -37,7 +36,7 @@ function makeAutomation(overrides?: Partial<Automation>): Automation {
       credentialId: "cred_1",
     }),
     temperature: 0.5,
-    virtual_mcp_id: null,
+    virtual_mcp_id: "agent_1",
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
     ...overrides,
@@ -62,7 +61,10 @@ function makeStorage(
 function makeMeshContext(orgId: string): MeshContext {
   return {
     organization: { id: orgId, slug: "test", name: "Test Org" },
-    storage: { threads: { _orgId: orgId } },
+    storage: {
+      threads: { _orgId: orgId },
+      organizationSettings: { get: mock(() => Promise.resolve(null)) },
+    },
   } as unknown as MeshContext;
 }
 

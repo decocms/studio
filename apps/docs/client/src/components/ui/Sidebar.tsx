@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { navigate } from "astro:transitions/client";
-import { Logo } from "../../components/atoms/Logo";
 import { Icon } from "../../components/atoms/Icon";
 import { Select } from "../../components/atoms/Select";
 import { LanguageSelector } from "./LanguageSelector";
+import { ProductSwitcher } from "./ProductSwitcher";
 import { ThemeToggle } from "./ThemeToggle";
 import { versions, VERSION_IDS, LATEST_VERSION } from "../../config/versions";
 
@@ -553,7 +553,7 @@ export default function Sidebar({
     <div className="flex flex-col h-screen bg-app-background border-r border-border w-[19rem] lg:w-[19rem] w-full max-w-[19rem]">
       {/* Header - hidden on mobile */}
       <div className="hidden lg:flex items-center justify-between px-4 lg:px-6 py-3 shrink-0 border-b border-border">
-        <Logo width={67} height={28} />
+        <ProductSwitcher />
         <div className="flex items-center gap-1.5">
           <LanguageSelector locale={locale} compact />
           <ThemeToggle />

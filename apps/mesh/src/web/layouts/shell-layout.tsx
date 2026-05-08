@@ -5,19 +5,20 @@ import { isModKey } from "@/web/lib/keyboard-shortcuts";
 import RequiredAuthLayout from "@/web/layouts/required-auth-layout";
 import { authClient } from "@/web/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
-import {
-  ProjectContextProvider,
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
-} from "@decocms/mesh-sdk";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { PostHogGroupSync } from "@/web/providers/posthog-group-sync";
+import { ProjectContextProvider, useProjectContext } from "@decocms/mesh-sdk";
+import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import {
   Outlet,
   useMatch,
   useNavigate,
   useParams,
+  useSearch,
 } from "@tanstack/react-router";
 import { KEYS } from "../lib/query-keys";
+import { readCachedTaskBranch } from "../lib/read-cached-task-branch";
+import { useTaskActions } from "../hooks/use-tasks";
+import { useOrganizationSettingsSuspense } from "../hooks/use-organization-settings";
 import { useOrgSsoStatus } from "../hooks/use-org-sso";
 import { SsoRequiredScreen } from "../components/sso-required-screen";
 
@@ -25,11 +26,6 @@ import { SsoRequiredScreen } from "../components/sso-required-screen";
 // ShellProjectProvider — fetches org settings and provides project context.
 // SSO enforcement MUST stay in ShellLayoutContent, above all child rendering.
 // ---------------------------------------------------------------------------
-
-type OrgSettingsPayload = {
-  organizationId: string;
-  enabled_plugins?: string[] | null;
-};
 
 /**
  * Single ProjectContextProvider for the entire shell.
@@ -43,24 +39,7 @@ function ShellProjectProvider({
   org: NonNullable<Parameters<typeof ProjectContextProvider>[0]["org"]>;
   children: React.ReactNode;
 }) {
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-  });
-
-  const { data: orgSettings } = useSuspenseQuery({
-    queryKey: KEYS.organizationSettings(org.id),
-    queryFn: async () => {
-      const result = await client.callTool({
-        name: "ORGANIZATION_SETTINGS_GET",
-        arguments: {},
-      });
-      const payload =
-        (result as { structuredContent?: unknown }).structuredContent ?? result;
-      return (payload ?? {}) as OrgSettingsPayload;
-    },
-    staleTime: 60_000,
-  });
+  const orgSettings = useOrganizationSettingsSuspense(org.id, org.slug);
 
   const project = {
     id: org.id,
@@ -86,11 +65,15 @@ function ShellProjectProvider({
 
 export function usePanelActions() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const taskActions = useTaskActions();
+  const { locator } = useProjectContext();
 
   const params = useParams({ strict: false }) as {
     org?: string;
     taskId?: string;
   };
+  const search = useSearch({ strict: false }) as { virtualmcpid?: string };
   const orgSlug = params.org ?? "";
   const currentTaskId = params.taskId ?? "";
 
@@ -125,12 +108,34 @@ export function usePanelActions() {
         if (virtualMcpId) next.virtualmcpid = virtualMcpId;
         else if (prev.virtualmcpid) next.virtualmcpid = prev.virtualmcpid;
         if (prev.tasks) next.tasks = prev.tasks;
+        // Preserve the main panel tab (git / preview / env / …) so that
+        // switching tasks keeps the user's current view.
+        if (prev.main) next.main = prev.main;
         return next;
       },
       false,
     );
 
-  const createNewTask = () => setTaskId(crypto.randomUUID());
+  // Create a new task carrying the current task's branch (if any) so the
+  // new thread lands on the same warm sandbox. Server picks from vmMap when
+  // no branch is provided. Awaiting the create avoids the route loader's
+  // create-on-404 fallback firing without a branch hint.
+  const createNewTask = async () => {
+    const newId = crypto.randomUUID();
+    const branch = readCachedTaskBranch(queryClient, locator, currentTaskId);
+    const targetVmcp = search.virtualmcpid;
+    try {
+      await taskActions.create.mutateAsync({
+        id: newId,
+        ...(targetVmcp ? { virtual_mcp_id: targetVmcp } : {}),
+        ...(branch ? { branch } : {}),
+      });
+    } catch {
+      // Toast already fired by useCollectionActions; navigate anyway so the
+      // route loader's ensure-fallback can retry.
+    }
+    setTaskId(newId);
+  };
 
   const openTab = (tabId: string) =>
     navWith(currentTaskId || crypto.randomUUID(), (prev) => ({
@@ -188,8 +193,13 @@ function ShellLayoutContent() {
         return null;
       }
 
-      const { data } = await authClient.organization.setActive({
-        organizationSlug: org,
+      // Fetch org data without persisting it as the session's active org.
+      // Per Better Auth's org plugin docs, persisting active org to the
+      // session breaks multi-tab usage because the session row is shared
+      // across tabs. We rely on the URL slug (mounted under /api/:org/...)
+      // for org resolution instead.
+      const { data } = await authClient.organization.getFullOrganization({
+        query: { organizationSlug: org },
       });
 
       // Persist for fast redirect on next login (read by homeRoute beforeLoad)
@@ -206,7 +216,8 @@ function ShellLayoutContent() {
 
   // Check org-level SSO enforcement (must be before early returns to satisfy Rules of Hooks)
   const orgId = activeOrg?.id;
-  const { data: ssoStatus } = useOrgSsoStatus(orgId);
+  const orgSlug = activeOrg?.slug;
+  const { data: ssoStatus } = useOrgSsoStatus(orgId, orgSlug);
 
   if (!activeOrg) {
     return <SplashScreen />;
@@ -216,6 +227,7 @@ function ShellLayoutContent() {
     return (
       <SsoRequiredScreen
         orgId={activeOrg.id}
+        orgSlug={activeOrg.slug}
         orgName={activeOrg.name}
         domain={ssoStatus.domain}
       />
@@ -224,6 +236,7 @@ function ShellLayoutContent() {
 
   return (
     <ShellProjectProvider org={{ ...activeOrg, logo: activeOrg.logo ?? null }}>
+      <PostHogGroupSync activeOrg={activeOrg} />
       <Outlet />
 
       {/* Keyboard Shortcuts Dialog */}

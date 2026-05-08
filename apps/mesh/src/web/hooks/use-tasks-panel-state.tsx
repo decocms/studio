@@ -61,3 +61,7 @@ export function useTasksPanelState(): TasksPanelState {
   }
   return ctx;
 }
+
+export function useOptionalTasksPanelState(): TasksPanelState | null {
+  return useContext(TasksPanelStateContext);
+}

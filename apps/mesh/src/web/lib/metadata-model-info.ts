@@ -10,6 +10,7 @@ export function toMetadataModelInfo(model: AiProviderModel): MetadataModelInfo {
             caps.includes("vision") || caps.includes("image") || undefined,
           text: caps.includes("text") || undefined,
           reasoning: caps.includes("reasoning") || undefined,
+          file: caps.includes("file") || undefined,
         }
       : undefined;
   return {

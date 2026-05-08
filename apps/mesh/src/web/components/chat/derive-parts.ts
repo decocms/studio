@@ -205,13 +205,13 @@ export function derivePartsFromTiptapDoc(
           | unknown[]
           | null;
         if (meta && !Array.isArray(meta) && "agentId" in meta) {
-          // Agent mention: instruct the AI to use open_in_agent tool
+          // Agent mention: instruct the AI to delegate via subtask
           parts.push({
             type: "text",
             text:
-              `[OPEN IN AGENT: ${(meta as { title?: string }).title ?? node.attrs.name} (agent_id: ${(meta as { agentId: string }).agentId})]\n` +
-              `Use the open_in_agent tool to hand off this task to the agent above. ` +
-              `Include the full relevant context from this conversation in the context field.`,
+              `[DELEGATE TO AGENT: ${(meta as { title?: string }).title ?? node.attrs.name} (agent_id: ${(meta as { agentId: string }).agentId})]\n` +
+              `Use the subtask tool to delegate this task to the agent above. ` +
+              `Include the full relevant context from this conversation in the prompt field — the subagent has no conversation history.`,
           });
         } else if (Array.isArray(meta)) {
           // Resource mention: metadata is ReadResourceResult.contents

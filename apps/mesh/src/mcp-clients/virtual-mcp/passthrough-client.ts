@@ -73,4 +73,8 @@ export class PassthroughClient extends GatewayClient {
   override getInstructions(): string | undefined {
     return this.options.virtualMcp.metadata?.instructions ?? undefined;
   }
+
+  getConnectionTitleMap(): Map<string, string> {
+    return new Map(this.options.connections.map((c) => [c.id, c.title]));
+  }
 }

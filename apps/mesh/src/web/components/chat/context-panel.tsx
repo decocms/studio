@@ -232,11 +232,22 @@ export function ChatContextPanel({
     }>,
   );
 
-  const contextWindow = selectedModel?.limits?.contextWindow ?? null;
+  // Context % = last assistant turn's end-of-turn fill, NOT cumulative billed tokens.
+  const lastAssistantMessage = [...(messages as ChatMessage[])]
+    .reverse()
+    .find((m) => m.role === "assistant" && m.metadata?.usage);
+  const lastAssistantUsage = lastAssistantMessage?.metadata?.usage;
+  // Prefer runtime-reported limits (Claude Code fills these from CLI result); fall back to catalog.
+  const contextWindow =
+    lastAssistantMessage?.metadata?.modelLimits?.contextWindow ??
+    selectedModel?.limits?.contextWindow ??
+    null;
+  const contextFillTokens =
+    lastAssistantUsage?.contextTokens ?? lastAssistantUsage?.totalTokens ?? 0;
 
   const usagePct =
     contextWindow && contextWindow > 0
-      ? ((stats.totalTokens / contextWindow) * 100).toFixed(1)
+      ? ((contextFillTokens / contextWindow) * 100).toFixed(1)
       : null;
 
   // Per-role token breakdown from message metadata
@@ -301,7 +312,7 @@ export function ChatContextPanel({
       value: contextWindow ? formatTokens(contextWindow) : "—",
     },
     {
-      label: "Total Tokens",
+      label: "Session Tokens (billed)",
       value: stats.totalTokens > 0 ? formatTokens(stats.totalTokens) : "0",
     },
     {
@@ -458,9 +469,88 @@ export function ChatContextPanel({
                       )}
                     </button>
                     {isExpanded && (
-                      <pre className="text-xs font-mono bg-muted px-3 py-2 overflow-auto whitespace-pre-wrap break-all border-t border-border/50 max-h-64">
-                        {JSON.stringify(m, null, 2)}
-                      </pre>
+                      <>
+                        {m.role === "assistant" &&
+                          (() => {
+                            const req = (
+                              m.metadata as {
+                                _request?: {
+                                  systemSections?: {
+                                    chars: number;
+                                    preview: string;
+                                  }[];
+                                  tools?: number;
+                                  activeTools?: number;
+                                };
+                              }
+                            )?._request;
+                            if (!req) return null;
+                            const sections = req.systemSections ?? [];
+                            const maxChars = Math.max(
+                              1,
+                              ...sections.map((s) => s.chars),
+                            );
+                            const totalChars = sections.reduce(
+                              (sum, s) => sum + s.chars,
+                              0,
+                            );
+                            return (
+                              <div className="border-t border-border/50 px-3 py-2.5 text-xs space-y-2.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-medium text-foreground">
+                                    Request
+                                  </span>
+                                  <span className="text-muted-foreground tabular-nums">
+                                    {req.activeTools ?? 0} / {req.tools ?? 0}{" "}
+                                    tools active
+                                  </span>
+                                </div>
+                                {sections.length > 0 && (
+                                  <div className="space-y-1.5">
+                                    <div className="text-muted-foreground">
+                                      System prompt{" "}
+                                      <span className="tabular-nums">
+                                        ~
+                                        {Math.round(
+                                          totalChars / 4,
+                                        ).toLocaleString()}{" "}
+                                        tok
+                                      </span>
+                                    </div>
+                                    {sections.map((s, i) => {
+                                      const tag =
+                                        s.preview.match(/^<([a-z-]+)/i)?.[1] ??
+                                        `section ${i}`;
+                                      const pct = (s.chars / maxChars) * 100;
+                                      const tok = Math.round(s.chars / 4);
+                                      return (
+                                        <div key={i} className="space-y-0.5">
+                                          <div className="flex items-center justify-between gap-2">
+                                            <span className="font-mono text-foreground truncate">
+                                              {tag}
+                                            </span>
+                                            <span className="text-muted-foreground tabular-nums shrink-0">
+                                              ~{tok.toLocaleString()} tok
+                                            </span>
+                                          </div>
+                                          <div className="h-1 w-full rounded-full bg-muted overflow-hidden">
+                                            <div
+                                              className="h-full rounded-full bg-chart-3"
+                                              style={{ width: `${pct}%` }}
+                                            />
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        <pre className="text-xs font-mono bg-muted px-3 py-2 overflow-auto whitespace-pre-wrap break-all border-t border-border/50 max-h-64">
+                          {JSON.stringify(m, null, 2)}
+                        </pre>
+                      </>
                     )}
                   </div>
                 );

@@ -6,7 +6,6 @@
  */
 
 export const dim = (s: string) => `\x1b[2m${s}\x1b[22m`;
-export const red = (s: string) => `\x1b[31m${s}\x1b[39m`;
 
 const rgb = (r: number, g: number, b: number, s: string) =>
   `\x1b[38;2;${r};${g};${b}m${s}\x1b[39m`;

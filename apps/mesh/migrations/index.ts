@@ -66,6 +66,15 @@ import * as migration064brandcontext from "./064-brand-context.ts";
 import * as migration065organizationdomains from "./065-organization-domains.ts";
 import * as migration066brandcontextstructured from "./066-brand-context-structured.ts";
 import * as migration067threadsmetadata from "./067-threads-metadata.ts";
+import * as migration068threadsbranch from "./068-threads-branch.ts";
+import * as migration069sandboxrunnerstate from "./069-sandbox-runner-state.ts";
+import * as migration070modelcategories from "./070-model-categories.ts";
+import * as migration071defaulthomeagents from "./071-default-home-agents.ts";
+import * as migration072aiproviderkeypresetid from "./072-ai-provider-key-preset-id.ts";
+import * as migration073backfillbasicusageroles from "./073-backfill-basic-usage-roles.ts";
+import * as migration074sandboxrunnerstatehandlenonunique from "./074-sandbox-runner-state-handle-nonunique.ts";
+import * as migration075threadinflightasyncjobs from "./075-thread-inflight-async-jobs.ts";
+import * as migration076automationsdropagentjson from "./076-automations-drop-agent-json.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -146,6 +155,16 @@ const migrations: Record<string, Migration> = {
   "065-organization-domains": migration065organizationdomains,
   "066-brand-context-structured": migration066brandcontextstructured,
   "067-threads-metadata": migration067threadsmetadata,
+  "068-threads-branch": migration068threadsbranch,
+  "069-sandbox-runner-state": migration069sandboxrunnerstate,
+  "070-model-categories": migration070modelcategories,
+  "071-default-home-agents": migration071defaulthomeagents,
+  "072-ai-provider-key-preset-id": migration072aiproviderkeypresetid,
+  "073-backfill-basic-usage-roles": migration073backfillbasicusageroles,
+  "074-sandbox-runner-state-handle-nonunique":
+    migration074sandboxrunnerstatehandlenonunique,
+  "075-thread-inflight-async-jobs": migration075threadinflightasyncjobs,
+  "076-automations-drop-agent-json": migration076automationsdropagentjson,
 };
 
 export default migrations;

@@ -22,7 +22,6 @@ export interface Settings {
   encryptionKey: string;
   meshJwtSecret: string | undefined;
   localMode: boolean;
-  allowLocalProd: boolean;
   disableRateLimit: boolean;
   studioProvisionSecretKey: string | undefined; // Secret key to call the Deco AI Gateway API to provision keys
 
@@ -35,9 +34,6 @@ export interface Settings {
 
   // Config files
   configPath: string;
-
-  // Transport
-  unsafeAllowStdioTransport: boolean;
 
   // AI Gateway
   aiGatewayEnabled: boolean;

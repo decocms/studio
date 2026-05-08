@@ -1,5 +1,6 @@
 import { cn } from "@deco/ui/lib/utils.js";
 import { Archive } from "@untitledui/icons";
+import { useEffect, useRef } from "react";
 import {
   Tooltip,
   TooltipContent,
@@ -29,9 +30,25 @@ export function TaskRow({
   const StatusIcon = config.icon;
   const virtualMcp = useVirtualMCP(task.virtual_mcp_id);
   const githubRepo = getActiveGithubRepo(virtualMcp);
+  const rowRef = useRef<HTMLDivElement>(null);
+
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- syncs route-selected task row with the scrollable tasks panel DOM
+  useEffect(() => {
+    if (!isActive) return;
+    const row = rowRef.current;
+    if (!row) return;
+
+    row.focus({ preventScroll: true });
+    row.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+      inline: "nearest",
+    });
+  }, [isActive, task.id]);
 
   return (
     <div
+      ref={rowRef}
       role="button"
       tabIndex={0}
       onClick={onClick}
@@ -44,12 +61,13 @@ export function TaskRow({
       }}
       className={cn(
         "group/row flex items-center gap-3 px-2 py-1.5 rounded-md cursor-pointer transition-colors",
+        "focus-visible:outline-none focus-visible:inset-ring-2 focus-visible:inset-ring-ring/50",
         isActive ? "bg-accent" : "hover:bg-accent/60",
       )}
     >
       <McpAvatar
         virtualMcpId={task.virtual_mcp_id}
-        size="sm"
+        size="xs"
         showAutomationBadge={showAutomationBadge}
       />
       <div className="flex-1 min-w-0">
@@ -58,14 +76,19 @@ export function TaskRow({
         </div>
         {task.updated_at && (
           <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0">
-            {githubRepo && (
+            {task.branch ? (
+              <>
+                <span className="truncate font-mono">{task.branch}</span>
+                <span className="shrink-0">·</span>
+              </>
+            ) : githubRepo ? (
               <>
                 <span className="truncate">
                   {githubRepo.owner}/{githubRepo.name}
                 </span>
                 <span className="shrink-0">·</span>
               </>
-            )}
+            ) : null}
             <span className="shrink-0">
               {formatTimeAgo(new Date(task.updated_at))}
             </span>

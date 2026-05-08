@@ -1,8 +1,8 @@
-# Requirements: MCP Mesh
+# Requirements: Studio
 
 **Defined:** 2026-02-20
 **Amended:** 2026-02-20 — lead engineer feedback: bash over git tools, deco-cli as entry point, projects as virtual MCPs
-**Core Value:** Developers can connect any MCP server to Mesh and get auth, routing, observability, and a polished admin UI — including a full visual site editor for Deco-compatible sites.
+**Core Value:** Developers can connect any MCP server to Studio and get auth, routing, observability, and a polished admin UI — including a full visual site editor for Deco-compatible sites.
 
 ## v1.3 Requirements
 
@@ -12,9 +12,9 @@
 - [ ] **LDV-02**: local-dev exposes full filesystem tools (read, write, edit, list, tree, search, delete, copy) scoped to the target folder
 - [ ] **LDV-03**: local-dev exposes OBJECT_STORAGE_BINDING tools (LIST_OBJECTS, GET/PUT_PRESIGNED_URL, DELETE_OBJECT, GET_ROOT) backed by local filesystem with embedded HTTP server for presigned URLs
 - [ ] **LDV-04**: local-dev exposes an unrestricted bash execution tool scoped to the project folder (covers git, dev server, build commands, etc. — like Claude Code's bash)
-- [ ] **LDV-05**: local-dev exposes a readiness endpoint (`/_ready`) that Mesh polls before marking the project online
+- [ ] **LDV-05**: local-dev exposes a readiness endpoint (`/_ready`) that Studio polls before marking the project online
 - [ ] **LDV-06**: local-dev forwards SIGTERM to any spawned processes for clean shutdown
-- [ ] **LDV-07**: local-dev exposes SSE `/watch` stream for filesystem change events (real-time file edits visible in Mesh UI)
+- [ ] **LDV-07**: local-dev exposes SSE `/watch` stream for filesystem change events (real-time file edits visible in Studio UI)
 
 > **Note:** Git-specific tools (GIT_STATUS, GIT_DIFF, etc.) were removed — all git operations go through **LDV-04** (bash). Dev server management is also covered by bash (e.g. `bash("bun dev")`).
 
@@ -40,7 +40,7 @@
 - [ ] **EDT-09**: User can preview the page live in an iframe with edit/interact mode toggle
 - [ ] **EDT-10**: User can undo and redo changes in the composer
 - [ ] **EDT-11**: User sees pending changes (sections added/modified/deleted vs git HEAD) with diff badges — powered by bash git calls via local-dev
-- [ ] **EDT-12**: User can commit pending changes from Mesh UI with a Claude-generated commit message — via bash git commit
+- [ ] **EDT-12**: User can commit pending changes from Studio UI with a Claude-generated commit message — via bash git commit
 - [ ] **EDT-13**: User can view git history for the current page with commit list and diff preview — via bash git log/show
 - [ ] **EDT-14**: User can revert to a previous commit with a confirmation dialog — via bash git checkout
 - [ ] **EDT-15**: Site editor activates automatically when the project connection implements DECO_BLOCKS_BINDING
@@ -49,16 +49,16 @@
 
 ### `deco link` command (`packages/cli/`)
 
-- [ ] **LNK-01**: Developer can run `deco link ./my-folder` to register a local project folder with a running Mesh instance
+- [ ] **LNK-01**: Developer can run `deco link ./my-folder` to register a local project folder with a running Studio instance
 - [ ] **LNK-02**: `deco link` starts a local-dev daemon for the given folder (or connects to an already-running one)
-- [ ] **LNK-03**: `deco link` creates (or reuses) a Connection in Mesh pointing at the local-dev daemon
-- [ ] **LNK-04**: `deco link` creates (or reuses) a Project in Mesh wired to that Connection
+- [ ] **LNK-03**: `deco link` creates (or reuses) a Connection in Studio pointing at the local-dev daemon
+- [ ] **LNK-04**: `deco link` creates (or reuses) a Project in Studio wired to that Connection
 - [ ] **LNK-05**: If the folder is a deco site (`.deco/` present), `deco link` auto-enables the site-editor plugin on the project
-- [ ] **LNK-06**: `deco link` opens the browser to the project URL in Mesh, already logged in
+- [ ] **LNK-06**: `deco link` opens the browser to the project URL in Studio, already logged in
 - [ ] **LNK-07**: `deco link` keeps running as a daemon — when Ctrl+C is pressed, local-dev shuts down cleanly
-- [ ] **LNK-08**: `deco link` is designed for both local Mesh (v1.3) and remote Mesh via tunnel (v1.4) — the Mesh URL is configurable
+- [ ] **LNK-08**: `deco link` is designed for both local Studio (v1.3) and remote Studio via tunnel (v1.4) — Studio URL is configurable
 
-> **Note:** deco-cli (`packages/cli`) already exists with login support. `deco link` is a new command added to it. The CLI is the portable piece; Mesh can be local or remote.
+> **Note:** deco-cli (`packages/cli`) already exists with login support. `deco link` is a new command added to it. The CLI is the portable piece; Studio can be local or remote.
 
 ## v2 Requirements
 
@@ -70,7 +70,7 @@
 
 ### Remote & Collaboration (v1.4)
 
-- **RMT-01**: `deco link` can connect local folder to a remote Mesh instance via tunnel
+- **RMT-01**: `deco link` can connect local folder to a remote Studio instance via tunnel
 - **RMT-02**: Project can be linked to a GitHub repository
 - **RMT-03**: User can switch between "local" and "branch on GitHub" views in a project
 
@@ -80,7 +80,7 @@
 |---------|--------|
 | Kubernetes / remote daemon | Local-first only for this milestone |
 | GitHub integration | Deferred to v1.4 |
-| Tunnel / remote Mesh | Deferred to v1.4 |
+| Tunnel / remote Studio | Deferred to v1.4 |
 | Projects as virtual MCPs (local proxy) | Deferred to v1.4 |
 | Multi-user local setup | Single developer workflow only |
 | Mobile / responsive site editor | Desktop workflow only |

@@ -1,6 +1,6 @@
 # Milestones
 
-## v1.0 — Core Mesh (shipped, on main)
+## v1.0 — Core Studio (shipped, on main)
 
 **Shipped:** 2026-02 (pre-planning-system)
 

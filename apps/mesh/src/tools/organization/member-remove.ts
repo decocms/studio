@@ -5,8 +5,9 @@
  */
 
 import { z } from "zod";
+import { posthog } from "../../posthog";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth } from "../../core/mesh-context";
+import { getUserId, requireAuth } from "../../core/mesh-context";
 
 export const ORGANIZATION_MEMBER_REMOVE = defineTool({
   name: "ORGANIZATION_MEMBER_REMOVE",
@@ -53,6 +54,19 @@ export const ORGANIZATION_MEMBER_REMOVE = defineTool({
     // Invalidate cached role — we don't have the userId here but
     // invalidateOrg would be too broad; the TTL will handle cleanup
     // for removed members since the DB row is gone.
+
+    const actorId = getUserId(ctx);
+    if (actorId) {
+      posthog.capture({
+        distinctId: actorId,
+        event: "organization_member_removed",
+        groups: { organization: organizationId },
+        properties: {
+          organization_id: organizationId,
+          member_id_or_email: input.memberIdOrEmail,
+        },
+      });
+    }
 
     return {
       success: true,

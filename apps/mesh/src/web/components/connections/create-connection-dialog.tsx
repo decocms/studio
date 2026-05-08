@@ -507,6 +507,7 @@ export function CreateConnectionDialog({
                       providerHint?.token?.placeholder ??
                       "Bearer token or API key"
                     }
+                    className="ph-no-capture"
                     {...field}
                     value={field.value ?? ""}
                   />

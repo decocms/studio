@@ -139,6 +139,7 @@ const CORE_TOOLS = [
   AiProvidersTools.AI_PROVIDERS_ACTIVE,
   AiProvidersTools.AI_PROVIDER_KEY_CREATE,
   AiProvidersTools.AI_PROVIDER_KEY_DELETE,
+  AiProvidersTools.AI_PROVIDER_KEY_UPDATE,
   AiProvidersTools.AI_PROVIDER_KEY_LIST,
   AiProvidersTools.AI_PROVIDER_OAUTH_URL,
   AiProvidersTools.AI_PROVIDER_OAUTH_EXCHANGE,
@@ -274,14 +275,18 @@ export const managementMCP = async (ctx: MeshContext) => {
   // Register action prompts
   const prompts = getPrompts();
   for (const prompt of prompts) {
-    server.prompt(prompt.name, prompt.description, () => ({
-      messages: [
-        {
-          role: "user" as const,
-          content: { type: "text" as const, text: prompt.text },
-        },
-      ],
-    }));
+    server.registerPrompt(
+      prompt.name,
+      { title: prompt.title, description: prompt.description },
+      () => ({
+        messages: [
+          {
+            role: "user" as const,
+            content: { type: "text" as const, text: prompt.text },
+          },
+        ],
+      }),
+    );
   }
 
   // Register one prompt per brand context (e.g. /brand-acme-corp)

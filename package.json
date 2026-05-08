@@ -46,7 +46,8 @@
   ],
   "trustedDependencies": [
     "@duckdb/node-api",
-    "@duckdb/node-bindings"
+    "@duckdb/node-bindings",
+    "node-pty"
   ],
   "overrides": {
     "fast-xml-parser": "5.4.2",

@@ -78,8 +78,14 @@ jobs:
         with:
           bun-version: "1.3.5"
 
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
       - name: Install dependencies
         run: bun install
+
+      - name: Build daemon bundle
+        run: bun run --cwd=packages/sandbox build
 
       - name: Start NATS with JetStream
         run: |
@@ -89,7 +95,18 @@ jobs:
 
       - name: Run tests (shard ${{ matrix.shard }}/${{ matrix.total_shards }})
         run: |
-          files=$(find apps/mesh/src packages -name '*.test.ts' -o -name '*.test.tsx' | sort | awk "NR % ${{ matrix.total_shards }} == ${{ matrix.shard }}")
+          # Hash-based shard assignment: a file's shard is a stable function of
+          # its path, not its position in the sorted list. This prevents
+          # adding/removing test files from reshuffling other tests across
+          # shards (which can move resource-sensitive tests like
+          # pty-spawn.test.ts into a heavier-loaded shard and break them).
+          files=$(find apps/mesh/src packages -name '*.test.ts' -o -name '*.test.tsx' \
+            | while read -r f; do
+                hash=$(printf '%s' "$f" | cksum | awk '{print $1}')
+                if [ $((hash % ${{ matrix.total_shards }})) -eq ${{ matrix.shard }} ]; then
+                  echo "$f"
+                fi
+              done)
           echo "Running $(echo "$files" | wc -l) test files"
           echo "$files"
           # Bun 1.3.5 has a known WASM cleanup bug that causes SIGILL (exit 132)
@@ -98,9 +115,16 @@ jobs:
           bun test $files 2>&1 | tee /tmp/test-output.txt
           exit_code=${PIPESTATUS[0]}
           set -e
+          # Detect failures via per-test markers AND the summary line. The
+          # SIGILL crash can happen before bun prints its "N fail" summary,
+          # so relying on the summary alone hides real failures.
+          if grep -qE '^\(fail\)|[1-9][0-9]* fail' /tmp/test-output.txt; then
+            echo "❌ Test failures detected in output"
+            exit 1
+          fi
           if [ $exit_code -eq 0 ]; then
             exit 0
-          elif [ $exit_code -eq 132 ] && ! grep -q '[1-9][0-9]* fail' /tmp/test-output.txt; then
+          elif [ $exit_code -eq 132 ]; then
             echo "⚠️  Bun exited with SIGILL (known WASM cleanup bug) but all tests passed"
             exit 0
           else
@@ -132,3 +156,51 @@ jobs:
 
       - name: Run knip
         run: bun run knip
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.5"
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build daemon bundle
+        run: bun run --cwd=packages/sandbox build
+
+      - name: Build sandbox image
+        run: |
+          docker build \
+            -t studio-sandbox:ci \
+            -f packages/sandbox/image/Dockerfile \
+            packages/sandbox
+
+      - name: Smoke test
+        run: |
+          docker run -d --name sandbox-smoke -p 19999:9000 \
+            -e DAEMON_TOKEN="$(printf 't%.0s' {1..32})" \
+            -e DAEMON_BOOT_ID="ci-smoke" \
+            -e APP_ROOT=/app \
+            -e PROXY_PORT=9000 \
+            -e DAEMON_NO_AUTOSTART=1 \
+            studio-sandbox:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:19999/health | grep -q '"bootId":"ci-smoke"'; then
+              echo "ok"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "smoke test failed — daemon did not return /health with ci-smoke bootId"
+          docker logs sandbox-smoke
+          exit 1
+
+      - name: Tear down
+        if: always()
+        run: docker rm -f sandbox-smoke || true

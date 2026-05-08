@@ -132,6 +132,54 @@ const GithubRepoSchema = z.object({
 export type GithubRepo = z.infer<typeof GithubRepoSchema>;
 
 /**
+ * A single vm entry in vmMap — the vmId plus the preview URL the UI renders.
+ *
+ * `runnerKind` lets the UI construct daemon URLs correctly:
+ *  - docker: daemon is reached via the mesh proxy at `/api/sandbox/<vmId>/_daemon/*`
+ *  - freestyle: daemon lives at `${previewUrl}/_decopilot_vm/*` on the VM domain
+ *  - agent-sandbox: daemon is reached via the mesh proxy (same transport as docker);
+ *    preview URL is the per-claim HTTPRoute host (in-cluster) or a local port-forward (kind dev).
+ *
+ * `previewUrl` is nullable: blank / tool sandboxes (no `workload`, no dev
+ * server) have nothing to render. UI code MUST check before constructing
+ * an iframe URL.
+ */
+export const VmMapEntrySchema = z.object({
+  vmId: z
+    .string()
+    .describe("Runner-specific handle (Freestyle VM id or docker handle)"),
+  previewUrl: z
+    .string()
+    .nullable()
+    .describe(
+      "URL where the VM's iframe-proxied UI is served, or null when the sandbox has no dev server (blank / tool sandboxes).",
+    ),
+  runnerKind: z
+    .enum(["host", "docker", "freestyle", "agent-sandbox"])
+    .optional(),
+  createdAt: z
+    .number()
+    .optional()
+    .describe(
+      "Epoch ms the entry was first written by VM_START. Used by the booting overlay to show a stable elapsed timer that survives browser reloads. Optional for backward compatibility with entries written before this field existed.",
+    ),
+});
+
+export type VmMapEntry = z.infer<typeof VmMapEntrySchema>;
+
+/**
+ * Maps a user to their vm entries per branch.
+ * Lookup: vmMap[userId][branch] -> { vmId, previewUrl }
+ * Multiple threads with the same (userId, branch) share one vm.
+ */
+export const VmMapSchema = z.record(
+  z.string().describe("userId"),
+  z.record(z.string().describe("branch"), VmMapEntrySchema),
+);
+
+export type VmMap = z.infer<typeof VmMapSchema>;
+
+/**
  * Virtual MCP entity schema - single source of truth
  * Compliant with collections binding pattern
  */
@@ -172,6 +220,9 @@ export const VirtualMCPEntitySchema = z.object({
       githubRepo: GithubRepoSchema.nullable()
         .optional()
         .describe("Linked GitHub repository"),
+      vmMap: VmMapSchema.optional().describe(
+        "Per-user, per-branch vm mapping: vmMap[userId][branch] -> { vmId, previewUrl }",
+      ),
     })
     .loose()
     .describe("Metadata"),
@@ -221,6 +272,9 @@ export const VirtualMCPCreateDataSchema = z.object({
       githubRepo: GithubRepoSchema.nullable()
         .optional()
         .describe("Linked GitHub repository"),
+      vmMap: VmMapSchema.optional().describe(
+        "Per-user, per-branch vm mapping: vmMap[userId][branch] -> { vmId, previewUrl }",
+      ),
     })
     .loose()
     .nullable()
@@ -266,6 +320,9 @@ export const VirtualMCPUpdateDataSchema = z.object({
       githubRepo: GithubRepoSchema.nullable()
         .optional()
         .describe("Linked GitHub repository"),
+      vmMap: VmMapSchema.optional().describe(
+        "Per-user, per-branch vm mapping: vmMap[userId][branch] -> { vmId, previewUrl }",
+      ),
     })
     .loose()
     .nullable()

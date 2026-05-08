@@ -1,10 +1,8 @@
 import { cn } from "@deco/ui/lib/utils.ts";
 import type { PropsWithChildren } from "react";
-import {
-  ChatContextProvider,
-  ActiveTaskProvider,
-  useChatStream,
-} from "./context";
+import { ActiveTaskProvider, ChatProvider, useChatStream } from "./context";
+
+export { useChatTask } from "./context";
 import { IceBreakers } from "./ice-breakers";
 import { ChatInput } from "./input";
 import { MessagePair, useMessagePairs } from "./message/pair.tsx";
@@ -13,7 +11,6 @@ import { CreditsEmptyState } from "./credits-empty-state";
 import { CreditsExhaustedBanner } from "./credits-exhausted-banner";
 import { CreditsEyebrow, NoCreditsEyebrow } from "./credits-eyebrow";
 import { DecoChatSkeleton } from "./skeleton";
-export { useChatTask } from "./context";
 export type { VirtualMCPInfo } from "./select-virtual-mcp";
 export type { ChatMessage, ChatStatus } from "./types.ts";
 
@@ -126,7 +123,7 @@ export const Chat = Object.assign(ChatRoot, {
   EmptyState: ChatEmptyState,
   Footer: ChatFooter,
   Input: ChatInput,
-  Provider: ChatContextProvider,
+  Provider: ChatProvider,
   ActiveTaskProvider: ActiveTaskProvider,
   Skeleton: DecoChatSkeleton,
   IceBreakers: IceBreakers,

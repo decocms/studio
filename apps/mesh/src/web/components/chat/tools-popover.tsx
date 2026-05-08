@@ -36,6 +36,7 @@ import {
 } from "@untitledui/icons";
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
+import { track } from "@/web/lib/posthog-client";
 import {
   PromptArgsDialog,
   type PromptArgumentValues,
@@ -90,6 +91,7 @@ export function ToolsPopover({
   const client = useMCPClient({
     connectionId: virtualMcpId,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const queryKey = KEYS.virtualMcpPrompts(virtualMcpId, org.id);
 
@@ -112,6 +114,7 @@ export function ToolsPopover({
     setDeepResearchModel,
     chatMode,
     setChatMode,
+    simpleModeEnabled,
   } = useChatPrefs();
   const isPlanMode = chatMode === "plan";
 
@@ -131,7 +134,13 @@ export function ToolsPopover({
 
   const handleTogglePlanMode = () => {
     playSwitchSound();
-    setChatMode(isPlanMode ? "default" : "plan");
+    const nextMode = isPlanMode ? "default" : "plan";
+    track("chat_mode_changed", {
+      from_mode: chatMode,
+      to_mode: nextMode,
+      source: "tools_popover",
+    });
+    setChatMode(nextMode);
     setOpen(false);
   };
 
@@ -167,7 +176,12 @@ export function ToolsPopover({
 
   const handlePromptSelect = async (prompt: Prompt) => {
     setOpen(false);
-    if (prompt.arguments && prompt.arguments.length > 0) {
+    const hasArgs = !!(prompt.arguments && prompt.arguments.length > 0);
+    track("chat_prompt_inserted", {
+      prompt_name: prompt.name,
+      with_arguments: hasArgs,
+    });
+    if (hasArgs) {
       setActivePrompt(prompt);
       return;
     }
@@ -182,25 +196,47 @@ export function ToolsPopover({
 
   const handleImageModelSelect = (model: AiProviderModel) => {
     playSwitchSound();
+    track("chat_image_model_selected", {
+      model_id: model.modelId,
+      model_title: model.title,
+      provider: model.providerId ?? null,
+    });
     setImageModel(model);
     setOpen(false);
   };
 
   const handleSearchModelSelect = (model: AiProviderModel) => {
     playSwitchSound();
+    track("chat_search_model_selected", {
+      model_id: model.modelId,
+      model_title: model.title,
+      provider: model.providerId ?? null,
+    });
     setDeepResearchModel(model);
     setOpen(false);
   };
 
   const handleForceImageGeneration = () => {
     playSwitchSound();
-    setChatMode(chatMode === "gen-image" ? "default" : "gen-image");
+    const nextMode = chatMode === "gen-image" ? "default" : "gen-image";
+    track("chat_mode_changed", {
+      from_mode: chatMode,
+      to_mode: nextMode,
+      source: "tools_popover",
+    });
+    setChatMode(nextMode);
     setOpen(false);
   };
 
   const handleForceWebSearch = () => {
     playSwitchSound();
-    setChatMode(chatMode === "web-search" ? "default" : "web-search");
+    const nextMode = chatMode === "web-search" ? "default" : "web-search";
+    track("chat_mode_changed", {
+      from_mode: chatMode,
+      to_mode: nextMode,
+      source: "tools_popover",
+    });
+    setChatMode(nextMode);
     setOpen(false);
   };
 
@@ -209,7 +245,17 @@ export function ToolsPopover({
 
   return (
     <>
-      <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenu
+        open={open}
+        onOpenChange={(next) => {
+          if (next && !open) {
+            track("chat_tools_popover_opened", {
+              chat_mode: chatMode,
+            });
+          }
+          setOpen(next);
+        }}
+      >
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
@@ -237,98 +283,41 @@ export function ToolsPopover({
             )}
           </DropdownMenuItem>
 
-          {/* Image mode: split row — left toggles mode, right opens model picker */}
-          <DropdownMenuSub open={imageSubOpen} onOpenChange={setImageSubOpen}>
-            <div className="flex items-center rounded-lg">
-              <DropdownMenuItem
-                onClick={handleForceImageGeneration}
-                disabled={!imageModel}
-                className={cn(
-                  "flex-1 rounded-r-none pr-1",
-                  isImageActive && "text-pink-600 dark:text-pink-400",
-                )}
-              >
-                <Image01
-                  size={16}
-                  className={cn(isImageActive && "text-pink-500")}
-                />
-                <span className="flex-1">Image mode</span>
-                {isImageActive && (
-                  <span className="text-xs text-pink-500 font-medium">On</span>
-                )}
-              </DropdownMenuItem>
-              <DropdownMenuPrimitive.SubTrigger
-                className={cn(
-                  "flex items-center justify-center rounded-r-lg rounded-l-none px-1.5 py-1.5 text-muted-foreground outline-hidden select-none",
-                  "hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground",
-                  "data-[state=open]:bg-accent data-[state=open]:text-accent-foreground",
-                )}
-              >
-                <ChevronDown size={14} />
-              </DropdownMenuPrimitive.SubTrigger>
-            </div>
-            <DropdownMenuSubContent className="w-80 max-h-72 overflow-y-auto p-1.5">
-              {isModelsLoading ? (
-                <div className="flex items-center gap-2 px-2 py-3 text-sm text-muted-foreground">
-                  <Loading01 size={14} className="animate-spin" />
-                  Loading models…
-                </div>
-              ) : imageModels.length === 0 ? (
-                <div className="px-2 py-3 text-sm text-muted-foreground">
-                  No image models available
-                </div>
-              ) : (
-                imageModels.map((model) => {
-                  const isSelected = imageModel?.modelId === model.modelId;
-                  const logo = getProviderLogo(model);
-                  const displayName = model.title.includes(": ")
-                    ? model.title.split(": ").slice(1).join(": ")
-                    : model.title;
-                  return (
-                    <DropdownMenuItem
-                      key={model.modelId}
-                      onClick={() => handleImageModelSelect(model)}
-                      className="flex items-center gap-2"
-                    >
-                      <img
-                        src={logo}
-                        alt=""
-                        className="size-4 shrink-0 rounded-sm dark:bg-white dark:p-px"
-                      />
-                      <span className="flex-1 text-sm truncate">
-                        {displayName}
-                      </span>
-                      {isSelected && (
-                        <Check size={14} className="text-pink-500 shrink-0" />
-                      )}
-                    </DropdownMenuItem>
-                  );
-                })
+          {/* Create image */}
+          {simpleModeEnabled ? (
+            <DropdownMenuItem
+              onClick={handleForceImageGeneration}
+              className={cn(
+                isImageActive && "text-pink-600 dark:text-pink-400",
               )}
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-
-          {/* Web search: split row — left toggles force mode, right opens model picker */}
-          {deepResearchModel && (
-            <DropdownMenuSub
-              open={searchSubOpen}
-              onOpenChange={setSearchSubOpen}
             >
+              <Image01
+                size={16}
+                className={cn(isImageActive && "text-pink-500")}
+              />
+              <span className="flex-1">Create image</span>
+              {isImageActive && (
+                <span className="text-xs text-pink-500 font-medium">On</span>
+              )}
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuSub open={imageSubOpen} onOpenChange={setImageSubOpen}>
               <div className="flex items-center rounded-lg">
                 <DropdownMenuItem
-                  onClick={handleForceWebSearch}
+                  onClick={handleForceImageGeneration}
+                  disabled={!imageModel}
                   className={cn(
                     "flex-1 rounded-r-none pr-1",
-                    isWebSearchActive && "text-blue-600 dark:text-blue-400",
+                    isImageActive && "text-pink-600 dark:text-pink-400",
                   )}
                 >
-                  <Globe02
+                  <Image01
                     size={16}
-                    className={cn(isWebSearchActive && "text-blue-500")}
+                    className={cn(isImageActive && "text-pink-500")}
                   />
-                  <span className="flex-1">Web search</span>
-                  {isWebSearchActive && (
-                    <span className="text-xs text-blue-500 font-medium">
+                  <span className="flex-1">Create image</span>
+                  {isImageActive && (
+                    <span className="text-xs text-pink-500 font-medium">
                       On
                     </span>
                   )}
@@ -349,10 +338,13 @@ export function ToolsPopover({
                     <Loading01 size={14} className="animate-spin" />
                     Loading models…
                   </div>
+                ) : imageModels.length === 0 ? (
+                  <div className="px-2 py-3 text-sm text-muted-foreground">
+                    No image models available
+                  </div>
                 ) : (
-                  deepResearchModels.map((model) => {
-                    const isSelected =
-                      deepResearchModel?.modelId === model.modelId;
+                  imageModels.map((model) => {
+                    const isSelected = imageModel?.modelId === model.modelId;
                     const logo = getProviderLogo(model);
                     const displayName = model.title.includes(": ")
                       ? model.title.split(": ").slice(1).join(": ")
@@ -360,7 +352,7 @@ export function ToolsPopover({
                     return (
                       <DropdownMenuItem
                         key={model.modelId}
-                        onClick={() => handleSearchModelSelect(model)}
+                        onClick={() => handleImageModelSelect(model)}
                         className="flex items-center gap-2"
                       >
                         <img
@@ -372,7 +364,7 @@ export function ToolsPopover({
                           {displayName}
                         </span>
                         {isSelected && (
-                          <Check size={14} className="text-blue-500 shrink-0" />
+                          <Check size={14} className="text-pink-500 shrink-0" />
                         )}
                       </DropdownMenuItem>
                     );
@@ -380,6 +372,101 @@ export function ToolsPopover({
                 )}
               </DropdownMenuSubContent>
             </DropdownMenuSub>
+          )}
+
+          {/* Web search */}
+          {simpleModeEnabled ? (
+            <DropdownMenuItem
+              onClick={handleForceWebSearch}
+              className={cn(
+                isWebSearchActive && "text-blue-600 dark:text-blue-400",
+              )}
+            >
+              <Globe02
+                size={16}
+                className={cn(isWebSearchActive && "text-blue-500")}
+              />
+              <span className="flex-1">Web search</span>
+              {isWebSearchActive && (
+                <span className="text-xs text-blue-500 font-medium">On</span>
+              )}
+            </DropdownMenuItem>
+          ) : (
+            deepResearchModel && (
+              <DropdownMenuSub
+                open={searchSubOpen}
+                onOpenChange={setSearchSubOpen}
+              >
+                <div className="flex items-center rounded-lg">
+                  <DropdownMenuItem
+                    onClick={handleForceWebSearch}
+                    className={cn(
+                      "flex-1 rounded-r-none pr-1",
+                      isWebSearchActive && "text-blue-600 dark:text-blue-400",
+                    )}
+                  >
+                    <Globe02
+                      size={16}
+                      className={cn(isWebSearchActive && "text-blue-500")}
+                    />
+                    <span className="flex-1">Web search</span>
+                    {isWebSearchActive && (
+                      <span className="text-xs text-blue-500 font-medium">
+                        On
+                      </span>
+                    )}
+                  </DropdownMenuItem>
+                  <DropdownMenuPrimitive.SubTrigger
+                    className={cn(
+                      "flex items-center justify-center rounded-r-lg rounded-l-none px-1.5 py-1.5 text-muted-foreground outline-hidden select-none",
+                      "hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground",
+                      "data-[state=open]:bg-accent data-[state=open]:text-accent-foreground",
+                    )}
+                  >
+                    <ChevronDown size={14} />
+                  </DropdownMenuPrimitive.SubTrigger>
+                </div>
+                <DropdownMenuSubContent className="w-80 max-h-72 overflow-y-auto p-1.5">
+                  {isModelsLoading ? (
+                    <div className="flex items-center gap-2 px-2 py-3 text-sm text-muted-foreground">
+                      <Loading01 size={14} className="animate-spin" />
+                      Loading models…
+                    </div>
+                  ) : (
+                    deepResearchModels.map((model) => {
+                      const isSelected =
+                        deepResearchModel?.modelId === model.modelId;
+                      const logo = getProviderLogo(model);
+                      const displayName = model.title.includes(": ")
+                        ? model.title.split(": ").slice(1).join(": ")
+                        : model.title;
+                      return (
+                        <DropdownMenuItem
+                          key={model.modelId}
+                          onClick={() => handleSearchModelSelect(model)}
+                          className="flex items-center gap-2"
+                        >
+                          <img
+                            src={logo}
+                            alt=""
+                            className="size-4 shrink-0 rounded-sm dark:bg-white dark:p-px"
+                          />
+                          <span className="flex-1 text-sm truncate">
+                            {displayName}
+                          </span>
+                          {isSelected && (
+                            <Check
+                              size={14}
+                              className="text-blue-500 shrink-0"
+                            />
+                          )}
+                        </DropdownMenuItem>
+                      );
+                    })
+                  )}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )
           )}
 
           <DropdownMenuSub>

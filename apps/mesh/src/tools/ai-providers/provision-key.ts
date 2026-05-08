@@ -51,6 +51,7 @@ export const AI_PROVIDER_PROVISION_KEY = defineTool({
       id: key.id,
       providerId: key.providerId,
       label: key.label,
+      presetId: key.presetId,
       createdAt: key.createdAt,
     };
   },

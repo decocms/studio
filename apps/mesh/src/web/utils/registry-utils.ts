@@ -118,12 +118,14 @@ export function extractItemsFromResponse<T>(response: unknown): T[] {
 export async function callRegistryTool<TOutput>(
   registryId: string,
   orgId: string,
+  orgSlug: string,
   toolName: string,
   args: Record<string, unknown>,
 ): Promise<TOutput> {
   const client = await createMCPClient({
     connectionId: registryId,
     orgId,
+    orgSlug,
   });
 
   try {

@@ -1,28 +1,30 @@
 /**
- * Dev-Only Routes Module
+ * Local Object Storage Routes Module
  *
- * This module contains all dev-only routes and handlers that should NEVER
- * be loaded in production. It consolidates:
+ * Mounted whenever the active object storage backend is the DevObjectStorage
+ * filesystem fallback (no S3 configured). Consolidates:
  * - Dev Assets MCP (local filesystem object storage)
  * - Dev Assets file serving (presigned URL handlers)
  * - Connection ID pattern routing for dev-assets
  *
  * USAGE (in app.ts):
  * ```
- * if (process.env.NODE_ENV !== "production") {
+ * if (usesLocalObjectStorage()) {
  *   const { mountDevRoutes } = await import("./routes/dev-only");
  *   mountDevRoutes(app, mcpAuth);
  * }
  * ```
  */
 
-import type { Context, Hono, MiddlewareHandler } from "hono";
+import { Hono } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import type { MeshContext } from "../../core/mesh-context";
+import { logDeprecatedRoute } from "../middleware/log-deprecated-route";
+import { createDevAssetsRoutes } from "./dev-assets";
 import devAssetsMcpRoutes, {
   callDevAssetsTool,
   handleDevAssetsMcpRequest,
 } from "./dev-assets-mcp";
-import devAssetsFileRoutes from "./dev-assets";
 
 /**
  * Mount all dev-only routes on the app
@@ -79,7 +81,12 @@ export function mountDevRoutes(
   app.use("/mcp/dev-assets", mcpAuth);
   app.route("/mcp/dev-assets", devAssetsMcpRoutes);
 
-  // Dev Assets file serving routes (presigned URL handlers)
-  // These are public but use signed URLs for security
-  app.route("/api/dev-assets", devAssetsFileRoutes);
+  // Dev Assets file serving routes (presigned URL handlers).
+  // Legacy mount at /api/dev-assets/:orgId/* with deprecation log; the new
+  // /api/:org/dev-assets/* mount is wired in a later task.
+  // These are public but use signed URLs for security.
+  const legacyDevAssets = new Hono();
+  legacyDevAssets.use("*", logDeprecatedRoute);
+  legacyDevAssets.route("/", createDevAssetsRoutes({ orgFromPath: false }));
+  app.route("/api/dev-assets", legacyDevAssets);
 }

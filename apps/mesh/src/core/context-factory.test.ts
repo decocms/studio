@@ -1,6 +1,6 @@
 /* oxlint-disable no-explicit-any */
 import { afterAll, beforeAll, describe, expect, it, vi } from "bun:test";
-import type { Meter, Tracer } from "@opentelemetry/api";
+import { type Meter, trace } from "@opentelemetry/api";
 import {
   createTestDatabase,
   closeTestDatabase,
@@ -90,7 +90,7 @@ describe("createMeshContextFactory", () => {
         auth: createMockAuth() as unknown as BetterAuthInstance,
         encryption: { key: "test_key" },
         observability: {
-          tracer: {} as unknown as Tracer,
+          tracer: trace.getTracer("test"),
           meter: {} as unknown as Meter,
         },
         eventBus: createMockEventBus(),
@@ -117,7 +117,7 @@ describe("createMeshContextFactory", () => {
         auth: createMinimalMockAuth() as unknown as BetterAuthInstance,
         encryption: { key: "test_key" },
         observability: {
-          tracer: {} as unknown as Tracer,
+          tracer: trace.getTracer("test"),
           meter: {} as unknown as Meter,
         },
         eventBus: createMockEventBus(),
@@ -145,7 +145,7 @@ describe("createMeshContextFactory", () => {
         auth: createMinimalMockAuth() as unknown as BetterAuthInstance,
         encryption: { key: "test_key" },
         observability: {
-          tracer: {} as unknown as Tracer,
+          tracer: trace.getTracer("test"),
           meter: {} as unknown as Meter,
         },
         eventBus: createMockEventBus(),
@@ -168,7 +168,7 @@ describe("createMeshContextFactory", () => {
         auth: createMinimalMockAuth() as unknown as BetterAuthInstance,
         encryption: { key: "test_key" },
         observability: {
-          tracer: {} as unknown as Tracer,
+          tracer: trace.getTracer("test"),
           meter: {} as unknown as Meter,
         },
         eventBus: createMockEventBus(),
@@ -198,7 +198,7 @@ describe("createMeshContextFactory", () => {
         auth: createMockAuth() as unknown as BetterAuthInstance,
         encryption: { key: "test_key" },
         observability: {
-          tracer: {} as unknown as Tracer,
+          tracer: trace.getTracer("test"),
           meter: {} as unknown as Meter,
         },
         eventBus: createMockEventBus(),
@@ -236,7 +236,7 @@ describe("createMeshContextFactory", () => {
         auth: authWithoutOrg as unknown as BetterAuthInstance,
         encryption: { key: "test_key" },
         observability: {
-          tracer: {} as unknown as Tracer,
+          tracer: trace.getTracer("test"),
           meter: {} as unknown as Meter,
         },
         eventBus: createMockEventBus(),
@@ -257,7 +257,7 @@ describe("createMeshContextFactory", () => {
         auth: createMinimalMockAuth() as unknown as BetterAuthInstance,
         encryption: { key: "test_key" },
         observability: {
-          tracer: {} as unknown as Tracer,
+          tracer: trace.getTracer("test"),
           meter: {} as unknown as Meter,
         },
         eventBus: createMockEventBus(),
@@ -283,7 +283,7 @@ describe("createMeshContextFactory", () => {
         auth: createMinimalMockAuth() as unknown as BetterAuthInstance,
         encryption: { key: "test_key" },
         observability: {
-          tracer: {} as unknown as Tracer,
+          tracer: trace.getTracer("test"),
           meter: {} as unknown as Meter,
         },
         eventBus: createMockEventBus(),
@@ -334,7 +334,7 @@ describe("createMeshContextFactory", () => {
         auth: mockAuthWithOrgInApiKey as unknown as BetterAuthInstance,
         encryption: { key: "test_key" },
         observability: {
-          tracer: {} as unknown as Tracer,
+          tracer: trace.getTracer("test"),
           meter: {} as unknown as Meter,
         },
         eventBus: createMockEventBus(),
@@ -376,7 +376,7 @@ describe("createMeshContextFactory", () => {
         auth: mockAuthWithoutOrg as unknown as BetterAuthInstance,
         encryption: { key: "test_key" },
         observability: {
-          tracer: {} as unknown as Tracer,
+          tracer: trace.getTracer("test"),
           meter: {} as unknown as Meter,
         },
         eventBus: createMockEventBus(),
@@ -418,7 +418,7 @@ describe("createMeshContextFactory", () => {
         auth: mockAuthOrgA as unknown as BetterAuthInstance,
         encryption: { key: "test_key" },
         observability: {
-          tracer: {} as unknown as Tracer,
+          tracer: trace.getTracer("test"),
           meter: {} as unknown as Meter,
         },
         eventBus: createMockEventBus(),
@@ -456,7 +456,7 @@ describe("createMeshContextFactory", () => {
         auth: mockAuthOrgB as unknown as BetterAuthInstance,
         encryption: { key: "test_key" },
         observability: {
-          tracer: {} as unknown as Tracer,
+          tracer: trace.getTracer("test"),
           meter: {} as unknown as Meter,
         },
         eventBus: createMockEventBus(),

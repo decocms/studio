@@ -29,7 +29,9 @@ export class DuckDBEngine implements QueryEngine {
   constructor() {
     this.connectionPromise = import("@duckdb/node-api").then(
       async ({ DuckDBInstance }) => {
-        const instance = await DuckDBInstance.create();
+        const { cpus } = await import("node:os");
+        const threads = String(Math.max(1, cpus().length));
+        const instance = await DuckDBInstance.create("", { threads });
         return instance.connect();
       },
     );

@@ -35,6 +35,7 @@ import {
 import type { CollectionListOutput } from "@decocms/bindings/collections";
 import type { ConnectionEntity } from "@decocms/mesh-sdk";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
+import { track } from "@/web/lib/posthog-client";
 
 const LEAN_CANVAS_MCP_URL = "https://sites-lean-canva.decocache.com/api/mcp";
 
@@ -107,6 +108,7 @@ export function LeanCanvasRecruitModal({
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const connectionQuery = useMCPToolCallMutation({ client });
   const [isRecruiting, setIsRecruiting] = useState(false);
@@ -226,9 +228,17 @@ export function LeanCanvasRecruitModal({
       });
 
       // 3. Navigate to the new agent
+      track("agent_recruit_confirmed", {
+        template_id: "lean-canvas",
+        agent_id: virtualMcp.id!,
+      });
       onOpenChange(false);
       navigateToAgent(virtualMcp.id!);
     } catch (error) {
+      track("agent_recruit_failed", {
+        template_id: "lean-canvas",
+        error: error instanceof Error ? error.message : String(error),
+      });
       console.error("Failed to create Lean Canvas agent:", error);
     } finally {
       setIsRecruiting(false);

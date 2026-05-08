@@ -21,6 +21,7 @@ import { authClient } from "@/web/lib/auth-client";
 import { KEYS } from "@/web/lib/query-keys";
 import { generateSlug } from "@/web/lib/slug";
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
+import { track } from "@/web/lib/posthog-client";
 
 interface DecoSite {
   name: string;
@@ -32,8 +33,8 @@ interface DecoSitesResponse {
   sites: DecoSite[];
 }
 
-async function loadDecoSites(): Promise<DecoSitesResponse> {
-  const res = await fetch("/api/deco-sites");
+async function loadDecoSites(orgSlug: string): Promise<DecoSitesResponse> {
+  const res = await fetch(`/api/${orgSlug}/deco-sites`);
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? `Failed to load sites (${res.status})`);
@@ -74,6 +75,7 @@ export function ImportFromDecoDialog({
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const {
@@ -82,7 +84,7 @@ export function ImportFromDecoDialog({
     error: sitesError,
   } = useQuery({
     queryKey: KEYS.decoSites(session?.user?.email),
-    queryFn: loadDecoSites,
+    queryFn: () => loadDecoSites(org.slug),
     enabled: open && Boolean(session?.user?.email),
     staleTime: 60_000,
     retry: false,
@@ -109,9 +111,10 @@ export function ImportFromDecoDialog({
 
   const importMutation = useMutation({
     mutationFn: async (siteName: string) => {
+      track("deco_site_import_started", { site_name: siteName });
       // 1. Create the connection server-side so the deco.cx API key never
       //    reaches the browser — the backend fetches and encrypts it directly.
-      const connRes = await fetch("/api/deco-sites/connection", {
+      const connRes = await fetch(`/api/${org.slug}/deco-sites/connection`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ siteName, orgId: org.id }),
@@ -192,6 +195,7 @@ export function ImportFromDecoDialog({
                     id: connId,
                     toolName: "file_explorer",
                   },
+                  chatDefaultOpen: true,
                 },
               },
             },
@@ -211,6 +215,11 @@ export function ImportFromDecoDialog({
       };
     },
     onSuccess: ({ slug, virtualMcpId, item }) => {
+      track("deco_site_import_succeeded", {
+        site_name: item.title,
+        virtual_mcp_id: virtualMcpId,
+        slug,
+      });
       // Seed the individual item cache so useVirtualMCP resolves instantly on
       // the redirected page without waiting for a network round-trip.
       queryClient.setQueryData(
@@ -239,6 +248,9 @@ export function ImportFromDecoDialog({
       navigateToAgent(virtualMcpId);
     },
     onError: (err) => {
+      track("deco_site_import_failed", {
+        error: err instanceof Error ? err.message : "Unknown error",
+      });
       toast.error(
         "Import failed: " +
           (err instanceof Error ? err.message : "Unknown error"),

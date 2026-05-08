@@ -38,6 +38,7 @@ import {
 import { GitHubIcon } from "@daveyplate/better-auth-ui";
 import { SidebarMenuButton } from "@deco/ui/components/sidebar.tsx";
 import { authClient } from "@/web/lib/auth-client";
+import { track } from "@/web/lib/posthog-client";
 import { CreateOrganizationDialog } from "@/web/components/create-organization-dialog";
 import { usePreferences, type ThemeMode } from "@/web/hooks/use-preferences.ts";
 import { toast } from "@deco/ui/components/sonner.js";
@@ -539,9 +540,9 @@ export function AccountPopover() {
     },
     {
       key: "github",
-      label: "decocms/mesh",
+      label: "decocms/studio",
       icon: <GitHubIcon className="w-4 h-4" />,
-      href: "https://github.com/decocms/mesh",
+      href: "https://github.com/decocms/studio",
       external: true,
     },
     {
@@ -564,7 +565,10 @@ export function AccountPopover() {
     key: "logout",
     label: "Sign out",
     icon: <LogOut01 size={16} />,
-    onClick: () => authClient.signOut(),
+    onClick: () => {
+      track("signed_out", { source: "account_popover" });
+      authClient.signOut();
+    },
   };
 
   const themeOptions: {

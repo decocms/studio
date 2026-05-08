@@ -7,6 +7,7 @@
   }
   body {
     @apply bg-background text-foreground;
+    padding-top: env(titlebar-area-height, 0);
   }
   svg {
     stroke-width: 1.75;

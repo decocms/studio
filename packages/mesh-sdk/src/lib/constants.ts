@@ -310,9 +310,15 @@ export const WELL_KNOWN_AGENT_TEMPLATES = [
   {
     id: "site-editor",
     appId: "deco/site-editor",
-    title: "Site Editor",
-    icon: "icon://Globe01?color=violet",
+    title: "deco Site Editor",
+    icon: "/logos/deco%20logo.svg#agentcolor=brand-green",
     type: "registry-agent" as const,
+  },
+  {
+    id: "self-healing-storefront",
+    title: "Self-healing Storefront",
+    icon: "icon://Zap?color=amber",
+    type: "builtin-agent" as const,
   },
   {
     id: "site-diagnostics",

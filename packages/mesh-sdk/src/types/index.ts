@@ -28,6 +28,10 @@ export {
   type VirtualMcpUILayout,
   type VirtualMcpUILayoutTab,
   type GithubRepo,
+  VmMapSchema,
+  type VmMap,
+  VmMapEntrySchema,
+  type VmMapEntry,
 } from "./virtual-mcp";
 
 export {

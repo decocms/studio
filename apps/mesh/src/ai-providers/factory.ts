@@ -1,7 +1,12 @@
 import type { ModelCapability } from "@decocms/mesh-sdk";
 import type { AIProviderKeyStorage } from "../storage/ai-provider-keys";
 import type { ModelListCache } from "./model-list-cache";
-import type { MeshProvider, ModelInfo, OpenRouterAPIModel } from "./types";
+import type {
+  MeshProvider,
+  ModelInfo,
+  OpenRouterAPIModel,
+  ProviderAdapter,
+} from "./types";
 import { getProviders } from "./registry";
 
 // Sentinel org ID for the shared OpenRouter metadata cache (not org-specific)
@@ -91,6 +96,27 @@ function candidateIds(modelId: string): string[] {
   return [...new Set([modelId, dashed, withoutDate, dashedWithoutDate])];
 }
 
+// Anthropic's document blocks support PDFs on all vision-capable Claude models.
+// This covers both direct Anthropic keys (providerId="anthropic") and models
+// routed through OpenRouter/deco (modelId starts with "anthropic/").
+function isAnthropicModel(m: ModelInfo): boolean {
+  return m.providerId === "anthropic" || m.modelId.startsWith("anthropic/");
+}
+
+function applyAnthropicPdfCapability(
+  caps: ModelCapability[],
+  m: ModelInfo,
+): ModelCapability[] {
+  if (
+    isAnthropicModel(m) &&
+    caps.includes("vision") &&
+    !caps.includes("file")
+  ) {
+    return [...caps, "file"] as ModelCapability[];
+  }
+  return caps;
+}
+
 function enrich(
   models: ModelInfo[],
   index: Map<string, Partial<ModelInfo>>,
@@ -98,15 +124,17 @@ function enrich(
   return models.map((m) => {
     const candidates = candidateIds(m.modelId);
     const meta = candidates.map((id) => index.get(id)).find(Boolean);
+    const rawCaps: ModelCapability[] = m.capabilities.length
+      ? m.capabilities
+      : (meta?.capabilities ?? []);
+    const caps = applyAnthropicPdfCapability(rawCaps, m);
     if (!meta) {
-      return m;
+      return caps === rawCaps ? m : { ...m, capabilities: caps };
     }
     return {
       ...m,
       description: m.description ?? meta.description ?? null,
-      capabilities: m.capabilities.length
-        ? m.capabilities
-        : (meta.capabilities ?? []),
+      capabilities: caps,
       limits: m.limits ?? meta.limits ?? null,
       costs: m.costs ?? meta.costs ?? null,
     };
@@ -138,14 +166,19 @@ export class AIProviderFactory {
       organizationId,
     );
     const providerId = keyInfo.providerId;
+    const adapter = getProviders()[providerId];
+    if (!adapter) throw new Error(`Unknown provider: ${providerId}`);
 
     if (this.cache) {
       const cached = await this.cache.get(organizationId, providerId);
-      if (cached) return cached;
+      if (cached) {
+        // Re-apply per-request flags (e.g. asyncResearch) on the cached
+        // payload — entries cached before the flag existed otherwise leak
+        // through stale.
+        return applyProviderFlags(cached, adapter, apiKey);
+      }
     }
 
-    const adapter = getProviders()[providerId];
-    if (!adapter) throw new Error(`Unknown provider: ${providerId}`);
     const provider = adapter.create(apiKey);
     const rawModels = await provider.listModels();
 
@@ -161,6 +194,12 @@ export class AIProviderFactory {
     if (providerId !== "openrouter") {
       const index = await getOpenRouterIndex(this.cache);
       models = enrich(models, index);
+    } else {
+      // OpenRouter path skips enrich() — still apply provider-specific fixes.
+      models = models.map((m) => ({
+        ...m,
+        capabilities: applyAnthropicPdfCapability(m.capabilities, m),
+      }));
     }
 
     const result = models.map((m) => ({ ...m, providerId }));
@@ -169,6 +208,26 @@ export class AIProviderFactory {
       await this.cache.set(organizationId, providerId, result);
     }
 
-    return result;
+    return applyProviderFlags(result, adapter, apiKey);
   }
+}
+
+/**
+ * Stamp request-time flags onto a model list. Lets us ship new flags
+ * (currently `asyncResearch`) without forcing a cache invalidation.
+ *
+ * Creates a provider once and reuses it across all models — `adapter.create`
+ * is cheap (just closure construction) but worth not repeating per model.
+ */
+function applyProviderFlags(
+  models: ModelInfo[],
+  adapter: ProviderAdapter,
+  apiKey: string,
+): ModelInfo[] {
+  const provider = adapter.create(apiKey);
+  const asyncResearch = provider.asyncResearch;
+  if (!asyncResearch) return models;
+  return models.map((m) =>
+    asyncResearch.canHandle(m.modelId) ? { ...m, asyncResearch: true } : m,
+  );
 }

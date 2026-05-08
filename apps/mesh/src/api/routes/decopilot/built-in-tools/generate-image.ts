@@ -123,7 +123,9 @@ function validateExternalUrl(url: string): void {
     throw new Error("Invalid image URL");
   }
 
-  const allowHttp = getSettings().nodeEnv !== "production";
+  // Local mode is single-tenant developer experience and may want to point
+  // at `http://localhost`-style fixtures; everywhere else requires HTTPS.
+  const allowHttp = getSettings().localMode;
   if (
     parsed.protocol !== "https:" &&
     !(allowHttp && parsed.protocol === "http:")

@@ -35,6 +35,7 @@ import {
 import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
 import { useNavigate } from "@tanstack/react-router";
 import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
+import { track } from "@/web/lib/posthog-client";
 
 interface Invitation {
   id: string;
@@ -61,11 +62,13 @@ function InvitationItem({ invitation }: { invitation: Invitation }) {
         toast.error(result.error.message);
         setIsAccepting(false);
       } else {
-        const setActiveResult = await authClient.organization.setActive({
-          organizationId: invitation.organizationId,
+        // Fetch org slug for redirect without mutating the session's active
+        // org (avoids cross-tab leak — see shell-layout.tsx).
+        const orgResult = await authClient.organization.getFullOrganization({
+          query: { organizationId: invitation.organizationId },
         });
         toast.success("Invitation accepted!");
-        const slug = setActiveResult?.data?.slug;
+        const slug = orgResult?.data?.slug;
         window.location.href = slug ? `/${slug}` : "/";
       }
     } catch {
@@ -174,6 +177,7 @@ function CreditChip() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const { data, isPending, isError } = useMCPToolCallQuery<
@@ -234,7 +238,13 @@ function ConnectionsButton() {
         <SidebarMenuItem>
           <SidebarMenuButton
             tooltip="Connections"
-            onClick={() => setOpen(true)}
+            onClick={() => {
+              track("connections_dialog_opened", {
+                source: "sidebar_footer",
+                mode: "browse",
+              });
+              setOpen(true);
+            }}
           >
             <ZapSquare size={24} />
           </SidebarMenuButton>

@@ -16,20 +16,21 @@ import {
   GenericToolCallPart,
   GenerateImagePart,
   WebSearchPart,
-  OpenInAgentPart,
   ProposePlanPart,
   SubtaskPart,
   UserAskPart,
 } from "./parts/tool-call-part/index.ts";
 import { SmartAutoScroll } from "./smart-auto-scroll.tsx";
+import { ThreadOutputs } from "./thread-outputs.tsx";
 import {
   type DataParts,
   type RenderItem,
   useFilterParts,
 } from "./use-filter-parts.ts";
 import { addUsage, emptyUsageStats } from "@decocms/mesh-sdk";
-import { useOptionalChatStream } from "../context.tsx";
+import { useOptionalChatStream, useOptionalChatTask } from "../context.tsx";
 import { LiveTimer } from "../../live-timer.tsx";
+import { GridLoader } from "../../grid-loader.tsx";
 import { formatDuration } from "../../../lib/format-time.ts";
 
 type ThinkingStage = "planning" | "thinking";
@@ -86,55 +87,6 @@ function TypingIndicator() {
           {config.label}...
         </span>
       </span>
-    </div>
-  );
-}
-
-const GRID_CELLS = [
-  { delay: 0 },
-  { delay: 100 },
-  { delay: 200 },
-  { delay: 100 },
-  { delay: 200 },
-  { delay: 200 },
-  { delay: 300 },
-  { delay: 300 },
-  { delay: 400 },
-];
-
-function GridLoader() {
-  const [cellColors] = useState(() => {
-    const chart = `var(--chart-${Math.ceil(Math.random() * 5)})`;
-    return GRID_CELLS.map(() =>
-      Math.random() < 0.6
-        ? "color-mix(in srgb, var(--muted-foreground) 25%, transparent)"
-        : chart,
-    );
-  });
-  return (
-    <div
-      className="grid"
-      style={{
-        gridTemplateColumns: "repeat(3, 3px)",
-        gap: "1.5px",
-        width: "fit-content",
-      }}
-    >
-      {GRID_CELLS.map(({ delay }, i) => (
-        <div
-          key={i}
-          className="rounded-[1px]"
-          style={
-            {
-              width: 3,
-              height: 3,
-              "--cell-color": cellColors[i],
-              animation: "grid-ripple 1s ease infinite",
-              animationDelay: `${delay}ms`,
-            } as React.CSSProperties
-          }
-        />
-      ))}
     </div>
   );
 }
@@ -495,14 +447,6 @@ function MessagePart({
           latency={getMeta(part.toolCallId)?.latencySeconds}
         />
       );
-    case "tool-open_in_agent":
-      return (
-        <OpenInAgentPart
-          part={part}
-          annotations={getMeta(part.toolCallId)?.annotations}
-          latency={getMeta(part.toolCallId)?.latencySeconds}
-        />
-      );
     case "text":
       return (
         <MessageTextPart
@@ -606,6 +550,7 @@ export function MessageAssistant({
   isLast = false,
 }: MessageAssistantProps) {
   const { isRunInProgress = false } = useOptionalChatStream() ?? {};
+  const taskId = useOptionalChatTask()?.taskId ?? null;
   const isStreaming = status === "streaming";
   const isSubmitted = status === "submitted";
   const isLoading = isStreaming || isSubmitted;
@@ -709,6 +654,9 @@ export function MessageAssistant({
           })}
           {isLast && isLoading && startedAt !== null && (
             <GeneratingFooter startedAt={startedAt} />
+          )}
+          {isLast && !isLoading && taskId && (
+            <ThreadOutputs threadId={taskId} />
           )}
         </div>
       ) : isLoading ? (

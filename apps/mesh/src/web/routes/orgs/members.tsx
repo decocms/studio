@@ -2,17 +2,17 @@ import { CollectionDisplayButton } from "@/web/components/collections/collection
 import { SearchInput } from "@deco/ui/components/search-input.tsx";
 import { Page } from "@/web/components/page";
 import { CollectionTableWrapper } from "@/web/components/collections/collection-table-wrapper.tsx";
-import { ManageRolesDialog } from "@/web/components/manage-roles-dialog";
 import { EmptyState } from "@/web/components/empty-state.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { InviteMemberDialog } from "@/web/components/invite-member-dialog";
+import { track } from "@/web/lib/posthog-client";
 import { useMembers } from "@/web/hooks/use-members";
 import {
   useInvitations,
   useInvitationActions,
 } from "@/web/hooks/use-invitations";
 import { useOrganizationRoles } from "@/web/hooks/use-organization-roles";
-import { authClient } from "@/web/lib/auth-client";
+import { useOrgAuthClient } from "@/web/hooks/use-org-auth-client";
 import { KEYS } from "@/web/lib/query-keys";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import {
@@ -68,7 +68,6 @@ import { Suspense, useState } from "react";
 import { toast } from "sonner";
 import { TagMultiSelect } from "@/web/components/tag-multi-select";
 
-// Role colors matching manage-roles-dialog
 const ROLE_COLORS = [
   "bg-neutral-400",
   "bg-red-500",
@@ -430,6 +429,7 @@ function OrgMembersContent() {
   const invitationActions = useInvitationActions();
   const queryClient = useQueryClient();
   const { locator } = useProjectContext();
+  const orgAuth = useOrgAuthClient();
   const [memberToRemove, setMemberToRemove] = useState<string | null>(null);
   const [invitationToCancel, setInvitationToCancel] = useState<string | null>(
     null,
@@ -514,7 +514,7 @@ function OrgMembersContent() {
 
   const removeMemberMutation = useMutation({
     mutationFn: async (memberId: string) => {
-      const result = await authClient.organization.removeMember({
+      const result = await orgAuth.organization.removeMember({
         memberIdOrEmail: memberId,
       });
       if (result?.error) {
@@ -522,11 +522,15 @@ function OrgMembersContent() {
       }
     },
     onSuccess: () => {
+      track("member_removed");
       queryClient.invalidateQueries({ queryKey: KEYS.members(locator) });
       toast.success("Member has been removed from the organization");
       setMemberToRemove(null);
     },
     onError: (error) => {
+      track("member_remove_failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
       toast.error(
         error instanceof Error ? error.message : "Failed to remove member",
       );
@@ -541,7 +545,7 @@ function OrgMembersContent() {
       memberId: string;
       role: string;
     }) => {
-      const result = await authClient.organization.updateMemberRole({
+      const result = await orgAuth.organization.updateMemberRole({
         memberId,
         role: [role],
       });
@@ -549,11 +553,16 @@ function OrgMembersContent() {
         throw new Error(result.error.message);
       }
     },
-    onSuccess: () => {
+    onSuccess: (_res, vars) => {
+      track("member_role_updated", { new_role: vars.role });
       queryClient.invalidateQueries({ queryKey: KEYS.members(locator) });
       toast.success("Member's role has been updated");
     },
-    onError: (error) => {
+    onError: (error, vars) => {
+      track("member_role_update_failed", {
+        new_role: vars.role,
+        error: error instanceof Error ? error.message : String(error),
+      });
       toast.error(
         error instanceof Error ? error.message : "Failed to update role",
       );
@@ -571,7 +580,7 @@ function OrgMembersContent() {
       email: string;
     }) => {
       // Cancel the old invitation
-      const cancelResult = await authClient.organization.cancelInvitation({
+      const cancelResult = await orgAuth.organization.cancelInvitation({
         invitationId,
       });
       if (cancelResult?.error) {
@@ -579,7 +588,7 @@ function OrgMembersContent() {
       }
 
       // Create new invitation with updated role
-      const inviteResult = await authClient.organization.inviteMember({
+      const inviteResult = await orgAuth.organization.inviteMember({
         email,
         role: role as "admin" | "owner",
       });
@@ -587,11 +596,16 @@ function OrgMembersContent() {
         throw new Error(inviteResult.error.message);
       }
     },
-    onSuccess: () => {
+    onSuccess: (_res, vars) => {
+      track("invitation_role_updated", { new_role: vars.role });
       queryClient.invalidateQueries({ queryKey: KEYS.invitations(locator) });
       toast.success("Invitation role has been updated");
     },
-    onError: (error) => {
+    onError: (error, vars) => {
+      track("invitation_role_update_failed", {
+        new_role: vars.role,
+        error: error instanceof Error ? error.message : String(error),
+      });
       toast.error(
         error instanceof Error
           ? error.message
@@ -769,14 +783,6 @@ function OrgMembersContent() {
 
   const ctaButton = (
     <div className="flex items-center gap-2">
-      <ManageRolesDialog
-        trigger={
-          <Button variant="outline">
-            <Shield01 size={16} />
-            Manage Roles
-          </Button>
-        }
-      />
       <InviteMemberDialog trigger={<Button>Invite Member</Button>} />
     </div>
   );
@@ -859,19 +865,19 @@ function OrgMembersContent() {
           <div className="flex flex-col gap-6">
             <Page.Title>Members</Page.Title>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <SearchInput
-                value={search}
-                onChange={setSearch}
-                placeholder="Search members..."
-                className="w-full md:w-[375px]"
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    setSearch("");
-                    (event.target as HTMLInputElement).blur();
-                  }
-                }}
-              />
               <div className="flex items-center gap-2">
+                <SearchInput
+                  value={search}
+                  onChange={setSearch}
+                  placeholder="Search members..."
+                  className="w-full md:w-[375px]"
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      setSearch("");
+                      (event.target as HTMLInputElement).blur();
+                    }
+                  }}
+                />
                 <CollectionDisplayButton
                   viewMode={viewMode}
                   onViewModeChange={setViewMode}
@@ -884,8 +890,8 @@ function OrgMembersContent() {
                     { id: "joined", label: "Joined" },
                   ]}
                 />
-                {ctaButton}
               </div>
+              {ctaButton}
             </div>
             {viewMode === "cards" ? (
               <div>

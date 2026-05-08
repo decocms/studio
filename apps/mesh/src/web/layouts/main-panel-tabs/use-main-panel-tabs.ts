@@ -21,6 +21,7 @@ import {
 } from "@decocms/mesh-sdk";
 import { KEYS } from "@/web/lib/query-keys";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
+import { useChatTask } from "@/web/components/chat/index";
 import type {
   ThreadExpandedTool,
   ThreadMetadata,
@@ -67,6 +68,7 @@ function useTaskMetadata(taskId: string): ThreadMetadata | null {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const { data } = useSuspenseQuery({
     queryKey: KEYS.threadMetadata(taskId),
@@ -95,9 +97,12 @@ export function useMainPanelTabs(ctx: {
   taskId: string;
 }): MainPanelTabs {
   const navigate = useNavigate();
-  const search = useSearch({ strict: false }) as { main?: string };
+  const search = useSearch({ strict: false }) as {
+    main?: string;
+  };
   const entity = useVirtualMCP(ctx.virtualMcpId);
   const metadata = useTaskMetadata(ctx.taskId);
+  const { currentBranch } = useChatTask();
 
   const entityUI =
     (
@@ -140,16 +145,18 @@ export function useMainPanelTabs(ctx: {
 
   const automationTabParsed = parseAutomationTabId(activeTab);
 
-  const systemTabs: Array<{ id: string; title: string }> = [
-    { id: "instructions", title: "Instructions" },
-    { id: "connections", title: "Connections" },
-    { id: "automations", title: "Automations" },
-    { id: "layout", title: "Layout" },
-  ];
+  // Unified "settings" tab bundles instructions, connections, and layout
+  // into a single detail view. On GitHub-linked vMCPs the contextual
+  // work tabs (Preview, Terminal, git) come first so they're closest
+  // to the panel; Settings + Automations stay anchored at the right.
+  const systemTabs: Array<{ id: string; title: string }> = [];
   if (hasActiveGithubRepo) {
-    systemTabs.push({ id: "env", title: "Terminal" });
     systemTabs.push({ id: "preview", title: "Preview" });
+    systemTabs.push({ id: "env", title: "Terminal" });
+    systemTabs.push({ id: "git", title: currentBranch ?? "git" });
   }
+  systemTabs.push({ id: "settings", title: "Settings" });
+  systemTabs.push({ id: "automations", title: "Automations" });
 
   // Merge pinned views + per-task expanded tools into a single list keyed
   // by the pinned-view tab id. Pinned views win on dedupe so the
@@ -186,16 +193,6 @@ export function useMainPanelTabs(ctx: {
   }
 
   const tabs: Tab[] = [
-    ...systemTabs.map((t) => ({
-      id: t.id,
-      title: t.title,
-      kind: "system" as const,
-      icon: resolveTabIcon({
-        tabId: t.id,
-        kind: "system",
-        connections,
-      }),
-    })),
     ...layoutTabs.map((t) => ({
       id: t.id,
       title: t.title,
@@ -216,6 +213,16 @@ export function useMainPanelTabs(ctx: {
         kind: "expanded",
         appId: t.appId,
         iconUrl: t.iconUrl,
+        connections,
+      }),
+    })),
+    ...systemTabs.map((t) => ({
+      id: t.id,
+      title: t.title,
+      kind: "system" as const,
+      icon: resolveTabIcon({
+        tabId: t.id,
+        kind: "system",
         connections,
       }),
     })),

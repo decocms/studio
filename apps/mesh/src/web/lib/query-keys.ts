@@ -12,7 +12,6 @@ export const KEYS = {
   publicConfig: () => ["publicConfig"] as const,
 
   // Auth-related queries
-  authConfig: () => ["authConfig"] as const,
   session: () => ["session"] as const,
 
   // Task queries (filters scope the cache entry)
@@ -164,6 +163,10 @@ export const KEYS = {
   monitoringLogDetail: (logId: string) =>
     ["monitoring", "log-detail", logId] as const,
 
+  // Ensure-task query (load-or-create by id)
+  ensureTask: (orgId: string, id: string) =>
+    ["ensure-task", orgId, id] as const,
+
   // Thread queries (scoped by locator)
   threadsInfinite: (locator: string, paramsKey: string) =>
     ["threads", "list-infinite", locator, paramsKey] as const,
@@ -173,6 +176,9 @@ export const KEYS = {
     ["threads", "model-logs", locator, dateKey] as const,
   threadMetadata: (threadId: string) =>
     ["threads", "metadata", threadId] as const,
+  threadSandbox: (orgKey: string, taskId: string | undefined) =>
+    ["thread-sandbox", "v2", orgKey, taskId] as const,
+  threadOutputs: (threadId: string) => ["thread-outputs", threadId] as const,
 
   // Virtual MCP tools (for tool definition lookup in chat)
   // null virtualMcpId means default virtual MCP
@@ -308,10 +314,6 @@ export const KEYS = {
     ["org-sso-config", organizationId] as const,
   orgSsoStatus: (organizationId: string) =>
     ["org-sso-status", organizationId] as const,
-
-  // Registry config (scoped by organization)
-  registryConfig: (organizationId: string) =>
-    ["registry-config", organizationId] as const,
 
   // Store discovery (per-registry infinite query)
   storeDiscovery: (orgId: string, registryId: string) =>

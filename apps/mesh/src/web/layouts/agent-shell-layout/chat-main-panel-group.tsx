@@ -21,7 +21,9 @@ import {
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import { computeChatMainSizes } from "@/web/hooks/use-layout-state";
+import { ChatCenterPanel } from "@/web/layouts/chat-center-panel";
 import { MainPanelContent } from "@/web/layouts/main-panel-tabs";
+import { ErrorBoundary } from "@/web/components/error-boundary";
 
 function PersistentChatPanel({
   children,
@@ -60,7 +62,9 @@ export interface ChatMainPanelGroupProps {
   taskId: string;
   chatOpen: boolean;
   mainOpen: boolean;
-  chatContent: React.ReactNode;
+  /** Optional override for the chat panel content — lets the outer layout
+   * wrap ChatCenterPanel in its own Suspense/ErrorBoundary/ActiveTaskProvider. */
+  chatContent?: React.ReactNode;
 }
 
 export function ChatMainPanelGroup({
@@ -100,7 +104,7 @@ export function ChatMainPanelGroup({
       <PersistentChatPanel defaultSize={sizes.chat}>
         <div className="h-full p-0.5 pt-0.25">
           <div className="h-full bg-background rounded-[0.75rem] overflow-hidden card-shadow">
-            {chatContent}
+            {chatContent ?? <ChatCenterPanel />}
           </div>
         </div>
       </PersistentChatPanel>
@@ -126,7 +130,9 @@ export function ChatMainPanelGroup({
             )}
           >
             <div className="flex-1 min-h-0 overflow-hidden">
-              <MainPanelContent taskId={taskId} virtualMcpId={virtualMcpId} />
+              <ErrorBoundary>
+                <MainPanelContent taskId={taskId} virtualMcpId={virtualMcpId} />
+              </ErrorBoundary>
             </div>
           </div>
         </div>

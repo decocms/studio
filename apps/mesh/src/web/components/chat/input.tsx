@@ -1,11 +1,13 @@
 import { isModKey } from "@/web/lib/keyboard-shortcuts";
 import { calculateUsageStats } from "@/web/lib/usage-utils.ts";
+import { AUTOSEND_QUERY_VALUE, writeStoredAutosend } from "@/web/lib/autosend";
 import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   getWellKnownDecopilotVirtualMCP,
   useProjectContext,
 } from "@decocms/mesh-sdk";
+import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowUp,
   BookOpen01,
@@ -22,12 +24,24 @@ import {
 import type { FormEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { Metadata } from "./types.ts";
-import { useChatStream, useChatTask, useChatPrefs } from "./context";
+import {
+  useChatPrefs,
+  useOptionalChatStream,
+  useOptionalChatTask,
+} from "./context";
+import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import { ChatHighlight } from "./highlight";
 import { ModelSelector } from "./select-model";
-import { modelSupportsFiles } from "./select-model";
+import { getSupportedFileTypesLabel, modelSupportsFiles } from "./select-model";
+import { SimpleModeTierDropdown } from "./simple-mode-tier-dropdown";
 import type { AiProviderModel } from "@/web/hooks/collections/use-ai-providers";
-import { FileUploadButton, processFile } from "./tiptap/file";
+import {
+  FileUploadButton,
+  UnsupportedFileDialog,
+  useUnsupportedFileDialog,
+  processFile,
+  type UnsupportedFileInfo,
+} from "./tiptap/file";
 import { useCurrentEditor } from "@tiptap/react";
 import {
   TiptapInput,
@@ -38,6 +52,7 @@ import { isTiptapDocEmpty } from "./tiptap/utils";
 import { ToolsPopover } from "./tools-popover";
 import { SessionStats } from "./usage-stats";
 import { authClient } from "@/web/lib/auth-client.ts";
+import { track } from "@/web/lib/posthog-client";
 import { useSound } from "@/web/hooks/use-sound.ts";
 import { question004Sound } from "@deco/ui/lib/question-004.ts";
 import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
@@ -55,7 +70,10 @@ import { VoiceWaveform } from "./voice-input";
  *
  * Must be called inside a TiptapProvider so `useCurrentEditor()` resolves.
  */
-function useWindowFileDrop(selectedModel: AiProviderModel | null | undefined) {
+function useWindowFileDrop(
+  selectedModel: AiProviderModel | null | undefined,
+  onUnsupportedFile?: (info: UnsupportedFileInfo) => void,
+) {
   const { editor } = useCurrentEditor();
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const dragCounterRef = useRef(0);
@@ -94,7 +112,7 @@ function useWindowFileDrop(selectedModel: AiProviderModel | null | undefined) {
 
       const { from } = editor.state.selection;
       for (const file of Array.from(files)) {
-        void processFile(editor, selectedModel, file, from);
+        void processFile(editor, selectedModel, file, from, onUnsupportedFile);
       }
     };
 
@@ -108,7 +126,7 @@ function useWindowFileDrop(selectedModel: AiProviderModel | null | undefined) {
       window.removeEventListener("dragover", onDragOver);
       window.removeEventListener("drop", onDrop);
     };
-  }, [editor, selectedModel]);
+  }, [editor, selectedModel, onUnsupportedFile]);
 
   return isDraggingOver;
 }
@@ -119,10 +137,12 @@ function useWindowFileDrop(selectedModel: AiProviderModel | null | undefined) {
 
 function FileDropZone({
   selectedModel,
+  onUnsupportedFile,
 }: {
   selectedModel: AiProviderModel | null | undefined;
+  onUnsupportedFile?: (info: UnsupportedFileInfo) => void;
 }) {
-  const isDraggingOver = useWindowFileDrop(selectedModel);
+  const isDraggingOver = useWindowFileDrop(selectedModel, onUnsupportedFile);
   const supportsFiles = modelSupportsFiles(selectedModel);
 
   return (
@@ -138,13 +158,16 @@ function FileDropZone({
       {supportsFiles ? (
         <>
           <Upload01 size={24} />
-          <span className="text-sm font-medium">Drop files here</span>
+          <span className="text-sm font-medium">
+            Drop {getSupportedFileTypesLabel(selectedModel)} here
+          </span>
         </>
       ) : (
         <>
           <Lock01 size={24} />
           <span className="text-sm font-medium">
-            This model does not support files
+            This model can't read attachments — switch to one with vision or
+            file support
           </span>
         </>
       )}
@@ -156,6 +179,36 @@ function FileDropZone({
 // ChatInput - Merged component with virtual MCP wrapper, banners, and selectors
 // ============================================================================
 
+/**
+ * Submit handler for the home composer. No active task exists; we write
+ * the tiptap doc to sessionStorage and navigate to a fresh /$org/$taskId.
+ * The new task page's useEnsureTask creates the thread (server-side
+ * idempotent on id) and ActiveTaskProvider's autosend consumer fires
+ * sendMessage on mount.
+ */
+function useHomeSubmit() {
+  const navigate = useNavigate();
+  const { org, locator } = useProjectContext();
+
+  return ({
+    tiptapDoc,
+    virtualMcp,
+  }: {
+    tiptapDoc: Metadata["tiptapDoc"];
+    virtualMcp: VirtualMCPInfo | null;
+  }) => {
+    const newId = crypto.randomUUID();
+    const targetVmcp =
+      virtualMcp?.id ?? getWellKnownDecopilotVirtualMCP(org.id).id;
+    writeStoredAutosend(sessionStorage, locator, newId, { tiptapDoc });
+    navigate({
+      to: "/$org/$taskId",
+      params: { org: org.slug, taskId: newId },
+      search: { virtualmcpid: targetVmcp, autosend: AUTOSEND_QUERY_VALUE },
+    });
+  };
+}
+
 export function ChatInput({
   onOpenContextPanel,
   showConnectionsBanner = false,
@@ -163,9 +216,15 @@ export function ChatInput({
   onOpenContextPanel?: () => void;
   showConnectionsBanner?: boolean;
 }) {
-  const { messages, isStreaming, isRunInProgress, sendMessage, stop } =
-    useChatStream();
-  const { taskId, tasks } = useChatTask();
+  const stream = useOptionalChatStream();
+  const taskCtx = useOptionalChatTask();
+  const messages = stream?.messages ?? [];
+  const isStreaming = stream?.isStreaming ?? false;
+  const isRunInProgress = stream?.isRunInProgress ?? false;
+  const stop = stream?.stop ?? (() => {});
+  const taskId = taskCtx?.taskId ?? "";
+  const tasks = taskCtx?.tasks ?? [];
+  const homeSubmit = useHomeSubmit();
   const {
     selectedModel,
     selectedVirtualMcp,
@@ -175,6 +234,9 @@ export function ChatInput({
     deepResearchModel,
     chatMode,
     setChatMode,
+    simpleModeEnabled,
+    simpleModeTier,
+    setSimpleModeTier,
   } = useChatPrefs();
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
@@ -183,6 +245,8 @@ export function ChatInput({
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
   const playSwitchSound = useSound(question004Sound);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
+  const { unsupportedFile, onUnsupportedFile, clearUnsupportedFile } =
+    useUnsupportedFileDialog();
 
   const voice = useVoiceInput();
   const voiceBaselineDocRef = useRef<Metadata["tiptapDoc"]>(undefined);
@@ -190,15 +254,30 @@ export function ChatInput({
   const handleVoiceStart = async () => {
     voiceBaselineDocRef.current = tiptapDoc;
     await voice.startRecording();
+    // Fire with the real outcome — voice.status is set inside startRecording
+    // before the promise resolves ("recording" on success, "unsupported" or
+    // "permission-denied" on failure). Button click on its own doesn't tell
+    // us if the mic actually started.
+    const outcome =
+      voice.status === "recording"
+        ? "started"
+        : voice.status === "unsupported"
+          ? "unsupported"
+          : voice.status === "permission-denied"
+            ? "permission_denied"
+            : "unknown";
+    track("chat_voice_started", { thread_id: taskId, outcome });
   };
 
   const handleVoiceConfirm = () => {
+    track("chat_voice_confirmed", { thread_id: taskId });
     const finalText = voice.stopRecording();
     tiptapRef.current?.syncVoiceText(voiceBaselineDocRef.current, finalText);
     tiptapRef.current?.focus();
   };
 
   const handleVoiceCancel = () => {
+    track("chat_voice_cancelled", { thread_id: taskId });
     voice.cancelRecording();
     tiptapRef.current?.restoreContent(voiceBaselineDocRef.current);
   };
@@ -234,7 +313,14 @@ export function ChatInput({
     tiptapDocRef.current = undefined;
   }
 
-  const contextWindow = selectedModel?.limits?.contextWindow;
+  // Prefer per-turn modelLimits (Claude Code reports real window at turn end)
+  // so the ring renders even when catalog limits are null.
+  const lastAssistantMetadata = [...messages]
+    .reverse()
+    .find((m) => m.role === "assistant")?.metadata;
+  const contextWindow =
+    lastAssistantMetadata?.modelLimits?.contextWindow ??
+    selectedModel?.limits?.contextWindow;
 
   const tiptapRef = useRef<TiptapInputHandle | null>(null);
 
@@ -261,7 +347,9 @@ export function ChatInput({
   const lastUsage = [...messages]
     .reverse()
     .find((m) => m.role === "assistant" && m.metadata?.usage)?.metadata?.usage;
+  // Prefer per-turn context size; fall back to cumulative for legacy messages.
   const lastTotalTokens =
+    lastUsage?.contextTokens ??
     (lastUsage?.totalTokens ?? 0) - (lastUsage?.reasoningTokens ?? 0);
 
   const playClickSound = useSound(question004Sound);
@@ -277,12 +365,26 @@ export function ChatInput({
   const handleSubmit = (e?: FormEvent) => {
     e?.preventDefault();
     if (isStreaming) {
+      track("chat_message_stopped", { thread_id: taskId });
       stop();
     } else if (isRunInProgress) {
+      track("chat_message_stopped", { thread_id: taskId });
       stop();
     } else if (canSubmit && tiptapDoc) {
+      track("chat_message_sent", {
+        thread_id: taskId || null,
+        mode: chatMode,
+        model_id: selectedModel?.modelId ?? null,
+        model_provider: selectedModel?.providerId ?? null,
+        virtual_mcp_id: selectedVirtualMcp?.id ?? null,
+        submission: e ? "button_or_enter" : "programmatic",
+      });
       playClickSound();
-      void sendMessage(tiptapDoc);
+      if (stream) {
+        void stream.sendMessage(tiptapDoc);
+      } else {
+        homeSubmit({ tiptapDoc, virtualMcp: selectedVirtualMcp });
+      }
       setTiptapDoc(undefined);
     }
   };
@@ -307,8 +409,10 @@ export function ChatInput({
             <div className="absolute inset-0 rounded-2xl pointer-events-none bg-muted/50" />
           )}
 
-          {/* Highlight floats above the form area */}
-          <ChatHighlight />
+          {/* Highlight floats above the form area. Only renders when there's
+              an active task — it depends on useChatStream + useChatTask, both
+              absent on the home composer. */}
+          {stream && taskCtx && <ChatHighlight />}
 
           <TiptapProvider
             key={taskId}
@@ -324,7 +428,10 @@ export function ChatInput({
                 "w-full relative rounded-2xl min-h-[110px] md:min-h-[130px] flex flex-col bg-background dark:bg-muted card-shadow",
               )}
             >
-              <FileDropZone selectedModel={selectedModel} />
+              <FileDropZone
+                selectedModel={selectedModel}
+                onUnsupportedFile={onUnsupportedFile}
+              />
 
               <div className="group/input relative flex flex-col gap-2 flex-1">
                 <TiptapInput
@@ -337,6 +444,7 @@ export function ChatInput({
                   virtualMcpId={selectedVirtualMcp?.id ?? decopilotId}
                   showFileUploader={true}
                   selectedModel={selectedModel}
+                  onUnsupportedFile={onUnsupportedFile}
                 />
               </div>
 
@@ -376,10 +484,17 @@ export function ChatInput({
                         selectedModel={selectedModel}
                         isStreaming={isStreaming}
                         icon={<Plus size={16} />}
+                        onUnsupportedFile={onUnsupportedFile}
                       />
                       <ToolsPopover
                         disabled={isStreaming}
-                        onOpenConnections={() => setConnectionsOpen(true)}
+                        onOpenConnections={() => {
+                          track("connections_dialog_opened", {
+                            source: "tools_popover",
+                            mode: "add",
+                          });
+                          setConnectionsOpen(true);
+                        }}
                         virtualMcpId={selectedVirtualMcp?.id ?? decopilotId}
                       />
                       {isPlanMode && (
@@ -387,6 +502,11 @@ export function ChatInput({
                           type="button"
                           onClick={() => {
                             playSwitchSound();
+                            track("chat_mode_changed", {
+                              from_mode: "plan",
+                              to_mode: "default",
+                              source: "pill_dismiss",
+                            });
                             setChatMode("default");
                           }}
                           className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 group whitespace-nowrap animate-in fade-in duration-200"
@@ -404,15 +524,25 @@ export function ChatInput({
                           type="button"
                           onClick={() => {
                             playSwitchSound();
+                            track("chat_mode_changed", {
+                              from_mode: "gen-image",
+                              to_mode: "default",
+                              source: "pill_dismiss",
+                            });
                             setChatMode("default");
                           }}
                           className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-pink-600 dark:text-pink-400 hover:bg-pink-500/10 group whitespace-nowrap animate-in fade-in duration-200"
                         >
                           <Image01 size={14} className="shrink-0" />
                           <span className="max-w-[120px] truncate">
-                            {imageModel.title.includes(": ")
-                              ? imageModel.title.split(": ").slice(1).join(": ")
-                              : imageModel.title}
+                            {simpleModeEnabled
+                              ? "Create image"
+                              : imageModel.title.includes(": ")
+                                ? imageModel.title
+                                    .split(": ")
+                                    .slice(1)
+                                    .join(": ")
+                                : imageModel.title}
                           </span>
                           <X
                             size={14}
@@ -425,18 +555,25 @@ export function ChatInput({
                           type="button"
                           onClick={() => {
                             playSwitchSound();
+                            track("chat_mode_changed", {
+                              from_mode: "web-search",
+                              to_mode: "default",
+                              source: "pill_dismiss",
+                            });
                             setChatMode("default");
                           }}
                           className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 group whitespace-nowrap animate-in fade-in duration-200"
                         >
                           <Globe02 size={14} className="shrink-0" />
                           <span className="max-w-[120px] truncate">
-                            {deepResearchModel.title.includes(": ")
-                              ? deepResearchModel.title
-                                  .split(": ")
-                                  .slice(1)
-                                  .join(": ")
-                              : deepResearchModel.title}
+                            {simpleModeEnabled
+                              ? "Web search"
+                              : deepResearchModel.title.includes(": ")
+                                ? deepResearchModel.title
+                                    .split(": ")
+                                    .slice(1)
+                                    .join(": ")
+                                : deepResearchModel.title}
                           </span>
                           <X
                             size={14}
@@ -456,11 +593,18 @@ export function ChatInput({
 
                     {/* Right Actions (mic, model, send) */}
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <ModelSelector
-                        placeholder="Model"
-                        variant="borderless"
-                        className="h-8 text-sm py-2 min-w-0"
-                      />
+                      {simpleModeEnabled ? (
+                        <SimpleModeTierDropdown
+                          tier={simpleModeTier}
+                          onSelect={setSimpleModeTier}
+                        />
+                      ) : (
+                        <ModelSelector
+                          placeholder="Model"
+                          variant="borderless"
+                          className="h-8 text-sm py-2 min-w-0"
+                        />
+                      )}
 
                       {/* Microphone button — only shown when not streaming and speech is supported */}
                       {voice.isSupported &&
@@ -531,7 +675,18 @@ export function ChatInput({
 
           {/* Connections Banner Footer - always visible on home */}
           {showConnectionsBanner && (
-            <ConnectionsBanner onClick={() => setConnectionsOpen(true)} />
+            <ConnectionsBanner
+              onClick={() => {
+                track("connections_banner_clicked", {
+                  source: "home_chat_input",
+                });
+                track("connections_dialog_opened", {
+                  source: "home_banner",
+                  mode: "add",
+                });
+                setConnectionsOpen(true);
+              }}
+            />
           )}
         </div>
       </div>
@@ -541,6 +696,11 @@ export function ChatInput({
         open={connectionsOpen}
         onOpenChange={setConnectionsOpen}
         defaultTab="all"
+      />
+
+      <UnsupportedFileDialog
+        info={unsupportedFile}
+        onClose={clearUnsupportedFile}
       />
     </>
   );

@@ -4,7 +4,8 @@
     "./plugins/enforce-query-key-constants.js",
     "./plugins/ban-use-effect.js",
     "./plugins/ban-memoization.js",
-    "./plugins/require-cn-classname.js"
+    "./plugins/require-cn-classname.js",
+    "./plugins/ban-direct-auth-client-organization.js"
   ],
   "ignorePatterns": ["apps/docs/*"],
   "rules": {
@@ -16,7 +17,8 @@
     "enforce-query-key-constants/enforce-query-key-constants": "warn",
     "ban-use-effect/ban-use-effect": "error",
     "ban-memoization/ban-memoization": "error",
-    "require-cn-classname/require-cn-classname": "error"
+    "require-cn-classname/require-cn-classname": "error",
+    "ban-direct-auth-client-organization/ban-direct-auth-client-organization": "error"
   },
   "plugins": ["react"]
 }

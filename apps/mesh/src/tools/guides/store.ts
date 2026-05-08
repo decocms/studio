@@ -3,6 +3,7 @@ import type { GuidePrompt, GuideResource } from "./index";
 export const prompts: GuidePrompt[] = [
   {
     name: "store-search",
+    title: "Search Store",
     description: "Find MCP servers in the Deco Store or a registry.",
     text: `# Search store
 
@@ -30,6 +31,7 @@ Checks:
   },
   {
     name: "store-install",
+    title: "Install from Store",
     description: "Install an MCP server from a store or registry.",
     text: `# Install MCP server from store
 

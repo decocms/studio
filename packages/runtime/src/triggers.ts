@@ -156,7 +156,7 @@ class TriggerStateManager {
  *
  * // In withRuntime:
  * export default withRuntime({
- *   tools: [() => triggers.tools()],
+ *   tools: triggers.tools(),
  * });
  *
  * // In webhook handler:

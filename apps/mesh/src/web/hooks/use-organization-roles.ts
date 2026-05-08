@@ -5,7 +5,7 @@
  * dynamic access control feature. Combines built-in roles with custom roles.
  */
 
-import { authClient } from "@/web/lib/auth-client";
+import { useOrgAuthClient } from "@/web/hooks/use-org-auth-client";
 import { KEYS } from "@/web/lib/query-keys";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useQuery } from "@tanstack/react-query";
@@ -147,6 +147,7 @@ function parsePermission(
  */
 export function useOrganizationRoles() {
   const { locator } = useProjectContext();
+  const orgAuth = useOrgAuthClient();
 
   const {
     data: customRolesData,
@@ -157,7 +158,7 @@ export function useOrganizationRoles() {
     queryKey: KEYS.organizationRoles(locator),
     queryFn: async () => {
       try {
-        const result = await authClient.organization.listRoles();
+        const result = await orgAuth.organization.listRoles();
 
         if (result?.error) {
           console.error("[useOrganizationRoles] API error:", result.error);

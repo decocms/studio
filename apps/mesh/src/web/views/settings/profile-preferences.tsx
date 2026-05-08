@@ -1,13 +1,5 @@
-import { useState } from "react";
 import { Page } from "@/web/components/page";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@deco/ui/components/card.tsx";
 import { Switch } from "@deco/ui/components/switch.tsx";
 import {
   Select,
@@ -20,140 +12,121 @@ import {
   ToggleGroupItem,
 } from "@deco/ui/components/toggle-group.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
 import { Moon01, Monitor01, Play, Sun } from "@untitledui/icons";
+import { Controller, useForm } from "react-hook-form";
 import { authClient } from "@/web/lib/auth-client";
 import {
   usePreferences,
   type ThemeMode,
   type ToolApprovalLevel,
 } from "@/web/hooks/use-preferences.ts";
+import { useDebouncedAutosave } from "@/web/hooks/use-debounced-autosave.ts";
 import { playSound } from "@deco/ui/lib/sound-engine.ts";
 import { question004Sound } from "@deco/ui/lib/question-004.ts";
 import { toast } from "@deco/ui/components/sonner.js";
+import { track } from "@/web/lib/posthog-client";
+import {
+  SettingsCard,
+  SettingsCardItem,
+  SettingsPage,
+  SettingsSection,
+} from "@/web/components/settings/settings-section";
 
-function PreferenceRow({
-  label,
-  description,
-  control,
-  onClick,
-  disabled,
-}: {
-  label: string;
-  description?: string;
-  control: React.ReactNode;
-  onClick?: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <div
-      className="flex items-center justify-between gap-4 py-3 border-b border-border/50 last:border-0"
-      onClick={disabled ? undefined : onClick}
-      role={onClick ? "button" : undefined}
-      tabIndex={onClick && !disabled ? 0 : undefined}
-      onKeyDown={
-        onClick && !disabled
-          ? (e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onClick();
-              }
-            }
-          : undefined
-      }
-      style={{ cursor: onClick && !disabled ? "pointer" : undefined }}
-    >
-      <div className="min-w-0 flex-1">
-        <p className="text-sm text-foreground">{label}</p>
-        {description && (
-          <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
-        )}
-      </div>
-      <div onClick={(e) => e.stopPropagation()} className="shrink-0">
-        {control}
-      </div>
-    </div>
-  );
+interface ProfileFormValues {
+  name: string;
 }
 
 function ProfileSection() {
   const { data: session, isPending } = authClient.useSession();
   const user = session?.user;
   const userImage = (user as { image?: string } | undefined)?.image;
-  const [editedName, setEditedName] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
 
-  const name = editedName ?? user?.name ?? "";
-  const isDirty = editedName !== null && editedName !== (user?.name ?? "");
+  const form = useForm<ProfileFormValues>({
+    values: { name: user?.name ?? "" },
+  });
 
-  const handleSave = async () => {
-    if (!isDirty) return;
-    setSaving(true);
-    try {
-      await authClient.updateUser({ name });
-      setEditedName(null);
-      toast.success("Profile updated");
-    } catch {
-      toast.error("Failed to update profile");
-    } finally {
-      setSaving(false);
-    }
-  };
+  const { schedule: scheduleSave, flush: flushAndSave } = useDebouncedAutosave({
+    save: async () => {
+      // Read live dirty state from control._formState (Proxy lag workaround).
+      const liveDirtyFields = (
+        form.control as unknown as {
+          _formState: { dirtyFields: Record<string, unknown> };
+        }
+      )._formState.dirtyFields;
+      if (Object.keys(liveDirtyFields).length === 0) return;
+
+      const values = form.getValues();
+      const previousDefaults = (
+        form.control as unknown as { _defaultValues: ProfileFormValues }
+      )._defaultValues;
+
+      // Rebase pre-mutate so an edit during the in-flight save that returns
+      // a value to its pre-save default still registers as dirty.
+      form.reset(values, { keepValues: true });
+
+      try {
+        await authClient.updateUser({ name: values.name });
+        track("profile_updated", { fields: ["name"] });
+        toast.success("Profile updated successfully");
+      } catch {
+        form.reset(previousDefaults, { keepValues: true });
+        toast.error("Failed to update profile");
+      }
+    },
+  });
 
   if (isPending) return null;
 
   return (
-    <Card className="p-6">
-      <CardHeader className="p-0">
-        <CardTitle className="text-sm">Profile</CardTitle>
-      </CardHeader>
-
-      <CardContent className="flex flex-col gap-6 p-0">
-        <div className="flex flex-col sm:flex-row items-start gap-6">
-          <Avatar
-            url={userImage}
-            fallback={user?.name ?? "U"}
-            shape="circle"
-            size="lg"
-            className="shrink-0 mt-0.5"
-          />
-          <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 gap-5 w-full">
-            <div className="flex flex-col gap-1.5">
-              <Label
-                htmlFor="display-name"
-                className="text-xs text-muted-foreground"
-              >
-                Display name
-              </Label>
-              <Input
-                id="display-name"
-                value={name}
-                onChange={(e) => setEditedName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void handleSave();
-                }}
-                placeholder="Your name"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs text-muted-foreground">Email</span>
-              <span className="text-sm text-foreground/80 pt-2 break-all">
-                {user?.email}
-              </span>
-            </div>
-          </div>
-        </div>
-      </CardContent>
-
-      {isDirty && (
-        <CardFooter className="p-0 pt-2 gap-2">
-          <Button onClick={handleSave} disabled={saving}>
-            {saving ? "Saving…" : "Save"}
-          </Button>
-        </CardFooter>
-      )}
-    </Card>
+    <SettingsSection>
+      <SettingsCard>
+        <SettingsCardItem
+          title="Avatar"
+          action={
+            <Avatar
+              url={userImage}
+              fallback={user?.name ?? "U"}
+              shape="circle"
+              size="base"
+            />
+          }
+        />
+        <SettingsCardItem
+          title="Display name"
+          action={
+            <Controller
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <Input
+                  id="display-name"
+                  {...field}
+                  onChange={(e) => {
+                    field.onChange(e);
+                    scheduleSave();
+                  }}
+                  onBlur={() => {
+                    field.onBlur();
+                    flushAndSave();
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void flushAndSave();
+                  }}
+                  placeholder="Your name"
+                  className="w-[280px]"
+                />
+              )}
+            />
+          }
+        />
+        <SettingsCardItem
+          title="Email"
+          action={
+            <span className="text-sm text-muted-foreground">{user?.email}</span>
+          }
+        />
+      </SettingsCard>
+    </SettingsSection>
   );
 }
 
@@ -164,6 +137,7 @@ function PreferencesSection() {
     if (checked) {
       const result = await Notification.requestPermission();
       if (result !== "granted") {
+        track("preferences_notifications_permission_denied");
         toast.error(
           "Notifications denied. Please enable them in your browser settings.",
         );
@@ -171,19 +145,17 @@ function PreferencesSection() {
         return;
       }
     }
+    track("preferences_notifications_toggled", { enabled: checked });
     setPreferences((prev) => ({ ...prev, enableNotifications: checked }));
   };
 
   return (
-    <Card className="p-6">
-      <CardHeader className="p-0">
-        <CardTitle className="text-sm">Preferences</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col p-0">
-        <PreferenceRow
-          label="Theme"
+    <SettingsSection title="Preferences">
+      <SettingsCard>
+        <SettingsCardItem
+          title="Theme"
           description="Your preferred color scheme."
-          control={
+          action={
             <ToggleGroup
               type="single"
               size="sm"
@@ -191,6 +163,7 @@ function PreferencesSection() {
               value={preferences.theme}
               onValueChange={(value) => {
                 if (value) {
+                  track("preferences_theme_changed", { to_value: value });
                   setPreferences((prev) => ({
                     ...prev,
                     theme: value as ThemeMode,
@@ -210,14 +183,16 @@ function PreferencesSection() {
             </ToggleGroup>
           }
         />
-        <PreferenceRow
-          label="Notifications"
+        <SettingsCardItem
+          title="Notifications"
           description="Receive browser notifications for important events."
-          disabled={typeof Notification === "undefined"}
-          onClick={() =>
-            handleNotificationsChange(!preferences.enableNotifications)
+          onClick={
+            typeof Notification !== "undefined"
+              ? () =>
+                  handleNotificationsChange(!preferences.enableNotifications)
+              : undefined
           }
-          control={
+          action={
             <Switch
               disabled={typeof Notification === "undefined"}
               checked={preferences.enableNotifications}
@@ -225,21 +200,25 @@ function PreferencesSection() {
             />
           }
         />
-        <PreferenceRow
-          label="Sounds"
+        <SettingsCardItem
+          title="Sounds"
           description="Play sounds for agent actions and notifications."
-          onClick={() =>
+          onClick={() => {
+            track("preferences_sounds_toggled", {
+              enabled: !preferences.enableSounds,
+            });
             setPreferences((prev) => ({
               ...prev,
               enableSounds: !prev.enableSounds,
-            }))
-          }
-          control={
+            }));
+          }}
+          action={
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 aria-label="Preview notification sound"
                 onClick={() => {
+                  track("preferences_sounds_previewed");
                   playSound(question004Sound.dataUri).catch(() => {});
                 }}
                 className="size-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors cursor-pointer"
@@ -248,28 +227,32 @@ function PreferencesSection() {
               </button>
               <Switch
                 checked={preferences.enableSounds}
-                onCheckedChange={(checked) =>
+                onCheckedChange={(checked) => {
+                  track("preferences_sounds_toggled", { enabled: checked });
                   setPreferences((prev) => ({
                     ...prev,
                     enableSounds: checked,
-                  }))
-                }
+                  }));
+                }}
               />
             </div>
           }
         />
-        <PreferenceRow
-          label="Tool Approval"
+        <SettingsCardItem
+          title="Tool Approval"
           description="Control how tools are approved before execution."
-          control={
+          action={
             <Select
               value={preferences.toolApprovalLevel}
-              onValueChange={(value) =>
+              onValueChange={(value) => {
+                track("preferences_tool_approval_changed", {
+                  to_value: value,
+                });
                 setPreferences((prev) => ({
                   ...prev,
                   toolApprovalLevel: value as ToolApprovalLevel,
-                }))
-              }
+                }));
+              }}
             >
               <SelectTrigger className="w-36 h-7 text-xs">
                 <span>
@@ -300,8 +283,8 @@ function PreferencesSection() {
             </Select>
           }
         />
-      </CardContent>
-    </Card>
+      </SettingsCard>
+    </SettingsSection>
   );
 }
 
@@ -309,34 +292,37 @@ function ExperimentalSection() {
   const [preferences, setPreferences] = usePreferences();
 
   return (
-    <Card className="p-6">
-      <CardHeader className="p-0">
-        <CardTitle className="text-sm">Experimental</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col p-0">
-        <PreferenceRow
-          label="Import from GitHub"
+    <SettingsSection title="Experimental">
+      <SettingsCard>
+        <SettingsCardItem
+          title="Import from GitHub"
           description="Enable importing agents from GitHub repositories."
-          onClick={() =>
+          onClick={() => {
+            track("preferences_experimental_vibecode_toggled", {
+              enabled: !preferences.experimental_vibecode,
+            });
             setPreferences((prev) => ({
               ...prev,
               experimental_vibecode: !prev.experimental_vibecode,
-            }))
-          }
-          control={
+            }));
+          }}
+          action={
             <Switch
               checked={preferences.experimental_vibecode}
-              onCheckedChange={(checked) =>
+              onCheckedChange={(checked) => {
+                track("preferences_experimental_vibecode_toggled", {
+                  enabled: checked,
+                });
                 setPreferences((prev) => ({
                   ...prev,
                   experimental_vibecode: checked,
-                }))
-              }
+                }));
+              }}
             />
           }
         />
-      </CardContent>
-    </Card>
+      </SettingsCard>
+    </SettingsSection>
   );
 }
 
@@ -345,14 +331,12 @@ export function ProfilePreferencesPage() {
     <Page>
       <Page.Content>
         <Page.Body>
-          <div className="flex flex-col gap-6">
+          <SettingsPage>
             <Page.Title>Profile & Preferences</Page.Title>
-            <div className="flex flex-col gap-10">
-              <ProfileSection />
-              <PreferencesSection />
-              <ExperimentalSection />
-            </div>
-          </div>
+            <ProfileSection />
+            <PreferencesSection />
+            <ExperimentalSection />
+          </SettingsPage>
         </Page.Body>
       </Page.Content>
     </Page>

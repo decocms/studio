@@ -19,6 +19,7 @@ import {
   useVirtualMCPActions,
 } from "@decocms/mesh-sdk";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
+import { track } from "@/web/lib/posthog-client";
 
 const AI_RESEARCH_SYSTEM_PROMPT = `You are a systematic research assistant. You have access to web search tools and user's prompts will have somewhat relation to searching the web. Help users conduct thorough, well-structured research on any topic.
 
@@ -126,9 +127,17 @@ export function AiResearchRecruitModal({
         },
       });
 
+      track("agent_recruit_confirmed", {
+        template_id: "ai-research",
+        agent_id: virtualMcp.id!,
+      });
       onOpenChange(false);
       navigateToAgent(virtualMcp.id!);
     } catch (error) {
+      track("agent_recruit_failed", {
+        template_id: "ai-research",
+        error: error instanceof Error ? error.message : String(error),
+      });
       console.error("Failed to create Researcher agent:", error);
     } finally {
       setIsRecruiting(false);

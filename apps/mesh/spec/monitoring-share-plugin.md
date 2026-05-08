@@ -5,7 +5,7 @@
 
 ## Overview
 
-Extend the plugin system to support root-level public routes, then create a Mesh plugin (`mesh-plugin-monitoring-share`) that enables sharing read-only, data-scoped monitoring dashboards with external clients via presigned URLs.
+Extend the plugin system to support root-level public routes, then create a Studio plugin (`mesh-plugin-monitoring-share`) that enables sharing read-only, data-scoped monitoring dashboards with external clients via presigned URLs.
 
 ### Key Features
 - Presigned URLs with embedded tokens (no login required, time-limited)
@@ -269,7 +269,7 @@ setup: (ctx) => {
 |------|--------|
 | `packages/bindings/src/core/plugins.ts` | Add `rootRoute` and `registerPublicRoutes` to context |
 | `apps/mesh/src/web/index.tsx` | Pass new context props, collect and mount public routes |
-| `packages/mesh-plugin-user-sandbox/client/index.ts` | Migrate connect route registration |
+| `packages/@decocms/sandbox/client/index.ts` | Migrate connect route registration |
 | `apps/mesh/src/web/routes/connect.tsx` | Remove (or keep as fallback) |
 
 ### Phase 2 & 3 (Plugin)

@@ -382,7 +382,50 @@ async function copyRootReadme() {
   }
 }
 
+// QuickJS's emscripten loader resolves `new URL("emscripten-module.wasm",
+// import.meta.url)` — on Linux bun in production this can resolve relative
+// to the bundle output (dist/server/) rather than the externalized package,
+// causing ENOENT. Copy the WASM alongside the bundles as a safety net so the
+// file exists at whichever location bun looks.
+async function copyQuickjsWasm() {
+  console.log("📄 Copying QuickJS WASM...");
+
+  const wasmSource = join(
+    OUTPUT_DIR,
+    "node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.wasm",
+  );
+  const wasmDest = join(OUTPUT_DIR, "emscripten-module.wasm");
+
+  if (!existsSync(wasmSource)) {
+    console.warn(`⚠️  QuickJS WASM not found at ${wasmSource}, skipping...`);
+    return;
+  }
+
+  await cp(wasmSource, wasmDest);
+  console.log(`✅ QuickJS WASM copied to ${wasmDest}`);
+}
+
+// freestyle/runner.ts and host/runner.ts both inline
+// packages/sandbox/daemon/dist/daemon.js via a text-import attribute.
+// `bun build` needs that file present on disk to embed it into the server
+// bundle, so produce it before bundling. Idempotent — `bun run build` just
+// rewrites the same outfile.
+async function buildSandboxDaemon() {
+  console.log("🔨 Building sandbox daemon bundle...");
+  const sandboxRoot = join(WORKSPACE_ROOT, "packages/sandbox");
+  await $`bun run build`.cwd(sandboxRoot).quiet();
+  const daemonBundle = join(sandboxRoot, "daemon/dist/daemon.js");
+  if (!existsSync(daemonBundle)) {
+    console.error(`❌ Sandbox daemon bundle missing at ${daemonBundle}`);
+    process.exit(1);
+  }
+  console.log(`✅ Sandbox daemon bundle ready at ${daemonBundle}`);
+}
+
 async function main() {
+  // Build sandbox daemon bundle so runner.ts's text-import has a file to embed.
+  await buildSandboxDaemon();
+
   // Prune node_modules to only include required dependencies for both scripts
   const packagesToExternalize = await pruneNodeModules();
 
@@ -394,11 +437,15 @@ async function main() {
   // Copy root README.md to dist folder
   await copyRootReadme();
 
+  // Copy QuickJS WASM alongside bundles as a safety net for path resolution
+  await copyQuickjsWasm();
+
   console.log("\n🎉 Build completed successfully!");
   console.log(`📦 Output directory: ${OUTPUT_DIR}`);
   console.log(`   - migrate.js`);
   console.log(`   - server.js`);
   console.log(`   - cli.js`);
+  console.log(`   - emscripten-module.wasm`);
   console.log(`   - node_modules/`);
   console.log(`   - ../README.md`);
 }

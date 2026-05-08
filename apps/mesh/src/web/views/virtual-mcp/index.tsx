@@ -1,12 +1,14 @@
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import type { VirtualMCPEntity } from "@/tools/virtual/schema";
 import { getUIResourceUri } from "@/mcp-apps/types.ts";
-import { useChatPrefs, useChatTask } from "@/web/components/chat/context";
-import { CollectionTabs } from "@/web/components/collections/collection-tabs.tsx";
+import { useChatBridge } from "@/web/components/chat/context";
+import { buildImprovePromptDoc } from "@/web/components/chat/tiptap/build-improve-prompt-doc";
 import { EmptyState } from "@/web/components/empty-state.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary";
+import { useEnsureStudioPack } from "@/web/components/home/use-ensure-studio-pack";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { usePanelActions } from "@/web/layouts/shell-layout";
+import { User } from "@/web/components/user/user";
 import { useMCPAuthStatus } from "@/web/hooks/use-mcp-auth-status";
 
 import {
@@ -26,8 +28,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@deco/ui/components/alert-dialog.tsx";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@deco/ui/components/dialog.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
-import { Card, CardContent, CardHeader } from "@deco/ui/components/card.tsx";
+import { Card, CardContent } from "@deco/ui/components/card.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
 import {
@@ -47,8 +55,8 @@ import {
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   type ConnectionEntity,
-  getDecopilotId,
   SELF_MCP_ALIAS_ID,
+  StudioPackAgentId,
   useConnection,
   useConnectionActions,
   useConnections,
@@ -63,25 +71,33 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import {
   Settings02,
   Settings04,
+  Maximize01,
   Play,
   Plus,
   Stars01,
   Trash01,
   XClose,
 } from "@untitledui/icons";
-import { Suspense, useReducer, useRef, useState } from "react";
+import { Suspense, useEffect, useReducer, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
+import { useDebouncedAutosave } from "@/web/hooks/use-debounced-autosave.ts";
 import { toast } from "sonner";
 import { IconPicker } from "../../components/icon-picker";
 import { SimpleIconPicker } from "../../components/simple-icon-picker";
 import { Page } from "@/web/components/page";
 import { AddConnectionDialog } from "./add-connection-dialog";
+import { track } from "@/web/lib/posthog-client";
 import { DependencySelectionDialog } from "./dependency-selection-dialog";
 import { ALL_ITEMS_SELECTED } from "./selection-utils";
-import { VirtualMcpFormSchema, type VirtualMcpFormData } from "./types";
+import {
+  VirtualMcpFormSchema,
+  type VirtualMcpFormData,
+  type VirtualMcpFormReturn,
+} from "./types";
 import { VirtualMCPShareModal } from "./virtual-mcp-share-modal";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
 import { FIXED_SYSTEM_TABS } from "@/web/layouts/main-panel-tabs/tab-id";
+import { toTitleCase } from "@/web/components/chat/message/parts/tool-call-part/utils";
 
 type DialogState = {
   shareDialogOpen: boolean;
@@ -116,6 +132,49 @@ function dialogReducer(state: DialogState, action: DialogAction): DialogState {
       };
     default:
       return state;
+  }
+}
+
+type EditSession = {
+  start: number;
+  fields: Set<string>;
+  saveCount: number;
+  instructionsLength: number | null;
+};
+
+type EditSessionAction =
+  | {
+      type: "accumulate";
+      now: number;
+      fields: string[];
+      instructionsLength: number | null;
+    }
+  | { type: "reset" };
+
+function editSessionReducer(
+  state: EditSession | null,
+  action: EditSessionAction,
+): EditSession | null {
+  switch (action.type) {
+    case "accumulate": {
+      const base: EditSession = state ?? {
+        start: action.now,
+        fields: new Set(),
+        saveCount: 0,
+        instructionsLength: null,
+      };
+      const fields = new Set(base.fields);
+      for (const f of action.fields) fields.add(f);
+      return {
+        ...base,
+        fields,
+        saveCount: base.saveCount + 1,
+        instructionsLength:
+          action.instructionsLength ?? base.instructionsLength,
+      };
+    }
+    case "reset":
+      return null;
   }
 }
 
@@ -267,7 +326,7 @@ function SiblingInstanceSelector({
     >
       <SelectTrigger
         size="sm"
-        className="w-auto text-xs gap-1 px-2 border border-border bg-background rounded"
+        className="w-auto text-xs gap-1 px-2 shadow-none"
       >
         <SelectValue />
       </SelectTrigger>
@@ -503,7 +562,7 @@ interface PinnedView {
   connectionId: string;
   toolName: string;
   label: string;
-  icon: string | null;
+  icon?: string | null;
 }
 
 interface ConnectionWithTools {
@@ -514,14 +573,21 @@ interface ConnectionWithTools {
   uiTools: UITool[];
 }
 
-function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
+function LayoutTabContent({
+  virtualMcpId,
+  form,
+  flushAndSave,
+}: {
+  virtualMcpId: string;
+  form: VirtualMcpFormReturn;
+  flushAndSave: () => Promise<unknown>;
+}) {
   const { org } = useProjectContext();
-  const navigate = useNavigate();
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
-  const queryClient = useQueryClient();
 
   const virtualMcp = useVirtualMCP(virtualMcpId);
 
@@ -583,47 +649,33 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   const fixedTabTypeSet = new Set<string>(FIXED_SYSTEM_TABS);
 
-  // Current pinned views from virtual MCP metadata
-  const uiMeta = virtualMcp?.metadata?.ui as
-    | {
-        pinnedViews?: PinnedView[] | null;
-        layout?: {
-          defaultMainView?: {
-            type: string;
-            id?: string;
-            toolName?: string;
-          } | null;
-          chatDefaultOpen?: boolean | null;
-        } | null;
-      }
-    | null
-    | undefined;
+  // Layout state lives in the parent form under metadata.ui.{pinnedViews, layout}.
+  // form.watch subscribes the component to changes from any source — direct user
+  // edits, the orphan-pin reconciliation below, or a server refetch.
+  const pinnedViews = form.watch("metadata.ui.pinnedViews") ?? [];
+  const layoutMeta = form.watch("metadata.ui.layout") ?? null;
+  const currentDefaultMain = layoutMeta?.defaultMainView ?? null;
+  const chatDefaultOpen = layoutMeta?.chatDefaultOpen ?? false;
 
-  const serverPinned: PinnedView[] = uiMeta?.pinnedViews ?? [];
-  const serverDefaultMain = uiMeta?.layout?.defaultMainView ?? null;
-  const serverChatDefaultOpen = uiMeta?.layout?.chatDefaultOpen ?? false;
-
-  const serverDefaultMainKey = (() => {
-    if (!serverDefaultMain || serverDefaultMain.type === "chat") return "chat";
-    // Legacy: "settings" used to be its own tab; map onto Layout.
-    if (serverDefaultMain.type === "settings") return "layout";
-    if (fixedTabTypeSet.has(serverDefaultMain.type)) {
-      return serverDefaultMain.type;
+  // Convert the stored {type, id, toolName} object into the string composite
+  // key used by the <Select> UI. Legacy tab types fold into "settings".
+  const defaultMainView = (() => {
+    if (!currentDefaultMain || currentDefaultMain.type === "chat")
+      return "chat";
+    if (
+      currentDefaultMain.type === "instructions" ||
+      currentDefaultMain.type === "connections" ||
+      currentDefaultMain.type === "layout"
+    ) {
+      return "settings";
     }
-    return `${serverDefaultMain.type}:${serverDefaultMain.id ?? ""}:${serverDefaultMain.toolName ?? ""}`;
+    if (fixedTabTypeSet.has(currentDefaultMain.type)) {
+      return currentDefaultMain.type;
+    }
+    return `${currentDefaultMain.type}:${currentDefaultMain.id ?? ""}:${currentDefaultMain.toolName ?? ""}`;
   })();
 
-  const [pinnedViews, setPinnedViews] = useState<PinnedView[]>(serverPinned);
-  const [defaultMainView, setDefaultMainView] =
-    useState<string>(serverDefaultMainKey);
-  const [chatDefaultOpen, setChatDefaultOpen] = useState<boolean>(
-    serverChatDefaultOpen,
-  );
-  const [isSaving, setIsSaving] = useState(false);
-
-  // Parse default main view from composite key.
-  // Plain fixed-system tab ids round-trip as { type: "<id>" }.
-  // ext-apps uses "ext-apps:<connectionId>:<toolName>".
+  // Inverse — converts the string composite key back to the stored object form.
   const parseDefaultMainView = (value: string) => {
     const [type, id, toolName] = value.split(":");
     if (!type) return null;
@@ -634,6 +686,21 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
     if (type === "ext-apps" && id)
       return { type: "ext-apps" as const, id, toolName: toolName || undefined };
     return null;
+  };
+
+  const writePinned = (next: PinnedView[]) => {
+    form.setValue("metadata.ui.pinnedViews", next, { shouldDirty: true });
+  };
+
+  const writeLayout = (next: {
+    defaultMainView?: { type: string; id?: string; toolName?: string } | null;
+    chatDefaultOpen?: boolean | null;
+  }) => {
+    form.setValue(
+      "metadata.ui.layout",
+      { ...layoutMeta, ...next },
+      { shouldDirty: true },
+    );
   };
 
   // Reconcile orphaned pinned views once tool data is available.
@@ -648,9 +715,6 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
   ) {
     reconciledRef.current = true;
 
-    // Build set of connection IDs that were successfully fetched.
-    // Pins for connections that failed to fetch are kept to avoid
-    // permanent deletion from transient errors.
     const fetchedOkIds = new Set(
       (connectionsWithTools ?? []).filter((c) => c.fetchOk).map((c) => c.id),
     );
@@ -658,129 +722,55 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
       connectionsData.flatMap((c) => c.uiTools.map((t) => `${c.id}:${t.name}`)),
     );
 
-    // Only filter pins for connections we successfully got data for
-    const validPinned = serverPinned.filter(
+    const validPinned = pinnedViews.filter(
       (pv) =>
         !fetchedOkIds.has(pv.connectionId) ||
         validKeys.has(`${pv.connectionId}:${pv.toolName}`),
     );
 
-    if (validPinned.length !== serverPinned.length) {
-      setPinnedViews(validPinned);
+    if (validPinned.length !== pinnedViews.length) {
+      writePinned(validPinned);
 
       // If the default view was an ext-app that got removed, reset to chat
-      let nextDefault = defaultMainView;
       if (
-        serverDefaultMain?.type === "ext-apps" &&
+        currentDefaultMain?.type === "ext-apps" &&
         !validPinned.some(
           (pv) =>
-            pv.connectionId === serverDefaultMain.id &&
-            pv.toolName === serverDefaultMain.toolName,
+            pv.connectionId === currentDefaultMain.id &&
+            pv.toolName === currentDefaultMain.toolName,
         )
       ) {
-        nextDefault = "chat";
-        setDefaultMainView(nextDefault);
+        writeLayout({ defaultMainView: { type: "chat" } });
       }
-
-      // Persist cleaned pins; revert local state on failure
-      client
-        .callTool({
-          name: "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
-          arguments: {
-            virtualMcpId,
-            pinnedViews: validPinned,
-            layout: {
-              defaultMainView: parseDefaultMainView(nextDefault),
-              chatDefaultOpen,
-            },
-          },
-        })
-        .then((result) => {
-          unwrapToolResult(result);
-          queryClient.invalidateQueries({
-            predicate: (query) =>
-              Array.isArray(query.queryKey) &&
-              query.queryKey.includes("collection") &&
-              query.queryKey.includes("VIRTUAL_MCP"),
-          });
-        })
-        .catch(() => {
-          // Revert to server state so UI stays consistent
-          setPinnedViews(serverPinned);
-          setDefaultMainView(serverDefaultMainKey);
-        });
     }
   }
-
-  // Auto-save helper that persists given state
-  const saveLayout = (
-    nextPinned: PinnedView[],
-    nextDefaultMain: string,
-    nextChatDefaultOpen?: boolean,
-  ) => {
-    setIsSaving(true);
-    const doSave = async () => {
-      try {
-        const result = await client.callTool({
-          name: "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
-          arguments: {
-            virtualMcpId,
-            pinnedViews: nextPinned,
-            layout: {
-              defaultMainView: parseDefaultMainView(nextDefaultMain),
-              chatDefaultOpen: nextChatDefaultOpen ?? chatDefaultOpen,
-            },
-          },
-        });
-        unwrapToolResult(result);
-        queryClient.invalidateQueries({
-          predicate: (query) =>
-            Array.isArray(query.queryKey) &&
-            query.queryKey.includes("collection") &&
-            query.queryKey.includes("VIRTUAL_MCP"),
-        });
-        toast.success("Layout updated");
-      } catch (error) {
-        toast.error(
-          "Failed to update layout: " +
-            (error instanceof Error ? error.message : "Unknown error"),
-        );
-      } finally {
-        setIsSaving(false);
-      }
-    };
-    doSave();
-  };
 
   const handleTogglePin = (connectionId: string, toolName: string) => {
     const pinned = pinnedViews.some(
       (v) => v.connectionId === connectionId && v.toolName === toolName,
     );
-    let nextPinned: PinnedView[];
-    let nextDefault = defaultMainView;
     if (pinned) {
-      nextPinned = pinnedViews.filter(
+      const nextPinned = pinnedViews.filter(
         (v) => !(v.connectionId === connectionId && v.toolName === toolName),
       );
+      writePinned(nextPinned);
       // If the unpinned view was the default, reset to chat
       const unpinnedKey = `ext-apps:${connectionId}:${toolName}`;
       if (defaultMainView === unpinnedKey) {
-        nextDefault = "chat";
-        setDefaultMainView(nextDefault);
+        writeLayout({ defaultMainView: { type: "chat" } });
       }
     } else {
-      nextPinned = [
+      writePinned([
         ...pinnedViews,
         {
           connectionId,
           toolName,
-          label: toolName.replace(/_/g, " "),
+          label: toTitleCase(toolName),
           icon: null,
         },
-      ];
+      ]);
     }
-    setPinnedViews(nextPinned);
-    saveLayout(nextPinned, nextDefault);
+    flushAndSave();
   };
 
   const handleLabelChange = (
@@ -788,8 +778,8 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
     toolName: string,
     label: string,
   ) => {
-    setPinnedViews((prev) =>
-      prev.map((v) =>
+    writePinned(
+      pinnedViews.map((v) =>
         v.connectionId === connectionId && v.toolName === toolName
           ? { ...v, label }
           : v,
@@ -798,7 +788,7 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
   };
 
   const handleLabelBlur = () => {
-    saveLayout(pinnedViews, defaultMainView);
+    flushAndSave();
   };
 
   const handleIconChange = (
@@ -806,24 +796,19 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
     toolName: string,
     icon: string | null,
   ) => {
-    setPinnedViews((prev) =>
-      prev.map((v) =>
+    writePinned(
+      pinnedViews.map((v) =>
         v.connectionId === connectionId && v.toolName === toolName
           ? { ...v, icon }
           : v,
       ),
     );
-    const nextPinned = pinnedViews.map((v) =>
-      v.connectionId === connectionId && v.toolName === toolName
-        ? { ...v, icon }
-        : v,
-    );
-    saveLayout(nextPinned, defaultMainView);
+    flushAndSave();
   };
 
   const handleDefaultMainViewChange = (value: string) => {
-    setDefaultMainView(value);
-    saveLayout(pinnedViews, value);
+    writeLayout({ defaultMainView: parseDefaultMainView(value) });
+    flushAndSave();
   };
 
   const noConnections = connectionIds.length === 0;
@@ -840,9 +825,8 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
   // matching the gating in main-panel-tabs/index.tsx.
   const defaultMainOptions: { value: string; label: string }[] = [
     { value: "chat", label: "Chat" },
-    { value: "instructions", label: "Instructions" },
-    { value: "connections", label: "Connections" },
-    { value: "layout", label: "Layout" },
+    { value: "settings", label: "Settings" },
+    { value: "automations", label: "Automations" },
   ];
   if (hasGithubRepo) {
     defaultMainOptions.push({ value: "env", label: "Terminal" });
@@ -855,195 +839,184 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
     });
   }
 
+  const hasPinnedContent =
+    connectionsData.length > 0 || noConnections || noInteractiveTools;
+
   return (
-    <div className="flex flex-col gap-6">
-      <Page.Title>Layout</Page.Title>
-      <div className="space-y-3">
-        {/* Default view card */}
-        <Card className="hover:bg-card p-6 gap-6">
-          <CardContent className="p-0 space-y-4">
-            <div className="flex items-center justify-between gap-4">
-              <div className="space-y-0.5">
-                <Label className="font-normal text-foreground">Main view</Label>
-                <p className="text-xs text-muted-foreground">
-                  Configure what users see when they first open this agent.
-                </p>
-              </div>
-              <Select
-                value={defaultMainView}
-                onValueChange={handleDefaultMainViewChange}
-              >
-                <SelectTrigger className="w-44 h-8 text-sm capitalize">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {defaultMainOptions.map((opt) => (
-                    <SelectItem
-                      key={opt.value}
-                      value={opt.value}
-                      className="capitalize"
-                    >
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex items-center justify-between gap-4">
-              <div className="space-y-0.5">
-                <Label className="font-normal text-foreground">Show chat</Label>
-                <p className="text-xs text-muted-foreground">
-                  Display the chat panel alongside the main view
-                </p>
-              </div>
-              <Tooltip delayDuration={0}>
-                <TooltipTrigger asChild>
-                  <span>
-                    <Switch
-                      checked={
-                        defaultMainView === "chat" ? true : chatDefaultOpen
-                      }
-                      disabled={defaultMainView === "chat" || isSaving}
-                      onCheckedChange={(checked) => {
-                        setChatDefaultOpen(checked);
-                        saveLayout(pinnedViews, defaultMainView, checked);
-                      }}
-                    />
-                  </span>
-                </TooltipTrigger>
-                {defaultMainView === "chat" && (
-                  <TooltipContent side="top">
-                    Chat is always shown when it is the default view
-                  </TooltipContent>
-                )}
-              </Tooltip>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Pinned views card */}
-        <Card className="hover:bg-card p-6 gap-4">
-          <CardHeader className="p-0">
-            <span className="text-sm font-normal">Pinned views</span>
-          </CardHeader>
-          <CardContent className="p-0">
-            {noConnections && (
-              <p className="text-sm text-muted-foreground">
-                No connections yet. Add connections in the Connections tab to
-                configure pinned views.
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-sm font-medium text-foreground">Layout</h2>
+      </div>
+      <Card className="p-6 gap-5">
+        <CardContent className="p-0 space-y-5">
+          <div className="flex items-center justify-between gap-4">
+            <div className="space-y-0.5 min-w-0">
+              <Label className="font-normal text-foreground">Main view</Label>
+              <p className="text-xs text-muted-foreground">
+                What users see when they first open this agent.
               </p>
-            )}
-            {noInteractiveTools && !noConnections && (
-              <p className="text-sm text-muted-foreground">
-                None of the connected servers have interactive tools available.
+            </div>
+            <Select
+              value={defaultMainView}
+              onValueChange={handleDefaultMainViewChange}
+            >
+              <SelectTrigger className="w-44 h-8 text-sm capitalize shrink-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {defaultMainOptions.map((opt) => (
+                  <SelectItem
+                    key={opt.value}
+                    value={opt.value}
+                    className="capitalize"
+                  >
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center justify-between gap-4">
+            <div className="space-y-0.5 min-w-0">
+              <Label className="font-normal text-foreground">Show chat</Label>
+              <p className="text-xs text-muted-foreground">
+                Display the chat panel alongside the main view.
               </p>
-            )}
-            {connectionsData.length > 0 && (
-              <div className="space-y-4">
-                {connectionsData.map((conn, connIdx) => (
-                  <div key={conn.id}>
-                    {connIdx > 0 && (
-                      <div className="border-t border-border -mx-6 mb-4" />
-                    )}
-                    <div className="flex items-center gap-2 mb-3">
-                      <IntegrationIcon
-                        icon={conn.icon}
-                        name={conn.title}
-                        size="xs"
-                        className="shrink-0"
-                      />
-                      <span className="text-sm font-medium text-muted-foreground">
-                        {conn.title}
-                      </span>
-                    </div>
-                    <div className="space-y-2">
-                      {conn.uiTools.map((tool) => {
-                        const pinned = pinnedViews.some(
-                          (v) =>
-                            v.connectionId === conn.id &&
-                            v.toolName === tool.name,
-                        );
-                        const pinnedView = pinnedViews.find(
-                          (v) =>
-                            v.connectionId === conn.id &&
-                            v.toolName === tool.name,
-                        );
-                        return (
-                          <div
-                            key={tool.name}
-                            className={cn(
-                              "flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border border-border transition-colors",
-                              pinned ? "bg-accent/30" : "bg-muted/20",
-                            )}
-                          >
-                            <div className="min-w-0 flex-1 flex items-center gap-2">
-                              <SimpleIconPicker
-                                value={pinnedView?.icon ?? null}
-                                onChange={(icon) =>
-                                  handleIconChange(conn.id, tool.name, icon)
+            </div>
+            <Tooltip delayDuration={0}>
+              <TooltipTrigger asChild>
+                <span className="shrink-0">
+                  <Switch
+                    checked={
+                      defaultMainView === "chat" ? true : chatDefaultOpen
+                    }
+                    disabled={defaultMainView === "chat"}
+                    onCheckedChange={(checked) => {
+                      writeLayout({ chatDefaultOpen: checked });
+                      flushAndSave();
+                    }}
+                  />
+                </span>
+              </TooltipTrigger>
+              {defaultMainView === "chat" && (
+                <TooltipContent side="top">
+                  Chat is always shown when it is the default view
+                </TooltipContent>
+              )}
+            </Tooltip>
+          </div>
+        </CardContent>
+
+        {hasPinnedContent && (
+          <>
+            <div className="border-t border-border -mx-6" />
+            <CardContent className="p-0 space-y-3">
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-0.5 min-w-0">
+                  <Label className="font-normal text-foreground">
+                    Pinned views
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Surface interactive tools as top-level tabs in the agent.
+                  </p>
+                </div>
+              </div>
+              {noConnections && (
+                <p className="text-xs text-muted-foreground">
+                  Add a connection above to configure pinned views.
+                </p>
+              )}
+              {noInteractiveTools && !noConnections && (
+                <p className="text-xs text-muted-foreground">
+                  None of the connected servers expose interactive tools.
+                </p>
+              )}
+              {connectionsData.length > 0 && (
+                <div className="space-y-4 pt-1">
+                  {connectionsData.map((conn, connIdx) => (
+                    <div key={conn.id}>
+                      {connIdx > 0 && (
+                        <div className="border-t border-border -mx-6 mb-4" />
+                      )}
+                      <div className="flex items-center gap-2 mb-2.5">
+                        <IntegrationIcon
+                          icon={conn.icon}
+                          name={conn.title}
+                          size="xs"
+                          className="shrink-0"
+                        />
+                        <span className="text-xs font-medium text-muted-foreground">
+                          {conn.title}
+                        </span>
+                      </div>
+                      <div className="space-y-1.5">
+                        {conn.uiTools.map((tool) => {
+                          const pinned = pinnedViews.some(
+                            (v) =>
+                              v.connectionId === conn.id &&
+                              v.toolName === tool.name,
+                          );
+                          const pinnedView = pinnedViews.find(
+                            (v) =>
+                              v.connectionId === conn.id &&
+                              v.toolName === tool.name,
+                          );
+                          return (
+                            <div
+                              key={tool.name}
+                              className={cn(
+                                "flex items-center justify-between gap-3 px-3 py-2 rounded-lg border transition-colors",
+                                pinned
+                                  ? "bg-accent/40 border-border"
+                                  : "bg-transparent border-border",
+                              )}
+                            >
+                              <div className="min-w-0 flex-1 flex items-center gap-2">
+                                <SimpleIconPicker
+                                  value={pinnedView?.icon ?? null}
+                                  onChange={(icon) =>
+                                    handleIconChange(conn.id, tool.name, icon)
+                                  }
+                                  disabled={!pinned}
+                                />
+                                <Input
+                                  value={
+                                    pinned && pinnedView
+                                      ? pinnedView.label
+                                      : toTitleCase(tool.name)
+                                  }
+                                  onChange={(e) =>
+                                    handleLabelChange(
+                                      conn.id,
+                                      tool.name,
+                                      e.target.value,
+                                    )
+                                  }
+                                  onBlur={handleLabelBlur}
+                                  className="h-7 text-sm w-40"
+                                  disabled={!pinned}
+                                  readOnly={!pinned}
+                                />
+                              </div>
+                              <Switch
+                                checked={pinned}
+                                onCheckedChange={() =>
+                                  handleTogglePin(conn.id, tool.name)
                                 }
-                                disabled={!pinned || isSaving}
-                              />
-                              <Input
-                                value={
-                                  pinned && pinnedView
-                                    ? pinnedView.label
-                                    : tool.name.replace(/_/g, " ")
-                                }
-                                onChange={(e) =>
-                                  handleLabelChange(
-                                    conn.id,
-                                    tool.name,
-                                    e.target.value,
-                                  )
-                                }
-                                onBlur={handleLabelBlur}
-                                className="h-7 text-sm w-40 capitalize"
-                                disabled={!pinned || isSaving}
-                                readOnly={!pinned}
                               />
                             </div>
-                            <Switch
-                              checked={pinned}
-                              onCheckedChange={() =>
-                                handleTogglePin(conn.id, tool.name)
-                              }
-                              disabled={isSaving}
-                            />
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <div className="flex justify-end">
-          <Tooltip delayDuration={0}>
-            <TooltipTrigger asChild>
-              <Button
-                onClick={() => {
-                  navigate({
-                    to: "/$org/$taskId",
-                    params: {
-                      org: org.slug,
-                      taskId: crypto.randomUUID(),
-                    },
-                    search: { virtualmcpid: virtualMcpId },
-                  });
-                }}
-              >
-                Test layout
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">Test agent page layout</TooltipContent>
-          </Tooltip>
-        </div>
-      </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </>
+        )}
+      </Card>
     </div>
   );
 }
@@ -1055,13 +1028,9 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
 
 function VirtualMcpDetailViewWithData({
   virtualMcp,
-  forceTab,
-  hideOwnTabBar,
   hideOwnTitle,
 }: {
   virtualMcp: VirtualMCPEntity;
-  forceTab?: "instructions" | "connections" | "layout";
-  hideOwnTabBar?: boolean;
   hideOwnTitle?: boolean;
 }) {
   const { org } = useProjectContext();
@@ -1071,6 +1040,7 @@ function VirtualMcpDetailViewWithData({
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   // Form setup
@@ -1093,81 +1063,142 @@ function VirtualMcpDetailViewWithData({
     settingsConnectionId: null,
   });
 
-  // Tab state — internal unless forced externally (e.g. by MainPanelContent)
-  const validTabIds = ["instructions", "connections", "layout"];
-  const [internalTab, setInternalTab] = useState(() => {
-    const stored = localStorage.getItem("agent-detail-tab") || "instructions";
-    // Migrate old "sidebar" tab to "layout"
-    const effective = stored === "sidebar" ? "layout" : stored;
-    return validTabIds.includes(effective) ? effective : "instructions";
-  });
-  const activeTab = forceTab ?? internalTab;
-  const setActiveTab = (id: string) => {
-    if (forceTab) return;
-    setInternalTab(id);
-  };
-  const { createTaskWithMessage } = useChatTask();
-  const { setChatMode } = useChatPrefs();
-  const { createNewTask } = usePanelActions();
+  const [instructionsFullscreen, setInstructionsFullscreen] = useState(false);
+  const [isImproving, setIsImproving] = useState(false);
+  const { createNewTask, setChatOpen } = usePanelActions();
+  const { sendMessage } = useChatBridge();
+  const ensureStudioPack = useEnsureStudioPack();
 
-  const handleImprovePrompt = () => {
+  const handleImprovePrompt = async () => {
+    if (isImproving) return;
     const currentInstructions = form.getValues("metadata.instructions");
     if (!currentInstructions?.trim()) return;
 
-    setChatMode("plan");
+    setIsImproving(true);
+    try {
+      forceSessionFlush();
+      track("agent_instructions_improve_clicked", {
+        agent_id: virtualMcp.id,
+        instructions_length: currentInstructions.length,
+      });
 
-    createTaskWithMessage({
-      virtualMcpId: getDecopilotId(org.id),
-      message: {
-        parts: [
-          {
-            type: "text",
-            text: `/writing-prompts ${virtualMcp.id}\n\n<instructions>\n${currentInstructions}\n</instructions>`,
-          },
-        ],
-      },
-    });
+      await ensureStudioPack(["studio-agent-manager"]);
+
+      setChatOpen(true);
+
+      await sendMessage({
+        tiptapDoc: buildImprovePromptDoc({
+          managerAgentId: StudioPackAgentId.AGENT_MANAGER(org.id),
+          managerName: "Agent Manager",
+          kind: "agent",
+          id: virtualMcp.id,
+          instructions: currentInstructions,
+        }),
+      });
+    } finally {
+      setIsImproving(false);
+    }
   };
 
   const handleTestAgent = () => {
+    forceSessionFlush();
+    track("agent_test_clicked", { agent_id: virtualMcp.id });
     createNewTask();
   };
 
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Session-based tracking for agent_updated. Auto-saves persist every ~1s but
+  // we only emit one PostHog event per edit-session (aggregated fields +
+  // save_count + edit_duration_ms). A session ends after 30s of quiet.
+  const [editSession, dispatchEditSession] = useReducer(
+    editSessionReducer,
+    null,
+  );
+
+  const flushEditSession = () => {
+    if (editSession === null) return;
+    track("agent_updated", {
+      agent_id: virtualMcp.id,
+      fields: Array.from(editSession.fields),
+      instructions_length: editSession.instructionsLength,
+      save_count: editSession.saveCount,
+      edit_duration_ms: Date.now() - editSession.start,
+    });
+    dispatchEditSession({ type: "reset" });
+  };
+
+  const { schedule: scheduleSessionFlush, flush: forceSessionFlush } =
+    useDebouncedAutosave({
+      delayMs: 30_000,
+      save: async () => flushEditSession(),
+    });
 
   const saveForm = async () => {
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
-
-    const hasDirtyFields = Object.keys(form.formState.dirtyFields).length > 0;
-    if (!hasDirtyFields) return;
+    // form.formState is a Proxy over React state. When saveForm runs
+    // synchronously after setValue (e.g. via flushAndSave), React hasn't
+    // processed the batched state update yet and form.formState.dirtyFields
+    // returns the previous render's snapshot — empty on the first edit — so
+    // the save would bail. Read control._formState.dirtyFields for the live,
+    // synchronously-updated value.
+    const dirtyKeys = Object.keys(
+      (
+        form.control as unknown as {
+          _formState: { dirtyFields: Record<string, unknown> };
+        }
+      )._formState.dirtyFields,
+    );
+    if (dirtyKeys.length === 0) return;
+    const instructionsDirty = dirtyKeys.includes("metadata");
 
     const formData = form.getValues();
-    const data = await actions.update.mutateAsync({
+    // Rebase the dirty baseline to the snapshot we're about to send so that
+    // an edit during the in-flight save that returns a value to its pre-save
+    // default still registers as dirty. keepValues preserves the user's
+    // current form values; only _defaultValues advances.
+    form.reset(formData, { keepValues: true });
+
+    await actions.update.mutateAsync({
       id: virtualMcp.id,
       data: formData,
     });
-    form.reset(data);
-  };
 
-  const debouncedSave = () => {
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      saveForm();
-    }, 1000);
-  };
-
-  const watchSubscribedRef = useRef(false);
-  if (!watchSubscribedRef.current) {
-    watchSubscribedRef.current = true;
-    form.watch(() => {
-      debouncedSave();
+    // Accumulate into the current edit session and (re)schedule a flush
+    // 30s after the last save.
+    dispatchEditSession({
+      type: "accumulate",
+      now: Date.now(),
+      fields: dirtyKeys,
+      instructionsLength: instructionsDirty
+        ? (formData.metadata?.instructions?.length ?? 0)
+        : null,
     });
-  }
+    scheduleSessionFlush();
+  };
+
+  const { schedule: debouncedSave, flush: flushAndSave } = useDebouncedAutosave(
+    { save: saveForm },
+  );
+
+  // form.watch(callback) fires whenever a value changes via setValue, but not
+  // on form.reset({ keepValues: true }) (which only emits state, no `values`
+  // key) — so saveForm's pre-mutate rebase does NOT loop. Edit handlers
+  // can just call form.setValue and trust this subscription to schedule the
+  // save. flushAndSave remains for explicit "save NOW" semantics (blurs,
+  // toggles).
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    const sub = form.watch(() => debouncedSave());
+    return () => sub.unsubscribe();
+    // debouncedSave is stable for our purpose: its closure only mediates
+    // through stable refs inside useDebouncedAutosave, so the mount-time
+    // reference stays valid for the component's lifetime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleOpenAddDialog = () => {
+    track("connections_dialog_opened", {
+      source: "agent_settings",
+      mode: "add",
+    });
     dispatch({ type: "SET_ADD_DIALOG_OPEN", payload: true });
   };
 
@@ -1192,10 +1223,14 @@ function VirtualMcpDetailViewWithData({
     dispatch({ type: "SET_ADD_DIALOG_OPEN", payload: false });
 
     // Auto-trigger OAuth if the connection needs authorization
-    const mcpProxyUrl = new URL(`/mcp/${connectionId}`, window.location.origin);
+    const mcpProxyUrl = new URL(
+      `/api/${org.slug}/mcp/${connectionId}`,
+      window.location.origin,
+    );
     const authStatus = await isConnectionAuthenticated({
       url: mcpProxyUrl.href,
       token: null,
+      orgId: org.id,
     });
     if (authStatus.supportsOAuth && !authStatus.isAuthenticated) {
       await handleAuthenticate(connectionId);
@@ -1260,10 +1295,14 @@ function VirtualMcpDetailViewWithData({
       });
 
       // Handle OAuth if needed
-      const mcpProxyUrl = new URL(`/mcp/${newId}`, window.location.origin);
+      const mcpProxyUrl = new URL(
+        `/api/${org.slug}/mcp/${newId}`,
+        window.location.origin,
+      );
       const authStatus = await isConnectionAuthenticated({
         url: mcpProxyUrl.href,
         token: null,
+        orgId: org.id,
       });
       if (authStatus.supportsOAuth && !authStatus.isAuthenticated) {
         const email = await handleAuthenticate(newId);
@@ -1296,6 +1335,8 @@ function VirtualMcpDetailViewWithData({
   ): Promise<string | null> => {
     const { token, tokenInfo, error } = await authenticateMcp({
       connectionId,
+      orgSlug: org.slug,
+      scope: "offline_access",
     });
     if (error || !token) {
       toast.error(`Authentication failed: ${error}`);
@@ -1305,10 +1346,12 @@ function VirtualMcpDetailViewWithData({
     if (tokenInfo) {
       try {
         const response = await fetch(
-          `/api/connections/${connectionId}/oauth-token`,
+          `/api/${org.slug}/connections/${connectionId}/oauth-token`,
           {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+            },
             credentials: "include",
             body: JSON.stringify({
               accessToken: tokenInfo.accessToken,
@@ -1354,7 +1397,10 @@ function VirtualMcpDetailViewWithData({
       });
     }
 
-    const mcpProxyUrl = new URL(`/mcp/${connectionId}`, window.location.origin);
+    const mcpProxyUrl = new URL(
+      `/api/${org.slug}/mcp/${connectionId}`,
+      window.location.origin,
+    );
     await queryClient.invalidateQueries({
       queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
     });
@@ -1401,8 +1447,13 @@ Define step-by-step how the agent should handle requests.
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const handleDelete = async () => {
+    forceSessionFlush();
     try {
       await actions.delete.mutateAsync(virtualMcp.id);
+      track("agent_deleted", {
+        agent_id: virtualMcp.id,
+        source: "agent_detail",
+      });
       toast.success(`Deleted "${virtualMcp.title}"`);
       navigate({ to: "/$org", params: { org: org.slug } });
     } catch {
@@ -1410,25 +1461,11 @@ Define step-by-step how the agent should handle requests.
     }
   };
 
-  // Variant-specific tabs
-  const tabs = [
-    {
-      id: "instructions",
-      label: "Instructions",
-    },
-    {
-      id: "connections",
-      label: "Connections",
-      count: connections.length || undefined,
-    },
-    { id: "layout", label: "Layout" },
-  ];
-
   return (
     <Page>
       <Page.Content>
         <Page.Body>
-          <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-10">
             {!hideOwnTitle && (
               <Page.Title
                 actions={
@@ -1456,134 +1493,198 @@ Define step-by-step how the agent should handle requests.
               </Page.Title>
             )}
 
-            {/* Tabs */}
-            {!hideOwnTabBar && (
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <CollectionTabs
-                  tabs={tabs}
-                  activeTab={activeTab}
-                  onTabChange={(id) => {
-                    setActiveTab(id);
-                    localStorage.setItem("agent-detail-tab", id);
-                  }}
+            {/* Agent identity header */}
+            <div className="flex items-center gap-3">
+              <Controller
+                name="icon"
+                control={form.control}
+                render={({ field }) => (
+                  <IconPicker
+                    value={field.value ?? null}
+                    onChange={(icon) => {
+                      field.onChange(icon);
+                      flushAndSave();
+                    }}
+                    onColorChange={(color) => {
+                      form.setValue("metadata.ui.themeColor", color, {
+                        shouldDirty: true,
+                      });
+                      flushAndSave();
+                    }}
+                    name={form.watch("title") || "Agent"}
+                    size="md"
+                    className="shrink-0"
+                    avatarClassName="[&_svg]:w-1/2 [&_svg]:h-1/2"
+                    disabled={hasGithubRepo}
+                  />
+                )}
+              />
+              <div className="flex flex-col flex-1 min-w-0">
+                <Controller
+                  name="title"
+                  control={form.control}
+                  render={({ field }) => (
+                    <input
+                      {...field}
+                      type="text"
+                      value={field.value ?? ""}
+                      onChange={(e) => {
+                        field.onChange(e);
+                      }}
+                      onBlur={() => {
+                        field.onBlur();
+                        flushAndSave();
+                      }}
+                      disabled={hasGithubRepo}
+                      placeholder="Agent name"
+                      className="text-lg font-medium leading-tight text-foreground bg-transparent border-none outline-none px-1 -mx-1 rounded hover:bg-input/25 focus:bg-input/25 transition-colors w-full truncate disabled:hover:bg-transparent disabled:focus:bg-transparent disabled:opacity-50"
+                    />
+                  )}
                 />
-                {activeTab === "connections" && (
+                <Controller
+                  name="description"
+                  control={form.control}
+                  render={({ field }) => (
+                    <input
+                      {...field}
+                      type="text"
+                      value={field.value ?? ""}
+                      onChange={(e) => {
+                        field.onChange(e);
+                      }}
+                      onBlur={() => {
+                        field.onBlur();
+                        flushAndSave();
+                      }}
+                      disabled={hasGithubRepo}
+                      placeholder="Add a description..."
+                      className="text-sm text-muted-foreground bg-transparent border-none outline-none px-1 -mx-1 rounded hover:bg-input/25 focus:bg-input/25 transition-colors w-full truncate disabled:hover:bg-transparent disabled:focus:bg-transparent disabled:opacity-50"
+                    />
+                  )}
+                />
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                onClick={() => {
+                  track("agent_connect_modal_opened", {
+                    agent_id: virtualMcp.id,
+                  });
+                  dispatch({
+                    type: "SET_SHARE_DIALOG_OPEN",
+                    payload: true,
+                  });
+                }}
+              >
+                <span className="flex items-center -space-x-1.5 mr-0.5">
+                  <span className="inline-flex items-center justify-center size-4 rounded-full bg-black ring-1 ring-white/20 shrink-0">
+                    <img
+                      src="/logos/cursor.svg"
+                      alt="Cursor"
+                      className="size-2.5 brightness-0 invert"
+                    />
+                  </span>
+                  <span
+                    className="relative z-10 inline-flex items-center justify-center size-4 rounded-full ring-1 ring-background shrink-0"
+                    style={{ backgroundColor: "#D97757" }}
+                  >
+                    <img
+                      src="/logos/Claude Code.svg"
+                      alt="Claude"
+                      className="size-2.5 brightness-0 invert"
+                    />
+                  </span>
+                </span>
+                Connect
+              </Button>
+            </div>
+
+            {/* Creator metadata */}
+            <div className="flex items-center gap-2 -mt-6 text-muted-foreground">
+              <User
+                id={virtualMcp.created_by}
+                size="2xs"
+                className="text-sm text-muted-foreground"
+              />
+              <span className="text-muted-foreground/50 text-sm">·</span>
+              <span className="text-sm">
+                {new Date(virtualMcp.created_at).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </span>
+            </div>
+
+            {/* Connections section */}
+            <section className="flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-sm font-medium text-foreground">
+                  Connections
+                </h2>
+                {connections.length > 0 && (
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={handleOpenAddDialog}
                   >
-                    <Plus size={13} />
-                    Add
+                    <Plus size={14} />
+                    Add connection
                   </Button>
                 )}
               </div>
-            )}
-
-            {/* Tab content */}
-            {activeTab === "instructions" && (
-              <>
-                <div className="flex items-center gap-3">
-                  <Controller
-                    name="icon"
-                    control={form.control}
-                    render={({ field }) => (
-                      <IconPicker
-                        value={field.value ?? null}
-                        onChange={(icon) => {
-                          field.onChange(icon);
-                          saveForm();
-                        }}
-                        onColorChange={(color) => {
-                          form.setValue("metadata.ui.themeColor", color, {
-                            shouldDirty: true,
-                          });
-                          saveForm();
-                        }}
-                        name={form.watch("title") || "Agent"}
-                        size="md"
-                        className="shrink-0"
-                        avatarClassName="[&_svg]:w-1/2 [&_svg]:h-1/2"
-                        disabled={hasGithubRepo}
-                      />
-                    )}
-                  />
-                  <div className="flex flex-col flex-1 min-w-0">
-                    <Controller
-                      name="title"
-                      control={form.control}
-                      render={({ field }) => (
-                        <input
-                          {...field}
-                          type="text"
-                          value={field.value ?? ""}
-                          onBlur={() => {
-                            field.onBlur();
-                            saveForm();
-                          }}
-                          disabled={hasGithubRepo}
-                          placeholder="Agent name"
-                          className="text-lg font-medium leading-tight text-foreground bg-transparent border-none outline-none px-1 -mx-1 rounded hover:bg-input/25 focus:bg-input/25 transition-colors w-full truncate disabled:hover:bg-transparent disabled:focus:bg-transparent disabled:opacity-50"
-                        />
-                      )}
-                    />
-                    <Controller
-                      name="description"
-                      control={form.control}
-                      render={({ field }) => (
-                        <input
-                          {...field}
-                          type="text"
-                          value={field.value ?? ""}
-                          onBlur={() => {
-                            field.onBlur();
-                            saveForm();
-                          }}
-                          disabled={hasGithubRepo}
-                          placeholder="Add a description..."
-                          className="text-sm text-muted-foreground bg-transparent border-none outline-none px-1 -mx-1 rounded hover:bg-input/25 focus:bg-input/25 transition-colors w-full truncate disabled:hover:bg-transparent disabled:focus:bg-transparent disabled:opacity-50"
-                        />
-                      )}
-                    />
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="shrink-0"
-                    onClick={() =>
-                      dispatch({
-                        type: "SET_SHARE_DIALOG_OPEN",
-                        payload: true,
-                      })
-                    }
+              <div className="flex flex-col gap-2">
+                {connections.length === 0 ? (
+                  <button
+                    type="button"
+                    onClick={handleOpenAddDialog}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-dashed border-border hover:bg-accent/50 transition-colors w-full text-left cursor-pointer"
                   >
-                    <span className="flex items-center -space-x-1.5 mr-0.5">
-                      {/* Cursor — behind */}
-                      <span className="inline-flex items-center justify-center size-4 rounded-full bg-black ring-1 ring-white/20 shrink-0">
-                        <img
-                          src="/logos/cursor.svg"
-                          alt="Cursor"
-                          className="size-2.5 brightness-0 invert"
-                        />
-                      </span>
-                      {/* Claude — on top */}
-                      <span
-                        className="relative z-10 inline-flex items-center justify-center size-4 rounded-full ring-1 ring-background shrink-0"
-                        style={{ backgroundColor: "#D97757" }}
-                      >
-                        <img
-                          src="/logos/Claude Code.svg"
-                          alt="Claude"
-                          className="size-2.5 brightness-0 invert"
-                        />
-                      </span>
+                    <div className="flex items-center justify-center size-8 rounded-md text-muted-foreground/75 border border-dashed border-border shrink-0">
+                      <Plus size={16} />
+                    </div>
+                    <span className="text-sm text-muted-foreground">
+                      No connections yet. Add one to get started.
                     </span>
-                    Connect
-                  </Button>
-                </div>
+                  </button>
+                ) : (
+                  connections.map((conn) => (
+                    <ErrorBoundary
+                      key={conn.connection_id}
+                      fallback={() => null}
+                    >
+                      <Suspense fallback={<ConnectionItemSkeleton />}>
+                        <ConnectionItem
+                          connection_id={conn.connection_id}
+                          usedConnectionIds={addedConnectionIds}
+                          onOpenSettings={() =>
+                            handleOpenSettings(conn.connection_id)
+                          }
+                          onRemove={() =>
+                            handleRemoveConnection(conn.connection_id)
+                          }
+                          onAuthenticate={handleAuthenticate}
+                          onSwitchInstance={handleSwitchInstance}
+                          onNewInstance={() =>
+                            handleNewInstance(conn.connection_id)
+                          }
+                        />
+                      </Suspense>
+                    </ErrorBoundary>
+                  ))
+                )}
+              </div>
+            </section>
 
+            {/* Instructions section */}
+            <section className="flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-sm font-medium text-foreground">
+                  Instructions
+                </h2>
                 {!hasGithubRepo && (
-                  <div className="flex items-center justify-end gap-2">
+                  <div className="flex items-center gap-2">
                     {!form.watch("metadata.instructions")?.trim() && (
                       <Button
                         variant="outline"
@@ -1596,7 +1697,10 @@ Define step-by-step how the agent should handle requests.
                     <Button
                       variant="outline"
                       size="sm"
-                      disabled={!form.watch("metadata.instructions")?.trim()}
+                      disabled={
+                        isImproving ||
+                        !form.watch("metadata.instructions")?.trim()
+                      }
                       onClick={handleImprovePrompt}
                     >
                       <Stars01 size={13} />
@@ -1604,89 +1708,72 @@ Define step-by-step how the agent should handle requests.
                     </Button>
                   </div>
                 )}
-
-                <Controller
-                  name="metadata.instructions"
-                  control={form.control}
-                  render={({ field }) => (
+              </div>
+              <Controller
+                name="metadata.instructions"
+                control={form.control}
+                render={({ field }) => (
+                  <div className="relative rounded-xl card-shadow bg-card focus-within:ring-1 focus-within:ring-ring">
                     <Textarea
                       {...field}
                       value={field.value ?? ""}
+                      onChange={(e) => {
+                        field.onChange(e);
+                      }}
                       onBlur={() => {
                         field.onBlur();
-                        saveForm();
+                        flushAndSave();
                       }}
                       disabled={hasGithubRepo}
                       placeholder="Define how this agent should behave, what tone to use, any constraints or guidelines..."
-                      className="min-h-[300px] flex-1 resize-none text-base text-muted-foreground placeholder:text-muted-foreground/40 leading-relaxed border-0 rounded-none shadow-none px-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-0 bg-transparent"
+                      className="min-h-[200px] max-h-[360px] overflow-auto resize-none text-base text-muted-foreground placeholder:text-muted-foreground/40 leading-relaxed border-0 shadow-none px-4 py-3 pr-11 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent"
                       style={{ boxShadow: "none" }}
                     />
-                  )}
-                />
-              </>
-            )}
+                    <Tooltip delayDuration={0}>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="absolute top-2 right-2 h-7 w-7 text-muted-foreground"
+                          onClick={() => setInstructionsFullscreen(true)}
+                          aria-label="Open fullscreen editor"
+                        >
+                          <Maximize01 size={14} />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="left">Fullscreen</TooltipContent>
+                    </Tooltip>
+                  </div>
+                )}
+              />
+            </section>
 
-            {activeTab === "connections" && (
-              <div className="flex flex-col gap-6">
-                <Page.Title
-                  actions={
-                    connections.length > 0 ? (
-                      <Button size="sm" onClick={handleOpenAddDialog}>
-                        <Plus size={14} />
-                        Add connection
-                      </Button>
-                    ) : undefined
-                  }
-                >
-                  Connections
-                </Page.Title>
-                <div className="flex flex-col gap-2">
-                  {connections.length === 0 ? (
-                    <button
-                      type="button"
-                      onClick={handleOpenAddDialog}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-dashed border-border hover:bg-accent/50 transition-colors w-full text-left cursor-pointer"
-                    >
-                      <div className="flex items-center justify-center size-8 rounded-md text-muted-foreground/75 border border-dashed border-border shrink-0">
-                        <Plus size={16} />
-                      </div>
-                      <span className="text-sm text-muted-foreground">
-                        No connections yet. Add one to get started.
-                      </span>
-                    </button>
-                  ) : (
-                    connections.map((conn) => (
-                      <ErrorBoundary
-                        key={conn.connection_id}
-                        fallback={() => null}
-                      >
-                        <Suspense fallback={<ConnectionItemSkeleton />}>
-                          <ConnectionItem
-                            connection_id={conn.connection_id}
-                            usedConnectionIds={addedConnectionIds}
-                            onOpenSettings={() =>
-                              handleOpenSettings(conn.connection_id)
-                            }
-                            onRemove={() =>
-                              handleRemoveConnection(conn.connection_id)
-                            }
-                            onAuthenticate={handleAuthenticate}
-                            onSwitchInstance={handleSwitchInstance}
-                            onNewInstance={() =>
-                              handleNewInstance(conn.connection_id)
-                            }
-                          />
-                        </Suspense>
-                      </ErrorBoundary>
-                    ))
-                  )}
-                </div>
+            {/* Layout section */}
+            <LayoutTabContent
+              virtualMcpId={virtualMcp.id}
+              form={form}
+              flushAndSave={flushAndSave}
+            />
+
+            {/* Danger zone */}
+            <section className="flex items-center justify-between border-t border-border pt-6">
+              <div>
+                <p className="text-sm font-medium">Delete agent</p>
+                <p className="text-sm text-muted-foreground">
+                  Permanently delete this agent and all its data.
+                </p>
               </div>
-            )}
-
-            {activeTab === "layout" && (
-              <LayoutTabContent virtualMcpId={virtualMcp.id} />
-            )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-destructive border-destructive/40 hover:bg-destructive/10 hover:text-destructive shrink-0"
+                onClick={() => setDeleteDialogOpen(true)}
+              >
+                <Trash01 size={14} />
+                Delete agent
+              </Button>
+            </section>
           </div>
         </Page.Body>
       </Page.Content>
@@ -1721,6 +1808,7 @@ Define step-by-step how the agent should handle requests.
         onOpenChange={(open) =>
           dispatch({ type: "SET_ADD_DIALOG_OPEN", payload: open })
         }
+        agentId={virtualMcp.id}
         addedConnectionIds={addedConnectionIds}
         onAdd={handleAddConnection}
       />
@@ -1745,6 +1833,40 @@ Define step-by-step how the agent should handle requests.
         }
         virtualMcp={virtualMcp}
       />
+
+      <Dialog
+        open={instructionsFullscreen}
+        onOpenChange={setInstructionsFullscreen}
+      >
+        <DialogContent className="w-[90vw] sm:max-w-6xl h-[85vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="px-6 pt-6 pb-3 border-b border-border shrink-0">
+            <DialogTitle>Instructions</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 p-6">
+            <Controller
+              name="metadata.instructions"
+              control={form.control}
+              render={({ field }) => (
+                <Textarea
+                  {...field}
+                  value={field.value ?? ""}
+                  onChange={(e) => {
+                    field.onChange(e);
+                  }}
+                  onBlur={() => {
+                    field.onBlur();
+                    flushAndSave();
+                  }}
+                  disabled={hasGithubRepo}
+                  placeholder="Define how this agent should behave, what tone to use, any constraints or guidelines..."
+                  className="w-full h-full resize-none text-base text-muted-foreground placeholder:text-muted-foreground/40 leading-relaxed rounded-xl card-shadow px-4 py-3 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 bg-card border-0"
+                  style={{ boxShadow: "none" }}
+                />
+              )}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </Page>
   );
 }
@@ -1755,13 +1877,9 @@ Define step-by-step how the agent should handle requests.
 
 export function VirtualMcpDetailView({
   virtualMcpId,
-  forceTab,
-  hideOwnTabBar,
   hideOwnTitle,
 }: {
   virtualMcpId: string;
-  forceTab?: "instructions" | "connections" | "layout";
-  hideOwnTabBar?: boolean;
   hideOwnTitle?: boolean;
 }) {
   const navigate = useNavigate();
@@ -1796,8 +1914,6 @@ export function VirtualMcpDetailView({
     <VirtualMcpDetailViewWithData
       key={getActiveGithubRepo(virtualMcp)?.connectionId ?? ""}
       virtualMcp={virtualMcp}
-      forceTab={forceTab}
-      hideOwnTabBar={hideOwnTabBar}
       hideOwnTitle={hideOwnTitle}
     />
   );

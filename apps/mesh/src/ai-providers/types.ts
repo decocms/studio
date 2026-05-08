@@ -21,6 +21,9 @@ export interface ModelInfo {
   costs: { input: number; output: number } | null;
   /** When true the upstream provider has flagged this model as deprecated. */
   deprecated?: boolean;
+  /** Mirrors `AiProviderModel.asyncResearch` — restricts this model to the
+   *  deep-research slot. */
+  asyncResearch?: boolean;
 }
 
 export interface TokenCounter {
@@ -30,9 +33,62 @@ export interface TokenCounter {
   }): Promise<{ count: number }>;
 }
 
+export interface AsyncResearchResult {
+  text: string;
+  citations: Array<{ url: string; title?: string }>;
+  usage: { inputTokens: number; outputTokens: number };
+}
+
+/**
+ * Thrown by `AsyncResearchProvider.resume` when the underlying job reaches a
+ * terminal failure state on the provider's side (e.g. Gemini's interaction
+ * status transitioned to `failed`/`cancelled`). The job no longer exists to
+ * resume, so callers should drop any persisted handle.
+ *
+ * Plain `Error` from `resume` means our own poll/HTTP failed transiently —
+ * the provider-side job may still be running; the handle should be kept for
+ * a future reconnect.
+ */
+export class AsyncResearchTerminalError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AsyncResearchTerminalError";
+  }
+}
+
+/**
+ * Generic capability for "research" jobs that don't fit streamText — they're
+ * submit-then-poll, take minutes, and need to survive pod death. Each adapter
+ * decides which of its models route through this path; the caller doesn't
+ * know whether the underlying protocol is Gemini's Interactions API,
+ * something OpenAI ships later, etc.
+ */
+export interface AsyncResearchProvider {
+  /** Whether the given model id should be driven through this capability. */
+  canHandle(modelId: string): boolean;
+  /** Submit a new job. Returns an adapter-opaque handle that survives restarts. */
+  start(req: {
+    modelId: string;
+    query: string;
+    abortSignal?: AbortSignal;
+  }): Promise<{ jobId: string }>;
+  /**
+   * Drive an already-submitted job to terminal state. Same call works for the
+   * pod that submitted it AND for a fresh pod resuming after a crash.
+   */
+  resume(req: {
+    jobId: string;
+    abortSignal?: AbortSignal;
+    onProgress?: (transcript: string) => void;
+    pollIntervalMs?: number;
+  }): Promise<AsyncResearchResult>;
+}
+
 export interface MeshProvider {
   readonly info: ProviderInfo;
   readonly aiSdk: ProviderV3;
+  /** Set by providers that expose async/long-running research jobs. */
+  readonly asyncResearch?: AsyncResearchProvider;
   listModels(): Promise<ModelInfo[]>;
 }
 

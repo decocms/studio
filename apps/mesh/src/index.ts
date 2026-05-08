@@ -24,26 +24,8 @@ const { isServerPath } = await import("./api/utils/paths");
 const { createAssetHandler, resolveClientDir } = await import(
   "@decocms/runtime/asset-server"
 );
-const { red } = await import("./fmt");
 
 const port = settings.port;
-
-// Refuse local mode in production — it disables authentication
-if (
-  settings.localMode &&
-  settings.nodeEnv === "production" &&
-  !settings.allowLocalProd
-) {
-  console.error(
-    red(
-      "Error: Local mode is not allowed in production (NODE_ENV=production).",
-    ),
-  );
-  console.error(
-    "Set DECOCMS_ALLOW_LOCAL_PROD=true to override (not recommended).",
-  );
-  process.exit(1);
-}
 
 // Create asset handler - handles both dev proxy and production static files
 // When running from source (src/index.ts), the "../client" relative path
@@ -75,6 +57,89 @@ function withSecurityHeaders(res: Response): Response {
   });
 }
 
+// Closed early in gracefulShutdown so the port frees before the Hono drain.
+let ingressServers: import("node:net").Server[] = [];
+
+// Sandbox preview reverse-proxy (agent-sandbox only). The base domain is parsed at
+// boot from STUDIO_SANDBOX_PREVIEW_URL_PATTERN; null disables the proxy and
+// preview-host requests fall through to the normal mesh routing (which 404s
+// because nothing matches). The Bun-level WS handler is registered
+// unconditionally — when previewBaseDomain is null, no upgrade path runs it.
+const {
+  parsePreviewBaseDomain,
+  tryHandlePreviewHttp,
+  tryUpgradePreviewWs,
+  previewWebSocketHandler,
+  isPreviewWsData,
+} = await import("./sandbox/preview-proxy");
+const { getOrInitSharedRunner: getOrInitRunnerForPreview } = await import(
+  "./sandbox/lifecycle"
+);
+const previewBaseDomain = parsePreviewBaseDomain(
+  process.env.STUDIO_SANDBOX_PREVIEW_URL_PATTERN,
+);
+const previewProxyDeps = {
+  baseDomain: previewBaseDomain ?? "",
+  getRunner: async () => {
+    const runner = await getOrInitRunnerForPreview();
+    if (!runner || runner.kind !== "agent-sandbox") return null;
+    // The agent-sandbox runner is the only one that exposes proxyPreviewRequest /
+    // resolvePreviewUpstreamUrl; cast is safe after the kind check.
+    return runner as unknown as import("@decocms/sandbox/runner/agent-sandbox").AgentSandboxRunner;
+  },
+};
+
+// Boot/dev wiring for local runners (docker + host). The boot sweep is
+// Docker-only — host runner's rehydrate() probes /health and discards dead
+// state on its own. The local ingress is shared by both runners.
+const { resolveRunnerKindFromEnv } = await import("@decocms/sandbox/runner");
+const sandboxRunnerKind = resolveRunnerKindFromEnv();
+const ingressEligible =
+  sandboxRunnerKind === "docker" || sandboxRunnerKind === "host";
+
+if (ingressEligible) {
+  const { startLocalSandboxIngress } = await import("@decocms/sandbox/runner");
+  const { getSharedRunnerIfInit, getOrInitSharedRunner } = await import(
+    "./sandbox/lifecycle"
+  );
+
+  // Boot sweep (best-effort). Shutdown cleanup can't cover crashes —
+  // SIGTERM races with the parent killing postgres — so the boot sweep is
+  // what actually keeps `docker ps` empty between sessions.
+  // Host runner's rehydrate() probes /health and discards dead state on its own.
+  if (sandboxRunnerKind === "docker") {
+    const { sweepDockerOrphansOnBoot } = await import(
+      "@decocms/sandbox/runner"
+    );
+    await sweepDockerOrphansOnBoot();
+  }
+
+  // Port 7070 default: macOS AirPlay Receiver owns `*:7000` on v4+v6, so a
+  // Chrome Happy-Eyeballs race would hit Apple. The ingress is part of the
+  // host/docker runner contract — those runners only expose user dev servers
+  // through `<handle>.localhost:7070`, so the gate is the runner kind, not
+  // NODE_ENV. Set `SANDBOX_INGRESS_PORT=0` to skip binding entirely.
+  const ingressPort = Number(process.env.SANDBOX_INGRESS_PORT ?? 7070);
+  if (ingressPort > 0) {
+    ingressServers = startLocalSandboxIngress(() => {
+      const r = getSharedRunnerIfInit();
+      if (!r) return null;
+      if (r.kind !== "docker" && r.kind !== "host") return null;
+      // Both DockerSandboxRunner and HostSandboxRunner expose
+      // resolveDaemonPort; the structural cast is safe after the kind check.
+      return r as unknown as {
+        resolveDaemonPort(handle: string): Promise<number | null>;
+      };
+    }, ingressPort);
+
+    // Construct the runner up-front. The first preview-iframe request
+    // typically arrives on a page reload with a warm vmMap, before either
+    // VM_START or `/api/vm-events` has touched the runner — without this
+    // eager init the ingress would 503 with "Sandbox Runner Not Initialized".
+    await getOrInitSharedRunner();
+  }
+}
+
 // Create the Hono app
 const app = await createApp();
 
@@ -88,11 +153,11 @@ if (!settings.isCli) {
 }
 
 // REUSE_PORT is an internal coordination signal set by serve.ts when
-// numThreads > 1 on Linux. It intentionally bypasses the Settings pipeline
-// because it is not a user-facing config — it is set programmatically by the
-// CLI layer immediately before importing this module.
-const reusePort =
-  process.platform === "linux" && process.env.REUSE_PORT === "true";
+// --num-threads > 1. It intentionally bypasses the Settings pipeline because
+// it is not a user-facing config — it is set programmatically by the CLI
+// layer immediately before importing this module. serve.ts owns the
+// platform-eligibility decision; we trust the signal here.
+const reusePort = process.env.REUSE_PORT === "true";
 
 // DECOCMS_IS_WORKER is set by serve.ts on spawned worker processes.
 // Workers skip local-mode seeding to avoid concurrent DB races.
@@ -105,13 +170,49 @@ const server = Bun.serve({
   hostname: "0.0.0.0", // Listen on all network interfaces (required for K8s)
   reusePort,
   fetch: async (request, server) => {
+    // Sandbox preview proxy: matched by Host header. Runs *before* assets
+    // and the Hono app so a `<handle>.preview.<base>` request never hits
+    // mesh's static-file handler (which would 404 on the dev server's
+    // bundle paths). WS upgrades short-circuit Bun.serve's fetch by
+    // returning undefined; HTTP returns a Response.
+    if (previewBaseDomain) {
+      // Bun's Server type defaults T=undefined for upgrade<T>(); cast widens
+      // to our PreviewWsData carrier so the WS handler can stash it. Bun
+      // doesn't enforce data-type consistency at runtime, only via generics.
+      const upgradeRes = await tryUpgradePreviewWs(
+        request,
+        server as unknown as Parameters<typeof tryUpgradePreviewWs>[1],
+        previewProxyDeps,
+      );
+      if (upgradeRes === undefined) return; // upgraded
+      if (upgradeRes) return upgradeRes; // pre-upgrade error
+      const httpRes = await tryHandlePreviewHttp(request, previewProxyDeps);
+      if (httpRes) return httpRes;
+    }
+
     // Try assets first (static files or dev proxy), then API
     // Pass server as env so Hono's getConnInfo can access requestIP
     const assetRes = await handleAssets(request);
     if (assetRes) return withSecurityHeaders(assetRes);
     return app.fetch(request, { server });
   },
-  development: settings.nodeEnv !== "production",
+  // Multiplexed WebSocket handler. `ws.data.kind` discriminates which
+  // upgrader stashed the payload — preview is the only producer today; new
+  // upgraders should add a tagged `kind` and a branch here.
+  websocket: {
+    open(ws) {
+      if (isPreviewWsData(ws.data)) previewWebSocketHandler.open(ws);
+    },
+    message(ws, message) {
+      if (isPreviewWsData(ws.data)) {
+        previewWebSocketHandler.message(ws, message);
+      }
+    },
+    close(ws) {
+      if (isPreviewWsData(ws.data)) previewWebSocketHandler.close(ws);
+    },
+  },
+  development: false,
 });
 
 // Local mode: seed admin user + organization after server is listening
@@ -166,15 +267,17 @@ async function gracefulShutdown(signal: string) {
     // 1. Mark as shutting down — readiness returns 503 immediately
     app.markShuttingDown();
 
-    // 2. Give K8s time to notice the 503 and stop routing traffic before
-    //    we close connections (~2s is enough for most configurations)
+    // 2. Close ingress first so port 7070 frees immediately — next `bun dev`
+    //    shouldn't have to wait out our drain.
+    for (const s of ingressServers) s.close();
+
+    // 3. Let K8s notice the 503 before we close connections.
     await new Promise((r) => setTimeout(r, 2_000));
 
-    // 3. Stop accepting new connections, force-close active ones
-    //    (SSE streams are long-lived and would block graceful drain indefinitely)
+    // 4. Force-close connections (SSE streams are long-lived and would block
+    //    graceful drain indefinitely).
     await server.stop(true);
 
-    // 4. Stop workers, flush telemetry, close DB
     await app.shutdown();
   } catch (err) {
     console.error("[shutdown] Error during shutdown:", err);
@@ -187,3 +290,15 @@ async function gracefulShutdown(signal: string) {
 
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+// Bun keeps the process alive after terminal close — without SIGHUP we
+// accumulate zombies still holding port 7070.
+process.on("SIGHUP", () => gracefulShutdown("SIGHUP"));
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[process] Unhandled rejection:", reason);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("[process] Uncaught exception:", err);
+  gracefulShutdown("uncaughtException");
+});

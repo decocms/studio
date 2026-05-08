@@ -54,8 +54,10 @@ import {
   useAiProviders,
 } from "../../hooks/collections/use-ai-providers";
 import { ErrorBoundary } from "../error-boundary";
+import { track } from "@/web/lib/posthog-client";
 import { useChatPrefs } from "./context";
 import { getProviderLogo } from "@/web/utils/ai-providers-logos";
+import { getPreset } from "@/web/utils/openai-compatible-presets";
 import { useNavigate } from "@tanstack/react-router";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { NoAiProviderEmptyState } from "./no-ai-provider-empty-state";
@@ -787,6 +789,7 @@ function ConnectionModelList({
   onModelSelect,
   managing,
   onToggleManage,
+  filterModels: filterModelsProp,
 }: {
   keyId: string | undefined;
   searchTerm: string;
@@ -794,8 +797,17 @@ function ConnectionModelList({
   onHover: (model: AiProviderModel) => void;
   managing: boolean;
   onToggleManage: () => void;
+  filterModels?: (m: AiProviderModel) => boolean;
 }) {
-  const { models: allModels } = useAiProviderModels(keyId);
+  const { models: rawModels } = useAiProviderModels(keyId);
+  // When no explicit filter is given, hide async-research-only models
+  // (e.g. Gemini Deep Research). They aren't usable as a Thinking/Coding/
+  // Fast model — the agent loop's `streamText` rejects them. Callers that
+  // want to expose them (the deep-research slot) pass their own filter that
+  // opts them back in.
+  const allModels = filterModelsProp
+    ? rawModels.filter(filterModelsProp)
+    : rawModels.filter((m) => m.asyncResearch !== true);
   const [shortlistSet, setShortlistSet] = useState<Set<string>>(
     () => (keyId ? readShortlist(keyId) : null) ?? DEFAULT_SHORTLIST,
   );
@@ -820,7 +832,7 @@ function ConnectionModelList({
   };
 
   const normalizedSearch = searchTerm.toLowerCase().trim();
-  const filterModels = (models: AiProviderModel[]) =>
+  const applySearch = (models: AiProviderModel[]) =>
     normalizedSearch
       ? models.filter(
           (m) =>
@@ -830,7 +842,7 @@ function ConnectionModelList({
       : models;
 
   if (managing) {
-    const grouped = groupByTier(filterModels(allModels));
+    const grouped = groupByTier(applySearch(allModels));
     const flatItems = buildManageItems(grouped);
     const selectedCount = allModels.filter((m) =>
       shortlistSet.has(m.modelId),
@@ -864,7 +876,7 @@ function ConnectionModelList({
   // Browse mode: show shortlisted models (fall back to all if none match)
   const shortlisted = allModels.filter((m) => shortlistSet.has(m.modelId));
   const browseable = shortlisted.length > 0 ? shortlisted : allModels;
-  const grouped = groupByTier(filterModels(browseable));
+  const grouped = groupByTier(applySearch(browseable));
 
   return (
     <div className="flex-1 overflow-y-auto px-0.5 pt-1 [touch-action:pan-y]">
@@ -943,13 +955,111 @@ function SelectedModelDisplay({
   );
 }
 
+const FILE_BEARING_CAPABILITIES = [
+  "vision",
+  "image",
+  "file",
+  "audio",
+  "video",
+] as const;
+
+const IMAGE_MIME_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+] as const;
+
+/**
+ * MIME types that no model handles natively but are usable end-to-end
+ * via sandbox skills: the model invokes `copy_to_sandbox` to bring the
+ * file in, then runs the matching skill (e.g. pptx-extract) to get
+ * text/images it can reason over. Allowed whenever the model has any
+ * file-bearing capability — text output is universal and thumbnail
+ * images need vision, both already covered by the existing checks.
+ */
+const SKILL_HANDLED_MIME_TYPES = [
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+] as const;
+
 export function modelSupportsFiles(
   selectedModel: AiProviderModel | null | undefined,
 ): boolean {
-  return (
-    selectedModel?.capabilities?.includes("vision") === true ||
-    selectedModel?.capabilities?.includes("image") === true
-  );
+  const caps = selectedModel?.capabilities;
+  if (!caps) return false;
+  return FILE_BEARING_CAPABILITIES.some((c) => caps.includes(c));
+}
+
+export function isFileTypeSupportedByModel(
+  mimeType: string,
+  selectedModel: AiProviderModel | null | undefined,
+): boolean {
+  if (!mimeType) return false;
+  if (mimeType.startsWith("text/")) return true;
+
+  const caps = selectedModel?.capabilities ?? [];
+  const hasVision = caps.includes("vision") || caps.includes("image");
+  const hasFile = caps.includes("file");
+  const hasAudio = caps.includes("audio");
+  const hasVideo = caps.includes("video");
+
+  if (hasVision && IMAGE_MIME_TYPES.includes(mimeType as never)) return true;
+  if (hasFile && mimeType === "application/pdf") return true;
+  if (hasAudio && mimeType.startsWith("audio/")) return true;
+  if (hasVideo && mimeType.startsWith("video/")) return true;
+  if (
+    modelSupportsFiles(selectedModel) &&
+    SKILL_HANDLED_MIME_TYPES.includes(mimeType as never)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+export function getAcceptedMimeTypesForModel(
+  selectedModel: AiProviderModel | null | undefined,
+): string {
+  const caps = selectedModel?.capabilities ?? [];
+  const accepted: string[] = ["text/*"];
+
+  if (caps.includes("vision") || caps.includes("image")) {
+    accepted.push(...IMAGE_MIME_TYPES);
+  }
+  if (caps.includes("file")) {
+    accepted.push("application/pdf");
+  }
+  if (caps.includes("audio")) {
+    accepted.push("audio/*");
+  }
+  if (caps.includes("video")) {
+    accepted.push("video/*");
+  }
+  if (modelSupportsFiles(selectedModel)) {
+    accepted.push(...SKILL_HANDLED_MIME_TYPES);
+  }
+
+  return accepted.join(",");
+}
+
+export function getSupportedFileTypesLabel(
+  selectedModel: AiProviderModel | null | undefined,
+): string {
+  const caps = selectedModel?.capabilities ?? [];
+  const parts: string[] = [];
+
+  if (caps.includes("vision") || caps.includes("image")) parts.push("images");
+  if (caps.includes("file")) parts.push("PDFs");
+  if (caps.includes("audio")) parts.push("audio");
+  if (caps.includes("video")) parts.push("video");
+  if (modelSupportsFiles(selectedModel)) parts.push("Office files");
+
+  if (parts.length === 0) return "text only";
+  if (parts.length === 1) return parts[0]!;
+  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
+  return `${parts.slice(0, -1).join(", ")}, and ${parts.at(-1)}`;
 }
 
 // ============================================================================
@@ -1014,6 +1124,7 @@ interface ModelSelectorInnerProps {
   onCredentialChange: (id: string | null) => void;
   selectedModel: AiProviderModel | null;
   onModelChange: (model: AiProviderModel) => void;
+  filterModels?: (m: AiProviderModel) => boolean;
 }
 
 function ModelSelectorInner({
@@ -1022,6 +1133,7 @@ function ModelSelectorInner({
   onCredentialChange,
   selectedModel,
   onModelChange,
+  filterModels,
 }: ModelSelectorInnerProps) {
   const [hoveredModel, setHoveredModel] = useState<AiProviderModel | null>(
     null,
@@ -1072,7 +1184,7 @@ function ModelSelectorInner({
               }
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="flex-1 min-w-0 border-0 shadow-none focus-visible:ring-0 px-0 h-full text-sm placeholder:text-muted-foreground/50 bg-transparent"
+              className="flex-1 min-w-0 border-0 !shadow-none focus-visible:ring-0 px-0 h-full text-sm placeholder:text-muted-foreground/50 bg-transparent"
             />
             {keys.length > 0 && (
               <Select
@@ -1090,24 +1202,27 @@ function ModelSelectorInner({
                       const provider = key
                         ? providerMap[key.providerId]
                         : undefined;
+                      const preset = getPreset(key?.presetId);
+                      const logo = preset?.logo ?? provider?.logo;
+                      const name =
+                        preset?.name ??
+                        provider?.name ??
+                        key?.providerId ??
+                        "Key";
                       return (
                         <span className="flex items-center gap-1.5 min-w-0">
-                          {provider?.logo ? (
+                          {logo ? (
                             <img
-                              src={provider.logo}
-                              alt={provider.name}
+                              src={logo}
+                              alt={name}
                               className="w-4 h-4 rounded shrink-0 dark:bg-white dark:rounded-sm dark:p-px"
                             />
                           ) : (
                             <div className="w-4 h-4 rounded bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary shrink-0">
-                              {(provider?.name ?? key?.providerId ?? "?")
-                                .slice(0, 1)
-                                .toUpperCase()}
+                              {name.slice(0, 1).toUpperCase()}
                             </div>
                           )}
-                          <span className="text-xs truncate">
-                            {provider?.name ?? key?.providerId ?? "Key"}
-                          </span>
+                          <span className="text-xs truncate">{name}</span>
                         </span>
                       );
                     })()}
@@ -1117,24 +1232,26 @@ function ModelSelectorInner({
                 <SelectContent>
                   {keys.map((key) => {
                     const provider = providerMap[key.providerId];
+                    const preset = getPreset(key.presetId);
+                    const logo = preset?.logo ?? provider?.logo;
+                    const name =
+                      preset?.name ?? provider?.name ?? key.providerId;
                     return (
                       <SelectItem key={key.id} value={key.id}>
                         <div className="flex items-center gap-2">
-                          {provider?.logo ? (
+                          {logo ? (
                             <img
-                              src={provider.logo}
-                              alt={provider.name}
+                              src={logo}
+                              alt={name}
                               className="w-4 h-4 rounded dark:bg-white dark:rounded-sm dark:p-px"
                             />
                           ) : (
                             <div className="w-4 h-4 rounded bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
-                              {(provider?.name ?? key.providerId)
-                                .slice(0, 1)
-                                .toUpperCase()}
+                              {name.slice(0, 1).toUpperCase()}
                             </div>
                           )}
                           <span>
-                            {provider?.name ?? key.providerId} — {key.label}
+                            {name} — {key.label}
                           </span>
                         </div>
                       </SelectItem>
@@ -1164,6 +1281,7 @@ function ModelSelectorInner({
               onModelSelect={handleModelSelect}
               managing={managing}
               onToggleManage={() => setManaging((v) => !v)}
+              filterModels={filterModels}
             />
           </Suspense>
         </ErrorBoundary>
@@ -1210,10 +1328,19 @@ function ModelSelectorContent({ onClose }: { onClose: () => void }) {
     <ModelSelectorInner
       onClose={onClose}
       credentialId={credentialId}
-      onCredentialChange={setCredentialId}
+      onCredentialChange={(id) => {
+        track("chat_credential_changed", { credential_id: id });
+        setCredentialId(id);
+      }}
       selectedModel={selectedModel}
       onModelChange={(model) => {
         if (!credentialId) return;
+        track("chat_model_changed", {
+          from_model_id: selectedModel?.modelId ?? null,
+          to_model_id: model.modelId,
+          to_model_provider: model.providerId ?? null,
+          credential_id: credentialId,
+        });
         setModel({ ...model, keyId: credentialId });
       }}
     />
@@ -1234,6 +1361,7 @@ export interface ModelSelectorProps {
   credentialId?: string | null;
   onCredentialChange?: (id: string | null) => void;
   onModelChange?: (model: AiProviderModel) => void;
+  filterModels?: (m: AiProviderModel) => boolean;
 }
 
 export function ModelSelector({
@@ -1245,6 +1373,7 @@ export function ModelSelector({
   credentialId: credentialIdProp,
   onCredentialChange,
   onModelChange,
+  filterModels,
 }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
   const standalone = onModelChange !== undefined;
@@ -1281,6 +1410,7 @@ export function ModelSelector({
           onCredentialChange={onCredentialChange ?? (() => {})}
           selectedModel={modelProp ?? null}
           onModelChange={onModelChange}
+          filterModels={filterModels}
         />
       ) : (
         <ModelSelectorContent onClose={() => setOpen(false)} />

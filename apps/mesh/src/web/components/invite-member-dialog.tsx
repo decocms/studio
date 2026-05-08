@@ -28,7 +28,9 @@ import {
   SelectValue,
 } from "@deco/ui/components/select.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
+import { track } from "@/web/lib/posthog-client";
 import { authClient } from "@/web/lib/auth-client";
+import { useOrgAuthClient } from "@/web/hooks/use-org-auth-client";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { KEYS } from "@/web/lib/query-keys";
 import { useOrganizationRoles } from "@/web/hooks/use-organization-roles";
@@ -61,6 +63,7 @@ function parseEmails(text: string): string[] {
 export function InviteMemberDialog({ trigger }: InviteMemberDialogProps) {
   const [open, setOpen] = useState(false);
   const { locator } = useProjectContext();
+  const orgAuth = useOrgAuthClient();
   const queryClient = useQueryClient();
 
   // Get the active organization from session
@@ -109,7 +112,7 @@ export function InviteMemberDialog({ trigger }: InviteMemberDialogProps) {
       // Invite each valid email with the selected role
       const results = await Promise.allSettled(
         emails.map(async (email) => {
-          const result = await authClient.organization.inviteMember({
+          const result = await orgAuth.organization.inviteMember({
             email,
             role: role as "admin" | "owner",
           });
@@ -132,7 +135,11 @@ export function InviteMemberDialog({ trigger }: InviteMemberDialogProps) {
 
       return results;
     },
-    onSuccess: (_, { emails }) => {
+    onSuccess: (_, { emails, role }) => {
+      track("member_invited", {
+        count: emails.length,
+        role,
+      });
       queryClient.invalidateQueries({ queryKey: KEYS.members(locator) });
       queryClient.invalidateQueries({ queryKey: KEYS.invitations(locator) });
       toast.success(
@@ -146,7 +153,12 @@ export function InviteMemberDialog({ trigger }: InviteMemberDialogProps) {
       });
       setOpen(false);
     },
-    onError: (error) => {
+    onError: (error, { emails, role }) => {
+      track("member_invite_failed", {
+        count: emails.length,
+        role,
+        error: error instanceof Error ? error.message : String(error),
+      });
       toast.error(
         error instanceof Error ? error.message : "Failed to invite members",
       );

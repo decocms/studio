@@ -131,11 +131,34 @@ export interface RegistryConfig {
   blockedMcps: string[];
 }
 
+export interface SimpleModeModelSlot {
+  keyId: string;
+  modelId: string;
+  title?: string;
+}
+
+export interface SimpleModeConfig {
+  enabled: boolean;
+  chat: {
+    fast: SimpleModeModelSlot | null;
+    smart: SimpleModeModelSlot | null;
+    thinking: SimpleModeModelSlot | null;
+  };
+  image: SimpleModeModelSlot | null;
+  webResearch: SimpleModeModelSlot | null;
+}
+
+export interface DefaultHomeAgentsConfig {
+  ids: string[];
+}
+
 export interface OrganizationSettingsTable {
   organizationId: string;
   sidebar_items: JsonArray<SidebarItem[]> | null;
   enabled_plugins: JsonArray<string[]> | null;
   registry_config: JsonObject<RegistryConfig> | null;
+  simple_mode: JsonObject<SimpleModeConfig> | null;
+  default_home_agents: JsonObject<DefaultHomeAgentsConfig> | null;
   createdAt: ColumnType<Date, Date | string, never>;
   updatedAt: ColumnType<Date, Date | string, Date | string>;
 }
@@ -145,6 +168,8 @@ export interface OrganizationSettings {
   sidebar_items: SidebarItem[] | null;
   enabled_plugins: string[] | null;
   registry_config: RegistryConfig | null;
+  simple_mode: SimpleModeConfig | null;
+  default_home_agents: DefaultHomeAgentsConfig | null;
   createdAt: Date | string;
   updatedAt: Date | string;
 }
@@ -230,6 +255,12 @@ export interface AIProviderKeyTable {
   label: string;
   encrypted_api_key: string;
   key_hash: string | null; // SHA-256 of the plaintext key; null for legacy rows
+  /**
+   * Frontend-controlled subtype for grouping keys under branded preset cards
+   * (e.g. "litellm", "ollama" all map to provider_id = "openai-compatible").
+   * Null for non-preset keys.
+   */
+  preset_id: string | null;
   created_by: string;
   created_at: ColumnType<Date, Date | string, never>;
 }
@@ -239,6 +270,7 @@ export interface ProviderKeyInfo {
   id: string;
   providerId: ProviderId;
   label: string;
+  presetId: string | null;
   organizationId: string;
   createdBy: string;
   createdAt: string;
@@ -704,6 +736,21 @@ export {
   type ThreadStatus,
 } from "@decocms/mesh-sdk";
 
+export interface InflightAsyncJob {
+  /** Tool call that submitted this job (for diagnostics; not the resume key). */
+  toolCallId: string;
+  /** Adapter id that owns this job — must equal `MeshProvider.info.id`. */
+  provider: string;
+  /** Provider-side model id, e.g. `deep-research-preview-04-2026`. */
+  modelId: string;
+  /** Original query text — used together with provider+modelId to deduplicate on resume. */
+  query: string;
+  /** Adapter-opaque handle (e.g. Gemini interaction id) — passed back to `resume()`. */
+  jobId: string;
+  /** ISO timestamp set when the job was submitted. */
+  startedAt: string;
+}
+
 export interface ThreadTable {
   id: string;
   organization_id: string;
@@ -724,8 +771,21 @@ export interface ThreadTable {
     Date | string | null,
     Date | string | null
   >;
+  /**
+   * Long-running provider jobs (`AsyncResearchProvider`) still in flight for
+   * this thread. Each entry is removed when the underlying job reaches a
+   * terminal state. Surviving entries are how a fresh pod re-attaches to a
+   * job after a crash.
+   */
+  inflight_async_jobs: ColumnType<
+    InflightAsyncJob[] | null,
+    string | null,
+    string | null
+  >;
   /** Virtual MCP (agent) this thread was initiated with */
   virtual_mcp_id: string;
+  /** Git branch this thread is pinned to (GitHub-linked virtualmcps only) */
+  branch: string | null;
   /** Per-task UI state (e.g., expanded_tools for right-panel tabs) */
   metadata: ColumnType<ThreadMetadata, string | undefined, string>;
   created_at: ColumnType<Date, Date | string, never>;
@@ -754,7 +814,7 @@ export interface Thread {
   created_at: string;
   updated_at: string;
   created_by: string;
-  updated_by: string | null;
+  updated_by: string | undefined;
   hidden: boolean | null;
   status: ThreadStatus;
   trigger_id: string | null;
@@ -762,8 +822,11 @@ export interface Thread {
   run_owner_pod: string | null;
   run_config: Record<string, unknown> | null;
   run_started_at: string | null;
+  inflight_async_jobs: InflightAsyncJob[] | null;
   /** Virtual MCP (agent) this thread was initiated with */
   virtual_mcp_id: string;
+  /** Git branch this thread is pinned to (GitHub-linked virtualmcps only) */
+  branch: string | null;
   metadata: ThreadMetadata;
 }
 
@@ -860,11 +923,10 @@ export interface AutomationTable {
   name: string;
   active: boolean;
   created_by: string;
-  agent: string; // JSON string: { id, mode }
   messages: string; // JSON string: UIMessage[]
   models: string; // JSON string: { connectionId, thinking, coding?, fast? }
   temperature: number;
-  virtual_mcp_id: string | null;
+  virtual_mcp_id: string;
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
@@ -878,11 +940,10 @@ export interface Automation {
   name: string;
   active: boolean;
   created_by: string;
-  agent: string;
   messages: string;
   models: string;
   temperature: number;
-  virtual_mcp_id: string | null;
+  virtual_mcp_id: string;
   created_at: string;
   updated_at: string;
 }
@@ -943,6 +1004,15 @@ export interface KVTable {
   organization_id: string;
   key: string;
   value: ColumnType<Record<string, unknown>, string, string>;
+  updated_at: ColumnType<Date, Date | string, Date | string>;
+}
+
+export interface SandboxRunnerStateTable {
+  user_id: string;
+  project_ref: string;
+  runner_kind: string;
+  handle: string;
+  state: ColumnType<Record<string, unknown>, string, string>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
 
@@ -1091,4 +1161,6 @@ export interface Database {
 
   // Organization domain claims (for auto-join)
   organization_domains: OrganizationDomainTable;
+
+  sandbox_runner_state: SandboxRunnerStateTable;
 }

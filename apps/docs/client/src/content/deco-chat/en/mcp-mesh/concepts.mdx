@@ -11,13 +11,13 @@ icon: BookOpen
 - **Roles**: role assignments for members, used by access control checks.
 - **Connection**: a configured upstream MCP endpoint (usually HTTP), optionally with stored credentials.
 - **Agent**: a virtual MCP server that aggregates multiple connections into a single MCP surface.
-- **Tool call**: a `tools/call` request routed through the Mesh to a downstream MCP server (or via an agent).
+- **Tool call**: a `tools/call` request routed through Studio to a downstream MCP server (or via an agent).
 - **Monitoring log**: a record of a tool call (inputs, outputs, duration, error), used for debugging and ops.
 
 ## Data and security boundaries
 
 - **Credential Vault**: sensitive connection credentials are encrypted at rest (vaulted) and only decrypted at request time.
-- **Permissions**: API keys are scoped to tool permissions; the Mesh enforces authorization before proxying.
+- **Permissions**: API keys are scoped to tool permissions; Studio enforces authorization before proxying.
 
 ## How requests flow
 
@@ -26,6 +26,6 @@ icon: BookOpen
    - the **Management MCP** (admin tools), or
    - a **Proxy endpoint** (one connection), or
    - an **Agent endpoint** (aggregated tools/resources/prompts).
-3. The Mesh authorizes, loads credentials, proxies to the downstream Connection(s), and logs monitoring events.
+3. Studio authorizes, loads credentials, proxies to the downstream Connection(s), and logs monitoring events.
 
 

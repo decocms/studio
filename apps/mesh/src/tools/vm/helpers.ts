@@ -6,6 +6,8 @@
  * - Runtime detection logic (resolveRuntimeConfig)
  */
 
+import type { VmMapEntry } from "@decocms/mesh-sdk";
+
 import {
   requireAuth,
   requireOrganization,
@@ -14,15 +16,24 @@ import {
 } from "../../core/mesh-context";
 import { PACKAGE_MANAGER_CONFIG } from "../../shared/runtime-defaults";
 import type { PackageManager } from "../../shared/runtime-defaults";
-import type { VmMetadata } from "./types";
+import { readVmMap, resolveVm } from "./vm-map";
+
+type RuntimeConfigMeta = {
+  runtime?: {
+    selected?: string | null;
+    port?: string | null;
+    path?: string | null;
+  } | null;
+};
 
 /**
  * Extracts common auth + lookup boilerplate shared by all VM tools.
  * Validates auth, checks access, fetches and validates the Virtual MCP,
- * and returns the metadata and active VM entry for the current user.
+ * and returns the metadata and vmMap entry for the current user on the
+ * specified branch. `entry` is null when no vm is registered for that pair.
  */
 export async function requireVmEntry(
-  input: { virtualMcpId: string },
+  input: { virtualMcpId: string; branch: string },
   ctx: MeshContext,
 ) {
   requireAuth(ctx);
@@ -34,41 +45,48 @@ export async function requireVmEntry(
   if (!virtualMcp || virtualMcp.organization_id !== organization.id) {
     throw new Error("Virtual MCP not found");
   }
-  const metadata = virtualMcp.metadata as VmMetadata;
-  const entry = metadata.activeVms?.[userId];
+  const metadata = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
+  const vmMap = readVmMap(metadata);
+  const entry: VmMapEntry | null = resolveVm(vmMap, userId, input.branch);
   return { virtualMcp, metadata, userId, entry, organization };
 }
 
 /**
  * Resolves package manager and runtime config from Virtual MCP metadata.
  * Returns null packageManager/runtime when no package manager is selected
- * (clone-only mode for non-JS repos).
+ * (clone-only mode for non-JS repos). `port` is null unless the user
+ * explicitly pinned one — runners free to pick a free port otherwise.
  */
-export function resolveRuntimeConfig(metadata: VmMetadata) {
-  const selected = metadata.runtime?.selected ?? null;
+export function resolveRuntimeConfig(metadata: Record<string, unknown>) {
+  const runtime = (metadata as RuntimeConfigMeta).runtime ?? null;
+  const selected = runtime?.selected ?? null;
   const pm = selected as PackageManager | null;
+  const port = runtime?.port ?? null;
+  const packageManagerPath = runtime?.path ?? null;
 
   if (!pm || !(pm in PACKAGE_MANAGER_CONFIG)) {
     return {
       packageManager: null,
       runtime: null,
-      port: metadata.runtime?.port ?? "3000",
+      port,
+      packageManagerPath,
       runtimeBinPath: null,
     };
   }
 
-  const runtime = PACKAGE_MANAGER_CONFIG[pm].runtime;
+  const pmRuntime = PACKAGE_MANAGER_CONFIG[pm].runtime;
   const runtimeBinPath =
-    runtime === "deno"
+    pmRuntime === "deno"
       ? "/opt/deno/bin"
-      : runtime === "bun"
+      : pmRuntime === "bun"
         ? "/opt/bun/bin"
         : null;
 
   return {
     packageManager: pm,
-    runtime,
-    port: metadata.runtime?.port ?? "3000",
+    runtime: pmRuntime,
+    port,
+    packageManagerPath,
     runtimeBinPath,
   };
 }

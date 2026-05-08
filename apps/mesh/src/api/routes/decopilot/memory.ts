@@ -7,14 +7,13 @@
 
 import type { OrgScopedThreadStorage } from "@/storage/threads";
 import type { Thread, ThreadMessage } from "@/storage/types";
-import { generatePrefixedId } from "@/shared/utils/generate-id";
 
 /**
  * Configuration for creating a Memory instance
  */
 export interface MemoryConfig {
-  /** Thread ID (creates new if not found) */
-  thread_id?: string | null;
+  /** Thread ID (required — thread must exist) */
+  thread_id: string;
 
   /** Organization scope */
   organization_id: string;
@@ -24,12 +23,6 @@ export interface MemoryConfig {
 
   /** Default window size for pruning */
   defaultWindowSize?: number;
-
-  /** Optional trigger ID for automation-created threads */
-  triggerId?: string;
-
-  /** Virtual MCP ID to associate with the thread */
-  virtualMcpId?: string;
 }
 
 /**
@@ -81,50 +74,23 @@ export class Memory {
 }
 
 /**
- * Create or get a thread, returning a Memory instance
+ * Get an existing thread by id, returning a Memory instance.
+ * Throws if the thread does not exist — the route loader is responsible for
+ * creating threads up-front via COLLECTION_THREADS_CREATE.
  */
 export async function createMemory(
   storage: OrgScopedThreadStorage,
   config: MemoryConfig,
 ): Promise<Memory> {
-  const {
-    thread_id,
-    organization_id,
-    userId,
-    defaultWindowSize,
-    triggerId,
-    virtualMcpId,
-  } = config;
-
-  let thread: Thread;
+  const { thread_id, defaultWindowSize } = config;
 
   if (!thread_id) {
-    // Create new thread
-    thread = await storage.create({
-      id: generatePrefixedId("thrd"),
-      organization_id,
-      created_by: userId,
-      trigger_id: triggerId ?? null,
-      virtual_mcp_id: virtualMcpId ?? "",
-    });
-  } else {
-    // Try to get existing thread scoped to this org
-    const existing = await storage.get(thread_id);
+    throw new Error("createMemory: thread_id is required");
+  }
 
-    if (existing) {
-      thread = existing;
-    } else {
-      // Thread not found — create using the client-provided ID so the
-      // frontend and server stay in sync (avoids a thread-ID switch in
-      // onFinish which causes a full re-render cascade).
-      thread = await storage.create({
-        id: thread_id,
-        organization_id,
-        created_by: userId,
-        trigger_id: triggerId ?? null,
-        virtual_mcp_id: virtualMcpId ?? "",
-      });
-    }
+  const thread = await storage.get(thread_id);
+  if (!thread) {
+    throw new Error(`Thread not found: ${thread_id}`);
   }
 
   return new Memory({

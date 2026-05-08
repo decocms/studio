@@ -131,6 +131,7 @@ const ALL_TOOL_NAMES = [
   "AI_PROVIDER_KEY_CREATE",
   "AI_PROVIDER_KEY_LIST",
   "AI_PROVIDER_KEY_DELETE",
+  "AI_PROVIDER_KEY_UPDATE",
   "AI_PROVIDER_OAUTH_URL",
   "AI_PROVIDER_OAUTH_EXCHANGE",
   "AI_PROVIDER_PROVISION_KEY",
@@ -639,6 +640,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     dangerous: true,
   },
   {
+    name: "AI_PROVIDER_KEY_UPDATE",
+    description: "Update AI provider API key label",
+    category: "AI Providers",
+  },
+  {
     name: "AI_PROVIDER_OAUTH_URL",
     description: "Get OAuth URL for provider",
     category: "AI Providers",
@@ -882,146 +888,339 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   },
 ];
 
+// ============================================================================
+// Permission Capabilities (high-level, user-facing permissions)
+// ============================================================================
+
+export interface PermissionCapability {
+  id: string;
+  label: string;
+  description: string;
+  section: string;
+  tools: ToolName[];
+  dangerous?: boolean;
+}
+
 /**
- * Human-readable labels for tool names
+ * Capability id for tools all authenticated org members can use by default.
+ * The role editor hides this capability and bakes its tools into every
+ * custom role's saved permission set at submit time.
  */
-const TOOL_LABELS: Record<ToolName, string> = {
-  ORGANIZATION_CREATE: "Create organization",
-  ORGANIZATION_LIST: "List organizations",
-  ORGANIZATION_GET: "View organization details",
-  ORGANIZATION_UPDATE: "Update organization",
-  ORGANIZATION_DELETE: "Delete organization",
-  ORGANIZATION_SETTINGS_GET: "View organization settings",
-  ORGANIZATION_SETTINGS_UPDATE: "Update organization settings",
-  BRAND_CONTEXT_LIST: "List brand contexts",
-  BRAND_CONTEXT_GET: "View brand context",
-  BRAND_CONTEXT_CREATE: "Create brand context",
-  BRAND_CONTEXT_UPDATE: "Update brand context",
-  BRAND_CONTEXT_DELETE: "Delete brand context",
-  BRAND_CONTEXT_EXTRACT: "Extract brand from website",
-  BRAND_GET: "Get brand",
-  BRAND_LIST: "List brands",
-  ORGANIZATION_DOMAIN_GET: "Get domain claim",
-  ORGANIZATION_DOMAIN_SET: "Set domain claim",
-  ORGANIZATION_DOMAIN_UPDATE: "Update domain settings",
-  ORGANIZATION_DOMAIN_CLEAR: "Clear domain claim",
-  ORGANIZATION_MEMBER_LIST: "List members",
-  ORGANIZATION_MEMBER_ADD: "Add members",
-  ORGANIZATION_MEMBER_REMOVE: "Remove members",
-  ORGANIZATION_MEMBER_UPDATE_ROLE: "Update member roles",
-  COLLECTION_CONNECTIONS_LIST: "List connections",
-  COLLECTION_CONNECTIONS_GET: "View connection details",
-  COLLECTION_CONNECTIONS_CREATE: "Create connections",
-  COLLECTION_CONNECTIONS_UPDATE: "Update connections",
-  COLLECTION_CONNECTIONS_DELETE: "Delete connections",
-  CONNECTION_TEST: "Test connections",
-  DATABASES_RUN_SQL: "Run SQL queries",
-  COLLECTION_VIRTUAL_MCP_CREATE: "Create virtual MCPs",
-  COLLECTION_VIRTUAL_MCP_LIST: "List virtual MCPs",
-  COLLECTION_VIRTUAL_MCP_GET: "View virtual MCP details",
-  COLLECTION_VIRTUAL_MCP_UPDATE: "Update virtual MCPs",
-  COLLECTION_VIRTUAL_MCP_DELETE: "Delete virtual MCPs",
-  MONITORING_LOG_GET: "View monitoring log details",
-  MONITORING_LOGS_LIST: "List monitoring logs",
-  MONITORING_STATS: "View monitoring statistics",
-  API_KEY_CREATE: "Create API key",
-  API_KEY_LIST: "List API keys",
-  API_KEY_UPDATE: "Update API key",
-  API_KEY_DELETE: "Delete API key",
-  EVENT_PUBLISH: "Publish events",
-  EVENT_SUBSCRIBE: "Subscribe to events",
-  EVENT_UNSUBSCRIBE: "Unsubscribe from events",
-  EVENT_CANCEL: "Cancel recurring events",
-  EVENT_ACK: "Acknowledge event delivery",
-  EVENT_SUBSCRIPTION_LIST: "List event subscriptions",
-  EVENT_SYNC_SUBSCRIPTIONS: "Sync subscriptions to desired state",
+const BASIC_USAGE_CAPABILITY_ID = "basic-usage";
 
-  USER_GET: "Get user by id",
-  COLLECTION_THREADS_CREATE: "Create threads",
-  COLLECTION_THREADS_LIST: "List threads",
-  COLLECTION_THREADS_GET: "View thread details",
-  COLLECTION_THREADS_UPDATE: "Update threads",
-  COLLECTION_THREADS_DELETE: "Delete threads",
-  COLLECTION_THREAD_MESSAGES_LIST: "List thread messages",
-  TAGS_LIST: "List organization tags",
-  TAGS_CREATE: "Create organization tag",
-  TAGS_DELETE: "Delete organization tag",
-  MEMBER_TAGS_GET: "Get member tags",
-  MEMBER_TAGS_SET: "Set member tags",
-  VIRTUAL_MCP_PLUGIN_CONFIG_GET: "View plugin config",
-  VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE: "Update plugin config",
-  VIRTUAL_MCP_PINNED_VIEWS_UPDATE: "Update pinned views",
-  AUTOMATION_CREATE: "Create automation",
-  AUTOMATION_GET: "View automation details",
-  AUTOMATION_LIST: "List automations",
-  AUTOMATION_UPDATE: "Update automation",
-  AUTOMATION_DELETE: "Delete automation",
-  AUTOMATION_TRIGGER_ADD: "Add trigger",
-  AUTOMATION_TRIGGER_REMOVE: "Remove trigger",
-  AUTOMATION_RUN: "Run automation",
+const PERMISSION_CAPABILITIES: PermissionCapability[] = [
+  // Basic usage — granted to all org members, hidden from UI
+  {
+    id: BASIC_USAGE_CAPABILITY_ID,
+    label: "Basic Usage",
+    description: "Tools all org members can access by default",
+    section: "Basic Usage",
+    tools: [
+      // View connections
+      "COLLECTION_CONNECTIONS_LIST",
+      "COLLECTION_CONNECTIONS_GET",
+      "CONNECTION_TEST",
+      // View agents
+      "COLLECTION_VIRTUAL_MCP_LIST",
+      "COLLECTION_VIRTUAL_MCP_GET",
+      "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
+      // View automations
+      "AUTOMATION_GET",
+      "AUTOMATION_LIST",
+      // View AI providers
+      "AI_PROVIDERS_LIST",
+      "AI_PROVIDERS_LIST_MODELS",
+      "AI_PROVIDERS_ACTIVE",
+      // Object storage access
+      "LIST_OBJECTS",
+      "GET_OBJECT_METADATA",
+      "GET_PRESIGNED_URL",
+      "PUT_PRESIGNED_URL",
+      // VM previews
+      "VM_START",
+      "VM_DELETE",
+    ],
+  },
+  // Organization
+  {
+    id: "org:manage",
+    label: "Manage organization",
+    description:
+      "Edit organization settings, brand context, and domain configuration",
+    section: "Organization",
+    tools: [
+      "ORGANIZATION_GET",
+      "ORGANIZATION_LIST",
+      "ORGANIZATION_UPDATE",
+      "ORGANIZATION_SETTINGS_GET",
+      "ORGANIZATION_SETTINGS_UPDATE",
+      "BRAND_CONTEXT_LIST",
+      "BRAND_CONTEXT_GET",
+      "BRAND_CONTEXT_CREATE",
+      "BRAND_CONTEXT_UPDATE",
+      "BRAND_CONTEXT_DELETE",
+      "BRAND_CONTEXT_EXTRACT",
+      "BRAND_GET",
+      "BRAND_LIST",
+      "ORGANIZATION_DOMAIN_GET",
+      "ORGANIZATION_DOMAIN_SET",
+      "ORGANIZATION_DOMAIN_UPDATE",
+      "ORGANIZATION_DOMAIN_CLEAR",
+    ],
+  },
+  {
+    id: "members:manage",
+    label: "Manage members",
+    description: "Invite members, remove them, and change their roles",
+    section: "Organization",
+    tools: [
+      "ORGANIZATION_MEMBER_LIST",
+      "ORGANIZATION_MEMBER_ADD",
+      "ORGANIZATION_MEMBER_REMOVE",
+      "ORGANIZATION_MEMBER_UPDATE_ROLE",
+    ],
+    dangerous: true,
+  },
+  // Connections
+  {
+    id: "connections:manage",
+    label: "Manage connections",
+    description: "Create, update, and delete connections",
+    section: "Connections & Agents",
+    tools: [
+      "COLLECTION_CONNECTIONS_CREATE",
+      "COLLECTION_CONNECTIONS_UPDATE",
+      "COLLECTION_CONNECTIONS_DELETE",
+    ],
+    dangerous: true,
+  },
+  {
+    id: "agents:manage",
+    label: "Manage agents",
+    description: "Create, configure, and delete agents",
+    section: "Connections & Agents",
+    tools: [
+      "COLLECTION_VIRTUAL_MCP_CREATE",
+      "COLLECTION_VIRTUAL_MCP_UPDATE",
+      "COLLECTION_VIRTUAL_MCP_DELETE",
+      "VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE",
+      "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
+    ],
+    dangerous: true,
+  },
+  // Automations
+  {
+    id: "automations:manage",
+    label: "Manage automations",
+    description: "Create, update, run, and delete automations",
+    section: "Automations",
+    tools: [
+      "AUTOMATION_CREATE",
+      "AUTOMATION_UPDATE",
+      "AUTOMATION_DELETE",
+      "AUTOMATION_TRIGGER_ADD",
+      "AUTOMATION_TRIGGER_REMOVE",
+      "AUTOMATION_RUN",
+    ],
+    dangerous: true,
+  },
+  // Monitoring
+  {
+    id: "monitoring:view",
+    label: "View monitoring",
+    description: "Access logs and usage statistics",
+    section: "Monitoring",
+    tools: ["MONITORING_LOG_GET", "MONITORING_LOGS_LIST", "MONITORING_STATS"],
+  },
+  // AI Providers
+  {
+    id: "ai-providers:manage",
+    label: "Manage AI providers",
+    description: "Add or remove API keys and provision provider credentials",
+    section: "AI Providers",
+    tools: [
+      "AI_PROVIDER_KEY_CREATE",
+      "AI_PROVIDER_KEY_LIST",
+      "AI_PROVIDER_KEY_DELETE",
+      "AI_PROVIDER_KEY_UPDATE",
+      "AI_PROVIDER_OAUTH_URL",
+      "AI_PROVIDER_OAUTH_EXCHANGE",
+      "AI_PROVIDER_PROVISION_KEY",
+      "AI_PROVIDER_TOPUP_URL",
+      "AI_PROVIDER_CREDITS",
+      "AI_PROVIDER_CLI_ACTIVATE",
+    ],
+  },
+  // Organization (tags moved here from Developer)
+  {
+    id: "tags:manage",
+    label: "Manage tags",
+    description: "Create, assign, and delete organization tags",
+    section: "Organization",
+    tools: [
+      "TAGS_LIST",
+      "TAGS_CREATE",
+      "TAGS_DELETE",
+      "MEMBER_TAGS_GET",
+      "MEMBER_TAGS_SET",
+    ],
+  },
+  // Store & Registry
+  {
+    id: "registry:manage",
+    label: "Manage registry",
+    description: "Browse, publish, and manage items in the registry",
+    section: "Store & Registry",
+    tools: [
+      "COLLECTION_REGISTRY_APP_LIST",
+      "COLLECTION_REGISTRY_APP_GET",
+      "COLLECTION_REGISTRY_APP_VERSIONS",
+      "COLLECTION_REGISTRY_APP_FILTERS",
+      "REGISTRY_ITEM_LIST",
+      "REGISTRY_ITEM_SEARCH",
+      "REGISTRY_ITEM_GET",
+      "REGISTRY_ITEM_VERSIONS",
+      "REGISTRY_ITEM_FILTERS",
+      "REGISTRY_DISCOVER_TOOLS",
+      "REGISTRY_ITEM_CREATE",
+      "REGISTRY_ITEM_BULK_CREATE",
+      "REGISTRY_ITEM_UPDATE",
+      "REGISTRY_ITEM_DELETE",
+      "REGISTRY_AI_GENERATE",
+      "REGISTRY_PUBLISH_REQUEST_LIST",
+      "REGISTRY_PUBLISH_REQUEST_REVIEW",
+      "REGISTRY_PUBLISH_REQUEST_COUNT",
+      "REGISTRY_PUBLISH_REQUEST_DELETE",
+      "REGISTRY_PUBLISH_API_KEY_GENERATE",
+      "REGISTRY_PUBLISH_API_KEY_LIST",
+      "REGISTRY_PUBLISH_API_KEY_REVOKE",
+    ],
+    dangerous: true,
+  },
+  {
+    id: "registry:monitor",
+    label: "Monitor registry health",
+    description: "Run health checks on registry connections and view results",
+    section: "Store & Registry",
+    tools: [
+      "REGISTRY_MONITOR_RUN_START",
+      "REGISTRY_MONITOR_RUN_LIST",
+      "REGISTRY_MONITOR_RUN_GET",
+      "REGISTRY_MONITOR_RUN_CANCEL",
+      "REGISTRY_MONITOR_RESULT_LIST",
+      "REGISTRY_MONITOR_CONNECTION_LIST",
+      "REGISTRY_MONITOR_CONNECTION_SYNC",
+      "REGISTRY_MONITOR_CONNECTION_UPDATE_AUTH",
+      "REGISTRY_MONITOR_SCHEDULE_SET",
+      "REGISTRY_MONITOR_SCHEDULE_CANCEL",
+    ],
+  },
+  // Developer
+  {
+    id: "api-keys:manage",
+    label: "Manage API keys",
+    description: "Create, update, and revoke API keys",
+    section: "Developer",
+    tools: [
+      "API_KEY_CREATE",
+      "API_KEY_LIST",
+      "API_KEY_UPDATE",
+      "API_KEY_DELETE",
+    ],
+  },
+  {
+    id: "event-bus:use",
+    label: "Use event bus",
+    description: "Publish events and manage subscriptions",
+    section: "Developer",
+    tools: [
+      "EVENT_PUBLISH",
+      "EVENT_SUBSCRIBE",
+      "EVENT_UNSUBSCRIBE",
+      "EVENT_CANCEL",
+      "EVENT_ACK",
+      "EVENT_SUBSCRIPTION_LIST",
+      "EVENT_SYNC_SUBSCRIPTIONS",
+    ],
+  },
+  {
+    id: "storage:delete",
+    label: "Delete from storage",
+    description: "Permanently delete files from object storage",
+    section: "Developer",
+    tools: ["DELETE_OBJECT", "DELETE_OBJECTS"],
+    dangerous: true,
+  },
+  {
+    id: "connections:sql",
+    label: "Run SQL queries",
+    description: "Execute raw SQL against connected databases",
+    section: "Developer",
+    tools: ["DATABASES_RUN_SQL"],
+    dangerous: true,
+  },
+];
 
-  AI_PROVIDERS_LIST: "List AI providers",
-  AI_PROVIDERS_LIST_MODELS: "List AI models",
-  AI_PROVIDERS_ACTIVE: "List active providers",
-  AI_PROVIDER_KEY_CREATE: "Create provider key",
-  AI_PROVIDER_KEY_LIST: "List provider keys",
-  AI_PROVIDER_KEY_DELETE: "Delete provider key",
-  AI_PROVIDER_OAUTH_URL: "Get OAuth URL",
-  AI_PROVIDER_OAUTH_EXCHANGE: "Connect via OAuth",
-  AI_PROVIDER_PROVISION_KEY: "Auto-provision key",
-  AI_PROVIDER_TOPUP_URL: "Get top-up checkout URL",
-  AI_PROVIDER_CREDITS: "Get credit balance",
-  AI_PROVIDER_CLI_ACTIVATE: "Activate Claude Code CLI",
+/**
+ * Tools every authenticated org member can use by default.
+ *
+ * The role editor (`org-role-detail.tsx`) bakes these into every custom
+ * role's saved `permission.self` array at submit time, so AccessControl
+ * sees them as a normal Better Auth permission — no runtime bypass.
+ *
+ * ⚠️  Adding or removing a tool from the basic-usage capability above?
+ *     You MUST also write a Kysely migration that backfills the change
+ *     into existing custom roles in the `organizationRole` table.
+ *     See `apps/mesh/migrations/073-backfill-basic-usage-roles.ts` for
+ *     the pattern. Snapshot the tools you're adding inside the migration
+ *     — do not import this constant from a migration (migrations are
+ *     immutable history).
+ */
+export const BASIC_USAGE_TOOLS: ReadonlySet<string> = new Set(
+  PERMISSION_CAPABILITIES.find((c) => c.id === BASIC_USAGE_CAPABILITY_ID)
+    ?.tools ?? [],
+);
 
-  // Object Storage
-  LIST_OBJECTS: "List objects",
-  GET_OBJECT_METADATA: "Get object metadata",
-  GET_PRESIGNED_URL: "Generate download URL",
-  PUT_PRESIGNED_URL: "Generate upload URL",
-  DELETE_OBJECT: "Delete object",
-  DELETE_OBJECTS: "Delete multiple objects",
+export function getCapabilitySections(): Array<{
+  section: string;
+  capabilities: PermissionCapability[];
+}> {
+  const map = new Map<string, PermissionCapability[]>();
+  for (const cap of PERMISSION_CAPABILITIES) {
+    if (cap.id === BASIC_USAGE_CAPABILITY_ID) continue;
+    const arr = map.get(cap.section) ?? [];
+    arr.push(cap);
+    map.set(cap.section, arr);
+  }
+  return Array.from(map.entries()).map(([section, capabilities]) => ({
+    section,
+    capabilities,
+  }));
+}
 
-  // Registry
-  COLLECTION_REGISTRY_APP_LIST: "List registry apps",
-  COLLECTION_REGISTRY_APP_GET: "Get registry app",
-  COLLECTION_REGISTRY_APP_VERSIONS: "List registry app versions",
-  COLLECTION_REGISTRY_APP_FILTERS: "Get registry filters",
-  REGISTRY_ITEM_LIST: "List registry items",
-  REGISTRY_ITEM_SEARCH: "Search registry",
-  REGISTRY_ITEM_GET: "Get registry item",
-  REGISTRY_ITEM_VERSIONS: "List item versions",
-  REGISTRY_ITEM_CREATE: "Create registry item",
-  REGISTRY_ITEM_BULK_CREATE: "Bulk create items",
-  REGISTRY_ITEM_UPDATE: "Update registry item",
-  REGISTRY_ITEM_DELETE: "Delete registry item",
-  REGISTRY_ITEM_FILTERS: "Get item filters",
-  REGISTRY_DISCOVER_TOOLS: "Discover tools",
-  REGISTRY_AI_GENERATE: "AI generate content",
-  REGISTRY_PUBLISH_REQUEST_LIST: "List publish requests",
-  REGISTRY_PUBLISH_REQUEST_REVIEW: "Review publish request",
-  REGISTRY_PUBLISH_REQUEST_COUNT: "Count publish requests",
-  REGISTRY_PUBLISH_REQUEST_DELETE: "Delete publish request",
-  REGISTRY_PUBLISH_API_KEY_GENERATE: "Generate API key",
-  REGISTRY_PUBLISH_API_KEY_LIST: "List API keys",
-  REGISTRY_PUBLISH_API_KEY_REVOKE: "Revoke API key",
-  REGISTRY_MONITOR_RUN_START: "Start monitor run",
-  REGISTRY_MONITOR_RUN_LIST: "List monitor runs",
-  REGISTRY_MONITOR_RUN_GET: "Get monitor run",
-  REGISTRY_MONITOR_RUN_CANCEL: "Cancel monitor run",
-  REGISTRY_MONITOR_RESULT_LIST: "List monitor results",
-  REGISTRY_MONITOR_CONNECTION_LIST: "List monitor connections",
-  REGISTRY_MONITOR_CONNECTION_SYNC: "Sync monitor connections",
-  REGISTRY_MONITOR_CONNECTION_UPDATE_AUTH: "Update connection auth",
-  REGISTRY_MONITOR_SCHEDULE_SET: "Set monitor schedule",
-  REGISTRY_MONITOR_SCHEDULE_CANCEL: "Cancel monitor schedule",
+export function isCapabilityEnabled(
+  cap: PermissionCapability,
+  enabledTools: string[],
+  allowAll: boolean,
+): boolean {
+  if (allowAll) return true;
+  return cap.tools.every((tool) => enabledTools.includes(tool));
+}
 
-  // GitHub
-
-  // VM
-  VM_START: "Start VM preview",
-  VM_DELETE: "Delete VM preview",
-  GITHUB_LIST_USER_ORGS: "List GitHub user orgs",
-};
+export function toggleCapabilityInTools(
+  cap: PermissionCapability,
+  currentTools: string[],
+  enable: boolean,
+): string[] {
+  if (enable) {
+    const toolSet = new Set(currentTools);
+    for (const tool of cap.tools) toolSet.add(tool);
+    return Array.from(toolSet);
+  }
+  const toolSet = new Set(currentTools);
+  for (const tool of cap.tools) toolSet.delete(tool);
+  return Array.from(toolSet);
+}
 
 // ============================================================================
 // Exports
@@ -1054,16 +1253,4 @@ export function getToolsByCategory() {
   }
 
   return grouped;
-}
-
-/**
- * Get permission options for UI components (type-safe)
- * Returns flat array of all static permissions with labels
- */
-export function getPermissionOptions(): PermissionOption[] {
-  return MANAGEMENT_TOOLS.map((tool) => ({
-    value: tool.name,
-    label: TOOL_LABELS[tool.name],
-    dangerous: tool.dangerous,
-  }));
 }

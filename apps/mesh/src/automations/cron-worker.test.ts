@@ -18,7 +18,6 @@ function makeAutomation(overrides?: Partial<Automation>): Automation {
     name: "Test",
     active: true,
     created_by: USER_ID,
-    agent: JSON.stringify({ id: "agent_1" }),
     messages: JSON.stringify([
       { id: "m1", role: "user", parts: [{ type: "text", text: "hi" }] },
     ]),
@@ -28,7 +27,7 @@ function makeAutomation(overrides?: Partial<Automation>): Automation {
       credentialId: "cred_1",
     }),
     temperature: 0.5,
-    virtual_mcp_id: null,
+    virtual_mcp_id: "agent_1",
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
     ...overrides,

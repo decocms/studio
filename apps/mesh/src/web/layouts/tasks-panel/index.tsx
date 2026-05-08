@@ -54,6 +54,7 @@ function TasksPanelContent() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const activeTaskId = params.taskId ?? null;
@@ -98,7 +99,7 @@ function TasksPanelContent() {
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0 overflow-y-auto p-2 gap-3">
+    <div className="flex flex-col h-full min-h-0 p-2 gap-3">
       <TasksSection
         title="Tasks"
         tasks={allTasks}

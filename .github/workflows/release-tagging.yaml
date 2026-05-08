@@ -6,12 +6,14 @@ on:
     paths:
       - "apps/mesh/**"
       - "packages/mesh-plugin-*/**"
+      - "packages/sandbox/**"
   push:
     branches:
       - main
     paths:
       - "apps/mesh/**"
       - "packages/mesh-plugin-*/**"
+      - "packages/sandbox/**"
 
 permissions:
   contents: write

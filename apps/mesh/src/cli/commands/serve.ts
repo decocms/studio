@@ -142,7 +142,6 @@ export async function startServer(options: ServeOptions): Promise<void> {
     localMode: options.localMode,
     skipMigrations: options.skipMigrations,
     noTui: options.noTui,
-    nodeEnv: "production",
   });
 
   for (const s of services) {

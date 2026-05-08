@@ -11,7 +11,7 @@ import StarterKit from "@tiptap/starter-kit";
 import type { Ref } from "react";
 import { Suspense, useEffect, useImperativeHandle, useRef } from "react";
 import type { Metadata } from "../types.ts";
-import { FileNode, FileUploader } from "./file";
+import { FileNode, FileUploader, type UnsupportedFileInfo } from "./file";
 import { MentionNode } from "./mention";
 import { AtMention } from "./mention-at.tsx";
 import { SlashMention } from "./mention-slash.tsx";
@@ -155,6 +155,7 @@ interface TiptapInputProps {
   virtualMcpId?: string | null;
   showFileUploader?: boolean;
   selectedModel?: AiProviderModel | null;
+  onUnsupportedFile?: (info: UnsupportedFileInfo) => void;
   ref?: Ref<TiptapInputHandle>;
   className?: string;
 }
@@ -168,6 +169,7 @@ export function TiptapInput({
   virtualMcpId,
   showFileUploader = false,
   selectedModel,
+  onUnsupportedFile,
   ref,
   className,
 }: TiptapInputProps) {
@@ -245,7 +247,11 @@ export function TiptapInput({
 
       {/* Render file upload handler */}
       {showFileUploader && selectedModel ? (
-        <FileUploader editor={editor} selectedModel={selectedModel} />
+        <FileUploader
+          editor={editor}
+          selectedModel={selectedModel}
+          onUnsupportedFile={onUnsupportedFile}
+        />
       ) : null}
     </>
   );

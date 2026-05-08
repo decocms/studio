@@ -90,6 +90,11 @@ export const StreamRequestSchema = z.object({
   stream: z.boolean().optional(),
   temperature: z.number().default(0.5),
   thread_id: z.string().optional(),
+  /**
+   * Git branch to pin the thread to on first-message creation. Only honored
+   * when the thread doesn't exist yet; existing threads keep their branch.
+   */
+  branch: z.string().nullish(),
   toolApprovalLevel: z.enum(["auto", "readonly"]).default("auto"),
   mode: z
     .enum(["default", "plan", "web-search", "gen-image"])

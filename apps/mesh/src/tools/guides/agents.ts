@@ -3,6 +3,7 @@ import type { GuidePrompt, GuideResource } from "./index";
 export const prompts: GuidePrompt[] = [
   {
     name: "agents-create",
+    title: "Create Agents",
     description: "Build a new agent for a specific role or workflow.",
     text: `# Create agent
 
@@ -27,6 +28,7 @@ Checks:
   },
   {
     name: "agents-update",
+    title: "Update Agents",
     description:
       "Modify an existing agent's behavior, connections, or instructions.",
     text: `# Update agent
@@ -48,35 +50,6 @@ Checks:
 - If changing connections, verify the new set still matches the agent's purpose.
 - Call out destructive or high-impact changes before applying them.
 - Confirm the final agent definition matches the request.
-`,
-  },
-  {
-    name: "writing-prompts",
-    description: "Improve instructions for an agent or automation.",
-    text: `# Writing instructions
-
-Goal: rewrite or refine instructions for either an agent or an automation so they clearly describe the purpose, constraints, and workflows in a reliable format.
-
-Read docs://agents.md for the instruction-writing pattern, XML-style structure, and workflow guidance. Read docs://automations.md if you are improving automation behavior rather than agent behavior.
-
-Recommended tool order:
-1. Identify whether the target is an agent or an automation.
-2. For agents, use COLLECTION_VIRTUAL_MCP_LIST or COLLECTION_VIRTUAL_MCP_GET to inspect the current instructions.
-3. For automations, use AUTOMATION_LIST or AUTOMATION_GET to inspect the current messages/instructions.
-4. Review the current instructions against docs://agents.md.
-5. If the intended purpose, audience, or boundaries are unclear, use user_ask before rewriting.
-6. Rewrite the instructions with explicit XML-style sections such as <role>, <capabilities>, <constraints>, and <workflows>.
-7. For agents, use COLLECTION_VIRTUAL_MCP_UPDATE to save the improved instructions.
-8. For automations, use AUTOMATION_UPDATE to save the improved messages/instructions.
-9. Re-read the updated entity with COLLECTION_VIRTUAL_MCP_GET or AUTOMATION_GET to verify the final stored version.
-
-Checks:
-- Make the purpose explicit in a <role> section.
-- Detect whether the current instructions already contain a workflow. If they do, improve the workflow to be concrete, ordered, and operational. If they do not, add one.
-- Keep workflows numbered and focused on real execution steps, not vague advice.
-- Add or tighten constraints when the current instructions are too open-ended.
-- Preserve the user's intended domain and responsibilities while improving clarity.
-- If the target is an automation, keep the instructions aligned with the trigger and expected background execution behavior.
 `,
   },
 ];

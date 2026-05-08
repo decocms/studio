@@ -9,7 +9,10 @@ import {
   useMCPToolsList,
   useMCPToolCall,
 } from "@decocms/mesh-sdk";
-import type { McpUiMessageRequest } from "@modelcontextprotocol/ext-apps";
+import type {
+  McpUiDisplayMode,
+  McpUiMessageRequest,
+} from "@modelcontextprotocol/ext-apps";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { contentBlocksToTiptapDoc } from "@/mcp-apps/content-blocks.ts";
 import { MCPAppRenderer } from "@/mcp-apps/mcp-app-renderer.tsx";
@@ -25,6 +28,7 @@ function AppRenderer({
   tool,
   connectionId,
   orgId,
+  args,
 }: {
   client: ReturnType<typeof useMCPClient>;
   resourceURI: string;
@@ -36,15 +40,27 @@ function AppRenderer({
   };
   connectionId: string;
   orgId?: string;
+  args?: Record<string, unknown>;
 }) {
   const { sendMessage } = useChatBridge();
   const { setAppContext, clearAppContext } = useChatPrefs();
-  const { setChatOpen } = usePanelActions();
+  const { setChatOpen, openTab } = usePanelActions();
   const sourceId = `${connectionId}:${tool.name}`;
+
+  const handleRequestDisplayMode = (
+    mode: McpUiDisplayMode,
+  ): McpUiDisplayMode => {
+    if (mode === "inline") {
+      openTab("0");
+      return "inline";
+    }
+    return "fullscreen";
+  };
+  const toolInput = args ?? EMPTY_TOOL_INPUT;
   const { data: toolResult } = useMCPToolCall({
     client,
     toolName: tool.name,
-    toolArguments: EMPTY_TOOL_INPUT,
+    toolArguments: toolInput,
   });
 
   const clientId = getGatewayClientId(tool._meta);
@@ -70,7 +86,7 @@ function AppRenderer({
       resourceURI={resourceURI}
       orgId={orgId}
       toolInfo={{ tool: strippedTool }}
-      toolInput={EMPTY_TOOL_INPUT}
+      toolInput={toolInput}
       toolResult={toolResult}
       displayMode="fullscreen"
       minHeight={MCP_APP_DISPLAY_MODES.fullscreen.minHeight}
@@ -79,6 +95,7 @@ function AppRenderer({
       onMessage={handleAppMessage}
       onUpdateModelContext={(params) => setAppContext(sourceId, params)}
       onTeardown={() => clearAppContext(sourceId)}
+      onRequestDisplayMode={handleRequestDisplayMode}
       className="h-full"
     />
   );
@@ -87,12 +104,18 @@ function AppRenderer({
 export function AppViewContent({
   connectionId,
   toolName,
+  args,
 }: {
   connectionId: string;
   toolName: string;
+  args?: Record<string, unknown>;
 }) {
   const { org } = useProjectContext();
-  const client = useMCPClient({ connectionId, orgId: org.id });
+  const client = useMCPClient({
+    connectionId,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
   const { data: toolsResult } = useMCPToolsList({ client });
 
   const decodedToolName = stripMcpServerPrefix(decodeURIComponent(toolName));
@@ -118,6 +141,7 @@ export function AppViewContent({
       tool={tool}
       connectionId={connectionId}
       orgId={org.id}
+      args={args}
     />
   );
 }

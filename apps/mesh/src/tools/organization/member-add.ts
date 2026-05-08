@@ -5,8 +5,9 @@
  */
 
 import { z } from "zod";
+import { posthog } from "../../posthog";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth } from "../../core/mesh-context";
+import { getUserId, requireAuth } from "../../core/mesh-context";
 
 export const ORGANIZATION_MEMBER_ADD = defineTool({
   name: "ORGANIZATION_MEMBER_ADD",
@@ -64,6 +65,20 @@ export const ORGANIZATION_MEMBER_ADD = defineTool({
 
     if (!result) {
       throw new Error("Failed to add member");
+    }
+
+    const actorId = getUserId(ctx);
+    if (actorId) {
+      posthog.capture({
+        distinctId: actorId,
+        event: "organization_member_added",
+        groups: { organization: organizationId },
+        properties: {
+          organization_id: organizationId,
+          added_user_id: input.userId,
+          role: input.role,
+        },
+      });
     }
 
     // Better Auth returns role as string, but we accept string or array

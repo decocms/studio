@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { Button } from "@deco/ui/components/button.tsx";
 import { AlertTriangle, RefreshCw01 } from "@untitledui/icons";
+import { captureException } from "@/web/lib/posthog-client";
 
 const CHUNK_RELOAD_KEY = "__mesh_chunk_reload_ts";
 
@@ -56,6 +57,13 @@ export class ErrorBoundary extends Component<Props, State> {
 
   override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
+    captureException(error, {
+      boundary: "default",
+      error_name: error.name,
+      error_message: error.message,
+      component_stack: errorInfo.componentStack ?? null,
+      route: typeof window !== "undefined" ? window.location.pathname : null,
+    });
   }
 
   private resetError = () => {
@@ -119,8 +127,17 @@ export class ChunkErrorBoundary extends Component<
 
   override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
+    const isChunk = isChunkLoadError(error);
+    captureException(error, {
+      boundary: "chunk_root",
+      is_chunk_load_error: isChunk,
+      error_name: error.name,
+      error_message: error.message,
+      component_stack: errorInfo.componentStack ?? null,
+      route: typeof window !== "undefined" ? window.location.pathname : null,
+    });
 
-    if (!isChunkLoadError(error)) return;
+    if (!isChunk) return;
 
     // Auto-reload once. Guard against infinite loops with a timestamp check.
     const lastReload = sessionStorage.getItem(CHUNK_RELOAD_KEY);

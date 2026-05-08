@@ -22,14 +22,11 @@ import {
 import { Button } from "@deco/ui/components/button.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
-import {
-  WellKnownOrgMCPId,
-  useProjectContext,
-  useVirtualMCPActions,
-  useVirtualMCPs,
-} from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import { STUDIO_PACK_AGENTS } from "@/tools/virtual/studio-pack";
+import { useEnsureStudioPack } from "./use-ensure-studio-pack";
 import { useNavigate } from "@tanstack/react-router";
+import { track } from "@/web/lib/posthog-client";
 
 interface StudioPackRecruitModalProps {
   open: boolean;
@@ -102,8 +99,7 @@ export function StudioPackRecruitModal({
 }: StudioPackRecruitModalProps) {
   const isMobile = useIsMobile();
   const { org } = useProjectContext();
-  const actions = useVirtualMCPActions();
-  const existingAgents = useVirtualMCPs();
+  const ensure = useEnsureStudioPack();
   const navigate = useNavigate();
   const [isInstalling, setIsInstalling] = useState(false);
 
@@ -118,34 +114,20 @@ export function StudioPackRecruitModal({
   const handleInstall = async () => {
     setIsInstalling(true);
     try {
-      const selfConnectionId = WellKnownOrgMCPId.SELF(org.id);
-      const existingTitles = new Set(existingAgents.map((a) => a.title));
+      const allTemplateIds = STUDIO_PACK_AGENTS.map((a) => a.id);
+      await ensure(allTemplateIds);
 
-      for (const agent of STUDIO_PACK_AGENTS) {
-        if (existingTitles.has(agent.title)) continue;
-
-        await actions.create.mutateAsync({
-          title: agent.title,
-          description: agent.description,
-          icon: agent.icon,
-          status: "active",
-          metadata: {
-            instructions: agent.instructions,
-          },
-          connections: [
-            {
-              connection_id: selfConnectionId,
-              selected_tools: [...agent.selectedTools],
-              selected_resources: null,
-              selected_prompts: null,
-            },
-          ],
-        });
-      }
-
+      track("agent_recruit_confirmed", {
+        template_id: "studio-pack",
+        installed_count: allTemplateIds.length,
+      });
       onOpenChange(false);
       navigate({ to: "/$org", params: { org: org.slug } });
     } catch (error) {
+      track("agent_recruit_failed", {
+        template_id: "studio-pack",
+        error: error instanceof Error ? error.message : String(error),
+      });
       console.error("Failed to install Studio Pack:", error);
     } finally {
       setIsInstalling(false);

@@ -1,6 +1,11 @@
 FROM oven/bun:1-slim
 
-RUN apt-get update && apt-get install -y unzip bash && rm -rf /var/lib/apt/lists/*
+# unzip + bash are runtime deps; python3/make/g++ are needed because node-pty
+# (used by @decocms/sandbox) ships prebuilds only for darwin/win32 — on Linux it
+# falls back to building from source via node-gyp.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends unzip bash python3 make g++ && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

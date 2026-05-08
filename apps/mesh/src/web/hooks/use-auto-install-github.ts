@@ -86,10 +86,14 @@ export function useAutoInstallGitHub(opts: {
 
       // Step 2: Check if OAuth is needed
       setStatus("authenticating");
-      const mcpProxyUrl = new URL(`/mcp/${id}`, window.location.origin);
+      const mcpProxyUrl = new URL(
+        `/api/${org.slug}/mcp/${id}`,
+        window.location.origin,
+      );
       const authStatus = await isConnectionAuthenticated({
         url: mcpProxyUrl.href,
         token: null,
+        orgId: org.id,
       });
 
       if (authStatus.supportsOAuth && !authStatus.isAuthenticated) {
@@ -100,6 +104,8 @@ export function useAutoInstallGitHub(opts: {
           error: oauthError,
         } = await authenticateMcp({
           connectionId: id,
+          orgSlug: org.slug,
+          scope: "offline_access",
         });
 
         if (oauthError || !token) {
@@ -115,20 +121,25 @@ export function useAutoInstallGitHub(opts: {
         // Step 4: Persist OAuth token
         if (tokenInfo) {
           try {
-            const response = await fetch(`/api/connections/${id}/oauth-token`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              credentials: "include",
-              body: JSON.stringify({
-                accessToken: tokenInfo.accessToken,
-                refreshToken: tokenInfo.refreshToken,
-                expiresIn: tokenInfo.expiresIn,
-                scope: tokenInfo.scope,
-                clientId: tokenInfo.clientId,
-                clientSecret: tokenInfo.clientSecret,
-                tokenEndpoint: tokenInfo.tokenEndpoint,
-              }),
-            });
+            const response = await fetch(
+              `/api/${org.slug}/connections/${id}/oauth-token`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                credentials: "include",
+                body: JSON.stringify({
+                  accessToken: tokenInfo.accessToken,
+                  refreshToken: tokenInfo.refreshToken,
+                  expiresIn: tokenInfo.expiresIn,
+                  scope: tokenInfo.scope,
+                  clientId: tokenInfo.clientId,
+                  clientSecret: tokenInfo.clientSecret,
+                  tokenEndpoint: tokenInfo.tokenEndpoint,
+                }),
+              },
+            );
             if (!response.ok) {
               await actions.update.mutateAsync({
                 id,

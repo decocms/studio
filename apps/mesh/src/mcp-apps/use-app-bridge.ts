@@ -138,6 +138,9 @@ interface BridgeStoreConfig {
     params: McpUiUpdateModelContextRequest["params"],
   ) => void;
   onTeardown?: () => void;
+  onRequestDisplayMode?: (
+    mode: McpUiDisplayMode,
+  ) => McpUiDisplayMode | Promise<McpUiDisplayMode>;
 }
 
 class BridgeStore {
@@ -186,6 +189,9 @@ class BridgeStore {
 
     if (!this.bridge || this.disposed) return;
 
+    if (config.displayMode !== prev.displayMode) {
+      this.pushHostContext();
+    }
     if (config.toolInput !== prev.toolInput && config.toolInput != null) {
       this.bridge.sendToolInput({ arguments: config.toolInput });
     }
@@ -338,6 +344,13 @@ class BridgeStore {
       );
     };
 
+    bridge.onrequestdisplaymode = async ({ mode }) => {
+      const actualMode = this.config.onRequestDisplayMode
+        ? await this.config.onRequestDisplayMode(mode)
+        : this.config.displayMode;
+      return { mode: actualMode };
+    };
+
     bridge.ondownloadfile = async ({ contents }) => {
       for (const item of contents) {
         if (item.type === "resource") {
@@ -433,6 +446,9 @@ interface UseAppBridgeOptions {
     params: McpUiUpdateModelContextRequest["params"],
   ) => void;
   onTeardown?: () => void;
+  onRequestDisplayMode?: (
+    mode: McpUiDisplayMode,
+  ) => McpUiDisplayMode | Promise<McpUiDisplayMode>;
 }
 
 interface UseAppBridgeReturn {

@@ -38,18 +38,3 @@ export async function callUpdateTaskTool(
   });
   return payload.item;
 }
-
-/**
- * Build an optimistic task object for immediate cache insertion
- */
-export function buildOptimisticTask(id: string, virtualMcpId?: string): Task {
-  const now = new Date().toISOString();
-  return {
-    id,
-    title: "New chat",
-    status: "completed",
-    created_at: now,
-    updated_at: now,
-    virtual_mcp_id: virtualMcpId,
-  };
-}

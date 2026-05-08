@@ -73,6 +73,7 @@ export function useRegistryItems(params: {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const search = normalizeSearch(params.search);
   const limit = params.limit ?? DEFAULT_LIMIT;
@@ -128,6 +129,7 @@ export function useRegistryFilters() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   return useQuery({
@@ -145,6 +147,7 @@ export function useRegistryMutations() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const invalidateAll = async () => {
@@ -234,6 +237,7 @@ export function useRegistryConfig(pluginId: string) {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const queryClient = useQueryClient();
 
@@ -354,6 +358,7 @@ export function usePublishRequests(params: {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const limit = DEFAULT_LIMIT;
 
@@ -394,6 +399,7 @@ export function usePublishRequestCount() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   return useQuery({
@@ -414,6 +420,7 @@ export function usePublishRequestMutations() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const invalidateAll = async () => {
@@ -458,6 +465,7 @@ export function usePublishApiKeys() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   return useQuery({
@@ -478,6 +486,7 @@ export function usePublishApiKeyMutations() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const generateMutation = useMutation({

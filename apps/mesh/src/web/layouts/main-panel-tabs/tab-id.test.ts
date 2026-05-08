@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  isLegacySettingsTab,
   parseAutomationTabId,
   resolveDefaultTabId,
   resolveActiveTabAndOpen,
@@ -16,8 +17,8 @@ describe("parseAutomationTabId", () => {
   });
 
   test("non-automation tab → null", () => {
-    expect(parseAutomationTabId("instructions")).toBeNull();
-    expect(parseAutomationTabId("layout")).toBeNull();
+    expect(parseAutomationTabId("settings")).toBeNull();
+    expect(parseAutomationTabId("preview")).toBeNull();
     expect(parseAutomationTabId(undefined)).toBeNull();
     expect(parseAutomationTabId("0")).toBeNull();
   });
@@ -27,13 +28,30 @@ describe("parseAutomationTabId", () => {
   });
 });
 
-describe("resolveDefaultTabId", () => {
-  test("null metadata → 'instructions'", () => {
-    expect(resolveDefaultTabId(null)).toBe("instructions");
+describe("isLegacySettingsTab", () => {
+  test("legacy tab ids → true", () => {
+    expect(isLegacySettingsTab("instructions")).toBe(true);
+    expect(isLegacySettingsTab("connections")).toBe(true);
+    expect(isLegacySettingsTab("layout")).toBe(true);
+    expect(isLegacySettingsTab("settings")).toBe(true);
   });
 
-  test("defaultMainView null → 'instructions'", () => {
-    expect(resolveDefaultTabId({ defaultMainView: null })).toBe("instructions");
+  test("non-legacy tab ids → false", () => {
+    expect(isLegacySettingsTab("automations")).toBe(false);
+    expect(isLegacySettingsTab("env")).toBe(false);
+    expect(isLegacySettingsTab("preview")).toBe(false);
+    expect(isLegacySettingsTab("git")).toBe(false);
+    expect(isLegacySettingsTab(undefined)).toBe(false);
+  });
+});
+
+describe("resolveDefaultTabId", () => {
+  test("null metadata → 'settings'", () => {
+    expect(resolveDefaultTabId(null)).toBe("settings");
+  });
+
+  test("defaultMainView null → 'settings'", () => {
+    expect(resolveDefaultTabId({ defaultMainView: null })).toBe("settings");
   });
 
   test("ext-app with id → id", () => {
@@ -63,13 +81,13 @@ describe("resolveDefaultTabId", () => {
     ).toBe("t1");
   });
 
-  test("ext-app id not in declared tabs and no tabs → 'instructions'", () => {
+  test("ext-app id not in declared tabs and no tabs → 'settings'", () => {
     expect(
       resolveDefaultTabId({
         defaultMainView: { type: "ext-app", id: "stale" },
         tabs: [],
       }),
-    ).toBe("instructions");
+    ).toBe("settings");
   });
 
   test("ext-apps with id + toolName → pinned-view tab id", () => {
@@ -85,21 +103,21 @@ describe("resolveDefaultTabId", () => {
     ).toBe("app:conn-abc:hello_world");
   });
 
-  test("instructions → 'instructions'", () => {
+  test("legacy instructions → 'settings'", () => {
     expect(
       resolveDefaultTabId({ defaultMainView: { type: "instructions" } }),
-    ).toBe("instructions");
+    ).toBe("settings");
   });
 
-  test("connections → 'connections'", () => {
+  test("legacy connections → 'settings'", () => {
     expect(
       resolveDefaultTabId({ defaultMainView: { type: "connections" } }),
-    ).toBe("connections");
+    ).toBe("settings");
   });
 
-  test("layout → 'layout'", () => {
+  test("legacy layout → 'settings'", () => {
     expect(resolveDefaultTabId({ defaultMainView: { type: "layout" } })).toBe(
-      "layout",
+      "settings",
     );
   });
 
@@ -109,22 +127,22 @@ describe("resolveDefaultTabId", () => {
     );
   });
 
-  test("legacy settings → 'layout'", () => {
-    expect(resolveDefaultTabId({ defaultMainView: { type: "settings" } })).toBe(
-      "layout",
-    );
-  });
-
   test("preview → 'preview'", () => {
     expect(resolveDefaultTabId({ defaultMainView: { type: "preview" } })).toBe(
       "preview",
     );
   });
 
-  test("unknown type falls back to 'instructions'", () => {
+  test("git → 'git'", () => {
+    expect(resolveDefaultTabId({ defaultMainView: { type: "git" } })).toBe(
+      "git",
+    );
+  });
+
+  test("unknown type falls back to 'settings'", () => {
     expect(
       resolveDefaultTabId({ defaultMainView: { type: "automation" } }),
-    ).toBe("instructions");
+    ).toBe("settings");
   });
 });
 
@@ -140,10 +158,10 @@ describe("resolveActiveTabAndOpen", () => {
     ).toEqual({ mainOpen: true, activeTab: "analytics" });
   });
 
-  test("?main absent + no defaultMainView → closed, tab = 'instructions'", () => {
+  test("?main absent + no defaultMainView → closed, tab = 'settings'", () => {
     expect(
       resolveActiveTabAndOpen({ mainParam: undefined, metadata: null }),
-    ).toEqual({ mainOpen: false, activeTab: "instructions" });
+    ).toEqual({ mainOpen: false, activeTab: "settings" });
   });
 
   test("?main absent + defaultMainView.type === 'chat' → closed (aligns with resolveDefaultPanelState)", () => {
@@ -152,7 +170,7 @@ describe("resolveActiveTabAndOpen", () => {
         mainParam: undefined,
         metadata: { defaultMainView: { type: "chat" } },
       }),
-    ).toEqual({ mainOpen: false, activeTab: "instructions" });
+    ).toEqual({ mainOpen: false, activeTab: "settings" });
   });
 
   test("?main=0 → closed, tab = default", () => {
@@ -161,10 +179,28 @@ describe("resolveActiveTabAndOpen", () => {
     );
   });
 
-  test("?main=layout → open, tab = 'layout'", () => {
+  test("?main=settings → open, tab = 'settings'", () => {
+    expect(
+      resolveActiveTabAndOpen({ mainParam: "settings", metadata: meta }),
+    ).toEqual({ mainOpen: true, activeTab: "settings" });
+  });
+
+  test("?main=instructions (legacy) → open, tab = 'settings'", () => {
+    expect(
+      resolveActiveTabAndOpen({ mainParam: "instructions", metadata: meta }),
+    ).toEqual({ mainOpen: true, activeTab: "settings" });
+  });
+
+  test("?main=connections (legacy) → open, tab = 'settings'", () => {
+    expect(
+      resolveActiveTabAndOpen({ mainParam: "connections", metadata: meta }),
+    ).toEqual({ mainOpen: true, activeTab: "settings" });
+  });
+
+  test("?main=layout (legacy) → open, tab = 'settings'", () => {
     expect(
       resolveActiveTabAndOpen({ mainParam: "layout", metadata: meta }),
-    ).toEqual({ mainOpen: true, activeTab: "layout" });
+    ).toEqual({ mainOpen: true, activeTab: "settings" });
   });
 
   test("?main=automation:abc → open, tab = 'automation:abc'", () => {
@@ -175,14 +211,20 @@ describe("resolveActiveTabAndOpen", () => {
       }),
     ).toEqual({ mainOpen: true, activeTab: "automation:abc" });
   });
+
+  test("?main=git → open, tab = 'git'", () => {
+    expect(
+      resolveActiveTabAndOpen({ mainParam: "git", metadata: meta }),
+    ).toEqual({ mainOpen: true, activeTab: "git" });
+  });
 });
 
 describe("resolveTabClickTarget", () => {
   test("clicking active tab while panel open → close ('0')", () => {
     expect(
       resolveTabClickTarget({
-        clickedId: "layout",
-        activeTab: "layout",
+        clickedId: "settings",
+        activeTab: "settings",
         mainOpen: true,
       }),
     ).toBe("0");
@@ -191,28 +233,28 @@ describe("resolveTabClickTarget", () => {
   test("clicking non-active tab while panel open → clicked id", () => {
     expect(
       resolveTabClickTarget({
-        clickedId: "connections",
-        activeTab: "layout",
+        clickedId: "env",
+        activeTab: "settings",
         mainOpen: true,
       }),
-    ).toBe("connections");
+    ).toBe("env");
   });
 
   test("clicking any tab while panel closed → clicked id (open it)", () => {
     expect(
       resolveTabClickTarget({
-        clickedId: "layout",
-        activeTab: "layout",
+        clickedId: "settings",
+        activeTab: "settings",
         mainOpen: false,
       }),
-    ).toBe("layout");
+    ).toBe("settings");
     expect(
       resolveTabClickTarget({
-        clickedId: "instructions",
-        activeTab: "layout",
+        clickedId: "preview",
+        activeTab: "settings",
         mainOpen: false,
       }),
-    ).toBe("instructions");
+    ).toBe("preview");
   });
 });
 
@@ -246,10 +288,10 @@ describe("isAutomationsPillActive", () => {
 
   test("non-automation tab → false", () => {
     expect(
-      isAutomationsPillActive({ activeTab: "instructions", mainOpen: true }),
+      isAutomationsPillActive({ activeTab: "settings", mainOpen: true }),
     ).toBe(false);
     expect(
-      isAutomationsPillActive({ activeTab: "connections", mainOpen: true }),
+      isAutomationsPillActive({ activeTab: "preview", mainOpen: true }),
     ).toBe(false);
   });
 });
@@ -294,7 +336,7 @@ describe("resolveAutomationsPillClickTarget", () => {
   test("on unrelated tab → open list", () => {
     expect(
       resolveAutomationsPillClickTarget({
-        activeTab: "instructions",
+        activeTab: "settings",
         mainOpen: true,
       }),
     ).toBe("automations");

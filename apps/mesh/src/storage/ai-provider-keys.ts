@@ -19,6 +19,7 @@ export class AIProviderKeyStorage {
     id: string;
     provider_id: string;
     label: string;
+    preset_id: string | null;
     organization_id: string;
     created_by: string;
     created_at: Date | string;
@@ -27,6 +28,7 @@ export class AIProviderKeyStorage {
       id: row.id,
       providerId: row.provider_id as ProviderId,
       label: row.label,
+      presetId: row.preset_id,
       organizationId: row.organization_id,
       createdBy: row.created_by,
       createdAt:
@@ -42,11 +44,13 @@ export class AIProviderKeyStorage {
     apiKey: string; // plaintext — will be encrypted before storage
     organizationId: string;
     createdBy: string;
+    presetId?: string | null;
   }): Promise<ProviderKeyInfo> {
     const id = generatePrefixedId("aik");
     const encryptedApiKey = await this.vault.encrypt(params.apiKey);
     const keyHash = hashApiKey(params.apiKey);
     const createdAt = new Date();
+    const presetId = params.presetId ?? null;
 
     await this.db
       .insertInto("ai_provider_keys")
@@ -55,6 +59,7 @@ export class AIProviderKeyStorage {
         organization_id: params.organizationId,
         provider_id: params.providerId,
         label: params.label,
+        preset_id: presetId,
         encrypted_api_key: encryptedApiKey,
         key_hash: keyHash,
         created_by: params.createdBy,
@@ -66,6 +71,7 @@ export class AIProviderKeyStorage {
       id,
       provider_id: params.providerId,
       label: params.label,
+      preset_id: presetId,
       organization_id: params.organizationId,
       created_by: params.createdBy,
       created_at: createdAt,
@@ -85,11 +91,13 @@ export class AIProviderKeyStorage {
     apiKey: string; // plaintext — will be encrypted before storage
     organizationId: string;
     createdBy: string;
+    presetId?: string | null;
   }): Promise<ProviderKeyInfo> {
     const id = generatePrefixedId("aik");
     const encryptedApiKey = await this.vault.encrypt(params.apiKey);
     const keyHash = hashApiKey(params.apiKey);
     const createdAt = new Date();
+    const presetId = params.presetId ?? null;
 
     const row = await this.db
       .insertInto("ai_provider_keys")
@@ -98,6 +106,7 @@ export class AIProviderKeyStorage {
         organization_id: params.organizationId,
         provider_id: params.providerId,
         label: params.label,
+        preset_id: presetId,
         encrypted_api_key: encryptedApiKey,
         key_hash: keyHash,
         created_by: params.createdBy,
@@ -106,12 +115,14 @@ export class AIProviderKeyStorage {
       .onConflict((oc) =>
         oc.columns(["organization_id", "provider_id", "key_hash"]).doUpdateSet({
           label: params.label,
+          preset_id: presetId,
         }),
       )
       .returning([
         "id",
         "provider_id",
         "label",
+        "preset_id",
         "organization_id",
         "created_by",
         "created_at",
@@ -132,6 +143,7 @@ export class AIProviderKeyStorage {
         "id",
         "provider_id",
         "label",
+        "preset_id",
         "organization_id",
         "created_by",
         "created_at",
@@ -166,6 +178,33 @@ export class AIProviderKeyStorage {
     };
   }
 
+  async updateLabel(
+    keyId: string,
+    organizationId: string,
+    label: string,
+  ): Promise<ProviderKeyInfo> {
+    const row = await this.db
+      .updateTable("ai_provider_keys")
+      .set({ label })
+      .where("id", "=", keyId)
+      .where("organization_id", "=", organizationId)
+      .returning([
+        "id",
+        "provider_id",
+        "label",
+        "preset_id",
+        "organization_id",
+        "created_by",
+        "created_at",
+      ])
+      .executeTakeFirst();
+
+    if (!row) {
+      throw new Error(`AI provider key ${keyId} not found`);
+    }
+    return this.rowToKeyInfo(row);
+  }
+
   async delete(keyId: string, organizationId: string): Promise<void> {
     const result = await this.db
       .deleteFrom("ai_provider_keys")
@@ -190,6 +229,7 @@ export class AIProviderKeyStorage {
         "id",
         "provider_id",
         "label",
+        "preset_id",
         "organization_id",
         "created_by",
         "created_at",

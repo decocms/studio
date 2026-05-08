@@ -5,6 +5,7 @@
  */
 
 import { z } from "zod";
+import { posthog } from "../../posthog";
 import { defineTool } from "../../core/define-tool";
 import {
   getUserId,
@@ -44,7 +45,7 @@ export const COLLECTION_THREADS_UPDATE = defineTool({
 
   handler: async (input, ctx) => {
     requireAuth(ctx);
-    requireOrganization(ctx);
+    const organization = requireOrganization(ctx);
 
     await ctx.access.check();
 
@@ -58,6 +59,27 @@ export const COLLECTION_THREADS_UPDATE = defineTool({
     const existing = await ctx.storage.threads.get(id);
     if (!existing) {
       throw new Error("Thread not found in organization");
+    }
+
+    if (data.branch === null && existing.virtual_mcp_id) {
+      const vmcp = await ctx.storage.virtualMcps.findById(
+        existing.virtual_mcp_id,
+        requireOrganization(ctx).id,
+      );
+      type GithubRepoMeta = {
+        githubRepo?: {
+          owner: string;
+          name: string;
+          connectionId?: string;
+        } | null;
+      };
+      const githubRepo = (vmcp?.metadata as GithubRepoMeta | null | undefined)
+        ?.githubRepo;
+      if (githubRepo) {
+        throw new Error(
+          "Cannot set branch=null on a github-linked thread (vMCP has githubRepo)",
+        );
+      }
     }
 
     const updateData: Parameters<typeof ctx.storage.threads.update>[1] = {
@@ -75,7 +97,26 @@ export const COLLECTION_THREADS_UPDATE = defineTool({
       updateData.metadata = data.metadata;
     }
 
+    if (data.branch !== undefined) {
+      updateData.branch = data.branch;
+    }
+
     const thread = await ctx.storage.threads.update(id, updateData);
+
+    // Fire chat_archived / chat_unarchived when the hidden flag flips. Only
+    // fires on the specific transition, not on title/description edits that
+    // happen to include `hidden` unchanged.
+    if (data.hidden !== undefined && data.hidden !== existing.hidden) {
+      posthog.capture({
+        distinctId: userId,
+        event: data.hidden ? "chat_archived" : "chat_unarchived",
+        groups: { organization: organization.id },
+        properties: {
+          organization_id: organization.id,
+          thread_id: id,
+        },
+      });
+    }
 
     return {
       item: normalizeThreadForResponse(thread),

@@ -22,6 +22,7 @@ import { Check, Copy01, Key01, Loading01 } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
+import { track } from "@/web/lib/posthog-client";
 
 /**
  * Unicode-safe base64 encoding for browser environments
@@ -40,6 +41,7 @@ function utf8ToBase64(str: string): string {
  */
 interface ShareButtonProps {
   url: string;
+  agentId: string;
 }
 
 interface ShareWithNameProps extends ShareButtonProps {
@@ -49,10 +51,14 @@ interface ShareWithNameProps extends ShareButtonProps {
 /**
  * Copy URL Button Component
  */
-function CopyUrlButton({ url }: ShareButtonProps) {
+function CopyUrlButton({ url, agentId }: ShareButtonProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
+    track("agent_connect_action", {
+      agent_id: agentId,
+      action: "copy_url",
+    });
     await navigator.clipboard.writeText(url);
     setCopied(true);
     toast.success("Agent URL copied to clipboard");
@@ -81,8 +87,12 @@ function CopyUrlButton({ url }: ShareButtonProps) {
 /**
  * Install on Cursor Button Component
  */
-function InstallCursorButton({ url, serverName }: ShareWithNameProps) {
+function InstallCursorButton({ url, serverName, agentId }: ShareWithNameProps) {
   const handleInstall = () => {
+    track("agent_connect_action", {
+      agent_id: agentId,
+      action: "install_cursor",
+    });
     const slugifiedServerName = slugify(serverName);
     const connectionConfig = {
       type: "http",
@@ -124,10 +134,14 @@ function InstallCursorButton({ url, serverName }: ShareWithNameProps) {
 /**
  * Install on Claude Code Button Component
  */
-function InstallClaudeButton({ url, serverName }: ShareWithNameProps) {
+function InstallClaudeButton({ url, serverName, agentId }: ShareWithNameProps) {
   const [copied, setCopied] = useState(false);
 
   const handleInstall = async () => {
+    track("agent_connect_action", {
+      agent_id: agentId,
+      action: "install_claude_code",
+    });
     const slugifiedServerName = slugify(serverName);
     const connectionConfig = {
       type: "http",
@@ -180,6 +194,7 @@ function TypegenSectionInner({ virtualMcp }: { virtualMcp: VirtualMCPEntity }) {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -204,7 +219,9 @@ function TypegenSectionInner({ virtualMcp }: { virtualMcp: VirtualMCPEntity }) {
       const key = result.structuredContent?.key;
       if (!key) throw new Error("No key in response");
       setApiKey(key);
+      track("agent_typegen_key_generated", { agent_id: mcpId });
     } catch {
+      track("agent_typegen_key_failed", { agent_id: mcpId });
       toast.error("Failed to generate API key");
     } finally {
       setGenerating(false);
@@ -212,6 +229,11 @@ function TypegenSectionInner({ virtualMcp }: { virtualMcp: VirtualMCPEntity }) {
   };
 
   const handleCopy = async () => {
+    track("agent_connect_action", {
+      agent_id: mcpId,
+      action: "typegen_copy_command",
+      has_api_key: Boolean(apiKey),
+    });
     await navigator.clipboard.writeText(command);
     setCopied(true);
     toast.success("Command copied to clipboard");
@@ -283,12 +305,18 @@ function TypegenSectionInner({ virtualMcp }: { virtualMcp: VirtualMCPEntity }) {
       <p className="text-xs font-medium text-muted-foreground">
         Runtime variables
       </p>
-      <EnvVarsBlock apiKey={apiKey} />
+      <EnvVarsBlock apiKey={apiKey} agentId={mcpId} />
     </div>
   );
 }
 
-function EnvVarsBlock({ apiKey }: { apiKey: string | null }) {
+function EnvVarsBlock({
+  apiKey,
+  agentId,
+}: {
+  apiKey: string | null;
+  agentId: string;
+}) {
   const [copied, setCopied] = useState(false);
   const meshUrl = window.location.origin;
   const keyLine = apiKey ? `MESH_API_KEY=${apiKey}` : `MESH_API_KEY=<api-key>`;
@@ -296,6 +324,11 @@ function EnvVarsBlock({ apiKey }: { apiKey: string | null }) {
   const envBlock = `${keyLine}\n${urlLine}`;
 
   const handleCopy = async () => {
+    track("agent_connect_action", {
+      agent_id: agentId,
+      action: "typegen_copy_env",
+      has_api_key: Boolean(apiKey),
+    });
     await navigator.clipboard.writeText(envBlock);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -349,9 +382,10 @@ export function VirtualMCPShareModal({
   onOpenChange: (open: boolean) => void;
   virtualMcp: VirtualMCPEntity;
 }) {
+  const { org } = useProjectContext();
   // Virtual MCPs (agents) are accessed via the virtual-mcp endpoint
   const virtualMcpUrl = new URL(
-    `/mcp/virtual-mcp/${virtualMcp.id}`,
+    `/api/${org.slug}/mcp/virtual-mcp/${virtualMcp.id}`,
     window.location.origin,
   );
 
@@ -366,14 +400,16 @@ export function VirtualMCPShareModal({
       {/* Action Buttons */}
       <div className="flex flex-col gap-3 pt-2">
         <div className="grid grid-cols-3 gap-2">
-          <CopyUrlButton url={virtualMcpUrl.href} />
+          <CopyUrlButton url={virtualMcpUrl.href} agentId={virtualMcp.id} />
           <InstallCursorButton
             url={virtualMcpUrl.href}
             serverName={serverName}
+            agentId={virtualMcp.id}
           />
           <InstallClaudeButton
             url={virtualMcpUrl.href}
             serverName={serverName}
+            agentId={virtualMcp.id}
           />
         </div>
       </div>

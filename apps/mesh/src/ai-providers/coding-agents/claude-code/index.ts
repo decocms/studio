@@ -21,6 +21,8 @@ export function createClaudeCodeModel(
     /** Chat mode plan — same tool restrictions as readonly for headless CLI */
     isPlanMode?: boolean;
     resume?: string;
+    /** Working directory for Claude Code's subprocess. Defaults to mesh's cwd. */
+    cwd?: string;
   },
 ) {
   // Tools that require a TTY, manage local state, or are not useful in headless mode
@@ -36,7 +38,7 @@ export function createClaudeCodeModel(
     NonNullable<Parameters<typeof createClaudeCode>[0]>["defaultSettings"]
   > = {
     mcpServers: options?.mcpServers,
-    cwd: process.cwd(),
+    cwd: options?.cwd ?? process.cwd(),
   };
 
   const restrictWrites =

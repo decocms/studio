@@ -95,10 +95,17 @@ describe("createMonitoringEngine", () => {
     },
   );
 
-  it("should use DEFAULT_LOGS_DIR when no basePath", async () => {
-    const { source } = await createMonitoringEngine({});
-    expect(source).toContain("deco/logs");
-  });
+  it.skipIf(!duckdbAvailable)(
+    "should use DEFAULT_LOGS_DIR when no basePath",
+    async () => {
+      const { engine, source } = await createMonitoringEngine({});
+      try {
+        expect(source).toContain("deco/logs");
+      } finally {
+        await engine.destroy?.();
+      }
+    },
+  );
 
   it("should create ClickHouseClientEngine when clickhouseUrl is set", async () => {
     const { engine, source } = await createMonitoringEngine({

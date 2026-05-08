@@ -11,6 +11,8 @@ import {
   useAutomations,
 } from "@/web/hooks/use-automations";
 import { AutomationListRow } from "./automation-list-row";
+import { track } from "@/web/lib/posthog-client";
+import { useChatPrefs } from "@/web/components/chat/context";
 
 export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
   const navigate = useNavigate();
@@ -22,6 +24,8 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
     serverSearch || null,
   );
   const { create } = useAutomationActions();
+  const { selectedModel: chatModel, credentialId: chatCredentialId } =
+    useChatPrefs();
 
   const handleSearch = (value: string) => {
     setSearch(value);
@@ -42,8 +46,16 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
 
   const handleNew = async () => {
     if (create.isPending) return;
+    track("automation_new_clicked", {
+      virtual_mcp_id: virtualMcpId,
+      existing_count: automations.length,
+    });
+    const modelDefaults =
+      chatModel?.modelId && chatCredentialId
+        ? { credentialId: chatCredentialId, modelId: chatModel.modelId }
+        : null;
     const created = await create.mutateAsync(
-      buildDefaultAutomationInput(virtualMcpId),
+      buildDefaultAutomationInput(virtualMcpId, modelDefaults),
     );
     goToDetail(created.id);
   };
@@ -53,31 +65,24 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
       <Page.Content>
         <Page.Body>
           <div className="flex flex-col gap-6">
-            <Page.Title
-              actions={
-                <Button
-                  size="sm"
-                  onClick={handleNew}
-                  disabled={create.isPending}
-                >
-                  <Plus size={14} />
-                  New automation
-                </Button>
-              }
-            >
-              Automations
-            </Page.Title>
-            {automations.length > 0 && (
-              <SearchInput
-                value={search}
-                onChange={handleSearch}
-                placeholder="Search automations..."
-                className="w-full md:w-[375px]"
-              />
-            )}
+            <Page.Title>Automations</Page.Title>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              {automations.length > 0 && (
+                <SearchInput
+                  value={search}
+                  onChange={handleSearch}
+                  placeholder="Search automations..."
+                  className="w-full md:w-[375px]"
+                />
+              )}
+              <Button size="sm" onClick={handleNew} disabled={create.isPending}>
+                <Plus size={14} />
+                New automation
+              </Button>
+            </div>
           </div>
 
-          {automations.length === 0 ? (
+          {automations.length === 0 && !serverSearch ? (
             <div className="flex items-center justify-center py-20">
               <EmptyState
                 image={<Zap size={48} className="text-muted-foreground" />}

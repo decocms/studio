@@ -45,8 +45,14 @@ function getSecret(): Uint8Array {
 export interface MeshTokenPayload {
   /** User ID who initiated the request */
   sub: string;
-  /** User */
-  user?: { id: string };
+  /** User identity propagated to downstream apps via x-mesh-token */
+  user?: {
+    id: string;
+    email?: string;
+    name?: string;
+    image?: string;
+    role?: string;
+  };
   /** Metadata */
   metadata?: {
     /** Configuration state */

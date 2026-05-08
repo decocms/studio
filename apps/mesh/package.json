@@ -1,6 +1,6 @@
 {
   "name": "decocms",
-  "version": "2.270.1",
+  "version": "2.310.11",
   "description": "Deco CMS — Self-hostable MCP Gateway for managing AI connections and tools",
   "author": "Deco team",
   "repository": {
@@ -22,7 +22,7 @@
     "dev": "bun run migrate && concurrently \"bun run dev:client\" \"bun run dev:server\"",
     "dev:servers": "concurrently \"bun run dev:client\" \"bun run dev:server\"",
     "dev:client": "bun --bun vite dev",
-    "dev:server": "NODE_ENV=development bun --env-file=.env --hot run src/index.ts",
+    "dev:server": "bun run --cwd=../../packages/sandbox build && NODE_ENV=development bun --env-file=.env --hot run src/index.ts",
     "build:client": "bun --bun vite build",
     "build:server": "bun run scripts/bundle-server-script.ts --dist ./dist/server",
     "db:migrate": "bun run ./dist/server/migrate.js",
@@ -36,7 +36,11 @@
     "prepublishOnly": "bun run build:client && bun run build:server"
   },
   "optionalDependencies": {
-    "@duckdb/node-api": "^1.5.0-r.1"
+    "@duckdb/node-api": "^1.5.0-r.1",
+    "@freestyle-sh/with-bun": "^0.2.12",
+    "@freestyle-sh/with-deno": "^0.0.4",
+    "@freestyle-sh/with-nodejs": "^0.2.9",
+    "freestyle-sandboxes": "^0.1.46"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.58",
@@ -46,12 +50,10 @@
     "@aws-sdk/client-s3": "^3.1013.0",
     "@aws-sdk/s3-request-presigner": "^3.1013.0",
     "@clickhouse/client": "^1.8.1",
+    "@deco-cx/warp-node": "^0.3.20",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@freestyle-sh/with-bun": "^0.2.12",
-    "@freestyle-sh/with-deno": "^0.0.4",
-    "@freestyle-sh/with-nodejs": "^0.2.9",
     "@inkjs/ui": "^2.0.0",
     "@modelcontextprotocol/ext-apps": "^1.2.2",
     "@openrouter/ai-sdk-provider": "^2.2.5",
@@ -62,10 +64,12 @@
     "ai-sdk-provider-claude-code": "^3.4.4",
     "ai-sdk-provider-codex-cli": "^1.1.0",
     "embedded-postgres": "^18.3.0-beta.16",
-    "freestyle-sandboxes": "^0.1.46",
     "ink": "^6.8.0",
     "kysely": "^0.28.12",
     "nats": "^2.29.3",
+    "node-pty": "^1.0.0",
+    "posthog-js": "^1.371.1",
+    "posthog-node": "^5.0.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
@@ -143,6 +147,7 @@
     "kysely-pglite": "^0.6.1",
     "lucide-react": "^0.468.0",
     "marked": "^15.0.6",
+    "@decocms/sandbox": "workspace:*",
     "mesh-plugin-workflows": "workspace:*",
     "nanoid": "^5.1.6",
     "pg": "^8.16.3",

@@ -31,8 +31,10 @@ import {
   CpuChip01,
   Loading01,
   Lock01,
+  LogOut01,
   Menu01,
   PackageCheck,
+  Shield01,
   User01,
   Users03,
   Zap,
@@ -42,6 +44,8 @@ import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { Suspense } from "react";
 import { pluginSettingsSidebarItems } from "@/web/index";
 import { useStatusSounds } from "../hooks/use-status-sounds";
+import { authClient } from "@/web/lib/auth-client";
+import { track } from "@/web/lib/posthog-client";
 
 interface SettingsNavItem {
   key: string;
@@ -65,7 +69,7 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
 
   const groups: SettingsNavGroup[] = [
     {
-      label: "",
+      label: "Organization",
       items: [
         {
           key: "general",
@@ -73,6 +77,23 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           icon: <Building02 size={14} />,
           to: "/$org/settings/general",
         },
+        {
+          key: "brand-context",
+          label: "Brand Context",
+          icon: <BookOpen01 size={14} />,
+          to: "/$org/settings/brand-context",
+        },
+        {
+          key: "ai-providers",
+          label: "AI Providers",
+          icon: <CpuChip01 size={14} />,
+          to: "/$org/settings/ai-providers",
+        },
+      ],
+    },
+    {
+      label: "Build",
+      items: [
         {
           key: "connections",
           label: "Connections",
@@ -97,18 +118,11 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           icon: <PackageCheck size={14} />,
           to: "/$org/settings/store",
         },
-        {
-          key: "brand-context",
-          label: "Brand Context",
-          icon: <BookOpen01 size={14} />,
-          to: "/$org/settings/brand-context",
-        },
-        {
-          key: "ai-providers",
-          label: "AI Providers",
-          icon: <CpuChip01 size={14} />,
-          to: "/$org/settings/ai-providers",
-        },
+      ],
+    },
+    {
+      label: "Manage",
+      items: [
         {
           key: "monitor",
           label: "Monitor",
@@ -122,15 +136,21 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           to: "/$org/settings/members",
         },
         {
+          key: "roles",
+          label: "Roles",
+          icon: <Shield01 size={14} />,
+          to: "/$org/settings/roles",
+        },
+        {
           key: "sso",
-          label: "SSO",
+          label: "Security",
           icon: <Lock01 size={14} />,
           to: "/$org/settings/sso",
         },
       ],
     },
     {
-      label: "",
+      label: "Extensions",
       items: [
         {
           key: "features",
@@ -141,19 +161,18 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
         ...enabledSettingsItems,
       ],
     },
+    {
+      label: "Account",
+      items: [
+        {
+          key: "profile",
+          label: "Profile & Preferences",
+          icon: <User01 size={14} />,
+          to: "/$org/settings/profile",
+        },
+      ],
+    },
   ];
-
-  groups.push({
-    label: "",
-    items: [
-      {
-        key: "profile",
-        label: "Profile & Preferences",
-        icon: <User01 size={14} />,
-        to: "/$org/settings/profile",
-      },
-    ],
-  });
 
   return groups;
 }
@@ -198,9 +217,13 @@ export function SettingsSidebar() {
             key={`${group.label}-${i}`}
             className="pt-0 pr-0 pb-0 pl-0"
           >
-            {i > 0 && <div className="mx-2 my-2 border-t border-border/50" />}
             {group.label && (
-              <p className="px-2 py-1.5 text-xs font-semibold text-muted-foreground/60">
+              <p
+                className={cn(
+                  "px-2 pt-1.5 pb-0.5 text-xs font-medium text-muted-foreground/60",
+                  i > 0 && "mt-3",
+                )}
+              >
                 {group.label}
               </p>
             )}
@@ -212,6 +235,13 @@ export function SettingsSidebar() {
                       <Link
                         to={item.to}
                         params={{ org }}
+                        onClick={() =>
+                          track("settings_nav_clicked", {
+                            section_key: item.key,
+                            section_label: item.label,
+                            group_label: group.label || "main",
+                          })
+                        }
                         className="flex items-center gap-2.5 text-sm"
                       >
                         <span className="shrink-0">{item.icon}</span>
@@ -224,6 +254,29 @@ export function SettingsSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
         ))}
+
+        {/* Sign Out */}
+        <SidebarGroup className="pt-0 pr-0 pb-0 pl-0">
+          <div className="mx-2 my-2 border-t border-border/50" />
+          <SidebarGroupContent>
+            <SidebarMenu className="gap-0.5">
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => {
+                    track("signed_out", { source: "settings_sidebar" });
+                    authClient.signOut();
+                  }}
+                  className="flex items-center gap-2.5 text-sm"
+                >
+                  <span className="shrink-0">
+                    <LogOut01 size={14} />
+                  </span>
+                  <span className="truncate">Sign Out</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
 
       {/* Version */}
@@ -267,7 +320,16 @@ export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
       <div className="flex flex-col flex-1 overflow-y-auto px-2 py-2 gap-0.5">
         {groups.map((group, i) => (
           <div key={`${group.label}-${i}`} className="flex flex-col gap-0.5">
-            {i > 0 && <div className="h-px bg-border/50 my-2" />}
+            {group.label && (
+              <p
+                className={cn(
+                  "px-3 pt-1.5 pb-0.5 text-xs font-medium text-muted-foreground/60",
+                  i > 0 && "mt-3",
+                )}
+              >
+                {group.label}
+              </p>
+            )}
             {group.items.map((item) => (
               <Link
                 key={item.key}
@@ -287,6 +349,21 @@ export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
             ))}
           </div>
         ))}
+
+        {/* Sign Out */}
+        <div className="flex flex-col gap-0.5">
+          <div className="h-px bg-border/50 my-2" />
+          <button
+            type="button"
+            onClick={() => authClient.signOut()}
+            className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-colors text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+          >
+            <span className="shrink-0">
+              <LogOut01 size={14} />
+            </span>
+            <span className="truncate">Sign Out</span>
+          </button>
+        </div>
       </div>
 
       {/* Version */}
@@ -352,7 +429,7 @@ function SettingsInset() {
   const { org } = useProjectContext();
 
   // Org-wide SSE sound notifications
-  useStatusSounds(org.id);
+  useStatusSounds(org.slug);
 
   const { setOpenMobile, openMobile: mobileSidebarOpen } = useSidebar();
 

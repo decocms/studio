@@ -11,7 +11,7 @@ import {
   createTestSchema,
   seedCommonTestFixtures,
 } from "../../storage/test-helpers";
-import downstreamTokenRoutes from "./downstream-token";
+import { createDownstreamTokenRoutes } from "./downstream-token";
 
 describe("Downstream Token Routes", () => {
   let database: TestDatabase;
@@ -50,7 +50,7 @@ describe("Downstream Token Routes", () => {
       c.set("meshContext", ctx);
       await next();
     });
-    app.route("/", downstreamTokenRoutes);
+    app.route("/", createDownstreamTokenRoutes());
   });
 
   afterEach(async () => {

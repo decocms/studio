@@ -1,5 +1,10 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import type { ModelCapability } from "@decocms/mesh-sdk";
+import {
+  isInteractionsOnlyModel,
+  pollInteraction,
+  submitInteraction,
+} from "./gemini-interactions";
 import type { MeshProvider, ProviderAdapter, ModelInfo } from "../types";
 
 interface GoogleModel {
@@ -62,6 +67,27 @@ export const googleAdapter: ProviderAdapter = {
       info: this.info,
       aiSdk,
 
+      asyncResearch: {
+        canHandle: (modelId) => isInteractionsOnlyModel(modelId),
+        start: async ({ modelId, query, abortSignal }) => {
+          const { interactionId } = await submitInteraction({
+            apiKey,
+            agent: modelId,
+            query,
+            abortSignal,
+          });
+          return { jobId: interactionId };
+        },
+        resume: ({ jobId, abortSignal, onProgress, pollIntervalMs }) =>
+          pollInteraction({
+            apiKey,
+            interactionId: jobId,
+            abortSignal,
+            onProgress,
+            pollIntervalMs,
+          }),
+      },
+
       async listModels(): Promise<ModelInfo[]> {
         const res = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
@@ -72,19 +98,23 @@ export const googleAdapter: ProviderAdapter = {
         const data: { models: GoogleModel[] } = await res.json();
         return data.models
           .filter((m: GoogleModel) => m.lifecycleState !== "DEPRECATED")
-          .map((m: GoogleModel) => ({
-            modelId: m.name.replace("models/", ""),
-            providerId: "google",
-            title: m.displayName,
-            description: m.description,
-            logo: null,
-            capabilities: deriveCapabilities(m),
-            limits: {
-              contextWindow: m.inputTokenLimit,
-              maxOutputTokens: m.outputTokenLimit,
-            },
-            costs: null,
-          }));
+          .map((m: GoogleModel) => {
+            const id = m.name.replace("models/", "");
+            return {
+              modelId: id,
+              providerId: "google" as const,
+              title: m.displayName,
+              description: m.description,
+              logo: null,
+              capabilities: deriveCapabilities(m),
+              limits: {
+                contextWindow: m.inputTokenLimit,
+                maxOutputTokens: m.outputTokenLimit,
+              },
+              costs: null,
+              ...(isInteractionsOnlyModel(id) && { asyncResearch: true }),
+            };
+          });
       },
     };
   },
