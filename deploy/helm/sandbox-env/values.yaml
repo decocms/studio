@@ -58,14 +58,6 @@ resources:
 # ── sandbox NetworkPolicy ──────────────────────────────────────────────
 networkPolicy:
   enabled: true
-  # The kube-dns Service ClusterIP for this cluster. Required to allow DNS
-  # response packets back into sandbox pods. AWS VPC CNI's eBPF network policy
-  # enforces ingress independently and DNAT-reverses DNS responses to the
-  # Service ClusterIP before the eBPF hook runs, so a pod selector for
-  # k8s-app=kube-dns will never match — only an ipBlock for this IP works.
-  # Find it with: kubectl get svc kube-dns -n kube-system -o jsonpath='{.spec.clusterIP}'
-  # Common EKS values: 172.20.0.10 (service CIDR 172.20.0.0/16) or 10.100.0.10
-  clusterDNS: ""
   # DEPRECATED: kept only for installs whose external gateway terminates
   # *directly* on the sandbox's port 3000 (dev server). The default
   # preview path goes through mesh and lands on port 9000 (daemon)
