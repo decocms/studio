@@ -150,6 +150,48 @@ function SystemTileFrame({
   );
 }
 
+/**
+ * Compact frame for tiles attributed to an agent that have content
+ * (lists, stats, charts, embedded UIs). The avatar is inline with the
+ * view title so the body has maximum room. Use AgentTileFrame instead
+ * for content-less agent.card tiles where the agent IS the content.
+ */
+function AgentDataTileFrame({
+  agent,
+  title,
+  action,
+  children,
+}: {
+  agent: AgentIdentity;
+  title: string;
+  action?: { label: string; onClick: () => void };
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex h-full flex-col p-5 gap-5 min-h-0">
+      <div className="flex items-center justify-between gap-2 shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <AgentAvatar icon={agent.icon} name={agent.name} size="xs" />
+          <span className="text-[13px] font-medium text-foreground/90 truncate tracking-tight">
+            {title}
+          </span>
+        </div>
+        {action && (
+          <button
+            type="button"
+            onClick={action.onClick}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
+          >
+            {action.label}
+            <ArrowRight size={12} />
+          </button>
+        )}
+      </div>
+      <div className="flex-1 min-h-0 flex flex-col">{children}</div>
+    </div>
+  );
+}
+
 function EmptyBody({ children }: { children: ReactNode }) {
   return (
     <div className="flex-1 flex items-center justify-center text-center text-xs text-muted-foreground">
@@ -238,7 +280,7 @@ export function RecentAgentsTile(_props: TileRenderProps) {
     .slice(0, RECENT_AGENT_LIMIT);
 
   return (
-    <AgentTileFrame
+    <AgentDataTileFrame
       agent={STUDIO_AGENT}
       title="Recent agents"
       action={{
@@ -274,7 +316,7 @@ export function RecentAgentsTile(_props: TileRenderProps) {
           ))}
         </ul>
       )}
-    </AgentTileFrame>
+    </AgentDataTileFrame>
   );
 }
 
@@ -294,7 +336,7 @@ export function RecentTasksTile(_props: TileRenderProps) {
   const recent = tasks.slice(0, RECENT_TASK_LIMIT);
 
   return (
-    <AgentTileFrame agent={STUDIO_AGENT} title="Recent tasks">
+    <AgentDataTileFrame agent={STUDIO_AGENT} title="Recent tasks">
       {recent.length === 0 ? (
         <EmptyBody>No tasks yet — start a chat to begin one.</EmptyBody>
       ) : (
@@ -328,7 +370,7 @@ export function RecentTasksTile(_props: TileRenderProps) {
           })}
         </ul>
       )}
-    </AgentTileFrame>
+    </AgentDataTileFrame>
   );
 }
 
@@ -347,7 +389,7 @@ export function ConnectionsOverviewTile(_props: TileRenderProps) {
   const preview = connections.slice(0, CONNECTION_PREVIEW_LIMIT);
 
   return (
-    <AgentTileFrame
+    <AgentDataTileFrame
       agent={STUDIO_AGENT}
       title="Connections"
       action={{
@@ -387,7 +429,7 @@ export function ConnectionsOverviewTile(_props: TileRenderProps) {
           )}
         </div>
       </div>
-    </AgentTileFrame>
+    </AgentDataTileFrame>
   );
 }
 
@@ -526,7 +568,7 @@ export function StatsTile(_props: TileRenderProps) {
   ];
 
   return (
-    <AgentTileFrame agent={STUDIO_AGENT} title="Workspace stats">
+    <AgentDataTileFrame agent={STUDIO_AGENT} title="Workspace stats">
       <div className="grid grid-cols-2 grid-rows-2 gap-x-6 gap-y-4 flex-1 min-h-0">
         {cards.map((s) => (
           <div key={s.label} className="flex flex-col gap-1.5 min-h-0">
@@ -539,7 +581,7 @@ export function StatsTile(_props: TileRenderProps) {
           </div>
         ))}
       </div>
-    </AgentTileFrame>
+    </AgentDataTileFrame>
   );
 }
 

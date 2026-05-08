@@ -54,18 +54,18 @@ export function createEmptyBoard(): HomeBoard {
 
 export function createStarterBoard(): HomeBoard {
   // 3-col bento, real-data only.
-  //   row 0–1: Site Editor (M)    | Image Creator (M)   | Web Researcher (M)
-  //   row 2–3: Recent tasks (M)   | Workspace stats (XL)
-  //   row 4:   Connections (W)
+  //   row 0:   Site Editor (S)    | Image Creator (S)   | Web Researcher (S)
+  //   row 1–2: Recent tasks (M)   | Workspace stats (XL)
+  //   row 3:   Connections (W)
   return {
     version: 3,
     tiles: [
-      agentTile("site-editor", { x: 0, y: 0 }, "M"),
-      agentTile("ai-image", { x: 1, y: 0 }, "M"),
-      agentTile("ai-research", { x: 2, y: 0 }, "M"),
-      tile("studio.recent-tasks", { x: 0, y: 2 }, "M"),
-      tile("studio.stats", { x: 1, y: 2 }, "XL"),
-      tile("studio.connections-overview", { x: 0, y: 4 }, "W"),
+      agentTile("site-editor", { x: 0, y: 0 }, "S"),
+      agentTile("ai-image", { x: 1, y: 0 }, "S"),
+      agentTile("ai-research", { x: 2, y: 0 }, "S"),
+      tile("studio.recent-tasks", { x: 0, y: 1 }, "M"),
+      tile("studio.stats", { x: 1, y: 1 }, "XL"),
+      tile("studio.connections-overview", { x: 0, y: 3 }, "W"),
     ],
   };
 }
