@@ -33,6 +33,19 @@ spec:
     - Ingress
     - Egress
   ingress:
+    # DNS responses from CoreDNS. AWS VPC CNI's eBPF network policy enforces
+    # ingress independently and does not implicitly allow UDP reply traffic
+    # across DNAT (Service ClusterIP → pod IP). Without this rule, DNS
+    # responses from CoreDNS pods are dropped after conntrack entries expire,
+    # producing intermittent "Could not resolve host" failures.
+    # No port restriction: responses arrive on the client's ephemeral port.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
     # Daemon port (9000) — mesh server pods call this for control-plane
     # operations (tool exec, log streaming) when path-2 in-cluster routing
     # is used. The control plane also reaches the daemon over the API
