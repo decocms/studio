@@ -94,6 +94,7 @@ describe("createTriggers", () => {
         enabled: true,
         callbackUrl: "https://mesh.example.com/api/trigger-callback",
         callbackToken: "test-token-123",
+        subscriptionId: "sub-1",
       },
       runtimeContext: mockCtx("conn-1"),
     });
@@ -126,51 +127,108 @@ describe("createTriggers", () => {
     fetchSpy.mockRestore();
   });
 
-  it("disabling one trigger keeps credentials when another is still active", async () => {
+  it("multiple subscriptions on same connection each get their own callback", async () => {
+    const configureTool = triggers.tools()[1];
+    const fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("ok", { status: 202 }),
+    );
+
+    // Two distinct subscriptions on the same connection, same type, with
+    // different callback tokens — both should fire on notify.
+    await configureTool.execute({
+      context: {
+        type: "github.push",
+        params: { repo: "alice/repo" },
+        enabled: true,
+        callbackUrl: "https://mesh.example.com/api/trigger-callback",
+        callbackToken: "token-A",
+        subscriptionId: "sub-A",
+      },
+      runtimeContext: mockCtx("conn-multi-sub"),
+    });
+    await configureTool.execute({
+      context: {
+        type: "github.push",
+        params: { repo: "bob/repo" },
+        enabled: true,
+        callbackUrl: "https://mesh.example.com/api/trigger-callback",
+        callbackToken: "token-B",
+        subscriptionId: "sub-B",
+      },
+      runtimeContext: mockCtx("conn-multi-sub"),
+    });
+
+    triggers.notify("conn-multi-sub", "github.push", {
+      repository: { full_name: "x/y" },
+    });
+    await new Promise((r) => setTimeout(r, 50));
+
+    const tokens = fetchSpy.mock.calls.map((call) => {
+      const headers = (call[1] as RequestInit).headers as Record<string, string>;
+      return headers.Authorization;
+    });
+    expect(tokens).toContain("Bearer token-A");
+    expect(tokens).toContain("Bearer token-B");
+    expect(fetchSpy.mock.calls).toHaveLength(2);
+
+    fetchSpy.mockRestore();
+  });
+
+  it("disabling one subscription leaves siblings alive", async () => {
     const configureTool = triggers.tools()[1];
 
     const fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("ok", { status: 202 }),
     );
 
-    // Enable two trigger types
     await configureTool.execute({
       context: {
         type: "github.push",
         params: {},
         enabled: true,
         callbackUrl: "https://mesh.example.com/api/trigger-callback",
-        callbackToken: "token-multi",
+        callbackToken: "token-keep",
+        subscriptionId: "keep",
       },
-      runtimeContext: mockCtx("conn-multi"),
+      runtimeContext: mockCtx("conn-sibling"),
     });
     await configureTool.execute({
       context: {
-        type: "github.pull_request.opened",
+        type: "github.push",
         params: {},
         enabled: true,
+        callbackUrl: "https://mesh.example.com/api/trigger-callback",
+        callbackToken: "token-drop",
+        subscriptionId: "drop",
       },
-      runtimeContext: mockCtx("conn-multi"),
+      runtimeContext: mockCtx("conn-sibling"),
     });
 
-    // Disable one — credentials should stay for the other
+    // Disable the "drop" subscription only
     await configureTool.execute({
       context: {
         type: "github.push",
         params: {},
         enabled: false,
+        subscriptionId: "drop",
       },
-      runtimeContext: mockCtx("conn-multi"),
+      runtimeContext: mockCtx("conn-sibling"),
     });
 
-    triggers.notify("conn-multi", "github.pull_request.opened", {});
+    fetchSpy.mockClear();
+    triggers.notify("conn-sibling", "github.push", {});
     await new Promise((r) => setTimeout(r, 50));
-    expect(fetchSpy).toHaveBeenCalled();
+
+    const tokens = fetchSpy.mock.calls.map((call) => {
+      const headers = (call[1] as RequestInit).headers as Record<string, string>;
+      return headers.Authorization;
+    });
+    expect(tokens).toEqual(["Bearer token-keep"]);
 
     fetchSpy.mockRestore();
   });
 
-  it("disabling the last trigger clears credentials", async () => {
+  it("disabling the last subscription clears credentials", async () => {
     const configureTool = triggers.tools()[1];
 
     const fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(
@@ -178,7 +236,6 @@ describe("createTriggers", () => {
     );
     const consoleSpy = spyOn(console, "log").mockImplementation(() => {});
 
-    // Enable a trigger
     await configureTool.execute({
       context: {
         type: "github.push",
@@ -186,16 +243,17 @@ describe("createTriggers", () => {
         enabled: true,
         callbackUrl: "https://mesh.example.com/api/trigger-callback",
         callbackToken: "token-cleanup",
+        subscriptionId: "only",
       },
       runtimeContext: mockCtx("conn-cleanup"),
     });
 
-    // Disable it — last trigger, credentials should be cleared
     await configureTool.execute({
       context: {
         type: "github.push",
         params: {},
         enabled: false,
+        subscriptionId: "only",
       },
       runtimeContext: mockCtx("conn-cleanup"),
     });
@@ -204,19 +262,19 @@ describe("createTriggers", () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining("No callback credentials"),
+      expect.stringContaining("No subscriptions"),
     );
 
     fetchSpy.mockRestore();
     consoleSpy.mockRestore();
   });
 
-  it("notify is a no-op when no credentials exist", async () => {
+  it("notify is a no-op when no subscriptions exist", async () => {
     const consoleSpy = spyOn(console, "log").mockImplementation(() => {});
     triggers.notify("unknown-conn", "github.push", {});
     await new Promise((r) => setTimeout(r, 50));
     expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining("No callback credentials"),
+      expect.stringContaining("No subscriptions"),
     );
     consoleSpy.mockRestore();
   });
@@ -228,7 +286,6 @@ describe("createTriggers", () => {
     );
     const errorSpy = spyOn(console, "error").mockImplementation(() => {});
 
-    // Ensure credentials exist (reuse from prior test state or set up fresh)
     await configureTool.execute({
       context: {
         type: "github.push",
@@ -236,6 +293,7 @@ describe("createTriggers", () => {
         enabled: true,
         callbackUrl: "https://mesh.example.com/api/trigger-callback",
         callbackToken: "token-err",
+        subscriptionId: "err",
       },
       runtimeContext: mockCtx("conn-err"),
     });
@@ -264,6 +322,56 @@ describe("createTriggers", () => {
       }),
     ).rejects.toThrow("Connection ID not available");
   });
+
+  it("TRIGGER_CONFIGURE without subscriptionId uses legacy default slot", async () => {
+    // Backward-compat path: studio versions that don't pass subscriptionId
+    // collapse to a single sub per connection. Two enables overwrite each
+    // other (same as the pre-multi-sub behavior).
+    const t = createTriggers([
+      {
+        type: "github.push" as const,
+        description: "Push",
+        params: z.object({ repo: z.string() }),
+      },
+    ]);
+    const configureTool = t.tools()[1];
+    const fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("ok", { status: 202 }),
+    );
+
+    await configureTool.execute({
+      context: {
+        type: "github.push",
+        params: {},
+        enabled: true,
+        callbackUrl: "https://mesh.example.com/api/trigger-callback",
+        callbackToken: "first",
+      },
+      runtimeContext: mockCtx("conn-legacy"),
+    });
+    await configureTool.execute({
+      context: {
+        type: "github.push",
+        params: {},
+        enabled: true,
+        callbackUrl: "https://mesh.example.com/api/trigger-callback",
+        callbackToken: "second",
+      },
+      runtimeContext: mockCtx("conn-legacy"),
+    });
+
+    t.notify("conn-legacy", "github.push", {});
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const headers = (fetchSpy.mock.calls[0][1] as RequestInit).headers as Record<
+      string,
+      string
+    >;
+    expect(headers.Authorization).toBe("Bearer second");
+
+    fetchSpy.mockRestore();
+  });
 });
 
 describe("createTriggers with storage", () => {
@@ -271,14 +379,27 @@ describe("createTriggers with storage", () => {
     data: Map<string, unknown>;
   } {
     const data = new Map<string, unknown>();
+    const composite = (connId: string, subId: string) => `${connId}\x1f${subId}`;
     return {
       data,
-      get: async (id) => (data.get(id) as any) ?? null,
-      set: async (id, state) => {
-        data.set(id, state);
+      get: async (connId, subId) =>
+        // biome-ignore lint: test mock
+        ((data.get(composite(connId, subId)) as any) ?? null),
+      set: async (connId, subId, state) => {
+        data.set(composite(connId, subId), state);
       },
-      delete: async (id) => {
-        data.delete(id);
+      delete: async (connId, subId) => {
+        data.delete(composite(connId, subId));
+      },
+      list: async (connId) => {
+        const prefix = `${connId}\x1f`;
+        const out: Array<{ subscriptionId: string; state: any }> = [];
+        for (const [key, state] of data.entries()) {
+          if (key.startsWith(prefix)) {
+            out.push({ subscriptionId: key.slice(prefix.length), state });
+          }
+        }
+        return out;
       },
     };
   }
@@ -305,12 +426,14 @@ describe("createTriggers with storage", () => {
         enabled: true,
         callbackUrl: "https://mesh.example.com/api/trigger-callback",
         callbackToken: "persisted-token",
+        subscriptionId: "sub1",
       },
       runtimeContext: mockCtx("conn-persist"),
     });
 
-    expect(storage.data.has("conn-persist")).toBe(true);
-    const stored = storage.data.get("conn-persist") as any;
+    expect(storage.data.has("conn-persist\x1fsub1")).toBe(true);
+    // biome-ignore lint: test mock
+    const stored = storage.data.get("conn-persist\x1fsub1") as any;
     expect(stored.credentials.callbackToken).toBe("persisted-token");
     expect(stored.activeTriggerTypes).toEqual(["github.push"]);
   });
@@ -327,25 +450,31 @@ describe("createTriggers with storage", () => {
         enabled: true,
         callbackUrl: "https://mesh.example.com/api/trigger-callback",
         callbackToken: "to-delete",
+        subscriptionId: "sub1",
       },
       runtimeContext: mockCtx("conn-del"),
     });
 
-    expect(storage.data.has("conn-del")).toBe(true);
+    expect(storage.data.has("conn-del\x1fsub1")).toBe(true);
 
     await configureTool.execute({
-      context: { type: "github.push", params: {}, enabled: false },
+      context: {
+        type: "github.push",
+        params: {},
+        enabled: false,
+        subscriptionId: "sub1",
+      },
       runtimeContext: mockCtx("conn-del"),
     });
 
-    expect(storage.data.has("conn-del")).toBe(false);
+    expect(storage.data.has("conn-del\x1fsub1")).toBe(false);
   });
 
   it("restores credentials from storage on notify after restart", async () => {
     const storage = createMockStorage();
 
     // Simulate prior session: write state directly to storage
-    storage.data.set("conn-restart", {
+    storage.data.set("conn-restart\x1fsub1", {
       credentials: {
         callbackUrl: "https://mesh.example.com/api/trigger-callback",
         callbackToken: "restored-token",
@@ -375,37 +504,47 @@ describe("createTriggers with storage", () => {
     fetchSpy.mockRestore();
   });
 
-  it("disable after restart clears persisted credentials from storage", async () => {
+  it("disable after restart clears the persisted subscription only", async () => {
     const storage = createMockStorage();
 
-    // Simulate prior session
-    storage.data.set("conn-disable-restart", {
+    // Simulate prior session with two siblings
+    storage.data.set("conn-disable-restart\x1fkeep", {
       credentials: {
         callbackUrl: "https://mesh.example.com/api/trigger-callback",
-        callbackToken: "stale-token",
+        callbackToken: "keep-token",
+      },
+      activeTriggerTypes: ["github.push"],
+    });
+    storage.data.set("conn-disable-restart\x1fdrop", {
+      credentials: {
+        callbackUrl: "https://mesh.example.com/api/trigger-callback",
+        callbackToken: "drop-token",
       },
       activeTriggerTypes: ["github.push"],
     });
 
-    // New instance (simulates restart)
     const t = createTriggers({ definitions: defs, storage });
     const configureTool = t.tools()[1];
 
-    // Disable the trigger — should load from storage, then clean up
     await configureTool.execute({
-      context: { type: "github.push", params: {}, enabled: false },
+      context: {
+        type: "github.push",
+        params: {},
+        enabled: false,
+        subscriptionId: "drop",
+      },
       runtimeContext: mockCtx("conn-disable-restart"),
     });
 
-    expect(storage.data.has("conn-disable-restart")).toBe(false);
+    expect(storage.data.has("conn-disable-restart\x1fdrop")).toBe(false);
+    expect(storage.data.has("conn-disable-restart\x1fkeep")).toBe(true);
 
-    // notify should be a no-op
-    const consoleSpy = spyOn(console, "log").mockImplementation(() => {});
+    const fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("ok", { status: 202 }),
+    );
     t.notify("conn-disable-restart", "github.push", {});
     await new Promise((r) => setTimeout(r, 50));
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining("No callback credentials"),
-    );
-    consoleSpy.mockRestore();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    fetchSpy.mockRestore();
   });
 });
