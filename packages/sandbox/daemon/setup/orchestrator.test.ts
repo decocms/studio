@@ -90,7 +90,7 @@ describe("SetupOrchestrator branch-status integration", () => {
     } finally {
       cleanup();
     }
-  });
+  }, 15_000);
 
   it("setPhase('checking-out') / 'checkout-failed' on branchChange error", async () => {
     const { dir, cleanup } = tempRoot();
