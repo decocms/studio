@@ -251,7 +251,13 @@ export function useTileCatalog(): TileDefinition[] {
       if (!tab || typeof tab !== "object") continue;
       const tabId = (tab as { id?: string }).id;
       const tabTitle = (tab as { title?: string }).title;
-      if (!tabId || !tabTitle) continue;
+      const tabView = (
+        tab as {
+          view?: { appId?: string; args?: Record<string, unknown> };
+        }
+      ).view;
+      const connectionId = tabView?.appId;
+      if (!tabId || !tabTitle || !connectionId) continue;
       installedToolViewEntries.push({
         type: `agent.tool-view.${agent.id}.${tabId}`,
         source: "agent",
@@ -260,14 +266,20 @@ export function useTileCatalog(): TileDefinition[] {
         description: `Open the ${tabTitle} view from ${agent.title}.`,
         icon: <AgentAvatar icon={iconString} name={agent.title} size="xs" />,
         category: "agents",
-        supportedSizes: ["S", "M", "L", "XL"],
-        defaultSize: "M",
+        supportedSizes: ["L", "XL", "W"],
+        defaultSize: "XL",
         defaultConfig: {
           agentId: agent.id,
           agentTitle: agent.title,
           agentIcon: iconString,
           mainTabId: tabId,
           viewLabel: tabTitle,
+          // The chat surface binds the layout tab to its tool by
+          // (connectionId = view.appId, toolName = tab.id). Same
+          // mapping here so the renderer can call the right tool.
+          connectionId,
+          toolName: tabId,
+          args: tabView?.args,
         },
         render: AgentToolViewTile,
       });
@@ -285,8 +297,8 @@ export function useTileCatalog(): TileDefinition[] {
         description: `Open the ${view.label} view from ${agent.title}.`,
         icon: <AgentAvatar icon={iconString} name={agent.title} size="xs" />,
         category: "agents",
-        supportedSizes: ["S", "M", "L", "XL"],
-        defaultSize: "M",
+        supportedSizes: ["L", "XL", "W"],
+        defaultSize: "XL",
         defaultConfig: {
           agentId: agent.id,
           agentTitle: agent.title,
@@ -294,6 +306,8 @@ export function useTileCatalog(): TileDefinition[] {
           mainTabId: tabId,
           viewLabel: view.label,
           viewIcon: view.icon ?? null,
+          connectionId: view.connectionId,
+          toolName: view.toolName,
         },
         render: AgentToolViewTile,
       });

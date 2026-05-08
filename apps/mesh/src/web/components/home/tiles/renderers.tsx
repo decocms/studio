@@ -22,6 +22,7 @@ import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { IntegrationIcon } from "@/web/components/integration-icon";
 import { useTasks } from "@/web/components/chat/task/use-task-manager";
+import { AppViewContent } from "@/web/routes/project-app-view";
 import { getStatusConfig } from "@/web/lib/task-status";
 import { useAgentRecruit } from "./agent-recruit-provider";
 import { STUDIO_AGENT, type AgentSeedId } from "./agent-seeds";
@@ -648,20 +649,25 @@ export function AgentCardTile({ instance }: TileRenderProps) {
 /* ---------- agent.tool-view ---------- */
 
 /**
- * A tile that points at a specific tool view exposed by an installed
+ * A tile that renders a specific tool view exposed by an installed
  * agent (entries from `metadata.ui.layout.tabs` or `metadata.ui.pinnedViews`).
- * The card shows the agent + view name; clicking opens a thread with
- * that agent's main panel pinned to the right tab — same surface the
- * agent's own settings page uses for its layout.
+ * The body uses AppViewContent — the same renderer the chat surface
+ * uses for these tabs — so the user sees the agent's actual UI inline.
+ * Header carries an "Open" action that navigates to the full view.
  */
 interface AgentToolViewConfig {
   agentId?: string;
   agentTitle?: string;
   agentIcon?: string;
-  /** "tab:<id>" or "app:<connectionId>:<toolName>" */
+  /** "tab:<id>" or "app:<connectionId>:<toolName>" — used by the
+   *  Open action to land on the right tab in the chat surface. */
   mainTabId?: string;
   viewLabel?: string;
   viewIcon?: string;
+  /** Resolves the actual tool to render inline. */
+  connectionId?: string;
+  toolName?: string;
+  args?: Record<string, unknown>;
 }
 
 export function AgentToolViewTile({ instance }: TileRenderProps) {
@@ -672,8 +678,11 @@ export function AgentToolViewTile({ instance }: TileRenderProps) {
   const agentIcon = config.agentIcon ?? "";
   const viewLabel = config.viewLabel ?? "View";
   const refId = config.agentId;
+  const connectionId = config.connectionId;
+  const toolName = config.toolName;
+  const args = config.args;
 
-  const handleClick = () => {
+  const openInChat = () => {
     if (!refId) return;
     const taskId = crypto.randomUUID();
     navigate({
@@ -687,23 +696,27 @@ export function AgentToolViewTile({ instance }: TileRenderProps) {
   };
 
   return (
-    <button
-      type="button"
-      onClick={handleClick}
-      className="h-full w-full text-left"
-      aria-label={`Open ${agentTitle} — ${viewLabel}`}
+    <AgentDataTileFrame
+      agent={{ icon: agentIcon, name: agentTitle }}
+      title={viewLabel}
+      action={refId ? { label: "Open", onClick: openInChat } : undefined}
     >
-      <AgentDataTileFrame
-        agent={{ icon: agentIcon, name: agentTitle }}
-        title={viewLabel}
-      >
+      {connectionId && toolName ? (
+        <div className="flex-1 min-h-0 -mx-3 -mb-3 rounded-xl overflow-hidden bg-background border border-border/60">
+          <AppViewContent
+            connectionId={connectionId}
+            toolName={toolName}
+            args={args}
+          />
+        </div>
+      ) : (
         <div className="flex-1 flex items-center justify-center text-center">
           <p className="text-[12px] text-muted-foreground line-clamp-3 leading-snug">
-            Open the {viewLabel.toLowerCase()} view from {agentTitle}.
+            This view isn't available right now.
           </p>
         </div>
-      </AgentDataTileFrame>
-    </button>
+      )}
+    </AgentDataTileFrame>
   );
 }
 
