@@ -1066,8 +1066,12 @@ export function ActiveTaskProvider({
     chat.status === "ready" &&
     messages.length > 0;
 
-  // Stream manager (SSE + resume) — task-scoped
-  useStreamManager(taskId, chat, thread?.status);
+  // Stream manager (SSE + resume) — task-scoped.
+  // The `onResumeSuccess` clears `chatError` so the "network error" banner
+  // disappears once a silent resume picks the stream back up. Without this,
+  // a single transient disconnect leaves a sticky banner even after the
+  // resumed run finishes successfully.
+  useStreamManager(taskId, chat, thread?.status, () => setChatError(null));
 
   // sendMessage — captures context at call time
   async function sendMessageInternal(params: SendMessageParams): Promise<void> {
@@ -1087,6 +1091,10 @@ export function ActiveTaskProvider({
     if (params.model) setModel(params.model);
 
     setFinishReason(null);
+    // Drop any error banner from a prior turn — explicitly sending a new
+    // message means the user has moved on and a stale "network error"
+    // toast on top of a fresh request is just noise.
+    setChatError(null);
     setTiptapDoc(undefined);
 
     const messageMetadata: Metadata = {

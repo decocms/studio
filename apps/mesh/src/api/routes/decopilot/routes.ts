@@ -35,6 +35,7 @@ import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage, ModelsConfig } from "./types";
 import { streamCore } from "./stream-core";
 import { RunClaimError } from "./run-reactor";
+import { wrapWithSseKeepalive } from "./sse-keepalive";
 import type { SqlThreadStorage } from "@/storage/threads";
 import { getPodId } from "@/core/pod-identity";
 
@@ -223,10 +224,12 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         },
       });
 
-      return createUIMessageStreamResponse({
-        stream: result.stream,
-        consumeSseStream: consumeStream,
-      });
+      return wrapWithSseKeepalive(
+        createUIMessageStreamResponse({
+          stream: result.stream,
+          consumeSseStream: consumeStream,
+        }),
+      );
     } catch (err) {
       console.error("[decopilot:stream] Error", err);
 
@@ -321,10 +324,12 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         { runRegistry, streamBuffer, cancelBroadcast },
       );
 
-      return createUIMessageStreamResponse({
-        stream: result.stream,
-        consumeSseStream: consumeStream,
-      });
+      return wrapWithSseKeepalive(
+        createUIMessageStreamResponse({
+          stream: result.stream,
+          consumeSseStream: consumeStream,
+        }),
+      );
     } catch (err) {
       console.error("[decopilot:stream] Error", err);
 
@@ -429,10 +434,12 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           },
         });
 
-        return createUIMessageStreamResponse({
-          stream: replayStream,
-          consumeSseStream: consumeStream,
-        });
+        return wrapWithSseKeepalive(
+          createUIMessageStreamResponse({
+            stream: replayStream,
+            consumeSseStream: consumeStream,
+          }),
+        );
       }
 
       // ── Orphan resume path ──
@@ -511,10 +518,12 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         { runRegistry, streamBuffer, cancelBroadcast },
       );
 
-      return createUIMessageStreamResponse({
-        stream: result.stream,
-        consumeSseStream: consumeStream,
-      });
+      return wrapWithSseKeepalive(
+        createUIMessageStreamResponse({
+          stream: result.stream,
+          consumeSseStream: consumeStream,
+        }),
+      );
     } catch (err) {
       if (err instanceof HTTPException) throw err;
       console.error("[decopilot:attach] Error", err);
