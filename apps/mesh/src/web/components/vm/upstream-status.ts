@@ -1,1 +1,1 @@
-export type { UpstreamStatus } from "@decocms/sandbox/daemon";
+export type UpstreamStatus = "booting" | "online" | "offline";
