@@ -26,10 +26,13 @@ import { AppViewContent } from "@/web/routes/project-app-view";
 import { getStatusConfig } from "@/web/lib/task-status";
 import { useAgentRecruit } from "./agent-recruit-provider";
 import { STUDIO_AGENT, type AgentSeedId } from "./agent-seeds";
+import { useTileConfigUpdate } from "./tile-config-update-context";
 import {
   Activity,
+  AlignLeft,
   ArrowRight,
   BookOpen01,
+  Columns01,
   MessageCircle01,
   Server01,
   Star01,
@@ -184,7 +187,7 @@ function AgentDataTileFrame({
 
 function EmptyBody({ children }: { children: ReactNode }) {
   return (
-    <div className="flex-1 flex items-center justify-center text-center text-xs text-muted-foreground">
+    <div className="flex flex-1 items-center justify-center text-center text-xs leading-relaxed text-muted-foreground/70 px-2">
       {children}
     </div>
   );
@@ -202,6 +205,7 @@ export function WelcomeTile({ instance: _instance }: TileRenderProps) {
     {
       label: "Start a chat",
       icon: <MessageCircle01 size={14} />,
+      primary: true,
       onClick: () => {
         const taskId = crypto.randomUUID();
         navigate({ to: "/$org/$taskId", params: { org: org.slug, taskId } });
@@ -210,12 +214,14 @@ export function WelcomeTile({ instance: _instance }: TileRenderProps) {
     {
       label: "Browse agents",
       icon: <Users03 size={14} />,
+      primary: false,
       onClick: () =>
         navigate({ to: "/$org/settings/agents", params: { org: org.slug } }),
     },
     {
       label: "Connections",
       icon: <Server01 size={14} />,
+      primary: false,
       onClick: () =>
         navigate({
           to: "/$org/settings/connections",
@@ -225,25 +231,29 @@ export function WelcomeTile({ instance: _instance }: TileRenderProps) {
   ];
 
   return (
-    <div className="flex h-full items-center justify-between gap-8 p-6 bg-gradient-to-br from-primary/5 via-background to-background rounded-[0.75rem]">
-      <div className="flex flex-col gap-2 min-w-0">
+    <div className="relative flex h-full items-center justify-between gap-8 overflow-hidden px-8 py-6">
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-primary/15 via-primary/5 to-transparent" />
+      <div className="pointer-events-none absolute right-6 top-1/2 -translate-y-1/2 text-primary opacity-[0.07]">
+        <Stars01 size={96} />
+      </div>
+      <div className="relative flex flex-col gap-2 min-w-0">
         <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <Stars01 size={12} />
+          <Stars01 size={11} />
           <span>Welcome back</span>
         </div>
-        <h2 className="text-xl font-medium text-foreground truncate">
+        <h2 className="text-2xl font-semibold text-foreground truncate">
           Hello, {userName}.
         </h2>
-        <p className="text-xs text-muted-foreground max-w-md">
+        <p className="text-xs text-muted-foreground max-w-sm leading-relaxed">
           Pin the things you check every day. Drop tiles from agents and apps
           you've connected.
         </p>
       </div>
-      <div className="flex flex-wrap gap-2 shrink-0">
+      <div className="relative flex items-center gap-2 shrink-0">
         {actions.map((a) => (
           <Button
             key={a.label}
-            variant="outline"
+            variant={a.primary ? "default" : "outline"}
             size="sm"
             onClick={a.onClick}
             className="gap-1.5"
@@ -282,12 +292,12 @@ export function RecentAgentsTile(_props: TileRenderProps) {
       {recent.length === 0 ? (
         <EmptyBody>No agents yet.</EmptyBody>
       ) : (
-        <ul className="flex flex-col gap-0.5 -mx-2">
+        <ul className="-mx-2 flex flex-col">
           {recent.map((a) => (
-            <li key={a.id}>
+            <li key={a.id} className="border-b border-border/30 last:border-0">
               <button
                 type="button"
-                className="flex items-center gap-3 w-full px-2 py-2 rounded-md hover:bg-muted transition-colors text-left"
+                className="group flex w-full items-center gap-3 px-2 py-2.5 text-left transition-colors hover:bg-muted/60"
                 onClick={() => {
                   const taskId = crypto.randomUUID();
                   navigate({
@@ -298,9 +308,13 @@ export function RecentAgentsTile(_props: TileRenderProps) {
                 }}
               >
                 <AgentAvatar icon={a.icon} name={a.title} size="xs" />
-                <span className="text-sm text-foreground truncate flex-1">
+                <span className="flex-1 truncate text-[13px] font-medium text-foreground">
                   {a.title}
                 </span>
+                <ArrowRight
+                  size={11}
+                  className="shrink-0 text-transparent transition-colors group-hover:text-muted-foreground"
+                />
               </button>
             </li>
           ))}
@@ -313,52 +327,175 @@ export function RecentAgentsTile(_props: TileRenderProps) {
 /* ---------- studio.recent-tasks (real threads) ---------- */
 
 const RECENT_TASK_LIMIT = 5;
+const TASKS_PER_COLUMN = 4;
+const KANBAN_STATUS_ORDER = [
+  "requires_action",
+  "in_progress",
+  "failed",
+  "expired",
+] as const;
 
-export function RecentTasksTile(_props: TileRenderProps) {
+function kanbanDot(status: string): string {
+  switch (status) {
+    case "requires_action":
+      return "bg-orange-500";
+    case "in_progress":
+      return "bg-blue-500";
+    case "failed":
+      return "bg-red-500";
+    case "expired":
+      return "bg-amber-500";
+    default:
+      return "bg-muted-foreground/40";
+  }
+}
+
+export function RecentTasksTile({ instance, isEditMode }: TileRenderProps) {
   const navigate = useNavigate();
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
+  const updateConfig = useTileConfigUpdate();
+
+  const view = (instance.config?.view as "list" | "kanban") ?? "list";
+  const isKanban = view === "kanban";
+
   const { tasks } = useTasks({
     owner: "me",
     status: "open",
     userId: session?.user?.id,
   });
-  const recent = tasks.slice(0, RECENT_TASK_LIMIT);
+
+  const toggleView = (next: "list" | "kanban") => {
+    updateConfig?.(instance.id, { view: next });
+  };
+
+  const openTask = (taskId: string) =>
+    navigate({ to: "/$org/$taskId", params: { org: org.slug, taskId } });
+
+  const listItems = tasks.slice(0, RECENT_TASK_LIMIT);
+
+  const columns = KANBAN_STATUS_ORDER.map((status) => ({
+    status,
+    config: getStatusConfig(status),
+    tasks: tasks.filter((t) => t.status === status).slice(0, TASKS_PER_COLUMN),
+  })).filter((col) => col.tasks.length > 0);
 
   return (
     <AgentDataTileFrame agent={STUDIO_AGENT} title="Recent tasks">
-      {recent.length === 0 ? (
+      {isEditMode && (
+        <div className="mb-3 flex items-center">
+          <div className="inline-flex items-center gap-0.5 rounded-md bg-muted/60 p-0.5">
+            <button
+              type="button"
+              onClick={() => toggleView("list")}
+              className={cn(
+                "flex h-5 items-center gap-1 rounded px-2 text-[11px] font-medium transition-colors",
+                !isKanban
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <AlignLeft size={11} />
+              List
+            </button>
+            <button
+              type="button"
+              onClick={() => toggleView("kanban")}
+              className={cn(
+                "flex h-5 items-center gap-1 rounded px-2 text-[11px] font-medium transition-colors",
+                isKanban
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Columns01 size={11} />
+              Kanban
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!isKanban ? (
+        listItems.length === 0 ? (
+          <EmptyBody>No tasks yet — start a chat to begin one.</EmptyBody>
+        ) : (
+          <ul className="-mx-2 flex flex-col">
+            {listItems.map((t) => {
+              const config = getStatusConfig(t.status);
+              const StatusIcon = config.icon;
+              return (
+                <li
+                  key={t.id}
+                  className="border-b border-border/30 last:border-0"
+                >
+                  <button
+                    type="button"
+                    onClick={() => openTask(t.id)}
+                    className="flex w-full items-center gap-2.5 px-2 py-2.5 text-left transition-colors hover:bg-muted/60"
+                  >
+                    <StatusIcon
+                      size={12}
+                      className={cn("shrink-0", config.iconClassName)}
+                    />
+                    <span className="flex-1 truncate text-[13px] text-foreground">
+                      {t.title}
+                    </span>
+                    <span
+                      className={cn(
+                        "shrink-0 text-[11px] font-medium",
+                        config.labelColor,
+                      )}
+                    >
+                      {config.label}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )
+      ) : columns.length === 0 ? (
         <EmptyBody>No tasks yet — start a chat to begin one.</EmptyBody>
       ) : (
-        <ul className="flex flex-col gap-3">
-          {recent.map((t) => {
-            const config = getStatusConfig(t.status);
-            const StatusIcon = config.icon;
-            return (
-              <li key={t.id} className="flex items-center gap-2.5 min-w-0">
-                <StatusIcon
-                  size={12}
-                  className={cn("shrink-0", config.iconClassName)}
+        <div
+          className={cn(
+            "flex-1 min-h-0 overflow-y-auto",
+            instance.w >= 2
+              ? "grid grid-cols-2 gap-3 content-start"
+              : "flex flex-col gap-4",
+          )}
+        >
+          {columns.map((col) => (
+            <div key={col.status} className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-1.5">
+                <span
+                  className={cn(
+                    "size-1.5 shrink-0 rounded-full",
+                    kanbanDot(col.status),
+                  )}
                 />
-                <button
-                  type="button"
-                  onClick={() =>
-                    navigate({
-                      to: "/$org/$taskId",
-                      params: { org: org.slug, taskId: t.id },
-                    })
-                  }
-                  className="text-[13px] text-foreground truncate flex-1 text-left hover:underline"
-                >
-                  {t.title}
-                </button>
-                <span className={cn("text-[11px] shrink-0", config.labelColor)}>
-                  {config.label}
+                <span className="text-[11px] font-medium text-muted-foreground">
+                  {col.config.label}
                 </span>
-              </li>
-            );
-          })}
-        </ul>
+                <span className="ml-auto text-[10px] text-muted-foreground/50">
+                  {col.tasks.length}
+                </span>
+              </div>
+              <div className="flex flex-col gap-1">
+                {col.tasks.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => openTask(t.id)}
+                    className="truncate rounded-md border border-border/40 bg-background/60 px-2 py-1.5 text-left text-[12px] text-foreground leading-snug transition-colors hover:bg-muted/60"
+                  >
+                    {t.title}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </AgentDataTileFrame>
   );
@@ -391,33 +528,32 @@ export function ConnectionsOverviewTile(_props: TileRenderProps) {
           }),
       }}
     >
-      <div className="flex flex-col gap-5 flex-1 min-h-0 justify-between">
-        <div className="flex items-baseline gap-5">
+      <div className="flex flex-1 min-h-0 flex-col justify-between gap-4">
+        <div className="flex items-baseline gap-6">
           <Stat label="Active" value={active} tone="ok" />
           <Stat label="Inactive" value={inactive} tone="muted" />
           <Stat label="Errors" value={error} tone="bad" />
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          {preview.map((c) => (
-            <span
-              key={c.id}
-              title={c.title}
-              className="size-8 rounded-md bg-background overflow-hidden shrink-0 border border-border/60"
-            >
-              <IntegrationIcon
-                icon={c.icon ?? undefined}
-                name={c.title}
-                size="xs"
-                className="rounded-none border-0"
-              />
-            </span>
-          ))}
-          {total === 0 && (
-            <span className="text-xs text-muted-foreground">
-              No connections yet
-            </span>
-          )}
-        </div>
+        {preview.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {preview.map((c) => (
+              <span
+                key={c.id}
+                title={c.title}
+                className="size-8 shrink-0 overflow-hidden rounded-lg border border-border/60 bg-background shadow-sm"
+              >
+                <IntegrationIcon
+                  icon={c.icon ?? undefined}
+                  name={c.title}
+                  size="xs"
+                  className="rounded-none border-0"
+                />
+              </span>
+            ))}
+          </div>
+        ) : (
+          <EmptyBody>No connections yet</EmptyBody>
+        )}
       </div>
     </AgentDataTileFrame>
   );
@@ -432,6 +568,12 @@ function Stat({
   value: number;
   tone: "ok" | "bad" | "muted";
 }) {
+  const valueColor =
+    tone === "ok"
+      ? "text-emerald-600 dark:text-emerald-400"
+      : tone === "bad" && value > 0
+        ? "text-rose-600 dark:text-rose-400"
+        : "text-foreground";
   const dot =
     tone === "ok"
       ? "bg-emerald-500"
@@ -440,11 +582,16 @@ function Stat({
         : "bg-muted-foreground/40";
   return (
     <div className="flex flex-col gap-1 min-w-0">
-      <span className="text-2xl font-semibold text-foreground leading-none tabular-nums tracking-tight">
+      <span
+        className={cn(
+          "text-2xl font-semibold leading-none tabular-nums tracking-tight",
+          valueColor,
+        )}
+      >
         {value}
       </span>
       <div className="flex items-center gap-1.5">
-        <span className={cn("size-1.5 rounded-full shrink-0", dot)} />
+        <span className={cn("size-1.5 shrink-0 rounded-full", dot)} />
         <span className="text-[11px] text-muted-foreground">{label}</span>
       </div>
     </div>
@@ -455,13 +602,42 @@ function Stat({
 
 type ShortcutId = "agents" | "connections" | "monitor" | "general";
 
-const DEFAULT_SHORTCUTS: { id: ShortcutId; label: string; icon: ReactNode }[] =
-  [
-    { id: "agents", label: "Agents", icon: <Users03 size={16} /> },
-    { id: "connections", label: "Connections", icon: <Server01 size={16} /> },
-    { id: "monitor", label: "Monitor", icon: <Activity size={16} /> },
-    { id: "general", label: "Settings", icon: <Tool01 size={16} /> },
-  ];
+const DEFAULT_SHORTCUTS: {
+  id: ShortcutId;
+  label: string;
+  icon: ReactNode;
+  iconBg: string;
+  iconColor: string;
+}[] = [
+  {
+    id: "agents",
+    label: "Agents",
+    icon: <Users03 size={15} />,
+    iconBg: "bg-violet-100 dark:bg-violet-900/40",
+    iconColor: "text-violet-600 dark:text-violet-400",
+  },
+  {
+    id: "connections",
+    label: "Connections",
+    icon: <Server01 size={15} />,
+    iconBg: "bg-sky-100 dark:bg-sky-900/40",
+    iconColor: "text-sky-600 dark:text-sky-400",
+  },
+  {
+    id: "monitor",
+    label: "Monitor",
+    icon: <Activity size={15} />,
+    iconBg: "bg-amber-100 dark:bg-amber-900/40",
+    iconColor: "text-amber-600 dark:text-amber-400",
+  },
+  {
+    id: "general",
+    label: "Settings",
+    icon: <Tool01 size={15} />,
+    iconBg: "bg-muted",
+    iconColor: "text-muted-foreground",
+  },
+];
 
 export function ShortcutsTile(_props: TileRenderProps) {
   const navigate = useNavigate();
@@ -499,9 +675,15 @@ export function ShortcutsTile(_props: TileRenderProps) {
             key={s.id}
             type="button"
             onClick={() => goTo(s.id)}
-            className="flex h-full flex-col items-start justify-between gap-3 rounded-lg bg-background hover:bg-background/80 transition-colors text-left p-4 min-h-0 border border-border/60 hover:border-primary/40"
+            className="flex h-full flex-col items-start justify-between gap-3 rounded-lg border border-border/50 bg-background p-4 text-left transition-colors hover:border-primary/30 hover:bg-muted/40 min-h-0"
           >
-            <span className="flex size-8 items-center justify-center rounded-md bg-muted/50 text-foreground">
+            <span
+              className={cn(
+                "flex size-8 items-center justify-center rounded-md",
+                s.iconBg,
+                s.iconColor,
+              )}
+            >
               {s.icon}
             </span>
             <span className="text-[13px] font-medium text-foreground">
@@ -529,8 +711,8 @@ export function NotesTile({ instance: _instance }: TileRenderProps) {
       <Textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder="Quick scratchpad…"
-        className="flex-1 resize-none rounded-lg bg-background border border-border/60 text-[13px] focus-visible:ring-1 focus-visible:ring-primary/30 focus-visible:ring-offset-0"
+        placeholder="Quick notes…"
+        className="flex-1 resize-none rounded-lg border border-border/50 bg-background/60 text-[13px] leading-relaxed focus-visible:ring-1 focus-visible:ring-primary/25 focus-visible:ring-offset-0 placeholder:text-muted-foreground/50"
       />
     </SystemTileFrame>
   );
@@ -550,22 +732,46 @@ export function StatsTile(_props: TileRenderProps) {
   ).length;
   const totalAgents = agents.length;
 
-  const cards: { label: string; value: number }[] = [
-    { label: "Active agents", value: activeAgents },
-    { label: "All agents", value: totalAgents },
-    { label: "Connections", value: activeConnections },
-    { label: "Errors", value: erroredConnections },
+  const cards: { label: string; value: number; valueClass: string }[] = [
+    {
+      label: "Active agents",
+      value: activeAgents,
+      valueClass: "text-emerald-600 dark:text-emerald-400",
+    },
+    {
+      label: "All agents",
+      value: totalAgents,
+      valueClass: "text-foreground",
+    },
+    {
+      label: "Connections",
+      value: activeConnections,
+      valueClass: "text-sky-600 dark:text-sky-400",
+    },
+    {
+      label: "Errors",
+      value: erroredConnections,
+      valueClass:
+        erroredConnections > 0
+          ? "text-rose-600 dark:text-rose-400"
+          : "text-foreground",
+    },
   ];
 
   return (
     <AgentDataTileFrame agent={STUDIO_AGENT} title="Workspace stats">
       <div className="grid grid-cols-2 grid-rows-2 gap-x-6 gap-y-4 flex-1 min-h-0">
         {cards.map((s) => (
-          <div key={s.label} className="flex flex-col gap-1.5 min-h-0">
-            <span className="text-2xl font-semibold text-foreground leading-none tabular-nums tracking-tight">
+          <div key={s.label} className="flex min-h-0 flex-col gap-1.5">
+            <span
+              className={cn(
+                "text-2xl font-semibold leading-none tabular-nums tracking-tight",
+                s.valueClass,
+              )}
+            >
               {s.value}
             </span>
-            <span className="text-[11px] text-muted-foreground truncate">
+            <span className="truncate text-[11px] text-muted-foreground">
               {s.label}
             </span>
           </div>
@@ -628,9 +834,10 @@ export function AgentCardTile({ instance }: TileRenderProps) {
     <button
       type="button"
       onClick={handleClick}
-      className="h-full w-full text-left"
+      className="group relative h-full w-full overflow-hidden text-left"
       aria-label={`Open ${title}`}
     >
+      <div className="pointer-events-none absolute inset-0 bg-primary/5 opacity-0 transition-opacity group-hover:opacity-100" />
       <AgentTileFrame
         agent={{ icon, name: title }}
         title={title}
@@ -670,6 +877,62 @@ interface AgentToolViewConfig {
   args?: Record<string, unknown>;
 }
 
+interface AgentLayoutTab {
+  id: string;
+  title?: string;
+  view?: { appId?: string; args?: Record<string, unknown> };
+}
+
+interface AgentMetadataShape {
+  ui?: {
+    layout?: { tabs?: AgentLayoutTab[] | undefined } | null;
+  } | null;
+}
+
+/**
+ * Tiles pinned before connectionId / toolName were stored on config
+ * carry only `mainTabId`. Derive what we can from that + the agent's
+ * live metadata so existing pins keep rendering after the upgrade.
+ */
+function resolveToolTarget(
+  config: AgentToolViewConfig,
+  agentMeta: AgentMetadataShape | undefined,
+): {
+  connectionId?: string;
+  toolName?: string;
+  args?: Record<string, unknown>;
+} {
+  if (config.connectionId && config.toolName) {
+    return {
+      connectionId: config.connectionId,
+      toolName: config.toolName,
+      args: config.args,
+    };
+  }
+  const tabId = config.mainTabId;
+  if (!tabId) return {};
+  if (tabId.startsWith("app:")) {
+    const rest = tabId.slice("app:".length);
+    const sep = rest.indexOf(":");
+    if (sep > 0) {
+      return {
+        connectionId: rest.slice(0, sep),
+        toolName: rest.slice(sep + 1),
+      };
+    }
+    return {};
+  }
+  const tab = agentMeta?.ui?.layout?.tabs?.find((t) => t?.id === tabId);
+  if (tab?.view?.appId) {
+    return {
+      connectionId: tab.view.appId,
+      toolName: tab.id,
+      args: tab.view.args,
+    };
+  }
+  return {};
+}
+
 export function AgentToolViewTile({ instance }: TileRenderProps) {
   const navigate = useNavigate();
   const { org } = useProjectContext();
@@ -678,9 +941,14 @@ export function AgentToolViewTile({ instance }: TileRenderProps) {
   const agentIcon = config.agentIcon ?? "";
   const viewLabel = config.viewLabel ?? "View";
   const refId = config.agentId;
-  const connectionId = config.connectionId;
-  const toolName = config.toolName;
-  const args = config.args;
+
+  const agents = useVirtualMCPs();
+  const agentMeta = refId
+    ? (agents.find((a) => a.id === refId)?.metadata as
+        | AgentMetadataShape
+        | undefined)
+    : undefined;
+  const { connectionId, toolName, args } = resolveToolTarget(config, agentMeta);
 
   const openInChat = () => {
     if (!refId) return;
@@ -710,9 +978,12 @@ export function AgentToolViewTile({ instance }: TileRenderProps) {
           />
         </div>
       ) : (
-        <div className="flex-1 flex items-center justify-center text-center">
-          <p className="text-[12px] text-muted-foreground line-clamp-3 leading-snug">
-            This view isn't available right now.
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+          <div className="flex size-9 items-center justify-center rounded-xl border border-border/60 bg-background text-muted-foreground">
+            <ArrowRight size={15} />
+          </div>
+          <p className="text-[12px] text-muted-foreground leading-snug">
+            Open {viewLabel.toLowerCase()}
           </p>
         </div>
       )}
@@ -741,12 +1012,14 @@ export function TileSkeleton() {
   return (
     <div className="flex h-full flex-col p-5 gap-4">
       <div className="flex items-center gap-2">
-        <Skeleton className="size-7 rounded-md" />
-        <Skeleton className="h-3 w-20" />
+        <Skeleton className="size-6 rounded-md" />
+        <Skeleton className="h-3 w-24" />
       </div>
-      <Skeleton className="h-3 w-3/4" />
-      <Skeleton className="h-3 w-2/3" />
-      <Skeleton className="h-3 w-1/2" />
+      <div className="flex flex-col gap-2.5">
+        <Skeleton className="h-3 w-3/4" />
+        <Skeleton className="h-3 w-2/3" />
+        <Skeleton className="h-3 w-1/2" />
+      </div>
     </div>
   );
 }
