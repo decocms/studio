@@ -6,7 +6,6 @@
 import {
   BookOpen01,
   Clock,
-  Lightning01,
   Server01,
   Star01,
   Stars01,
@@ -19,7 +18,6 @@ import {
   AgentCardTile,
   ConnectionsOverviewTile,
   NotesTile,
-  QuickChatTile,
   RecentAgentsTile,
   RecentTasksTile,
   ShortcutsTile,
@@ -86,17 +84,6 @@ export const TILE_CATALOG: TileDefinition[] = [
     supportedSizes: ["S", "M", "L", "XL"],
     defaultSize: "M",
     render: RecentTasksTile,
-  },
-  {
-    type: "studio.quick-chat",
-    source: "system",
-    title: "Quick chat",
-    description: "A compact composer pinned to your home.",
-    icon: <Lightning01 size={14} />,
-    category: "essentials",
-    supportedSizes: ["M", "L", "XL", "W"],
-    defaultSize: "L",
-    render: QuickChatTile,
   },
   {
     type: "studio.connections-overview",

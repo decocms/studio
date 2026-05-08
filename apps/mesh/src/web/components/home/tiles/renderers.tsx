@@ -6,7 +6,6 @@
  */
 
 import type { ReactNode } from "react";
-import { useState } from "react";
 import { authClient } from "@/web/lib/auth-client";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -29,7 +28,6 @@ import {
   ArrowRight,
   BookOpen01,
   Clock,
-  Lightning01,
   MessageCircle01,
   Server01,
   Star01,
@@ -257,54 +255,6 @@ export function RecentTasksTile(_props: TileRenderProps) {
           })}
         </ul>
       )}
-    </TileFrame>
-  );
-}
-
-/* ---------- studio.quick-chat ---------- */
-
-export function QuickChatTile(_props: TileRenderProps) {
-  const navigate = useNavigate();
-  const { org } = useProjectContext();
-  const [draft, setDraft] = useState("");
-
-  const submit = () => {
-    if (!draft.trim()) return;
-    const taskId = crypto.randomUUID();
-    navigate({
-      to: "/$org/$taskId",
-      params: { org: org.slug, taskId },
-      search: { autosend: draft } as never,
-    });
-  };
-
-  return (
-    <TileFrame title="Quick chat" icon={<Lightning01 size={14} />}>
-      <div className="flex flex-col gap-3 flex-1 min-h-0">
-        <Textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder="What's on your mind?"
-          className="flex-1 resize-none min-h-0 text-sm"
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
-          }}
-        />
-        <div className="flex items-center justify-between shrink-0">
-          <span className="text-[10px] text-muted-foreground">
-            ⌘ + Enter to send
-          </span>
-          <Button
-            size="sm"
-            onClick={submit}
-            disabled={!draft.trim()}
-            className="gap-1 h-7"
-          >
-            Send
-            <ArrowRight size={12} />
-          </Button>
-        </div>
-      </div>
     </TileFrame>
   );
 }
