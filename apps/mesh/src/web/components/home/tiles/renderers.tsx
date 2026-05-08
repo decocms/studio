@@ -23,6 +23,8 @@ import { AgentAvatar } from "@/web/components/agent-icon";
 import { IntegrationIcon } from "@/web/components/integration-icon";
 import { useTasks } from "@/web/components/chat/task/use-task-manager";
 import { getStatusConfig } from "@/web/lib/task-status";
+import { useAgentRecruit } from "./agent-recruit-provider";
+import type { AgentSeedId } from "./agent-seeds";
 import {
   Activity,
   ArrowRight,
@@ -554,20 +556,39 @@ interface AgentCardConfig {
 export function AgentCardTile({ instance }: TileRenderProps) {
   const navigate = useNavigate();
   const { org } = useProjectContext();
+  const recruit = useAgentRecruit();
   const config = (instance.config ?? {}) as AgentCardConfig;
   const title = config.title ?? "Agent";
   const description = config.description;
   const icon = config.icon ?? "";
-  const refId = config.agentId ?? config.templateId;
+  const templateId = config.templateId as AgentSeedId | undefined;
+  const customAgentId = config.agentId;
 
   const hasBody = instance.h >= 2 || instance.w >= 2;
 
   const handleClick = () => {
+    // Custom virtual MCP that the user already owns — open its thread.
+    if (customAgentId && !templateId) {
+      const taskId = crypto.randomUUID();
+      navigate({
+        to: "/$org/$taskId",
+        params: { org: org.slug, taskId },
+        search: { virtualmcpid: customAgentId },
+      });
+      return;
+    }
+    // Well-known template: hand off to the recruit provider, which
+    // either opens the matching install dialog or, if the template is
+    // already installed, navigates to its existing thread.
+    if (templateId && recruit) {
+      recruit.openAgent(templateId, title);
+      return;
+    }
+    // Fallback (shouldn't happen on the home today): open a fresh chat.
     const taskId = crypto.randomUUID();
     navigate({
       to: "/$org/$taskId",
       params: { org: org.slug, taskId },
-      search: refId ? { virtualmcpid: refId } : undefined,
     });
   };
 

@@ -15,6 +15,16 @@ import type { HomeBoard, TileInstance } from "./types";
 import { createEmptyBoard, createStarterBoard } from "./seed";
 import { insertTile, moveTile, removeTile, resizeTile } from "./grid-utils";
 
+/**
+ * No board stored yet → seed the starter layout. The user's first home
+ * is a default tile set, not an empty canvas with a "create" banner.
+ * Boards that exist with `tiles: []` (the user explicitly cleared) stay
+ * empty so we don't reseed against their will.
+ */
+function firstLoadBoard(): HomeBoard {
+  return createStarterBoard();
+}
+
 export interface UseHomeBoardResult {
   board: HomeBoard;
   resetToStarter: () => void;
@@ -25,8 +35,6 @@ export interface UseHomeBoardResult {
   resizeTile: (id: string, size: { w: number; h: number }) => void;
   updateTileConfig: (id: string, patch: Record<string, unknown>) => void;
 }
-
-const DEFAULT_BOARD: HomeBoard = createEmptyBoard();
 
 /**
  * Migrate stored boards.
@@ -43,7 +51,7 @@ const DEFAULT_BOARD: HomeBoard = createEmptyBoard();
  *   compactBoard at write time handles any residual overlap.
  */
 function migrate(existing: unknown): HomeBoard {
-  if (!existing || typeof existing !== "object") return DEFAULT_BOARD;
+  if (!existing || typeof existing !== "object") return firstLoadBoard();
   const obj = existing as Record<string, unknown>;
   const rawTiles = Array.isArray(obj.tiles)
     ? (obj.tiles as TileInstance[])

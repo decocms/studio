@@ -41,6 +41,7 @@ import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
 import { TileBoard } from "@/web/components/home/tiles/tile-board";
 import { TileAddSheet } from "@/web/components/home/tiles/tile-add-sheet";
 import { useHomeBoard } from "@/web/components/home/tiles/use-home-board";
+import { AgentRecruitProvider } from "@/web/components/home/tiles/agent-recruit-provider";
 
 const DECO_BANNER_GRADIENT = [
   "radial-gradient(ellipse 25% 220% at -5% 120%, rgba(165,149,255,0.35) 0%, transparent 100%)",
@@ -106,6 +107,14 @@ function useIsDecoUser() {
 }
 
 export function HomePage() {
+  return (
+    <AgentRecruitProvider>
+      <HomePageContent />
+    </AgentRecruitProvider>
+  );
+}
+
+function HomePageContent() {
   const { data: session } = authClient.useSession();
   const { org } = useProjectContext();
   const boardApi = useHomeBoard(org.slug);
