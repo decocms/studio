@@ -18,17 +18,42 @@ interface TriggerState {
 }
 
 /**
+ * Sentinel used when TRIGGER_CONFIGURE arrives without a `subscriptionId`.
+ * Lets studio upgrade independently of MCPs and lets MCPs serve clients on
+ * older bindings that don't know how to mint a subscriptionId. The cost is
+ * that all such legacy registrations collapse to one slot per connection —
+ * the same single-sub limitation the previous version had.
+ */
+const LEGACY_SUBSCRIPTION_ID = "__default";
+
+/**
  * Storage interface for persisting trigger state across MCP restarts.
  *
- * Implement this with your storage backend (KV, DB, file system, etc.)
- * and pass it to `createTriggers({ storage })`.
+ * Each subscription is a unique (connectionId, subscriptionId) pair. The
+ * same connectionId may host many independent subscriptions (e.g. one
+ * per automation listening to the same event type with different filter
+ * params), each with its own callback credentials.
  *
- * Keys are connection IDs, values are serializable trigger state objects.
+ * Implement this with your storage backend (KV, DB, file system, etc.)
+ * and pass it to `createTriggers({ storage })`. The runtime calls `list`
+ * during webhook fanout to find every active subscription for a given
+ * connection — implementations should make this fast (e.g. KV
+ * `list({ prefix })`).
  */
 export interface TriggerStorage {
-  get(connectionId: string): Promise<TriggerState | null>;
-  set(connectionId: string, state: TriggerState): Promise<void>;
-  delete(connectionId: string): Promise<void>;
+  get(
+    connectionId: string,
+    subscriptionId: string,
+  ): Promise<TriggerState | null>;
+  set(
+    connectionId: string,
+    subscriptionId: string,
+    state: TriggerState,
+  ): Promise<void>;
+  delete(connectionId: string, subscriptionId: string): Promise<void>;
+  list(
+    connectionId: string,
+  ): Promise<Array<{ subscriptionId: string; state: TriggerState }>>;
 }
 
 interface TriggerDef<
@@ -53,8 +78,9 @@ interface Triggers<TDefs extends TriggerDef[]> {
   tools(): CreatedTool[];
 
   /**
-   * Notify Mesh that an event occurred.
-   * The SDK matches it to stored callback credentials and POSTs to Mesh.
+   * Notify Mesh that an event occurred. Fans out to every subscription
+   * registered against `connectionId` whose active types include `type`,
+   * POSTing the payload to each subscription's callback URL.
    * Fire-and-forget — errors are logged, not thrown.
    */
   notify<T extends TDefs[number]["type"]>(
@@ -64,71 +90,114 @@ interface Triggers<TDefs extends TriggerDef[]> {
   ): void;
 }
 
-// In-memory cache backed by optional persistent storage
+// In-memory cache keyed by `${connectionId}:${subscriptionId}`. Persistent
+// storage is the source of truth — the cache exists to avoid a KV round
+// trip on hot paths and to survive registrations that arrive before any
+// notify happens.
 class TriggerStateManager {
-  private credentials = new Map<string, CallbackCredentials>();
-  private activeTriggers = new Map<string, Set<string>>();
+  private subscriptions = new Map<string, TriggerState>();
+  // Tracks whether we've already loaded all subs for a given connectionId
+  // from storage, so notify() doesn't issue redundant `list` calls.
+  private listed = new Set<string>();
   private storage: TriggerStorage | null;
 
   constructor(storage?: TriggerStorage) {
     this.storage = storage ?? null;
   }
 
-  getCredentials(connectionId: string): CallbackCredentials | undefined {
-    return this.credentials.get(connectionId);
+  private cacheKey(connectionId: string, subscriptionId: string): string {
+    return `${connectionId}\x1f${subscriptionId}`;
   }
 
-  async loadFromStorage(connectionId: string): Promise<void> {
-    if (!this.storage || this.credentials.has(connectionId)) return;
-    const state = await this.storage.get(connectionId);
-    if (state) {
-      this.credentials.set(connectionId, state.credentials);
-      this.activeTriggers.set(connectionId, new Set(state.activeTriggerTypes));
+  private parseCacheKey(
+    key: string,
+  ): { connectionId: string; subscriptionId: string } {
+    const idx = key.indexOf("\x1f");
+    return {
+      connectionId: key.slice(0, idx),
+      subscriptionId: key.slice(idx + 1),
+    };
+  }
+
+  async listForConnection(
+    connectionId: string,
+  ): Promise<Array<{ subscriptionId: string; state: TriggerState }>> {
+    if (!this.listed.has(connectionId) && this.storage) {
+      const records = await this.storage.list(connectionId);
+      for (const { subscriptionId, state } of records) {
+        this.subscriptions.set(this.cacheKey(connectionId, subscriptionId), state);
+      }
+      this.listed.add(connectionId);
     }
+    const out: Array<{ subscriptionId: string; state: TriggerState }> = [];
+    const prefix = `${connectionId}\x1f`;
+    for (const [key, state] of this.subscriptions.entries()) {
+      if (key.startsWith(prefix)) {
+        const { subscriptionId } = this.parseCacheKey(key);
+        out.push({ subscriptionId, state });
+      }
+    }
+    return out;
   }
 
   async enable(
     connectionId: string,
+    subscriptionId: string,
     triggerType: string,
     newCredentials?: CallbackCredentials,
   ): Promise<void> {
-    if (newCredentials) {
-      this.credentials.set(connectionId, newCredentials);
+    const key = this.cacheKey(connectionId, subscriptionId);
+    const existing = this.subscriptions.get(key);
+    const credentials = newCredentials ?? existing?.credentials;
+    if (!credentials) {
+      // First enable for this subscription must include credentials.
+      // Without them the callback can't be delivered, so refuse loudly.
+      throw new Error(
+        `[Triggers] enable(${connectionId}/${subscriptionId}): credentials required on first registration`,
+      );
     }
-
-    const types = this.activeTriggers.get(connectionId) ?? new Set();
+    const types = new Set(existing?.activeTriggerTypes ?? []);
     types.add(triggerType);
-    this.activeTriggers.set(connectionId, types);
-
-    await this.persist(connectionId);
-  }
-
-  async disable(connectionId: string, triggerType: string): Promise<void> {
-    // Ensure state is loaded (may be empty after restart)
-    await this.loadFromStorage(connectionId);
-    const types = this.activeTriggers.get(connectionId);
-    if (types) {
-      types.delete(triggerType);
-      if (types.size === 0) {
-        this.activeTriggers.delete(connectionId);
-        this.credentials.delete(connectionId);
-        await this.storage?.delete(connectionId);
-        return;
-      }
-    }
-
-    await this.persist(connectionId);
-  }
-
-  private async persist(connectionId: string): Promise<void> {
-    if (!this.storage) return;
-    const creds = this.credentials.get(connectionId);
-    const types = this.activeTriggers.get(connectionId);
-    if (!creds || !types || types.size === 0) return;
-    await this.storage.set(connectionId, {
-      credentials: creds,
+    const state: TriggerState = {
+      credentials,
       activeTriggerTypes: [...types],
-    });
+    };
+    this.subscriptions.set(key, state);
+    if (this.storage) {
+      await this.storage.set(connectionId, subscriptionId, state);
+    }
+  }
+
+  async disable(
+    connectionId: string,
+    subscriptionId: string,
+    triggerType: string,
+  ): Promise<void> {
+    const key = this.cacheKey(connectionId, subscriptionId);
+    let existing = this.subscriptions.get(key);
+    if (!existing && this.storage) {
+      existing = (await this.storage.get(connectionId, subscriptionId)) ?? undefined;
+      if (existing) this.subscriptions.set(key, existing);
+    }
+    if (!existing) return;
+
+    const types = new Set(existing.activeTriggerTypes);
+    types.delete(triggerType);
+    if (types.size === 0) {
+      this.subscriptions.delete(key);
+      if (this.storage) {
+        await this.storage.delete(connectionId, subscriptionId);
+      }
+      return;
+    }
+    const next: TriggerState = {
+      credentials: existing.credentials,
+      activeTriggerTypes: [...types],
+    };
+    this.subscriptions.set(key, next);
+    if (this.storage) {
+      await this.storage.set(connectionId, subscriptionId, next);
+    }
   }
 }
 
@@ -228,6 +297,8 @@ export function createTriggers<const TDefs extends TriggerDef[]>(
         throw new Error("Connection ID not available");
       }
 
+      const subscriptionId = context.subscriptionId ?? LEGACY_SUBSCRIPTION_ID;
+
       if (context.enabled) {
         const creds =
           context.callbackUrl && context.callbackToken
@@ -236,9 +307,9 @@ export function createTriggers<const TDefs extends TriggerDef[]>(
                 callbackToken: context.callbackToken,
               }
             : undefined;
-        await state.enable(connectionId, context.type, creds);
+        await state.enable(connectionId, subscriptionId, context.type, creds);
       } else {
-        await state.disable(connectionId, context.type);
+        await state.disable(connectionId, subscriptionId, context.type);
       }
 
       return { success: true };
@@ -251,29 +322,27 @@ export function createTriggers<const TDefs extends TriggerDef[]>(
     },
 
     notify(connectionId, type, data) {
-      // Try in-memory first, fall back to storage load
-      const credentials = state.getCredentials(connectionId);
-      if (credentials) {
-        deliverCallback(credentials, type, data);
-        return;
-      }
-
-      // Attempt async load from storage (fire-and-forget)
+      // Fanout: deliver to every subscription on this connection whose
+      // active types include `type`. Fire-and-forget — failures log but
+      // don't cascade.
       state
-        .loadFromStorage(connectionId)
-        .then(() => {
-          const loaded = state.getCredentials(connectionId);
-          if (loaded) {
-            deliverCallback(loaded, type, data);
-          } else {
+        .listForConnection(connectionId)
+        .then((records) => {
+          let delivered = 0;
+          for (const { state: sub } of records) {
+            if (!sub.activeTriggerTypes.includes(type)) continue;
+            deliverCallback(sub.credentials, type, data);
+            delivered++;
+          }
+          if (delivered === 0) {
             console.log(
-              `[Triggers] No callback credentials for connection=${connectionId}, skipping notify`,
+              `[Triggers] No subscriptions for connection=${connectionId} type=${type}, skipping notify`,
             );
           }
         })
         .catch((err) => {
           console.error(
-            `[Triggers] Failed to load credentials for ${connectionId}:`,
+            `[Triggers] Failed to fanout for ${connectionId}/${type}:`,
             err,
           );
         });

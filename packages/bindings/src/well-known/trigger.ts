@@ -63,6 +63,11 @@ export type TriggerListOutput = z.infer<typeof TriggerListOutputSchema>;
  * TRIGGER_CONFIGURE Input Schema
  *
  * Input for configuring a trigger with parameters.
+ *
+ * `subscriptionId` uniquely identifies a single trigger registration so the
+ * MCP can store many independent subscriptions on the same `(connectionId,
+ * type)`. Optional for backward compatibility — implementations that omit it
+ * collapse to a single-subscription-per-connection model.
  */
 export const TriggerConfigureInputSchema = z.object({
   type: z.string(),
@@ -70,6 +75,7 @@ export const TriggerConfigureInputSchema = z.object({
   enabled: z.boolean(),
   callbackUrl: z.url().optional(),
   callbackToken: z.string().min(1).optional(),
+  subscriptionId: z.string().min(1).optional(),
 });
 
 export type TriggerConfigureInput = z.infer<typeof TriggerConfigureInputSchema>;
