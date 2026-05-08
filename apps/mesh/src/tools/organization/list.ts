@@ -54,16 +54,20 @@ export const ORGANIZATION_LIST = defineTool({
     const organizations = await ctx.boundAuth.organization.list(userId);
 
     // Convert dates to ISO strings for JSON Schema compatibility
+    // Filter out archived organizations
     return {
-      organizations: organizations.map(
-        (org: (typeof organizations)[number]) => ({
+      organizations: organizations
+        .filter(
+          (org: (typeof organizations)[number]) =>
+            org.metadata?.archived !== true,
+        )
+        .map((org: (typeof organizations)[number]) => ({
           ...org,
           createdAt:
             org.createdAt instanceof Date
               ? org.createdAt.toISOString()
               : org.createdAt,
-        }),
-      ),
+        })),
     };
   },
 });

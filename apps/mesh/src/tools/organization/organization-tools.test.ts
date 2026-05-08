@@ -396,7 +396,7 @@ describe("Organization Tools", () => {
   });
 
   describe("ORGANIZATION_DELETE", () => {
-    it("should delete organization", async () => {
+    it("should soft-delete organization by archiving via metadata", async () => {
       const mockAuth = createMockAuth();
       const ctx = createMockContext(mockAuth);
 
@@ -407,10 +407,19 @@ describe("Organization Tools", () => {
         ctx,
       );
 
-      expect(mockAuth.api.deleteOrganization).toHaveBeenCalledWith({
-        body: { organizationId: "org_123" },
+      expect(mockAuth.api.updateOrganization).toHaveBeenCalledWith({
+        body: {
+          organizationId: "org_123",
+          data: {
+            metadata: expect.objectContaining({
+              archived: true,
+              archivedAt: expect.any(String),
+            }),
+          },
+        },
         headers: expect.any(Headers),
       });
+      expect(mockAuth.api.deleteOrganization).not.toHaveBeenCalled();
 
       expect(result.success).toBe(true);
       expect(result.id).toBe("org_123");

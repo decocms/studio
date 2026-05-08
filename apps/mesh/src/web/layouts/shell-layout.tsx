@@ -21,6 +21,7 @@ import { useTaskActions } from "../hooks/use-tasks";
 import { useOrganizationSettingsSuspense } from "../hooks/use-organization-settings";
 import { useOrgSsoStatus } from "../hooks/use-org-sso";
 import { SsoRequiredScreen } from "../components/sso-required-screen";
+import { ArchivedOrgScreen } from "../components/archived-org-screen";
 
 // ---------------------------------------------------------------------------
 // ShellProjectProvider — fetches org settings and provides project context.
@@ -202,9 +203,14 @@ function ShellLayoutContent() {
         query: { organizationSlug: org },
       });
 
+      // Don't persist archived orgs — homeRoute would just redirect off them again
+      const isArchived =
+        (data as { metadata?: { archived?: boolean } } | null)?.metadata
+          ?.archived === true;
+
       // Persist for fast redirect on next login (read by homeRoute beforeLoad)
-      // Only write on success to avoid caching an invalid slug
-      if (data) {
+      // Only write on success and only for active (non-archived) orgs
+      if (data && !isArchived) {
         localStorage.setItem(LOCALSTORAGE_KEYS.lastOrgSlug(), org);
       }
 
@@ -221,6 +227,17 @@ function ShellLayoutContent() {
 
   if (!activeOrg) {
     return <SplashScreen />;
+  }
+
+  const isArchivedOrg =
+    (activeOrg as { metadata?: { archived?: boolean } }).metadata?.archived ===
+    true;
+  if (isArchivedOrg) {
+    // Clear stale slug so /home redirect doesn't bounce the user back here
+    if (localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug()) === org) {
+      localStorage.removeItem(LOCALSTORAGE_KEYS.lastOrgSlug());
+    }
+    return <ArchivedOrgScreen orgName={activeOrg.name} />;
   }
 
   if (ssoStatus?.ssoRequired && !ssoStatus.authenticated) {

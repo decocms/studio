@@ -120,13 +120,19 @@ const homeRoute = createRoute({
     // valid cached slug due to a transient API failure.
     if (!orgs) return;
 
+    // Filter out archived organizations — they are soft-deleted and invisible to the UI
+    type OrgWithMeta = (typeof orgs)[number] & {
+      metadata?: { archived?: boolean } | null;
+    };
+    const activeOrgs = (orgs as OrgWithMeta[]).filter(
+      (o) => !o.metadata?.archived,
+    );
+
     // Fast path: validate cached slug against current membership before redirecting.
-    // If stale (org deleted or user removed), clear it to prevent a redirect loop.
+    // If stale (org deleted/archived or user removed), clear it to prevent a redirect loop.
     const lastOrgSlug = localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug());
     if (lastOrgSlug) {
-      const slugIsValid = orgs.some(
-        (o: NonNullable<typeof orgs>[number]) => o.slug === lastOrgSlug,
-      );
+      const slugIsValid = activeOrgs.some((o) => o.slug === lastOrgSlug);
       if (slugIsValid) {
         throw redirect({
           to: "/$org",
@@ -138,7 +144,7 @@ const homeRoute = createRoute({
     }
 
     // Redirect to first available org (every user gets a default org on signup)
-    const firstOrg = orgs[0];
+    const firstOrg = activeOrgs[0];
     if (firstOrg) {
       throw redirect({
         to: "/$org",
@@ -157,7 +163,13 @@ const onboardingRoute = createRoute({
   path: "/onboarding",
   beforeLoad: async () => {
     const { data: orgs } = await authClient.organization.list();
-    if (orgs && orgs.length > 0) {
+    type OrgWithMeta = NonNullable<typeof orgs>[number] & {
+      metadata?: { archived?: boolean } | null;
+    };
+    const activeOrgs = (orgs as OrgWithMeta[] | undefined)?.filter(
+      (o) => !o.metadata?.archived,
+    );
+    if (activeOrgs && activeOrgs.length > 0) {
       throw redirect({ to: "/" });
     }
   },
