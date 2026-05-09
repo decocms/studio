@@ -147,6 +147,7 @@ topologySpreadConstraints: []
 #   options:
 #     - name: ndots
 #       value: "1"
+dnsPolicy: ""  # Override to "None" with public nameservers in dnsConfig to bypass kube-dns VIP routing (fixes eBPF conntrack key mismatch on DNS responses).
 dnsConfig: {}
 
 # ── sandbox-pod hardening ──────────────────────────────────────────────
