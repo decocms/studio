@@ -2,14 +2,22 @@
 # NetworkPolicy for mesh sandbox pods in THIS environment.
 #
 # Scope: selects pods in agent-sandbox-system labeled
-# app.kubernetes.io/name=studio-sandbox-<envName>. Applies Egress only —
-# ingress is intentionally unrestricted. AWS VPC CNI's eBPF network policy
-# agent (v1.3.x) does not reliably fall back to static ingress rules when
-# its eBPF conntrack misses (race on fast cached DNS responses), so any
-# Ingress policyType causes intermittent DNS failures for sandbox pods.
-# Removing Ingress is safe: sandbox pods only listen on TCP 9000 (daemon)
-# and require a valid bearer token; the egress deny-all for RFC1918 prevents
-# the sandbox from reaching in-cluster services regardless of who reaches it.
+# app.kubernetes.io/name=studio-sandbox-<envName>.
+#
+# DNS strategy: pods use dnsPolicy:None with public resolvers (1.1.1.1/8.8.8.8)
+# configured via dnsConfig. CoreDNS is kept as an egress target for fallback
+# but is not the primary resolver. DNS traffic goes directly to public IPs —
+# no kube-dns Service VIP, no eBPF DNAT.
+#
+# Why both Ingress AND Egress policyTypes with explicit ingress rules:
+# AWS VPC CNI network policy agent v1.3.x attaches an eBPF ingress TC hook
+# even for Egress-only policies (confirmed live). That hook drops UDP port 53
+# responses via broken conntrack — both for kube-dns VIP (DNAT key mismatch)
+# and for direct public resolvers (UDP conntrack bug). The only reliable fix
+# is to give the ingress hook a static rule to match: it checks explicit
+# Ingress rules before conntrack. Public resolver IPs (1.1.1.1, 8.8.8.8)
+# are non-RFC1918 so the NP agent does not strip them from the BPF policy map
+# (RFC1918 IPs are excluded by fwruleprocessor — confirmed in agent logs).
 #
 # Threat model: workload is arbitrary user code. Egress must not reach IMDS
 # (169.254.169.254 / fd00:ec2::254), in-cluster RFC1918 services, or
@@ -28,9 +36,29 @@ spec:
     matchLabels:
       app.kubernetes.io/name: {{ include "sandbox-env.sandboxName" . }}
   policyTypes:
+    - Ingress
     - Egress
+  ingress:
+    # Allow DNS responses from public resolvers only. The eBPF ingress TC hook
+    # in AWS VPC CNI v1.3.x has a broken UDP conntrack path that drops replies
+    # even for established flows. Static ingress rules bypass conntrack and
+    # are matched first. 1.1.1.1/8.8.8.8 are non-RFC1918 so the NP agent
+    # does not strip them from the BPF policy map.
+    - from:
+        - ipBlock:
+            cidr: 1.1.1.1/32
+        - ipBlock:
+            cidr: 8.8.8.8/32
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    {{- with .Values.networkPolicy.extraIngress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   egress:
-    # CoreDNS — UDP + TCP 53.
+    # CoreDNS — kept as fallback but not the primary resolver (see dnsPolicy).
     - to:
         - namespaceSelector:
             matchLabels:
@@ -38,6 +66,17 @@ spec:
           podSelector:
             matchLabels:
               k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Public resolvers — primary DNS path (dnsPolicy:None).
+    - to:
+        - ipBlock:
+            cidr: 1.1.1.1/32
+        - ipBlock:
+            cidr: 8.8.8.8/32
       ports:
         - protocol: UDP
           port: 53

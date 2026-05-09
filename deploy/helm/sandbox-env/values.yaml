@@ -83,6 +83,7 @@ networkPolicy:
   #     ports:
   #       - protocol: TCP
   #         port: 4318
+  extraIngress: []
   extraEgress: []
 
 # ── sandbox-pod scheduling ─────────────────────────────────────────────
