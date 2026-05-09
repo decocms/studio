@@ -16,10 +16,10 @@
 #   3. Verify the values out-of-band (release notes, signatures if any).
 #   4. Add the entry to KNOWN_CHECKSUMS, commit, re-run.
 #
-# Usage: ./vendor.sh [vX.Y.Z]   (default v0.4.2 — must match appVersion)
+# Usage: ./vendor.sh [vX.Y.Z]   (default v0.4.5 — must match appVersion)
 set -euo pipefail
 
-UPSTREAM_VERSION="${1:-v0.4.2}"
+UPSTREAM_VERSION="${1:-v0.4.5}"
 REPO="kubernetes-sigs/agent-sandbox"
 
 # Pinned sha256 digests for `${VERSION}:${ASSET}`. Keep entries sorted by
@@ -28,6 +28,8 @@ REPO="kubernetes-sigs/agent-sandbox"
 declare -A KNOWN_CHECKSUMS=(
   ["v0.4.2:manifest.yaml"]="93cb43a90b9093c84a7529a7dbeca409fcd944746df00b52e8a2781c237c6e18"
   ["v0.4.2:extensions.yaml"]="6ddcd6ce2d78714a5815d4c4304df858a075e0ed8fee971966b31af548c011bb"
+  ["v0.4.5:manifest.yaml"]="3489f6f47692941648450afc898aee8a8fde25e3d10d41d4b39daf59a8835094"
+  ["v0.4.5:extensions.yaml"]="3da56243138ea68f7b0604d38ba37bd052a9acb48e3ea55830942575fe151ce8"
 )
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
