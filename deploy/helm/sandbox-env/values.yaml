@@ -55,6 +55,17 @@ resources:
     memory: 4Gi
     ephemeral-storage: 10Gi
 
+# ── netinit image (iptables init container) ───────────────────────────
+# Pre-built Alpine image with iptables + ip6tables baked in. Avoids the
+# `apk add` at pod startup that would require outbound internet access to
+# Alpine mirrors during the security-critical init phase. Built and pushed
+# to GHCR by .github/workflows/release-sandbox-netinit.yaml; version is
+# controlled by deploy/helm/sandbox-env/image/VERSION.
+netinit:
+  image: ghcr.io/decocms/studio/sandbox-netinit
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+
 # ── sandbox egress enforcement (iptables init container) ──────────────
 # Sandbox pods run user code and must not reach in-cluster services.
 # Enforcement is via an iptables init container rather than a Kubernetes
