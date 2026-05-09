@@ -24,11 +24,8 @@ spec:
   # provision cold (warmpool=none) with claim env.
   envVarsInjectionPolicy: Allowed
   # The CRD defaults to Managed, which makes the operator install its own
-  # NetworkPolicy that only allows ingress from pods labeled
-  # `app: sandbox-router`. That's intended for Istio-style sidecar routing
-  # and silently blocks the mesh → daemon path the preview-proxy depends on.
-  # We surface the netpol via templates/sandbox-network-policy.yaml instead
-  # (gated by `networkPolicy.enabled`), so flag the operator's policy off.
+  # NetworkPolicy. Egress enforcement is handled by the iptables init
+  # container instead, so the operator's policy is disabled here.
   networkPolicyManagement: Unmanaged
   podTemplate:
     metadata:
@@ -85,6 +82,42 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+        - name: setup-netpol
+          image: alpine:3.19
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              apk add --no-cache iptables
+              iptables -A OUTPUT -d 10.0.0.0/8     -j REJECT
+              iptables -A OUTPUT -d 172.16.0.0/12  -j REJECT
+              iptables -A OUTPUT -d 192.168.0.0/16 -j REJECT
+              iptables -A OUTPUT -d 169.254.0.0/16 -j REJECT
+              iptables -A OUTPUT -d 100.64.0.0/10  -j REJECT
+              {{- range .Values.additionalBlockCIDRs }}
+              iptables -A OUTPUT -d {{ . }} -j REJECT
+              {{- end }}
+              iptables -A OUTPUT -p udp --dport 53  -j ACCEPT
+              iptables -A OUTPUT -p tcp --dport 53  -j ACCEPT
+              iptables -A OUTPUT -p tcp --dport 443 -j ACCEPT
+              iptables -A OUTPUT -o lo              -j ACCEPT
+              iptables -A OUTPUT -j REJECT
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN"]
+              drop: ["ALL"]
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
       containers:
         - name: sandbox
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"

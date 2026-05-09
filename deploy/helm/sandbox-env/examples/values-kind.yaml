@@ -22,17 +22,6 @@ resources:
     cpu: "1"
     memory: "3Gi"
 
-# ── networkPolicy ──────────────────────────────────────────────────────
-# kindnet enforces NetworkPolicy as of kind v0.27 (kindnetd v1.x). Leave
-# the chart's policy on so studio → sandbox traffic on port 9000 is
-# explicitly allow-listed; otherwise the operator-managed default (only
-# `app: sandbox-router` ingress, locked off via networkPolicyManagement:
-# Unmanaged in the SandboxTemplate) would re-block everything. Older
-# kindnet builds (pre-0.27) ignore the policy and the rule is inert —
-# safe either way.
-networkPolicy:
-  enabled: true
-
 # ── pod hardening (relaxed for kind) ───────────────────────────────────
 # Plain host-users mode. userns remap requires K8s 1.30+ on a kernel that
 # supports it; kind nodes can vary. Keep simple for local dev.

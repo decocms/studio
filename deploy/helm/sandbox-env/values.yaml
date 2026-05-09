@@ -55,36 +55,26 @@ resources:
     memory: 4Gi
     ephemeral-storage: 10Gi
 
-# ── sandbox NetworkPolicy ──────────────────────────────────────────────
-networkPolicy:
-  enabled: true
-  # DEPRECATED: kept only for installs whose external gateway terminates
-  # *directly* on the sandbox's port 3000 (dev server). The default
-  # preview path goes through mesh and lands on port 9000 (daemon)
-  # instead, so all standard installs leave this empty. See
-  # `previewGateway` below for the supported Istio Gateway API path.
-  # Will be removed in a future chart version — open an issue if you
-  # still need it.
-  previewGatewayNamespace: ""
-  # Operator-supplied egress rules (NetworkPolicyEgressRule[]) merged
-  # into the sandbox NetworkPolicy. The base policy denies in-cluster
-  # egress; use this to grant *specific* exceptions (e.g. an in-cluster
-  # OTel collector if the daemon ever emits OTLP). Empty = no extra
-  # egress.
-  #
-  # extraEgress:
-  #   - to:
-  #       - namespaceSelector:
-  #           matchLabels:
-  #             kubernetes.io/metadata.name: monitoring
-  #         podSelector:
-  #           matchLabels:
-  #             app.kubernetes.io/name: opentelemetry-collector
-  #     ports:
-  #       - protocol: TCP
-  #         port: 4318
-  extraIngress: []
-  extraEgress: []
+# ── sandbox egress enforcement (iptables init container) ──────────────
+# Sandbox pods run user code and must not reach in-cluster services.
+# Enforcement is via an iptables init container rather than a Kubernetes
+# NetworkPolicy. Reason: AWS VPC CNI NP agent v1.3.x attaches eBPF TC
+# hooks that set POLICIES_APPLIED mode when a NetworkPolicy selects a pod;
+# on IPv4 clusters the egress BPF map update fails (IPv6 CIDRs rejected),
+# leaving the map empty while POLICIES_APPLIED is active → all egress
+# blocked ~6s after pod start → mid-transfer TCP drops for cold pods.
+# The init container runs with NET_ADMIN, programs iptables in the pod
+# network namespace, then exits — user code never holds NET_ADMIN.
+#
+# Additional CIDRs to block beyond the hardcoded base set (RFC1918,
+# link-local, IMDS, shared address space). Use this when the cluster's
+# pod or service CIDR falls outside those ranges — e.g. GKE with a
+# custom secondary range, or any cluster whose pod CIDR you want to
+# block explicitly.
+#
+# additionalBlockCIDRs:
+#   - 192.0.2.0/24
+additionalBlockCIDRs: []
 
 # ── sandbox-pod scheduling ─────────────────────────────────────────────
 # Pin sandbox pods to a dedicated NodePool so a container escape lands on
@@ -132,24 +122,14 @@ affinity: {}
 #         app.kubernetes.io/name: studio-sandbox-<envName>
 topologySpreadConstraints: []
 
-# DNS resolver options for sandbox pods. The Kubernetes default (ndots:5)
-# causes every external lookup to generate up to 8 queries (4 search-domain
-# expansions × A+AAAA) before reaching the absolute form. On EKS this burns
-# into the 1024 pps/ENI AWS VPC DNS rate limit and causes intermittent git
-# clone / npm install failures under load. Set ndots:1 to send external
-# hostnames (github.com, registry.npmjs.org, …) directly to the absolute
-# form. Safe for sandbox pods: the NetworkPolicy blocks all in-cluster egress
-# except port 53 to CoreDNS, so search-domain expansions that resolve to
-# private IPs would be unreachable regardless.
-#
-# Recommended for production:
-#
-# dnsConfig:
-#   options:
-#     - name: ndots
-#       value: "1"
-dnsPolicy: ""  # Override to "None" with public nameservers in dnsConfig to bypass kube-dns VIP routing (fixes eBPF conntrack key mismatch on DNS responses).
-dnsConfig: {}
+dnsPolicy: "None"
+dnsConfig:
+  nameservers:
+    - 1.1.1.1
+    - 8.8.8.8
+  options:
+    - name: ndots
+      value: "1"
 
 # ── sandbox-pod hardening ──────────────────────────────────────────────
 # User namespace remap (`spec.hostUsers: false`): UID 1000 inside the pod
