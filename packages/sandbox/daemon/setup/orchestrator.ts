@@ -535,38 +535,36 @@ export class SetupOrchestrator {
     const repoDir = this.deps.bootConfig.repoDir;
     if (!repoDir) return;
     const onChunk = (_src: "setup", data: string) => this.chunk(data);
-    const gc = `git -c safe.directory='*' -C ${repoDir}`;
+    const silent = (_src: "setup", _data: string) => {};
+    // http.connectTimeout: fail fast on DNS/TCP failures (seconds).
+    // lowSpeedLimit/Time: abort if transfer rate stays below 1 B/s for 10 s.
+    const gc = `git -c safe.directory='*' -c http.connectTimeout=10 -c http.lowSpeedLimit=1 -c http.lowSpeedTime=10 -C ${repoDir}`;
 
-    let onRemote = false;
-    const fetch1 = await spawnSetupStep(
+    // Silent probe — failure is expected when branch doesn't exist on remote yet.
+    // After a successful fetch, refs/remotes/origin/<branch> exists and
+    // `checkout -f` will auto-create the local tracking branch from it, so a
+    // second `fetch origin branch:branch` is not needed.
+    const probe = await spawnSetupStep(
       `${gc} fetch origin +refs/heads/${branch}:refs/remotes/origin/${branch}`,
-      onChunk,
+      silent,
     );
-    if (fetch1 === 0) {
-      const fetch2 = await spawnSetupStep(
-        `${gc} fetch origin ${branch}:${branch}`,
-        onChunk,
-      );
-      onRemote = fetch2 === 0;
-    }
 
-    if (onRemote) {
+    if (probe === 0) {
       const code = await spawnSetupStep(`${gc} checkout -f ${branch}`, onChunk);
       if (code !== 0)
         throw new Error(`git checkout -f ${branch} exited ${code}`);
       return;
     }
 
-    const checkoutCode = await spawnSetupStep(
-      `${gc} checkout -f ${branch}`,
-      onChunk,
+    // Branch not on remote — try local checkout (silent; might fail), then create.
+    this.chunk(
+      `[orchestrator] branch not found on remote, checking out locally\r\n`,
     );
-    if (checkoutCode === 0) return;
-    const createCode = await spawnSetupStep(
-      `${gc} checkout -b ${branch}`,
-      onChunk,
-    );
-    if (createCode !== 0)
-      throw new Error(`git checkout -b ${branch} exited ${createCode}`);
+    if ((await spawnSetupStep(`${gc} checkout -f ${branch}`, silent)) === 0)
+      return;
+
+    this.chunk(`[orchestrator] creating new local branch: ${branch}\r\n`);
+    const code = await spawnSetupStep(`${gc} checkout -b ${branch}`, onChunk);
+    if (code !== 0) throw new Error(`git checkout -b ${branch} exited ${code}`);
   }
 }
