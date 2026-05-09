@@ -44,16 +44,16 @@ spec:
     # even for established flows. Static ingress rules bypass conntrack and
     # are matched first. 1.1.1.1/8.8.8.8 are non-RFC1918 so the NP agent
     # does not strip them from the BPF policy map.
+    # No ports restriction here — Kubernetes ingress `ports` means the pod's
+    # destination port, not the remote's source port. DNS responses arrive
+    # on ephemeral ports, so `ports: [53]` would never match. The egress
+    # rule already restricts the pod to sending UDP/TCP 53 to these IPs, so
+    # the only traffic arriving from 1.1.1.1/8.8.8.8 will be DNS responses.
     - from:
         - ipBlock:
             cidr: 1.1.1.1/32
         - ipBlock:
             cidr: 8.8.8.8/32
-      ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
     {{- with .Values.networkPolicy.extraIngress }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
