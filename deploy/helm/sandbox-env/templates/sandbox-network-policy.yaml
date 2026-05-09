@@ -9,15 +9,17 @@
 # but is not the primary resolver. DNS traffic goes directly to public IPs —
 # no kube-dns Service VIP, no eBPF DNAT.
 #
-# Why both Ingress AND Egress policyTypes with explicit ingress rules:
+# Why both Ingress AND Egress policyTypes with allow-all ingress:
 # AWS VPC CNI network policy agent v1.3.x attaches an eBPF ingress TC hook
-# even for Egress-only policies (confirmed live). That hook drops UDP port 53
-# responses via broken conntrack — both for kube-dns VIP (DNAT key mismatch)
-# and for direct public resolvers (UDP conntrack bug). The only reliable fix
-# is to give the ingress hook a static rule to match: it checks explicit
-# Ingress rules before conntrack. Public resolver IPs (1.1.1.1, 8.8.8.8)
-# are non-RFC1918 so the NP agent does not strip them from the BPF policy map
-# (RFC1918 IPs are excluded by fwruleprocessor — confirmed in agent logs).
+# even for Egress-only policies (confirmed live). That hook has broken
+# conntrack for both UDP (DNAT key mismatch) and TCP (intermittent), causing
+# DNS responses and HTTPS SYN-ACKs to be dropped. Explicit ingress rules for
+# specific IPs only fix DNS but not TCP return traffic. The reliable fix is
+# ingress: [{}] (allow-all) which puts the hook in DEFAULT_ALLOW mode —
+# equivalent to what policyTypes:[Egress] was supposed to do. All security
+# is enforced on the egress side. Ingress is safe to open: the daemon
+# requires a bearer token, and egress deny-all for RFC1918 means sandboxes
+# cannot initiate connections to in-cluster services regardless.
 #
 # Threat model: workload is arbitrary user code. Egress must not reach IMDS
 # (169.254.169.254 / fd00:ec2::254), in-cluster RFC1918 services, or
@@ -39,21 +41,7 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # Allow DNS responses from public resolvers only. The eBPF ingress TC hook
-    # in AWS VPC CNI v1.3.x has a broken UDP conntrack path that drops replies
-    # even for established flows. Static ingress rules bypass conntrack and
-    # are matched first. 1.1.1.1/8.8.8.8 are non-RFC1918 so the NP agent
-    # does not strip them from the BPF policy map.
-    # No ports restriction here — Kubernetes ingress `ports` means the pod's
-    # destination port, not the remote's source port. DNS responses arrive
-    # on ephemeral ports, so `ports: [53]` would never match. The egress
-    # rule already restricts the pod to sending UDP/TCP 53 to these IPs, so
-    # the only traffic arriving from 1.1.1.1/8.8.8.8 will be DNS responses.
-    - from:
-        - ipBlock:
-            cidr: 1.1.1.1/32
-        - ipBlock:
-            cidr: 8.8.8.8/32
+    - {} # allow all — see comment above
     {{- with .Values.networkPolicy.extraIngress }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
