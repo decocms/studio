@@ -157,7 +157,11 @@ export async function seedOrgDb(organizationId: string, createdBy: string) {
       console.error("Failed to install studio pack agents:", err);
     }
 
-    if (settings.aiGatewayEnabled && decoAiGatewayAdapter.provisionKey) {
+    if (
+      settings.aiGatewayEnabled &&
+      settings.studioProvisionSecretKey &&
+      decoAiGatewayAdapter.provisionKey
+    ) {
       try {
         const meshJwt = await mintGatewayJwt(createdBy);
         const apiKey = await decoAiGatewayAdapter.provisionKey(
