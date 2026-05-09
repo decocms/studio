@@ -261,12 +261,96 @@ if (!store.read()) {
 
 let firstWorkLogged = false;
 
+async function configH(req: Request): Promise<Response> {
+  const { method } = req;
+  if (method === "GET") return configReadH();
+  if (method === "PUT" || method === "POST") {
+    const res = await configUpdateH(req);
+    // Mark daemon as claimed on first successful config delivery so the
+    // housekeeper can distinguish warm-pool pods awaiting adoption from
+    // idle-but-active sandboxes.
+    if (res.status === 200) markClaimed();
+    return res;
+  }
+  return jsonResponse({ error: "Not found: /_decopilot_vm/config" }, 404);
+}
+
+function tasksRouteH(
+  req: Request,
+  method: string,
+  vmPath: string,
+): Response | Promise<Response> {
+  if (method === "GET" && vmPath === "/tasks") return tasksListH(req);
+  if (method === "POST" && vmPath === "/tasks/kill-all") return tasksKillAllH();
+  if (method === "GET" && /^\/tasks\/[^/]+\/stream$/.test(vmPath))
+    return tasksStreamH(req);
+  if (method === "POST" && /^\/tasks\/[^/]+\/kill$/.test(vmPath))
+    return tasksKillH(req);
+  if (method === "DELETE" && /^\/tasks\/[^/]+$/.test(vmPath))
+    return tasksDeleteH(req);
+  if (method === "GET" && /^\/tasks\/[^/]+$/.test(vmPath))
+    return tasksGetH(req);
+  return jsonResponse({ error: `Not found: /_decopilot_vm${vmPath}` }, 404);
+}
+
+function execRouteH(
+  req: Request,
+  vmPath: string,
+): Response | Promise<Response> {
+  if (vmPath.endsWith("/kill")) {
+    const rawName = vmPath.slice("/exec/".length, -"/kill".length);
+    try {
+      const name = decodeURIComponent(rawName);
+      return jsonResponse({
+        killed: taskManager.killByLogName(name, { intentional: true }),
+      });
+    } catch {
+      return jsonResponse({ error: "invalid script name" }, 400);
+    }
+  }
+  return execH(req);
+}
+
+const fsH: Record<string, (req: Request) => Response | Promise<Response>> = {
+  "/read": readH,
+  "/write": writeH,
+  "/edit": editH,
+  "/grep": grepH,
+  "/glob": globH,
+  "/write_from_url": writeFromUrlH,
+  "/upload_to_url": uploadToUrlH,
+  "/bash": bashH,
+};
+
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE",
   "Access-Control-Allow-Headers":
     "Content-Type, Accept, Cache-Control, Authorization",
 };
+
+function vmRouteH(
+  req: Request,
+  method: string,
+  vmPath: string,
+): Response | Promise<Response> {
+  if (method === "GET" && vmPath === "/idle") return idleH();
+  if (method === "GET" && vmPath === "/events") return eventsH();
+  if (method === "GET" && vmPath === "/scripts") return scriptsHandler();
+  if (method === "OPTIONS")
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+
+  const denied = requireToken(req, bootConfig.daemonToken);
+  if (denied) return denied;
+
+  if (vmPath === "/config") return configH(req);
+  if (vmPath.startsWith("/tasks")) return tasksRouteH(req, method, vmPath);
+  if (method === "POST" && vmPath in fsH) return fsH[vmPath](req);
+  if (method === "POST" && vmPath.startsWith("/exec/"))
+    return execRouteH(req, vmPath);
+
+  return jsonResponse({ error: `Not found: /_decopilot_vm${vmPath}` }, 404);
+}
 
 Bun.serve<WsProxyData, never>({
   port: bootConfig.proxyPort,
@@ -297,72 +381,9 @@ Bun.serve<WsProxyData, never>({
     }
 
     if (method === "GET" && p === "/health") return healthH();
-    if (!p.startsWith("/_decopilot_vm/")) return proxyH(req);
-
-    const vmPath = p.slice("/_decopilot_vm".length);
-
-    if (method === "GET" && vmPath === "/idle") return idleH();
-    if (method === "GET" && vmPath === "/events") return eventsH();
-    if (method === "GET" && vmPath === "/scripts") return scriptsHandler();
-    if (method === "OPTIONS")
-      return new Response(null, { status: 204, headers: CORS_HEADERS });
-
-    const denied = requireToken(req, bootConfig.daemonToken);
-    if (denied) return denied;
-
-    if (vmPath === "/config") {
-      if (method === "GET") return configReadH();
-      if (method === "PUT" || method === "POST") {
-        const res = await configUpdateH(req);
-        // Mark daemon as claimed on first successful config delivery so the
-        // housekeeper can distinguish warm-pool pods awaiting adoption from
-        // idle-but-active sandboxes.
-        if (res.status === 200) markClaimed();
-        return res;
-      }
-    }
-
-    if (vmPath.startsWith("/tasks")) {
-      if (method === "GET" && vmPath === "/tasks") return tasksListH(req);
-      if (method === "POST" && vmPath === "/tasks/kill-all")
-        return tasksKillAllH();
-      if (method === "GET" && /^\/tasks\/[^/]+\/stream$/.test(vmPath))
-        return tasksStreamH(req);
-      if (method === "POST" && /^\/tasks\/[^/]+\/kill$/.test(vmPath))
-        return tasksKillH(req);
-      if (method === "DELETE" && /^\/tasks\/[^/]+$/.test(vmPath))
-        return tasksDeleteH(req);
-      if (method === "GET" && /^\/tasks\/[^/]+$/.test(vmPath))
-        return tasksGetH(req);
-    }
-
-    if (method === "POST") {
-      if (vmPath === "/read") return readH(req);
-      if (vmPath === "/write") return writeH(req);
-      if (vmPath === "/edit") return editH(req);
-      if (vmPath === "/grep") return grepH(req);
-      if (vmPath === "/glob") return globH(req);
-      if (vmPath === "/write_from_url") return writeFromUrlH(req);
-      if (vmPath === "/upload_to_url") return uploadToUrlH(req);
-      if (vmPath === "/bash") return bashH(req);
-      if (vmPath.startsWith("/exec/")) {
-        if (vmPath.endsWith("/kill")) {
-          const rawName = vmPath.slice("/exec/".length, -"/kill".length);
-          let name: string;
-          try {
-            name = decodeURIComponent(rawName);
-          } catch {
-            return jsonResponse({ error: "invalid script name" }, 400);
-          }
-          return jsonResponse({
-            killed: taskManager.killByLogName(name, { intentional: true }),
-          });
-        }
-        return execH(req);
-      }
-    }
-
-    return jsonResponse({ error: `Not found: ${p}` }, 404);
+    if (p.startsWith("/_decopilot_vm/"))
+      return vmRouteH(req, method, p.slice("/_decopilot_vm".length));
+    return proxyH(req);
   },
   websocket: {
     open: wsProxy.open,
