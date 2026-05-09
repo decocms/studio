@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type {
-  BranchStatus,
-  BranchStatusReady,
-} from "@/web/components/vm/hooks/use-vm-events";
+import type { BranchStatus, BranchStatusReady } from "./use-branch-status";
 import { selectHeaderButton } from "./panel-state";
 import type { CheckRun, PrSummary } from "./use-pr-data";
 import type { PrReviewSignals } from "./use-pr-reviews";

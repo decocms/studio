@@ -1,3 +1,4 @@
+import { markClaimed } from "../activity";
 import type { TenantConfigStore } from "../config-store";
 import type { ApplyResult } from "../config-store/types";
 import type { Phase } from "../process/phase-manager";
@@ -96,6 +97,7 @@ export function makeConfigUpdateHandler(deps: ConfigDeps) {
     }
     const { auth: _strip, ...patch } = wire;
     const result = await deps.store.apply(patch as Partial<TenantConfig>);
+    if (result.kind !== "rejected") markClaimed();
     return makeApplyResponse(deps.daemonBootId, result);
   };
 }

@@ -12,14 +12,15 @@ import {
   pmRunCommand,
 } from "../constants";
 import type { Broadcaster } from "../events/broadcast";
+import type { DaemonStatus } from "../events/types";
 import type { BranchStatusMonitor } from "../git/branch-status";
 import { gitSync } from "../git/git-sync";
 import type { InstallState } from "../install/install-state";
 import { InstallState as InstallStateClass } from "../install/install-state";
+import type { LifecycleManager } from "../lifecycle/manager";
 import { LogTee } from "../process/log-tee";
 import { appLogPath, hasGitRepo, resolvePmRoot } from "../paths";
 import { discoverScripts } from "../process/script-discovery";
-import type { PhaseManager } from "../process/phase-manager";
 import type { Application, Config } from "../types";
 import { autodetectApplication } from "./autodetect";
 import { spawnClone } from "./clone";
@@ -30,32 +31,40 @@ import { installProtectedBranchHook } from "../git/protect-branch";
 
 const INSTALL_LOG_MAX_BYTES = 10 * 1024 * 1024;
 
+/**
+ * The named entry points into the setup pipeline. A step always runs
+ * forward through the pipeline (install also runs start; clone also runs
+ * install + start).
+ */
+export type Step = "clone" | "install" | "start";
+
+const STEP_RANK: Record<Step, number> = { clone: 3, install: 2, start: 1 };
+
 export interface SetupOrchestratorDeps {
   bootConfig: { appRoot: string; repoDir: string };
   store: TenantConfigStore;
   taskManager: TaskManager;
-  setIntent: (next: { state: "running" | "paused"; reason?: string }) => void;
-  getIntent: () => { state: "running" | "paused"; reason?: string };
+  setStatus: (next: DaemonStatus) => void;
+  getStatus: () => DaemonStatus;
   broadcaster: Broadcaster;
   installState: InstallState;
   /** Workspace tmp dir; install tee lives at `<logsDir>/app/install`. */
   logsDir: string;
-  /** When provided, setup phases are tracked via the phase manager. */
-  phaseManager?: PhaseManager;
+  lifecycle: LifecycleManager;
   branchStatus: BranchStatusMonitor;
 }
 
 /**
- * Reducer over `Transition` events emitted by the config store.
- *
- * Each transition maps to one async recipe. An internal FIFO queue
- * serializes runs so an in-flight install can't race a branch checkout.
- * Same-kind transitions coalesce (only the most recent matters).
+ * Drives the setup pipeline (clone → install → start) in response to config
+ * changes (`handle(transition)`) or explicit retry requests
+ * (`resumeFrom(step)`). A FIFO queue serializes runs so an in-flight install
+ * can't race a branch checkout.
  */
 export class SetupOrchestrator {
-  private readonly queue: Transition[] = [];
+  private readonly queue: Step[] = [];
   private running = false;
   private currentBranchHead: string | undefined;
+  private latestScripts: string[] | null = null;
 
   constructor(private readonly deps: SetupOrchestratorDeps) {
     this.deps.taskManager.onTaskExit((summary) => {
@@ -68,26 +77,26 @@ export class SetupOrchestrator {
         return;
       if (summary.intentional) return;
       if (summary.exitCode === 0 || summary.exitCode === null) return;
-      this.deps.setIntent({
-        state: "paused",
+      this.deps.setStatus({
+        state: "error",
         reason: `dev script exited with code ${summary.exitCode}`,
       });
     });
   }
 
-  /** Fire-and-forget enqueue. */
+  /** Config-store transition → step. Fire-and-forget. */
   handle(transition: Transition): void {
-    if (
-      transition.kind === "no-op" ||
-      transition.kind === "identity-conflict"
-    ) {
-      return;
-    }
-    this.coalesce(transition);
-    void this.drain();
+    const step = transitionToStep(transition);
+    if (!step) return;
+    this.enqueueStep(step);
   }
 
-  /** True while a transition is being applied. Surfaced on /health. */
+  /** Studio retry endpoint → resume from a named step. Fire-and-forget. */
+  resumeFrom(step: Step): void {
+    this.enqueueStep(step);
+  }
+
+  /** True while a step is being applied. Surfaced on /health. */
   isRunning(): boolean {
     return this.running;
   }
@@ -96,19 +105,22 @@ export class SetupOrchestrator {
     return this.queue.length;
   }
 
-  private coalesce(t: Transition): void {
-    // Last-of-kind wins for transitions that fully describe themselves.
-    const collapsable = new Set([
-      "branch-change",
-      "pm-change",
-      "runtime-change",
-      "port-change",
-    ]);
-    if (collapsable.has(t.kind)) {
-      const idx = this.queue.findIndex((q) => q.kind === t.kind);
-      if (idx >= 0) this.queue.splice(idx, 1);
+  /** Snapshot of the most recently discovered package-manager scripts. */
+  getDiscoveredScripts(): string[] | null {
+    return this.latestScripts;
+  }
+
+  private enqueueStep(step: Step): void {
+    // A higher-rank step subsumes lower-rank work — clone implies
+    // install + start, install implies start. So if `clone` is queued,
+    // there's no point also queuing `install` or `start`.
+    const rank = STEP_RANK[step];
+    if (this.queue.some((q) => STEP_RANK[q] >= rank)) return;
+    for (let i = this.queue.length - 1; i >= 0; i--) {
+      if (STEP_RANK[this.queue[i]] < rank) this.queue.splice(i, 1);
     }
-    this.queue.push(t);
+    this.queue.push(step);
+    void this.drain();
   }
 
   private async drain(): Promise<void> {
@@ -116,31 +128,16 @@ export class SetupOrchestrator {
     this.running = true;
     try {
       while (this.queue.length > 0) {
-        const t = this.queue.shift();
-        if (!t) break;
-        const taskId = this.deps.phaseManager?.begin(`transition:${t.kind}`);
-        this.chunk(`[orchestrator] transition: ${t.kind}\r\n`);
-        this.deps.broadcaster.broadcastEvent("transition", {
-          kind: t.kind,
-          phase: "start",
-        });
+        const step = this.queue.shift();
+        if (!step) break;
+        this.chunk(`[orchestrator] running step: ${step}\r\n`);
         try {
-          await this.run(t);
-          this.chunk(`[orchestrator] done: ${t.kind}\r\n`);
-          this.deps.broadcaster.broadcastEvent("transition", {
-            kind: t.kind,
-            phase: "done",
-          });
-          if (taskId) this.deps.phaseManager?.done(taskId);
+          await this.runStep(step);
         } catch (e) {
+          // Step methods own their own lifecycle transitions; this catch is
+          // a backstop for unexpected throws so the queue keeps draining.
           const msg = (e as Error).message;
-          this.chunk(`\r\n[orchestrator] failed: ${t.kind}: ${msg}\r\n`);
-          this.deps.broadcaster.broadcastEvent("transition", {
-            kind: t.kind,
-            phase: "failed",
-            error: msg,
-          });
-          if (taskId) this.deps.phaseManager?.fail(taskId, msg);
+          this.chunk(`\r\n[orchestrator] step ${step} crashed: ${msg}\r\n`);
         }
       }
     } finally {
@@ -148,22 +145,22 @@ export class SetupOrchestrator {
     }
   }
 
-  private async run(t: Transition): Promise<void> {
-    switch (t.kind) {
-      case "bootstrap":
-        return this.bootstrap();
-      case "branch-change":
-        return this.branchChange(t.to);
-      case "pm-change":
-      case "runtime-change":
-        return this.reinstallAndMaybeStart();
-      case "port-change":
-        return this.maybeRestartDev();
-      case "no-op":
-      case "identity-conflict":
+  private async runStep(step: Step): Promise<void> {
+    switch (step) {
+      case "clone":
+        if (!(await this.stepClone())) return;
+        if (!(await this.stepInstall())) return;
+        await this.stepStart();
         return;
-      default:
-        t satisfies never;
+      case "install":
+        await this.stopDevTask();
+        if (!(await this.stepInstall())) return;
+        await this.stepStart();
+        return;
+      case "start":
+        await this.stopDevTask();
+        await this.stepStart();
+        return;
     }
   }
 
@@ -184,14 +181,18 @@ export class SetupOrchestrator {
     this.deps.broadcaster.broadcastChunk("setup", data);
   }
 
-  private async bootstrap(): Promise<void> {
-    const initial = this.currentConfig();
-    if (!initial) return;
+  /**
+   * Acquires source: clone if no .git, otherwise checkout the configured
+   * branch. Then runs idempotent post-source-acquisition steps (git
+   * identity, protected-branch hook, fillDefaults).
+   */
+  private async stepClone(): Promise<boolean> {
+    const config = this.currentConfig();
+    if (!config) return false;
+    const cloneUrl = config.git?.repository?.cloneUrl;
 
-    const cloneUrl = initial.git?.repository?.cloneUrl;
-    if (cloneUrl && !hasGitRepo(initial.repoDir)) {
-      this.deps.branchStatus.setPhase({ kind: "cloning" });
-      const cloneTaskId = this.deps.phaseManager?.begin("clone");
+    if (cloneUrl && !hasGitRepo(config.repoDir)) {
+      this.deps.lifecycle.transition({ phase: "cloning" });
       const cloneLogPath = appLogPath(this.deps.logsDir, "clone");
       try {
         unlinkSync(cloneLogPath);
@@ -202,7 +203,7 @@ export class SetupOrchestrator {
       let code: number;
       try {
         code = await spawnClone({
-          config: initial,
+          config,
           onChunk: (_src, data) => {
             this.chunk(data);
             cloneTee.write(data);
@@ -212,45 +213,142 @@ export class SetupOrchestrator {
         cloneTee.close();
         const error = (e as Error).message;
         this.chunk(`\r\n[orchestrator] clone failed: ${error}\r\n`);
-        if (cloneTaskId) this.deps.phaseManager?.fail(cloneTaskId, error);
-        this.deps.branchStatus.setPhase({ kind: "clone-failed", error });
-        return;
+        this.deps.lifecycle.transition({ phase: "clone-failed", error });
+        return false;
       }
       cloneTee.close();
       if (code !== 0) {
-        this.chunk(`\r\n[orchestrator] clone failed (exit ${code})\r\n`);
-        if (cloneTaskId)
-          this.deps.phaseManager?.fail(cloneTaskId, `exit ${code}`);
-        this.deps.branchStatus.setPhase({
-          kind: "clone-failed",
-          error: `exit ${code}`,
-        });
-        return;
+        const error = `exit ${code}`;
+        this.chunk(`\r\n[orchestrator] clone failed (${error})\r\n`);
+        this.deps.lifecycle.transition({ phase: "clone-failed", error });
+        return false;
       }
-      if (cloneTaskId) this.deps.phaseManager?.done(cloneTaskId);
     } else if (cloneUrl) {
-      this.chunk(`[orchestrator] repo already cloned\r\n`);
+      // Repo exists. If a different branch is configured, treat that as a
+      // checkout step under the lifecycle.
+      const branch = config.git?.repository?.branch;
+      if (branch && !isSyntheticBranch(branch)) {
+        this.deps.lifecycle.transition({ phase: "checking-out", to: branch });
+        try {
+          await this.checkoutBranch(branch);
+        } catch (e) {
+          const error = (e as Error).message;
+          this.chunk(`\r\n[orchestrator] checkout failed: ${error}\r\n`);
+          this.deps.lifecycle.transition({ phase: "clone-failed", error });
+          return false;
+        }
+      } else {
+        this.chunk(`[orchestrator] repo already cloned\r\n`);
+      }
     }
 
     // Identity has to run after clone so `git config` has a repo to write
     // into — earlier order tripped posix_spawn ENOENT (it reads cwd before
     // exec, and repoDir doesn't exist until clone returns).
-    await this.gitSetup(initial);
-    await this.fillApplicationDefaults(initial.repoDir);
-    this.deps.branchStatus.markReady();
+    await this.gitSetup(config);
+    await this.fillApplicationDefaults(config.repoDir);
+    this.deps.branchStatus.refresh();
+    return true;
+  }
 
+  /**
+   * Run install. Skips when fingerprint matches (already installed for this
+   * config + branch HEAD). Returns true on success/skip, false on failure.
+   */
+  private async stepInstall(): Promise<boolean> {
+    const config = this.currentConfig();
+    if (!config) return false;
+    if (this.deps.installState.isInstalledFor(config, this.currentBranchHead)) {
+      this.broadcastDiscoveredScripts(config);
+      return true;
+    }
+    if (!config.application?.packageManager?.name) {
+      // Nothing to install — proceed to start, which will diagnose.
+      return true;
+    }
+
+    this.deps.lifecycle.transition({ phase: "installing" });
+    this.chunk(`[orchestrator] installing dependencies\r\n`);
+
+    const installLogPath = appLogPath(this.deps.logsDir, "install");
+    try {
+      unlinkSync(installLogPath);
+    } catch {
+      /* not present */
+    }
+    const installTee = new LogTee(installLogPath, INSTALL_LOG_MAX_BYTES);
+    const installPromise = spawnInstall({
+      config,
+      onChunk: (_src, data) => {
+        this.chunk(data);
+        installTee.write(data);
+      },
+    });
+    // null = no install step needed (e.g. deno auto-fetches; or no manifest
+    // present yet). Treat as success so the caller proceeds to start; mark
+    // the install fingerprint so resume doesn't retry on every boot.
+    if (!installPromise) {
+      installTee.close();
+      this.markInstallSucceeded(config);
+      return true;
+    }
+    const code = await installPromise;
+    installTee.close();
+    if (code !== 0) {
+      const error = `exit ${code}`;
+      this.chunk(`\r\n[orchestrator] install failed (${error})\r\n`);
+      this.deps.installState.mark(
+        InstallStateClass.fingerprint(config, this.currentBranchHead),
+        false,
+      );
+      this.deps.lifecycle.transition({ phase: "install-failed", error });
+      return false;
+    }
+    this.markInstallSucceeded(config);
+    return true;
+  }
+
+  /**
+   * Spawn the dev script. Probe drives the transition from `starting` to
+   * `running` once the dev server responds.
+   */
+  private async stepStart(): Promise<void> {
     const config = this.currentConfig();
     if (!config) return;
-
+    if (this.deps.getStatus().state !== "running") {
+      this.chunk(
+        `\r\n[orchestrator] skipping start: status=${this.deps.getStatus().state} (resume to retry)\r\n`,
+      );
+      return;
+    }
     if (
       !this.deps.installState.isInstalledFor(config, this.currentBranchHead)
     ) {
-      const ok = await this.runInstall();
-      if (!ok) return;
-    } else {
-      this.broadcastDiscoveredScripts(config);
+      this.chunk(
+        "\r\n[orchestrator] skipping start: install fingerprint mismatch\r\n",
+      );
+      return;
     }
-    await this.startIfReady();
+    const command = this.buildStartCommand(config);
+    if (!command) {
+      const reason = this.diagnoseNoStartCommand(config);
+      this.chunk(reason);
+      this.deps.lifecycle.transition({
+        phase: "start-failed",
+        error: reason.replace(/\r?\n/g, " ").trim(),
+      });
+      return;
+    }
+    this.deps.lifecycle.transition({ phase: "starting" });
+    await this.deps.taskManager.spawn({
+      command: command.cmd,
+      cwd: command.cwd,
+      env: buildDevEnv(config),
+      label: command.label,
+      mode: "pty",
+      logName: command.source,
+      replaceByLogName: true,
+    });
   }
 
   /**
@@ -259,7 +357,7 @@ export class SetupOrchestrator {
    * config always wins; this only patches gaps.
    *
    * Goes through `store.applyInternal` (not `apply`) so a fresh
-   * pm-change/runtime-change isn't emitted — this runs inside bootstrap,
+   * pm-change/runtime-change isn't emitted — this runs inside stepClone,
    * which already handles install+start. The `compute` callback executes
    * inside the store's serial queue, so a concurrent PUT can't race the
    * read-then-write.
@@ -293,78 +391,11 @@ export class SetupOrchestrator {
     });
   }
 
-  private async branchChange(to: string): Promise<void> {
-    await this.stopDevTask();
-    this.chunk(`[orchestrator] checking out branch: ${to}\r\n`);
-    this.deps.branchStatus.setPhase({ kind: "checking-out", to });
-    try {
-      await this.checkoutBranch(to);
-    } catch (e) {
-      const error = (e as Error).message;
-      this.chunk(`\r\n[orchestrator] branch-change failed: ${error}\r\n`);
-      this.deps.branchStatus.setPhase({ kind: "checkout-failed", error });
-      return;
-    }
-    this.refreshBranchHead();
-    this.deps.branchStatus.markReady();
-    const ok = await this.runInstall();
-    if (ok) await this.startIfReady();
-  }
-
-  private async reinstallAndMaybeStart(): Promise<void> {
-    await this.stopDevTask();
-    const ok = await this.runInstall();
-    if (ok) await this.startIfReady();
-  }
-
-  private async maybeRestartDev(): Promise<void> {
-    await this.stopDevTask();
-    await this.startIfReady();
-  }
-
   private async stopDevTask(): Promise<void> {
     for (const starter of WELL_KNOWN_STARTERS) {
       this.deps.taskManager.killByLogName(starter, { intentional: true });
     }
     await this.deps.taskManager.waitForLogNamesIdle(WELL_KNOWN_STARTERS);
-  }
-
-  /**
-   * Start the dev script iff the install fingerprint matches and we have a
-   * discovered starter script. No retry on failure — the dev process must be
-   * (re)launched by a config change (pm, runtime, branch, or port).
-   */
-  private async startIfReady(): Promise<void> {
-    const config = this.currentConfig();
-    if (!config) return;
-    if (this.deps.getIntent().state === "paused") {
-      this.chunk(
-        "\r\n[orchestrator] skipping start: intent=paused (resume to retry)\r\n",
-      );
-      return;
-    }
-    if (
-      !this.deps.installState.isInstalledFor(config, this.currentBranchHead)
-    ) {
-      this.chunk(
-        "\r\n[orchestrator] skipping start: install fingerprint mismatch\r\n",
-      );
-      return;
-    }
-    const command = this.buildStartCommand(config);
-    if (!command) {
-      this.chunk(this.diagnoseNoStartCommand(config));
-      return;
-    }
-    await this.deps.taskManager.spawn({
-      command: command.cmd,
-      cwd: command.cwd,
-      env: buildDevEnv(config),
-      label: command.label,
-      mode: "pty",
-      logName: command.source,
-      replaceByLogName: true,
-    });
   }
 
   private diagnoseNoStartCommand(config: Config): string {
@@ -411,54 +442,7 @@ export class SetupOrchestrator {
     };
   }
 
-  private async runInstall(): Promise<boolean> {
-    const config = this.currentConfig();
-    if (!config) return false;
-    if (!config.application?.packageManager?.name) return false;
-    const installTaskId = this.deps.phaseManager?.begin("install");
-    this.chunk(`[orchestrator] installing dependencies\r\n`);
-    const installLogPath = appLogPath(this.deps.logsDir, "install");
-    try {
-      unlinkSync(installLogPath);
-    } catch {
-      /* not present */
-    }
-    const installTee = new LogTee(installLogPath, INSTALL_LOG_MAX_BYTES);
-    const installPromise = spawnInstall({
-      config,
-      onChunk: (_src, data) => {
-        this.chunk(data);
-        installTee.write(data);
-      },
-    });
-    // null = no install step needed (e.g. deno auto-fetches; or no manifest
-    // present yet). Treat as success so the caller proceeds to start; mark
-    // the install fingerprint so resume doesn't retry on every boot.
-    if (!installPromise) {
-      installTee.close();
-      this.markInstallSucceeded(config);
-      if (installTaskId) this.deps.phaseManager?.done(installTaskId);
-      return true;
-    }
-    const code = await installPromise;
-    installTee.close();
-    if (code !== 0) {
-      this.chunk(`\r\n[orchestrator] install failed (exit ${code})\r\n`);
-      this.deps.installState.mark(
-        InstallStateClass.fingerprint(config, this.currentBranchHead),
-        false,
-      );
-      if (installTaskId)
-        this.deps.phaseManager?.fail(installTaskId, `exit ${code}`);
-      return false;
-    }
-    this.markInstallSucceeded(config);
-    if (installTaskId) this.deps.phaseManager?.done(installTaskId);
-    return true;
-  }
-
   private async gitSetup(config: Config): Promise<void> {
-    const gitTaskId = this.deps.phaseManager?.begin("git-setup");
     try {
       configureGitIdentity(config);
     } catch (e) {
@@ -487,7 +471,6 @@ export class SetupOrchestrator {
       }
     }
     this.refreshBranchHead();
-    if (gitTaskId) this.deps.phaseManager?.done(gitTaskId);
   }
 
   private markInstallSucceeded(config: Config): void {
@@ -511,10 +494,8 @@ export class SetupOrchestrator {
       cwd,
       config.application?.packageManager?.name ?? null,
     );
-    this.deps.broadcaster.broadcastEvent("scripts", {
-      type: "scripts",
-      scripts,
-    });
+    this.latestScripts = scripts;
+    this.deps.broadcaster.emit("scripts", { scripts });
   }
 
   private refreshBranchHead(): void {
@@ -566,5 +547,24 @@ export class SetupOrchestrator {
     this.chunk(`[orchestrator] creating new local branch: ${branch}\r\n`);
     const code = await spawnSetupStep(`${gc} checkout -b ${branch}`, onChunk);
     if (code !== 0) throw new Error(`git checkout -b ${branch} exited ${code}`);
+  }
+}
+
+function transitionToStep(t: Transition): Step | null {
+  switch (t.kind) {
+    case "bootstrap":
+    case "branch-change":
+      return "clone";
+    case "runtime-change":
+    case "pm-change":
+      return "install";
+    case "port-change":
+      return "start";
+    case "identity-conflict":
+    case "no-op":
+      return null;
+    default:
+      t satisfies never;
+      return null;
   }
 }

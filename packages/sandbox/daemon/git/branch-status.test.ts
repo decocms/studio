@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Broadcaster } from "../events/broadcast";
+import type { DaemonEventName, DaemonEventPayload } from "../events/types";
 import { gitSync } from "./git-sync";
 import { BranchStatusMonitor } from "./branch-status";
 
@@ -24,20 +25,33 @@ function makeRepo(): { repoDir: string; cleanup: () => void } {
   };
 }
 
+/** Commit a file at `path` with `content` so it's tracked. */
+function commitFile(repoDir: string, path: string, content: string): void {
+  writeFileSync(join(repoDir, path), content);
+  gitSync(["add", path], { cwd: repoDir, asUser: false });
+  gitSync(["commit", "-m", `add ${path}`], { cwd: repoDir, asUser: false });
+}
+
 describe("BranchStatusMonitor", () => {
   let repo: ReturnType<typeof makeRepo>;
   let broadcaster: Broadcaster;
-  let events: Array<{ event: string; data: unknown }>;
+  let events: Array<{
+    name: DaemonEventName;
+    payload: DaemonEventPayload<DaemonEventName>;
+  }>;
 
   beforeEach(() => {
     repo = makeRepo();
     broadcaster = new Broadcaster(1024);
     events = [];
-    const orig = broadcaster.broadcastEvent.bind(broadcaster);
-    broadcaster.broadcastEvent = (event, data) => {
-      events.push({ event, data });
-      orig(event, data);
-    };
+    const orig = broadcaster.emit.bind(broadcaster);
+    broadcaster.emit = ((name, payload) => {
+      events.push({
+        name,
+        payload: payload as DaemonEventPayload<DaemonEventName>,
+      });
+      orig(name, payload);
+    }) as Broadcaster["emit"];
   });
 
   afterEach(() => repo.cleanup());
@@ -54,70 +68,81 @@ describe("BranchStatusMonitor", () => {
     return new BranchStatusMonitor(config, broadcaster);
   }
 
-  it("starts in 'initializing' on construction", () => {
+  it("starts as 'unknown' on construction", () => {
     const m = newMonitor();
-    expect(m.getLast()).toEqual({ kind: "initializing" });
+    expect(m.getLast()).toEqual({ kind: "unknown" });
   });
 
-  it("setPhase('cloning') broadcasts and updates last", () => {
+  it("refresh() computes git status and emits ready meta", () => {
     const m = newMonitor();
-    m.setPhase({ kind: "cloning" });
-    expect(m.getLast()).toEqual({ kind: "cloning" });
-    expect(events).toContainEqual({
-      event: "branch-status",
-      data: { type: "branch-status", kind: "cloning" },
-    });
-  });
-
-  it("setPhase('clone-failed') carries the error", () => {
-    const m = newMonitor();
-    m.setPhase({ kind: "clone-failed", error: "exit 128" });
-    expect(m.getLast()).toEqual({ kind: "clone-failed", error: "exit 128" });
-    const last = events.at(-1);
-    expect(last?.event).toBe("branch-status");
-    expect(last?.data).toEqual({
-      type: "branch-status",
-      kind: "clone-failed",
-      error: "exit 128",
-    });
-  });
-
-  it("markReady() computes git status and emits 'ready'", () => {
-    const m = newMonitor();
-    m.markReady();
+    m.refresh();
     const last = m.getLast();
     if (last?.kind !== "ready") throw new Error("expected ready");
     expect(last.branch).toBe("main");
     expect(last.workingTreeDirty).toBe(false);
     expect(last.headSha).toMatch(/^[0-9a-f]{40}$/);
-    expect(events.at(-1)?.event).toBe("branch-status");
+    const branchEvents = events.filter((e) => e.name === "branch");
+    expect(branchEvents.length).toBe(1);
+    expect(
+      (branchEvents[0]?.payload as DaemonEventPayload<"branch">).meta.kind,
+    ).toBe("ready");
   });
 
-  it("markReady() does not re-broadcast identical state", () => {
+  it("refresh() does not re-emit identical state", () => {
     const m = newMonitor();
-    m.markReady();
+    m.refresh();
     const before = events.length;
-    m.markReady();
+    m.refresh();
     expect(events.length).toBe(before);
   });
 
-  it("setPhase deduplicates identical consecutive phases", () => {
-    const m = newMonitor();
-    m.setPhase({ kind: "cloning" });
-    m.setPhase({ kind: "cloning" });
-    const cloningEvents = events.filter(
-      (e) =>
-        e.event === "branch-status" &&
-        (e.data as { kind?: string }).kind === "cloning",
-    );
-    expect(cloningEvents.length).toBe(1);
-  });
+  describe("dirty baseline", () => {
+    it("ignores baseline-dirty paths when computing workingTreeDirty", () => {
+      // Simulate: dev script regenerates a tracked file (e.g. tailwind.css).
+      commitFile(repo.repoDir, "tailwind.css", "/* original */");
+      writeFileSync(join(repo.repoDir, "tailwind.css"), "/* regenerated */");
 
-  it("setPhase overwrites a sticky 'clone-failed'", () => {
-    const m = newMonitor();
-    m.setPhase({ kind: "clone-failed", error: "x" });
-    m.setPhase({ kind: "cloning" });
-    expect(m.getLast()).toEqual({ kind: "cloning" });
+      const m = newMonitor();
+      m.armBaseline();
+      const last = m.getLast();
+      if (last?.kind !== "ready") throw new Error("expected ready");
+      expect(last.workingTreeDirty).toBe(false);
+    });
+
+    it("flips dirty=true when a non-baseline file changes", () => {
+      commitFile(repo.repoDir, "tailwind.css", "/* original */");
+      commitFile(repo.repoDir, "src.ts", "export const x = 1;");
+      writeFileSync(join(repo.repoDir, "tailwind.css"), "/* regenerated */");
+
+      const m = newMonitor();
+      m.armBaseline();
+      expect(
+        (m.getLast() as { workingTreeDirty: boolean }).workingTreeDirty,
+      ).toBe(false);
+
+      // User now edits a different file — must surface as dirty.
+      writeFileSync(join(repo.repoDir, "src.ts"), "export const x = 2;");
+      m.refresh();
+      expect(
+        (m.getLast() as { workingTreeDirty: boolean }).workingTreeDirty,
+      ).toBe(true);
+    });
+
+    it("clearBaseline() restores raw dirty reporting", () => {
+      commitFile(repo.repoDir, "tailwind.css", "/* original */");
+      writeFileSync(join(repo.repoDir, "tailwind.css"), "/* regenerated */");
+
+      const m = newMonitor();
+      m.armBaseline();
+      expect(
+        (m.getLast() as { workingTreeDirty: boolean }).workingTreeDirty,
+      ).toBe(false);
+
+      m.clearBaseline();
+      expect(
+        (m.getLast() as { workingTreeDirty: boolean }).workingTreeDirty,
+      ).toBe(true);
+    });
   });
 
   // Regression: when appRoot != repoDir AND appRoot is nested inside another
@@ -165,7 +190,7 @@ describe("BranchStatusMonitor", () => {
         dropPrivileges: false,
       } as never;
       const monitor = new BranchStatusMonitor(config, broadcaster);
-      monitor.markReady();
+      monitor.refresh();
 
       const last = monitor.getLast();
       if (last?.kind !== "ready")

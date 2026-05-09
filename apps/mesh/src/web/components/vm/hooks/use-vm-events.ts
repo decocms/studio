@@ -8,11 +8,11 @@ import {
 } from "./vm-events-context.tsx";
 
 export type {
-  BranchStatus,
-  BranchStatusReady,
+  BranchMeta,
   ChunkHandler,
+  DaemonStatus,
+  LifecycleState,
   ReloadHandler,
-  VmStatus,
 } from "./vm-events-context.tsx";
 
 export function useVmEvents() {

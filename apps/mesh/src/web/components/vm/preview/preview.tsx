@@ -99,17 +99,24 @@ export function PreviewContent() {
     // oxlint-disable-next-line no-self-assign
     iframe.src = iframe.src;
   });
-  const hasHtmlPreview = vmEvents.status.htmlSupport;
+  // `running` lifecycle phase carries the live port + htmlSupport flag;
+  // `crashed` means the dev server stopped responding after coming up.
+  // Everything else maps to "booting" for the preview overlay.
+  const lifecyclePhase = vmEvents.lifecycle.phase;
+  const hasHtmlPreview =
+    lifecyclePhase === "running" ? vmEvents.lifecycle.htmlSupport : false;
+  const upstreamStatus: "booting" | "online" | "offline" =
+    lifecyclePhase === "running"
+      ? "online"
+      : lifecyclePhase === "crashed"
+        ? "offline"
+        : "booting";
   const suspended = vmEvents.suspended;
 
-  // Install ran, dev script is intentionally stopped (paused) — treat as paused,
-  // not booting. Otherwise on remount the booting overlay falsely flashes
-  // "Installing packages…" even though the server isn't starting.
-  const appPaused = vmEvents.intent.state === "paused";
-
-  // The daemon's status enum (booting/online/offline) is itself the
-  // "ever-responded" latch — offline means we saw a response and lost it,
-  // and htmlSupport is sticky on offline at the source.
+  // Daemon paused itself (dev script crashed) or user paused — treat as
+  // paused so the booting overlay doesn't falsely flash "Installing
+  // packages…" even though the server isn't starting.
+  const appPaused = vmEvents.status.state !== "running";
 
   // Latch the boot-overlay timer's `since` to the first time previewUrl
   // appeared, keyed on previewUrl so a new VM resets it. Rendering inline
@@ -158,8 +165,8 @@ export function PreviewContent() {
 
   const previewState = computePreviewState({
     previewUrl,
-    status: vmEvents.status.status,
-    htmlSupport: vmEvents.status.htmlSupport,
+    status: upstreamStatus,
+    htmlSupport: hasHtmlPreview,
     suspended,
     appPaused,
     vmStartPending,
