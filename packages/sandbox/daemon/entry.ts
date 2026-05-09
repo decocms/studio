@@ -261,20 +261,27 @@ if (!store.read()) {
 
 let firstWorkLogged = false;
 
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE",
+  "Access-Control-Allow-Headers":
+    "Content-Type, Accept, Cache-Control, Authorization",
+};
+
 Bun.serve<WsProxyData, never>({
   port: bootConfig.proxyPort,
   hostname: "0.0.0.0",
   idleTimeout: 0,
   async fetch(req, server) {
-    const url = new URL(req.url);
-    const p = url.pathname;
+    const { pathname: p } = new URL(req.url);
+    const { method } = req;
 
     if (p !== "/health" && p !== "/_decopilot_vm/idle") {
       bumpActivity();
       if (!firstWorkLogged) {
         firstWorkLogged = true;
         console.log(
-          `[daemon] boot_id=${process.env.DAEMON_BOOT_ID} first request: METHOD=${req.method} PATH=${p}`,
+          `[daemon] boot_id=${process.env.DAEMON_BOOT_ID} first request: METHOD=${method} PATH=${p}`,
         );
       }
     }
@@ -284,22 +291,28 @@ Bun.serve<WsProxyData, never>({
       !p.startsWith("/_decopilot_vm/")
     ) {
       const ok = server.upgrade(req, { data: wsProxy.upgradeData(req) });
-      if (ok) return undefined as unknown as Response;
-      return new Response("Upgrade failed", { status: 400 });
+      return ok
+        ? (undefined as unknown as Response)
+        : new Response("Upgrade failed", { status: 400 });
     }
 
-    if (p === "/health" && req.method === "GET") return healthH();
+    if (method === "GET" && p === "/health") return healthH();
+    if (!p.startsWith("/_decopilot_vm/")) return proxyH(req);
 
-    if (req.method === "GET" && p === "/_decopilot_vm/idle") return idleH();
-    if (req.method === "GET" && p === "/_decopilot_vm/events") return eventsH();
-    if (req.method === "GET" && p === "/_decopilot_vm/scripts")
-      return scriptsHandler();
+    const vmPath = p.slice("/_decopilot_vm".length);
 
-    if (p === "/_decopilot_vm/config") {
-      const denied = requireToken(req, bootConfig.daemonToken);
-      if (denied) return denied;
-      if (req.method === "GET") return configReadH();
-      if (req.method === "PUT" || req.method === "POST") {
+    if (method === "GET" && vmPath === "/idle") return idleH();
+    if (method === "GET" && vmPath === "/events") return eventsH();
+    if (method === "GET" && vmPath === "/scripts") return scriptsHandler();
+    if (method === "OPTIONS")
+      return new Response(null, { status: 204, headers: CORS_HEADERS });
+
+    const denied = requireToken(req, bootConfig.daemonToken);
+    if (denied) return denied;
+
+    if (vmPath === "/config") {
+      if (method === "GET") return configReadH();
+      if (method === "PUT" || method === "POST") {
         const res = await configUpdateH(req);
         // Mark daemon as claimed on first successful config delivery so the
         // housekeeper can distinguish warm-pool pods awaiting adoption from
@@ -309,72 +322,47 @@ Bun.serve<WsProxyData, never>({
       }
     }
 
-    if (p.startsWith("/_decopilot_vm/tasks")) {
-      const denied = requireToken(req, bootConfig.daemonToken);
-      if (denied) return denied;
-      if (req.method === "GET" && p === "/_decopilot_vm/tasks")
-        return tasksListH(req);
-      if (req.method === "POST" && p === "/_decopilot_vm/tasks/kill-all")
+    if (vmPath.startsWith("/tasks")) {
+      if (method === "GET" && vmPath === "/tasks") return tasksListH(req);
+      if (method === "POST" && vmPath === "/tasks/kill-all")
         return tasksKillAllH();
-      if (
-        req.method === "GET" &&
-        /^\/_decopilot_vm\/tasks\/[^/]+\/stream$/.test(p)
-      )
+      if (method === "GET" && /^\/tasks\/[^/]+\/stream$/.test(vmPath))
         return tasksStreamH(req);
-      if (
-        req.method === "POST" &&
-        /^\/_decopilot_vm\/tasks\/[^/]+\/kill$/.test(p)
-      )
+      if (method === "POST" && /^\/tasks\/[^/]+\/kill$/.test(vmPath))
         return tasksKillH(req);
-      if (req.method === "DELETE" && /^\/_decopilot_vm\/tasks\/[^/]+$/.test(p))
+      if (method === "DELETE" && /^\/tasks\/[^/]+$/.test(vmPath))
         return tasksDeleteH(req);
-      if (req.method === "GET" && /^\/_decopilot_vm\/tasks\/[^/]+$/.test(p))
+      if (method === "GET" && /^\/tasks\/[^/]+$/.test(vmPath))
         return tasksGetH(req);
     }
 
-    if (req.method === "POST" && p.startsWith("/_decopilot_vm/")) {
-      const denied = requireToken(req, bootConfig.daemonToken);
-      if (denied) return denied;
-
-      if (p === "/_decopilot_vm/read") return readH(req);
-      if (p === "/_decopilot_vm/write") return writeH(req);
-      if (p === "/_decopilot_vm/edit") return editH(req);
-      if (p === "/_decopilot_vm/grep") return grepH(req);
-      if (p === "/_decopilot_vm/glob") return globH(req);
-      if (p === "/_decopilot_vm/write_from_url") return writeFromUrlH(req);
-      if (p === "/_decopilot_vm/upload_to_url") return uploadToUrlH(req);
-      if (p === "/_decopilot_vm/bash") return bashH(req);
-      if (p.endsWith("/kill") && p.startsWith("/_decopilot_vm/exec/")) {
-        const rawName = p.slice("/_decopilot_vm/exec/".length, -"/kill".length);
-        let name: string;
-        try {
-          name = decodeURIComponent(rawName);
-        } catch {
-          return jsonResponse({ error: "invalid script name" }, 400);
+    if (method === "POST") {
+      if (vmPath === "/read") return readH(req);
+      if (vmPath === "/write") return writeH(req);
+      if (vmPath === "/edit") return editH(req);
+      if (vmPath === "/grep") return grepH(req);
+      if (vmPath === "/glob") return globH(req);
+      if (vmPath === "/write_from_url") return writeFromUrlH(req);
+      if (vmPath === "/upload_to_url") return uploadToUrlH(req);
+      if (vmPath === "/bash") return bashH(req);
+      if (vmPath.startsWith("/exec/")) {
+        if (vmPath.endsWith("/kill")) {
+          const rawName = vmPath.slice("/exec/".length, -"/kill".length);
+          let name: string;
+          try {
+            name = decodeURIComponent(rawName);
+          } catch {
+            return jsonResponse({ error: "invalid script name" }, 400);
+          }
+          return jsonResponse({
+            killed: taskManager.killByLogName(name, { intentional: true }),
+          });
         }
-        const killed = taskManager.killByLogName(name, { intentional: true });
-        return jsonResponse({ killed });
+        return execH(req);
       }
-      if (p.startsWith("/_decopilot_vm/exec/")) return execH(req);
     }
 
-    if (req.method === "OPTIONS" && p.startsWith("/_decopilot_vm/")) {
-      return new Response(null, {
-        status: 204,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE",
-          "Access-Control-Allow-Headers":
-            "Content-Type, Accept, Cache-Control, Authorization",
-        },
-      });
-    }
-
-    if (p.startsWith("/_decopilot_vm/")) {
-      return jsonResponse({ error: `Not found: ${p}` }, 404);
-    }
-
-    return proxyH(req);
+    return jsonResponse({ error: `Not found: ${p}` }, 404);
   },
   websocket: {
     open: wsProxy.open,
