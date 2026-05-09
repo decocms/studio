@@ -90,20 +90,39 @@ spec:
             - -c
             - |
               set -e
-              apk add --no-cache iptables
+              # NOTE: this apk install requires outbound internet access at pod start.
+              # If Alpine mirrors are unreachable, set -e causes the init container to
+              # fail and the sandbox pod will not start (fail-closed). Consider a
+              # pre-built image with iptables+ip6tables baked in for air-gapped clusters.
+              apk add --no-cache iptables ip6tables
+              # IPv4: block private ranges, IMDS, and shared address space first so
+              # the port-53/443 ACCEPTs below never fire for in-cluster destinations.
               iptables -A OUTPUT -d 10.0.0.0/8     -j REJECT
               iptables -A OUTPUT -d 172.16.0.0/12  -j REJECT
               iptables -A OUTPUT -d 192.168.0.0/16 -j REJECT
               iptables -A OUTPUT -d 169.254.0.0/16 -j REJECT
               iptables -A OUTPUT -d 100.64.0.0/10  -j REJECT
               {{- range .Values.additionalBlockCIDRs }}
-              iptables -A OUTPUT -d {{ . }} -j REJECT
+              iptables -A OUTPUT -d {{ . | quote }} -j REJECT
               {{- end }}
               iptables -A OUTPUT -p udp --dport 53  -j ACCEPT
               iptables -A OUTPUT -p tcp --dport 53  -j ACCEPT
               iptables -A OUTPUT -p tcp --dport 443 -j ACCEPT
               iptables -A OUTPUT -o lo              -j ACCEPT
-              iptables -A OUTPUT -j REJECT
+              iptables -A OUTPUT                    -j REJECT
+              # IPv6: block link-local, ULA (covers in-cluster Service ranges), and
+              # the AWS IPv6 IMDS prefix so dual-stack pods cannot bypass IPv4 rules.
+              # Skipped gracefully on kernels/nodes without IPv6 netfilter support.
+              if ip6tables -L > /dev/null 2>&1; then
+                ip6tables -A OUTPUT -d fe80::/10     -j REJECT
+                ip6tables -A OUTPUT -d fc00::/7      -j REJECT
+                ip6tables -A OUTPUT -d fd00:ec2::/96 -j REJECT
+                ip6tables -A OUTPUT -p udp --dport 53  -j ACCEPT
+                ip6tables -A OUTPUT -p tcp --dport 53  -j ACCEPT
+                ip6tables -A OUTPUT -p tcp --dport 443 -j ACCEPT
+                ip6tables -A OUTPUT -o lo              -j ACCEPT
+                ip6tables -A OUTPUT                    -j REJECT
+              fi
           resources:
             requests:
               cpu: 10m

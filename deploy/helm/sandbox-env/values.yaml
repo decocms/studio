@@ -66,11 +66,14 @@ resources:
 # The init container runs with NET_ADMIN, programs iptables in the pod
 # network namespace, then exits — user code never holds NET_ADMIN.
 #
-# Additional CIDRs to block beyond the hardcoded base set (RFC1918,
-# link-local, IMDS, shared address space). Use this when the cluster's
-# pod or service CIDR falls outside those ranges — e.g. GKE with a
-# custom secondary range, or any cluster whose pod CIDR you want to
-# block explicitly.
+# Additional IPv4 CIDRs to block beyond the hardcoded base set (RFC1918,
+# link-local, IMDS, shared address space). IPv4 only — the init container
+# passes these to `iptables`, not `ip6tables`. Use this when the cluster's
+# pod or service CIDR falls outside the base set — e.g. GKE with a custom
+# secondary range, or any cluster whose pod CIDR you want to block explicitly.
+# Values must be valid CIDR notation (e.g. "192.0.2.0/24"); malformed entries
+# will cause `iptables` to exit non-zero, failing the init container (and
+# therefore the sandbox pod — the fail-closed outcome is intentional).
 #
 # additionalBlockCIDRs:
 #   - 192.0.2.0/24
