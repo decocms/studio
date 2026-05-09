@@ -120,7 +120,7 @@ export async function seedOrgDb(organizationId: string, createdBy: string) {
           title: mcpConfig.data.title,
           connection_type: mcpConfig.data.connection_type,
           connection_url: mcpConfig.data.connection_url,
-          connection_token: mcpConfig.data.connection_token,
+          connection_token: mcpConfig.data.connection_token ?? connectionToken,
           connection_headers: mcpConfig.data.connection_headers,
         }).catch(() => null);
         const tools =
