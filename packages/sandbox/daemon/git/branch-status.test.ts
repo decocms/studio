@@ -83,9 +83,11 @@ describe("BranchStatusMonitor", () => {
     expect(last.headSha).toMatch(/^[0-9a-f]{40}$/);
     const branchEvents = events.filter((e) => e.name === "branch");
     expect(branchEvents.length).toBe(1);
-    expect(
-      (branchEvents[0]?.payload as DaemonEventPayload<"branch">).meta.kind,
-    ).toBe("ready");
+    const first = branchEvents[0];
+    if (!first) throw new Error("missing branch event");
+    expect((first.payload as DaemonEventPayload<"branch">).meta.kind).toBe(
+      "ready",
+    );
   });
 
   it("refresh() does not re-emit identical state", () => {

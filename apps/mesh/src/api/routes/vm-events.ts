@@ -8,7 +8,7 @@
  *      VM_START posting a SandboxClaim and the daemon coming online.
  *      Agent-sandbox runner emits real K8s phases; other runners emit a
  *      single synthetic `ready`.
- *   2. Daemon events (`event: log|status|scripts|processes|reload|branch-status`)
+ *   2. Daemon events (`event: log|lifecycle|status|tasks|scripts|branch|reload`)
  *      — proxied from the in-pod daemon's `/_decopilot_vm/events` SSE once
  *      lifecycle reaches `ready`. Wire format is preserved verbatim by raw
  *      byte-piping the upstream body, so daemon and client speak the same
