@@ -245,9 +245,22 @@ const orgIndexRoute = createRoute({
 // SETTINGS LAYOUT (/$org/settings)
 // ============================================
 
+const SETTINGS_ENTERED_FROM_KEY = "mesh.settingsEnteredFrom";
+
 const settingsLayout = createRoute({
   getParentRoute: () => orgLayout,
   path: "/settings",
+  beforeLoad: () => {
+    // Record the URL the user was on right before entering /settings, so the
+    // toolbar back button can return there even when the in-settings history
+    // has accumulated extra entries (e.g. /settings → /settings/general
+    // redirect → /settings/connections → detail).
+    if (typeof window === "undefined") return;
+    const current = window.location.pathname + window.location.search;
+    if (!current.includes("/settings")) {
+      sessionStorage.setItem(SETTINGS_ENTERED_FROM_KEY, current);
+    }
+  },
   component: lazyRouteComponent(() => import("./layouts/settings-layout.tsx")),
 });
 

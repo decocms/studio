@@ -3,6 +3,7 @@ import {
   Link,
   useRouterState,
   useParams,
+  useNavigate,
 } from "@tanstack/react-router";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
@@ -380,13 +381,33 @@ export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
 // Settings toolbar — back/forward navigation only (no panel toggles)
 // ---------------------------------------------------------------------------
 
+const SETTINGS_ENTERED_FROM_KEY = "mesh.settingsEnteredFrom";
+
 function SettingsToolbar() {
+  const { org } = useParams({ from: "/shell/$org" });
+  const navigate = useNavigate();
+
+  const handleBack = () => {
+    // Prefer the URL the user was on before entering /settings (recorded in
+    // settingsLayout.beforeLoad). Falls back to the org home if that signal
+    // isn't available — never leave the user stranded inside /settings.
+    if (typeof window !== "undefined") {
+      const from = sessionStorage.getItem(SETTINGS_ENTERED_FROM_KEY);
+      if (from && !from.includes("/settings")) {
+        sessionStorage.removeItem(SETTINGS_ENTERED_FROM_KEY);
+        navigate({ to: from });
+        return;
+      }
+    }
+    navigate({ to: "/$org", params: { org } });
+  };
+
   return (
     <div className="shrink-0 flex items-center justify-between pl-1 pr-2 h-10">
       <div className="flex items-center gap-0.5 min-w-0">
         <button
           type="button"
-          onClick={() => window.history.back()}
+          onClick={handleBack}
           className="flex size-7 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
           title="Go back"
         >
