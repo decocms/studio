@@ -37,6 +37,7 @@ export function DeleteOrganizationSection() {
 
   const selfClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
+    orgSlug: org.slug,
     orgId: org.id,
   });
 
