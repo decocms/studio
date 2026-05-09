@@ -25,6 +25,7 @@ import { autodetectApplication } from "./autodetect";
 import { spawnClone } from "./clone";
 import { configureGitIdentity } from "./identity";
 import { spawnInstall } from "./install";
+import { spawnSetupStep } from "./spawn-step";
 import { installProtectedBranchHook } from "../git/protect-branch";
 
 const INSTALL_LOG_MAX_BYTES = 10 * 1024 * 1024;
@@ -533,41 +534,39 @@ export class SetupOrchestrator {
   private async checkoutBranch(branch: string): Promise<void> {
     const repoDir = this.deps.bootConfig.repoDir;
     if (!repoDir) return;
+    const onChunk = (_src: "setup", data: string) => this.chunk(data);
+    const gc = `git -c safe.directory='*' -C ${repoDir}`;
 
     let onRemote = false;
-    try {
-      gitSync(
-        [
-          "-c",
-          "safe.directory=*",
-          "fetch",
-          "origin",
-          `+refs/heads/${branch}:refs/remotes/origin/${branch}`,
-        ],
-        { cwd: repoDir },
+    const fetch1 = await spawnSetupStep(
+      `${gc} fetch origin +refs/heads/${branch}:refs/remotes/origin/${branch}`,
+      onChunk,
+    );
+    if (fetch1 === 0) {
+      const fetch2 = await spawnSetupStep(
+        `${gc} fetch origin ${branch}:${branch}`,
+        onChunk,
       );
-      gitSync(
-        ["-c", "safe.directory=*", "fetch", "origin", `${branch}:${branch}`],
-        { cwd: repoDir },
-      );
-      onRemote = true;
-    } catch {
-      /* not on remote — fall through to local create */
+      onRemote = fetch2 === 0;
     }
+
     if (onRemote) {
-      gitSync(["-c", "safe.directory=*", "checkout", "-f", branch], {
-        cwd: repoDir,
-      });
-    } else {
-      try {
-        gitSync(["-c", "safe.directory=*", "checkout", "-f", branch], {
-          cwd: repoDir,
-        });
-      } catch {
-        gitSync(["-c", "safe.directory=*", "checkout", "-b", branch], {
-          cwd: repoDir,
-        });
-      }
+      const code = await spawnSetupStep(`${gc} checkout -f ${branch}`, onChunk);
+      if (code !== 0)
+        throw new Error(`git checkout -f ${branch} exited ${code}`);
+      return;
     }
+
+    const checkoutCode = await spawnSetupStep(
+      `${gc} checkout -f ${branch}`,
+      onChunk,
+    );
+    if (checkoutCode === 0) return;
+    const createCode = await spawnSetupStep(
+      `${gc} checkout -b ${branch}`,
+      onChunk,
+    );
+    if (createCode !== 0)
+      throw new Error(`git checkout -b ${branch} exited ${createCode}`);
   }
 }
