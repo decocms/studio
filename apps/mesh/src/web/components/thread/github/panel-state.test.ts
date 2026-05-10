@@ -240,6 +240,15 @@ describe("selectHeaderButton", () => {
     expect(r.tooltip).toBe("OOM killed");
   });
 
+  test("running + status.running + branch.unknown → 'Loading branch…'", () => {
+    const r = selectHeaderButton(
+      happyInput({ branch: { kind: "unknown" } }),
+    );
+    expect(r.label).toBe("Loading branch…");
+    expect(r.disabled).toBe(true);
+    expect(r.loading).toBe(true);
+  });
+
   test("no diff anywhere → Up to date (disabled, outline)", () => {
     const r = selectHeaderButton(happyInput());
     expect(r.label).toBe("Up to date");

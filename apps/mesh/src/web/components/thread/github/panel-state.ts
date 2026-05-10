@@ -205,10 +205,11 @@ export function selectHeaderButton(
   // this race lands in a later task.
   if (branch.kind !== "ready") {
     return {
-      label: "Loading…",
+      label: "Loading branch…",
       disabled: true,
       loading: true,
       variant: "outline",
+      tooltip: "Waiting for branch metadata from the sandbox daemon",
     };
   }
   const ready = branch;
