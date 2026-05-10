@@ -148,6 +148,14 @@ export function selectHeaderButton(
         tooltip:
           lifecycle.error || "package install failed — see setup logs",
       };
+    case "start-failed":
+      return {
+        label: "Start failed",
+        disabled: true,
+        variant: "outline",
+        tooltip:
+          lifecycle.error || "dev server failed to start — see setup logs",
+      };
     case "running":
       // Fall through to the post-sandbox checks below.
       break;
