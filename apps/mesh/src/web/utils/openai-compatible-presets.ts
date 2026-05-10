@@ -13,6 +13,11 @@ export interface OpenAICompatiblePreset {
   description: string;
   logo: string;
   baseUrlPlaceholder: string;
+  /**
+   * Pre-fills the base URL field. Use for fixed-endpoint presets like the
+   * OpenAI API. Leave undefined for presets where the URL varies per install.
+   */
+  defaultBaseUrl?: string;
   /** When true, the form hints that an API key is typically required. */
   apiKeyRecommended: boolean;
   /** Short copy shown in the form's helper area. */
@@ -20,6 +25,16 @@ export interface OpenAICompatiblePreset {
 }
 
 export const OPENAI_COMPATIBLE_PRESETS: OpenAICompatiblePreset[] = [
+  {
+    id: "openai",
+    name: "OpenAI",
+    description: "Connect your OpenAI account with an API key",
+    logo: "https://assets.decocache.com/decocms/d138aa7e-5b8c-4821-9e64-6aff40df2cdc/ChatGPT_logo.svg",
+    baseUrlPlaceholder: "https://api.openai.com/v1",
+    defaultBaseUrl: "https://api.openai.com/v1",
+    apiKeyRecommended: true,
+    helpText: "Use your OpenAI API key (starts with sk-).",
+  },
   {
     id: "litellm",
     name: "LiteLLM",

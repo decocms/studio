@@ -167,7 +167,11 @@ export function ConnectOpenAICompatibleForm({
     formState: { errors },
   } = useForm<OpenAICompatibleFormData>({
     resolver: zodResolver(openaiCompatibleFormSchema),
-    defaultValues: { label: "", baseUrl: "", apiKey: "" },
+    defaultValues: {
+      label: "",
+      baseUrl: preset?.defaultBaseUrl ?? "",
+      apiKey: "",
+    },
   });
 
   const {

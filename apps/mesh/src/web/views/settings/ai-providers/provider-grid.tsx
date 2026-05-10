@@ -69,6 +69,7 @@ export function ProviderGrid({ providers, onSelect }: ProviderGridProps) {
       p.id !== "openai-compatible",
   );
   const openaiCompatible = providers.find((p) => p.id === "openai-compatible");
+  const openaiPreset = OPENAI_COMPATIBLE_PRESETS.find((p) => p.id === "openai");
 
   return (
     <div className="flex flex-col gap-6">
@@ -125,9 +126,28 @@ export function ProviderGrid({ providers, onSelect }: ProviderGridProps) {
                 onClick={() => onSelect({ kind: "provider", provider })}
               />
             )),
+            ...(openaiCompatible && openaiPreset
+              ? [
+                  <ProviderTile
+                    key={openaiPreset.id}
+                    logo={openaiPreset.logo}
+                    name={openaiPreset.name}
+                    description={openaiPreset.description}
+                    onClick={() =>
+                      onSelect({
+                        kind: "openai-compatible",
+                        provider: openaiCompatible,
+                        preset: openaiPreset,
+                      })
+                    }
+                  />,
+                ]
+              : []),
             ...(openaiCompatible
               ? [
-                  ...OPENAI_COMPATIBLE_PRESETS.map((preset) => (
+                  ...OPENAI_COMPATIBLE_PRESETS.filter(
+                    (p) => p.id !== "openai",
+                  ).map((preset) => (
                     <ProviderTile
                       key={preset.id}
                       logo={preset.logo}
