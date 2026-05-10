@@ -16,6 +16,7 @@ import {
   ConnectionCreateData,
   ToolDefinition,
 } from "@/tools/connection/schema";
+import { installGeoAuditAgent } from "@/agents/geo-seo";
 import { installStudioPack } from "@/tools/virtual/studio-pack";
 import { z } from "zod";
 import { getSettings } from "../settings";
@@ -155,6 +156,14 @@ export async function seedOrgDb(organizationId: string, createdBy: string) {
       await installStudioPack(organizationId, createdBy, virtualMcpStorage);
     } catch (err) {
       console.error("Failed to install studio pack agents:", err);
+    }
+
+    // Install GEO Audit Agent (sandbox-resident geo-seo-claude runner)
+    try {
+      const virtualMcpStorage = new VirtualMCPStorage(database.db);
+      await installGeoAuditAgent(organizationId, createdBy, virtualMcpStorage);
+    } catch (err) {
+      console.error("Failed to install GEO Audit Agent:", err);
     }
 
     if (
