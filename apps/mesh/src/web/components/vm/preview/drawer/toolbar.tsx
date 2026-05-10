@@ -68,7 +68,7 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
   );
 
   return (
-    <div className="flex h-9 shrink-0 items-center gap-3 border-t border-border bg-muted/30 px-3">
+    <div className="flex h-9 shrink-0 items-center gap-3 border-t border-border bg-muted/60 px-3">
       <StatusButton
         status={props.status}
         onStart={props.onStart}
@@ -207,10 +207,10 @@ function TabButton({
         type="button"
         onClick={onClick}
         className={cn(
-          "rounded-md px-2.5 py-1 text-xs",
+          "rounded-md border px-2.5 py-1 text-xs",
           active
-            ? "bg-background font-medium"
-            : "text-muted-foreground hover:text-foreground",
+            ? "border-border bg-background font-medium text-foreground shadow-sm"
+            : "border-transparent text-muted-foreground hover:bg-background/50 hover:text-foreground",
         )}
       >
         {children}
