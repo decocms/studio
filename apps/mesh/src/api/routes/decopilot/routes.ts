@@ -72,45 +72,68 @@ async function validateRequest(
 // Per-Request Model Resolution
 // ============================================================================
 
+function toModelInfo(resolved: Awaited<ReturnType<typeof resolveTier>>) {
+  const caps = resolved.modelMeta.capabilities;
+  return {
+    id: resolved.modelId,
+    title: resolved.modelMeta.title ?? resolved.modelId,
+    provider: resolved.modelMeta.providerId ?? null,
+    capabilities:
+      caps && caps.length > 0
+        ? {
+            vision:
+              caps.includes("vision") || caps.includes("image") || undefined,
+            text: caps.includes("text") || undefined,
+            reasoning: caps.includes("reasoning") || undefined,
+          }
+        : undefined,
+    limits: resolved.modelMeta.limits
+      ? {
+          contextWindow: resolved.modelMeta.limits.contextWindow,
+          maxOutputTokens:
+            resolved.modelMeta.limits.maxOutputTokens ?? undefined,
+        }
+      : undefined,
+  };
+}
+
+/**
+ * Try to resolve a tier without failing the whole request. Returns null when
+ * the tier is unconfigured + has no curated default — used for optional
+ * auxiliary tiers (image, web_research) where missing-credentials should
+ * disable the corresponding tool, not 400 the chat request.
+ */
+async function tryResolveTier(ctx: MeshContext, tier: SimpleModeTier) {
+  try {
+    return await resolveTier(ctx, tier);
+  } catch (err) {
+    if (err instanceof TierUnavailableError) return null;
+    console.warn(`[decopilot] tier "${tier}" resolution failed:`, err);
+    return null;
+  }
+}
+
 /**
  * Resolves a tier (defaulting to "smart") to a full ModelsConfig via the
  * shared resolveTier(), which falls back to curated provider defaults when
- * the org's tier slot is unset.
+ * the org's tier slot is unset. Also resolves the "image" and "web_research"
+ * tiers — when present they enable the generate_image and web_search
+ * built-in tools (registration is conditional in built-in-tools/index.ts).
  */
 async function resolvePerRequestModels(
   ctx: MeshContext,
   tier: SimpleModeTier | undefined,
 ): Promise<ModelsConfig> {
-  const resolved = await resolveTier(ctx, tier ?? "smart");
+  const [chat, image, webResearch] = await Promise.all([
+    resolveTier(ctx, tier ?? "smart"),
+    tryResolveTier(ctx, "image"),
+    tryResolveTier(ctx, "web_research"),
+  ]);
   return {
-    credentialId: resolved.credentialId,
-    thinking: {
-      id: resolved.modelId,
-      title: resolved.modelMeta.title ?? resolved.modelId,
-      provider: resolved.modelMeta.providerId ?? null,
-      capabilities:
-        resolved.modelMeta.capabilities &&
-        resolved.modelMeta.capabilities.length > 0
-          ? {
-              vision:
-                resolved.modelMeta.capabilities.includes("vision") ||
-                resolved.modelMeta.capabilities.includes("image") ||
-                undefined,
-              text:
-                resolved.modelMeta.capabilities.includes("text") || undefined,
-              reasoning:
-                resolved.modelMeta.capabilities.includes("reasoning") ||
-                undefined,
-            }
-          : undefined,
-      limits: resolved.modelMeta.limits
-        ? {
-            contextWindow: resolved.modelMeta.limits.contextWindow,
-            maxOutputTokens:
-              resolved.modelMeta.limits.maxOutputTokens ?? undefined,
-          }
-        : undefined,
-    },
+    credentialId: chat.credentialId,
+    thinking: toModelInfo(chat),
+    ...(image ? { image: toModelInfo(image) } : {}),
+    ...(webResearch ? { deepResearch: toModelInfo(webResearch) } : {}),
   };
 }
 
