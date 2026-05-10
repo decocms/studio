@@ -156,15 +156,20 @@ export function selectHeaderButton(
         tooltip:
           lifecycle.error || "dev server failed to start — see setup logs",
       };
+    case "crashed":
+      return {
+        label: "Dev server crashed",
+        disabled: true,
+        variant: "outline",
+        tooltip: "Dev server stopped responding — see setup logs",
+      };
     case "running":
       // Fall through to the post-sandbox checks below.
       break;
     default: {
-      // Other lifecycle phases (installing/starting/install-failed/
-      // start-failed/crashed) are handled in subsequent tasks. For now
-      // they shouldn't be reached by any test, but we keep the function
-      // total by falling through to the same "Loading…" pill the loading
-      // flag uses.
+      // All lifecycle phases are handled above; this preserves
+      // exhaustiveness if the daemon adds a new phase before the UI
+      // catches up. Prefer the same neutral pill the loading flag uses.
       return {
         label: "Loading…",
         disabled: true,

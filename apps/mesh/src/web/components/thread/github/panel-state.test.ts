@@ -201,6 +201,21 @@ describe("selectHeaderButton", () => {
     expect(r.tooltip).toBe("exit 1");
   });
 
+  test("lifecycle.crashed → 'Dev server crashed' (sandbox precedes git)", () => {
+    // crashed = was running, daemon's probe lost it. Even though branch is
+    // ready and changes might be committable, sandbox-state precedence
+    // means the header surfaces the failure, not git/PR copy.
+    const r = selectHeaderButton(
+      happyInput({
+        lifecycle: { phase: "crashed" },
+        branch: ready({ workingTreeDirty: true }),
+      }),
+    );
+    expect(r.label).toBe("Dev server crashed");
+    expect(r.disabled).toBe(true);
+    expect(r.variant).toBe("outline");
+  });
+
   test("no diff anywhere → Up to date (disabled, outline)", () => {
     const r = selectHeaderButton(happyInput());
     expect(r.label).toBe("Up to date");
