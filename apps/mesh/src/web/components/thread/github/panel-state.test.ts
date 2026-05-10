@@ -1,9 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type {
-  BranchMeta,
-  DaemonStatus,
-  LifecycleState,
-} from "@decocms/sandbox/shared";
+import type { BranchMeta, LifecycleState } from "@decocms/sandbox/shared";
 import type { ClaimPhase } from "@/web/components/vm/hooks/vm-events-context";
 import { selectHeaderButton } from "./panel-state";
 import type { CheckRun, PrSummary } from "./use-pr-data";
@@ -16,7 +12,6 @@ const RUNNING_LIFECYCLE: LifecycleState = {
   port: 3000,
   htmlSupport: true,
 };
-const RUNNING_STATUS: DaemonStatus = { state: "running" };
 
 function ready(over: Partial<ReadyBranch> = {}): ReadyBranch {
   return {
@@ -35,7 +30,6 @@ function ready(over: Partial<ReadyBranch> = {}): ReadyBranch {
 interface BaseInput {
   lifecycle: LifecycleState;
   branch: BranchMeta;
-  status: DaemonStatus;
   claimPhase: ClaimPhase | null;
   pr: PrSummary | null;
   checks: CheckRun[];
@@ -47,7 +41,6 @@ function happyInput(over: Partial<BaseInput> = {}): BaseInput {
   return {
     lifecycle: RUNNING_LIFECYCLE,
     branch: ready(),
-    status: RUNNING_STATUS,
     claimPhase: null,
     pr: null,
     checks: [],
@@ -222,98 +215,69 @@ describe("selectHeaderButton", () => {
     expect(r.loading).toBe(true);
   });
 
-  test("lifecycle.installing → 'Installing packages…'", () => {
+  // Post-clone lifecycle phases (installing / starting / install-failed /
+  // start-failed / crashed) intentionally fall through to git/PR logic.
+  // Git operates on the cloned repo independently of dev-server health;
+  // the user can commit fixes or push a hotfix even when the dev server
+  // can't run.
+
+  test("lifecycle.installing + dirty branch → Save changes (fall-through)", () => {
     const r = selectHeaderButton(
       happyInput({
         lifecycle: { phase: "installing" },
-        branch: { kind: "unknown" },
+        branch: ready({ workingTreeDirty: true }),
       }),
     );
-    expect(r.label).toBe("Installing packages…");
-    expect(r.disabled).toBe(true);
-    expect(r.loading).toBe(true);
-    expect(r.variant).toBe("outline");
+    expect(r.label).toBe("Save changes");
   });
 
-  test("lifecycle.starting → 'Starting dev server…'", () => {
+  test("lifecycle.starting + clean ready branch → Up to date (fall-through)", () => {
     const r = selectHeaderButton(
-      happyInput({
-        lifecycle: { phase: "starting" },
-        branch: { kind: "unknown" },
-      }),
+      happyInput({ lifecycle: { phase: "starting" } }),
     );
-    expect(r.label).toBe("Starting dev server…");
-    expect(r.disabled).toBe(true);
-    expect(r.loading).toBe(true);
+    expect(r.label).toBe("Up to date");
   });
 
-  test("lifecycle.install-failed → 'Install failed' with error tooltip", () => {
+  test("lifecycle.install-failed + dirty branch → Save changes (commit fixes)", () => {
     const r = selectHeaderButton(
       happyInput({
         lifecycle: { phase: "install-failed", error: "ENOENT package.json" },
-        branch: { kind: "unknown" },
+        branch: ready({ workingTreeDirty: true }),
       }),
     );
-    expect(r.label).toBe("Install failed");
-    expect(r.disabled).toBe(true);
-    expect(r.tooltip).toBe("ENOENT package.json");
+    expect(r.label).toBe("Save changes");
   });
 
-  test("lifecycle.start-failed → 'Start failed' with error tooltip", () => {
+  test("lifecycle.start-failed + ahead-of-base → Submit for review", () => {
     const r = selectHeaderButton(
       happyInput({
         lifecycle: { phase: "start-failed", error: "exit 1" },
-        branch: { kind: "unknown" },
+        branch: ready({ aheadOfBase: 3 }),
       }),
     );
-    expect(r.label).toBe("Start failed");
-    expect(r.disabled).toBe(true);
-    expect(r.tooltip).toBe("exit 1");
+    expect(r.label).toBe("Submit for review");
   });
 
-  test("lifecycle.crashed → 'Dev server crashed' (sandbox precedes git)", () => {
-    // crashed = was running, daemon's probe lost it. Even though branch is
-    // ready and changes might be committable, sandbox-state precedence
-    // means the header surfaces the failure, not git/PR copy.
+  test("lifecycle.crashed + dirty branch → Save changes (push hotfix)", () => {
     const r = selectHeaderButton(
       happyInput({
         lifecycle: { phase: "crashed" },
         branch: ready({ workingTreeDirty: true }),
       }),
     );
-    expect(r.label).toBe("Dev server crashed");
-    expect(r.disabled).toBe(true);
-    expect(r.variant).toBe("outline");
+    expect(r.label).toBe("Save changes");
   });
 
-  test("running + status.paused → 'Sandbox paused' (sandbox precedes git)", () => {
+  test("post-clone with branch still unknown → Loading branch… (defensive)", () => {
+    // Brief window between checkout completing and the daemon emitting
+    // the `branch` event with git metadata.
     const r = selectHeaderButton(
       happyInput({
-        status: { state: "paused", reason: "user-paused" },
-        branch: ready({ workingTreeDirty: true }),
+        lifecycle: { phase: "installing" },
+        branch: { kind: "unknown" },
       }),
     );
-    expect(r.label).toBe("Sandbox paused");
-    expect(r.disabled).toBe(true);
-    expect(r.variant).toBe("outline");
-  });
-
-  test("running + status.error → 'Dev errored' with reason tooltip", () => {
-    const r = selectHeaderButton(
-      happyInput({
-        status: { state: "error", reason: "OOM killed" },
-        branch: ready({ workingTreeDirty: true }),
-      }),
-    );
-    expect(r.label).toBe("Dev errored");
-    expect(r.disabled).toBe(true);
-    expect(r.tooltip).toBe("OOM killed");
-  });
-
-  test("running + status.running + branch.unknown → 'Loading branch…'", () => {
-    const r = selectHeaderButton(happyInput({ branch: { kind: "unknown" } }));
     expect(r.label).toBe("Loading branch…");
-    expect(r.disabled).toBe(true);
     expect(r.loading).toBe(true);
   });
 

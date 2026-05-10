@@ -39,12 +39,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
 
   const githubRepo = vm?.metadata?.githubRepo ?? null;
 
-  const {
-    lifecycle,
-    branch: branchMeta,
-    status,
-    phase: claimPhase,
-  } = useVmEvents();
+  const { lifecycle, branch: branchMeta, phase: claimPhase } = useVmEvents();
 
   const prQuery = usePrByBranch({
     orgId: org.id,
@@ -79,7 +74,6 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const button = selectHeaderButton({
     lifecycle,
     branch: branchMeta,
-    status,
     claimPhase,
     pr,
     checks: checksQuery.data ?? [],

@@ -1,8 +1,4 @@
-import type {
-  BranchMeta,
-  DaemonStatus,
-  LifecycleState,
-} from "@decocms/sandbox/shared";
+import type { BranchMeta, LifecycleState } from "@decocms/sandbox/shared";
 import type { ClaimPhase } from "@/web/components/vm/hooks/vm-events-context";
 import type { CheckRun, PrSummary } from "./use-pr-data.ts";
 import type { PrReviewSignals } from "./use-pr-reviews.ts";
@@ -87,7 +83,6 @@ function isCheckInProgress(c: CheckRun): boolean {
 export interface SelectHeaderButtonInput {
   lifecycle: LifecycleState;
   branch: BranchMeta;
-  status: DaemonStatus;
   claimPhase: ClaimPhase | null;
   pr: PrSummary | null;
   checks: CheckRun[];
@@ -110,9 +105,13 @@ export function selectHeaderButton(
     };
   }
 
-  // Sandbox-state precedence: header reflects boot/daemon state until
-  // the dev server is up AND the daemon's status is healthy AND the
-  // branch metadata has arrived. Only then does git/PR copy take over.
+  // Git operations work on the cloned repo, not on the dev server. So
+  // the header tracks the lifecycle ONLY through clone/checkout — the
+  // post-clone phases (installing / starting / running / *-failed /
+  // crashed) intentionally fall through to the git/PR copy below. The
+  // user can commit fixes for a broken install or push a hotfix while
+  // the dev server is down; we don't want to block those flows on
+  // sandbox health.
   switch (lifecycle.phase) {
     case "idle": {
       const label =
@@ -149,86 +148,13 @@ export function selectHeaderButton(
         variant: "outline",
         tooltip: `Checking out ${lifecycle.to}`,
       };
-    case "installing":
-      return {
-        label: "Installing packages…",
-        disabled: true,
-        loading: true,
-        variant: "outline",
-        tooltip: "Installing project dependencies",
-      };
-    case "starting":
-      return {
-        label: "Starting dev server…",
-        disabled: true,
-        loading: true,
-        variant: "outline",
-        tooltip: "Booting the dev server",
-      };
-    case "install-failed":
-      return {
-        label: "Install failed",
-        disabled: true,
-        variant: "outline",
-        tooltip: lifecycle.error || "package install failed — see setup logs",
-      };
-    case "start-failed":
-      return {
-        label: "Start failed",
-        disabled: true,
-        variant: "outline",
-        tooltip:
-          lifecycle.error || "dev server failed to start — see setup logs",
-      };
-    case "crashed":
-      return {
-        label: "Dev server crashed",
-        disabled: true,
-        variant: "outline",
-        tooltip: "Dev server stopped responding — see setup logs",
-      };
-    case "running":
-      // Fall through to the post-sandbox checks below.
-      break;
-    default: {
-      // All lifecycle phases are handled above; this preserves
-      // exhaustiveness if the daemon adds a new phase before the UI
-      // catches up. Prefer the same neutral pill the loading flag uses.
-      return {
-        label: "Loading…",
-        disabled: true,
-        loading: true,
-        variant: "outline",
-      };
-    }
+    // installing / starting / running / install-failed / start-failed /
+    // crashed: intentionally fall through to git/PR logic below.
   }
 
-  // lifecycle.phase === "running" but the daemon has stopped or paused.
-  // Sandbox precedence applies: don't surface git/PR until the daemon
-  // is healthy.
-  if (input.status.state === "paused") {
-    return {
-      label: "Sandbox paused",
-      disabled: true,
-      variant: "outline",
-      tooltip: input.status.reason || "Sandbox is paused",
-    };
-  }
-
-  if (input.status.state === "error") {
-    return {
-      label: "Dev errored",
-      disabled: true,
-      variant: "outline",
-      tooltip: input.status.reason || "Dev server stopped on its own",
-    };
-  }
-
-  // status.state === "running" — fall through to branch readiness + git/PR.
-
-  // From here on, lifecycle.phase === "running". `branch` should be ready;
-  // if it isn't, fall through to the same Loading… pill to coordinate
-  // with the daemon's branch-refresh cycle.
+  // Brief window after checkout completes but before the daemon emits
+  // its first `branch` event with computed git metadata. Defensive —
+  // the daemon emits it within a few hundred ms of checkout.
   if (branch.kind !== "ready") {
     return {
       label: "Loading branch…",
