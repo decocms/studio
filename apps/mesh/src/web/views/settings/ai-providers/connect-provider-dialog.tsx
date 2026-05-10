@@ -1,7 +1,7 @@
 import { useEffect, useReducer } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowLeft, AlertCircle, RefreshCw01 } from "@untitledui/icons";
+import { ArrowLeft, AlertCircle } from "@untitledui/icons";
 import {
   Dialog,
   DialogContent,
@@ -10,6 +10,7 @@ import {
   DialogDescription,
 } from "@deco/ui/components/dialog.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
+import { Spinner } from "@deco/ui/components/spinner.tsx";
 import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
@@ -374,10 +375,7 @@ export function ConnectProviderDialog({
 
         {state.kind === "oauth-pending" && (
           <div className="flex flex-col items-center gap-4 py-8">
-            <RefreshCw01
-              size={32}
-              className="animate-spin text-muted-foreground"
-            />
+            <Spinner size="lg" />
             <p className="text-sm text-muted-foreground text-center">
               Authorize the connection in the popup window. This dialog will
               close once authorization completes.
@@ -388,10 +386,7 @@ export function ConnectProviderDialog({
         {(state.kind === "cli-pending" ||
           state.kind === "provision-pending") && (
           <div className="flex flex-col items-center gap-4 py-8">
-            <RefreshCw01
-              size={32}
-              className="animate-spin text-muted-foreground"
-            />
+            <Spinner size="lg" />
             <p className="text-sm text-muted-foreground">
               {state.kind === "cli-pending" ? "Checking CLI…" : "Connecting…"}
             </p>
