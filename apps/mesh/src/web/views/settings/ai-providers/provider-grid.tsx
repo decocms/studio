@@ -62,12 +62,23 @@ export function ProviderGrid({ providers, onSelect }: ProviderGridProps) {
   const local = providers.filter(
     (p) => p.id !== "deco" && p.supportedMethods.includes("cli-activate"),
   );
-  const cloud = providers.filter(
-    (p) =>
-      p.id !== "deco" &&
-      !p.supportedMethods.includes("cli-activate") &&
-      p.id !== "openai-compatible",
-  );
+  const CLOUD_ORDER: Record<string, number> = {
+    openrouter: 0,
+    anthropic: 1,
+    google: 2,
+  };
+  const cloud = providers
+    .filter(
+      (p) =>
+        p.id !== "deco" &&
+        !p.supportedMethods.includes("cli-activate") &&
+        p.id !== "openai-compatible",
+    )
+    .sort((a, b) => {
+      const ai = CLOUD_ORDER[a.id] ?? Number.MAX_SAFE_INTEGER;
+      const bi = CLOUD_ORDER[b.id] ?? Number.MAX_SAFE_INTEGER;
+      return ai - bi;
+    });
   const openaiCompatible = providers.find((p) => p.id === "openai-compatible");
   const openaiPreset = OPENAI_COMPATIBLE_PRESETS.find((p) => p.id === "openai");
 
