@@ -32,7 +32,7 @@ function OrgAiProvidersContent() {
   if (!hasAnyProvider) {
     return (
       <>
-        <AiProvidersEmptyState onAddKeysClick={() => setConnectOpen(true)} />
+        <AiProvidersEmptyState onConnectClick={() => setConnectOpen(true)} />
         <ConnectProviderDialog
           open={connectOpen}
           onOpenChange={setConnectOpen}
