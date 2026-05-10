@@ -1,15 +1,11 @@
 /**
  * Build Stream Request
  *
- * Converts a stored Automation row into a StreamCoreInput suitable
- * for passing to streamCore(). JSON columns are parsed back into objects.
- *
- * When the persisted models payload carries a Simple Mode `tier`, callers
- * resolve the live slot via `resolveTierOverride()` and pass the resulting
- * `tierOverride` here. The override fully replaces both `credentialId` and
- * `thinking` — partial patching would leave stale capabilities / limits /
- * provider / title from the snapshot, which downstream code (model-compat,
- * stream-core max-tokens cap, telemetry) consumes.
+ * Converts a stored Automation row into a StreamCoreInput suitable for passing
+ * to streamCore(). The caller is expected to resolve the automation's tier via
+ * resolveTier() first; the resolved model is passed in here. The automation's
+ * stored `models` JSON is no longer read for credential or model info — after
+ * migration 077 it carries only `{ tier }`.
  */
 
 import type { StreamCoreInput } from "@/api/routes/decopilot/stream-core";
@@ -32,23 +28,16 @@ type ThinkingShape = {
   [key: string]: unknown;
 };
 
-type AutomationModels = {
+export interface ResolvedAutomationModel {
   credentialId: string;
   thinking: ThinkingShape;
-  tier?: "fast" | "smart" | "thinking";
-  [key: string]: unknown;
-};
-
-export type TierOverride = {
-  credentialId: string;
-  thinking: ThinkingShape;
-};
+}
 
 export function buildStreamRequest(
   automation: Automation,
   triggerId: string | null,
   taskId: string,
-  tierOverride?: TierOverride | null,
+  resolved: ResolvedAutomationModel,
 ): StreamCoreInput {
   const rawMessages = JSON.parse(automation.messages);
   // Generate fresh ids for each run so concurrent automation runs don't
@@ -60,18 +49,12 @@ export function buildStreamRequest(
     id: crypto.randomUUID(),
   }));
 
-  const models = JSON.parse(automation.models) as AutomationModels;
-  const resolvedModels: AutomationModels = tierOverride
-    ? {
-        ...models,
-        credentialId: tierOverride.credentialId,
-        thinking: tierOverride.thinking,
-      }
-    : models;
-
   const request: StreamCoreInput = {
     messages,
-    models: resolvedModels,
+    models: {
+      credentialId: resolved.credentialId,
+      thinking: resolved.thinking,
+    },
     agent: { id: automation.virtual_mcp_id },
     temperature: automation.temperature ?? 0.5,
     toolApprovalLevel: "auto",

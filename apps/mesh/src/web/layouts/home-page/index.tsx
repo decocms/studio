@@ -1,7 +1,9 @@
 import { AgentsList } from "@/web/components/home/agents-list.tsx";
 import { Chat } from "@/web/components/chat";
+import { NoAiProviderEmptyState } from "@/web/components/chat/no-ai-provider-empty-state";
 import { ImportFromDecoDialog } from "@/web/components/import-from-deco-dialog.tsx";
 import { IntegrationIcon } from "@/web/components/integration-icon";
+import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
 import { authClient } from "@/web/lib/auth-client";
 import { KEYS } from "@/web/lib/query-keys";
 import { useDecoCredits } from "@/web/hooks/use-deco-credits";
@@ -78,6 +80,7 @@ export function HomePage() {
   const [importOpen, setImportOpen] = useState(false);
   const isDecoUser = useIsDecoUser();
   const isMobile = useIsMobile();
+  const allKeys = useAiProviderKeys();
   const {
     hasDecoKey,
     isZeroBalance,
@@ -85,6 +88,14 @@ export function HomePage() {
     balanceDollars,
     hasOnlyDecoProvider,
   } = useDecoCredits();
+
+  if (allKeys.length === 0) {
+    return (
+      <div className="flex-1 flex items-center justify-center px-4 py-10">
+        <NoAiProviderEmptyState />
+      </div>
+    );
+  }
 
   const userName = session?.user?.name?.split(" ")[0] || "there";
 

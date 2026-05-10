@@ -1,8 +1,8 @@
-import { Suspense } from "react";
+import { useState } from "react";
 import { Zap } from "@untitledui/icons";
-import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { ProviderCardGrid } from "@/web/views/settings/org-ai-providers";
+import { Button } from "@deco/ui/components/button.tsx";
+import { ConnectProviderDialog } from "@/web/views/settings/ai-providers/connect-provider-dialog";
 import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
@@ -76,6 +76,7 @@ export function NoAiProviderEmptyState({
   const { org } = useProjectContext();
   const { localMode } = useAuthConfig();
   const brand = useDefaultBrand();
+  const [connectOpen, setConnectOpen] = useState(false);
 
   const orgName = org.name;
   const primaryColor = brand ? extractPrimaryColor(brand) : null;
@@ -128,23 +129,18 @@ export function NoAiProviderEmptyState({
         </div>
       </div>
 
-      <div className="w-full space-y-3">
+      <div className="flex flex-col items-center gap-3 w-full">
         {localMode && (
           <p className="text-xs text-muted-foreground text-center">
             Local models + use your existing AI provider
           </p>
         )}
-        <Suspense
-          fallback={
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 w-full">
-              <Skeleton className="h-32 w-full rounded-lg" />
-              <Skeleton className="h-32 w-full rounded-lg" />
-            </div>
-          }
-        >
-          <ProviderCardGrid />
-        </Suspense>
+        <Button onClick={() => setConnectOpen(true)}>
+          Connect AI provider
+        </Button>
       </div>
+
+      <ConnectProviderDialog open={connectOpen} onOpenChange={setConnectOpen} />
     </div>
   );
 }

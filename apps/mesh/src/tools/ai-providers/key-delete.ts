@@ -17,21 +17,20 @@ const clearSlotsForKey = (
   keyId: string,
 ): { config: SimpleModeConfig; changed: boolean } => {
   const next: SimpleModeConfig = {
-    enabled: config.enabled,
-    chat: {
-      fast: clearSlotIfMatches(config.chat.fast, keyId),
-      smart: clearSlotIfMatches(config.chat.smart, keyId),
-      thinking: clearSlotIfMatches(config.chat.thinking, keyId),
+    tiers: {
+      fast: clearSlotIfMatches(config.tiers.fast, keyId),
+      smart: clearSlotIfMatches(config.tiers.smart, keyId),
+      thinking: clearSlotIfMatches(config.tiers.thinking, keyId),
+      image: clearSlotIfMatches(config.tiers.image, keyId),
+      web_research: clearSlotIfMatches(config.tiers.web_research, keyId),
     },
-    image: clearSlotIfMatches(config.image, keyId),
-    webResearch: clearSlotIfMatches(config.webResearch, keyId),
   };
   const changed =
-    next.chat.fast !== config.chat.fast ||
-    next.chat.smart !== config.chat.smart ||
-    next.chat.thinking !== config.chat.thinking ||
-    next.image !== config.image ||
-    next.webResearch !== config.webResearch;
+    next.tiers.fast !== config.tiers.fast ||
+    next.tiers.smart !== config.tiers.smart ||
+    next.tiers.thinking !== config.tiers.thinking ||
+    next.tiers.image !== config.tiers.image ||
+    next.tiers.web_research !== config.tiers.web_research;
   return { config: next, changed };
 };
 
@@ -49,8 +48,10 @@ export const AI_PROVIDER_KEY_DELETE = defineTool({
     const org = requireOrganization(ctx);
     await ctx.access.check();
 
-    await ctx.storage.aiProviderKeys.delete(input.keyId, org.id);
-
+    // Clear simple-mode slots referencing this key BEFORE deleting it. If the
+    // settings upsert fails, the key is still present and the operation can be
+    // retried — the alternative ordering would leave slots pointing at a
+    // non-existent key, which breaks chat/automations until manual cleanup.
     const settings = await ctx.storage.organizationSettings.get(org.id);
     if (settings?.simple_mode) {
       const { config, changed } = clearSlotsForKey(
@@ -63,6 +64,8 @@ export const AI_PROVIDER_KEY_DELETE = defineTool({
         });
       }
     }
+
+    await ctx.storage.aiProviderKeys.delete(input.keyId, org.id);
 
     posthog.capture({
       distinctId: ctx.auth.user!.id,

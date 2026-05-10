@@ -91,7 +91,7 @@ export const codexAdapter: ProviderAdapter = {
   info: {
     id: "codex",
     name: "Codex",
-    description: "Codex CLI agent",
+    description: "Use your ChatGPT Plus or Pro subscription",
     logo: CODEX_LOGO,
   },
   supportedMethods: ["cli-activate"],

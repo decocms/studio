@@ -15,6 +15,9 @@ import {
 } from "@tanstack/react-query";
 import { KEYS } from "@/web/lib/query-keys";
 
+export type { SimpleModeTier } from "@/tools/organization/schema";
+import type { SimpleModeTier } from "@/tools/organization/schema";
+
 export interface ModelSlot {
   keyId: string;
   modelId: string;
@@ -22,14 +25,7 @@ export interface ModelSlot {
 }
 
 export interface SimpleModeConfig {
-  enabled: boolean;
-  chat: {
-    fast: ModelSlot | null;
-    smart: ModelSlot | null;
-    thinking: ModelSlot | null;
-  };
-  image: ModelSlot | null;
-  webResearch: ModelSlot | null;
+  tiers: Record<SimpleModeTier, ModelSlot | null>;
 }
 
 export interface RegistryConfig {
@@ -62,10 +58,13 @@ const EMPTY_SETTINGS: OrganizationSettings = {
 };
 
 const EMPTY_SIMPLE_MODE: SimpleModeConfig = {
-  enabled: false,
-  chat: { fast: null, smart: null, thinking: null },
-  image: null,
-  webResearch: null,
+  tiers: {
+    fast: null,
+    smart: null,
+    thinking: null,
+    image: null,
+    web_research: null,
+  },
 };
 
 /**
@@ -214,16 +213,15 @@ export function useUpdateOrganizationSettings(): UseMutationResult<
 // ---------------------------------------------------------------------------
 
 function normalizeSimpleMode(cfg: SimpleModeConfig | null): SimpleModeConfig {
-  if (!cfg) return EMPTY_SIMPLE_MODE;
+  if (!cfg?.tiers) return EMPTY_SIMPLE_MODE;
   return {
-    enabled: cfg.enabled ?? false,
-    chat: {
-      fast: cfg.chat?.fast ?? null,
-      smart: cfg.chat?.smart ?? null,
-      thinking: cfg.chat?.thinking ?? null,
+    tiers: {
+      fast: cfg.tiers.fast ?? null,
+      smart: cfg.tiers.smart ?? null,
+      thinking: cfg.tiers.thinking ?? null,
+      image: cfg.tiers.image ?? null,
+      web_research: cfg.tiers.web_research ?? null,
     },
-    image: cfg.image ?? null,
-    webResearch: cfg.webResearch ?? null,
   };
 }
 

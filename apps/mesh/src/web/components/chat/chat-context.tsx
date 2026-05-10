@@ -38,7 +38,7 @@ import {
   type UIMessage,
 } from "ai";
 import {
-  selectDefaultModel,
+  pickSimpleModeDefaults,
   useProjectContext,
   useVirtualMCP,
 } from "@decocms/mesh-sdk";
@@ -64,7 +64,6 @@ import { track } from "../../lib/posthog-client";
 // session per thread_id. Prevents duplicates from re-renders while still
 // re-firing when the user switches tasks.
 const openedChats = new Set<string>();
-import { toMetadataModelInfo } from "../../lib/metadata-model-info";
 
 import { useChatNavigation } from "./hooks/use-chat-navigation";
 import { useStreamManager } from "./hooks/use-stream-manager";
@@ -163,11 +162,9 @@ export interface ChatPrefsContextValue {
   tiptapDocRef: { current: Metadata["tiptapDoc"] };
   /** @deprecated No-op */
   resetInteraction: () => void;
-  /** Whether Simple Model Mode is enabled for the org */
-  simpleModeEnabled: boolean;
   /** The currently selected tier in Simple Model Mode */
-  simpleModeTier: "fast" | "smart" | "thinking";
-  setSimpleModeTier: (tier: "fast" | "smart" | "thinking") => void;
+  simpleModeTier: SimpleTier;
+  setSimpleModeTier: (tier: SimpleTier) => void;
 }
 
 export interface ChatBridgeValue {
@@ -216,20 +213,49 @@ function findModel(
 }
 
 /**
- * Pick the active Simple Mode tier, validated against the current config.
- * Handles the case where the stored tier is orphaned (slot unset or Simple
- * Mode changed server-side). Falls through to the first configured tier.
+ * Pick the active chat tier from the user's stored choice, defaulting to
+ * "smart". All three chat tiers are always selectable — the backend's
+ * resolveTier() falls back to SDK provider defaults when the org's tier
+ * slot is unset, so we don't need to gate on slot configuration here.
  */
-function resolveActiveTier(
-  stored: SimpleTier | null,
-  simpleMode: { chat: Record<SimpleTier, unknown> },
-): SimpleTier {
-  const configured = (["fast", "smart", "thinking"] as const).filter(
-    (t) => simpleMode.chat[t] != null,
-  );
-  if (stored && configured.includes(stored)) return stored;
-  if (configured.includes("smart")) return "smart";
-  return configured[0] ?? "smart";
+function resolveActiveTier(stored: SimpleTier | null): SimpleTier {
+  if (stored === "fast" || stored === "smart" || stored === "thinking") {
+    return stored;
+  }
+  return "smart";
+}
+
+/**
+ * Mirror backend resolveTier() when no slot is explicitly assigned: pick a
+ * tier-appropriate default from the effective key's catalog so the UI can
+ * read capabilities (file upload, vision, etc.) instead of falling back to
+ * a null model. Backend pickSimpleModeDefaults considers all keys; we only
+ * have the effective key's catalog client-side, so multi-key orgs may see a
+ * single-key-derived default. This matches the backend's pick when the
+ * effective key is also the first match for the tier.
+ */
+function pickFallbackChatModel(
+  tier: SimpleTier,
+  keys: AiProviderKey[],
+  effectiveKeyId: string | null,
+  models: AiProviderModel[],
+): AiProviderModel | null {
+  if (!effectiveKeyId || models.length === 0) return null;
+  const key = keys.find((k) => k.id === effectiveKeyId);
+  if (!key) return null;
+  const defaults = pickSimpleModeDefaults([key], {
+    [effectiveKeyId]: models,
+  });
+  const slot =
+    tier === "fast"
+      ? defaults.chat.fast
+      : tier === "thinking"
+        ? defaults.chat.thinking
+        : defaults.chat.smart;
+  if (!slot) return null;
+  const full = models.find((m) => m.modelId === slot.modelId);
+  if (!full) return null;
+  return { ...full, keyId: effectiveKeyId };
 }
 
 // ============================================================================
@@ -251,7 +277,6 @@ const BRIDGE_NOOP: ChatBridgeValue = {
 /** Internal-only type for cross-provider communication */
 interface TaskProviderInternals {
   transport: DefaultChatTransport<UIMessage<Metadata>>;
-  effectiveKeyId: string | null;
   user: { image?: string | null; name?: string } | null;
   contextPrompt: string;
   preferences: {
@@ -312,11 +337,8 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
   const { locator } = useProjectContext();
   const { virtualMcpId: urlVirtualMcpId } = useChatNavigation();
 
-  // Model selection (localStorage-backed)
-  const [storedChatRef, setStoredChatRef] = useLocalStorage<ModelRef | null>(
-    LOCALSTORAGE_KEYS.chatSelectedModel(locator),
-    null,
-  );
+  // Model selection (localStorage-backed) — image and deep research only;
+  // chat model is always tier-driven.
   const [storedImageRef, setStoredImageRef] = useLocalStorage<ModelRef | null>(
     LOCALSTORAGE_KEYS.chatSelectedImageModel(locator),
     null,
@@ -340,55 +362,47 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     LOCALSTORAGE_KEYS.chatSimpleModeTier(locator),
     null,
   );
-  const activeTier = resolveActiveTier(storedTier, simpleMode);
+  const activeTier = resolveActiveTier(storedTier);
 
   // AI provider keys + models
   const keys = useAiProviderKeys();
+  const activeChatSlot = simpleMode.tiers[activeTier];
   const effectiveKeyId =
     sessionCredentialId && keys.some((k) => k.id === sessionCredentialId)
       ? sessionCredentialId
-      : storedChatRef && keys.some((k) => k.id === storedChatRef.keyId)
-        ? storedChatRef.keyId
-        : (keys[0]?.id ?? null);
+      : (activeChatSlot?.keyId ?? keys[0]?.id ?? null);
   const { models: allKeyModels, isLoading: isModelsQueryLoading } =
     useAiProviderModels(effectiveKeyId ?? undefined);
-  const effectiveProviderId =
-    keys.find((k) => k.id === effectiveKeyId)?.providerId ?? "anthropic";
-  const defaultModel = selectDefaultModel(
-    allKeyModels,
-    effectiveProviderId,
-    effectiveKeyId ?? undefined,
-  );
 
-  const activeChatSlot = simpleMode.chat[activeTier];
   const { models: simpleChatModels } = useAiProviderModels(
     activeChatSlot?.keyId,
   );
   const { models: simpleImageModels } = useAiProviderModels(
-    simpleMode.image?.keyId,
+    simpleMode.tiers.image?.keyId,
   );
   const { models: simpleWebResearchModels } = useAiProviderModels(
-    simpleMode.webResearch?.keyId,
+    simpleMode.tiers.web_research?.keyId,
   );
 
-  const validatedStoredChat = findModel(storedChatRef, keys, allKeyModels);
-  const selectedModel: AiProviderModel | null = simpleMode.enabled
-    ? findModel(activeChatSlot, keys, simpleChatModels, activeChatSlot?.title)
-    : (validatedStoredChat ?? defaultModel);
-  const isModelsLoading = !storedChatRef && isModelsQueryLoading;
+  const selectedModel: AiProviderModel | null =
+    findModel(activeChatSlot, keys, simpleChatModels, activeChatSlot?.title) ??
+    pickFallbackChatModel(activeTier, keys, effectiveKeyId, allKeyModels);
+  const isModelsLoading = isModelsQueryLoading;
 
   const imageModels = allKeyModels.filter((m) =>
     m.capabilities?.includes("image"),
   );
   const validatedStoredImage = findModel(storedImageRef, keys, imageModels);
-  const resolvedImageModel: AiProviderModel | null = simpleMode.enabled
-    ? findModel(
-        simpleMode.image,
-        keys,
-        simpleImageModels,
-        simpleMode.image?.title,
-      )
-    : (validatedStoredImage ?? imageModels[0] ?? null);
+  const resolvedImageModel: AiProviderModel | null =
+    findModel(
+      simpleMode.tiers.image,
+      keys,
+      simpleImageModels,
+      simpleMode.tiers.image?.title,
+    ) ??
+    validatedStoredImage ??
+    imageModels[0] ??
+    null;
 
   const deepResearchModels = allKeyModels.filter((m) => {
     const n = m.modelId.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -403,14 +417,15 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     deepResearchModels.find((m) => m.modelId === "perplexity/sonar") ??
     deepResearchModels[0] ??
     null;
-  const resolvedDeepResearchModel: AiProviderModel | null = simpleMode.enabled
-    ? findModel(
-        simpleMode.webResearch,
-        keys,
-        simpleWebResearchModels,
-        simpleMode.webResearch?.title,
-      )
-    : (validatedStoredDeepResearch ?? defaultDeepResearchModel);
+  const resolvedDeepResearchModel: AiProviderModel | null =
+    findModel(
+      simpleMode.tiers.web_research,
+      keys,
+      simpleWebResearchModels,
+      simpleMode.tiers.web_research?.title,
+    ) ??
+    validatedStoredDeepResearch ??
+    defaultDeepResearchModel;
 
   // selectedVirtualMcp — URL-derived
   const selectedVirtualMcpData = useVirtualMCP(urlVirtualMcpId);
@@ -461,11 +476,7 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
 
   const value: ChatPrefsContextValue = {
     selectedModel,
-    setModel: (model: AiProviderModel) => {
-      if (!model.keyId) return;
-      setStoredChatRef({ keyId: model.keyId, modelId: model.modelId });
-      setSessionCredentialId(null);
-    },
+    setModel: () => {},
     credentialId: effectiveKeyId,
     setCredentialId: setSessionCredentialId,
     allModelsConnections: keys,
@@ -492,9 +503,8 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     setTiptapDoc,
     tiptapDocRef,
     resetInteraction: () => {},
-    simpleModeEnabled: simpleMode.enabled,
     simpleModeTier: activeTier,
-    setSimpleModeTier: setStoredTier,
+    setSimpleModeTier: (tier: SimpleTier) => setStoredTier(tier),
   };
 
   return (
@@ -525,12 +535,8 @@ export function ChatContextProvider({
   const [preferences] = usePreferences();
   const { markTaskRead } = useTaskReadState();
 
-  // Model selection (localStorage-backed, identifier refs only — metadata
-  // is re-resolved from the live models list every render to avoid staleness).
-  const [storedChatRef, setStoredChatRef] = useLocalStorage<ModelRef | null>(
-    LOCALSTORAGE_KEYS.chatSelectedModel(locator),
-    null,
-  );
+  // Model selection (localStorage-backed) — image and deep research only;
+  // chat model is always tier-driven.
   const [storedImageRef, setStoredImageRef] = useLocalStorage<ModelRef | null>(
     LOCALSTORAGE_KEYS.chatSelectedImageModel(locator),
     null,
@@ -557,71 +563,60 @@ export function ChatContextProvider({
     LOCALSTORAGE_KEYS.chatSimpleModeTier(locator),
     null,
   );
-  const activeTier = resolveActiveTier(storedTier, simpleMode);
+  const activeTier = resolveActiveTier(storedTier);
 
   // AI provider keys and models.
   const keys = useAiProviderKeys();
-  const effectiveKeyId =
-    sessionCredentialId && keys.some((k) => k.id === sessionCredentialId)
-      ? sessionCredentialId
-      : storedChatRef && keys.some((k) => k.id === storedChatRef.keyId)
-        ? storedChatRef.keyId
-        : (keys[0]?.id ?? null);
-  // Always fetch models — React Query (staleTime 60s) caches across consumers.
-  const { models: allKeyModels, isLoading: isModelsQueryLoading } =
-    useAiProviderModels(effectiveKeyId ?? undefined);
-  const effectiveProviderId =
-    keys.find((k) => k.id === effectiveKeyId)?.providerId ?? "anthropic";
-  const defaultModel = selectDefaultModel(
-    allKeyModels,
-    effectiveProviderId,
-    effectiveKeyId ?? undefined,
-  );
-
   // Simple Mode slots can reference any credential, not just effectiveKeyId.
   // Fetch models for each slot's keyId directly so findModel returns real
   // AiProviderModel objects with full capabilities (file upload, etc).
   // Each useAiProviderModels call is a separate, cached React Query — no
   // duplicate requests when a keyId is reused across slots.
-  const activeChatSlot = simpleMode.chat[activeTier];
+  const activeChatSlot = simpleMode.tiers[activeTier];
+  const effectiveKeyId =
+    sessionCredentialId && keys.some((k) => k.id === sessionCredentialId)
+      ? sessionCredentialId
+      : (activeChatSlot?.keyId ?? keys[0]?.id ?? null);
+  // Always fetch models — React Query (staleTime 60s) caches across consumers.
+  const { models: allKeyModels, isLoading: isModelsQueryLoading } =
+    useAiProviderModels(effectiveKeyId ?? undefined);
+
   const { models: simpleChatModels } = useAiProviderModels(
     activeChatSlot?.keyId,
   );
   const { models: simpleImageModels } = useAiProviderModels(
-    simpleMode.image?.keyId,
+    simpleMode.tiers.image?.keyId,
   );
   const { models: simpleWebResearchModels } = useAiProviderModels(
-    simpleMode.webResearch?.keyId,
+    simpleMode.tiers.web_research?.keyId,
   );
 
-  // Validate stored refs against the live models list. When validation fails
-  // we fall through to defaults; the stale ref stays on disk harmlessly and
-  // gets overwritten the next time the user picks a model. (We intentionally
-  // do NOT write to localStorage during render.)
-  const validatedStoredChat = findModel(storedChatRef, keys, allKeyModels);
+  // Resolve the chat model from the active tier slot, falling back to a
+  // tier-aware pick from the effective key's catalog when no slot is set —
+  // mirrors backend resolveTier so capabilities (file upload, vision) are
+  // accurate without waiting for the first stream response.
+  const selectedModel: AiProviderModel | null =
+    findModel(activeChatSlot, keys, simpleChatModels, activeChatSlot?.title) ??
+    pickFallbackChatModel(activeTier, keys, effectiveKeyId, allKeyModels);
+  const isModelsLoading = isModelsQueryLoading;
 
-  // Resolve the chat model: Simple Mode and regular paths are mutually
-  // exclusive — no silent shadowing.
-  const selectedModel: AiProviderModel | null = simpleMode.enabled
-    ? findModel(activeChatSlot, keys, simpleChatModels, activeChatSlot?.title)
-    : (validatedStoredChat ?? defaultModel);
-  const isModelsLoading = !storedChatRef && isModelsQueryLoading;
-
-  // Image model — same split.
+  // Image model — tier-driven, fall back to stored/defaults.
   const imageModels = allKeyModels.filter((m) =>
     m.capabilities?.includes("image"),
   );
   const validatedStoredImage = findModel(storedImageRef, keys, imageModels);
-  const resolvedImageModel: AiProviderModel | null = simpleMode.enabled
-    ? findModel(
-        simpleMode.image,
-        keys,
-        simpleImageModels,
-        simpleMode.image?.title,
-      )
-    : (validatedStoredImage ?? imageModels[0] ?? null);
+  const resolvedImageModel: AiProviderModel | null =
+    findModel(
+      simpleMode.tiers.image,
+      keys,
+      simpleImageModels,
+      simpleMode.tiers.image?.title,
+    ) ??
+    validatedStoredImage ??
+    imageModels[0] ??
+    null;
 
-  // Deep research model — same split.
+  // Deep research model — tier-driven, fall back to stored/defaults.
   const deepResearchModels = allKeyModels.filter((m) => {
     const n = m.modelId.toLowerCase().replace(/[^a-z0-9]/g, "");
     return n.includes("sonar") || n.includes("deepresearch");
@@ -635,14 +630,15 @@ export function ChatContextProvider({
     deepResearchModels.find((m) => m.modelId === "perplexity/sonar") ??
     deepResearchModels[0] ??
     null;
-  const resolvedDeepResearchModel: AiProviderModel | null = simpleMode.enabled
-    ? findModel(
-        simpleMode.webResearch,
-        keys,
-        simpleWebResearchModels,
-        simpleMode.webResearch?.title,
-      )
-    : (validatedStoredDeepResearch ?? defaultDeepResearchModel);
+  const resolvedDeepResearchModel: AiProviderModel | null =
+    findModel(
+      simpleMode.tiers.web_research,
+      keys,
+      simpleWebResearchModels,
+      simpleMode.tiers.web_research?.title,
+    ) ??
+    validatedStoredDeepResearch ??
+    defaultDeepResearchModel;
 
   // Task management (scoped by URL virtualMcpId — task list doesn't change on override)
   const taskManager = useTaskManager(virtualMcpId);
@@ -737,7 +733,7 @@ export function ChatContextProvider({
         const mergedMetadata = {
           ...metadata,
           agent: metadata.agent ?? lastMsgMeta.agent,
-          models: metadata.models ?? lastMsgMeta.models,
+          tier: metadata.tier ?? lastMsgMeta.tier,
           thread_id: metadata.thread_id ?? lastMsgMeta.thread_id,
         };
 
@@ -869,12 +865,7 @@ export function ChatContextProvider({
 
   const prefsValue: ChatPrefsContextValue = {
     selectedModel,
-    setModel: (model: AiProviderModel) => {
-      if (!model.keyId) return;
-      setStoredChatRef({ keyId: model.keyId, modelId: model.modelId });
-      // Clear session override — the new model's keyId is the new source of truth.
-      setSessionCredentialId(null);
-    },
+    setModel: () => {},
     credentialId: effectiveKeyId,
     setCredentialId: setSessionCredentialId,
     allModelsConnections: keys,
@@ -901,14 +892,12 @@ export function ChatContextProvider({
     setTiptapDoc,
     tiptapDocRef,
     resetInteraction: () => {},
-    simpleModeEnabled: simpleMode.enabled,
     simpleModeTier: activeTier,
-    setSimpleModeTier: setStoredTier,
+    setSimpleModeTier: (tier: SimpleTier) => setStoredTier(tier),
   };
 
   const internals: TaskProviderInternals = {
     transport: transportRef.current!,
-    effectiveKeyId,
     user,
     contextPrompt,
     preferences,
@@ -952,14 +941,13 @@ export function ActiveTaskProvider({
     track("chat_opened", { thread_id: taskId });
   }
   const {
-    selectedModel,
     imageModel,
     deepResearchModel,
     chatMode,
     setChatMode,
     appContexts,
     setTiptapDoc,
-    setModel,
+    simpleModeTier: activeTier,
   } = useChatPrefs();
   const internals = useContext(TaskInternalsCtx);
   if (!internals) {
@@ -970,7 +958,6 @@ export function ActiveTaskProvider({
 
   const {
     transport,
-    effectiveKeyId,
     user,
     contextPrompt,
     preferences,
@@ -1075,20 +1062,12 @@ export function ActiveTaskProvider({
 
   // sendMessage — captures context at call time
   async function sendMessageInternal(params: SendMessageParams): Promise<void> {
-    const model = params.model ?? selectedModel;
-    if (!model) {
-      toast.error("No model configured");
-      return;
-    }
-
     const parts = params.parts ?? derivePartsFromTiptapDoc(params.tiptapDoc);
     if (parts.length === 0) return;
 
     // Capture at send time (frozen in closure)
     const capturedTaskId = taskId;
     const capturedVirtualMcpId = virtualMcpId;
-
-    if (params.model) setModel(params.model);
 
     setFinishReason(null);
     // Drop any error banner from a prior turn — explicitly sending a new
@@ -1130,26 +1109,16 @@ export function ActiveTaskProvider({
     if (modeToSend === "web-search" && !deepResearchModel) {
       modeToSend = "default";
     }
-    // One-shot modes (web-search, gen-image) reset after send.
-    // Plan mode is persistent — the user must explicitly disable it.
-    if (modeToSend !== "plan") {
+    // Plan and gen-image modes are sticky — the user explicitly toggles them
+    // off. Web-search is one-shot (resets after each send).
+    if (modeToSend === "web-search") {
       setChatMode("default");
     }
 
     const metadata: Metadata = {
       ...messageMetadata,
       system,
-      models: {
-        credentialId: model.keyId ?? effectiveKeyId ?? "",
-        thinking: toMetadataModelInfo(model),
-        fast: toMetadataModelInfo(model),
-        ...(imageModel && {
-          image: toMetadataModelInfo(imageModel),
-        }),
-        ...(deepResearchModel && {
-          deepResearch: toMetadataModelInfo(deepResearchModel),
-        }),
-      },
+      tier: activeTier,
       mode: modeToSend,
     };
 

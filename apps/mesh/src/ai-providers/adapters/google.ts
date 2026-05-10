@@ -53,8 +53,8 @@ function deriveCapabilities(m: GoogleModel): ModelCapability[] {
 export const googleAdapter: ProviderAdapter = {
   info: {
     id: "google",
-    name: "Google",
-    description: "Google language models",
+    name: "Google Gemini",
+    description: "Google's Gemini family of models",
     logo: "https://assets.decocache.com/decocms/29370b4b-c623-487b-a6c4-a1637a2c0401/Google__G__logo.svg",
   },
 

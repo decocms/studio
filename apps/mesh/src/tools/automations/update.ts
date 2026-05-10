@@ -8,6 +8,7 @@
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/mesh-context";
+import { ChatTierSchema } from "../organization/schema";
 import { configureTriggerOnMcp } from "./configure-trigger";
 import { normalizeMessages } from "./normalize-messages";
 
@@ -41,44 +42,8 @@ export const AUTOMATION_UPDATE = defineTool({
       .optional(),
     models: z
       .object({
-        credentialId: z.string(),
-        thinking: z.object({
-          id: z.string(),
-          capabilities: z
-            .object({
-              vision: z.boolean().optional(),
-              text: z.boolean().optional(),
-              tools: z.boolean().optional(),
-            })
-            .optional(),
-          provider: z
-            .enum([
-              "openai",
-              "anthropic",
-              "google",
-              "xai",
-              "deepseek",
-              "openrouter",
-              "openai-compatible",
-            ])
-            .optional()
-            .nullable(),
-          limits: z
-            .object({
-              contextWindow: z.number().optional(),
-              maxOutputTokens: z.number().optional(),
-            })
-            .optional(),
-        }),
-        coding: z.object({ id: z.string() }).optional(),
-        fast: z.object({ id: z.string() }).optional(),
-        // Simple Mode tier intent. When set and Simple Mode is active for
-        // the org, the run path resolves the model from the live tier slot.
-        // credentialId / thinking.id are the fallback used when Simple Mode
-        // is off or the slot is unset.
-        tier: z.enum(["fast", "smart", "thinking"]).optional(),
+        tier: ChatTierSchema,
       })
-      .loose()
       .optional(),
     temperature: z.number().optional(),
   }),

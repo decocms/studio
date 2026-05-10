@@ -137,15 +137,15 @@ export interface SimpleModeModelSlot {
   title?: string;
 }
 
+export type SimpleModeTier =
+  | "fast"
+  | "smart"
+  | "thinking"
+  | "image"
+  | "web_research";
+
 export interface SimpleModeConfig {
-  enabled: boolean;
-  chat: {
-    fast: SimpleModeModelSlot | null;
-    smart: SimpleModeModelSlot | null;
-    thinking: SimpleModeModelSlot | null;
-  };
-  image: SimpleModeModelSlot | null;
-  webResearch: SimpleModeModelSlot | null;
+  tiers: Record<SimpleModeTier, SimpleModeModelSlot | null>;
 }
 
 export interface DefaultHomeAgentsConfig {
@@ -924,7 +924,7 @@ export interface AutomationTable {
   active: boolean;
   created_by: string;
   messages: string; // JSON string: UIMessage[]
-  models: string; // JSON string: { connectionId, thinking, coding?, fast? }
+  models: string; // JSON string: { tier: "fast" | "smart" | "thinking" } (post-migration 077)
   temperature: number;
   virtual_mcp_id: string;
   created_at: ColumnType<Date, Date | string, never>;

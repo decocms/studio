@@ -17,11 +17,27 @@ import type {
 } from "@/api/routes/decopilot/stream-core";
 import { consumeStreamCore } from "@/api/routes/decopilot/stream-core";
 import type { MeshContext } from "@/core/mesh-context";
+import { resolveTier } from "@/core/resolve-tier";
 import type { AutomationsStorage } from "@/storage/automations";
 import type { Automation } from "@/storage/types";
+import type { SimpleModeTier } from "@/tools/organization/schema";
 import { buildStreamRequest } from "./build-stream-request";
-import { resolveTierOverride } from "./resolve-tier-override";
+import type { ResolvedAutomationModel } from "./build-stream-request";
 import type { Semaphore } from "./semaphore";
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function toThinkingCapabilities(caps: string[] | undefined) {
+  if (!caps || caps.length === 0) return undefined;
+  return {
+    vision: caps.includes("vision") || caps.includes("image") || undefined,
+    text: caps.includes("text") || undefined,
+    reasoning: caps.includes("reasoning") || undefined,
+    file: caps.includes("file") || undefined,
+  };
+}
 
 // ============================================================================
 // Types
@@ -123,16 +139,42 @@ export async function fireAutomation(opts: {
 
     let runError: string | undefined;
     try {
-      // For tier-based automations, resolve the live model from the org's
-      // current Simple Mode slot — fetches fresh capabilities / limits /
-      // title from the AI provider so downstream gates (model-compat,
-      // max-tokens cap) see the right metadata.
-      const tierOverride = await resolveTierOverride(ctx, automation);
+      // After migration 077 the automations.models JSON carries only `{ tier }`.
+      // Resolve it via the unified resolveTier() so chat and automations share
+      // a single source of truth for tier → (credentialId, modelId, metadata).
+      const parsedModels = JSON.parse(automation.models) as {
+        tier?: SimpleModeTier;
+      };
+      // Legacy automations predating migration 077 may lack `tier`. Default to
+      // "smart" so the run can proceed instead of hard-failing.
+      if (!parsedModels.tier) {
+        console.warn(
+          `[fireAutomation] automation ${automation.id} missing tier, defaulting to "smart"`,
+        );
+      }
+      const tier: SimpleModeTier = parsedModels.tier ?? "smart";
+      const resolved = await resolveTier(ctx, tier);
+      const resolvedModel: ResolvedAutomationModel = {
+        credentialId: resolved.credentialId,
+        thinking: {
+          id: resolved.modelId,
+          title: resolved.modelMeta.title,
+          provider: resolved.modelMeta.providerId ?? null,
+          capabilities: toThinkingCapabilities(resolved.modelMeta.capabilities),
+          limits: resolved.modelMeta.limits
+            ? {
+                contextWindow: resolved.modelMeta.limits.contextWindow,
+                maxOutputTokens:
+                  resolved.modelMeta.limits.maxOutputTokens ?? undefined,
+              }
+            : undefined,
+        },
+      };
       const request = buildStreamRequest(
         automation,
         triggerId,
         taskId,
-        tierOverride,
+        resolvedModel,
       );
       if (contextMessages) {
         request.messages = [

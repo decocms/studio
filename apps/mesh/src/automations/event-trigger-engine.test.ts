@@ -23,11 +23,7 @@ function makeAutomation(overrides?: Partial<Automation>): Automation {
     messages: JSON.stringify([
       { id: "m1", role: "user", parts: [{ type: "text", text: "hi" }] },
     ]),
-    models: JSON.stringify({
-      main: { id: "m1" },
-      thinking: { id: "m2" },
-      credentialId: "cred_1",
-    }),
+    models: JSON.stringify({ tier: "smart" }),
     temperature: 0.5,
     virtual_mcp_id: "agent_1",
     created_at: "2026-01-01T00:00:00Z",
@@ -61,7 +57,44 @@ function makeMeshContext(): MeshContext {
     organization: { id: ORG_ID, slug: "test", name: "Test" },
     storage: {
       threads: {},
-      organizationSettings: { get: mock(() => Promise.resolve(null)) },
+      organizationSettings: {
+        get: mock(() =>
+          Promise.resolve({
+            simple_mode: {
+              tiers: {
+                smart: { keyId: "cred_test", modelId: "model-smart" },
+              },
+            },
+          }),
+        ),
+      },
+      aiProviderKeys: {
+        list: mock(() =>
+          Promise.resolve([
+            {
+              id: "cred_test",
+              providerId: "openai",
+              label: "Test Key",
+              presetId: null,
+              createdBy: "user_test",
+              createdAt: "2026-01-01T00:00:00Z",
+            },
+          ]),
+        ),
+      },
+    },
+    aiProviders: {
+      listModels: mock(() =>
+        Promise.resolve([
+          {
+            modelId: "model-smart",
+            title: "Smart Model",
+            providerId: "openai",
+            capabilities: ["text"],
+            limits: { contextWindow: 128_000, maxOutputTokens: 4096 },
+          },
+        ]),
+      ),
     },
   } as unknown as MeshContext;
 }
