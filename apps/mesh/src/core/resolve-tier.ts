@@ -37,18 +37,23 @@ async function fetchModelList(
   keyId: string,
   orgId: string,
 ): Promise<AiProviderModel[]> {
-  const list = await Promise.race([
-    ctx.aiProviders.listModels(keyId, orgId),
-    new Promise<never>((_, reject) =>
-      setTimeout(
-        () => reject(new Error("listModels timeout")),
-        METADATA_FETCH_TIMEOUT_MS,
-      ),
-    ),
-  ]);
-  // Backend's ModelInfo and SDK's AiProviderModel are structurally compatible
-  // for the fields pickSimpleModeDefaults reads (modelId, capabilities, title).
-  return list as unknown as AiProviderModel[];
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const list = await Promise.race([
+      ctx.aiProviders.listModels(keyId, orgId),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("listModels timeout")),
+          METADATA_FETCH_TIMEOUT_MS,
+        );
+      }),
+    ]);
+    // Backend's ModelInfo and SDK's AiProviderModel are structurally compatible
+    // for the fields pickSimpleModeDefaults reads (modelId, capabilities, title).
+    return list as unknown as AiProviderModel[];
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 function pickSlotForTier(
@@ -93,8 +98,12 @@ export async function resolveTier(
   const settings = await ctx.storage.organizationSettings.get(orgId);
   const slot = settings?.simple_mode?.tiers?.[tier] ?? null;
 
-  // Fast path: admin has explicitly assigned this tier slot.
-  if (slot) {
+  const keys = await ctx.storage.aiProviderKeys.list({ organizationId: orgId });
+
+  // Fast path: admin has explicitly assigned this tier slot AND the key still
+  // exists. If the key was deleted but the slot wasn't cleared, fall through
+  // to the default-pick rather than returning a stale credentialId.
+  if (slot && keys.some((k) => k.id === slot.keyId)) {
     const catalog = await fetchModelList(ctx, slot.keyId, orgId).catch(
       () => [] as AiProviderModel[],
     );
@@ -105,11 +114,10 @@ export async function resolveTier(
     };
   }
 
-  // Fallback: tier slot is unset. Build the SDK's default-pick from the org's
-  // connected providers + their actual model catalogs. This matches what the
-  // settings page would auto-populate, so chat works on first connect even
-  // before the admin saves anything.
-  const keys = await ctx.storage.aiProviderKeys.list({ organizationId: orgId });
+  // Fallback: tier slot is unset (or references a deleted key). Build the
+  // SDK's default-pick from the org's connected providers + their actual
+  // model catalogs. This matches what the settings page would auto-populate,
+  // so chat works on first connect even before the admin saves anything.
   if (keys.length === 0) throw new TierUnavailableError(tier);
 
   const modelsByKeyId: Record<string, AiProviderModel[]> = {};

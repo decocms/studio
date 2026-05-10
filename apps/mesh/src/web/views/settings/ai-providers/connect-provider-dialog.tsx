@@ -272,7 +272,15 @@ export function ConnectProviderDialog({
   };
 
   // OAuth popup → postMessage listener. Active only while waiting for callback.
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  // Narrow the dep array to discriminated primitives — using `state` directly
+  // would re-subscribe on unrelated transitions, and `providers` is a fresh
+  // ref from React Query each refetch. `providers` is closed over only to
+  // read provider.name as a label, which is acceptable to keep slightly stale.
+  const oauthStateToken =
+    state.kind === "oauth-pending" ? state.stateToken : null;
+  const oauthProviderId =
+    state.kind === "oauth-pending" ? state.providerId : null;
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect, eslint-plugin-react-hooks/exhaustive-deps -- providers intentionally closed over to avoid re-subscribing on refetch
   useEffect(() => {
     if (state.kind !== "oauth-pending") return;
     let exchangeStarted = false;
@@ -310,7 +318,8 @@ export function ConnectProviderDialog({
       window.removeEventListener("message", handleMessage);
       clearTimeout(timeoutId);
     };
-  }, [state, providers, exchangeOAuth]);
+    // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- providers intentionally closed over
+  }, [state.kind, oauthStateToken, oauthProviderId, exchangeOAuth]);
 
   const currentProviderId = activeProviderId(state);
   const currentProvider = currentProviderId

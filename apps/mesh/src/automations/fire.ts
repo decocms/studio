@@ -145,12 +145,15 @@ export async function fireAutomation(opts: {
       const parsedModels = JSON.parse(automation.models) as {
         tier?: SimpleModeTier;
       };
+      // Legacy automations predating migration 077 may lack `tier`. Default to
+      // "smart" so the run can proceed instead of hard-failing.
       if (!parsedModels.tier) {
-        throw new Error(
-          `Automation ${automation.id} has no tier configured. Migration 077 should have set one.`,
+        console.warn(
+          `[fireAutomation] automation ${automation.id} missing tier, defaulting to "smart"`,
         );
       }
-      const resolved = await resolveTier(ctx, parsedModels.tier);
+      const tier: SimpleModeTier = parsedModels.tier ?? "smart";
+      const resolved = await resolveTier(ctx, tier);
       const resolvedModel: ResolvedAutomationModel = {
         credentialId: resolved.credentialId,
         thinking: {

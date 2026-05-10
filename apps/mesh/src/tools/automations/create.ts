@@ -12,6 +12,7 @@ import {
   requireAuth,
   requireOrganization,
 } from "../../core/mesh-context";
+import { ChatTierSchema } from "../organization/schema";
 import { normalizeMessages } from "./normalize-messages";
 
 export const AUTOMATION_CREATE = defineTool({
@@ -41,7 +42,7 @@ export const AUTOMATION_CREATE = defineTool({
     ]),
     models: z
       .object({
-        tier: z.enum(["fast", "smart", "thinking"]),
+        tier: ChatTierSchema,
       })
       .loose()
       .default({ tier: "smart" }),

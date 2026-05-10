@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   reshapeSimpleMode,
   inferAutomationTier,
+  __testing,
 } from "./077-tier-only-model-selection";
 
 describe("reshapeSimpleMode", () => {
@@ -42,71 +43,110 @@ describe("reshapeSimpleMode", () => {
     expect(result.tiers.smart).toBeNull();
     expect(result.tiers.fast).toBeNull();
   });
+
+  it("returns input unchanged when already in the new `{ tiers: ... }` shape", () => {
+    const already = {
+      tiers: {
+        fast: { keyId: "k1", modelId: "haiku" },
+        smart: null,
+        thinking: null,
+        image: null,
+        web_research: null,
+      },
+    };
+    const result = reshapeSimpleMode(already);
+    expect(result).toBe(already);
+  });
+
+  it("treats a partially-populated `tiers` object as already reshaped", () => {
+    // Only `smart` key is present, but the presence of `tiers` is enough.
+    const already = {
+      tiers: {
+        smart: { keyId: "k", modelId: "m" },
+        fast: null,
+        thinking: null,
+        image: null,
+        web_research: null,
+      },
+    };
+    const result = reshapeSimpleMode(already);
+    expect(result).toBe(already);
+  });
 });
 
 describe("inferAutomationTier", () => {
   it("keeps existing tier when present", () => {
-    const result = inferAutomationTier(
-      {
-        tier: "fast",
-        credentialId: "k",
-        thinking: { id: "m" },
-      },
-      [],
-    );
+    const result = inferAutomationTier({
+      tier: "fast",
+      credentialId: "k",
+      thinking: { id: "m" },
+    });
     expect(result).toBe("fast");
   });
 
-  it("returns 'thinking' for reasoning capability", () => {
-    const result = inferAutomationTier(
-      {
-        credentialId: "k",
-        thinking: { id: "o3", capabilities: { reasoning: true } },
-      },
-      [{ modelId: "o3", capabilities: ["reasoning", "text"], limits: null }],
-    );
+  it("returns 'thinking' when the legacy model declared reasoning capability", () => {
+    const result = inferAutomationTier({
+      credentialId: "k",
+      thinking: { id: "o3", capabilities: { reasoning: true } },
+    });
     expect(result).toBe("thinking");
   });
 
-  it("returns 'fast' for low-cost models", () => {
-    const result = inferAutomationTier(
-      { credentialId: "k", thinking: { id: "haiku" } },
-      [
-        {
-          modelId: "haiku",
-          capabilities: ["text"],
-          limits: null,
-          priceUsdPerMillionOutputTokens: 1.5,
-        },
-        {
-          modelId: "sonnet",
-          capabilities: ["text"],
-          limits: null,
-          priceUsdPerMillionOutputTokens: 15,
-        },
-        {
-          modelId: "opus",
-          capabilities: ["text"],
-          limits: null,
-          priceUsdPerMillionOutputTokens: 75,
-        },
-      ],
-    );
-    expect(result).toBe("fast");
+  it("returns 'smart' as the default when no signal is available", () => {
+    const result = inferAutomationTier({
+      credentialId: "k",
+      thinking: { id: "sonnet" },
+    });
+    expect(result).toBe("smart");
   });
 
-  it("returns 'smart' for everything else", () => {
-    const result = inferAutomationTier(
-      { credentialId: "k", thinking: { id: "sonnet" } },
-      [
-        {
-          modelId: "sonnet",
-          capabilities: ["text"],
-          limits: null,
-          priceUsdPerMillionOutputTokens: 15,
-        },
-      ],
+  it("returns 'smart' for an empty/unknown legacy shape", () => {
+    expect(inferAutomationTier({})).toBe("smart");
+  });
+});
+
+describe("idempotency helpers", () => {
+  it("isAlreadyReshapedSimpleMode detects new shape", () => {
+    expect(
+      __testing.isAlreadyReshapedSimpleMode({
+        tiers: { fast: null, smart: null },
+      }),
+    ).toBe(true);
+    expect(__testing.isAlreadyReshapedSimpleMode({ tiers: {} })).toBe(false);
+    expect(__testing.isAlreadyReshapedSimpleMode(null)).toBe(false);
+    expect(
+      __testing.isAlreadyReshapedSimpleMode({
+        enabled: true,
+        chat: { fast: null },
+      }),
+    ).toBe(false);
+  });
+
+  it("isAlreadyReshapedAutomationModels detects new shape", () => {
+    expect(__testing.isAlreadyReshapedAutomationModels({ tier: "fast" })).toBe(
+      true,
     );
-    expect(result).toBe("smart");
+    expect(__testing.isAlreadyReshapedAutomationModels({ tier: "smart" })).toBe(
+      true,
+    );
+    expect(
+      __testing.isAlreadyReshapedAutomationModels({
+        tier: "thinking",
+      }),
+    ).toBe(true);
+    // Has legacy keys alongside `tier` — not yet reshaped.
+    expect(
+      __testing.isAlreadyReshapedAutomationModels({
+        tier: "smart",
+        credentialId: "k",
+      }),
+    ).toBe(false);
+    expect(
+      __testing.isAlreadyReshapedAutomationModels({
+        tier: "smart",
+        thinking: { id: "m" },
+      }),
+    ).toBe(false);
+    expect(__testing.isAlreadyReshapedAutomationModels({})).toBe(false);
   });
 });

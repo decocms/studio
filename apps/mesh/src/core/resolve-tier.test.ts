@@ -72,6 +72,9 @@ describe("resolveTier", () => {
         image: null,
         web_research: null,
       },
+      providerKeys: [
+        { id: "k1", providerId: "anthropic", createdAt: "2026-01-01" },
+      ],
       models: {
         k1: [{ modelId: "claude-sonnet-4-6", title: "Claude Sonnet 4.6" }],
       },
@@ -142,11 +145,35 @@ describe("resolveTier", () => {
         image: null,
         web_research: null,
       },
+      providerKeys: [
+        { id: "k1", providerId: "openai", createdAt: "2026-01-01" },
+      ],
       listModelsThrows: true,
     });
     const result = await resolveTier(ctx, "smart");
     expect(result.credentialId).toBe("k1");
     expect(result.modelId).toBe("gpt-5");
     expect(result.modelMeta.title).toBe("gpt-5");
+  });
+
+  it("falls through to default-pick when slot references a deleted key", async () => {
+    const ctx = makeCtx({
+      tiers: {
+        smart: { keyId: "k_deleted", modelId: "stale-model" },
+        fast: null,
+        thinking: null,
+        image: null,
+        web_research: null,
+      },
+      providerKeys: [
+        { id: "k_live", providerId: "anthropic", createdAt: "2026-01-01" },
+      ],
+      models: {
+        k_live: [{ modelId: "claude-sonnet-4-6", title: "Claude Sonnet 4.6" }],
+      },
+    });
+    const result = await resolveTier(ctx, "smart");
+    expect(result.credentialId).toBe("k_live");
+    expect(result.modelId).toBe("claude-sonnet-4-6");
   });
 });

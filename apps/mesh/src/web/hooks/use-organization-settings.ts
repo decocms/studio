@@ -15,12 +15,8 @@ import {
 } from "@tanstack/react-query";
 import { KEYS } from "@/web/lib/query-keys";
 
-export type SimpleModeTier =
-  | "fast"
-  | "smart"
-  | "thinking"
-  | "image"
-  | "web_research";
+export type { SimpleModeTier } from "@/tools/organization/schema";
+import type { SimpleModeTier } from "@/tools/organization/schema";
 
 export interface ModelSlot {
   keyId: string;

@@ -55,6 +55,15 @@ export const SimpleModeTierSchema = z.enum([
 
 export type SimpleModeTier = z.infer<typeof SimpleModeTierSchema>;
 
+/**
+ * Chat-only tier subset used by automations.
+ * Automations only need to pick between the three chat tiers
+ * (fast/smart/thinking) — image and web_research are not applicable.
+ */
+export const ChatTierSchema = z.enum(["fast", "smart", "thinking"]);
+
+export type ChatTier = z.infer<typeof ChatTierSchema>;
+
 export const SimpleModeConfigSchema = z.object({
   tiers: z.object({
     fast: ModelSlotSchema,

@@ -80,7 +80,6 @@ import { chatModeForTransportRef } from "../../lib/chat-mode-sync";
 import { LOCALSTORAGE_KEYS } from "../../lib/localstorage-keys";
 import { KEYS } from "../../lib/query-keys";
 import { useSimpleMode } from "../../hooks/use-organization-settings";
-import type { SimpleModeTier } from "@/tools/organization/schema";
 
 // ============================================================================
 // Context Types
@@ -159,11 +158,9 @@ export interface ChatPrefsContextValue {
   tiptapDocRef: { current: Metadata["tiptapDoc"] };
   /** @deprecated No-op */
   resetInteraction: () => void;
-  /** Whether Simple Model Mode is enabled for the org */
-  simpleModeEnabled: boolean;
   /** The currently selected tier in Simple Model Mode */
   simpleModeTier: SimpleTier;
-  setSimpleModeTier: (tier: SimpleModeTier) => void;
+  setSimpleModeTier: (tier: SimpleTier) => void;
 }
 
 export interface ChatBridgeValue {
@@ -472,10 +469,8 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     setTiptapDoc,
     tiptapDocRef,
     resetInteraction: () => {},
-    simpleModeEnabled: true,
     simpleModeTier: activeTier,
-    setSimpleModeTier: (tier: SimpleModeTier) =>
-      setStoredTier(tier as SimpleTier),
+    setSimpleModeTier: (tier: SimpleTier) => setStoredTier(tier),
   };
 
   return (
@@ -863,10 +858,8 @@ export function ChatContextProvider({
     setTiptapDoc,
     tiptapDocRef,
     resetInteraction: () => {},
-    simpleModeEnabled: true,
     simpleModeTier: activeTier,
-    setSimpleModeTier: (tier: SimpleModeTier) =>
-      setStoredTier(tier as SimpleTier),
+    setSimpleModeTier: (tier: SimpleTier) => setStoredTier(tier),
   };
 
   const internals: TaskProviderInternals = {

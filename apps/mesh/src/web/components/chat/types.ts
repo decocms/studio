@@ -53,21 +53,6 @@ export type TiptapNode = JSONContent;
 // Metadata Types
 // ============================================================================
 
-/** Model info shape aligned with the backend StreamRequestSchema */
-export interface MetadataModelInfo {
-  id: string;
-  title: string;
-  provider?: string;
-  capabilities?: {
-    vision?: boolean;
-    text?: boolean;
-    tools?: boolean;
-    reasoning?: boolean;
-    file?: boolean;
-  };
-  limits?: { contextWindow?: number; maxOutputTokens?: number };
-}
-
 export interface Metadata {
   reasoning_start_at?: string | Date;
   reasoning_end_at?: string | Date;

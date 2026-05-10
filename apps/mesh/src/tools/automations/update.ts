@@ -8,6 +8,7 @@
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/mesh-context";
+import { ChatTierSchema } from "../organization/schema";
 import { configureTriggerOnMcp } from "./configure-trigger";
 import { normalizeMessages } from "./normalize-messages";
 
@@ -41,9 +42,8 @@ export const AUTOMATION_UPDATE = defineTool({
       .optional(),
     models: z
       .object({
-        tier: z.enum(["fast", "smart", "thinking"]),
+        tier: ChatTierSchema,
       })
-      .loose()
       .optional(),
     temperature: z.number().optional(),
   }),

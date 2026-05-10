@@ -48,8 +48,10 @@ export const AI_PROVIDER_KEY_DELETE = defineTool({
     const org = requireOrganization(ctx);
     await ctx.access.check();
 
-    await ctx.storage.aiProviderKeys.delete(input.keyId, org.id);
-
+    // Clear simple-mode slots referencing this key BEFORE deleting it. If the
+    // settings upsert fails, the key is still present and the operation can be
+    // retried — the alternative ordering would leave slots pointing at a
+    // non-existent key, which breaks chat/automations until manual cleanup.
     const settings = await ctx.storage.organizationSettings.get(org.id);
     if (settings?.simple_mode) {
       const { config, changed } = clearSlotsForKey(
@@ -62,6 +64,8 @@ export const AI_PROVIDER_KEY_DELETE = defineTool({
         });
       }
     }
+
+    await ctx.storage.aiProviderKeys.delete(input.keyId, org.id);
 
     posthog.capture({
       distinctId: ctx.auth.user!.id,
