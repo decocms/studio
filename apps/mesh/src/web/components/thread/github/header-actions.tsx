@@ -39,7 +39,12 @@ export function HeaderActions({ virtualMcpId }: Props) {
 
   const githubRepo = vm?.metadata?.githubRepo ?? null;
 
-  const { lifecycle, branch: branchMeta, status, phase: claimPhase } = useVmEvents();
+  const {
+    lifecycle,
+    branch: branchMeta,
+    status,
+    phase: claimPhase,
+  } = useVmEvents();
 
   const prQuery = usePrByBranch({
     orgId: org.id,
