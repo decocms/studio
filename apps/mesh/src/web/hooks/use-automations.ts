@@ -140,8 +140,6 @@ export interface AutomationDetail {
   virtual_mcp_id: string;
   messages: unknown[];
   models: {
-    credentialId: string;
-    thinking: { id: string; [key: string]: unknown };
     tier?: "fast" | "smart" | "thinking";
     [key: string]: unknown;
   };
@@ -212,19 +210,11 @@ export function useAutomation(id: string) {
 // Helpers
 // ============================================================================
 
-export function buildDefaultAutomationInput(
-  virtualMcpId: string,
-  modelDefaults?: { credentialId: string; modelId: string } | null,
-) {
+export function buildDefaultAutomationInput(virtualMcpId: string) {
   return {
     name: "New Automation",
     messages: [],
-    models: modelDefaults
-      ? {
-          credentialId: modelDefaults.credentialId,
-          thinking: { id: modelDefaults.modelId },
-        }
-      : { credentialId: "", thinking: { id: "" } },
+    models: { tier: "smart" as const },
     temperature: 0.5,
     active: true,
     virtual_mcp_id: virtualMcpId,

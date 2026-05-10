@@ -924,7 +924,7 @@ export interface AutomationTable {
   active: boolean;
   created_by: string;
   messages: string; // JSON string: UIMessage[]
-  models: string; // JSON string: { connectionId, thinking, coding?, fast? }
+  models: string; // JSON string: { tier: "fast" | "smart" | "thinking" } (post-migration 077)
   temperature: number;
   virtual_mcp_id: string;
   created_at: ColumnType<Date, Date | string, never>;
