@@ -20,6 +20,7 @@ import "../../index.css";
 
 import { authClient } from "@/web/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
+import { SESSIONSTORAGE_KEYS } from "@/web/lib/sessionstorage-keys";
 
 import { sourcePlugins } from "./plugins.ts";
 import type {
@@ -245,8 +246,6 @@ const orgIndexRoute = createRoute({
 // SETTINGS LAYOUT (/$org/settings)
 // ============================================
 
-const SETTINGS_ENTERED_FROM_KEY = "mesh.settingsEnteredFrom";
-
 const settingsLayout = createRoute({
   getParentRoute: () => orgLayout,
   path: "/settings",
@@ -258,7 +257,7 @@ const settingsLayout = createRoute({
     if (typeof window === "undefined") return;
     const current = window.location.pathname + window.location.search;
     if (!current.includes("/settings")) {
-      sessionStorage.setItem(SETTINGS_ENTERED_FROM_KEY, current);
+      sessionStorage.setItem(SESSIONSTORAGE_KEYS.settingsEnteredFrom, current);
     }
   },
   component: lazyRouteComponent(() => import("./layouts/settings-layout.tsx")),

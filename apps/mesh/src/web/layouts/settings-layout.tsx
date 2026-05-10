@@ -47,6 +47,7 @@ import { pluginSettingsSidebarItems } from "@/web/index";
 import { useStatusSounds } from "../hooks/use-status-sounds";
 import { authClient } from "@/web/lib/auth-client";
 import { track } from "@/web/lib/posthog-client";
+import { SESSIONSTORAGE_KEYS } from "@/web/lib/sessionstorage-keys";
 
 interface SettingsNavItem {
   key: string;
@@ -381,8 +382,6 @@ export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
 // Settings toolbar — back/forward navigation only (no panel toggles)
 // ---------------------------------------------------------------------------
 
-const SETTINGS_ENTERED_FROM_KEY = "mesh.settingsEnteredFrom";
-
 function SettingsToolbar() {
   const { org } = useParams({ from: "/shell/$org" });
   const navigate = useNavigate();
@@ -392,9 +391,11 @@ function SettingsToolbar() {
     // settingsLayout.beforeLoad). Falls back to the org home if that signal
     // isn't available — never leave the user stranded inside /settings.
     if (typeof window !== "undefined") {
-      const from = sessionStorage.getItem(SETTINGS_ENTERED_FROM_KEY);
+      const from = sessionStorage.getItem(
+        SESSIONSTORAGE_KEYS.settingsEnteredFrom,
+      );
       if (from && !from.includes("/settings")) {
-        sessionStorage.removeItem(SETTINGS_ENTERED_FROM_KEY);
+        sessionStorage.removeItem(SESSIONSTORAGE_KEYS.settingsEnteredFrom);
         navigate({ to: from });
         return;
       }
