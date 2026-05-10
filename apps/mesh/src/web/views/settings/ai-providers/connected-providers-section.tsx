@@ -40,7 +40,7 @@ export function ConnectedProvidersSection({
   return (
     <SettingsSection
       title="Connected providers"
-      headerClassName="pl-0"
+      headerClassName="px-0"
       actions={
         <Button size="sm" onClick={onConnectClick}>
           <Plus size={14} />
