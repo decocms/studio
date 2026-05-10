@@ -211,8 +211,8 @@ export function selectHeaderButton(
   }
 
   // From here on, lifecycle.phase === "running". `branch` should be ready;
-  // if it isn't, fall through to the same Loading… pill — a real fix for
-  // this race lands in a later task.
+  // if it isn't, fall through to the same Loading… pill to coordinate
+  // with the daemon's branch-refresh cycle.
   if (branch.kind !== "ready") {
     return {
       label: "Loading branch…",
