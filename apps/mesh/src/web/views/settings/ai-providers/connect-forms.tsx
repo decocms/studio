@@ -226,20 +226,24 @@ export function ConnectOpenAICompatibleForm({
           className="h-8 text-sm"
         />
       </div>
-      <div className="space-y-1">
-        <label className="text-xs font-medium text-muted-foreground">
-          Base URL
-        </label>
-        <Input
-          type="url"
-          placeholder={baseUrlPlaceholder}
-          {...register("baseUrl")}
-          className="h-8 text-sm"
-        />
-        {errors.baseUrl && (
-          <p className="text-xs text-destructive">{errors.baseUrl.message}</p>
-        )}
-      </div>
+      {preset?.defaultBaseUrl ? (
+        <input type="hidden" {...register("baseUrl")} />
+      ) : (
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">
+            Base URL
+          </label>
+          <Input
+            type="url"
+            placeholder={baseUrlPlaceholder}
+            {...register("baseUrl")}
+            className="h-8 text-sm"
+          />
+          {errors.baseUrl && (
+            <p className="text-xs text-destructive">{errors.baseUrl.message}</p>
+          )}
+        </div>
+      )}
       <div className="space-y-1">
         <label className="text-xs font-medium text-muted-foreground">
           API Key{" "}
