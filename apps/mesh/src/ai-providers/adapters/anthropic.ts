@@ -11,7 +11,7 @@ export const anthropicAdapter: ProviderAdapter = {
   info: {
     id: "anthropic",
     name: "Anthropic",
-    description: "Claude language models",
+    description: "Claude — Anthropic's AI assistant",
     logo: "https://assets.decocache.com/decocms/51a209ae-14bc-4b6f-8216-8eb670695bd7/Anthropic-Icon--Streamline-Svg-Logos.svg",
   },
 

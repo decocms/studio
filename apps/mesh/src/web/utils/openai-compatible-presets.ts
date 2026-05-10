@@ -28,7 +28,7 @@ export const OPENAI_COMPATIBLE_PRESETS: OpenAICompatiblePreset[] = [
   {
     id: "openai",
     name: "OpenAI",
-    description: "Connect your OpenAI account with an API key",
+    description: "GPT-4, GPT-5, and other OpenAI models",
     logo: "https://decoims.com/decocms/b51001ef-ae58-4db4-8a75-9e6d2df2dd8e/openai.png",
     baseUrlPlaceholder: "https://api.openai.com/v1",
     defaultBaseUrl: "https://api.openai.com/v1",
@@ -38,7 +38,7 @@ export const OPENAI_COMPATIBLE_PRESETS: OpenAICompatiblePreset[] = [
   {
     id: "litellm",
     name: "LiteLLM",
-    description: "Connect a LiteLLM proxy as an OpenAI-compatible endpoint",
+    description: "Connect to a LiteLLM gateway your team manages",
     logo: "https://decoims.com/decocms/e974ae05-ad64-4b4a-8444-d9705f019b85/litellm.png",
     baseUrlPlaceholder: "http://localhost:4000",
     apiKeyRecommended: true,
@@ -48,7 +48,7 @@ export const OPENAI_COMPATIBLE_PRESETS: OpenAICompatiblePreset[] = [
   {
     id: "ollama",
     name: "Ollama",
-    description: "Run local models via Ollama's OpenAI-compatible API",
+    description: "Run open-source models on your own computer",
     logo: "https://decoims.com/decocms/2bb2f822-5288-4b7c-a541-dcbef76525a0/ollama.png",
     baseUrlPlaceholder: "http://localhost:11434",
     apiKeyRecommended: false,
@@ -58,7 +58,7 @@ export const OPENAI_COMPATIBLE_PRESETS: OpenAICompatiblePreset[] = [
   {
     id: "lm-studio",
     name: "LM Studio",
-    description: "Local models served by LM Studio",
+    description: "Open models running through LM Studio",
     logo: "https://decoims.com/decocms/9f0ab1a9-d2d5-4f3e-9de0-aadd4926428d/lmstudio.webp",
     baseUrlPlaceholder: "http://localhost:1234",
     apiKeyRecommended: false,
@@ -68,7 +68,7 @@ export const OPENAI_COMPATIBLE_PRESETS: OpenAICompatiblePreset[] = [
   {
     id: "vllm",
     name: "vLLM",
-    description: "High-throughput inference server with OpenAI-compatible API",
+    description: "Connect to your team's self-hosted vLLM server",
     logo: "https://decoims.com/decocms/b6c60e4f-a4aa-443c-981f-ad0f31640e22/vllm.png",
     baseUrlPlaceholder: "http://localhost:8000",
     apiKeyRecommended: false,

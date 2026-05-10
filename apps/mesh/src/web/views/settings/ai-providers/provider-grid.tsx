@@ -89,7 +89,7 @@ export function ProviderGrid({ providers, onSelect }: ProviderGridProps) {
           <div className="relative rounded-xl border border-primary/30 bg-gradient-to-br from-primary/10 via-transparent to-primary/5 dark:from-primary/15 dark:to-primary/5 p-4">
             <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-primary/5 to-transparent pointer-events-none" />
             <p className="text-xs font-medium text-primary mb-3 relative">
-              Recommended — managed credits, no key juggling
+              Recommended — start in seconds, pay as you go
             </p>
             <SettingsCard className="relative">
               <ProviderTile
@@ -108,7 +108,7 @@ export function ProviderGrid({ providers, onSelect }: ProviderGridProps) {
           <div className="relative rounded-xl border border-lime-400/30 bg-gradient-to-br from-lime-50/50 via-transparent to-yellow-50/30 dark:from-lime-950/20 dark:to-yellow-950/10 p-4">
             <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-lime-400/5 to-yellow-400/5 pointer-events-none" />
             <p className="text-xs font-medium text-lime-700 dark:text-lime-400 mb-3 relative">
-              Local models — use your existing AI provider
+              Bring your Claude or ChatGPT subscription
             </p>
             <SettingsCard className="relative">
               {local.map((provider) => (
@@ -177,7 +177,7 @@ export function ProviderGrid({ providers, onSelect }: ProviderGridProps) {
                     key="custom"
                     logo={openaiCompatible.logo}
                     name="Custom OpenAI-compatible"
-                    description="Connect any OpenAI-compatible endpoint by URL"
+                    description="Bring your own model server (advanced)"
                     onClick={() =>
                       onSelect({
                         kind: "openai-compatible",

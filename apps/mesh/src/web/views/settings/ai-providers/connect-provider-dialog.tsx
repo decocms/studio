@@ -321,7 +321,7 @@ export function ConnectProviderDialog({
       ? OPENAI_COMPATIBLE_PRESETS.find((p) => p.id === state.presetId)
       : null;
   const currentTitle =
-    currentPreset?.name ?? currentProvider?.name ?? "Connect AI provider";
+    currentPreset?.name ?? currentProvider?.name ?? "Connect an AI provider";
   const showBack = state.kind !== "grid" && state.kind !== "closed";
 
   return (
@@ -342,7 +342,9 @@ export function ConnectProviderDialog({
             <DialogTitle>{currentTitle}</DialogTitle>
           </div>
           {state.kind === "grid" && (
-            <DialogDescription>Choose a provider to connect.</DialogDescription>
+            <DialogDescription>
+              Pick a provider — we'll handle the rest.
+            </DialogDescription>
           )}
         </DialogHeader>
 
