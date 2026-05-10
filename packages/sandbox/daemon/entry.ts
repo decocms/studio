@@ -1,15 +1,18 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { bumpActivity, markClaimed } from "./activity";
+import { bumpActivity } from "./activity";
 import { requireToken } from "./auth";
 import { TenantConfigStore } from "./config-store";
 import { REPLAY_BYTES } from "./constants";
 import { Broadcaster } from "./events/broadcast";
+import type { DaemonStatus } from "./events/types";
 import { BranchStatusMonitor } from "./git/branch-status";
 import { gitSync } from "./git/git-sync";
 import { InstallState } from "./install/install-state";
+import { LifecycleManager } from "./lifecycle/manager";
 import { readConfig } from "./persistence";
+import { createPortSniffer } from "./process/port-sniffer";
 import { TaskManager } from "./process/task-manager";
 import { PhaseManager } from "./process/phase-manager";
 import { startUpstreamProbe } from "./probe";
@@ -33,6 +36,7 @@ import {
 } from "./routes/fs";
 import { makeHealthHandler } from "./routes/health";
 import { makeIdleHandler } from "./routes/idle";
+import { makeSetupHandler } from "./routes/setup";
 import {
   makeTasksDeleteHandler,
   makeTasksGetHandler,
@@ -79,28 +83,45 @@ const TMP_DIR = join(APP_ROOT, "tmp");
 
 const broadcaster = new Broadcaster(REPLAY_BYTES);
 
-type Intent = { state: "running" | "paused"; reason?: string };
-let currentIntent: Intent = { state: "running" };
-function setIntent(next: Intent) {
-  currentIntent = next;
-  broadcaster.broadcastEvent("intent", { type: "intent", ...next });
+// `application.port` is what mesh told the dev script to use, but plenty of
+// frameworks (vite included) ignore PORT env and pick their own — and on the
+// host runner two sandboxes can race for the same default port, leaving the
+// loser on a fallback. Sniff the actual bind announcement from starter
+// stdout and feed THAT to the probe; the configured port stays as a
+// fallback for tools that do honor PORT.
+const portSniffer = createPortSniffer();
+const broadcastChunkRaw = broadcaster.broadcastChunk.bind(broadcaster);
+broadcaster.broadcastChunk = (source, data) => {
+  portSniffer.observe(source, data);
+  broadcastChunkRaw(source, data);
+};
+
+let currentStatus: DaemonStatus = { state: "running" };
+function setStatus(next: DaemonStatus) {
+  currentStatus = next;
+  broadcaster.emit("status", next);
 }
 
 const store = new TenantConfigStore();
 const installState = new InstallState();
-const phaseManager = new PhaseManager({
-  onChange: (phases) =>
-    broadcaster.broadcastEvent("phases", { type: "phases", phases }),
-});
+const lifecycle = new LifecycleManager({ broadcaster });
+// Drop the sniffed port whenever we leave `running` — the next dev start
+// may bind somewhere else and we need to re-sniff its announcement.
+const lifecycleTransitionRaw = lifecycle.transition.bind(lifecycle);
+lifecycle.transition = (next) => {
+  const wasRunning = lifecycle.current().phase === "running";
+  lifecycleTransitionRaw(next);
+  if (wasRunning && next.phase !== "running") portSniffer.reset();
+};
+// Per-command history for LLM context (each bash/exec spawned via TaskManager
+// is tracked as a phase). Setup pipeline phases live on `lifecycle` instead.
+const phaseManager = new PhaseManager();
 const taskManager = new TaskManager({
   logsDir: TMP_DIR,
   phaseManager,
   broadcaster,
   onChange: () => {
-    broadcaster.broadcastEvent("tasks", {
-      type: "tasks",
-      active: getActiveTasks(),
-    });
+    broadcaster.emit("tasks", { active: getActiveTasks() });
   },
 });
 
@@ -125,38 +146,83 @@ const orchestrator = new SetupOrchestrator({
   bootConfig: { appRoot: bootConfig.appRoot, repoDir: bootConfig.repoDir },
   store,
   taskManager,
-  setIntent,
-  getIntent: () => currentIntent,
+  setStatus,
+  getStatus: () => currentStatus,
   broadcaster,
   installState,
   logsDir: TMP_DIR,
-  phaseManager,
+  lifecycle,
   branchStatus,
 });
-
-let discoveredScripts: string[] | null = null;
-
-const origEvent = broadcaster.broadcastEvent.bind(broadcaster);
-broadcaster.broadcastEvent = (event: string, data: unknown) => {
-  if (event === "scripts") {
-    discoveredScripts = (data as { scripts?: string[] }).scripts ?? [];
-  }
-  origEvent(event, data);
-};
 
 store.subscribe((event) => {
   orchestrator.handle(event.transition);
 });
 
-const lastStatus = startUpstreamProbe({
-  getPort: () => store.read()?.application?.port ?? null,
+// Probe transitions lifecycle from `starting` → `running` (dev server up)
+// and `running` → `crashed` (was online, lost contact). Pre-running phases
+// (cloning, installing, etc.) are owned by the orchestrator.
+//
+// Dirty-baseline: dev scripts often rewrite tracked files at boot (minified
+// `static/tailwind.css`, compiled CSS, lockfile drift). The first
+// `online` transition arms a noise baseline of those paths so the
+// "Save changes" button doesn't flip on for boot-time noise. The 3 s grace
+// gives common post-Ready writers (PostCSS/Tailwind JIT, Vite asset emit)
+// time to land before we snapshot. `clearBaseline` on `crashed`/restart so
+// a re-armed baseline reflects the new boot's noise.
+const BASELINE_GRACE_MS = 3000;
+let baselineTimer: ReturnType<typeof setTimeout> | null = null;
+const lastProbe = startUpstreamProbe({
+  getPort: () =>
+    portSniffer.current() ?? store.read()?.application?.port ?? null,
   onChange: (s) => {
-    broadcaster.broadcastEvent("status", { type: "status", ...s });
+    // The probe only honors a "port is responding" verdict when we
+    // actually expect our dev script to be up — i.e. we're currently in
+    // `starting` (just spawned, waiting for first response) or already in
+    // `running`. Otherwise a sibling sandbox on the same host can
+    // resurrect us back to `running` after the orchestrator has correctly
+    // recorded `start-failed`/`crashed`, leaving the iframe pointed at
+    // some other sandbox's app. Same logic mirrored on the offline edge:
+    // only mark `crashed` when we were actually running, never as a side
+    // effect of a port that was never ours in the first place.
+    const phase = lifecycle.current().phase;
+    if (s.status === "online" && s.port !== null) {
+      if (phase !== "starting" && phase !== "running") return;
+      lifecycle.transition({
+        phase: "running",
+        port: s.port,
+        htmlSupport: s.htmlSupport,
+      });
+      if (!baselineTimer) {
+        baselineTimer = setTimeout(() => {
+          baselineTimer = null;
+          branchStatus.armBaseline();
+        }, BASELINE_GRACE_MS);
+      }
+    } else if (s.status === "offline") {
+      if (phase !== "running") return;
+      lifecycle.transition({ phase: "crashed" });
+      // Dev script lost contact — next start may bind to a different port,
+      // so unlock the sniffer to re-detect on the next bind announcement.
+      portSniffer.reset();
+      if (baselineTimer) {
+        clearTimeout(baselineTimer);
+        baselineTimer = null;
+      }
+      branchStatus.clearBaseline();
+    }
   },
   onLog: (msg) => broadcaster.broadcastChunk("setup", msg),
 });
 
-const getDevPort = (): number | null => store.read()?.application?.port ?? null;
+// HTTP/WS proxy forwards to the same port the probe is HEAD-checking.
+// `application.port` is what mesh configured, but vite/etc. routinely
+// pick a fallback when the configured one is busy — using the sniffed
+// announce-port keeps the proxy aligned with what the dev script
+// actually bound to. Falls back to the configured value when nothing has
+// been sniffed yet.
+const getDevPort = (): number | null =>
+  portSniffer.current() ?? store.read()?.application?.port ?? null;
 const { appRoot, repoDir } = bootConfig;
 const fsDeps = { appRoot, repoDir };
 const readH = makeReadHandler(fsDeps);
@@ -185,7 +251,8 @@ const tasksDeleteH = makeTasksDeleteHandler({ taskManager });
 const tasksStreamH = makeTasksStreamHandler({ taskManager });
 
 const scriptsHandler = makeScriptsHandler(() => {
-  if (discoveredScripts) return discoveredScripts;
+  const cached = orchestrator.getDiscoveredScripts();
+  if (cached) return cached;
   const enriched = store.read();
   const pm = enriched?.application?.packageManager?.name ?? null;
   const cwd = enriched?.application?.packageManager?.path ?? repoDir;
@@ -193,9 +260,15 @@ const scriptsHandler = makeScriptsHandler(() => {
   return discoverScripts(cwd, pm);
 });
 
+const setupCloneH = makeSetupHandler("clone", { orchestrator });
+const setupInstallH = makeSetupHandler("install", { orchestrator });
+const setupStartH = makeSetupHandler("start", { orchestrator });
+
+const isReady = () => lifecycle.current().phase === "running";
+
 const healthH = makeHealthHandler({
   config: { daemonBootId: process.env.DAEMON_BOOT_ID ?? "" },
-  getReady: () => lastStatus.status === "online",
+  getReady: isReady,
   getOrchestrator: () => ({
     running: orchestrator.isRunning(),
     pending: orchestrator.pendingCount(),
@@ -205,11 +278,11 @@ const healthH = makeHealthHandler({
 
 const eventsH = makeEventsHandler({
   broadcaster,
-  getLastStatus: () => lastStatus,
-  getDiscoveredScripts: () => discoveredScripts,
+  getLifecycle: () => lifecycle.current(),
+  getDiscoveredScripts: () => orchestrator.getDiscoveredScripts(),
   getActiveTasks,
-  getIntent: () => currentIntent,
-  getLastBranchStatus: () => branchStatus.getLast(),
+  getStatus: () => currentStatus,
+  getBranchMeta: () => branchStatus.getLast(),
 });
 
 const idleH = makeIdleHandler();
@@ -224,7 +297,7 @@ const configReadH = makeConfigReadHandler({
       running: orchestrator.isRunning(),
       pending: orchestrator.pendingCount(),
     },
-    ready: lastStatus.status === "online",
+    ready: isReady(),
   }),
   getTasks: () => phaseManager.recent(20),
 });
@@ -258,20 +331,15 @@ if (!store.read()) {
     `[daemon] boot_id=${process.env.DAEMON_BOOT_ID} ready, unclaimed — waiting for workload config`,
   );
 }
+// Reference to silence "unused" — keep for future probe-state introspection.
+void lastProbe;
 
 let firstWorkLogged = false;
 
 async function configH(req: Request): Promise<Response> {
   const { method } = req;
   if (method === "GET") return configReadH();
-  if (method === "PUT" || method === "POST") {
-    const res = await configUpdateH(req);
-    // Mark daemon as claimed on first successful config delivery so the
-    // housekeeper can distinguish warm-pool pods awaiting adoption from
-    // idle-but-active sandboxes.
-    if (res.status === 200) markClaimed();
-    return res;
-  }
+  if (method === "PUT" || method === "POST") return configUpdateH(req);
   return jsonResponse({ error: "Not found: /_decopilot_vm/config" }, 404);
 }
 
@@ -322,6 +390,12 @@ const fsH: Record<string, (req: Request) => Response | Promise<Response>> = {
   "/bash": bashH,
 };
 
+const setupH: Record<string, () => Response> = {
+  "/setup/clone": setupCloneH,
+  "/setup/install": setupInstallH,
+  "/setup/start": setupStartH,
+};
+
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE",
@@ -345,6 +419,7 @@ function vmRouteH(
 
   if (vmPath === "/config") return configH(req);
   if (vmPath.startsWith("/tasks")) return tasksRouteH(req, method, vmPath);
+  if (method === "POST" && vmPath in setupH) return setupH[vmPath]();
   if (method === "POST" && vmPath in fsH) return fsH[vmPath](req);
   if (method === "POST" && vmPath.startsWith("/exec/"))
     return execRouteH(req, vmPath);

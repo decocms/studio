@@ -99,17 +99,41 @@ export function PreviewContent() {
     // oxlint-disable-next-line no-self-assign
     iframe.src = iframe.src;
   });
-  const hasHtmlPreview = vmEvents.status.htmlSupport;
+  // `running` lifecycle phase carries the live port + htmlSupport flag;
+  // `crashed` means the dev server stopped responding after coming up.
+  // Everything else maps to "booting" for the preview overlay.
+  //
+  // htmlSupport only lives on the `running` event — but we need it to be
+  // sticky across `running` → `crashed` so a transient drop doesn't flip a
+  // working preview to the "No web page" empty state. Latch the last seen
+  // value, keyed on previewUrl so a new VM resets it.
+  const lifecyclePhase = vmEvents.lifecycle.phase;
+  const htmlSupportRef = useRef<{ url: string; value: boolean }>({
+    url: "",
+    value: false,
+  });
+  if (previewUrl && htmlSupportRef.current.url !== previewUrl) {
+    htmlSupportRef.current = { url: previewUrl, value: false };
+  }
+  if (lifecyclePhase === "running") {
+    htmlSupportRef.current.value = vmEvents.lifecycle.htmlSupport;
+  }
+  const hasHtmlPreview = htmlSupportRef.current.value;
+  const upstreamStatus: "booting" | "online" | "offline" =
+    lifecyclePhase === "running"
+      ? "online"
+      : lifecyclePhase === "crashed"
+        ? "offline"
+        : "booting";
   const suspended = vmEvents.suspended;
 
-  // Install ran, dev script is intentionally stopped (paused) — treat as paused,
-  // not booting. Otherwise on remount the booting overlay falsely flashes
-  // "Installing packages…" even though the server isn't starting.
-  const appPaused = vmEvents.intent.state === "paused";
-
-  // The daemon's status enum (booting/online/offline) is itself the
-  // "ever-responded" latch — offline means we saw a response and lost it,
-  // and htmlSupport is sticky on offline at the source.
+  // Only the user-pause state routes to the suspended overlay (resume
+  // affordance). The daemon's `error` state means the dev script crashed
+  // — that's a failure, surfaced via the booting overlay's retry button
+  // (gated on `lifecycle.phase ∈ {clone-failed, install-failed, start-failed}`).
+  // Lumping the two under `appPaused` would route every dev-script crash
+  // to the resume UI instead, which has no retry path.
+  const appPaused = vmEvents.status.state === "paused";
 
   // Latch the boot-overlay timer's `since` to the first time previewUrl
   // appeared, keyed on previewUrl so a new VM resets it. Rendering inline
@@ -158,8 +182,8 @@ export function PreviewContent() {
 
   const previewState = computePreviewState({
     previewUrl,
-    status: vmEvents.status.status,
-    htmlSupport: vmEvents.status.htmlSupport,
+    status: upstreamStatus,
+    htmlSupport: hasHtmlPreview,
     suspended,
     appPaused,
     vmStartPending,
@@ -453,6 +477,8 @@ export function PreviewContent() {
               onViewLogs={openEnv}
               claimPhase={previewUrl ? null : claimPhase}
               onRetry={retryAutoStart}
+              virtualMcpId={virtualMcpId}
+              branch={branch}
             />
           </div>
         )}

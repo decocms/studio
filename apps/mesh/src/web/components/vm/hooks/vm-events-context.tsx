@@ -8,9 +8,9 @@
  *   1. `event: phase` — `ClaimPhase` JSON for the pre-Ready lifecycle.
  *      Surfaces what's happening between VM_START posting a SandboxClaim
  *      and the daemon coming online (capacity wait, image pull, etc).
- *   2. `event: log/status/scripts/processes/reload/branch-status` — passthrough
- *      from the in-pod daemon's `/_decopilot_vm/events`. Same wire format the
- *      browser used to consume directly.
+ *   2. Daemon events (`event: log|lifecycle|status|tasks|scripts|branch|reload`) —
+ *      passthrough from the in-pod daemon's `/_decopilot_vm/events`. Types
+ *      come from `@decocms/sandbox/shared`.
  *
  *   3. `event: gone` — synthetic. Mesh's upstream daemon fetch returned 404
  *      (sandbox handle missing → operator-evicted on idle TTL). Mapped to
@@ -38,34 +38,15 @@ import type {
 
 export type { ClaimFailureReason, ClaimPhase };
 
-import type { UpstreamStatus } from "../upstream-status";
-export type { UpstreamStatus };
+import type {
+  BranchMeta,
+  DaemonEventName,
+  DaemonEventPayload,
+  DaemonStatus,
+  LifecycleState,
+} from "@decocms/sandbox/shared";
 
-export interface VmStatus {
-  status: UpstreamStatus;
-  port: number | null;
-  htmlSupport: boolean;
-}
-
-export interface BranchStatusReady {
-  kind: "ready";
-  branch: string;
-  base: string;
-  workingTreeDirty: boolean;
-  unpushed: number;
-  aheadOfBase: number;
-  behindBase: number;
-  /** HEAD sha (falls back to origin/<branch>). Empty if the daemon couldn't compute it. */
-  headSha: string;
-}
-
-export type BranchStatus =
-  | { kind: "initializing" }
-  | { kind: "cloning" }
-  | { kind: "clone-failed"; error: string }
-  | { kind: "checking-out"; to: string }
-  | { kind: "checkout-failed"; error: string }
-  | BranchStatusReady;
+export type { BranchMeta, DaemonStatus, LifecycleState };
 
 export type ChunkHandler = (source: string, data: string) => void;
 export type ReloadHandler = () => void;
@@ -79,15 +60,17 @@ export interface VmEventsValue {
    * present).
    */
   phase: ClaimPhase | null;
-  status: VmStatus;
+  /** Daemon's setup pipeline state. Drives retry UI. */
+  lifecycle: LifecycleState;
+  /** Daemon's operational state (running / paused / error). */
+  status: DaemonStatus;
+  /** Git metadata (branch, dirty, divergence). `unknown` until the first compute. */
+  branch: BranchMeta;
   suspended: boolean;
   /** True after a `gone` event — handle gone, reprovision via VM_START. */
   notFound: boolean;
   scripts: string[];
   activeProcesses: string[];
-  intent: { state: "running" | "paused"; reason?: string };
-  installing: boolean;
-  branchStatus: BranchStatus | null;
   getBuffer: (source: string) => string;
   hasData: (source: string) => boolean;
   subscribeChunks: (handler: ChunkHandler) => () => void;
@@ -97,14 +80,13 @@ export interface VmEventsValue {
 
 const DEFAULT_VALUE: VmEventsValue = {
   phase: null,
-  status: { status: "booting", port: null, htmlSupport: false },
+  lifecycle: { phase: "idle" },
+  status: { state: "running" },
+  branch: { kind: "unknown" },
   suspended: false,
   notFound: false,
   scripts: [],
   activeProcesses: [],
-  intent: { state: "running" },
-  installing: false,
-  branchStatus: null,
   getBuffer: () => "",
   hasData: () => false,
   subscribeChunks: () => () => {},
@@ -139,17 +121,16 @@ const SUSPENDED_AFTER_ERROR_MS = 60_000;
 const BASE_RECONNECT_DELAY_MS = 1_000;
 const MAX_RECONNECT_DELAY_MS = 30_000;
 
-const DAEMON_EVENT_TYPES = [
-  "log",
+const DAEMON_EVENT_TYPES: readonly DaemonEventName[] = [
+  "lifecycle",
   "status",
-  "scripts",
-  "processes",
   "tasks",
-  "intent",
-  "phases",
+  "scripts",
+  "branch",
   "reload",
-  "branch-status",
 ] as const;
+// `log` is broadcast separately — same SSE stream, different shape.
+const LOG_EVENT = "log" as const;
 
 export function VmEventsProvider({
   virtualMcpId,
@@ -162,21 +143,13 @@ export function VmEventsProvider({
 }) {
   const { org } = useProjectContext();
   const [phase, setPhase] = useState<ClaimPhase | null>(null);
-  const [status, setStatus] = useState<VmStatus>({
-    status: "booting",
-    port: null,
-    htmlSupport: false,
-  });
+  const [lifecycle, setLifecycle] = useState<LifecycleState>({ phase: "idle" });
+  const [status, setStatus] = useState<DaemonStatus>({ state: "running" });
+  const [branchMeta, setBranchMeta] = useState<BranchMeta>({ kind: "unknown" });
   const [suspended, setSuspended] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const [scripts, setScripts] = useState<string[]>([]);
   const [activeProcesses, setActiveProcesses] = useState<string[]>([]);
-  const [intent, setIntent] = useState<{
-    state: "running" | "paused";
-    reason?: string;
-  }>({ state: "running" });
-  const [installing, setInstalling] = useState(false);
-  const [branchStatus, setBranchStatus] = useState<BranchStatus | null>(null);
   // Bumped on log chunks so getBuffer/hasData consumers re-render; buffer
   // mutation alone doesn't.
   const [, setLogTick] = useState(0);
@@ -199,15 +172,14 @@ export function VmEventsProvider({
   useEffect(() => {
     // Reset on key change so stale data doesn't linger across branches.
     setPhase(null);
-    setStatus({ status: "booting", port: null, htmlSupport: false });
+    setLifecycle({ phase: "idle" });
+    setStatus({ state: "running" });
+    setBranchMeta({ kind: "unknown" });
     prevPortRef.current = null;
     setSuspended(false);
     setNotFound(false);
     setScripts([]);
     setActiveProcesses([]);
-    setIntent({ state: "running" });
-    setInstalling(false);
-    setBranchStatus(null);
     buffers.current.clear();
 
     if (!virtualMcpId || !branch) return;
@@ -239,7 +211,7 @@ export function VmEventsProvider({
       }
     };
 
-    const handlePhase = (e: MessageEvent) => {
+    const handleClaimPhase = (e: MessageEvent) => {
       try {
         const next = JSON.parse(e.data) as ClaimPhase;
         setPhase(next);
@@ -261,59 +233,81 @@ export function VmEventsProvider({
     const handleGone = () => {
       // The sandbox is gone (idle-evicted, VM_DELETE'd, or its pod terminated
       // and mesh has stopped finding the handle). Everything we've cached is
-      // about to be stale, so reset:
-      //   - phase: residual state would otherwise keep `lifecycleActive`
-      //     stuck on "Almost ready" in the booting overlay even though
-      //     nothing is starting.
-      //   - status / scripts / processes / branchStatus / log buffers: these
-      //     describe a sandbox that no longer exists. Resetting to "booting"
-      //     ensures the next provisioned sandbox goes through the boot flow.
-      // `notFound = true` then drives preview.tsx's self-heal flow when a
-      // vmEntry exists; the empty "Start Server" state when it doesn't.
+      // about to be stale, so reset.
       setNotFound(true);
       setPhase(null);
-      setStatus({ status: "booting", port: null, htmlSupport: false });
+      setLifecycle({ phase: "idle" });
+      setStatus({ state: "running" });
+      setBranchMeta({ kind: "unknown" });
       setScripts([]);
       setActiveProcesses([]);
-      setIntent({ state: "running" });
-      setInstalling(false);
-      setBranchStatus(null);
       buffers.current.clear();
     };
 
-    const handleDaemonEvent = (e: MessageEvent) => {
+    const handleLog = (e: MessageEvent) => {
       try {
-        const data = JSON.parse(e.data);
-
-        if (e.type === "log" && typeof data.data === "string") {
-          const source = data.source as string;
-          // xterm.js reads bare `\n` as "cursor down, keep column" — normalize.
-          const normalized = data.data.replace(/\r?\n/g, "\r\n");
-          getOrCreateBuffer(source).append(normalized);
-          for (const fn of chunkHandlers.current) {
-            try {
-              fn(source, normalized);
-            } catch {
-              // swallow — one broken subscriber shouldn't break others
-            }
+        const data = JSON.parse(e.data) as { source: string; data: string };
+        if (typeof data.data !== "string") return;
+        // xterm.js reads bare `\n` as "cursor down, keep column" — normalize.
+        const normalized = data.data.replace(/\r?\n/g, "\r\n");
+        getOrCreateBuffer(data.source).append(normalized);
+        for (const fn of chunkHandlers.current) {
+          try {
+            fn(data.source, normalized);
+          } catch {
+            // swallow
           }
-          setLogTick((t) => t + 1);
-        } else if (e.type === "status") {
-          const s = data.status;
-          const newPort = typeof data.port === "number" ? data.port : null;
-          const prevPort = prevPortRef.current;
-          prevPortRef.current = newPort;
-          setStatus({
-            status:
-              s === "online" || s === "offline" || s === "booting"
-                ? s
-                : "booting",
-            port: newPort,
-            htmlSupport: Boolean(data.htmlSupport),
-          });
-          // Proxy retargeted to a different active port — the iframe is stuck on
-          // whatever page it last loaded. Force-reload so it picks up the new backend.
-          if (prevPort !== null && newPort !== null && prevPort !== newPort) {
+        }
+        setLogTick((t) => t + 1);
+      } catch {
+        // ignore parse errors
+      }
+    };
+
+    const handleDaemonEvent = (e: MessageEvent) => {
+      const name = e.type as DaemonEventName;
+      try {
+        const payload = JSON.parse(e.data);
+        switch (name) {
+          case "lifecycle": {
+            const lp = payload as DaemonEventPayload<"lifecycle">;
+            setLifecycle(lp.state);
+            // Detect dev server port change (running phase carries port);
+            // reload iframe so it picks up the new backend.
+            const newPort = lp.state.phase === "running" ? lp.state.port : null;
+            const prev = prevPortRef.current;
+            prevPortRef.current = newPort;
+            if (prev !== null && newPort !== null && prev !== newPort) {
+              for (const fn of reloadHandlers.current) {
+                try {
+                  fn();
+                } catch {
+                  // swallow
+                }
+              }
+            }
+            return;
+          }
+          case "status":
+            setStatus(payload as DaemonEventPayload<"status">);
+            return;
+          case "tasks": {
+            const tp = payload as DaemonEventPayload<"tasks">;
+            // Map active task `logName`s to the activeProcesses array so the
+            // UI's Run/Restart button can render against running script tabs.
+            const active = tp.active
+              .map((j) => j.logName ?? "")
+              .filter(Boolean);
+            setActiveProcesses(active);
+            return;
+          }
+          case "scripts":
+            setScripts((payload as DaemonEventPayload<"scripts">).scripts);
+            return;
+          case "branch":
+            setBranchMeta((payload as DaemonEventPayload<"branch">).meta);
+            return;
+          case "reload":
             for (const fn of reloadHandlers.current) {
               try {
                 fn();
@@ -321,94 +315,7 @@ export function VmEventsProvider({
                 // swallow
               }
             }
-          }
-        } else if (e.type === "scripts") {
-          setScripts(data.scripts ?? []);
-        } else if (e.type === "processes") {
-          setActiveProcesses(data.active ?? []);
-        } else if (e.type === "tasks") {
-          // Daemon's task-manager surface; map to the activeProcesses array
-          // of script names so the UI's Run/Restart button can render
-          // against running script tabs. Match on `logName` — set by
-          // /exec/<name> via the spec — instead of regex-parsing `command`,
-          // which breaks for any task with trailing args (e.g. `bun run
-          // format -- --fix`).
-          const active = Array.isArray(data.active)
-            ? (data.active as Array<{ logName?: string }>)
-                .map((j) => j?.logName ?? "")
-                .filter(Boolean)
-            : [];
-          setActiveProcesses(active);
-        } else if (e.type === "intent") {
-          const next = data as {
-            state?: "running" | "paused";
-            reason?: string;
-          };
-          if (next.state === "running" || next.state === "paused") {
-            setIntent({ state: next.state, reason: next.reason });
-          }
-        } else if (e.type === "phases") {
-          const phases =
-            (
-              data as {
-                phases?: Array<{ name: string; status: string }>;
-              }
-            ).phases ?? [];
-          setInstalling(
-            phases.some((p) => p.name === "install" && p.status === "running"),
-          );
-        } else if (e.type === "reload") {
-          for (const fn of reloadHandlers.current) {
-            try {
-              fn();
-            } catch {
-              // swallow
-            }
-          }
-        } else if (e.type === "branch-status") {
-          const kind = String(data.kind ?? "initializing");
-          switch (kind) {
-            case "ready":
-              setBranchStatus({
-                kind: "ready",
-                branch: String(data.branch ?? ""),
-                base: String(data.base ?? "main"),
-                workingTreeDirty: Boolean(data.workingTreeDirty),
-                unpushed: Number(data.unpushed ?? 0),
-                aheadOfBase: Number(data.aheadOfBase ?? 0),
-                behindBase: Number(data.behindBase ?? 0),
-                headSha: String(data.headSha ?? ""),
-              });
-              break;
-            case "initializing":
-              setBranchStatus({ kind: "initializing" });
-              break;
-            case "cloning":
-              setBranchStatus({ kind: "cloning" });
-              break;
-            case "clone-failed":
-              setBranchStatus({
-                kind: "clone-failed",
-                error: String(data.error ?? ""),
-              });
-              break;
-            case "checkout-failed":
-              setBranchStatus({
-                kind: "checkout-failed",
-                error: String(data.error ?? ""),
-              });
-              break;
-            case "checking-out":
-              setBranchStatus({
-                kind: "checking-out",
-                to: String(data.to ?? ""),
-              });
-              break;
-            default:
-              console.warn("[vm-events] unknown branch-status kind:", kind);
-              setBranchStatus({ kind: "initializing" });
-              break;
-          }
+            return;
         }
       } catch {
         // ignore parse errors
@@ -437,8 +344,9 @@ export function VmEventsProvider({
         scheduleReconnect();
       };
 
-      es.addEventListener("phase", handlePhase);
+      es.addEventListener("phase", handleClaimPhase);
       es.addEventListener("gone", handleGone);
+      es.addEventListener(LOG_EVENT, handleLog);
       for (const type of DAEMON_EVENT_TYPES) {
         es.addEventListener(type, handleDaemonEvent);
       }
@@ -473,14 +381,13 @@ export function VmEventsProvider({
 
   const value: VmEventsValue = {
     phase,
+    lifecycle,
     status,
+    branch: branchMeta,
     suspended,
     notFound,
     scripts,
     activeProcesses,
-    intent,
-    installing,
-    branchStatus,
     getBuffer: (source: string) => buffers.current.get(source)?.get() ?? "",
     hasData: (source: string) =>
       (buffers.current.get(source)?.get().length ?? 0) > 0,

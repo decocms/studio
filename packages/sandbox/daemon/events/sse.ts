@@ -1,25 +1,25 @@
-import type { UpstreamStatus } from "../probe";
-import type { BranchStatus } from "../types";
 import type { Broadcaster } from "./broadcast";
 import { sseFormat } from "./sse-format";
+import type {
+  ActiveTaskSummary,
+  BranchMeta,
+  DaemonEventMap,
+  DaemonEventName,
+  DaemonStatus,
+  LifecycleState,
+} from "./types";
 
 export interface SseHandshakeDeps {
   broadcaster: Broadcaster;
-  getLastStatus: () => {
-    status: UpstreamStatus;
-    port: number | null;
-    htmlSupport: boolean;
-  };
+  getLifecycle: () => LifecycleState;
   getDiscoveredScripts: () => string[] | null;
-  getActiveTasks: () => Array<{
-    id: string;
-    command: string;
-    logName?: string;
-  }>;
-  getIntent: () => { state: "running" | "paused"; reason?: string };
-  getLastBranchStatus: () => BranchStatus;
+  getActiveTasks: () => ActiveTaskSummary[];
+  getStatus: () => DaemonStatus;
+  getBranchMeta: () => BranchMeta;
   maxClients: number;
 }
+
+const HEARTBEAT_INTERVAL_MS = 15_000;
 
 /**
  * Returns a fresh `ReadableStream<Uint8Array>` that, on start, flushes
@@ -34,14 +34,18 @@ export function makeSseStream(
   let controller!: ReadableStreamDefaultController<Uint8Array>;
   let keepAlive: ReturnType<typeof setInterval> | null = null;
 
+  function frame<K extends DaemonEventName>(
+    name: K,
+    payload: DaemonEventMap[K],
+  ): Uint8Array {
+    return sseFormat(name, JSON.stringify(payload));
+  }
+
   return new ReadableStream<Uint8Array>({
     start(c) {
       controller = c;
 
-      const last = deps.getLastStatus();
-      c.enqueue(
-        sseFormat("status", JSON.stringify({ type: "status", ...last })),
-      );
+      c.enqueue(frame("lifecycle", { state: deps.getLifecycle() }));
 
       for (const src of deps.broadcaster.replay.sources()) {
         const buf = deps.broadcaster.replay.read(src);
@@ -53,52 +57,22 @@ export function makeSseStream(
       }
 
       const scripts = deps.getDiscoveredScripts();
-      if (scripts) {
-        c.enqueue(
-          sseFormat("scripts", JSON.stringify({ type: "scripts", scripts })),
-        );
-      }
+      if (scripts) c.enqueue(frame("scripts", { scripts }));
 
-      c.enqueue(
-        sseFormat(
-          "tasks",
-          JSON.stringify({
-            type: "tasks",
-            active: deps.getActiveTasks(),
-          }),
-        ),
-      );
-
-      c.enqueue(
-        sseFormat(
-          "intent",
-          JSON.stringify({ type: "intent", ...deps.getIntent() }),
-        ),
-      );
-
-      const lastBranch = deps.getLastBranchStatus();
-      c.enqueue(
-        sseFormat(
-          "branch-status",
-          JSON.stringify({ type: "branch-status", ...lastBranch }),
-        ),
-      );
+      c.enqueue(frame("tasks", { active: deps.getActiveTasks() }));
+      c.enqueue(frame("status", deps.getStatus()));
+      c.enqueue(frame("branch", { meta: deps.getBranchMeta() }));
 
       deps.broadcaster.register(controller);
 
       keepAlive = setInterval(() => {
         try {
-          c.enqueue(
-            sseFormat(
-              "status",
-              JSON.stringify({ type: "status", ...deps.getLastStatus() }),
-            ),
-          );
+          c.enqueue(frame("lifecycle", { state: deps.getLifecycle() }));
         } catch {
           if (keepAlive) clearInterval(keepAlive);
           deps.broadcaster.unregister(controller);
         }
-      }, 15000);
+      }, HEARTBEAT_INTERVAL_MS);
     },
 
     cancel() {

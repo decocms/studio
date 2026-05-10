@@ -1,4 +1,4 @@
-import type { BranchStatus } from "@/web/components/vm/hooks/use-vm-events";
+import type { BranchStatus } from "./use-branch-status";
 import type { CheckRun, PrSummary } from "./use-pr-data.ts";
 import type { PrReviewSignals } from "./use-pr-reviews.ts";
 

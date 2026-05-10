@@ -1,44 +1,71 @@
 import fs from "node:fs";
 import type { Broadcaster } from "../events/broadcast";
-import type { BranchStatus, BranchStatusReady, Config } from "../types";
+import type { BranchMeta } from "../events/types";
+import type { Config } from "../types";
 import { gitSync as rawGitSync } from "./git-sync";
 
 const gitSync = (args: string[], opts: Parameters<typeof rawGitSync>[1]) =>
   rawGitSync(["-c", "safe.directory=*", ...args], opts);
 
+/**
+ * Watches `.git/` and surfaces the current `BranchMeta` (branch name, dirty,
+ * unpushed, divergence). Lifecycle phases (cloning, checking-out, …) live on
+ * `LifecycleManager`, not here — this monitor only tracks metadata once the
+ * repo is in a checkable state.
+ *
+ * Dirty-baseline: dev scripts often rewrite tracked files at boot (e.g.
+ * minified `static/tailwind.css`, compiled CSS, lockfile drift after
+ * `npm/bun install`). Those touches are not user changes, but they show up
+ * in `git status` and would flip `workingTreeDirty=true` the moment the dev
+ * server settles. To avoid false-positive "Save changes" buttons, the
+ * orchestrator calls `armBaseline()` once `lifecycle: running` stabilizes;
+ * paths in that snapshot are subtracted from subsequent dirty checks.
+ */
 export class BranchStatusMonitor {
-  private last: BranchStatus = { kind: "initializing" };
+  private last: BranchMeta = { kind: "unknown" };
   private timer: ReturnType<typeof setTimeout> | null = null;
   private watcher: ReturnType<typeof fs.watch> | null = null;
   private pollFallback: ReturnType<typeof setInterval> | null = null;
+  /** Paths reported dirty by `git status --porcelain=v1` at boot — treated as noise. */
+  private dirtyBaseline: ReadonlySet<string> | null = null;
 
   constructor(
     private readonly config: Config,
     private readonly broadcaster: Broadcaster,
   ) {}
 
-  getLast(): BranchStatus {
+  getLast(): BranchMeta {
     return this.last;
   }
 
-  /** Set a non-ready phase. Always broadcasts when the kind/payload changed. */
-  setPhase(next: Exclude<BranchStatus, BranchStatusReady>): void {
-    if (this.equal(this.last, next)) return;
-    this.last = next;
-    this.broadcast(next);
+  /**
+   * Capture the current dirty set as the noise baseline. Call once the dev
+   * server has settled (probe online → transitioned to `running`) so any
+   * boot-time file rewrites land in the baseline. Re-arming overwrites the
+   * prior snapshot. `clearBaseline()` drops it on a fresh clone/install.
+   */
+  armBaseline(): void {
+    this.dirtyBaseline = this.readDirtyPaths();
+    // Re-evaluate so the next emit reflects the new filter.
+    this.refresh();
+  }
+
+  clearBaseline(): void {
+    if (this.dirtyBaseline === null) return;
+    this.dirtyBaseline = null;
+    this.refresh();
   }
 
   /**
-   * Compute git status and enter 'ready'. Idempotent: skips broadcast when
-   * the computed status equals the last 'ready' value. Starts the .git
-   * watcher on first call.
+   * Compute git status and emit it. Idempotent — skips broadcast when the
+   * computed meta matches `last`. Starts the .git watcher on first call.
    */
-  markReady(): void {
+  refresh(): void {
     const next = this.compute();
     if (!next) return;
-    if (this.equal(this.last, next)) return;
+    if (equal(this.last, next)) return;
     this.last = next;
-    this.broadcast(next);
+    this.broadcaster.emit("branch", { meta: next });
     this.ensureWatch();
   }
 
@@ -58,24 +85,13 @@ export class BranchStatusMonitor {
     }
   }
 
-  private broadcast(s: BranchStatus): void {
-    this.broadcaster.broadcastEvent("branch-status", {
-      type: "branch-status",
-      ...s,
-    });
-  }
-
-  private equal(a: BranchStatus, b: BranchStatus): boolean {
-    return JSON.stringify(a) === JSON.stringify(b);
-  }
-
   private schedule(): void {
     if (this.timer) return;
     this.timer = setTimeout(() => {
       this.timer = null;
       // fs.watch fires meaningfully only once we're already in 'ready';
-      // ignore otherwise (orchestrator owns non-ready transitions).
-      if (this.last.kind === "ready") this.markReady();
+      // ignore otherwise (orchestrator owns pre-ready transitions).
+      if (this.last.kind === "ready") this.refresh();
     }, 250);
   }
 
@@ -91,25 +107,34 @@ export class BranchStatusMonitor {
       this.watcher.on("error", () => {});
     } catch {
       this.pollFallback = setInterval(() => {
-        if (this.last.kind === "ready") this.markReady();
+        if (this.last.kind === "ready") this.refresh();
       }, 5000);
     }
   }
 
-  private compute(): BranchStatusReady | null {
-    const run = (args: string[]) => {
-      try {
-        return gitSync(args, {
-          cwd: this.config.repoDir,
-          // Pin discovery to repoDir so a parent .git (e.g. the host's
-          // workspace tree containing .deco/sandboxes/<handle>/repo) can't
-          // hijack the lookup and report the wrong branch.
-          env: { ...process.env, GIT_CEILING_DIRECTORIES: this.config.repoDir },
-        });
-      } catch {
-        return "";
-      }
-    };
+  private runGit(args: string[]): string {
+    try {
+      return gitSync(args, {
+        cwd: this.config.repoDir,
+        // Pin discovery to repoDir so a parent .git (e.g. the host's
+        // workspace tree containing .deco/sandboxes/<handle>/repo) can't
+        // hijack the lookup and report the wrong branch.
+        env: { ...process.env, GIT_CEILING_DIRECTORIES: this.config.repoDir },
+      });
+    } catch {
+      return "";
+    }
+  }
+
+  /** Paths currently shown by porcelain v1. Empty set on clean tree or git failure. */
+  private readDirtyPaths(): Set<string> {
+    const out = this.runGit(["status", "--porcelain=v1", "-z"]);
+    if (!out) return new Set();
+    return parsePorcelainZ(out);
+  }
+
+  private compute(): Extract<BranchMeta, { kind: "ready" }> | null {
+    const run = (args: string[]) => this.runGit(args);
     const refExists = (ref: string) =>
       run(["rev-parse", "--verify", "--quiet", ref]).length > 0;
     try {
@@ -118,7 +143,11 @@ export class BranchStatusMonitor {
       let base = run(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]);
       if (base.startsWith("origin/")) base = base.slice("origin/".length);
       if (!base) base = "main";
-      const dirty = run(["status", "--porcelain=v1"]).length > 0;
+      const dirtyPaths = this.readDirtyPaths();
+      const baseline = this.dirtyBaseline;
+      const dirty = baseline
+        ? [...dirtyPaths].some((p) => !baseline.has(p))
+        : dirtyPaths.size > 0;
       const branchRef = refExists(`origin/${branch}`)
         ? `origin/${branch}`
         : "HEAD";
@@ -158,4 +187,34 @@ export class BranchStatusMonitor {
       return null;
     }
   }
+}
+
+function equal(a: BranchMeta, b: BranchMeta): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/**
+ * Parse `git status --porcelain=v1 -z` output into a set of paths.
+ * Format: each entry is `XY <path>\0`. Renames/copies (`R`/`C`) carry a
+ * second `<orig>\0` after the destination — we record both so a baseline
+ * captures whichever one a later run sees.
+ */
+function parsePorcelainZ(out: string): Set<string> {
+  const paths = new Set<string>();
+  const parts = out.split("\0");
+  for (let i = 0; i < parts.length; i++) {
+    const entry = parts[i];
+    if (!entry) continue;
+    if (entry.length < 4) continue;
+    const xy = entry.slice(0, 2);
+    const path = entry.slice(3);
+    paths.add(path);
+    // Renames/copies have an extra origin-path field.
+    if (xy[0] === "R" || xy[0] === "C") {
+      i++;
+      const orig = parts[i];
+      if (orig) paths.add(orig);
+    }
+  }
+  return paths;
 }

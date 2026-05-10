@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Broadcaster } from "../events/broadcast";
 import type { BranchStatusMonitor } from "../git/branch-status";
+import { LifecycleManager } from "../lifecycle/manager";
+import type { LifecycleState } from "../events/types";
 import { SetupOrchestrator } from "./orchestrator";
 
 function tempRoot(): { dir: string; cleanup: () => void } {
@@ -11,28 +13,37 @@ function tempRoot(): { dir: string; cleanup: () => void } {
   return { dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
-function makeMonitorSpy() {
-  const calls: Array<{ method: string; arg?: unknown }> = [];
-  const monitor = {
-    setPhase(arg: unknown) {
-      calls.push({ method: "setPhase", arg });
-    },
-    markReady() {
-      calls.push({ method: "markReady" });
-    },
+function makeMonitorStub(): BranchStatusMonitor {
+  return {
+    refresh() {},
+    getLast: () => ({ kind: "unknown" as const }),
+    stop() {},
   } as unknown as BranchStatusMonitor;
-  return { monitor, calls };
 }
 
-describe("SetupOrchestrator branch-status integration", () => {
-  it("setPhase('cloning') is called before clone, 'clone-failed' on non-zero exit", async () => {
+/** Capture every lifecycle transition the orchestrator emits. */
+function makeLifecycleSpy(broadcaster: Broadcaster) {
+  const lifecycle = new LifecycleManager({ broadcaster });
+  const states: LifecycleState[] = [];
+  const orig = lifecycle.transition.bind(lifecycle);
+  lifecycle.transition = (next) => {
+    states.push(next);
+    orig(next);
+  };
+  return { lifecycle, states };
+}
+
+describe("SetupOrchestrator lifecycle integration", () => {
+  // Test invokes real `git clone` against an unreachable host; spawnClone
+  // retries transient errors a few times before giving up, so the test runs
+  // for up to ~15s.
+  it("transitions cloning → clone-failed when clone exits non-zero", async () => {
     const { dir, cleanup } = tempRoot();
     try {
       const broadcaster = new Broadcaster(1024);
-      const { monitor, calls } = makeMonitorSpy();
+      const { lifecycle, states } = makeLifecycleSpy(broadcaster);
 
-      // Build orchestrator with a config that points to an unreachable
-      // cloneUrl so spawnClone exits non-zero quickly.
+      // cloneUrl points at an unreachable host so spawnClone exits non-zero.
       const orchestrator = new SetupOrchestrator({
         bootConfig: { appRoot: dir, repoDir: join(dir, "repo") },
         store: {
@@ -56,55 +67,54 @@ describe("SetupOrchestrator branch-status integration", () => {
           waitForLogNamesIdle: async () => {},
           onTaskExit: () => () => {},
         } as never,
-        setIntent: () => {},
-        getIntent: () => ({ state: "running" as const }),
+        setStatus: () => {},
+        getStatus: () => ({ state: "running" as const }),
         broadcaster,
         installState: { isInstalledFor: () => false } as never,
         logsDir: dir,
-        branchStatus: monitor,
+        lifecycle,
+        branchStatus: makeMonitorStub(),
       });
 
-      orchestrator.handle({
-        kind: "bootstrap",
-        config: {} as never,
-      });
+      orchestrator.handle({ kind: "bootstrap", config: {} as never });
 
-      // Poll until the orchestrator finishes the queue (or 15s timeout)
       const deadline = Date.now() + 15_000;
       while (orchestrator.isRunning() || orchestrator.pendingCount() > 0) {
         if (Date.now() > deadline) throw new Error("orchestrator hung");
         await new Promise((r) => setTimeout(r, 50));
       }
 
-      expect(calls[0]).toEqual({
-        method: "setPhase",
-        arg: { kind: "cloning" },
-      });
-      const failed = calls.find(
-        (c) =>
-          c.method === "setPhase" &&
-          (c.arg as { kind: string })?.kind === "clone-failed",
-      );
-      expect(failed).toBeTruthy();
-      expect(calls.some((c) => c.method === "markReady")).toBe(false);
+      expect(states[0]).toEqual({ phase: "cloning" });
+      expect(states.some((s) => s.phase === "clone-failed")).toBe(true);
     } finally {
       cleanup();
     }
-  });
+  }, 20_000);
 
-  it("setPhase('checking-out') / 'checkout-failed' on branchChange error", async () => {
+  it("transitions checking-out → clone-failed when checkout fails on existing repo", async () => {
     const { dir, cleanup } = tempRoot();
     try {
-      mkdirSync(join(dir, "repo"));
-      // No git repo at appRoot, so checkout will fail
+      const repoDir = join(dir, "repo");
+      mkdirSync(repoDir);
+      // Empty .git so `hasGitRepo` returns true but every `git -C` op fails
+      // ("not a git repository"). This forces stepClone into the
+      // `else if (cloneUrl)` checkout branch, then makes checkoutBranch's
+      // fetch + local-checkout + create-branch all fail → throws → caught by
+      // stepClone, which transitions to clone-failed.
+      mkdirSync(join(repoDir, ".git"));
       const broadcaster = new Broadcaster(1024);
-      const { monitor, calls } = makeMonitorSpy();
+      const { lifecycle, states } = makeLifecycleSpy(broadcaster);
 
       const orchestrator = new SetupOrchestrator({
-        bootConfig: { appRoot: dir, repoDir: join(dir, "repo") },
+        bootConfig: { appRoot: dir, repoDir },
         store: {
           read: () => ({
-            git: { repository: { cloneUrl: "" } },
+            git: {
+              repository: {
+                cloneUrl: "https://invalid.example.invalid/x.git",
+                branch: "feat/x",
+              },
+            },
             application: {},
           }),
           hydrate: () => {},
@@ -121,12 +131,13 @@ describe("SetupOrchestrator branch-status integration", () => {
           waitForLogNamesIdle: async () => {},
           onTaskExit: () => () => {},
         } as never,
-        setIntent: () => {},
-        getIntent: () => ({ state: "running" as const }),
+        setStatus: () => {},
+        getStatus: () => ({ state: "running" as const }),
         broadcaster,
         installState: { isInstalledFor: () => false } as never,
         logsDir: dir,
-        branchStatus: monitor,
+        lifecycle,
+        branchStatus: makeMonitorStub(),
       });
 
       orchestrator.handle({
@@ -135,36 +146,34 @@ describe("SetupOrchestrator branch-status integration", () => {
         to: "feat/x",
       });
 
-      const deadline = Date.now() + 5_000;
+      const deadline = Date.now() + 10_000;
       while (orchestrator.isRunning() || orchestrator.pendingCount() > 0) {
         if (Date.now() > deadline) throw new Error("orchestrator hung");
         await new Promise((r) => setTimeout(r, 50));
       }
 
-      expect(calls[0]).toEqual({
-        method: "setPhase",
-        arg: { kind: "checking-out", to: "feat/x" },
-      });
-      const failed = calls.find(
-        (c) =>
-          c.method === "setPhase" &&
-          (c.arg as { kind: string })?.kind === "checkout-failed",
+      const checkingOutIdx = states.findIndex(
+        (s) => s.phase === "checking-out",
       );
-      expect(failed).toBeTruthy();
+      const cloneFailedIdx = states.findIndex(
+        (s) => s.phase === "clone-failed",
+      );
+      expect(checkingOutIdx).toBeGreaterThanOrEqual(0);
+      expect(cloneFailedIdx).toBeGreaterThan(checkingOutIdx);
     } finally {
       cleanup();
     }
-  });
+  }, 15_000);
 });
 
-describe("SetupOrchestrator intent transitions", () => {
-  it("flips intent to paused when a starter task exits non-zero non-intentionally", () => {
+describe("SetupOrchestrator status transitions", () => {
+  it("flips status to error when a starter task exits non-zero non-intentionally", () => {
     const { dir, cleanup } = tempRoot();
     try {
       let exitHandler: ((s: unknown) => void) | null = null;
-      const intentCalls: Array<{ state: string; reason?: string }> = [];
+      const statusCalls: Array<{ state: string; reason?: string }> = [];
       const broadcaster = new Broadcaster(1024);
-      const { monitor } = makeMonitorSpy();
+      const { lifecycle } = makeLifecycleSpy(broadcaster);
 
       new SetupOrchestrator({
         bootConfig: { appRoot: dir, repoDir: join(dir, "repo") },
@@ -187,12 +196,13 @@ describe("SetupOrchestrator intent transitions", () => {
             return () => {};
           },
         } as never,
-        setIntent: (i) => intentCalls.push(i),
-        getIntent: () => ({ state: "running" as const }),
+        setStatus: (i) => statusCalls.push(i),
+        getStatus: () => ({ state: "running" as const }),
         broadcaster,
         installState: { isInstalledFor: () => false } as never,
         logsDir: dir,
-        branchStatus: monitor,
+        lifecycle,
+        branchStatus: makeMonitorStub(),
       });
 
       expect(exitHandler).not.toBeNull();
@@ -203,9 +213,9 @@ describe("SetupOrchestrator intent transitions", () => {
         intentional: false,
         status: "failed",
       });
-      expect(intentCalls).toHaveLength(1);
-      expect(intentCalls[0]).toEqual({
-        state: "paused",
+      expect(statusCalls).toHaveLength(1);
+      expect(statusCalls[0]).toEqual({
+        state: "error",
         reason: "dev script exited with code 1",
       });
     } finally {
@@ -213,13 +223,13 @@ describe("SetupOrchestrator intent transitions", () => {
     }
   });
 
-  it("does NOT flip intent on intentional kill", () => {
+  it("does NOT flip status on intentional kill", () => {
     const { dir, cleanup } = tempRoot();
     try {
       let exitHandler: ((s: unknown) => void) | null = null;
-      const intentCalls: Array<{ state: string }> = [];
+      const statusCalls: Array<{ state: string }> = [];
       const broadcaster = new Broadcaster(1024);
-      const { monitor } = makeMonitorSpy();
+      const { lifecycle } = makeLifecycleSpy(broadcaster);
 
       new SetupOrchestrator({
         bootConfig: { appRoot: dir, repoDir: join(dir, "repo") },
@@ -242,12 +252,13 @@ describe("SetupOrchestrator intent transitions", () => {
             return () => {};
           },
         } as never,
-        setIntent: (i) => intentCalls.push(i),
-        getIntent: () => ({ state: "running" as const }),
+        setStatus: (i) => statusCalls.push(i),
+        getStatus: () => ({ state: "running" as const }),
         broadcaster,
         installState: { isInstalledFor: () => false } as never,
         logsDir: dir,
-        branchStatus: monitor,
+        lifecycle,
+        branchStatus: makeMonitorStub(),
       });
 
       exitHandler!({
@@ -257,19 +268,19 @@ describe("SetupOrchestrator intent transitions", () => {
         intentional: true,
         status: "killed",
       });
-      expect(intentCalls).toHaveLength(0);
+      expect(statusCalls).toHaveLength(0);
     } finally {
       cleanup();
     }
   });
 
-  it("does NOT flip intent for non-starter tasks", () => {
+  it("does NOT flip status for non-starter tasks", () => {
     const { dir, cleanup } = tempRoot();
     try {
       let exitHandler: ((s: unknown) => void) | null = null;
-      const intentCalls: Array<{ state: string }> = [];
+      const statusCalls: Array<{ state: string }> = [];
       const broadcaster = new Broadcaster(1024);
-      const { monitor } = makeMonitorSpy();
+      const { lifecycle } = makeLifecycleSpy(broadcaster);
 
       new SetupOrchestrator({
         bootConfig: { appRoot: dir, repoDir: join(dir, "repo") },
@@ -292,12 +303,13 @@ describe("SetupOrchestrator intent transitions", () => {
             return () => {};
           },
         } as never,
-        setIntent: (i) => intentCalls.push(i),
-        getIntent: () => ({ state: "running" as const }),
+        setStatus: (i) => statusCalls.push(i),
+        getStatus: () => ({ state: "running" as const }),
         broadcaster,
         installState: { isInstalledFor: () => false } as never,
         logsDir: dir,
-        branchStatus: monitor,
+        lifecycle,
+        branchStatus: makeMonitorStub(),
       });
 
       exitHandler!({
@@ -307,7 +319,7 @@ describe("SetupOrchestrator intent transitions", () => {
         intentional: false,
         status: "failed",
       });
-      expect(intentCalls).toHaveLength(0);
+      expect(statusCalls).toHaveLength(0);
     } finally {
       cleanup();
     }

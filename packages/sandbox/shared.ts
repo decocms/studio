@@ -1,3 +1,13 @@
+export type {
+  ActiveTaskSummary,
+  BranchMeta,
+  DaemonEventMap,
+  DaemonEventName,
+  DaemonEventPayload,
+  DaemonStatus,
+  LifecycleState,
+} from "./daemon/events/types";
+
 export const PLUGIN_ID = "MCP User Sandbox";
 export const PLUGIN_DESCRIPTION =
   "Isolated per-user sandboxes for MCP tool execution";

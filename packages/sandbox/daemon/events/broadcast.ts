@@ -1,5 +1,6 @@
 import { ReplayBuffer } from "./replay";
 import { sseFormat } from "./sse-format";
+import type { DaemonEventMap, DaemonEventName } from "./types";
 
 type Controller = ReadableStreamDefaultController<Uint8Array>;
 
@@ -27,15 +28,15 @@ export class Broadcaster {
     if (!data) return;
     this.replay.append(source, data);
     // Tee to stdout so `kubectl logs` / k9s show the same output that SSE
-    // subscribers see. The structured events (broadcastEvent below) stay
-    // SSE-only — they're machine-readable JSON and would be noise here.
+    // subscribers see. The structured events (emit below) stay SSE-only —
+    // they're machine-readable JSON and would be noise here.
     process.stdout.write(`[${source}] ${data}`);
     const bytes = sseFormat("log", JSON.stringify({ source, data }));
     this.fan(bytes);
   }
 
-  broadcastEvent(event: string, data: unknown): void {
-    const bytes = sseFormat(event, JSON.stringify(data));
+  emit<K extends DaemonEventName>(name: K, payload: DaemonEventMap[K]): void {
+    const bytes = sseFormat(name, JSON.stringify(payload));
     this.fan(bytes);
   }
 
