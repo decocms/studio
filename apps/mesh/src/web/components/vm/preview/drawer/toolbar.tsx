@@ -320,16 +320,16 @@ function ScriptControls({
   return (
     <div className="flex items-center">
       <Button
-        variant="ghost"
+        variant="outline"
         size="sm"
         onClick={onRun}
-        className="rounded-r-none"
+        className="rounded-r-none border-r-0"
       >
         <RefreshCw01 className="size-3.5" /> Restart
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm" className="rounded-l-none px-1">
+          <Button variant="outline" size="sm" className="rounded-l-none px-1">
             <ChevronDown className="size-3" />
           </Button>
         </DropdownMenuTrigger>
