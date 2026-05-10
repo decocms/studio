@@ -70,6 +70,20 @@ function makeMeshContext(orgId: string): MeshContext {
           }),
         ),
       },
+      aiProviderKeys: {
+        list: mock(() =>
+          Promise.resolve([
+            {
+              id: "cred_test",
+              providerId: "openai",
+              label: "Test Key",
+              presetId: null,
+              createdBy: USER_ID,
+              createdAt: "2026-01-01T00:00:00Z",
+            },
+          ]),
+        ),
+      },
     },
     aiProviders: {
       listModels: mock(() =>
