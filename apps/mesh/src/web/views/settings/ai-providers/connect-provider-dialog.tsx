@@ -41,6 +41,8 @@ function activeProviderId(state: DialogState): string | null {
     case "oauth-pending":
     case "cli-pending":
     case "cli-error":
+    case "provision-pending":
+    case "provision-error":
       return state.providerId;
     default:
       return null;
@@ -162,6 +164,33 @@ export function ConnectProviderDialog({
     },
   });
 
+  const { mutate: provisionKey } = useMutation({
+    mutationFn: async (providerId: string) => {
+      const result = (await client.callTool({
+        name: "AI_PROVIDER_PROVISION_KEY",
+        arguments: { providerId },
+      })) as { isError?: boolean; content?: { text?: string }[] };
+      if (result?.isError) {
+        throw new Error(result.content?.[0]?.text ?? "Key provisioning failed");
+      }
+      return providerId;
+    },
+    onSuccess: (providerId) => {
+      track("ai_provider_provision_succeeded", { provider_id: providerId });
+      invalidateKeys();
+      const provider = providers.find((p) => p.id === providerId);
+      toast.success(`${provider?.name ?? "Provider"} connected successfully`);
+      close();
+    },
+    onError: (err, providerId) => {
+      track("ai_provider_provision_failed", {
+        provider_id: providerId,
+        error: err.message,
+      });
+      dispatch({ type: "provision-error", error: err.message });
+    },
+  });
+
   const handleSelect = async (selection: ProviderSelection) => {
     const { provider } = selection;
     const presetId =
@@ -171,6 +200,17 @@ export function ConnectProviderDialog({
     const supportsOAuth = provider.supportedMethods.includes("oauth-pkce");
     const supportsCli = provider.supportedMethods.includes("cli-activate");
     const supportsApiKey = provider.supportedMethods.includes("api-key");
+    const supportsProvision = provider.supportsProvision === true;
+
+    if (supportsProvision) {
+      track("ai_provider_connect_clicked", {
+        provider_id: provider.id,
+        method: "provision",
+      });
+      dispatch({ type: "select-provision", providerId: provider.id });
+      provisionKey(provider.id);
+      return;
+    }
 
     if (supportsCli) {
       track("ai_provider_connect_clicked", {
@@ -345,17 +385,20 @@ export function ConnectProviderDialog({
           </div>
         )}
 
-        {state.kind === "cli-pending" && (
+        {(state.kind === "cli-pending" ||
+          state.kind === "provision-pending") && (
           <div className="flex flex-col items-center gap-4 py-8">
             <RefreshCw01
               size={32}
               className="animate-spin text-muted-foreground"
             />
-            <p className="text-sm text-muted-foreground">Checking CLI…</p>
+            <p className="text-sm text-muted-foreground">
+              {state.kind === "cli-pending" ? "Checking CLI…" : "Connecting…"}
+            </p>
           </div>
         )}
 
-        {state.kind === "cli-error" && (
+        {(state.kind === "cli-error" || state.kind === "provision-error") && (
           <div className="flex flex-col items-center gap-4 py-6">
             <AlertCircle size={28} className="text-destructive" />
             <p className="text-sm text-foreground text-center">{state.error}</p>
@@ -370,8 +413,13 @@ export function ConnectProviderDialog({
               <Button
                 size="sm"
                 onClick={() => {
-                  dispatch({ type: "retry-cli" });
-                  activateCli(state.providerId);
+                  if (state.kind === "cli-error") {
+                    dispatch({ type: "retry-cli" });
+                    activateCli(state.providerId);
+                  } else {
+                    dispatch({ type: "retry-provision" });
+                    provisionKey(state.providerId);
+                  }
                 }}
               >
                 Retry
