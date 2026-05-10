@@ -96,8 +96,12 @@ describe("SetupOrchestrator lifecycle integration", () => {
     try {
       const repoDir = join(dir, "repo");
       mkdirSync(repoDir);
-      // Make it look like there's already a repo (no .git yet, but cloneUrl
-      // empty means we go through the checkout branch — which will error).
+      // Empty .git so `hasGitRepo` returns true but every `git -C` op fails
+      // ("not a git repository"). This forces stepClone into the
+      // `else if (cloneUrl)` checkout branch, then makes checkoutBranch's
+      // fetch + local-checkout + create-branch all fail → throws → caught by
+      // stepClone, which transitions to clone-failed.
+      mkdirSync(join(repoDir, ".git"));
       const broadcaster = new Broadcaster(1024);
       const { lifecycle, states } = makeLifecycleSpy(broadcaster);
 
@@ -105,7 +109,12 @@ describe("SetupOrchestrator lifecycle integration", () => {
         bootConfig: { appRoot: dir, repoDir },
         store: {
           read: () => ({
-            git: { repository: { cloneUrl: "", branch: "feat/x" } },
+            git: {
+              repository: {
+                cloneUrl: "https://invalid.example.invalid/x.git",
+                branch: "feat/x",
+              },
+            },
             application: {},
           }),
           hydrate: () => {},
@@ -137,21 +146,24 @@ describe("SetupOrchestrator lifecycle integration", () => {
         to: "feat/x",
       });
 
-      const deadline = Date.now() + 5_000;
+      const deadline = Date.now() + 10_000;
       while (orchestrator.isRunning() || orchestrator.pendingCount() > 0) {
         if (Date.now() > deadline) throw new Error("orchestrator hung");
         await new Promise((r) => setTimeout(r, 50));
       }
 
-      // Empty cloneUrl + non-existent .git → falls into the "no source" path
-      // and we just expect no clone-failed (no clone happened). The test is
-      // mainly here to confirm no exceptions and lifecycle stays sane.
-      // If a checkout was attempted it would have surfaced as a clone-failed.
-      expect(states.length).toBeGreaterThanOrEqual(0);
+      const checkingOutIdx = states.findIndex(
+        (s) => s.phase === "checking-out",
+      );
+      const cloneFailedIdx = states.findIndex(
+        (s) => s.phase === "clone-failed",
+      );
+      expect(checkingOutIdx).toBeGreaterThanOrEqual(0);
+      expect(cloneFailedIdx).toBeGreaterThan(checkingOutIdx);
     } finally {
       cleanup();
     }
-  });
+  }, 15_000);
 });
 
 describe("SetupOrchestrator status transitions", () => {

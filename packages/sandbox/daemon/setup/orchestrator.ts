@@ -77,10 +77,20 @@ export class SetupOrchestrator {
         return;
       if (summary.intentional) return;
       if (summary.exitCode === 0 || summary.exitCode === null) return;
-      this.deps.setStatus({
-        state: "error",
-        reason: `dev script exited with code ${summary.exitCode}`,
-      });
+      const reason = `dev script exited with code ${summary.exitCode}`;
+      this.deps.setStatus({ state: "error", reason });
+      // Lifecycle was at `starting` (post-spawn) or `running` (probe saw it
+      // up briefly). Either way the dev script is gone now; surface a
+      // terminal failure phase so the UI shows the retry button instead of
+      // sitting on the boot animation forever. If probe later overrides to
+      // `crashed`, that's also a terminal failure — both UIs treat it the
+      // same.
+      if (this.deps.lifecycle.current().phase !== "start-failed") {
+        this.deps.lifecycle.transition({
+          phase: "start-failed",
+          error: reason,
+        });
+      }
     });
   }
 
@@ -148,6 +158,10 @@ export class SetupOrchestrator {
   private async runStep(step: Step): Promise<void> {
     switch (step) {
       case "clone":
+        // A `clone` step from `branch-change` runs `git checkout -f` against
+        // the live repo; the dev server has to be down before that, otherwise
+        // the checkout fights an open file handle / writes its sources.
+        await this.stopDevTask();
         if (!(await this.stepClone())) return;
         if (!(await this.stepInstall())) return;
         await this.stepStart();

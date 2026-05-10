@@ -12,6 +12,7 @@ import { gitSync } from "./git/git-sync";
 import { InstallState } from "./install/install-state";
 import { LifecycleManager } from "./lifecycle/manager";
 import { readConfig } from "./persistence";
+import { createPortSniffer } from "./process/port-sniffer";
 import { TaskManager } from "./process/task-manager";
 import { PhaseManager } from "./process/phase-manager";
 import { startUpstreamProbe } from "./probe";
@@ -82,6 +83,19 @@ const TMP_DIR = join(APP_ROOT, "tmp");
 
 const broadcaster = new Broadcaster(REPLAY_BYTES);
 
+// `application.port` is what mesh told the dev script to use, but plenty of
+// frameworks (vite included) ignore PORT env and pick their own — and on the
+// host runner two sandboxes can race for the same default port, leaving the
+// loser on a fallback. Sniff the actual bind announcement from starter
+// stdout and feed THAT to the probe; the configured port stays as a
+// fallback for tools that do honor PORT.
+const portSniffer = createPortSniffer();
+const broadcastChunkRaw = broadcaster.broadcastChunk.bind(broadcaster);
+broadcaster.broadcastChunk = (source, data) => {
+  portSniffer.observe(source, data);
+  broadcastChunkRaw(source, data);
+};
+
 let currentStatus: DaemonStatus = { state: "running" };
 function setStatus(next: DaemonStatus) {
   currentStatus = next;
@@ -91,6 +105,14 @@ function setStatus(next: DaemonStatus) {
 const store = new TenantConfigStore();
 const installState = new InstallState();
 const lifecycle = new LifecycleManager({ broadcaster });
+// Drop the sniffed port whenever we leave `running` — the next dev start
+// may bind somewhere else and we need to re-sniff its announcement.
+const lifecycleTransitionRaw = lifecycle.transition.bind(lifecycle);
+lifecycle.transition = (next) => {
+  const wasRunning = lifecycle.current().phase === "running";
+  lifecycleTransitionRaw(next);
+  if (wasRunning && next.phase !== "running") portSniffer.reset();
+};
 // Per-command history for LLM context (each bash/exec spawned via TaskManager
 // is tracked as a phase). Setup pipeline phases live on `lifecycle` instead.
 const phaseManager = new PhaseManager();
@@ -151,9 +173,21 @@ store.subscribe((event) => {
 const BASELINE_GRACE_MS = 3000;
 let baselineTimer: ReturnType<typeof setTimeout> | null = null;
 const lastProbe = startUpstreamProbe({
-  getPort: () => store.read()?.application?.port ?? null,
+  getPort: () =>
+    portSniffer.current() ?? store.read()?.application?.port ?? null,
   onChange: (s) => {
+    // The probe only honors a "port is responding" verdict when we
+    // actually expect our dev script to be up — i.e. we're currently in
+    // `starting` (just spawned, waiting for first response) or already in
+    // `running`. Otherwise a sibling sandbox on the same host can
+    // resurrect us back to `running` after the orchestrator has correctly
+    // recorded `start-failed`/`crashed`, leaving the iframe pointed at
+    // some other sandbox's app. Same logic mirrored on the offline edge:
+    // only mark `crashed` when we were actually running, never as a side
+    // effect of a port that was never ours in the first place.
+    const phase = lifecycle.current().phase;
     if (s.status === "online" && s.port !== null) {
+      if (phase !== "starting" && phase !== "running") return;
       lifecycle.transition({
         phase: "running",
         port: s.port,
@@ -166,7 +200,11 @@ const lastProbe = startUpstreamProbe({
         }, BASELINE_GRACE_MS);
       }
     } else if (s.status === "offline") {
+      if (phase !== "running") return;
       lifecycle.transition({ phase: "crashed" });
+      // Dev script lost contact — next start may bind to a different port,
+      // so unlock the sniffer to re-detect on the next bind announcement.
+      portSniffer.reset();
       if (baselineTimer) {
         clearTimeout(baselineTimer);
         baselineTimer = null;
@@ -177,7 +215,14 @@ const lastProbe = startUpstreamProbe({
   onLog: (msg) => broadcaster.broadcastChunk("setup", msg),
 });
 
-const getDevPort = (): number | null => store.read()?.application?.port ?? null;
+// HTTP/WS proxy forwards to the same port the probe is HEAD-checking.
+// `application.port` is what mesh configured, but vite/etc. routinely
+// pick a fallback when the configured one is busy — using the sniffed
+// announce-port keeps the proxy aligned with what the dev script
+// actually bound to. Falls back to the configured value when nothing has
+// been sniffed yet.
+const getDevPort = (): number | null =>
+  portSniffer.current() ?? store.read()?.application?.port ?? null;
 const { appRoot, repoDir } = bootConfig;
 const fsDeps = { appRoot, repoDir };
 const readH = makeReadHandler(fsDeps);

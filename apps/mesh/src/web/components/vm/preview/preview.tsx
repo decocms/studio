@@ -102,9 +102,23 @@ export function PreviewContent() {
   // `running` lifecycle phase carries the live port + htmlSupport flag;
   // `crashed` means the dev server stopped responding after coming up.
   // Everything else maps to "booting" for the preview overlay.
+  //
+  // htmlSupport only lives on the `running` event — but we need it to be
+  // sticky across `running` → `crashed` so a transient drop doesn't flip a
+  // working preview to the "No web page" empty state. Latch the last seen
+  // value, keyed on previewUrl so a new VM resets it.
   const lifecyclePhase = vmEvents.lifecycle.phase;
-  const hasHtmlPreview =
-    lifecyclePhase === "running" ? vmEvents.lifecycle.htmlSupport : false;
+  const htmlSupportRef = useRef<{ url: string; value: boolean }>({
+    url: "",
+    value: false,
+  });
+  if (previewUrl && htmlSupportRef.current.url !== previewUrl) {
+    htmlSupportRef.current = { url: previewUrl, value: false };
+  }
+  if (lifecyclePhase === "running") {
+    htmlSupportRef.current.value = vmEvents.lifecycle.htmlSupport;
+  }
+  const hasHtmlPreview = htmlSupportRef.current.value;
   const upstreamStatus: "booting" | "online" | "offline" =
     lifecyclePhase === "running"
       ? "online"
@@ -113,10 +127,13 @@ export function PreviewContent() {
         : "booting";
   const suspended = vmEvents.suspended;
 
-  // Daemon paused itself (dev script crashed) or user paused — treat as
-  // paused so the booting overlay doesn't falsely flash "Installing
-  // packages…" even though the server isn't starting.
-  const appPaused = vmEvents.status.state !== "running";
+  // Only the user-pause state routes to the suspended overlay (resume
+  // affordance). The daemon's `error` state means the dev script crashed
+  // — that's a failure, surfaced via the booting overlay's retry button
+  // (gated on `lifecycle.phase ∈ {clone-failed, install-failed, start-failed}`).
+  // Lumping the two under `appPaused` would route every dev-script crash
+  // to the resume UI instead, which has no retry path.
+  const appPaused = vmEvents.status.state === "paused";
 
   // Latch the boot-overlay timer's `since` to the first time previewUrl
   // appeared, keyed on previewUrl so a new VM resets it. Rendering inline
@@ -460,6 +477,8 @@ export function PreviewContent() {
               onViewLogs={openEnv}
               claimPhase={previewUrl ? null : claimPhase}
               onRetry={retryAutoStart}
+              virtualMcpId={virtualMcpId}
+              branch={branch}
             />
           </div>
         )}

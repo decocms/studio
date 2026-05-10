@@ -1,9 +1,38 @@
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Terminal } from "@untitledui/icons";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import { GridLoader } from "@/web/components/grid-loader";
-import type { ClaimPhase } from "./hooks/vm-events-context";
+import type { ClaimPhase, LifecycleState } from "./hooks/vm-events-context";
 import { useVmEvents } from "./hooks/use-vm-events";
+
+type DaemonFailurePhase = Extract<
+  LifecycleState,
+  { phase: "clone-failed" | "install-failed" | "start-failed" }
+>;
+
+type DaemonFailureStep = "clone" | "install" | "start";
+
+const DAEMON_FAILURE_COPY: Record<
+  DaemonFailurePhase["phase"],
+  { headline: string; step: DaemonFailureStep; cta: string }
+> = {
+  "clone-failed": {
+    headline: "Clone failed",
+    step: "clone",
+    cta: "Retry clone",
+  },
+  "install-failed": {
+    headline: "Install failed",
+    step: "install",
+    cta: "Retry install",
+  },
+  "start-failed": {
+    headline: "Failed to start the dev server",
+    step: "start",
+    cta: "Retry start",
+  },
+};
 
 interface VmBootingStateProps {
   /** Wall-clock ms when the boot began — feeds the elapsed timer. */
@@ -24,6 +53,9 @@ interface VmBootingStateProps {
   claimPhase?: ClaimPhase | null;
   /** Optional retry handler shown on terminal `failed` phases. */
   onRetry?: () => void;
+  /** Identifies the sandbox for daemon-lifecycle retry POSTs. */
+  virtualMcpId?: string | null;
+  branch?: string | null;
 }
 
 const PHASES = [
@@ -94,7 +126,29 @@ export function VmBootingState({
   onViewLogs,
   claimPhase,
   onRetry,
+  virtualMcpId,
+  branch,
 }: VmBootingStateProps) {
+  const { getBuffer, lifecycle } = useVmEvents();
+
+  // Daemon-lifecycle failures take precedence over claimPhase (which is
+  // pre-Ready K8s state and shouldn't fire alongside daemon failures) and
+  // over the 3-phase animated UI.
+  if (
+    lifecycle.phase === "clone-failed" ||
+    lifecycle.phase === "install-failed" ||
+    lifecycle.phase === "start-failed"
+  ) {
+    return (
+      <DaemonLifecycleFailureView
+        phase={lifecycle}
+        virtualMcpId={virtualMcpId ?? null}
+        branch={branch ?? null}
+        onViewLogs={onViewLogs}
+      />
+    );
+  }
+
   // Lifecycle-driven pre-daemon UI takes precedence whenever the caller
   // supplies a phase. The caller (preview.tsx) decides when to drop it —
   // typically once VM_START's promise resolves and a previewUrl is in
@@ -113,7 +167,6 @@ export function VmBootingState({
   const phase = getPhaseIndex(hasSetupData, scripts, activeProcesses);
   const currentLabel = PHASES[phase]?.label ?? PHASES[0].label;
 
-  const { getBuffer } = useVmEvents();
   const lastLogLine = latestLogLine(getBuffer, activeProcesses);
 
   return (
@@ -515,4 +568,88 @@ function nodeClaimSubline(phase: ClaimPhase): string | undefined {
   if (phase.kind !== "waiting-for-capacity") return undefined;
   if (!phase.nodeClaim) return undefined;
   return `Provisioning node ${phase.nodeClaim}…`;
+}
+
+// ---- Daemon lifecycle failure UI ------------------------------------------
+
+function DaemonLifecycleFailureView({
+  phase,
+  virtualMcpId,
+  branch,
+  onViewLogs,
+}: {
+  phase: DaemonFailurePhase;
+  virtualMcpId: string | null;
+  branch: string | null;
+  onViewLogs: () => void;
+}) {
+  const { org } = useProjectContext();
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+  const copy = DAEMON_FAILURE_COPY[phase.phase];
+
+  const canRetry = !!virtualMcpId && !!branch && !isRetrying;
+
+  const handleRetry = async () => {
+    if (!virtualMcpId || !branch) return;
+    setIsRetrying(true);
+    setRetryError(null);
+    try {
+      const url =
+        `/api/${encodeURIComponent(org.slug)}/vm-setup/${copy.step}` +
+        `?virtualMcpId=${encodeURIComponent(virtualMcpId)}` +
+        `&branch=${encodeURIComponent(branch)}`;
+      const res = await fetch(url, { method: "POST" });
+      if (res.ok) return;
+      if (res.status === 410) {
+        setRetryError("Sandbox is gone — it will be reprovisioned.");
+        return;
+      }
+      const body = await res.text().catch(() => "");
+      setRetryError(
+        body || `Retry failed (${res.status} ${res.statusText})`.trim(),
+      );
+    } catch (err) {
+      setRetryError(err instanceof Error ? err.message : "Retry failed");
+    } finally {
+      setIsRetrying(false);
+    }
+  };
+
+  return (
+    <div className="relative flex flex-col items-center justify-center w-full h-full overflow-hidden select-none gap-6 px-6">
+      <div className="flex flex-col items-center gap-2 text-center max-w-[440px]">
+        <span className="text-sm font-medium text-foreground">
+          {copy.headline}
+        </span>
+        <span className="text-xs text-muted-foreground whitespace-pre-wrap break-words">
+          {phase.error}
+        </span>
+        {retryError && (
+          <span className="text-xs text-destructive">{retryError}</span>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={handleRetry}
+        disabled={!canRetry}
+        className={cn(
+          "rounded-md border border-foreground/15 bg-background px-3 py-1.5 text-xs font-medium transition-colors",
+          canRetry
+            ? "hover:bg-foreground/4"
+            : "opacity-50 cursor-not-allowed",
+        )}
+      >
+        {isRetrying ? "Retrying…" : copy.cta}
+      </button>
+      <button
+        type="button"
+        onClick={onViewLogs}
+        className="flex items-center gap-1.5 text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors duration-200"
+      >
+        <Terminal size={11} />
+        View logs
+      </button>
+    </div>
+  );
 }
