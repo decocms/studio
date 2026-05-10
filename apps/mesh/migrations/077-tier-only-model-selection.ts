@@ -140,69 +140,71 @@ export const __testing = {
 };
 
 export async function up(db: Kysely<unknown>): Promise<void> {
-  await db.transaction().execute(async (trx) => {
-    // 1. Reshape organization_settings.simple_mode
-    // Note: organization_settings uses camelCase `organizationId` (migration 002).
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const orgs = await (trx as any)
-      .selectFrom("organization_settings")
-      .select(["organizationId", "simple_mode"])
-      .execute();
+  // Kysely's migrator already wraps each migration in a transaction, so all
+  // updates below run atomically without an explicit `db.transaction()`
+  // wrapper (which would error: nested transactions are not supported).
 
-    for (const row of orgs) {
-      const parsed = row.simple_mode
-        ? typeof row.simple_mode === "string"
-          ? JSON.parse(row.simple_mode)
-          : row.simple_mode
-        : null;
-      // Skip already-migrated rows.
-      if (isAlreadyReshapedSimpleMode(parsed)) {
-        continue;
-      }
-      const reshaped = reshapeSimpleMode(parsed as LegacySimpleMode | null);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (trx as any)
-        .updateTable("organization_settings")
-        .set({ simple_mode: JSON.stringify(reshaped) })
-        .where("organizationId", "=", row.organizationId)
-        .execute();
+  // 1. Reshape organization_settings.simple_mode
+  // Note: organization_settings uses camelCase `organizationId` (migration 002).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const orgs = await (db as any)
+    .selectFrom("organization_settings")
+    .select(["organizationId", "simple_mode"])
+    .execute();
+
+  for (const row of orgs) {
+    const parsed = row.simple_mode
+      ? typeof row.simple_mode === "string"
+        ? JSON.parse(row.simple_mode)
+        : row.simple_mode
+      : null;
+    // Skip already-migrated rows.
+    if (isAlreadyReshapedSimpleMode(parsed)) {
+      continue;
     }
-
-    // 2. Reshape automations.models — collapse to { tier }
+    const reshaped = reshapeSimpleMode(parsed as LegacySimpleMode | null);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const automations = await (trx as any)
-      .selectFrom("automations")
-      .select(["id", "organization_id", "models"])
+    await (db as any)
+      .updateTable("organization_settings")
+      .set({ simple_mode: JSON.stringify(reshaped) })
+      .where("organizationId", "=", row.organizationId)
       .execute();
+  }
 
-    for (const automation of automations) {
-      let legacyModels: LegacyAutomationModels;
-      try {
-        legacyModels =
-          typeof automation.models === "string"
-            ? JSON.parse(automation.models)
-            : automation.models;
-      } catch {
-        legacyModels = {};
-      }
-      // Skip rows that are already in the new `{ tier }` shape.
-      if (isAlreadyReshapedAutomationModels(legacyModels)) {
-        continue;
-      }
-      const tier = inferAutomationTier(legacyModels);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (trx as any)
-        .updateTable("automations")
-        .set({ models: JSON.stringify({ tier }) })
-        .where("id", "=", automation.id)
-        .execute();
-      if (legacyModels.thinking?.capabilities?.image) {
-        console.log(
-          `[migration 077] automation ${automation.id} previously used an image-only model; mapped to "${tier}"`,
-        );
-      }
+  // 2. Reshape automations.models — collapse to { tier }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const automations = await (db as any)
+    .selectFrom("automations")
+    .select(["id", "organization_id", "models"])
+    .execute();
+
+  for (const automation of automations) {
+    let legacyModels: LegacyAutomationModels;
+    try {
+      legacyModels =
+        typeof automation.models === "string"
+          ? JSON.parse(automation.models)
+          : automation.models;
+    } catch {
+      legacyModels = {};
     }
-  });
+    // Skip rows that are already in the new `{ tier }` shape.
+    if (isAlreadyReshapedAutomationModels(legacyModels)) {
+      continue;
+    }
+    const tier = inferAutomationTier(legacyModels);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (db as any)
+      .updateTable("automations")
+      .set({ models: JSON.stringify({ tier }) })
+      .where("id", "=", automation.id)
+      .execute();
+    if (legacyModels.thinking?.capabilities?.image) {
+      console.log(
+        `[migration 077] automation ${automation.id} previously used an image-only model; mapped to "${tier}"`,
+      );
+    }
+  }
 }
 
 export async function down(_db: Kysely<unknown>): Promise<void> {
