@@ -1,13 +1,11 @@
 import { useState } from "react";
-import { DrawerHeader, type DrawerStatus } from "./header";
-import { DrawerTabs } from "./tabs";
-import type { PhaseKey, PhaseProgress } from "../derive-phase-progress";
+import { DrawerToolbar, type DrawerStatus } from "./toolbar";
+import { VmTerminal } from "./terminal";
 
 export interface PreviewDrawerProps {
   vmId: string | null;
   orgSlug: string;
   status: DrawerStatus;
-  progress: PhaseProgress;
   scripts: string[];
   open: boolean;
   onOpenChange: (next: boolean) => void;
@@ -15,6 +13,7 @@ export interface PreviewDrawerProps {
   onStop: () => void;
   onRestart: () => void;
   onResume: () => void;
+  onRetry: () => void;
 }
 
 export function PreviewDrawer(props: PreviewDrawerProps) {
@@ -23,12 +22,11 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
 
   const handleToggle = () => props.onOpenChange(!props.open);
 
-  const handlePhaseClick = (key: PhaseKey) => {
-    if (key === "provision") return;
-    props.onOpenChange(true);
-    // cloning + install both map to the daemon's `setup` xterm stream;
-    // dev maps to `dev`.
-    setActive(key === "dev" ? "dev" : "setup");
+  // Tab click also opens the drawer when collapsed (option A from the
+  // spec). Once open, subsequent tab clicks just switch tabs.
+  const handleSelectTab = (tab: string) => {
+    setActive(tab);
+    if (!props.open) props.onOpenChange(true);
   };
 
   const handleRunScript = async (name: string) => {
@@ -50,18 +48,17 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
     if (active === name) setActive("setup");
   };
 
-  // Binary open/closed state — drawer either fills its tab-strip + xterm
+  // Binary open/closed state — drawer either fills its toolbar + xterm
   // body (50% of the preview area, set by the parent flex layout) or
-  // collapses to just the header. No drag, no maximize.
+  // collapses to just the toolbar. No drag, no maximize.
   return (
     <div
       className="flex shrink-0 flex-col"
       style={{ height: props.open ? "50%" : "auto" }}
     >
-      <DrawerHeader
+      <DrawerToolbar
         status={props.status}
         open={props.open}
-        progress={props.progress}
         onToggle={handleToggle}
         onStart={props.status === "idle" ? props.onStart : undefined}
         onStop={
@@ -71,19 +68,23 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
         }
         onRestart={props.status === "running" ? props.onRestart : undefined}
         onResume={props.status === "suspended" ? props.onResume : undefined}
-        onPhaseClick={handlePhaseClick}
+        onRetry={props.status === "errored" ? props.onRetry : undefined}
+        scripts={props.scripts}
+        active={active}
+        customTabs={customTabs}
+        onSelectTab={handleSelectTab}
+        onRunScript={handleRunScript}
+        onCloseScript={handleCloseScript}
       />
       {props.open && (
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <DrawerTabs
-            scripts={props.scripts}
-            active={active}
-            customTabs={customTabs}
-            onSelect={setActive}
-            onRunScript={handleRunScript}
-            onCloseScript={handleCloseScript}
-            vmId={props.vmId}
-          />
+        <div className="flex-1 overflow-hidden">
+          {props.vmId ? (
+            <VmTerminal source={active} className="h-full" />
+          ) : (
+            <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+              No output yet — start the dev server to begin
+            </div>
+          )}
         </div>
       )}
     </div>

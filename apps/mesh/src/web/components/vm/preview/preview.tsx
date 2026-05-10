@@ -595,7 +595,6 @@ export function PreviewContent() {
         vmId={vmEntry?.vmId ?? null}
         orgSlug={org.slug}
         status={drawerStatusFromPreview(previewState, vmStartPending)}
-        progress={progress}
         scripts={vmEvents.scripts}
         open={drawerOpen}
         onOpenChange={handleDrawerOpenChange}
@@ -603,6 +602,7 @@ export function PreviewContent() {
         onStop={handleStop}
         onRestart={handleRestart}
         onResume={retryAutoStart}
+        onRetry={retryAutoStart}
       />
       {/* TODO(task-12): auto-open the drawer when previewState transitions
           into "errored". Doing this without useEffect requires a render-time
