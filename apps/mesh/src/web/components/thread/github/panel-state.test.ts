@@ -177,6 +177,18 @@ describe("selectHeaderButton", () => {
     expect(r.loading).toBe(true);
   });
 
+  test("lifecycle.install-failed → 'Install failed' with error tooltip", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        lifecycle: { phase: "install-failed", error: "ENOENT package.json" },
+        branch: { kind: "unknown" },
+      }),
+    );
+    expect(r.label).toBe("Install failed");
+    expect(r.disabled).toBe(true);
+    expect(r.tooltip).toBe("ENOENT package.json");
+  });
+
   test("no diff anywhere → Up to date (disabled, outline)", () => {
     const r = selectHeaderButton(happyInput());
     expect(r.label).toBe("Up to date");
