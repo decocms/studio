@@ -18,7 +18,7 @@ import { PACKAGE_MANAGER_CONFIG } from "../../shared/runtime-defaults";
 import type { PackageManager } from "../../shared/runtime-defaults";
 import { readVmMap, resolveVm } from "./vm-map";
 
-type RuntimeConfigMeta = {
+export type RuntimeConfigMeta = {
   runtime?: {
     selected?: string | null;
     port?: string | null;

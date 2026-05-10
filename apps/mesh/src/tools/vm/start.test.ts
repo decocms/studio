@@ -353,6 +353,57 @@ describe("VM_START", () => {
     expect(stored?.createdAt).toBeGreaterThan(Date.now() - 60_000);
   });
 
+  it("snapshots metadata.runtime.selected into startedWith.packageManager", async () => {
+    mockEnsure.mockImplementation(async () => ({
+      handle: "vm_xyz",
+      workdir: "/app",
+      previewUrl: "https://stub.preview/",
+    }));
+    const metadata: Metadata = {
+      ...BASE_METADATA,
+      runtime: { selected: "pnpm", port: "3000" },
+    };
+    const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
+    const updateSpy = mock(async () => {});
+    const ctx = makeCtx({ virtualMcp, updateSpy });
+
+    await VM_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx);
+
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+    const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
+    const updated = (updateCall[2] as { metadata: { vmMap: VmMap } }).metadata;
+    const stored = updated.vmMap[USER_ID]?.[BRANCH];
+    expect(stored?.startedWith).toEqual({ packageManager: "pnpm" });
+  });
+
+  it("snapshots null packageManager when metadata.runtime is missing", async () => {
+    mockEnsure.mockImplementation(async () => ({
+      handle: "vm_xyz",
+      workdir: "/app",
+      previewUrl: "https://stub.preview/",
+    }));
+    // detectRepoRuntime probe will run when packageManager is unset; stub
+    // it so it returns null and leaves metadata.runtime unchanged.
+    const metadata = {
+      githubRepo: BASE_METADATA.githubRepo,
+    } as unknown as Metadata;
+    const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
+    const updateSpy = mock(async () => {});
+    const ctx = makeCtx({ virtualMcp, updateSpy });
+
+    await VM_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx);
+
+    // Find the vmMap update (detectRepoRuntime may write a runtime update too).
+    const vmMapCall = (updateSpy.mock.calls as unknown[][]).find((call) => {
+      const meta = (call[2] as { metadata?: { vmMap?: VmMap } }).metadata;
+      return meta?.vmMap?.[USER_ID]?.[BRANCH] !== undefined;
+    });
+    expect(vmMapCall).toBeDefined();
+    const updated = (vmMapCall![2] as { metadata: { vmMap: VmMap } }).metadata;
+    const stored = updated.vmMap[USER_ID]?.[BRANCH];
+    expect(stored?.startedWith).toEqual({ packageManager: null });
+  });
+
   it("returns isNewVm=false when runner.ensure returns the same handle as the existing entry", async () => {
     mockEnsure.mockImplementation(async () => ({
       handle: CACHED_ENTRY.vmId,

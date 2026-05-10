@@ -23,7 +23,7 @@ describe("computePreviewState", () => {
         status: "online",
         htmlSupport: true,
       }),
-    ).toEqual({ kind: "error", error: "boom" });
+    ).toEqual({ kind: "errored", error: "boom" });
   });
 
   test("suspended wins over content states", () => {
@@ -48,20 +48,20 @@ describe("computePreviewState", () => {
     ).toEqual({ kind: "suspended" });
   });
 
-  test("notFound triggers booting overlay", () => {
+  test("notFound triggers starting-now overlay", () => {
     expect(computePreviewState({ ...base, notFound: true })).toEqual({
-      kind: "booting",
+      kind: "starting-now",
     });
   });
 
-  test("vmStartPending without previewUrl → booting", () => {
+  test("vmStartPending without previewUrl → starting-now", () => {
     expect(
       computePreviewState({
         ...base,
         previewUrl: null,
         vmStartPending: true,
       }),
-    ).toEqual({ kind: "booting" });
+    ).toEqual({ kind: "starting-now" });
   });
 
   test("previewUrl set, online but not html → no-html empty state", () => {
@@ -76,9 +76,9 @@ describe("computePreviewState", () => {
     ).toEqual({ kind: "iframe", previewUrl: "http://localhost:5173" });
   });
 
-  test("previewUrl set, still booting → booting overlay", () => {
+  test("previewUrl set, still booting → starting-now overlay", () => {
     expect(computePreviewState({ ...base, status: "booting" })).toEqual({
-      kind: "booting",
+      kind: "starting-now",
     });
   });
 
@@ -94,19 +94,44 @@ describe("computePreviewState", () => {
     ).toEqual({ kind: "no-html", previewUrl: "http://localhost:5173" });
   });
 
-  test("no previewUrl, no startError, no pending, no lifecycle → idle", () => {
+  test("no previewUrl, no startError, no pending, no lifecycle → never-started", () => {
     expect(computePreviewState({ ...base, previewUrl: null })).toEqual({
-      kind: "idle",
+      kind: "never-started",
     });
   });
 
-  test("lifecycleActive with no previewUrl → booting", () => {
+  test("lifecycleActive with no previewUrl → starting-now", () => {
     expect(
       computePreviewState({
         ...base,
         previewUrl: null,
         claimPhase: { kind: "claiming" },
       }),
-    ).toEqual({ kind: "booting" });
+    ).toEqual({ kind: "starting-now" });
+  });
+
+  test("computePreviewState returns never-started when no previewUrl, no claim, no pending start", () => {
+    const out = computePreviewState({
+      ...base,
+      previewUrl: null,
+      status: "booting",
+      htmlSupport: false,
+      suspended: false,
+      appPaused: false,
+      vmStartPending: false,
+      lastStartError: null,
+      claimPhase: null,
+      notFound: false,
+    });
+    expect(out.kind).toBe("never-started");
+  });
+
+  test("computePreviewState returns starting-now when vmStartPending is true and previewUrl is null", () => {
+    const out = computePreviewState({
+      ...base,
+      previewUrl: null,
+      vmStartPending: true,
+    });
+    expect(out.kind).toBe("starting-now");
   });
 });

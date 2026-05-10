@@ -79,7 +79,7 @@ import {
   XClose,
 } from "@untitledui/icons";
 import { Suspense, useEffect, useReducer, useRef, useState } from "react";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, useForm, type Control } from "react-hook-form";
 import { useDebouncedAutosave } from "@/web/hooks/use-debounced-autosave.ts";
 import { toast } from "sonner";
 import { IconPicker } from "../../components/icon-picker";
@@ -98,6 +98,8 @@ import { VirtualMCPShareModal } from "./virtual-mcp-share-modal";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
 import { FIXED_SYSTEM_TABS } from "@/web/layouts/main-panel-tabs/tab-id";
 import { toTitleCase } from "@/web/components/chat/message/parts/tool-call-part/utils";
+import { RepoRow } from "@/web/components/vm/runtime-card/repo-row";
+import { RuntimeFields } from "@/web/components/vm/runtime-card/runtime-fields";
 
 type DialogState = {
   shareDialogOpen: boolean;
@@ -829,7 +831,6 @@ function LayoutTabContent({
     { value: "automations", label: "Automations" },
   ];
   if (hasGithubRepo) {
-    defaultMainOptions.push({ value: "env", label: "Terminal" });
     defaultMainOptions.push({ value: "preview", label: "Preview" });
   }
   for (const pv of pinnedViews) {
@@ -1054,6 +1055,16 @@ function VirtualMcpDetailViewWithData({
 
   // GitHub repo connected — instructions become read-only
   const hasGithubRepo = !!getActiveGithubRepo(virtualMcp);
+
+  // Repo info for the Runtime card (same source as hasGithubRepo)
+  const githubRepoForRuntimeCard = getActiveGithubRepo(virtualMcp);
+  const runtimeCardRepo = githubRepoForRuntimeCard
+    ? {
+        owner: githubRepoForRuntimeCard.owner,
+        name: githubRepoForRuntimeCard.name,
+        url: githubRepoForRuntimeCard.url,
+      }
+    : null;
 
   // Dialog states
   const [dialogState, dispatch] = useReducer(dialogReducer, {
@@ -1755,6 +1766,20 @@ Define step-by-step how the agent should handle requests.
               form={form}
               flushAndSave={flushAndSave}
             />
+
+            {/* Runtime section */}
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-sm font-medium text-foreground">Runtime</h2>
+              </div>
+              <Card className="p-6 gap-5">
+                <CardContent className="p-0 space-y-5">
+                  <RepoRow repo={runtimeCardRepo} />
+                  {/* react-hook-form's Control type is invariant; widening here is safe because RuntimeFields only reads/writes `metadata.runtime.{selected,port,path}` paths declared in our schema. */}
+                  <RuntimeFields control={form.control as Control<any>} />
+                </CardContent>
+              </Card>
+            </div>
 
             {/* Danger zone */}
             <section className="flex items-center justify-between border-t border-border pt-6">

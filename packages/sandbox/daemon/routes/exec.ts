@@ -101,7 +101,7 @@ export function makeExecHandler(deps: ExecDeps) {
       // Named tee: <logsDir>/app/<scriptName> stays stable across runs
       // so the LLM can `cat tmp/app/build` etc. without chasing task IDs.
       // TaskManager mirrors chunks onto the global SSE log stream under
-      // this name so the env-tab terminal renders the output.
+      // this name so the Preview drawer's xterm tab renders the output.
       logName: name,
     });
 

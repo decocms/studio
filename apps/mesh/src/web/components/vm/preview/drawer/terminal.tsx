@@ -3,7 +3,7 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import { useVmChunkHandler, useVmEvents } from "../hooks/use-vm-events";
+import { useVmChunkHandler, useVmEvents } from "../../hooks/use-vm-events";
 
 interface VmTerminalProps {
   /**
@@ -122,13 +122,14 @@ export function VmTerminal({
     // oxlint-disable-next-line react-hooks/exhaustive-deps — mount-only: source/vmEvents/onReady are consumed once during terminal setup
   }, []);
 
+  // Outer wrapper holds the background + padding so xterm itself sees a
+  // clean, unstyled container — no `overflow-hidden`, no `[&_.xterm-*]`
+  // overrides. xterm.js installs its own `wheel` listener on `.xterm`
+  // (which forwards to `Viewport.handleWheel`); fighting it with our
+  // own scroll/overflow rules was the reason wheel scroll wasn't working.
   return (
-    <div
-      ref={containerRef}
-      className={cn(
-        "overflow-hidden bg-sidebar px-4 py-3 [&_.xterm]:h-full [&_.xterm-screen]:min-h-full [&_.xterm-viewport]:overscroll-contain",
-        className,
-      )}
-    />
+    <div className={cn("h-full bg-sidebar p-3", className)}>
+      <div ref={containerRef} className="h-full" />
+    </div>
   );
 }

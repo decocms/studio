@@ -116,6 +116,36 @@ const VirtualMcpUISchema = z.object({
 export type VirtualMcpUI = z.infer<typeof VirtualMcpUISchema>;
 
 /**
+ * User-pinned runtime configuration stored under `metadata.runtime`. Empty
+ * fields fall back to autodetect on the next VM_START.
+ */
+const RuntimeMetadataSchema = z.object({
+  selected: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "User-selected package manager (npm | pnpm | yarn | bun | deno). Null/absent means autodetect on next VM_START.",
+    ),
+  port: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "User-selected dev server port as a string (allows '' / null for unset). Null/absent means autodetect.",
+    ),
+  path: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "Optional path (relative to repo root) to the directory containing package.json. Null/absent means repo root. Forwarded as `application.packageManager.path` to the daemon config.",
+    ),
+});
+
+export type RuntimeMetadata = z.infer<typeof RuntimeMetadataSchema>;
+
+/**
  * GitHub repository linked to a virtual MCP
  */
 const GithubRepoSchema = z.object({
@@ -162,6 +192,18 @@ export const VmMapEntrySchema = z.object({
     .optional()
     .describe(
       "Epoch ms the entry was first written by VM_START. Used by the booting overlay to show a stable elapsed timer that survives browser reloads. Optional for backward compatibility with entries written before this field existed.",
+    ),
+  startedWith: z
+    .object({
+      packageManager: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("metadata.runtime.selected at the time of VM_START"),
+    })
+    .optional()
+    .describe(
+      "Snapshot of metadata.runtime fields used at VM_START. The Preview tab compares the live metadata.runtime against this to decide if a restart is required to apply changes.",
     ),
 });
 
@@ -220,6 +262,11 @@ export const VirtualMCPEntitySchema = z.object({
       githubRepo: GithubRepoSchema.nullable()
         .optional()
         .describe("Linked GitHub repository"),
+      runtime: RuntimeMetadataSchema.nullable()
+        .optional()
+        .describe(
+          "User-pinned runtime config (package manager, dev port). Empty fields = autodetect.",
+        ),
       vmMap: VmMapSchema.optional().describe(
         "Per-user, per-branch vm mapping: vmMap[userId][branch] -> { vmId, previewUrl }",
       ),
@@ -272,6 +319,11 @@ export const VirtualMCPCreateDataSchema = z.object({
       githubRepo: GithubRepoSchema.nullable()
         .optional()
         .describe("Linked GitHub repository"),
+      runtime: RuntimeMetadataSchema.nullable()
+        .optional()
+        .describe(
+          "User-pinned runtime config (package manager, dev port). Empty fields = autodetect.",
+        ),
       vmMap: VmMapSchema.optional().describe(
         "Per-user, per-branch vm mapping: vmMap[userId][branch] -> { vmId, previewUrl }",
       ),
@@ -320,6 +372,11 @@ export const VirtualMCPUpdateDataSchema = z.object({
       githubRepo: GithubRepoSchema.nullable()
         .optional()
         .describe("Linked GitHub repository"),
+      runtime: RuntimeMetadataSchema.nullable()
+        .optional()
+        .describe(
+          "User-pinned runtime config (package manager, dev port). Empty fields = autodetect.",
+        ),
       vmMap: VmMapSchema.optional().describe(
         "Per-user, per-branch vm mapping: vmMap[userId][branch] -> { vmId, previewUrl }",
       ),

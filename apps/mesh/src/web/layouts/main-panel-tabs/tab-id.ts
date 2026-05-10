@@ -2,7 +2,7 @@
  * Pure helpers for the `?main=<tabId>|0` URL model.
  *
  * Tab id grammar:
- *   - Fixed system: "settings" | "automations" | "env" | "preview" | "git"
+ *   - Fixed system: "settings" | "automations" | "preview" | "git"
  *   - Legacy fixed system (redirected to "settings"): "instructions" | "connections" | "layout"
  *   - Agent-declared: <agentTab.id> (from virtualMcp.metadata.ui.layout.tabs)
  *   - Expanded-from-chat: <toolName> (from task.metadata.expanded_tools)
@@ -70,7 +70,6 @@ export function parsePinnedViewTabId(
 export const FIXED_SYSTEM_TABS = [
   "settings",
   "automations",
-  "env",
   "preview",
   "git",
 ] as const;

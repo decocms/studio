@@ -4,7 +4,6 @@ import {
   Globe01,
   LayoutAlt04,
   Lightning01,
-  Terminal,
 } from "@untitledui/icons";
 import { getIconComponent, parseIconString } from "../../components/agent-icon";
 
@@ -17,17 +16,11 @@ export type TabIcon =
   | { kind: "url"; src: string }
   | { kind: "fallback" };
 
-export type SystemTabId =
-  | "settings"
-  | "automations"
-  | "env"
-  | "preview"
-  | "git";
+export type SystemTabId = "settings" | "automations" | "preview" | "git";
 
 export const SYSTEM_TAB_ICONS: Record<SystemTabId, IconComponent> = {
   settings: LayoutAlt04,
   automations: Lightning01,
-  env: Terminal,
   preview: Globe01,
   git: GitBranch01,
 };
