@@ -4,6 +4,7 @@ import {
   useRouterState,
   useParams,
   useNavigate,
+  useRouter,
 } from "@tanstack/react-router";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
@@ -385,20 +386,20 @@ export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
 function SettingsToolbar() {
   const { org } = useParams({ from: "/shell/$org" });
   const navigate = useNavigate();
+  const router = useRouter();
 
   const handleBack = () => {
-    // Prefer the URL the user was on before entering /settings (recorded in
-    // settingsLayout.beforeLoad). Falls back to the org home if that signal
-    // isn't available — never leave the user stranded inside /settings.
-    if (typeof window !== "undefined") {
-      const from = sessionStorage.getItem(
-        SESSIONSTORAGE_KEYS.settingsEnteredFrom,
-      );
-      if (from && !from.includes("/settings")) {
-        sessionStorage.removeItem(SESSIONSTORAGE_KEYS.settingsEnteredFrom);
-        navigate({ to: from });
-        return;
-      }
+    // Prefer the URL the user was on before entering /settings (recorded by
+    // the router.onBeforeNavigate subscription in web/index.tsx). Falls back
+    // to the org home if that signal is missing — never leave the user
+    // stranded inside /settings.
+    const from = sessionStorage.getItem(
+      SESSIONSTORAGE_KEYS.settingsEnteredFrom,
+    );
+    if (from && !from.includes("/settings")) {
+      sessionStorage.removeItem(SESSIONSTORAGE_KEYS.settingsEnteredFrom);
+      router.history.push(from);
+      return;
     }
     navigate({ to: "/$org", params: { org } });
   };

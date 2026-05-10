@@ -249,17 +249,6 @@ const orgIndexRoute = createRoute({
 const settingsLayout = createRoute({
   getParentRoute: () => orgLayout,
   path: "/settings",
-  beforeLoad: () => {
-    // Record the URL the user was on right before entering /settings, so the
-    // toolbar back button can return there even when the in-settings history
-    // has accumulated extra entries (e.g. /settings → /settings/general
-    // redirect → /settings/connections → detail).
-    if (typeof window === "undefined") return;
-    const current = window.location.pathname + window.location.search;
-    if (!current.includes("/settings")) {
-      sessionStorage.setItem(SESSIONSTORAGE_KEYS.settingsEnteredFrom, current);
-    }
-  },
   component: lazyRouteComponent(() => import("./layouts/settings-layout.tsx")),
 });
 
@@ -626,6 +615,24 @@ declare module "@tanstack/react-router" {
     router: typeof router;
   }
 }
+
+// Capture the URL the user was on right before entering /settings, so the
+// settings toolbar's back button can return there even when in-settings
+// history has accumulated extra entries (e.g. /settings → redirect to
+// /settings/general → /settings/connections → detail). We store the
+// fromLocation only on the boundary cross from non-settings → settings;
+// internal /settings → /settings nav doesn't overwrite it.
+router.subscribe("onBeforeNavigate", ({ fromLocation, toLocation }) => {
+  const enteringSettings = toLocation.pathname.includes("/settings");
+  if (!enteringSettings) return;
+  const fromPath = fromLocation?.pathname ?? "";
+  if (fromPath.includes("/settings")) return;
+  if (!fromLocation) return;
+  sessionStorage.setItem(
+    SESSIONSTORAGE_KEYS.settingsEnteredFrom,
+    fromLocation.href,
+  );
+});
 
 const rootElement = document.getElementById("root")!;
 
