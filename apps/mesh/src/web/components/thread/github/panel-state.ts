@@ -7,6 +7,13 @@ import type { ClaimPhase } from "@/web/components/vm/hooks/vm-events-context";
 import type { CheckRun, PrSummary } from "./use-pr-data.ts";
 import type { PrReviewSignals } from "./use-pr-reviews.ts";
 
+const IDLE_CLAIM_COPY: Partial<Record<ClaimPhase["kind"], string>> = {
+  "waiting-for-capacity": "Waiting for capacity",
+  "pulling-image": "Downloading image",
+  "starting-container": "Starting container",
+  "warming-daemon": "Connecting to sandbox",
+};
+
 /**
  * Descriptor returned by selectHeaderButton. Callers translate action →
  * prompt via the message-templates module.
@@ -93,14 +100,18 @@ export function selectHeaderButton(
   // the dev server is up AND the daemon's status is healthy AND the
   // branch metadata has arrived. Only then does git/PR copy take over.
   switch (lifecycle.phase) {
-    case "idle":
+    case "idle": {
+      const label =
+        (input.claimPhase && IDLE_CLAIM_COPY[input.claimPhase.kind]) ||
+        "Starting sandbox…";
       return {
-        label: "Starting sandbox…",
+        label,
         disabled: true,
         loading: true,
         variant: "outline",
         tooltip: "Waiting for the sandbox daemon to come online",
       };
+    }
     case "cloning":
       return {
         label: "Cloning repo…",
@@ -145,8 +156,7 @@ export function selectHeaderButton(
         label: "Install failed",
         disabled: true,
         variant: "outline",
-        tooltip:
-          lifecycle.error || "package install failed — see setup logs",
+        tooltip: lifecycle.error || "package install failed — see setup logs",
       };
     case "start-failed":
       return {

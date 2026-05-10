@@ -118,6 +118,63 @@ describe("selectHeaderButton", () => {
     expect(r.variant).toBe("outline");
   });
 
+  test("idle + claimPhase = waiting-for-capacity → 'Waiting for capacity'", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        lifecycle: { phase: "idle" },
+        branch: { kind: "unknown" },
+        claimPhase: { kind: "waiting-for-capacity", since: 0 },
+      }),
+    );
+    expect(r.label).toBe("Waiting for capacity");
+  });
+
+  test("idle + claimPhase = pulling-image → 'Downloading image'", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        lifecycle: { phase: "idle" },
+        branch: { kind: "unknown" },
+        claimPhase: { kind: "pulling-image", since: 0 },
+      }),
+    );
+    expect(r.label).toBe("Downloading image");
+  });
+
+  test("idle + claimPhase = starting-container → 'Starting container'", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        lifecycle: { phase: "idle" },
+        branch: { kind: "unknown" },
+        claimPhase: { kind: "starting-container", since: 0 },
+      }),
+    );
+    expect(r.label).toBe("Starting container");
+  });
+
+  test("idle + claimPhase = warming-daemon → 'Connecting to sandbox'", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        lifecycle: { phase: "idle" },
+        branch: { kind: "unknown" },
+        claimPhase: { kind: "warming-daemon", since: 0 },
+      }),
+    );
+    expect(r.label).toBe("Connecting to sandbox");
+  });
+
+  test("idle + claimPhase = ready → 'Starting sandbox…' (generic)", () => {
+    // ready means the daemon claim handle is up but lifecycle hasn't yet
+    // emitted its first event. Generic copy is correct here.
+    const r = selectHeaderButton(
+      happyInput({
+        lifecycle: { phase: "idle" },
+        branch: { kind: "unknown" },
+        claimPhase: { kind: "ready" },
+      }),
+    );
+    expect(r.label).toBe("Starting sandbox…");
+  });
+
   test("lifecycle.cloning → 'Cloning repo…' (disabled, spinner)", () => {
     const r = selectHeaderButton(
       happyInput({
@@ -241,9 +298,7 @@ describe("selectHeaderButton", () => {
   });
 
   test("running + status.running + branch.unknown → 'Loading branch…'", () => {
-    const r = selectHeaderButton(
-      happyInput({ branch: { kind: "unknown" } }),
-    );
+    const r = selectHeaderButton(happyInput({ branch: { kind: "unknown" } }));
     expect(r.label).toBe("Loading branch…");
     expect(r.disabled).toBe(true);
     expect(r.loading).toBe(true);
