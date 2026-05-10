@@ -216,6 +216,18 @@ describe("selectHeaderButton", () => {
     expect(r.variant).toBe("outline");
   });
 
+  test("running + status.paused → 'Sandbox paused' (sandbox precedes git)", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        status: { state: "paused", reason: "user-paused" },
+        branch: ready({ workingTreeDirty: true }),
+      }),
+    );
+    expect(r.label).toBe("Sandbox paused");
+    expect(r.disabled).toBe(true);
+    expect(r.variant).toBe("outline");
+  });
+
   test("no diff anywhere → Up to date (disabled, outline)", () => {
     const r = selectHeaderButton(happyInput());
     expect(r.label).toBe("Up to date");

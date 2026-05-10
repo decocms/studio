@@ -179,6 +179,18 @@ export function selectHeaderButton(
     }
   }
 
+  // lifecycle.phase === "running" but the daemon has stopped or paused.
+  // Sandbox precedence applies: don't surface git/PR until the daemon
+  // is healthy.
+  if (input.status.state === "paused") {
+    return {
+      label: "Sandbox paused",
+      disabled: true,
+      variant: "outline",
+      tooltip: input.status.reason || "Sandbox is paused",
+    };
+  }
+
   // From here on, lifecycle.phase === "running". `branch` should be ready;
   // if it isn't, fall through to the same Loading… pill — a real fix for
   // this race lands in a later task.
