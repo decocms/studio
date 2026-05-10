@@ -635,9 +635,7 @@ function DaemonLifecycleFailureView({
         disabled={!canRetry}
         className={cn(
           "rounded-md border border-foreground/15 bg-background px-3 py-1.5 text-xs font-medium transition-colors",
-          canRetry
-            ? "hover:bg-foreground/4"
-            : "opacity-50 cursor-not-allowed",
+          canRetry ? "hover:bg-foreground/4" : "opacity-50 cursor-not-allowed",
         )}
       >
         {isRetrying ? "Retrying…" : copy.cta}
