@@ -56,7 +56,7 @@ import {
   readPersistedDrawerOpen,
   writePersistedDrawerOpen,
 } from "./drawer/drawer";
-import type { DrawerStatus } from "./drawer/header";
+import type { DrawerStatus } from "./drawer/toolbar";
 import { invalidateVirtualMcpQueries } from "@/web/lib/query-keys";
 import { useQueryClient } from "@tanstack/react-query";
 import { track } from "@/web/lib/posthog-client";
