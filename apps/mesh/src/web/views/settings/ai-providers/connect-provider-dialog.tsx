@@ -316,6 +316,12 @@ export function ConnectProviderDialog({
   const currentProvider = currentProviderId
     ? providers.find((p) => p.id === currentProviderId)
     : null;
+  const currentPreset =
+    state.kind === "form" && state.presetId
+      ? OPENAI_COMPATIBLE_PRESETS.find((p) => p.id === state.presetId)
+      : null;
+  const currentTitle =
+    currentPreset?.name ?? currentProvider?.name ?? "Connect AI provider";
   const showBack = state.kind !== "grid" && state.kind !== "closed";
 
   return (
@@ -333,9 +339,7 @@ export function ConnectProviderDialog({
                 <ArrowLeft size={16} />
               </Button>
             )}
-            <DialogTitle>
-              {currentProvider?.name ?? "Connect AI provider"}
-            </DialogTitle>
+            <DialogTitle>{currentTitle}</DialogTitle>
           </div>
           {state.kind === "grid" && (
             <DialogDescription>Choose a provider to connect.</DialogDescription>
