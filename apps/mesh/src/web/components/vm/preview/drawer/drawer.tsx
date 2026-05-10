@@ -9,6 +9,8 @@ const WELL_KNOWN_STARTERS = ["dev", "start"];
 export interface PreviewDrawerProps {
   vmId: string | null;
   orgSlug: string;
+  virtualMcpId: string | null;
+  branch: string | null;
   status: DrawerStatus;
   scripts: string[];
   open: boolean;
@@ -69,17 +71,30 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
     if (!props.open) props.onOpenChange(true);
   };
 
-  const execScript = (name: string) =>
-    fetch(
-      `/api/${encodeURIComponent(props.orgSlug)}/vm-exec/exec/${encodeURIComponent(name)}`,
+  // Mesh's vm-exec route requires virtualMcpId+branch to compute the
+  // per-user claim handle (same shape as vm-events). Without them the
+  // request 400s before reaching the daemon.
+  const execScript = (name: string) => {
+    if (!props.virtualMcpId || !props.branch) return Promise.resolve(null);
+    const qs =
+      `?virtualMcpId=${encodeURIComponent(props.virtualMcpId)}` +
+      `&branch=${encodeURIComponent(props.branch)}`;
+    return fetch(
+      `/api/${encodeURIComponent(props.orgSlug)}/vm-exec/exec/${encodeURIComponent(name)}${qs}`,
       { method: "POST" },
     );
+  };
 
-  const killScript = (name: string) =>
-    fetch(
-      `/api/${encodeURIComponent(props.orgSlug)}/vm-exec/kill/${encodeURIComponent(name)}`,
+  const killScript = (name: string) => {
+    if (!props.virtualMcpId || !props.branch) return Promise.resolve(null);
+    const qs =
+      `?virtualMcpId=${encodeURIComponent(props.virtualMcpId)}` +
+      `&branch=${encodeURIComponent(props.branch)}`;
+    return fetch(
+      `/api/${encodeURIComponent(props.orgSlug)}/vm-exec/kill/${encodeURIComponent(name)}${qs}`,
       { method: "POST" },
     );
+  };
 
   const handleAddScript = async (name: string) => {
     setScriptTabs((prev) => (prev.includes(name) ? prev : [...prev, name]));
@@ -110,7 +125,8 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
     setKillingScripts((prev) => new Set(prev).add(active));
     try {
       const res = await killScript(active);
-      if (!res.ok) throw new Error(`Kill failed: ${res.statusText}`);
+      if (!res || !res.ok)
+        throw new Error(`Kill failed: ${res?.statusText ?? "no VM"}`);
     } catch {
       setKillingScripts((prev) => {
         const next = new Set(prev);

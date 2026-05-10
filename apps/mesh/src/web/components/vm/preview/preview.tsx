@@ -595,6 +595,8 @@ export function PreviewContent() {
         key={vmEntry?.vmId ?? "no-vm"}
         vmId={vmEntry?.vmId ?? null}
         orgSlug={org.slug}
+        virtualMcpId={virtualMcpId}
+        branch={branch}
         status={drawerStatusFromPreview(previewState, vmStartPending)}
         scripts={vmEvents.scripts}
         open={drawerOpen}
