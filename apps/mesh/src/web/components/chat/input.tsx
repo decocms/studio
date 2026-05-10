@@ -506,7 +506,7 @@ export function ChatInput({
                           Plan mode
                           <X
                             size={14}
-                            className="shrink-0 hidden group-hover:block"
+                            className="shrink-0 hidden group-hover:block group-disabled:hidden"
                           />
                         </button>
                       )}
@@ -531,7 +531,7 @@ export function ChatInput({
                           </span>
                           <X
                             size={14}
-                            className="shrink-0 hidden group-hover:block"
+                            className="shrink-0 hidden group-hover:block group-disabled:hidden"
                           />
                         </button>
                       )}
@@ -556,7 +556,7 @@ export function ChatInput({
                           </span>
                           <X
                             size={14}
-                            className="shrink-0 hidden group-hover:block"
+                            className="shrink-0 hidden group-hover:block group-disabled:hidden"
                           />
                         </button>
                       )}
