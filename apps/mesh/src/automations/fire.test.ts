@@ -30,11 +30,7 @@ function makeAutomation(overrides?: Partial<Automation>): Automation {
         parts: [{ type: "text", text: "hello" }],
       },
     ]),
-    models: JSON.stringify({
-      main: { id: "model-1" },
-      thinking: { id: "model-2" },
-      credentialId: "cred_1",
-    }),
+    models: JSON.stringify({ tier: "smart" }),
     temperature: 0.5,
     virtual_mcp_id: "agent_1",
     created_at: "2026-01-01T00:00:00Z",
@@ -63,7 +59,30 @@ function makeMeshContext(orgId: string): MeshContext {
     organization: { id: orgId, slug: "test", name: "Test Org" },
     storage: {
       threads: { _orgId: orgId },
-      organizationSettings: { get: mock(() => Promise.resolve(null)) },
+      organizationSettings: {
+        get: mock(() =>
+          Promise.resolve({
+            simple_mode: {
+              tiers: {
+                smart: { keyId: "cred_test", modelId: "model-smart" },
+              },
+            },
+          }),
+        ),
+      },
+    },
+    aiProviders: {
+      listModels: mock(() =>
+        Promise.resolve([
+          {
+            modelId: "model-smart",
+            title: "Smart Model",
+            providerId: "openai",
+            capabilities: ["text"],
+            limits: { contextWindow: 128_000, maxOutputTokens: 4096 },
+          },
+        ]),
+      ),
     },
   } as unknown as MeshContext;
 }

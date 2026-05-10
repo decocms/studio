@@ -10,8 +10,6 @@ export const LOCALSTORAGE_KEYS = {
     `mesh:assistant-chat:tasks:${locator}`,
   messages: (locator: ProjectLocator, taskId: string) =>
     `mesh:messages:${locator}:${taskId}`,
-  chatSelectedModel: (locator: ProjectLocator) =>
-    `mesh:chat:selectedModel:${locator}`,
   chatSelectedMode: (locator: ProjectLocator) =>
     `mesh:chat:selectedMode:${locator}`,
   chatSelectedImageModel: (locator: ProjectLocator) =>

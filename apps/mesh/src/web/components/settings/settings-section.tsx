@@ -9,6 +9,8 @@ interface SettingsSectionProps {
   docsHref?: string;
   actions?: ReactNode;
   className?: string;
+  /** Extra classes for the header row (title + description + actions). */
+  headerClassName?: string;
   children: ReactNode;
 }
 
@@ -18,12 +20,18 @@ export function SettingsSection({
   docsHref,
   actions,
   className,
+  headerClassName,
   children,
 }: SettingsSectionProps) {
   return (
     <section className={cn("flex flex-col gap-3", className)}>
       {(title || description || docsHref || actions) && (
-        <div className="flex items-center justify-between gap-3 px-4">
+        <div
+          className={cn(
+            "flex items-center justify-between gap-3 px-4",
+            headerClassName,
+          )}
+        >
           <div className="flex flex-col gap-1 min-w-0">
             {title && (
               <h2 className="text-[15px] font-medium leading-tight">{title}</h2>

@@ -6,6 +6,8 @@
  */
 
 import type { MeshContext } from "@/core/mesh-context";
+import { TierUnavailableError, resolveTier } from "@/core/resolve-tier";
+import type { SimpleModeTier } from "@/tools/organization/schema";
 import { posthog } from "@/posthog";
 import {
   consumeStream,
@@ -67,33 +69,48 @@ async function validateRequest(
 }
 
 // ============================================================================
-// Default Model Resolution
+// Per-Request Model Resolution
 // ============================================================================
 
-async function resolveDefaultModels(
+/**
+ * Resolves a tier (defaulting to "smart") to a full ModelsConfig via the
+ * shared resolveTier(), which falls back to curated provider defaults when
+ * the org's tier slot is unset.
+ */
+async function resolvePerRequestModels(
   ctx: MeshContext,
-  organizationId: string,
+  tier: SimpleModeTier | undefined,
 ): Promise<ModelsConfig> {
-  const keys = await ctx.storage.aiProviderKeys.list({ organizationId });
-  if (keys.length === 0) {
-    throw new HTTPException(400, {
-      message: "No AI provider credentials configured for this organization",
-    });
-  }
-  const credential = keys[0]!;
-  const modelList = await ctx.aiProviders.listModels(
-    credential.id,
-    organizationId,
-  );
-  if (modelList.length === 0) {
-    throw new HTTPException(400, {
-      message: "No models available from the configured AI provider",
-    });
-  }
-  const model = modelList[0]!;
+  const resolved = await resolveTier(ctx, tier ?? "smart");
   return {
-    credentialId: credential.id,
-    thinking: { id: model.modelId, title: model.title },
+    credentialId: resolved.credentialId,
+    thinking: {
+      id: resolved.modelId,
+      title: resolved.modelMeta.title ?? resolved.modelId,
+      provider: resolved.modelMeta.providerId ?? null,
+      capabilities:
+        resolved.modelMeta.capabilities &&
+        resolved.modelMeta.capabilities.length > 0
+          ? {
+              vision:
+                resolved.modelMeta.capabilities.includes("vision") ||
+                resolved.modelMeta.capabilities.includes("image") ||
+                undefined,
+              text:
+                resolved.modelMeta.capabilities.includes("text") || undefined,
+              reasoning:
+                resolved.modelMeta.capabilities.includes("reasoning") ||
+                undefined,
+            }
+          : undefined,
+      limits: resolved.modelMeta.limits
+        ? {
+            contextWindow: resolved.modelMeta.limits.contextWindow,
+            maxOutputTokens:
+              resolved.modelMeta.limits.maxOutputTokens ?? undefined,
+          }
+        : undefined,
+    },
   };
 }
 
@@ -148,7 +165,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // 1. Validate request
       const {
         organization,
-        models: clientModels,
+        tier,
         agent,
         systemMessages,
         requestMessage,
@@ -165,9 +182,8 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         throw new HTTPException(401, { message: "User ID is required" });
       }
 
-      // 2. Resolve models — use client-provided or fall back to org defaults
-      const models =
-        clientModels ?? (await resolveDefaultModels(ctx, organization.id));
+      // 2. Resolve the request's tier to a concrete (credentialId, modelId).
+      const models = await resolvePerRequestModels(ctx, tier);
 
       // 3. Check model permissions
       const allowedModels = await fetchModelPermissions(
@@ -233,6 +249,10 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
     } catch (err) {
       console.error("[decopilot:stream] Error", err);
 
+      if (err instanceof TierUnavailableError) {
+        return c.json({ error: err.message }, 400);
+      }
+
       if (err instanceof HTTPException) {
         return c.json({ error: err.message }, err.status);
       }
@@ -261,7 +281,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // 1. Validate request
       const {
         organization,
-        models: clientModels,
+        tier,
         agent,
         systemMessages,
         requestMessage,
@@ -278,9 +298,8 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         throw new HTTPException(401, { message: "User ID is required" });
       }
 
-      // 2. Resolve models — use client-provided or fall back to org defaults
-      const models =
-        clientModels ?? (await resolveDefaultModels(ctx, organization.id));
+      // 2. Resolve the request's tier to a concrete (credentialId, modelId).
+      const models = await resolvePerRequestModels(ctx, tier);
 
       // 3. Check model permissions
       const allowedModels = await fetchModelPermissions(
@@ -335,6 +354,10 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
       if (err instanceof RunClaimError) {
         return c.json({ error: err.message }, 409);
+      }
+
+      if (err instanceof TierUnavailableError) {
+        return c.json({ error: err.message }, 400);
       }
 
       if (err instanceof HTTPException) {

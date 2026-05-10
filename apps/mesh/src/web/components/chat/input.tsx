@@ -31,7 +31,6 @@ import {
 } from "./context";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import { ChatHighlight } from "./highlight";
-import { ModelSelector } from "./select-model";
 import { getSupportedFileTypesLabel, modelSupportsFiles } from "./select-model";
 import { SimpleModeTierDropdown } from "./simple-mode-tier-dropdown";
 import type { AiProviderModel } from "@/web/hooks/collections/use-ai-providers";
@@ -234,7 +233,6 @@ export function ChatInput({
     deepResearchModel,
     chatMode,
     setChatMode,
-    simpleModeEnabled,
     simpleModeTier,
     setSimpleModeTier,
   } = useChatPrefs();
@@ -355,10 +353,7 @@ export function ChatInput({
   const playClickSound = useSound(question004Sound);
 
   const canSubmit =
-    !isStreaming &&
-    !!selectedModel &&
-    !isModelsLoading &&
-    !isTiptapDocEmpty(tiptapDoc);
+    !isStreaming && !isModelsLoading && !isTiptapDocEmpty(tiptapDoc);
 
   const showStopOrCancel = isStreaming || isRunInProgress;
 
@@ -418,7 +413,7 @@ export function ChatInput({
             key={taskId}
             tiptapDoc={tiptapDoc}
             setTiptapDoc={setTiptapDoc}
-            disabled={isStreaming || !selectedModel}
+            disabled={isStreaming}
             enterToSubmit={true}
             onSubmit={handleSubmit}
           >
@@ -436,11 +431,7 @@ export function ChatInput({
               <div className="group/input relative flex flex-col gap-2 flex-1">
                 <TiptapInput
                   ref={tiptapRef}
-                  disabled={
-                    isStreaming ||
-                    !selectedModel ||
-                    voice.status === "recording"
-                  }
+                  disabled={isStreaming || voice.status === "recording"}
                   virtualMcpId={selectedVirtualMcp?.id ?? decopilotId}
                   showFileUploader={true}
                   selectedModel={selectedModel}
@@ -535,14 +526,7 @@ export function ChatInput({
                         >
                           <Image01 size={14} className="shrink-0" />
                           <span className="max-w-[120px] truncate">
-                            {simpleModeEnabled
-                              ? "Create image"
-                              : imageModel.title.includes(": ")
-                                ? imageModel.title
-                                    .split(": ")
-                                    .slice(1)
-                                    .join(": ")
-                                : imageModel.title}
+                            Create image
                           </span>
                           <X
                             size={14}
@@ -566,14 +550,7 @@ export function ChatInput({
                         >
                           <Globe02 size={14} className="shrink-0" />
                           <span className="max-w-[120px] truncate">
-                            {simpleModeEnabled
-                              ? "Web search"
-                              : deepResearchModel.title.includes(": ")
-                                ? deepResearchModel.title
-                                    .split(": ")
-                                    .slice(1)
-                                    .join(": ")
-                                : deepResearchModel.title}
+                            Web search
                           </span>
                           <X
                             size={14}
@@ -593,18 +570,10 @@ export function ChatInput({
 
                     {/* Right Actions (mic, model, send) */}
                     <div className="flex items-center gap-1.5 min-w-0">
-                      {simpleModeEnabled ? (
-                        <SimpleModeTierDropdown
-                          tier={simpleModeTier}
-                          onSelect={setSimpleModeTier}
-                        />
-                      ) : (
-                        <ModelSelector
-                          placeholder="Model"
-                          variant="borderless"
-                          className="h-8 text-sm py-2 min-w-0"
-                        />
-                      )}
+                      <SimpleModeTierDropdown
+                        tier={simpleModeTier}
+                        onSelect={setSimpleModeTier}
+                      />
 
                       {/* Microphone button — only shown when not streaming and speech is supported */}
                       {voice.isSupported &&

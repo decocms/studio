@@ -27,7 +27,6 @@ import {
   SettingsSection,
 } from "@/web/components/settings/settings-section";
 import { Input } from "@deco/ui/components/input.tsx";
-import { Switch } from "@deco/ui/components/switch.tsx";
 import {
   ToggleGroup,
   ToggleGroupItem,
@@ -64,6 +63,7 @@ import {
   useMCPClient,
   useProjectContext,
   pickSimpleModeDefaults,
+  type SimpleModeModelSlot,
 } from "@decocms/mesh-sdk";
 import { KEYS } from "@/web/lib/query-keys";
 import { track } from "@/web/lib/posthog-client";
@@ -1416,7 +1416,7 @@ function DecoCreditsHero() {
   );
 }
 
-// ── Simple Model Mode ────────────────────────────────────────────────
+// ── Default Models ───────────────────────────────────────────────────
 
 const filterImageModels = (m: AiProviderModel) =>
   m.capabilities?.includes("image") === true;
@@ -1427,19 +1427,38 @@ const filterWebResearchModels = (m: AiProviderModel) => {
   return n.includes("sonar") || n.includes("deepresearch");
 };
 
-type TierKey = "fast" | "smart" | "thinking";
-
-const TIER_LABELS: Record<TierKey, string> = {
-  fast: "Fast",
-  smart: "Smart",
-  thinking: "Thinking",
-};
-
-const TIER_DESCRIPTIONS: Record<TierKey, string> = {
-  fast: "Fastest responses, best for quick tasks",
-  smart: "Balanced speed and capability",
-  thinking: "Most capable, best for complex tasks",
-};
+const TIER_ROWS = [
+  {
+    key: "fast" as const,
+    label: "Fast",
+    description: "Fastest responses, best for quick tasks",
+    filter: undefined,
+  },
+  {
+    key: "smart" as const,
+    label: "Smart",
+    description: "Balanced speed and capability",
+    filter: undefined,
+  },
+  {
+    key: "thinking" as const,
+    label: "Thinking",
+    description: "Most capable, best for complex tasks",
+    filter: undefined,
+  },
+  {
+    key: "image" as const,
+    label: "Image",
+    description: "Image generation",
+    filter: filterImageModels,
+  },
+  {
+    key: "web_research" as const,
+    label: "Web research",
+    description: "Web search and deep research",
+    filter: filterWebResearchModels,
+  },
+] as const;
 
 function SimpleModeModelRow({
   slot,
@@ -1447,8 +1466,8 @@ function SimpleModeModelRow({
   filterModels,
   defaultKeyId,
 }: {
-  slot: SimpleModeConfig["chat"]["fast"];
-  onSlotChange: (slot: SimpleModeConfig["chat"]["fast"]) => void;
+  slot: SimpleModeModelSlot | null;
+  onSlotChange: (slot: SimpleModeModelSlot | null) => void;
   filterModels?: (m: AiProviderModel) => boolean;
   defaultKeyId: string | null;
 }) {
@@ -1558,13 +1577,11 @@ function SimpleModeSection() {
   const isDirty = form.formState.isDirty;
 
   // Autosave: 250ms after the last `schedule()` call, persist. The debounce
-  // coalesces multi-field writes from handleToggle and Effect 2 into a
-  // single mutation. We can't gate on `formState.isDirty` here: handleToggle
-  // calls `form.reset(...)` to seed defaults (which rebases the dirty
-  // baseline) and the `values: simpleMode` prop resyncs the form on every
-  // cache update — both clear the flag before the timer fires, swallowing
-  // the save. Each `schedule()` call is the explicit save intent; nothing
-  // inside `save` re-schedules so there's no feedback loop.
+  // coalesces multi-field writes from Effect 2 into a single mutation.
+  // We can't gate on `formState.isDirty` here: the `values: simpleMode` prop
+  // resyncs the form on every cache update — clearing the flag before the timer
+  // fires, swallowing the save. Each `schedule()` call is the explicit save
+  // intent; nothing inside `save` re-schedules so there's no feedback loop.
   const { schedule: scheduleAutosave } = useDebouncedAutosave({
     delayMs: 250,
     save: async () => {
@@ -1589,43 +1606,18 @@ function SimpleModeSection() {
   const { models: models1 } = useAiProviderModels(key1?.id);
   const { models: models2 } = useAiProviderModels(key2?.id);
 
-  const handleToggle = (enabled: boolean) => {
-    const currentChat = form.getValues("chat");
-    if (
-      enabled &&
-      !currentChat.fast &&
-      !currentChat.smart &&
-      !currentChat.thinking
-    ) {
-      const modelsByKeyId: Record<string, AiProviderModel[]> = {};
-      if (key0?.id) modelsByKeyId[key0.id] = models0;
-      if (key1?.id) modelsByKeyId[key1.id] = models1;
-      if (key2?.id) modelsByKeyId[key2.id] = models2;
-      const defaults = pickSimpleModeDefaults(allKeys, modelsByKeyId);
-      form.reset(
-        {
-          enabled: true,
-          chat: defaults.chat,
-          image: defaults.image,
-          webResearch: defaults.webResearch,
-        },
-        { keepDirty: true },
-      );
-    } else {
-      form.setValue("enabled", enabled, { shouldDirty: true });
-    }
-    scheduleAutosave();
-  };
-
   // Effect 1: Clear form when all providers are removed.
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — reacts to async provider list changes
   useEffect(() => {
     if (!hasProvider) {
       form.reset({
-        enabled: false,
-        chat: { fast: null, smart: null, thinking: null },
-        image: null,
-        webResearch: null,
+        tiers: {
+          fast: null,
+          smart: null,
+          thinking: null,
+          image: null,
+          web_research: null,
+        },
       });
     }
   }, [hasProvider, form]);
@@ -1635,7 +1627,6 @@ function SimpleModeSection() {
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — reacts to async model list loading
   useEffect(() => {
     const current = form.getValues();
-    if (!current.enabled) return;
 
     const validKeyIds = new Set(allKeys.map((k) => k.id));
     const modelsByKeyId: Record<string, AiProviderModel[]> = {};
@@ -1643,143 +1634,112 @@ function SimpleModeSection() {
     if (key1?.id) modelsByKeyId[key1.id] = models1;
     if (key2?.id) modelsByKeyId[key2.id] = models2;
 
-    const isStale = (slot: SimpleModeConfig["chat"]["fast"]) =>
+    const isStale = (slot: SimpleModeModelSlot | null) =>
       slot != null && !validKeyIds.has(slot.keyId);
 
-    const clearedChat = {
-      fast: isStale(current.chat.fast) ? null : current.chat.fast,
-      smart: isStale(current.chat.smart) ? null : current.chat.smart,
-      thinking: isStale(current.chat.thinking) ? null : current.chat.thinking,
+    const clearedTiers = {
+      fast: isStale(current.tiers.fast) ? null : current.tiers.fast,
+      smart: isStale(current.tiers.smart) ? null : current.tiers.smart,
+      thinking: isStale(current.tiers.thinking) ? null : current.tiers.thinking,
+      image: isStale(current.tiers.image) ? null : current.tiers.image,
+      web_research: isStale(current.tiers.web_research)
+        ? null
+        : current.tiers.web_research,
     };
-    const clearedImage = isStale(current.image) ? null : current.image;
-    const clearedWebResearch = isStale(current.webResearch)
-      ? null
-      : current.webResearch;
 
     const needsFill =
-      !clearedChat.fast ||
-      !clearedChat.smart ||
-      !clearedChat.thinking ||
-      !clearedImage ||
-      !clearedWebResearch;
+      !clearedTiers.fast ||
+      !clearedTiers.smart ||
+      !clearedTiers.thinking ||
+      !clearedTiers.image ||
+      !clearedTiers.web_research;
 
-    const chatUnchanged =
-      clearedChat.fast === current.chat.fast &&
-      clearedChat.smart === current.chat.smart &&
-      clearedChat.thinking === current.chat.thinking;
-    if (!needsFill && chatUnchanged) return;
+    const tiersUnchanged =
+      clearedTiers.fast === current.tiers.fast &&
+      clearedTiers.smart === current.tiers.smart &&
+      clearedTiers.thinking === current.tiers.thinking &&
+      clearedTiers.image === current.tiers.image &&
+      clearedTiers.web_research === current.tiers.web_research;
+
+    if (!needsFill && tiersUnchanged) return;
 
     const defaults = pickSimpleModeDefaults(allKeys, modelsByKeyId);
     form.reset(
       {
-        ...current,
-        chat: {
-          fast: clearedChat.fast ?? defaults.chat.fast,
-          smart: clearedChat.smart ?? defaults.chat.smart,
-          thinking: clearedChat.thinking ?? defaults.chat.thinking,
+        tiers: {
+          fast: clearedTiers.fast ?? defaults.chat.fast,
+          smart: clearedTiers.smart ?? defaults.chat.smart,
+          thinking: clearedTiers.thinking ?? defaults.chat.thinking,
+          image: clearedTiers.image ?? defaults.image,
+          web_research: clearedTiers.web_research ?? defaults.webResearch,
         },
-        image: clearedImage ?? defaults.image,
-        webResearch: clearedWebResearch ?? defaults.webResearch,
       },
       { keepDirty: true },
     );
   }, [form, allKeys, models0, models1, models2, key0?.id, key1?.id, key2?.id]);
 
-  const enabled = form.watch("enabled");
-  const effectiveEnabled = enabled && hasProvider;
-
   return (
-    <SettingsSection title="Simple model mode">
+    <SettingsSection title="Default models" headerClassName="pl-0">
+      <p className="text-sm text-muted-foreground -mt-2 mb-2">
+        These models power chat, automations, and tools across your
+        organization.
+      </p>
       <SettingsCard>
-        <SettingsCardItem
-          title="Enable simple model mode"
-          description={
-            hasProvider
-              ? "Replace the model picker with a Fast / Smart / Thinking toggle for all members of this org."
-              : "Connect an AI provider above to enable this feature."
-          }
-          action={
-            <div className="flex items-center gap-3">
-              <AutosaveStatus
-                isPending={isPending}
-                showSaved={isSuccess && !isDirty}
-              />
-              <Switch
-                checked={effectiveEnabled}
-                onCheckedChange={handleToggle}
-                disabled={isPending || !hasProvider}
-              />
-            </div>
-          }
-        />
-        {effectiveEnabled && (
-          <>
-            {(["fast", "smart", "thinking"] as TierKey[]).map((tier) => (
-              <Controller
-                key={tier}
-                control={form.control}
-                name={`chat.${tier}` as const}
-                render={({ field }) => (
-                  <SettingsCardItem
-                    title={TIER_LABELS[tier]}
-                    description={TIER_DESCRIPTIONS[tier]}
-                    action={
-                      <SimpleModeModelRow
-                        slot={field.value}
-                        defaultKeyId={allKeys[0]?.id ?? null}
-                        onSlotChange={(slot) => {
-                          field.onChange(slot);
-                          scheduleAutosave();
-                        }}
-                      />
-                    }
+        <div className="flex items-center justify-end px-5 py-2">
+          <AutosaveStatus
+            isPending={isPending}
+            showSaved={isSuccess && !isDirty}
+          />
+        </div>
+        {TIER_ROWS.slice(0, 3).map((row) => (
+          <Controller
+            key={row.key}
+            control={form.control}
+            name={`tiers.${row.key}` as const}
+            render={({ field }) => (
+              <SettingsCardItem
+                title={row.label}
+                description={row.description}
+                action={
+                  <SimpleModeModelRow
+                    slot={field.value}
+                    defaultKeyId={allKeys[0]?.id ?? null}
+                    filterModels={row.filter}
+                    onSlotChange={(slot) => {
+                      field.onChange(slot);
+                      scheduleAutosave();
+                    }}
                   />
-                )}
+                }
               />
-            ))}
-            <div className="h-px bg-border mx-5" />
-            <Controller
-              control={form.control}
-              name="image"
-              render={({ field }) => (
-                <SettingsCardItem
-                  title="Image"
-                  action={
-                    <SimpleModeModelRow
-                      slot={field.value}
-                      defaultKeyId={allKeys[0]?.id ?? null}
-                      filterModels={filterImageModels}
-                      onSlotChange={(slot) => {
-                        field.onChange(slot);
-                        scheduleAutosave();
-                      }}
-                    />
-                  }
-                />
-              )}
-            />
-            <Controller
-              control={form.control}
-              name="webResearch"
-              render={({ field }) => (
-                <SettingsCardItem
-                  title="Web research"
-                  action={
-                    <SimpleModeModelRow
-                      slot={field.value}
-                      defaultKeyId={allKeys[0]?.id ?? null}
-                      filterModels={filterWebResearchModels}
-                      onSlotChange={(slot) => {
-                        field.onChange(slot);
-                        scheduleAutosave();
-                      }}
-                    />
-                  }
-                />
-              )}
-            />
-          </>
-        )}
+            )}
+          />
+        ))}
+        <div className="h-px bg-border mx-5" />
+        {TIER_ROWS.slice(3).map((row) => (
+          <Controller
+            key={row.key}
+            control={form.control}
+            name={`tiers.${row.key}` as const}
+            render={({ field }) => (
+              <SettingsCardItem
+                title={row.label}
+                description={row.description}
+                action={
+                  <SimpleModeModelRow
+                    slot={field.value}
+                    defaultKeyId={allKeys[0]?.id ?? null}
+                    filterModels={row.filter}
+                    onSlotChange={(slot) => {
+                      field.onChange(slot);
+                      scheduleAutosave();
+                    }}
+                  />
+                }
+              />
+            )}
+          />
+        ))}
       </SettingsCard>
     </SettingsSection>
   );
@@ -1793,11 +1753,9 @@ function OrgAiProvidersContent() {
 
   return (
     <>
-      {allKeys.length > 0 && (
-        <Suspense fallback={<Skeleton className="h-16 w-full" />}>
-          <SimpleModeSection />
-        </Suspense>
-      )}
+      <Suspense fallback={<Skeleton className="h-16 w-full" />}>
+        <SimpleModeSection />
+      </Suspense>
       <DecoCreditsHero />
       <ProviderCardGrid hideProviderId={hasDecoKey ? "deco" : undefined} />
     </>

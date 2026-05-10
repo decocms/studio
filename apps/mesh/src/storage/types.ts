@@ -137,15 +137,15 @@ export interface SimpleModeModelSlot {
   title?: string;
 }
 
+export type SimpleModeTier =
+  | "fast"
+  | "smart"
+  | "thinking"
+  | "image"
+  | "web_research";
+
 export interface SimpleModeConfig {
-  enabled: boolean;
-  chat: {
-    fast: SimpleModeModelSlot | null;
-    smart: SimpleModeModelSlot | null;
-    thinking: SimpleModeModelSlot | null;
-  };
-  image: SimpleModeModelSlot | null;
-  webResearch: SimpleModeModelSlot | null;
+  tiers: Record<SimpleModeTier, SimpleModeModelSlot | null>;
 }
 
 export interface DefaultHomeAgentsConfig {

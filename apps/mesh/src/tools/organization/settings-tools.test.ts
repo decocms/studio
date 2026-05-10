@@ -11,14 +11,13 @@ import type {
 import type { OrganizationSettings } from "../../storage/types";
 
 const SAMPLE_SIMPLE_MODE = {
-  enabled: true,
-  chat: {
+  tiers: {
     fast: { keyId: "key_1", modelId: "gpt-4o-mini", title: "Fast" },
     smart: { keyId: "key_1", modelId: "gpt-4o", title: "Smart" },
     thinking: { keyId: "key_1", modelId: "o1-preview", title: "Thinking" },
+    image: { keyId: "key_2", modelId: "dall-e-3", title: "Image" },
+    web_research: null,
   },
-  image: { keyId: "key_2", modelId: "dall-e-3", title: "Image" },
-  webResearch: null,
 };
 
 const SAMPLE_REGISTRY_CONFIG = {

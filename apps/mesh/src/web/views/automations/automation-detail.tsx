@@ -5,15 +5,9 @@
  */
 
 import {
-  useAiProviderModels,
-  type AiProviderModel,
-} from "@/web/hooks/collections/use-ai-providers.ts";
-import { ModelSelector } from "@/web/components/chat/select-model.tsx";
-import {
   SimpleModeTierDropdown,
   type SimpleModeTier,
-} from "@/web/components/chat/simple-mode-tier-dropdown.tsx";
-import { useSimpleMode } from "@/web/hooks/use-organization-settings";
+} from "@/web/components/chat/simple-mode-tier-dropdown";
 import { User } from "@/web/components/user/user.tsx";
 import {
   useAutomation,
@@ -74,12 +68,7 @@ import {
 interface SettingsFormData {
   name: string;
   active: boolean;
-  credential_id: string;
-  model_id: string;
-  // Empty string when the automation isn't pinned to a Simple Mode tier.
-  // When set, the server resolves the model from the live tier slot at run
-  // time, so credential_id / model_id act as a display snapshot only.
-  tier: SimpleModeTier | "";
+  tier: SimpleModeTier;
 }
 
 type EditSession = {
@@ -344,13 +333,7 @@ export function SettingsTab({
 
   // Chat hooks for running the automation
   const { createTaskWithMessage } = useChatTask();
-  const {
-    setModel,
-    setSimpleModeTier,
-    credentialId: chatCredentialId,
-    selectedModel: chatModel,
-  } = useChatPrefs();
-  const simpleMode = useSimpleMode();
+  const { setSimpleModeTier } = useChatPrefs();
   const { setChatOpen } = usePanelActions();
   const { sendMessage } = useChatBridge();
   const ensureStudioPack = useEnsureStudioPack();
@@ -410,55 +393,17 @@ export function SettingsTab({
     }
   };
 
-  const defaultCredentialId =
-    automation.models?.credentialId || chatCredentialId || "";
-  const defaultModelId =
-    automation.models?.thinking?.id || chatModel?.modelId || "";
-  const defaultTier: SimpleModeTier | "" = automation.models?.tier ?? "";
+  const defaultTier: SimpleModeTier = automation.models?.tier ?? "smart";
 
   const form = useForm<SettingsFormData>({
     defaultValues: {
       name: automation.name,
       active: automation.active,
-      credential_id: defaultCredentialId,
-      model_id: defaultModelId,
       tier: defaultTier,
     },
   });
 
   const watchActive = form.watch("active");
-  const watchConnectionId = form.watch("credential_id");
-  const watchModelId = form.watch("model_id");
-
-  const { models, isLoading: isModelsLoading } = useAiProviderModels(
-    watchConnectionId || undefined,
-  );
-  const selectedModel: AiProviderModel | null =
-    models.find((m) => m.modelId === watchModelId) ?? null;
-
-  const watchTier = form.watch("tier");
-  // The slot the saved credential/model actually correspond to, if any.
-  // Used both for the dropdown label and to decide whether saving is safe
-  // to auto-pin a legacy automation — we only persist `tier` when we know
-  // with certainty which slot the existing model matches.
-  const slotMatchedTier = (["fast", "smart", "thinking"] as const).find(
-    (t) =>
-      simpleMode.chat[t]?.modelId === watchModelId &&
-      simpleMode.chat[t]?.keyId === watchConnectionId,
-  );
-  // Persisted tier (from automation.models.tier) wins so the dropdown stays
-  // truthful even when slots are reconfigured server-side. Falls back to
-  // slot-match, then to "smart" as a final default for the dropdown label.
-  const activeSimpleModeTier: SimpleModeTier =
-    watchTier || slotMatchedTier || "smart";
-
-  const handleSimpleModeTierSelect = (tier: SimpleModeTier) => {
-    const slot = simpleMode.chat[tier];
-    if (!slot) return;
-    form.setValue("credential_id", slot.keyId, { shouldDirty: true });
-    form.setValue("model_id", slot.modelId, { shouldDirty: true });
-    form.setValue("tier", tier, { shouldDirty: true });
-  };
 
   // Session-based tracking for automation_updated. Auto-saves persist every
   // ~1s but we only emit one PostHog event per edit-session (aggregated
@@ -496,22 +441,6 @@ export function SettingsTab({
     const dirtyKeys = Object.keys(liveDirtyFields);
     if (dirtyKeys.length === 0 && !tiptapDirty) return true;
 
-    const values = form.getValues();
-    const coercedCredentialId =
-      values.credential_id && values.model_id ? values.credential_id : "";
-    const coercedModelId =
-      values.credential_id && values.model_id ? values.model_id : "";
-
-    // Reflect coercion in the form so the UI matches what we're persisting.
-    // shouldDirty is left as the default (false) — these aren't user edits;
-    // the rebase below will adopt them as the new baseline.
-    if (coercedCredentialId !== values.credential_id) {
-      form.setValue("credential_id", coercedCredentialId);
-    }
-    if (coercedModelId !== values.model_id) {
-      form.setValue("model_id", coercedModelId);
-    }
-
     const formData = form.getValues();
     const previousDefaults = (
       form.control as unknown as { _defaultValues: SettingsFormData }
@@ -524,25 +453,11 @@ export function SettingsTab({
     const tiptapWasDirty = tiptapDirty;
     setTiptapDirty(false);
 
-    // Persist `tier` only when we have a confident signal: an explicit form
-    // value (set via the tier dropdown) or a saved model that actually
-    // matches a configured slot. Legacy automations whose model doesn't
-    // match any slot are NOT silently re-pinned to the default tier on
-    // incidental edits — that would change which model the run path uses
-    // with no UI signal.
-    const tierToPersist: SimpleModeTier | undefined = simpleMode.enabled
-      ? formData.tier || slotMatchedTier
-      : formData.tier || undefined;
-
     const updatePayload = {
       id: automationId,
       name: formData.name,
       active: formData.active,
-      models: {
-        credentialId: coercedCredentialId,
-        thinking: { id: coercedModelId },
-        ...(tierToPersist ? { tier: tierToPersist } : {}),
-      },
+      models: { tier: formData.tier },
       messages: tiptapDocToMessages(tiptapDoc),
       temperature: 0,
     };
@@ -612,11 +527,7 @@ export function SettingsTab({
       return;
     }
 
-    if (simpleMode.enabled) {
-      setSimpleModeTier(activeSimpleModeTier);
-    } else if (selectedModel && watchConnectionId) {
-      setModel({ ...selectedModel, keyId: watchConnectionId });
-    }
+    setSimpleModeTier(form.getValues("tier"));
 
     setChatOpen(true);
     setPreferences({ ...preferences, toolApprovalLevel: "auto" });
@@ -862,32 +773,12 @@ export function SettingsTab({
               />
 
               <div className="flex items-center justify-end gap-1.5 p-2.5">
-                {simpleMode.enabled ? (
-                  <SimpleModeTierDropdown
-                    tier={activeSimpleModeTier}
-                    onSelect={handleSimpleModeTierSelect}
-                  />
-                ) : (
-                  <ModelSelector
-                    model={selectedModel}
-                    isLoading={isModelsLoading}
-                    credentialId={watchConnectionId || null}
-                    onCredentialChange={(id) => {
-                      form.setValue("credential_id", id ?? "", {
-                        shouldDirty: true,
-                      });
-                      form.setValue("model_id", "", { shouldDirty: true });
-                      form.setValue("tier", "", { shouldDirty: true });
-                    }}
-                    onModelChange={(model) => {
-                      form.setValue("model_id", model.modelId, {
-                        shouldDirty: true,
-                      });
-                      form.setValue("tier", "", { shouldDirty: true });
-                    }}
-                    placeholder="Model"
-                  />
-                )}
+                <SimpleModeTierDropdown
+                  tier={form.watch("tier")}
+                  onSelect={(tier) =>
+                    form.setValue("tier", tier, { shouldDirty: true })
+                  }
+                />
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button

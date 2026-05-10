@@ -4,6 +4,7 @@ import type { UseChatHelpers } from "@ai-sdk/react";
 import type { JSONContent } from "@tiptap/core";
 import type { ChatMode } from "@/api/routes/decopilot/mode-config";
 import type { ToolApprovalLevel } from "@/web/hooks/use-preferences";
+import type { SimpleModeTier } from "@/tools/organization/schema";
 
 export type { ChatMode };
 
@@ -70,14 +71,8 @@ export interface MetadataModelInfo {
 export interface Metadata {
   reasoning_start_at?: string | Date;
   reasoning_end_at?: string | Date;
-  models?: {
-    credentialId: string;
-    thinking: MetadataModelInfo;
-    coding?: MetadataModelInfo;
-    fast?: MetadataModelInfo;
-    image?: MetadataModelInfo;
-    deepResearch?: MetadataModelInfo;
-  };
+  /** Tier to use for model resolution on the backend */
+  tier?: SimpleModeTier;
   agent?: ChatAgentConfig;
   user?: ChatUserConfig;
   created_at?: string | Date;

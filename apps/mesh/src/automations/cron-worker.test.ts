@@ -21,11 +21,7 @@ function makeAutomation(overrides?: Partial<Automation>): Automation {
     messages: JSON.stringify([
       { id: "m1", role: "user", parts: [{ type: "text", text: "hi" }] },
     ]),
-    models: JSON.stringify({
-      main: { id: "m1" },
-      thinking: { id: "m2" },
-      credentialId: "cred_1",
-    }),
+    models: JSON.stringify({ tier: "smart" }),
     temperature: 0.5,
     virtual_mcp_id: "agent_1",
     created_at: "2026-01-01T00:00:00Z",
