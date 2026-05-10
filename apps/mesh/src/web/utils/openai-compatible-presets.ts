@@ -29,7 +29,7 @@ export const OPENAI_COMPATIBLE_PRESETS: OpenAICompatiblePreset[] = [
     id: "openai",
     name: "OpenAI",
     description: "Connect your OpenAI account with an API key",
-    logo: "https://assets.decocache.com/decocms/d138aa7e-5b8c-4821-9e64-6aff40df2cdc/ChatGPT_logo.svg",
+    logo: "https://decoims.com/decocms/b51001ef-ae58-4db4-8a75-9e6d2df2dd8e/openai.png",
     baseUrlPlaceholder: "https://api.openai.com/v1",
     defaultBaseUrl: "https://api.openai.com/v1",
     apiKeyRecommended: true,
