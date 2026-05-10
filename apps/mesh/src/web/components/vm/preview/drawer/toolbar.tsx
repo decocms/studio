@@ -30,6 +30,9 @@ import {
 import { type DrawerStatus, statusPillFor } from "./status-pill";
 import { menuItemsFor, type MenuItem } from "./toolbar-menu-items";
 
+/** The always-present tab. Catch-all for clone + install logs. */
+export const DEFAULT_TAB = "setup";
+
 export type { DrawerStatus } from "./status-pill";
 
 export interface DrawerToolbarProps {
@@ -77,10 +80,10 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
       <ToggleChevron open={props.open} onToggle={props.onToggle} />
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
         <TabButton
-          active={props.active === "setup"}
-          onClick={() => props.onSelectTab("setup")}
+          active={props.active === DEFAULT_TAB}
+          onClick={() => props.onSelectTab(DEFAULT_TAB)}
         >
-          setup
+          {DEFAULT_TAB}
         </TabButton>
         {props.scriptTabs.map((t) => (
           <TabButton

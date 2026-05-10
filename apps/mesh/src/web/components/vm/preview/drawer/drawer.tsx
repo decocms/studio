@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Play } from "@untitledui/icons";
 import { useVmEvents } from "../../hooks/use-vm-events";
-import { DrawerToolbar, type DrawerStatus } from "./toolbar";
+import { DEFAULT_TAB, DrawerToolbar, type DrawerStatus } from "./toolbar";
 import { VmTerminal } from "./terminal";
 
 const WELL_KNOWN_STARTERS = ["dev", "start"];
@@ -22,7 +22,7 @@ export interface PreviewDrawerProps {
 
 export function PreviewDrawer(props: PreviewDrawerProps) {
   const vmEvents = useVmEvents();
-  const [active, setActive] = useState<string>("setup");
+  const [active, setActive] = useState<string>(DEFAULT_TAB);
   const [scriptTabs, setScriptTabs] = useState<string[]>([]);
   const [killingScripts, setKillingScripts] = useState<Set<string>>(new Set());
 
@@ -93,7 +93,7 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
   const handleCloseScript = async (name: string) => {
     await killScript(name);
     setScriptTabs((prev) => prev.filter((t) => t !== name));
-    if (active === name) setActive("setup");
+    if (active === name) setActive(DEFAULT_TAB);
   };
 
   // Per-script Run/Restart on the active tab — does NOT add or remove the
@@ -120,7 +120,7 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
     }
   };
 
-  const isScriptTab = active !== "setup" && scriptTabs.includes(active);
+  const isScriptTab = active !== DEFAULT_TAB && scriptTabs.includes(active);
   const scriptIsRunning =
     isScriptTab && vmEvents.activeProcesses.includes(active);
   const scriptIsKilling = isScriptTab && killingScripts.has(active);
@@ -200,7 +200,7 @@ function DrawerBody({
       </div>
     );
   }
-  if (active === "setup" || hasData) {
+  if (active === DEFAULT_TAB || hasData) {
     return <VmTerminal key={active} source={active} className="h-full" />;
   }
   return (
