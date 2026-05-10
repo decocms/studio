@@ -23,6 +23,8 @@ describe("connect-dialog reducer", () => {
       { kind: "oauth-pending", providerId: "anthropic", stateToken: "x" },
       { kind: "cli-pending", providerId: "claude-code" },
       { kind: "cli-error", providerId: "claude-code", error: "x" },
+      { kind: "provision-pending", providerId: "deco" },
+      { kind: "provision-error", providerId: "deco", error: "x" },
     ];
     for (const s of states) {
       expect(reducer(s, { type: "open" })).toEqual(s);
@@ -36,6 +38,8 @@ describe("connect-dialog reducer", () => {
       { kind: "oauth-pending", providerId: "anthropic", stateToken: "abc" },
       { kind: "cli-pending", providerId: "claude-code" },
       { kind: "cli-error", providerId: "claude-code", error: "no cli" },
+      { kind: "provision-pending", providerId: "deco" },
+      { kind: "provision-error", providerId: "deco", error: "boom" },
     ];
     for (const s of states) {
       expect(reducer(s, { type: "close" })).toEqual({ kind: "closed" });
@@ -116,12 +120,45 @@ describe("connect-dialog reducer", () => {
     ).toEqual({ kind: "cli-pending", providerId: "claude-code" });
   });
 
-  test("back returns to grid from form/oauth-pending/cli-pending/cli-error", () => {
+  test("select-provision transitions grid → provision-pending", () => {
+    expect(
+      reducer(
+        { kind: "grid" },
+        { type: "select-provision", providerId: "deco" },
+      ),
+    ).toEqual({ kind: "provision-pending", providerId: "deco" });
+  });
+
+  test("provision-error transitions provision-pending → provision-error", () => {
+    expect(
+      reducer(
+        { kind: "provision-pending", providerId: "deco" },
+        { type: "provision-error", error: "Quota exhausted" },
+      ),
+    ).toEqual({
+      kind: "provision-error",
+      providerId: "deco",
+      error: "Quota exhausted",
+    });
+  });
+
+  test("retry-provision transitions provision-error → provision-pending", () => {
+    expect(
+      reducer(
+        { kind: "provision-error", providerId: "deco", error: "x" },
+        { type: "retry-provision" },
+      ),
+    ).toEqual({ kind: "provision-pending", providerId: "deco" });
+  });
+
+  test("back returns to grid from any intermediate state", () => {
     const intermediate: DialogState[] = [
       { kind: "form", providerId: "openai", presetId: null },
       { kind: "oauth-pending", providerId: "anthropic", stateToken: "x" },
       { kind: "cli-pending", providerId: "claude-code" },
       { kind: "cli-error", providerId: "claude-code", error: "x" },
+      { kind: "provision-pending", providerId: "deco" },
+      { kind: "provision-error", providerId: "deco", error: "x" },
     ];
     for (const s of intermediate) {
       expect(reducer(s, { type: "back" })).toEqual({ kind: "grid" });
@@ -154,6 +191,9 @@ describe("connect-dialog reducer", () => {
     };
     expect(
       reducer(s, { type: "select-cli", providerId: "claude-code" }),
+    ).toEqual(s);
+    expect(
+      reducer(s, { type: "select-provision", providerId: "deco" }),
     ).toEqual(s);
   });
 });

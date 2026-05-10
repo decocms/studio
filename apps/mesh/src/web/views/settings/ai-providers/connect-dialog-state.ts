@@ -4,7 +4,9 @@ export type DialogState =
   | { kind: "form"; providerId: string; presetId: string | null }
   | { kind: "oauth-pending"; providerId: string; stateToken: string }
   | { kind: "cli-pending"; providerId: string }
-  | { kind: "cli-error"; providerId: string; error: string };
+  | { kind: "cli-error"; providerId: string; error: string }
+  | { kind: "provision-pending"; providerId: string }
+  | { kind: "provision-error"; providerId: string; error: string };
 
 export type DialogAction =
   | { type: "open" }
@@ -13,9 +15,12 @@ export type DialogAction =
   | { type: "select-form"; providerId: string; presetId: string | null }
   | { type: "select-oauth"; providerId: string; stateToken: string }
   | { type: "select-cli"; providerId: string }
+  | { type: "select-provision"; providerId: string }
   | { type: "oauth-failed" }
   | { type: "cli-error"; error: string }
-  | { type: "retry-cli" };
+  | { type: "retry-cli" }
+  | { type: "provision-error"; error: string }
+  | { type: "retry-provision" };
 
 export const initialState: DialogState = { kind: "closed" };
 
@@ -31,6 +36,8 @@ export function reducer(state: DialogState, action: DialogAction): DialogState {
         case "oauth-pending":
         case "cli-pending":
         case "cli-error":
+        case "provision-pending":
+        case "provision-error":
           return { kind: "grid" };
         default:
           return state;
@@ -64,5 +71,18 @@ export function reducer(state: DialogState, action: DialogAction): DialogState {
     case "retry-cli":
       if (state.kind !== "cli-error") return state;
       return { kind: "cli-pending", providerId: state.providerId };
+    case "select-provision":
+      if (state.kind !== "grid") return state;
+      return { kind: "provision-pending", providerId: action.providerId };
+    case "provision-error":
+      if (state.kind !== "provision-pending") return state;
+      return {
+        kind: "provision-error",
+        providerId: state.providerId,
+        error: action.error,
+      };
+    case "retry-provision":
+      if (state.kind !== "provision-error") return state;
+      return { kind: "provision-pending", providerId: state.providerId };
   }
 }
