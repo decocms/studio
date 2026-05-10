@@ -124,6 +124,14 @@ export function selectHeaderButton(
         variant: "outline",
         tooltip: `Checking out ${lifecycle.to}`,
       };
+    case "installing":
+      return {
+        label: "Installing packages…",
+        disabled: true,
+        loading: true,
+        variant: "outline",
+        tooltip: "Installing project dependencies",
+      };
     case "running":
       // Fall through to the post-sandbox checks below.
       break;

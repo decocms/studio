@@ -152,6 +152,19 @@ describe("selectHeaderButton", () => {
     expect(r.loading).toBe(true);
   });
 
+  test("lifecycle.installing → 'Installing packages…'", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        lifecycle: { phase: "installing" },
+        branch: { kind: "unknown" },
+      }),
+    );
+    expect(r.label).toBe("Installing packages…");
+    expect(r.disabled).toBe(true);
+    expect(r.loading).toBe(true);
+    expect(r.variant).toBe("outline");
+  });
+
   test("no diff anywhere → Up to date (disabled, outline)", () => {
     const r = selectHeaderButton(happyInput());
     expect(r.label).toBe("Up to date");
