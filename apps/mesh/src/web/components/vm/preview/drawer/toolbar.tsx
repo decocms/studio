@@ -73,9 +73,7 @@ function StatusButton(
 ) {
   const { className, label } = statusPillFor(props.status);
   const items = menuItemsFor(props.status);
-  const handlerFor = (
-    action: MenuItem["action"],
-  ): (() => void) | undefined => {
+  const handlerFor = (action: MenuItem["action"]): (() => void) | undefined => {
     switch (action) {
       case "start":
         return props.onStart;
@@ -162,11 +160,7 @@ function TabStrip({
   return (
     <div className="flex flex-1 min-w-0 items-center gap-1 overflow-x-auto">
       {DEFAULT_TABS.map((t) => (
-        <TabButton
-          key={t}
-          active={active === t}
-          onClick={() => onSelectTab(t)}
-        >
+        <TabButton key={t} active={active === t} onClick={() => onSelectTab(t)}>
           {t}
         </TabButton>
       ))}
