@@ -1,4 +1,9 @@
-import type { BranchStatus } from "./use-branch-status";
+import type {
+  BranchMeta,
+  DaemonStatus,
+  LifecycleState,
+} from "@decocms/sandbox/shared";
+import type { ClaimPhase } from "@/web/components/vm/hooks/vm-events-context";
 import type { CheckRun, PrSummary } from "./use-pr-data.ts";
 import type { PrReviewSignals } from "./use-pr-reviews.ts";
 
@@ -58,16 +63,23 @@ function isCheckInProgress(c: CheckRun): boolean {
   return c.status === "queued" || c.status === "in_progress";
 }
 
-export function selectHeaderButton(input: {
-  branchStatus: BranchStatus | null;
+export interface SelectHeaderButtonInput {
+  lifecycle: LifecycleState;
+  branch: BranchMeta;
+  status: DaemonStatus;
+  claimPhase: ClaimPhase | null;
   pr: PrSummary | null;
   checks: CheckRun[];
   reviews: PrReviewSignals | null;
   loading?: boolean;
-}): HeaderButton {
-  const { branchStatus, pr, checks, reviews, loading } = input;
+}
 
-  if (!branchStatus || loading) {
+export function selectHeaderButton(
+  input: SelectHeaderButtonInput,
+): HeaderButton {
+  const { lifecycle, branch, pr, checks, reviews, loading } = input;
+
+  if (loading) {
     return {
       label: "Loading…",
       disabled: true,
@@ -77,8 +89,11 @@ export function selectHeaderButton(input: {
     };
   }
 
-  switch (branchStatus.kind) {
-    case "initializing":
+  // Sandbox-state precedence: header reflects boot/daemon state until
+  // the dev server is up AND the daemon's status is healthy AND the
+  // branch metadata has arrived. Only then does git/PR copy take over.
+  switch (lifecycle.phase) {
+    case "idle":
       return {
         label: "Starting sandbox…",
         disabled: true,
@@ -99,34 +114,46 @@ export function selectHeaderButton(input: {
         label: "Clone failed",
         disabled: true,
         variant: "outline",
-        tooltip: branchStatus.error || "git clone failed — see setup logs",
+        tooltip: lifecycle.error || "git clone failed — see setup logs",
       };
     case "checking-out":
       return {
-        label: `Switching to ${branchStatus.to}…`,
+        label: `Switching to ${lifecycle.to}…`,
         disabled: true,
         loading: true,
         variant: "outline",
-        tooltip: `Checking out ${branchStatus.to}`,
+        tooltip: `Checking out ${lifecycle.to}`,
       };
-    case "checkout-failed":
-      return {
-        label: "Checkout failed",
-        disabled: true,
-        variant: "outline",
-        tooltip: branchStatus.error || "git checkout failed — see setup logs",
-      };
-    case "ready":
+    case "running":
+      // Fall through to the post-sandbox checks below.
       break;
     default: {
-      const _exhaustive: never = branchStatus;
-      void _exhaustive;
-      break;
+      // Other lifecycle phases (installing/starting/install-failed/
+      // start-failed/crashed) are handled in subsequent tasks. For now
+      // they shouldn't be reached by any test, but we keep the function
+      // total by falling through to the same "Loading…" pill the loading
+      // flag uses.
+      return {
+        label: "Loading…",
+        disabled: true,
+        loading: true,
+        variant: "outline",
+      };
     }
   }
 
-  // From here on, branchStatus.kind === "ready" — narrow it.
-  const ready = branchStatus;
+  // From here on, lifecycle.phase === "running". `branch` should be ready;
+  // if it isn't, fall through to the same Loading… pill — a real fix for
+  // this race lands in a later task.
+  if (branch.kind !== "ready") {
+    return {
+      label: "Loading…",
+      disabled: true,
+      loading: true,
+      variant: "outline",
+    };
+  }
+  const ready = branch;
 
   const hasLocalWork = ready.workingTreeDirty || ready.unpushed > 0;
   if (hasLocalWork) {
