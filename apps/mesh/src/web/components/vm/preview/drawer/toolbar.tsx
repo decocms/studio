@@ -17,7 +17,16 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { ChevronDown, ChevronUp, Plus, X } from "@untitledui/icons";
+import {
+  ChevronDown,
+  ChevronUp,
+  Loading01,
+  Play,
+  Plus,
+  RefreshCw01,
+  StopCircle,
+  X,
+} from "@untitledui/icons";
 import { type DrawerStatus, statusPillFor } from "./status-pill";
 import { menuItemsFor, type MenuItem } from "./toolbar-menu-items";
 
@@ -27,22 +36,34 @@ export interface DrawerToolbarProps {
   status: DrawerStatus;
   open: boolean;
   onToggle: () => void;
+  // VM lifecycle actions surfaced via the status split-button menu.
   onStart?: () => void;
   onStop?: () => void;
   onRestart?: () => void;
   onResume?: () => void;
   onRetry?: () => void;
+  // Tab strip + add-script popover. `setup` is implicit; `scriptTabs` lists
+  // every other open tab (auto-opened dev/start + popover-opened scripts).
   scripts: string[];
   active: string;
-  customTabs: string[];
+  scriptTabs: string[];
   onSelectTab: (tab: string) => void;
-  onRunScript: (name: string) => void;
+  onAddScript: (name: string) => void;
   onCloseScript: (name: string) => void;
+  // Per-script controls on the right. Only render when the active tab is a
+  // script tab (not setup); drawer.tsx owns the gating.
+  showScriptControls: boolean;
+  scriptIsRunning: boolean;
+  scriptIsKilling: boolean;
+  onRunActiveScript: () => void;
+  onStopActiveScript: () => void;
 }
 
-const DEFAULT_TABS = ["setup", "dev"] as const;
-
 export function DrawerToolbar(props: DrawerToolbarProps) {
+  const addableScripts = props.scripts.filter(
+    (s) => !props.scriptTabs.includes(s),
+  );
+
   return (
     <div className="flex h-9 shrink-0 items-center gap-3 border-t border-border bg-muted/30 px-3">
       <StatusButton
@@ -54,13 +75,33 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
         onRetry={props.onRetry}
       />
       <ToggleChevron open={props.open} onToggle={props.onToggle} />
-      <TabStrip
-        active={props.active}
-        customTabs={props.customTabs}
-        onSelectTab={props.onSelectTab}
-        onCloseScript={props.onCloseScript}
-      />
-      <AddScriptButton scripts={props.scripts} onRun={props.onRunScript} />
+      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+        <TabButton
+          active={props.active === "setup"}
+          onClick={() => props.onSelectTab("setup")}
+        >
+          setup
+        </TabButton>
+        {props.scriptTabs.map((t) => (
+          <TabButton
+            key={t}
+            active={props.active === t}
+            onClick={() => props.onSelectTab(t)}
+            onClose={() => props.onCloseScript(t)}
+          >
+            {t}
+          </TabButton>
+        ))}
+        <AddScriptButton scripts={addableScripts} onRun={props.onAddScript} />
+      </div>
+      {props.showScriptControls && (
+        <ScriptControls
+          isRunning={props.scriptIsRunning}
+          isKilling={props.scriptIsKilling}
+          onRun={props.onRunActiveScript}
+          onStop={props.onStopActiveScript}
+        />
+      )}
     </div>
   );
 }
@@ -146,38 +187,6 @@ function ToggleChevron({
   );
 }
 
-function TabStrip({
-  active,
-  customTabs,
-  onSelectTab,
-  onCloseScript,
-}: {
-  active: string;
-  customTabs: string[];
-  onSelectTab: (tab: string) => void;
-  onCloseScript: (name: string) => void;
-}) {
-  return (
-    <div className="flex flex-1 min-w-0 items-center gap-1 overflow-x-auto">
-      {DEFAULT_TABS.map((t) => (
-        <TabButton key={t} active={active === t} onClick={() => onSelectTab(t)}>
-          {t}
-        </TabButton>
-      ))}
-      {customTabs.map((t) => (
-        <TabButton
-          key={t}
-          active={active === t}
-          onClick={() => onSelectTab(t)}
-          onClose={() => onCloseScript(t)}
-        >
-          {t}
-        </TabButton>
-      ))}
-    </div>
-  );
-}
-
 function TabButton({
   active,
   onClick,
@@ -237,7 +246,7 @@ function AddScriptButton({
         </TooltipTrigger>
         <TooltipContent>Run script</TooltipContent>
       </Tooltip>
-      <PopoverContent align="end" className="p-1 w-56">
+      <PopoverContent align="start" className="p-1 w-56">
         <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
           run a script
         </div>
@@ -262,5 +271,63 @@ function AddScriptButton({
         )}
       </PopoverContent>
     </Popover>
+  );
+}
+
+/**
+ * Per-script Run / Restart / Stop controls. Renders only on a non-setup
+ * active tab. Mirrors origin/main env.tsx semantics:
+ *   - not running          → [▶ Run]
+ *   - running, not killing → [↻ Restart]  +  chevron menu { Stop }
+ *   - kill in flight       → [⏳ Stopping…] disabled
+ */
+function ScriptControls({
+  isRunning,
+  isKilling,
+  onRun,
+  onStop,
+}: {
+  isRunning: boolean;
+  isKilling: boolean;
+  onRun: () => void;
+  onStop: () => void;
+}) {
+  if (isKilling) {
+    return (
+      <Button variant="ghost" size="sm" disabled>
+        <Loading01 className="size-3.5 animate-spin" /> Stopping…
+      </Button>
+    );
+  }
+  if (!isRunning) {
+    return (
+      <Button variant="ghost" size="sm" onClick={onRun}>
+        <Play className="size-3.5" /> Run
+      </Button>
+    );
+  }
+  return (
+    <div className="flex items-center">
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={onRun}
+        className="rounded-r-none"
+      >
+        <RefreshCw01 className="size-3.5" /> Restart
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="sm" className="rounded-l-none px-1">
+            <ChevronDown className="size-3" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={onStop}>
+            <StopCircle className="size-3.5" /> Stop
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }

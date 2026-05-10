@@ -592,6 +592,10 @@ export function PreviewContent() {
         )}
       </div>
       <PreviewDrawer
+        // key forces a fresh drawer on each new VM so per-tab state
+        // (active tab, scriptTabs, killingScripts, the auto-open ref)
+        // resets cleanly without per-state reset plumbing.
+        key={vmEntry?.vmId ?? "no-vm"}
         vmId={vmEntry?.vmId ?? null}
         orgSlug={org.slug}
         status={drawerStatusFromPreview(previewState, vmStartPending)}
