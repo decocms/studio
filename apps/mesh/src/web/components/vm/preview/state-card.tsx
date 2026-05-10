@@ -2,7 +2,7 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   AlertTriangle,
-  Expand06,
+  ChevronDown,
   Monitor04,
   PauseCircle,
   Play,
@@ -170,13 +170,12 @@ function PhaseTick({ label, status }: { label: string; status: PhaseStatus }) {
 }
 
 /**
- * Inline log peek rendered as a small read-only xterm. Reuses the same
- * xterm renderer as the drawer (so ANSI colors and overwrites display
- * correctly) at a fixed ~5-line height with the scrollbar hidden — xterm
- * auto-scrolls to bottom on each new chunk, giving a live "tail -f" view.
- *
- * Hovering the peek surfaces an expand button (top-right) that opens the
- * full drawer for scrollback.
+ * Inline log peek rendered as a small read-only xterm + a "View logs"
+ * affordance directly below it. Reuses the same xterm renderer as the
+ * drawer (so ANSI colors and overwrites display correctly) at a fixed
+ * ~5-line height with the scrollbar hidden — xterm auto-scrolls to
+ * bottom on each new chunk, giving a live "tail -f" view. Clicking
+ * "View logs" expands the drawer panel for full scrollback.
  */
 function LogPeek({
   source,
@@ -186,15 +185,17 @@ function LogPeek({
   onExpand: () => void;
 }) {
   return (
-    <div className="group relative h-32 w-[min(78%,560px)] overflow-hidden rounded-md [&_.xterm-viewport::-webkit-scrollbar]:hidden [&_.xterm-viewport]:!overflow-hidden">
-      <VmTerminal source={source} className="h-full" />
+    <div className="flex w-[min(78%,560px)] flex-col items-stretch gap-1.5">
+      <div className="h-32 overflow-hidden rounded-md [&_.xterm-viewport::-webkit-scrollbar]:hidden [&_.xterm-viewport]:!overflow-hidden">
+        <VmTerminal source={source} className="h-full" />
+      </div>
       <button
         type="button"
         onClick={onExpand}
-        aria-label="Expand logs"
-        className="absolute top-1.5 right-1.5 hidden rounded-md bg-background/85 p-1 text-muted-foreground hover:text-foreground group-hover:flex"
+        className="flex items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground"
       >
-        <Expand06 className="size-3.5" />
+        <ChevronDown className="size-3.5" />
+        View logs
       </button>
     </div>
   );
