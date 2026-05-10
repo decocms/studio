@@ -13,7 +13,7 @@ import { useChatTask } from "../../chat/index";
 import { MergeSplitButton } from "./merge-split-button.tsx";
 import { selectHeaderButton, type HeaderButton } from "./panel-state.ts";
 import * as tpl from "./message-templates.ts";
-import { useBranchStatus } from "./use-branch-status.ts";
+import { useVmEvents } from "@/web/components/vm/hooks/use-vm-events.ts";
 import { useChecks, usePrByBranch } from "./use-pr-data.ts";
 import { usePrReviews } from "./use-pr-reviews.ts";
 
@@ -39,7 +39,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
 
   const githubRepo = vm?.metadata?.githubRepo ?? null;
 
-  const branchStatus = useBranchStatus();
+  const { lifecycle, branch: branchMeta, status, phase: claimPhase } = useVmEvents();
 
   const prQuery = usePrByBranch({
     orgId: org.id,
@@ -72,7 +72,10 @@ export function HeaderActions({ virtualMcpId }: Props) {
   if (!githubRepo?.connectionId || !branch) return null;
 
   const button = selectHeaderButton({
-    branchStatus,
+    lifecycle,
+    branch: branchMeta,
+    status,
+    claimPhase,
     pr,
     checks: checksQuery.data ?? [],
     reviews: reviewsQuery.data ?? null,
