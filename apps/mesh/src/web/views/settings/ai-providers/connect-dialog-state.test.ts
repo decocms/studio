@@ -16,6 +16,19 @@ describe("connect-dialog reducer", () => {
     });
   });
 
+  test("open is a no-op from non-closed states", () => {
+    const states: DialogState[] = [
+      { kind: "grid" },
+      { kind: "form", providerId: "openai", presetId: null },
+      { kind: "oauth-pending", providerId: "anthropic", stateToken: "x" },
+      { kind: "cli-pending", providerId: "claude-code" },
+      { kind: "cli-error", providerId: "claude-code", error: "x" },
+    ];
+    for (const s of states) {
+      expect(reducer(s, { type: "open" })).toEqual(s);
+    }
+  });
+
   test("close from any state returns to closed", () => {
     const states: DialogState[] = [
       { kind: "grid" },
