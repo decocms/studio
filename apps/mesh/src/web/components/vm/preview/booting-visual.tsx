@@ -82,7 +82,7 @@ export function BootingVisual({ progress, claimPhase }: BootingVisualProps) {
   const headline = pillHeadline(progress, claimPhase);
 
   return (
-    <div className="relative flex w-full flex-col items-center justify-center gap-8 overflow-hidden select-none">
+    <div className="relative flex w-full flex-col items-center justify-center gap-8 select-none [clip-path:inset(0_0_-200px_0)]">
       <div className="flex items-center gap-2 rounded-full border border-foreground/10 bg-background px-3.5 py-1.5 shadow-[0_4px_20px_-4px_rgb(0_0_0_/_0.12)]">
         <GridLoader />
         <span

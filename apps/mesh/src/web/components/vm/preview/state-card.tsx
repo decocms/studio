@@ -55,7 +55,7 @@ export function VmStateCard(props: VmStateCardProps) {
             claimPhase={props.claimPhase}
           />
         </div>
-        <div className="flex w-full max-w-md flex-col items-center gap-3">
+        <div className="flex w-full flex-col items-center gap-3">
           {!props.drawerOpen && (
             <LogPeek source={props.logSource} onExpand={props.onExpandLogs} />
           )}
@@ -186,7 +186,7 @@ function LogPeek({
   onExpand: () => void;
 }) {
   return (
-    <div className="group relative h-32 w-full overflow-hidden rounded-md [&_.xterm-viewport::-webkit-scrollbar]:hidden [&_.xterm-viewport]:!overflow-hidden">
+    <div className="group relative h-32 w-[min(78%,560px)] overflow-hidden rounded-md [&_.xterm-viewport::-webkit-scrollbar]:hidden [&_.xterm-viewport]:!overflow-hidden">
       <VmTerminal source={source} className="h-full" />
       <button
         type="button"
