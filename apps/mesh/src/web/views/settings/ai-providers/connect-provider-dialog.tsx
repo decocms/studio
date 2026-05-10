@@ -279,7 +279,7 @@ export function ConnectProviderDialog({
 
   return (
     <Dialog open={state.kind !== "closed"} onOpenChange={(o) => !o && close()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <div className="flex items-center gap-2">
             {showBack && (
