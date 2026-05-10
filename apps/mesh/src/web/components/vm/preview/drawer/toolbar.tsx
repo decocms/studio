@@ -202,15 +202,23 @@ function TabButton({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center">
+    <div
+      className={cn(
+        "flex items-center rounded-md border",
+        active
+          ? "border-border bg-background shadow-sm"
+          : "border-transparent hover:bg-background/50",
+      )}
+    >
       <button
         type="button"
         onClick={onClick}
         className={cn(
-          "rounded-md border px-2.5 py-1 text-xs",
+          "py-1 text-xs",
+          onClose ? "pl-2.5 pr-1" : "px-2.5",
           active
-            ? "border-border bg-background font-medium text-foreground shadow-sm"
-            : "border-transparent text-muted-foreground hover:bg-background/50 hover:text-foreground",
+            ? "font-medium text-foreground"
+            : "text-muted-foreground hover:text-foreground",
         )}
       >
         {children}
@@ -220,7 +228,7 @@ function TabButton({
           type="button"
           aria-label={`Close ${children}`}
           onClick={onClose}
-          className="ml-0.5 text-muted-foreground hover:text-foreground"
+          className="pr-1.5 text-muted-foreground hover:text-foreground"
         >
           <X className="size-3" />
         </button>
