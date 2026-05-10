@@ -228,6 +228,18 @@ describe("selectHeaderButton", () => {
     expect(r.variant).toBe("outline");
   });
 
+  test("running + status.error → 'Dev errored' with reason tooltip", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        status: { state: "error", reason: "OOM killed" },
+        branch: ready({ workingTreeDirty: true }),
+      }),
+    );
+    expect(r.label).toBe("Dev errored");
+    expect(r.disabled).toBe(true);
+    expect(r.tooltip).toBe("OOM killed");
+  });
+
   test("no diff anywhere → Up to date (disabled, outline)", () => {
     const r = selectHeaderButton(happyInput());
     expect(r.label).toBe("Up to date");

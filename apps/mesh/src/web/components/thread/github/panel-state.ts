@@ -191,6 +191,15 @@ export function selectHeaderButton(
     };
   }
 
+  if (input.status.state === "error") {
+    return {
+      label: "Dev errored",
+      disabled: true,
+      variant: "outline",
+      tooltip: input.status.reason || "Dev server stopped on its own",
+    };
+  }
+
   // From here on, lifecycle.phase === "running". `branch` should be ready;
   // if it isn't, fall through to the same Loading… pill — a real fix for
   // this race lands in a later task.
