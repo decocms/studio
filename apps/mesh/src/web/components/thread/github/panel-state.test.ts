@@ -175,6 +175,19 @@ describe("selectHeaderButton", () => {
     expect(r.label).toBe("Starting sandbox…");
   });
 
+  test("idle + claimPhase = claiming → 'Starting sandbox…' (generic)", () => {
+    // `claiming` is intentionally absent from IDLE_CLAIM_COPY — falls through
+    // to the generic label.
+    const r = selectHeaderButton(
+      happyInput({
+        lifecycle: { phase: "idle" },
+        branch: { kind: "unknown" },
+        claimPhase: { kind: "claiming", since: 0 },
+      }),
+    );
+    expect(r.label).toBe("Starting sandbox…");
+  });
+
   test("lifecycle.cloning → 'Cloning repo…' (disabled, spinner)", () => {
     const r = selectHeaderButton(
       happyInput({

@@ -7,6 +7,20 @@ import type { ClaimPhase } from "@/web/components/vm/hooks/vm-events-context";
 import type { CheckRun, PrSummary } from "./use-pr-data.ts";
 import type { PrReviewSignals } from "./use-pr-reviews.ts";
 
+/**
+ * Header copy for claim-phase variants while lifecycle is still `idle`.
+ * Mirrors `LIFECYCLE_COPY` in booting-visual.tsx but with shorter strings
+ * scoped to the header button's character budget.
+ *
+ * Phases intentionally absent from the table fall through to the generic
+ * "Starting sandbox…":
+ *   - `claiming`  — too brief and indistinct from no-claim-phase.
+ *   - `ready`     — daemon claim handle is up but lifecycle hasn't yet
+ *                   emitted its first event; generic copy is correct.
+ *   - `failed`    — terminal pre-daemon provisioning failure; today's
+ *                   behavior preserved (a unified "Provision failed" pill
+ *                   across both surfaces is tracked as a follow-up).
+ */
 const IDLE_CLAIM_COPY: Partial<Record<ClaimPhase["kind"], string>> = {
   "waiting-for-capacity": "Waiting for capacity",
   "pulling-image": "Downloading image",
@@ -209,6 +223,8 @@ export function selectHeaderButton(
       tooltip: input.status.reason || "Dev server stopped on its own",
     };
   }
+
+  // status.state === "running" — fall through to branch readiness + git/PR.
 
   // From here on, lifecycle.phase === "running". `branch` should be ready;
   // if it isn't, fall through to the same Loading… pill to coordinate
