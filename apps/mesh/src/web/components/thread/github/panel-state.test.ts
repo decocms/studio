@@ -165,6 +165,18 @@ describe("selectHeaderButton", () => {
     expect(r.variant).toBe("outline");
   });
 
+  test("lifecycle.starting → 'Starting dev server…'", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        lifecycle: { phase: "starting" },
+        branch: { kind: "unknown" },
+      }),
+    );
+    expect(r.label).toBe("Starting dev server…");
+    expect(r.disabled).toBe(true);
+    expect(r.loading).toBe(true);
+  });
+
   test("no diff anywhere → Up to date (disabled, outline)", () => {
     const r = selectHeaderButton(happyInput());
     expect(r.label).toBe("Up to date");

@@ -132,6 +132,14 @@ export function selectHeaderButton(
         variant: "outline",
         tooltip: "Installing project dependencies",
       };
+    case "starting":
+      return {
+        label: "Starting dev server…",
+        disabled: true,
+        loading: true,
+        variant: "outline",
+        tooltip: "Booting the dev server",
+      };
     case "running":
       // Fall through to the post-sandbox checks below.
       break;
