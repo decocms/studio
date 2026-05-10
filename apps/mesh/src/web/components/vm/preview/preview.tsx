@@ -284,7 +284,6 @@ export function PreviewContent() {
   };
 
   const openDrawer = () => handleDrawerOpenChange(true);
-  const toggleDrawer = () => handleDrawerOpenChange(!drawerOpen);
 
   // Stop / restart. VM_DELETE is best-effort; the vmMap query refetch is
   // what actually flips the UI to idle.
@@ -511,8 +510,7 @@ export function PreviewContent() {
               progress={progress}
               claimPhase={claimPhase}
               logSource="setup"
-              elapsed={Date.now() - (vmEntry?.createdAt ?? Date.now())}
-              onToggleLogs={toggleDrawer}
+              onExpandLogs={openDrawer}
               drawerOpen={drawerOpen}
             />
           </div>
@@ -525,9 +523,8 @@ export function PreviewContent() {
               progress={progress}
               logSource="setup"
               errorLine={previewState.error.split("\n")[0] ?? "Failed to start"}
-              elapsed={Date.now() - (vmEntry?.createdAt ?? Date.now())}
               onRetry={retryAutoStart}
-              onToggleLogs={toggleDrawer}
+              onExpandLogs={openDrawer}
               drawerOpen={drawerOpen}
             />
           </div>

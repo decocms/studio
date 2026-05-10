@@ -2,8 +2,7 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   AlertTriangle,
-  ChevronUp,
-  ChevronDown,
+  Expand06,
   Monitor04,
   PauseCircle,
   Play,
@@ -14,7 +13,6 @@ import { VmTerminal } from "./drawer/terminal";
 import type { ClaimPhase } from "../hooks/vm-events-context";
 import type { PhaseProgress, PhaseStatus } from "./derive-phase-progress";
 import {
-  formatElapsed,
   headlineFor,
   phaseStatusFor,
   phaseTickGlyph,
@@ -29,9 +27,8 @@ export type VmStateCardProps =
       claimPhase: ClaimPhase | null;
       /** Source name for the inline log peek's xterm (e.g. "setup"). */
       logSource: string;
-      elapsed: number; // ms
-      /** Toggle the terminal drawer open/closed. */
-      onToggleLogs: () => void;
+      /** Open the terminal drawer (called from LogPeek's hover-expand button). */
+      onExpandLogs: () => void;
       /** When the drawer is open it already shows the same logs in full;
        *  hide the inline peek (mutually exclusive surfaces). */
       drawerOpen: boolean;
@@ -41,9 +38,8 @@ export type VmStateCardProps =
       progress: PhaseProgress;
       logSource: string;
       errorLine: string;
-      elapsed: number; // ms
       onRetry: () => void;
-      onToggleLogs: () => void;
+      onExpandLogs: () => void;
       /** Same as starting-now — drawer-open hides the inline peek. */
       drawerOpen: boolean;
     }
@@ -60,8 +56,9 @@ export function VmStateCard(props: VmStateCardProps) {
           />
         </div>
         <div className="flex w-full max-w-md flex-col items-center gap-3">
-          {!props.drawerOpen && <LogPeek source={props.logSource} />}
-          <Footer {...props} />
+          {!props.drawerOpen && (
+            <LogPeek source={props.logSource} onExpand={props.onExpandLogs} />
+          )}
         </div>
       </div>
     );
@@ -77,7 +74,7 @@ export function VmStateCard(props: VmStateCardProps) {
           <PhaseStripView progress={props.progress} />
         )}
         {props.kind === "errored" && !props.drawerOpen && (
-          <LogPeek source={props.logSource} />
+          <LogPeek source={props.logSource} onExpand={props.onExpandLogs} />
         )}
         <Footer {...props} />
       </div>
@@ -175,18 +172,35 @@ function PhaseTick({ label, status }: { label: string; status: PhaseStatus }) {
 /**
  * Inline log peek rendered as a small read-only xterm. Reuses the same
  * xterm renderer as the drawer (so ANSI colors and overwrites display
- * correctly) at a fixed ~3-line height with the scrollbar hidden — xterm
+ * correctly) at a fixed ~5-line height with the scrollbar hidden — xterm
  * auto-scrolls to bottom on each new chunk, giving a live "tail -f" view.
+ *
+ * Hovering the peek surfaces an expand button (top-right) that opens the
+ * full drawer for scrollback.
  */
-function LogPeek({ source }: { source: string }) {
+function LogPeek({
+  source,
+  onExpand,
+}: {
+  source: string;
+  onExpand: () => void;
+}) {
   return (
-    <div className="h-20 w-full overflow-hidden rounded-lg border border-border [&_.xterm-viewport::-webkit-scrollbar]:hidden [&_.xterm-viewport]:!overflow-hidden">
+    <div className="group relative h-32 w-full overflow-hidden rounded-md [&_.xterm-viewport::-webkit-scrollbar]:hidden [&_.xterm-viewport]:!overflow-hidden">
       <VmTerminal source={source} className="h-full" />
+      <button
+        type="button"
+        onClick={onExpand}
+        aria-label="Expand logs"
+        className="absolute top-1.5 right-1.5 hidden rounded-md bg-background/85 p-1 text-muted-foreground hover:text-foreground group-hover:flex"
+      >
+        <Expand06 className="size-3.5" />
+      </button>
     </div>
   );
 }
 
-function Footer(props: VmStateCardProps) {
+function Footer(props: Exclude<VmStateCardProps, { kind: "starting-now" }>) {
   switch (props.kind) {
     case "never-started":
       return (
@@ -194,38 +208,11 @@ function Footer(props: VmStateCardProps) {
           <Play className="size-4" /> Start dev server
         </Button>
       );
-    case "starting-now":
-      return (
-        <div className="mt-2 flex w-full items-center justify-between text-xs text-muted-foreground">
-          <span>elapsed {formatElapsed(props.elapsed)}</span>
-          <Button variant="ghost" size="sm" onClick={props.onToggleLogs}>
-            {props.drawerOpen ? "Hide logs" : "View logs"}
-            {props.drawerOpen ? (
-              <ChevronDown className="size-3.5" />
-            ) : (
-              <ChevronUp className="size-3.5" />
-            )}
-          </Button>
-        </div>
-      );
     case "errored":
       return (
-        <div className="mt-2 flex w-full items-center justify-between gap-3 text-xs text-muted-foreground">
-          <span>elapsed {formatElapsed(props.elapsed)}</span>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={props.onToggleLogs}>
-              {props.drawerOpen ? "Hide logs" : "View logs"}
-              {props.drawerOpen ? (
-                <ChevronDown className="size-3.5" />
-              ) : (
-                <ChevronUp className="size-3.5" />
-              )}
-            </Button>
-            <Button size="sm" onClick={props.onRetry}>
-              <RefreshCw01 className="size-4" /> Retry
-            </Button>
-          </div>
-        </div>
+        <Button size="sm" onClick={props.onRetry} className="mt-2">
+          <RefreshCw01 className="size-4" /> Retry
+        </Button>
       );
     case "suspended":
       return (
