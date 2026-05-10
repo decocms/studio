@@ -153,7 +153,11 @@ export function ConnectProviderDialog({
       toast.success(`${provider?.name ?? "Provider"} activated`);
       close();
     },
-    onError: (err) => {
+    onError: (err, providerId) => {
+      track("ai_provider_cli_activate_failed", {
+        provider_id: providerId,
+        error: err.message,
+      });
       dispatch({ type: "cli-error", error: err.message });
     },
   });
