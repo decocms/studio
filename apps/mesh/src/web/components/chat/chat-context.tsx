@@ -37,7 +37,11 @@ import {
   DefaultChatTransport,
   type UIMessage,
 } from "ai";
-import { useProjectContext, useVirtualMCP } from "@decocms/mesh-sdk";
+import {
+  pickSimpleModeDefaults,
+  useProjectContext,
+  useVirtualMCP,
+} from "@decocms/mesh-sdk";
 import { toast } from "sonner";
 
 import {
@@ -221,6 +225,39 @@ function resolveActiveTier(stored: SimpleTier | null): SimpleTier {
   return "smart";
 }
 
+/**
+ * Mirror backend resolveTier() when no slot is explicitly assigned: pick a
+ * tier-appropriate default from the effective key's catalog so the UI can
+ * read capabilities (file upload, vision, etc.) instead of falling back to
+ * a null model. Backend pickSimpleModeDefaults considers all keys; we only
+ * have the effective key's catalog client-side, so multi-key orgs may see a
+ * single-key-derived default. This matches the backend's pick when the
+ * effective key is also the first match for the tier.
+ */
+function pickFallbackChatModel(
+  tier: SimpleTier,
+  keys: AiProviderKey[],
+  effectiveKeyId: string | null,
+  models: AiProviderModel[],
+): AiProviderModel | null {
+  if (!effectiveKeyId || models.length === 0) return null;
+  const key = keys.find((k) => k.id === effectiveKeyId);
+  if (!key) return null;
+  const defaults = pickSimpleModeDefaults([key], {
+    [effectiveKeyId]: models,
+  });
+  const slot =
+    tier === "fast"
+      ? defaults.chat.fast
+      : tier === "thinking"
+        ? defaults.chat.thinking
+        : defaults.chat.smart;
+  if (!slot) return null;
+  const full = models.find((m) => m.modelId === slot.modelId);
+  if (!full) return null;
+  return { ...full, keyId: effectiveKeyId };
+}
+
 // ============================================================================
 // Constants
 // ============================================================================
@@ -347,12 +384,9 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     simpleMode.tiers.web_research?.keyId,
   );
 
-  const selectedModel: AiProviderModel | null = findModel(
-    activeChatSlot,
-    keys,
-    simpleChatModels,
-    activeChatSlot?.title,
-  );
+  const selectedModel: AiProviderModel | null =
+    findModel(activeChatSlot, keys, simpleChatModels, activeChatSlot?.title) ??
+    pickFallbackChatModel(activeTier, keys, effectiveKeyId, allKeyModels);
   const isModelsLoading = isModelsQueryLoading;
 
   const imageModels = allKeyModels.filter((m) =>
@@ -557,13 +591,13 @@ export function ChatContextProvider({
     simpleMode.tiers.web_research?.keyId,
   );
 
-  // Resolve the chat model from the active tier slot.
-  const selectedModel: AiProviderModel | null = findModel(
-    activeChatSlot,
-    keys,
-    simpleChatModels,
-    activeChatSlot?.title,
-  );
+  // Resolve the chat model from the active tier slot, falling back to a
+  // tier-aware pick from the effective key's catalog when no slot is set —
+  // mirrors backend resolveTier so capabilities (file upload, vision) are
+  // accurate without waiting for the first stream response.
+  const selectedModel: AiProviderModel | null =
+    findModel(activeChatSlot, keys, simpleChatModels, activeChatSlot?.title) ??
+    pickFallbackChatModel(activeTier, keys, effectiveKeyId, allKeyModels);
   const isModelsLoading = isModelsQueryLoading;
 
   // Image model — tier-driven, fall back to stored/defaults.
