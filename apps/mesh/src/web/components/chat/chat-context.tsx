@@ -1109,9 +1109,9 @@ export function ActiveTaskProvider({
     if (modeToSend === "web-search" && !deepResearchModel) {
       modeToSend = "default";
     }
-    // One-shot modes (web-search, gen-image) reset after send.
-    // Plan mode is persistent — the user must explicitly disable it.
-    if (modeToSend !== "plan") {
+    // Plan and gen-image modes are sticky — the user explicitly toggles them
+    // off. Web-search is one-shot (resets after each send).
+    if (modeToSend === "web-search") {
       setChatMode("default");
     }
 
