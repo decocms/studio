@@ -3,18 +3,23 @@
 # Contains: controller Deployments, RBAC, Namespace, Service, ServiceAccount.
 #
 # LOCAL EDIT — preserve when re-running vendor.sh:
-#   PodSecurity admission labels added to the Namespace below. `baseline`
-#   is enforced (operator controller pod runs without an explicit
-#   securityContext; `restricted` would block it until that's patched).
-#   `restricted` is set as warn/audit so violations from sandbox pods or
-#   the controller surface in audit logs without rejecting admission.
-#   When the operator's pod spec hardens to `restricted`, flip enforce.
+#   PodSecurity admission labels added to the Namespace below. `enforce`
+#   is `privileged` because the sandbox-env chart (>= 0.7.0) adds a
+#   `setup-netpol` init container that holds NET_ADMIN to program iptables
+#   in the pod netns before user code starts. `baseline` rejects NET_ADMIN
+#   at admission time, so sandbox pod creates fail with PodSecurity
+#   violations and the operator's reconcile loop never converges.
+#   The real security boundary is the main sandbox container's pod spec
+#   (drops ALL caps, RO rootfs, hostUsers remap, no SA token) — not the
+#   namespace label. `restricted` stays on warn/audit so any regression
+#   in that pod-level posture (here or in the controller) surfaces in
+#   audit logs without rejecting admission.
 kind: Namespace
 apiVersion: v1
 metadata:
   name: agent-sandbox-system
   labels:
-    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce: privileged
     pod-security.kubernetes.io/enforce-version: latest
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/warn-version: latest
