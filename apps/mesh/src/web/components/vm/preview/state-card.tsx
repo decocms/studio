@@ -2,7 +2,6 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   AlertTriangle,
-  ChevronDown,
   Monitor04,
   PauseCircle,
   Play,
@@ -27,8 +26,6 @@ export type VmStateCardProps =
       claimPhase: ClaimPhase | null;
       /** Source name for the inline log peek's xterm (e.g. "setup"). */
       logSource: string;
-      /** Open the terminal drawer (called from LogPeek's hover-expand button). */
-      onExpandLogs: () => void;
       /** When the drawer is open it already shows the same logs in full;
        *  hide the inline peek (mutually exclusive surfaces). */
       drawerOpen: boolean;
@@ -39,7 +36,6 @@ export type VmStateCardProps =
       logSource: string;
       errorLine: string;
       onRetry: () => void;
-      onExpandLogs: () => void;
       /** Same as starting-now — drawer-open hides the inline peek. */
       drawerOpen: boolean;
     }
@@ -56,9 +52,7 @@ export function VmStateCard(props: VmStateCardProps) {
           />
         </div>
         <div className="flex w-full flex-col items-center gap-3">
-          {!props.drawerOpen && (
-            <LogPeek source={props.logSource} onExpand={props.onExpandLogs} />
-          )}
+          {!props.drawerOpen && <LogPeek source={props.logSource} />}
         </div>
       </div>
     );
@@ -74,7 +68,7 @@ export function VmStateCard(props: VmStateCardProps) {
           <PhaseStripView progress={props.progress} />
         )}
         {props.kind === "errored" && !props.drawerOpen && (
-          <LogPeek source={props.logSource} onExpand={props.onExpandLogs} />
+          <LogPeek source={props.logSource} />
         )}
         <Footer {...props} />
       </div>
@@ -170,33 +164,19 @@ function PhaseTick({ label, status }: { label: string; status: PhaseStatus }) {
 }
 
 /**
- * Inline log peek rendered as a small read-only xterm + a "View logs"
- * affordance directly below it. Reuses the same xterm renderer as the
- * drawer (so ANSI colors and overwrites display correctly) at a fixed
- * ~5-line height with the scrollbar hidden — xterm auto-scrolls to
- * bottom on each new chunk, giving a live "tail -f" view. Clicking
- * "View logs" expands the drawer panel for full scrollback.
+ * Inline log peek: a small read-only xterm tail of the active log source.
+ * Reuses the same xterm renderer as the drawer (so ANSI colors and
+ * overwrites display correctly) at a fixed ~5-line height with the
+ * scrollbar hidden — xterm auto-scrolls to bottom on each new chunk,
+ * giving a live "tail -f" view. The drawer toolbar owns the
+ * drawer-toggle affordance, so no expand button lives here.
  */
-function LogPeek({
-  source,
-  onExpand,
-}: {
-  source: string;
-  onExpand: () => void;
-}) {
+function LogPeek({ source }: { source: string }) {
   return (
     <div className="flex w-[min(78%,560px)] flex-col items-stretch gap-1.5">
       <div className="h-32 overflow-hidden rounded-md [&_.xterm-viewport::-webkit-scrollbar]:hidden [&_.xterm-viewport]:!overflow-hidden">
         <VmTerminal source={source} className="h-full" />
       </div>
-      <button
-        type="button"
-        onClick={onExpand}
-        className="flex items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-      >
-        <ChevronDown className="size-3.5" />
-        View logs
-      </button>
     </div>
   );
 }

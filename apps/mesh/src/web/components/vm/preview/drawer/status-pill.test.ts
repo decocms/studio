@@ -1,16 +1,29 @@
-import { test, expect } from "bun:test";
-import { statusPillFor } from "./status-pill";
+import { expect, test } from "bun:test";
+import { sandboxStatusClass } from "./status-pill";
 
-test("statusPillFor returns label and className per status", () => {
-  expect(statusPillFor("idle").label).toBe("stopped");
-  expect(statusPillFor("starting").label).toBe("starting");
-  expect(statusPillFor("running").label).toBe("running");
-  expect(statusPillFor("suspended").label).toBe("suspended");
-  expect(statusPillFor("errored").label).toBe("error");
+test("sandboxStatusClass returns a non-empty string for each status", () => {
+  const all = ["idle", "starting", "running", "suspended", "errored"] as const;
+  for (const status of all) {
+    const cls = sandboxStatusClass(status);
+    expect(typeof cls).toBe("string");
+    expect(cls.length).toBeGreaterThan(0);
+  }
 });
 
-test("statusPillFor returns distinct className per status", () => {
+test("sandboxStatusClass returns distinct class per status", () => {
   const all = ["idle", "starting", "running", "suspended", "errored"] as const;
-  const classes = all.map((s) => statusPillFor(s).className);
+  const classes = all.map((s) => sandboxStatusClass(s));
   expect(new Set(classes).size).toBe(all.length);
+});
+
+test("starting status uses purple", () => {
+  expect(sandboxStatusClass("starting")).toContain("purple");
+});
+
+test("running status uses emerald", () => {
+  expect(sandboxStatusClass("running")).toContain("emerald");
+});
+
+test("idle status uses muted", () => {
+  expect(sandboxStatusClass("idle")).toContain("muted");
 });

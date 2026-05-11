@@ -19,15 +19,15 @@ import {
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   ChevronDown,
-  ChevronUp,
   Loading01,
   Play,
   Plus,
   RefreshCw01,
   StopCircle,
+  Terminal,
   X,
 } from "@untitledui/icons";
-import { type DrawerStatus, statusPillFor } from "./status-pill";
+import { type DrawerStatus, sandboxStatusClass } from "./status-pill";
 import { menuItemsFor, type MenuItem } from "./toolbar-menu-items";
 
 /** The always-present tab. Catch-all for clone + install logs. */
@@ -69,15 +69,16 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
 
   return (
     <div className="flex h-9 shrink-0 items-center gap-3 border-t border-border bg-muted/60 px-3">
-      <StatusButton
+      <SandboxButton
         status={props.status}
+        open={props.open}
+        onToggle={props.onToggle}
         onStart={props.onStart}
         onStop={props.onStop}
         onRestart={props.onRestart}
         onResume={props.onResume}
         onRetry={props.onRetry}
       />
-      <ToggleChevron open={props.open} onToggle={props.onToggle} />
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
         <TabButton
           active={props.active === DEFAULT_TAB}
@@ -109,13 +110,13 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
   );
 }
 
-function StatusButton(
-  props: { status: DrawerStatus } & Pick<
+function SandboxButton(
+  props: { status: DrawerStatus; open: boolean; onToggle: () => void } & Pick<
     DrawerToolbarProps,
     "onStart" | "onStop" | "onRestart" | "onResume" | "onRetry"
   >,
 ) {
-  const { className, label } = statusPillFor(props.status);
+  const colorClass = sandboxStatusClass(props.status);
   const items = menuItemsFor(props.status);
   const handlerFor = (action: MenuItem["action"]): (() => void) | undefined => {
     switch (action) {
@@ -132,61 +133,51 @@ function StatusButton(
     }
   };
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          aria-haspopup="menu"
-          className={cn(
-            "flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide",
-            className,
-          )}
-        >
-          ● {label}
-          <ChevronDown className="size-3" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        {items.map((item) => {
-          const handler = handlerFor(item.action);
-          if (!handler) return null;
-          return (
-            <DropdownMenuItem key={item.action} onClick={handler}>
-              {item.label}
-            </DropdownMenuItem>
-          );
-        })}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function ToggleChevron({
-  open,
-  onToggle,
-}: {
-  open: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          aria-label="Toggle logs"
-          aria-expanded={open}
-          className="text-muted-foreground hover:text-foreground"
-          onClick={onToggle}
-        >
-          {open ? (
+    <div className="flex items-center">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label="Sandbox — toggle logs"
+            aria-expanded={props.open}
+            onClick={props.onToggle}
+            className={cn(
+              "flex h-7 items-center rounded-l-md rounded-r-none border border-r-0 px-2",
+              colorClass,
+            )}
+          >
+            <Terminal className="size-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>Sandbox</TooltipContent>
+      </Tooltip>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            aria-haspopup="menu"
+            aria-label="Sandbox actions"
+            className={cn(
+              "flex h-7 items-center rounded-r-md rounded-l-none border px-1",
+              colorClass,
+            )}
+          >
             <ChevronDown className="size-3.5" />
-          ) : (
-            <ChevronUp className="size-3.5" />
-          )}
-        </button>
-      </TooltipTrigger>
-      <TooltipContent>{open ? "Hide logs" : "Show logs"}</TooltipContent>
-    </Tooltip>
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          {items.map((item) => {
+            const handler = handlerFor(item.action);
+            if (!handler) return null;
+            return (
+              <DropdownMenuItem key={item.action} onClick={handler}>
+                {item.label}
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }
 

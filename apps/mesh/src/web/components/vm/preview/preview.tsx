@@ -516,7 +516,6 @@ export function PreviewContent() {
               progress={progress}
               claimPhase={claimPhase}
               logSource="setup"
-              onExpandLogs={openDrawer}
               drawerOpen={drawerOpen}
             />
           </div>
@@ -530,7 +529,6 @@ export function PreviewContent() {
               logSource="setup"
               errorLine={previewState.error.split("\n")[0] ?? "Failed to start"}
               onRetry={retryAutoStart}
-              onExpandLogs={openDrawer}
               drawerOpen={drawerOpen}
             />
           </div>
@@ -613,10 +611,6 @@ export function PreviewContent() {
         onResume={retryAutoStart}
         onRetry={retryAutoStart}
       />
-      {/* TODO(task-12): auto-open the drawer when previewState transitions
-          into "errored". Doing this without useEffect requires a render-time
-          ref dance that risks stale state on rapid transitions; users can
-          click "View logs" on the error state card in the meantime. */}
     </div>
   );
 }
