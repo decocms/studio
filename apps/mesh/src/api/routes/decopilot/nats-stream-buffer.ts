@@ -26,7 +26,6 @@ const SUBJECT_PREFIX = "decopilot.stream";
 const MAX_AGE_NS = 5 * 60 * 1_000_000_000; // 5 min
 const MAX_BYTES = 500 * 1024 * 1024; // 500 MB
 const MAX_MSGS_PER_SUBJECT = 20_000; // ~20K chunks per thread
-const PULL_TIMEOUT_MS = 30_000;
 
 function assertSafeSubjectToken(id: string): void {
   if (/[.*>\s]/.test(id)) throw new Error("Invalid NATS subject token");
@@ -184,17 +183,7 @@ export class NatsStreamBuffer implements StreamBuffer {
     return new ReadableStream({
       async pull(controller) {
         while (true) {
-          let timer: ReturnType<typeof setTimeout> | undefined;
-          const result = await Promise.race([
-            iter.next(),
-            new Promise<{ done: true; value: undefined }>((r) => {
-              timer = setTimeout(
-                () => r({ done: true, value: undefined }),
-                PULL_TIMEOUT_MS,
-              );
-            }),
-          ]);
-          clearTimeout(timer);
+          const result = await iter.next();
           if (result.done) {
             cleanup();
             controller.close();
