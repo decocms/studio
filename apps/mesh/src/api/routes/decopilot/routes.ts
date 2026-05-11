@@ -516,6 +516,21 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       }
       const config = parsed.data;
 
+      // Diagnostic: report which optional model slots survived persistence.
+      // Helps trace cases where a resumed run loses conditional tools like
+      // `web_search` / `generate_image` (gated by `models.deepResearch` and
+      // `models.image` in built-in-tools/index.ts). Drop once the
+      // resume-tool-dropout issue is root-caused.
+      console.log("[decopilot:attach] orphan resume — persisted config", {
+        taskId,
+        thinkingModelId: config.models.thinking.id,
+        hasFast: !!config.models.fast,
+        hasCoding: !!config.models.coding,
+        hasImage: !!config.models.image,
+        hasDeepResearch: !!config.models.deepResearch,
+        mode: config.mode,
+      });
+
       // Re-check model permissions with CURRENT user role
       const allowedModels = await fetchModelPermissions(
         ctx.db,

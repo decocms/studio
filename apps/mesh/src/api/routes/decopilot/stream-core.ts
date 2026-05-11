@@ -272,6 +272,22 @@ async function streamCoreInner(
       }),
     ]);
 
+    // Diagnostic (resume only): record whether the provider activated and
+    // whether the optional model slots are present. Paired with the log in
+    // routes.ts:/attach orphan-resume; together they pinpoint whether tool
+    // dropout on resume is a persistence-side or provider-activation issue.
+    // Drop once the resume-tool-dropout issue is root-caused.
+    if (input.isResume) {
+      console.log("[decopilot:stream] resume — runtime state", {
+        taskId: input.taskId,
+        isCliAgent,
+        providerActivated: !!provider,
+        thinkingModelId: input.models.thinking.id,
+        hasImage: !!input.models.image,
+        hasDeepResearch: !!input.models.deepResearch,
+      });
+    }
+
     taskId = mem.thread.id;
     ctx.metadata.threadId = mem.thread.id;
     rootSpan.setAttribute("decopilot.thread.id", mem.thread.id);
