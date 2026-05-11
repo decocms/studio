@@ -27,7 +27,7 @@ import {
   Terminal,
   X,
 } from "@untitledui/icons";
-import { type DrawerStatus, sandboxStatusClass } from "./status-pill";
+import type { DrawerStatus } from "./status-pill";
 import { menuItemsFor, type MenuItem } from "./toolbar-menu-items";
 
 /** The always-present tab. Catch-all for clone + install logs. */
@@ -39,7 +39,7 @@ export interface DrawerToolbarProps {
   status: DrawerStatus;
   open: boolean;
   onToggle: () => void;
-  // VM lifecycle actions surfaced via the status split-button menu.
+  // VM lifecycle actions surfaced via the setup tab's split-button menu.
   onStart?: () => void;
   onStop?: () => void;
   onRestart?: () => void;
@@ -67,25 +67,26 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
     (s) => !props.scriptTabs.includes(s),
   );
 
+  // The setup tab doubles as the drawer toggle. When already active, clicking
+  // toggles open/closed; otherwise it selects setup (which opens the drawer).
+  const handleSetupClick = () => {
+    if (props.active === DEFAULT_TAB) props.onToggle();
+    else props.onSelectTab(DEFAULT_TAB);
+  };
+
   return (
-    <div className="flex h-9 shrink-0 items-center gap-3 border-t border-border bg-muted/60 px-3">
-      <SandboxButton
-        status={props.status}
-        open={props.open}
-        onToggle={props.onToggle}
-        onStart={props.onStart}
-        onStop={props.onStop}
-        onRestart={props.onRestart}
-        onResume={props.onResume}
-        onRetry={props.onRetry}
-      />
+    <div className="flex h-10 shrink-0 items-center gap-1 border-t border-b border-border bg-muted/60 px-3">
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-        <TabButton
+        <SetupTab
           active={props.active === DEFAULT_TAB}
-          onClick={() => props.onSelectTab(DEFAULT_TAB)}
-        >
-          {DEFAULT_TAB}
-        </TabButton>
+          open={props.open}
+          onClick={handleSetupClick}
+          status={props.status}
+          onStart={props.onStart}
+          onRestart={props.onRestart}
+          onResume={props.onResume}
+          onRetry={props.onRetry}
+        />
         {props.scriptTabs.map((t) => (
           <TabButton
             key={t}
@@ -118,51 +119,65 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
   );
 }
 
-function SandboxButton(
-  props: { status: DrawerStatus; open: boolean; onToggle: () => void } & Pick<
-    DrawerToolbarProps,
-    "onStart" | "onStop" | "onRestart" | "onResume" | "onRetry"
-  >,
-) {
-  const colorClass = sandboxStatusClass(props.status);
-  const items = menuItemsFor(props.status);
+/**
+ * Setup tab + drawer toggle, unified. Renders as a tab (Terminal icon +
+ * "setup" label) and a chevron split-button menu for sandbox lifecycle
+ * actions (Start/Resume/Retry) when the status warrants them. When the
+ * sandbox is running/starting, the chevron half hides and Stop/Restart
+ * live on the right via SandboxStopControls.
+ */
+function SetupTab({
+  active,
+  open,
+  onClick,
+  status,
+  onStart,
+  onRestart,
+  onResume,
+  onRetry,
+}: {
+  active: boolean;
+  open: boolean;
+  onClick: () => void;
+  status: DrawerStatus;
+} & Pick<
+  DrawerToolbarProps,
+  "onStart" | "onRestart" | "onResume" | "onRetry"
+>) {
+  const items = menuItemsFor(status);
   const hasMenu = items.length > 0;
   const handlerFor = (action: MenuItem["action"]): (() => void) | undefined => {
     switch (action) {
       case "start":
-        return props.onStart;
-      case "stop":
-        return props.onStop;
+        return onStart;
       case "restart":
-        return props.onRestart;
+        return onRestart;
       case "resume":
-        return props.onResume;
+        return onResume;
       case "retry":
-        return props.onRetry;
+        return onRetry;
+      case "stop":
+        return undefined;
     }
   };
   return (
     <div className="flex items-center">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            aria-label="Sandbox — toggle logs"
-            aria-pressed={props.open}
-            aria-expanded={props.open}
-            onClick={props.onToggle}
-            className={cn(
-              "flex h-7 items-center border px-2 transition-shadow",
-              hasMenu ? "rounded-l-md rounded-r-none border-r-0" : "rounded-md",
-              colorClass,
-              props.open && "shadow-inner ring-1 ring-inset ring-foreground/15",
-            )}
-          >
-            <Terminal className="size-3.5" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>Sandbox</TooltipContent>
-      </Tooltip>
+      <button
+        type="button"
+        aria-pressed={active && open}
+        aria-expanded={active && open}
+        onClick={onClick}
+        className={cn(
+          "flex h-7 items-center gap-1.5 border px-2.5 text-xs",
+          hasMenu ? "rounded-l-md rounded-r-none border-r-0" : "rounded-md",
+          active
+            ? "border-border bg-background font-medium text-foreground shadow-sm"
+            : "border-transparent text-muted-foreground hover:bg-background/50 hover:text-foreground",
+        )}
+      >
+        <Terminal className="size-3.5" />
+        setup
+      </button>
       {hasMenu && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -172,7 +187,9 @@ function SandboxButton(
               aria-label="Sandbox actions"
               className={cn(
                 "flex h-7 items-center rounded-r-md rounded-l-none border px-1",
-                colorClass,
+                active
+                  ? "border-border bg-background text-foreground shadow-sm"
+                  : "border-transparent text-muted-foreground hover:bg-background/50 hover:text-foreground",
               )}
             >
               <ChevronDown className="size-3.5" />
@@ -215,14 +232,21 @@ function SandboxStopControls({
   const showRestart = status === "running" && !!onRestart;
   return (
     <div className="flex items-center">
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={onStop}
-        className={cn(showRestart ? "rounded-r-none border-r-0" : undefined)}
-      >
-        <StopCircle className="size-3.5" /> Stop
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onStop}
+            className={cn(
+              showRestart ? "rounded-r-none border-r-0" : undefined,
+            )}
+          >
+            <StopCircle className="size-3.5" /> Stop
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Stop sandbox</TooltipContent>
+      </Tooltip>
       {showRestart && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -255,7 +279,7 @@ function TabButton({
   return (
     <div
       className={cn(
-        "flex items-center rounded-md border",
+        "flex h-7 items-center rounded-md border text-xs",
         active
           ? "border-border bg-background shadow-sm"
           : "border-transparent hover:bg-background/50",
@@ -265,7 +289,7 @@ function TabButton({
         type="button"
         onClick={onClick}
         className={cn(
-          "py-1 text-xs",
+          "flex h-full items-center",
           onClose ? "pl-2.5 pr-1" : "px-2.5",
           active
             ? "font-medium text-foreground"
@@ -356,28 +380,38 @@ function ScriptControls({
 }) {
   if (isKilling) {
     return (
-      <Button variant="ghost" size="sm" disabled>
+      <Button variant="outline" size="sm" disabled>
         <Loading01 className="size-3.5 animate-spin" /> Stopping…
       </Button>
     );
   }
   if (!isRunning) {
     return (
-      <Button variant="ghost" size="sm" onClick={onRun}>
-        <Play className="size-3.5" /> Run
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button variant="outline" size="sm" onClick={onRun}>
+            <Play className="size-3.5" /> Run
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Start process</TooltipContent>
+      </Tooltip>
     );
   }
   return (
     <div className="flex items-center">
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={onRun}
-        className="rounded-r-none border-r-0"
-      >
-        <RefreshCw01 className="size-3.5" /> Restart
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onRun}
+            className="rounded-r-none border-r-0"
+          >
+            <RefreshCw01 className="size-3.5" /> Restart
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Restart process</TooltipContent>
+      </Tooltip>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="sm" className="rounded-l-none px-1">
