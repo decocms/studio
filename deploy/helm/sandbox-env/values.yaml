@@ -55,36 +55,75 @@ resources:
     memory: 4Gi
     ephemeral-storage: 10Gi
 
-# ── sandbox NetworkPolicy ──────────────────────────────────────────────
-networkPolicy:
+# ── netinit / sandbox egress enforcement ──────────────────────────────
+# Sandbox pods run user code and must not reach in-cluster services.
+# Enforcement is via an iptables init container rather than a Kubernetes
+# NetworkPolicy. Reason: AWS VPC CNI NP agent v1.3.x attaches eBPF TC
+# hooks that set POLICIES_APPLIED mode when a NetworkPolicy selects a pod;
+# on IPv4 clusters the egress BPF map update fails (IPv6 CIDRs rejected),
+# leaving the map empty while POLICIES_APPLIED is active → all egress
+# blocked ~6s after pod start → mid-transfer TCP drops for cold pods.
+# The init container runs with NET_ADMIN, programs iptables in the pod
+# network namespace, then exits — user code never holds NET_ADMIN.
+#
+# The netinit image is a pre-built Alpine with iptables + ip6tables baked in
+# (avoids `apk add` at pod startup during the security-critical init phase).
+# Built and pushed by .github/workflows/release-sandbox-netinit.yaml, which
+# reads `netinit.tag` below as the single source of truth — bump that field
+# to ship a new image.
+netinit:
+  # Set to false to skip the iptables init container AND the AWS VPC CNI
+  # opt-out annotation. Self-hosters who plan to enforce egress via their
+  # own NetworkPolicy / CNI / external firewall should set this to false —
+  # leaving it true would clear any NP that selects the pod (because the
+  # annotation tells AWS VPC CNI to skip the pod) AND apply iptables on
+  # top, which may conflict with the operator's intended posture.
   enabled: true
-  # DEPRECATED: kept only for installs whose external gateway terminates
-  # *directly* on the sandbox's port 3000 (dev server). The default
-  # preview path goes through mesh and lands on port 9000 (daemon)
-  # instead, so all standard installs leave this empty. See
-  # `previewGateway` below for the supported Istio Gateway API path.
-  # Will be removed in a future chart version — open an issue if you
-  # still need it.
-  previewGatewayNamespace: ""
-  # Operator-supplied egress rules (NetworkPolicyEgressRule[]) merged
-  # into the sandbox NetworkPolicy. The base policy denies in-cluster
-  # egress; use this to grant *specific* exceptions (e.g. an in-cluster
-  # OTel collector if the daemon ever emits OTLP). Empty = no extra
-  # egress.
+
+  image: ghcr.io/decocms/studio/sandbox-netinit
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+
+  # IPv4 destination CIDRs the init container REJECTs before the
+  # port-based ACCEPT rules fire. Defaults cover RFC1918 (in-cluster pod
+  # and Service ranges on most clusters), AWS IMDS / link-local, and
+  # RFC 6598 shared address space.
   #
-  # extraEgress:
-  #   - to:
-  #       - namespaceSelector:
-  #           matchLabels:
-  #             kubernetes.io/metadata.name: monitoring
-  #         podSelector:
-  #           matchLabels:
-  #             app.kubernetes.io/name: opentelemetry-collector
-  #     ports:
-  #       - protocol: TCP
-  #         port: 4318
-  extraIngress: []
-  extraEgress: []
+  # Override the full list if your cluster's pod/Service CIDR sits
+  # outside these ranges — e.g. a custom GKE secondary range, or a
+  # self-hosted cluster on a 100.x VPC where 10.0.0.0/8 is legitimate
+  # external traffic and you want sandboxes to reach it. Values must be
+  # valid CIDR notation; iptables exits non-zero on malformed entries,
+  # failing the init container (the fail-closed outcome is intentional).
+  blockCIDRs:
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+    - 169.254.0.0/16
+    - 100.64.0.0/10
+
+  # IPv6 destination CIDRs to REJECT. Skipped automatically on
+  # IPv4-only nodes (where ip6tables isn't loadable). Defaults cover
+  # link-local, ULA (covers in-cluster IPv6 Service ranges and most
+  # IPv6 pod CIDRs), and the AWS IPv6 IMDS prefix.
+  blockCIDRsIPv6:
+    - fe80::/10
+    - fc00::/7
+    - fd00:ec2::/96
+
+  # Outbound TCP destination ports allowed by the init container.
+  # 443 covers HTTPS (bun install, git clone over HTTPS, external APIs);
+  # 53 covers DNS-over-TCP for large responses.
+  allowedTCPPorts:
+    - 53
+    - 443
+
+  # Outbound UDP destination ports allowed by the init container.
+  # 53 covers DNS lookups — see dnsConfig.nameservers below; sandboxes
+  # bypass the in-cluster kube-dns Service and resolve via public
+  # resolvers so kube-dns being in blockCIDRs doesn't break resolution.
+  allowedUDPPorts:
+    - 53
 
 # ── sandbox-pod scheduling ─────────────────────────────────────────────
 # Pin sandbox pods to a dedicated NodePool so a container escape lands on
@@ -132,24 +171,14 @@ affinity: {}
 #         app.kubernetes.io/name: studio-sandbox-<envName>
 topologySpreadConstraints: []
 
-# DNS resolver options for sandbox pods. The Kubernetes default (ndots:5)
-# causes every external lookup to generate up to 8 queries (4 search-domain
-# expansions × A+AAAA) before reaching the absolute form. On EKS this burns
-# into the 1024 pps/ENI AWS VPC DNS rate limit and causes intermittent git
-# clone / npm install failures under load. Set ndots:1 to send external
-# hostnames (github.com, registry.npmjs.org, …) directly to the absolute
-# form. Safe for sandbox pods: the NetworkPolicy blocks all in-cluster egress
-# except port 53 to CoreDNS, so search-domain expansions that resolve to
-# private IPs would be unreachable regardless.
-#
-# Recommended for production:
-#
-# dnsConfig:
-#   options:
-#     - name: ndots
-#       value: "1"
-dnsPolicy: ""  # Override to "None" with public nameservers in dnsConfig to bypass kube-dns VIP routing (fixes eBPF conntrack key mismatch on DNS responses).
-dnsConfig: {}
+dnsPolicy: "None"
+dnsConfig:
+  nameservers:
+    - 1.1.1.1
+    - 8.8.8.8
+  options:
+    - name: ndots
+      value: "1"
 
 # ── sandbox-pod hardening ──────────────────────────────────────────────
 # User namespace remap (`spec.hostUsers: false`): UID 1000 inside the pod
@@ -248,16 +277,11 @@ mesh:
   # SandboxClaim CRUD + portforward against agent-sandbox-system.
   # Conventionally the studio release name (chart.fullname).
   serviceAccountName: "deco-studio"
-  # DEPRECATED: previously the cluster-wide preview HTTPRoute backendRef'd
-  # the mesh Service so mesh could reverse-proxy preview traffic in
-  # process. The chart no longer renders that HTTPRoute (per-claim routes
-  # are minted by mesh and bypass mesh as a proxy), so these are unused.
-  # Kept to avoid breaking values overrides on existing installs; will be
-  # removed in a future chart version.
+  # DEPRECATED — removal target: chart 0.8.0. Per-claim HTTPRoutes are
+  # minted by mesh now, so the cluster-wide preview backendRef is gone
+  # and these three keys are unused. Kept one minor to not break overrides.
   serviceName: "deco-studio"
   servicePort: 80
-  # Pod selector labels that identify mesh pods for the NetworkPolicy
-  # ingress rule. Should match the studio chart's selectorLabels.
   podSelectorLabels:
     app.kubernetes.io/name: "chart-deco-studio"
     app.kubernetes.io/instance: "deco-studio"

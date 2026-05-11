@@ -24,14 +24,21 @@ spec:
   # provision cold (warmpool=none) with claim env.
   envVarsInjectionPolicy: Allowed
   # The CRD defaults to Managed, which makes the operator install its own
-  # NetworkPolicy that only allows ingress from pods labeled
-  # `app: sandbox-router`. That's intended for Istio-style sidecar routing
-  # and silently blocks the mesh → daemon path the preview-proxy depends on.
-  # We surface the netpol via templates/sandbox-network-policy.yaml instead
-  # (gated by `networkPolicy.enabled`), so flag the operator's policy off.
+  # NetworkPolicy. Egress enforcement is handled by the iptables init
+  # container instead, so the operator's policy is disabled here.
   networkPolicyManagement: Unmanaged
   podTemplate:
     metadata:
+      {{- if .Values.netinit.enabled }}
+      annotations:
+        # Best-effort AWS VPC CNI opt-out. The real safety net is that no
+        # NetworkPolicy selects these pods (networkPolicyManagement:
+        # Unmanaged + no chart-rendered NP), so the agent's policy-endpoint
+        # controller never flips them into POLICIES_APPLIED. This key isn't
+        # in aws-network-policy-agent's source — verify it's honored before
+        # relying on it if a future NP starts matching these pods.
+        vpc.amazonaws.com/v1alpha1.network-policy-enforcement: "disabled"
+      {{- end }}
       labels:
         # Per-env name so each env's NetworkPolicy podSelector matches only
         # its own pods. Mesh runner stamps the same value via
@@ -85,6 +92,68 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
+      {{- if .Values.netinit.enabled }}
+      initContainers:
+        - name: setup-netpol
+          image: "{{ .Values.netinit.image }}:{{ .Values.netinit.tag }}"
+          imagePullPolicy: {{ .Values.netinit.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              # Flush so a same-netns re-run doesn't accumulate dup rules.
+              iptables -F OUTPUT
+              iptables -A OUTPUT -o lo -j ACCEPT
+              {{- range .Values.netinit.blockCIDRs }}
+              iptables -A OUTPUT -d {{ . | quote }} -j REJECT
+              {{- end }}
+              {{- range .Values.netinit.allowedUDPPorts }}
+              iptables -A OUTPUT -p udp --dport {{ . }} -j ACCEPT
+              {{- end }}
+              {{- range .Values.netinit.allowedTCPPorts }}
+              iptables -A OUTPUT -p tcp --dport {{ . }} -j ACCEPT
+              {{- end }}
+              iptables -A OUTPUT -j REJECT
+              # Skip IPv6 cleanly on kernels without ip6_tables. No conntrack
+              # ESTABLISHED,RELATED rule: full-eBPF EKS nodes have nf_conntrack
+              # unloaded, so `-m conntrack` would fail at module-load time.
+              if ip6tables -L > /dev/null 2>&1; then
+                ip6tables -F OUTPUT
+                ip6tables -A OUTPUT -o lo -j ACCEPT
+                {{- range .Values.netinit.blockCIDRsIPv6 }}
+                ip6tables -A OUTPUT -d {{ . | quote }} -j REJECT
+                {{- end }}
+                {{- range .Values.netinit.allowedUDPPorts }}
+                ip6tables -A OUTPUT -p udp --dport {{ . }} -j ACCEPT
+                {{- end }}
+                {{- range .Values.netinit.allowedTCPPorts }}
+                ip6tables -A OUTPUT -p tcp --dport {{ . }} -j ACCEPT
+                {{- end }}
+                ip6tables -A OUTPUT -j REJECT
+              fi
+              # Dump rules so `kubectl logs -c setup-netpol` shows the policy.
+              echo "=== final IPv4 OUTPUT ==="
+              iptables -L OUTPUT -n -v --line-numbers
+              if ip6tables -L > /dev/null 2>&1; then
+                echo "=== final IPv6 OUTPUT ==="
+                ip6tables -L OUTPUT -n -v --line-numbers
+              fi
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN"]
+              drop: ["ALL"]
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+      {{- end }}
       containers:
         - name: sandbox
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
