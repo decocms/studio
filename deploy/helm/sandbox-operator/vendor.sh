@@ -170,11 +170,14 @@ fi
 
 # Inject PodSecurity admission labels into the agent-sandbox-system Namespace.
 #
-# Upstream ships a bare Namespace; we enforce `baseline` and warn/audit on
-# `restricted` so violations from sandbox pods or the controller surface in
-# audit logs without rejecting admission. When the operator's pod spec
-# hardens to restricted, flip enforce. See README + the LOCAL EDIT comment
-# in HEADER_TMPL below.
+# Upstream ships a bare Namespace; we enforce `privileged` because the
+# sandbox-env chart (>= 0.7.0) adds a `setup-netpol` init container that
+# holds NET_ADMIN to program iptables — `baseline` would reject it at
+# admission. The real security boundary lives in the sandbox-env pod
+# spec (drops ALL caps on the main container, RO rootfs, hostUsers
+# remap, no SA token). warn/audit stay on `restricted` so any regression
+# in that pod-level posture surfaces in audit logs without rejecting
+# admission. See README + the LOCAL EDIT comment in HEADER_TMPL below.
 log "injecting PodSecurity admission labels into agent-sandbox-system Namespace"
 awk '
   function flush(   i, is_target, has_kind, name_line, indent) {
@@ -202,7 +205,7 @@ awk '
         match(buf[i], /^[[:space:]]*/)
         indent = substr(buf[i], RSTART, RLENGTH)
         print indent "labels:"
-        print indent "  pod-security.kubernetes.io/enforce: baseline"
+        print indent "  pod-security.kubernetes.io/enforce: privileged"
         print indent "  pod-security.kubernetes.io/enforce-version: latest"
         print indent "  pod-security.kubernetes.io/warn: restricted"
         print indent "  pod-security.kubernetes.io/warn-version: latest"
@@ -219,7 +222,7 @@ awk '
 ' "${WORK}/manifest.yaml" > "${WORK}/manifest.patched.yaml"
 sed -i.bak -e '$d' "${WORK}/manifest.patched.yaml" && rm "${WORK}/manifest.patched.yaml.bak"
 mv "${WORK}/manifest.patched.yaml" "${WORK}/manifest.yaml"
-if ! grep -q '^[[:space:]]*pod-security.kubernetes.io/enforce:[[:space:]]*baseline[[:space:]]*$' "${WORK}/manifest.yaml"; then
+if ! grep -q '^[[:space:]]*pod-security.kubernetes.io/enforce:[[:space:]]*privileged[[:space:]]*$' "${WORK}/manifest.yaml"; then
   err "post-patch: PodSecurity labels were not injected into the Namespace doc"
   err "  upstream may have moved the Namespace into extensions.yaml or changed its name;"
   err "  inspect ${WORK}/manifest.yaml and update the awk patch in this script"
@@ -277,12 +280,17 @@ HEADER_TMPL="# Vendored from ${REPO} ${UPSTREAM_VERSION} via vendor.sh.
 # Contains: controller Deployments, RBAC, Namespace, Service, ServiceAccount.
 #
 # LOCAL EDIT — preserve when re-running vendor.sh:
-#   PodSecurity admission labels added to the Namespace below. \`baseline\`
-#   is enforced (operator controller pod runs without an explicit
-#   securityContext; \`restricted\` would block it until that's patched).
-#   \`restricted\` is set as warn/audit so violations from sandbox pods or
-#   the controller surface in audit logs without rejecting admission.
-#   When the operator's pod spec hardens to \`restricted\`, flip enforce.
+#   PodSecurity admission labels added to the Namespace below. \`enforce\`
+#   is \`privileged\` because the sandbox-env chart (>= 0.7.0) adds a
+#   \`setup-netpol\` init container that holds NET_ADMIN to program iptables
+#   in the pod netns before user code starts. \`baseline\` rejects NET_ADMIN
+#   at admission time, so sandbox pod creates fail with PodSecurity
+#   violations and the operator's reconcile loop never converges.
+#   The real security boundary is the main sandbox container's pod spec
+#   (drops ALL caps, RO rootfs, hostUsers remap, no SA token) — not the
+#   namespace label. \`restricted\` stays on warn/audit so any regression
+#   in that pod-level posture (here or in the controller) surfaces in
+#   audit logs without rejecting admission.
 "
 
 printf "%s" "${HEADER_CRDS}" > "${CRDS_FILE}"
