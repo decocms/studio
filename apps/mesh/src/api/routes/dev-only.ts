@@ -19,7 +19,7 @@
 import { Hono } from "hono";
 import type { Context, MiddlewareHandler } from "hono";
 import type { MeshContext } from "../../core/mesh-context";
-import { logDeprecatedRoute } from "../middleware/log-deprecated-route";
+import { createLogDeprecatedRoute } from "../middleware/log-deprecated-route";
 import { createDevAssetsRoutes } from "./dev-assets";
 import devAssetsMcpRoutes, {
   callDevAssetsTool,
@@ -86,7 +86,10 @@ export function mountDevRoutes(
   // /api/:org/dev-assets/* mount is wired in a later task.
   // These are public but use signed URLs for security.
   const legacyDevAssets = new Hono();
-  legacyDevAssets.use("*", logDeprecatedRoute);
+  legacyDevAssets.use(
+    "*",
+    createLogDeprecatedRoute({ mountPath: "/api/dev-assets" }),
+  );
   legacyDevAssets.route("/", createDevAssetsRoutes({ orgFromPath: false }));
   app.route("/api/dev-assets", legacyDevAssets);
 }
