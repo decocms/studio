@@ -31,14 +31,12 @@ spec:
     metadata:
       {{- if .Values.netinit.enabled }}
       annotations:
-        # AWS VPC CNI opt-out: skip eBPF TC hook attachment on sandbox pods.
-        # The iptables init container is the enforcement path; an eBPF hook
-        # in POLICIES_APPLIED mode would break conntrack for UDP DNS and
-        # mid-stream TCP. Harmless no-op on non-EKS CNIs (kindnet, Calico,
-        # Cilium). See deploy/helm/sandbox-env/NP-INVESTIGATION.md.
-        # Gated on netinit.enabled so self-hosters who disable the init
-        # container can layer their own NetworkPolicy without AWS VPC CNI
-        # skipping the pod and silently leaving it unenforced.
+        # Best-effort AWS VPC CNI opt-out. The real safety net is that no
+        # NetworkPolicy selects these pods (networkPolicyManagement:
+        # Unmanaged + no chart-rendered NP), so the agent's policy-endpoint
+        # controller never flips them into POLICIES_APPLIED. This key isn't
+        # in aws-network-policy-agent's source — verify it's honored before
+        # relying on it if a future NP starts matching these pods.
         vpc.amazonaws.com/v1alpha1.network-policy-enforcement: "disabled"
       {{- end }}
       labels:
@@ -103,9 +101,10 @@ spec:
             - sh
             - -c
             - |
-              set -e
-              # IPv4: block private ranges first so the port-based ACCEPTs
-              # below never fire for in-cluster destinations.
+              set -eu
+              # Flush so a same-netns re-run doesn't accumulate dup rules.
+              iptables -F OUTPUT
+              iptables -A OUTPUT -o lo -j ACCEPT
               {{- range .Values.netinit.blockCIDRs }}
               iptables -A OUTPUT -d {{ . | quote }} -j REJECT
               {{- end }}
@@ -115,11 +114,13 @@ spec:
               {{- range .Values.netinit.allowedTCPPorts }}
               iptables -A OUTPUT -p tcp --dport {{ . }} -j ACCEPT
               {{- end }}
-              iptables -A OUTPUT -o lo -j ACCEPT
               iptables -A OUTPUT -j REJECT
-              # IPv6: skipped gracefully on kernels / nodes without IPv6
-              # netfilter support so single-stack-IPv4 clusters stay clean.
+              # Skip IPv6 cleanly on kernels without ip6_tables. No conntrack
+              # ESTABLISHED,RELATED rule: full-eBPF EKS nodes have nf_conntrack
+              # unloaded, so `-m conntrack` would fail at module-load time.
               if ip6tables -L > /dev/null 2>&1; then
+                ip6tables -F OUTPUT
+                ip6tables -A OUTPUT -o lo -j ACCEPT
                 {{- range .Values.netinit.blockCIDRsIPv6 }}
                 ip6tables -A OUTPUT -d {{ . | quote }} -j REJECT
                 {{- end }}
@@ -129,12 +130,9 @@ spec:
                 {{- range .Values.netinit.allowedTCPPorts }}
                 ip6tables -A OUTPUT -p tcp --dport {{ . }} -j ACCEPT
                 {{- end }}
-                ip6tables -A OUTPUT -o lo -j ACCEPT
                 ip6tables -A OUTPUT -j REJECT
               fi
-              # Dump the final ruleset to stdout so the resulting policy is
-              # visible via `kubectl logs <pod> -c setup-netpol` without
-              # nsenter'ing into the pod netns from the node.
+              # Dump rules so `kubectl logs -c setup-netpol` shows the policy.
               echo "=== final IPv4 OUTPUT ==="
               iptables -L OUTPUT -n -v --line-numbers
               if ip6tables -L > /dev/null 2>&1; then

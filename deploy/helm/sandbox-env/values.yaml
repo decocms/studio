@@ -66,11 +66,11 @@ resources:
 # The init container runs with NET_ADMIN, programs iptables in the pod
 # network namespace, then exits — user code never holds NET_ADMIN.
 #
-# The netinit image is a pre-built Alpine with iptables + ip6tables baked
-# in. Avoids `apk add` at pod startup that would require outbound internet
-# access to Alpine mirrors during the security-critical init phase. Built
-# and pushed to GHCR by .github/workflows/release-sandbox-netinit.yaml;
-# version is controlled by deploy/helm/sandbox-env/image/VERSION.
+# The netinit image is a pre-built Alpine with iptables + ip6tables baked in
+# (avoids `apk add` at pod startup during the security-critical init phase).
+# Built and pushed by .github/workflows/release-sandbox-netinit.yaml, which
+# reads `netinit.tag` below as the single source of truth — bump that field
+# to ship a new image.
 netinit:
   # Set to false to skip the iptables init container AND the AWS VPC CNI
   # opt-out annotation. Self-hosters who plan to enforce egress via their
@@ -277,16 +277,11 @@ mesh:
   # SandboxClaim CRUD + portforward against agent-sandbox-system.
   # Conventionally the studio release name (chart.fullname).
   serviceAccountName: "deco-studio"
-  # DEPRECATED: previously the cluster-wide preview HTTPRoute backendRef'd
-  # the mesh Service so mesh could reverse-proxy preview traffic in
-  # process. The chart no longer renders that HTTPRoute (per-claim routes
-  # are minted by mesh and bypass mesh as a proxy), so these are unused.
-  # Kept to avoid breaking values overrides on existing installs; will be
-  # removed in a future chart version.
+  # DEPRECATED — removal target: chart 0.8.0. Per-claim HTTPRoutes are
+  # minted by mesh now, so the cluster-wide preview backendRef is gone
+  # and these three keys are unused. Kept one minor to not break overrides.
   serviceName: "deco-studio"
   servicePort: 80
-  # Pod selector labels that identify mesh pods for the NetworkPolicy
-  # ingress rule. Should match the studio chart's selectorLabels.
   podSelectorLabels:
     app.kubernetes.io/name: "chart-deco-studio"
     app.kubernetes.io/instance: "deco-studio"
