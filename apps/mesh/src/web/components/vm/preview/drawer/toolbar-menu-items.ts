@@ -18,12 +18,10 @@ export function menuItemsFor(status: DrawerStatus): MenuItem[] {
     case "idle":
       return [{ label: "Start", action: "start" }];
     case "starting":
-      return [{ label: "Stop", action: "stop" }];
     case "running":
-      return [
-        { label: "Stop", action: "stop" },
-        { label: "Restart", action: "restart" },
-      ];
+      // Stop + Restart live on the setup tab's right-side controls, not in
+      // the Sandbox split-button menu. Returning [] hides the chevron half.
+      return [];
     case "suspended":
       return [{ label: "Resume", action: "resume" }];
     case "errored":

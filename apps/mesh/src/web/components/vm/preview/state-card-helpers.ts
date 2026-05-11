@@ -29,11 +29,11 @@ export function phaseTickGlyph(status: PhaseStatus): "✓" | "✗" | "◐" | "�
 export function headlineFor(kind: StateCardKind): string {
   switch (kind) {
     case "never-started":
-      return "Preview will appear here";
+      return "Your sandbox is not running";
     case "starting-now":
-      return "Starting your dev server";
+      return "Starting your sandbox";
     case "errored":
-      return "Failed to start dev server";
+      return "Sandbox failed to start";
     case "suspended":
       return "Sandbox is paused";
   }

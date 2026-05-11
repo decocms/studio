@@ -26,9 +26,9 @@ test("phaseTickGlyph returns the right glyph per status", () => {
 });
 
 test("headlineFor maps each kind to its headline", () => {
-  expect(headlineFor("never-started")).toBe("Preview will appear here");
-  expect(headlineFor("starting-now")).toBe("Starting your dev server");
-  expect(headlineFor("errored")).toBe("Failed to start dev server");
+  expect(headlineFor("never-started")).toBe("Your sandbox is not running");
+  expect(headlineFor("starting-now")).toBe("Starting your sandbox");
+  expect(headlineFor("errored")).toBe("Sandbox failed to start");
   expect(headlineFor("suspended")).toBe("Sandbox is paused");
 });
 

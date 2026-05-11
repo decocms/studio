@@ -5,15 +5,12 @@ test("idle → only Start", () => {
   expect(menuItemsFor("idle")).toEqual([{ label: "Start", action: "start" }]);
 });
 
-test("starting → only Stop", () => {
-  expect(menuItemsFor("starting")).toEqual([{ label: "Stop", action: "stop" }]);
+test("starting → empty (Stop lives on the setup tab's right-side controls)", () => {
+  expect(menuItemsFor("starting")).toEqual([]);
 });
 
-test("running → Stop + Restart, in that order", () => {
-  expect(menuItemsFor("running")).toEqual([
-    { label: "Stop", action: "stop" },
-    { label: "Restart", action: "restart" },
-  ]);
+test("running → empty (Stop + Restart live on the setup tab's right-side controls)", () => {
+  expect(menuItemsFor("running")).toEqual([]);
 });
 
 test("suspended → only Resume", () => {

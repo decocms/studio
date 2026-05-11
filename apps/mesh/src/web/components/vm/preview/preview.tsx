@@ -283,6 +283,12 @@ export function PreviewContent() {
   const [drawerOpen, setDrawerOpen] = useState(() =>
     readPersistedDrawerOpen(drawerStorageKey),
   );
+  // Collapse to toolbar-only when the sandbox isn't running. Covers Stop
+  // (transitions to never-started via vmUserStop) and the initial idle
+  // state. Persisted preference is untouched so the drawer restores to
+  // the user's last open/closed state once the sandbox boots again.
+  const drawerOpenEffective =
+    previewState.kind === "never-started" ? false : drawerOpen;
 
   const handleDrawerOpenChange = (next: boolean) => {
     setDrawerOpen(next);
@@ -516,7 +522,7 @@ export function PreviewContent() {
               progress={progress}
               claimPhase={claimPhase}
               logSource="setup"
-              drawerOpen={drawerOpen}
+              drawerOpen={drawerOpenEffective}
             />
           </div>
         )}
@@ -529,7 +535,7 @@ export function PreviewContent() {
               logSource="setup"
               errorLine={previewState.error.split("\n")[0] ?? "Failed to start"}
               onRetry={retryAutoStart}
-              drawerOpen={drawerOpen}
+              drawerOpen={drawerOpenEffective}
             />
           </div>
         )}
@@ -603,7 +609,7 @@ export function PreviewContent() {
         branch={branch}
         status={drawerStatusFromPreview(previewState, vmStartPending)}
         scripts={vmEvents.scripts}
-        open={drawerOpen}
+        open={drawerOpenEffective}
         onOpenChange={handleDrawerOpenChange}
         onStart={() => triggerStart("auto-start")}
         onStop={handleStop}

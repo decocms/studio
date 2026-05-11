@@ -101,7 +101,7 @@ function Subline(props: Exclude<VmStateCardProps, { kind: "starting-now" }>) {
     case "never-started":
       return (
         <p className="max-w-sm text-sm text-muted-foreground">
-          Start the dev server to render a live preview.
+          Start the sandbox to launch your dev environment.
         </p>
       );
     case "errored":
@@ -186,7 +186,7 @@ function Footer(props: Exclude<VmStateCardProps, { kind: "starting-now" }>) {
     case "never-started":
       return (
         <Button onClick={props.onStart} className="mt-2">
-          <Play className="size-4" /> Start dev server
+          <Play className="size-4" /> Start sandbox
         </Button>
       );
     case "errored":

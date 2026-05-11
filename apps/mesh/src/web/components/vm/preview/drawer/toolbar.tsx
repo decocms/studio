@@ -98,13 +98,21 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
         ))}
         <AddScriptButton scripts={addableScripts} onRun={props.onAddScript} />
       </div>
-      {props.showScriptControls && (
+      {props.showScriptControls ? (
         <ScriptControls
           isRunning={props.scriptIsRunning}
           isKilling={props.scriptIsKilling}
           onRun={props.onRunActiveScript}
           onStop={props.onStopActiveScript}
         />
+      ) : (
+        (props.status === "starting" || props.status === "running") && (
+          <SandboxStopControls
+            status={props.status}
+            onStop={props.onStop}
+            onRestart={props.onRestart}
+          />
+        )
       )}
     </div>
   );
@@ -118,6 +126,7 @@ function SandboxButton(
 ) {
   const colorClass = sandboxStatusClass(props.status);
   const items = menuItemsFor(props.status);
+  const hasMenu = items.length > 0;
   const handlerFor = (action: MenuItem["action"]): (() => void) | undefined => {
     switch (action) {
       case "start":
@@ -139,11 +148,14 @@ function SandboxButton(
           <button
             type="button"
             aria-label="Sandbox — toggle logs"
+            aria-pressed={props.open}
             aria-expanded={props.open}
             onClick={props.onToggle}
             className={cn(
-              "flex h-7 items-center rounded-l-md rounded-r-none border border-r-0 px-2",
+              "flex h-7 items-center border px-2 transition-shadow",
+              hasMenu ? "rounded-l-md rounded-r-none border-r-0" : "rounded-md",
               colorClass,
+              props.open && "shadow-inner ring-1 ring-inset ring-foreground/15",
             )}
           >
             <Terminal className="size-3.5" />
@@ -151,32 +163,80 @@ function SandboxButton(
         </TooltipTrigger>
         <TooltipContent>Sandbox</TooltipContent>
       </Tooltip>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            aria-haspopup="menu"
-            aria-label="Sandbox actions"
-            className={cn(
-              "flex h-7 items-center rounded-r-md rounded-l-none border px-1",
-              colorClass,
-            )}
-          >
-            <ChevronDown className="size-3.5" />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
-          {items.map((item) => {
-            const handler = handlerFor(item.action);
-            if (!handler) return null;
-            return (
-              <DropdownMenuItem key={item.action} onClick={handler}>
-                {item.label}
-              </DropdownMenuItem>
-            );
-          })}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {hasMenu && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-haspopup="menu"
+              aria-label="Sandbox actions"
+              className={cn(
+                "flex h-7 items-center rounded-r-md rounded-l-none border px-1",
+                colorClass,
+              )}
+            >
+              <ChevronDown className="size-3.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            {items.map((item) => {
+              const handler = handlerFor(item.action);
+              if (!handler) return null;
+              return (
+                <DropdownMenuItem key={item.action} onClick={handler}>
+                  {item.label}
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Right-side Stop split-button for the setup tab. Mirrors the per-script
+ * Restart pattern (outlined Button + chevron menu) but inverted: Stop is
+ * the primary action, Restart hides in the chevron (only when status is
+ * "running" — restarting a still-starting sandbox makes no sense). When
+ * status is "starting", the chevron half is hidden and only `[⏹ Stop]`
+ * renders.
+ */
+function SandboxStopControls({
+  status,
+  onStop,
+  onRestart,
+}: {
+  status: "starting" | "running";
+  onStop?: () => void;
+  onRestart?: () => void;
+}) {
+  const showRestart = status === "running" && !!onRestart;
+  return (
+    <div className="flex items-center">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={onStop}
+        className={cn(showRestart ? "rounded-r-none border-r-0" : undefined)}
+      >
+        <StopCircle className="size-3.5" /> Stop
+      </Button>
+      {showRestart && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="rounded-l-none px-1">
+              <ChevronDown className="size-3" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={onRestart}>
+              <RefreshCw01 className="size-3.5" /> Restart
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </div>
   );
 }
