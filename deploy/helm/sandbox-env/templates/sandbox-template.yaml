@@ -105,6 +105,20 @@ spec:
               # Flush so a same-netns re-run doesn't accumulate dup rules.
               iptables -F OUTPUT
               iptables -A OUTPUT -o lo -j ACCEPT
+              # Allow return traffic for connections initiated INTO the pod
+              # (e.g. preview gateway → daemon:9000). Without this rule the
+              # OUTPUT chain REJECTs SYN-ACK responses back to the gateway
+              # pod IP — gateway pod IPs sit in RFC1918, which the blockCIDRs
+              # rules below REJECT. Symptom: Envoy "upstream connect error /
+              # connection timeout" on every preview request.
+              # Try -m conntrack, fall back to legacy -m state. If neither
+              # is available (full-eBPF nodes without nf_conntrack) we
+              # fail-closed: preview ingress is a load-bearing feature,
+              # silently degrading it is not acceptable. Operator must run
+              # this chart on a node that supports stateful filtering.
+              iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null \
+                || iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT 2>/dev/null \
+                || { echo "ERROR: neither -m conntrack nor -m state available; cannot install ESTABLISHED,RELATED rule. Preview ingress would silently break. Failing the init container so the pod does not come up." >&2; exit 1; }
               {{- range .Values.netinit.blockCIDRs }}
               iptables -A OUTPUT -d {{ . | quote }} -j REJECT
               {{- end }}
@@ -115,12 +129,15 @@ spec:
               iptables -A OUTPUT -p tcp --dport {{ . }} -j ACCEPT
               {{- end }}
               iptables -A OUTPUT -j REJECT
-              # Skip IPv6 cleanly on kernels without ip6_tables. No conntrack
-              # ESTABLISHED,RELATED rule: full-eBPF EKS nodes have nf_conntrack
-              # unloaded, so `-m conntrack` would fail at module-load time.
+              # Skip IPv6 cleanly on kernels without ip6_tables.
               if ip6tables -L > /dev/null 2>&1; then
                 ip6tables -F OUTPUT
                 ip6tables -A OUTPUT -o lo -j ACCEPT
+                # Same ESTABLISHED,RELATED rule for IPv6 — see IPv4 block
+                # above. Fail-closed for the same reason.
+                ip6tables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null \
+                  || ip6tables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT 2>/dev/null \
+                  || { echo "ERROR: neither -m conntrack nor -m state available (ip6tables); cannot install ESTABLISHED,RELATED rule for IPv6. Failing the init container." >&2; exit 1; }
                 {{- range .Values.netinit.blockCIDRsIPv6 }}
                 ip6tables -A OUTPUT -d {{ . | quote }} -j REJECT
                 {{- end }}
