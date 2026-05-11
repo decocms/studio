@@ -1552,7 +1552,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   const legacyOrgSso = new Hono<{
     Variables: { meshContext: MeshContext };
   }>();
-  legacyOrgSso.use("*", logDeprecatedRoute);
+  legacyOrgSso.use(
+    "*",
+    createLogDeprecatedRoute({ mountPath: "/api/org-sso" }),
+  );
   legacyOrgSso.route("/", createSsoRoutes());
   app.route("/api/org-sso", legacyOrgSso);
 
@@ -1611,20 +1614,20 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Virtual MCP / Agent routes (must be before proxy to match /mcp/gateway and /mcp/virtual-mcp before /mcp/:connectionId)
   // /mcp/gateway/:virtualMcpId (backward compat) or /mcp/virtual-mcp/:virtualMcpId
   const legacyVirtualMcp = new Hono<Env>();
-  legacyVirtualMcp.use("*", logDeprecatedRoute);
+  legacyVirtualMcp.use("*", createLogDeprecatedRoute({ mountPath: "/mcp" }));
   legacyVirtualMcp.route("/", createVirtualMcpRoutes());
   app.route("/mcp", legacyVirtualMcp);
 
   // Self MCP routes (at /mcp/self) - exposes all management tools
   const legacySelf = new Hono<Env>();
-  legacySelf.use("*", logDeprecatedRoute);
+  legacySelf.use("*", createLogDeprecatedRoute({ mountPath: "/mcp/self" }));
   legacySelf.route("/", createSelfRoutes());
   app.route("/mcp/self", legacySelf);
 
   // MCP Proxy routes (connection-specific)
   // Note: SELF MCP ({org}_self) is handled by proxy.ts with special case detection
   const legacyProxy = new Hono<Env>();
-  legacyProxy.use("*", logDeprecatedRoute);
+  legacyProxy.use("*", createLogDeprecatedRoute({ mountPath: "/mcp" }));
   legacyProxy.route("/", createProxyRoutes());
   app.route("/mcp", legacyProxy);
 
@@ -1655,7 +1658,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   const legacyThreadOutputsRoutes = new Hono<{
     Variables: { meshContext: MeshContext };
   }>();
-  legacyThreadOutputsRoutes.use("*", logDeprecatedRoute);
+  legacyThreadOutputsRoutes.use(
+    "*",
+    createLogDeprecatedRoute({ mountPath: "/api" }),
+  );
   legacyThreadOutputsRoutes.route("/", createThreadOutputsRoutes());
   app.route("/api", legacyThreadOutputsRoutes);
 
@@ -1668,7 +1674,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   const legacyTriggerCallback = new Hono<{
     Variables: { meshContext: MeshContext };
   }>();
-  legacyTriggerCallback.use("*", logDeprecatedRoute);
+  legacyTriggerCallback.use(
+    "*",
+    createLogDeprecatedRoute({ mountPath: "/api" }),
+  );
   legacyTriggerCallback.route(
     "/",
     createTriggerCallbackRoutes({
@@ -1685,7 +1694,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   const legacyKVRoutes = new Hono<{
     Variables: { meshContext: MeshContext };
   }>();
-  legacyKVRoutes.use("*", logDeprecatedRoute);
+  legacyKVRoutes.use("*", createLogDeprecatedRoute({ mountPath: "/api" }));
   legacyKVRoutes.route("/", createKVRoutes({ kvStorage }));
   app.route("/api", legacyKVRoutes);
 
@@ -1709,7 +1718,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   const legacyDownstreamTokenRoutes = new Hono<{
     Variables: { meshContext: MeshContext };
   }>();
-  legacyDownstreamTokenRoutes.use("*", logDeprecatedRoute);
+  legacyDownstreamTokenRoutes.use(
+    "*",
+    createLogDeprecatedRoute({ mountPath: "/api" }),
+  );
   legacyDownstreamTokenRoutes.route("/", createDownstreamTokenRoutes());
   app.route("/api", legacyDownstreamTokenRoutes);
 
@@ -1721,16 +1733,12 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Org-scoped deco-sites routes (GET /, POST /connection). Currently mounted
   // at /api/deco-sites with a deprecation log; the new /api/:org/deco-sites
   // mount is wired in a later task.
-  // The permanent user-scoped sub-app above shares this mount prefix, so its
-  // /profile route is excluded to prevent false-positive deprecation logs.
   const legacyDecoSitesOrg = new Hono<{
     Variables: { meshContext: MeshContext };
   }>();
   legacyDecoSitesOrg.use(
     "*",
-    createLogDeprecatedRoute({
-      permanentSiblings: new Set(["/api/deco-sites/profile"]),
-    }),
+    createLogDeprecatedRoute({ mountPath: "/api/deco-sites" }),
   );
   legacyDecoSitesOrg.route("/", createDecoSitesOrgRoutes());
   app.route("/api/deco-sites", legacyDecoSitesOrg);
@@ -1744,7 +1752,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   const legacyVmEvents = new Hono<{
     Variables: { meshContext: MeshContext };
   }>();
-  legacyVmEvents.use("*", logDeprecatedRoute);
+  legacyVmEvents.use(
+    "*",
+    createLogDeprecatedRoute({ mountPath: "/api/vm-events" }),
+  );
   legacyVmEvents.route("/", createVmEventsRoutes());
   app.route("/api/vm-events", legacyVmEvents);
 
