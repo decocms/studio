@@ -1,28 +1,22 @@
 import type { BranchMeta, LifecycleState } from "@decocms/sandbox/shared";
 import type { ClaimPhase } from "@/web/components/vm/hooks/vm-events-context";
+import { CLAIM_PHASE_COPY } from "@/web/components/vm/claim-phase-copy";
 import type { CheckRun, PrSummary } from "./use-pr-data.ts";
 import type { PrReviewSignals } from "./use-pr-reviews.ts";
 
 /**
  * Header copy for claim-phase variants while lifecycle is still `idle`.
- * Mirrors `LIFECYCLE_COPY` in booting-visual.tsx but with shorter strings
- * scoped to the header button's character budget.
- *
- * Phases intentionally absent from the table fall through to the generic
- * "Starting sandbox…":
- *   - `claiming`  — too brief and indistinct from no-claim-phase.
- *   - `ready`     — daemon claim handle is up but lifecycle hasn't yet
- *                   emitted its first event; generic copy is correct.
- *   - `failed`    — terminal pre-daemon provisioning failure; today's
- *                   behavior preserved (a unified "Provision failed" pill
- *                   across both surfaces is tracked as a follow-up).
+ * `claiming` is intentionally excluded (too brief and indistinct from
+ * no-claim-phase) and falls through to the generic "Starting sandbox…".
+ * `ready` and `failed` are not in `CLAIM_PHASE_COPY` for the reasons
+ * documented there; both also fall through here.
  */
-const IDLE_CLAIM_COPY: Partial<Record<ClaimPhase["kind"], string>> = {
-  "waiting-for-capacity": "Waiting for capacity",
-  "pulling-image": "Downloading image",
-  "starting-container": "Starting container",
-  "warming-daemon": "Connecting to sandbox",
-};
+function idleClaimCopy(kind: ClaimPhase["kind"]): string | undefined {
+  if (kind === "claiming" || kind === "ready" || kind === "failed") {
+    return undefined;
+  }
+  return CLAIM_PHASE_COPY[kind].short;
+}
 
 /**
  * Descriptor returned by selectHeaderButton. Callers translate action →
@@ -115,7 +109,7 @@ export function selectHeaderButton(
   switch (lifecycle.phase) {
     case "idle": {
       const label =
-        (input.claimPhase && IDLE_CLAIM_COPY[input.claimPhase.kind]) ||
+        (input.claimPhase && idleClaimCopy(input.claimPhase.kind)) ||
         "Starting sandbox…";
       return {
         label,

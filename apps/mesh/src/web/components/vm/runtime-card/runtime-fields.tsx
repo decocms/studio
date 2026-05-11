@@ -1,5 +1,10 @@
 import { useRef } from "react";
-import { Controller, type Control } from "react-hook-form";
+import {
+  Controller,
+  type Control,
+  type FieldPath,
+  type FieldValues,
+} from "react-hook-form";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
 import {
@@ -18,14 +23,18 @@ const PACKAGE_MANAGERS = Object.keys(
 ) as PackageManager[];
 const NONE_VALUE = "__none__";
 
-// `Control<unknown>` keeps the component reusable from any parent form whose
-// schema includes `metadata.runtime.{selected, port}`.
-export interface RuntimeFieldsProps {
-  // biome-ignore lint/suspicious/noExplicitAny: parent form types vary; the field paths are stable
-  control: Control<any>;
+// Generic over the parent form schema so callers pass `form.control` without
+// casting. The `metadata.runtime.{selected,port,path}` field paths are
+// asserted via `FieldPath<T>` casts at each Controller — the runtime contract
+// is the literal path string, and the cast keeps that contract contained to
+// this leaf component.
+export interface RuntimeFieldsProps<T extends FieldValues> {
+  control: Control<T>;
 }
 
-export function RuntimeFields({ control }: RuntimeFieldsProps) {
+export function RuntimeFields<T extends FieldValues>({
+  control,
+}: RuntimeFieldsProps<T>) {
   // `useRef` lives in the component body (not inside `Controller`'s `render`
   // callback) to comply with the Rules of Hooks — `render` is a function
   // invoked during render, so calling hooks from there is forbidden.
@@ -36,7 +45,7 @@ export function RuntimeFields({ control }: RuntimeFieldsProps) {
         <Label htmlFor="runtime-pm">Package manager</Label>
         <Controller
           control={control}
-          name="metadata.runtime.selected"
+          name={"metadata.runtime.selected" as FieldPath<T>}
           render={({ field }) => (
             <Select
               value={field.value ?? NONE_VALUE}
@@ -62,7 +71,7 @@ export function RuntimeFields({ control }: RuntimeFieldsProps) {
         <Label htmlFor="runtime-path">Package path</Label>
         <Controller
           control={control}
-          name="metadata.runtime.path"
+          name={"metadata.runtime.path" as FieldPath<T>}
           render={({ field }) => (
             <Input
               id="runtime-path"
@@ -89,7 +98,7 @@ export function RuntimeFields({ control }: RuntimeFieldsProps) {
         <Label htmlFor="runtime-port">Dev server port</Label>
         <Controller
           control={control}
-          name="metadata.runtime.port"
+          name={"metadata.runtime.port" as FieldPath<T>}
           render={({ field }) => (
             <Input
               ref={portInputRef}

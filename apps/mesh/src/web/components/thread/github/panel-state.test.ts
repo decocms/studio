@@ -169,7 +169,7 @@ describe("selectHeaderButton", () => {
   });
 
   test("idle + claimPhase = claiming → 'Starting sandbox…' (generic)", () => {
-    // `claiming` is intentionally absent from IDLE_CLAIM_COPY — falls through
+    // `claiming` is intentionally absent from `idleClaimCopy` — falls through
     // to the generic label.
     const r = selectHeaderButton(
       happyInput({

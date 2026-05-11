@@ -2,6 +2,7 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import type { ReactNode } from "react";
 import { GridLoader } from "@/web/components/grid-loader";
 import type { ClaimPhase } from "../hooks/vm-events-context";
+import { CLAIM_PHASE_COPY } from "../claim-phase-copy";
 import type { PhaseKey, PhaseProgress } from "./derive-phase-progress";
 import { activePhaseIndex } from "./state-card-helpers";
 
@@ -28,22 +29,6 @@ const PHASE_LABELS: Record<PhaseKey, string> = {
   dev: "Starting your preview",
 };
 
-/**
- * Pre-daemon (claim) sub-phase copy, overlaid only when progress.step is
- * "provision" and the runner is emitting claim phases (agent-sandbox).
- * Map keys match `ClaimPhase["kind"]` literals.
- */
-const LIFECYCLE_COPY: Record<
-  Exclude<ClaimPhase["kind"], "ready" | "failed">,
-  string
-> = {
-  claiming: "Reserving sandbox",
-  "waiting-for-capacity": "Waiting for cluster capacity",
-  "pulling-image": "Downloading sandbox image",
-  "starting-container": "Starting your sandbox",
-  "warming-daemon": "Connecting to your sandbox",
-};
-
 function pillHeadline(
   progress: PhaseProgress,
   claimPhase: ClaimPhase | null,
@@ -54,7 +39,7 @@ function pillHeadline(
     claimPhase.kind !== "ready" &&
     claimPhase.kind !== "failed"
   ) {
-    return LIFECYCLE_COPY[claimPhase.kind];
+    return CLAIM_PHASE_COPY[claimPhase.kind].long;
   }
   return PHASE_LABELS[progress.step];
 }

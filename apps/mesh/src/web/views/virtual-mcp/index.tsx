@@ -79,7 +79,7 @@ import {
   XClose,
 } from "@untitledui/icons";
 import { Suspense, useEffect, useReducer, useRef, useState } from "react";
-import { Controller, useForm, type Control } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { useDebouncedAutosave } from "@/web/hooks/use-debounced-autosave.ts";
 import { toast } from "sonner";
 import { IconPicker } from "../../components/icon-picker";
@@ -1775,8 +1775,7 @@ Define step-by-step how the agent should handle requests.
               <Card className="p-6 gap-5">
                 <CardContent className="p-0 space-y-5">
                   <RepoRow repo={runtimeCardRepo} />
-                  {/* react-hook-form's Control type is invariant; widening here is safe because RuntimeFields only reads/writes `metadata.runtime.{selected,port,path}` paths declared in our schema. */}
-                  <RuntimeFields control={form.control as Control<any>} />
+                  <RuntimeFields control={form.control} />
                 </CardContent>
               </Card>
             </div>

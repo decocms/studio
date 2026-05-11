@@ -18,3 +18,11 @@ test("parsePortInput rejects non-numeric and out-of-range", () => {
   expect(parsePortInput("65536").ok).toBe(false);
   expect(parsePortInput("-1").ok).toBe(false);
 });
+
+test("parsePortInput canonicalizes leading zeros", () => {
+  // Non-canonical input must normalize to the decimal form so the persisted
+  // value matches what the daemon snapshots into `startedWith.port`.
+  expect(parsePortInput("03000")).toEqual({ ok: true, value: "3000" });
+  expect(parsePortInput("0001")).toEqual({ ok: true, value: "1" });
+  expect(parsePortInput(" 3000 ")).toEqual({ ok: true, value: "3000" });
+});
