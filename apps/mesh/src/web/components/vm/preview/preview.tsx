@@ -176,6 +176,9 @@ export function PreviewContent() {
     lifecycle: vmEvents.lifecycle,
   });
 
+  const userStopped =
+    !!virtualMcpId && !!branch && vmUserStop.isStopped(virtualMcpId, branch);
+
   const previewState = computePreviewState({
     previewUrl,
     status: upstreamStatus,
@@ -186,6 +189,7 @@ export function PreviewContent() {
     lastStartError,
     claimPhase,
     notFound: vmEvents.notFound,
+    userStopped,
   });
 
   // Restart-required strip: surfaces when Settings has saved a
@@ -233,6 +237,7 @@ export function PreviewContent() {
   // Firing here with branch=null uses a different dedup key AND asks the
   // server to generate a fresh branch — that's a different sandbox than the
   // one the page is actually on.
+  // Respect explicit user-stop across component remounts — the module-level `userStoppedVms` flag survives remounts but `autoStartedForTaskRef` resets, so without this gate a navigate-away-and-back would resurrect the killed VM.
   const shouldAutoStart =
     !!taskId &&
     !!virtualMcpId &&
@@ -240,6 +245,7 @@ export function PreviewContent() {
     !!branch &&
     !vmEntry &&
     !lastStartError &&
+    !userStopped &&
     !startVm.isPending &&
     autoStartedForTaskRef.current !== taskId;
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — bridges external state (vmEntry derived from query cache, taskId from router) into a one-shot mutation; no render-time equivalent
@@ -247,7 +253,7 @@ export function PreviewContent() {
     if (!shouldAutoStart || !taskId) return;
     autoStartedForTaskRef.current = taskId;
     triggerStartRef.current("auto-start");
-  }, [shouldAutoStart, taskId]);
+  }, [shouldAutoStart, taskId, userStopped]);
 
   // Self-heal stale vmMap entries (SSE 404 → notFound). Dedup by dead vmId.
   const deadVmId = vmEvents.notFound ? (vmEntry?.vmId ?? null) : null;

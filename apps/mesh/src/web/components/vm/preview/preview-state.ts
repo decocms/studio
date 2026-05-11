@@ -29,6 +29,7 @@ export interface PreviewStateInput {
   lastStartError: string | null;
   claimPhase: ClaimPhaseLike | null;
   notFound: boolean;
+  userStopped: boolean;
 }
 
 export type PreviewState =
@@ -45,6 +46,10 @@ export function computePreviewState(input: PreviewStateInput): PreviewState {
   }
   if (input.suspended || input.appPaused) {
     return { kind: "suspended" };
+  }
+  // User explicitly stopped the VM. Skip the `notFound` / `claimPhase` checks below that would otherwise force `starting-now` while the SSE still emits `gone` and the vmMap invalidation drains.
+  if (input.userStopped) {
+    return { kind: "never-started" };
   }
   if (input.notFound) {
     return { kind: "starting-now" };

@@ -12,6 +12,7 @@ const base: PreviewStateInput = {
   lastStartError: null,
   claimPhase: null,
   notFound: false,
+  userStopped: false,
 };
 
 describe("computePreviewState", () => {
@@ -122,6 +123,7 @@ describe("computePreviewState", () => {
       lastStartError: null,
       claimPhase: null,
       notFound: false,
+      userStopped: false,
     });
     expect(out.kind).toBe("never-started");
   });
@@ -133,5 +135,37 @@ describe("computePreviewState", () => {
       vmStartPending: true,
     });
     expect(out.kind).toBe("starting-now");
+  });
+
+  test("userStopped bypasses notFound and claimPhase → never-started", () => {
+    expect(
+      computePreviewState({
+        ...base,
+        previewUrl: null,
+        userStopped: true,
+        notFound: true,
+        claimPhase: { kind: "claiming" },
+      }),
+    ).toEqual({ kind: "never-started" });
+  });
+
+  test("lastStartError still wins over userStopped", () => {
+    expect(
+      computePreviewState({
+        ...base,
+        userStopped: true,
+        lastStartError: "boom",
+      }),
+    ).toEqual({ kind: "errored", error: "boom" });
+  });
+
+  test("suspended still wins over userStopped", () => {
+    expect(
+      computePreviewState({
+        ...base,
+        userStopped: true,
+        suspended: true,
+      }),
+    ).toEqual({ kind: "suspended" });
   });
 });
