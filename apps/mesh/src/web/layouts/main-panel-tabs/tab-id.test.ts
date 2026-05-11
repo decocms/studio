@@ -38,7 +38,6 @@ describe("isLegacySettingsTab", () => {
 
   test("non-legacy tab ids → false", () => {
     expect(isLegacySettingsTab("automations")).toBe(false);
-    expect(isLegacySettingsTab("env")).toBe(false);
     expect(isLegacySettingsTab("preview")).toBe(false);
     expect(isLegacySettingsTab("git")).toBe(false);
     expect(isLegacySettingsTab(undefined)).toBe(false);
@@ -118,12 +117,6 @@ describe("resolveDefaultTabId", () => {
   test("legacy layout → 'settings'", () => {
     expect(resolveDefaultTabId({ defaultMainView: { type: "layout" } })).toBe(
       "settings",
-    );
-  });
-
-  test("env → 'env'", () => {
-    expect(resolveDefaultTabId({ defaultMainView: { type: "env" } })).toBe(
-      "env",
     );
   });
 
@@ -233,11 +226,11 @@ describe("resolveTabClickTarget", () => {
   test("clicking non-active tab while panel open → clicked id", () => {
     expect(
       resolveTabClickTarget({
-        clickedId: "env",
+        clickedId: "preview",
         activeTab: "settings",
         mainOpen: true,
       }),
-    ).toBe("env");
+    ).toBe("preview");
   });
 
   test("clicking any tab while panel closed → clicked id (open it)", () => {

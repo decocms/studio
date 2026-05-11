@@ -161,7 +161,7 @@ const EXPECTED_REF = composeSandboxRef({
 
 type Metadata = {
   githubRepo: { owner: string; name: string; connectionId: string };
-  runtime: { selected: string; port: string };
+  runtime: { selected: string; port: string; path?: string | null };
   vmMap?: VmMap;
 };
 
@@ -351,6 +351,65 @@ describe("VM_START", () => {
     // Server-stamped; assert recency, not exact value.
     expect(typeof stored?.createdAt).toBe("number");
     expect(stored?.createdAt).toBeGreaterThan(Date.now() - 60_000);
+  });
+
+  it("snapshots metadata.runtime selected/port/path into startedWith", async () => {
+    mockEnsure.mockImplementation(async () => ({
+      handle: "vm_xyz",
+      workdir: "/app",
+      previewUrl: "https://stub.preview/",
+    }));
+    const metadata: Metadata = {
+      ...BASE_METADATA,
+      runtime: { selected: "pnpm", port: "4321", path: "apps/web" },
+    };
+    const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
+    const updateSpy = mock(async () => {});
+    const ctx = makeCtx({ virtualMcp, updateSpy });
+
+    await VM_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx);
+
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+    const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
+    const updated = (updateCall[2] as { metadata: { vmMap: VmMap } }).metadata;
+    const stored = updated.vmMap[USER_ID]?.[BRANCH];
+    expect(stored?.startedWith).toEqual({
+      packageManager: "pnpm",
+      port: "4321",
+      path: "apps/web",
+    });
+  });
+
+  it("snapshots null selected/port/path when metadata.runtime is missing", async () => {
+    mockEnsure.mockImplementation(async () => ({
+      handle: "vm_xyz",
+      workdir: "/app",
+      previewUrl: "https://stub.preview/",
+    }));
+    // detectRepoRuntime probe will run when packageManager is unset; stub
+    // it so it returns null and leaves metadata.runtime unchanged.
+    const metadata = {
+      githubRepo: BASE_METADATA.githubRepo,
+    } as unknown as Metadata;
+    const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
+    const updateSpy = mock(async () => {});
+    const ctx = makeCtx({ virtualMcp, updateSpy });
+
+    await VM_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx);
+
+    // Find the vmMap update (detectRepoRuntime may write a runtime update too).
+    const vmMapCall = (updateSpy.mock.calls as unknown[][]).find((call) => {
+      const meta = (call[2] as { metadata?: { vmMap?: VmMap } }).metadata;
+      return meta?.vmMap?.[USER_ID]?.[BRANCH] !== undefined;
+    });
+    expect(vmMapCall).toBeDefined();
+    const updated = (vmMapCall![2] as { metadata: { vmMap: VmMap } }).metadata;
+    const stored = updated.vmMap[USER_ID]?.[BRANCH];
+    expect(stored?.startedWith).toEqual({
+      packageManager: null,
+      port: null,
+      path: null,
+    });
   });
 
   it("returns isNewVm=false when runner.ensure returns the same handle as the existing entry", async () => {

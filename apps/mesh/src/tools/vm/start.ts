@@ -24,7 +24,11 @@ import {
   requireOrganization,
   type MeshContext,
 } from "../../core/mesh-context";
-import { requireVmEntry, resolveRuntimeConfig } from "./helpers";
+import {
+  requireVmEntry,
+  resolveRuntimeConfig,
+  type RuntimeConfigMeta,
+} from "./helpers";
 import { readVmMap, resolveVm } from "./vm-map";
 import { buildCloneInfo } from "../../shared/github-clone-info";
 import { detectRepoRuntime } from "../../shared/github-runtime-detect";
@@ -318,11 +322,21 @@ async function provisionSandbox(
   const createdAt =
     isResume && existing?.createdAt ? existing.createdAt : Date.now();
 
+  const runtimeSelected =
+    (metadata as RuntimeConfigMeta).runtime?.selected ?? null;
+  const runtimePort = (metadata as RuntimeConfigMeta).runtime?.port ?? null;
+  const runtimePath = (metadata as RuntimeConfigMeta).runtime?.path ?? null;
+
   const entry: VmMapEntry = {
     vmId: sandbox.handle,
     previewUrl: sandbox.previewUrl,
     runnerKind: runner.kind,
     createdAt,
+    startedWith: {
+      packageManager: runtimeSelected,
+      port: runtimePort,
+      path: runtimePath,
+    },
   };
 
   await setVmMapEntry(

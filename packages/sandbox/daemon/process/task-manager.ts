@@ -108,10 +108,10 @@ export interface TaskManagerDeps {
   phaseManager?: PhaseManager;
   /**
    * When provided, tasks with a `logName` mirror their stdout/stderr onto the
-   * global SSE log stream under that name. The env-tab terminal is keyed on
-   * `logName`, so without this the terminal stays empty (only the per-task
-   * subscribers and the on-disk tee see the chunks). The header line
-   * (`$ <label>`) is also broadcast on spawn.
+   * global SSE log stream under that name. The Preview drawer's xterm tabs
+   * key on `logName`, so without this the terminal stays empty (only the
+   * per-task subscribers and the on-disk tee see the chunks). The header
+   * line (`$ <label>`) is also broadcast on spawn.
    */
   broadcaster?: {
     broadcastChunk: (source: string, data: string) => void;

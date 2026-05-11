@@ -8,7 +8,6 @@ describe("SYSTEM_TAB_ICONS", () => {
   test("covers every fixed system tab", () => {
     expect(SYSTEM_TAB_ICONS.settings).toBe(LayoutAlt04);
     expect(SYSTEM_TAB_ICONS.automations).toBe(Lightning01);
-    expect(SYSTEM_TAB_ICONS.env).toBeDefined();
     expect(SYSTEM_TAB_ICONS.preview).toBeDefined();
     expect(SYSTEM_TAB_ICONS.git).toBeDefined();
   });

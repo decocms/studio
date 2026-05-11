@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useInsetContext } from "@/web/layouts/agent-shell-layout";
 import { authClient } from "@/web/lib/auth-client";
-import { useToggleEnvPanel } from "@/web/hooks/use-toggle-env-panel";
 import { useChatTask } from "@/web/components/chat/context";
 import {
   useMCPClient,
@@ -9,7 +8,6 @@ import {
   SELF_MCP_ALIAS_ID,
 } from "@decocms/mesh-sdk";
 
-import type { VmMapEntry } from "@decocms/mesh-sdk";
 import {
   ArrowLeft,
   ArrowRight,
@@ -49,11 +47,35 @@ import {
   vmUserStop,
   type VmStartArgs,
 } from "../hooks/use-vm-start";
-import { VmSuspendedState } from "../vm-suspended-state";
-import { VmBootingState } from "../vm-booting-state";
-import { VmErrorState } from "../vm-error-state";
-import { computePreviewState } from "./preview-state";
+import { computePreviewState, type PreviewState } from "./preview-state";
+import { VmStateCard } from "./state-card";
+import { derivePhaseProgress } from "./derive-phase-progress";
+import { isRestartRequired } from "./restart-required";
+import {
+  PreviewDrawer,
+  readPersistedDrawerOpen,
+  writePersistedDrawerOpen,
+} from "./drawer/drawer";
+import type { DrawerStatus } from "./drawer/toolbar";
+import { invalidateVirtualMcpQueries } from "@/web/lib/query-keys";
+import { useQueryClient } from "@tanstack/react-query";
 import { track } from "@/web/lib/posthog-client";
+
+function drawerStatusFromPreview(
+  state: PreviewState,
+  vmStartPending: boolean,
+): DrawerStatus {
+  if (state.kind === "errored") return "errored";
+  if (state.kind === "suspended") return "suspended";
+  if (state.kind === "starting-now" || vmStartPending) return "starting";
+  if (
+    state.kind === "iframe" ||
+    state.kind === "no-html" ||
+    state.kind === "crashed"
+  )
+    return "running";
+  return "idle";
+}
 
 type PreviewViewMode = "preview" | "visual";
 
@@ -72,7 +94,6 @@ const VIEW_MODE_OPTIONS: [
 export function PreviewContent() {
   const inset = useInsetContext();
   const { data: session } = authClient.useSession();
-  const { openEnv } = useToggleEnvPanel();
   const { taskId, currentBranch: branch, setCurrentTaskBranch } = useChatTask();
 
   // Visual editor state
@@ -83,9 +104,7 @@ export function PreviewContent() {
 
   // vmMap[userId][branch] -> { vmId, previewUrl, runnerKind? }
   const userId = session?.user?.id;
-  const metadata = inset?.entity?.metadata as
-    | { vmMap?: Record<string, Record<string, VmMapEntry>> }
-    | undefined;
+  const metadata = inset?.entity?.metadata;
   const vmEntry =
     userId && branch ? metadata?.vmMap?.[userId]?.[branch] : undefined;
   const previewUrl = vmEntry?.previewUrl ?? null;
@@ -115,7 +134,7 @@ export function PreviewContent() {
   if (previewUrl && htmlSupportRef.current.url !== previewUrl) {
     htmlSupportRef.current = { url: previewUrl, value: false };
   }
-  if (lifecyclePhase === "running") {
+  if (vmEvents.lifecycle.phase === "running") {
     htmlSupportRef.current.value = vmEvents.lifecycle.htmlSupport;
   }
   const hasHtmlPreview = htmlSupportRef.current.value;
@@ -130,28 +149,10 @@ export function PreviewContent() {
   // Only the user-pause state routes to the suspended overlay (resume
   // affordance). The daemon's `error` state means the dev script crashed
   // — that's a failure, surfaced via the booting overlay's retry button
-  // (gated on `lifecycle.phase ∈ {clone-failed, install-failed, start-failed}`).
-  // Lumping the two under `appPaused` would route every dev-script crash
-  // to the resume UI instead, which has no retry path.
+  // (gated on `lifecycle.phase ∈ {clone-failed, install-failed, start-failed,
+  // crashed}`). Lumping the two would route every dev-script crash to the
+  // resume UI, which has no retry path.
   const appPaused = vmEvents.status.state === "paused";
-
-  // Latch the boot-overlay timer's `since` to the first time previewUrl
-  // appeared, keyed on previewUrl so a new VM resets it. Rendering inline
-  // with a `Date.now()` fallback would reset the elapsed reading on every
-  // render whenever vmEntry.createdAt is missing.
-  const bootSinceRef = useRef<{ url: string; at: number }>({ url: "", at: 0 });
-  if (previewUrl && bootSinceRef.current.url !== previewUrl) {
-    bootSinceRef.current = {
-      url: previewUrl,
-      at: vmEntry?.createdAt ?? Date.now(),
-    };
-  }
-
-  // Cover the gap between VM_START being submitted and vmMap populating a
-  // previewUrl; otherwise the empty "No server running" state flashes while
-  // the mutation is in flight. Capture the timestamp once per pending window
-  // so the LiveTimer's elapsed reading is stable across renders.
-  const startingSinceRef = useRef<number>(0);
 
   // One mutation, two triggers. Dedup differs by meaning:
   //   auto-start: once per taskId
@@ -170,15 +171,18 @@ export function PreviewContent() {
     virtualMcpId ?? undefined,
     branch ?? undefined,
   );
-  if (vmStartPending) {
-    if (!startingSinceRef.current) startingSinceRef.current = Date.now();
-  } else if (previewUrl) {
-    startingSinceRef.current = 0;
-  }
   const autoStartedForTaskRef = useRef<string | null>(null);
   const reprovisionedForVmIdRef = useRef<string | null>(null);
 
   const claimPhase = vmEvents.phase;
+
+  const progress = derivePhaseProgress({
+    claimPhase,
+    lifecycle: vmEvents.lifecycle,
+  });
+
+  const userStopped =
+    !!virtualMcpId && !!branch && vmUserStop.isStopped(virtualMcpId, branch);
 
   const previewState = computePreviewState({
     previewUrl,
@@ -190,6 +194,34 @@ export function PreviewContent() {
     lastStartError,
     claimPhase,
     notFound: vmEvents.notFound,
+    userStopped,
+  });
+
+  // Restart-required strip: surfaces when Settings has saved any
+  // `metadata.runtime` field (selected/port/path) that differs from the
+  // value the running daemon was started with (`vmEntry.startedWith`).
+  // Only shows while the VM is actually running so we don't nag during
+  // boot/error/idle.
+  const liveRuntime = {
+    selected: metadata?.runtime?.selected ?? null,
+    port: metadata?.runtime?.port ?? null,
+    path: metadata?.runtime?.path ?? null,
+  };
+  const startedWith = vmEntry?.startedWith;
+  const startedRuntime = startedWith
+    ? {
+        packageManager: startedWith.packageManager ?? null,
+        port: startedWith.port ?? null,
+        path: startedWith.path ?? null,
+      }
+    : undefined;
+  const isRunning =
+    previewState.kind === "iframe" || previewState.kind === "no-html";
+  const restartRequired = isRestartRequired({
+    liveRuntime,
+    startedRuntime,
+    hasEntry: !!vmEntry,
+    isRunning,
   });
 
   // ref-latest pattern: effects below depend only on upstream signals, not
@@ -223,6 +255,7 @@ export function PreviewContent() {
   // Firing here with branch=null uses a different dedup key AND asks the
   // server to generate a fresh branch — that's a different sandbox than the
   // one the page is actually on.
+  // Respect explicit user-stop across component remounts — the module-level `userStoppedVms` flag survives remounts but `autoStartedForTaskRef` resets, so without this gate a navigate-away-and-back would resurrect the killed VM.
   const shouldAutoStart =
     !!taskId &&
     !!virtualMcpId &&
@@ -230,6 +263,7 @@ export function PreviewContent() {
     !!branch &&
     !vmEntry &&
     !lastStartError &&
+    !userStopped &&
     !startVm.isPending &&
     autoStartedForTaskRef.current !== taskId;
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — bridges external state (vmEntry derived from query cache, taskId from router) into a one-shot mutation; no render-time equivalent
@@ -237,7 +271,7 @@ export function PreviewContent() {
     if (!shouldAutoStart || !taskId) return;
     autoStartedForTaskRef.current = taskId;
     triggerStartRef.current("auto-start");
-  }, [shouldAutoStart, taskId]);
+  }, [shouldAutoStart, taskId, userStopped]);
 
   // Self-heal stale vmMap entries (SSE 404 → notFound). Dedup by dead vmId.
   const deadVmId = vmEvents.notFound ? (vmEntry?.vmId ?? null) : null;
@@ -257,6 +291,63 @@ export function PreviewContent() {
     autoStartedForTaskRef.current = null;
     reprovisionedForVmIdRef.current = null;
     startVm.reset();
+    triggerStartRef.current("auto-start");
+  };
+
+  // Drawer state — open + height live here so state cards (Task 9) and the
+  // "View logs" buttons can request the drawer to open.
+  const queryClient = useQueryClient();
+  const drawerStorageKey = virtualMcpId ?? "__no-vmcp__";
+  // `null` = not yet hydrated for this VM. We hydrate (and re-hydrate on
+  // VM switch) via a render-time setState gated by `lastHydratedKeyRef`,
+  // so the stored value always tracks the *current* `drawerStorageKey`.
+  // Without this, `useState`'s init callback would freeze the initial
+  // key — if `virtualMcpId` was undefined at mount, the state would
+  // forever reflect the `__no-vmcp__` slot. React bails on equal state,
+  // and this is the idiomatic "derive state from a prop change" pattern
+  // in this codebase (useEffect is banned for this).
+  const [drawerOpen, setDrawerOpen] = useState<boolean | null>(null);
+  const lastHydratedKeyRef = useRef<string | null>(null);
+  if (lastHydratedKeyRef.current !== drawerStorageKey) {
+    lastHydratedKeyRef.current = drawerStorageKey;
+    setDrawerOpen(readPersistedDrawerOpen(drawerStorageKey));
+  }
+  // Collapse to toolbar-only when the sandbox isn't running. Covers Stop
+  // (transitions to never-started via vmUserStop) and the initial idle
+  // state. Persisted preference is untouched so the drawer restores to
+  // the user's last open/closed state once the sandbox boots again.
+  // `null` (pre-hydration) is treated as closed so the drawer doesn't
+  // flash open before the right key's value is read.
+  const drawerOpenEffective =
+    previewState.kind === "never-started" ? false : (drawerOpen ?? false);
+
+  const handleDrawerOpenChange = (next: boolean) => {
+    setDrawerOpen(next);
+    writePersistedDrawerOpen(drawerStorageKey, next);
+  };
+
+  const openDrawer = () => handleDrawerOpenChange(true);
+
+  // Stop / restart. VM_DELETE is best-effort; the vmMap query refetch is
+  // what actually flips the UI to idle.
+  const handleStop = async () => {
+    if (!virtualMcpId) return;
+    const branchToStop = branch;
+    if (!branchToStop) return;
+    vmUserStop.mark(virtualMcpId, branchToStop);
+    try {
+      await mcpClient.callTool({
+        name: "VM_DELETE",
+        arguments: { virtualMcpId, branch: branchToStop },
+      });
+    } catch {
+      // Best effort
+    }
+    invalidateVirtualMcpQueries(queryClient);
+  };
+
+  const handleRestart = async () => {
+    await handleStop();
     triggerStartRef.current("auto-start");
   };
 
@@ -338,6 +429,16 @@ export function PreviewContent() {
 
   return (
     <div className="flex flex-col w-full h-full">
+      {restartRequired && (
+        <div className="flex h-9 shrink-0 items-center justify-between gap-3 border-b border-amber-500/40 bg-amber-500/10 px-4 text-xs">
+          <span className="text-amber-700">
+            ⓘ Settings changed — restart to apply
+          </span>
+          <Button size="sm" onClick={handleRestart}>
+            <RefreshCw01 className="size-3.5" /> Restart now
+          </Button>
+        </div>
+      )}
       {previewState.kind === "iframe" && (
         <div className="flex h-12 shrink-0 items-center gap-4 border-b border-border/60 px-3 md:px-4">
           {/* Group 1: view mode toggle */}
@@ -436,50 +537,53 @@ export function PreviewContent() {
       )}
 
       <div className="flex-1 relative overflow-hidden">
-        {previewState.kind === "idle" && (
-          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-background">
-            <Monitor04 size={48} className="text-muted-foreground/40" />
-            <h3 className="text-lg font-medium">Preview</h3>
-            <p className="text-sm text-muted-foreground text-center max-w-sm">
-              Start the development server to see a live preview
-            </p>
-            <Button onClick={openEnv}>
-              <Server01 size={14} />
-              Start Server
-            </Button>
+        {previewState.kind === "never-started" && (
+          <div className="absolute inset-0 z-30">
+            <VmStateCard
+              kind="never-started"
+              onStart={() => {
+                // Force the drawer closed so transitioning out of
+                // never-started doesn't unmask a persisted "open" preference
+                // and visually toggle the setup tab button.
+                handleDrawerOpenChange(false);
+                triggerStart("auto-start");
+              }}
+            />
           </div>
         )}
 
-        {previewState.kind === "error" && (
-          <div className="absolute inset-0 z-40 flex items-center justify-center bg-background">
-            <VmErrorState
-              errorMsg={previewState.error}
+        {previewState.kind === "starting-now" && (
+          <div className="absolute inset-0 z-30">
+            <VmStateCard
+              kind="starting-now"
+              progress={progress}
+              claimPhase={claimPhase}
+            />
+          </div>
+        )}
+
+        {previewState.kind === "errored" && (
+          <div className="absolute inset-0 z-40">
+            <VmStateCard
+              kind="errored"
+              progress={progress}
+              logSource="setup"
+              errorLine={previewState.error.split("\n")[0] ?? "Failed to start"}
               onRetry={retryAutoStart}
+              drawerOpen={drawerOpenEffective}
             />
           </div>
         )}
 
         {previewState.kind === "suspended" && (
-          <div className="absolute inset-0 z-30 bg-background/80 backdrop-blur-sm">
-            <VmSuspendedState onResume={openEnv} />
+          <div className="absolute inset-0 z-30">
+            <VmStateCard kind="suspended" onResume={retryAutoStart} />
           </div>
         )}
 
-        {previewState.kind === "booting" && (
-          <div className="absolute inset-0 z-30 flex items-center justify-center bg-background">
-            <VmBootingState
-              since={
-                previewUrl ? bootSinceRef.current.at : startingSinceRef.current
-              }
-              hasSetupData={vmEvents.hasData("setup")}
-              scripts={vmEvents.scripts}
-              activeProcesses={vmEvents.activeProcesses}
-              onViewLogs={openEnv}
-              claimPhase={previewUrl ? null : claimPhase}
-              onRetry={retryAutoStart}
-              virtualMcpId={virtualMcpId}
-              branch={branch}
-            />
+        {previewState.kind === "crashed" && (
+          <div className="absolute inset-0 z-30">
+            <VmStateCard kind="crashed" onOpenTerminal={openDrawer} />
           </div>
         )}
 
@@ -491,7 +595,7 @@ export function PreviewContent() {
               The server is running, but doesn't serve a web page at /. This
               preview only renders web pages.
             </p>
-            <Button onClick={openEnv}>
+            <Button onClick={openDrawer}>
               <Server01 size={14} />
               View Logs
             </Button>
@@ -535,6 +639,25 @@ export function PreviewContent() {
           />
         )}
       </div>
+      <PreviewDrawer
+        // key forces a fresh drawer on each new VM so per-tab state
+        // (active tab, scriptTabs, killingScripts, the auto-open ref)
+        // resets cleanly without per-state reset plumbing.
+        key={vmEntry?.vmId ?? "no-vm"}
+        vmId={vmEntry?.vmId ?? null}
+        orgSlug={org.slug}
+        virtualMcpId={virtualMcpId}
+        branch={branch}
+        status={drawerStatusFromPreview(previewState, vmStartPending)}
+        scripts={vmEvents.scripts}
+        open={drawerOpenEffective}
+        onOpenChange={handleDrawerOpenChange}
+        onStart={() => triggerStart("auto-start")}
+        onStop={handleStop}
+        onRestart={handleRestart}
+        onResume={retryAutoStart}
+        onRetry={retryAutoStart}
+      />
     </div>
   );
 }

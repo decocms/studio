@@ -360,6 +360,7 @@ function PickerContent({
                   defaultMainView: {
                     type: "preview",
                   },
+                  chatDefaultOpen: true,
                 },
               },
             },

@@ -14,7 +14,6 @@ import { useMainPanelTabs } from "./use-main-panel-tabs";
 import { SettingsTab } from "./settings-tab";
 import { GitTab } from "@/web/components/thread/github/git-tab";
 import { PreviewTab } from "./preview-tab";
-import { EnvTab } from "./env-tab";
 import { AutomationTab } from "./automation-tab";
 import { AutomationsListTab } from "./automations-list-tab";
 import { isLegacySettingsTab, parsePinnedViewTabId } from "./tab-id";
@@ -46,9 +45,6 @@ export function MainPanelContent({
   }
   if (activeTab === "automations") {
     return <AutomationsListTab virtualMcpId={virtualMcpId} />;
-  }
-  if (activeTab === "env") {
-    return <EnvTab virtualMcpId={virtualMcpId} />;
   }
   if (activeTab === "preview") {
     return <PreviewTab virtualMcpId={virtualMcpId} />;

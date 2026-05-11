@@ -147,12 +147,11 @@ export function useMainPanelTabs(ctx: {
 
   // Unified "settings" tab bundles instructions, connections, and layout
   // into a single detail view. On GitHub-linked vMCPs the contextual
-  // work tabs (Preview, Terminal, git) come first so they're closest
-  // to the panel; Settings + Automations stay anchored at the right.
+  // work tabs (Preview, git) come first so they're closest to the panel;
+  // Settings + Automations stay anchored at the right.
   const systemTabs: Array<{ id: string; title: string }> = [];
   if (hasActiveGithubRepo) {
     systemTabs.push({ id: "preview", title: "Preview" });
-    systemTabs.push({ id: "env", title: "Terminal" });
     systemTabs.push({ id: "git", title: currentBranch ?? "git" });
   }
   systemTabs.push({ id: "settings", title: "Settings" });

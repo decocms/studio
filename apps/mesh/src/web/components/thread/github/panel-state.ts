@@ -1,6 +1,22 @@
-import type { BranchStatus } from "./use-branch-status";
+import type { BranchMeta, LifecycleState } from "@decocms/sandbox/shared";
+import type { ClaimPhase } from "@/web/components/vm/hooks/vm-events-context";
+import { CLAIM_PHASE_COPY } from "@/web/components/vm/claim-phase-copy";
 import type { CheckRun, PrSummary } from "./use-pr-data.ts";
 import type { PrReviewSignals } from "./use-pr-reviews.ts";
+
+/**
+ * Header copy for claim-phase variants while lifecycle is still `idle`.
+ * `claiming` is intentionally excluded (too brief and indistinct from
+ * no-claim-phase) and falls through to the generic "Starting sandbox…".
+ * `ready` and `failed` are not in `CLAIM_PHASE_COPY` for the reasons
+ * documented there; both also fall through here.
+ */
+function idleClaimCopy(kind: ClaimPhase["kind"]): string | undefined {
+  if (kind === "claiming" || kind === "ready" || kind === "failed") {
+    return undefined;
+  }
+  return CLAIM_PHASE_COPY[kind].short;
+}
 
 /**
  * Descriptor returned by selectHeaderButton. Callers translate action →
@@ -58,16 +74,22 @@ function isCheckInProgress(c: CheckRun): boolean {
   return c.status === "queued" || c.status === "in_progress";
 }
 
-export function selectHeaderButton(input: {
-  branchStatus: BranchStatus | null;
+export interface SelectHeaderButtonInput {
+  lifecycle: LifecycleState;
+  branch: BranchMeta;
+  claimPhase: ClaimPhase | null;
   pr: PrSummary | null;
   checks: CheckRun[];
   reviews: PrReviewSignals | null;
   loading?: boolean;
-}): HeaderButton {
-  const { branchStatus, pr, checks, reviews, loading } = input;
+}
 
-  if (!branchStatus || loading) {
+export function selectHeaderButton(
+  input: SelectHeaderButtonInput,
+): HeaderButton {
+  const { lifecycle, branch, pr, checks, reviews, loading } = input;
+
+  if (loading) {
     return {
       label: "Loading…",
       disabled: true,
@@ -77,15 +99,26 @@ export function selectHeaderButton(input: {
     };
   }
 
-  switch (branchStatus.kind) {
-    case "initializing":
+  // Git operations work on the cloned repo, not on the dev server. So
+  // the header tracks the lifecycle ONLY through clone/checkout — the
+  // post-clone phases (installing / starting / running / *-failed /
+  // crashed) intentionally fall through to the git/PR copy below. The
+  // user can commit fixes for a broken install or push a hotfix while
+  // the dev server is down; we don't want to block those flows on
+  // sandbox health.
+  switch (lifecycle.phase) {
+    case "idle": {
+      const label =
+        (input.claimPhase && idleClaimCopy(input.claimPhase.kind)) ||
+        "Starting sandbox…";
       return {
-        label: "Starting sandbox…",
+        label,
         disabled: true,
         loading: true,
         variant: "outline",
         tooltip: "Waiting for the sandbox daemon to come online",
       };
+    }
     case "cloning":
       return {
         label: "Cloning repo…",
@@ -99,34 +132,33 @@ export function selectHeaderButton(input: {
         label: "Clone failed",
         disabled: true,
         variant: "outline",
-        tooltip: branchStatus.error || "git clone failed — see setup logs",
+        tooltip: lifecycle.error || "git clone failed — see setup logs",
       };
     case "checking-out":
       return {
-        label: `Switching to ${branchStatus.to}…`,
+        label: `Switching to ${lifecycle.to}…`,
         disabled: true,
         loading: true,
         variant: "outline",
-        tooltip: `Checking out ${branchStatus.to}`,
+        tooltip: `Checking out ${lifecycle.to}`,
       };
-    case "checkout-failed":
-      return {
-        label: "Checkout failed",
-        disabled: true,
-        variant: "outline",
-        tooltip: branchStatus.error || "git checkout failed — see setup logs",
-      };
-    case "ready":
-      break;
-    default: {
-      const _exhaustive: never = branchStatus;
-      void _exhaustive;
-      break;
-    }
+    // installing / starting / running / install-failed / start-failed /
+    // crashed: intentionally fall through to git/PR logic below.
   }
 
-  // From here on, branchStatus.kind === "ready" — narrow it.
-  const ready = branchStatus;
+  // Brief window after checkout completes but before the daemon emits
+  // its first `branch` event with computed git metadata. Defensive —
+  // the daemon emits it within a few hundred ms of checkout.
+  if (branch.kind !== "ready") {
+    return {
+      label: "Loading branch…",
+      disabled: true,
+      loading: true,
+      variant: "outline",
+      tooltip: "Waiting for branch metadata from the sandbox daemon",
+    };
+  }
+  const ready = branch;
 
   const hasLocalWork = ready.workingTreeDirty || ready.unpushed > 0;
   if (hasLocalWork) {
