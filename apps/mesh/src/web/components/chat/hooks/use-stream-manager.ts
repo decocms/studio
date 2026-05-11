@@ -1,7 +1,21 @@
 /**
  * useStreamManager — task-scoped SSE subscription + stream resume logic.
  *
- * Listens for SSE events on the active task and resumes disconnected streams.
+ * Owns every decision about *when* to call `chat.resumeStream()`. Three
+ * triggers feed in:
+ *
+ *   1. Mount / task switch with a server-side in-flight run
+ *   2. `decopilot.step` events on the org-wide watch SSE (the run made
+ *      progress server-side — pick the stream back up to render it)
+ *   3. `chat.status` transitioning to "error" when the cause looks like a
+ *      mid-stream connection cut (proxy idle/duration timeout, TCP RST,
+ *      mid-byte UTF-8 truncation). The watch SSE is on a separate socket
+ *      and may be in reconnect at the same moment, so we can't rely on
+ *      it to deliver the next step event in a timely way.
+ *
+ * All three go through the same `tryResumeStream` gate (in-flight guard +
+ * retry cap + active-chat check), so concurrent triggers can't fire two
+ * /attach requests for the same task.
  */
 
 import { useRef, useSyncExternalStore } from "react";
@@ -14,12 +28,40 @@ import type { ChatMessage } from "../types";
 
 const MAX_RESUME_RETRIES = 3;
 
+/**
+ * Discriminates "the wire broke" from "the server told us something is
+ * wrong". The browser's fetch / Web Streams APIs throw `TypeError` for
+ * every transport-level failure (TCP RST mid-stream, mid-byte UTF-8
+ * truncation by `TextDecoderStream`, network unreachable, ...). The AI
+ * SDK funnels server-emitted error chunks through `new Error(chunkText)`
+ * and HTTP-error responses through `new Error(responseText)` — both plain
+ * `Error`, not `TypeError`. AbortError is filtered by the AI SDK before
+ * `chat.error` is populated, so explicit user stops never land here.
+ *
+ * Keeping this as an `instanceof` check (vs. matching browser-specific
+ * message strings like "network error" / "Error in input stream" / "Load
+ * failed") makes the discriminator browser-agnostic and avoids a
+ * message-catalog that has to be kept in sync with browser releases.
+ *
+ * Auto-retrying app-level errors would be actively harmful: the credits
+ * banner keys off the `[CREDITS]` prefix from `sanitizeStreamError`, and
+ * if we cleared and re-set `chatError` while resuming through buffered
+ * chunks the user would see it flicker on-and-off instead of staying
+ * stable with the inline top-up.
+ */
+function isTransientStreamError(error: Error): boolean {
+  return error instanceof TypeError;
+}
+
+const isRunInProgressStatus = (s: ThreadDisplayStatus | undefined): boolean =>
+  s === "in_progress" || s === "expired";
+
 export function useStreamManager(
   threadId: string,
   chat: UseChatHelpers<ChatMessage>,
   threadStatus: ThreadDisplayStatus | undefined,
   onResumeSuccess?: () => void,
-) {
+): void {
   const { locator, org } = useProjectContext();
   const queryClient = useQueryClient();
 
@@ -153,4 +195,23 @@ export function useStreamManager(
       }
     },
   });
+
+  // Detect `chat.status` transitioning *into* "error" with a transient-looking
+  // cause while the server still says the run is in-flight, and fire a resume.
+  // Detection happens in render (compare current vs. ref-tracked previous);
+  // the resume itself is deferred to a microtask so React's commit completes
+  // before we kick off another fetch. Reading status from the ref keeps the
+  // detection idempotent across re-renders — only true status *transitions*
+  // queue a resume, not every render while status === "error".
+  const prevChatStatusRef = useRef(chat.status);
+  if (
+    prevChatStatusRef.current !== "error" &&
+    chat.status === "error" &&
+    chat.error &&
+    isTransientStreamError(chat.error) &&
+    isRunInProgressStatus(threadStatus)
+  ) {
+    queueMicrotask(() => tryResumeStreamRef.current("on-stream-error"));
+  }
+  prevChatStatusRef.current = chat.status;
 }

@@ -1054,10 +1054,10 @@ export function ActiveTaskProvider({
     messages.length > 0;
 
   // Stream manager (SSE + resume) — task-scoped.
-  // The `onResumeSuccess` clears `chatError` so the "network error" banner
-  // disappears once a silent resume picks the stream back up. Without this,
-  // a single transient disconnect leaves a sticky banner even after the
-  // resumed run finishes successfully.
+  // Owns every "should we resume?" decision: mount, watch-SSE step events,
+  // and mid-stream connection cuts on the chat fetch itself. The
+  // `onResumeSuccess` clears `chatError` so the "network error" banner
+  // disappears once a silent resume picks the stream back up.
   useStreamManager(taskId, chat, thread?.status, () => setChatError(null));
 
   // sendMessage — captures context at call time
