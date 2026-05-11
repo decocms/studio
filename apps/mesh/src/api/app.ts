@@ -38,10 +38,7 @@ import authRoutes from "./routes/auth";
 import { createSsoRoutes } from "./routes/org-sso";
 import { createDecopilotRoutes } from "./routes/decopilot";
 import { createDownstreamTokenRoutes } from "./routes/downstream-token";
-import {
-  createLogDeprecatedRoute,
-  logDeprecatedRoute,
-} from "./middleware/log-deprecated-route";
+import { logDeprecatedRoute } from "./middleware/log-deprecated-route";
 import { resolveOrgFromPath } from "./middleware/resolve-org-from-path";
 import { createOrgScopedApi } from "./routes/org-scoped";
 import { createVmEventsRoutes } from "./routes/vm-events";
@@ -1721,17 +1718,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Org-scoped deco-sites routes (GET /, POST /connection). Currently mounted
   // at /api/deco-sites with a deprecation log; the new /api/:org/deco-sites
   // mount is wired in a later task.
-  // The permanent user-scoped sub-app above shares this mount prefix, so its
-  // /profile route is excluded to prevent false-positive deprecation logs.
   const legacyDecoSitesOrg = new Hono<{
     Variables: { meshContext: MeshContext };
   }>();
-  legacyDecoSitesOrg.use(
-    "*",
-    createLogDeprecatedRoute({
-      permanentSiblings: new Set(["/api/deco-sites/profile"]),
-    }),
-  );
+  legacyDecoSitesOrg.use("*", logDeprecatedRoute);
   legacyDecoSitesOrg.route("/", createDecoSitesOrgRoutes());
   app.route("/api/deco-sites", legacyDecoSitesOrg);
 
