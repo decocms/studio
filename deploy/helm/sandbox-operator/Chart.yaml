@@ -8,7 +8,7 @@ description: |
   live in this chart — see deploy/helm/sandbox-env for those.
 type: application
 # Chart version is independent of upstream agent-sandbox. Bump on any change.
-version: 0.1.1
+version: 0.1.2
 # Tracks the upstream agent-sandbox release pinned by vendor.sh.
 appVersion: "0.4.5"
 kubeVersion: ">=1.30.0-0"
