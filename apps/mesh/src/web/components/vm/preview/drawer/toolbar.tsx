@@ -332,13 +332,6 @@ function AddScriptButton({
   );
 }
 
-/**
- * Per-script Run / Restart / Stop controls. Renders only on a non-setup
- * active tab. Mirrors origin/main env.tsx semantics:
- *   - not running          → [▶ Run]
- *   - running, not killing → [↻ Restart]  +  chevron menu { Stop }
- *   - kill in flight       → [⏳ Stopping…] disabled
- */
 function ScriptControls({
   isRunning,
   isKilling,
@@ -370,32 +363,13 @@ function ScriptControls({
     );
   }
   return (
-    <div className="flex items-center">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onRun}
-            className="rounded-r-none border-r-0"
-          >
-            <RefreshCw01 className="size-3.5" /> Restart
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>Restart process</TooltipContent>
-      </Tooltip>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" className="rounded-l-none px-1">
-            <ChevronDown className="size-3" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={onStop}>
-            <StopCircle className="size-3.5" /> Stop
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="outline" size="sm" onClick={onStop}>
+          <StopCircle className="size-3.5" /> Stop
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>Stop process</TooltipContent>
+    </Tooltip>
   );
 }
