@@ -55,18 +55,7 @@ resources:
     memory: 4Gi
     ephemeral-storage: 10Gi
 
-# ── netinit image (iptables init container) ───────────────────────────
-# Pre-built Alpine image with iptables + ip6tables baked in. Avoids the
-# `apk add` at pod startup that would require outbound internet access to
-# Alpine mirrors during the security-critical init phase. Built and pushed
-# to GHCR by .github/workflows/release-sandbox-netinit.yaml; version is
-# controlled by deploy/helm/sandbox-env/image/VERSION.
-netinit:
-  image: ghcr.io/decocms/studio/sandbox-netinit
-  tag: "1.0.0"
-  pullPolicy: IfNotPresent
-
-# ── sandbox egress enforcement (iptables init container) ──────────────
+# ── netinit / sandbox egress enforcement ──────────────────────────────
 # Sandbox pods run user code and must not reach in-cluster services.
 # Enforcement is via an iptables init container rather than a Kubernetes
 # NetworkPolicy. Reason: AWS VPC CNI NP agent v1.3.x attaches eBPF TC
@@ -77,18 +66,64 @@ netinit:
 # The init container runs with NET_ADMIN, programs iptables in the pod
 # network namespace, then exits — user code never holds NET_ADMIN.
 #
-# Additional IPv4 CIDRs to block beyond the hardcoded base set (RFC1918,
-# link-local, IMDS, shared address space). IPv4 only — the init container
-# passes these to `iptables`, not `ip6tables`. Use this when the cluster's
-# pod or service CIDR falls outside the base set — e.g. GKE with a custom
-# secondary range, or any cluster whose pod CIDR you want to block explicitly.
-# Values must be valid CIDR notation (e.g. "192.0.2.0/24"); malformed entries
-# will cause `iptables` to exit non-zero, failing the init container (and
-# therefore the sandbox pod — the fail-closed outcome is intentional).
-#
-# additionalBlockCIDRs:
-#   - 192.0.2.0/24
-additionalBlockCIDRs: []
+# The netinit image is a pre-built Alpine with iptables + ip6tables baked
+# in. Avoids `apk add` at pod startup that would require outbound internet
+# access to Alpine mirrors during the security-critical init phase. Built
+# and pushed to GHCR by .github/workflows/release-sandbox-netinit.yaml;
+# version is controlled by deploy/helm/sandbox-env/image/VERSION.
+netinit:
+  # Set to false to skip the iptables init container AND the AWS VPC CNI
+  # opt-out annotation. Self-hosters who plan to enforce egress via their
+  # own NetworkPolicy / CNI / external firewall should set this to false —
+  # leaving it true would clear any NP that selects the pod (because the
+  # annotation tells AWS VPC CNI to skip the pod) AND apply iptables on
+  # top, which may conflict with the operator's intended posture.
+  enabled: true
+
+  image: ghcr.io/decocms/studio/sandbox-netinit
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+
+  # IPv4 destination CIDRs the init container REJECTs before the
+  # port-based ACCEPT rules fire. Defaults cover RFC1918 (in-cluster pod
+  # and Service ranges on most clusters), AWS IMDS / link-local, and
+  # RFC 6598 shared address space.
+  #
+  # Override the full list if your cluster's pod/Service CIDR sits
+  # outside these ranges — e.g. a custom GKE secondary range, or a
+  # self-hosted cluster on a 100.x VPC where 10.0.0.0/8 is legitimate
+  # external traffic and you want sandboxes to reach it. Values must be
+  # valid CIDR notation; iptables exits non-zero on malformed entries,
+  # failing the init container (the fail-closed outcome is intentional).
+  blockCIDRs:
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+    - 169.254.0.0/16
+    - 100.64.0.0/10
+
+  # IPv6 destination CIDRs to REJECT. Skipped automatically on
+  # IPv4-only nodes (where ip6tables isn't loadable). Defaults cover
+  # link-local, ULA (covers in-cluster IPv6 Service ranges and most
+  # IPv6 pod CIDRs), and the AWS IPv6 IMDS prefix.
+  blockCIDRsIPv6:
+    - fe80::/10
+    - fc00::/7
+    - fd00:ec2::/96
+
+  # Outbound TCP destination ports allowed by the init container.
+  # 443 covers HTTPS (bun install, git clone over HTTPS, external APIs);
+  # 53 covers DNS-over-TCP for large responses.
+  allowedTCPPorts:
+    - 53
+    - 443
+
+  # Outbound UDP destination ports allowed by the init container.
+  # 53 covers DNS lookups — see dnsConfig.nameservers below; sandboxes
+  # bypass the in-cluster kube-dns Service and resolve via public
+  # resolvers so kube-dns being in blockCIDRs doesn't break resolution.
+  allowedUDPPorts:
+    - 53
 
 # ── sandbox-pod scheduling ─────────────────────────────────────────────
 # Pin sandbox pods to a dedicated NodePool so a container escape lands on

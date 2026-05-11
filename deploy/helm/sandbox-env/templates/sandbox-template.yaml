@@ -29,6 +29,18 @@ spec:
   networkPolicyManagement: Unmanaged
   podTemplate:
     metadata:
+      {{- if .Values.netinit.enabled }}
+      annotations:
+        # AWS VPC CNI opt-out: skip eBPF TC hook attachment on sandbox pods.
+        # The iptables init container is the enforcement path; an eBPF hook
+        # in POLICIES_APPLIED mode would break conntrack for UDP DNS and
+        # mid-stream TCP. Harmless no-op on non-EKS CNIs (kindnet, Calico,
+        # Cilium). See deploy/helm/sandbox-env/NP-INVESTIGATION.md.
+        # Gated on netinit.enabled so self-hosters who disable the init
+        # container can layer their own NetworkPolicy without AWS VPC CNI
+        # skipping the pod and silently leaving it unenforced.
+        vpc.amazonaws.com/v1alpha1.network-policy-enforcement: "disabled"
+      {{- end }}
       labels:
         # Per-env name so each env's NetworkPolicy podSelector matches only
         # its own pods. Mesh runner stamps the same value via
@@ -82,6 +94,7 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
+      {{- if .Values.netinit.enabled }}
       initContainers:
         - name: setup-netpol
           image: "{{ .Values.netinit.image }}:{{ .Values.netinit.tag }}"
@@ -91,33 +104,42 @@ spec:
             - -c
             - |
               set -e
-              # IPv4: block private ranges, IMDS, and shared address space first so
-              # the port-53/443 ACCEPTs below never fire for in-cluster destinations.
-              iptables -A OUTPUT -d 10.0.0.0/8     -j REJECT
-              iptables -A OUTPUT -d 172.16.0.0/12  -j REJECT
-              iptables -A OUTPUT -d 192.168.0.0/16 -j REJECT
-              iptables -A OUTPUT -d 169.254.0.0/16 -j REJECT
-              iptables -A OUTPUT -d 100.64.0.0/10  -j REJECT
-              {{- range .Values.additionalBlockCIDRs }}
+              # IPv4: block private ranges first so the port-based ACCEPTs
+              # below never fire for in-cluster destinations.
+              {{- range .Values.netinit.blockCIDRs }}
               iptables -A OUTPUT -d {{ . | quote }} -j REJECT
               {{- end }}
-              iptables -A OUTPUT -p udp --dport 53  -j ACCEPT
-              iptables -A OUTPUT -p tcp --dport 53  -j ACCEPT
-              iptables -A OUTPUT -p tcp --dport 443 -j ACCEPT
-              iptables -A OUTPUT -o lo              -j ACCEPT
-              iptables -A OUTPUT                    -j REJECT
-              # IPv6: block link-local, ULA (covers in-cluster Service ranges), and
-              # the AWS IPv6 IMDS prefix so dual-stack pods cannot bypass IPv4 rules.
-              # Skipped gracefully on kernels/nodes without IPv6 netfilter support.
+              {{- range .Values.netinit.allowedUDPPorts }}
+              iptables -A OUTPUT -p udp --dport {{ . }} -j ACCEPT
+              {{- end }}
+              {{- range .Values.netinit.allowedTCPPorts }}
+              iptables -A OUTPUT -p tcp --dport {{ . }} -j ACCEPT
+              {{- end }}
+              iptables -A OUTPUT -o lo -j ACCEPT
+              iptables -A OUTPUT -j REJECT
+              # IPv6: skipped gracefully on kernels / nodes without IPv6
+              # netfilter support so single-stack-IPv4 clusters stay clean.
               if ip6tables -L > /dev/null 2>&1; then
-                ip6tables -A OUTPUT -d fe80::/10     -j REJECT
-                ip6tables -A OUTPUT -d fc00::/7      -j REJECT
-                ip6tables -A OUTPUT -d fd00:ec2::/96 -j REJECT
-                ip6tables -A OUTPUT -p udp --dport 53  -j ACCEPT
-                ip6tables -A OUTPUT -p tcp --dport 53  -j ACCEPT
-                ip6tables -A OUTPUT -p tcp --dport 443 -j ACCEPT
-                ip6tables -A OUTPUT -o lo              -j ACCEPT
-                ip6tables -A OUTPUT                    -j REJECT
+                {{- range .Values.netinit.blockCIDRsIPv6 }}
+                ip6tables -A OUTPUT -d {{ . | quote }} -j REJECT
+                {{- end }}
+                {{- range .Values.netinit.allowedUDPPorts }}
+                ip6tables -A OUTPUT -p udp --dport {{ . }} -j ACCEPT
+                {{- end }}
+                {{- range .Values.netinit.allowedTCPPorts }}
+                ip6tables -A OUTPUT -p tcp --dport {{ . }} -j ACCEPT
+                {{- end }}
+                ip6tables -A OUTPUT -o lo -j ACCEPT
+                ip6tables -A OUTPUT -j REJECT
+              fi
+              # Dump the final ruleset to stdout so the resulting policy is
+              # visible via `kubectl logs <pod> -c setup-netpol` without
+              # nsenter'ing into the pod netns from the node.
+              echo "=== final IPv4 OUTPUT ==="
+              iptables -L OUTPUT -n -v --line-numbers
+              if ip6tables -L > /dev/null 2>&1; then
+                echo "=== final IPv6 OUTPUT ==="
+                ip6tables -L OUTPUT -n -v --line-numbers
               fi
           resources:
             requests:
@@ -133,6 +155,7 @@ spec:
             runAsUser: 0
             runAsNonRoot: false
             allowPrivilegeEscalation: false
+      {{- end }}
       containers:
         - name: sandbox
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
