@@ -200,10 +200,20 @@ export const VmMapEntrySchema = z.object({
         .nullable()
         .optional()
         .describe("metadata.runtime.selected at the time of VM_START"),
+      port: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("metadata.runtime.port at the time of VM_START"),
+      path: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("metadata.runtime.path at the time of VM_START"),
     })
     .optional()
     .describe(
-      "Snapshot of metadata.runtime fields used at VM_START. The Preview tab compares the live metadata.runtime against this to decide if a restart is required to apply changes.",
+      "Snapshot of metadata.runtime fields (selected/port/path) used at VM_START. The Preview tab compares the live metadata.runtime against this to decide if a restart is required to apply changes.",
     ),
 });
 

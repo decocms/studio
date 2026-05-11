@@ -324,6 +324,8 @@ async function provisionSandbox(
 
   const runtimeSelected =
     (metadata as RuntimeConfigMeta).runtime?.selected ?? null;
+  const runtimePort = (metadata as RuntimeConfigMeta).runtime?.port ?? null;
+  const runtimePath = (metadata as RuntimeConfigMeta).runtime?.path ?? null;
 
   const entry: VmMapEntry = {
     vmId: sandbox.handle,
@@ -332,6 +334,8 @@ async function provisionSandbox(
     createdAt,
     startedWith: {
       packageManager: runtimeSelected,
+      port: runtimePort,
+      path: runtimePath,
     },
   };
 

@@ -28,7 +28,6 @@ import {
   X,
 } from "@untitledui/icons";
 import type { DrawerStatus } from "./status-pill";
-import { menuItemsFor, type MenuItem } from "./toolbar-menu-items";
 
 /** The always-present tab. Catch-all for clone + install logs. */
 export const DEFAULT_TAB = "setup";
@@ -81,11 +80,6 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
           active={props.active === DEFAULT_TAB}
           open={props.open}
           onClick={handleSetupClick}
-          status={props.status}
-          onStart={props.onStart}
-          onRestart={props.onRestart}
-          onResume={props.onResume}
-          onRetry={props.onRetry}
         />
         {props.scriptTabs.map((t) => (
           <TabButton
@@ -107,162 +101,140 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
           onStop={props.onStopActiveScript}
         />
       ) : (
-        (props.status === "starting" || props.status === "running") && (
-          <SandboxStopControls
-            status={props.status}
-            onStop={props.onStop}
-            onRestart={props.onRestart}
-          />
-        )
+        <SandboxActionControls
+          status={props.status}
+          onStart={props.onStart}
+          onStop={props.onStop}
+          onRestart={props.onRestart}
+          onResume={props.onResume}
+          onRetry={props.onRetry}
+        />
       )}
     </div>
   );
 }
 
 /**
- * Setup tab + drawer toggle, unified. Renders as a tab (Terminal icon +
- * "setup" label) and a chevron split-button menu for sandbox lifecycle
- * actions (Start/Resume/Retry) when the status warrants them. When the
- * sandbox is running/starting, the chevron half hides and Stop/Restart
- * live on the right via SandboxStopControls.
+ * Setup tab + drawer toggle. Pure tab — sandbox lifecycle actions
+ * (Start/Stop/Restart/Resume/Retry) all live on the right via
+ * SandboxActionControls so the tab itself never reshapes based on status.
  */
 function SetupTab({
   active,
   open,
   onClick,
-  status,
-  onStart,
-  onRestart,
-  onResume,
-  onRetry,
 }: {
   active: boolean;
   open: boolean;
   onClick: () => void;
-  status: DrawerStatus;
-} & Pick<
-  DrawerToolbarProps,
-  "onStart" | "onRestart" | "onResume" | "onRetry"
->) {
-  const items = menuItemsFor(status);
-  const hasMenu = items.length > 0;
-  const handlerFor = (action: MenuItem["action"]): (() => void) | undefined => {
-    switch (action) {
-      case "start":
-        return onStart;
-      case "restart":
-        return onRestart;
-      case "resume":
-        return onResume;
-      case "retry":
-        return onRetry;
-      case "stop":
-        return undefined;
-    }
-  };
+}) {
   return (
-    <div className="flex items-center">
-      <button
-        type="button"
-        aria-pressed={active && open}
-        aria-expanded={active && open}
-        onClick={onClick}
-        className={cn(
-          "flex h-7 items-center gap-1.5 border px-2.5 text-xs",
-          hasMenu ? "rounded-l-md rounded-r-none border-r-0" : "rounded-md",
-          active
-            ? "border-border bg-background font-medium text-foreground shadow-sm"
-            : "border-transparent text-muted-foreground hover:bg-background/50 hover:text-foreground",
-        )}
-      >
-        <Terminal className="size-3.5" />
-        setup
-      </button>
-      {hasMenu && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              aria-haspopup="menu"
-              aria-label="Sandbox actions"
-              className={cn(
-                "flex h-7 items-center rounded-r-md rounded-l-none border px-1",
-                active
-                  ? "border-border bg-background text-foreground shadow-sm"
-                  : "border-transparent text-muted-foreground hover:bg-background/50 hover:text-foreground",
-              )}
-            >
-              <ChevronDown className="size-3.5" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            {items.map((item) => {
-              const handler = handlerFor(item.action);
-              if (!handler) return null;
-              return (
-                <DropdownMenuItem key={item.action} onClick={handler}>
-                  {item.label}
-                </DropdownMenuItem>
-              );
-            })}
-          </DropdownMenuContent>
-        </DropdownMenu>
+    <button
+      type="button"
+      aria-pressed={active && open}
+      aria-expanded={active && open}
+      onClick={onClick}
+      className={cn(
+        "flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs",
+        active
+          ? "border-border bg-background font-medium text-foreground shadow-sm"
+          : "border-transparent text-muted-foreground hover:bg-background/50 hover:text-foreground",
       )}
-    </div>
+    >
+      <Terminal className="size-3.5" />
+      sandbox
+    </button>
   );
 }
 
 /**
- * Right-side Stop split-button for the setup tab. Mirrors the per-script
- * Restart pattern (outlined Button + chevron menu) but inverted: Stop is
- * the primary action, Restart hides in the chevron (only when status is
- * "running" — restarting a still-starting sandbox makes no sense). When
- * status is "starting", the chevron half is hidden and only `[⏹ Stop]`
- * renders.
+ * Right-side sandbox lifecycle controls. One control surface for every
+ * non-script status:
+ *   - idle      → [▶ Start]
+ *   - suspended → [▶ Resume]
+ *   - errored   → [↻ Retry]
+ *   - starting  → [⏹ Stop]
+ *   - running   → [⏹ Stop]  +  chevron menu { Restart }
+ * Restarting a still-starting sandbox makes no sense, so the chevron half
+ * only renders for "running".
  */
-function SandboxStopControls({
+function SandboxActionControls({
   status,
+  onStart,
   onStop,
   onRestart,
+  onResume,
+  onRetry,
 }: {
-  status: "starting" | "running";
+  status: DrawerStatus;
+  onStart?: () => void;
   onStop?: () => void;
   onRestart?: () => void;
+  onResume?: () => void;
+  onRetry?: () => void;
 }) {
-  const showRestart = status === "running" && !!onRestart;
-  return (
-    <div className="flex items-center">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onStop}
-            className={cn(
-              showRestart ? "rounded-r-none border-r-0" : undefined,
-            )}
-          >
-            <StopCircle className="size-3.5" /> Stop
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>Stop sandbox</TooltipContent>
-      </Tooltip>
-      {showRestart && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="rounded-l-none px-1">
-              <ChevronDown className="size-3" />
+  if (status === "idle" && onStart) {
+    return (
+      <Button variant="outline" size="sm" onClick={onStart}>
+        <Play className="size-3.5" /> Start
+      </Button>
+    );
+  }
+  if (status === "suspended" && onResume) {
+    return (
+      <Button variant="outline" size="sm" onClick={onResume}>
+        <Play className="size-3.5" /> Resume
+      </Button>
+    );
+  }
+  if (status === "errored" && onRetry) {
+    return (
+      <Button variant="outline" size="sm" onClick={onRetry}>
+        <RefreshCw01 className="size-3.5" /> Retry
+      </Button>
+    );
+  }
+  if (status === "starting" || status === "running") {
+    const showRestart = status === "running" && !!onRestart;
+    return (
+      <div className="flex items-center">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onStop}
+              className={cn(
+                showRestart ? "rounded-r-none border-r-0" : undefined,
+              )}
+            >
+              <StopCircle className="size-3.5" /> Stop
             </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onRestart}>
-              <RefreshCw01 className="size-3.5" /> Restart
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-    </div>
-  );
+          </TooltipTrigger>
+          <TooltipContent>Stop sandbox</TooltipContent>
+        </Tooltip>
+        {showRestart && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-l-none px-1"
+              >
+                <ChevronDown className="size-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onRestart}>
+                <RefreshCw01 className="size-3.5" /> Restart
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+    );
+  }
+  return null;
 }
 
 function TabButton({

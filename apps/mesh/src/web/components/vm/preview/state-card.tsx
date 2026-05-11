@@ -6,6 +6,7 @@ import {
   PauseCircle,
   Play,
   RefreshCw01,
+  Terminal,
 } from "@untitledui/icons";
 import { BootingVisual } from "./booting-visual";
 import { VmTerminal } from "./drawer/terminal";
@@ -24,11 +25,6 @@ export type VmStateCardProps =
       kind: "starting-now";
       progress: PhaseProgress;
       claimPhase: ClaimPhase | null;
-      /** Source name for the inline log peek's xterm (e.g. "setup"). */
-      logSource: string;
-      /** When the drawer is open it already shows the same logs in full;
-       *  hide the inline peek (mutually exclusive surfaces). */
-      drawerOpen: boolean;
     }
   | {
       kind: "errored";
@@ -36,24 +32,20 @@ export type VmStateCardProps =
       logSource: string;
       errorLine: string;
       onRetry: () => void;
-      /** Same as starting-now — drawer-open hides the inline peek. */
+      /** Drawer-open hides the inline peek (mutually exclusive surfaces). */
       drawerOpen: boolean;
     }
-  | { kind: "suspended"; onResume: () => void };
+  | { kind: "suspended"; onResume: () => void }
+  | { kind: "crashed"; onOpenTerminal: () => void };
 
 export function VmStateCard(props: VmStateCardProps) {
   if (props.kind === "starting-now") {
     return (
-      <div className="flex h-full w-full flex-col items-center justify-between gap-4 bg-background p-6">
-        <div className="flex flex-1 w-full items-center justify-center">
-          <BootingVisual
-            progress={props.progress}
-            claimPhase={props.claimPhase}
-          />
-        </div>
-        <div className="flex w-full flex-col items-center gap-3">
-          {!props.drawerOpen && <LogPeek source={props.logSource} />}
-        </div>
+      <div className="flex h-full w-full items-center justify-center bg-background p-6">
+        <BootingVisual
+          progress={props.progress}
+          claimPhase={props.claimPhase}
+        />
       </div>
     );
   }
@@ -89,6 +81,8 @@ function Glyph({ kind }: { kind: NonBootingKind }) {
       return <AlertTriangle className={cn(cls, "text-destructive")} />;
     case "suspended":
       return <PauseCircle className={cn(cls, "text-blue-500")} />;
+    case "crashed":
+      return <AlertTriangle className={cn(cls, "text-amber-500")} />;
   }
 }
 
@@ -118,6 +112,13 @@ function Subline(props: Exclude<VmStateCardProps, { kind: "starting-now" }>) {
         <p className="max-w-sm text-sm text-muted-foreground">
           Suspended after 30 min idle to conserve resources. Resume to continue
           where you left off.
+        </p>
+      );
+    case "crashed":
+      return (
+        <p className="max-w-sm text-sm text-muted-foreground">
+          The dev server stopped responding. Open the terminal to inspect the
+          logs and restart it.
         </p>
       );
   }
@@ -199,6 +200,12 @@ function Footer(props: Exclude<VmStateCardProps, { kind: "starting-now" }>) {
       return (
         <Button onClick={props.onResume} className="mt-2">
           <Play className="size-4" /> Resume
+        </Button>
+      );
+    case "crashed":
+      return (
+        <Button onClick={props.onOpenTerminal} className="mt-2">
+          <Terminal className="size-4" /> Open terminal
         </Button>
       );
   }

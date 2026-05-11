@@ -161,7 +161,7 @@ const EXPECTED_REF = composeSandboxRef({
 
 type Metadata = {
   githubRepo: { owner: string; name: string; connectionId: string };
-  runtime: { selected: string; port: string };
+  runtime: { selected: string; port: string; path?: string | null };
   vmMap?: VmMap;
 };
 
@@ -353,7 +353,7 @@ describe("VM_START", () => {
     expect(stored?.createdAt).toBeGreaterThan(Date.now() - 60_000);
   });
 
-  it("snapshots metadata.runtime.selected into startedWith.packageManager", async () => {
+  it("snapshots metadata.runtime selected/port/path into startedWith", async () => {
     mockEnsure.mockImplementation(async () => ({
       handle: "vm_xyz",
       workdir: "/app",
@@ -361,7 +361,7 @@ describe("VM_START", () => {
     }));
     const metadata: Metadata = {
       ...BASE_METADATA,
-      runtime: { selected: "pnpm", port: "3000" },
+      runtime: { selected: "pnpm", port: "4321", path: "apps/web" },
     };
     const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
     const updateSpy = mock(async () => {});
@@ -373,10 +373,14 @@ describe("VM_START", () => {
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
     const updated = (updateCall[2] as { metadata: { vmMap: VmMap } }).metadata;
     const stored = updated.vmMap[USER_ID]?.[BRANCH];
-    expect(stored?.startedWith).toEqual({ packageManager: "pnpm" });
+    expect(stored?.startedWith).toEqual({
+      packageManager: "pnpm",
+      port: "4321",
+      path: "apps/web",
+    });
   });
 
-  it("snapshots null packageManager when metadata.runtime is missing", async () => {
+  it("snapshots null selected/port/path when metadata.runtime is missing", async () => {
     mockEnsure.mockImplementation(async () => ({
       handle: "vm_xyz",
       workdir: "/app",
@@ -401,7 +405,11 @@ describe("VM_START", () => {
     expect(vmMapCall).toBeDefined();
     const updated = (vmMapCall![2] as { metadata: { vmMap: VmMap } }).metadata;
     const stored = updated.vmMap[USER_ID]?.[BRANCH];
-    expect(stored?.startedWith).toEqual({ packageManager: null });
+    expect(stored?.startedWith).toEqual({
+      packageManager: null,
+      port: null,
+      path: null,
+    });
   });
 
   it("returns isNewVm=false when runner.ensure returns the same handle as the existing entry", async () => {

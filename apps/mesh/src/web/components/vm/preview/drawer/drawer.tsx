@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { Play } from "@untitledui/icons";
+import { toast } from "sonner";
 import { useVmEvents } from "../../hooks/use-vm-events";
 import { DEFAULT_TAB, DrawerToolbar, type DrawerStatus } from "./toolbar";
 import { VmTerminal } from "./terminal";
@@ -100,7 +101,15 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
     setScriptTabs((prev) => (prev.includes(name) ? prev : [...prev, name]));
     setActive(name);
     props.onOpenChange(true);
-    await execScript(name);
+    try {
+      const res = await execScript(name);
+      // res === null means missing virtualMcpId/branch — programming error,
+      // not a user-facing failure. Skip the toast.
+      if (res === null) return;
+      if (!res.ok) throw new Error(`Exec failed: ${res.statusText}`);
+    } catch {
+      toast.error("Failed to run " + name);
+    }
   };
 
   // × on a script tab: kill the process AND drop the tab. Active tab
@@ -115,7 +124,16 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
   // tab; just (re)starts the process. Restart is the same call as Run; the
   // daemon's task-manager replaces the existing task with the same logName.
   const handleRunActive = async () => {
-    await execScript(active);
+    const wasRunning = vmEvents.activeProcesses.includes(active);
+    try {
+      const res = await execScript(active);
+      if (res === null) return;
+      if (!res.ok) throw new Error(`Exec failed: ${res.statusText}`);
+    } catch {
+      toast.error(
+        (wasRunning ? "Failed to restart " : "Failed to run ") + active,
+      );
+    }
   };
 
   // Per-script Stop on the active tab. Marks the script as killing so the
@@ -125,14 +143,24 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
     setKillingScripts((prev) => new Set(prev).add(active));
     try {
       const res = await killScript(active);
-      if (!res || !res.ok)
-        throw new Error(`Kill failed: ${res?.statusText ?? "no VM"}`);
+      // res === null means missing virtualMcpId/branch — programming error,
+      // not a user-facing failure. Skip the toast (but still revert UI).
+      if (res === null) {
+        setKillingScripts((prev) => {
+          const next = new Set(prev);
+          next.delete(active);
+          return next;
+        });
+        return;
+      }
+      if (!res.ok) throw new Error(`Kill failed: ${res.statusText}`);
     } catch {
       setKillingScripts((prev) => {
         const next = new Set(prev);
         next.delete(active);
         return next;
       });
+      toast.error("Failed to stop " + active);
     }
   };
 

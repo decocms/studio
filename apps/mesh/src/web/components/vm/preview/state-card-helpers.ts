@@ -36,6 +36,8 @@ export function headlineFor(kind: StateCardKind): string {
       return "Sandbox failed to start";
     case "suspended":
       return "Sandbox is paused";
+    case "crashed":
+      return "Preview is unavailable";
   }
 }
 

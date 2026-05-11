@@ -37,6 +37,7 @@ export type PreviewState =
   | { kind: "starting-now" }
   | { kind: "errored"; error: string }
   | { kind: "suspended" }
+  | { kind: "crashed"; previewUrl: string }
   | { kind: "no-html"; previewUrl: string }
   | { kind: "iframe"; previewUrl: string };
 
@@ -67,10 +68,17 @@ export function computePreviewState(input: PreviewStateInput): PreviewState {
   if (!input.previewUrl) {
     return { kind: "never-started" };
   }
-  // previewUrl set: decide between iframe / no-html / starting-now.
+  // previewUrl set: decide between iframe / crashed / no-html / starting-now.
+  // htmlSupport is sticky across `running` → `crashed`, so an established
+  // iframe stays mounted across transient drops. When the dev server crashes
+  // and we never latched htmlSupport, surface the dedicated crashed state
+  // instead of the misleading "no web page at this URL" empty state.
   if (input.status === "online" || input.status === "offline") {
     if (input.htmlSupport) {
       return { kind: "iframe", previewUrl: input.previewUrl };
+    }
+    if (input.status === "offline") {
+      return { kind: "crashed", previewUrl: input.previewUrl };
     }
     return { kind: "no-html", previewUrl: input.previewUrl };
   }

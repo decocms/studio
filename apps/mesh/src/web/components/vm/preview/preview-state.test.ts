@@ -89,10 +89,10 @@ describe("computePreviewState", () => {
     ).toEqual({ kind: "iframe", previewUrl: "http://localhost:5173" });
   });
 
-  test("offline persists no-html across transient drops", () => {
+  test("offline without latched htmlSupport surfaces the crashed state", () => {
     expect(
       computePreviewState({ ...base, status: "offline", htmlSupport: false }),
-    ).toEqual({ kind: "no-html", previewUrl: "http://localhost:5173" });
+    ).toEqual({ kind: "crashed", previewUrl: "http://localhost:5173" });
   });
 
   test("no previewUrl, no startError, no pending, no lifecycle → never-started", () => {

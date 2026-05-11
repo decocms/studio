@@ -30,6 +30,7 @@ test("headlineFor maps each kind to its headline", () => {
   expect(headlineFor("starting-now")).toBe("Starting your sandbox");
   expect(headlineFor("errored")).toBe("Sandbox failed to start");
   expect(headlineFor("suspended")).toBe("Sandbox is paused");
+  expect(headlineFor("crashed")).toBe("Preview is unavailable");
 });
 
 test("phaseStatusFor returns done for keys before the current step", () => {

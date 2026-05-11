@@ -97,19 +97,23 @@ test("VirtualMCPUpdateDataSchema accepts metadata.runtime", () => {
   expect(parsed.metadata?.runtime?.port).toBeNull();
 });
 
-test("VmMapEntry.startedWith is optional with nullable packageManager", () => {
+test("VmMapEntry.startedWith is optional with nullable packageManager/port/path", () => {
   const a = VmMapEntrySchema.parse({ vmId: "v", previewUrl: null });
   expect(a.startedWith).toBeUndefined();
   const b = VmMapEntrySchema.parse({
     vmId: "v",
     previewUrl: null,
-    startedWith: { packageManager: "pnpm" },
+    startedWith: { packageManager: "pnpm", port: "3000", path: "apps/web" },
   });
   expect(b.startedWith?.packageManager).toBe("pnpm");
+  expect(b.startedWith?.port).toBe("3000");
+  expect(b.startedWith?.path).toBe("apps/web");
   const c = VmMapEntrySchema.parse({
     vmId: "v",
     previewUrl: null,
-    startedWith: { packageManager: null },
+    startedWith: { packageManager: null, port: null, path: null },
   });
   expect(c.startedWith?.packageManager).toBeNull();
+  expect(c.startedWith?.port).toBeNull();
+  expect(c.startedWith?.path).toBeNull();
 });

@@ -1767,10 +1767,10 @@ Define step-by-step how the agent should handle requests.
               flushAndSave={flushAndSave}
             />
 
-            {/* Runtime section */}
+            {/* Sandbox section */}
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-sm font-medium text-foreground">Runtime</h2>
+                <h2 className="text-sm font-medium text-foreground">Sandbox</h2>
               </div>
               <Card className="p-6 gap-5">
                 <CardContent className="p-0 space-y-5">

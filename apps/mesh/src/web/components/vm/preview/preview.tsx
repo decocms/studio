@@ -68,7 +68,12 @@ function drawerStatusFromPreview(
   if (state.kind === "errored") return "errored";
   if (state.kind === "suspended") return "suspended";
   if (state.kind === "starting-now" || vmStartPending) return "starting";
-  if (state.kind === "iframe" || state.kind === "no-html") return "running";
+  if (
+    state.kind === "iframe" ||
+    state.kind === "no-html" ||
+    state.kind === "crashed"
+  )
+    return "running";
   return "idle";
 }
 
@@ -192,16 +197,29 @@ export function PreviewContent() {
     userStopped,
   });
 
-  // Restart-required strip: surfaces when Settings has saved a
-  // `metadata.runtime.selected` that differs from the value the running
-  // daemon was started with (`vmEntry.startedWith.packageManager`). Only shows
-  // while the VM is actually running so we don't nag during boot/error/idle.
-  const liveSelected = metadata?.runtime?.selected ?? null;
+  // Restart-required strip: surfaces when Settings has saved any
+  // `metadata.runtime` field (selected/port/path) that differs from the
+  // value the running daemon was started with (`vmEntry.startedWith`).
+  // Only shows while the VM is actually running so we don't nag during
+  // boot/error/idle.
+  const liveRuntime = {
+    selected: metadata?.runtime?.selected ?? null,
+    port: metadata?.runtime?.port ?? null,
+    path: metadata?.runtime?.path ?? null,
+  };
+  const startedWith = vmEntry?.startedWith;
+  const startedRuntime = startedWith
+    ? {
+        packageManager: startedWith.packageManager ?? null,
+        port: startedWith.port ?? null,
+        path: startedWith.path ?? null,
+      }
+    : undefined;
   const isRunning =
     previewState.kind === "iframe" || previewState.kind === "no-html";
   const restartRequired = isRestartRequired({
-    liveSelected,
-    startedPackageManager: vmEntry?.startedWith?.packageManager,
+    liveRuntime,
+    startedRuntime,
     hasEntry: !!vmEntry,
     isRunning,
   });
@@ -280,15 +298,28 @@ export function PreviewContent() {
   // "View logs" buttons can request the drawer to open.
   const queryClient = useQueryClient();
   const drawerStorageKey = virtualMcpId ?? "__no-vmcp__";
-  const [drawerOpen, setDrawerOpen] = useState(() =>
-    readPersistedDrawerOpen(drawerStorageKey),
-  );
+  // `null` = not yet hydrated for this VM. We hydrate (and re-hydrate on
+  // VM switch) via a render-time setState gated by `lastHydratedKeyRef`,
+  // so the stored value always tracks the *current* `drawerStorageKey`.
+  // Without this, `useState`'s init callback would freeze the initial
+  // key — if `virtualMcpId` was undefined at mount, the state would
+  // forever reflect the `__no-vmcp__` slot. React bails on equal state,
+  // and this is the idiomatic "derive state from a prop change" pattern
+  // in this codebase (useEffect is banned for this).
+  const [drawerOpen, setDrawerOpen] = useState<boolean | null>(null);
+  const lastHydratedKeyRef = useRef<string | null>(null);
+  if (lastHydratedKeyRef.current !== drawerStorageKey) {
+    lastHydratedKeyRef.current = drawerStorageKey;
+    setDrawerOpen(readPersistedDrawerOpen(drawerStorageKey));
+  }
   // Collapse to toolbar-only when the sandbox isn't running. Covers Stop
   // (transitions to never-started via vmUserStop) and the initial idle
   // state. Persisted preference is untouched so the drawer restores to
   // the user's last open/closed state once the sandbox boots again.
+  // `null` (pre-hydration) is treated as closed so the drawer doesn't
+  // flash open before the right key's value is read.
   const drawerOpenEffective =
-    previewState.kind === "never-started" ? false : drawerOpen;
+    previewState.kind === "never-started" ? false : (drawerOpen ?? false);
 
   const handleDrawerOpenChange = (next: boolean) => {
     setDrawerOpen(next);
@@ -510,7 +541,13 @@ export function PreviewContent() {
           <div className="absolute inset-0 z-30">
             <VmStateCard
               kind="never-started"
-              onStart={() => triggerStart("auto-start")}
+              onStart={() => {
+                // Force the drawer closed so transitioning out of
+                // never-started doesn't unmask a persisted "open" preference
+                // and visually toggle the setup tab button.
+                handleDrawerOpenChange(false);
+                triggerStart("auto-start");
+              }}
             />
           </div>
         )}
@@ -521,8 +558,6 @@ export function PreviewContent() {
               kind="starting-now"
               progress={progress}
               claimPhase={claimPhase}
-              logSource="setup"
-              drawerOpen={drawerOpenEffective}
             />
           </div>
         )}
@@ -543,6 +578,12 @@ export function PreviewContent() {
         {previewState.kind === "suspended" && (
           <div className="absolute inset-0 z-30">
             <VmStateCard kind="suspended" onResume={retryAutoStart} />
+          </div>
+        )}
+
+        {previewState.kind === "crashed" && (
+          <div className="absolute inset-0 z-30">
+            <VmStateCard kind="crashed" onOpenTerminal={openDrawer} />
           </div>
         )}
 
