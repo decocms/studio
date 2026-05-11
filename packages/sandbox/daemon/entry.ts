@@ -172,22 +172,36 @@ store.subscribe((event) => {
 // a re-armed baseline reflects the new boot's noise.
 const BASELINE_GRACE_MS = 3000;
 let baselineTimer: ReturnType<typeof setTimeout> | null = null;
+// Port we last confirmed the dev script was running on. Recovery key:
+// when a transient HEAD failure marks us `crashed` and the server then
+// comes back on the SAME port, it's almost certainly the same process
+// recovering (vite/nodemon kept serving after a probe blip) — allow the
+// transition back to `running`. A different port is ambiguous (could be a
+// sibling sandbox on the same host) so we hold at `crashed` and require
+// an explicit restart.
+let lastRunningPort: number | null = null;
 const lastProbe = startUpstreamProbe({
   getPort: () =>
     portSniffer.current() ?? store.read()?.application?.port ?? null,
   onChange: (s) => {
     // The probe only honors a "port is responding" verdict when we
     // actually expect our dev script to be up — i.e. we're currently in
-    // `starting` (just spawned, waiting for first response) or already in
-    // `running`. Otherwise a sibling sandbox on the same host can
-    // resurrect us back to `running` after the orchestrator has correctly
-    // recorded `start-failed`/`crashed`, leaving the iframe pointed at
-    // some other sandbox's app. Same logic mirrored on the offline edge:
-    // only mark `crashed` when we were actually running, never as a side
-    // effect of a port that was never ours in the first place.
+    // `starting` (just spawned, waiting for first response), already in
+    // `running`, or recovering from a `crashed` on the same port.
+    // Otherwise a sibling sandbox on the same host can resurrect us back
+    // to `running` after the orchestrator has correctly recorded
+    // `start-failed`/`crashed`, leaving the iframe pointed at some other
+    // sandbox's app. Same logic mirrored on the offline edge: only mark
+    // `crashed` when we were actually running, never as a side effect of
+    // a port that was never ours in the first place.
     const phase = lifecycle.current().phase;
     if (s.status === "online" && s.port !== null) {
-      if (phase !== "starting" && phase !== "running") return;
+      const isCrashedRecovery =
+        phase === "crashed" && s.port === lastRunningPort;
+      if (phase !== "starting" && phase !== "running" && !isCrashedRecovery) {
+        return;
+      }
+      lastRunningPort = s.port;
       lifecycle.transition({
         phase: "running",
         port: s.port,
@@ -204,6 +218,8 @@ const lastProbe = startUpstreamProbe({
       lifecycle.transition({ phase: "crashed" });
       // Dev script lost contact — next start may bind to a different port,
       // so unlock the sniffer to re-detect on the next bind announcement.
+      // We deliberately do NOT clear `lastRunningPort` — it's the recovery
+      // key checked above when the same port comes back online.
       portSniffer.reset();
       if (baselineTimer) {
         clearTimeout(baselineTimer);
