@@ -56,11 +56,54 @@ interface SlashItem extends BaseItem {
   _meta?: Prompt["_meta"];
 }
 
+interface PositionTracker {
+  /** Returns the position remapped through every doc change since the tracker
+   * was created. */
+  get: () => number;
+  dispose: () => void;
+}
+
+/**
+ * Captures a ProseMirror position and keeps it up-to-date as the document
+ * changes. The caller must invoke `dispose()` when done (e.g. on dialog
+ * submit/close) to avoid leaking a transaction listener.
+ *
+ * Needed because click → fetchQuery → setActivePrompt → user submits dialog
+ * is an async sequence; any keystrokes in the editor between click and submit
+ * would shift the original position and cause `setNodeMarkup` to silently no-op
+ * when the captured pos no longer points at the original mention.
+ */
+function createPositionTracker(
+  editor: Editor,
+  initialPos: number,
+): PositionTracker {
+  let pos = initialPos;
+  const onTransaction = ({
+    transaction,
+  }: {
+    transaction: {
+      docChanged: boolean;
+      mapping: { map: (p: number) => number };
+    };
+  }) => {
+    if (transaction.docChanged) {
+      pos = transaction.mapping.map(pos);
+    }
+  };
+  editor.on("transaction", onTransaction);
+  return {
+    get: () => pos,
+    dispose: () => {
+      editor.off("transaction", onTransaction);
+    },
+  };
+}
+
 type ActivePromptContext =
   | { mode: "create"; range: Range; item: SlashItem }
   | {
       mode: "edit";
-      pos: number;
+      posTracker: PositionTracker;
       item: SlashItem;
       values: PromptArgumentValues;
     };
@@ -94,19 +137,27 @@ async function fetchAndInsertPrompt(
 
 async function fetchAndUpdatePrompt(
   editor: Editor,
-  pos: number,
+  getLivePos: () => number,
   client: Client,
   promptName: string,
   values: PromptArgumentValues,
 ) {
   try {
     const result = await getPrompt(client, promptName, values);
+    let applied = false;
     editor
       .chain()
       .focus()
       .command(({ tr }) => {
+        const pos = getLivePos();
         const node = tr.doc.nodeAt(pos);
-        if (!node || node.type.name !== "mention") return false;
+        if (
+          !node ||
+          node.type.name !== "mention" ||
+          node.attrs.id !== promptName
+        ) {
+          return false;
+        }
         tr.setNodeMarkup(pos, undefined, {
           ...node.attrs,
           metadata: result.messages,
@@ -115,9 +166,13 @@ async function fetchAndUpdatePrompt(
               ? (values as Record<string, string>)
               : undefined,
         });
+        applied = true;
         return true;
       })
       .run();
+    if (!applied) {
+      toast.error("The mention was removed before changes could be saved.");
+    }
   } catch (error) {
     console.error("[slash] Failed to update prompt:", error);
     toast.error("Failed to update prompt. Please try again.");
@@ -207,6 +262,16 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
     }
   };
 
+  const closeDialog = () => {
+    if (activePrompt?.mode === "edit") {
+      activePrompt.posTracker.dispose();
+    }
+    setActivePrompt(null);
+  };
+
+  // PromptArgsDialog calls `setPrompt(null)` (→ `closeDialog`) after submit, so
+  // we don't clear `activePrompt` or dispose the tracker here — the close path
+  // owns cleanup, including on cancel.
   const handleDialogSubmit = async (values: PromptArgumentValues) => {
     if (!activePrompt || !client) return;
 
@@ -222,10 +287,15 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
         values,
       );
     } else {
-      const { pos, item } = activePrompt;
-      await fetchAndUpdatePrompt(editor, pos, client, item.name, values);
+      const { posTracker, item } = activePrompt;
+      await fetchAndUpdatePrompt(
+        editor,
+        posTracker.get,
+        client,
+        item.name,
+        values,
+      );
     }
-    setActivePrompt(null);
   };
 
   // Listen for click-to-edit events dispatched by MentionNodeView. Use a ref
@@ -239,44 +309,55 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
     const promptName = attrs.id || attrs.name;
     if (!promptName) return;
 
-    let prompts =
-      queryClient.getQueryData<ListPromptsResult>(promptsQueryKey)?.prompts;
-    if (!prompts) {
-      try {
-        const result = await queryClient.fetchQuery({
-          queryKey: promptsQueryKey,
-          queryFn: () => listPrompts(client),
-          staleTime: 60000,
-        });
-        prompts = result.prompts;
-      } catch {
-        toast.error("Failed to load prompts.");
+    // Start tracking immediately so any typing during the async prompt lookup
+    // is mapped through to the live document position.
+    const posTracker = createPositionTracker(editor, pos);
+
+    try {
+      let prompts =
+        queryClient.getQueryData<ListPromptsResult>(promptsQueryKey)?.prompts;
+      if (!prompts) {
+        try {
+          const result = await queryClient.fetchQuery({
+            queryKey: promptsQueryKey,
+            queryFn: () => listPrompts(client),
+            staleTime: 60000,
+          });
+          prompts = result.prompts;
+        } catch {
+          toast.error("Failed to load prompts.");
+          posTracker.dispose();
+          return;
+        }
+      }
+
+      const prompt = prompts?.find((p) => p.name === promptName);
+      if (!prompt) {
+        toast.error("Prompt not available.");
+        posTracker.dispose();
         return;
       }
+
+      const item: SlashItem = {
+        name: prompt.name,
+        title: prompt.title,
+        description: prompt.description,
+        icon: promptToConnectionRef.current.get(prompt.name)?.icon ?? null,
+        kind: "prompt",
+        arguments: prompt.arguments,
+        _meta: prompt._meta,
+      };
+
+      setActivePrompt({
+        mode: "edit",
+        posTracker,
+        item,
+        values: (attrs.values as PromptArgumentValues) ?? {},
+      });
+    } catch (error) {
+      posTracker.dispose();
+      throw error;
     }
-
-    const prompt = prompts?.find((p) => p.name === promptName);
-    if (!prompt) {
-      toast.error("Prompt not available.");
-      return;
-    }
-
-    const item: SlashItem = {
-      name: prompt.name,
-      title: prompt.title,
-      description: prompt.description,
-      icon: promptToConnectionRef.current.get(prompt.name)?.icon ?? null,
-      kind: "prompt",
-      arguments: prompt.arguments,
-      _meta: prompt._meta,
-    };
-
-    setActivePrompt({
-      mode: "edit",
-      pos,
-      item,
-      values: (attrs.values as PromptArgumentValues) ?? {},
-    });
   };
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
@@ -361,9 +442,7 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
   // so react-hook-form re-initializes with the right defaults. (The form only
   // resets defaultValues at mount.)
   const dialogKey = activePrompt
-    ? `${activePrompt.mode}-${activePrompt.item.name}-${
-        activePrompt.mode === "edit" ? `edit-${activePrompt.pos}` : "create"
-      }`
+    ? `${activePrompt.mode}-${activePrompt.item.name}`
     : "none";
 
   return (
@@ -397,7 +476,7 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
       <PromptArgsDialog
         key={dialogKey}
         prompt={dialogPrompt}
-        setPrompt={() => setActivePrompt(null)}
+        setPrompt={closeDialog}
         onSubmit={handleDialogSubmit}
         defaultValues={dialogDefaultValues}
       />
