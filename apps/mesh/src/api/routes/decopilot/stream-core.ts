@@ -1267,7 +1267,10 @@ async function streamCoreInner(
                     preview: p.slice(0, 80).replace(/\s+/g, " "),
                   })),
                   tools: Object.keys(tools).length,
-                  activeTools: builtInToolNames.length + 1 + enabledTools.size,
+                  activeTools:
+                    builtInToolNames.length +
+                    ("enable_tool" in tools ? 1 : 0) +
+                    enabledTools.size,
                 },
                 thread_id: mem.thread.id,
               };
