@@ -128,15 +128,13 @@ describe("CacheAccumulator", () => {
       read: 0,
       write: 0,
       input: 0,
-      output: 0,
     });
   });
 
-  test("addCacheStep accumulates read/write/input/output", () => {
+  test("addCacheStep accumulates read/write/input", () => {
     const acc = emptyCacheAccumulator();
     addCacheStep(acc, {
       inputTokens: 10_000,
-      outputTokens: 100,
       inputTokenDetails: {
         cacheReadTokens: 9_000,
         cacheWriteTokens: 500,
@@ -146,7 +144,6 @@ describe("CacheAccumulator", () => {
       read: 9_000,
       write: 500,
       input: 10_000,
-      output: 100,
     });
   });
 
@@ -160,16 +157,13 @@ describe("CacheAccumulator", () => {
     const acc = emptyCacheAccumulator();
     addCacheStep(acc, {
       inputTokens: 1_000,
-      outputTokens: 50,
       inputTokenDetails: { cacheReadTokens: 800 },
     });
     addCacheStep(acc, {
       inputTokens: 500,
-      outputTokens: 25,
       inputTokenDetails: { cacheReadTokens: 400 },
     });
     expect(acc.read).toBe(1_200);
     expect(acc.input).toBe(1_500);
-    expect(acc.output).toBe(75);
   });
 });

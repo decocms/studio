@@ -632,6 +632,14 @@ async function streamCoreInner(
           ? new Map<string, string>()
           : passthroughClient.getConnectionTitleMap();
 
+        // Anthropic prompt-cache invariant: the cache key for our system
+        // block markers is hash(tools + system_prefix), so the serialized
+        // `tools` JSON must be byte-stable across calls that should hit the
+        // cache. We rely on object-spread insertion order being deterministic
+        // here. `withCachedToolPrefix` (which sorts + marks) is intentionally
+        // NOT applied because `enable_tool` mutates the toolset across
+        // subsequent LLM calls in the same turn — any tool-prefix marker
+        // would invalidate on the next call anyway.
         const tools = isCliAgent
           ? {}
           : {

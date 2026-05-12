@@ -18,6 +18,8 @@
  * markers propagate through OpenRouter routes too.
  */
 
+import { EPHEMERAL_5M } from "./cache-instrumentation";
+
 export interface SystemMessage {
   role: "system";
   content: string;
@@ -43,10 +45,8 @@ Current time: ${iso.slice(11, 16)} UTC
 </current-context>`;
 }
 
-const EPHEMERAL_5M = {
-  anthropic: {
-    cacheControl: { type: "ephemeral" as const, ttl: "5m" as const },
-  },
+const EPHEMERAL_5M_PROVIDER_OPTIONS = {
+  anthropic: { cacheControl: EPHEMERAL_5M },
 };
 
 /**
@@ -78,7 +78,7 @@ export function buildSystemMessages(
     out.push({
       role: "system",
       content: parts[i]!,
-      ...(isCacheCut ? { providerOptions: EPHEMERAL_5M } : {}),
+      ...(isCacheCut ? { providerOptions: EPHEMERAL_5M_PROVIDER_OPTIONS } : {}),
     });
   }
   out.push({

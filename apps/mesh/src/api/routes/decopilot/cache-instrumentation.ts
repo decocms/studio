@@ -7,15 +7,14 @@
  *     attach top-level on every streamText call for OpenRouter cache.
  *   - withCachedToolPrefix              : sort a ToolSet by name and
  *     mark the last tool with anthropic.cacheControl so all tool
- *     definitions become a cached prefix (separate from the
- *     system/messages cache).
+ *     definitions become a cached prefix.
  *   - CacheAccumulator + addCacheStep   : turn-scoped state holder for
- *     cumulative cache_read / cache_write / input / output token
- *     counts. Read by OTel-attr emission in stream-core.
+ *     cumulative cache_read / cache_write / input token counts. Read
+ *     by OTel-attr emission in stream-core.
  *
  * Cost is intentionally NOT tracked here: we trust whatever the upstream
  * provider authoritatively reports (OpenRouter exposes a `cost` field;
- * direct Anthropic / OpenAI / Gemini don't, and we'd rather show tokens
+ * direct Anthropic / OpenAI / Gemini don't), and we'd rather show tokens
  * in the UI than guess.
  */
 
@@ -25,7 +24,7 @@ import type { ToolSet } from "ai";
 // providerOptions constants
 // ─────────────────────────────────────────────────────────────────────
 
-const EPHEMERAL_5M = {
+export const EPHEMERAL_5M = {
   type: "ephemeral" as const,
   ttl: "5m" as const,
 };
@@ -43,9 +42,12 @@ export const OPENROUTER_CACHE_PROVIDER_OPTIONS = {
 /**
  * Sort the ToolSet by tool name (so the request body is byte-stable
  * across calls) and attach anthropic.cacheControl on the LAST tool so
- * all tool definitions become a cached prefix in Anthropic's separate
- * tool-cache layer. Caching tools this way does NOT consume any of the
- * 4 system/messages cache breakpoints.
+ * all tool definitions become a cached prefix.
+ *
+ * Note: Anthropic enforces a single shared pool of 4 cache_control
+ * breakpoints across tools, system, and messages. This adds 1 to that
+ * total; current subtask usage is 2 system + 1 tool = 3/4. Adding more
+ * system/messages breakpoints elsewhere must account for this.
  *
  * Returns the same ToolSet shape; safe to pass straight to streamText.
  */
@@ -102,7 +104,6 @@ function deepMerge(
 
 export interface CacheStepUsage {
   inputTokens?: number;
-  outputTokens?: number;
   inputTokenDetails?: {
     cacheReadTokens?: number;
     cacheWriteTokens?: number;
@@ -113,11 +114,10 @@ export interface CacheAccumulator {
   read: number;
   write: number;
   input: number;
-  output: number;
 }
 
 export function emptyCacheAccumulator(): CacheAccumulator {
-  return { read: 0, write: 0, input: 0, output: 0 };
+  return { read: 0, write: 0, input: 0 };
 }
 
 /**
@@ -135,5 +135,4 @@ export function addCacheStep(
   acc.read += usage.inputTokenDetails?.cacheReadTokens ?? 0;
   acc.write += usage.inputTokenDetails?.cacheWriteTokens ?? 0;
   acc.input += usage.inputTokens ?? 0;
-  acc.output += usage.outputTokens ?? 0;
 }
