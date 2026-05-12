@@ -78,11 +78,11 @@ export const AUTOMATIONS_GLOBAL_QUEUE = "automations-global";
  * them end-to-end.
  *
  * Lazy-created on the first enqueue (`ensureOrgQueue`) with default
- * concurrency; admin/org tools update them via `setOrgConcurrency`.
+ * concurrency.
  */
-export const AUTOMATIONS_ORG_QUEUE_PREFIX = "automations-org-";
+const AUTOMATIONS_ORG_QUEUE_PREFIX = "automations-org-";
 /** Concurrency a new org's queue starts at. Updatable per-org afterwards. */
-export const DEFAULT_ORG_CONCURRENCY = 3;
+const DEFAULT_ORG_CONCURRENCY = 3;
 
 /** Per-automation concurrent fire cap (partition cap on the gate queue). */
 export const AUTOMATIONS_GATE_PARTITION_CONCURRENCY = 3;
@@ -92,7 +92,7 @@ export const AUTOMATIONS_GATE_PARTITION_CONCURRENCY = 3;
  * streamCore call. Bump when `databasePoolMax` is bumped.
  */
 export const AUTOMATIONS_GLOBAL_CONCURRENCY = 5;
-export const AUTOMATIONS_RUN_TIMEOUT_MS = 5 * 60 * 1000;
+const AUTOMATIONS_RUN_TIMEOUT_MS = 5 * 60 * 1000;
 
 export function orgQueueName(orgId: string): string {
   return `${AUTOMATIONS_ORG_QUEUE_PREFIX}${orgId}`;
@@ -108,33 +108,6 @@ export async function ensureOrgQueue(orgId: string): Promise<void> {
     concurrency: DEFAULT_ORG_CONCURRENCY,
     onConflict: "never_update",
   });
-}
-
-/** Read the org's current concurrency, or null if no queue exists yet. */
-export async function getOrgConcurrency(
-  orgId: string,
-): Promise<number | undefined> {
-  const q = await DBOS.retrieveQueue(orgQueueName(orgId));
-  if (!q) return undefined;
-  return await q.getConcurrency();
-}
-
-/**
- * Update the org's concurrency. Creates the queue at the requested value
- * if it doesn't exist yet (so the very first call from an admin UI works
- * without requiring a fire to have happened first).
- */
-export async function setOrgConcurrency(
-  orgId: string,
-  concurrency: number,
-): Promise<void> {
-  const name = orgQueueName(orgId);
-  const existing = await DBOS.retrieveQueue(name);
-  if (!existing) {
-    await DBOS.registerQueue(name, { concurrency });
-    return;
-  }
-  await existing.setConcurrency(concurrency);
 }
 
 export interface AutomationRuntime {
@@ -319,10 +292,9 @@ async function fireAutomationWorkflowFn(
   });
 }
 
-export const fireAutomationWorkflow = DBOS.registerWorkflow(
-  fireAutomationWorkflowFn,
-  { name: "fireAutomationWorkflow" },
-);
+const fireAutomationWorkflow = DBOS.registerWorkflow(fireAutomationWorkflowFn, {
+  name: "fireAutomationWorkflow",
+});
 
 /**
  * Per-automation gate. Runs on the partitioned gate queue; holds its
@@ -342,7 +314,7 @@ async function gateWorkflowFn(
   return await handle.getResult();
 }
 
-export const gateWorkflow = DBOS.registerWorkflow(gateWorkflowFn, {
+const gateWorkflow = DBOS.registerWorkflow(gateWorkflowFn, {
   name: "automationGateWorkflow",
 });
 
@@ -409,25 +381,10 @@ export const cronEntryWorkflow = DBOS.registerWorkflow(cronEntryWorkflowFn, {
  * computes a fresh cutoff and deletes the next batch.
  */
 export const AUTOMATIONS_GC_SCHEDULE_NAME = "automations-gc";
-export const AUTOMATIONS_GC_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
-export const AUTOMATIONS_GC_BATCH_SIZE = 500;
+const AUTOMATIONS_GC_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const AUTOMATIONS_GC_BATCH_SIZE = 500;
 /** 03:17 UTC daily — off-peak with a minute offset to avoid colliding with hourly tasks. */
 export const AUTOMATIONS_GC_SCHEDULE = "17 3 * * *";
-
-/**
- * Retention seam for per-tier GC. Not wired today — the current GC uses a
- * single `AUTOMATIONS_GC_RETENTION_MS` cutoff for every org because mesh
- * has no org-level tier column yet. When `organization_settings` (or a
- * dedicated billing table) gains a `tier` field, the GC step should
- * group orgs by tier and apply the matching window via
- * `DBOS.listWorkflows({ workflow_id_prefix: \`org:\${orgId}:\` })`.
- * Values are the agreed defaults; tune in tandem with the tier system.
- */
-export const AUTOMATIONS_TIER_RETENTION_DAYS = {
-  free: 3,
-  pro: 14,
-  enterprise: 90,
-} as const;
 
 const GC_TERMINAL_STATUSES = ["SUCCESS", "ERROR", "CANCELLED"] as const;
 
