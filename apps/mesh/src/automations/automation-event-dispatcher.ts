@@ -1,20 +1,21 @@
 /**
- * Event Trigger Engine
+ * Automation Event Dispatcher
  *
- * Listens to events processed by the EventBusWorker and fires matching
+ * Consumes events processed by the EventBusWorker and fires matching
  * automations. Called in a fire-and-forget fashion so it never blocks
  * the event bus hot path.
  */
 
-import type { StreamCoreDeps } from "@/api/routes/decopilot/stream-core";
 import type { AutomationsStorage } from "@/storage/automations";
-import {
-  fireAutomation,
-  type FireAutomationConfig,
-  type MeshContextFactory,
-  type StreamCoreFn,
-} from "./fire";
-import type { Semaphore } from "./semaphore";
+import type { Automation, AutomationTrigger } from "@/storage/types";
+
+// Resolves once the workflow is durably enqueued, not when it finishes.
+export type EventFireFn = (input: {
+  automation: Automation;
+  trigger: AutomationTrigger;
+  contextMessages: Array<{ role: string; content: string }>;
+  idempotencyKey?: string;
+}) => Promise<void>;
 
 type ParamMatcher =
   | { op: "eq"; value: unknown }
@@ -81,36 +82,36 @@ function scalarMatchesField(fieldValue: unknown, scalar: unknown): boolean {
   return fieldValue === scalar;
 }
 
-export class EventTriggerEngine {
-  private static MAX_AUTOMATION_DEPTH = 3;
+export class AutomationEventDispatcher {
   private static MAX_EVENT_PAYLOAD_BYTES = 1_048_576; // 1MB
 
   constructor(
     private storage: AutomationsStorage,
-    private streamCoreFn: StreamCoreFn,
-    private meshContextFactory: MeshContextFactory,
-    private config: FireAutomationConfig,
-    private globalSemaphore: Semaphore,
-    private deps: Pick<StreamCoreDeps, "runRegistry" | "cancelBroadcast">,
+    private fire: EventFireFn,
   ) {}
 
   /**
    * Called by EventBusWorker after processing events.
    * Fire-and-forget — does not block the caller.
+   *
+   * `id` is the CloudEvents identifier; when present it's combined with the
+   * matched triggerId to form a DBOS workflow ID, giving exactly-once fire
+   * semantics across at-least-once event delivery. Callers without a stable
+   * id (e.g. ad-hoc webhook callbacks) may omit it and accept retry-fires.
    */
-  notifyEvents(
+  dispatchForEvents(
     events: Array<{
+      id?: string;
       source: string;
       type: string;
       data: unknown;
       organizationId: string;
-      automationDepth?: number;
     }>,
   ): void {
     for (const event of events) {
       this.onEvent(event).catch((err) => {
         console.error(
-          `[EventTrigger] Error processing event ${event.type}:`,
+          `[AutomationDispatch] Error processing event ${event.type}:`,
           err,
         );
       });
@@ -118,22 +119,12 @@ export class EventTriggerEngine {
   }
 
   private async onEvent(event: {
+    id?: string;
     source: string;
     type: string;
     data: unknown;
     organizationId: string;
-    automationDepth?: number;
   }): Promise<void> {
-    const depth = event.automationDepth ?? 0;
-
-    // Prevent infinite recursion
-    if (depth >= EventTriggerEngine.MAX_AUTOMATION_DEPTH) {
-      console.warn(
-        `[EventTrigger] SKIPPED event ${event.type} from ${event.source} — max depth ${depth}`,
-      );
-      return;
-    }
-
     // 1. Find matching triggers
     const matchingTriggers = await this.storage.findActiveEventTriggers(
       event.source,
@@ -146,19 +137,16 @@ export class EventTriggerEngine {
       this.paramsMatch(trigger.params, event.data),
     );
 
-    // 3. Fire each
+    // 3. Fire each via the DBOS-backed fire callback.
     const results = await Promise.allSettled(
       triggersToFire.map((trigger) =>
-        fireAutomation({
+        this.fire({
           automation: trigger.automation,
-          triggerId: trigger.id,
+          trigger,
           contextMessages: this.buildContextMessages(event.data),
-          storage: this.storage,
-          streamCoreFn: this.streamCoreFn,
-          meshContextFactory: this.meshContextFactory,
-          config: this.config,
-          globalSemaphore: this.globalSemaphore,
-          deps: this.deps,
+          idempotencyKey: event.id
+            ? `evt:${event.id}:trig:${trigger.id}`
+            : undefined,
         }),
       ),
     );
@@ -167,7 +155,7 @@ export class EventTriggerEngine {
       const trigger = triggersToFire[i]!;
       if (result.status === "rejected") {
         console.error(
-          `[EventTrigger] Trigger ${trigger.id} ("${trigger.automation.name}") REJECTED:`,
+          `[AutomationDispatch] Trigger ${trigger.id} ("${trigger.automation.name}") REJECTED:`,
           result.reason,
         );
       }
@@ -235,9 +223,9 @@ export class EventTriggerEngine {
     eventData: unknown,
   ): Array<{ role: string; content: string }> {
     let serialized = JSON.stringify(eventData, null, 2) ?? "null";
-    if (serialized.length > EventTriggerEngine.MAX_EVENT_PAYLOAD_BYTES) {
+    if (serialized.length > AutomationEventDispatcher.MAX_EVENT_PAYLOAD_BYTES) {
       serialized =
-        serialized.slice(0, EventTriggerEngine.MAX_EVENT_PAYLOAD_BYTES) +
+        serialized.slice(0, AutomationEventDispatcher.MAX_EVENT_PAYLOAD_BYTES) +
         "\n[TRUNCATED]";
     }
     return [

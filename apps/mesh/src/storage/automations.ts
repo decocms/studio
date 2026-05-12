@@ -5,7 +5,9 @@
  * - CRUD for automations
  * - Adding/removing triggers (cron and event-based)
  * - Querying active cron triggers and matching event triggers
- * - Concurrency control for automation runs via tryAcquireRunSlot
+ *
+ * Per-automation / global concurrency live in DBOS queues now — there is no
+ * DB-side acquire/release.
  */
 
 import { type Kysely } from "kysely";
@@ -83,36 +85,18 @@ export interface AutomationsStorage {
     eventType: string,
     organizationId: string,
   ): Promise<(AutomationTrigger & { automation: Automation })[]>;
-  findAllActiveCronTriggers(): Promise<
+  // Includes inactive automations: reconciler pauses (not deletes) their schedules.
+  findAllCronTriggers(): Promise<
     (AutomationTrigger & { automation: Automation })[]
   >;
-  findDueCronTriggers(
-    now: Date,
-    batchSize: number,
-  ): Promise<(AutomationTrigger & { automation: Automation })[]>;
   updateNextRunAt(triggerId: string, nextRunAt: string | null): Promise<void>;
-  findAllCronTriggersForRecompute(): Promise<AutomationTrigger[]>;
-  countInProgressRuns(automationId: string): Promise<number>;
-  tryAcquireRunSlot(
-    automationId: string,
+  createAutomationRunThread(
+    automation: Automation,
     triggerId: string | null,
-    maxConcurrent: number,
-  ): Promise<string | null>;
+  ): Promise<string>;
   markRunFailed(taskId: string): Promise<void>;
   updateTriggerLastRunAt(triggerId: string, lastRunAt: string): Promise<void>;
   deactivateAutomation(id: string): Promise<void>;
-  /**
-   * Force-fail zombie automation runs: threads that are in_progress with no
-   * run_config (never picked up by streamCore) and linked to an automation
-   * trigger, older than `maxAgeMs`.
-   *
-   * These threads are invisible to orphan recovery (which requires run_config)
-   * and the reaper (which only checks in-memory state). They permanently block
-   * per-automation concurrency slots after a crash or rolling deploy.
-   *
-   * @returns number of threads force-failed
-   */
-  failZombieAutomationRuns(maxAgeMs: number): Promise<number>;
 }
 
 // ============================================================================
@@ -448,7 +432,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
     }));
   }
 
-  async findAllActiveCronTriggers(): Promise<
+  async findAllCronTriggers(): Promise<
     (AutomationTrigger & { automation: Automation })[]
   > {
     const rows = await this.db
@@ -477,7 +461,6 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         "a.updated_at as a_updated_at",
       ])
       .where("t.type", "=", "cron")
-      .where("a.active", "=", true)
       .execute();
 
     return rows.map((row) => ({
@@ -498,64 +481,6 @@ class KyselyAutomationsStorage implements AutomationsStorage {
     }));
   }
 
-  async findDueCronTriggers(
-    now: Date,
-    batchSize: number,
-  ): Promise<(AutomationTrigger & { automation: Automation })[]> {
-    return await this.db.transaction().execute(async (trx) => {
-      const rows = await trx
-        .selectFrom("automation_triggers as t")
-        .innerJoin("automations as a", "a.id", "t.automation_id")
-        .select([
-          "t.id",
-          "t.automation_id",
-          "t.type",
-          "t.cron_expression",
-          "t.connection_id",
-          "t.event_type",
-          "t.params",
-          "t.last_run_at",
-          "t.next_run_at",
-          "t.created_at",
-          "a.id as a_id",
-          "a.organization_id as a_organization_id",
-          "a.name as a_name",
-          "a.active as a_active",
-          "a.created_by as a_created_by",
-          "a.messages as a_messages",
-          "a.models as a_models",
-          "a.temperature as a_temperature",
-          "a.virtual_mcp_id as a_virtual_mcp_id",
-          "a.created_at as a_created_at",
-          "a.updated_at as a_updated_at",
-        ])
-        .where("t.type", "=", "cron")
-        .where("a.active", "=", true)
-        .where("t.next_run_at", "<=", now.toISOString() as unknown as Date)
-        .forUpdate()
-        .skipLocked()
-        .limit(batchSize)
-        .execute();
-
-      return rows.map((row) => ({
-        ...triggerFromDbRow(row),
-        automation: automationFromDbRow({
-          id: row.a_id,
-          organization_id: row.a_organization_id,
-          name: row.a_name,
-          active: row.a_active,
-          created_by: row.a_created_by,
-          messages: row.a_messages,
-          models: row.a_models,
-          temperature: row.a_temperature,
-          virtual_mcp_id: row.a_virtual_mcp_id,
-          created_at: row.a_created_at,
-          updated_at: row.a_updated_at,
-        }),
-      }));
-    });
-  }
-
   async updateNextRunAt(
     triggerId: string,
     nextRunAt: string | null,
@@ -567,93 +492,30 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       .execute();
   }
 
-  async findAllCronTriggersForRecompute(): Promise<AutomationTrigger[]> {
-    const rows = await this.db
-      .selectFrom("automation_triggers as t")
-      .innerJoin("automations as a", "a.id", "t.automation_id")
-      .selectAll("t")
-      .where("t.type", "=", "cron")
-      .where("a.active", "=", true)
-      .execute();
-
-    return rows.map(triggerFromDbRow);
-  }
-
-  async countInProgressRuns(automationId: string): Promise<number> {
-    const result = await this.db
-      .selectFrom("threads as t")
-      .innerJoin("automation_triggers as tr", "tr.id", "t.trigger_id")
-      .select((eb) => eb.fn.count("t.id").as("count"))
-      .where("tr.automation_id", "=", automationId)
-      .where("t.status", "=", "in_progress")
-      .executeTakeFirst();
-
-    return Number(result?.count ?? 0);
-  }
-
-  async tryAcquireRunSlot(
-    automationId: string,
+  async createAutomationRunThread(
+    automation: Automation,
     triggerId: string | null,
-    maxConcurrent: number,
-  ): Promise<string | null> {
-    return await this.db.transaction().execute(async (trx) => {
-      // Lock the automation row to prevent race conditions
-      const automation = await trx
-        .selectFrom("automations")
-        .selectAll()
-        .where("id", "=", automationId)
-        .forUpdate()
-        .executeTakeFirst();
-
-      if (!automation || !automation.active) {
-        console.warn(
-          `[tryAcquireRunSlot] Automation ${automationId} not found or inactive (active=${automation?.active})`,
-        );
-        return null;
-      }
-
-      // Count in-progress runs within the transaction
-      const countResult = await trx
-        .selectFrom("threads as t")
-        .innerJoin("automation_triggers as tr", "tr.id", "t.trigger_id")
-        .select((eb) => eb.fn.count("t.id").as("count"))
-        .where("tr.automation_id", "=", automationId)
-        .where("t.status", "=", "in_progress")
-        .executeTakeFirst();
-
-      const currentCount = Number(countResult?.count ?? 0);
-
-      if (currentCount >= maxConcurrent) {
-        console.warn(
-          `[tryAcquireRunSlot] Automation ${automationId} at concurrency limit (${currentCount}/${maxConcurrent})`,
-        );
-        return null;
-      }
-
-      // Create a thread for this run
-      const taskId = generatePrefixedId("thrd");
-      const now = new Date().toISOString();
-
-      await trx
-        .insertInto("threads")
-        .values({
-          id: taskId,
-          organization_id: automation.organization_id,
-          title: `Automation: ${automation.name}`,
-          description: null,
-          status: "in_progress",
-          trigger_id: triggerId,
-          virtual_mcp_id: automation.virtual_mcp_id,
-          hidden: false,
-          created_at: now,
-          updated_at: now,
-          created_by: automation.created_by,
-          updated_by: null,
-        })
-        .execute();
-
-      return taskId;
-    });
+  ): Promise<string> {
+    const taskId = generatePrefixedId("thrd");
+    const now = new Date().toISOString();
+    await this.db
+      .insertInto("threads")
+      .values({
+        id: taskId,
+        organization_id: automation.organization_id,
+        title: `Automation: ${automation.name}`,
+        description: null,
+        status: "in_progress",
+        trigger_id: triggerId,
+        virtual_mcp_id: automation.virtual_mcp_id,
+        hidden: false,
+        created_at: now,
+        updated_at: now,
+        created_by: automation.created_by,
+        updated_by: null,
+      })
+      .execute();
+    return taskId;
   }
 
   async markRunFailed(taskId: string): Promise<void> {
@@ -683,20 +545,6 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       .where("id", "=", id)
       .where("active", "=", true)
       .execute();
-  }
-
-  async failZombieAutomationRuns(maxAgeMs: number): Promise<number> {
-    const cutoff = new Date(Date.now() - maxAgeMs);
-    const result = await this.db
-      .updateTable("threads")
-      .set({ status: "failed", updated_at: new Date().toISOString() })
-      .where("status", "=", "in_progress")
-      .where("run_config", "is", null)
-      .where("trigger_id", "is not", null)
-      .where("created_at", "<=", cutoff.toISOString() as unknown as Date)
-      .executeTakeFirst();
-
-    return Number(result.numUpdatedRows ?? 0n);
   }
 }
 

@@ -2,16 +2,32 @@
  * AUTOMATION_TRIGGER_ADD Tool
  *
  * Adds a trigger (cron or event) to an automation.
- * - Cron triggers: validated with croner, minimum 60s interval enforced
+ * - Cron triggers: validated with croner, minimum interval enforced
+ *   (`AUTOMATION_CRON_MIN_INTERVAL_MS`) to keep one tenant from flooding the
+ *   DBOS scheduler and gate queues.
  * - Event triggers: fail-atomic — if TRIGGER_CONFIGURE call fails, trigger is not inserted
  */
 
-import { AutomationCronWorker } from "../../automations/cron-worker";
+import { computeNextRunAt } from "../../automations/fire";
+import { syncTriggerCreated } from "../../automations/dbos-sync";
 import { Cron } from "croner";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/mesh-context";
 import { configureTriggerOnMcp } from "./configure-trigger";
+
+// Cluster-wide floor on cron firing frequency. Tighter than the 60s floor
+// the old NATS dispatcher allowed: each fire writes ~4 DBOS workflow rows
+// plus org/automation gate slot acquisitions, so an every-minute trigger
+// across N automations multiplies system-DB writes by 60·N per hour. 5 min
+// keeps system-DB growth tractable across our 3–10 replica deploy and
+// leaves headroom for legitimate every-5-min crons.
+const AUTOMATION_CRON_MIN_INTERVAL_MS = 5 * 60 * 1000;
+
+// Look at this many upcoming runs to find the smallest gap. A 2-run check
+// misses irregular crons (e.g. "0,7,9 * * * *") where the tight pair isn't
+// the first one.
+const CRON_PROBE_RUNS = 10;
 
 export const AUTOMATION_TRIGGER_ADD = defineTool({
   name: "AUTOMATION_TRIGGER_ADD",
@@ -58,16 +74,29 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
 
       // Validate cron expression
       const cron = new Cron(input.cron_expression, { timezone: "UTC" });
-      const runs = cron.nextRuns(2);
-      if (runs.length >= 2 && runs[1]!.getTime() - runs[0]!.getTime() < 60000) {
-        throw new Error(
-          "Cron interval must be at least 60 seconds between runs",
-        );
-      }
+      const runs = cron.nextRuns(CRON_PROBE_RUNS);
 
       // Validate the expression has future runs
-      if (!cron.nextRun()) {
+      if (runs.length === 0) {
         throw new Error("Cron expression has no future runs");
+      }
+
+      // Take the smallest gap across the probe window — `0,7,9 * * * *`
+      // looks fine at runs[0..1] but has a 2-min gap at runs[1..2].
+      let minGapMs = Infinity;
+      for (let i = 1; i < runs.length; i++) {
+        const gap = runs[i]!.getTime() - runs[i - 1]!.getTime();
+        if (gap < minGapMs) minGapMs = gap;
+      }
+      if (
+        runs.length >= 2 &&
+        Number.isFinite(minGapMs) &&
+        minGapMs < AUTOMATION_CRON_MIN_INTERVAL_MS
+      ) {
+        const minSeconds = AUTOMATION_CRON_MIN_INTERVAL_MS / 1000;
+        throw new Error(
+          `Cron fires too frequently — minimum interval is ${minSeconds}s between runs (observed ${minGapMs / 1000}s)`,
+        );
       }
     }
 
@@ -116,16 +145,11 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
       }
     }
 
-    // Compute next_run_at for cron triggers
     const nextRunAt =
       input.type === "cron" && input.cron_expression
-        ? AutomationCronWorker.computeNextRunAt(
-            input.cron_expression,
-            new Date(),
-          )
+        ? computeNextRunAt(input.cron_expression, new Date())
         : null;
 
-    // Insert trigger record
     const trigger = await ctx.storage.automations.addTrigger({
       automation_id: input.automation_id,
       type: input.type,
@@ -135,6 +159,11 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
       params: input.params ? JSON.stringify(input.params) : null,
       next_run_at: nextRunAt?.toISOString() ?? null,
     });
+
+    // Register the DBOS schedule for cron triggers so it fires without
+    // waiting for the boot-time reconciler. Event triggers don't have
+    // schedules (they fire on AutomationEventDispatcher.dispatchForEvents).
+    await syncTriggerCreated(trigger, automation);
 
     return {
       id: trigger.id,

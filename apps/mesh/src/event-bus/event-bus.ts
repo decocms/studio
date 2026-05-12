@@ -61,13 +61,13 @@ export class EventBus implements IEventBus {
   }
 
   /**
-   * Set the event trigger engine on the underlying worker.
+   * Set the automation event dispatcher on the underlying worker.
    * Allows automations to react to processed events.
    */
-  setEventTriggerEngine(
-    engine: Parameters<EventBusWorker["setEventTriggerEngine"]>[0],
+  setAutomationEventDispatcher(
+    dispatcher: Parameters<EventBusWorker["setAutomationEventDispatcher"]>[0],
   ): void {
-    this.worker.setEventTriggerEngine(engine);
+    this.worker.setAutomationEventDispatcher(dispatcher);
   }
 
   async publish(

@@ -111,7 +111,7 @@ export function unitLabel(unit: TimeUnit, count: number): string {
 }
 
 export const SCHEDULE_UNITS = [
-  { label: "Minute", cron: "* * * * *" },
+  { label: "5 minutes", cron: "*/5 * * * *" },
   { label: "Hour", cron: "0 * * * *" },
   { label: "Day", cron: "0 0 * * *" },
   { label: "Week", cron: "0 0 * * 1" },

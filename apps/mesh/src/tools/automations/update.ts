@@ -6,6 +6,7 @@
  */
 
 import { z } from "zod";
+import { syncAutomationActiveChanged } from "../../automations/dbos-sync";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/mesh-context";
 import { ChatTierSchema } from "../organization/schema";
@@ -85,7 +86,10 @@ export const AUTOMATION_UPDATE = defineTool({
       updateData,
     );
 
-    // When active state changes, configure event triggers
+    // When active state changes, configure event triggers AND pause/resume
+    // the DBOS schedules tied to cron triggers — DBOS schedules fire even
+    // when the workflow body would short-circuit on active=false, so we
+    // pause to avoid wasting workflow records.
     if (input.active !== undefined && input.active !== existing.active) {
       const triggers = await ctx.storage.automations.listTriggers(
         automation.id,
@@ -106,6 +110,8 @@ export const AUTOMATION_UPDATE = defineTool({
           }
         }),
       );
+
+      await syncAutomationActiveChanged(triggers, input.active);
     }
 
     return {
