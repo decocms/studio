@@ -25,8 +25,12 @@ import {
 } from "ai";
 import { getBuiltInTools, type PendingImage } from "./built-in-tools";
 import { createEnableToolTool } from "./built-in-tools/enable-tool";
-import { createSearchToolTool } from "./built-in-tools/search-tool";
-import { buildAgentCatalog } from "./agent-catalog";
+import { buildAgentsBlock } from "./agents-block";
+import { buildPromptsBlock } from "./prompts-block";
+import {
+  buildConnectionsBlock,
+  type ConnectionsBlockTool,
+} from "./connections-block";
 import {
   buildBasePlatformPrompt,
   buildDecopilotAgentPrompt,
@@ -599,40 +603,46 @@ async function streamCoreInner(
           }
         }
 
-        // Build the search_tool catalog from the current Virtual MCP's tools.
-        // Captured once per request so search_tool itself is a pure substring
-        // filter with no MCP round-trip per call.
+        // Collect (rawName, safeName, connectionId) triples for the
+        // connections block AND for enable_tool short-name resolution.
         const passthroughToolList = isCliAgent
           ? []
           : (await passthroughClient.listTools()).tools;
-        const searchToolCatalog = passthroughToolList
-          .map((t) => {
-            const safeName = passthroughNameMap.get(t.name);
-            if (!safeName) return null;
-            return { id: safeName, description: t.description ?? "" };
-          })
-          .filter((e): e is { id: string; description: string } => e !== null);
+        const connectionsBlockTools: ConnectionsBlockTool[] = [];
+        const connectionIds = new Set<string>();
+        for (const t of passthroughToolList) {
+          const safeName = passthroughNameMap.get(t.name);
+          if (!safeName) continue;
+          const connectionId =
+            typeof t._meta?.gatewayClientId === "string"
+              ? t._meta.gatewayClientId
+              : "unknown";
+          connectionsBlockTools.push({
+            rawName: t.name,
+            safeName,
+            connectionId,
+          });
+          connectionIds.add(connectionId);
+        }
 
-        // When the current Virtual MCP exposes no passthrough tools, the
-        // search/enable built-ins add nothing — drop them from the toolset
-        // and from prepareStep's active list. Applies uniformly to decopilot
-        // (zero by design) and to any other zero-tool agent.
-        const hasPassthroughTools = searchToolCatalog.length > 0;
+        const connectionTitleMap = isCliAgent
+          ? new Map<string, string>()
+          : passthroughClient.getConnectionTitleMap();
 
         const tools = isCliAgent
           ? {}
           : {
               ...passthroughTools,
               ...builtInTools,
-              ...(hasPassthroughTools
+              ...(connectionsBlockTools.length > 0
                 ? {
-                    search_tool: createSearchToolTool(searchToolCatalog),
                     enable_tool: createEnableToolTool(
                       enabledTools,
                       passthroughToolNames,
                       {
                         isPlanMode: modeConfig.isPlanMode,
                         toolAnnotations,
+                        connectionIds: [...connectionIds],
                       },
                     ),
                   }
@@ -642,14 +652,18 @@ async function streamCoreInner(
         // Build composable system prompt array
         const basePrompt = buildBasePlatformPrompt();
 
-        const [virtualMcpList, promptCatalog] = await Promise.all([
+        const [virtualMcpList, promptList] = await Promise.all([
           ctx.storage.virtualMcps.list(organization.id),
-          buildPromptCatalog(passthroughClient),
+          (async () => {
+            if (isCliAgent) return [];
+            const { prompts } = await passthroughClient.listPrompts();
+            return prompts;
+          })(),
         ]);
 
-        const agentCatalog = isCliAgent
+        const agentsBlock = isCliAgent
           ? null
-          : buildAgentCatalog(
+          : buildAgentsBlock(
               virtualMcpList.map((vm) => ({
                 id: vm.id,
                 name: vm.title,
@@ -658,6 +672,23 @@ async function streamCoreInner(
               })),
               input.agent.id,
             );
+
+        const promptsBlock = isCliAgent
+          ? null
+          : buildPromptsBlock(
+              promptList.map((p) => ({
+                name: p.name,
+                description: p.description ?? null,
+                arguments: (p.arguments ?? []).map((a) => ({
+                  name: a.name,
+                  required: a.required,
+                })),
+              })),
+            );
+
+        const connectionsBlock = isCliAgent
+          ? null
+          : buildConnectionsBlock(connectionsBlockTools, connectionTitleMap);
 
         // Agent prompt: decopilot-specific or custom agent instructions
         const serverInstructions = passthroughClient.getInstructions();
@@ -676,18 +707,23 @@ async function streamCoreInner(
           ? buildRepoEnvironmentPrompt(vmMetadata.githubRepo)
           : null;
 
-        // The agent catalog (<available-agents>) is stable across the whole
-        // request, so we include it in every step's system prompt — this keeps
-        // the prompt prefix identical and lets prompt caching kick in.
+        // The blocks are stable for the entire request, so we include
+        // them in every step's system prompt — this keeps the prompt
+        // prefix identical across steps and lets prompt caching kick in.
         const systemPrompts = [
           basePrompt,
           planModePrompt,
           webSearchPrompt,
           repoEnvironmentPrompt,
-          agentCatalog,
-          promptCatalog,
+          promptsBlock,
+          agentsBlock,
+          connectionsBlock,
           agentPrompt,
         ].filter((s): s is string => Boolean(s?.trim()));
+
+        console.log(
+          "[decopilot] final system prompt:\n" + systemPrompts.join("\n\n"),
+        );
 
         // Resolve mesh-storage: URIs to fresh presigned URLs every turn.
         // Also handles legacy data: URLs from threads predating this pipeline.
@@ -959,11 +995,10 @@ async function streamCoreInner(
                         ];
                       }
 
+                      const hasEnableTool = connectionsBlockTools.length > 0;
                       let activeToolNames = [
                         ...builtInToolNames,
-                        ...(hasPassthroughTools
-                          ? ["search_tool", "enable_tool"]
-                          : []),
+                        ...(hasEnableTool ? ["enable_tool"] : []),
                         ...enabledTools,
                       ];
 
@@ -971,12 +1006,10 @@ async function streamCoreInner(
                       // somehow got enabled (safety net for Layer 1 in enable_tool)
                       if (modeConfig.isPlanMode) {
                         activeToolNames = activeToolNames.filter((name) => {
-                          // Built-in tools and the discovery tools are always allowed
+                          // Built-in tools and enable_tool are always allowed
                           if (
                             builtInToolNames.includes(name) ||
-                            (hasPassthroughTools &&
-                              (name === "search_tool" ||
-                                name === "enable_tool"))
+                            (hasEnableTool && name === "enable_tool")
                           ) {
                             return true;
                           }
@@ -1619,46 +1652,6 @@ function reconstructEnabledTools(
     }
   }
   return enabled;
-}
-
-/**
- * Build a compact prompt catalog for the system prompt.
- *
- * Encoded as RFC 4180 CSV with a header row. The `args` column lists
- * argument names separated by `; ` (so the `,` column separator stays
- * unambiguous); required ones get a `(required)` suffix.
- */
-function csvField(s: string | null | undefined): string {
-  if (s == null || s === "") return "";
-  if (s.includes(",") || s.includes('"') || s.includes("\n")) {
-    return `"${s.replaceAll('"', '""')}"`;
-  }
-  return s;
-}
-
-async function buildPromptCatalog(client: {
-  listPrompts(): Promise<{
-    prompts: Array<{
-      name: string;
-      description?: string;
-      arguments?: Array<{ name: string; required?: boolean }>;
-    }>;
-  }>;
-}): Promise<string | null> {
-  const { prompts } = await client.listPrompts();
-  if (prompts.length === 0) return null;
-
-  const rows = prompts.map((p) => {
-    const args =
-      p.arguments && p.arguments.length > 0
-        ? p.arguments
-            .map((a) => (a.required ? `${a.name} (required)` : a.name))
-            .join("; ")
-        : "";
-    return `${csvField(p.name)},${csvField(p.description ?? "")},${csvField(args)}`;
-  });
-
-  return `\n\n<available-prompts>\nname,description,args\n${rows.join("\n")}\n</available-prompts>`;
 }
 
 /**
