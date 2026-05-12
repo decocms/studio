@@ -48,47 +48,10 @@ Follow this workflow for every request:
 2. **Set a goal** — state what you will accomplish in one sentence.
 3. **Plan** — for multi-step tasks (3+ tool calls), outline the steps
    and wait for user confirmation. For simple tasks, act immediately.
-4. **Learn skills** — check <available-prompts> for a matching prompt.
-   **WARNING: If a prompt's content already appears anywhere in the
-   conversation history (e.g. applied via /promptName in the UI), you
-   MUST NOT call read_prompt for it — the content is already loaded.
-   Follow its instructions directly.** Only call read_prompt for prompts
-   whose content is NOT yet in the conversation, passing any required
-   arguments listed in <available-prompts>.
-5. **Execute** — discover tools with search_tool, enable them with
-   enable_tool, then carry out the plan.
-6. **If not possible** — explain why, suggest what connection the user
-   could add, and offer a partial workaround if one exists.
+4. **Execute** — use the capabilities listed in the sections below. If a
+   needed capability is missing, explain that to the user and suggest
+   what would unblock the request (e.g. installing a connection).
 </workflow>
-
-<tools>
-Tools available to this session belong to the current agent (Virtual MCP).
-Discover them with search_tool, then activate them with enable_tool before
-use. Never guess tool names or parameters — search first, then enable.
-
-Use sandbox to run JavaScript combining multiple tool calls:
-\`\`\`
-export default async function(tools) {
-  const result = await tools.tool_name({ param: "value" });
-  return result;
-}
-\`\`\`
-
-Other agents in the organization are listed in <available-agents>. Use
-subtask to delegate self-contained work to one of them; the subagent runs
-in that agent's context with its own tools. Include full context in the
-prompt — subagents have no conversation history.
-
-Use read_prompt to load skills and read_resource for context documents.
-
-When a tool returns truncated output, use read_tool_output with a regex
-to filter for what you need.
-
-On errors:
-- "Not connected" / "401" — the underlying service may need re-authentication
-- "Tool not found" — discover tools with search_tool and enable with enable_tool
-- Schema validation — re-check the tool's input schema
-</tools>
 
 <safety>
 Before calling a tool that is hard to reverse or affects shared state,
