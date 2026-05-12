@@ -26,13 +26,7 @@ import { toolsFromMCP } from "../helpers";
 import type { ModelsConfig } from "../types";
 import { MeshProvider } from "@/ai-providers/types";
 import {
-  addCacheStep,
-  cacheStatus,
-  costSection,
-  emptyCacheAccumulator,
   OPENROUTER_CACHE_PROVIDER_OPTIONS,
-  renderCacheBox,
-  usageSection,
   withCachedToolPrefix,
 } from "../cache-instrumentation";
 import { createLanguageModel } from "../stream-core";
@@ -192,21 +186,8 @@ export function createSubtaskTool(
         new Date(),
       );
 
-      console.log(
-        "[decopilot:cache subtask] === start org=%s vmcp=%s tools=%d ===\n[decopilot:cache subtask] system_prompt_order=%j",
-        organization.id,
-        agent_id,
-        Object.keys(subagentTools).length,
-        systemPromptMessages.map((m, i) => ({
-          i,
-          len: m.content.length,
-          cached: Boolean(m.providerOptions?.anthropic?.cacheControl),
-        })),
-      );
-
       // ── 5. Run streamText as subagent ──────────────────────────────
       let accumulatedUsage: UsageStats = emptyUsageStats();
-      const cacheAcc = emptyCacheAccumulator();
 
       const result = streamText({
         model: createLanguageModel(provider, models.thinking),
@@ -223,12 +204,6 @@ export function createSubtaskTool(
             ...usage,
             providerMetadata,
           });
-          addCacheStep(
-            cacheAcc,
-            usage as Parameters<typeof addCacheStep>[1],
-            models.thinking.provider ?? undefined,
-            models.thinking.id,
-          );
         },
         onAbort: () => {
           console.error(`[subtask:${agent_id}] Aborted`);
@@ -262,31 +237,6 @@ export function createSubtaskTool(
           models,
         },
       });
-
-      // ── 7. Cache observability ─────────────────────────────────────
-      console.log(
-        renderCacheBox({
-          tag: "decopilot:cache subtask",
-          status: cacheStatus(cacheAcc),
-          sections: [
-            [
-              ["org", organization.id],
-              ["vmcp", agent_id],
-              ["tools", String(Object.keys(subagentTools).length)],
-            ],
-            usageSection(
-              cacheAcc,
-              models.thinking.provider ?? "unknown",
-              models.thinking.id,
-            ),
-            [
-              ...costSection(cacheAcc),
-              ["latencyMs", String(Math.round(latencyMs))] as const,
-            ],
-          ],
-          footer: `[decopilot:cache subtask] === end org=${organization.id} vmcp=${agent_id} ===`,
-        }),
-      );
     },
     toModelOutput: ({ output: message }) => {
       const lastTextPart = message?.parts?.findLast(

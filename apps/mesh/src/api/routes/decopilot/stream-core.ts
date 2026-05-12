@@ -29,12 +29,8 @@ import { buildAgentsBlock } from "./agents-block";
 import { buildPromptsBlock } from "./prompts-block";
 import {
   addCacheStep,
-  cacheStatus,
-  costSection,
   emptyCacheAccumulator,
   OPENROUTER_CACHE_PROVIDER_OPTIONS,
-  renderCacheBox,
-  usageSection,
 } from "./cache-instrumentation";
 import { buildSystemMessages } from "./system-prompt";
 import {
@@ -922,54 +918,6 @@ async function streamCoreInner(
           systemPrompts,
           new Date(),
         );
-        if (!isCliAgent) {
-          const fullSystem = [
-            ...systemPromptMessages,
-            ...processedSystemMessages,
-          ];
-          console.log(
-            "[decopilot:cache] === request start org=%s vmcp=%s thread=%s user=%s ===\n[decopilot:cache] system_prompt_order=%j",
-            input.organizationId,
-            input.agent.id,
-            mem.thread.id,
-            input.userId,
-            fullSystem.map((m, i) => ({
-              i,
-              len:
-                typeof m.content === "string"
-                  ? m.content.length
-                  : JSON.stringify(m.content).length,
-              cached: Boolean(
-                (
-                  m as {
-                    providerOptions?: {
-                      anthropic?: { cacheControl?: unknown };
-                    };
-                  }
-                ).providerOptions?.anthropic?.cacheControl,
-              ),
-            })),
-          );
-          for (let i = 0; i < fullSystem.length; i++) {
-            const m = fullSystem[i]!;
-            const content =
-              typeof m.content === "string"
-                ? m.content
-                : JSON.stringify(m.content, null, 2);
-            const cached = Boolean(
-              (
-                m as {
-                  providerOptions?: {
-                    anthropic?: { cacheControl?: unknown };
-                  };
-                }
-              ).providerOptions?.anthropic?.cacheControl,
-            );
-            console.log(
-              `[decopilot:cache] >>> system_prompt[${i}] start (len=${content.length} cached=${cached}) >>>\n${content}\n[decopilot:cache] <<< system_prompt[${i}] end <<<`,
-            );
-          }
-        }
 
         let result;
         try {
@@ -1123,39 +1071,6 @@ async function streamCoreInner(
                   ? stepCacheAcc.read / stepCacheAcc.input
                   : 0;
               llmSpan.setAttribute("decopilot.cache.hit_ratio", hitRatio);
-              if (!isCliAgent) {
-                const status = cacheStatus(stepCacheAcc);
-                console.log(
-                  renderCacheBox({
-                    tag: "decopilot:cache",
-                    status,
-                    sections: [
-                      [
-                        ["org", input.organizationId],
-                        ["vmcp", input.agent.id],
-                        ["thread", mem.thread.id],
-                        ["user", input.userId],
-                      ],
-                      usageSection(
-                        stepCacheAcc,
-                        input.models.thinking.provider ?? "unknown",
-                        input.models.thinking.id,
-                      ),
-                      costSection(stepCacheAcc),
-                    ],
-                    footer: `[decopilot:cache] === request end   org=${input.organizationId} vmcp=${input.agent.id} thread=${mem.thread.id} ===`,
-                  }),
-                );
-                // On MISS, dump the raw provider metadata namespaces seen
-                // this turn — helps diagnose whether the upstream provider
-                // returned any cache fields at all.
-                if (status === "MISS ❌" && lastProviderMetadata) {
-                  console.log(
-                    "[decopilot:cache] raw providerMetadata namespaces=%j",
-                    Object.keys(lastProviderMetadata),
-                  );
-                }
-              }
               llmSpan.setStatus({ code: SpanStatusCode.OK });
               llmSpan.end();
 
