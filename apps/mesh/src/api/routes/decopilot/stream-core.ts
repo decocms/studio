@@ -1236,6 +1236,15 @@ async function streamCoreInner(
                       inputTokens: abortTotalUsage.inputTokens,
                       outputTokens: abortTotalUsage.outputTokens,
                       totalTokens: abortTotalUsage.totalTokens,
+                      cachedInputTokens: stepCacheAcc.read,
+                      inputTokenDetails: {
+                        cacheReadTokens: stepCacheAcc.read,
+                        cacheWriteTokens: stepCacheAcc.write,
+                        noCacheTokens:
+                          abortTotalUsage.inputTokens -
+                          stepCacheAcc.read -
+                          stepCacheAcc.write,
+                      },
                       ...(stepAccumulatedCost > 0 && {
                         providerMetadata: {
                           openrouter: {
@@ -1351,6 +1360,19 @@ async function streamCoreInner(
                   inputTokens: stepAccumulatedUsage.inputTokens,
                   outputTokens: stepAccumulatedUsage.outputTokens,
                   totalTokens: stepAccumulatedUsage.totalTokens,
+                  // Forward AI-SDK normalized cache token details so the
+                  // frontend's tooltip can read them. Without this our
+                  // explicit usage shape replaces the SDK's default and
+                  // drops these fields.
+                  cachedInputTokens: stepCacheAcc.read,
+                  inputTokenDetails: {
+                    cacheReadTokens: stepCacheAcc.read,
+                    cacheWriteTokens: stepCacheAcc.write,
+                    noCacheTokens:
+                      stepAccumulatedUsage.inputTokens -
+                      stepCacheAcc.read -
+                      stepCacheAcc.write,
+                  },
                   ...(stepAccumulatedCost > 0 && {
                     providerMetadata: {
                       openrouter: {
@@ -1408,6 +1430,19 @@ async function streamCoreInner(
                       (totalUsage as { reasoningTokens?: number } | null)
                         ?.reasoningTokens ?? undefined,
                     totalTokens: effectiveUsage.totalTokens ?? 0,
+                    // Forward AI-SDK normalized cache token details so the
+                    // frontend's tooltip can read them. Our explicit usage
+                    // shape replaces the SDK's default, so without this the
+                    // detail fields would be dropped on the way to the UI.
+                    cachedInputTokens: stepCacheAcc.read,
+                    inputTokenDetails: {
+                      cacheReadTokens: stepCacheAcc.read,
+                      cacheWriteTokens: stepCacheAcc.write,
+                      noCacheTokens:
+                        (effectiveUsage.inputTokens ?? 0) -
+                        stepCacheAcc.read -
+                        stepCacheAcc.write,
+                    },
                     providerMetadata: sanitizeProviderMetadata(
                       provider && finalProviderMeta
                         ? {
