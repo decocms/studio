@@ -587,32 +587,24 @@ async function streamCoreInner(
           passthroughToolNames,
         );
 
-        // Build tool annotations map for plan-mode gating in enable_tool.
-        // Uses the same nameMap from toolsFromMCP so collision-suffixed names
-        // match the keys in passthroughTools.
-        const toolAnnotations = new Map<string, { readOnlyHint?: boolean }>();
-        if (modeConfig.isPlanMode && !isCliAgent) {
-          const { tools: toolList } = await passthroughClient.listTools();
-          for (const t of toolList) {
-            const safeName = passthroughNameMap.get(t.name);
-            if (safeName) {
-              toolAnnotations.set(safeName, {
-                readOnlyHint: t.annotations?.readOnlyHint,
-              });
-            }
-          }
-        }
-
         // Collect (rawName, safeName, connectionId) triples for the
-        // connections block AND for enable_tool short-name resolution.
+        // connections block, the set of connection ids for enable_tool
+        // short-name resolution, and the per-tool annotations used for
+        // plan-mode gating — all from a single listTools() round-trip.
         const passthroughToolList = isCliAgent
           ? []
           : (await passthroughClient.listTools()).tools;
         const connectionsBlockTools: ConnectionsBlockTool[] = [];
         const connectionIds = new Set<string>();
+        const toolAnnotations = new Map<string, { readOnlyHint?: boolean }>();
         for (const t of passthroughToolList) {
           const safeName = passthroughNameMap.get(t.name);
           if (!safeName) continue;
+          // _meta.gatewayClientId is set by the gateway when the tool is
+          // proxied from a non-virtual connection; the "unknown" fallback
+          // only fires for tools that didn't traverse the gateway, which
+          // currently means none in the passthrough flow — it's defense
+          // in depth rather than a real case.
           const connectionId =
             typeof t._meta?.gatewayClientId === "string"
               ? t._meta.gatewayClientId
@@ -623,6 +615,11 @@ async function streamCoreInner(
             connectionId,
           });
           connectionIds.add(connectionId);
+          if (modeConfig.isPlanMode) {
+            toolAnnotations.set(safeName, {
+              readOnlyHint: t.annotations?.readOnlyHint,
+            });
+          }
         }
 
         const connectionTitleMap = isCliAgent
