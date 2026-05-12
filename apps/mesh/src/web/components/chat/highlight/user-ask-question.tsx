@@ -434,6 +434,7 @@ function UserAskPrompt({ parts, onSubmit }: UserAskPromptProps) {
           <HighlightCard
             title={part.input?.prompt ?? "Question"}
             footerRight={footerButtons}
+            minimizable
           >
             <QuestionInput
               input={part.input as UserAskInput}
@@ -461,6 +462,7 @@ function UserAskPrompt({ parts, onSubmit }: UserAskPromptProps) {
                 title={part.input?.prompt ?? "Question"}
                 footerLeft={pagination}
                 footerRight={footerButtons}
+                minimizable
               >
                 <QuestionInput
                   input={part.input as UserAskInput}
