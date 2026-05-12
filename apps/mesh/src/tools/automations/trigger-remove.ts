@@ -6,6 +6,7 @@
  */
 
 import { z } from "zod";
+import { syncTriggerDeleted } from "../../automations/dbos-sync";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/mesh-context";
 import { configureTriggerOnMcp } from "./configure-trigger";
@@ -69,6 +70,10 @@ export const AUTOMATION_TRIGGER_REMOVE = defineTool({
       trigger.id,
       trigger.automation_id,
     );
+
+    if (trigger.type === "cron") {
+      await syncTriggerDeleted(trigger.id);
+    }
 
     return { success };
   },

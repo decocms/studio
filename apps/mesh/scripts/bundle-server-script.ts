@@ -24,6 +24,7 @@ const CLI_ENTRY_POINT = join(SCRIPT_DIR, "../src/cli.ts");
 const ALWAYS_INCLUDE = [
   "@jitl/quickjs-wasmfile-release-sync",
   "@anthropic-ai/claude-agent-sdk",
+  "@dbos-inc/dbos-sdk",
   "embedded-postgres",
   "ink",
   "react",

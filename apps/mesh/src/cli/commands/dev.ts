@@ -150,6 +150,11 @@ export async function startDevServer(
 
   const shutdown = async (signal: NodeJS.Signals) => {
     child.kill(signal);
+    // Wait for the server to finish graceful shutdown before killing shared
+    // services. Otherwise pg dies mid-flight and DBOS / app.shutdown error
+    // out connecting to a dead system DB. The server has its own 55s force-
+    // exit timer, so this won't hang indefinitely.
+    await child.exited;
     if (managedServiceNames.length > 0) {
       const { stopServices } = await import("../../services/ensure-services");
       await stopServices(settings.dataDir);

@@ -6,15 +6,21 @@
  * the event bus hot path.
  */
 
-import type { StreamCoreDeps } from "@/api/routes/decopilot/stream-core";
 import type { AutomationsStorage } from "@/storage/automations";
-import {
-  fireAutomation,
-  type FireAutomationConfig,
-  type MeshContextFactory,
-  type StreamCoreFn,
-} from "./fire";
-import type { Semaphore } from "./semaphore";
+import type { Automation, AutomationTrigger } from "@/storage/types";
+import type { FireAutomationResult } from "./fire";
+
+/**
+ * How a matched trigger gets fired. `idempotencyKey` (when supplied)
+ * identifies the logical (event, trigger) pair — used as the DBOS workflow ID
+ * so a redelivered CloudEvent produces exactly one fire.
+ */
+export type EventFireFn = (input: {
+  automation: Automation;
+  trigger: AutomationTrigger;
+  contextMessages: Array<{ role: string; content: string }>;
+  idempotencyKey?: string;
+}) => Promise<FireAutomationResult>;
 
 type ParamMatcher =
   | { op: "eq"; value: unknown }
@@ -87,19 +93,21 @@ export class EventTriggerEngine {
 
   constructor(
     private storage: AutomationsStorage,
-    private streamCoreFn: StreamCoreFn,
-    private meshContextFactory: MeshContextFactory,
-    private config: FireAutomationConfig,
-    private globalSemaphore: Semaphore,
-    private deps: Pick<StreamCoreDeps, "runRegistry" | "cancelBroadcast">,
+    private fire: EventFireFn,
   ) {}
 
   /**
    * Called by EventBusWorker after processing events.
    * Fire-and-forget — does not block the caller.
+   *
+   * `id` is the CloudEvents identifier; when present it's combined with the
+   * matched triggerId to form a DBOS workflow ID, giving exactly-once fire
+   * semantics across at-least-once event delivery. Callers without a stable
+   * id (e.g. ad-hoc webhook callbacks) may omit it and accept retry-fires.
    */
   notifyEvents(
     events: Array<{
+      id?: string;
       source: string;
       type: string;
       data: unknown;
@@ -118,6 +126,7 @@ export class EventTriggerEngine {
   }
 
   private async onEvent(event: {
+    id?: string;
     source: string;
     type: string;
     data: unknown;
@@ -146,19 +155,16 @@ export class EventTriggerEngine {
       this.paramsMatch(trigger.params, event.data),
     );
 
-    // 3. Fire each
+    // 3. Fire each via the DBOS-backed fire callback.
     const results = await Promise.allSettled(
       triggersToFire.map((trigger) =>
-        fireAutomation({
+        this.fire({
           automation: trigger.automation,
-          triggerId: trigger.id,
+          trigger,
           contextMessages: this.buildContextMessages(event.data),
-          storage: this.storage,
-          streamCoreFn: this.streamCoreFn,
-          meshContextFactory: this.meshContextFactory,
-          config: this.config,
-          globalSemaphore: this.globalSemaphore,
-          deps: this.deps,
+          idempotencyKey: event.id
+            ? `evt:${event.id}:trig:${trigger.id}`
+            : undefined,
         }),
       ),
     );

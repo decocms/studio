@@ -6,6 +6,7 @@
  */
 
 import { z } from "zod";
+import { syncAutomationDeleted } from "../../automations/dbos-sync";
 import { posthog } from "../../posthog";
 import { defineTool } from "../../core/define-tool";
 import {
@@ -66,6 +67,10 @@ export const AUTOMATION_DELETE = defineTool({
       input.id,
       organization.id,
     );
+
+    // Drop schedules for every cron trigger. The DB cascade is invisible to
+    // DBOS so we delete here rather than waiting for the boot-time reconciler.
+    await syncAutomationDeleted(triggers);
 
     const userId = getUserId(ctx);
     if (userId) {

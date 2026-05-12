@@ -61,7 +61,7 @@ export function resolveConfig(
 
     // Database (url resolved after services start)
     databasePgSsl: toBool(envVars.DATABASE_PG_SSL),
-    databasePoolMax: Number(envVars.DATABASE_POOL_MAX) || 3,
+    databasePoolMax: Number(envVars.DATABASE_POOL_MAX) || 20,
 
     // Auth & Secrets
     betterAuthSecret: envVars.BETTER_AUTH_SECRET || "",

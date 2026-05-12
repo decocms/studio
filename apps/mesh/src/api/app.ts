@@ -93,15 +93,27 @@ import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { SqlThreadStorage } from "../storage/threads";
 import type { Thread } from "../storage/types";
+import {
+  MONITORING_RETENTION_SCHEDULE,
+  MONITORING_RETENTION_SCHEDULE_NAME,
+  monitoringRetentionWorkflow,
+} from "../monitoring/dbos-retention-workflow";
 import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
 import { getLogsDir, getTracesDir, getMetricsDir } from "../monitoring/schema";
 import {
-  AutomationCronWorker,
-  automationJobStream,
+  AUTOMATIONS_GATE_QUEUE,
+  AUTOMATIONS_GATE_PARTITION_CONCURRENCY,
+  AUTOMATIONS_GC_SCHEDULE,
+  AUTOMATIONS_GC_SCHEDULE_NAME,
+  AUTOMATIONS_GLOBAL_CONCURRENCY,
+  AUTOMATIONS_GLOBAL_QUEUE,
+  automationsGcWorkflow,
   EventTriggerEngine,
-  Semaphore,
+  fireAutomationNow,
+  reconcileAutomationSchedules,
+  setAutomationRuntime,
 } from "../automations";
-import { fireAutomation } from "../automations/fire";
+import { DBOS } from "@dbos-inc/dbos-sdk";
 import { streamCore, consumeStreamCore } from "./routes/decopilot/stream-core";
 import {
   PersistedRunConfigSchema,
@@ -158,14 +170,8 @@ function rejectAfter(ms: number): Promise<never> {
 // Track current event bus instance for cleanup during HMR
 let currentEventBus: EventBus | null = null;
 
-// Track automation cron worker for cleanup during HMR
-let currentCronWorkerCleanup: (() => void) | null = null;
-
 // Track decopilot strategy cleanup (abort active runs, stop strategies) during HMR
 let currentDecopilotCleanup: (() => void | Promise<void>) | null = null;
-
-// Track monitoring retention timer for cleanup during HMR
-let currentRetentionTimer: ReturnType<typeof setInterval> | null = null;
 
 // ============================================================================
 // Deco Store OAuth Helpers
@@ -690,12 +696,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   const database = options.database ?? getDb();
   let isShuttingDown = false;
 
-  // Clear previous monitoring retention timer (cleanup during HMR)
-  if (currentRetentionTimer) {
-    clearInterval(currentRetentionTimer);
-    currentRetentionTimer = null;
-  }
-
   // Stop any existing event bus worker and SSE hub (cleanup during HMR)
   if (currentEventBus && currentEventBus.isRunning()) {
     // Fire and forget - don't block app creation
@@ -1134,24 +1134,26 @@ export async function createApp(options: CreateAppOptions = {}) {
     });
 
   // ============================================================================
-  // Automation Cron Worker
+  // Automation Runtime — wire storage + streaming into the DBOS workflow
   // ============================================================================
-
-  // Cleanup previous cron worker (HMR)
-  if (currentCronWorkerCleanup) {
-    currentCronWorkerCleanup();
-    currentCronWorkerCleanup = null;
-  }
 
   const automationsStorage = createAutomationsStorage(database.db);
   const triggerCallbackTokenStorage = new KyselyTriggerCallbackTokenStorage(
     database.db,
   );
-  const automationSemaphore = new Semaphore(10); // max 10 concurrent runs globally
 
   const automationContextFactory = createAutomationContextFactory({
     db: database.db,
     threadStorage,
+  });
+
+  // Stash deps for the DBOS workflow body. Safe to call before DBOS.launch():
+  // it only writes a module-level pointer, no DBOS API calls.
+  setAutomationRuntime({
+    storage: automationsStorage,
+    streamCoreFn: streamCore,
+    meshContextFactory: automationContextFactory,
+    deps: { runRegistry, cancelBroadcast },
   });
 
   const automationRunner: MeshContext["automationRunner"] = async (
@@ -1161,131 +1163,12 @@ export async function createApp(options: CreateAppOptions = {}) {
   ) => {
     const automation = await automationsStorage.findById(automationId, orgId);
     if (!automation) throw new Error("Automation not found");
-    return fireAutomation({
-      automation,
+    return fireAutomationNow({
+      automationId: automation.id,
+      organizationId: automation.organization_id,
       triggerId: null,
-      storage: automationsStorage,
-      streamCoreFn: streamCore,
-      meshContextFactory: automationContextFactory,
-      config: { maxConcurrentPerAutomation: 3, runTimeoutMs: 5 * 60 * 1000 },
-      globalSemaphore: automationSemaphore,
-      deps: { runRegistry, cancelBroadcast },
     });
   };
-
-  // JetStream job stream for distributing automation fire commands
-  let cronTimer: ReturnType<typeof setInterval> | null = null;
-
-  if (natsProvider) {
-    const natsOpts = {
-      getConnection: () => natsProvider!.getConnection(),
-      getJetStream: () => natsProvider!.getJetStream(),
-    };
-
-    const cronWorker = new AutomationCronWorker(
-      automationsStorage,
-      automationJobStream.publish,
-    );
-
-    const cronPollIntervalMs = 10_000;
-
-    const startJobStream = async () => {
-      const t0 = Date.now();
-      await automationJobStream.init(natsOpts);
-      console.log(
-        `[AutomationJobStream] init completed in ${Date.now() - t0}ms`,
-      );
-      await automationJobStream.startConsumer(async (payload) => {
-        const automation = await automationsStorage.findById(
-          payload.automationId,
-          payload.organizationId,
-        );
-        if (!automation) return;
-        await fireAutomation({
-          automation,
-          triggerId: payload.triggerId,
-          storage: automationsStorage,
-          streamCoreFn: streamCore,
-          meshContextFactory: automationContextFactory,
-          config: {
-            maxConcurrentPerAutomation: 3,
-            runTimeoutMs: 5 * 60 * 1000,
-          },
-          globalSemaphore: automationSemaphore,
-          deps: { runRegistry, cancelBroadcast },
-        });
-      });
-      const t1 = Date.now();
-      await cronWorker.start();
-      console.log(
-        `[AutomationJobStream] cronWorker.start() completed in ${Date.now() - t1}ms`,
-      );
-    };
-
-    const startJobStreamWithRetry = async (maxRetries = 5) => {
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-          await startJobStream();
-          return;
-        } catch (err) {
-          if (attempt === maxRetries) throw err;
-          const delay = Math.min(1000 * 2 ** (attempt - 1), 10_000);
-          console.warn(
-            `[AutomationJobStream] Start attempt ${attempt}/${maxRetries} failed, retrying in ${delay}ms`,
-          );
-          await new Promise((r) => setTimeout(r, delay));
-        }
-      }
-    };
-
-    // Attempt immediate start
-    startJobStreamWithRetry().catch((err) => {
-      console.error("[AutomationJobStream] Immediate start failed:", err);
-    });
-
-    // Re-start when NATS connects
-    natsProvider.onReady(() => {
-      startJobStreamWithRetry().catch((err: unknown) => {
-        console.error("[AutomationJobStream] Deferred start failed:", err);
-      });
-    });
-    cronTimer = setInterval(() => {
-      cronWorker.processNow().catch((err) => {
-        console.error("[AutomationCron] Error processing:", err);
-      });
-    }, cronPollIntervalMs);
-
-    // Periodic health check: detect dead consumer and reinitialize
-    const healthCheckIntervalMs = 60_000;
-    let reinitializing = false;
-    const healthCheckTimer = setInterval(async () => {
-      if (reinitializing) return;
-      try {
-        const healthy = await automationJobStream.isHealthy(natsOpts);
-        if (healthy) return;
-
-        reinitializing = true;
-        console.warn(
-          "[AutomationJobStream] Health check failed, reinitializing...",
-        );
-        await startJobStreamWithRetry();
-      } catch (err) {
-        console.error("[AutomationJobStream] Health re-init failed:", err);
-      } finally {
-        reinitializing = false;
-      }
-    }, healthCheckIntervalMs);
-
-    currentCronWorkerCleanup = () => {
-      if (cronTimer) {
-        clearInterval(cronTimer);
-        cronTimer = null;
-      }
-      clearInterval(healthCheckTimer);
-      automationJobStream.stop();
-      cronWorker.stop().catch(() => {});
-    };
-  }
 
   // ============================================================================
   // Event Trigger Engine — wire automations into the event bus
@@ -1293,14 +1176,16 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   const eventTriggerEngine = new EventTriggerEngine(
     automationsStorage,
-    streamCore,
-    automationContextFactory,
-    {
-      maxConcurrentPerAutomation: 3,
-      runTimeoutMs: 5 * 60 * 1000, // 5 minutes
-    },
-    automationSemaphore,
-    { runRegistry, cancelBroadcast },
+    ({ automation, trigger, contextMessages, idempotencyKey }) =>
+      fireAutomationNow(
+        {
+          automationId: automation.id,
+          organizationId: automation.organization_id,
+          triggerId: trigger.id,
+          contextMessages,
+        },
+        { idempotencyKey },
+      ),
   );
 
   // Inject into the event bus worker so processed events trigger automations.
@@ -1411,7 +1296,9 @@ export async function createApp(options: CreateAppOptions = {}) {
     });
   }, 10_000); // 10s grace for rolling deploys
 
-  // NDJSON monitoring retention cleanup (always — local files are always written)
+  // NDJSON monitoring retention cleanup runs as a DBOS scheduled workflow
+  // (see `initDbos` below). Kick off a single eager sweep at boot so a fresh
+  // replica trims local files without waiting for the next schedule tick.
   const SIGNAL_DIRS = [getLogsDir(), getTracesDir(), getMetricsDir()];
 
   for (const dir of SIGNAL_DIRS) {
@@ -1434,19 +1321,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       );
 
   cleanupExpiredApiKeys();
-
-  currentRetentionTimer = setInterval(
-    () => {
-      for (const dir of SIGNAL_DIRS) {
-        cleanupOldMonitoringFiles(dir).catch((err) =>
-          console.error("[monitoring] Retention cleanup failed:", err),
-        );
-      }
-      cleanupExpiredApiKeys();
-    },
-    24 * 60 * 60 * 1000,
-  );
-  currentRetentionTimer.unref();
+  setInterval(cleanupExpiredApiKeys, 24 * 60 * 60 * 1000).unref();
 
   // Inject MeshContext into requests
   // Skip auth routes, static files, health check, and metrics - they don't need MeshContext
@@ -1858,23 +1733,12 @@ export async function createApp(options: CreateAppOptions = {}) {
     await Promise.allSettled([
       eventBus.isRunning() ? eventBus.stop() : Promise.resolve(),
       sseHub.stop(),
-      currentCronWorkerCleanup
-        ? Promise.resolve(currentCronWorkerCleanup()).finally(() => {
-            currentCronWorkerCleanup = null;
-          })
-        : Promise.resolve(),
       currentDecopilotCleanup
         ? Promise.resolve(currentDecopilotCleanup()).finally(() => {
             currentDecopilotCleanup = null;
           })
         : Promise.resolve(),
     ]);
-
-    // Phase 2: Clear timers
-    if (currentRetentionTimer) {
-      clearInterval(currentRetentionTimer);
-      currentRetentionTimer = null;
-    }
 
     // Sweep sandbox containers — Docker only. Other runners' sandboxes
     // outlive mesh by design, so a generic sweep would nuke active user VMs.

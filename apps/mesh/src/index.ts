@@ -19,6 +19,24 @@ const settings = getSettings();
 // ensures every `meter.createX()` call hits the real MeterProvider.
 initObservability();
 
+// DBOS sits on a sibling database in the same Postgres cluster as mesh
+// (embedded-postgres locally, RDS in prod). The DB is auto-created on launch.
+// setConfig must run before any module registers workflows; launch happens
+// after the app graph is loaded so all DBOS.registerWorkflow calls are in.
+const { DBOS } = await import("@dbos-inc/dbos-sdk");
+const dbosSystemDbUrl = (() => {
+  const u = new URL(settings.databaseUrl);
+  u.pathname = "/decocms_dbos_sys";
+  return u.toString();
+})();
+DBOS.setConfig({
+  name: "decocms",
+  systemDatabaseUrl: dbosSystemDbUrl,
+  // N workers all call DBOS.launch(); the admin server would otherwise fight
+  // over port 3001. Re-enable per-process once we need workflow admin HTTP.
+  runAdminServer: false,
+});
+
 const { createApp } = await import("./api/app");
 const { isServerPath } = await import("./api/utils/paths");
 const { createAssetHandler, resolveClientDir } = await import(
@@ -140,8 +158,15 @@ if (ingressEligible) {
   }
 }
 
-// Create the Hono app
+// Create the Hono app (any DBOS.registerWorkflow calls happen during this
+// import chain). Launch DBOS afterwards so the registry is sealed before
+// the executor starts dequeueing workflows.
 const app = await createApp();
+await DBOS.launch();
+// Post-launch DBOS setup (queue registration, schedule reconciliation).
+// Must run after launch because registerQueue / listSchedules require an
+// initialized executor.
+await app.initDbos();
 
 // When running via CLI, the calling script handles its own banner/config output
 if (!settings.isCli) {
@@ -279,6 +304,7 @@ async function gracefulShutdown(signal: string) {
     await server.stop(true);
 
     await app.shutdown();
+    await DBOS.shutdown();
   } catch (err) {
     console.error("[shutdown] Error during shutdown:", err);
     exitCode = 1;

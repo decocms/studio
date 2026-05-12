@@ -116,6 +116,7 @@ export class EventBusWorker {
   private eventTriggerEngine?: {
     notifyEvents(
       events: Array<{
+        id: string;
         source: string;
         type: string;
         data: unknown;
@@ -346,6 +347,7 @@ export class EventBusWorker {
     if (this.eventTriggerEngine) {
       const seenIds = new Set<string>();
       const uniqueEvents: Array<{
+        id: string;
         source: string;
         type: string;
         data: unknown;
@@ -358,6 +360,7 @@ export class EventBusWorker {
         if (!seenIds.has(pending.event.id)) {
           seenIds.add(pending.event.id);
           uniqueEvents.push({
+            id: pending.event.id,
             source: pending.event.source,
             type: pending.event.type,
             data: pending.event.data,
