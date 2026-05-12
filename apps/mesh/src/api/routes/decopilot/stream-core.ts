@@ -914,14 +914,30 @@ async function streamCoreInner(
           },
         });
 
+        const systemPromptMessages = buildSystemMessages(
+          systemPrompts,
+          new Date(),
+        );
+        if (!isCliAgent) {
+          console.log(
+            "[decopilot:cache] === request start org=%s vmcp=%s thread=%s user=%s ===\n[decopilot:cache] system_prompt_order=%j",
+            input.organizationId,
+            input.agent.id,
+            mem.thread.id,
+            input.userId,
+            systemPromptMessages.map((m, i) => ({
+              i,
+              len: m.content.length,
+              cached: Boolean(m.providerOptions?.anthropic?.cacheControl),
+            })),
+          );
+        }
+
         let result;
         try {
           result = streamText({
             model: languageModel,
-            system: [
-              ...buildSystemMessages(systemPrompts, new Date()),
-              ...processedSystemMessages,
-            ],
+            system: [...systemPromptMessages, ...processedSystemMessages],
             messages: processedMessages,
             tools,
             providerOptions: {
@@ -1108,6 +1124,11 @@ async function streamCoreInner(
                     "╔════════════════════════════════════════════════════════════════════╗",
                     `║  [decopilot:cache] ${status.padEnd(47)}║`,
                     "╠════════════════════════════════════════════════════════════════════╣",
+                    `║  org      : ${input.organizationId.padEnd(54)}║`,
+                    `║  vmcp     : ${input.agent.id.padEnd(54)}║`,
+                    `║  thread   : ${mem.thread.id.padEnd(54)}║`,
+                    `║  user     : ${input.userId.padEnd(54)}║`,
+                    "╠────────────────────────────────────────────────────────────────────╣",
                     `║  provider : ${(input.models.thinking.provider ?? "unknown").padEnd(54)}║`,
                     `║  model    : ${input.models.thinking.id.padEnd(54)}║`,
                     `║  input    : ${String(totalInputTokens).padEnd(54)}║`,
@@ -1115,13 +1136,28 @@ async function streamCoreInner(
                     `║  cache rd : ${String(stepAccumulatedCacheRead).padEnd(54)}║`,
                     `║  cache wr : ${String(stepAccumulatedCacheWrite).padEnd(54)}║`,
                     `║  hit_ratio: ${`${pct}%`.padEnd(54)}║`,
+                    "╠────────────────────────────────────────────────────────────────────╣",
                     `║  cost     : ${cost.padEnd(54)}║`,
                     `║  if uncached: ${uncached.padEnd(52)}║`,
                     `║  saved    : ${saved.padEnd(54)}║`,
                     "╚════════════════════════════════════════════════════════════════════╝",
+                    `[decopilot:cache] === request end   org=${input.organizationId} vmcp=${input.agent.id} thread=${mem.thread.id} ===`,
                     "",
                   ].join("\n"),
                 );
+                // On MISS, dump the raw provider metadata namespaces seen
+                // this turn — helps diagnose whether the upstream provider
+                // returned any cache fields at all.
+                if (
+                  stepAccumulatedCacheRead === 0 &&
+                  stepAccumulatedCacheWrite === 0 &&
+                  lastProviderMetadata
+                ) {
+                  console.log(
+                    "[decopilot:cache] raw providerMetadata namespaces=%j",
+                    Object.keys(lastProviderMetadata),
+                  );
+                }
               }
               llmSpan.setStatus({ code: SpanStatusCode.OK });
               llmSpan.end();
