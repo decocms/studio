@@ -264,7 +264,7 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import type { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
 import { AIProviderFactory } from "@/ai-providers/factory";
-import type { FireAutomationResult } from "../automations/fire";
+import type { FireAutomationOutcome } from "../automations/dbos-workflow";
 import type { BoundObjectStorage } from "../object-storage/bound-object-storage";
 
 // Better Auth instance type - flexible for testing
@@ -390,7 +390,7 @@ export interface MeshContext {
     automationId: string,
     orgId: string,
     userId: string,
-  ) => Promise<FireAutomationResult>;
+  ) => Promise<FireAutomationOutcome>;
 }
 
 // ============================================================================

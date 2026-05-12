@@ -83,7 +83,6 @@ function scalarMatchesField(fieldValue: unknown, scalar: unknown): boolean {
 }
 
 export class AutomationEventDispatcher {
-  private static MAX_AUTOMATION_DEPTH = 3;
   private static MAX_EVENT_PAYLOAD_BYTES = 1_048_576; // 1MB
 
   constructor(
@@ -107,7 +106,6 @@ export class AutomationEventDispatcher {
       type: string;
       data: unknown;
       organizationId: string;
-      automationDepth?: number;
     }>,
   ): void {
     for (const event of events) {
@@ -126,18 +124,7 @@ export class AutomationEventDispatcher {
     type: string;
     data: unknown;
     organizationId: string;
-    automationDepth?: number;
   }): Promise<void> {
-    const depth = event.automationDepth ?? 0;
-
-    // Prevent infinite recursion
-    if (depth >= AutomationEventDispatcher.MAX_AUTOMATION_DEPTH) {
-      console.warn(
-        `[AutomationDispatch] SKIPPED event ${event.type} from ${event.source} — max depth ${depth}`,
-      );
-      return;
-    }
-
     // 1. Find matching triggers
     const matchingTriggers = await this.storage.findActiveEventTriggers(
       event.source,

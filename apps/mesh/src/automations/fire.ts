@@ -16,17 +16,6 @@ export type MeshContextFactory = (
   userId: string,
 ) => Promise<MeshContext | null>;
 
-/**
- * Skip reasons:
- *   - `creator_invalid`: org membership lost
- *   - `not_found`, `inactive`: automation went away or was disabled between
- *      schedule fire and workflow body
- */
-export type FireAutomationResult =
-  | { taskId: string }
-  | { taskId: string; error: string }
-  | { skipped: "creator_invalid" | "not_found" | "inactive" };
-
 export function computeNextRunAt(
   cronExpression: string,
   after: Date,
