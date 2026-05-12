@@ -1,6 +1,7 @@
 /**
  * DBOS scheduled workflow for NDJSON monitoring file retention.
  *
+<<<<<<< HEAD
  * Registered as a static schedule via `DBOS.registerScheduled` at module
  * load — state lives in `event_dispatch_kv`, so re-registration on restart
  * is implicitly idempotent (no `workflow_schedules` row to collide with).
@@ -15,7 +16,6 @@ import { cleanupOldMonitoringFiles } from "./ndjson-retention";
 
 /** 04:23 UTC daily — off-peak with a minute offset to avoid colliding with hourly tasks. */
 const MONITORING_RETENTION_CRONTAB = "23 4 * * *";
-
 export interface MonitoringRetentionResult {
   deleted: number;
   dirs: number;

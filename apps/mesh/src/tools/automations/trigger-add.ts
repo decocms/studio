@@ -22,7 +22,7 @@ import { configureTriggerOnMcp } from "./configure-trigger";
 // across N automations multiplies system-DB writes by 60·N per hour. 5 min
 // keeps system-DB growth tractable across our 3–10 replica deploy and
 // leaves headroom for legitimate every-5-min crons.
-const AUTOMATION_CRON_MIN_INTERVAL_MS = 5 * 60 * 1000;
+export const AUTOMATION_CRON_MIN_INTERVAL_MS = 5 * 60 * 1000;
 
 // Look at this many upcoming runs to find the smallest gap. A 2-run check
 // misses irregular crons (e.g. "0,7,9 * * * *") where the tight pair isn't

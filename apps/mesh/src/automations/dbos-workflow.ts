@@ -83,7 +83,6 @@ export const AUTOMATIONS_GLOBAL_QUEUE = "automations-global";
 const AUTOMATIONS_ORG_QUEUE_PREFIX = "automations-org-";
 /** Concurrency a new org's queue starts at. Updatable per-org afterwards. */
 const DEFAULT_ORG_CONCURRENCY = 3;
-
 /** Per-automation concurrent fire cap (partition cap on the gate queue). */
 export const AUTOMATIONS_GATE_PARTITION_CONCURRENCY = 3;
 /**
@@ -93,7 +92,6 @@ export const AUTOMATIONS_GATE_PARTITION_CONCURRENCY = 3;
  */
 export const AUTOMATIONS_GLOBAL_CONCURRENCY = 5;
 const AUTOMATIONS_RUN_TIMEOUT_MS = 5 * 60 * 1000;
-
 export function orgQueueName(orgId: string): string {
   return `${AUTOMATIONS_ORG_QUEUE_PREFIX}${orgId}`;
 }
