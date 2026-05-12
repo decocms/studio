@@ -18,9 +18,8 @@
  *   burst load).
  *
  * Four workflows:
- * - `fireAutomationWorkflow` — coarse single step that does the actual fire.
- *   Enqueued on the global queue. If the pod crashes mid-step, DBOS recovery
- *   re-runs the step (at-least-once).
+ * - `fireAutomationWorkflow` — runs on the global queue, split into recorded
+ *   steps (prepare → createRunThread → updateTriggerTiming → executeRun).
  * - `gateWorkflow` — enqueued on the per-automation gate queue with
  *   partitionKey=automationId, awaits a fire on the global queue. Holding
  *   the partition slot until the child returns is what enforces the
@@ -55,6 +54,7 @@ import {
 } from "@/api/routes/decopilot/stream-core";
 import { resolveTier } from "@/core/resolve-tier";
 import type { AutomationsStorage } from "@/storage/automations";
+import type { Automation } from "@/storage/types";
 import type { SimpleModeTier } from "@/tools/organization/schema";
 import {
   buildStreamRequest,
@@ -153,17 +153,24 @@ function toThinkingCapabilities(caps: string[] | undefined) {
   };
 }
 
-async function fireAutomationStep(
+type PrepareOutcome =
+  | { skip: "not_found" | "inactive" | "creator_invalid" }
+  | {
+      automation: Automation;
+      resolvedModel: ResolvedAutomationModel;
+    };
+
+async function prepareFireStep(
   ctx: FireAutomationContext,
-): Promise<FireAutomationOutcome> {
+): Promise<PrepareOutcome> {
   const rt = requireRuntime();
 
   const automation = await rt.storage.findById(
     ctx.automationId,
     ctx.organizationId,
   );
-  if (!automation) return { skipped: "not_found" };
-  if (!automation.active) return { skipped: "inactive" };
+  if (!automation) return { skip: "not_found" };
+  if (!automation.active) return { skip: "inactive" };
 
   const meshCtx = await rt.meshContextFactory(
     automation.organization_id,
@@ -174,7 +181,7 @@ async function fireAutomationStep(
       `[fireAutomationWorkflow] deactivating "${automation.name}" — creator ${automation.created_by} no longer in org ${automation.organization_id}`,
     );
     await rt.storage.deactivateAutomation(automation.id);
-    return { skipped: "creator_invalid" };
+    return { skip: "creator_invalid" };
   }
 
   const parsedModels = JSON.parse(automation.models) as {
@@ -204,40 +211,63 @@ async function fireAutomationStep(
     },
   };
 
-  const taskId = await rt.storage.createAutomationRunThread(
-    automation,
-    ctx.triggerId,
-  );
+  return { automation, resolvedModel };
+}
 
-  // Maintain last_run_at / next_run_at on the trigger row so the UI's
-  // "last run" + nearest-next-run aggregate stays correct. DBOS owns
-  // actual scheduling; these columns are now display-only mirrors.
-  // Best-effort — if either write fails the run still proceeds.
-  if (ctx.triggerId) {
-    try {
-      const nowIso = new Date().toISOString();
-      await rt.storage.updateTriggerLastRunAt(ctx.triggerId, nowIso);
-      const trigger = await rt.storage.findTriggerById(ctx.triggerId);
-      if (trigger?.cron_expression) {
-        const next = computeNextRunAt(trigger.cron_expression, new Date());
-        await rt.storage.updateNextRunAt(
-          ctx.triggerId,
-          next ? next.toISOString() : null,
-        );
-      }
-    } catch (err) {
-      console.warn(
-        `[fireAutomationWorkflow] trigger ${ctx.triggerId} run-time write failed:`,
-        err instanceof Error ? err.message : err,
+async function createRunThreadStep(
+  automation: Automation,
+  triggerId: string | null,
+): Promise<string> {
+  const rt = requireRuntime();
+  return await rt.storage.createAutomationRunThread(automation, triggerId);
+}
+
+async function updateTriggerTimingStep(triggerId: string): Promise<void> {
+  const rt = requireRuntime();
+  try {
+    const nowIso = new Date().toISOString();
+    await rt.storage.updateTriggerLastRunAt(triggerId, nowIso);
+    const trigger = await rt.storage.findTriggerById(triggerId);
+    if (trigger?.cron_expression) {
+      const next = computeNextRunAt(trigger.cron_expression, new Date());
+      await rt.storage.updateNextRunAt(
+        triggerId,
+        next ? next.toISOString() : null,
       );
     }
+  } catch (err) {
+    console.warn(
+      `[fireAutomationWorkflow] trigger ${triggerId} run-time write failed:`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+async function executeRunStep(
+  automation: Automation,
+  resolvedModel: ResolvedAutomationModel,
+  ctx: FireAutomationContext,
+  taskId: string,
+): Promise<{ error?: string }> {
+  const rt = requireRuntime();
+
+  const meshCtx = await rt.meshContextFactory(
+    automation.organization_id,
+    automation.created_by,
+  );
+  if (!meshCtx) {
+    try {
+      await rt.storage.markRunFailed(taskId);
+    } catch {
+      // best-effort
+    }
+    return { error: "creator membership lost mid-fire" };
   }
 
   const timeoutMs = rt.runTimeoutMs ?? AUTOMATIONS_RUN_TIMEOUT_MS;
   const abortController = new AbortController();
   const timeout = setTimeout(() => abortController.abort(), timeoutMs);
 
-  let runError: string | undefined;
   try {
     const request = buildStreamRequest(
       automation,
@@ -263,8 +293,9 @@ async function fireAutomationStep(
       cancelBroadcast: rt.deps.cancelBroadcast,
     });
     await consumeStreamCore(result);
+    return {};
   } catch (err) {
-    runError = err instanceof Error ? err.message : String(err);
+    const runError = err instanceof Error ? err.message : String(err);
     console.error(
       `[fireAutomationWorkflow] ERROR "${automation.name}" taskId=${taskId}:`,
       runError,
@@ -274,20 +305,41 @@ async function fireAutomationStep(
     } catch {
       // best-effort
     }
+    return { error: runError };
   } finally {
     clearTimeout(timeout);
   }
-
-  if (runError) return { taskId, error: runError };
-  return { taskId };
 }
 
+// Split into steps so a crash-recovery replay doesn't duplicate the
+// `threads` row inserted by `createRunThread`.
 async function fireAutomationWorkflowFn(
   ctx: FireAutomationContext,
 ): Promise<FireAutomationOutcome> {
-  return await DBOS.runStep(() => fireAutomationStep(ctx), {
-    name: "fireAutomation",
+  const prep = await DBOS.runStep(() => prepareFireStep(ctx), {
+    name: "prepareFire",
   });
+  if ("skip" in prep) return { skipped: prep.skip };
+
+  const taskId = await DBOS.runStep(
+    () => createRunThreadStep(prep.automation, ctx.triggerId),
+    { name: "createRunThread" },
+  );
+
+  if (ctx.triggerId) {
+    const triggerId = ctx.triggerId;
+    await DBOS.runStep(() => updateTriggerTimingStep(triggerId), {
+      name: "updateTriggerTiming",
+    });
+  }
+
+  const result = await DBOS.runStep(
+    () => executeRunStep(prep.automation, prep.resolvedModel, ctx, taskId),
+    { name: "executeRun" },
+  );
+
+  if (result.error) return { taskId, error: result.error };
+  return { taskId };
 }
 
 const fireAutomationWorkflow = DBOS.registerWorkflow(fireAutomationWorkflowFn, {

@@ -93,7 +93,7 @@ import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { SqlThreadStorage } from "../storage/threads";
 import type { Thread } from "../storage/types";
-import "../monitoring/dbos-retention-workflow";
+import { registerMonitoringRetentionWorkflow } from "../monitoring/dbos-retention-workflow";
 import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
 import { getLogsDir, getTracesDir, getMetricsDir } from "../monitoring/schema";
 import {
@@ -102,6 +102,7 @@ import {
   AUTOMATIONS_GLOBAL_CONCURRENCY,
   AUTOMATIONS_GLOBAL_QUEUE,
   AutomationEventDispatcher,
+  enqueueAutomationFire,
   fireAutomationNow,
   reconcileAutomationSchedules,
   setAutomationRuntime,
@@ -1149,6 +1150,9 @@ export async function createApp(options: CreateAppOptions = {}) {
     deps: { runRegistry, cancelBroadcast },
   });
 
+  // Must run before DBOS.launch() (which fires in index.ts after createApp).
+  registerMonitoringRetentionWorkflow();
+
   const automationRunner: MeshContext["automationRunner"] = async (
     automationId,
     orgId,
@@ -1170,7 +1174,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   const automationEventDispatcher = new AutomationEventDispatcher(
     automationsStorage,
     ({ automation, trigger, contextMessages, idempotencyKey }) =>
-      fireAutomationNow(
+      enqueueAutomationFire(
         {
           automationId: automation.id,
           organizationId: automation.organization_id,

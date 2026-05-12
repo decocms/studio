@@ -301,8 +301,9 @@ async function gracefulShutdown(signal: string) {
     //    graceful drain indefinitely).
     await server.stop(true);
 
-    await app.shutdown();
+    // Drain DBOS before app.shutdown closes mesh's pg pool — in-flight steps use it.
     await DBOS.shutdown();
+    await app.shutdown();
   } catch (err) {
     console.error("[shutdown] Error during shutdown:", err);
     exitCode = 1;

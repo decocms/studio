@@ -109,32 +109,37 @@ export async function syncAutomationDeleted(
   );
 }
 
-/**
- * Enqueue an immediate fire through the org gate queue. Used by:
- *   - AUTOMATION_RUN (manual "run now") — bypasses any trigger
- *   - AutomationEventDispatcher — fires on event-matched triggers
- *
- * Routes through `orgGateWorkflow` so per-org, per-automation, and global
- * concurrency caps all apply (same chain the cron scheduler uses). Returns
- * the workflow's eventual result. Callers that need fire-and-forget
- * semantics should `.catch()` the returned promise.
- *
- * `idempotencyKey` (when supplied) is used as the top-level DBOS workflow ID,
- * giving exactly-once semantics across at-least-once event delivery. Callers
- * with no stable key (e.g. AUTOMATION_RUN) should omit it; DBOS will
- * generate a UUID and each call fires independently.
- */
+function workflowIdFromIdempotencyKey(
+  ctx: FireAutomationContext,
+  idempotencyKey: string | undefined,
+): string | undefined {
+  return idempotencyKey
+    ? `auto:${ctx.automationId}:${idempotencyKey}`
+    : undefined;
+}
+
 export async function fireAutomationNow(
   ctx: FireAutomationContext,
   opts?: { idempotencyKey?: string },
 ): Promise<FireAutomationOutcome> {
   await ensureOrgQueue(ctx.organizationId);
-  const workflowID = opts?.idempotencyKey
-    ? `auto:${ctx.automationId}:${opts.idempotencyKey}`
-    : undefined;
+  const workflowID = workflowIdFromIdempotencyKey(ctx, opts?.idempotencyKey);
   const handle = await DBOS.startWorkflow(orgGateWorkflow, {
     workflowID,
     queueName: orgQueueName(ctx.organizationId),
   })(ctx);
   return await handle.getResult();
+}
+
+// Returns once the enqueue commits — durability handed off to DBOS.
+export async function enqueueAutomationFire(
+  ctx: FireAutomationContext,
+  opts?: { idempotencyKey?: string },
+): Promise<void> {
+  await ensureOrgQueue(ctx.organizationId);
+  const workflowID = workflowIdFromIdempotencyKey(ctx, opts?.idempotencyKey);
+  await DBOS.startWorkflow(orgGateWorkflow, {
+    workflowID,
+    queueName: orgQueueName(ctx.organizationId),
+  })(ctx);
 }

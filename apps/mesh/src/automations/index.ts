@@ -6,5 +6,5 @@ export {
   AUTOMATIONS_GLOBAL_CONCURRENCY,
   setAutomationRuntime,
 } from "./dbos-workflow";
-export { fireAutomationNow } from "./dbos-sync";
+export { enqueueAutomationFire, fireAutomationNow } from "./dbos-sync";
 export { reconcileAutomationSchedules } from "./dbos-reconciler";

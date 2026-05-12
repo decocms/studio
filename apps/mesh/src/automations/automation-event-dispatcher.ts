@@ -8,19 +8,14 @@
 
 import type { AutomationsStorage } from "@/storage/automations";
 import type { Automation, AutomationTrigger } from "@/storage/types";
-import type { FireAutomationResult } from "./fire";
 
-/**
- * How a matched trigger gets fired. `idempotencyKey` (when supplied)
- * identifies the logical (event, trigger) pair — used as the DBOS workflow ID
- * so a redelivered CloudEvent produces exactly one fire.
- */
+// Resolves once the workflow is durably enqueued, not when it finishes.
 export type EventFireFn = (input: {
   automation: Automation;
   trigger: AutomationTrigger;
   contextMessages: Array<{ role: string; content: string }>;
   idempotencyKey?: string;
-}) => Promise<FireAutomationResult>;
+}) => Promise<void>;
 
 type ParamMatcher =
   | { op: "eq"; value: unknown }

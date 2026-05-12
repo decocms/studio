@@ -1,21 +1,3 @@
-/**
- * Boot-time reconciler.
- *
- * `automation_triggers` (mesh) and DBOS `schedules` are two stores. Crash
- * recovery, deploys with the flag flipping, and any window where a CRUD
- * succeeded against one store but not the other can leave them out of sync.
- *
- * This reconciler runs once after `DBOS.launch()`:
- *   - schedules in DBOS without a matching active cron trigger → delete
- *   - active cron triggers without a matching DBOS schedule → create
- *
- * We do not touch existing schedules whose trigger is also present:
- * `applySchedules`'s delete+recreate would wipe `lastFiredAt`, causing every
- * surviving cron trigger to re-fire on every restart. Cron expressions can't
- * change for an existing trigger row (there's no update path), so existence
- * is the only thing we need to check.
- */
-
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import type { AutomationsStorage } from "@/storage/automations";
 import {
@@ -28,7 +10,10 @@ export interface ReconcileResult {
   created: number;
   deleted: number;
   kept: number;
+  paused: number;
+  resumed: number;
   orphansCancelled: number;
+  stuckThreadsFailed: number;
 }
 
 const AUTOMATION_WORKFLOW_NAMES = [
@@ -38,13 +23,11 @@ const AUTOMATION_WORKFLOW_NAMES = [
   "fireAutomationWorkflow",
 ] as const;
 
-/**
- * Cancel ENQUEUED automation workflows from prior app versions. DBOS dequeues
- * only on matching `application_version`, so a row enqueued under v(N-1) has
- * no live claimant once v(N) boots and accumulates forever — the daily GC
- * only reaps terminal statuses. Flipping to CANCELLED lets that GC collect
- * them on its normal 7-day retention.
- */
+// Bigger than the 5-min fire timeout to leave headroom for slow shutdowns.
+const STUCK_THREAD_AGE_MS = 15 * 60 * 1000;
+
+// DBOS only dequeues rows matching the current `application_version`; older
+// ENQUEUED rows would otherwise accumulate forever.
 async function cancelOrphanedEnqueued(): Promise<number> {
   const orphans = await DBOS.listWorkflows({
     status: ["ENQUEUED"],
@@ -62,32 +45,51 @@ async function cancelOrphanedEnqueued(): Promise<number> {
 export async function reconcileAutomationSchedules(
   storage: AutomationsStorage,
 ): Promise<ReconcileResult> {
-  const activeCronTriggers = await storage.findAllActiveCronTriggers();
+  const triggers = await storage.findAllCronTriggers();
   const existing = await DBOS.listSchedules({
     scheduleNamePrefix: AUTOMATION_SCHEDULE_PREFIX,
   });
 
   const existingNames = new Set(existing.map((s) => s.scheduleName));
   const wantedNames = new Set(
-    activeCronTriggers.map((t) => scheduleNameForTrigger(t.id)),
+    triggers.map((t) => scheduleNameForTrigger(t.id)),
   );
 
   let created = 0;
   let deleted = 0;
   let kept = 0;
+  let paused = 0;
+  let resumed = 0;
 
-  for (const trigger of activeCronTriggers) {
+  for (const trigger of triggers) {
     const name = scheduleNameForTrigger(trigger.id);
     if (existingNames.has(name)) {
       kept++;
-      continue;
+    } else {
+      try {
+        await syncTriggerCreated(trigger, trigger.automation);
+        created++;
+      } catch (err) {
+        console.error(
+          `[automation-reconciler] createSchedule(${name}) failed:`,
+          err instanceof Error ? err.message : err,
+        );
+        continue;
+      }
     }
+
+    // Self-heal a missed pause/resume after a crash between CRUD and DBOS.
     try {
-      await syncTriggerCreated(trigger, trigger.automation);
-      created++;
+      if (trigger.automation.active) {
+        await DBOS.resumeSchedule(name);
+        resumed++;
+      } else {
+        await DBOS.pauseSchedule(name);
+        paused++;
+      }
     } catch (err) {
-      console.error(
-        `[automation-reconciler] createSchedule(${name}) failed:`,
+      console.warn(
+        `[automation-reconciler] ${trigger.automation.active ? "resume" : "pause"}Schedule(${name}) failed:`,
         err instanceof Error ? err.message : err,
       );
     }
@@ -108,9 +110,28 @@ export async function reconcileAutomationSchedules(
 
   const orphansCancelled = await cancelOrphanedEnqueued();
 
+  const cutoff = new Date(Date.now() - STUCK_THREAD_AGE_MS).toISOString();
+  let stuckThreadsFailed = 0;
+  try {
+    stuckThreadsFailed = await storage.failStuckRunThreads(cutoff);
+  } catch (err) {
+    console.error(
+      "[automation-reconciler] failStuckRunThreads failed:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
   console.log(
-    `[automation-reconciler] reconciled schedules — created=${created} deleted=${deleted} kept=${kept} orphansCancelled=${orphansCancelled}`,
+    `[automation-reconciler] reconciled — created=${created} deleted=${deleted} kept=${kept} resumed=${resumed} paused=${paused} orphansCancelled=${orphansCancelled} stuckThreadsFailed=${stuckThreadsFailed}`,
   );
 
-  return { created, deleted, kept, orphansCancelled };
+  return {
+    created,
+    deleted,
+    kept,
+    paused,
+    resumed,
+    orphansCancelled,
+    stuckThreadsFailed,
+  };
 }

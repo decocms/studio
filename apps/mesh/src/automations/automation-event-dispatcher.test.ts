@@ -63,7 +63,7 @@ function makeDispatcher(opts?: {
     } as unknown as AutomationsStorage);
 
   const fire: EventFireFn =
-    opts?.fire ?? (mock(async () => ({ taskId: "thrd_1" })) as EventFireFn);
+    opts?.fire ?? (mock(async () => undefined) as EventFireFn);
 
   const dispatcher = new AutomationEventDispatcher(storage, fire);
   return { dispatcher, storage, fire };
@@ -105,7 +105,7 @@ describe("AutomationEventDispatcher", () => {
       const storage = {
         findActiveEventTriggers: mock(() => Promise.resolve([trigger])),
       } as unknown as AutomationsStorage;
-      const fire: EventFireFn = mock(async () => ({ taskId: "thrd_1" }));
+      const fire: EventFireFn = mock(async () => undefined);
 
       const { dispatcher } = makeDispatcher({ storage, fire });
       dispatcher.dispatchForEvents([
@@ -131,7 +131,7 @@ describe("AutomationEventDispatcher", () => {
       const storage = {
         findActiveEventTriggers: mock(() => Promise.resolve([trigger])),
       } as unknown as AutomationsStorage;
-      const fire: EventFireFn = mock(async () => ({ taskId: "thrd_1" }));
+      const fire: EventFireFn = mock(async () => undefined);
 
       const { dispatcher } = makeDispatcher({ storage, fire });
       dispatcher.dispatchForEvents([
@@ -159,7 +159,7 @@ describe("AutomationEventDispatcher", () => {
       const storage = {
         findActiveEventTriggers: mock(() => Promise.resolve([trigger])),
       } as unknown as AutomationsStorage;
-      const fire: EventFireFn = mock(async () => ({ taskId: "thrd_1" }));
+      const fire: EventFireFn = mock(async () => undefined);
 
       const { dispatcher } = makeDispatcher({ storage, fire });
       dispatcher.dispatchForEvents([
@@ -182,7 +182,7 @@ describe("AutomationEventDispatcher", () => {
       const storage = {
         findActiveEventTriggers: mock(() => Promise.resolve([trigger])),
       } as unknown as AutomationsStorage;
-      const fire: EventFireFn = mock(async () => ({ taskId: "thrd_1" }));
+      const fire: EventFireFn = mock(async () => undefined);
 
       const { dispatcher } = makeDispatcher({ storage, fire });
       dispatcher.dispatchForEvents([
@@ -288,7 +288,7 @@ describe("AutomationEventDispatcher", () => {
       const storage = {
         findActiveEventTriggers: mock(() => Promise.resolve([trigger])),
       } as unknown as AutomationsStorage;
-      const fire: EventFireFn = mock(async () => ({ taskId: "thrd_1" }));
+      const fire: EventFireFn = mock(async () => undefined);
 
       const { dispatcher } = makeDispatcher({ storage, fire });
       dispatcher.dispatchForEvents([
@@ -328,7 +328,7 @@ describe("AutomationEventDispatcher", () => {
     ) {
       const trigger = makeTriggerWithAutomation(triggerOverrides);
       const storage = makeStorage(trigger);
-      const fire: EventFireFn = mock(async () => ({ taskId: "thrd_1" }));
+      const fire: EventFireFn = mock(async () => undefined);
 
       const { dispatcher } = makeDispatcher({ storage, fire });
       dispatcher.dispatchForEvents([

@@ -85,21 +85,17 @@ export interface AutomationsStorage {
     eventType: string,
     organizationId: string,
   ): Promise<(AutomationTrigger & { automation: Automation })[]>;
-  findAllActiveCronTriggers(): Promise<
+  // Includes inactive automations: reconciler pauses (not deletes) their schedules.
+  findAllCronTriggers(): Promise<
     (AutomationTrigger & { automation: Automation })[]
   >;
   updateNextRunAt(triggerId: string, nextRunAt: string | null): Promise<void>;
-  countInProgressRuns(automationId: string): Promise<number>;
-  /**
-   * Create the run thread row for an automation. Per-automation concurrency
-   * is enforced by the DBOS partitioned queue, so there is no in-flight DB
-   * count check here.
-   */
   createAutomationRunThread(
     automation: Automation,
     triggerId: string | null,
   ): Promise<string>;
   markRunFailed(taskId: string): Promise<void>;
+  failStuckRunThreads(olderThanIso: string): Promise<number>;
   updateTriggerLastRunAt(triggerId: string, lastRunAt: string): Promise<void>;
   deactivateAutomation(id: string): Promise<void>;
 }
@@ -437,7 +433,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
     }));
   }
 
-  async findAllActiveCronTriggers(): Promise<
+  async findAllCronTriggers(): Promise<
     (AutomationTrigger & { automation: Automation })[]
   > {
     const rows = await this.db
@@ -466,7 +462,6 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         "a.updated_at as a_updated_at",
       ])
       .where("t.type", "=", "cron")
-      .where("a.active", "=", true)
       .execute();
 
     return rows.map((row) => ({
@@ -496,18 +491,6 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       .set({ next_run_at: nextRunAt })
       .where("id", "=", triggerId)
       .execute();
-  }
-
-  async countInProgressRuns(automationId: string): Promise<number> {
-    const result = await this.db
-      .selectFrom("threads as t")
-      .innerJoin("automation_triggers as tr", "tr.id", "t.trigger_id")
-      .select((eb) => eb.fn.count("t.id").as("count"))
-      .where("tr.automation_id", "=", automationId)
-      .where("t.status", "=", "in_progress")
-      .executeTakeFirst();
-
-    return Number(result?.count ?? 0);
   }
 
   async createAutomationRunThread(
@@ -543,6 +526,17 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       .where("id", "=", taskId)
       .where("status", "=", "in_progress")
       .execute();
+  }
+
+  async failStuckRunThreads(olderThanIso: string): Promise<number> {
+    const result = await this.db
+      .updateTable("threads")
+      .set({ status: "failed", updated_at: new Date().toISOString() })
+      .where("status", "=", "in_progress")
+      .where("trigger_id", "is not", null)
+      .where("updated_at", "<", new Date(olderThanIso))
+      .executeTakeFirst();
+    return Number(result.numUpdatedRows ?? 0n);
   }
 
   async updateTriggerLastRunAt(
