@@ -65,6 +65,7 @@ import { useOptionalTasksPanelState } from "@/web/hooks/use-tasks-panel-state";
 import { Toolbar } from "./toolbar";
 import { ChatMainPanelGroup } from "./chat-main-panel-group";
 import { ToggleButtons } from "./toggle-buttons";
+import { TodosColumn } from "./todos-column";
 import { MainPanelContent } from "@/web/layouts/main-panel-tabs";
 import { MainPanelTabsBar } from "@/web/layouts/main-panel-tabs/main-panel-tabs-bar";
 import { VirtualMcpHeaderInfo } from "../../views/virtual-mcp/header-info.tsx";
@@ -92,7 +93,6 @@ export function useInsetContext(): InsetContextValue | null {
 // ---------------------------------------------------------------------------
 
 function ActiveTaskBoundary({ children }: { children?: React.ReactNode }) {
-  const { taskId } = useChatTask();
   return (
     <ErrorBoundary
       fallback={
@@ -102,9 +102,7 @@ function ActiveTaskBoundary({ children }: { children?: React.ReactNode }) {
       }
     >
       <Suspense fallback={<Chat.Skeleton />}>
-        <Chat.ActiveTaskProvider taskId={taskId}>
-          {children ?? <ChatCenterPanel />}
-        </Chat.ActiveTaskProvider>
+        {children ?? <ChatCenterPanel />}
       </Suspense>
     </ErrorBoundary>
   );
@@ -439,35 +437,37 @@ function AgentInsetProvider() {
                 onToggleMain={layout.toggleMain}
                 onNewTask={layout.createNewTask}
               />
-              <div className="flex-1 min-h-0 overflow-hidden">
-                {layout.mainOpen ? (
-                  <ErrorBoundary
-                    fallback={
-                      <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-                        Something went wrong. Try refreshing.
-                      </div>
-                    }
-                  >
-                    <Suspense
+              <Chat.ActiveTaskProvider taskId={layout.taskId}>
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  {layout.mainOpen ? (
+                    <ErrorBoundary
                       fallback={
-                        <div className="h-full flex items-center justify-center">
-                          <Loading01
-                            size={20}
-                            className="animate-spin text-muted-foreground"
-                          />
+                        <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+                          Something went wrong. Try refreshing.
                         </div>
                       }
                     >
-                      <MainPanelContent
-                        taskId={layout.taskId}
-                        virtualMcpId={chatVirtualMcpId}
-                      />
-                    </Suspense>
-                  </ErrorBoundary>
-                ) : (
-                  <ActiveTaskBoundary />
-                )}
-              </div>
+                      <Suspense
+                        fallback={
+                          <div className="h-full flex items-center justify-center">
+                            <Loading01
+                              size={20}
+                              className="animate-spin text-muted-foreground"
+                            />
+                          </div>
+                        }
+                      >
+                        <MainPanelContent
+                          taskId={layout.taskId}
+                          virtualMcpId={chatVirtualMcpId}
+                        />
+                      </Suspense>
+                    </ErrorBoundary>
+                  ) : (
+                    <ActiveTaskBoundary />
+                  )}
+                </div>
+              </Chat.ActiveTaskProvider>
               {mobileSidebarSheet}
             </VmEventsBridge>
           </Chat.Provider>
@@ -508,13 +508,18 @@ function AgentInsetProvider() {
               onNewTaskRef={onNewTask}
               createNewTask={layout.createNewTask}
             />
-            <ChatMainPanelGroup
-              virtualMcpId={virtualMcpId}
-              taskId={layout.taskId}
-              chatOpen={layout.chatOpen}
-              mainOpen={layout.mainOpen}
-              chatContent={<ActiveTaskBoundary />}
-            />
+            <Chat.ActiveTaskProvider taskId={layout.taskId}>
+              <div className="flex flex-row flex-1 min-h-0">
+                <ChatMainPanelGroup
+                  virtualMcpId={virtualMcpId}
+                  taskId={layout.taskId}
+                  chatOpen={layout.chatOpen}
+                  mainOpen={layout.mainOpen}
+                  chatContent={<ActiveTaskBoundary />}
+                />
+                <TodosColumn />
+              </div>
+            </Chat.ActiveTaskProvider>
           </VmEventsBridge>
         </Chat.Provider>
       </InsetContext>
