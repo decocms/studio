@@ -802,6 +802,7 @@ async function streamCoreInner(
           totalTokens: 0,
         };
         const stepCacheAcc = emptyCacheAccumulator();
+        let stepAccumulatedCost = 0;
         llmCallStartTime = Date.now();
 
         // Build language model based on provider type
@@ -1235,10 +1236,10 @@ async function streamCoreInner(
                       inputTokens: abortTotalUsage.inputTokens,
                       outputTokens: abortTotalUsage.outputTokens,
                       totalTokens: abortTotalUsage.totalTokens,
-                      ...(stepCacheAcc.cost > 0 && {
+                      ...(stepAccumulatedCost > 0 && {
                         providerMetadata: {
                           openrouter: {
-                            usage: { cost: stepCacheAcc.cost },
+                            usage: { cost: stepAccumulatedCost },
                           },
                         },
                       }),
@@ -1331,24 +1332,29 @@ async function streamCoreInner(
                   stepAccumulatedUsage.totalTokens +
                   (part.usage?.totalTokens ?? 0),
               };
-              // Cache tokens + cost: shared accumulator reads AI SDK's
-              // provider-agnostic usage.inputTokenDetails and computes
-              // cost from pricing-table.json. Same path used by subtask.
-              addCacheStep(
-                stepCacheAcc,
-                part.usage,
-                input.models.thinking.provider ?? undefined,
-                input.models.thinking.id,
-              );
+              // Cache tokens: shared accumulator reads AI SDK's
+              // provider-agnostic usage.inputTokenDetails.
+              addCacheStep(stepCacheAcc, part.usage);
+              // Cost: only providers that authoritatively report it
+              // (OpenRouter today) contribute. For Anthropic-direct /
+              // OpenAI / Gemini the field is absent and stepCost stays
+              // 0 — the UI then shows tokens instead of a dollar amount.
+              const stepCost =
+                (
+                  part.providerMetadata?.openrouter as
+                    | { usage?: { cost?: number } }
+                    | undefined
+                )?.usage?.cost ?? 0;
+              stepAccumulatedCost += stepCost;
               return {
                 usage: {
                   inputTokens: stepAccumulatedUsage.inputTokens,
                   outputTokens: stepAccumulatedUsage.outputTokens,
                   totalTokens: stepAccumulatedUsage.totalTokens,
-                  ...(stepCacheAcc.cost > 0 && {
+                  ...(stepAccumulatedCost > 0 && {
                     providerMetadata: {
                       openrouter: {
-                        usage: { cost: stepCacheAcc.cost },
+                        usage: { cost: stepAccumulatedCost },
                       },
                     },
                   }),
@@ -1364,9 +1370,9 @@ async function streamCoreInner(
                 (part as { providerMetadata?: Record<string, unknown> })
                   .providerMetadata;
               // Merge accumulated per-step cost into the final provider metadata.
-              // Per-step cost is tracked in stepCacheAcc.cost from finish-step events.
+              // Per-step cost is tracked in stepAccumulatedCost from finish-step events.
               const finalProviderMeta =
-                stepCacheAcc.cost > 0 && providerMeta
+                stepAccumulatedCost > 0 && providerMeta
                   ? {
                       ...providerMeta,
                       openrouter: {
@@ -1378,7 +1384,7 @@ async function streamCoreInner(
                           ...(((
                             providerMeta.openrouter as Record<string, unknown>
                           )?.usage as Record<string, unknown>) ?? {}),
-                          cost: stepCacheAcc.cost,
+                          cost: stepAccumulatedCost,
                         },
                       },
                     }

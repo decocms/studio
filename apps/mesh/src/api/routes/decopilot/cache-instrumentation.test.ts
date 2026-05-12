@@ -69,85 +69,50 @@ describe("withCachedToolPrefix", () => {
 
 describe("CacheAccumulator", () => {
   test("emptyCacheAccumulator returns zeroed state", () => {
-    const acc = emptyCacheAccumulator();
-    expect(acc).toEqual({
+    expect(emptyCacheAccumulator()).toEqual({
       read: 0,
       write: 0,
       input: 0,
       output: 0,
-      cost: 0,
-      uncachedEquivalent: 0,
-      pricingUnknown: false,
     });
   });
 
-  test("addCacheStep accumulates read/write/input/output and cost", () => {
+  test("addCacheStep accumulates read/write/input/output", () => {
     const acc = emptyCacheAccumulator();
-    addCacheStep(
-      acc,
-      {
-        inputTokens: 10_000,
-        outputTokens: 100,
-        inputTokenDetails: {
-          cacheReadTokens: 9_000,
-          cacheWriteTokens: 500,
-        },
+    addCacheStep(acc, {
+      inputTokens: 10_000,
+      outputTokens: 100,
+      inputTokenDetails: {
+        cacheReadTokens: 9_000,
+        cacheWriteTokens: 500,
       },
-      "anthropic",
-      "claude-haiku-4-5",
-    );
-    expect(acc.read).toBe(9_000);
-    expect(acc.write).toBe(500);
-    expect(acc.input).toBe(10_000);
-    expect(acc.output).toBe(100);
-    expect(acc.cost).toBeGreaterThan(0);
-    expect(acc.uncachedEquivalent).toBeGreaterThan(acc.cost);
-    expect(acc.pricingUnknown).toBe(false);
-  });
-
-  test("addCacheStep flags pricingUnknown for unpriced models", () => {
-    const acc = emptyCacheAccumulator();
-    addCacheStep(
-      acc,
-      {
-        inputTokens: 1_000,
-        outputTokens: 100,
-      },
-      "anthropic",
-      "claude-unicorn-99",
-    );
-    expect(acc.pricingUnknown).toBe(true);
-    expect(acc.cost).toBe(0);
+    });
+    expect(acc).toEqual({
+      read: 9_000,
+      write: 500,
+      input: 10_000,
+      output: 100,
+    });
   });
 
   test("addCacheStep with undefined usage is a no-op", () => {
     const acc = emptyCacheAccumulator();
-    addCacheStep(acc, undefined, "anthropic", "claude-haiku-4-5");
+    addCacheStep(acc, undefined);
     expect(acc).toEqual(emptyCacheAccumulator());
   });
 
   test("multiple steps accumulate", () => {
     const acc = emptyCacheAccumulator();
-    addCacheStep(
-      acc,
-      {
-        inputTokens: 1_000,
-        outputTokens: 50,
-        inputTokenDetails: { cacheReadTokens: 800 },
-      },
-      "anthropic",
-      "claude-haiku-4-5",
-    );
-    addCacheStep(
-      acc,
-      {
-        inputTokens: 500,
-        outputTokens: 25,
-        inputTokenDetails: { cacheReadTokens: 400 },
-      },
-      "anthropic",
-      "claude-haiku-4-5",
-    );
+    addCacheStep(acc, {
+      inputTokens: 1_000,
+      outputTokens: 50,
+      inputTokenDetails: { cacheReadTokens: 800 },
+    });
+    addCacheStep(acc, {
+      inputTokens: 500,
+      outputTokens: 25,
+      inputTokenDetails: { cacheReadTokens: 400 },
+    });
     expect(acc.read).toBe(1_200);
     expect(acc.input).toBe(1_500);
     expect(acc.output).toBe(75);

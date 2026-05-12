@@ -10,12 +10,16 @@
  *     definitions become a cached prefix (separate from the
  *     system/messages cache).
  *   - CacheAccumulator + addCacheStep   : turn-scoped state holder for
- *     cumulative cache_read/write/input/output/cost/uncached, plus
- *     pricing-known flag. Read by OTel-attr emission in stream-core.
+ *     cumulative cache_read / cache_write / input / output token
+ *     counts. Read by OTel-attr emission in stream-core.
+ *
+ * Cost is intentionally NOT tracked here: we trust whatever the upstream
+ * provider authoritatively reports (OpenRouter exposes a `cost` field;
+ * direct Anthropic / OpenAI / Gemini don't, and we'd rather show tokens
+ * in the UI than guess.
  */
 
 import type { ToolSet } from "ai";
-import { computeCost } from "./pricing";
 
 // ─────────────────────────────────────────────────────────────────────
 // providerOptions constants
@@ -87,56 +91,26 @@ export interface CacheAccumulator {
   write: number;
   input: number;
   output: number;
-  cost: number;
-  uncachedEquivalent: number;
-  pricingUnknown: boolean;
 }
 
 export function emptyCacheAccumulator(): CacheAccumulator {
-  return {
-    read: 0,
-    write: 0,
-    input: 0,
-    output: 0,
-    cost: 0,
-    uncachedEquivalent: 0,
-    pricingUnknown: false,
-  };
+  return { read: 0, write: 0, input: 0, output: 0 };
 }
 
 /**
  * Update `acc` with one step's worth of usage. Reads cache tokens from
- * AI SDK's provider-agnostic usage.inputTokenDetails. Calls computeCost
- * for the per-step cost; if the model isn't in the pricing table the
- * pricingUnknown flag flips and cost stays 0.
+ * AI SDK's provider-agnostic usage.inputTokenDetails (populated
+ * identically by anthropic / openai / google / openrouter adapters).
  *
  * Mutates `acc` in place.
  */
 export function addCacheStep(
   acc: CacheAccumulator,
   usage: CacheStepUsage | undefined,
-  providerId: string | undefined,
-  modelId: string,
 ): void {
   if (!usage) return;
-  const cacheRead = usage.inputTokenDetails?.cacheReadTokens ?? 0;
-  const cacheWrite = usage.inputTokenDetails?.cacheWriteTokens ?? 0;
-  const input = usage.inputTokens ?? 0;
-  const output = usage.outputTokens ?? 0;
-  acc.read += cacheRead;
-  acc.write += cacheWrite;
-  acc.input += input;
-  acc.output += output;
-  const breakdown = computeCost(providerId, modelId, {
-    inputTokens: input,
-    outputTokens: output,
-    cacheReadTokens: cacheRead,
-    cacheWriteTokens: cacheWrite,
-  });
-  if (breakdown) {
-    acc.cost += breakdown.total;
-    acc.uncachedEquivalent += breakdown.uncachedEquivalent;
-  } else {
-    acc.pricingUnknown = true;
-  }
+  acc.read += usage.inputTokenDetails?.cacheReadTokens ?? 0;
+  acc.write += usage.inputTokenDetails?.cacheWriteTokens ?? 0;
+  acc.input += usage.inputTokens ?? 0;
+  acc.output += usage.outputTokens ?? 0;
 }
