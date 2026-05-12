@@ -39,9 +39,6 @@ export const TOOL_DISPLAY_MAP: Record<string, ToolDisplay> = {
   glob: { icon: Folder, label: "Find Files" },
   bash: { icon: TerminalSquare, label: "Run Command" },
 
-  // Agent / orchestration tools
-  search_tool: { icon: SearchMd, label: "Search Tools" },
-
   // Resource / context tools
   read_tool_output: { icon: File06, label: "Read Tool Output" },
   read_resource: { icon: Database01, label: "Read Resource" },

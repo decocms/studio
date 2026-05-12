@@ -26,7 +26,6 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   subtask: { readOnly: false, destructive: false },
   user_ask: { readOnly: true, destructive: false },
   propose_plan: { readOnly: true, destructive: false },
-  search_tool: { readOnly: true, destructive: false },
   enable_tool: { readOnly: true, destructive: false },
 };
 import { createReadToolOutputTool } from "./read-tool-output";
