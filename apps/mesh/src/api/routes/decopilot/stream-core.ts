@@ -27,6 +27,7 @@ import { getBuiltInTools, type PendingImage } from "./built-in-tools";
 import { createEnableToolTool } from "./built-in-tools/enable-tool";
 import { buildAgentsBlock } from "./agents-block";
 import { buildPromptsBlock } from "./prompts-block";
+import { buildSystemMessages } from "./system-prompt";
 import {
   buildConnectionsBlock,
   type ConnectionsBlockTool,
@@ -796,6 +797,8 @@ async function streamCoreInner(
           totalTokens: 0,
         };
         let stepAccumulatedCost = 0;
+        let stepAccumulatedCacheRead = 0;
+        let stepAccumulatedCacheWrite = 0;
         llmCallStartTime = Date.now();
 
         // Build language model based on provider type
@@ -913,14 +916,16 @@ async function streamCoreInner(
           result = streamText({
             model: languageModel,
             system: [
-              ...systemPrompts.map((content) => ({
-                role: "system" as const,
-                content,
-              })),
+              ...buildSystemMessages(systemPrompts, new Date()),
               ...processedSystemMessages,
             ],
             messages: processedMessages,
             tools,
+            providerOptions: {
+              openrouter: {
+                cache_control: { type: "ephemeral", ttl: "5m" },
+              },
+            },
             // Note: Codex thread resume is not supported because each request
             // spawns a new codexAppServer process. Thread IDs are local to a
             // process and cannot be resumed by a different one.
@@ -1052,6 +1057,50 @@ async function streamCoreInner(
                 totalUsage.outputTokens ?? 0,
               );
               llmSpan.setAttribute("decopilot.llm.finishReason", finishReason);
+              llmSpan.setAttribute(
+                "decopilot.cache.read_tokens",
+                stepAccumulatedCacheRead,
+              );
+              llmSpan.setAttribute(
+                "decopilot.cache.write_tokens",
+                stepAccumulatedCacheWrite,
+              );
+              // AI SDK v6's totalUsage.inputTokens is already the sum of
+              // noCache + cacheRead + cacheWrite (see @ai-sdk/anthropic
+              // convertAnthropicMessagesUsage and @openrouter/ai-sdk-provider
+              // computeTokenUsage). So hit_ratio is just cache_read / input.
+              const totalInputTokens = totalUsage.inputTokens ?? 0;
+              const hitRatio =
+                totalInputTokens > 0
+                  ? stepAccumulatedCacheRead / totalInputTokens
+                  : 0;
+              llmSpan.setAttribute("decopilot.cache.hit_ratio", hitRatio);
+              if (!isCliAgent) {
+                const status =
+                  stepAccumulatedCacheRead > 0
+                    ? "HIT ✅"
+                    : stepAccumulatedCacheWrite > 0
+                      ? "WRITE 📝"
+                      : "MISS ❌";
+                const pct = (hitRatio * 100).toFixed(1);
+                console.log(
+                  [
+                    "",
+                    "╔════════════════════════════════════════════════════════════════════╗",
+                    `║  [decopilot:cache] ${status.padEnd(47)}║`,
+                    "╠════════════════════════════════════════════════════════════════════╣",
+                    `║  provider : ${(input.models.thinking.provider ?? "unknown").padEnd(54)}║`,
+                    `║  model    : ${input.models.thinking.id.padEnd(54)}║`,
+                    `║  input    : ${String(totalInputTokens).padEnd(54)}║`,
+                    `║  output   : ${String(totalUsage.outputTokens ?? 0).padEnd(54)}║`,
+                    `║  cache rd : ${String(stepAccumulatedCacheRead).padEnd(54)}║`,
+                    `║  cache wr : ${String(stepAccumulatedCacheWrite).padEnd(54)}║`,
+                    `║  hit_ratio: ${`${pct}%`.padEnd(54)}║`,
+                    "╚════════════════════════════════════════════════════════════════════╝",
+                    "",
+                  ].join("\n"),
+                );
+              }
               llmSpan.setStatus({ code: SpanStatusCode.OK });
               llmSpan.end();
 
@@ -1066,6 +1115,8 @@ async function streamCoreInner(
                 isError: false,
                 inputTokens: totalUsage.inputTokens,
                 outputTokens: totalUsage.outputTokens,
+                cacheReadTokens: stepAccumulatedCacheRead,
+                cacheWriteTokens: stepAccumulatedCacheWrite,
               });
               aggregatedUsage = {
                 inputTokens:
@@ -1310,6 +1361,20 @@ async function streamCoreInner(
                   stepAccumulatedUsage.totalTokens +
                   (part.usage?.totalTokens ?? 0),
               };
+              // Cache tokens: AI SDK v6 normalizes across providers via
+              // usage.inputTokenDetails — populated identically by the
+              // anthropic, openai, google and openrouter adapters. No
+              // need to branch per-namespace.
+              const inputDetails = part.usage?.inputTokenDetails as
+                | {
+                    cacheReadTokens?: number;
+                    cacheWriteTokens?: number;
+                  }
+                | undefined;
+              stepAccumulatedCacheRead +=
+                inputDetails?.cacheReadTokens ?? 0;
+              stepAccumulatedCacheWrite +=
+                inputDetails?.cacheWriteTokens ?? 0;
               const stepCost = (
                 part.providerMetadata?.openrouter as
                   | { usage?: { cost?: number } }
