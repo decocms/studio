@@ -95,7 +95,6 @@ export interface AutomationsStorage {
     triggerId: string | null,
   ): Promise<string>;
   markRunFailed(taskId: string): Promise<void>;
-  failStuckRunThreads(olderThanIso: string): Promise<number>;
   updateTriggerLastRunAt(triggerId: string, lastRunAt: string): Promise<void>;
   deactivateAutomation(id: string): Promise<void>;
 }
@@ -526,17 +525,6 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       .where("id", "=", taskId)
       .where("status", "=", "in_progress")
       .execute();
-  }
-
-  async failStuckRunThreads(olderThanIso: string): Promise<number> {
-    const result = await this.db
-      .updateTable("threads")
-      .set({ status: "failed", updated_at: new Date().toISOString() })
-      .where("status", "=", "in_progress")
-      .where("trigger_id", "is not", null)
-      .where("updated_at", "<", new Date(olderThanIso))
-      .executeTakeFirst();
-    return Number(result.numUpdatedRows ?? 0n);
   }
 
   async updateTriggerLastRunAt(

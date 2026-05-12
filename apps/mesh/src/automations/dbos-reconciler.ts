@@ -13,7 +13,6 @@ export interface ReconcileResult {
   paused: number;
   resumed: number;
   orphansCancelled: number;
-  stuckThreadsFailed: number;
 }
 
 const AUTOMATION_WORKFLOW_NAMES = [
@@ -22,9 +21,6 @@ const AUTOMATION_WORKFLOW_NAMES = [
   "automationGateWorkflow",
   "fireAutomationWorkflow",
 ] as const;
-
-// Bigger than the 5-min fire timeout to leave headroom for slow shutdowns.
-const STUCK_THREAD_AGE_MS = 15 * 60 * 1000;
 
 // DBOS only dequeues rows matching the current `application_version`; older
 // ENQUEUED rows would otherwise accumulate forever.
@@ -110,28 +106,9 @@ export async function reconcileAutomationSchedules(
 
   const orphansCancelled = await cancelOrphanedEnqueued();
 
-  const cutoff = new Date(Date.now() - STUCK_THREAD_AGE_MS).toISOString();
-  let stuckThreadsFailed = 0;
-  try {
-    stuckThreadsFailed = await storage.failStuckRunThreads(cutoff);
-  } catch (err) {
-    console.error(
-      "[automation-reconciler] failStuckRunThreads failed:",
-      err instanceof Error ? err.message : err,
-    );
-  }
-
   console.log(
-    `[automation-reconciler] reconciled — created=${created} deleted=${deleted} kept=${kept} resumed=${resumed} paused=${paused} orphansCancelled=${orphansCancelled} stuckThreadsFailed=${stuckThreadsFailed}`,
+    `[automation-reconciler] reconciled — created=${created} deleted=${deleted} kept=${kept} resumed=${resumed} paused=${paused} orphansCancelled=${orphansCancelled}`,
   );
 
-  return {
-    created,
-    deleted,
-    kept,
-    paused,
-    resumed,
-    orphansCancelled,
-    stuckThreadsFailed,
-  };
+  return { created, deleted, kept, paused, resumed, orphansCancelled };
 }
