@@ -16,7 +16,6 @@ import {
   TerminalSquare,
   Tool01,
   Upload01,
-  Users03,
 } from "@untitledui/icons";
 
 export interface ToolDisplay {
@@ -40,16 +39,13 @@ export const TOOL_DISPLAY_MAP: Record<string, ToolDisplay> = {
   glob: { icon: Folder, label: "Find Files" },
   bash: { icon: TerminalSquare, label: "Run Command" },
 
-  // Agent / orchestration tools
-  agent_search: { icon: Users03, label: "Search Agents" },
-
   // Resource / context tools
   read_tool_output: { icon: File06, label: "Read Tool Output" },
   read_resource: { icon: Database01, label: "Read Resource" },
   read_prompt: { icon: BookOpen01, label: "Read Prompt" },
 
   // System tools
-  enable_tools: { icon: Tool01, label: "Enable Tools" },
+  enable_tool: { icon: Tool01, label: "Enable Tool" },
   open_in_agent: { icon: Server01, label: "Open in Agent" },
 
   // Sandbox / code execution tools

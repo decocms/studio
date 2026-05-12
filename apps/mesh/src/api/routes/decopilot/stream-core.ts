@@ -22,11 +22,15 @@ import {
   createUIMessageStream,
   stepCountIs,
   streamText,
-  tool,
 } from "ai";
-import { z } from "zod";
 import { getBuiltInTools, type PendingImage } from "./built-in-tools";
-import { createEnableToolsTool } from "./built-in-tools/enable-tools";
+import { createEnableToolTool } from "./built-in-tools/enable-tool";
+import { buildAgentsBlock } from "./agents-block";
+import { buildPromptsBlock } from "./prompts-block";
+import {
+  buildConnectionsBlock,
+  type ConnectionsBlockTool,
+} from "./connections-block";
 import {
   buildBasePlatformPrompt,
   buildDecopilotAgentPrompt,
@@ -39,7 +43,7 @@ import {
 } from "./constants";
 import { loadAndMergeMessages, processConversation } from "./conversation";
 import { uploadFileParts, resolveStorageRefs } from "./file-materializer";
-import { isToolVisibleToModel, toolsFromMCP } from "./helpers";
+import { toolsFromMCP } from "./helpers";
 import type { ToolApprovalLevel } from "./helpers";
 import { type ChatMode, resolveModeConfig } from "./mode-config";
 
@@ -575,7 +579,7 @@ async function streamCoreInner(
               ctx,
             );
 
-        // Progressive tool disclosure: enable_tools + prepareStep
+        // Progressive tool disclosure: enable_tool + prepareStep
         const passthroughToolNames = new Set(Object.keys(passthroughTools));
         const builtInToolNames = Object.keys(builtInTools);
         const enabledTools = reconstructEnabledTools(
@@ -583,70 +587,105 @@ async function streamCoreInner(
           passthroughToolNames,
         );
 
-        // Build tool annotations map for plan-mode gating in enable_tools.
-        // Uses the same nameMap from toolsFromMCP so collision-suffixed names
-        // match the keys in passthroughTools.
+        // Collect (rawName, safeName, connectionId) triples for the
+        // connections block, the set of connection ids for enable_tool
+        // short-name resolution, and the per-tool annotations used for
+        // plan-mode gating — all from a single listTools() round-trip.
+        const passthroughToolList = isCliAgent
+          ? []
+          : (await passthroughClient.listTools()).tools;
+        const connectionsBlockTools: ConnectionsBlockTool[] = [];
+        const connectionIds = new Set<string>();
         const toolAnnotations = new Map<string, { readOnlyHint?: boolean }>();
-        if (modeConfig.isPlanMode && !isCliAgent) {
-          const { tools: toolList } = await passthroughClient.listTools();
-          for (const t of toolList) {
-            const safeName = passthroughNameMap.get(t.name);
-            if (safeName) {
-              toolAnnotations.set(safeName, {
-                readOnlyHint: t.annotations?.readOnlyHint,
-              });
-            }
+        for (const t of passthroughToolList) {
+          const safeName = passthroughNameMap.get(t.name);
+          if (!safeName) continue;
+          // _meta.gatewayClientId is set by the gateway when the tool is
+          // proxied from a non-virtual connection; the "unknown" fallback
+          // only fires for tools that didn't traverse the gateway, which
+          // currently means none in the passthrough flow — it's defense
+          // in depth rather than a real case.
+          const connectionId =
+            typeof t._meta?.gatewayClientId === "string"
+              ? t._meta.gatewayClientId
+              : "unknown";
+          connectionsBlockTools.push({
+            rawName: t.name,
+            safeName,
+            connectionId,
+          });
+          connectionIds.add(connectionId);
+          if (modeConfig.isPlanMode) {
+            toolAnnotations.set(safeName, {
+              readOnlyHint: t.annotations?.readOnlyHint,
+            });
           }
         }
 
-        // Build connection title map once — used by catalog, list_connection_tools, and enable_tools.
         const connectionTitleMap = isCliAgent
           ? new Map<string, string>()
           : passthroughClient.getConnectionTitleMap();
-
-        // Declared before tools so enable_tools can close over it.
-        // Populated after buildToolCatalog runs below (before streamText starts).
-        const connectionToolsMap = new Map<string, string[]>();
 
         const tools = isCliAgent
           ? {}
           : {
               ...passthroughTools,
               ...builtInTools,
-              list_connection_tools: createListConnectionToolsTool(
-                passthroughClient,
-                passthroughNameMap,
-                connectionTitleMap,
-              ),
-              enable_tools: createEnableToolsTool(
-                enabledTools,
-                passthroughToolNames,
-                connectionToolsMap,
-                {
-                  isPlanMode: modeConfig.isPlanMode,
-                  toolAnnotations,
-                },
-              ),
+              ...(connectionsBlockTools.length > 0
+                ? {
+                    enable_tool: createEnableToolTool(
+                      enabledTools,
+                      passthroughToolNames,
+                      {
+                        isPlanMode: modeConfig.isPlanMode,
+                        toolAnnotations,
+                        connectionIds: [...connectionIds],
+                      },
+                    ),
+                  }
+                : {}),
             };
 
         // Build composable system prompt array
         const basePrompt = buildBasePlatformPrompt();
 
-        const [catalogResult, promptCatalog] = await Promise.all([
-          buildToolCatalog(
-            passthroughClient,
-            enabledTools,
-            passthroughNameMap,
-            connectionTitleMap,
-          ),
-          buildPromptCatalog(passthroughClient),
+        const [virtualMcpList, promptList] = await Promise.all([
+          ctx.storage.virtualMcps.list(organization.id),
+          (async () => {
+            if (isCliAgent) return [];
+            const { prompts } = await passthroughClient.listPrompts();
+            return prompts;
+          })(),
         ]);
 
-        // Populate connectionToolsMap in-place so enable_tools closure sees it
-        for (const [k, v] of catalogResult.connectionToolsMap.entries()) {
-          connectionToolsMap.set(k, v);
-        }
-        const toolCatalog = catalogResult.catalog;
+        const agentsBlock = isCliAgent
+          ? null
+          : buildAgentsBlock(
+              virtualMcpList.map((vm) => ({
+                id: vm.id,
+                name: vm.title,
+                description: vm.description,
+                status: vm.status,
+              })),
+              input.agent.id,
+            );
+
+        const promptsBlock = isCliAgent
+          ? null
+          : buildPromptsBlock(
+              promptList.map((p) => ({
+                name: p.name,
+                description: p.description ?? null,
+                arguments: (p.arguments ?? []).map((a) => ({
+                  name: a.name,
+                  required: a.required,
+                })),
+              })),
+            );
+
+        const connectionsBlock = isCliAgent
+          ? null
+          : buildConnectionsBlock(connectionsBlockTools, connectionTitleMap);
 
         // Agent prompt: decopilot-specific or custom agent instructions
         const serverInstructions = passthroughClient.getInstructions();
@@ -665,26 +704,17 @@ async function streamCoreInner(
           ? buildRepoEnvironmentPrompt(vmMetadata.githubRepo)
           : null;
 
-        // Step-0 system prompt: includes the tool catalog for initial discovery.
-        // The catalog is built once before streamText runs — it's already stale by step 1
-        // (doesn't reflect tools the model enables mid-turn), so subsequent steps use
-        // systemPromptsBase which omits it to keep context lean.
-        const systemPromptsBase = [
-          basePrompt,
-          planModePrompt,
-          webSearchPrompt,
-          repoEnvironmentPrompt,
-          promptCatalog,
-          agentPrompt,
-        ].filter((s): s is string => Boolean(s?.trim()));
-
+        // The blocks are stable for the entire request, so we include
+        // them in every step's system prompt — this keeps the prompt
+        // prefix identical across steps and lets prompt caching kick in.
         const systemPrompts = [
           basePrompt,
           planModePrompt,
           webSearchPrompt,
           repoEnvironmentPrompt,
-          toolCatalog,
-          promptCatalog,
+          promptsBlock,
+          agentsBlock,
+          connectionsBlock,
           agentPrompt,
         ].filter((s): s is string => Boolean(s?.trim()));
 
@@ -958,22 +988,21 @@ async function streamCoreInner(
                         ];
                       }
 
+                      const hasEnableTool = connectionsBlockTools.length > 0;
                       let activeToolNames = [
                         ...builtInToolNames,
-                        "list_connection_tools",
-                        "enable_tools",
+                        ...(hasEnableTool ? ["enable_tool"] : []),
                         ...enabledTools,
                       ];
 
                       // Layer 2: In plan mode, filter out any non-read-only tools that
-                      // somehow got enabled (safety net for Layer 1 in enable_tools)
+                      // somehow got enabled (safety net for Layer 1 in enable_tool)
                       if (modeConfig.isPlanMode) {
                         activeToolNames = activeToolNames.filter((name) => {
-                          // Built-in tools and enable_tools are always allowed
+                          // Built-in tools and enable_tool are always allowed
                           if (
                             builtInToolNames.includes(name) ||
-                            name === "enable_tools" ||
-                            name === "list_connection_tools"
+                            (hasEnableTool && name === "enable_tool")
                           ) {
                             return true;
                           }
@@ -998,18 +1027,6 @@ async function streamCoreInner(
                             type: "tool" as const,
                             toolName: forcedToolName as never,
                           },
-                        }),
-                        // From step 1 onwards, drop the tool catalog from the system
-                        // prompt. The catalog is already in the model's context from
-                        // step 0, and is stale (built before this turn started).
-                        ...(!isFirstStep && {
-                          system: [
-                            ...systemPromptsBase.map((content) => ({
-                              role: "system" as const,
-                              content,
-                            })),
-                            ...processedSystemMessages,
-                          ],
                         }),
                       };
                     };
@@ -1246,7 +1263,10 @@ async function streamCoreInner(
                     preview: p.slice(0, 80).replace(/\s+/g, " "),
                   })),
                   tools: Object.keys(tools).length,
-                  activeTools: builtInToolNames.length + 1 + enabledTools.size,
+                  activeTools:
+                    builtInToolNames.length +
+                    ("enable_tool" in tools ? 1 : 0) +
+                    enabledTools.size,
                 },
                 thread_id: mem.thread.id,
               };
@@ -1607,7 +1627,7 @@ function reconstructEnabledTools(
     for (const part of msg.parts) {
       if (
         "toolName" in part &&
-        part.toolName === "enable_tools" &&
+        (part.toolName === "enable_tool" || part.toolName === "enable_tools") &&
         "result" in part &&
         part.result
       ) {
@@ -1628,208 +1648,6 @@ function reconstructEnabledTools(
     }
   }
   return enabled;
-}
-
-const CATALOG_PREVIEW_COUNT = 5;
-
-/**
- * Build a compact connection-level catalog for the system prompt.
- * Shows each connection's name, id, tool count, and up to 5 representative
- * tool names so the model can route to the right connection without needing
- * a list_connection_tools round trip.
- * Also returns connectionToolsMap for enable_tools({ connections }) expansion.
- */
-async function buildToolCatalog(
-  client: {
-    listTools(): Promise<{
-      tools: Array<{
-        name: string;
-        description?: string;
-        _meta?: Record<string, unknown>;
-      }>;
-    }>;
-  },
-  enabledTools: Set<string>,
-  nameMap: Map<string, string>,
-  connectionTitleMap: Map<string, string>,
-): Promise<{
-  catalog: string | null;
-  connectionToolsMap: Map<string, string[]>;
-}> {
-  const { tools } = await client.listTools();
-
-  const connections = new Map<
-    string,
-    { name: string; totalCount: number; preview: string[] }
-  >();
-  const connectionToolsMap = new Map<string, string[]>();
-
-  for (const t of tools) {
-    const safeName = nameMap.get(t.name);
-    if (!safeName) continue;
-    if (!isToolVisibleToModel(t)) continue;
-
-    const connId = (t._meta?.gatewayClientId as string) ?? "unknown";
-    const prefix = `${connId}_`;
-    const shortName = safeName.startsWith(prefix)
-      ? safeName.slice(prefix.length)
-      : safeName;
-
-    // Track all tools per connection for enable_tools expansion
-    let toolList = connectionToolsMap.get(connId);
-    if (!toolList) {
-      toolList = [];
-      connectionToolsMap.set(connId, toolList);
-    }
-    toolList.push(safeName);
-
-    // Only include in catalog if not already enabled
-    if (enabledTools.has(safeName)) continue;
-
-    let group = connections.get(connId);
-    if (!group) {
-      group = {
-        name: connectionTitleMap.get(connId) ?? connId,
-        totalCount: 0,
-        preview: [],
-      };
-      connections.set(connId, group);
-    }
-    group.totalCount++;
-    if (group.preview.length < CATALOG_PREVIEW_COUNT) {
-      group.preview.push(shortName);
-    }
-  }
-
-  const pending = [...connections.entries()].filter(
-    ([, g]) => g.totalCount > 0,
-  );
-  if (pending.length === 0) return { catalog: null, connectionToolsMap };
-
-  const lines = pending.map(([id, { name, totalCount, preview }]) => {
-    const more = totalCount - preview.length;
-    const hint = preview.join(", ") + (more > 0 ? `, +${more} more` : "");
-    return `<connection name="${escapeXmlAttr(name)}" id="${escapeXmlAttr(id)}" tools="${totalCount}">${escapeXmlAttr(hint)}</connection>`;
-  });
-
-  return {
-    catalog: `\n\n<available-connections>\n${lines.join("\n")}\n</available-connections>`,
-    connectionToolsMap,
-  };
-}
-
-/**
- * Creates the list_connection_tools built-in tool.
- * Returns tool names and descriptions for a given connection ID so the model
- * can discover what's available before deciding what to enable.
- */
-function createListConnectionToolsTool(
-  client: {
-    listTools(): Promise<{
-      tools: Array<{
-        name: string;
-        description?: string;
-        _meta?: Record<string, unknown>;
-      }>;
-    }>;
-  },
-  nameMap: Map<string, string>,
-  connectionTitleMap: Map<string, string>,
-) {
-  return tool({
-    description:
-      "List the tools available in a specific connection, including their names and descriptions. " +
-      "Call this to discover what a connection can do before enabling tools with enable_tools.",
-    inputSchema: z.object({
-      connection_id: z
-        .string()
-        .describe("The connection id from <available-connections>"),
-    }),
-    execute: async ({ connection_id }) => {
-      const { tools } = await client.listTools();
-      const result: { name: string; safe_name: string; description: string }[] =
-        [];
-      // The model may pass a normalized (underscore) version of the connection
-      // id, but _meta.gatewayClientId still has the original (hyphenated) form.
-      // Build a lookup that matches either form.
-      const normalizedInput = connection_id
-        .replace(/[^a-zA-Z0-9_]/g, "_")
-        .toLowerCase();
-      for (const t of tools) {
-        const safeName = nameMap.get(t.name);
-        if (!safeName) continue;
-        if (!isToolVisibleToModel(t)) continue;
-        const connId = (t._meta?.gatewayClientId as string) ?? "unknown";
-        const normalizedConnId = connId
-          .replace(/[^a-zA-Z0-9_]/g, "_")
-          .toLowerCase();
-        if (normalizedConnId !== normalizedInput && connId !== connection_id) {
-          continue;
-        }
-        // Use the safe name's prefix to derive the short name
-        const safePrefix = `${normalizedConnId}_`;
-        const shortName = safeName.toLowerCase().startsWith(safePrefix)
-          ? safeName.slice(safePrefix.length)
-          : safeName;
-        result.push({
-          name: shortName,
-          safe_name: safeName,
-          description: t.description ?? "",
-        });
-      }
-      // Resolve connection name: try original id first, then normalized lookup
-      const connName =
-        connectionTitleMap.get(connection_id) ??
-        [...connectionTitleMap.entries()].find(
-          ([id]) =>
-            id.replace(/[^a-zA-Z0-9_]/g, "_").toLowerCase() === normalizedInput,
-        )?.[1] ??
-        connection_id;
-      return {
-        connection: connName,
-        connection_id,
-        tools: result,
-      };
-    },
-  });
-}
-
-function escapeXmlAttr(s: string): string {
-  return s
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
-
-/**
- * Build a compact prompt catalog for the system prompt.
- * Format: <available-prompts>name|description\n...</available-prompts>
- */
-async function buildPromptCatalog(client: {
-  listPrompts(): Promise<{
-    prompts: Array<{
-      name: string;
-      description?: string;
-      arguments?: Array<{ name: string; required?: boolean }>;
-    }>;
-  }>;
-}): Promise<string | null> {
-  const { prompts } = await client.listPrompts();
-  if (prompts.length === 0) return null;
-
-  const lines = prompts.map((p) => {
-    let line = `${p.name}|${p.description ?? ""}`;
-    if (p.arguments && p.arguments.length > 0) {
-      const args = p.arguments
-        .map((a) => (a.required ? `${a.name} (required)` : a.name))
-        .join(", ");
-      line += `|args: ${args}`;
-    }
-    return line;
-  });
-
-  return `\n\n<available-prompts>\n${lines.join("\n")}\n</available-prompts>`;
 }
 
 /**

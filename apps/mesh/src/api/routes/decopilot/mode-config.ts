@@ -13,7 +13,7 @@ export const CHAT_MODES = [
 export type ChatMode = (typeof CHAT_MODES)[number];
 
 export interface ResolvedModeConfig {
-  /** When true, use plan-mode hard-block + propose_plan + enable_tools gating */
+  /** When true, use plan-mode hard-block + propose_plan + enable_tool gating */
   isPlanMode: boolean;
   /** First step only — forces this tool name when present in the tool set */
   forcedFirstStepTool: "web_search" | "generate_image" | null;
