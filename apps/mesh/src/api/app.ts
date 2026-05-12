@@ -1770,6 +1770,36 @@ export async function createApp(options: CreateAppOptions = {}) {
     console.log("[shutdown] Cleanup complete.");
   };
 
+  /**
+   * Post-launch DBOS setup. Must run AFTER `DBOS.launch()` because
+   * `registerQueue` and `listSchedules` both `ensureDBOSIsLaunched()`.
+   * Idempotent: re-registering the queues on a redeploy is a no-op when the
+   * persisted row already matches; the reconciler only creates/deletes diffs.
+   *
+   * The two static schedules (`monitoring-ndjson-retention`, `automations-gc`)
+   * are registered statically at module load via `DBOS.registerScheduled`
+   * — they don't need any setup here.
+   */
+  const initDbos = async () => {
+    // Three-level queue: per-org cap (lazily created per-org via
+    // `ensureOrgQueue` at fire time, mutable at runtime via UI/tools) →
+    // per-automation cap (shared partitioned queue) → global cap
+    // (pg-pool protection). All three caps apply to both cron and
+    // event-triggered fires since both paths enter via orgGateWorkflow.
+    //
+    // The per-org queues are NOT registered here — they are created on
+    // demand by `ensureOrgQueue` and auto-discovered by every replica's
+    // dispatcher via `wfQueueRunner.discoverAndLaunchDbQueues`.
+    await DBOS.registerQueue(AUTOMATIONS_GATE_QUEUE, {
+      partitionQueue: true,
+      concurrency: AUTOMATIONS_GATE_PARTITION_CONCURRENCY,
+    });
+    await DBOS.registerQueue(AUTOMATIONS_GLOBAL_QUEUE, {
+      concurrency: AUTOMATIONS_GLOBAL_CONCURRENCY,
+    });
+    await reconcileAutomationSchedules(automationsStorage);
+  };
+
   // Fire-and-forget backfill of the Studio Pack for every org.
   // `installStudioPack` is idempotent (skip-if-exists), so this is a near
   // no-op in steady state; first-boot after the Store Manager ships, it
@@ -1810,9 +1840,8 @@ export async function createApp(options: CreateAppOptions = {}) {
       virtualMcpStorage,
     }).catch((error) => {
       console.error("[studio-pack] backfill driver failed:", error);
- 
     });
   }
 
-  return Object.assign(app, { markShuttingDown, shutdown });
+  return Object.assign(app, { markShuttingDown, shutdown, initDbos });
 }
