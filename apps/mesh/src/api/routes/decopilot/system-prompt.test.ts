@@ -55,7 +55,9 @@ describe("buildSystemMessages", () => {
 
   test("cacheControl uses ttl=5m", () => {
     const out = buildSystemMessages(["A", "B", "C"], FIXED_NOW);
-    const cached = out.filter((m) => m.providerOptions?.anthropic?.cacheControl);
+    const cached = out.filter(
+      (m) => m.providerOptions?.anthropic?.cacheControl,
+    );
     for (const m of cached) {
       expect(m.providerOptions!.anthropic!.cacheControl).toEqual({
         type: "ephemeral",

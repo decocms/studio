@@ -133,19 +133,22 @@ export function resolvePricing(
       mid = rest;
     }
   }
-  const canonicalProvider = PROVIDER_ALIASES[pid.toLowerCase()] ?? pid.toLowerCase();
+  const canonicalProvider =
+    PROVIDER_ALIASES[pid.toLowerCase()] ?? pid.toLowerCase();
   const section = TABLE[canonicalProvider];
   if (!section) return null;
 
   // Direct hit.
   const direct = section[mid];
-  if (direct) return { pricing: direct, resolvedKey: `${canonicalProvider}/${mid}` };
+  if (direct)
+    return { pricing: direct, resolvedKey: `${canonicalProvider}/${mid}` };
 
   // Alias hit.
   const aliased = ALIAS_MAP[mid];
   if (aliased) {
     const hit = section[aliased];
-    if (hit) return { pricing: hit, resolvedKey: `${canonicalProvider}/${aliased}` };
+    if (hit)
+      return { pricing: hit, resolvedKey: `${canonicalProvider}/${aliased}` };
   }
 
   return null;
@@ -168,7 +171,8 @@ export function computeCost(
   const million = 1_000_000;
   const uncachedInputTokens =
     usage.inputTokens - usage.cacheReadTokens - usage.cacheWriteTokens;
-  const inputCost = (Math.max(0, uncachedInputTokens) * pricing.input) / million;
+  const inputCost =
+    (Math.max(0, uncachedInputTokens) * pricing.input) / million;
   const cacheReadCost =
     pricing.cachedRead != null
       ? (usage.cacheReadTokens * pricing.cachedRead) / million
@@ -179,7 +183,9 @@ export function computeCost(
       : 0;
   const outputCost = (usage.outputTokens * pricing.output) / million;
   const total = inputCost + cacheReadCost + cacheWriteCost + outputCost;
-  const uncachedEquivalent = (usage.inputTokens * pricing.input + usage.outputTokens * pricing.output) / million;
+  const uncachedEquivalent =
+    (usage.inputTokens * pricing.input + usage.outputTokens * pricing.output) /
+    million;
 
   return {
     total,

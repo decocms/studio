@@ -1096,8 +1096,7 @@ async function streamCoreInner(
                   ? 0
                   : stepAccumulatedUncachedEquivalent - stepAccumulatedCost;
                 const savedPct =
-                  !stepPricingUnknown &&
-                  stepAccumulatedUncachedEquivalent > 0
+                  !stepPricingUnknown && stepAccumulatedUncachedEquivalent > 0
                     ? `${((savedAbs / stepAccumulatedUncachedEquivalent) * 100).toFixed(1)}%`
                     : "0.0%";
                 const saved = stepPricingUnknown
