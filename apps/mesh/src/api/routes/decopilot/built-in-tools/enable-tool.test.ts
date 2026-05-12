@@ -7,6 +7,7 @@ function runExec(
   options?: {
     isPlanMode?: boolean;
     toolAnnotations?: Map<string, { readOnlyHint?: boolean }>;
+    connectionIds?: string[];
   },
 ) {
   const t = createEnableToolTool(
@@ -19,6 +20,7 @@ function runExec(
       not_found?: string[];
       blocked?: string[];
       blocked_reason?: string;
+      ambiguous?: Array<{ name: string; candidates: string[] }>;
     }>;
   };
   return (tools: string[]) => t.execute({ tools });
@@ -78,5 +80,60 @@ describe("enable_tool execute", () => {
     expect(result.enabled).toEqual(["read_only_tool"]);
     expect(result.blocked).toEqual(["destructive_tool"]);
     expect(result.blocked_reason).toMatch(/plan mode/);
+  });
+
+  test("resolves a unique short name to its full safe name", async () => {
+    const enabled = new Set<string>();
+    const run = runExec(enabled, new Set(["conn_gmail_send_email"]), {
+      connectionIds: ["conn_gmail"],
+    });
+    const result = await run(["send_email"]);
+    expect(result.enabled).toEqual(["conn_gmail_send_email"]);
+    expect(enabled.has("conn_gmail_send_email")).toBe(true);
+  });
+
+  test("returns ambiguous candidates when a short name maps to multiple connections", async () => {
+    const enabled = new Set<string>();
+    const run = runExec(
+      enabled,
+      new Set(["conn_gmail_send_email", "conn_outlook_send_email"]),
+      { connectionIds: ["conn_gmail", "conn_outlook"] },
+    );
+    const result = await run(["send_email"]);
+    expect(result.enabled).toEqual([]);
+    expect(result.ambiguous).toEqual([
+      {
+        name: "send_email",
+        candidates: ["conn_gmail_send_email", "conn_outlook_send_email"],
+      },
+    ]);
+    expect(enabled.size).toBe(0);
+  });
+
+  test("accepts exact full safe names even when a short version is ambiguous", async () => {
+    const enabled = new Set<string>();
+    const run = runExec(
+      enabled,
+      new Set(["conn_gmail_send_email", "conn_outlook_send_email"]),
+      { connectionIds: ["conn_gmail", "conn_outlook"] },
+    );
+    const result = await run(["conn_gmail_send_email"]);
+    expect(result.enabled).toEqual(["conn_gmail_send_email"]);
+    expect(result.ambiguous).toBeUndefined();
+  });
+
+  test("respects plan-mode gating after short-name resolution", async () => {
+    const enabled = new Set<string>();
+    const annotations = new Map<string, { readOnlyHint?: boolean }>([
+      ["conn_gmail_send_email", { readOnlyHint: false }],
+    ]);
+    const run = runExec(enabled, new Set(["conn_gmail_send_email"]), {
+      isPlanMode: true,
+      toolAnnotations: annotations,
+      connectionIds: ["conn_gmail"],
+    });
+    const result = await run(["send_email"]);
+    expect(result.enabled).toEqual([]);
+    expect(result.blocked).toEqual(["conn_gmail_send_email"]);
   });
 });
