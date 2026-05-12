@@ -718,10 +718,6 @@ async function streamCoreInner(
           agentPrompt,
         ].filter((s): s is string => Boolean(s?.trim()));
 
-        console.log(
-          "[decopilot] final system prompt:\n" + systemPrompts.join("\n\n"),
-        );
-
         // Resolve mesh-storage: URIs to fresh presigned URLs every turn.
         // Also handles legacy data: URLs from threads predating this pipeline.
         const materializedMessages = await resolveStorageRefs(allMessages, ctx);
