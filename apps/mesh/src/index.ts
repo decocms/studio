@@ -19,19 +19,17 @@ const settings = getSettings();
 // ensures every `meter.createX()` call hits the real MeterProvider.
 initObservability();
 
-// DBOS sits on a sibling database in the same Postgres cluster as mesh
-// (embedded-postgres locally, RDS in prod). The DB is auto-created on launch.
+// DBOS shares mesh's Postgres database and owns the `dbos` schema. Sharing
+// the DB (vs. a sibling one) is what lets future workflow-ified CRUD
+// commit mesh writes and DBOS step-output records in a single transaction
+// via a DBOS data source. The `dbos` schema is auto-created on launch.
 // setConfig must run before any module registers workflows; launch happens
 // after the app graph is loaded so all DBOS.registerWorkflow calls are in.
 const { DBOS } = await import("@dbos-inc/dbos-sdk");
-const dbosSystemDbUrl = (() => {
-  const u = new URL(settings.databaseUrl);
-  u.pathname = "/decocms_dbos_sys";
-  return u.toString();
-})();
 DBOS.setConfig({
   name: "decocms",
-  systemDatabaseUrl: dbosSystemDbUrl,
+  systemDatabaseUrl: settings.databaseUrl,
+  systemDatabaseSchemaName: "dbos",
   // N workers all call DBOS.launch(); the admin server would otherwise fight
   // over port 3001. Re-enable per-process once we need workflow admin HTTP.
   runAdminServer: false,
