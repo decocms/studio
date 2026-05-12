@@ -179,6 +179,7 @@ function HomePageContent() {
                 onMove={boardApi.moveTile}
                 onResize={boardApi.resizeTile}
                 onRemove={boardApi.removeTile}
+                onUpdateConfig={boardApi.updateTileConfig}
               />
             </div>
           )}
@@ -244,6 +245,7 @@ function HomePageContent() {
               onMove={boardApi.moveTile}
               onResize={boardApi.resizeTile}
               onRemove={boardApi.removeTile}
+              onUpdateConfig={boardApi.updateTileConfig}
             />
           </div>
         ) : (

@@ -5,10 +5,11 @@
  * the app uses; user content (notes) reads from localStorage.
  */
 
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import { authClient } from "@/web/lib/auth-client";
 import { useNavigate } from "@tanstack/react-router";
 import {
+  isDecopilot,
   useConnections,
   useProjectContext,
   useVirtualMCPs,
@@ -22,8 +23,10 @@ import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { IntegrationIcon } from "@/web/components/integration-icon";
 import { useTasks } from "@/web/components/chat/task/use-task-manager";
+import type { Task } from "@/web/components/chat/task/types";
 import { AppViewContent } from "@/web/routes/project-app-view";
 import { getStatusConfig } from "@/web/lib/task-status";
+import { formatTimeAgo } from "@/web/lib/format-time";
 import { useAgentRecruit } from "./agent-recruit-provider";
 import { STUDIO_AGENT, type AgentSeedId } from "./agent-seeds";
 import { useTileConfigUpdate } from "./tile-config-update-context";
@@ -49,145 +52,156 @@ interface AgentIdentity {
 }
 
 /**
- * Frame shared by every agent-attributed tile (Studio Agent's data
- * views and the agent.card type). Mirrors the agent-card layout:
- *   row 1 — agent avatar + optional action chip
- *   row 2 — agent name eyebrow (small muted) + view title (primary)
- *   row 3 — body
+ * Single tile frame used by every tile renderer. Two layout variants:
  *
- * `eyebrow` lets agent.card tiles suppress the redundant "Image
- * Creator / Image Creator" pair when the view title is just the
- * agent name.
+ *   - "card" — big avatar with name as primary heading. Used by the
+ *     agent.card tile (the agent IS the content).
+ *   - "data" — small avatar/icon inline with the title. Used by every
+ *     tile that has a body (Studio agent data tiles, agent tool views,
+ *     system tiles like Notes/Shortcuts).
+ *
+ * Identity is either an `agent` (avatar comes from a virtual MCP) or a
+ * `systemIcon` (a generic ReactNode for non-agent tiles).
+ *
+ * When `onClick` is set, the entire frame becomes a clickable region
+ * and a chevron `→` appears in the top-right on hover.
  */
-function AgentTileFrame({
-  agent,
-  title,
-  eyebrow,
-  action,
-  children,
-}: {
-  agent: AgentIdentity;
+type TileFrameVariant = "card" | "data";
+
+interface TileFrameProps {
+  variant: TileFrameVariant;
+  agent?: AgentIdentity;
+  systemIcon?: ReactNode;
   title: string;
-  eyebrow?: string | false;
-  action?: { label: string; onClick: () => void };
-  children: ReactNode;
-}) {
-  const showEyebrow = eyebrow !== false;
-  const eyebrowText = typeof eyebrow === "string" ? eyebrow : agent.name;
+  onClick?: () => void;
+  /** Absolute-positioned overlays (mood badge, hover tint, etc.). */
+  decoration?: ReactNode;
+  children?: ReactNode;
+}
+
+function TileFrame({
+  variant,
+  agent,
+  systemIcon,
+  title,
+  onClick,
+  decoration,
+  children,
+}: TileFrameProps) {
   return (
-    <div className="flex h-full flex-col p-5 gap-4 min-h-0">
-      <div className="flex items-center justify-between gap-3 shrink-0">
-        <AgentAvatar icon={agent.icon} name={agent.name} size="sm+" />
-        {action && (
-          <button
-            type="button"
-            onClick={action.onClick}
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
-          >
-            {action.label}
-            <ArrowRight size={12} />
-          </button>
-        )}
-      </div>
-      <div className="flex flex-col gap-0.5 shrink-0 min-w-0">
-        {showEyebrow && (
-          <p className="text-[11px] text-muted-foreground tracking-tight truncate">
-            {eyebrowText}
+    <ClickableFrame
+      onClick={onClick}
+      gap={variant === "card" ? "gap-4" : "gap-5"}
+    >
+      {decoration}
+      {variant === "card" ? (
+        <>
+          <div className="flex items-center justify-between gap-3 shrink-0">
+            <TileIdentityIcon agent={agent} systemIcon={systemIcon} size="lg" />
+            {onClick && <FrameArrow />}
+          </div>
+          <p className="text-[15px] font-medium text-foreground tracking-tight leading-tight truncate shrink-0 min-w-0">
+            {title}
           </p>
-        )}
-        <p className="text-[15px] font-medium text-foreground tracking-tight leading-tight truncate">
-          {title}
-        </p>
-      </div>
-      <div className="flex-1 min-h-0 flex flex-col">{children}</div>
-    </div>
-  );
-}
-
-/** Frame for system tiles that don't belong to an agent. */
-function SystemTileFrame({
-  title,
-  icon,
-  action,
-  children,
-}: {
-  title: string;
-  icon: ReactNode;
-  action?: { label: string; onClick: () => void };
-  children: ReactNode;
-}) {
-  return (
-    <div className="flex h-full flex-col p-5 gap-5 min-h-0">
-      <div className="flex items-center justify-between gap-2 shrink-0">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="flex size-7 items-center justify-center rounded-md bg-background text-muted-foreground shrink-0 border border-border/60">
-            {icon}
-          </span>
-          <span className="text-[13px] font-medium text-foreground/90 truncate tracking-tight">
-            {title}
-          </span>
+        </>
+      ) : (
+        <div className="flex items-center justify-between gap-2 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <TileIdentityIcon agent={agent} systemIcon={systemIcon} size="sm" />
+            <span className="text-[13px] font-medium text-foreground/90 truncate tracking-tight">
+              {title}
+            </span>
+          </div>
+          {onClick && <FrameArrow />}
         </div>
-        {action && (
-          <button
-            type="button"
-            onClick={action.onClick}
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
-          >
-            {action.label}
-            <ArrowRight size={12} />
-          </button>
-        )}
-      </div>
-      <div className="flex-1 min-h-0 flex flex-col">{children}</div>
-    </div>
+      )}
+      {children && (
+        <div className="flex-1 min-h-0 flex flex-col">{children}</div>
+      )}
+    </ClickableFrame>
   );
 }
 
-/**
- * Compact frame for tiles attributed to an agent that have content
- * (lists, stats, charts, embedded UIs). The avatar is inline with the
- * view title so the body has maximum room. Use AgentTileFrame instead
- * for content-less agent.card tiles where the agent IS the content.
- */
-function AgentDataTileFrame({
+function TileIdentityIcon({
   agent,
-  title,
-  action,
+  systemIcon,
+  size,
+}: {
+  agent?: AgentIdentity;
+  systemIcon?: ReactNode;
+  size: "sm" | "lg";
+}) {
+  if (agent) {
+    return (
+      <AgentAvatar
+        icon={agent.icon}
+        name={agent.name}
+        size={size === "sm" ? "xs" : "sm+"}
+      />
+    );
+  }
+  return (
+    <span
+      className={cn(
+        "flex items-center justify-center rounded-md bg-background text-muted-foreground shrink-0 border border-border/60",
+        size === "sm" ? "size-7" : "size-10",
+      )}
+    >
+      {systemIcon}
+    </span>
+  );
+}
+
+function ClickableFrame({
+  onClick,
+  gap,
   children,
 }: {
-  agent: AgentIdentity;
-  title: string;
-  action?: { label: string; onClick: () => void };
+  onClick?: () => void;
+  gap: string;
   children: ReactNode;
 }) {
-  return (
-    <div className="flex h-full flex-col p-5 gap-5 min-h-0">
-      <div className="flex items-center justify-between gap-2 shrink-0">
-        <div className="flex items-center gap-2 min-w-0">
-          <AgentAvatar icon={agent.icon} name={agent.name} size="xs" />
-          <span className="text-[13px] font-medium text-foreground/90 truncate tracking-tight">
-            {title}
-          </span>
-        </div>
-        {action && (
-          <button
-            type="button"
-            onClick={action.onClick}
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
-          >
-            {action.label}
-            <ArrowRight size={12} />
-          </button>
-        )}
+  if (!onClick) {
+    return (
+      <div className={cn("relative flex h-full flex-col p-5 min-h-0", gap)}>
+        {children}
       </div>
-      <div className="flex-1 min-h-0 flex flex-col">{children}</div>
+    );
+  }
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      className={cn(
+        "group/frame relative flex h-full flex-col p-5 min-h-0 cursor-pointer",
+        gap,
+      )}
+    >
+      {children}
     </div>
+  );
+}
+
+function FrameArrow() {
+  return (
+    <ArrowRight
+      size={14}
+      className="shrink-0 text-muted-foreground opacity-0 transition-all group-hover/frame:opacity-100 group-hover/frame:translate-x-0.5 group-hover/frame:text-foreground"
+    />
   );
 }
 
 function EmptyBody({ children }: { children: ReactNode }) {
   return (
-    <div className="flex flex-1 items-center justify-center text-center text-xs leading-relaxed text-muted-foreground/70 px-2">
+    <div className="flex flex-1 items-center justify-center text-center text-sm leading-relaxed text-muted-foreground/70 px-2">
       {children}
     </div>
   );
@@ -237,14 +251,14 @@ export function WelcomeTile({ instance: _instance }: TileRenderProps) {
         <Stars01 size={96} />
       </div>
       <div className="relative flex flex-col gap-2 min-w-0">
-        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <Stars01 size={11} />
+        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <Stars01 size={12} />
           <span>Welcome back</span>
         </div>
         <h2 className="text-2xl font-semibold text-foreground truncate">
           Hello, {userName}.
         </h2>
-        <p className="text-xs text-muted-foreground max-w-sm leading-relaxed">
+        <p className="text-sm text-muted-foreground max-w-sm leading-relaxed">
           Pin the things you check every day. Drop tiles from agents and apps
           you've connected.
         </p>
@@ -280,14 +294,13 @@ export function RecentAgentsTile(_props: TileRenderProps) {
     .slice(0, RECENT_AGENT_LIMIT);
 
   return (
-    <AgentDataTileFrame
+    <TileFrame
+      variant="data"
       agent={STUDIO_AGENT}
       title="Recent agents"
-      action={{
-        label: "All",
-        onClick: () =>
-          navigate({ to: "/$org/settings/agents", params: { org: org.slug } }),
-      }}
+      onClick={() =>
+        navigate({ to: "/$org/settings/agents", params: { org: org.slug } })
+      }
     >
       {recent.length === 0 ? (
         <EmptyBody>No agents yet.</EmptyBody>
@@ -298,7 +311,8 @@ export function RecentAgentsTile(_props: TileRenderProps) {
               <button
                 type="button"
                 className="group flex w-full items-center gap-3 px-2 py-2.5 text-left transition-colors hover:bg-muted/60"
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   const taskId = crypto.randomUUID();
                   navigate({
                     to: "/$org/$taskId",
@@ -308,7 +322,7 @@ export function RecentAgentsTile(_props: TileRenderProps) {
                 }}
               >
                 <AgentAvatar icon={a.icon} name={a.title} size="xs" />
-                <span className="flex-1 truncate text-[13px] font-medium text-foreground">
+                <span className="flex-1 truncate text-sm font-medium text-foreground">
                   {a.title}
                 </span>
                 <ArrowRight
@@ -320,7 +334,7 @@ export function RecentAgentsTile(_props: TileRenderProps) {
           ))}
         </ul>
       )}
-    </AgentDataTileFrame>
+    </TileFrame>
   );
 }
 
@@ -331,6 +345,7 @@ const TASKS_PER_COLUMN = 4;
 const KANBAN_STATUS_ORDER = [
   "requires_action",
   "in_progress",
+  "completed",
   "failed",
   "expired",
 ] as const;
@@ -341,6 +356,8 @@ function kanbanDot(status: string): string {
       return "bg-orange-500";
     case "in_progress":
       return "bg-blue-500";
+    case "completed":
+      return "bg-emerald-500";
     case "failed":
       return "bg-red-500";
     case "expired":
@@ -381,7 +398,7 @@ export function RecentTasksTile({ instance, isEditMode }: TileRenderProps) {
   })).filter((col) => col.tasks.length > 0);
 
   return (
-    <AgentDataTileFrame agent={STUDIO_AGENT} title="Recent tasks">
+    <TileFrame variant="data" agent={STUDIO_AGENT} title="Recent tasks">
       {isEditMode && (
         <div className="mb-3 flex items-center">
           <div className="inline-flex items-center gap-0.5 rounded-md bg-muted/60 p-0.5">
@@ -419,40 +436,7 @@ export function RecentTasksTile({ instance, isEditMode }: TileRenderProps) {
         listItems.length === 0 ? (
           <EmptyBody>No tasks yet — start a chat to begin one.</EmptyBody>
         ) : (
-          <ul className="-mx-2 flex flex-col">
-            {listItems.map((t) => {
-              const config = getStatusConfig(t.status);
-              const StatusIcon = config.icon;
-              return (
-                <li
-                  key={t.id}
-                  className="border-b border-border/30 last:border-0"
-                >
-                  <button
-                    type="button"
-                    onClick={() => openTask(t.id)}
-                    className="flex w-full items-center gap-2.5 px-2 py-2.5 text-left transition-colors hover:bg-muted/60"
-                  >
-                    <StatusIcon
-                      size={12}
-                      className={cn("shrink-0", config.iconClassName)}
-                    />
-                    <span className="flex-1 truncate text-[13px] text-foreground">
-                      {t.title}
-                    </span>
-                    <span
-                      className={cn(
-                        "shrink-0 text-[11px] font-medium",
-                        config.labelColor,
-                      )}
-                    >
-                      {config.label}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          <TileTaskList tasks={listItems} onOpen={openTask} showAgent />
         )
       ) : columns.length === 0 ? (
         <EmptyBody>No tasks yet — start a chat to begin one.</EmptyBody>
@@ -466,38 +450,42 @@ export function RecentTasksTile({ instance, isEditMode }: TileRenderProps) {
           )}
         >
           {columns.map((col) => (
-            <div key={col.status} className="flex flex-col gap-1.5">
-              <div className="flex items-center gap-1.5">
+            <div
+              key={col.status}
+              className="flex flex-col gap-2 rounded-xl bg-muted/40 p-2.5"
+            >
+              <div className="flex items-center gap-1.5 px-1">
                 <span
                   className={cn(
                     "size-1.5 shrink-0 rounded-full",
                     kanbanDot(col.status),
                   )}
                 />
-                <span className="text-[11px] font-medium text-muted-foreground">
+                <span className="text-sm font-medium text-muted-foreground">
                   {col.config.label}
                 </span>
-                <span className="ml-auto text-[10px] text-muted-foreground/50">
+                <span className="ml-auto text-sm text-muted-foreground/50">
                   {col.tasks.length}
                 </span>
               </div>
-              <div className="flex flex-col gap-1">
+              <div className="flex flex-col">
                 {col.tasks.map((t) => (
-                  <button
+                  <TileTaskRow
                     key={t.id}
-                    type="button"
-                    onClick={() => openTask(t.id)}
-                    className="truncate rounded-md border border-border/40 bg-background/60 px-2 py-1.5 text-left text-[12px] text-foreground leading-snug transition-colors hover:bg-muted/60"
-                  >
-                    {t.title}
-                  </button>
+                    task={t}
+                    showAgent
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openTask(t.id);
+                    }}
+                  />
                 ))}
               </div>
             </div>
           ))}
         </div>
       )}
-    </AgentDataTileFrame>
+    </TileFrame>
   );
 }
 
@@ -516,17 +504,16 @@ export function ConnectionsOverviewTile(_props: TileRenderProps) {
   const preview = connections.slice(0, CONNECTION_PREVIEW_LIMIT);
 
   return (
-    <AgentDataTileFrame
+    <TileFrame
+      variant="data"
       agent={STUDIO_AGENT}
       title="Connections"
-      action={{
-        label: "Manage",
-        onClick: () =>
-          navigate({
-            to: "/$org/settings/connections",
-            params: { org: org.slug },
-          }),
-      }}
+      onClick={() =>
+        navigate({
+          to: "/$org/settings/connections",
+          params: { org: org.slug },
+        })
+      }
     >
       <div className="flex flex-1 min-h-0 flex-col justify-between gap-4">
         <div className="flex items-baseline gap-6">
@@ -555,7 +542,7 @@ export function ConnectionsOverviewTile(_props: TileRenderProps) {
           <EmptyBody>No connections yet</EmptyBody>
         )}
       </div>
-    </AgentDataTileFrame>
+    </TileFrame>
   );
 }
 
@@ -592,7 +579,7 @@ function Stat({
       </span>
       <div className="flex items-center gap-1.5">
         <span className={cn("size-1.5 shrink-0 rounded-full", dot)} />
-        <span className="text-[11px] text-muted-foreground">{label}</span>
+        <span className="text-sm text-muted-foreground">{label}</span>
       </div>
     </div>
   );
@@ -668,7 +655,11 @@ export function ShortcutsTile(_props: TileRenderProps) {
   };
 
   return (
-    <SystemTileFrame title="Shortcuts" icon={<Star01 size={14} />}>
+    <TileFrame
+      variant="data"
+      systemIcon={<Star01 size={14} />}
+      title="Shortcuts"
+    >
       <div className="grid grid-cols-2 grid-rows-2 gap-2 flex-1 min-h-0">
         {DEFAULT_SHORTCUTS.map((s) => (
           <button
@@ -686,13 +677,13 @@ export function ShortcutsTile(_props: TileRenderProps) {
             >
               {s.icon}
             </span>
-            <span className="text-[13px] font-medium text-foreground">
+            <span className="text-sm font-medium text-foreground">
               {s.label}
             </span>
           </button>
         ))}
       </div>
-    </SystemTileFrame>
+    </TileFrame>
   );
 }
 
@@ -707,14 +698,18 @@ export function NotesTile({ instance: _instance }: TileRenderProps) {
   );
 
   return (
-    <SystemTileFrame title="Notes" icon={<BookOpen01 size={14} />}>
+    <TileFrame
+      variant="data"
+      systemIcon={<BookOpen01 size={14} />}
+      title="Notes"
+    >
       <Textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder="Quick notes…"
-        className="flex-1 resize-none rounded-lg border border-border/50 bg-background/60 text-[13px] leading-relaxed focus-visible:ring-1 focus-visible:ring-primary/25 focus-visible:ring-offset-0 placeholder:text-muted-foreground/50"
+        className="flex-1 resize-none rounded-lg border border-border/50 bg-muted/30 text-sm leading-relaxed focus-visible:ring-1 focus-visible:ring-primary/25 focus-visible:ring-offset-0 placeholder:text-muted-foreground/50"
       />
-    </SystemTileFrame>
+    </TileFrame>
   );
 }
 
@@ -759,10 +754,13 @@ export function StatsTile(_props: TileRenderProps) {
   ];
 
   return (
-    <AgentDataTileFrame agent={STUDIO_AGENT} title="Workspace stats">
-      <div className="grid grid-cols-2 grid-rows-2 gap-x-6 gap-y-4 flex-1 min-h-0">
+    <TileFrame variant="data" agent={STUDIO_AGENT} title="Workspace stats">
+      <div className="grid grid-cols-2 gap-2.5">
         {cards.map((s) => (
-          <div key={s.label} className="flex min-h-0 flex-col gap-1.5">
+          <div
+            key={s.label}
+            className="flex flex-col gap-2 rounded-xl border border-border/50 bg-muted/30 px-3 py-3"
+          >
             <span
               className={cn(
                 "text-2xl font-semibold leading-none tabular-nums tracking-tight",
@@ -771,13 +769,96 @@ export function StatsTile(_props: TileRenderProps) {
             >
               {s.value}
             </span>
-            <span className="truncate text-[11px] text-muted-foreground">
+            <span className="truncate text-sm text-muted-foreground leading-none">
               {s.label}
             </span>
           </div>
         ))}
       </div>
-    </AgentDataTileFrame>
+    </TileFrame>
+  );
+}
+
+/* ---------- shared tile primitives ---------- */
+
+function TileTaskRow({
+  task,
+  showAgent,
+  onClick,
+}: {
+  task: Task;
+  showAgent?: boolean;
+  onClick: (e: React.MouseEvent) => void;
+}) {
+  const agents = useVirtualMCPs();
+  const agent =
+    showAgent && task.virtual_mcp_id
+      ? agents.find((a) => a.id === task.virtual_mcp_id)
+      : null;
+  const config = getStatusConfig(task.status);
+  const StatusIcon = config.icon;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group/row flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted/60"
+    >
+      {showAgent && agent && (
+        <AgentAvatar
+          icon={agent.icon}
+          name={agent.title}
+          size="xs"
+          className="shrink-0"
+        />
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="truncate text-sm text-foreground">
+          {task.title || "Untitled task"}
+        </div>
+        {task.updated_at && (
+          <div className="text-xs text-muted-foreground">
+            {formatTimeAgo(new Date(task.updated_at))}
+          </div>
+        )}
+      </div>
+      <span className="flex shrink-0 size-6 items-center justify-center">
+        <StatusIcon
+          size={13}
+          className={cn(
+            config.iconClassName,
+            task.status === "in_progress" && "animate-spin",
+          )}
+        />
+      </span>
+    </button>
+  );
+}
+
+function TileTaskList({
+  tasks,
+  onOpen,
+  showAgent,
+}: {
+  tasks: Task[];
+  onOpen: (taskId: string) => void;
+  showAgent?: boolean;
+}) {
+  return (
+    <ul className="-mx-2 flex flex-col">
+      {tasks.map((task) => (
+        <li key={task.id}>
+          <TileTaskRow
+            task={task}
+            showAgent={showAgent}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpen(task.id);
+            }}
+          />
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -795,6 +876,7 @@ export function AgentCardTile({ instance }: TileRenderProps) {
   const navigate = useNavigate();
   const { org } = useProjectContext();
   const recruit = useAgentRecruit();
+  const virtualMcps = useVirtualMCPs();
   const config = (instance.config ?? {}) as AgentCardConfig;
   const title = config.title ?? "Agent";
   const description = config.description;
@@ -802,10 +884,24 @@ export function AgentCardTile({ instance }: TileRenderProps) {
   const templateId = config.templateId as AgentSeedId | undefined;
   const customAgentId = config.agentId;
 
-  const hasBody = instance.h >= 2 || instance.w >= 2;
+  const hasRoomForTasks = instance.h >= 2 || instance.w >= 2;
+
+  // Resolve the installed virtual MCP ID so we can show agent-specific tasks.
+  // customAgentId is set for pinned custom agents; templateId needs a lookup.
+  const resolvedAgentId =
+    customAgentId ??
+    (templateId
+      ? (virtualMcps.find(
+          (a) =>
+            a.id !== null &&
+            !isDecopilot(a.id) &&
+            ((a as { metadata?: { type?: string } }).metadata?.type ===
+              templateId ||
+              a.title === title),
+        )?.id ?? undefined)
+      : undefined);
 
   const handleClick = () => {
-    // Custom virtual MCP that the user already owns — open its thread.
     if (customAgentId && !templateId) {
       const taskId = crypto.randomUUID();
       navigate({
@@ -815,14 +911,10 @@ export function AgentCardTile({ instance }: TileRenderProps) {
       });
       return;
     }
-    // Well-known template: hand off to the recruit provider, which
-    // either opens the matching install dialog or, if the template is
-    // already installed, navigates to its existing thread.
     if (templateId && recruit) {
       recruit.openAgent(templateId, title);
       return;
     }
-    // Fallback (shouldn't happen on the home today): open a fresh chat.
     const taskId = crypto.randomUUID();
     navigate({
       to: "/$org/$taskId",
@@ -831,25 +923,53 @@ export function AgentCardTile({ instance }: TileRenderProps) {
   };
 
   return (
-    <button
-      type="button"
+    <TileFrame
+      variant="card"
+      agent={{ icon, name: title }}
+      title={title}
       onClick={handleClick}
-      className="group relative h-full w-full overflow-hidden text-left"
-      aria-label={`Open ${title}`}
+      decoration={
+        <div className="pointer-events-none absolute inset-0 bg-primary/5 opacity-0 transition-opacity group-hover/frame:opacity-100" />
+      }
     >
-      <div className="pointer-events-none absolute inset-0 bg-primary/5 opacity-0 transition-opacity group-hover:opacity-100" />
-      <AgentTileFrame
-        agent={{ icon, name: title }}
-        title={title}
-        eyebrow={false}
-      >
-        {hasBody && description && (
-          <p className="text-[12px] text-muted-foreground line-clamp-3 leading-snug">
+      <div className="flex flex-col gap-3">
+        {description && (
+          <p className="text-sm text-muted-foreground line-clamp-3 leading-snug">
             {description}
           </p>
         )}
-      </AgentTileFrame>
-    </button>
+        {hasRoomForTasks && resolvedAgentId && (
+          <Suspense fallback={null}>
+            <AgentCardTasks agentId={resolvedAgentId} org={org} />
+          </Suspense>
+        )}
+      </div>
+    </TileFrame>
+  );
+}
+
+function AgentCardTasks({
+  agentId,
+  org,
+}: {
+  agentId: string;
+  org: { slug: string };
+}) {
+  const navigate = useNavigate();
+  const { tasks } = useTasks({
+    owner: "all",
+    status: "open",
+    virtualMcpId: agentId,
+  });
+  if (tasks.length === 0) return null;
+  const openTask = (taskId: string) =>
+    navigate({ to: "/$org/$taskId", params: { org: org.slug, taskId } });
+  return (
+    <TileTaskList
+      tasks={tasks.slice(0, 4)}
+      onOpen={openTask}
+      showAgent={false}
+    />
   );
 }
 
@@ -964,13 +1084,17 @@ export function AgentToolViewTile({ instance }: TileRenderProps) {
   };
 
   return (
-    <AgentDataTileFrame
+    <TileFrame
+      variant="data"
       agent={{ icon: agentIcon, name: agentTitle }}
       title={viewLabel}
-      action={refId ? { label: "Open", onClick: openInChat } : undefined}
+      onClick={refId ? openInChat : undefined}
     >
       {connectionId && toolName ? (
-        <div className="flex-1 min-h-0 -mx-3 -mb-3 rounded-xl overflow-hidden bg-background border border-border/60">
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="flex-1 min-h-0 -mx-3 -mb-3 rounded-xl overflow-hidden bg-background border border-border/60"
+        >
           <AppViewContent
             connectionId={connectionId}
             toolName={toolName}
@@ -982,12 +1106,12 @@ export function AgentToolViewTile({ instance }: TileRenderProps) {
           <div className="flex size-9 items-center justify-center rounded-xl border border-border/60 bg-background text-muted-foreground">
             <ArrowRight size={15} />
           </div>
-          <p className="text-[12px] text-muted-foreground leading-snug">
+          <p className="text-sm text-muted-foreground leading-snug">
             Open {viewLabel.toLowerCase()}
           </p>
         </div>
       )}
-    </AgentDataTileFrame>
+    </TileFrame>
   );
 }
 
@@ -995,14 +1119,18 @@ export function AgentToolViewTile({ instance }: TileRenderProps) {
 
 export function UnknownTile({ instance }: TileRenderProps) {
   return (
-    <SystemTileFrame title="Unknown tile" icon={<Zap size={14} />}>
+    <TileFrame
+      variant="data"
+      systemIcon={<Zap size={14} />}
+      title="Unknown tile"
+    >
       <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center">
         <p className="text-sm text-muted-foreground">
           Tile type <code className="text-foreground">{instance.type}</code>{" "}
           isn't installed.
         </p>
       </div>
-    </SystemTileFrame>
+    </TileFrame>
   );
 }
 

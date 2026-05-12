@@ -12,7 +12,7 @@
 
 import type { ReactNode } from "react";
 
-export type TileSizeKey = "S" | "M" | "L" | "XL" | "W";
+export type TileSizeKey = "S" | "M" | "L" | "XL" | "W" | "B";
 
 export interface TileSize {
   w: number;

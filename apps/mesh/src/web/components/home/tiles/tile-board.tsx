@@ -49,6 +49,7 @@ import {
   SIZE_PRESETS,
 } from "./constants";
 import { getTileDefinition } from "./registry";
+import { TileConfigUpdateProvider } from "./tile-config-update-context";
 import { TileSlot } from "./tile-slot";
 import type { HomeBoard, TileInstance, TileSizeKey } from "./types";
 
@@ -58,6 +59,7 @@ interface TileBoardProps {
   onMove: (id: string, to: { x: number; y: number }) => void;
   onResize: (id: string, size: { w: number; h: number }) => void;
   onRemove: (id: string) => void;
+  onUpdateConfig?: (id: string, patch: Record<string, unknown>) => void;
 }
 
 interface DragState {
@@ -71,6 +73,7 @@ export function TileBoard({
   onMove,
   onResize,
   onRemove,
+  onUpdateConfig,
 }: TileBoardProps) {
   const isMobile = useIsMobile();
   const boardRef = useRef<HTMLDivElement | null>(null);
@@ -125,17 +128,19 @@ export function TileBoard({
 
   if (isMobile) {
     return (
-      <div className="flex flex-col gap-3 px-4 pb-8">
-        {board.tiles.map((tile) => (
-          <div
-            key={tile.id}
-            className="bg-background border border-border rounded-2xl overflow-hidden"
-            style={{ minHeight: ROW_HEIGHT_PX }}
-          >
-            <TileSlot tile={tile} isEditMode={false} />
-          </div>
-        ))}
-      </div>
+      <TileConfigUpdateProvider onUpdate={onUpdateConfig ?? noop}>
+        <div className="flex flex-col gap-3 px-4 pb-8">
+          {board.tiles.map((tile) => (
+            <div
+              key={tile.id}
+              className="bg-card card-shadow rounded-2xl overflow-hidden"
+              style={{ minHeight: ROW_HEIGHT_PX }}
+            >
+              <TileSlot tile={tile} isEditMode={false} />
+            </div>
+          ))}
+        </div>
+      </TileConfigUpdateProvider>
     );
   }
 
@@ -144,53 +149,57 @@ export function TileBoard({
     : null;
 
   return (
-    <DndContext
-      sensors={sensors}
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-    >
-      <div
-        ref={boardRef}
-        className="relative w-full"
-        style={{
-          height: totalRows * ROW_HEIGHT_PX,
-          minHeight: isEditMode ? ROW_HEIGHT_PX * 4 : ROW_HEIGHT_PX,
-        }}
+    <TileConfigUpdateProvider onUpdate={onUpdateConfig ?? noop}>
+      <DndContext
+        sensors={sensors}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
       >
-        {isEditMode && <GridSkeleton rows={totalRows} tiles={board.tiles} />}
-        {board.tiles.map((tile) => (
-          <BoardTile
-            key={tile.id}
-            tile={tile}
-            isEditMode={isEditMode}
-            isDragging={activeId === tile.id}
-            onResize={onResize}
-            onRemove={onRemove}
-          />
-        ))}
-      </div>
-      <DragOverlay
-        dropAnimation={null}
-        style={{
-          width:
-            activeTile && dragState
-              ? activeTile.w * dragState.cellWidth - GRID_GAP_PX
-              : undefined,
-          height:
-            activeTile && dragState
-              ? activeTile.h * dragState.cellHeight - GRID_GAP_PX
-              : undefined,
-        }}
-      >
-        {activeTile && (
-          <div className="bg-background border border-primary rounded-2xl shadow-2xl ring-2 ring-primary/40 h-full overflow-hidden opacity-95">
-            <TileSlot tile={activeTile} isEditMode={true} />
-          </div>
-        )}
-      </DragOverlay>
-    </DndContext>
+        <div
+          ref={boardRef}
+          className="relative w-full"
+          style={{
+            height: totalRows * ROW_HEIGHT_PX,
+            minHeight: isEditMode ? ROW_HEIGHT_PX * 4 : ROW_HEIGHT_PX,
+          }}
+        >
+          {isEditMode && <GridSkeleton rows={totalRows} tiles={board.tiles} />}
+          {board.tiles.map((tile) => (
+            <BoardTile
+              key={tile.id}
+              tile={tile}
+              isEditMode={isEditMode}
+              isDragging={activeId === tile.id}
+              onResize={onResize}
+              onRemove={onRemove}
+            />
+          ))}
+        </div>
+        <DragOverlay
+          dropAnimation={null}
+          style={{
+            width:
+              activeTile && dragState
+                ? activeTile.w * dragState.cellWidth - GRID_GAP_PX
+                : undefined,
+            height:
+              activeTile && dragState
+                ? activeTile.h * dragState.cellHeight - GRID_GAP_PX
+                : undefined,
+          }}
+        >
+          {activeTile && (
+            <div className="bg-card card-shadow rounded-2xl shadow-2xl ring-2 ring-primary/40 h-full overflow-hidden opacity-95">
+              <TileSlot tile={activeTile} isEditMode={true} />
+            </div>
+          )}
+        </DragOverlay>
+      </DndContext>
+    </TileConfigUpdateProvider>
   );
 }
+
+function noop() {}
 
 /**
  * Renders a dashed cell at every grid slot that isn't covered by a tile.
@@ -281,8 +290,9 @@ function BoardTile({
     >
       <div
         className={cn(
-          "relative h-full bg-muted/30 dark:bg-muted/20 rounded-2xl overflow-hidden border border-transparent",
-          isEditMode && "border-border hover:border-primary/40",
+          "relative h-full bg-card card-shadow rounded-2xl overflow-hidden",
+          isEditMode &&
+            "outline outline-1 outline-transparent hover:outline-primary/40",
         )}
       >
         {isEditMode && (

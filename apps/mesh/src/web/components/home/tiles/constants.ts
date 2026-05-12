@@ -23,7 +23,8 @@ export const GRID_GAP_PX = 12;
  * - M  (1×2) — single column, double tall (lists)
  * - L  (2×1) — two cols wide, one row tall (landscape)
  * - XL (2×2) — chunky square (hero charts, primary content)
- * - W  (3×1) — full-width strip (banners, welcome)
+ * - W  (3×1) — full-width strip (welcome, narrow banners)
+ * - B  (3×2) — full-width tall banner (hero content, rich dashboards)
  */
 export const SIZE_PRESETS: Record<TileSizeKey, TileSize> = {
   S: { w: 1, h: 1 },
@@ -31,6 +32,7 @@ export const SIZE_PRESETS: Record<TileSizeKey, TileSize> = {
   L: { w: 2, h: 1 },
   XL: { w: 2, h: 2 },
   W: { w: 3, h: 1 },
+  B: { w: 3, h: 2 },
 };
 
 export const SIZE_LABELS: Record<TileSizeKey, string> = {
@@ -38,9 +40,10 @@ export const SIZE_LABELS: Record<TileSizeKey, string> = {
   M: "Tall",
   L: "Wide",
   XL: "Large",
-  W: "Banner",
+  W: "Full width",
+  B: "Banner",
 };
 
-export const ALL_SIZES: TileSizeKey[] = ["S", "M", "L", "XL", "W"];
+export const ALL_SIZES: TileSizeKey[] = ["S", "M", "L", "XL", "W", "B"];
 
 export const MOBILE_BREAKPOINT_COLS = 1;
