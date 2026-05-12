@@ -26,9 +26,18 @@ initObservability();
 // setConfig must run before any module registers workflows; launch happens
 // after the app graph is loaded so all DBOS.registerWorkflow calls are in.
 const { DBOS } = await import("@dbos-inc/dbos-sdk");
+// DBOS uses its own pg client (separate from mesh's pool), so the `sslmode`
+// must travel in the URL. RDS's pg_hba.conf rejects unencrypted connections
+// with `no pg_hba.conf entry for host ... no encryption` when this is missing.
+function withSslmode(url: string, ssl: boolean): string {
+  if (!ssl) return url;
+  const u = new URL(url);
+  if (!u.searchParams.has("sslmode")) u.searchParams.set("sslmode", "require");
+  return u.toString();
+}
 DBOS.setConfig({
   name: "decocms",
-  systemDatabaseUrl: settings.databaseUrl,
+  systemDatabaseUrl: withSslmode(settings.databaseUrl, settings.databasePgSsl),
   systemDatabaseSchemaName: "dbos",
   // N workers all call DBOS.launch(); the admin server would otherwise fight
   // over port 3001. Re-enable per-process once we need workflow admin HTTP.
