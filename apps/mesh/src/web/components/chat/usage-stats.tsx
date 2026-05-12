@@ -45,19 +45,7 @@ export function MessageUsageStats({ usage }: UsageStatsProps) {
           </span>
           {(usage.cacheReadTokens > 0 || usage.cacheWriteTokens > 0) && (
             <>
-              <span className="text-muted">cache rd</span>
-              <span className="text-right tabular-nums">
-                {usage.cacheReadTokens.toLocaleString()}
-              </span>
-              {usage.cacheWriteTokens > 0 && (
-                <>
-                  <span className="text-muted">cache wr</span>
-                  <span className="text-right tabular-nums">
-                    {usage.cacheWriteTokens.toLocaleString()}
-                  </span>
-                </>
-              )}
-              <span className="text-muted">hit</span>
+              <span className="text-muted">cache hit</span>
               <span className="text-right tabular-nums">
                 {inputTokens > 0
                   ? `${((usage.cacheReadTokens / inputTokens) * 100).toFixed(0)}%`
@@ -151,19 +139,7 @@ export function MessageStatsBar({ usage, duration }: MessageStatsBarProps) {
               {((usage?.cacheReadTokens ?? 0) > 0 ||
                 (usage?.cacheWriteTokens ?? 0) > 0) && (
                 <>
-                  <span className="opacity-60">cache rd</span>
-                  <span className="text-right tabular-nums">
-                    {(usage?.cacheReadTokens ?? 0).toLocaleString()}
-                  </span>
-                  {(usage?.cacheWriteTokens ?? 0) > 0 && (
-                    <>
-                      <span className="opacity-60">cache wr</span>
-                      <span className="text-right tabular-nums">
-                        {(usage?.cacheWriteTokens ?? 0).toLocaleString()}
-                      </span>
-                    </>
-                  )}
-                  <span className="opacity-60">hit</span>
+                  <span className="opacity-60">cache hit</span>
                   <span className="text-right tabular-nums">
                     {(usage?.inputTokens ?? 0) > 0
                       ? `${(((usage?.cacheReadTokens ?? 0) / usage!.inputTokens) * 100).toFixed(0)}%`
@@ -270,19 +246,7 @@ export function SessionStats({
           {((usage?.cacheReadTokens ?? 0) > 0 ||
             (usage?.cacheWriteTokens ?? 0) > 0) && (
             <>
-              <span className="text-muted">cache rd</span>
-              <span className="text-right tabular-nums">
-                {(usage?.cacheReadTokens ?? 0).toLocaleString()}
-              </span>
-              {(usage?.cacheWriteTokens ?? 0) > 0 && (
-                <>
-                  <span className="text-muted">cache wr</span>
-                  <span className="text-right tabular-nums">
-                    {(usage?.cacheWriteTokens ?? 0).toLocaleString()}
-                  </span>
-                </>
-              )}
-              <span className="text-muted">hit</span>
+              <span className="text-muted">cache hit</span>
               <span className="text-right tabular-nums">
                 {inputTokens > 0
                   ? `${(((usage?.cacheReadTokens ?? 0) / inputTokens) * 100).toFixed(0)}%`
