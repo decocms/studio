@@ -56,7 +56,7 @@ export function LogRow({
   return (
     <TableRow
       ref={lastLogRef}
-      className="h-14 md:h-16 transition-colors cursor-pointer hover:bg-muted/40"
+      className="h-14 md:h-16 transition-colors cursor-pointer hover:bg-muted/40 border-b-0"
       onClick={onClick}
     >
       {/* Connection Icon */}

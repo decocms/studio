@@ -178,7 +178,7 @@ function MonitoringLogsTableContent({
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-w-0">
       <div className="flex-1 overflow-auto min-w-0">
-        <div className="min-w-[600px] md:min-w-0 bg-background">
+        <div className="min-w-[600px] md:min-w-0">
           <Table className="w-full border-collapse">
             <TableHeader className="border-b-0 z-20">
               <TableRow className="h-9 hover:bg-transparent border-b border-border">
