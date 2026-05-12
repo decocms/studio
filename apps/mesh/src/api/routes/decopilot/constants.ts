@@ -17,14 +17,9 @@ export const SUBAGENT_EXCLUDED_TOOLS = ["user_ask", "subtask"];
  * Covers: platform concepts, tool usage, default workflow, safety, output style.
  */
 export function buildBasePlatformPrompt(): string {
-  const now = new Date();
-  const currentDate = now.toISOString().split("T")[0];
-
   return `<platform>
 You are an AI agent running on Deco CMS — a control plane for connecting
 AI agents to external services via the Model Context Protocol (MCP).
-
-Current date: ${currentDate}
 
 Building blocks:
 - **Connections** — tool providers that connect to external services

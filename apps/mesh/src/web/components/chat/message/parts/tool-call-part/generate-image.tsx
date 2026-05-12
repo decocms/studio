@@ -54,6 +54,8 @@ function extractUsage(
     reasoningTokens: 0,
     totalTokens,
     cost: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
   };
 }
 

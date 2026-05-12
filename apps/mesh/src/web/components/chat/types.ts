@@ -86,6 +86,14 @@ export interface Metadata {
     reasoningTokens?: number;
     /** End-of-turn context-window fill (for the % ring). Sibling `totalTokens` is cumulative billed tokens. */
     contextTokens?: number;
+    /** AI-SDK normalized cache token shorthand (= inputTokenDetails.cacheReadTokens). */
+    cachedInputTokens?: number;
+    /** AI-SDK normalized cache token breakdown, populated identically by anthropic / openai / google / openrouter. */
+    inputTokenDetails?: {
+      cacheReadTokens?: number;
+      cacheWriteTokens?: number;
+      noCacheTokens?: number;
+    };
     providerMetadata?: {
       [key: string]: unknown;
     };

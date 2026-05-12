@@ -28,6 +28,12 @@ import { createEnableToolTool } from "./built-in-tools/enable-tool";
 import { buildAgentsBlock } from "./agents-block";
 import { buildPromptsBlock } from "./prompts-block";
 import {
+  addCacheStep,
+  emptyCacheAccumulator,
+  OPENROUTER_CACHE_PROVIDER_OPTIONS,
+} from "./cache-instrumentation";
+import { buildSystemMessages } from "./system-prompt";
+import {
   buildConnectionsBlock,
   type ConnectionsBlockTool,
 } from "./connections-block";
@@ -626,6 +632,14 @@ async function streamCoreInner(
           ? new Map<string, string>()
           : passthroughClient.getConnectionTitleMap();
 
+        // Anthropic prompt-cache invariant: the cache key for our system
+        // block markers is hash(tools + system_prefix), so the serialized
+        // `tools` JSON must be byte-stable across calls that should hit the
+        // cache. We rely on object-spread insertion order being deterministic
+        // here. `withCachedToolPrefix` (which sorts + marks) is intentionally
+        // NOT applied because `enable_tool` mutates the toolset across
+        // subsequent LLM calls in the same turn — any tool-prefix marker
+        // would invalidate on the next call anyway.
         const tools = isCliAgent
           ? {}
           : {
@@ -795,6 +809,7 @@ async function streamCoreInner(
           outputTokens: 0,
           totalTokens: 0,
         };
+        const stepCacheAcc = emptyCacheAccumulator();
         let stepAccumulatedCost = 0;
         llmCallStartTime = Date.now();
 
@@ -908,19 +923,19 @@ async function streamCoreInner(
           },
         });
 
+        const systemPromptMessages = buildSystemMessages(
+          systemPrompts,
+          new Date(),
+        );
+
         let result;
         try {
           result = streamText({
             model: languageModel,
-            system: [
-              ...systemPrompts.map((content) => ({
-                role: "system" as const,
-                content,
-              })),
-              ...processedSystemMessages,
-            ],
+            system: [...systemPromptMessages, ...processedSystemMessages],
             messages: processedMessages,
             tools,
+            providerOptions: OPENROUTER_CACHE_PROVIDER_OPTIONS,
             // Note: Codex thread resume is not supported because each request
             // spawns a new codexAppServer process. Thread IDs are local to a
             // process and cannot be resumed by a different one.
@@ -1052,6 +1067,19 @@ async function streamCoreInner(
                 totalUsage.outputTokens ?? 0,
               );
               llmSpan.setAttribute("decopilot.llm.finishReason", finishReason);
+              llmSpan.setAttribute(
+                "decopilot.cache.read_tokens",
+                stepCacheAcc.read,
+              );
+              llmSpan.setAttribute(
+                "decopilot.cache.write_tokens",
+                stepCacheAcc.write,
+              );
+              const hitRatio =
+                stepCacheAcc.input > 0
+                  ? stepCacheAcc.read / stepCacheAcc.input
+                  : 0;
+              llmSpan.setAttribute("decopilot.cache.hit_ratio", hitRatio);
               llmSpan.setStatus({ code: SpanStatusCode.OK });
               llmSpan.end();
 
@@ -1066,6 +1094,8 @@ async function streamCoreInner(
                 isError: false,
                 inputTokens: totalUsage.inputTokens,
                 outputTokens: totalUsage.outputTokens,
+                cacheReadTokens: stepCacheAcc.read,
+                cacheWriteTokens: stepCacheAcc.write,
               });
               aggregatedUsage = {
                 inputTokens:
@@ -1177,6 +1207,8 @@ async function streamCoreInner(
                 isError: false,
                 inputTokens: abortTotalUsage.inputTokens,
                 outputTokens: abortTotalUsage.outputTokens,
+                cacheReadTokens: stepCacheAcc.read,
+                cacheWriteTokens: stepCacheAcc.write,
               });
               monitorLlmCall({
                 ctx,
@@ -1214,6 +1246,15 @@ async function streamCoreInner(
                       inputTokens: abortTotalUsage.inputTokens,
                       outputTokens: abortTotalUsage.outputTokens,
                       totalTokens: abortTotalUsage.totalTokens,
+                      cachedInputTokens: stepCacheAcc.read,
+                      inputTokenDetails: {
+                        cacheReadTokens: stepCacheAcc.read,
+                        cacheWriteTokens: stepCacheAcc.write,
+                        noCacheTokens:
+                          abortTotalUsage.inputTokens -
+                          stepCacheAcc.read -
+                          stepCacheAcc.write,
+                      },
                       ...(stepAccumulatedCost > 0 && {
                         providerMetadata: {
                           openrouter: {
@@ -1310,19 +1351,38 @@ async function streamCoreInner(
                   stepAccumulatedUsage.totalTokens +
                   (part.usage?.totalTokens ?? 0),
               };
-              const stepCost = (
-                part.providerMetadata?.openrouter as
-                  | { usage?: { cost?: number } }
-                  | undefined
-              )?.usage?.cost;
-              if (stepCost != null) {
-                stepAccumulatedCost += stepCost;
-              }
+              // Cache tokens: shared accumulator reads AI SDK's
+              // provider-agnostic usage.inputTokenDetails.
+              addCacheStep(stepCacheAcc, part.usage);
+              // Cost: only providers that authoritatively report it
+              // (OpenRouter today) contribute. For Anthropic-direct /
+              // OpenAI / Gemini the field is absent and stepCost stays
+              // 0 — the UI then shows tokens instead of a dollar amount.
+              const stepCost =
+                (
+                  part.providerMetadata?.openrouter as
+                    | { usage?: { cost?: number } }
+                    | undefined
+                )?.usage?.cost ?? 0;
+              stepAccumulatedCost += stepCost;
               return {
                 usage: {
                   inputTokens: stepAccumulatedUsage.inputTokens,
                   outputTokens: stepAccumulatedUsage.outputTokens,
                   totalTokens: stepAccumulatedUsage.totalTokens,
+                  // Forward AI-SDK normalized cache token details so the
+                  // frontend's tooltip can read them. Without this our
+                  // explicit usage shape replaces the SDK's default and
+                  // drops these fields.
+                  cachedInputTokens: stepCacheAcc.read,
+                  inputTokenDetails: {
+                    cacheReadTokens: stepCacheAcc.read,
+                    cacheWriteTokens: stepCacheAcc.write,
+                    noCacheTokens:
+                      stepAccumulatedUsage.inputTokens -
+                      stepCacheAcc.read -
+                      stepCacheAcc.write,
+                  },
                   ...(stepAccumulatedCost > 0 && {
                     providerMetadata: {
                       openrouter: {
@@ -1380,6 +1440,19 @@ async function streamCoreInner(
                       (totalUsage as { reasoningTokens?: number } | null)
                         ?.reasoningTokens ?? undefined,
                     totalTokens: effectiveUsage.totalTokens ?? 0,
+                    // Forward AI-SDK normalized cache token details so the
+                    // frontend's tooltip can read them. Our explicit usage
+                    // shape replaces the SDK's default, so without this the
+                    // detail fields would be dropped on the way to the UI.
+                    cachedInputTokens: stepCacheAcc.read,
+                    inputTokenDetails: {
+                      cacheReadTokens: stepCacheAcc.read,
+                      cacheWriteTokens: stepCacheAcc.write,
+                      noCacheTokens:
+                        (effectiveUsage.inputTokens ?? 0) -
+                        stepCacheAcc.read -
+                        stepCacheAcc.write,
+                    },
                     providerMetadata: sanitizeProviderMetadata(
                       provider && finalProviderMeta
                         ? {

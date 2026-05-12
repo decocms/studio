@@ -25,7 +25,12 @@ import {
 import { toolsFromMCP } from "../helpers";
 import type { ModelsConfig } from "../types";
 import { MeshProvider } from "@/ai-providers/types";
+import {
+  OPENROUTER_CACHE_PROVIDER_OPTIONS,
+  withCachedToolPrefix,
+} from "../cache-instrumentation";
 import { createLanguageModel } from "../stream-core";
+import { buildSystemMessages } from "../system-prompt";
 
 export const SubtaskInputSchema = z.object({
   prompt: z
@@ -162,27 +167,34 @@ export function createSubtaskTool(
         "auto",
         { disableOutputTruncation: true },
       );
-      const subagentTools = Object.fromEntries(
+      // Tools are filtered first, then sorted-and-cache-marked via the
+      // shared helper. Anthropic's tool-cache layer is separate from
+      // the system/messages layer, so this doesn't consume any system
+      // cache breakpoints.
+      const filteredTools = Object.fromEntries(
         Object.entries(mcpTools).filter(
           ([name]) => !SUBAGENT_EXCLUDED_TOOLS.includes(name),
         ),
       );
+      const subagentTools = withCachedToolPrefix(filteredTools);
 
       // ── 4. Build subagent system prompt ────────────────────────────
       const serverInstructions = mcpClient.getInstructions();
       const systemPrompts = buildSubagentSystemPrompt(serverInstructions);
+      const systemPromptMessages = buildSystemMessages(
+        systemPrompts,
+        new Date(),
+      );
 
       // ── 5. Run streamText as subagent ──────────────────────────────
       let accumulatedUsage: UsageStats = emptyUsageStats();
 
       const result = streamText({
         model: createLanguageModel(provider, models.thinking),
-        system: systemPrompts.map((content) => ({
-          role: "system" as const,
-          content,
-        })),
+        system: systemPromptMessages,
         prompt,
         tools: subagentTools,
+        providerOptions: OPENROUTER_CACHE_PROVIDER_OPTIONS,
         abortSignal,
         stopWhen: stepCountIs(SUBAGENT_STEP_LIMIT),
         maxOutputTokens:
