@@ -63,7 +63,8 @@ export interface ChatMainPanelGroupProps {
   chatOpen: boolean;
   mainOpen: boolean;
   /** Optional override for the chat panel content — lets the outer layout
-   * wrap ChatCenterPanel in its own Suspense/ErrorBoundary/ActiveTaskProvider. */
+   * wrap ChatCenterPanel in its own Suspense/ErrorBoundary.
+   * (Chat.ActiveTaskProvider is mounted by the outer layout, not here.) */
   chatContent?: React.ReactNode;
 }
 

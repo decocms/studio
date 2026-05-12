@@ -14,9 +14,17 @@
  *               • useVirtualMCP (suspends here)
  *               • Toolbar.Toggles → portal into slot
  *               • Toolbar.Tabs → portal into slot
- *               • Chat.Provider → ChatMainPanelGroup
+ *               • Chat.Provider
+ *                 └── VmEventsBridge
+ *                     └── Chat.ActiveTaskProvider
+ *                         └── flex-row
+ *                             ├── ChatMainPanelGroup
+ *                             └── TodosColumn
  *
- * Mobile layout is unchanged (sheet-based tasks + chat).
+ * Mobile layout:
+ *   Chat.Provider
+ *   └── Chat.ActiveTaskProvider
+ *       └── MainPanelContent OR ActiveTaskBoundary (sheet-based)
  */
 
 import {
