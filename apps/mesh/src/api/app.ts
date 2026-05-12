@@ -101,7 +101,7 @@ import {
   AUTOMATIONS_GATE_PARTITION_CONCURRENCY,
   AUTOMATIONS_GLOBAL_CONCURRENCY,
   AUTOMATIONS_GLOBAL_QUEUE,
-  EventTriggerEngine,
+  AutomationEventDispatcher,
   fireAutomationNow,
   reconcileAutomationSchedules,
   setAutomationRuntime,
@@ -1164,10 +1164,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   };
 
   // ============================================================================
-  // Event Trigger Engine — wire automations into the event bus
+  // Automation Event Dispatcher — wire automations into the event bus
   // ============================================================================
 
-  const eventTriggerEngine = new EventTriggerEngine(
+  const automationEventDispatcher = new AutomationEventDispatcher(
     automationsStorage,
     ({ automation, trigger, contextMessages, idempotencyKey }) =>
       fireAutomationNow(
@@ -1184,12 +1184,14 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Inject into the event bus worker so processed events trigger automations.
   // The cast is needed because the EventBus interface doesn't expose this
   // integration point — it lives on the concrete implementation only.
-  if ("setEventTriggerEngine" in eventBus) {
+  if ("setAutomationEventDispatcher" in eventBus) {
     (
       eventBus as unknown as {
-        setEventTriggerEngine: (engine: EventTriggerEngine) => void;
+        setAutomationEventDispatcher: (
+          dispatcher: AutomationEventDispatcher,
+        ) => void;
       }
-    ).setEventTriggerEngine(eventTriggerEngine);
+    ).setAutomationEventDispatcher(automationEventDispatcher);
   }
 
   // ============================================================================
@@ -1550,7 +1552,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     "/",
     createTriggerCallbackRoutes({
       tokenStorage: triggerCallbackTokenStorage,
-      eventTriggerEngine,
+      automationEventDispatcher,
     }),
   );
   app.route("/api", legacyTriggerCallback);
@@ -1665,7 +1667,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   const orgScopedApi = createOrgScopedApi({
     kvStorage,
     tokenStorage: triggerCallbackTokenStorage,
-    eventTriggerEngine,
+    automationEventDispatcher,
     mountDevAssets: usesLocalObjectStorage(),
     mcpAuth,
     oauthProxyHandler,

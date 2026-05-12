@@ -162,7 +162,7 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
 
     // Register the DBOS schedule for cron triggers so it fires without
     // waiting for the boot-time reconciler. Event triggers don't have
-    // schedules (they fire on EventTriggerEngine.notifyEvents).
+    // schedules (they fire on AutomationEventDispatcher.dispatchForEvents).
     await syncTriggerCreated(trigger, automation);
 
     return {

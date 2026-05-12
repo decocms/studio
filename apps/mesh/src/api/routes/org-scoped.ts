@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { MiddlewareHandler } from "hono";
-import type { EventTriggerEngine } from "@/automations/event-trigger-engine";
+import type { AutomationEventDispatcher } from "@/automations/automation-event-dispatcher";
 import type { KVStorage } from "@/storage/kv";
 import type { TriggerCallbackTokenStorage } from "@/storage/trigger-callback-tokens";
 import { resolveOrgFromPath } from "../middleware/resolve-org-from-path";
@@ -24,7 +24,7 @@ import { createVmSetupRoutes } from "./vm-setup";
 interface OrgScopedDeps {
   kvStorage: KVStorage;
   tokenStorage: TriggerCallbackTokenStorage;
-  eventTriggerEngine: EventTriggerEngine;
+  automationEventDispatcher: AutomationEventDispatcher;
   /** Whether dev-only routes should be mounted (no S3 → DevObjectStorage). */
   mountDevAssets: boolean;
   /** mcpAuth middleware (defined in app.ts; must be applied under the new MCP prefixes). */
@@ -73,7 +73,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
     "/",
     createTriggerCallbackRoutes({
       tokenStorage: deps.tokenStorage,
-      eventTriggerEngine: deps.eventTriggerEngine,
+      automationEventDispatcher: deps.automationEventDispatcher,
     }),
   ); // /api/:org/trigger-callback
 

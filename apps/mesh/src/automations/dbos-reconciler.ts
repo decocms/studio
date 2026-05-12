@@ -28,6 +28,35 @@ export interface ReconcileResult {
   created: number;
   deleted: number;
   kept: number;
+  orphansCancelled: number;
+}
+
+const AUTOMATION_WORKFLOW_NAMES = [
+  "cronEntryWorkflow",
+  "automationOrgGateWorkflow",
+  "automationGateWorkflow",
+  "fireAutomationWorkflow",
+] as const;
+
+/**
+ * Cancel ENQUEUED automation workflows from prior app versions. DBOS dequeues
+ * only on matching `application_version`, so a row enqueued under v(N-1) has
+ * no live claimant once v(N) boots and accumulates forever — the daily GC
+ * only reaps terminal statuses. Flipping to CANCELLED lets that GC collect
+ * them on its normal 7-day retention.
+ */
+async function cancelOrphanedEnqueued(): Promise<number> {
+  const orphans = await DBOS.listWorkflows({
+    status: ["ENQUEUED"],
+    workflowName: [...AUTOMATION_WORKFLOW_NAMES],
+    loadInput: false,
+    loadOutput: false,
+  });
+  const stale = orphans
+    .filter((w) => w.applicationVersion !== DBOS.applicationVersion)
+    .map((w) => w.workflowID);
+  if (stale.length) await DBOS.cancelWorkflows(stale);
+  return stale.length;
 }
 
 export async function reconcileAutomationSchedules(
@@ -77,9 +106,11 @@ export async function reconcileAutomationSchedules(
     }
   }
 
+  const orphansCancelled = await cancelOrphanedEnqueued();
+
   console.log(
-    `[automation-reconciler] reconciled schedules — created=${created} deleted=${deleted} kept=${kept}`,
+    `[automation-reconciler] reconciled schedules — created=${created} deleted=${deleted} kept=${kept} orphansCancelled=${orphansCancelled}`,
   );
 
-  return { created, deleted, kept };
+  return { created, deleted, kept, orphansCancelled };
 }

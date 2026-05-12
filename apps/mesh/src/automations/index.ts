@@ -1,4 +1,4 @@
-export { EventTriggerEngine } from "./event-trigger-engine";
+export { AutomationEventDispatcher } from "./automation-event-dispatcher";
 export {
   AUTOMATIONS_GATE_QUEUE,
   AUTOMATIONS_GLOBAL_QUEUE,

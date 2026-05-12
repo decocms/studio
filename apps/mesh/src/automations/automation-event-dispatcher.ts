@@ -1,7 +1,7 @@
 /**
- * Event Trigger Engine
+ * Automation Event Dispatcher
  *
- * Listens to events processed by the EventBusWorker and fires matching
+ * Consumes events processed by the EventBusWorker and fires matching
  * automations. Called in a fire-and-forget fashion so it never blocks
  * the event bus hot path.
  */
@@ -87,7 +87,7 @@ function scalarMatchesField(fieldValue: unknown, scalar: unknown): boolean {
   return fieldValue === scalar;
 }
 
-export class EventTriggerEngine {
+export class AutomationEventDispatcher {
   private static MAX_AUTOMATION_DEPTH = 3;
   private static MAX_EVENT_PAYLOAD_BYTES = 1_048_576; // 1MB
 
@@ -105,7 +105,7 @@ export class EventTriggerEngine {
    * semantics across at-least-once event delivery. Callers without a stable
    * id (e.g. ad-hoc webhook callbacks) may omit it and accept retry-fires.
    */
-  notifyEvents(
+  dispatchForEvents(
     events: Array<{
       id?: string;
       source: string;
@@ -118,7 +118,7 @@ export class EventTriggerEngine {
     for (const event of events) {
       this.onEvent(event).catch((err) => {
         console.error(
-          `[EventTrigger] Error processing event ${event.type}:`,
+          `[AutomationDispatch] Error processing event ${event.type}:`,
           err,
         );
       });
@@ -136,9 +136,9 @@ export class EventTriggerEngine {
     const depth = event.automationDepth ?? 0;
 
     // Prevent infinite recursion
-    if (depth >= EventTriggerEngine.MAX_AUTOMATION_DEPTH) {
+    if (depth >= AutomationEventDispatcher.MAX_AUTOMATION_DEPTH) {
       console.warn(
-        `[EventTrigger] SKIPPED event ${event.type} from ${event.source} — max depth ${depth}`,
+        `[AutomationDispatch] SKIPPED event ${event.type} from ${event.source} — max depth ${depth}`,
       );
       return;
     }
@@ -173,7 +173,7 @@ export class EventTriggerEngine {
       const trigger = triggersToFire[i]!;
       if (result.status === "rejected") {
         console.error(
-          `[EventTrigger] Trigger ${trigger.id} ("${trigger.automation.name}") REJECTED:`,
+          `[AutomationDispatch] Trigger ${trigger.id} ("${trigger.automation.name}") REJECTED:`,
           result.reason,
         );
       }
@@ -241,9 +241,9 @@ export class EventTriggerEngine {
     eventData: unknown,
   ): Array<{ role: string; content: string }> {
     let serialized = JSON.stringify(eventData, null, 2) ?? "null";
-    if (serialized.length > EventTriggerEngine.MAX_EVENT_PAYLOAD_BYTES) {
+    if (serialized.length > AutomationEventDispatcher.MAX_EVENT_PAYLOAD_BYTES) {
       serialized =
-        serialized.slice(0, EventTriggerEngine.MAX_EVENT_PAYLOAD_BYTES) +
+        serialized.slice(0, AutomationEventDispatcher.MAX_EVENT_PAYLOAD_BYTES) +
         "\n[TRUNCATED]";
     }
     return [

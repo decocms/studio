@@ -113,8 +113,8 @@ export class EventBusWorker {
   private processing = false;
   private pendingNotify = false;
   private config: Required<EventBusConfig>;
-  private eventTriggerEngine?: {
-    notifyEvents(
+  private automationEventDispatcher?: {
+    dispatchForEvents(
       events: Array<{
         id: string;
         source: string;
@@ -139,11 +139,13 @@ export class EventBusWorker {
   }
 
   /**
-   * Set the event trigger engine for automation firing.
+   * Set the automation event dispatcher for automation firing.
    * Called once during app startup to wire automations into the event bus.
    */
-  setEventTriggerEngine(engine: EventBusWorker["eventTriggerEngine"]): void {
-    this.eventTriggerEngine = engine;
+  setAutomationEventDispatcher(
+    dispatcher: EventBusWorker["automationEventDispatcher"],
+  ): void {
+    this.automationEventDispatcher = dispatcher;
   }
 
   /**
@@ -342,9 +344,9 @@ export class EventBusWorker {
       }
     }
 
-    // Notify the event trigger engine (fire-and-forget) so automations can react.
+    // Notify the automation event dispatcher (fire-and-forget) so automations can react.
     // Deduplicate events by ID before notifying.
-    if (this.eventTriggerEngine) {
+    if (this.automationEventDispatcher) {
       const seenIds = new Set<string>();
       const uniqueEvents: Array<{
         id: string;
@@ -370,7 +372,7 @@ export class EventBusWorker {
       }
 
       if (uniqueEvents.length > 0) {
-        this.eventTriggerEngine.notifyEvents(uniqueEvents);
+        this.automationEventDispatcher.dispatchForEvents(uniqueEvents);
       }
     }
   }

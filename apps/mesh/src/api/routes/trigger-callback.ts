@@ -2,7 +2,7 @@
  * Trigger Callback Endpoint
  *
  * Receives trigger events from external MCPs (e.g., GitHub webhook handler)
- * and fires matching automations via EventTriggerEngine.
+ * and fires matching automations via AutomationEventDispatcher.
  *
  * Auth: Bearer token (callback token generated during TRIGGER_CONFIGURE)
  * Route: POST /api/trigger-callback
@@ -11,7 +11,7 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
-import type { EventTriggerEngine } from "@/automations/event-trigger-engine";
+import type { AutomationEventDispatcher } from "@/automations/automation-event-dispatcher";
 import type { TriggerCallbackTokenStorage } from "@/storage/trigger-callback-tokens";
 
 const TriggerCallbackBodySchema = z.object({
@@ -21,7 +21,7 @@ const TriggerCallbackBodySchema = z.object({
 
 interface TriggerCallbackDeps {
   tokenStorage: TriggerCallbackTokenStorage;
-  eventTriggerEngine: EventTriggerEngine;
+  automationEventDispatcher: AutomationEventDispatcher;
 }
 
 const MAX_BODY_SIZE = 1_048_576; // 1MB
@@ -66,7 +66,7 @@ export function createTriggerCallbackRoutes(deps: TriggerCallbackDeps) {
       const { type, data } = parsed.data;
 
       // Fire matching automations (fire-and-forget)
-      deps.eventTriggerEngine.notifyEvents([
+      deps.automationEventDispatcher.dispatchForEvents([
         {
           source: context.connectionId,
           type,

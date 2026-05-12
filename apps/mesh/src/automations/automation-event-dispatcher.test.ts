@@ -1,7 +1,10 @@
 import { describe, expect, it, mock } from "bun:test";
 import type { AutomationsStorage } from "@/storage/automations";
 import type { Automation, AutomationTrigger } from "@/storage/types";
-import { EventTriggerEngine, type EventFireFn } from "./event-trigger-engine";
+import {
+  AutomationEventDispatcher,
+  type EventFireFn,
+} from "./automation-event-dispatcher";
 
 // ============================================================================
 // Helpers
@@ -49,7 +52,7 @@ function makeTriggerWithAutomation(
   };
 }
 
-function makeEngine(opts?: {
+function makeDispatcher(opts?: {
   storage?: AutomationsStorage;
   fire?: EventFireFn;
 }) {
@@ -62,8 +65,8 @@ function makeEngine(opts?: {
   const fire: EventFireFn =
     opts?.fire ?? (mock(async () => ({ taskId: "thrd_1" })) as EventFireFn);
 
-  const engine = new EventTriggerEngine(storage, fire);
-  return { engine, storage, fire };
+  const dispatcher = new AutomationEventDispatcher(storage, fire);
+  return { dispatcher, storage, fire };
 }
 
 async function flush() {
@@ -74,11 +77,11 @@ async function flush() {
 // Tests
 // ============================================================================
 
-describe("EventTriggerEngine", () => {
-  describe("notifyEvents", () => {
+describe("AutomationEventDispatcher", () => {
+  describe("dispatchForEvents", () => {
     it("queries triggers using (source, type, organizationId)", async () => {
-      const { engine, storage } = makeEngine();
-      engine.notifyEvents([
+      const { dispatcher, storage } = makeDispatcher();
+      dispatcher.dispatchForEvents([
         {
           source: "conn_1",
           type: "order.created",
@@ -104,8 +107,8 @@ describe("EventTriggerEngine", () => {
       } as unknown as AutomationsStorage;
       const fire: EventFireFn = mock(async () => ({ taskId: "thrd_1" }));
 
-      const { engine } = makeEngine({ storage, fire });
-      engine.notifyEvents([
+      const { dispatcher } = makeDispatcher({ storage, fire });
+      dispatcher.dispatchForEvents([
         {
           source: "conn_1",
           type: "order.created",
@@ -130,8 +133,8 @@ describe("EventTriggerEngine", () => {
       } as unknown as AutomationsStorage;
       const fire: EventFireFn = mock(async () => ({ taskId: "thrd_1" }));
 
-      const { engine } = makeEngine({ storage, fire });
-      engine.notifyEvents([
+      const { dispatcher } = makeDispatcher({ storage, fire });
+      dispatcher.dispatchForEvents([
         {
           source: "conn_1",
           type: "order.created",
@@ -158,8 +161,8 @@ describe("EventTriggerEngine", () => {
       } as unknown as AutomationsStorage;
       const fire: EventFireFn = mock(async () => ({ taskId: "thrd_1" }));
 
-      const { engine } = makeEngine({ storage, fire });
-      engine.notifyEvents([
+      const { dispatcher } = makeDispatcher({ storage, fire });
+      dispatcher.dispatchForEvents([
         {
           id: "evt_abc",
           source: "conn_1",
@@ -181,8 +184,8 @@ describe("EventTriggerEngine", () => {
       } as unknown as AutomationsStorage;
       const fire: EventFireFn = mock(async () => ({ taskId: "thrd_1" }));
 
-      const { engine } = makeEngine({ storage, fire });
-      engine.notifyEvents([
+      const { dispatcher } = makeDispatcher({ storage, fire });
+      dispatcher.dispatchForEvents([
         {
           source: "conn_1",
           type: "order.created",
@@ -197,8 +200,8 @@ describe("EventTriggerEngine", () => {
     });
 
     it("skips events at or beyond max depth (3)", async () => {
-      const { engine, storage } = makeEngine();
-      engine.notifyEvents([
+      const { dispatcher, storage } = makeDispatcher();
+      dispatcher.dispatchForEvents([
         {
           source: "conn_1",
           type: "order.created",
@@ -219,8 +222,8 @@ describe("EventTriggerEngine", () => {
     });
 
     it("allows events below max depth", async () => {
-      const { engine, storage } = makeEngine();
-      engine.notifyEvents([
+      const { dispatcher, storage } = makeDispatcher();
+      dispatcher.dispatchForEvents([
         {
           source: "conn_1",
           type: "order.created",
@@ -241,8 +244,8 @@ describe("EventTriggerEngine", () => {
     });
 
     it("treats missing automationDepth as 0", async () => {
-      const { engine, storage } = makeEngine();
-      engine.notifyEvents([
+      const { dispatcher, storage } = makeDispatcher();
+      dispatcher.dispatchForEvents([
         {
           source: "conn_1",
           type: "test",
@@ -268,8 +271,8 @@ describe("EventTriggerEngine", () => {
         ),
       } as unknown as AutomationsStorage;
 
-      const { engine } = makeEngine({ storage });
-      engine.notifyEvents([
+      const { dispatcher } = makeDispatcher({ storage });
+      dispatcher.dispatchForEvents([
         {
           source: "conn_1",
           type: "test",
@@ -287,8 +290,8 @@ describe("EventTriggerEngine", () => {
       } as unknown as AutomationsStorage;
       const fire: EventFireFn = mock(async () => ({ taskId: "thrd_1" }));
 
-      const { engine } = makeEngine({ storage, fire });
-      engine.notifyEvents([
+      const { dispatcher } = makeDispatcher({ storage, fire });
+      dispatcher.dispatchForEvents([
         {
           source: "conn_1",
           type: "order.created",
@@ -327,8 +330,8 @@ describe("EventTriggerEngine", () => {
       const storage = makeStorage(trigger);
       const fire: EventFireFn = mock(async () => ({ taskId: "thrd_1" }));
 
-      const { engine } = makeEngine({ storage, fire });
-      engine.notifyEvents([
+      const { dispatcher } = makeDispatcher({ storage, fire });
+      dispatcher.dispatchForEvents([
         {
           source: "conn_1",
           type: "test",

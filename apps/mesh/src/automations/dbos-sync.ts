@@ -30,7 +30,7 @@ export const AUTOMATION_SCHEDULE_PREFIX = "auto-trigger-";
 
 /**
  * Mirror a newly-created cron trigger to DBOS as a schedule. Non-cron triggers
- * are no-ops (event triggers fire via EventTriggerEngine.startWorkflow directly,
+ * are no-ops (event triggers fire via AutomationEventDispatcher.startWorkflow directly,
  * not via the scheduler).
  */
 export async function syncTriggerCreated(
@@ -112,7 +112,7 @@ export async function syncAutomationDeleted(
 /**
  * Enqueue an immediate fire through the org gate queue. Used by:
  *   - AUTOMATION_RUN (manual "run now") — bypasses any trigger
- *   - EventTriggerEngine — fires on event-matched triggers
+ *   - AutomationEventDispatcher — fires on event-matched triggers
  *
  * Routes through `orgGateWorkflow` so per-org, per-automation, and global
  * concurrency caps all apply (same chain the cron scheduler uses). Returns
