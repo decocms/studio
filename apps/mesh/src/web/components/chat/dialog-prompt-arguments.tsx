@@ -32,10 +32,6 @@ interface PromptArgsDialogProps {
   prompt: Prompt | null;
   setPrompt: (prompt: Prompt | null) => void;
   onSubmit: (values: PromptArgumentValues) => Promise<void>;
-  /** Prefill the form with these values (e.g. when editing an existing
-   * mention). Keys that don't match the current prompt's arguments are
-   * dropped silently. */
-  defaultValues?: PromptArgumentValues;
 }
 
 function buildArgumentSchema(prompt: Prompt) {
@@ -48,13 +44,10 @@ function buildArgumentSchema(prompt: Prompt) {
   return z.object(shape);
 }
 
-function buildDefaultValues(
-  prompt: Prompt,
-  preset?: PromptArgumentValues,
-): PromptArgumentValues {
+function buildDefaultValues(prompt: Prompt): PromptArgumentValues {
   const defaults: PromptArgumentValues = {};
   for (const arg of prompt.arguments ?? []) {
-    defaults[arg.name] = preset?.[arg.name] ?? "";
+    defaults[arg.name] = "";
   }
   return defaults;
 }
@@ -63,17 +56,15 @@ export function PromptArgsDialog({
   prompt,
   setPrompt,
   onSubmit,
-  defaultValues,
 }: PromptArgsDialogProps) {
   const id = useId();
   const schema = prompt ? buildArgumentSchema(prompt) : z.object({});
   const resolver = zodResolver(schema as any);
   const form = useForm<PromptArgumentValues>({
     resolver: resolver as unknown as Resolver<PromptArgumentValues>,
-    defaultValues: prompt ? buildDefaultValues(prompt, defaultValues) : {},
+    defaultValues: prompt ? buildDefaultValues(prompt) : {},
     mode: "onChange",
   });
-  const isEditing = !!defaultValues;
 
   const argumentsList = prompt?.arguments ?? [];
 
@@ -172,8 +163,6 @@ export function PromptArgsDialog({
                     <Spinner size="xs" />
                     Loading...
                   </span>
-                ) : isEditing ? (
-                  "Save"
                 ) : (
                   "Use prompt"
                 )}

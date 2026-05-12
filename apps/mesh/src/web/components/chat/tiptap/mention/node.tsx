@@ -22,10 +22,6 @@ export interface MentionAttrs<T = unknown> {
   metadata: T;
   /** Character that triggered the mention ("/" prompts+resources, "@" agents) */
   char?: "/" | "@";
-  /** Original prompt argument values used to render this mention. Present only
-   * for slash-prompt mentions whose prompt declared arguments — enables
-   * click-to-edit. */
-  values?: Record<string, string>;
 }
 
 // ============================================================================
@@ -64,48 +60,19 @@ export function createMentionDoc<T>(attrs: MentionAttrs<T>): JSONContent {
 // React Node View Component
 // ============================================================================
 
-export const MENTION_EDIT_EVENT = "mention:edit";
-
-export interface MentionEditEventDetail {
-  pos: number;
-  attrs: MentionAttrs;
-}
-
 function MentionNodeView(props: NodeViewProps) {
-  const { node, selected, view, getPos } = props;
-  const { name, char, values } = node.attrs as MentionAttrs;
+  const { node, selected, view } = props;
+  const { name, char } = node.attrs as MentionAttrs;
 
   const isSelected = selected && view.editable;
   const isAgent = char === "@";
-  const isEditablePrompt =
-    char === "/" &&
-    view.editable &&
-    !!values &&
-    typeof values === "object" &&
-    Object.keys(values).length > 0;
-
-  const handleClick = () => {
-    if (!isEditablePrompt) return;
-    const pos = typeof getPos === "function" ? getPos() : null;
-    if (typeof pos !== "number") return;
-    view.dom.dispatchEvent(
-      new CustomEvent<MentionEditEventDetail>(MENTION_EDIT_EVENT, {
-        detail: { pos, attrs: node.attrs as MentionAttrs },
-        bubbles: true,
-      }),
-    );
-  };
 
   return (
     <NodeViewWrapper
-      onClick={isEditablePrompt ? handleClick : undefined}
       className={cn(
         "px-1 py-1 rounded",
         "inline-flex items-center gap-1",
-        isEditablePrompt
-          ? "cursor-pointer hover:ring-2 hover:ring-amber-300 dark:hover:ring-amber-600"
-          : "cursor-default",
-        "select-none",
+        "cursor-default select-none",
         "text-xs font-light",
         isAgent
           ? "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400"
@@ -171,20 +138,6 @@ export const MentionNode = Node.create({
           return { "data-metadata": JSON.stringify(attributes.metadata) };
         },
       },
-      values: {
-        default: null,
-        parseHTML: (element) => {
-          try {
-            return JSON.parse(element.getAttribute("data-values") || "null");
-          } catch {
-            return null;
-          }
-        },
-        renderHTML: (attributes) => {
-          if (!attributes.values) return {};
-          return { "data-values": JSON.stringify(attributes.values) };
-        },
-      },
     };
   },
 
@@ -214,9 +167,6 @@ export const MentionNode = Node.create({
     }
     if (node.attrs.metadata) {
       attrs["data-metadata"] = JSON.stringify(node.attrs.metadata);
-    }
-    if (node.attrs.values) {
-      attrs["data-values"] = JSON.stringify(node.attrs.values);
     }
 
     return ["span", { ...HTMLAttributes, ...attrs }];
