@@ -96,7 +96,12 @@ export function HighlightCard({
     >
       {/* Header */}
       <div className="flex items-start gap-2 px-4 pt-4 pb-5">
-        <p className={cn("flex-1 text-base font-medium text-foreground min-w-0", minimized && "truncate")}>
+        <p
+          className={cn(
+            "flex-1 text-base font-medium text-foreground min-w-0",
+            minimized && "truncate",
+          )}
+        >
           {title}
         </p>
         {minimizable && (
