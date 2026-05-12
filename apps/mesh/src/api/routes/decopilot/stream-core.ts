@@ -27,6 +27,7 @@ import { getBuiltInTools, type PendingImage } from "./built-in-tools";
 import { createEnableToolTool } from "./built-in-tools/enable-tool";
 import { buildAgentsBlock } from "./agents-block";
 import { buildPromptsBlock } from "./prompts-block";
+import { computeCost } from "./pricing";
 import { buildSystemMessages } from "./system-prompt";
 import {
   buildConnectionsBlock,
@@ -797,6 +798,8 @@ async function streamCoreInner(
           totalTokens: 0,
         };
         let stepAccumulatedCost = 0;
+        let stepAccumulatedUncachedEquivalent = 0;
+        let stepPricingUnknown = false;
         let stepAccumulatedCacheRead = 0;
         let stepAccumulatedCacheWrite = 0;
         llmCallStartTime = Date.now();
@@ -1083,6 +1086,23 @@ async function streamCoreInner(
                       ? "WRITE 📝"
                       : "MISS ❌";
                 const pct = (hitRatio * 100).toFixed(1);
+                const cost = stepPricingUnknown
+                  ? "(model unpriced — see pricing-table.json)"
+                  : `$${stepAccumulatedCost.toFixed(6)}`;
+                const uncached = stepPricingUnknown
+                  ? "(n/a)"
+                  : `$${stepAccumulatedUncachedEquivalent.toFixed(6)}`;
+                const savedAbs = stepPricingUnknown
+                  ? 0
+                  : stepAccumulatedUncachedEquivalent - stepAccumulatedCost;
+                const savedPct =
+                  !stepPricingUnknown &&
+                  stepAccumulatedUncachedEquivalent > 0
+                    ? `${((savedAbs / stepAccumulatedUncachedEquivalent) * 100).toFixed(1)}%`
+                    : "0.0%";
+                const saved = stepPricingUnknown
+                  ? "(n/a)"
+                  : `$${savedAbs.toFixed(6)} (${savedPct})`;
                 console.log(
                   [
                     "",
@@ -1096,6 +1116,9 @@ async function streamCoreInner(
                     `║  cache rd : ${String(stepAccumulatedCacheRead).padEnd(54)}║`,
                     `║  cache wr : ${String(stepAccumulatedCacheWrite).padEnd(54)}║`,
                     `║  hit_ratio: ${`${pct}%`.padEnd(54)}║`,
+                    `║  cost     : ${cost.padEnd(54)}║`,
+                    `║  if uncached: ${uncached.padEnd(52)}║`,
+                    `║  saved    : ${saved.padEnd(54)}║`,
                     "╚════════════════════════════════════════════════════════════════════╝",
                     "",
                   ].join("\n"),
@@ -1371,17 +1394,29 @@ async function streamCoreInner(
                     cacheWriteTokens?: number;
                   }
                 | undefined;
-              stepAccumulatedCacheRead +=
-                inputDetails?.cacheReadTokens ?? 0;
-              stepAccumulatedCacheWrite +=
-                inputDetails?.cacheWriteTokens ?? 0;
-              const stepCost = (
-                part.providerMetadata?.openrouter as
-                  | { usage?: { cost?: number } }
-                  | undefined
-              )?.usage?.cost;
-              if (stepCost != null) {
-                stepAccumulatedCost += stepCost;
+              const stepCacheRead = inputDetails?.cacheReadTokens ?? 0;
+              const stepCacheWrite = inputDetails?.cacheWriteTokens ?? 0;
+              stepAccumulatedCacheRead += stepCacheRead;
+              stepAccumulatedCacheWrite += stepCacheWrite;
+              // Always compute cost from the local pricing table. We do
+              // NOT trust providerMetadata.openrouter.usage.cost — the
+              // pricing table is the single source of truth.
+              const stepCostBreakdown = computeCost(
+                input.models.thinking.provider ?? undefined,
+                input.models.thinking.id,
+                {
+                  inputTokens: part.usage?.inputTokens ?? 0,
+                  outputTokens: part.usage?.outputTokens ?? 0,
+                  cacheReadTokens: stepCacheRead,
+                  cacheWriteTokens: stepCacheWrite,
+                },
+              );
+              if (stepCostBreakdown) {
+                stepAccumulatedCost += stepCostBreakdown.total;
+                stepAccumulatedUncachedEquivalent +=
+                  stepCostBreakdown.uncachedEquivalent;
+              } else {
+                stepPricingUnknown = true;
               }
               return {
                 usage: {
