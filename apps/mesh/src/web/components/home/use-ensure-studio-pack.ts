@@ -20,7 +20,14 @@ export function useEnsureStudioPack() {
   return async function ensure(
     templateIds: ReadonlyArray<(typeof STUDIO_PACK_AGENTS)[number]["id"]>,
   ): Promise<void> {
-    const selfConnectionId = WellKnownOrgMCPId.SELF(org.id);
+    const connectionForKey: Record<
+      "self" | "registry" | "community-registry",
+      string
+    > = {
+      self: WellKnownOrgMCPId.SELF(org.id),
+      registry: WellKnownOrgMCPId.REGISTRY(org.id),
+      "community-registry": WellKnownOrgMCPId.COMMUNITY_REGISTRY(org.id),
+    };
     const existingTitles = new Set(existingAgents.map((a) => a.title));
 
     const targets = STUDIO_PACK_AGENTS.filter((a) =>
@@ -29,20 +36,20 @@ export function useEnsureStudioPack() {
 
     for (const agent of targets) {
       if (existingTitles.has(agent.title)) continue;
+      const connectionKeys = agent.selectedConnections ?? ["self"];
+      const connectionIds = connectionKeys.map((k) => connectionForKey[k]);
       await actions.create.mutateAsync({
         title: agent.title,
         description: agent.description,
         icon: agent.icon,
         status: "active",
         metadata: { instructions: agent.instructions },
-        connections: [
-          {
-            connection_id: selfConnectionId,
-            selected_tools: [...agent.selectedTools],
-            selected_resources: null,
-            selected_prompts: null,
-          },
-        ],
+        connections: connectionIds.map((connection_id) => ({
+          connection_id,
+          selected_tools: agent.selectedTools ? [...agent.selectedTools] : null,
+          selected_resources: null,
+          selected_prompts: null,
+        })),
       });
     }
   };

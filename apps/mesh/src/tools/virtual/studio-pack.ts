@@ -145,6 +145,48 @@ You are the Connection Manager. You create, configure, test, and manage MCP conn
    c. Report which connections are healthy, erroring, or inactive.
 </workflows>`;
 
+const STORE_MANAGER_INSTRUCTIONS = `<role>
+You are the Store Manager. You browse the Deco Store and the Community
+Registry, propose installable MCPs to the user, and guide their installation.
+</role>
+
+<capabilities>
+- Search registries for installable MCPs by name, category, or capability.
+- Inspect MCP entries: their tools, required configuration, and pricing tier.
+- Guide the user through installing an MCP into their organization.
+- Recommend MCPs that fit a stated user goal.
+</capabilities>
+
+<constraints>
+- You can search and describe MCPs, but you do not configure or test the
+  resulting connection — once installed, hand off to the Connection Manager
+  for testing and to the Agent Manager for aggregating it into agents.
+- Always confirm the user's intent (what problem they're trying to solve)
+  before recommending an install.
+- Prefer official Deco Store entries when both registries have a match.
+- Never invent MCP names or capabilities — only describe what the registries
+  actually return.
+</constraints>
+
+<workflows>
+1. Discovering an MCP:
+   a. Load the \`store-search\` prompt from the registry.
+   b. Search both the Deco Store and Community Registry for the user's intent.
+   c. Present the top matches with name, description, and tool count.
+   d. Confirm the user's choice before proceeding to install.
+
+2. Installing an MCP:
+   a. Load the \`store-install\` prompt for the chosen entry.
+   b. Walk through the install steps — including any OAuth, API key, or
+      configuration the MCP requires.
+   c. Verify the install completed and report the new connection's id.
+   d. Suggest the user run a quick test via the Connection Manager.
+
+3. Reviewing the catalog:
+   a. List both registries' contents (or filter by category).
+   b. Report categories, popular entries, and any new additions.
+</workflows>`;
+
 export const STUDIO_PACK_AGENTS = [
   {
     id: "studio-agent-manager",
@@ -162,7 +204,10 @@ export const STUDIO_PACK_AGENTS = [
       "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
       "COLLECTION_CONNECTIONS_LIST",
       "COLLECTION_CONNECTIONS_GET",
-    ],
+    ] as readonly string[] | null,
+    selectedConnections: null as
+      | readonly ("self" | "registry" | "community-registry")[]
+      | null,
     instructions: AGENT_MANAGER_INSTRUCTIONS,
     getId: StudioPackAgentId.AGENT_MANAGER,
   },
@@ -184,7 +229,10 @@ export const STUDIO_PACK_AGENTS = [
       "COLLECTION_VIRTUAL_MCP_GET",
       "COLLECTION_CONNECTIONS_LIST",
       "COLLECTION_CONNECTIONS_GET",
-    ],
+    ] as readonly string[] | null,
+    selectedConnections: null as
+      | readonly ("self" | "registry" | "community-registry")[]
+      | null,
     instructions: AUTOMATION_MANAGER_INSTRUCTIONS,
     getId: StudioPackAgentId.AUTOMATION_MANAGER,
   },
@@ -200,9 +248,28 @@ export const STUDIO_PACK_AGENTS = [
       "COLLECTION_CONNECTIONS_UPDATE",
       "COLLECTION_CONNECTIONS_DELETE",
       "CONNECTION_TEST",
-    ],
+    ] as readonly string[] | null,
+    selectedConnections: null as
+      | readonly ("self" | "registry" | "community-registry")[]
+      | null,
     instructions: CONNECTION_MANAGER_INSTRUCTIONS,
     getId: StudioPackAgentId.CONNECTION_MANAGER,
+  },
+  {
+    id: "studio-store-manager",
+    title: "Store Manager",
+    icon: "icon://Store01?color=emerald",
+    description:
+      "Browse the Deco Store and Community Registry, recommend MCPs, and guide installations.",
+    // null = all tools from the connection(s) below
+    selectedTools: null as readonly string[] | null,
+    selectedConnections: ["registry", "community-registry"] as readonly (
+      | "self"
+      | "registry"
+      | "community-registry"
+    )[],
+    instructions: STORE_MANAGER_INSTRUCTIONS,
+    getId: StudioPackAgentId.STORE_MANAGER,
   },
 ] as const;
 
@@ -211,12 +278,29 @@ export async function installStudioPack(
   createdBy: string,
   virtualMcpStorage: VirtualMCPStorage,
 ): Promise<void> {
-  const selfConnectionId = WellKnownOrgMCPId.SELF(orgId);
+  const connectionForKey: Record<
+    "self" | "registry" | "community-registry",
+    string
+  > = {
+    self: WellKnownOrgMCPId.SELF(orgId),
+    registry: WellKnownOrgMCPId.REGISTRY(orgId),
+    "community-registry": WellKnownOrgMCPId.COMMUNITY_REGISTRY(orgId),
+  };
 
   await Promise.all(
-    STUDIO_PACK_AGENTS.map((agent) => {
+    STUDIO_PACK_AGENTS.map(async (agent) => {
       const agentId = agent.getId(orgId);
-      return virtualMcpStorage.create(
+
+      // Idempotent: skip if this agent already exists in the org. Existing
+      // orgs pre-dating Store Manager already have the other three; we only
+      // backfill what's missing.
+      const existing = await virtualMcpStorage.findById(agentId, orgId);
+      if (existing) return;
+
+      const connectionKeys = agent.selectedConnections ?? ["self"];
+      const connectionIds = connectionKeys.map((k) => connectionForKey[k]);
+
+      await virtualMcpStorage.create(
         orgId,
         createdBy,
         {
@@ -228,14 +312,14 @@ export async function installStudioPack(
           metadata: {
             instructions: agent.instructions,
           },
-          connections: [
-            {
-              connection_id: selfConnectionId,
-              selected_tools: [...agent.selectedTools],
-              selected_resources: null,
-              selected_prompts: null,
-            },
-          ],
+          connections: connectionIds.map((connection_id) => ({
+            connection_id,
+            selected_tools: agent.selectedTools
+              ? [...agent.selectedTools]
+              : null,
+            selected_resources: null,
+            selected_prompts: null,
+          })),
         },
         { id: agentId },
       );

@@ -129,30 +129,18 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
     id: string,
     organizationId?: string,
   ): Promise<VirtualMCPEntity | null> {
-    // Handle Decopilot ID - return Decopilot agent with all org connections
+    // Handle Decopilot ID — Decopilot is a pure orchestrator with no
+    // aggregated tools. Every platform action goes through a Studio Pack
+    // manager (Agent / Automation / Connection / Store) via `subtask`,
+    // and every product action goes to a custom org agent the same way.
+    // The model uses the <available-agents> catalog as its routing table.
     const decopilotOrgId = isDecopilot(id);
     if (decopilotOrgId) {
       const resolvedOrgId = organizationId ?? decopilotOrgId;
-
-      // Get all active connections for the organization
-      const connections = await this.db
-        .selectFrom("connections")
-        .selectAll()
-        .where("organization_id", "=", resolvedOrgId)
-        .where("status", "!=", "inactive")
-        .where("status", "!=", "error")
-        .execute();
-
-      // Return Decopilot agent with connections populated
       return {
         ...getWellKnownDecopilotVirtualMCP(resolvedOrgId),
         pinned: false,
-        connections: connections.map((c) => ({
-          connection_id: c.id,
-          selected_tools: null, // null = all tools
-          selected_resources: null, // null = all resources
-          selected_prompts: null, // null = all prompts
-        })),
+        connections: [],
       };
     }
 

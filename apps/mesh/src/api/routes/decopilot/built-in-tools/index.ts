@@ -17,7 +17,6 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   string,
   { readOnly?: boolean; destructive?: boolean }
 > = {
-  agent_search: { readOnly: true, destructive: false },
   read_tool_output: { readOnly: true, destructive: false },
   read_resource: { readOnly: true, destructive: false },
   read_prompt: { readOnly: true, destructive: false },
@@ -27,9 +26,9 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   subtask: { readOnly: false, destructive: false },
   user_ask: { readOnly: true, destructive: false },
   propose_plan: { readOnly: true, destructive: false },
-  enable_tools: { readOnly: true, destructive: false },
+  search_tool: { readOnly: true, destructive: false },
+  enable_tool: { readOnly: true, destructive: false },
 };
-import { createAgentSearchTool } from "./agent-search";
 import { createReadToolOutputTool } from "./read-tool-output";
 import { createReadPromptTool } from "./prompts";
 import { createReadResourceTool } from "./resources";
@@ -125,15 +124,6 @@ async function buildAllTools(
   const tools: Record<string, unknown> = {
     user_ask: userAskTool,
     propose_plan: proposePlanTool,
-    agent_search: createAgentSearchTool(
-      writer,
-      {
-        organization,
-        needsApproval:
-          toolNeedsApproval(toolApprovalLevel, true, approvalOpts) !== false,
-      },
-      ctx,
-    ),
     read_tool_output: createReadToolOutputTool({
       toolOutputMap,
     }),
@@ -239,7 +229,6 @@ async function buildAllTools(
     user_ask: typeof userAskTool;
     propose_plan: typeof proposePlanTool;
     subtask: ReturnType<typeof createSubtaskTool>;
-    agent_search: ReturnType<typeof createAgentSearchTool>;
     read_tool_output: ReturnType<typeof createReadToolOutputTool>;
     sandbox: ReturnType<typeof createSandboxTool>;
     read_resource: ReturnType<typeof createReadResourceTool>;

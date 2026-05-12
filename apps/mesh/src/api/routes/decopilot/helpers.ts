@@ -202,7 +202,7 @@ function buildShortNameMap(
  * Check if a tool should be visible to the LLM based on MCP Apps visibility metadata.
  * Default (no visibility set) = visible to model.
  */
-export function isToolVisibleToModel(tool: {
+function isToolVisibleToModel(tool: {
   _meta?: Record<string, unknown>;
 }): boolean {
   const ui = tool._meta?.ui as { visibility?: string | string[] } | undefined;

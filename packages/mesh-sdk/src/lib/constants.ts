@@ -283,6 +283,7 @@ export const StudioPackAgentId = {
   AGENT_MANAGER: (orgId: string) => `studio-agent-manager_${orgId}`,
   AUTOMATION_MANAGER: (orgId: string) => `studio-automation-manager_${orgId}`,
   CONNECTION_MANAGER: (orgId: string) => `studio-connection-manager_${orgId}`,
+  STORE_MANAGER: (orgId: string) => `studio-store-manager_${orgId}`,
 } as const;
 
 /**
@@ -293,7 +294,8 @@ export function isStudioPackAgent(id: string | null | undefined): boolean {
   return (
     id.startsWith("studio-agent-manager_") ||
     id.startsWith("studio-automation-manager_") ||
-    id.startsWith("studio-connection-manager_")
+    id.startsWith("studio-connection-manager_") ||
+    id.startsWith("studio-store-manager_")
   );
 }
 
