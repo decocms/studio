@@ -12,7 +12,7 @@ import { calculateUsageStats } from "@/web/lib/usage-utils";
 import { IntegrationIcon } from "@/web/components/integration-icon";
 import { useChatStream, useChatTask, useChatPrefs } from "./context";
 import type { ChatMessage, SubtaskToolPart } from "./types";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 
 // ============================================================================
 // Helpers
@@ -141,21 +141,18 @@ function ContextBreakdownBar({
 // SubtaskRow — resolves agent via single-item fetch
 // ============================================================================
 
-function SubtaskRow({ part }: { part: SubtaskToolPart }) {
-  const agentId = part.input?.agent_id;
+function SubtaskAgentInfo({
+  agentId,
+  isError,
+}: {
+  agentId: string | undefined;
+  isError: boolean;
+}) {
   const agent = useVirtualMCP(agentId);
   const agentTitle = agent?.title ?? "Subtask";
   const agentIcon = agent?.icon ?? null;
-  const isRunning =
-    part.state === "input-streaming" ||
-    part.state === "input-available" ||
-    (part.state === "output-available" &&
-      (part as { preliminary?: boolean }).preliminary === true);
-  const isError = part.state === "output-error";
-  const isApproval = part.state === "approval-requested";
-
   return (
-    <div className="flex items-center gap-2 text-xs min-w-0">
+    <>
       <IntegrationIcon
         icon={agentIcon}
         name={agentTitle}
@@ -170,6 +167,46 @@ function SubtaskRow({ part }: { part: SubtaskToolPart }) {
       >
         {agentTitle}
       </span>
+    </>
+  );
+}
+
+function SubtaskAgentInfoFallback({ isError }: { isError: boolean }) {
+  return (
+    <>
+      <IntegrationIcon
+        icon={null}
+        name="Subtask"
+        size="xs"
+        className="size-6 rounded-md shrink-0"
+      />
+      <span
+        className={cn(
+          "shrink-0 font-medium",
+          isError ? "text-destructive" : "text-foreground",
+        )}
+      >
+        Subtask
+      </span>
+    </>
+  );
+}
+
+function SubtaskRow({ part }: { part: SubtaskToolPart }) {
+  const agentId = part.input?.agent_id;
+  const isRunning =
+    part.state === "input-streaming" ||
+    part.state === "input-available" ||
+    (part.state === "output-available" &&
+      (part as { preliminary?: boolean }).preliminary === true);
+  const isError = part.state === "output-error";
+  const isApproval = part.state === "approval-requested";
+
+  return (
+    <div className="flex items-center gap-2 text-xs min-w-0">
+      <Suspense fallback={<SubtaskAgentInfoFallback isError={isError} />}>
+        <SubtaskAgentInfo agentId={agentId} isError={isError} />
+      </Suspense>
       {part.input?.prompt && (
         <>
           <span className="text-muted-foreground/50">·</span>

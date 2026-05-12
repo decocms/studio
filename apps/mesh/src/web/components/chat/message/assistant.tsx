@@ -7,7 +7,7 @@ import {
   Tool02,
 } from "@untitledui/icons";
 import type { ToolUIPart } from "ai";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, Suspense, useEffect, useState } from "react";
 import { ToolCallShell } from "./parts/tool-call-part/common.tsx";
 import type { ChatMessage } from "../types.ts";
 import { MessageStatsBar } from "../usage-stats.tsx";
@@ -18,6 +18,7 @@ import {
   WebSearchPart,
   ProposePlanPart,
   SubtaskPart,
+  SubtaskPartFallback,
   UserAskPart,
 } from "./parts/tool-call-part/index.ts";
 import { SmartAutoScroll } from "./smart-auto-scroll.tsx";
@@ -438,15 +439,19 @@ function MessagePart({
           streamingText={dataParts.webSearchStreaming.get(part.toolCallId)}
         />
       );
-    case "tool-subtask":
+    case "tool-subtask": {
+      const subtaskProps = {
+        part,
+        subtaskMeta: getSubtaskMeta(part.toolCallId),
+        annotations: getMeta(part.toolCallId)?.annotations,
+        latency: getMeta(part.toolCallId)?.latencySeconds,
+      };
       return (
-        <SubtaskPart
-          part={part}
-          subtaskMeta={getSubtaskMeta(part.toolCallId)}
-          annotations={getMeta(part.toolCallId)?.annotations}
-          latency={getMeta(part.toolCallId)?.latencySeconds}
-        />
+        <Suspense fallback={<SubtaskPartFallback {...subtaskProps} />}>
+          <SubtaskPart {...subtaskProps} />
+        </Suspense>
       );
+    }
     case "text":
       return (
         <MessageTextPart
