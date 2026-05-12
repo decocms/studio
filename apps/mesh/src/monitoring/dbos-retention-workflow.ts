@@ -1,7 +1,6 @@
 /**
  * DBOS scheduled workflow for NDJSON monitoring file retention.
  *
-<<<<<<< HEAD
  * Registered as a static schedule via `DBOS.registerScheduled` at module
  * load — state lives in `event_dispatch_kv`, so re-registration on restart
  * is implicitly idempotent (no `workflow_schedules` row to collide with).
