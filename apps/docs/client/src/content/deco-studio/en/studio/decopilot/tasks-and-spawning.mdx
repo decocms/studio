@@ -1,6 +1,6 @@
 ---
 title: Tasks
-description: Understanding how tasks and subtasks keep your work organized and context efficient
+description: How tasks and subtasks keep your work organized and your conversations focused
 icon: Layers
 ---
 
@@ -10,182 +10,83 @@ import Callout from "../../../../../components/ui/Callout.astro";
   This page documents the **planned architecture** for tasks in decopilot. The implementation is in development.
 </Callout>
 
-## What Are Tasks?
+## What are tasks?
 
-A **task** is your conversation with decopilot. It's where work happens—where you chat back and forth, decopilot uses tools, and context accumulates as you progress.
+A **task** is your conversation with decopilot — where you chat, decopilot uses tools, and work gets done. Tasks are accessible from the homepage chat interface, the sidebar panel, and your task history.
 
-Tasks are accessible throughout deco Studio:
-- **Homepage** - Your organization's chat interface shows the current task
-- **Sidebar** - Click the chat icon to open the side panel and continue your task
-- **Task history** - Browse past tasks to review previous work
+Every task runs within a [scope](/en/studio/decopilot/scopes) (organization, project, or agent) that determines what instructions and tools are available. You can switch scopes anytime using the button at the bottom of the chat input.
 
-Every task has a [scope](/en/studio/decopilot/scopes) (organization, project, or agent) that determines which instructions load into context. You can switch scopes anytime using the button at the bottom of the chat input—switch between organization-wide work, project-specific focus, or specialized agent scopes as needed.
+## Task states
 
-Think of tasks as persistent workspaces where context builds up naturally as you work.
+Every task has one of four states:
 
-## Task States and Monitoring
+- **In progress** — the agent is working or waiting for your next message
+- **Requires action** — paused, waiting for your input (a tool needs approval, or the agent asked you a question)
+- **Completed** — work finished successfully
+- **Failed** — something went wrong, or the task timed out
 
-Tasks move through different states as work progresses. Understanding these states helps you manage work and know when tasks need your attention.
+You can see tasks that need your attention by clicking the **tasks icon** in the sidebar.
 
-### Task Status Overview
-
-Every task has one of four statuses:
-
-- **In Progress** (`in_progress`) - Active work happening, agent is executing or waiting for next message
-- **Requires Action** (`requires_action`) - Paused, waiting for your input (tool approval or question response)
-- **Completed** (`completed`) - Work completed successfully
-- **Failed** (`failed`) - Something went wrong or task timed out
-
-### When Tasks Require Attention
-
-Tasks pause and transition to "Requires Action" status when:
-
-**Tool approval needed** - Some tools require explicit user approval before execution. The task pauses until you review and approve or deny the tool call.
-
-**Question from agent** - When decopilot needs clarification or decisions, it asks questions using the `user_ask` tool. The task waits for your response.
-
-You can see all tasks requiring attention by clicking the **tasks icon** in the deco Studio sidebar. This view shows tasks grouped by status—letting you quickly identify which tasks need your input.
-
-### Task Timeouts
-
-Tasks automatically timeout after **30 minutes of inactivity**. When this happens:
-
-- Task transitions from "In Progress" to "Failed" status
-- You'll see the timeout noted in task history
-- You can restart work by creating a new task
-
-Timeouts prevent tasks from staying in limbo indefinitely. If you're working on something that naturally takes longer, just send a message or interact with the task periodically to keep it active.
-
-### Viewing Subtask Progress
-
-Subtasks appear in the chat interface while they execute. You can see:
-
-- Subtask status and progress
-- Tools being used
-- Agent reasoning (if enabled)
-
-However, **inputs are disabled** during subtask execution—you can't interact with a subtask directly. Subtasks run autonomously and return summaries to the parent task when complete.
-
-## What Are Subtasks?
-
-A **subtask** is a separate conversation that branches off from your main task to handle focused work. The key difference: subtasks start with fresh [context](/en/studio/decopilot/context)—they don't inherit your accumulated conversation history.
-
-This makes subtasks perfect for intensive work that would otherwise fill up your main context window.
-
-### How Subtasks Work
-
-When you spawn a subtask:
-
-1. **Fresh start** - Subtask begins with clean context (just scope instructions and system prompt)
-2. **Independent execution** - Subtask is a regular task with restricted built-in tools (no `subtask` or `user_ask`)
-3. **Summary return** - Parent task receives only a concise summary (200-500 tokens)
-4. **Full details preserved** - Complete subtask conversation saved in task history
-
-The parent task sees just the summary—keeping your main conversation lean—while full details remain accessible in the subtask history.
-
-### Key Differences
-
-| Feature | Main Task | Subtask |
-|---------|-----------|---------|
-| Context | Accumulated history | Fresh, clean start |
-| Available tools | All built-in tools + current scope's tools | Same, but no `subtask` or `user_ask` |
-| Result visibility | Full conversation | Summary only to parent |
-| User interaction | Can ask questions (`user_ask`) | Cannot ask questions |
-
-Subtasks can't spawn additional subtasks (prevents infinite nesting) and can't ask user questions (they run autonomously).
-
-## When to Use Subtasks
-
-Subtasks shine when you need focused work that would clutter your main conversation.
-
-### Research and Analysis
-
-Deep dives into data, exploring options, or investigating issues work well in subtasks.
-
-**Example**: You're planning inventory purchases and need demand analysis. Spawn a subtask to research sales trends, seasonal patterns, and competitor behavior—then get back just the recommendation, not the dozens of data points analyzed.
-
-### Complex Calculations
-
-Number-crunching work that generates verbose output belongs in subtasks.
-
-**Example**: Calculating optimal shipping routes across multiple warehouses. The subtask analyzes distances, traffic, carrier schedules—you get back just the routing plan, not the calculation details.
-
-### Quality Checks and Reviews
-
-Audits, validation, and review work benefit from isolated context.
-
-**Example**: Before transferring 500 SKUs between warehouses, spawn a subtask with an "Inventory Auditor" agent to verify stock levels. Get back a summary of issues found and transfers validated—keep the detailed audit work out of your main task.
-
-### Parallel Work
-
-When you have independent operations that can run simultaneously, spawn multiple subtasks.
-
-**Example**: Monthly reporting across departments—spawn separate subtasks for apparel, electronics, and home goods analysis. All run in parallel, summaries come back to your main task for synthesis.
-
-## Working with Agent Scopes
-
-Subtasks can run in different [agent](/en/studio/agents) scopes than your main task—this is how specialized agents collaborate.
-
-**Example**: Your main task is in organization scope working on order fulfillment. You spawn subtasks using:
-- **Inventory Agent** - Assesses stock availability
-- **Shipping Agent** - Plans logistics and routing
-- **Customer Service Agent** - Prepares support strategies
-
-Each agent brings specialized expertise. Your main task coordinates the overall strategy while agents handle domain-specific details in isolation.
-
-This pattern keeps specialized work contained while letting you benefit from agent expertise.
-
-## Common Patterns
-
-### Pattern 1: Parallel Execution
-
-Spawn multiple subtasks for independent work that can run simultaneously.
-
-**When to use**: Monthly reporting, multi-department analysis, independent validations
-
-**Benefit**: Faster execution, isolated contexts prevent cross-contamination
-
-### Pattern 2: Sequential Delegation
-
-Chain subtasks where each step builds on previous results.
-
-**When to use**: Multi-stage workflows, progressive refinement, decision pipelines
-
-**Benefit**: Clear progression, focused subtasks, results build toward comprehensive outcome
-
-### Pattern 3: Specialist Collaboration
-
-Use different agent scopes for subtasks requiring specialized knowledge.
-
-**When to use**: Cross-functional work, domain expertise needed, coordinated strategies
-
-**Benefit**: Leverage specialized agents, integrate multi-domain insights
-
-## Practical Tips
-
-**Offload heavy lifting** - Research, calculations, and analysis should happen in subtasks. Keep summaries in your main task, not verbose details.
-
-**Match scope to work** - Use specialized agents for domain tasks, organization scope for general work. The right scope brings relevant instructions and context.
-
-**Work in parallel** - Independent subtasks can run simultaneously. Don't wait if the next subtask doesn't depend on the previous one.
-
-**Name clearly** - Give descriptive prompts when spawning: "Analyze Q4 apparel demand trends" rather than "Do analysis". This helps when reviewing task history.
-
-**Review full details when needed** - The complete subtask conversation lives in task history. If you need raw data or detailed analysis, open the subtask from history.
-
-**Watch for clutter signals** - When your main task feels heavy or context-full, spawn subtasks for the next phase of work.
-
-## Context Benefits
-
-Subtasks are powerful for managing your [context window](/en/studio/decopilot/context):
-
-- **Main task stays lean** - Only summaries accumulate, not analysis details
-- **Fresh context for complexity** - Subtasks start clean, ideal for deep work
-- **Longer productivity** - Avoid premature compactification in main task
-- **Focused execution** - Each subtask tackles one thing without baggage
-
-By keeping intensive work in subtasks, your main task remains focused and productive across longer sessions.
+Tasks time out after **30 minutes of inactivity**. If you're working on something longer, just send a message periodically to keep it active.
 
 ---
 
-**Next steps**: Learn about [Context](/en/studio/decopilot/context) to understand how tasks manage your working memory, explore [Tools](/en/studio/decopilot/tools) to see what decopilot can do, or check out [Agents](/en/studio/agents) for specialized scopes you can use with subtasks.
+## What are subtasks?
+
+A **subtask** is a separate conversation that branches off from your main task to handle focused work. The key difference: it starts with a clean slate — no history from your main conversation.
+
+This is useful when a piece of work would generate a lot of back-and-forth that you don't need to see. The subtask runs, does the work, and returns only a short summary to your main conversation. The full details are saved in task history if you need them later.
+
+Subtasks can't ask you questions and can't create additional subtasks — they run autonomously and report back.
+
+### Main task vs. subtask
+
+| | Main task | Subtask |
+|---|---|---|
+| Conversation history | Accumulates over time | Starts fresh |
+| Can ask you questions | Yes | No |
+| Can create subtasks | Yes | No |
+| Returns to parent | N/A | Summary only |
+
+---
+
+## When subtasks help
+
+**Research and analysis** — send a subtask to dig into data, explore options, or investigate an issue. You get back the conclusion, not every step along the way.
+
+**Complex calculations** — anything that generates verbose output belongs in a subtask. You see the result, not the working.
+
+**Quality checks** — audits, validation, reviews. Run them separately and get back a summary of what was found.
+
+**Parallel work** — if two pieces of work don't depend on each other, run them as separate subtasks at the same time instead of one after the other.
+
+**Example**: Planning inventory purchases — start a subtask to research sales trends and seasonal patterns. Your main conversation receives the recommendation without being filled with raw data.
+
+---
+
+## Using specialist agents in subtasks
+
+You can run a subtask using a specific [agent](/en/studio/agents) — one that's been configured for a particular domain. The agent brings its own focused toolset and instructions, without affecting your main conversation.
+
+**Example**: Your main task is coordinating an order fulfillment workflow. You start subtasks using:
+- An **Inventory Agent** to check stock availability
+- A **Shipping Agent** to plan logistics
+- A **Customer Service Agent** to prepare support notes
+
+Each one works independently. Your main task gets the summaries and coordinates the outcome.
+
+---
+
+## Practical tips
+
+**Offload heavy work** — research, calculations, and audits should happen in subtasks. Keep results in your main task, not the details.
+
+**Run things in parallel** — if two subtasks don't depend on each other, start them at the same time.
+
+**Write clear prompts** — "Analyze Q4 apparel demand trends" is more useful than "Do analysis" when reviewing task history later.
+
+**Check history when needed** — the full subtask conversation is saved. Open it from history if you need the details behind the summary.
+
+---
+
+**Next:** See [Context](/en/studio/decopilot/context) to understand how tasks use memory, or [Agents](/en/studio/agents) for specialist agents you can use in subtasks.

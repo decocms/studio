@@ -1,113 +1,64 @@
 ---
 title: Tools
-description: Understanding how decopilot discovers and enables capabilities to stay focused on what matters
+description: What decopilot can do and how it uses tools to get work done
 icon: Wrench
 ---
 
 import Callout from "../../../../../components/ui/Callout.astro";
 
 <Callout type="info">
-  This page documents the **planned architecture** for decopilot tools. The specification serves as the implementation guide for the decopilot module.
+  This page documents the **planned architecture** for decopilot tools. The implementation is in development.
 </Callout>
 
-## Overview
+## Two types of tools
 
-Decopilot uses two types of tools: **built-in tools** for discovering capabilities and managing work, and **scope tools** from the current [scope](/en/studio/decopilot/scopes) for domain-specific actions. Scope tools are available based on the connections in the current scope's Virtual MCP — decopilot sees them listed in its system prompt.
+Decopilot has access to two types of tools:
 
-## Tool Reference
+**Built-in tools** — always available, used for managing work, delegating tasks, and reading context. These are the same regardless of which scope you're in.
 
-### Built-in Tools
-
-All built-in tools are available across all scopes. Availability varies between tasks and subtasks.
-
-| Tool | Task | Subtask | Description |
-|------|:----:|:-------:|-------------|
-| **Discovery** |
-| `agent_search` | ✓ | ✓ | Find agents configured in the organization |
-| **Execution** |
-| `subtask` | ✓ | ✗ | Spawn subtask with fresh context, optionally specifying an agent |
-| `user_ask` | ✓ | ✗ | Ask user for input or clarification |
-| `sandbox` | ✓ | ✓ | Execute JavaScript code with access to MCP tools |
-| **Context** |
-| `read_resource` | ✓ | ✓ | Read documentation/guidelines from current scope (supports line ranges) |
-| `read_prompt` | ✓ | ✓ | Read prompt templates from current scope |
-| `read_tool_output` | ✓ | ✓ | Filter large tool outputs using regex patterns |
-| `propose_plan` | ✓ | ✗ | Propose execution plans for user approval (in "plan" approval mode) |
-
-### Scope Tools
-
-Scope tools come from the current scope—domain-specific capabilities like Shopify, inventory systems, or shipping tools. These are available based on the connections configured in the scope's Virtual MCP.
-
-**Example**: A project with Shopify and ShipStation connections might expose:
-- `GET_ORDERS` - Fetch customer orders
-- `UPDATE_INVENTORY` - Update product stock levels
-- `CREATE_SHIPPING_LABEL` - Generate shipping labels
-- `GET_PRODUCTS` - List product catalog
-
-Scope tool availability in tasks vs subtasks depends on the tool's configuration.
-
-#### Tool Annotations
-
-All tools (both built-in and scope tools) use [standard MCP annotations](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/f385c94cbd5857ac17b611edc823a37606bdb1cc/schema/2025-03-26/schema.ts#L737) to declare their capabilities and restrictions:
-
-- **`readOnlyHint`** - Tool does not modify its environment (default: false)
-- **`destructiveHint`** - Tool may perform destructive updates vs. only additive updates (default: true, only meaningful when `readOnlyHint` is false)
-- **`idempotentHint`** - Calling repeatedly with same arguments has no additional effect (default: false, only meaningful when `readOnlyHint` is false)
-- **`openWorldHint`** - Tool may interact with external entities; false means closed domain (default: true)
-
-These annotations allow decopilot to respect tool constraints automatically. For example, a read-only agent will only discover and enable tools marked as `readOnlyHint: true`, ensuring it never performs destructive actions.
-
-## Understanding Availability
-
-### Tasks vs Subtasks
-
-**Tasks** are user-initiated and top-level. They have full access to all built-in tools, can spawn subtasks, and can ask user questions.
-
-**Subtasks** are spawned by decopilot for parallel work, specialized execution, or isolated context. They have restricted access:
-- **Cannot spawn additional subtasks** - Prevents infinite delegation
-- **Cannot ask user questions** - Subtasks run autonomously without blocking
-- **Step limit of 15** (vs parent's 30) - Ensures subtasks stay focused
-- **Must return a summary** - Results flow back to the parent task
-
-These restrictions ensure subtasks complete independently and don't create blocking dependencies.
-
-## Tool Discovery Flow
-
-Decopilot starts each task with only built-in tools, then discovers and enables capabilities as needed:
-
-1. **Explore** - Scope tools are listed in the system prompt based on the current Virtual MCP
-2. **Execute** - Use available tools to accomplish work
-3. **Delegate** - Spawn subtasks via `subtask` for parallel or specialized work
-4. **Read context** - Use `read_resource` and `read_prompt` to load domain knowledge
-
-## Common Workflows
-
-### Execute Scope Tools
-
-The most common pattern for using scope tools:
-
-1. Review available tools from the current scope
-2. Use tools to accomplish the requested work
-3. Read resources/prompts for domain context when needed
-
-### Delegate to Specialists
-
-For work requiring specialized expertise:
-
-1. Search for agents with `agent_search`
-2. Spawn a subtask with `subtask` and specific agent
-3. Continue main task while subtask runs in parallel
-
-### Context-Driven Execution
-
-For tasks requiring domain knowledge:
-
-1. Read relevant resources with `read_resource`
-2. Read workflow templates with `read_prompt`
-3. Use context to inform tool selection and execution
+**Scope tools** — come from the connections in your current scope. If you're in a project with Shopify and ShipStation connected, you'll have access to tools like `GET_ORDERS`, `CREATE_SHIPPING_LABEL`, and so on.
 
 ---
 
-**Next steps**: Learn about [Tasks and Spawning](/en/studio/decopilot/tasks-and-spawning) to understand how decopilot manages work, or explore [Context](/en/studio/decopilot/context) to see how resources and prompts provide guidance.
+## Built-in tools
 
-For technical tool documentation, see [Built-in Tools Reference](/en/studio/api-reference/built-in-tools).
+| Tool | Available in subtasks | What it does |
+|---|:---:|---|
+| `agent_search` | Yes | Find agents in your organization |
+| `subtask` | No | Start a subtask, optionally with a specific agent |
+| `user_ask` | No | Ask you a question when it needs input |
+| `sandbox` | Yes | Run JavaScript code with access to your tools |
+| `read_resource` | Yes | Read documentation or guidelines from the current scope |
+| `read_prompt` | Yes | Read a reusable prompt template |
+| `read_tool_output` | Yes | Filter a large tool result to find what's relevant |
+| `propose_plan` | No | Propose a plan for your approval before acting |
+
+Subtasks have restricted access — they can't start additional subtasks or ask you questions, since they're meant to run and report back without interruption.
+
+---
+
+## Scope tools
+
+Scope tools are the domain-specific capabilities tied to your current context — Shopify tools if you're in a Shopify project, shipping tools if you have a ShipStation connection, and so on.
+
+**Example**: A project with Shopify and ShipStation might expose:
+- `GET_ORDERS` — fetch customer orders
+- `UPDATE_INVENTORY` — update stock levels
+- `CREATE_SHIPPING_LABEL` — generate shipping labels
+- `GET_PRODUCTS` — list the product catalog
+
+Which tools are available depends on what connections are configured in the current scope's Virtual MCP.
+
+---
+
+## How decopilot uses tools
+
+Decopilot starts each task with only its built-in tools. It sees the scope tools listed in its instructions and uses them as needed to complete your request.
+
+For complex work, it can delegate to a subtask (using `subtask`) or load additional context first (using `read_resource` or `read_prompt`) before acting.
+
+---
+
+**Next:** See [Tasks](/en/studio/decopilot/tasks-and-spawning) to understand how decopilot manages work, or [Context](/en/studio/decopilot/context) to see how resources and prompts provide guidance.
+
+For the full technical reference, see [Built-in Tools](/en/studio/api-reference/built-in-tools).

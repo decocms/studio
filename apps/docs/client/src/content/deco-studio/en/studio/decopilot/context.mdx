@@ -1,6 +1,6 @@
 ---
 title: Context
-description: Understanding context windows and how decopilot keeps your workspace focused and efficient
+description: How decopilot manages conversation memory and keeps your workspace focused
 icon: FileText
 ---
 
@@ -10,141 +10,73 @@ import Callout from "../../../../../components/ui/Callout.astro";
   This page documents the **planned architecture** for decopilot context. The implementation is in development.
 </Callout>
 
-Every AI [model](https://code.claude.com/docs/en/how-claude-code-works#models) works within a fixed context window—think of it as the model's "working memory" for your conversation. Managing this space well is essential for smooth, productive workflows with decopilot.
+Every AI model has a limit on how much it can hold in memory at once — your instructions, the tools available, and the full conversation history all count toward that limit. The more you've discussed in a conversation, the more memory it takes up.
 
-Decopilot automatically balances what goes into your context window: instructions from your current [scope](/en/studio/decopilot/overview#scopes), available [tools](/en/studio/concepts#tools), conversation history, and more. Larger context windows mean you can accomplish more complex work in a single session before needing to refresh.
+Decopilot manages this automatically, but understanding how it works helps you get more done in a single session.
 
-## Understanding Context Slots
+## How memory fills up
 
-Decopilot organizes your context window into distinct slots, each serving a specific purpose:
+When decopilot starts a task, it loads:
 
-1. **System prompt** - Core decopilot behavior and capabilities
-2. **Scope instructions** - Guidelines from your current scope (organization, project, or agent-specific)
-3. **Built-in tools** - Essential decopilot operations always available
-4. **Enabled tools** - Additional [tools](/en/studio/concepts#tools) you've activated during your session
-5. **Conversation history** - Your recent messages and decopilot's responses
-6. **Compactification buffer** - Summarized older conversation context
+- Its core instructions and behavior
+- Guidelines from your current scope (org, project, or agent)
+- The tools available in that scope
+- Your conversation history so far
 
-This slot system ensures the most important context stays available while managing space efficiently.
+As the conversation grows, the history takes up more space. When it gets too full, decopilot automatically summarizes the older parts of the conversation and keeps the summary instead. This frees up space to continue working without losing the important context.
 
-## Context Health: The 40/80 Rule
+## The 40/80 rule
 
-Your context window performs best when it's not too full. Here's what to watch for:
+- **Below 40% full** — plenty of room, no action needed
+- **40–80% full** — still working fine, but worth wrapping up the current phase
+- **Above 80% full** — decopilot automatically summarizes the conversation history to free up space
 
-- **Below 40%**: Optimal performance—plenty of room for complex reasoning and long conversations
-- **40-80%**: Context starts to degrade—still functional but approaching limits
-- **Above 80%**: Time to refresh—decopilot automatically compactifies your conversation history
-
-When your context reaches 80% capacity, decopilot automatically clears the conversation history slot and compactifies it into the buffer. This process summarizes your conversation while preserving important context, giving you room to continue working.
+You can also trigger this manually with the `/compact` command — useful before starting a new phase of complex work.
 
 <Callout type="tip">
-You can manually trigger compactification anytime using the `/compact` command—useful when you want to free up space before starting a new phase of work.
+Use `/compact` when you're finishing one major task and starting another. It keeps the conversation lean without losing what matters.
 </Callout>
 
-## Keeping Context Lean
+## Using subtasks to stay focused
 
-The best way to work efficiently is to avoid filling your context unnecessarily. Here are two key techniques:
+The most effective way to manage memory is to keep heavy work in [subtasks](/en/studio/decopilot/tasks-and-spawning). A subtask starts with a clean slate, does the work, and returns only a short summary to your main conversation.
 
-### Compactification
-
-Compactification summarizes older conversation history while preserving key information. Think of it as consolidating your notes—you keep the important decisions and outcomes, but remove the back-and-forth exploration that led there.
-
-**When to compact:**
-- Automatically triggers at 80% context capacity
-- Manually via `/compact` command before starting complex work
-- After completing a major task but before moving to the next one
-
-### Subtasks
-
-Using subtasks for specific work keeps your main context clean. Subtasks run in their own isolated context space, then return only a summary of results to your main conversation. You can optionally spawn [agents](/en/studio/agents)—specialists in specific fields—into subtasks to bring domain expertise to the isolated work.
-
-**Example with subtask only:**
-
+**Without subtasks:**
 ```
-You: "Spawn subtask to analyze stock ruptures"
-  │
-  ▼
-Decopilot creates subtask
-  │
-  ▼
-Subtask analyzes inventory (isolated context)
-  │
-  ▼
-Returns: "3 critical SKUs need reorder, 5 can wait..."
-  │
-  ▼
-Main context: Only sees summary
+Main conversation fills up with research details,
+calculations, and verbose tool outputs → hits memory
+limit faster
 ```
 
-**Example with specialist agent:**
-
+**With subtasks:**
 ```
-You: "Use inventory specialist to analyze stock ruptures"
-  │
-  ▼
-Decopilot searches for agents
-  │
-  ▼
-Finds: "Inventory Optimizer" & "Supply Chain Analyst"
-  │
-  ▼
-Decopilot: "Which agent would you prefer?"
-  │
-  ▼
-You: "Inventory Optimizer"
-  │
-  ▼
-Spawns Inventory Optimizer as subtask
-  │
-  ▼
-Specialist forecasts demand, optimizes reorders (isolated context)
-  │
-  ▼
-Returns: "Reorder 500 units SKU-123 from supplier B..."
-  │
-  ▼
-Main context: Only sees summary
+You: "Research Q4 demand trends"
+  ↓
+Subtask runs with clean memory, analyzes data
+  ↓
+Returns: "Top 3 SKUs to reorder, suggested quantities..."
+  ↓
+Main conversation: only sees the summary
 ```
 
-This pattern is especially powerful for:
-- Research and exploration tasks
-- Running tests and analyzing results
-- Code reviews and security scans
-- Any work that generates lots of output you don't need to see in full detail
+You can also use a specialist [agent](/en/studio/agents) inside a subtask to bring domain expertise without cluttering your main conversation.
 
-See [Agents](/en/studio/agents) for more on how agents provide fresh, focused context for specific tasks.
+## How scopes affect memory
 
-## How Scopes Affect Context
+When you switch scopes — from org to a project, or into an agent — the tools and guidelines that load into memory change. A project scope loads that project's tools and instructions on top of the org-level ones. An agent scope loads the agent's specific toolset and instructions.
 
-Each [scope](/en/studio/decopilot/scopes) has access only to its own tools and resources. When you switch scopes, the tools available through the scope's tools change to match that scope's virtual MCP, and the instructions that load into the scope instructions slot change—organization, project, or agent-specific. See [Scopes](/en/studio/decopilot/scopes) for details.
+See [Scopes](/en/studio/decopilot/scopes) for details.
 
-## Practical Tips
+## Practical tips
 
-Here are actionable ways to keep your context healthy and productive:
+**Watch the usage indicator** — when you're approaching 40%, think about wrapping up the current phase or using `/compact`.
 
-**Watch your context health** - Pay attention to how full your context is. When it hits 40%, consider wrapping up the current phase of work or compacting.
+**Use subtasks for heavy work** — research, data analysis, code reviews, and anything that generates long outputs should happen in subtasks. Keep summaries in your main conversation.
 
-**Use `/compact` strategically** - Manually compact before starting complex new work, after completing major tasks, or when switching between different focus areas.
+**Be selective with tools** — decopilot loads tools into memory. Don't enable tools you don't need for the current task.
 
-**Spawn agents for heavy lifting** - Research, testing, code reviews, and any work that generates verbose output should happen in spawned agents. Keep summaries, not details, in your main context.
-
-**Enable tools selectively** - Don't enable every available tool "just in case." Enable tools from your current scope as you need them for specific tasks.
-
-**Work in the right scope** - Use organization scope for cross-project work, project scope for focused development, and let agents handle task-specific work with fresh context.
-
-**Think modular** - Break complex work into phases. Complete one phase, compact or spawn for the next. This keeps each phase focused and your context manageable.
-
-## Why Context Matters
-
-Good context management isn't just about staying under limits—it's about maintaining quality. When context is clean and focused:
-
-- Decopilot reasons more clearly about your specific problem
-- Conversations stay on track without getting lost in accumulated details
-- Complex multi-step workflows remain manageable
-- You spend more time making progress, less time resetting context
-
-By understanding how context works and using the tools available—compactification, agent spawning, selective tool enabling—you can work more effectively with decopilot across projects of any complexity.
+**Work in phases** — finish one thing, compact or start a subtask for the next. Keeping each phase focused makes the whole session more productive.
 
 ---
 
-**Next steps**: Learn about [Scopes](/en/studio/decopilot/overview#scopes) to understand how context changes at different levels, or explore [Agents](/en/studio/agents) to see how fresh context isolation works in practice.
+**Next:** See [Scopes](/en/studio/decopilot/scopes) to understand how context changes at different levels, or [Agents](/en/studio/agents) for how specialist agents use their own focused memory.
