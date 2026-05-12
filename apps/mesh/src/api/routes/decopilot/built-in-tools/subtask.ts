@@ -25,7 +25,9 @@ import {
 import { toolsFromMCP } from "../helpers";
 import type { ModelsConfig } from "../types";
 import { MeshProvider } from "@/ai-providers/types";
+import { computeCost } from "../pricing";
 import { createLanguageModel } from "../stream-core";
+import { buildSystemMessages } from "../system-prompt";
 
 export const SubtaskInputSchema = z.object({
   prompt: z
@@ -162,27 +164,71 @@ export function createSubtaskTool(
         "auto",
         { disableOutputTruncation: true },
       );
+      // Sort tools alphabetically for byte-stable serialization across
+      // calls — required for Anthropic tool-cache to actually hit. Mark
+      // the LAST tool with anthropic.cacheControl so all tool definitions
+      // become a cached prefix (the Anthropic tool layer is separate from
+      // the system/messages layer, so this doesn't consume a system BP).
+      const sortedTools = Object.entries(mcpTools)
+        .filter(([name]) => !SUBAGENT_EXCLUDED_TOOLS.includes(name))
+        .sort(([a], [b]) => a.localeCompare(b));
+      const lastToolIdx = sortedTools.length - 1;
       const subagentTools = Object.fromEntries(
-        Object.entries(mcpTools).filter(
-          ([name]) => !SUBAGENT_EXCLUDED_TOOLS.includes(name),
-        ),
+        sortedTools.map(([name, t], i) => [
+          name,
+          i === lastToolIdx
+            ? {
+                ...t,
+                providerOptions: {
+                  ...((t as { providerOptions?: Record<string, unknown> })
+                    .providerOptions ?? {}),
+                  anthropic: { cacheControl: { type: "ephemeral", ttl: "5m" } },
+                },
+              }
+            : t,
+        ]),
       );
 
       // ── 4. Build subagent system prompt ────────────────────────────
       const serverInstructions = mcpClient.getInstructions();
       const systemPrompts = buildSubagentSystemPrompt(serverInstructions);
+      const systemPromptMessages = buildSystemMessages(
+        systemPrompts,
+        new Date(),
+      );
+
+      console.log(
+        "[decopilot:cache subtask] === start org=%s vmcp=%s tools=%d ===\n[decopilot:cache subtask] system_prompt_order=%j",
+        organization.id,
+        agent_id,
+        sortedTools.length,
+        systemPromptMessages.map((m, i) => ({
+          i,
+          len: m.content.length,
+          cached: Boolean(m.providerOptions?.anthropic?.cacheControl),
+        })),
+      );
 
       // ── 5. Run streamText as subagent ──────────────────────────────
       let accumulatedUsage: UsageStats = emptyUsageStats();
+      let subAccumulatedCacheRead = 0;
+      let subAccumulatedCacheWrite = 0;
+      let subAccumulatedInput = 0;
+      let subAccumulatedOutput = 0;
+      let subAccumulatedCost = 0;
+      let subAccumulatedUncached = 0;
+      let subPricingUnknown = false;
 
       const result = streamText({
         model: createLanguageModel(provider, models.thinking),
-        system: systemPrompts.map((content) => ({
-          role: "system" as const,
-          content,
-        })),
+        system: systemPromptMessages,
         prompt,
         tools: subagentTools,
+        providerOptions: {
+          openrouter: {
+            cache_control: { type: "ephemeral", ttl: "5m" },
+          },
+        },
         abortSignal,
         stopWhen: stepCountIs(SUBAGENT_STEP_LIMIT),
         maxOutputTokens:
@@ -192,6 +238,36 @@ export function createSubtaskTool(
             ...usage,
             providerMetadata,
           });
+          const details = (
+            usage as {
+              inputTokenDetails?: {
+                cacheReadTokens?: number;
+                cacheWriteTokens?: number;
+              };
+            }
+          ).inputTokenDetails;
+          const cacheRead = details?.cacheReadTokens ?? 0;
+          const cacheWrite = details?.cacheWriteTokens ?? 0;
+          subAccumulatedCacheRead += cacheRead;
+          subAccumulatedCacheWrite += cacheWrite;
+          subAccumulatedInput += usage.inputTokens ?? 0;
+          subAccumulatedOutput += usage.outputTokens ?? 0;
+          const cost = computeCost(
+            models.thinking.provider ?? undefined,
+            models.thinking.id,
+            {
+              inputTokens: usage.inputTokens ?? 0,
+              outputTokens: usage.outputTokens ?? 0,
+              cacheReadTokens: cacheRead,
+              cacheWriteTokens: cacheWrite,
+            },
+          );
+          if (cost) {
+            subAccumulatedCost += cost.total;
+            subAccumulatedUncached += cost.uncachedEquivalent;
+          } else {
+            subPricingUnknown = true;
+          }
         },
         onAbort: () => {
           console.error(`[subtask:${agent_id}] Aborted`);
@@ -225,6 +301,60 @@ export function createSubtaskTool(
           models,
         },
       });
+
+      // ── 7. Cache observability ─────────────────────────────────────
+      const subStatus =
+        subAccumulatedCacheRead > 0
+          ? "HIT ✅"
+          : subAccumulatedCacheWrite > 0
+            ? "WRITE 📝"
+            : "MISS ❌";
+      const subDenom = subAccumulatedInput;
+      const subHitRatio = subDenom > 0 ? subAccumulatedCacheRead / subDenom : 0;
+      const subPct = (subHitRatio * 100).toFixed(1);
+      const subCost = subPricingUnknown
+        ? "(model unpriced)"
+        : `$${subAccumulatedCost.toFixed(6)}`;
+      const subUncached = subPricingUnknown
+        ? "(n/a)"
+        : `$${subAccumulatedUncached.toFixed(6)}`;
+      const subSavedAbs = subPricingUnknown
+        ? 0
+        : subAccumulatedUncached - subAccumulatedCost;
+      const subSavedPct =
+        !subPricingUnknown && subAccumulatedUncached > 0
+          ? `${((subSavedAbs / subAccumulatedUncached) * 100).toFixed(1)}%`
+          : "0.0%";
+      const subSaved = subPricingUnknown
+        ? "(n/a)"
+        : `$${subSavedAbs.toFixed(6)} (${subSavedPct})`;
+      console.log(
+        [
+          "",
+          "╔════════════════════════════════════════════════════════════════════╗",
+          `║  [decopilot:cache subtask] ${subStatus.padEnd(39)}║`,
+          "╠════════════════════════════════════════════════════════════════════╣",
+          `║  org      : ${organization.id.padEnd(54)}║`,
+          `║  vmcp     : ${agent_id.padEnd(54)}║`,
+          `║  tools    : ${String(sortedTools.length).padEnd(54)}║`,
+          "╠────────────────────────────────────────────────────────────────────╣",
+          `║  provider : ${(models.thinking.provider ?? "unknown").padEnd(54)}║`,
+          `║  model    : ${models.thinking.id.padEnd(54)}║`,
+          `║  input    : ${String(subAccumulatedInput).padEnd(54)}║`,
+          `║  output   : ${String(subAccumulatedOutput).padEnd(54)}║`,
+          `║  cache rd : ${String(subAccumulatedCacheRead).padEnd(54)}║`,
+          `║  cache wr : ${String(subAccumulatedCacheWrite).padEnd(54)}║`,
+          `║  hit_ratio: ${`${subPct}%`.padEnd(54)}║`,
+          "╠────────────────────────────────────────────────────────────────────╣",
+          `║  cost     : ${subCost.padEnd(54)}║`,
+          `║  if uncached: ${subUncached.padEnd(52)}║`,
+          `║  saved    : ${subSaved.padEnd(54)}║`,
+          `║  latencyMs: ${String(Math.round(latencyMs)).padEnd(54)}║`,
+          "╚════════════════════════════════════════════════════════════════════╝",
+          `[decopilot:cache subtask] === end org=${organization.id} vmcp=${agent_id} ===`,
+          "",
+        ].join("\n"),
+      );
     },
     toModelOutput: ({ output: message }) => {
       const lastTextPart = message?.parts?.findLast(
