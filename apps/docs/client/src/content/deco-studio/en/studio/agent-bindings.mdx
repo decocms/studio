@@ -1,19 +1,20 @@
 ---
 title: Agent Bindings
-description: Bind AI agents to your MCP App and stream responses programmatically
+description: Call Studio agents directly from your own tools and MCP apps
 icon: Bot
 ---
+
 import Callout from "../../../../components/ui/Callout.astro";
 
-## Overview
+## What are agent bindings?
 
-Agent bindings let your MCP App call [decopilot agents](/en/studio/agents) directly from tool handlers. This enables tools that delegate work to AI agents — for example, a customer support tool that streams an agent's reasoning back to the user.
+Agent bindings let your custom MCP tools call a [decopilot agent](/en/studio/agents) and stream its responses. This means you can build a tool that hands off work to an AI agent and returns its answer — all within a single tool call.
 
-Agent bindings work like [connection bindings](/en/full-code-guides/building-tools#using-integrations) (`BindingOf`), but instead of calling MCP tools on a connection, they stream messages to and from a decopilot agent.
+A common pattern: a customer support tool that receives a question, passes it to an agent, and streams the agent's reasoning and response back to the user.
 
-## Declaring an Agent Binding
+## Declaring a binding
 
-Use `AgentOf()` in your `StateSchema` to declare an agent binding:
+In your `StateSchema`, use `AgentOf()` to declare which agent your tool will call:
 
 ```typescript
 // api/types/env.ts
@@ -28,13 +29,9 @@ export const StateSchema = z.object({
 export type Env = DefaultEnv<typeof StateSchema>;
 ```
 
-When someone installs your MCP App, the admin UI will show a picker for the `MY_AGENT` field where they can select an agent from the organization.
+When someone installs your MCP app, they'll see a picker for `MY_AGENT` where they select which agent to connect. At runtime, `MY_AGENT` becomes a client with a `STREAM` method — no HTTP or streaming parsing needed.
 
-At runtime, `MY_AGENT` resolves to a client with a `STREAM` method — you never deal with HTTP or SSE parsing directly.
-
-## Using the Agent in a Tool
-
-Once declared, the resolved agent is available on `env.MY_AGENT`:
+## Using the agent in a tool
 
 ```typescript
 import { createTool } from "@decocms/runtime/tools";
@@ -58,7 +55,6 @@ export const askAgentTool = (env: Env) =>
 
       let answer = "";
       for await (const message of stream) {
-        // Each message is a UIMessage from the AI SDK
         for (const part of message.parts) {
           if (part.type === "text") {
             answer += part.text;
@@ -71,83 +67,19 @@ export const askAgentTool = (env: Env) =>
   });
 ```
 
-## STREAM Parameters
+## Multi-turn conversations
 
-The `STREAM` method accepts the following parameters:
-
-```typescript
-interface AgentStreamParams {
-  /** Messages to send to the agent (required) */
-  messages: Omit<UIMessage, "id">[];
-
-  /** Override the credential used for model access */
-  credentialId?: string;
-
-  /** Override model configurations */
-  thinking?: AgentModelInfo;
-  coding?: AgentModelInfo;
-  fast?: AgentModelInfo;
-
-  /** Tool approval level: "auto" | "readonly" | "plan" */
-  toolApprovalLevel?: "auto" | "readonly" | "plan";
-
-  /** Sampling temperature */
-  temperature?: number;
-
-  /** Memory configuration for conversation continuity */
-  memory?: { windowSize: number; thread_id: string };
-
-  /** Thread ID for multi-turn conversations */
-  thread_id?: string;
-}
-```
-
-The model parameters (`thinking`, `coding`, `fast`), `credentialId`, `toolApprovalLevel`, and `temperature` all have defaults from the binding configuration set at install time. Parameters passed to `STREAM` override those defaults.
-
-### Model Tiers
-
-Agents can use up to three model tiers:
-
-| Tier | Purpose |
-|------|---------|
-| `thinking` | Primary model for reasoning and complex tasks |
-| `coding` | Optimized for code generation (falls back to thinking if not set) |
-| `fast` | Lightweight model for quick, simple responses |
-
-Each tier is an `AgentModelInfo` object:
-
-```typescript
-interface AgentModelInfo {
-  id: string;       // Model identifier (e.g. "claude-sonnet-4-6")
-  title: string;    // Display name
-  capabilities?: {
-    vision?: boolean;
-    text?: boolean;
-    tools?: boolean;
-    reasoning?: boolean;
-  };
-  provider?: string | null;
-  limits?: {
-    contextWindow?: number;
-    maxOutputTokens?: number;
-  };
-}
-```
-
-## Multi-Turn Conversations
-
-Use `thread_id` to maintain conversation context across multiple calls:
+Pass a `thread_id` to keep context across multiple calls:
 
 ```typescript
 const threadId = crypto.randomUUID();
 
-// First turn
 const stream1 = await env.MY_AGENT.STREAM({
   messages: [{ role: "user", parts: [{ type: "text", text: "What's the weather?" }] }],
   thread_id: threadId,
 });
 
-// Second turn — agent remembers the first
+// Second turn — the agent remembers the first
 const stream2 = await env.MY_AGENT.STREAM({
   messages: [{ role: "user", parts: [{ type: "text", text: "How about tomorrow?" }] }],
   thread_id: threadId,
@@ -155,9 +87,31 @@ const stream2 = await env.MY_AGENT.STREAM({
 });
 ```
 
-## Standalone Client
+## STREAM parameters
 
-If you need to call a decopilot agent outside the binding system (e.g. from a script or external service), use `createDecopilotClient`:
+| Parameter | Description |
+|---|---|
+| `messages` | Messages to send to the agent (required) |
+| `thread_id` | Thread ID for multi-turn conversations |
+| `memory` | Memory config for conversation continuity |
+| `credentialId` | Override the credential used for model access |
+| `thinking` / `coding` / `fast` | Override model per tier |
+| `toolApprovalLevel` | `"auto"` \| `"readonly"` \| `"plan"` |
+| `temperature` | Sampling temperature |
+
+All overrides default to whatever was configured at install time.
+
+### Model tiers
+
+| Tier | Purpose |
+|---|---|
+| `thinking` | Primary model for reasoning and complex tasks |
+| `coding` | Optimized for code generation (falls back to `thinking` if not set) |
+| `fast` | Lightweight model for quick responses |
+
+## Calling an agent from outside an MCP app
+
+If you need to call an agent from a script or external service, use `createDecopilotClient`:
 
 ```typescript
 import { createDecopilotClient } from "@decocms/runtime/decopilot";
@@ -179,16 +133,5 @@ for await (const message of stream) {
 ```
 
 <Callout type="info">
-  The standalone client uses the same streaming protocol as the binding proxy. The binding approach is preferred since it handles authentication and agent resolution automatically.
+  The binding approach is preferred — it handles authentication and agent resolution automatically.
 </Callout>
-
-## How It Works
-
-When the runtime resolves your `StateSchema`, it detects `AgentOf()` fields by the `__type: "@deco/agent"` marker and creates a proxy client. When you call `STREAM`, the proxy:
-
-1. Resolves the agent ID from the binding configuration
-2. Merges your parameters with the binding defaults (credential, models, temperature, etc.)
-3. Sends a POST request to the decopilot runtime stream endpoint
-4. Parses the SSE response into an async iterable of `UIMessage` objects
-
-The runtime stream endpoint (`/:org/decopilot/runtime/stream`) handles model permission checks and falls back to the organization's default AI provider if no explicit models are configured.

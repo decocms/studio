@@ -1,143 +1,69 @@
 ---
 title: Connections
-description: How deco Studio connects to upstream MCP servers and how clients connect to deco Studio
+description: Connect tools and services to Studio — once, securely, for your whole team
 icon: Network
 ---
 
 import Callout from "../../../../components/ui/Callout.astro";
 
-## What are Connections?
+## What are connections?
 
-**Connections** represent the bridge between deco Studio and external MCP servers. A Connection is deco Studio's registered relationship with an upstream MCP server—whether that's GitHub, Slack, a database, or your custom MCP implementation.
+**Connections** are the tools and services you've plugged into Studio — GitHub, Slack, a database, your own API, or any other MCP-compatible service.
 
-## Connecting to Upstream MCP Servers
+You set up a connection once. From then on, your whole team can use it across agents and projects, without anyone touching credentials.
 
-### Why Connections Exist
+## Why connections exist
 
-The Connection abstraction solves a critical problem: **separating connection configuration from usage**. Instead of every client (Cursor, Claude Desktop, custom agents) managing their own credentials and endpoints for each MCP server, deco Studio centralizes this once.
+Without a centralized place for tools, every person and every AI client has to manage its own credentials. Rotate a password? Update it in ten places. Revoke someone's access? Hope they're not using a hardcoded key somewhere.
 
-#### The Problem Without Connections
+Connections solve this by being the single source of truth:
 
-Without a centralized connection layer:
-- Every client must store and manage credentials for every MCP server they use
-- Credential rotation means updating every client
-- No unified audit trail of which tools were accessed and by whom
-- Authorization policies drift across different clients
-- No way to temporarily revoke access to an MCP server without updating all clients
+- **Credentials stored once** — encrypted at rest, decrypted only when a tool is called
+- **Shared across your team** — anyone with access can use the tool without seeing the credentials
+- **Easy to update** — change credentials in one place, every client picks it up automatically
+- **Easy to revoke** — remove a connection and nobody can use it, immediately
+- **Fully logged** — every tool call is recorded with who made it, when, inputs, and outputs
 
-#### How Connections Solve This
+## Types of connections
 
-Connections provide:
+**SaaS apps** — GitHub, Slack, Notion, Google Drive, and similar services. Most connect with one-click OAuth, so you never copy a token.
 
-**Centralized credential management**: Store credentials once in deco Studio's encrypted vault. Clients authenticate to deco Studio, not to individual MCP servers.
+**Infrastructure** — Databases, cloud APIs, internal services. You configure the endpoint and credentials, Studio handles the rest.
 
-**Unified authorization**: Define who can access which tools through deco Studio's permission system, rather than managing access per MCP server.
+**Custom tools** — Your own MCP server exposing domain-specific operations. Plug it in and share it with your team like any other connection.
 
-**Credential rotation without client updates**: Update credentials in deco Studio; all clients automatically use the new credentials without reconfiguration.
+All connection types work the same way: configure once, use anywhere through agents and projects.
 
-**Complete observability**: Every tool invocation flows through deco Studio, creating a unified audit trail across all MCP servers.
+## How a tool call works
 
-**Secure credential handling**: Credentials are encrypted at rest and only decrypted at request time, never exposed to clients.
+When an agent calls a tool through a connection:
 
-### Design Principles
+1. The agent authenticates to Studio
+2. Studio checks that it has permission to use that tool
+3. Studio retrieves the stored credentials for that connection
+4. Studio sends the request to the external service
+5. Studio logs the call (tool, timing, inputs, outputs, status)
+6. Studio returns the result to the agent
 
-#### 1. Connections are Read-Only From Client Perspective
-
-Clients interact with tools exposed by Connections, but they cannot modify the Connection configuration itself. This separation ensures:
-- Credentials remain protected
-- Configuration changes require appropriate authorization
-- Audit trails remain trustworthy
-
-#### 2. Connections Compose Into Virtual MCPs
-
-Connections are the building blocks for [Virtual MCPs](/en/studio/virtual-mcps). You connect individual MCP servers (GitHub, Slack, databases), then compose them into Virtual MCPs that expose curated tool surfaces.
+The external service never sees your agent directly — only Studio. Your credentials never leave Studio's secure boundary.
 
 ```
 GitHub Connection  ──┐
-Slack Connection   ──┼──▶ Virtual MCP (Project) ──▶ Clients
+Slack Connection   ──┼──▶ Project or Agent ──▶ Your team
 Database Connection──┘
 ```
 
-This composition model keeps external MCP servers isolated and secure while enabling flexible, dynamic tool surfaces through Virtual MCPs.
+## Connecting AI clients to Studio
 
-#### 3. Connections are Organization-Scoped
+Once you've set up connections, you can point AI clients (Claude Desktop, Cursor, custom agents) at Studio to use them.
 
-All Connections belong to an organization. This scoping ensures:
-- Clear tenant isolation
-- Organization-wide credential management
-- Consistent access policies across projects and agents
-
-### How Connections Work
-
-When a client invokes a tool through deco Studio:
-
-1. **Client authenticates** to deco Studio (OAuth or API key)
-2. **Authorization check**: deco Studio verifies the client has permission to invoke the requested tool
-3. **Credential loading**: deco Studio decrypts stored credentials for the target Connection
-4. **Request proxying**: deco Studio forwards the MCP request to the upstream server with credentials
-5. **Monitoring**: deco Studio logs the invocation (tool, duration, status, errors)
-6. **Response return**: deco Studio returns the MCP server's response to the client
-
-This flow ensures credentials never leave deco Studio's secure boundary while enabling seamless tool invocation.
-
-### Connection Types
-
-Connections typically fall into three categories:
-
-**SaaS Integration MCPs**: Services like GitHub, Slack, Notion, Google Drive—external systems with their own authentication (often OAuth).
-
-**Infrastructure MCPs**: Database connections, Kubernetes clusters, cloud provider APIs—systems requiring sensitive credentials.
-
-**Custom MCPs**: Your own MCP servers exposing domain-specific tools and operations.
-
-All connection types follow the same pattern: register once in deco Studio, use everywhere through Virtual MCPs and agents.
-
-### Connections vs. Direct Access
-
-**Direct Access** (client → MCP server):
-- ✅ Simple for single-client, single-server scenarios
-- ❌ Credentials managed per client
-- ❌ No unified observability
-- ❌ Authorization logic duplicated
-
-**Through Connections** (client → deco Studio → MCP server):
-- ✅ Centralized credential management
-- ✅ Unified authorization and observability
-- ✅ Credential rotation without client updates
-- ✅ Foundation for Virtual MCPs and composition
-
-For production usage, Connections provide the control plane capabilities needed to operate MCP traffic at scale.
-
----
-
-## Connecting MCP Clients to deco Studio
-
-Once you've configured upstream connections, you need to connect your MCP clients (Cursor, Claude Desktop, custom agents) to deco Studio to consume the tools.
-
-### Client Authentication Options
-
-There are two common ways to connect clients to deco Studio:
-
-- **OAuth (recommended for interactive clients)**: supports standard OAuth flows, consent, and organization-aware access.
-- **API Keys (recommended for servers/agents)**: scoped keys with explicit tool permissions.
-
-### Endpoints
-
-Depending on your use case, you'll connect to one of these endpoints:
-
-- **Management MCP**: `POST /mcp` - Access deco Studio management tools (creating connections, projects, agents)
-- **Connection proxy**: `POST /mcp/:connectionId` - Direct access to a specific upstream connection
-- **Agent (virtual server)**: `POST /mcp/agent/:agentId` - Access a curated tool surface through an agent
+- **For interactive clients** — use OAuth, which handles sign-in and per-user identity
+- **For automation and server-to-server** — use API keys, which are faster to set up and ideal for scripts or background agents
 
 <Callout type="tip">
-  If your goal is a "single MCP URL" for a curated tool surface, use **Agents**. If you want a direct pipe to one upstream MCP, use **Connection proxy**.
+  If you want a single endpoint that exposes a curated set of tools, set up an **Agent**. If you need direct access to one specific connection, use the connection proxy URL.
 </Callout>
 
-### Authentication Quick Notes
-
-- **OAuth** is ideal when you want per-user identity and browser-based sign-in.
-- **API keys** are ideal for automation and server-to-server access (least friction to bootstrap).
-
 <Callout type="info">
-  Connections are the foundation for [Virtual MCPs](/en/studio/virtual-mcps), [Projects](/en/studio/projects), and [Agents](/en/studio/agents)—you'll connect individual MCP servers first, then compose them into higher-level abstractions.
+  Connections are the foundation for [Virtual MCPs](/en/studio/virtual-mcps), [Projects](/en/studio/projects), and [Agents](/en/studio/agents). You connect individual tools first, then compose them into higher-level workspaces.
 </Callout>

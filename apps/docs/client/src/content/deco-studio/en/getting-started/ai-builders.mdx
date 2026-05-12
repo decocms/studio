@@ -1,5 +1,5 @@
 ---
-title: For AI Builders
+title: For AI builders
 description: Build your first AI app without code in minutes
 icon: Play
 ---
@@ -8,117 +8,99 @@ import { StepGroup } from "../../../../components/ui/StepGroup";
 import { Step } from "../../../../components/ui/Step";
 import Callout from "../../../../components/ui/Callout.astro";
 
-## Build Your First AI App
+## Build your first AI app
 
 Create an app that writes poems, saves them, and emails them to your team.
 
 <StepGroup>
-  <Step number={1} title="Explore the App Store">
+  <Step number={1} title="Connect an app">
     1. Log in to [admin.decocms.com](https://admin.decocms.com)
     2. Navigate to your organization and project
     3. Click **Apps** in the sidebar
-    4. Browse available integrations or open "Store" to install new ones
+    4. Browse available integrations or open **Store** to add new ones
     5. Select the Gmail app from the store
-    6. Connect the app and authorize your account  
-    
-    <Callout type="info">
-      Apps are pre-built integrations that expose tools. They serve as building blocks for your AI applications.
-    </Callout>
- 
- </Step>
+    6. Connect it and authorize your account
 
-  <Step number={2} title="Test integration in the chat interface">
-    Open **New Thread** from the sidebar and ask deco chat:
-    
+    <Callout type="info">
+      Apps are pre-built integrations that give your agents tools to work with. They're the building blocks for anything you want to automate.
+    </Callout>
+  </Step>
+
+  <Step number={2} title="Test it in chat">
+    Open **New Thread** from the sidebar and ask:
+
     ```
-    Create a poem about deco CMS, save it to a document and email it to you@yourcompany.com using @SEND_EMAIL
+    Create a poem about deco CMS, save it to a document, and email it to you@yourcompany.com
     ```
-    
+
     Watch deco chat:
-    - Create the poem
-    - Call `DECO_RESOURCE_DOCUMENT_CREATE` to save it
-    - Call `SEND_EMAIL` from Gmail integration to send it
-    
+    - Write the poem
+    - Save it as a document
+    - Send it via Gmail
+
     <Callout type="tip">
-      Use **@ mentions** to call specific tools and resources.
+      Use **@ mentions** to direct a specific tool — for example, `@SEND_EMAIL` to make sure it uses Gmail.
     </Callout>
   </Step>
 
   <Step number={3} title="Make it reusable">
-    Turn this one-off task into reusable automation:
-    
-    ### Create an Agent
-    
+    Turn this one-off task into something anyone on your team can run.
+
+    ### Create an agent
+
     Go to **Agents** → **New Agent**:
-    - Assign tools for document creation using `@DECO_RESOURCE_DOCUMENT_CREATE` and email sending using `@SEND_EMAIL`
-    - Add instructions for your use case and save your agent
-    - Now anyone can use it
-    
-    ### Create a Workflow
-    
-    Create workflows from:
-    - **Workflows** → **New Workflow** and describe what you need in deco chat
-    - Use `@workflow_management` in any thread or agent conversation
-    
-    **Example:**
-    ```
-    Create a workflow for daily poem generation
-    ```
-    Then iterate naturally, as you would when assigning the task to someone else
-    
-    Or, you can be more specific from the get-go:
+    - Give it a name and clear instructions for what it should do
+    - Assign the tools it needs (document creation and email sending)
+    - Save — now anyone can use it
+
+    ### Create a workflow
+
+    From **Workflows** → **New Workflow**, describe what you need in plain language:
+
     ```
     Create a workflow called "poem-mailer" that:
-    1. Takes input: topic (string) and recipients (string)
-    2. Generates a poem about the topic using AI
-    3. Saves to documents with tags ["poem", "ai-generated"]
-    4. Emails to recipients every morning at 9am
+    1. Takes a topic and a list of recipients
+    2. Generates a poem about the topic
+    3. Saves it as a document
+    4. Emails it to recipients every morning at 9am
     ```
-    
-    ### Create a Custom View
-    
-    Build interfaces for your data:
+
+    You can start simple and iterate — just describe changes the way you'd explain them to a colleague.
+
+    ### Create a custom view
+
+    Build an interface for your content:
+
     ```
-    Create a view called "poem-gallery" that:
-    - Shows all poems from documents
-    - Displays in 3-column grid
-    - Each card shows title, description, creation date
-    - Add search bar to filter by name
-    - Make it beautiful
+    Create a view called "poem-gallery" that shows all saved poems in a
+    3-column grid. Each card shows the title, a short description, and
+    the creation date. Add a search bar to filter by name.
     ```
   </Step>
 </StepGroup>
 
-## Agent Modes
+---
 
-We are introducing three specialized agent modes for different stages:
+## What you can build
 
-- **Explorer** - Discover capabilities and tools
-- **Planner** - Design applications and write PRDs
-- **Builder** - Implement tools, workflows, and views
-
-Switch modes via the chat interface selector. Each has optimized tool access.
-
-## What You Can Build
-
-### Internal Tools
+### Internal tools
 - Customer support automation
 - Data entry and validation workflows
 - Report generation and distribution
 - Inventory management systems
 
-### Productivity Apps
+### Productivity apps
 - Meeting note summarizers
 - Task assignment automators
 - Document search and retrieval
 - Automated reminders and follow-ups
 
-### Data Processing
-- CSV import and transformation
-- API data aggregation
-- Automated data quality checks
-- Scheduled report generation
+### Data processing
+- Import and transform spreadsheets
+- Aggregate data from multiple sources
+- Run automated data quality checks
+- Generate scheduled reports
 
-**Get Help:** [Discord](https://decocms.com/discord)
+---
 
-
+**Get help:** [Discord](https://decocms.com/discord)

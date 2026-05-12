@@ -1,141 +1,59 @@
 ---
 title: Monitoring
-description: Why observability is built into the control plane and how it enables production MCP operations
+description: See every tool call your agents make — who, what, when, and what it cost
 icon: Activity
 ---
 
 import Callout from "../../../../components/ui/Callout.astro";
 
-## Observability as Infrastructure
+## Every tool call, in one place
 
-deco Studio treats monitoring as **infrastructure, not an afterthought**. Every tool invocation that flows through the control plane creates a monitoring log—there's no way to disable this, and that's by design.
+Studio logs every tool invocation that flows through it — automatically, with no setup required. When an agent queries GitHub, sends a Slack message, or calls your database, there's a record of it.
 
 <Callout type="tip">
-**MCP proxy tool calls are monitored by deco Studio.** Tool invocations that flow through connections and Virtual MCPs (e.g., GitHub queries, database operations, Shopify calls) create structured log entries with full request/response details, timing, attribution, and error information. This happens automatically—no configuration required. Internal management API operations (creating connections, managing API keys) are not included in monitoring logs.
+**What gets logged:** Tool calls that go through your connections and agents (GitHub queries, database operations, Shopify calls, etc.). Studio management actions — like creating a connection or updating settings — are not included in the monitoring log.
 </Callout>
 
-Traditional MCP deployments have fragmented observability: each client logs independently (or doesn't log at all), each MCP server has its own logging strategy, and there's no unified view of what happened across the system. deco Studio solves this by logging **at the control plane level**, creating a single source of truth for all MCP proxy traffic.
+Without a central place for this, you'd be correlating logs from different clients and different services, each in a different format — if they were logging at all. Studio captures everything at the point where all traffic passes through, so you always have a complete, consistent picture.
 
-## Why Monitoring is First-Class
+## What you can see
 
-### The Distributed System Problem
+For every tool call, Studio records:
 
-MCP deployments are inherently distributed systems:
-- **Multiple clients**: Cursor, Claude Desktop, custom agents
-- **Multiple MCP servers**: GitHub, Slack, databases, custom tools
-- **Multiple operations**: A single user workflow might invoke 10+ tools across 5 MCP servers
+**Who made it**
+- The user or API key that made the request
+- Which agent or project the call came from
 
-When something breaks, you need to reconstruct what happened across this distributed system. Without centralized monitoring, you're correlating logs from different sources with different formats, timestamps, and levels of detail—if those logs even exist.
+**What happened**
+- The tool that was called
+- The inputs that were sent
+- The output that came back
+- Whether it succeeded or failed — and why, if it didn't
 
-### Control Plane Logging Solves This
+**When and how long**
+- Timestamp
+- How long the call took in milliseconds
 
-By logging at the control plane (deco Studio), monitoring becomes:
+## What you can do with it
 
-**Centralized**: One place to see all tool invocations across all clients and MCP servers.
+### Debug failures fast
 
-**Consistent**: Every log entry follows the same schema with the same level of detail.
+When something breaks, you can open the monitoring tab and see exactly what happened — what inputs were sent, what error came back, when it occurred. No SSH, no log files, no guessing.
 
-**Complete**: No proxy invocation can bypass monitoring—if it went through deco Studio, it's logged.
+### Track costs and performance
 
-**Correlated**: Request context connects related operations, enabling distributed tracing across multiple tool invocations.
+See which tools are slowest, which are called most often, and where time is being spent. This makes it easy to spot bottlenecks before they become problems.
 
-## What Gets Recorded
+### Understand how your team uses agents
 
-Every tool invocation through a connection creates a monitoring log with:
+See which tools are actually getting used versus which are just configured. Spot where agents are retrying or hitting errors frequently. Use this to improve your agents over time.
 
-### Identity & Attribution
-- **Caller**: Which user or API key made the request
-- **Organization**: Which tenant the request belongs to
-- **Connection**: Which upstream MCP server was invoked
-- **Agent/Project**: If accessed through a Virtual MCP, which one
+### Audit access
 
-### Operation Details
-- **Tool name**: The specific tool that was invoked
-- **Input arguments**: What parameters were sent (normalized and sanitized)
-- **Output results**: What the tool returned
-- **Timestamp**: When the invocation occurred
+Every tool call is tied to a specific user or API key. If you need to know who accessed what and when — for compliance, security review, or incident response — it's all there.
 
-### Performance & Status
-- **Duration**: How long the operation took (milliseconds)
-- **Status**: Success or failure
-- **Error details**: If failed, what went wrong
-- **HTTP status**: The underlying HTTP response code (if applicable)
+## A note on sensitive data
 
-This comprehensive logging enables multiple use cases beyond debugging.
+Tool inputs and outputs are logged by default. If you're working with sensitive data (customer records, financial data, etc.), use scoped API keys to limit what each agent can access, and review your organization's data retention settings.
 
-## Use Cases Enabled by Monitoring
-
-### Debugging Production Failures
-
-When a tool invocation fails, monitoring logs provide:
-- **Exact inputs**: What arguments were passed (to verify correctness)
-- **Error messages**: What the MCP server returned
-- **Timing context**: When the failure occurred and how long it took
-- **Attribution**: Which user/agent made the request
-
-This information is available immediately in the deco Studio UI, without SSH-ing into servers or grepping log files.
-
-### Security & Compliance
-
-Monitoring creates an **immutable audit trail** of all MCP proxy activity:
-- Who accessed which tools, when
-- What data was read or modified
-- Which credentials were used
-- Failed authorization attempts
-
-For regulated industries (finance, healthcare), this audit trail is essential for compliance. For any production system, it's essential for security incident response.
-
-### Cost & Performance Analysis
-
-Monitoring data reveals:
-- **Expensive operations**: Which tools are slowest or most resource-intensive
-- **Usage patterns**: Which tools are actually used (vs. which are just configured)
-- **Bottlenecks**: Where latency spikes occur
-- **Optimization opportunities**: Which Virtual MCPs could benefit from filtering or caching
-
-This visibility enables data-driven decisions about MCP infrastructure optimization.
-
-### Behavior Analysis
-
-Understanding how teams actually use MCP capabilities:
-- **Tool adoption**: Which connections are most valuable
-- **Workflow patterns**: Common sequences of tool invocations
-- **Agent effectiveness**: How agents' tool selection evolves over time
-- **User friction**: Where errors or retries happen most frequently
-
-This informs product decisions about which capabilities to prioritize or improve.
-
-## Monitoring as a Feedback Loop
-
-deco Studio monitoring isn't just passive logging—it creates a feedback loop that improves the platform:
-
-**Error patterns** → Better authorization policies or connection health checks
-
-**Performance data** → Virtual MCP filtering strategies or caching policies
-
-**Usage analytics** → Recommendations for which tools to add or deprecate
-
-**Security events** → Automated responses or enhanced access controls
-
-This feedback loop is only possible with centralized, structured monitoring.
-
-## Privacy & Data Handling
-
-<Callout type="info">
-Monitoring logs include tool inputs and outputs by default. For sensitive operations (e.g., querying customer data), consider:
-- Using API keys with appropriate scope restrictions
-- Implementing connection-level logging policies
-- Leveraging organization-level data retention controls
-
-deco Studio provides the observability infrastructure; your organization defines the privacy policies.
-</Callout>
-
-## Monitoring Philosophy
-
-Traditional systems treat monitoring as "nice to have"—something you add after building the core functionality. deco Studio inverts this:
-
-**Monitoring is not optional**. It's how the control plane operates. Without monitoring logs, you cannot debug, audit, optimize, or secure MCP traffic at scale.
-
-By making observability first-class infrastructure, deco Studio enables teams to run MCP in production with the same confidence they have in other critical systems.
-
-
+Studio provides the visibility — your team decides the policies.

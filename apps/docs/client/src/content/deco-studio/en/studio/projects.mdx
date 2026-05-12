@@ -1,6 +1,6 @@
 ---
 title: Projects
-description: Organizational units for managing tools, resources, and prompts scoped to specific work contexts
+description: Shared workspaces that bring agents and tools together around a goal
 icon: FolderTree
 ---
 
@@ -10,60 +10,48 @@ import Callout from "../../../../components/ui/Callout.astro";
   This page documents the **planned architecture** for projects in deco Studio. The implementation is in development.
 </Callout>
 
-## What are Projects?
+## What are projects?
 
-**Projects** are organizational units that leverage [Virtual MCPs](/en/studio/virtual-mcps) to manage tools, resources, and prompts within a specific work context. Use projects to isolate capabilities by product, client, team, or initiative.
+**Projects** are shared workspaces that bring agents, tools, and context together around a specific goal or team.
 
-Projects provide:
+Think of a project like an office for a particular initiative — it has the right tools on the desk, the right guidelines on the wall, and access only for the people who need it. Work happening in one project doesn't bleed into another.
 
-- **Work organization** - Group capabilities by product line, client, or feature initiative
-- **Scope isolation** - Each project operates with its own set of tools and credentials
-- **Contextual configuration** - Project-specific guidelines, documentation, and workflows
-- **Team boundaries** - Match your organizational structure with technical boundaries
+Projects give you:
 
-Projects are available in the sidebar under the **Projects** section, where each operates as a self-contained workspace.
+- **Organization** — group capabilities by product line, client, or team
+- **Isolation** — each project has its own tools and credentials, separate from everything else
+- **Context** — project-specific instructions, documentation, and workflow templates
+- **Clear ownership** — match your technical setup to how your team actually works
 
-## How Projects Work
+## Setting up a project
 
-Create a project, then configure it by remixing capabilities:
+When you create a project, you configure:
 
-1. **Name** - Identifies the project (e.g., "Mobile App Rewrite", "Client XYZ Portal")
-2. **Description** - Explains the project's purpose, scope, and goals for your team
-3. **Instructions** - Guidelines for how AI agents should work in this project (like `CLAUDE.md` or `AGENTS.md`)
-4. **Tools** - Actions agents may take on this project (select from [connections](/en/studio/connections) or create inline)
-5. **Resources** - Extra info for detailed skills the agent may need (documentation, guidelines, domain knowledge)
-6. **Prompts** - How users are supposed to use this project (detailed workflows that combine tools and resources to accomplish specific goals)
+1. **Name and description** — what this project is for, so your team knows at a glance
+2. **Instructions** — guidelines for how AI agents should behave in this project (tone, constraints, priorities)
+3. **Tools** — the actions agents can take, selected from your [connections](/en/studio/connections) or defined inline
+4. **Resources** — extra context agents should know about (documentation, brand guidelines, domain knowledge)
+5. **Prompts** — reusable workflow templates for the most common tasks in this project
 
-Since projects are [Virtual MCPs](/en/studio/virtual-mcps), you get full composability—remix external capabilities with custom definitions to build exactly what your team needs.
+## Example: multi-brand storefront
 
-## Example: Multi-Brand Storefront Project
+A storefront project might include Shopify tools for catalog management, Stripe tools for payments, and analytics tools for tracking performance. Brand-specific guidelines live in resources. Agents working in this project manage listings, process orders, and follow brand standards — all within the project's isolated scope.
 
-A multi-brand storefront project might aggregate Shopify tools for product catalog management, Stripe tools for payment processing, analytics tools for conversion tracking, and brand-specific guidelines as resources. AI agents working in this project manage product listings, process orders, analyze sales performance, and follow brand standards—all within the project's isolated scope. Each brand gets its own project with isolated credentials and brand-specific configuration.
+If you run multiple brands, each gets its own project: isolated credentials, separate configurations, no cross-contamination.
 
-## Scope Isolation
+## Isolation by design
 
-Projects enforce boundaries through routing. When AI agents connect to a project, they:
+When an agent connects to a project, it only sees what's in that project — the tools, resources, and prompts you configured. It can't access tools or credentials from another project.
 
-- Access only tools configured for that project
-- See project-specific resources and guidelines
-- Operate within isolated credentials and permissions
+This makes it safe to run separate initiatives in parallel without worrying about agents crossing boundaries.
 
-Project A cannot access Project B's tools or credentials. Organization-level capabilities remain available across all projects.
+## Common use cases
 
-## Use Cases
-
-- **Multi-brand stores** - One project per brand with isolated product catalogs and credentials
-- **Marketplace operations** - Separate vendor management, fulfillment, and customer service projects with distinct toolsets
-- **Seasonal campaigns** - Temporary projects for holiday sales with curated marketing and inventory tools
-- **B2B portals** - Projects as tenant boundaries for wholesale customer accounts with custom pricing and catalogs
-
-## Why Use Projects?
-
-- **Clear boundaries** - Prevent tool and credential cross-contamination between initiatives
-- **Organized work** - Match technical scope to organizational structure
-- **Flexible tooling** - Add or remove capabilities without infrastructure changes
-- **Familiar patterns** - `.claude/` (project) and `~/.claude/` (global) convention
+- **Multiple clients or brands** — one project per client, with isolated credentials and configurations
+- **Separate teams** — sales, engineering, and support each get their own workspace
+- **Seasonal campaigns** — temporary projects with the tools needed for a specific push
+- **Regulated workflows** — keep sensitive operations isolated from general-purpose work
 
 ---
 
-**Next steps**: Learn about [Virtual MCPs](/en/studio/virtual-mcps) to understand how projects aggregate capabilities, or see [Authorization and Roles](/en/studio/user-management) for access control.
+**Next:** Learn about [Virtual MCPs](/en/studio/virtual-mcps) to understand how projects bring tools together, or see [User management](/en/studio/user-management) for controlling who has access to what.

@@ -8,60 +8,57 @@ import Callout from "../../../../components/ui/Callout.astro";
 
 ![deco](https://assets.decocache.com/mcp/9a3facd8-1199-4635-becc-bdc3f5ee7ab1/deco-banner-capy.png)
 
-## Open-source control plane for your AI agents.
+## The home for your AI agents.
 
-deco Studio is where you hire agents, connect tools, organize them into projects, and track every token and dollar. Self-host or use the cloud. Built on the [Model Context Protocol](https://modelcontextprotocol.io).
+deco Studio is where you connect tools, organize work into projects, and see exactly what your agents are doing — and what it costs. Self-host or use the cloud. Built on the [Model Context Protocol](https://modelcontextprotocol.io).
 
 ### Agents
 
-Browse and hire AI agents from the built-in store. Each agent comes with specific tool skills and tested prompts. Agents compose — they can call each other. Every action is tracked with cost attribution.
+Browse and hire AI agents from the built-in store. Each agent comes with specific skills and tested instructions. Agents can work together — one can call another. Every action is tracked with cost attribution.
 
 ### Connections
 
-Set up MCP connections through the web UI with one-click OAuth. Monitor latency, errors, and costs per connection. Share tools across your team without sharing credentials.
-
+Connect any tool or service through the web UI — one-click for most SaaS apps. Monitor usage, errors, and costs per connection. Share tools across your team without sharing credentials.
 
 ### Projects
 
-Projects bring agents and connections together around a goal. The project's UI adapts to what's inside — add a content agent and a CMS connection, the sidebar shows content management; add an analytics agent and a database, it shows dashboards and queries.
+Projects bring agents and connections together around a goal. The UI adapts to what's inside — add a content agent and a CMS connection, the sidebar shows content management; add an analytics agent and a database, it shows dashboards and queries.
 
 ### Observability
 
-Token spend per connection. Latency, errors, bottlenecks. Every tool invocation logged with caller identity, inputs, outputs, and timing. One dashboard.
+See every tool call with timing, inputs, outputs, and cost. Spot what's slow, what's failing, and what's expensive — all in one place.
 
 ---
 
-### Core Capabilities
-
-| Capability | Description |
-|---|---|
-| **Agents** | Browse, hire, and compose AI agents with cost attribution |
-| **Connections** | Route MCP traffic through one governed endpoint with auth, proxy, and token vault |
-| **Projects** | Organize agents and connections around goals with an adaptive UI |
-| **Virtual MCPs** | Compose and expose governed toolsets as MCP endpoints |
-| **Observability** | Traces, costs, errors, and latency per connection |
-| **Access Control** | RBAC — OAuth 2.1 + API keys per workspace/project |
-| **Multi-tenancy** | Workspace/project isolation for config, credentials, policies, and audit logs |
-| **Event Bus** | Pub/sub between connections with scheduled/cron delivery and at-least-once guarantees |
-
-### Deployment Options
+### What you can do with Studio
 
 | | |
 |---|---|
-| **Local** | `bunx decocms` — embedded PostgreSQL, fully private |
-| **Cloud** | [studio.decocms.com](https://studio.decocms.com) — control projects from any browser |
-| **Team** | Shared connections, roles, cost attribution |
-| **Enterprise** | Self-hosted on your infrastructure |
+| **Hire agents** | Browse the store, configure, and deploy AI agents to your team in minutes |
+| **Connect tools** | Add GitHub, Slack, databases, or any MCP server — credentials stay secure |
+| **Organize by project** | Keep agents and tools together around specific goals or teams |
+| **See everything** | Logs, costs, and traces for every agent action, in one dashboard |
+| **Control access** | Manage who can use which tools, with team roles and permissions |
+| **Run on your terms** | Self-host on your own infrastructure or use our cloud |
+
+### Deployment options
+
+| | |
+|---|---|
+| **Local** | `bunx decocms` — runs entirely on your machine, fully private |
+| **Cloud** | [studio.decocms.com](https://studio.decocms.com) — manage everything from your browser |
+| **Team** | Shared connections, roles, and cost tracking across your organization |
+| **Self-hosted** | Deploy to your own infrastructure with Docker or Kubernetes |
 
 ---
 
-## Getting Started
+## Get started
 
 **[Quickstart](./quickstart)** — Get running in 5 minutes (cloud or local)
 
-**[Concepts](./concepts)** — Connections, Virtual MCPs, projects, and agents
+**[Key concepts](./concepts)** — Connections, projects, agents, and how they work together
 
-**[Self-Hosting](./self-hosting/quickstart)** — Docker Compose or Kubernetes
+**[Self-hosting](./self-hosting/quickstart)** — Docker Compose or Kubernetes
 
 ## Links
 

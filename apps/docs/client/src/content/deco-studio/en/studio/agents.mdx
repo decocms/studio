@@ -1,6 +1,6 @@
 ---
 title: Agents
-description: Single-purpose virtual MCPs designed for specific tasks
+description: Focused AI workers designed for specific tasks
 icon: Bot
 ---
 
@@ -10,92 +10,66 @@ import Callout from "../../../../components/ui/Callout.astro";
   This page documents the **planned architecture** for agents in deco Studio. The implementation is in development.
 </Callout>
 
-## What Are Agents?
+## What are agents?
 
-**Agents** are single-purpose virtual MCPs optimized for specific tasks. While [Projects](/en/studio/projects) provide general-purpose work environments, agents focus narrowly on accomplishing one thing well.
+**Agents** are AI configurations built for a specific job. While [projects](/en/studio/projects) give your team a broad workspace, agents focus narrowly — one purpose, one set of tools, one job done well.
 
-Agents provide:
+An agent has:
 
-- **Focused capabilities** - Curated tools for specific tasks
-- **Task-specific context** - Resources and guidelines tailored to the agent's purpose
-- **Single-purpose design** - Clear objective with no unnecessary complexity
+- **A clear goal** — what it does and when to use it
+- **The right tools** — only what it needs, nothing it doesn't
+- **Detailed instructions** — how to behave, what to prioritize, what to avoid
+- **Resources and templates** — any extra context it needs to do the job
 
-Agents are organization-wide configurations available in the sidebar under the **Agents** section. Each agent can be spawned in any scope (tasks, subtasks, projects) with fresh execution context, providing a focused workspace for its specific task.
+Agents live in the sidebar under **Agents** and can be started in any context — tasks, projects, or conversations — with a fresh slate each time.
 
-The key distinction: projects organize capabilities for broad work contexts, while agents optimize for single-purpose execution.
+## How agents work
 
-## How Agents Work
+When decopilot needs help with a specific task, it reads each agent's description to decide which one to start. A well-written description is what makes an agent discoverable and useful.
 
-Agents follow the same pattern as standard agent skills (`SKILL.md` files), making them familiar and easy to understand:
+Write descriptions that clearly state the job:
+- "Process customer refunds and authorize returns"
+- "Analyze inventory levels and flag restock alerts"
+- "Generate and send weekly performance reports"
 
-**Like SKILL.md skills:**
-- **Description** - Brief explanation of what the agent does and when to use it (like the `description:` field in `SKILL.md`)
-- **Instructions** - Detailed guidelines for how the agent operates (like the body of a `SKILL.md` file)
+The instructions field is where you go deeper — step-by-step guidance, constraints, fallback behavior, and anything the agent should always or never do.
 
-**Plus Virtual MCP capabilities:**
-- **Name** - Identifies the agent (e.g., "Deployment Agent", "Research Agent")
-- **Tools** - Actions the agent can take (select from [connections](/en/studio/connections) or define inline)
-- **Resources** - Additional context and documentation
-- **Prompts** - Workflow templates
+## Example: order fulfillment agent
 
-[decopilot](/en/studio/decopilot/overview) uses the **description** field to understand when to spawn each agent—just like it uses skill descriptions to know when to invoke skills. This makes agents discoverable and automatically available when relevant to the task at hand.
+An order fulfillment agent might combine Shopify tools for order management, ShipStation tools for shipping labels, and Slack tools for team notifications. Its job is to handle one end-to-end workflow — fetch pending orders, check inventory, generate labels, send tracking updates — without touching anything outside that scope.
 
-Since agents are [Virtual MCPs](/en/studio/virtual-mcps), you can compose them from existing connections, define capabilities inline, or mix both approaches.
+## Built-in agents
 
-## Example: Order Fulfillment Agent
+Studio ships with agents for managing the platform itself:
 
-An order fulfillment agent might aggregate Shopify tools for order management, ShipStation tools for shipping label generation, and Slack tools for fulfillment team notifications. The agent handles order fulfillment with a focused toolset—fetch pending orders, check inventory, generate shipping labels, send tracking notifications—all within its single-purpose scope.
+- **Agent management** — create, edit, and remove agents
+- **Connection management** — add and configure integrations
+- **Permission management** — control who can access what
+- **MCP Store** — browse and install tools from the store
+- **User management** — invite and manage organization members
 
-## Built-in Agents
+These are ready to use immediately, without any setup.
 
-deco Studio includes built-in agents for common mesh operations. These agents use the **Management MCP**—a self-referential MCP that exposes mesh management capabilities through the MCP protocol.
+## Designing a good agent
 
-Built-in agents available out-of-the-box:
+**Keep the scope tight.** An agent that does one thing well is more reliable and easier to maintain than one that tries to do everything. If you find yourself adding unrelated tools, consider making a second agent.
 
-- **Agent Management** - Create, edit, and delete agents
-- **Connection Management** - Manage MCP server connections
-- **Permission Management** - Control access and authorization
-- **MCP Store** - Browse and install MCPs from the store
-- **User Management** - Invite and manage organization members
+**Write instructions like you're handing off to someone new.** Include the workflow steps, any edge cases they should watch for, and what to do when something goes wrong.
 
-These agents operate at organization level and leverage Management MCP tools for platform configuration.
+**Choose tools deliberately.** A customer service agent needs order lookup and refund tools — not inventory or marketing tools. The fewer unrelated tools, the more focused the agent's behavior.
 
-## Agent Design Principles
+**Good**: "Order Fulfillment Agent" — processes and ships orders
 
-**Single-purpose focus**: Each agent should do one thing well. Narrow scope improves clarity, reliability, and maintainability.
+**Too broad**: "Ecommerce Operations Agent" — fulfillment, customer service, inventory, marketing, analytics...
 
-**Clear description**: Write descriptions that help decopilot understand when to spawn the agent. Use `[Verb] + [Object] + [Context]` pattern:
-- "Fulfill customer orders and generate shipping labels"
-- "Analyze sales data for inventory optimization"
-- "Process customer refunds and returns"
+## Ways to use agents
 
-**Detailed instructions**: Provide clear guidelines in the instructions field—just like you would in a `SKILL.md` file. Include constraints, workflow steps, and behavioral guidelines.
+- **Started by decopilot** — agents are launched automatically when relevant to the current task
+- **Built-in agents** — pre-configured and ready for platform management tasks
+- **Custom agents** — built by your team for your specific workflows
 
-**Tool selection**: Choose tools that align with the agent's description. A customer service agent needs order lookup and refund tools; an inventory agent needs stock checking and alert tools. Overly broad tool access dilutes focus.
-
-**Good**: "Order Fulfillment Agent" (processes and ships orders)
-**Too broad**: "Ecommerce Operations Agent" (fulfillment, customer service, inventory, marketing, analytics...)
-
-## Using Agents
-
-Agents can be used in several ways:
-
-- **Spawned by decopilot** - Agents created on-demand with fresh context for specific tasks
-- **Built-in agents** - Pre-configured agents for mesh operations, ready immediately
-- **Custom agents** - Domain-specific agents for your team's unique workflows
-
-When working with an agent, you'll only see the tools, resources, and prompts configured for that agent's specific purpose. This focused view helps you stay on task without distraction.
-
-## Benefits Summary
-
-Agents provide focused capabilities with clear advantages:
-
-- **Focused capabilities** - Single-purpose design ensures clarity and reliability
-- **Fresh context** - Spawned agents start with clean context for their task
-- **Reusable patterns** - Define once, use across projects and workflows
-- **Built-in operations** - Pre-configured agents for common mesh tasks
-- **Self-referential management** - Management MCP enables agents to manage mesh itself
+When you're working inside an agent, you'll only see its tools and resources — nothing else. That's intentional. The focused view helps you stay on task.
 
 ---
 
-**Next steps**: Learn about [Virtual MCPs](/en/studio/virtual-mcps) to understand the foundation, explore [decopilot](/en/studio/decopilot/overview) to see how agents are spawned dynamically, or set up [Automations](/en/studio/automations) for unattended agent execution on schedules and events.
+**Next:** Learn about [Virtual MCPs](/en/studio/virtual-mcps) to understand how agents are built, explore [decopilot](/en/studio/decopilot/overview) to see how agents are started dynamically, or set up [Automations](/en/studio/automations) for unattended runs on schedules and events.
