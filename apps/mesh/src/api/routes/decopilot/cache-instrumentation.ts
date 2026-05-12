@@ -63,14 +63,37 @@ export function withCachedToolPrefix(tools: ToolSet): ToolSet {
         name,
         {
           ...tAsRecord,
-          providerOptions: {
-            ...existingProviderOptions,
+          providerOptions: deepMerge(existingProviderOptions, {
             anthropic: { cacheControl: EPHEMERAL_5M },
-          },
+          }),
         } as unknown as ToolSet[string],
       ];
     }),
   );
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    !Array.isArray(v) &&
+    Object.getPrototypeOf(v) === Object.prototype
+  );
+}
+
+// Recursive merge for plain-object trees (providerOptions is JSON-ish).
+// Non-plain values (arrays, primitives) are replaced, not merged.
+function deepMerge(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...a };
+  for (const [k, v] of Object.entries(b)) {
+    const existing = out[k];
+    out[k] =
+      isPlainObject(existing) && isPlainObject(v) ? deepMerge(existing, v) : v;
+  }
+  return out;
 }
 
 // ─────────────────────────────────────────────────────────────────────

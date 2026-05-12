@@ -65,6 +65,61 @@ describe("withCachedToolPrefix", () => {
       cacheControl: { type: "ephemeral", ttl: "5m" },
     });
   });
+
+  test("deep-merges into existing anthropic.* siblings without dropping them", () => {
+    const tools = {
+      only: {
+        description: "x",
+        inputSchema: {} as never,
+        providerOptions: {
+          anthropic: {
+            disableParallelToolUse: true,
+            thinking: { budgetTokens: 1024 },
+          },
+        },
+      } as never,
+    } as Parameters<typeof withCachedToolPrefix>[0];
+    const out = withCachedToolPrefix(tools);
+    const po = (
+      out.only as unknown as {
+        providerOptions: {
+          anthropic: {
+            disableParallelToolUse?: boolean;
+            thinking?: { budgetTokens?: number };
+            cacheControl?: unknown;
+          };
+        };
+      }
+    ).providerOptions;
+    expect(po.anthropic.disableParallelToolUse).toBe(true);
+    expect(po.anthropic.thinking).toEqual({ budgetTokens: 1024 });
+    expect(po.anthropic.cacheControl).toEqual({
+      type: "ephemeral",
+      ttl: "5m",
+    });
+  });
+
+  test("overwrites pre-existing anthropic.cacheControl on the marked tool", () => {
+    const tools = {
+      only: {
+        description: "x",
+        inputSchema: {} as never,
+        providerOptions: {
+          anthropic: { cacheControl: { type: "ephemeral", ttl: "1h" } },
+        },
+      } as never,
+    } as Parameters<typeof withCachedToolPrefix>[0];
+    const out = withCachedToolPrefix(tools);
+    const po = (
+      out.only as unknown as {
+        providerOptions: { anthropic: { cacheControl: unknown } };
+      }
+    ).providerOptions;
+    expect(po.anthropic.cacheControl).toEqual({
+      type: "ephemeral",
+      ttl: "5m",
+    });
+  });
 });
 
 describe("CacheAccumulator", () => {
