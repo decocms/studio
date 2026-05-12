@@ -446,35 +446,37 @@ function AgentInsetProvider() {
                 onNewTask={layout.createNewTask}
               />
               <Chat.ActiveTaskProvider taskId={layout.taskId}>
-                <div className="flex-1 min-h-0 overflow-hidden">
-                  {layout.mainOpen ? (
-                    <ErrorBoundary
-                      fallback={
-                        <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-                          Something went wrong. Try refreshing.
-                        </div>
-                      }
-                    >
-                      <Suspense
+                <Suspense fallback={<Chat.Skeleton />}>
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    {layout.mainOpen ? (
+                      <ErrorBoundary
                         fallback={
-                          <div className="h-full flex items-center justify-center">
-                            <Loading01
-                              size={20}
-                              className="animate-spin text-muted-foreground"
-                            />
+                          <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+                            Something went wrong. Try refreshing.
                           </div>
                         }
                       >
-                        <MainPanelContent
-                          taskId={layout.taskId}
-                          virtualMcpId={chatVirtualMcpId}
-                        />
-                      </Suspense>
-                    </ErrorBoundary>
-                  ) : (
-                    <ActiveTaskBoundary />
-                  )}
-                </div>
+                        <Suspense
+                          fallback={
+                            <div className="h-full flex items-center justify-center">
+                              <Loading01
+                                size={20}
+                                className="animate-spin text-muted-foreground"
+                              />
+                            </div>
+                          }
+                        >
+                          <MainPanelContent
+                            taskId={layout.taskId}
+                            virtualMcpId={chatVirtualMcpId}
+                          />
+                        </Suspense>
+                      </ErrorBoundary>
+                    ) : (
+                      <ActiveTaskBoundary />
+                    )}
+                  </div>
+                </Suspense>
               </Chat.ActiveTaskProvider>
               {mobileSidebarSheet}
             </VmEventsBridge>
@@ -517,16 +519,18 @@ function AgentInsetProvider() {
               createNewTask={layout.createNewTask}
             />
             <Chat.ActiveTaskProvider taskId={layout.taskId}>
-              <div className="flex flex-row flex-1 min-h-0">
-                <ChatMainPanelGroup
-                  virtualMcpId={virtualMcpId}
-                  taskId={layout.taskId}
-                  chatOpen={layout.chatOpen}
-                  mainOpen={layout.mainOpen}
-                  chatContent={<ActiveTaskBoundary />}
-                />
-                <TodosColumn />
-              </div>
+              <Suspense fallback={<Chat.Skeleton />}>
+                <div className="flex flex-row flex-1 min-h-0">
+                  <ChatMainPanelGroup
+                    virtualMcpId={virtualMcpId}
+                    taskId={layout.taskId}
+                    chatOpen={layout.chatOpen}
+                    mainOpen={layout.mainOpen}
+                    chatContent={<ActiveTaskBoundary />}
+                  />
+                  <TodosColumn />
+                </div>
+              </Suspense>
             </Chat.ActiveTaskProvider>
           </VmEventsBridge>
         </Chat.Provider>
