@@ -4,6 +4,7 @@ import {
   mkdirSync,
   openSync,
   statSync,
+  unlinkSync,
   writeSync,
 } from "node:fs";
 import { dirname } from "node:path";
@@ -11,9 +12,11 @@ import { dirname } from "node:path";
 /**
  * Append-mode tee to a single log file. Each chunk is flushed to the
  * kernel via writeSync; fsync only happens on close to keep per-chunk
- * overhead low. Hard size cap protects against runaway output — once we
- * exceed `maxBytes`, subsequent writes are dropped (with a single
- * truncation marker emitted) until the tee is closed.
+ * overhead low. Hard size cap is enforced by **rotation**: when a write
+ * would exceed `maxBytes`, the file is unlinked and reopened fresh with a
+ * `[log rotated at N bytes]` marker. This keeps per-log disk bounded at
+ * roughly `maxBytes` even for long-lived tasks that restart many times
+ * (e.g. a dev script crash-looping inside a pod).
  *
  * Open the tee lazily: callers can defer creating the file until the
  * first write so empty logs don't litter the disk.
@@ -21,7 +24,7 @@ import { dirname } from "node:path";
 export class LogTee {
   private fd: number | null = null;
   private written = 0;
-  private truncated = false;
+  private rotatedOnce = false;
 
   constructor(
     private readonly path: string,
@@ -30,32 +33,9 @@ export class LogTee {
 
   write(data: string): void {
     if (data.length === 0) return;
-    if (this.truncated) return;
     const buf = Buffer.from(data, "utf-8");
     if (this.written + buf.length > this.maxBytes) {
-      this.truncated = true;
-      const remain = Math.max(0, this.maxBytes - this.written);
-      if (remain > 0 && this.openIfNeeded()) {
-        try {
-          writeSync(this.fd as number, buf, 0, remain);
-          this.written += remain;
-        } catch {
-          /* unrecoverable; leave truncated as-is */
-        }
-      }
-      const marker = Buffer.from(
-        `\n[log truncated at ${this.maxBytes} bytes]\n`,
-        "utf-8",
-      );
-      if (this.openIfNeeded()) {
-        try {
-          writeSync(this.fd as number, marker);
-        } catch {
-          /* ignore */
-        }
-      }
-      this.close();
-      return;
+      this.rotate();
     }
     if (!this.openIfNeeded()) return;
     try {
@@ -63,6 +43,28 @@ export class LogTee {
       this.written += buf.length;
     } catch {
       /* swallow — log writes must never crash the daemon */
+    }
+  }
+
+  private rotate(): void {
+    this.close();
+    try {
+      unlinkSync(this.path);
+    } catch {
+      /* ignore — already gone or never existed */
+    }
+    this.written = 0;
+    this.rotatedOnce = true;
+    if (!this.openIfNeeded()) return;
+    const marker = Buffer.from(
+      `[log rotated at ${this.maxBytes} bytes]\n`,
+      "utf-8",
+    );
+    try {
+      writeSync(this.fd as number, marker);
+      this.written = marker.length;
+    } catch {
+      /* ignore */
     }
   }
 
@@ -83,7 +85,7 @@ export class LogTee {
   }
 
   isTruncated(): boolean {
-    return this.truncated;
+    return this.rotatedOnce;
   }
 
   bytesWritten(): number {

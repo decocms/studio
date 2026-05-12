@@ -114,7 +114,11 @@ export interface TaskManagerDeps {
    * line (`$ <label>`) is also broadcast on spawn.
    */
   broadcaster?: {
-    broadcastChunk: (source: string, data: string) => void;
+    broadcastChunk: (
+      source: string,
+      data: string,
+      opts?: { tee?: boolean },
+    ) => void;
   };
 }
 
@@ -556,7 +560,13 @@ export class TaskManager {
       }
     }
     if (task.spec.logName) {
-      this.deps.broadcaster?.broadcastChunk(task.spec.logName, chunk.data);
+      // tee: false — subprocess output stays on SSE + replay + on-disk
+      // LogTee; the header line written at spawn time already went to
+      // pod logs, so an operator can correlate later exit events back to
+      // the command without the noise of every line in between.
+      this.deps.broadcaster?.broadcastChunk(task.spec.logName, chunk.data, {
+        tee: false,
+      });
     }
   }
 }

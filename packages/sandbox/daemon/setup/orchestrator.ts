@@ -195,6 +195,13 @@ export class SetupOrchestrator {
     this.deps.broadcaster.broadcastChunk("setup", data);
   }
 
+  // Raw subprocess output (clone/install/checkout). Skips the stdout tee so
+  // pod logs aren't drowned in progress bars; still goes to SSE + replay +
+  // the per-step LogTee on disk.
+  private rawChunk(data: string): void {
+    this.deps.broadcaster.broadcastChunk("setup", data, { tee: false });
+  }
+
   /**
    * Acquires source: clone if no .git, otherwise checkout the configured
    * branch. Then runs idempotent post-source-acquisition steps (git
@@ -219,7 +226,7 @@ export class SetupOrchestrator {
         code = await spawnClone({
           config,
           onChunk: (_src, data) => {
-            this.chunk(data);
+            this.rawChunk(data);
             cloneTee.write(data);
           },
         });
@@ -294,7 +301,7 @@ export class SetupOrchestrator {
     const installPromise = spawnInstall({
       config,
       onChunk: (_src, data) => {
-        this.chunk(data);
+        this.rawChunk(data);
         installTee.write(data);
       },
     });
@@ -529,7 +536,7 @@ export class SetupOrchestrator {
   private async checkoutBranch(branch: string): Promise<void> {
     const repoDir = this.deps.bootConfig.repoDir;
     if (!repoDir) return;
-    const onChunk = (_src: "setup", data: string) => this.chunk(data);
+    const onChunk = (_src: "setup", data: string) => this.rawChunk(data);
     const silent = (_src: "setup", _data: string) => {};
     // http.connectTimeout: fail fast on DNS/TCP failures (seconds).
     // lowSpeedLimit/Time: abort if transfer rate stays below 1 B/s for 10 s.

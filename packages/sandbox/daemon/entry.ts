@@ -91,9 +91,9 @@ const broadcaster = new Broadcaster(REPLAY_BYTES);
 // fallback for tools that do honor PORT.
 const portSniffer = createPortSniffer();
 const broadcastChunkRaw = broadcaster.broadcastChunk.bind(broadcaster);
-broadcaster.broadcastChunk = (source, data) => {
+broadcaster.broadcastChunk = (source, data, opts) => {
   portSniffer.observe(source, data);
-  broadcastChunkRaw(source, data);
+  broadcastChunkRaw(source, data, opts);
 };
 
 let currentStatus: DaemonStatus = { state: "running" };
@@ -109,9 +109,13 @@ const lifecycle = new LifecycleManager({ broadcaster });
 // may bind somewhere else and we need to re-sniff its announcement.
 const lifecycleTransitionRaw = lifecycle.transition.bind(lifecycle);
 lifecycle.transition = (next) => {
-  const wasRunning = lifecycle.current().phase === "running";
+  const prev = lifecycle.current().phase;
+  const wasRunning = prev === "running";
   lifecycleTransitionRaw(next);
   if (wasRunning && next.phase !== "running") portSniffer.reset();
+  if (prev !== next.phase) {
+    console.log(`[lifecycle] ${prev} → ${next.phase}`);
+  }
 };
 // Per-command history for LLM context (each bash/exec spawned via TaskManager
 // is tracked as a phase). Setup pipeline phases live on `lifecycle` instead.
@@ -123,6 +127,14 @@ const taskManager = new TaskManager({
   onChange: () => {
     broadcaster.emit("tasks", { active: getActiveTasks() });
   },
+});
+
+// Per-chunk task output is silenced in pod logs (see broadcaster opt-out);
+// surface exits explicitly so an operator can see "dev exited 1" without
+// the firehose of stdout that preceded it.
+taskManager.onTaskExit((s) => {
+  const label = s.logName ?? s.id;
+  console.log(`[task] ${label} ${s.status} (exit=${s.exitCode})`);
 });
 
 function getActiveTasks() {
