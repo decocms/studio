@@ -14,6 +14,18 @@ export interface UsageData {
   outputTokens?: number;
   reasoningTokens?: number;
   totalTokens?: number;
+  /**
+   * AI SDK normalizes cache token counts across providers via
+   * usage.inputTokenDetails — populated identically by the anthropic,
+   * openai, google and openrouter adapters. `cachedInputTokens` is the
+   * convenience shorthand the AI SDK also surfaces (= cacheReadTokens).
+   */
+  cachedInputTokens?: number;
+  inputTokenDetails?: {
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
+    noCacheTokens?: number;
+  };
   providerMetadata?: {
     [key: string]: unknown;
   };
@@ -25,6 +37,10 @@ export interface UsageStats {
   reasoningTokens: number;
   totalTokens: number;
   cost: number;
+  /** Tokens read from prompt cache (anthropic / openrouter / openai / google). */
+  cacheReadTokens: number;
+  /** Tokens written to prompt cache (Anthropic only — others auto-cache without separate billing). */
+  cacheWriteTokens: number;
 }
 
 type ProviderCostExtractor = (
@@ -124,6 +140,8 @@ export function emptyUsageStats(): UsageStats {
     reasoningTokens: 0,
     totalTokens: 0,
     cost: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
   };
 }
 
@@ -137,6 +155,12 @@ export function addUsage(
 ): UsageStats {
   if (!stepUsage) return accumulated;
 
+  const cacheRead =
+    stepUsage.inputTokenDetails?.cacheReadTokens ??
+    stepUsage.cachedInputTokens ??
+    0;
+  const cacheWrite = stepUsage.inputTokenDetails?.cacheWriteTokens ?? 0;
+
   return {
     inputTokens: accumulated.inputTokens + (stepUsage.inputTokens ?? 0),
     outputTokens: accumulated.outputTokens + (stepUsage.outputTokens ?? 0),
@@ -144,6 +168,8 @@ export function addUsage(
       accumulated.reasoningTokens + (stepUsage.reasoningTokens ?? 0),
     totalTokens: accumulated.totalTokens + (stepUsage.totalTokens ?? 0),
     cost: accumulated.cost + getCostFromUsage(stepUsage),
+    cacheReadTokens: accumulated.cacheReadTokens + cacheRead,
+    cacheWriteTokens: accumulated.cacheWriteTokens + cacheWrite,
   };
 }
 

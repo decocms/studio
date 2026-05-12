@@ -43,6 +43,28 @@ export function MessageUsageStats({ usage }: UsageStatsProps) {
           <span className="text-right tabular-nums">
             {(outputTokens - (usage.reasoningTokens ?? 0)).toLocaleString()}
           </span>
+          {(usage.cacheReadTokens > 0 || usage.cacheWriteTokens > 0) && (
+            <>
+              <span className="text-muted">cache rd</span>
+              <span className="text-right tabular-nums">
+                {usage.cacheReadTokens.toLocaleString()}
+              </span>
+              {usage.cacheWriteTokens > 0 && (
+                <>
+                  <span className="text-muted">cache wr</span>
+                  <span className="text-right tabular-nums">
+                    {usage.cacheWriteTokens.toLocaleString()}
+                  </span>
+                </>
+              )}
+              <span className="text-muted">hit</span>
+              <span className="text-right tabular-nums">
+                {inputTokens > 0
+                  ? `${((usage.cacheReadTokens / inputTokens) * 100).toFixed(0)}%`
+                  : "0%"}
+              </span>
+            </>
+          )}
           {cost > 0 && (
             <>
               <span className="text-muted">cost</span>
@@ -123,6 +145,29 @@ export function MessageStatsBar({ usage, duration }: MessageStatsBarProps) {
                   <span className="opacity-60">think</span>
                   <span className="text-right tabular-nums">
                     {usage!.reasoningTokens!.toLocaleString()}
+                  </span>
+                </>
+              )}
+              {((usage?.cacheReadTokens ?? 0) > 0 ||
+                (usage?.cacheWriteTokens ?? 0) > 0) && (
+                <>
+                  <span className="opacity-60">cache rd</span>
+                  <span className="text-right tabular-nums">
+                    {(usage?.cacheReadTokens ?? 0).toLocaleString()}
+                  </span>
+                  {(usage?.cacheWriteTokens ?? 0) > 0 && (
+                    <>
+                      <span className="opacity-60">cache wr</span>
+                      <span className="text-right tabular-nums">
+                        {(usage?.cacheWriteTokens ?? 0).toLocaleString()}
+                      </span>
+                    </>
+                  )}
+                  <span className="opacity-60">hit</span>
+                  <span className="text-right tabular-nums">
+                    {(usage?.inputTokens ?? 0) > 0
+                      ? `${(((usage?.cacheReadTokens ?? 0) / usage!.inputTokens) * 100).toFixed(0)}%`
+                      : "0%"}
                   </span>
                 </>
               )}
@@ -219,6 +264,29 @@ export function SessionStats({
               <span className="text-muted">out</span>
               <span className="text-right tabular-nums">
                 {outputTokens.toLocaleString()}
+              </span>
+            </>
+          )}
+          {((usage?.cacheReadTokens ?? 0) > 0 ||
+            (usage?.cacheWriteTokens ?? 0) > 0) && (
+            <>
+              <span className="text-muted">cache rd</span>
+              <span className="text-right tabular-nums">
+                {(usage?.cacheReadTokens ?? 0).toLocaleString()}
+              </span>
+              {(usage?.cacheWriteTokens ?? 0) > 0 && (
+                <>
+                  <span className="text-muted">cache wr</span>
+                  <span className="text-right tabular-nums">
+                    {(usage?.cacheWriteTokens ?? 0).toLocaleString()}
+                  </span>
+                </>
+              )}
+              <span className="text-muted">hit</span>
+              <span className="text-right tabular-nums">
+                {inputTokens > 0
+                  ? `${(((usage?.cacheReadTokens ?? 0) / inputTokens) * 100).toFixed(0)}%`
+                  : "0%"}
               </span>
             </>
           )}

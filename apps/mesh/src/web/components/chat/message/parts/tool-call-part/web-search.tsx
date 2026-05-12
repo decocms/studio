@@ -61,6 +61,8 @@ function extractUsage(result: WebSearchResult | undefined): UsageStats | null {
     reasoningTokens: 0,
     totalTokens,
     cost: getCostFromUsage(usageData),
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
   };
 }
 
