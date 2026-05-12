@@ -169,6 +169,16 @@ export interface StreamCoreInput {
   triggerId?: string;
   windowSize?: number;
   abortSignal?: AbortSignal;
+  /**
+   * HTTP request signal from the route handler (Hono's `c.req.raw.signal`).
+   * Fires when the response consumer disconnects (proxy idle cut, hard
+   * duration cap, browser tab close). Read in `onFinish` to distinguish
+   * "the consumer went away" from "the run actually finished" — in the
+   * former case we skip the registry FINISH so the run continues
+   * server-side and the next `/attach` can hit the JetStream live-replay
+   * path instead of triggering a fresh orphan resume.
+   */
+  httpSignal?: AbortSignal | null;
   isResume?: boolean;
   /** Persisted to the thread row on first-message creation. */
   branch?: string | null;
@@ -451,6 +461,14 @@ async function streamCoreInner(
 
     let streamFinished = false;
     const pendingOps: Promise<void>[] = [];
+
+    // Set when the UI-stream-level onFinish was triggered by HTTP consumer
+    // disconnect (proxy cut, tab close) rather than a real model finish.
+    // In that case we skip the registry FINISH there and let streamText's
+    // own onFinish dispatch it later — when the model actually completes
+    // server-side. The run survives the HTTP cut, JetStream keeps buffering,
+    // and the next `/attach` hits the live-replay fast path.
+    let deferRegistryFinish = false;
 
     // Pre-load conversation (no system messages — those are built separately)
     // When resuming, requestMessage is undefined — conversation loads entirely
@@ -1057,6 +1075,7 @@ async function streamCoreInner(
               finishReason,
               request,
               response,
+              content,
             }) => {
               llmSpan.setAttribute(
                 "decopilot.llm.inputTokens",
@@ -1135,6 +1154,38 @@ async function streamCoreInner(
               });
 
               if (registrySignal.aborted) return;
+
+              // Recovery path for HTTP-cut-during-stream: the UI-stream-level
+              // onFinish ran earlier when the response was cancelled and
+              // skipped the registry FINISH. streamText kept polling until
+              // the model actually finished, and we're now seeing that real
+              // completion. Dispatch FINISH with the run's final state so
+              // the thread settles cleanly instead of leaking the registry
+              // entry until the 30-minute reaper fires.
+              if (deferRegistryFinish) {
+                deferRegistryFinish = false;
+                const finalParts = (content ?? []) as {
+                  type: string;
+                  state?: string;
+                  text?: string;
+                }[];
+                const threadStatus = resolveThreadStatus(
+                  finishReason,
+                  finalParts,
+                );
+                await runRegistry
+                  .execute({
+                    type: "FINISH",
+                    taskId: mem.thread.id,
+                    threadStatus,
+                  })
+                  .catch((e) => {
+                    console.error(
+                      "[decopilot:stream] deferred FINISH failed",
+                      e,
+                    );
+                  });
+              }
             },
             onError: async (error) => {
               const err =
@@ -1503,6 +1554,22 @@ async function streamCoreInner(
         await saveMessagesToThread(responseMessage);
 
         if (registrySignal.aborted) return;
+
+        // HTTP consumer disconnected (proxy cut, tab close): the UI-stream
+        // TransformStream fires onFinish via cancel() with whatever partial
+        // state was buffered — but the underlying streamText is still alive
+        // (registrySignal is independent from httpSignal). Defer the
+        // registry FINISH to streamText.onFinish so it dispatches with the
+        // run's actual final state instead of failing/completing
+        // prematurely. Without this defer, the registry clears immediately,
+        // the next `/attach` falls to orphan-resume, the model re-decides
+        // the tool call with a (possibly) different query, and we end up
+        // running two Gemini deep-research jobs in parallel for the same
+        // user message.
+        if (input.httpSignal?.aborted) {
+          deferRegistryFinish = true;
+          return;
+        }
 
         const threadStatus = resolveThreadStatus(
           finishReason,

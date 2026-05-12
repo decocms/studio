@@ -7,6 +7,16 @@
 
 import type { ThreadStatus } from "@/storage/types";
 
+/**
+ * Accepts both the UI-message-stream parts shape (emitted via
+ * `createUIMessageStream` -> the response's `parts` array, used by the
+ * UI-stream-level `onFinish`) and the raw AI SDK `ContentPart` shape
+ * (emitted via `streamText.onFinish`'s `content`). The two diverge for
+ * tool-call/approval parts: UI parts use `type: "tool-<toolName>"` plus a
+ * `state` field, while AI SDK content uses `type: "tool-call"` with a
+ * `toolName` field and `type: "tool-approval-request"` for approvals.
+ * `text` parts are identical in both shapes.
+ */
 type ResponsePart = {
   type: string;
   text?: string;
@@ -18,7 +28,7 @@ type ResponsePart = {
  * Resolves the thread status from the AI SDK stream onFinish reason.
  *
  * @param finishReason - The AI SDK finish reason for the last step
- * @param responseParts - The parts array from the response UIMessage
+ * @param responseParts - Either UI-message parts or streamText `content` items
  * @returns The resolved ThreadStatus
  */
 export function resolveThreadStatus(
@@ -37,18 +47,24 @@ export function resolveThreadStatus(
   }
 
   if (finishReason === "tool-calls") {
-    // Check if user_ask is waiting for input
-    // Codebase uses "tool-user_ask" part type with states:
-    //   "input-available" = waiting for user input (pending)
-    //   "output-available" = user has responded (done)
+    // user_ask pending — two equivalent encodings:
+    //   UI parts:        { type: "tool-user_ask", state: "input-available" }
+    //   AI SDK content:  { type: "tool-call", toolName: "user_ask" }
+    //                    (no matching tool-result, since finishReason is
+    //                    "tool-calls" → model stopped awaiting tool execution)
     const hasUserAskPending = responseParts.some(
       (part) =>
-        part.type === "tool-user_ask" && part.state === "input-available",
+        (part.type === "tool-user_ask" && part.state === "input-available") ||
+        (part.type === "tool-call" && part.toolName === "user_ask"),
     );
 
-    // Check if any tools are awaiting approval
+    // Tool awaiting approval — two equivalent encodings:
+    //   UI parts:        { state: "approval-requested" } (any type)
+    //   AI SDK content:  { type: "tool-approval-request" }
     const hasApprovalPending = responseParts.some(
-      (part) => part.state === "approval-requested",
+      (part) =>
+        part.state === "approval-requested" ||
+        part.type === "tool-approval-request",
     );
 
     return hasUserAskPending || hasApprovalPending
