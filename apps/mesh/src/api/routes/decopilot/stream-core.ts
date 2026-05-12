@@ -1199,6 +1199,8 @@ async function streamCoreInner(
                 isError: false,
                 inputTokens: abortTotalUsage.inputTokens,
                 outputTokens: abortTotalUsage.outputTokens,
+                cacheReadTokens: stepCacheAcc.read,
+                cacheWriteTokens: stepCacheAcc.write,
               });
               monitorLlmCall({
                 ctx,
