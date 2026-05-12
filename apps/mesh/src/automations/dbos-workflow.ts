@@ -48,7 +48,7 @@
  * recovery executor can replay them after a crash.
  */
 
-import { DBOS } from "@dbos-inc/dbos-sdk";
+import { DBOS, SchedulerMode } from "@dbos-inc/dbos-sdk";
 import {
   consumeStreamCore,
   type StreamCoreDeps,
@@ -376,15 +376,15 @@ export const cronEntryWorkflow = DBOS.registerWorkflow(cronEntryWorkflowFn, {
  * have `ON DELETE CASCADE` FKs to `workflow_status`, so a single delete
  * sweeps the lot.
  *
- * The schedule's row-locked `last_fired_at` ensures only one replica runs
- * GC per tick. The step itself is idempotent on replay: another run just
- * computes a fresh cutoff and deletes the next batch.
+ * Registered as a static schedule via `DBOS.registerScheduled` at module
+ * load — multi-replica coordination uses `upsertEventDispatchState` so only
+ * one replica fires per tick. The step itself is idempotent on replay:
+ * another run just computes a fresh cutoff and deletes the next batch.
  */
-export const AUTOMATIONS_GC_SCHEDULE_NAME = "automations-gc";
 const AUTOMATIONS_GC_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const AUTOMATIONS_GC_BATCH_SIZE = 500;
 /** 03:17 UTC daily — off-peak with a minute offset to avoid colliding with hourly tasks. */
-export const AUTOMATIONS_GC_SCHEDULE = "17 3 * * *";
+const AUTOMATIONS_GC_CRONTAB = "17 3 * * *";
 
 const GC_TERMINAL_STATUSES = ["SUCCESS", "ERROR", "CANCELLED"] as const;
 
@@ -426,16 +426,19 @@ async function automationsGcStep(): Promise<AutomationsGcResult> {
 
 async function automationsGcWorkflowFn(
   _scheduledTime: Date,
-  _ctx: Record<string, unknown>,
+  _currentTime: Date,
 ): Promise<void> {
-  // `DBOS.createSchedule` requires `Promise<void>`. The step's return value
-  // is recorded in `operation_outputs` for observability.
   await DBOS.runStep(() => automationsGcStep(), {
     name: "automationsGarbageCollect",
   });
 }
 
-export const automationsGcWorkflow = DBOS.registerWorkflow(
-  automationsGcWorkflowFn,
-  { name: "automationsGcWorkflow" },
-);
+const automationsGcWorkflow = DBOS.registerWorkflow(automationsGcWorkflowFn, {
+  name: "automationsGcWorkflow",
+});
+
+DBOS.registerScheduled(automationsGcWorkflow, {
+  name: "automationsGcWorkflow",
+  crontab: AUTOMATIONS_GC_CRONTAB,
+  mode: SchedulerMode.ExactlyOncePerIntervalWhenActive,
+});

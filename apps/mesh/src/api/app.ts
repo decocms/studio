@@ -93,21 +93,14 @@ import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { SqlThreadStorage } from "../storage/threads";
 import type { Thread } from "../storage/types";
-import {
-  MONITORING_RETENTION_SCHEDULE,
-  MONITORING_RETENTION_SCHEDULE_NAME,
-  monitoringRetentionWorkflow,
-} from "../monitoring/dbos-retention-workflow";
+import "../monitoring/dbos-retention-workflow";
 import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
 import { getLogsDir, getTracesDir, getMetricsDir } from "../monitoring/schema";
 import {
   AUTOMATIONS_GATE_QUEUE,
   AUTOMATIONS_GATE_PARTITION_CONCURRENCY,
-  AUTOMATIONS_GC_SCHEDULE,
-  AUTOMATIONS_GC_SCHEDULE_NAME,
   AUTOMATIONS_GLOBAL_CONCURRENCY,
   AUTOMATIONS_GLOBAL_QUEUE,
-  automationsGcWorkflow,
   EventTriggerEngine,
   fireAutomationNow,
   reconcileAutomationSchedules,

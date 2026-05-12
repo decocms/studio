@@ -1,20 +1,20 @@
 /**
  * DBOS scheduled workflow for NDJSON monitoring file retention.
  *
- * Replaces the legacy `setInterval` in `api/app.ts` that swept old
- * monitoring directories every 24 hours. Now a DBOS schedule ensures only
- * one replica runs the sweep per tick (row-locked `last_fired_at`) and the
- * step itself is idempotent — replays just compute a fresh cutoff and
- * delete the next eligible day directories.
+ * Registered as a static schedule via `DBOS.registerScheduled` at module
+ * load — state lives in `event_dispatch_kv`, so re-registration on restart
+ * is implicitly idempotent (no `workflow_schedules` row to collide with).
+ * Multi-replica coordination uses `upsertEventDispatchState` so only one
+ * replica fires per tick; the step itself is idempotent — replays just
+ * compute a fresh cutoff and delete the next eligible day directories.
  */
-import { DBOS } from "@dbos-inc/dbos-sdk";
+import { DBOS, SchedulerMode } from "@dbos-inc/dbos-sdk";
 
 import { getLogsDir, getMetricsDir, getTracesDir } from "./schema";
 import { cleanupOldMonitoringFiles } from "./ndjson-retention";
 
-export const MONITORING_RETENTION_SCHEDULE_NAME = "monitoring-ndjson-retention";
 /** 04:23 UTC daily — off-peak with a minute offset to avoid colliding with hourly tasks. */
-export const MONITORING_RETENTION_SCHEDULE = "23 4 * * *";
+const MONITORING_RETENTION_CRONTAB = "23 4 * * *";
 
 export interface MonitoringRetentionResult {
   deleted: number;
@@ -41,16 +41,20 @@ async function monitoringRetentionStep(): Promise<MonitoringRetentionResult> {
 
 async function monitoringRetentionWorkflowFn(
   _scheduledTime: Date,
-  _ctx: Record<string, unknown>,
+  _currentTime: Date,
 ): Promise<void> {
-  // `DBOS.createSchedule` requires `Promise<void>`. The step's return value
-  // is recorded in `operation_outputs` for observability.
   await DBOS.runStep(() => monitoringRetentionStep(), {
     name: "monitoringRetention",
   });
 }
 
-export const monitoringRetentionWorkflow = DBOS.registerWorkflow(
+const monitoringRetentionWorkflow = DBOS.registerWorkflow(
   monitoringRetentionWorkflowFn,
   { name: "monitoringRetentionWorkflow" },
 );
+
+DBOS.registerScheduled(monitoringRetentionWorkflow, {
+  name: "monitoringRetentionWorkflow",
+  crontab: MONITORING_RETENTION_CRONTAB,
+  mode: SchedulerMode.ExactlyOncePerIntervalWhenActive,
+});
