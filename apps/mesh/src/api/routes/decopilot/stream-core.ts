@@ -27,7 +27,15 @@ import { getBuiltInTools, type PendingImage } from "./built-in-tools";
 import { createEnableToolTool } from "./built-in-tools/enable-tool";
 import { buildAgentsBlock } from "./agents-block";
 import { buildPromptsBlock } from "./prompts-block";
-import { computeCost } from "./pricing";
+import {
+  addCacheStep,
+  cacheStatus,
+  costSection,
+  emptyCacheAccumulator,
+  OPENROUTER_CACHE_PROVIDER_OPTIONS,
+  renderCacheBox,
+  usageSection,
+} from "./cache-instrumentation";
 import { buildSystemMessages } from "./system-prompt";
 import {
   buildConnectionsBlock,
@@ -797,11 +805,7 @@ async function streamCoreInner(
           outputTokens: 0,
           totalTokens: 0,
         };
-        let stepAccumulatedCost = 0;
-        let stepAccumulatedUncachedEquivalent = 0;
-        let stepPricingUnknown = false;
-        let stepAccumulatedCacheRead = 0;
-        let stepAccumulatedCacheWrite = 0;
+        const stepCacheAcc = emptyCacheAccumulator();
         llmCallStartTime = Date.now();
 
         // Build language model based on provider type
@@ -974,11 +978,7 @@ async function streamCoreInner(
             system: [...systemPromptMessages, ...processedSystemMessages],
             messages: processedMessages,
             tools,
-            providerOptions: {
-              openrouter: {
-                cache_control: { type: "ephemeral", ttl: "5m" },
-              },
-            },
+            providerOptions: OPENROUTER_CACHE_PROVIDER_OPTIONS,
             // Note: Codex thread resume is not supported because each request
             // spawns a new codexAppServer process. Thread IDs are local to a
             // process and cannot be resumed by a different one.
@@ -1112,81 +1112,44 @@ async function streamCoreInner(
               llmSpan.setAttribute("decopilot.llm.finishReason", finishReason);
               llmSpan.setAttribute(
                 "decopilot.cache.read_tokens",
-                stepAccumulatedCacheRead,
+                stepCacheAcc.read,
               );
               llmSpan.setAttribute(
                 "decopilot.cache.write_tokens",
-                stepAccumulatedCacheWrite,
+                stepCacheAcc.write,
               );
-              // AI SDK v6's totalUsage.inputTokens is already the sum of
-              // noCache + cacheRead + cacheWrite (see @ai-sdk/anthropic
-              // convertAnthropicMessagesUsage and @openrouter/ai-sdk-provider
-              // computeTokenUsage). So hit_ratio is just cache_read / input.
-              const totalInputTokens = totalUsage.inputTokens ?? 0;
               const hitRatio =
-                totalInputTokens > 0
-                  ? stepAccumulatedCacheRead / totalInputTokens
+                stepCacheAcc.input > 0
+                  ? stepCacheAcc.read / stepCacheAcc.input
                   : 0;
               llmSpan.setAttribute("decopilot.cache.hit_ratio", hitRatio);
               if (!isCliAgent) {
-                const status =
-                  stepAccumulatedCacheRead > 0
-                    ? "HIT ✅"
-                    : stepAccumulatedCacheWrite > 0
-                      ? "WRITE 📝"
-                      : "MISS ❌";
-                const pct = (hitRatio * 100).toFixed(1);
-                const cost = stepPricingUnknown
-                  ? "(model unpriced — see pricing-table.json)"
-                  : `$${stepAccumulatedCost.toFixed(6)}`;
-                const uncached = stepPricingUnknown
-                  ? "(n/a)"
-                  : `$${stepAccumulatedUncachedEquivalent.toFixed(6)}`;
-                const savedAbs = stepPricingUnknown
-                  ? 0
-                  : stepAccumulatedUncachedEquivalent - stepAccumulatedCost;
-                const savedPct =
-                  !stepPricingUnknown && stepAccumulatedUncachedEquivalent > 0
-                    ? `${((savedAbs / stepAccumulatedUncachedEquivalent) * 100).toFixed(1)}%`
-                    : "0.0%";
-                const saved = stepPricingUnknown
-                  ? "(n/a)"
-                  : `$${savedAbs.toFixed(6)} (${savedPct})`;
+                const status = cacheStatus(stepCacheAcc);
                 console.log(
-                  [
-                    "",
-                    "╔════════════════════════════════════════════════════════════════════╗",
-                    `║  [decopilot:cache] ${status.padEnd(47)}║`,
-                    "╠════════════════════════════════════════════════════════════════════╣",
-                    `║  org      : ${input.organizationId.padEnd(54)}║`,
-                    `║  vmcp     : ${input.agent.id.padEnd(54)}║`,
-                    `║  thread   : ${mem.thread.id.padEnd(54)}║`,
-                    `║  user     : ${input.userId.padEnd(54)}║`,
-                    "╠────────────────────────────────────────────────────────────────────╣",
-                    `║  provider : ${(input.models.thinking.provider ?? "unknown").padEnd(54)}║`,
-                    `║  model    : ${input.models.thinking.id.padEnd(54)}║`,
-                    `║  input    : ${String(totalInputTokens).padEnd(54)}║`,
-                    `║  output   : ${String(totalUsage.outputTokens ?? 0).padEnd(54)}║`,
-                    `║  cache rd : ${String(stepAccumulatedCacheRead).padEnd(54)}║`,
-                    `║  cache wr : ${String(stepAccumulatedCacheWrite).padEnd(54)}║`,
-                    `║  hit_ratio: ${`${pct}%`.padEnd(54)}║`,
-                    "╠────────────────────────────────────────────────────────────────────╣",
-                    `║  cost     : ${cost.padEnd(54)}║`,
-                    `║  if uncached: ${uncached.padEnd(52)}║`,
-                    `║  saved    : ${saved.padEnd(54)}║`,
-                    "╚════════════════════════════════════════════════════════════════════╝",
-                    `[decopilot:cache] === request end   org=${input.organizationId} vmcp=${input.agent.id} thread=${mem.thread.id} ===`,
-                    "",
-                  ].join("\n"),
+                  renderCacheBox({
+                    tag: "decopilot:cache",
+                    status,
+                    sections: [
+                      [
+                        ["org", input.organizationId],
+                        ["vmcp", input.agent.id],
+                        ["thread", mem.thread.id],
+                        ["user", input.userId],
+                      ],
+                      usageSection(
+                        stepCacheAcc,
+                        input.models.thinking.provider ?? "unknown",
+                        input.models.thinking.id,
+                      ),
+                      costSection(stepCacheAcc),
+                    ],
+                    footer: `[decopilot:cache] === request end   org=${input.organizationId} vmcp=${input.agent.id} thread=${mem.thread.id} ===`,
+                  }),
                 );
                 // On MISS, dump the raw provider metadata namespaces seen
                 // this turn — helps diagnose whether the upstream provider
                 // returned any cache fields at all.
-                if (
-                  stepAccumulatedCacheRead === 0 &&
-                  stepAccumulatedCacheWrite === 0 &&
-                  lastProviderMetadata
-                ) {
+                if (status === "MISS ❌" && lastProviderMetadata) {
                   console.log(
                     "[decopilot:cache] raw providerMetadata namespaces=%j",
                     Object.keys(lastProviderMetadata),
@@ -1207,8 +1170,8 @@ async function streamCoreInner(
                 isError: false,
                 inputTokens: totalUsage.inputTokens,
                 outputTokens: totalUsage.outputTokens,
-                cacheReadTokens: stepAccumulatedCacheRead,
-                cacheWriteTokens: stepAccumulatedCacheWrite,
+                cacheReadTokens: stepCacheAcc.read,
+                cacheWriteTokens: stepCacheAcc.write,
               });
               aggregatedUsage = {
                 inputTokens:
@@ -1357,10 +1320,10 @@ async function streamCoreInner(
                       inputTokens: abortTotalUsage.inputTokens,
                       outputTokens: abortTotalUsage.outputTokens,
                       totalTokens: abortTotalUsage.totalTokens,
-                      ...(stepAccumulatedCost > 0 && {
+                      ...(stepCacheAcc.cost > 0 && {
                         providerMetadata: {
                           openrouter: {
-                            usage: { cost: stepAccumulatedCost },
+                            usage: { cost: stepCacheAcc.cost },
                           },
                         },
                       }),
@@ -1453,49 +1416,24 @@ async function streamCoreInner(
                   stepAccumulatedUsage.totalTokens +
                   (part.usage?.totalTokens ?? 0),
               };
-              // Cache tokens: AI SDK v6 normalizes across providers via
-              // usage.inputTokenDetails — populated identically by the
-              // anthropic, openai, google and openrouter adapters. No
-              // need to branch per-namespace.
-              const inputDetails = part.usage?.inputTokenDetails as
-                | {
-                    cacheReadTokens?: number;
-                    cacheWriteTokens?: number;
-                  }
-                | undefined;
-              const stepCacheRead = inputDetails?.cacheReadTokens ?? 0;
-              const stepCacheWrite = inputDetails?.cacheWriteTokens ?? 0;
-              stepAccumulatedCacheRead += stepCacheRead;
-              stepAccumulatedCacheWrite += stepCacheWrite;
-              // Always compute cost from the local pricing table. We do
-              // NOT trust providerMetadata.openrouter.usage.cost — the
-              // pricing table is the single source of truth.
-              const stepCostBreakdown = computeCost(
+              // Cache tokens + cost: shared accumulator reads AI SDK's
+              // provider-agnostic usage.inputTokenDetails and computes
+              // cost from pricing-table.json. Same path used by subtask.
+              addCacheStep(
+                stepCacheAcc,
+                part.usage,
                 input.models.thinking.provider ?? undefined,
                 input.models.thinking.id,
-                {
-                  inputTokens: part.usage?.inputTokens ?? 0,
-                  outputTokens: part.usage?.outputTokens ?? 0,
-                  cacheReadTokens: stepCacheRead,
-                  cacheWriteTokens: stepCacheWrite,
-                },
               );
-              if (stepCostBreakdown) {
-                stepAccumulatedCost += stepCostBreakdown.total;
-                stepAccumulatedUncachedEquivalent +=
-                  stepCostBreakdown.uncachedEquivalent;
-              } else {
-                stepPricingUnknown = true;
-              }
               return {
                 usage: {
                   inputTokens: stepAccumulatedUsage.inputTokens,
                   outputTokens: stepAccumulatedUsage.outputTokens,
                   totalTokens: stepAccumulatedUsage.totalTokens,
-                  ...(stepAccumulatedCost > 0 && {
+                  ...(stepCacheAcc.cost > 0 && {
                     providerMetadata: {
                       openrouter: {
-                        usage: { cost: stepAccumulatedCost },
+                        usage: { cost: stepCacheAcc.cost },
                       },
                     },
                   }),
@@ -1511,9 +1449,9 @@ async function streamCoreInner(
                 (part as { providerMetadata?: Record<string, unknown> })
                   .providerMetadata;
               // Merge accumulated per-step cost into the final provider metadata.
-              // Per-step cost is tracked in stepAccumulatedCost from finish-step events.
+              // Per-step cost is tracked in stepCacheAcc.cost from finish-step events.
               const finalProviderMeta =
-                stepAccumulatedCost > 0 && providerMeta
+                stepCacheAcc.cost > 0 && providerMeta
                   ? {
                       ...providerMeta,
                       openrouter: {
@@ -1525,7 +1463,7 @@ async function streamCoreInner(
                           ...(((
                             providerMeta.openrouter as Record<string, unknown>
                           )?.usage as Record<string, unknown>) ?? {}),
-                          cost: stepAccumulatedCost,
+                          cost: stepCacheAcc.cost,
                         },
                       },
                     }
