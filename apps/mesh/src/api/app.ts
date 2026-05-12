@@ -1810,6 +1810,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       virtualMcpStorage,
     }).catch((error) => {
       console.error("[studio-pack] backfill driver failed:", error);
+ 
     });
   }
 
