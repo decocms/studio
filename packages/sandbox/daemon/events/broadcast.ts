@@ -4,6 +4,10 @@ import type { DaemonEventMap, DaemonEventName } from "./types";
 
 type Controller = ReadableStreamDefaultController<Uint8Array>;
 
+// Force tee for every chunk regardless of caller opt-out. Lets an operator
+// crank a pod up to the full firehose without a code change.
+const VERBOSE = process.env.DAEMON_LOG_VERBOSE === "1";
+
 export class Broadcaster {
   readonly replay: ReplayBuffer;
   private readonly clients = new Set<Controller>();
@@ -24,13 +28,16 @@ export class Broadcaster {
     return this.clients.size;
   }
 
-  broadcastChunk(source: string, data: string): void {
+  broadcastChunk(source: string, data: string, opts?: { tee?: boolean }): void {
     if (!data) return;
     this.replay.append(source, data);
-    // Tee to stdout so `kubectl logs` / k9s show the same output that SSE
-    // subscribers see. The structured events (emit below) stay SSE-only —
-    // they're machine-readable JSON and would be noise here.
-    process.stdout.write(`[${source}] ${data}`);
+    // Tee to stdout so `kubectl logs` / k9s see control-plane messages
+    // (orchestrator status, daemon, lifecycle). Raw subprocess streams pass
+    // `tee: false` to keep pod logs readable — they remain on SSE + replay
+    // + the per-task LogTee on disk.
+    if (VERBOSE || opts?.tee !== false) {
+      process.stdout.write(`[${source}] ${data}`);
+    }
     const bytes = sseFormat("log", JSON.stringify({ source, data }));
     this.fan(bytes);
   }
