@@ -41,6 +41,7 @@ import {
   buildBasePlatformPrompt,
   buildDecopilotAgentPrompt,
   buildRepoEnvironmentPrompt,
+  buildTodoWritePrompt,
   DEFAULT_MAX_TOKENS,
   DEFAULT_THREAD_TITLE,
   DEFAULT_WINDOW_SIZE,
@@ -747,6 +748,7 @@ async function streamCoreInner(
           promptsBlock,
           agentsBlock,
           connectionsBlock,
+          buildTodoWritePrompt(),
           agentPrompt,
         ].filter((s): s is string => Boolean(s?.trim()));
 
