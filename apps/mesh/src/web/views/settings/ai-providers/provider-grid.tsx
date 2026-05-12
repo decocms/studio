@@ -1,4 +1,5 @@
 import type { AiProviderInfo } from "@decocms/mesh-sdk";
+import { ChevronRight } from "@untitledui/icons";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import {
   SettingsCard,
@@ -21,7 +22,11 @@ export type ProviderSelection =
 interface ProviderGridProps {
   providers: AiProviderInfo[];
   onSelect: (selection: ProviderSelection) => void;
+  /** When provided, cloud section is capped at 4 tiles with a "see all" row. */
+  onShowAll?: () => void;
 }
+
+const CLOUD_PREVIEW_COUNT = 4;
 
 function ProviderTile({
   logo,
@@ -57,7 +62,11 @@ function ProviderTile({
   );
 }
 
-export function ProviderGrid({ providers, onSelect }: ProviderGridProps) {
+export function ProviderGrid({
+  providers,
+  onSelect,
+  onShowAll,
+}: ProviderGridProps) {
   const deco = providers.find((p) => p.id === "deco");
   const local = providers.filter(
     (p) => p.id !== "deco" && p.supportedMethods.includes("cli-activate"),
@@ -82,14 +91,83 @@ export function ProviderGrid({ providers, onSelect }: ProviderGridProps) {
   const openaiCompatible = providers.find((p) => p.id === "openai-compatible");
   const openaiPreset = OPENAI_COMPATIBLE_PRESETS.find((p) => p.id === "openai");
 
+  const allCloudTiles = [
+    ...cloud.map((provider) => (
+      <ProviderTile
+        key={provider.id}
+        logo={provider.logo}
+        name={provider.name}
+        description={provider.description}
+        onClick={() => onSelect({ kind: "provider", provider })}
+      />
+    )),
+    ...(openaiCompatible && openaiPreset
+      ? [
+          <ProviderTile
+            key={openaiPreset.id}
+            logo={openaiPreset.logo}
+            name={openaiPreset.name}
+            description={openaiPreset.description}
+            onClick={() =>
+              onSelect({
+                kind: "openai-compatible",
+                provider: openaiCompatible,
+                preset: openaiPreset,
+              })
+            }
+          />,
+        ]
+      : []),
+    ...(openaiCompatible
+      ? [
+          ...OPENAI_COMPATIBLE_PRESETS.filter((p) => p.id !== "openai").map(
+            (preset) => (
+              <ProviderTile
+                key={preset.id}
+                logo={preset.logo}
+                name={preset.name}
+                description={preset.description}
+                onClick={() =>
+                  onSelect({
+                    kind: "openai-compatible",
+                    provider: openaiCompatible,
+                    preset,
+                  })
+                }
+              />
+            ),
+          ),
+          <ProviderTile
+            key="custom"
+            logo={openaiCompatible.logo}
+            name="Custom OpenAI-compatible"
+            description="Bring your own model server (advanced)"
+            onClick={() =>
+              onSelect({
+                kind: "openai-compatible",
+                provider: openaiCompatible,
+                preset: null,
+              })
+            }
+          />,
+        ]
+      : []),
+  ];
+
+  const hiddenCount = allCloudTiles.length - CLOUD_PREVIEW_COUNT;
+  const shouldPreview = !!onShowAll && hiddenCount > 0;
+  const visibleCloudTiles = shouldPreview
+    ? allCloudTiles.slice(0, CLOUD_PREVIEW_COUNT)
+    : allCloudTiles;
+
   return (
     <div className="flex flex-col gap-6">
       {deco && (
         <SettingsSection>
-          <div className="relative rounded-xl border border-primary/30 bg-gradient-to-br from-primary/10 via-transparent to-primary/5 dark:from-primary/15 dark:to-primary/5 p-4">
-            <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-primary/5 to-transparent pointer-events-none" />
-            <p className="text-xs font-medium text-primary mb-3 relative">
-              Recommended — start in seconds, pay as you go
+          <div className="relative rounded-xl border border-violet-400/30 bg-gradient-to-br from-violet-50/50 via-transparent to-lime-50/30 dark:from-violet-950/20 dark:to-lime-950/10 p-1.5">
+            <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-violet-400/5 to-lime-400/5 pointer-events-none" />
+            <p className="text-xs font-medium text-violet-700 dark:text-violet-400 mb-1.5 px-2 pt-2 relative">
+              Recommended — 100+ models, pay as you go
             </p>
             <SettingsCard className="relative">
               <ProviderTile
@@ -105,9 +183,9 @@ export function ProviderGrid({ providers, onSelect }: ProviderGridProps) {
 
       {local.length > 0 && (
         <SettingsSection>
-          <div className="relative rounded-xl border border-lime-400/30 bg-gradient-to-br from-lime-50/50 via-transparent to-yellow-50/30 dark:from-lime-950/20 dark:to-yellow-950/10 p-4">
+          <div className="relative rounded-xl border border-lime-400/30 bg-gradient-to-br from-lime-50/50 via-transparent to-yellow-50/30 dark:from-lime-950/20 dark:to-yellow-950/10 p-1.5">
             <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-lime-400/5 to-yellow-400/5 pointer-events-none" />
-            <p className="text-xs font-medium text-lime-700 dark:text-lime-400 mb-3 relative">
+            <p className="text-xs font-medium text-lime-700 dark:text-lime-400 mb-1.5 px-2 pt-2 relative">
               Bring your Claude or ChatGPT subscription
             </p>
             <SettingsCard className="relative">
@@ -127,68 +205,16 @@ export function ProviderGrid({ providers, onSelect }: ProviderGridProps) {
 
       <SettingsSection>
         <SettingsCard>
-          {[
-            ...cloud.map((provider) => (
-              <ProviderTile
-                key={provider.id}
-                logo={provider.logo}
-                name={provider.name}
-                description={provider.description}
-                onClick={() => onSelect({ kind: "provider", provider })}
-              />
-            )),
-            ...(openaiCompatible && openaiPreset
-              ? [
-                  <ProviderTile
-                    key={openaiPreset.id}
-                    logo={openaiPreset.logo}
-                    name={openaiPreset.name}
-                    description={openaiPreset.description}
-                    onClick={() =>
-                      onSelect({
-                        kind: "openai-compatible",
-                        provider: openaiCompatible,
-                        preset: openaiPreset,
-                      })
-                    }
-                  />,
-                ]
-              : []),
-            ...(openaiCompatible
-              ? [
-                  ...OPENAI_COMPATIBLE_PRESETS.filter(
-                    (p) => p.id !== "openai",
-                  ).map((preset) => (
-                    <ProviderTile
-                      key={preset.id}
-                      logo={preset.logo}
-                      name={preset.name}
-                      description={preset.description}
-                      onClick={() =>
-                        onSelect({
-                          kind: "openai-compatible",
-                          provider: openaiCompatible,
-                          preset,
-                        })
-                      }
-                    />
-                  )),
-                  <ProviderTile
-                    key="custom"
-                    logo={openaiCompatible.logo}
-                    name="Custom OpenAI-compatible"
-                    description="Bring your own model server (advanced)"
-                    onClick={() =>
-                      onSelect({
-                        kind: "openai-compatible",
-                        provider: openaiCompatible,
-                        preset: null,
-                      })
-                    }
-                  />,
-                ]
-              : []),
-          ]}
+          {visibleCloudTiles}
+          {shouldPreview && (
+            <SettingsCardItem
+              onClick={onShowAll}
+              title={`${hiddenCount} more provider${hiddenCount === 1 ? "" : "s"}`}
+              action={
+                <ChevronRight size={16} className="text-muted-foreground" />
+              }
+            />
+          )}
         </SettingsCard>
       </SettingsSection>
     </div>
