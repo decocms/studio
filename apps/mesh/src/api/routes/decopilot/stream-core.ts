@@ -919,18 +919,52 @@ async function streamCoreInner(
           new Date(),
         );
         if (!isCliAgent) {
+          const fullSystem = [
+            ...systemPromptMessages,
+            ...processedSystemMessages,
+          ];
           console.log(
             "[decopilot:cache] === request start org=%s vmcp=%s thread=%s user=%s ===\n[decopilot:cache] system_prompt_order=%j",
             input.organizationId,
             input.agent.id,
             mem.thread.id,
             input.userId,
-            systemPromptMessages.map((m, i) => ({
+            fullSystem.map((m, i) => ({
               i,
-              len: m.content.length,
-              cached: Boolean(m.providerOptions?.anthropic?.cacheControl),
+              len:
+                typeof m.content === "string"
+                  ? m.content.length
+                  : JSON.stringify(m.content).length,
+              cached: Boolean(
+                (
+                  m as {
+                    providerOptions?: {
+                      anthropic?: { cacheControl?: unknown };
+                    };
+                  }
+                ).providerOptions?.anthropic?.cacheControl,
+              ),
             })),
           );
+          for (let i = 0; i < fullSystem.length; i++) {
+            const m = fullSystem[i]!;
+            const content =
+              typeof m.content === "string"
+                ? m.content
+                : JSON.stringify(m.content, null, 2);
+            const cached = Boolean(
+              (
+                m as {
+                  providerOptions?: {
+                    anthropic?: { cacheControl?: unknown };
+                  };
+                }
+              ).providerOptions?.anthropic?.cacheControl,
+            );
+            console.log(
+              `[decopilot:cache] >>> system_prompt[${i}] start (len=${content.length} cached=${cached}) >>>\n${content}\n[decopilot:cache] <<< system_prompt[${i}] end <<<`,
+            );
+          }
         }
 
         let result;
