@@ -1,4 +1,4 @@
-import { useEffect, useReducer } from "react";
+import { useEffect, useReducer, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ArrowLeft, AlertCircle } from "@untitledui/icons";
@@ -34,6 +34,8 @@ import {
 interface ConnectProviderDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** When set, skip the provider grid and auto-trigger this selection immediately. */
+  initialProvider?: ProviderSelection;
 }
 
 function activeProviderId(state: DialogState): string | null {
@@ -53,6 +55,7 @@ function activeProviderId(state: DialogState): string | null {
 export function ConnectProviderDialog({
   open,
   onOpenChange,
+  initialProvider,
 }: ConnectProviderDialogProps) {
   const aiProviders = useAiProviders();
   const providers = aiProviders?.providers ?? [];
@@ -64,6 +67,7 @@ export function ConnectProviderDialog({
   });
   const queryClient = useQueryClient();
   const [state, dispatch] = useReducer(reducer, initialState);
+  const triggeredRef = useRef(false);
 
   // Sync the controlled `open` prop with the reducer.
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
@@ -76,6 +80,7 @@ export function ConnectProviderDialog({
   }, [open, state.kind]);
 
   const close = () => {
+    triggeredRef.current = false;
     dispatch({ type: "close" });
     onOpenChange(false);
   };
@@ -271,6 +276,23 @@ export function ConnectProviderDialog({
     }
   };
 
+  // When initialProvider is set, auto-trigger selection once the dialog opens to grid state.
+  const handleSelectRef = useRef(handleSelect);
+  handleSelectRef.current = handleSelect;
+  const initialProviderRef = useRef(initialProvider);
+  initialProviderRef.current = initialProvider;
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    if (
+      !initialProviderRef.current ||
+      state.kind !== "grid" ||
+      triggeredRef.current
+    )
+      return;
+    triggeredRef.current = true;
+    handleSelectRef.current(initialProviderRef.current);
+  }, [state.kind]);
+
   // OAuth popup → postMessage listener. Active only while waiting for callback.
   // Narrow the dep array to discriminated primitives — using `state` directly
   // would re-subscribe on unrelated transitions, and `providers` is a fresh
@@ -332,10 +354,17 @@ export function ConnectProviderDialog({
   const currentTitle =
     currentPreset?.name ?? currentProvider?.name ?? "Connect an AI provider";
   const showBack = state.kind !== "grid" && state.kind !== "closed";
+  const handleBack = () => {
+    if (initialProvider) {
+      close();
+    } else {
+      dispatch({ type: "back" });
+    }
+  };
 
   return (
     <Dialog open={state.kind !== "closed"} onOpenChange={(o) => !o && close()}>
-      <DialogContent className="sm:max-w-3xl">
+      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center gap-2">
             {showBack && (
@@ -343,21 +372,21 @@ export function ConnectProviderDialog({
                 variant="ghost"
                 size="icon"
                 className="h-7 w-7"
-                onClick={() => dispatch({ type: "back" })}
+                onClick={handleBack}
               >
                 <ArrowLeft size={16} />
               </Button>
             )}
             <DialogTitle>{currentTitle}</DialogTitle>
           </div>
-          {state.kind === "grid" && (
+          {state.kind === "grid" && !initialProvider && (
             <DialogDescription>
               Pick a provider — we'll handle the rest.
             </DialogDescription>
           )}
         </DialogHeader>
 
-        {state.kind === "grid" && (
+        {state.kind === "grid" && !initialProvider && (
           <ProviderGrid providers={providers} onSelect={handleSelect} />
         )}
 

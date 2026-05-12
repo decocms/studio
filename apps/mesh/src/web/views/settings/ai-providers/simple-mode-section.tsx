@@ -290,43 +290,18 @@ export function SimpleModeSection() {
 
   return (
     <SettingsSection title="Default models" headerClassName="pl-0">
-      <p className="text-sm text-muted-foreground -mt-2 mb-2">
-        These models power chat, automations, and tools across your
-        organization.
-      </p>
+      <div className="flex items-center justify-between -mt-2 mb-2">
+        <p className="text-sm text-muted-foreground">
+          These models power chat, automations, and tools across your
+          organization.
+        </p>
+        <AutosaveStatus
+          isPending={isPending}
+          showSaved={isSuccess && !isDirty}
+        />
+      </div>
       <SettingsCard>
-        <div className="flex items-center justify-end px-5 py-2">
-          <AutosaveStatus
-            isPending={isPending}
-            showSaved={isSuccess && !isDirty}
-          />
-        </div>
-        {TIER_ROWS.slice(0, 3).map((row) => (
-          <Controller
-            key={row.key}
-            control={form.control}
-            name={`tiers.${row.key}` as const}
-            render={({ field }) => (
-              <SettingsCardItem
-                title={row.label}
-                description={row.description}
-                action={
-                  <SimpleModeModelRow
-                    slot={field.value}
-                    defaultKeyId={allKeys[0]?.id ?? null}
-                    filterModels={row.filter}
-                    onSlotChange={(slot) => {
-                      field.onChange(slot);
-                      scheduleAutosave();
-                    }}
-                  />
-                }
-              />
-            )}
-          />
-        ))}
-        <div className="h-px bg-border mx-5" />
-        {TIER_ROWS.slice(3).map((row) => (
+        {TIER_ROWS.map((row) => (
           <Controller
             key={row.key}
             control={form.control}

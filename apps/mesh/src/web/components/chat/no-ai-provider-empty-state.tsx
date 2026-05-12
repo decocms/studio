@@ -1,13 +1,17 @@
 import { useState } from "react";
 import { Zap } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { Button } from "@deco/ui/components/button.tsx";
 import { ConnectProviderDialog } from "@/web/views/settings/ai-providers/connect-provider-dialog";
+import {
+  ProviderGrid,
+  type ProviderSelection,
+} from "@/web/views/settings/ai-providers/provider-grid";
 import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
 } from "@decocms/mesh-sdk";
+import { useAiProviders } from "@/web/hooks/collections/use-ai-providers";
 import { useAuthConfig } from "@/web/providers/auth-config-provider";
 import { KEYS } from "@/web/lib/query-keys";
 import { unwrapToolResult } from "@/web/lib/unwrap-tool-result";
@@ -76,7 +80,12 @@ export function NoAiProviderEmptyState({
   const { org } = useProjectContext();
   const { localMode } = useAuthConfig();
   const brand = useDefaultBrand();
-  const [connectOpen, setConnectOpen] = useState(false);
+  const [pendingProvider, setPendingProvider] =
+    useState<ProviderSelection | null>(null);
+  const [gridOpen, setGridOpen] = useState(false);
+
+  const aiProviders = useAiProviders();
+  const providers = aiProviders?.providers ?? [];
 
   const orgName = org.name;
   const primaryColor = brand ? extractPrimaryColor(brand) : null;
@@ -87,7 +96,11 @@ export function NoAiProviderEmptyState({
     (orgName
       ? `${orgName} is ready for agents`
       : "Your agents are almost ready");
-  const subtitle = description ?? "Choose how to power your AI team.";
+  const subtitle =
+    description ??
+    (localMode
+      ? "Connect a provider to get started — local models and existing subscriptions work too."
+      : "Choose how to power your AI team.");
 
   // Badge styles: use brand color if available, otherwise lime gradient
   const hasBrandStyle = !!(brandIcon || primaryColor);
@@ -102,7 +115,7 @@ export function NoAiProviderEmptyState({
     : "flex items-center justify-center size-14 rounded-2xl bg-gradient-to-br from-lime-100 to-yellow-50 dark:from-lime-900/30 dark:to-yellow-900/20 border border-lime-300/40 dark:border-lime-700/30";
 
   return (
-    <div className="flex flex-col items-center gap-8 w-full max-w-2xl px-4">
+    <div className="flex flex-col items-center gap-8 w-full max-w-3xl px-4">
       <div className="flex flex-col items-center gap-4 text-center">
         <div className={badgeClass} style={badgeStyle}>
           {brandIcon ? (
@@ -129,18 +142,24 @@ export function NoAiProviderEmptyState({
         </div>
       </div>
 
-      <div className="flex flex-col items-center gap-3 w-full">
-        {localMode && (
-          <p className="text-xs text-muted-foreground text-center">
-            Local models + use your existing AI provider
-          </p>
-        )}
-        <Button onClick={() => setConnectOpen(true)}>
-          Connect AI provider
-        </Button>
+      <div className="w-full">
+        <ProviderGrid
+          providers={providers}
+          onSelect={(selection) => setPendingProvider(selection)}
+          onShowAll={() => setGridOpen(true)}
+        />
       </div>
 
-      <ConnectProviderDialog open={connectOpen} onOpenChange={setConnectOpen} />
+      <ConnectProviderDialog
+        open={pendingProvider !== null || gridOpen}
+        onOpenChange={(o) => {
+          if (!o) {
+            setPendingProvider(null);
+            setGridOpen(false);
+          }
+        }}
+        initialProvider={pendingProvider ?? undefined}
+      />
     </div>
   );
 }

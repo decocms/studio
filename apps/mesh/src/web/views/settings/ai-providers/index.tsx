@@ -4,13 +4,16 @@ import { Page } from "@/web/components/page";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { SettingsPage } from "@/web/components/settings/settings-section";
 import { ErrorBoundary } from "@/web/components/error-boundary";
-import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
+import {
+  useAiProviderKeys,
+  useAiProviders,
+} from "@/web/hooks/collections/use-ai-providers";
 import { SimpleModeSection } from "./simple-mode-section";
 import { DecoCreditsHero } from "./deco-credits-hero";
 import { DecoNudgeCard } from "./deco-nudge-card";
-import { AiProvidersEmptyState } from "./empty-state";
 import { ConnectedProvidersSection } from "./connected-providers-section";
 import { ConnectProviderDialog } from "./connect-provider-dialog";
+import { ProviderGrid, type ProviderSelection } from "./provider-grid";
 
 function ErrorFallback({ error }: { error: Error }) {
   return (
@@ -28,14 +31,29 @@ function OrgAiProvidersContent() {
   const hasDeco = allKeys.some((k) => k.providerId === "deco");
   const hasAnyProvider = allKeys.length > 0;
   const [connectOpen, setConnectOpen] = useState(false);
+  const [pendingProvider, setPendingProvider] =
+    useState<ProviderSelection | null>(null);
+
+  const aiProviders = useAiProviders();
+  const providers = aiProviders?.providers ?? [];
 
   if (!hasAnyProvider) {
     return (
       <>
-        <AiProvidersEmptyState onConnectClick={() => setConnectOpen(true)} />
+        <ProviderGrid
+          providers={providers}
+          onSelect={setPendingProvider}
+          onShowAll={() => setConnectOpen(true)}
+        />
         <ConnectProviderDialog
-          open={connectOpen}
-          onOpenChange={setConnectOpen}
+          open={pendingProvider !== null || connectOpen}
+          onOpenChange={(o) => {
+            if (!o) {
+              setPendingProvider(null);
+              setConnectOpen(false);
+            }
+          }}
+          initialProvider={pendingProvider ?? undefined}
         />
       </>
     );
