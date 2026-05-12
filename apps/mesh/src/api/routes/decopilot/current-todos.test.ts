@@ -100,4 +100,24 @@ describe("getCurrentTodos", () => {
     // empty content fails min(1)
     expect(getCurrentTodos(messages)).toEqual([]);
   });
+
+  test("falls through to an older valid todo_write when the latest has malformed input", () => {
+    const valid: Todo[] = [
+      { content: "v", status: "pending", activeForm: "doing v" },
+    ];
+    const messages = [
+      makeAssistantMessage([todoWritePart(valid)]),
+      makeAssistantMessage([
+        {
+          type: "tool-todo_write",
+          state: "output-available",
+          input: {
+            todos: [{ content: "", status: "pending", activeForm: "" }],
+          },
+          toolCallId: "tc2",
+        },
+      ]),
+    ];
+    expect(getCurrentTodos(messages)).toEqual(valid);
+  });
 });
