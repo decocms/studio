@@ -175,13 +175,15 @@ export async function processConversation(
   // so the caller can rebuild <current-todos> without redoing the scan.
   const currentTodos = readCurrentTodos(nonSystemModelMessages);
 
-  // Strip todo_write tool-call/result parts. The current todo list is
-  // derived from the original (pre-strip) UIMessage stream upstream and
-  // re-injected as a <current-todos> system tail (see stream-core +
-  // system-prompt). Older todo_write inputs are pure redundancy — the
-  // state is encoded in the injected block, and the message-stream
-  // representation never benefited from Anthropic prompt caching (no
-  // cacheControl on messages).
+  // Strip todo_write tool-call/result parts. The live todo list has
+  // already been captured a few lines above via `readCurrentTodos` and
+  // is returned to the caller as `currentTodos`; stream-core embeds it
+  // into the frozen <current-todos> system tail (see `system-prompt`)
+  // and `prepareStep` re-derives the live snapshot per agent-loop step
+  // (see `stream-core` — same strip + inject pipeline, intra-loop).
+  // Older todo_write inputs are pure redundancy — the state is encoded
+  // in the injected block, and the message-stream representation never
+  // benefited from Anthropic prompt caching (no cacheControl on messages).
   const todoStrippedMessages = stripTodoWriteParts(nonSystemModelMessages);
 
   // Strip reasoning from all previous assistant messages.

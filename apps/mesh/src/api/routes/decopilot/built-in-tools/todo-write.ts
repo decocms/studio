@@ -4,7 +4,7 @@
  * Claude-Code-style TodoWrite: the model rewrites the full todo list on
  * every call. There is no incremental create/update/delete. The list's
  * source of truth is the most recent todo_write tool-call message in the
- * thread; see `current-todos.ts` for the reader.
+ * thread; see `todo-write-context.ts` for the reader (`readCurrentTodos`).
  */
 
 import { tool, zodSchema } from "ai";
