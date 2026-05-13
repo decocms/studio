@@ -13,7 +13,7 @@ import { Edit02, MessageQuestionCircle } from "@untitledui/icons";
 import { useEffect, useRef, useState } from "react";
 import { type Control, type FieldValues, useForm } from "react-hook-form";
 import type { UserAskToolPart } from "../types";
-import { Pagination } from "./card";
+import { Pagination } from "./pagination";
 import { CollapsibleHighlight } from "./collapsible-highlight";
 import { buildCombinedSchema } from "./user-ask-schemas";
 

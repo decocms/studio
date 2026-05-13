@@ -12,14 +12,22 @@
  * starts at `defaultExpanded`. Stable identity = stable state across
  * re-renders.
  *
- * The body is rendered into the DOM unconditionally and hidden via the
- * `hidden` attribute when collapsed. This preserves form state, scroll
- * position, and selected tab across collapse/expand cycles.
+ * The body is rendered into the DOM unconditionally — the collapse uses
+ * a grid-template-rows trick that animates height without measuring,
+ * which also preserves form state, scroll position, and selected tab
+ * across collapse/expand cycles.
+ *
+ * Visual styling (paddings, animation curve, rotating chevron, etc.)
+ * is borrowed from rafavalls' HighlightCard so we stay aligned with the
+ * design system; the single-component architecture is ours.
  */
 
 import { useState, type ReactNode } from "react";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { ChevronDown, ChevronUp } from "@untitledui/icons";
+import { ChevronDown } from "@untitledui/icons";
+
+// ease-in-out-cubic — on-screen morph per animation guide
+const EASE = "cubic-bezier(0.645, 0.045, 0.355, 1)";
 
 export type HighlightVariant = "default" | "error" | "warning";
 
@@ -107,34 +115,60 @@ export function CollapsibleHighlight({
             {count}
           </span>
         ) : null}
-        <span aria-hidden="true" className="text-muted-foreground shrink-0">
-          {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        <span
+          aria-hidden="true"
+          className="text-muted-foreground shrink-0 flex items-center justify-center"
+        >
+          <ChevronDown
+            size={16}
+            style={{
+              transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+              transition: `transform 180ms ${EASE}`,
+            }}
+          />
         </span>
       </button>
 
-      <div hidden={!expanded} data-testid="collapsible-highlight-body">
-        {title ? (
-          <div className="flex items-center gap-2 px-4 pt-3 pb-1 border-t border-dashed border-border/60">
-            <p className="flex-1 text-base font-medium text-foreground min-w-0">
-              {title}
-            </p>
-          </div>
-        ) : (
-          <div className="border-t border-dashed border-border/60" />
-        )}
+      {/* Collapsible body — grid trick animates height without measuring */}
+      <div
+        data-testid="collapsible-highlight-body"
+        style={{
+          display: "grid",
+          gridTemplateRows: expanded ? "1fr" : "0fr",
+          transition: `grid-template-rows 180ms ${EASE}`,
+        }}
+      >
+        <div style={{ overflow: "hidden", minHeight: 0 }}>
+          <div
+            style={{
+              opacity: expanded ? 1 : 0,
+              transition: `opacity 120ms ${EASE}`,
+            }}
+          >
+            {title ? (
+              <div className="flex items-start gap-2 px-4 pt-4 pb-5 border-t border-dashed border-border/60">
+                <p className="flex-1 text-base font-medium text-foreground min-w-0">
+                  {title}
+                </p>
+              </div>
+            ) : (
+              <div className="border-t border-dashed border-border/60" />
+            )}
 
-        {children ? (
-          <div className="overflow-clip pb-4 pt-2">{children}</div>
-        ) : null}
+            {children ? (
+              <div className="overflow-clip pb-4">{children}</div>
+            ) : null}
 
-        {footerLeft || footerRight ? (
-          <div className="border-t border-border px-3 py-3 pb-6">
-            <div className="flex items-center justify-between">
-              <div>{footerLeft}</div>
-              <div className="flex items-center gap-2">{footerRight}</div>
-            </div>
+            {footerLeft || footerRight ? (
+              <div className="border-t border-border px-3 py-3 pb-6">
+                <div className="flex items-center justify-between">
+                  <div>{footerLeft}</div>
+                  <div className="flex items-center gap-2">{footerRight}</div>
+                </div>
+              </div>
+            ) : null}
           </div>
-        ) : null}
+        </div>
       </div>
     </div>
   );

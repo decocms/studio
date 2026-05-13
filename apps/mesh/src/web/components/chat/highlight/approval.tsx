@@ -16,7 +16,7 @@ import {
 } from "@/web/hooks/use-preferences.ts";
 import { toTitleCase } from "../message/parts/tool-call-part/utils.tsx";
 import { stripMcpServerPrefix } from "@/web/lib/tool-namespace";
-import { Pagination } from "./card";
+import { Pagination } from "./pagination";
 import { CollapsibleHighlight } from "./collapsible-highlight";
 
 // ============================================================================
