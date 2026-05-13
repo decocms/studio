@@ -7,6 +7,7 @@ import { ApprovalHighlight, extractPendingApprovals } from "./approval";
 import { ProposePlanHighlight, extractPendingPlans } from "./propose-plan";
 import { UserAskQuestionHighlight } from "./user-ask-question";
 import { TodosHighlight } from "./todos";
+import { CollapsibleHighlight } from "./collapsible-highlight";
 import {
   CreditsExhaustedBanner,
   isCreditError,
@@ -43,80 +44,65 @@ function StatusHighlight(props: StatusHighlightProps) {
   const { variant, onDismiss } = props;
   const isError = variant === "error";
 
-  const title = isError ? "Error occurred" : "Response incomplete";
-  const description = isError
+  const label = isError ? "Error occurred" : "Response incomplete";
+  const message = isError
     ? props.error.message
     : (WARNING_DESCRIPTIONS[props.finishReason] ??
       `Response stopped unexpectedly: ${props.finishReason}`);
-
-  const variantStyles = isError
-    ? "border-destructive/30 bg-destructive/5"
-    : "border-amber-500/30 bg-amber-500/5";
-  const iconStyles = isError
-    ? "text-destructive"
-    : "text-amber-600 dark:text-amber-500";
   const Icon = isError ? AlertCircle : AlertTriangle;
 
   return (
-    <div className="px-0.5">
-      <div
-        className={cn(
-          "flex items-start gap-2 px-3 py-2.5 rounded-lg border border-dashed text-sm w-full mb-2 shadow",
-          variantStyles,
-        )}
-      >
-        <div className={cn("mt-0.5 shrink-0", iconStyles)}>
-          <Icon size={16} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className={cn("text-xs mb-1 font-medium", iconStyles)}>
-            {title}
-          </div>
-          <div className="text-xs line-clamp-2 text-muted-foreground mb-2">
-            {description}
-          </div>
-          <div className="flex gap-2">
-            {isError ? (
-              <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={props.onFixInChat}
-                  className="h-7 text-xs"
-                >
-                  Fix in chat
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled
-                  className="h-7 text-xs"
-                >
-                  Report
-                </Button>
-              </>
-            ) : (
+    <CollapsibleHighlight
+      icon={<Icon size={14} />}
+      label={label}
+      title={message}
+      defaultExpanded={true}
+      variant={variant}
+      footerRight={
+        <>
+          {isError ? (
+            <>
               <Button
                 size="sm"
                 variant="outline"
-                onClick={props.onContinue}
+                onClick={props.onFixInChat}
                 className="h-7 text-xs"
               >
-                Continue
+                Fix in chat
               </Button>
-            )}
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
-          title="Dismiss"
-        >
-          <X size={14} />
-        </button>
-      </div>
-    </div>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled
+                className="h-7 text-xs"
+              >
+                Report
+              </Button>
+            </>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={props.onContinue}
+              className="h-7 text-xs"
+            >
+              Continue
+            </Button>
+          )}
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="text-muted-foreground hover:text-foreground transition-colors shrink-0 ml-1"
+            title="Dismiss"
+            aria-label="Dismiss"
+          >
+            <X size={14} />
+          </button>
+        </>
+      }
+    >
+      {null}
+    </CollapsibleHighlight>
   );
 }
 
