@@ -14,9 +14,18 @@
  *               • useVirtualMCP (suspends here)
  *               • Toolbar.Toggles → portal into slot
  *               • Toolbar.Tabs → portal into slot
- *               • Chat.Provider → ChatMainPanelGroup
+ *               • Chat.Provider
+ *                 └── VmEventsBridge
+ *                     └── Chat.ActiveTaskProvider
+ *                         └── ChatMainPanelGroup
+ *                             (the per-thread todo list is rendered
+ *                              by TodosHighlight inside ChatHighlight,
+ *                              not as a side column)
  *
- * Mobile layout is unchanged (sheet-based tasks + chat).
+ * Mobile layout:
+ *   Chat.Provider
+ *   └── Chat.ActiveTaskProvider
+ *       └── MainPanelContent OR ActiveTaskBoundary (sheet-based)
  */
 
 import {
@@ -92,7 +101,6 @@ export function useInsetContext(): InsetContextValue | null {
 // ---------------------------------------------------------------------------
 
 function ActiveTaskBoundary({ children }: { children?: React.ReactNode }) {
-  const { taskId } = useChatTask();
   return (
     <ErrorBoundary
       fallback={
@@ -102,9 +110,7 @@ function ActiveTaskBoundary({ children }: { children?: React.ReactNode }) {
       }
     >
       <Suspense fallback={<Chat.Skeleton />}>
-        <Chat.ActiveTaskProvider taskId={taskId}>
-          {children ?? <ChatCenterPanel />}
-        </Chat.ActiveTaskProvider>
+        {children ?? <ChatCenterPanel />}
       </Suspense>
     </ErrorBoundary>
   );
@@ -439,35 +445,39 @@ function AgentInsetProvider() {
                 onToggleMain={layout.toggleMain}
                 onNewTask={layout.createNewTask}
               />
-              <div className="flex-1 min-h-0 overflow-hidden">
-                {layout.mainOpen ? (
-                  <ErrorBoundary
-                    fallback={
-                      <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-                        Something went wrong. Try refreshing.
-                      </div>
-                    }
-                  >
-                    <Suspense
-                      fallback={
-                        <div className="h-full flex items-center justify-center">
-                          <Loading01
-                            size={20}
-                            className="animate-spin text-muted-foreground"
+              <Chat.ActiveTaskProvider taskId={layout.taskId}>
+                <Suspense fallback={<Chat.Skeleton />}>
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    {layout.mainOpen ? (
+                      <ErrorBoundary
+                        fallback={
+                          <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+                            Something went wrong. Try refreshing.
+                          </div>
+                        }
+                      >
+                        <Suspense
+                          fallback={
+                            <div className="h-full flex items-center justify-center">
+                              <Loading01
+                                size={20}
+                                className="animate-spin text-muted-foreground"
+                              />
+                            </div>
+                          }
+                        >
+                          <MainPanelContent
+                            taskId={layout.taskId}
+                            virtualMcpId={chatVirtualMcpId}
                           />
-                        </div>
-                      }
-                    >
-                      <MainPanelContent
-                        taskId={layout.taskId}
-                        virtualMcpId={chatVirtualMcpId}
-                      />
-                    </Suspense>
-                  </ErrorBoundary>
-                ) : (
-                  <ActiveTaskBoundary />
-                )}
-              </div>
+                        </Suspense>
+                      </ErrorBoundary>
+                    ) : (
+                      <ActiveTaskBoundary />
+                    )}
+                  </div>
+                </Suspense>
+              </Chat.ActiveTaskProvider>
               {mobileSidebarSheet}
             </VmEventsBridge>
           </Chat.Provider>
@@ -508,13 +518,17 @@ function AgentInsetProvider() {
               onNewTaskRef={onNewTask}
               createNewTask={layout.createNewTask}
             />
-            <ChatMainPanelGroup
-              virtualMcpId={virtualMcpId}
-              taskId={layout.taskId}
-              chatOpen={layout.chatOpen}
-              mainOpen={layout.mainOpen}
-              chatContent={<ActiveTaskBoundary />}
-            />
+            <Chat.ActiveTaskProvider taskId={layout.taskId}>
+              <Suspense fallback={<Chat.Skeleton />}>
+                <ChatMainPanelGroup
+                  virtualMcpId={virtualMcpId}
+                  taskId={layout.taskId}
+                  chatOpen={layout.chatOpen}
+                  mainOpen={layout.mainOpen}
+                  chatContent={<ActiveTaskBoundary />}
+                />
+              </Suspense>
+            </Chat.ActiveTaskProvider>
           </VmEventsBridge>
         </Chat.Provider>
       </InsetContext>

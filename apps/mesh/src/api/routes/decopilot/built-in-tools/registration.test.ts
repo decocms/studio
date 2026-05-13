@@ -92,4 +92,31 @@ describe("getBuiltInTools", () => {
 
     expect(Object.keys(tools)).not.toContain("open_in_agent");
   });
+
+  test("returns ToolSet with todo_write tool", async () => {
+    const tools = await getTools();
+    expect((tools as Record<string, unknown>).todo_write).toBeDefined();
+  });
+
+  test("todo_write tool has correct description", async () => {
+    const tools = await getTools();
+    const t = (tools as Record<string, { description: string }>).todo_write!;
+    expect(t.description).toContain("Plan and track multi-step work");
+  });
+
+  test("todo_write tool has execute function (server-side)", async () => {
+    const tools = await getTools();
+    const t = (tools as Record<string, { execute?: unknown }>).todo_write!;
+    expect(typeof t.execute).toBe("function");
+  });
+
+  test("todo_write is registered unconditionally (no provider needed)", async () => {
+    // Re-run with provider: null (Claude Code branch); todo_write should still appear
+    const tools = await getBuiltInTools(
+      mockWriter,
+      { ...mockParams, provider: null as never },
+      mockCtx,
+    );
+    expect((tools as Record<string, unknown>).todo_write).toBeDefined();
+  });
 });

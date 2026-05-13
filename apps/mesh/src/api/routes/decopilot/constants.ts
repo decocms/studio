@@ -75,6 +75,31 @@ agents, automations, the store) and using the agents they have configured.
 }
 
 /**
+ * todo_write usage guidance — included in the system prompt for ALL
+ * agents (decopilot + custom), because the tool itself is universally
+ * registered.
+ */
+export function buildTodoWritePrompt(): string {
+  return `<todo-write>
+You have a \`todo_write\` tool for planning and tracking multi-step work.
+
+- Use it whenever a task has 3+ distinct steps.
+- Mark exactly one todo \`in_progress\` at any time.
+- Update the list as you work: flip a todo to \`in_progress\` before
+  starting it, \`completed\` the moment it finishes. Do not batch
+  completions.
+- Rewrite the entire list every call — there is no incremental update.
+- For trivial (<3 step) work, do not call the tool at all.
+- \`content\` is imperative ("Implement X"); \`activeForm\` is
+  present-continuous ("Implementing X") and shown in the user's UI
+  while the todo is in progress.
+- The current list is always visible to you in the \`<current-todos>\`
+  system block. Do not call \`todo_write\` to read the list back — call
+  it only to add, update, or complete a todo.
+</todo-write>`;
+}
+
+/**
  * Repo environment prompt — injected when the active virtual MCP has a
  * GitHub repository linked (and therefore exposes the VM/filesystem/shell
  * tool suite).

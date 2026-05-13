@@ -20,6 +20,7 @@ import { SpanStatusCode } from "@opentelemetry/api";
 import {
   type ToolSet,
   createUIMessageStream,
+  pruneMessages,
   stepCountIs,
   streamText,
 } from "ai";
@@ -32,7 +33,8 @@ import {
   emptyCacheAccumulator,
   OPENROUTER_CACHE_PROVIDER_OPTIONS,
 } from "./cache-instrumentation";
-import { buildSystemMessages } from "./system-prompt";
+import { buildCurrentTodosPrompt, buildSystemMessages } from "./system-prompt";
+import { readCurrentTodos, stripTodoWriteParts } from "./todo-write-context";
 import {
   buildConnectionsBlock,
   type ConnectionsBlockTool,
@@ -41,6 +43,7 @@ import {
   buildBasePlatformPrompt,
   buildDecopilotAgentPrompt,
   buildRepoEnvironmentPrompt,
+  buildTodoWritePrompt,
   DEFAULT_MAX_TOKENS,
   DEFAULT_THREAD_TITLE,
   DEFAULT_WINDOW_SIZE,
@@ -747,6 +750,7 @@ async function streamCoreInner(
           promptsBlock,
           agentsBlock,
           connectionsBlock,
+          buildTodoWritePrompt(),
           agentPrompt,
         ].filter((s): s is string => Boolean(s?.trim()));
 
@@ -757,6 +761,7 @@ async function streamCoreInner(
         const {
           systemMessages: processedSystemMessages,
           messages: processedMessages,
+          currentTodos,
           originalMessages,
         } = await processConversation(materializedMessages, {
           windowSize,
@@ -944,6 +949,7 @@ async function streamCoreInner(
         const systemPromptMessages = buildSystemMessages(
           systemPrompts,
           new Date(),
+          currentTodos,
         );
 
         let result;
@@ -979,7 +985,7 @@ async function streamCoreInner(
                       // providers (e.g. OpenRouter), so we append them as user
                       // content which is universally supported.
                       // biome-ignore lint: complex AI SDK generic types
-                      let injectedMessages: any;
+                      let withImages: any = stepMessages;
                       if (pendingImages.length > 0) {
                         const imageParts = pendingImages.splice(
                           0,
@@ -1015,11 +1021,42 @@ async function streamCoreInner(
                             });
                           }
                         }
-                        injectedMessages = [
+                        withImages = [
                           ...stepMessages,
                           { role: "user", content },
                         ];
                       }
+
+                      // Intra-loop todo_write strip + inject. We read the current
+                      // todos from the PRE-strip stream so the latest write wins,
+                      // then strip every todo_write call/result, prune any empties
+                      // the strip leaves behind, and append the freshest snapshot
+                      // as a synthetic user message. The model never sees prior
+                      // todo_write tool-calls; the only signal for the live state
+                      // is this trailing <current-todos> block.
+                      //
+                      // The frozen <current-todos> in the system prefix (computed
+                      // once at request entry) becomes stale as the loop progresses
+                      // — we deliberately do not refresh it there because the
+                      // system prefix has to stay byte-stable for Anthropic prompt
+                      // caching. The trailing user message is uncached and updated
+                      // every step.
+                      const liveTodos = readCurrentTodos(withImages);
+                      const strippedMessages = pruneMessages({
+                        messages: stripTodoWriteParts(withImages),
+                        emptyMessages: "remove",
+                      });
+                      const todosBlock = buildCurrentTodosPrompt(liveTodos);
+                      const messagesForStep =
+                        todosBlock !== null
+                          ? [
+                              ...strippedMessages,
+                              {
+                                role: "user" as const,
+                                content: todosBlock,
+                              },
+                            ]
+                          : strippedMessages;
 
                       const hasEnableTool = connectionsBlockTools.length > 0;
                       let activeToolNames = [
@@ -1052,9 +1089,7 @@ async function streamCoreInner(
 
                       return {
                         activeTools: activeToolNames as (keyof typeof tools)[],
-                        ...(injectedMessages && {
-                          messages: injectedMessages,
-                        }),
+                        messages: messagesForStep,
                         ...(forcedToolName && {
                           toolChoice: {
                             type: "tool" as const,

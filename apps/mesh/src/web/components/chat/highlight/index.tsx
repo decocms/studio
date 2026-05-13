@@ -1,11 +1,12 @@
 import { Button } from "@deco/ui/components/button.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
 import { AlertCircle, AlertTriangle, X } from "@untitledui/icons";
 import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import { useChatStream, useChatTask } from "../context";
 import { ApprovalHighlight, extractPendingApprovals } from "./approval";
 import { ProposePlanHighlight, extractPendingPlans } from "./propose-plan";
 import { UserAskQuestionHighlight } from "./user-ask-question";
+import { TodosHighlight } from "./todos";
+import { CollapsibleHighlight } from "./collapsible-highlight";
 import {
   CreditsExhaustedBanner,
   isCreditError,
@@ -42,80 +43,65 @@ function StatusHighlight(props: StatusHighlightProps) {
   const { variant, onDismiss } = props;
   const isError = variant === "error";
 
-  const title = isError ? "Error occurred" : "Response incomplete";
-  const description = isError
+  const label = isError ? "Error occurred" : "Response incomplete";
+  const message = isError
     ? props.error.message
     : (WARNING_DESCRIPTIONS[props.finishReason] ??
       `Response stopped unexpectedly: ${props.finishReason}`);
-
-  const variantStyles = isError
-    ? "border-destructive/30 bg-destructive/5"
-    : "border-amber-500/30 bg-amber-500/5";
-  const iconStyles = isError
-    ? "text-destructive"
-    : "text-amber-600 dark:text-amber-500";
   const Icon = isError ? AlertCircle : AlertTriangle;
 
   return (
-    <div className="px-0.5">
-      <div
-        className={cn(
-          "flex items-start gap-2 px-3 py-2.5 rounded-lg border border-dashed text-sm w-full mb-2 shadow",
-          variantStyles,
-        )}
-      >
-        <div className={cn("mt-0.5 shrink-0", iconStyles)}>
-          <Icon size={16} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className={cn("text-xs mb-1 font-medium", iconStyles)}>
-            {title}
-          </div>
-          <div className="text-xs line-clamp-2 text-muted-foreground mb-2">
-            {description}
-          </div>
-          <div className="flex gap-2">
-            {isError ? (
-              <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={props.onFixInChat}
-                  className="h-7 text-xs"
-                >
-                  Fix in chat
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled
-                  className="h-7 text-xs"
-                >
-                  Report
-                </Button>
-              </>
-            ) : (
+    <CollapsibleHighlight
+      icon={<Icon size={14} />}
+      label={label}
+      title={message}
+      defaultExpanded={true}
+      variant={variant}
+      footerRight={
+        <>
+          {isError ? (
+            <>
               <Button
                 size="sm"
                 variant="outline"
-                onClick={props.onContinue}
+                onClick={props.onFixInChat}
                 className="h-7 text-xs"
               >
-                Continue
+                Fix in chat
               </Button>
-            )}
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
-          title="Dismiss"
-        >
-          <X size={14} />
-        </button>
-      </div>
-    </div>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled
+                className="h-7 text-xs"
+              >
+                Report
+              </Button>
+            </>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={props.onContinue}
+              className="h-7 text-xs"
+            >
+              Continue
+            </Button>
+          )}
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="text-muted-foreground hover:text-foreground transition-colors shrink-0 ml-1"
+            title="Dismiss"
+            aria-label="Dismiss"
+          >
+            <X size={14} />
+          </button>
+        </>
+      }
+    >
+      {null}
+    </CollapsibleHighlight>
   );
 }
 
@@ -146,7 +132,12 @@ export function ChatHighlight() {
       ? lastMessage.parts.filter((part) => part.type === "tool-user_ask")
       : null;
 
-  const isWaitingForUserInput = userAskParts?.filter(
+  // Coerce to boolean — `.length` is a number, and concurrent JSX renders
+  // `{0 && <X/>}` as the literal text "0" (unlike the prior priority cascade,
+  // where `if (0) { return … }` was control flow). After every user_ask
+  // resolves to `output-available`, the unfiltered count is 0, which would
+  // otherwise stamp a stray "0" between the highlight stack and the input.
+  const isWaitingForUserInput = !!userAskParts?.filter(
     (p) => p.state !== "output-available",
   )?.length;
 
@@ -233,80 +224,85 @@ export function ChatHighlight() {
     });
   };
 
-  // Priority: user_ask > propose_plan > approval > error > warning
-  if (isWaitingForUserInput) {
-    return (
-      <div className="absolute bottom-full left-0 right-0">
-        <UserAskQuestionHighlight
-          userAskParts={userAskParts}
-          isStreaming={isStreaming}
-          onSubmit={handleUserAskSubmit}
-        />
-      </div>
-    );
+  // Each banner condition is evaluated independently; all that match
+  // render. Stack order is severity-descending — the last child sits
+  // closest to the chat input. Credit-exhausted errors are a modal,
+  // handled by an early return outside the stack.
+
+  if (!isStreaming && error && isCreditError(error)) {
+    return <CreditsExhaustedBanner onDismiss={clearError} />;
   }
 
-  if (pendingPlans.length > 0) {
-    return (
-      <div className="absolute bottom-full left-0 right-0">
+  const showError = !isStreaming && !!error;
+  const hasApprovals =
+    pendingApprovals.length > 0 || (isStreaming && isWaitingForApprovals);
+  // `user_ask` and `propose_plan` are client-side tools (no `execute`), so
+  // the model emitting one terminates the step loop with
+  // `finishReason: "tool-calls"`. Same for tools paused on
+  // `approval-requested`. Those are expected handoffs, not stuck loops —
+  // the matching cards (UserAskQuestion / ProposePlan / Approval) already
+  // tell the user what to do, so suppress the duplicate warning. Mirrors
+  // the backend's `resolveThreadStatus` (status.ts) which maps the same
+  // shape to `requires_action`.
+  const isToolCallsWaitingOnClient =
+    finishReason === "tool-calls" &&
+    (isWaitingForUserInput || hasApprovals || pendingPlans.length > 0);
+  const showWarning =
+    !isStreaming &&
+    !!finishReason &&
+    finishReason !== "stop" &&
+    !isToolCallsWaitingOnClient &&
+    !showError;
+  const userAskKey = userAskParts?.map((p) => p.toolCallId).join("|") ?? "";
+  const planKey = pendingPlans[0]?.toolCallId ?? "";
+  const approvalKey = pendingApprovals.map((a) => a.approvalId).join("|");
+
+  return (
+    <div className="absolute bottom-full left-0 right-0">
+      <TodosHighlight />
+      {showError && (
+        <StatusHighlight
+          variant="error"
+          error={error as Error}
+          onDismiss={clearError}
+          onFixInChat={handleFixInChat}
+        />
+      )}
+      {showWarning && (
+        <StatusHighlight
+          variant="warning"
+          finishReason={finishReason as string}
+          onDismiss={clearFinishReason}
+          onContinue={handleContinue}
+        />
+      )}
+      {hasApprovals && (
+        <ApprovalHighlight
+          key={approvalKey}
+          approvals={pendingApprovals}
+          isStreaming={isStreaming}
+          onRespond={handleApprovalRespond}
+        />
+      )}
+      {pendingPlans.length > 0 && (
         <ProposePlanHighlight
+          key={planKey}
           plans={pendingPlans}
           isStreaming={isStreaming}
           onApprove={handlePlanApprove}
           onDismiss={handlePlanDismiss}
         />
-      </div>
-    );
-  }
-
-  if (pendingApprovals.length > 0 || (isStreaming && isWaitingForApprovals)) {
-    return (
-      <div className="absolute bottom-full left-0 right-0">
-        <ApprovalHighlight
-          approvals={pendingApprovals}
+      )}
+      {isWaitingForUserInput && userAskParts && (
+        <UserAskQuestionHighlight
+          key={userAskKey}
+          userAskParts={userAskParts}
           isStreaming={isStreaming}
-          onRespond={handleApprovalRespond}
+          onSubmit={handleUserAskSubmit}
         />
-      </div>
-    );
-  }
-
-  if (!isStreaming && error) {
-    // Credit/quota errors get a dedicated modal with inline top-up
-    if (isCreditError(error)) {
-      return <CreditsExhaustedBanner onDismiss={clearError} />;
-    }
-    return (
-      <div className="absolute bottom-full left-0 right-0 bg-background">
-        <StatusHighlight
-          variant="error"
-          error={error}
-          onDismiss={clearError}
-          onFixInChat={handleFixInChat}
-        />
-      </div>
-    );
-  }
-
-  if (
-    !isStreaming &&
-    finishReason &&
-    finishReason !== "stop" &&
-    !isWaitingForApprovals
-  ) {
-    return (
-      <div className="absolute bottom-full left-0 right-0 bg-background">
-        <StatusHighlight
-          variant="warning"
-          finishReason={finishReason}
-          onDismiss={clearFinishReason}
-          onContinue={handleContinue}
-        />
-      </div>
-    );
-  }
-
-  return null;
+      )}
+    </div>
+  );
 }
 
 ChatHighlight.Error = function ErrorHighlight(props: {

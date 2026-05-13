@@ -27,6 +27,7 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   user_ask: { readOnly: true, destructive: false },
   propose_plan: { readOnly: true, destructive: false },
   enable_tool: { readOnly: true, destructive: false },
+  todo_write: { readOnly: false, destructive: false },
 };
 import { createReadToolOutputTool } from "./read-tool-output";
 import { createReadPromptTool } from "./prompts";
@@ -37,6 +38,7 @@ import { getSharedRunner } from "@/sandbox/lifecycle";
 import { ensureVmForBranch } from "@/tools/vm/start";
 import { createSubtaskTool } from "./subtask";
 import { userAskTool } from "./user-ask";
+import { todoWriteTool } from "./todo-write";
 import { proposePlanTool } from "./propose-plan";
 import { createGenerateImageTool } from "./generate-image";
 import { createWebSearchTool } from "./web-search";
@@ -122,6 +124,7 @@ async function buildAllTools(
   const approvalOpts = { isPlanMode };
   const tools: Record<string, unknown> = {
     user_ask: userAskTool,
+    todo_write: todoWriteTool,
     propose_plan: proposePlanTool,
     read_tool_output: createReadToolOutputTool({
       toolOutputMap,
@@ -226,6 +229,7 @@ async function buildAllTools(
   }
   return tools as {
     user_ask: typeof userAskTool;
+    todo_write: typeof todoWriteTool;
     propose_plan: typeof proposePlanTool;
     subtask: ReturnType<typeof createSubtaskTool>;
     read_tool_output: ReturnType<typeof createReadToolOutputTool>;

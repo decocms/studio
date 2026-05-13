@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import type { Todo } from "./built-in-tools/todo-write";
 import { buildBasePlatformPrompt } from "./constants";
 import {
   buildCurrentContextPrompt,
+  buildCurrentTodosPrompt,
   buildSystemMessages,
 } from "./system-prompt";
 
@@ -93,5 +95,122 @@ describe("buildSystemMessages", () => {
     expect(out).toHaveLength(1);
     expect(out[0]!.content).toContain("<current-context>");
     expect(out[0]!.providerOptions?.anthropic?.cacheControl).toBeFalsy();
+  });
+});
+
+describe("buildCurrentTodosPrompt", () => {
+  test("returns null for empty todo list", () => {
+    expect(buildCurrentTodosPrompt([])).toBeNull();
+  });
+
+  test("renders a single pending todo with content", () => {
+    const todos: Todo[] = [
+      {
+        content: "Implement login",
+        status: "pending",
+        activeForm: "Implementing login",
+      },
+    ];
+    const block = buildCurrentTodosPrompt(todos);
+    expect(block).toContain("<current-todos>");
+    expect(block).toContain("</current-todos>");
+    expect(block).toContain("[pending] Implement login");
+  });
+
+  test("renders an in_progress todo with activeForm (not content)", () => {
+    const todos: Todo[] = [
+      {
+        content: "Run tests",
+        status: "in_progress",
+        activeForm: "Running tests",
+      },
+    ];
+    const block = buildCurrentTodosPrompt(todos);
+    expect(block).toContain("[in_progress] Running tests");
+    expect(block).not.toContain("Run tests");
+  });
+
+  test("renders completed todos with content (not activeForm)", () => {
+    const todos: Todo[] = [
+      {
+        content: "Wrote docs",
+        status: "completed",
+        activeForm: "Writing docs",
+      },
+    ];
+    const block = buildCurrentTodosPrompt(todos);
+    expect(block).toContain("[completed] Wrote docs");
+  });
+
+  test("renders a full mixed list in order", () => {
+    const todos: Todo[] = [
+      { content: "Done item", status: "completed", activeForm: "Doing done" },
+      {
+        content: "Active item",
+        status: "in_progress",
+        activeForm: "Doing active",
+      },
+      {
+        content: "Pending item",
+        status: "pending",
+        activeForm: "Doing pending",
+      },
+    ];
+    const block = buildCurrentTodosPrompt(todos)!;
+    const lines = block.split("\n");
+    expect(lines).toEqual([
+      "<current-todos>",
+      "- [completed] Done item",
+      "- [in_progress] Doing active",
+      "- [pending] Pending item",
+      "</current-todos>",
+    ]);
+  });
+});
+
+describe("buildSystemMessages — current todos tail", () => {
+  const now = new Date("2026-05-12T10:00:00Z");
+
+  test("appends no extra system message when todos is empty", () => {
+    const out = buildSystemMessages(["base", "agent"], now, []);
+    // 2 parts + 1 <current-context> tail = 3 messages
+    expect(out).toHaveLength(3);
+    // The last message is <current-context>, NOT <current-todos>.
+    expect(out[2]!.content).toContain("<current-context>");
+    expect(out[2]!.content).not.toContain("<current-todos>");
+  });
+
+  test("appends <current-todos> after <current-context> when todos non-empty", () => {
+    const out = buildSystemMessages(["base", "agent"], now, [
+      { content: "x", status: "pending", activeForm: "doing x" },
+    ]);
+    // 2 parts + <current-context> + <current-todos> = 4 messages
+    expect(out).toHaveLength(4);
+    expect(out[2]!.content).toContain("<current-context>");
+    expect(out[3]!.content).toContain("<current-todos>");
+    expect(out[3]!.content).toContain("[pending] x");
+  });
+
+  test("the new <current-todos> tail message has NO cache markers", () => {
+    const out = buildSystemMessages(["base", "agent"], now, [
+      { content: "x", status: "pending", activeForm: "doing x" },
+    ]);
+    expect(out[3]!.providerOptions).toBeUndefined();
+  });
+
+  test("cache markers on BP1/BP2 are unchanged when todos non-empty", () => {
+    const out = buildSystemMessages(["base", "agent"], now, [
+      { content: "x", status: "pending", activeForm: "doing x" },
+    ]);
+    // parts.length === 2, so bp1Idx = 0, bp2Idx = 1 — both get markers.
+    expect(out[0]!.providerOptions).toEqual({
+      anthropic: { cacheControl: { type: "ephemeral", ttl: "5m" } },
+    });
+    expect(out[1]!.providerOptions).toEqual({
+      anthropic: { cacheControl: { type: "ephemeral", ttl: "5m" } },
+    });
+    // <current-context> and <current-todos> tails both unmarked.
+    expect(out[2]!.providerOptions).toBeUndefined();
+    expect(out[3]!.providerOptions).toBeUndefined();
   });
 });
