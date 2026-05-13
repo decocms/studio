@@ -1,101 +1,82 @@
 ---
 title: Automations
-description: Unattended AI agent runs triggered by schedules or events
+description: Run an agent on a schedule or in response to an event — without a human in the loop
 icon: Zap
 ---
 
-## What Are Automations?
+import Callout from "../../../../components/ui/Callout.astro";
 
-Automations are **unattended agent runs** — AI agents that execute on a schedule or in response to events, without a human in the loop. Each automation configures:
+## What is an automation?
 
-- **Agent** — which [Virtual MCP](/en/studio/virtual-mcps) (agent) to run
-- **Messages** — the prompt/instructions the agent receives each run
-- **Model** — which AI model and credentials to use
-- **Triggers** — when the automation fires (cron schedule, connection event, or manual)
+An **automation** is an agent run that happens on its own — on a schedule, or when something occurs in a connected service. No one needs to be watching. The agent runs, does its job, and the result shows up in [Monitoring](/en/studio/monitoring).
 
-Automations run in **passthrough mode**, meaning all tool calls are auto-approved. This is what makes them unattended — but it also means you should scope agent tools carefully.
+Every automation belongs to a specific [agent](/en/studio/agents). It runs *that* agent with *its* tools — the automation just decides when to fire and what prompt to start with.
 
-**Automations vs Decopilot**: [Decopilot](/en/studio/decopilot/overview) is interactive — a human converses with the agent and approves actions. Automations are fire-and-forget: the agent runs, completes its task, and the result appears in [Monitoring](/en/studio/monitoring).
+Each automation has:
 
-## When to Use Automations
+- **An agent** — the one doing the work
+- **A prompt** — what it should do each time it runs
+- **A model** — which AI provider and credentials to use
+- **A trigger** — when it fires (schedule, event, or manual)
 
-- **Scheduled tasks** — daily reports, periodic data syncs, cleanup jobs
-- **Event-driven workflows** — new order → fulfillment, new ticket → triage, deployment → notification
-- **Any workflow that should run without human approval**
+<Callout type="warning">
+  Automations approve all tool calls automatically — there's no human review step. Attach only the tools the agent actually needs so it can't do more than you intend.
+</Callout>
 
-## Creating an Automation
+## Where they live
 
-1. Navigate to **Automations** in the sidebar
-2. Click **New Automation**
-3. Choose an [agent](/en/studio/agents) — the Virtual MCP that will execute
-4. Write the prompt/messages — what the agent should do each run
-5. Select a model and credentials
-6. Set temperature (default 0.5)
-7. Add one or more triggers (cron or event)
-8. Activate the automation
+You manage automations in two places:
+
+- **Inside an agent** — open the agent and click the **Automations** tab in the right panel. You'll see the automations attached to this specific agent, and you can create new ones in context.
+- **Settings → Automations** — the org-wide list of every automation across every agent, useful for overview, audit, or housekeeping.
+
+## When to use automations
+
+- **Scheduled tasks** — daily reports, data syncs, cleanup jobs
+- **Event-driven workflows** — new order → start fulfillment, new ticket → triage, deployment → send notification
+- **Anything that should run without someone triggering it manually**
+
+If you want a human in the loop — reviewing actions before they happen — open the agent and chat with it directly, or use [Decopilot](/en/studio/decopilot/overview). Automations are for work you've already validated and want hands-free.
+
+## Creating an automation
+
+1. Open the agent you want to run
+2. Click the **Automations** tab in the right panel
+3. Click **New automation**
+4. Write the prompt — what should the agent do each run?
+5. Pick a model and credentials
+6. Add a trigger (schedule, event, or both)
+7. Activate it
 
 ## Triggers
 
-### Cron Triggers
+### Schedule
 
-Cron triggers run the automation on a recurring schedule using standard cron expression syntax. All times are in **UTC**.
+Runs the automation on a recurring schedule. Times are in UTC.
 
-| Expression | Schedule |
+| Expression | When it runs |
 |---|---|
-| `0 9 * * *` | Daily at 9:00 AM UTC |
+| `0 9 * * *` | Every day at 9:00 AM |
 | `0 */6 * * *` | Every 6 hours |
-| `0 9 * * 1` | Every Monday at 9:00 AM UTC |
+| `0 9 * * 1` | Every Monday at 9:00 AM |
 | `*/5 * * * *` | Every 5 minutes |
 
-**Minimum interval**: 60 seconds. Expressions that resolve to intervals shorter than 60 seconds are rejected.
+Minimum interval is 60 seconds. If the system restarts, missed runs are caught and fired on the next cycle.
 
-**Crash-safe scheduling**: The system records `last_run_at` for each trigger. If the server restarts, missed runs are detected and fired on the next poll cycle (every 30 seconds).
+### Event
 
-### Event Triggers
+Fires when a connected service publishes a matching event. You specify the connection, the event type, and optional filters — only events that match all filters trigger the automation.
 
-Event triggers fire the automation when a connected MCP server publishes a matching event.
+## Limits
 
-- The connection must implement `TRIGGER_CONFIGURE` (so the mesh can register/unregister interest in events)
-- You specify the **connection**, **event type**, and optional **params** for filtering
-- **Fail-atomic**: if configuring the trigger on the connection fails, the trigger is not created
-- When the automation is deactivated or deleted, event triggers are disabled on their connections (best-effort)
+- Maximum 3 runs per automation at the same time
+- Maximum 10 automation runs across your organization at once
+- Each run times out after 5 minutes
+- Event chains are limited to 3 levels deep (prevents loops)
+- Event payloads are capped at 1 MB
 
-**Param filtering**: If you specify params, only events whose data contains all matching key-value pairs will fire the automation. Extra fields in the event data are ignored.
-
-## Running and Testing
-
-- Use the **AUTOMATION_RUN** tool or the UI to manually trigger a run at any time
-- Each run creates a thread visible in [Monitoring](/en/studio/monitoring)
-- Runs that error are marked as failed in the thread
-
-## Safety and Limits
-
-<Callout type="warning">
-  Automations run in passthrough mode — all tool calls are auto-approved. Scope your agent's tools carefully to prevent unintended actions.
-</Callout>
-
-- **Per-automation concurrency**: Maximum 3 concurrent runs per automation. Additional triggers are skipped until a slot opens.
-- **Global concurrency**: Maximum 10 concurrent automation runs across the entire system.
-- **Run timeout**: Each run is capped at 5 minutes.
-- **Recursion prevention**: Event trigger chains are limited to a depth of 3. If an automation's actions trigger events that fire other automations, the chain stops after 3 levels.
-- **Payload limit**: Event data is capped at 1 MB. Larger payloads are truncated to mitigate prompt injection risks.
-- **Creator validation**: If the automation's creator leaves the organization, the automation is automatically deactivated.
-
-## Automation MCP Tools
-
-These tools are available for managing automations programmatically via the MCP interface:
-
-| Tool | Description |
-|---|---|
-| `AUTOMATION_CREATE` | Create a new automation with agent, messages, model, and triggers |
-| `AUTOMATION_GET` | Get a single automation by ID with full configuration |
-| `AUTOMATION_LIST` | List all automations in the current organization |
-| `AUTOMATION_UPDATE` | Update automation fields (partial update supported) |
-| `AUTOMATION_DELETE` | Delete an automation and disable its event triggers |
-| `AUTOMATION_TRIGGER_ADD` | Add a cron or event trigger to an automation |
-| `AUTOMATION_TRIGGER_REMOVE` | Remove a trigger from an automation |
-| `AUTOMATION_RUN` | Manually trigger an automation run |
+If the person who created an automation leaves the organization, it's automatically deactivated.
 
 ---
 
-**Next steps**: Learn about [Agents](/en/studio/agents) to understand how to design the Virtual MCPs that automations execute, or explore [Monitoring](/en/studio/monitoring) to track automation runs.
+**Next:** Design what your automation will run in [Agents](/en/studio/agents), or track results in [Monitoring](/en/studio/monitoring).

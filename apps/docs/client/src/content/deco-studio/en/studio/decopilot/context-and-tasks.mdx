@@ -1,0 +1,102 @@
+---
+title: Context and tasks
+description: How decopilot manages memory and how to use subtasks for heavy work
+icon: Layers
+---
+
+import Callout from "../../../../../components/ui/Callout.astro";
+
+Decopilot organizes work as **tasks** (your conversations) and **subtasks** (focused side-conversations that branch off). Understanding how they share memory helps you get more done in a single session.
+
+## What is a task?
+
+A **task** is your conversation with decopilot — where you chat, decopilot uses tools, and work gets done. Every task runs in a scope (organization or agent — see [Overview](/en/studio/decopilot/overview)) that determines which instructions and tools are loaded.
+
+Every task has one of four states:
+
+- **In progress** — the agent is working or waiting for your next message
+- **Requires action** — paused, waiting for your input (a tool needs approval, or it asked you a question)
+- **Completed** — work finished successfully
+- **Failed** — something went wrong, or the task timed out
+
+Tasks time out after **30 minutes of inactivity**. If you're working on something longer, send a message periodically to keep it active.
+
+---
+
+## How memory fills up
+
+Every AI model has a limit on how much it can hold in memory at once — your instructions, the tools available, and the full conversation history all count toward that limit. The more you've discussed, the more memory it takes up.
+
+When a task starts, decopilot loads:
+
+- Its core instructions and behavior
+- Guidelines from your current scope
+- The tools available in that scope
+- Your conversation history so far
+
+As the conversation grows, the history takes up more space. When it gets too full, decopilot automatically summarizes older parts and keeps the summary instead — freeing up space without losing the important context.
+
+### The 40/80 rule
+
+- **Below 40% full** — plenty of room, no action needed
+- **40–80% full** — still working fine, but worth wrapping up the current phase
+- **Above 80% full** — decopilot automatically compacts the conversation history
+
+You can trigger this manually with the `/compact` command — useful before starting a new phase of complex work.
+
+<Callout type="tip">
+Use `/compact` when you're finishing one major task and starting another. It keeps the conversation lean without losing what matters.
+</Callout>
+
+---
+
+## Subtasks
+
+A **subtask** is a separate conversation that branches off from your main task to handle focused work. The key difference: it starts with a clean slate — no history from your main conversation.
+
+The subtask runs, does the work, and returns only a short summary to your main task. Full details are saved in task history if you need them.
+
+### Main task vs. subtask
+
+| | Main task | Subtask |
+|---|---|---|
+| Conversation history | Accumulates over time | Starts fresh |
+| Can ask you questions | Yes | No |
+| Can create subtasks | Yes | No |
+| Returns to parent | N/A | Summary only |
+
+Subtasks can't ask you questions and can't create additional subtasks — they run autonomously and report back.
+
+### When subtasks help
+
+**Research and analysis** — dig into data, explore options, or investigate an issue. You get back the conclusion, not every step.
+
+**Complex calculations** — anything that generates verbose output belongs in a subtask. You see the result, not the working.
+
+**Quality checks** — audits, validation, reviews. Run them separately and get back a summary.
+
+**Parallel work** — if two pieces of work don't depend on each other, run them as separate subtasks at the same time.
+
+### Using specialist agents in subtasks
+
+You can run a subtask with a specific [agent](/en/studio/agents) — one configured for a particular domain. The agent brings its own focused toolset and instructions without affecting your main conversation.
+
+**Example**: Your main task is coordinating order fulfillment. You start subtasks using an **Inventory Agent** to check stock, a **Shipping Agent** to plan logistics, and a **Customer Service Agent** to prepare support notes. Each runs independently; your main task gets the summaries and coordinates the outcome.
+
+---
+
+## Practical tips
+
+**Watch the usage indicator** — when you're approaching 40%, think about wrapping up the current phase or using `/compact`.
+
+**Use subtasks for heavy work** — research, data analysis, code reviews, and anything that generates long outputs should happen in subtasks. Keep summaries in your main conversation.
+
+**Be selective with tools** — decopilot loads tools into memory. Don't enable tools you don't need for the current task.
+
+**Run things in parallel** — if two subtasks don't depend on each other, start them at the same time.
+
+**Write clear prompts** — "Analyze Q4 apparel demand trends" is more useful than "Do analysis" when reviewing task history later.
+
+---
+
+**Next:** See [Tools](/en/studio/decopilot/tools) for the full tool reference, or [Agents](/en/studio/agents) for specialist agents you can use in subtasks.

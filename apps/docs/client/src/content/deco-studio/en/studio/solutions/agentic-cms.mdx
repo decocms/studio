@@ -1,0 +1,61 @@
+---
+title: Agentic CMS
+description: A visual CMS for storefronts and content sites, with AI agents that operate the site with you
+icon: LayoutTemplate
+---
+
+import Callout from "../../../../../components/ui/Callout.astro";
+
+## What is the Agentic CMS?
+
+The **Agentic CMS** is the next generation of [deco.cx](https://docs.deco.cx) — a visual CMS for storefronts and content-heavy digital experiences, built on top of [deco Studio](/en/studio/overview).
+
+It's two things in one:
+
+- **A CMS** — type-safe React components, TypeScript loaders, theme editor, Git-based versioning, real-time collaboration between developers and content teams. The same model deco.cx established, refined.
+- **A team of agents** — focused AI workers that author content, adjust the design, enrich the catalog, and keep the site healthy. They work alongside your team and you stay in control.
+
+## Who it's for
+
+Teams managing **storefronts** (ecommerce, marketplaces) and **content-driven sites** (media, branded D2C, knowledge bases) who want:
+
+- The collaboration and performance of a code-first stack
+- The speed and reach of a visual editor
+- AI agents that scale the operational work — without hiding what they're doing
+
+It replaces the boundary between "the engineering team that maintains the site" and "the content team that fills it." Both work in the same product, with agents handling the toil in between.
+
+## Git-native, by design
+
+Every change to your site — whether a person made it from the visual editor or an agent made it from chat — flows through the same Git workflow you already know:
+
+1. The change is committed to a branch
+2. A pull request is opened with a diff your team can review
+3. Reviewers approve or request changes
+4. On merge, the change ships to your site
+
+This is the same model deco.cx pioneered, and it carries over directly. **Agents don't bypass review.** They open PRs like anyone else, and your team stays the source of truth — your repo, your branches, your history. Roll back, audit, and trace any change to its author, human or agent.
+
+## How it relates to deco.cx
+
+If you're coming from deco.cx, the Agentic CMS is the same product line — same core concepts (sections, loaders, blocks, theme editor, decopilot), now plugged into Studio so your storefront ships with a full agent control plane around it.
+
+| deco.cx concept | Agentic CMS today |
+|---|---|
+| Sections (React/TS components) | Same, with optional agent-authored variants |
+| Loaders (data fetching) | Same, now visible as tools to your agents |
+| Blocks (reusable units) | Same |
+| Theme Editor | Same |
+| Decopilot | Promoted to a first-class assistant scoped to your site |
+| Admin UI | Now part of the Studio agent shell |
+| Git workflow | Same — every change goes through PR review |
+
+Existing deco.cx projects continue to work. Migration adds the agent layer; it doesn't replace your codebase.
+
+## Getting started
+
+Open Studio, find the **deco Site Editor** agent and point it at your site.
+
+<Callout type="info">
+  The Agentic CMS isn't a separate product — it's a configuration of Studio + the deco.cx CMS, packaged for storefront teams. Everything you learn about Studio agents, connections, and automations applies directly.
+</Callout>
