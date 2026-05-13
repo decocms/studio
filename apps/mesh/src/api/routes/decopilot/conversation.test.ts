@@ -1,4 +1,4 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, test, expect } from "bun:test";
 import { processConversation, denyPendingApprovals } from "./conversation";
 import type { ChatMessage } from "./types";
 
@@ -316,5 +316,67 @@ describe("denyPendingApprovals", () => {
 
     const result = denyPendingApprovals(messages);
     expect(result).toBe(messages);
+  });
+});
+
+describe("processConversation — todo_write stripping", () => {
+  test("strips todo_write tool-call/result parts from LLM messages but keeps them in originalMessages", async () => {
+    const messages: ChatMessage[] = [
+      {
+        id: "u1",
+        role: "user",
+        parts: [{ type: "text", text: "make a plan" }],
+      } as unknown as ChatMessage,
+      {
+        id: "a1",
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-todo_write",
+            state: "output-available",
+            toolCallId: "tw1",
+            input: {
+              todos: [
+                {
+                  content: "step 1",
+                  status: "pending",
+                  activeForm: "doing step 1",
+                },
+              ],
+            },
+            output: { ok: true, count: 1 },
+          },
+        ],
+      } as unknown as ChatMessage,
+      {
+        id: "u2",
+        role: "user",
+        parts: [{ type: "text", text: "go" }],
+      } as unknown as ChatMessage,
+    ];
+
+    const result = await processConversation(messages, {
+      windowSize: 50,
+      models: { connectionId: "c", thinking: { id: "m" } } as never,
+    });
+
+    // The LLM-bound `messages` must not contain any todo_write parts.
+    const allParts = result.messages.flatMap((m) =>
+      Array.isArray((m as { content?: unknown }).content)
+        ? (m as { content: { type?: unknown; toolName?: unknown }[] }).content
+        : [],
+    );
+    const todoWriteParts = allParts.filter((p) => p.toolName === "todo_write");
+    expect(todoWriteParts).toHaveLength(0);
+
+    // The originalMessages preserve everything (used by title gen + audit).
+    const originalAssistant = result.originalMessages.find(
+      (m) => m.id === "a1",
+    );
+    expect(originalAssistant).toBeDefined();
+    const originalHasTodoWrite = (
+      originalAssistant!.parts as { type?: string }[]
+    ).some((p) => p.type === "tool-todo_write");
+    expect(originalHasTodoWrite).toBe(true);
   });
 });

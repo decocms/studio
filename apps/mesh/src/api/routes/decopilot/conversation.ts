@@ -16,6 +16,7 @@ import {
 import type { ChatMessage } from "./types";
 import type { Memory } from "./memory";
 import { ThreadMessage } from "@/storage/types";
+import { stripTodoWriteParts } from "./strip-todo-writes";
 
 /**
  * Split request messages into system and the single request message.
@@ -162,6 +163,15 @@ export async function processConversation(
     messages: nonSystemModelMessages,
   } = splitMessages(modelMessages);
 
+  // Strip todo_write tool-call/result parts. The current todo list is
+  // derived from the original (pre-strip) UIMessage stream upstream and
+  // re-injected as a <current-todos> system tail (see stream-core +
+  // system-prompt). Older todo_write inputs are pure redundancy — the
+  // state is encoded in the injected block, and the message-stream
+  // representation never benefited from Anthropic prompt caching (no
+  // cacheControl on messages).
+  const todoStrippedMessages = stripTodoWriteParts(nonSystemModelMessages);
+
   // Strip reasoning from all previous assistant messages.
   // pruneMessages removes reasoning content parts, but leaves message-level
   // and part-level providerOptions/providerMetadata intact. The AI SDK's
@@ -172,7 +182,7 @@ export async function processConversation(
   // We strip both reasoning parts AND all provider metadata from assistant
   // messages to prevent this.
   const prunedModelMessages = pruneMessages({
-    messages: nonSystemModelMessages,
+    messages: todoStrippedMessages,
     reasoning: "all",
     emptyMessages: "remove",
     toolCalls: "none",
