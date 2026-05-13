@@ -509,8 +509,7 @@ export default function Sidebar({
         // before computing ancestor IDs.
         const parts = currentPath.split("/").filter(Boolean);
         const localeIdx = parts.indexOf(locale);
-        const slugParts =
-          localeIdx >= 0 ? parts.slice(localeIdx + 1) : parts;
+        const slugParts = localeIdx >= 0 ? parts.slice(localeIdx + 1) : parts;
         const expandedAncestors = new Set<string>();
         for (let i = 1; i <= slugParts.length - 1; i++) {
           expandedAncestors.add(slugParts.slice(0, i).join("/"));
