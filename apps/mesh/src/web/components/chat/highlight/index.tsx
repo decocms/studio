@@ -314,7 +314,7 @@ export function ChatHighlight() {
       )}
     >
       {bannerNode}
-      <TodosHighlight bannerActive={bannerNode !== null} />
+      <TodosHighlight />
     </div>
   );
 }
