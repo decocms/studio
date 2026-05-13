@@ -17,9 +17,10 @@
  *               • Chat.Provider
  *                 └── VmEventsBridge
  *                     └── Chat.ActiveTaskProvider
- *                         └── flex-row
- *                             ├── ChatMainPanelGroup
- *                             └── TodosColumn
+ *                         └── ChatMainPanelGroup
+ *                             (the per-thread todo list is rendered
+ *                              by TodosHighlight inside ChatHighlight,
+ *                              not as a side column)
  *
  * Mobile layout:
  *   Chat.Provider
@@ -73,7 +74,6 @@ import { useOptionalTasksPanelState } from "@/web/hooks/use-tasks-panel-state";
 import { Toolbar } from "./toolbar";
 import { ChatMainPanelGroup } from "./chat-main-panel-group";
 import { ToggleButtons } from "./toggle-buttons";
-import { TodosColumn } from "./todos-column";
 import { MainPanelContent } from "@/web/layouts/main-panel-tabs";
 import { MainPanelTabsBar } from "@/web/layouts/main-panel-tabs/main-panel-tabs-bar";
 import { VirtualMcpHeaderInfo } from "../../views/virtual-mcp/header-info.tsx";
@@ -520,16 +520,13 @@ function AgentInsetProvider() {
             />
             <Chat.ActiveTaskProvider taskId={layout.taskId}>
               <Suspense fallback={<Chat.Skeleton />}>
-                <div className="flex flex-row flex-1 min-h-0">
-                  <ChatMainPanelGroup
-                    virtualMcpId={virtualMcpId}
-                    taskId={layout.taskId}
-                    chatOpen={layout.chatOpen}
-                    mainOpen={layout.mainOpen}
-                    chatContent={<ActiveTaskBoundary />}
-                  />
-                  <TodosColumn />
-                </div>
+                <ChatMainPanelGroup
+                  virtualMcpId={virtualMcpId}
+                  taskId={layout.taskId}
+                  chatOpen={layout.chatOpen}
+                  mainOpen={layout.mainOpen}
+                  chatContent={<ActiveTaskBoundary />}
+                />
               </Suspense>
             </Chat.ActiveTaskProvider>
           </VmEventsBridge>
