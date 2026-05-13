@@ -176,9 +176,9 @@ function MonitoringLogsTableContent({
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-      <div className="flex-1 overflow-auto min-w-0">
-        <div className="min-w-[600px] md:min-w-0 bg-background">
+    <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 min-w-0 pt-1">
+        <div className="min-w-[600px] md:min-w-0">
           <Table className="w-full border-collapse">
             <TableHeader className="border-b-0 z-20">
               <TableRow className="h-9 hover:bg-transparent border-b border-border">
@@ -470,7 +470,7 @@ export function AuditTabContent({
   return (
     <div className="flex-1 flex flex-col overflow-auto min-w-0">
       <div className="mx-auto w-full max-w-[1200px] px-4 md:px-10 flex flex-col flex-1 min-h-0">
-        <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+        <div className="flex-1 flex flex-col min-w-0">
           <MonitoringLogsTable
             connectionIds={connectionIds}
             virtualMcpIds={virtualMcpIds}
