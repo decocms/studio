@@ -172,6 +172,15 @@ export interface StreamCoreInput {
   isResume?: boolean;
   /** Persisted to the thread row on first-message creation. */
   branch?: string | null;
+  /**
+   * Fire-and-forget mode for the subscribe-model `POST /messages` endpoint.
+   * Starts the pump but does not create a tail and does not return a stream
+   * — the caller is expected to acknowledge with 202 and let downstream
+   * `/attach` subscribers consume from JetStream. Requires a `streamBuffer`
+   * in deps; falls back to draining `uiStream` internally otherwise so the
+   * lazy `createUIMessageStream.execute` still runs.
+   */
+  fireAndForget?: boolean;
 }
 
 export interface StreamCoreDeps {
@@ -182,7 +191,13 @@ export interface StreamCoreDeps {
 
 export interface StreamCoreResult {
   taskId: string;
-  stream: ReadableStream;
+  /**
+   * UI message stream the caller can serve / drain. Undefined in
+   * fire-and-forget mode — the pump is already publishing to JetStream and
+   * the caller should respond with 202 + use `createTailStream` from a
+   * separate request to subscribe.
+   */
+  stream?: ReadableStream;
 }
 
 // ============================================================================
@@ -1620,24 +1635,49 @@ async function streamCoreInner(
     // whether anyone is currently reading, so a proxy/idle/tab-close cut on
     // the consumer side never stalls the producer or drops tool output.
     //
-    // Three modes:
-    //  - HTTP route, NATS up: pump → JetStream; response tails JetStream.
-    //  - HTTP route, NATS down / test stub: tail returns null; fall back to
-    //    serving `uiStream` directly. Degraded behavior — HTTP cut still drops
-    //    chunks — but the same as before this refactor and avoids hard-failing
-    //    when NATS is unavailable.
-    //  - Automations (no streamBuffer in deps): `uiStream` is drained by
-    //    `consumeStreamCore`; the producer is the same, only the consumer
-    //    differs.
+    // Modes:
+    //  - Fire-and-forget (POST /messages, subscribe model): pump runs;
+    //    response is 202 with `{taskId}`. Subscribers attach via /attach.
+    //  - Legacy /stream + /attach, NATS up: pump → JetStream; response tails.
+    //  - Legacy /stream, NATS down / test stub: tail null; fall back to
+    //    serving `uiStream` directly. Degraded but matches pre-refactor
+    //    behavior so dev/test without NATS still works.
+    //  - Automations (no streamBuffer in deps): `uiStream` drained by
+    //    `consumeStreamCore` (or this function's drain fallback in
+    //    fire-and-forget mode).
     if (streamBuffer) {
+      streamBuffer.pump(uiStream, mem.thread.id, registrySignal);
+      if (input.fireAndForget) {
+        return { taskId: mem.thread.id };
+      }
       const tail = await streamBuffer.createTailStream(mem.thread.id);
       if (tail) {
-        streamBuffer.pump(uiStream, mem.thread.id, registrySignal);
-        return {
-          taskId: mem.thread.id,
-          stream: tail,
-        };
+        return { taskId: mem.thread.id, stream: tail };
       }
+      // Tail unavailable (NATS down at subscribe time). The pump is already
+      // draining uiStream — we can't also serve it. Return without a stream;
+      // caller surfaces a 503 to the client.
+      return { taskId: mem.thread.id };
+    }
+
+    if (input.fireAndForget) {
+      // No buffer (automation or no-NATS dev). Drain locally so the lazy
+      // `createUIMessageStream.execute` runs to completion. Nothing is
+      // observable; this path exists so the run still executes server-side.
+      void (async () => {
+        const reader = uiStream.getReader();
+        try {
+          while (true) {
+            const { done } = await reader.read();
+            if (done) break;
+          }
+        } catch {
+          // swallow — the run's own error handling already records this
+        } finally {
+          reader.releaseLock();
+        }
+      })();
+      return { taskId: mem.thread.id };
     }
 
     return {
@@ -1745,10 +1785,15 @@ function reconstructEnabledTools(
 /**
  * Consume a StreamCoreResult by draining its ReadableStream.
  * Useful for automation runs where there is no SSE consumer.
+ *
+ * No-op if `result.stream` is undefined (fire-and-forget mode); in that
+ * case the pump or the internal drain in `streamCore` is already running
+ * the stream for us.
  */
 export async function consumeStreamCore(
   result: StreamCoreResult,
 ): Promise<void> {
+  if (!result.stream) return;
   const reader = result.stream.getReader();
   while (true) {
     const { done } = await reader.read();

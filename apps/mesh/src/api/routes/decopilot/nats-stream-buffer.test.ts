@@ -262,5 +262,38 @@ describe("NatsStreamBuffer", () => {
       const stream = await buffer.createTailStream("task-1");
       expect(stream).toBeNull();
     });
+
+    it("persistent mode keeps tailing past the done sentinel", async () => {
+      // Subscribe-model behavior: one connection covers multiple runs in
+      // the thread. The {done} marker between runs must not close it.
+      const { sub, push, end } = createControlledSubscription();
+      const buffer = bufferWith(() => Promise.resolve(sub));
+
+      const stream = await buffer.createTailStream("task-1", undefined, {
+        closeOnDone: false,
+      });
+      const reader = stream!.getReader();
+
+      // Run 1 chunks + done.
+      push(encodeMsg({ p: "run1-a" }));
+      push(encodeMsg({ p: "run1-b" }));
+      push(encodeMsg({ done: true }));
+      // Run 2 chunks — subscriber should keep receiving.
+      push(encodeMsg({ p: "run2-a" }));
+
+      const a = await reader.read();
+      expect(a.value).toBe("run1-a");
+      const b = await reader.read();
+      expect(b.value).toBe("run1-b");
+      // {done} from run 1 is skipped — next read yields run 2's first chunk.
+      const c = await reader.read();
+      expect(c.done).toBe(false);
+      expect(c.value).toBe("run2-a");
+
+      // Closing the upstream subscription does terminate the reader.
+      end();
+      const tail = await reader.read();
+      expect(tail.done).toBe(true);
+    });
   });
 });

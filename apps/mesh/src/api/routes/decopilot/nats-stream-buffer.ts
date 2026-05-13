@@ -16,6 +16,7 @@
 
 import {
   AckPolicy,
+  DeliverPolicy,
   DiscardPolicy,
   RetentionPolicy,
   StorageType,
@@ -159,10 +160,17 @@ export class NatsStreamBuffer implements StreamBuffer {
   async createTailStream(
     taskId: string,
     signal?: AbortSignal,
+    opts?: {
+      closeOnDone?: boolean;
+      deliverPolicy?: "all" | "new";
+    },
   ): Promise<ReadableStream | null> {
     const js = this.js;
     if (!js) return null;
 
+    const closeOnDone = opts?.closeOnDone ?? true;
+    const deliverPolicy =
+      opts?.deliverPolicy === "new" ? DeliverPolicy.New : DeliverPolicy.All;
     const subj = streamSubject(taskId);
 
     let sub;
@@ -172,6 +180,7 @@ export class NatsStreamBuffer implements StreamBuffer {
         config: {
           filter_subject: subj,
           ack_policy: AckPolicy.None,
+          deliver_policy: deliverPolicy,
         },
       });
     } catch (err) {
@@ -214,9 +223,16 @@ export class NatsStreamBuffer implements StreamBuffer {
           try {
             const data = JSON.parse(decoder.decode(msg.data));
             if (data.done) {
-              cleanup();
-              controller.close();
-              return;
+              if (closeOnDone) {
+                cleanup();
+                controller.close();
+                return;
+              }
+              // Persistent mode: a run ended, but the subscription stays
+              // open for the next run on this thread. Clients detect run
+              // boundaries from the AI-SDK "finish" parts already in the
+              // chunk stream, not from the JetStream sentinel.
+              continue;
             }
             if (data.p) {
               controller.enqueue(data.p);

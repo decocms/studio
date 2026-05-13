@@ -36,13 +36,27 @@ export interface StreamBuffer {
   ): void;
 
   /**
-   * Subscribe to the per-task subject from the beginning and stream chunks
-   * as a ReadableStream. Tails until the `{done: true}` sentinel arrives or
-   * the provided `signal` aborts. Returns null when JetStream is unavailable.
+   * Subscribe to the per-task subject and stream chunks as a ReadableStream.
+   * Returns null when JetStream is unavailable.
+   *
+   * Options:
+   * - `closeOnDone` (default `true`): close the stream when the producer
+   *   emits the `{done: true}` sentinel. Set to `false` for the
+   *   subscribe-model `/attach` endpoint so the same connection stays open
+   *   across multiple runs in the same thread.
+   * - `deliverPolicy` (default `"all"`): `"all"` replays from the start of
+   *   the subject (catch up to in-flight runs); `"new"` only delivers
+   *   chunks published after the subscription is established (use when the
+   *   thread is idle and we don't want to replay any stale tail of a
+   *   recently-completed run).
    */
   createTailStream(
     taskId: string,
     signal?: AbortSignal,
+    opts?: {
+      closeOnDone?: boolean;
+      deliverPolicy?: "all" | "new";
+    },
   ): Promise<ReadableStream | null>;
 
   /** Purge buffered data for a thread (best-effort, fire-and-forget). */

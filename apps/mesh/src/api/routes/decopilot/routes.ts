@@ -263,6 +263,13 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         },
       });
 
+      if (!result.stream) {
+        return c.json(
+          { error: "Stream buffer unavailable — cannot serve response" },
+          503,
+        );
+      }
+
       return wrapWithSseKeepalive(
         createUIMessageStreamResponse({
           stream: result.stream,
@@ -366,6 +373,13 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         { runRegistry, streamBuffer, cancelBroadcast },
       );
 
+      if (!result.stream) {
+        return c.json(
+          { error: "Stream buffer unavailable — cannot serve response" },
+          503,
+        );
+      }
+
       return wrapWithSseKeepalive(
         createUIMessageStreamResponse({
           stream: result.stream,
@@ -396,6 +410,132 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         error: err instanceof Error ? err.message : JSON.stringify(err),
         stack: err instanceof Error ? err.stack : undefined,
       });
+      return c.json(
+        { error: err instanceof Error ? err.message : JSON.stringify(err) },
+        500,
+      );
+    }
+  });
+
+  // ============================================================================
+  // Messages Endpoint — fire-and-forget run creation (subscribe model)
+  // ============================================================================
+  //
+  // POST /:org/decopilot/threads/:threadId/messages
+  //
+  // Subscribe-model command: claims the run, starts the JetStream pump,
+  // and returns `202 { taskId }` in milliseconds. The response carries no
+  // SSE body — the client is expected to be listening on
+  // `GET /:org/decopilot/attach/:threadId?persistent=true` (or any
+  // /attach connection it opened earlier) to receive the run's chunks.
+  //
+  // This decouples message submission from the long-lived stream
+  // connection, so a slow proxy / tab close / mobile network blip on the
+  // subscribe side never affects the producer, and multiple clients can
+  // observe the same thread without coordinating.
+  //
+  // The threadId is required in the URL — unlike legacy /stream which
+  // accepted it in the body — because in the subscribe model the thread
+  // is the addressable resource.
+
+  app.post("/:org/decopilot/threads/:threadId/messages", async (c) => {
+    try {
+      const ctx = c.get("meshContext");
+      const threadIdParam = c.req.param("threadId");
+
+      const {
+        organization,
+        tier,
+        agent,
+        systemMessages,
+        requestMessage,
+        temperature,
+        memory: memoryConfig,
+        thread_id,
+        branch,
+        toolApprovalLevel,
+        mode,
+      } = await validateRequest(c);
+
+      // URL path is the source of truth for threadId in this endpoint.
+      // Reject mismatches rather than silently overriding either side.
+      const bodyThreadId = thread_id ?? memoryConfig?.thread_id;
+      if (bodyThreadId && bodyThreadId !== threadIdParam) {
+        throw new HTTPException(400, {
+          message: "threadId in URL does not match thread_id in body",
+        });
+      }
+
+      const userId = ctx.auth?.user?.id;
+      if (!userId) {
+        throw new HTTPException(401, { message: "User ID is required" });
+      }
+
+      const models = await resolvePerRequestModels(ctx, tier);
+
+      const allowedModels = await fetchModelPermissions(
+        ctx.db,
+        organization.id,
+        ctx.auth.user?.role,
+      );
+      if (
+        allowedModels !== undefined &&
+        !checkModelPermission(
+          allowedModels,
+          models.credentialId,
+          models.thinking.id,
+        )
+      ) {
+        throw new HTTPException(403, {
+          message: "Model not allowed for your role",
+        });
+      }
+
+      const windowSize = memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE;
+
+      const { taskId } = await streamCore(
+        {
+          messages: [...systemMessages, requestMessage],
+          models,
+          agent,
+          temperature,
+          toolApprovalLevel,
+          mode,
+          organizationId: organization.id,
+          userId,
+          taskId: threadIdParam,
+          windowSize,
+          branch: branch ?? null,
+          fireAndForget: true,
+        },
+        ctx,
+        { runRegistry, streamBuffer, cancelBroadcast },
+      );
+
+      posthog.capture({
+        distinctId: userId,
+        event: "chat_message_started",
+        groups: { organization: organization.id },
+        properties: {
+          organization_id: organization.id,
+          agent_id: agent,
+          mode,
+          thread_id: taskId,
+          credential_id: models.credentialId,
+        },
+      });
+
+      return c.json({ taskId }, 202);
+    } catch (err) {
+      console.error("[decopilot:messages] Error", err);
+
+      if (err instanceof TierUnavailableError) {
+        return c.json({ error: err.message }, 400);
+      }
+      if (err instanceof HTTPException) {
+        return c.json({ error: err.message }, err.status);
+      }
+      posthog.captureException(err);
       return c.json(
         { error: err instanceof Error ? err.message : JSON.stringify(err) },
         500,
@@ -458,11 +598,18 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
     try {
       const { taskId, thread, organization } = await validateThreadAccess(c);
 
-      // ── Fast path: run is active on this pod → tail JetStream ──
-      if (runRegistry.isRunning(taskId)) {
+      // Subscribe model: `?persistent=true` keeps the connection open across
+      // runs in this thread. The default (no query param) closes when the
+      // current run emits its `{done}` sentinel — matches legacy /attach
+      // reconnect semantics for clients that haven't migrated yet.
+      const persistent = c.req.query("persistent") === "true";
+      const activeRun = runRegistry.isRunning(taskId);
+
+      const serveTail = async (deliverPolicy: "all" | "new") => {
         const tailChunkStream = await streamBuffer.createTailStream(
           taskId,
           c.req.raw.signal,
+          { closeOnDone: !persistent, deliverPolicy },
         );
         if (!tailChunkStream) {
           return c.body(null, 204);
@@ -489,14 +636,23 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
             consumeSseStream: consumeStream,
           }),
         );
+      };
+
+      // ── Fast path: run is active on this pod → tail JetStream ──
+      if (activeRun) {
+        return await serveTail("all");
       }
 
       // ── Orphan resume path ──
       const ctx = c.get("meshContext");
       const userId = ctx.auth?.user?.id;
 
-      // Not in_progress → nothing to resume
+      // Not in_progress → no run to resume. In persistent mode, attach
+      // anyway and wait for a future POST /messages on this thread.
       if (thread.status !== "in_progress") {
+        if (persistent) {
+          return await serveTail("new");
+        }
         return c.body(null, 204);
       }
 
@@ -563,8 +719,10 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         return c.body(null, 204);
       }
 
-      // Resume the run — identity from auth context, NOT stored config
-      const result = await streamCore(
+      // Resume the run — identity from auth context, NOT stored config.
+      // Fire-and-forget: the resumed run pumps into JetStream, and the
+      // tail subscription created below is what we serve to this request.
+      await streamCore(
         {
           messages: [],
           models: toModelsConfig(config.models),
@@ -577,17 +735,13 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           taskId,
           windowSize: config.windowSize,
           isResume: true,
+          fireAndForget: true,
         },
         ctx,
         { runRegistry, streamBuffer, cancelBroadcast },
       );
 
-      return wrapWithSseKeepalive(
-        createUIMessageStreamResponse({
-          stream: result.stream,
-          consumeSseStream: consumeStream,
-        }),
-      );
+      return await serveTail("all");
     } catch (err) {
       if (err instanceof HTTPException) throw err;
       console.error("[decopilot:attach] Error", err);

@@ -734,7 +734,26 @@ export async function createApp(options: CreateAppOptions = {}) {
     };
     streamBuffer = {
       init: async () => {},
-      pump: () => {},
+      // Test/no-NATS stub: drain the stream so `createUIMessageStream`'s
+      // `execute` actually runs to completion. Nothing is buffered;
+      // `createTailStream` returns null so HTTP subscribe paths surface a
+      // 503 to the client. The legacy `/stream` route falls back to
+      // serving `uiStream` directly via streamCore.
+      pump: (stream: ReadableStream) => {
+        void (async () => {
+          const reader = stream.getReader();
+          try {
+            while (true) {
+              const { done } = await reader.read();
+              if (done) break;
+            }
+          } catch {
+            // swallow; the run's own onError handles state transitions
+          } finally {
+            reader.releaseLock();
+          }
+        })();
+      },
       createTailStream: async () => null,
       purge: () => {},
       teardown: () => {},
