@@ -32,6 +32,7 @@ import {
 import { readVmMap, resolveVm } from "./vm-map";
 import { buildCloneInfo } from "../../shared/github-clone-info";
 import { detectRepoRuntime } from "../../shared/github-runtime-detect";
+import { detectRuntimeFromPublicUrl } from "../../shared/public-url-runtime-detect";
 import { generateBranchName } from "../../shared/branch-name";
 import { PACKAGE_MANAGER_CONFIG } from "../../shared/runtime-defaults";
 import { getRunnerByKind, getSharedRunner } from "../../sandbox/lifecycle";
@@ -44,8 +45,9 @@ type GithubRepo = {
   connectionId?: string;
 };
 
-type GithubRepoMeta = {
+type RepoMeta = {
   githubRepo?: GithubRepo | null;
+  cloneUrl?: string | null;
 };
 
 export const VM_START = defineTool({
@@ -89,7 +91,9 @@ export const VM_START = defineTool({
       ctx,
     );
 
-    const githubRepo = (metadata as GithubRepoMeta).githubRepo ?? null;
+    const repoMeta = metadata as RepoMeta;
+    const githubRepo = repoMeta.githubRepo ?? null;
+    const cloneUrl = repoMeta.cloneUrl ?? null;
 
     const runnerKind = resolveRunnerKindFromEnv();
     await reapStaleRunner(ctx, existing, runnerKind);
@@ -102,6 +106,7 @@ export const VM_START = defineTool({
       branch: resolvedBranch,
       metadata,
       githubRepo,
+      cloneUrl,
       existing,
     });
     return {
@@ -154,7 +159,9 @@ export async function ensureVmForBranch(
 
   await reapStaleRunner(ctx, existing, runnerKind);
 
-  const githubRepo = (metadata as GithubRepoMeta).githubRepo ?? null;
+  const repoMeta2 = metadata as RepoMeta;
+  const githubRepo = repoMeta2.githubRepo ?? null;
+  const cloneUrl = repoMeta2.cloneUrl ?? null;
   const { entry } = await provisionSandbox({
     ctx,
     userId,
@@ -163,6 +170,7 @@ export async function ensureVmForBranch(
     branch: input.branch,
     metadata,
     githubRepo,
+    cloneUrl,
     existing,
   });
   return entry;
@@ -203,6 +211,7 @@ type StartParams = {
   branch: string;
   metadata: Record<string, unknown>;
   githubRepo: GithubRepo | null;
+  cloneUrl: string | null;
   existing: VmMapEntry | null;
 };
 
@@ -217,6 +226,7 @@ async function provisionSandbox(
     branch,
     metadata,
     githubRepo,
+    cloneUrl: plainCloneUrl,
     existing,
   } = params;
 
@@ -284,6 +294,32 @@ async function provisionSandbox(
       branch,
       displayName: `${githubRepo.owner}/${githubRepo.name}`,
     };
+  } else if (plainCloneUrl) {
+    // Plain git URL — no OAuth token required. Detect runtime via unauthenticated
+    // GitHub API for public repos, then fall back to clone-only if detection fails.
+    repoOpts = {
+      cloneUrl: plainCloneUrl,
+      userName: "Deco Studio",
+      userEmail: "studio@deco.cx",
+      branch,
+      displayName: plainCloneUrl,
+    };
+
+    if (!packageManager) {
+      const detected = await detectRuntimeFromPublicUrl(plainCloneUrl);
+      if (detected) {
+        packageManager = detected.packageManager;
+        runtime = PACKAGE_MANAGER_CONFIG[detected.packageManager].runtime;
+        port = detected.devPort ?? port;
+        await persistDetectedRuntime(
+          ctx,
+          virtualMcpId,
+          userId,
+          detected.packageManager,
+          detected.devPort,
+        );
+      }
+    }
   }
 
   // Missing workload = clone-only. Freestyle treats it as "node, no install,

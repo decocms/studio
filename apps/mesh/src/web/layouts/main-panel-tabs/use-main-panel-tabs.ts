@@ -20,7 +20,7 @@ import {
   useVirtualMCP,
 } from "@decocms/mesh-sdk";
 import { KEYS } from "@/web/lib/query-keys";
-import { getActiveGithubRepo } from "@/web/lib/github-repo";
+import { getActiveGithubRepo, hasPreviewableRepo } from "@/web/lib/github-repo";
 import { useChatTask } from "@/web/components/chat/index";
 import type {
   ThreadExpandedTool,
@@ -131,6 +131,7 @@ export function useMainPanelTabs(ctx: {
   const pinnedViews = entityUI?.pinnedViews ?? [];
   const expandedTools: ThreadExpandedTool[] = metadata?.expanded_tools ?? [];
   const hasActiveGithubRepo = !!(entity && getActiveGithubRepo(entity));
+  const hasPreviewable = !!(entity && hasPreviewableRepo(entity));
   const connections = useConnections({ includeVirtual: true });
 
   const { activeTab, mainOpen } = resolveActiveTabAndOpen({
@@ -150,8 +151,10 @@ export function useMainPanelTabs(ctx: {
   // work tabs (Preview, git) come first so they're closest to the panel;
   // Settings + Automations stay anchored at the right.
   const systemTabs: Array<{ id: string; title: string }> = [];
-  if (hasActiveGithubRepo) {
+  if (hasPreviewable) {
     systemTabs.push({ id: "preview", title: "Preview" });
+  }
+  if (hasActiveGithubRepo) {
     systemTabs.push({ id: "git", title: currentBranch ?? "git" });
   }
   systemTabs.push({ id: "settings", title: "Settings" });

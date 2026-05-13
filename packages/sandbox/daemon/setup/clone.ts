@@ -54,6 +54,13 @@ const TRANSIENT_ERRORS = [
   "transfer closed with",
   "RPC failed",
   "the remote end hung up",
+  // Host runner on macOS: git internally spawns helpers (git-remote-https,
+  // git-fetch-pack) via posix_spawn; the parent process can fail to fork
+  // under transient resource pressure (FD limits, concurrent spawns from
+  // bun/node-pty). Retrying lets the kernel reap and try again.
+  "posix_spawnp failed",
+  "posix_spawn failed",
+  "Resource temporarily unavailable",
 ];
 const CLONE_MAX_RETRIES = 3;
 const CLONE_RETRY_DELAY_MS = 3000;
@@ -71,7 +78,7 @@ async function runNetworkStep(cmd: string, deps: CloneDeps): Promise<number> {
     if (attempt > 0) {
       deps.onChunk(
         "setup",
-        `\r\n[clone] transient network error, retrying in ${CLONE_RETRY_DELAY_MS / 1000}s (attempt ${attempt + 1}/${CLONE_MAX_RETRIES + 1})...\r\n`,
+        `\r\n[clone] transient error, retrying in ${CLONE_RETRY_DELAY_MS / 1000}s (attempt ${attempt + 1}/${CLONE_MAX_RETRIES + 1})...\r\n`,
       );
       await sleep(CLONE_RETRY_DELAY_MS);
     }
@@ -83,9 +90,18 @@ async function runNetworkStep(cmd: string, deps: CloneDeps): Promise<number> {
         deps.onChunk(src, data);
       },
     };
-    const code = await runStep(cmd, tee);
-    if (code === 0) return 0;
-    if (!isTransient(output) || attempt >= CLONE_MAX_RETRIES) return code;
+    try {
+      const code = await runStep(cmd, tee);
+      if (code === 0) return 0;
+      if (!isTransient(output) || attempt >= CLONE_MAX_RETRIES) return code;
+    } catch (err) {
+      // Spawn-level failure (node-pty's posix_spawnp fails to fork before
+      // the command even runs). Treat as transient and retry; throw on the
+      // last attempt so the orchestrator's catch path surfaces the error.
+      const msg = err instanceof Error ? err.message : String(err);
+      deps.onChunk("setup", `\r\n[clone] spawn error: ${msg}\r\n`);
+      if (!isTransient(msg) || attempt >= CLONE_MAX_RETRIES) throw err;
+    }
   }
   return 1;
 }

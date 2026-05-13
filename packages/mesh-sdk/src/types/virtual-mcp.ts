@@ -146,6 +146,20 @@ const RuntimeMetadataSchema = z.object({
 export type RuntimeMetadata = z.infer<typeof RuntimeMetadataSchema>;
 
 /**
+ * Plain git clone URL — used when GitHub OAuth is not configured.
+ * The URL is passed directly to the sandbox runner as-is (no token baked in).
+ * Public repos work out of the box; private repos require credentials in the URL.
+ */
+const CloneUrlSchema = z
+  .string()
+  .url()
+  .nullable()
+  .optional()
+  .describe(
+    "Direct git clone URL used when GitHub is not connected. Public repos work without auth.",
+  );
+
+/**
  * GitHub repository linked to a virtual MCP
  */
 const GithubRepoSchema = z.object({
@@ -272,6 +286,7 @@ export const VirtualMCPEntitySchema = z.object({
       githubRepo: GithubRepoSchema.nullable()
         .optional()
         .describe("Linked GitHub repository"),
+      cloneUrl: CloneUrlSchema,
       runtime: RuntimeMetadataSchema.nullable()
         .optional()
         .describe(
@@ -329,6 +344,7 @@ export const VirtualMCPCreateDataSchema = z.object({
       githubRepo: GithubRepoSchema.nullable()
         .optional()
         .describe("Linked GitHub repository"),
+      cloneUrl: CloneUrlSchema,
       runtime: RuntimeMetadataSchema.nullable()
         .optional()
         .describe(
@@ -382,6 +398,7 @@ export const VirtualMCPUpdateDataSchema = z.object({
       githubRepo: GithubRepoSchema.nullable()
         .optional()
         .describe("Linked GitHub repository"),
+      cloneUrl: CloneUrlSchema,
       runtime: RuntimeMetadataSchema.nullable()
         .optional()
         .describe(

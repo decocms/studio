@@ -14,6 +14,7 @@ import {
   isDecopilot,
   WELL_KNOWN_AGENT_TEMPLATES,
   useProjectContext,
+  useVirtualMCPActions,
   useVirtualMCPs,
 } from "@decocms/mesh-sdk";
 import type { ProjectLocator, VirtualMCPEntity } from "@decocms/mesh-sdk";
@@ -28,7 +29,13 @@ function readRecentAgentIds(locator: ProjectLocator): string[] {
   }
 }
 import { useNavigate } from "@tanstack/react-router";
-import { ChevronRight, Plus, Users03 } from "@untitledui/icons";
+import {
+  ChevronRight,
+  GitBranch02,
+  Globe02,
+  Plus,
+  Users03,
+} from "@untitledui/icons";
 import { ImportFromDecoDialog } from "@/web/components/import-from-deco-dialog.tsx";
 import { SiteDiagnosticsRecruitModal } from "@/web/components/home/site-diagnostics-recruit-modal.tsx";
 import { AiImageRecruitModal } from "@/web/components/home/ai-image-recruit-modal.tsx";
@@ -36,8 +43,10 @@ import { AiResearchRecruitModal } from "@/web/components/home/ai-research-recrui
 import { LeanCanvasRecruitModal } from "@/web/components/home/lean-canvas-recruit-modal.tsx";
 import { StudioPackRecruitModal } from "@/web/components/home/studio-pack-recruit-modal.tsx";
 import { SelfHealingRepoFlow } from "@/web/components/self-healing-repo/self-healing-repo-flow.tsx";
+import { GitCloneRecruitModal } from "@/web/components/home/git-clone-recruit-modal.tsx";
 import { useCreateVirtualMCP } from "@/web/hooks/use-create-virtual-mcp";
 import { useNavigateToAgentThread } from "@/web/hooks/use-navigate-to-agent-thread";
+import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
 import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import { Suspense, useState } from "react";
 import { track } from "@/web/lib/posthog-client";
@@ -190,6 +199,116 @@ function CreateAgentButton() {
   );
 }
 
+const LANDING_PAGE_TEMPLATE_URL =
+  "https://github.com/shadcn-ui/next-template.git";
+
+const LANDING_PAGE_INSTRUCTIONS = `You are a vibecoding assistant specialized in building landing pages with Next.js, Tailwind CSS, and shadcn/ui.
+
+The sandbox already has the Next.js + shadcn/ui starter cloned and the dev server running — you don't need to scaffold from scratch.
+
+When the user tells you what they want:
+1. Edit the existing pages/components directly — replace the starter content with their landing page
+2. Use shadcn/ui components (Button, Card, Badge, etc.) and Tailwind classes for styling
+3. Show the preview URL after each meaningful change so the user can see progress
+4. Ask what the landing page is for if the user hasn't said yet (one question, then build immediately)
+
+Bias heavily toward building. Don't over-explain — show results.`;
+
+function LandingPageButton() {
+  const actions = useVirtualMCPActions();
+  const navigateToAgent = useNavigateToAgent();
+  const [isCreating, setIsCreating] = useState(false);
+
+  const handleClick = async () => {
+    if (isCreating) return;
+    setIsCreating(true);
+    track("home_landing_page_clicked");
+    try {
+      const virtualMcp = await actions.create.mutateAsync({
+        title: "Landing page",
+        description: "Build a landing page with Next.js + shadcn/ui",
+        status: "active",
+        pinned: true,
+        connections: [],
+        metadata: {
+          instructions: LANDING_PAGE_INSTRUCTIONS,
+          cloneUrl: LANDING_PAGE_TEMPLATE_URL,
+          // Pre-set runtime — shadcn/next-template has no lockfile so
+          // detection would fall back to bun; npm + port 3000 matches next dev.
+          runtime: { selected: "npm", port: "3000" },
+          // Open with the preview as the main view + chat open on the side.
+          // The preview view triggers VM_START on mount, so the sandbox
+          // provisions and the dev server boots without any user action.
+          ui: {
+            pinnedViews: null,
+            layout: {
+              defaultMainView: { type: "preview" },
+              chatDefaultOpen: true,
+            },
+          },
+        },
+      });
+      // Match the GitHub import flow: collapse the sidebar so the preview
+      // takes the full width when the user lands on the agent page.
+      localStorage.setItem("mesh:sidebar-open", JSON.stringify(false));
+      navigateToAgent(virtualMcp.id!);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={() => void handleClick()}
+      disabled={isCreating}
+      className={cn(
+        "flex flex-col items-center gap-3 p-2 rounded-lg",
+        "transition-colors",
+        "cursor-pointer",
+        "w-[100px] shrink-0",
+        "group",
+        "disabled:opacity-50 disabled:cursor-not-allowed",
+      )}
+      aria-label="Build landing page"
+    >
+      <div className="size-12 rounded-xl bg-accent flex items-center justify-center shrink-0 transition-transform group-hover:scale-110">
+        <Globe02 size={20} className="text-foreground" />
+      </div>
+      <p className="text-xs sm:text-sm text-foreground text-center leading-tight">
+        Build landing page
+      </p>
+    </button>
+  );
+}
+
+function GitCloneButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        track("home_git_clone_clicked");
+        onClick();
+      }}
+      className={cn(
+        "flex flex-col items-center gap-3 p-2 rounded-lg",
+        "transition-colors",
+        "cursor-pointer",
+        "w-[100px] shrink-0",
+        "group",
+      )}
+      aria-label="Clone from URL"
+    >
+      <div className="size-12 rounded-xl bg-background border-2 border-dashed border-border flex items-center justify-center shrink-0 transition-transform group-hover:scale-110">
+        <GitBranch02 size={20} className="text-muted-foreground" />
+      </div>
+      <p className="text-xs sm:text-sm text-foreground text-center leading-tight">
+        Clone repo
+      </p>
+    </button>
+  );
+}
+
 /**
  * Tile = either an existing custom agent that already lives in the org, or a
  * not-yet-recruited template that opens its specific recruit/import flow.
@@ -201,7 +320,8 @@ type RecruitModalKey =
   | "ai-research"
   | "lean-canvas"
   | "studio-pack"
-  | "self-healing";
+  | "self-healing"
+  | "git-clone";
 
 type HomeTile =
   | {
@@ -252,6 +372,7 @@ function AgentsListContent() {
   const [leanCanvasModalOpen, setLeanCanvasModalOpen] = useState(false);
   const [studioPackModalOpen, setStudioPackModalOpen] = useState(false);
   const [selfHealingOpen, setSelfHealingOpen] = useState(false);
+  const [gitCloneOpen, setGitCloneOpen] = useState(false);
   const [preferences] = usePreferences();
   const navigateToAgentThread = useNavigateToAgentThread(org.slug);
 
@@ -488,6 +609,7 @@ function AgentsListContent() {
         "lean-canvas": () => setLeanCanvasModalOpen(true),
         "studio-pack": () => setStudioPackModalOpen(true),
         "self-healing": () => setSelfHealingOpen(true),
+        "git-clone": () => setGitCloneOpen(true),
       }[tile.onClick];
       return (
         <AgentPreview
@@ -520,8 +642,10 @@ function AgentsListContent() {
     <>
       <div className="w-full max-md:overflow-x-auto max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden">
         <div className="flex flex-wrap justify-center gap-1.5 max-md:flex-nowrap max-md:justify-start md:max-h-52 md:overflow-hidden">
+          <LandingPageButton />
           {tiles.map(renderTile)}
           <CreateAgentButton />
+          <GitCloneButton onClick={() => setGitCloneOpen(true)} />
           {hasAgents && <SeeAllButton />}
         </div>
       </div>
@@ -563,6 +687,11 @@ function AgentsListContent() {
       <SelfHealingRepoFlow
         open={selfHealingOpen}
         onOpenChange={setSelfHealingOpen}
+      />
+
+      <GitCloneRecruitModal
+        open={gitCloneOpen}
+        onOpenChange={setGitCloneOpen}
       />
     </>
   );
