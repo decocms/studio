@@ -12,14 +12,14 @@
 
 import { cn } from "@deco/ui/lib/utils.ts";
 import type { Todo } from "@/api/routes/decopilot/built-in-tools/todo-write";
-import { getCurrentTodos } from "@/api/routes/decopilot/current-todos";
 import { useChatStream } from "../context";
 import { CollapsibleHighlight } from "./collapsible-highlight";
+import { deriveCurrentTodos } from "./derive-current-todos";
 import { type ChipIcon, deriveChipLabel } from "./derive-chip-label";
 
 export function TodosHighlight() {
   const { messages } = useChatStream();
-  const todos = getCurrentTodos(messages);
+  const todos = deriveCurrentTodos(messages);
   if (todos.length === 0) return null;
 
   const label = deriveChipLabel(todos);
