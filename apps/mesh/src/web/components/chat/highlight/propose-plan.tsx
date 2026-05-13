@@ -83,7 +83,7 @@ function ProposePlanPrompt({
 
 function ProposePlanLoadingUI() {
   return (
-    <div className="flex items-center gap-2 p-4 border border-dashed border-purple-500/30 rounded-lg bg-purple-500/5 w-[calc(100%-16px)] max-w-[584px] mx-auto mb-2">
+    <div className="flex items-center gap-2 p-4 border border-dashed border-purple-500/30 rounded-lg bg-purple-500/5 w-[calc(100%-16px)] max-w-[640px] mx-auto mb-2">
       <Check className="size-5 text-purple-500 shimmer" />
       <span className="text-sm text-muted-foreground shimmer">
         Preparing plan...

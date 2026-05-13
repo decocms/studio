@@ -89,7 +89,7 @@ export function CollapsibleHighlight({
       data-variant={variant}
       className={cn(
         "flex flex-col rounded-xl bg-background border shadow-md",
-        "w-[calc(100%-16px)] max-w-[584px] mx-auto mb-2",
+        "w-[calc(100%-16px)] max-w-[640px] mx-auto mb-2",
         VARIANT_BORDER[variant],
         VARIANT_OVERLAY[variant],
       )}

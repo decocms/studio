@@ -490,7 +490,7 @@ function UserAskPrompt({ parts, onSubmit }: UserAskPromptProps) {
 
 function UserAskLoadingUI() {
   return (
-    <div className="flex items-center gap-2 p-4 border border-dashed rounded-lg bg-accent/50 w-[calc(100%-16px)] max-w-[584px] mx-auto mb-2">
+    <div className="flex items-center gap-2 p-4 border border-dashed rounded-lg bg-accent/50 w-[calc(100%-16px)] max-w-[640px] mx-auto mb-2">
       <MessageQuestionCircle className="size-5 text-muted-foreground shimmer" />
       <span className="text-sm text-muted-foreground shimmer">
         Preparing question...
