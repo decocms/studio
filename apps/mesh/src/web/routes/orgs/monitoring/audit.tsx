@@ -177,7 +177,7 @@ function MonitoringLogsTableContent({
 
   return (
     <div className="flex-1 flex flex-col min-w-0">
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 pt-1">
         <div className="min-w-[600px] md:min-w-0">
           <Table className="w-full border-collapse">
             <TableHeader className="border-b-0 z-20">
