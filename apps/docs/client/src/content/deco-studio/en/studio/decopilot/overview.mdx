@@ -31,6 +31,17 @@ To switch, just open or close an agent from the sidebar. There's nothing extra t
   A third level — Project scope — is planned. It will sit between org and agent and group tools/context for a team or client. See [Projects](/en/studio/projects).
 </Callout>
 
+## Chat modes
+
+The chat input has a mode selector that shapes how decopilot approaches a turn. You can switch modes at any time without losing your conversation.
+
+| Mode | What changes |
+|---|---|
+| **Default** | Normal chat — decopilot picks tools on its own. |
+| **Plan** | Decopilot must end the turn with a `propose_plan` call. Destructive tools are blocked until you approve a plan; only read-only tools can be enabled. Useful before doing something risky. |
+| **Web search** | The first step is forced to call `web_search`, which streams a deep research pass directly to you. Requires a web-research model under [AI Providers](/en/studio/ai-providers). |
+| **Gen image** | The first step is forced to call `generate_image`. Requires an image model. |
+
 ## Models
 
 Decopilot works with multiple AI providers — Anthropic, Google, OpenRouter, the Deco AI Gateway, and self-hosted models. Pick a stronger model for complex tasks and a faster one for simple operations. See [AI Providers](/en/studio/ai-providers).
@@ -46,12 +57,16 @@ Decopilot ships with tools for coordinating work across any scope:
 | Tool | What it does |
 |---|---|
 | `subtask` | Delegates work to a specialist agent |
-| `agent_search` | Finds agents available in your organization |
 | `user_ask` | Asks you a question when it needs clarification |
-| `sandbox` | Runs JavaScript code with access to your tools |
+| `enable_tool` | Activates a scope tool for use in subsequent steps |
 | `read_resource` | Reads documentation or guidelines available in scope |
 | `read_prompt` | Reads a reusable prompt template |
-| `propose_plan` | Proposes a plan for your approval before acting |
+| `read_tool_output` | Re-reads a previous tool result that was offloaded to storage |
+| `web_search` | Runs a deep web research pass and streams the result |
+| `generate_image` | Creates an image with the configured image model |
+| `propose_plan` | Proposes a plan for your approval (plan mode only) |
+
+When an agent is backed by a sandbox (a linked GitHub repo), decopilot also gets six **VM tools** — `bash`, `read`, `write`, `edit`, `grep`, `glob` — so it can execute and modify code in that sandbox.
 
 For the full reference, see [Tools](/en/studio/decopilot/tools).
 

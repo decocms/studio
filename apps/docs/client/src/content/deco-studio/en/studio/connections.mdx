@@ -47,6 +47,18 @@ Connections solve this by being the single source of truth:
 
 All connection types work the same way: configure once at the org level, attach to whichever agents need them.
 
+### Transports
+
+Under the hood, every connection uses one of these transports. You don't usually need to think about it — Studio picks the right form based on the catalog entry or what you paste into **Custom Connection** — but it matters when you're wiring up an MCP server yourself:
+
+| Transport | When to use |
+|---|---|
+| **HTTP** | The default for hosted MCP servers. JSON-RPC over HTTP. |
+| **SSE** | Server-Sent Events — for HTTP servers that stream long-running tool results. |
+| **WebSocket** | Bidirectional streaming for MCP servers that need a persistent socket. |
+| **STDIO** | Spawn a local process and speak MCP over its stdin/stdout. Used by CLI-style MCPs in local self-host. |
+| **Virtual** | The agent endpoint itself — a composed MCP made of other connections, served by Studio. |
+
 ## How a tool call works
 
 When an agent calls a tool through a connection:

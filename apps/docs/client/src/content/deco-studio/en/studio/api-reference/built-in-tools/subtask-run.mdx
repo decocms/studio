@@ -76,14 +76,10 @@ subtask("Check shipping carrier delivery status")
 
 ### Specialized Execution
 
-Delegate work to specialized agents:
+Delegate work to a specific specialist agent by passing its id:
 
 ```typescript
-// Use agent search to find specialists
-const agents = agent_search("code review")
-
-// Spawn subtask with specialist
-subtask("Review this pull request", agents[0].agent_id)
+subtask("Review this pull request", "agent_abc123")
 ```
 
 ### Isolated Context
@@ -96,5 +92,5 @@ subtask("Generate a detailed technical report on the performance bottlenecks")
 
 ## Related
 
-- [**agent_search**](/en/studio/api-reference/built-in-tools/agent-search) - Find agents for subtasks
 - [Built-in Tools Overview](/en/studio/api-reference/built-in-tools)
+- [Agents](/en/studio/agents)

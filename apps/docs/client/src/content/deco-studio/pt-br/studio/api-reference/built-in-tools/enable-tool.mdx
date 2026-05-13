@@ -1,0 +1,59 @@
+---
+title: enable_tool
+description: Ativar uma ou mais ferramentas de escopo para uso nos próximos passos
+icon: ToggleRight
+---
+
+import Callout from "../../../../../../components/ui/Callout.astro";
+
+## Visão Geral
+
+Ativa ferramentas do escopo atual (as conexões do agente aberto, ou as ferramentas no nível da organização quando nenhum agente está aberto) para que o modelo possa chamá-las no próximo passo. O catálogo mostrado ao modelo usa nomes curtos como `send_email`; quando um nome curto corresponde a mais de uma conexão, a chamada retorna `ambiguous` e o modelo deve tentar de novo com o id totalmente qualificado.
+
+## Disponibilidade
+
+- **Tarefas**: ✓ Disponível
+- **Subtarefas**: ✓ Disponível
+
+## Assinatura
+
+```typescript
+enable_tool({ tools: string[] })
+```
+
+## Parâmetros
+
+| Parâmetro | Tipo | Obrigatório | Descrição |
+|-----------|------|----------|-------------|
+| `tools` | `string[]` | Obrigatório | Ids de ferramentas a ativar. Nomes curtos são aceitos; nomes ambíguos retornam candidatos em vez de ativar. |
+
+## Retorno
+
+```typescript
+{
+  enabled: string[];               // nomes totalmente qualificados que foram ativados
+  not_found?: string[];            // nomes que não existem no escopo atual
+  blocked?: string[];              // ferramentas bloqueadas em plan mode (têm efeitos colaterais)
+  blocked_reason?: string;         // explicação para `blocked`
+  ambiguous?: Array<{              // nomes curtos correspondendo a múltiplas ferramentas
+    name: string;
+    candidates: string[];
+  }>;
+}
+```
+
+## Comportamento
+
+- Ferramentas ativadas no passo N podem ser chamadas no passo N+1.
+- Ferramentas integradas (`user_ask`, `subtask`, `read_tool_output`, `read_prompt`, `read_resource`, etc.) já estão sempre disponíveis e não precisam ser ativadas.
+- Em [plan mode](/pt-br/studio/decopilot/overview), só ferramentas marcadas como read-only podem ser ativadas — ferramentas destrutivas são retornadas em `blocked`.
+
+## Exemplo
+
+```typescript
+enable_tool({ tools: ["send_email", "create_invoice"] })
+```
+
+## Relacionados
+
+- [Visão Geral das Ferramentas Integradas](/pt-br/studio/api-reference/built-in-tools)

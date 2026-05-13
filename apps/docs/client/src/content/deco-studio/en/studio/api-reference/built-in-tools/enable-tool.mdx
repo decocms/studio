@@ -1,0 +1,60 @@
+---
+title: enable_tool
+description: Activate one or more scope tools for use in subsequent steps
+icon: ToggleRight
+---
+
+import Callout from "../../../../../../components/ui/Callout.astro";
+
+## Overview
+
+Activates tools from the current scope (the open agent's connections, or the org-wide tools when no agent is open) so the model can call them on the next step. The catalog shown to the model uses short tool names like `send_email`; when a short name maps to more than one connection, the call returns an `ambiguous` row and the model must retry with the fully-qualified id.
+
+## Availability
+
+- **Tasks**: ✓ Available
+- **Subtasks**: ✓ Available
+
+## Signature
+
+```typescript
+enable_tool({ tools: string[] })
+```
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `tools` | `string[]` | Required | Tool ids to enable. Short names are accepted; ambiguous names return candidates instead of enabling. |
+
+## Returns
+
+```typescript
+{
+  enabled: string[];               // fully-qualified names that were enabled
+  not_found?: string[];            // names that don't exist in the current scope
+  blocked?: string[];              // tools blocked by plan mode (have side effects)
+  blocked_reason?: string;         // explanation for `blocked`
+  ambiguous?: Array<{              // short names matched by multiple tools
+    name: string;
+    candidates: string[];
+  }>;
+}
+```
+
+## Behavior
+
+- Tools enabled in step N become callable in step N+1.
+- Built-in tools (`user_ask`, `subtask`, `read_tool_output`, `read_prompt`, `read_resource`, etc.) are always available and don't need enabling.
+- In [plan mode](/en/studio/decopilot/overview), only tools annotated as read-only can be enabled — destructive tools are returned in `blocked`.
+
+## Example
+
+```typescript
+enable_tool({ tools: ["send_email", "create_invoice"] })
+```
+
+## Related
+
+- [Built-in Tools Overview](/en/studio/api-reference/built-in-tools)
+- [Tools](/en/studio/decopilot/tools)

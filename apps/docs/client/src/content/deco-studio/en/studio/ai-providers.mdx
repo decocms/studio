@@ -45,12 +45,31 @@ Click **Connect provider** under **Settings → AI Providers** to add any of:
 | **OpenRouter** | One account, hundreds of models from many vendors |
 | **Anthropic** | Direct Anthropic key — Claude family |
 | **Google Gemini** | Direct Google AI Studio key — Gemini family |
-| **OpenAI** | Direct OpenAI key — GPT-4, GPT-5, etc. |
-| **LiteLLM** | Connect a LiteLLM gateway your team manages |
-| **Ollama** | Run open-source models on your own machine |
+| **OpenAI-compatible** | Any endpoint that speaks the OpenAI Chat Completions API |
+
+### OpenAI-compatible presets
+
+The **OpenAI-compatible** provider has branded presets for common deployments — pick one and Studio pre-fills the base URL. You can also choose **Custom** and paste any URL.
+
+| Preset | What it's for |
+|---|---|
+| **OpenAI** | Direct OpenAI API key — GPT-4, GPT-5, etc. |
+| **LiteLLM** | A LiteLLM gateway your team manages |
+| **Ollama** | Open-source models running locally via Ollama |
 | **LM Studio** | Open models running through LM Studio |
-| **vLLM** | Connect to your team's self-hosted vLLM server |
-| **Custom OpenAI-compatible** | Bring your own model server (advanced) |
+| **vLLM** | Your team's self-hosted vLLM server |
+| **Custom** | Any other OpenAI-compatible endpoint (advanced) |
+
+### Local-only providers
+
+When Studio runs locally (via `bunx -p decocms deco`), two extra providers light up that delegate to a CLI installed on your machine:
+
+| Provider | Notes |
+|---|---|
+| **Claude Code** | Drives a `claude` CLI session — uses your existing Anthropic auth |
+| **Codex** | Drives a `codex` CLI session |
+
+These don't appear in the cloud product.
 
 ## How a provider gets connected
 
@@ -58,7 +77,9 @@ Click **Connect provider** under **Settings → AI Providers** to add any of:
 
 **Sign in with browser** — for providers that support it (Deco AI Gateway, OpenRouter). You'll be taken to the provider's login page, authorize access, and Studio handles the rest.
 
-**Local endpoint** — for Ollama, LM Studio, vLLM, LiteLLM, or custom OpenAI-compatible servers: paste the base URL where Studio can reach the server.
+**Local endpoint** — for the Ollama, LM Studio, vLLM, LiteLLM, or Custom presets of OpenAI-compatible: paste the base URL where Studio can reach the server.
+
+**CLI activate** — for Claude Code and Codex in local mode: Studio runs the CLI installed on your machine; no key is stored on Studio's side.
 
 ## What models are available?
 
