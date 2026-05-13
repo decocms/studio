@@ -76,14 +76,10 @@ subtask("Check shipping carrier delivery status")
 
 ### Execução Especializada
 
-Delegue trabalho a agentes especializados:
+Delegue trabalho a um agente especialista passando seu id:
 
 ```typescript
-// Usar pesquisa de agentes para encontrar especialistas
-const agents = agent_search("code review")
-
-// Criar subtarefa com especialista
-subtask("Review this pull request", agents[0].agent_id)
+subtask("Review this pull request", "agent_abc123")
 ```
 
 ### Contexto Isolado
@@ -96,5 +92,5 @@ subtask("Generate a detailed technical report on the performance bottlenecks")
 
 ## Relacionados
 
-- [**agent_search**](/pt-br/studio/api-reference/built-in-tools/agent-search) - Encontrar agentes para subtarefas
 - [Visão Geral das Ferramentas Integradas](/pt-br/studio/api-reference/built-in-tools)
+- [Agentes](/pt-br/studio/agents)

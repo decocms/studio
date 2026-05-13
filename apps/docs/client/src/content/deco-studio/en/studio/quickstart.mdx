@@ -21,10 +21,10 @@ Sign up at [studio.decocms.com](https://studio.decocms.com) and you're ready to 
 ### Option B — Run locally
 
 ```bash
-bunx decocms
+bunx -p decocms deco
 ```
 
-This spins up a local instance with embedded PostgreSQL. Fully private — everything stays on your machine. Or clone and run from source:
+This spins up a local instance with embedded PostgreSQL. Fully private — everything stays on your machine. The package is published as `decocms`; the binary it ships is `deco`. Or clone and run from source:
 
 ```bash
 git clone https://github.com/decocms/studio.git
@@ -43,20 +43,6 @@ When you want to use your own keys (Anthropic, Google, OpenRouter, etc.) or chec
 
 ---
 
-## Add a connection
-
-Connections are the tools your agents can use — GitHub, Slack, Shopify, your database, your own MCP server.
-
-1. Open **Settings → Connections**
-2. Search the catalog (e.g., Gmail), or click **Custom Connection** to add an unlisted MCP server
-3. Click **Connect** and follow the sign-in or paste-a-key flow
-
-Credentials are encrypted and never exposed to your team.
-
-The catalog is populated by the registries enabled under **Settings → Store**.
-
----
-
 ## Create or open an agent
 
 The sidebar shows your agents. Click an existing one or create a new one from the **+** button.
@@ -67,7 +53,27 @@ When you're inside an agent, the screen has three parts:
 - **Center / bottom** — the chat input
 - **Right** — the agent's panel: **Settings** (instructions, connections), **Automations**, and **Git** (if linked)
 
-Open the **Settings** tab on the right, attach the connection you just added, and write a one-line instruction describing what this agent should do.
+Open the **Settings** tab on the right and write a one-line instruction describing what this agent should do.
+
+---
+
+## Attach a connection
+
+Connections are the tools your agent can use — GitHub, Slack, Shopify, your database, your own MCP server. You can add them directly from the agent you just created:
+
+1. In the agent's right-panel **Settings**, open the **Connections** section
+2. Click **Add connection**
+3. Search the catalog (e.g., Gmail), or pick **Custom Connection** to add an unlisted MCP server
+4. Click **Connect** and follow the sign-in or paste-a-key flow
+5. Pick which of the connection's tools this agent should have
+
+Credentials are encrypted and never exposed to your team. Connections you add this way are stored at the **org level** — they show up under **Settings → Connections** and can be attached to other agents too.
+
+<Callout type="tip">
+  You can also start from **Settings → Connections** and install a connection ahead of time, then attach it to agents later. Same outcome — pick whichever order feels natural.
+</Callout>
+
+The catalog is populated by the registries enabled under **Settings → Store**.
 
 ---
 

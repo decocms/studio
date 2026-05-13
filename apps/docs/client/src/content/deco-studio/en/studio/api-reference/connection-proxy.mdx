@@ -8,18 +8,25 @@ import Callout from "../../../../../components/ui/Callout.astro";
 
 ## Overview
 
-The **Connection Proxy** endpoint (`/mcp/:connectionId`) enables MCP clients (like Cursor, Claude Desktop, or custom applications) to connect directly to a specific upstream MCP server through deco Studio. This endpoint acts as a secure, observable proxy that handles authentication, authorization, credential management, and monitoring.
+The **Connection Proxy** endpoint enables MCP clients (like Cursor, Claude Desktop, or custom applications) to connect directly to a specific upstream MCP server through deco Studio. This endpoint acts as a secure, observable proxy that handles authentication, authorization, credential management, and monitoring.
 
 ## Endpoint
 
+The canonical path is org-scoped:
+
 ```
-POST https://your-mesh-instance.com/mcp/:connectionId
+POST https://your-mesh-instance.com/api/:org/mcp/:connectionId
 ```
+
+<Callout type="warning">
+  The legacy unscoped form `POST /mcp/:connectionId` still works but emits a deprecation log on every request and will be removed. Update clients to the `/api/:org/...` path.
+</Callout>
 
 ### Path Parameters
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `org` | `string` | Required | Organization slug — immutable for the lifetime of the org |
 | `connectionId` | `string` (UUID) | Required | The unique identifier of the connection to proxy requests to |
 
 ## Authentication
@@ -33,7 +40,7 @@ When unauthenticated, the endpoint returns a `401` response with an `WWW-Authent
 
 ```http
 HTTP/1.1 401 Unauthorized
-WWW-Authenticate: Bearer realm="mcp",resource_metadata="https://your-mesh-instance.com/mcp/:connectionId/.well-known/oauth-protected-resource"
+WWW-Authenticate: Bearer realm="mcp",resource_metadata="https://your-mesh-instance.com/api/:org/mcp/:connectionId/.well-known/oauth-protected-resource"
 ```
 
 <Callout type="info">
@@ -169,7 +176,7 @@ The Connection Proxy supports **streaming tool responses** for HTTP-based connec
 ### Streamable Tool Endpoint
 
 ```
-POST https://your-mesh-instance.com/mcp/:connectionId/call-tool/:toolName
+POST https://your-mesh-instance.com/api/:org/mcp/:connectionId/call-tool/:toolName
 ```
 
 This endpoint allows tools to stream responses back to the client, useful for long-running operations or large data transfers.
@@ -237,7 +244,7 @@ Connect Cursor or Claude Desktop directly to a specific upstream MCP:
 {
   "mcpServers": {
     "github-production": {
-      "url": "https://studio.example.com/mcp/conn_abc123",
+      "url": "https://studio.example.com/api/my-org/mcp/conn_abc123",
       "headers": {
         "Authorization": "Bearer YOUR_API_KEY"
       }
@@ -251,7 +258,7 @@ Connect Cursor or Claude Desktop directly to a specific upstream MCP:
 Build custom clients that need access to a specific MCP server's tools without going through an agent:
 
 ```typescript
-const response = await fetch('https://studio.example.com/mcp/conn_abc123', {
+const response = await fetch('https://studio.example.com/api/my-org/mcp/conn_abc123', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -310,12 +317,12 @@ Connections have a `status` field that affects proxy behavior:
 
 | Endpoint | Use Case | Tools Available |
 |----------|----------|-----------------|
-| `/mcp/:connectionId` | Direct access to one upstream MCP | All tools from that connection only |
-| `/mcp/gateway/:agentId` | Curated tool surface for an agent | Tools from multiple connections, composed |
-| `/mcp/self` | Management operations | deco Studio management tools only |
+| `/api/:org/mcp/:connectionId` | Direct access to one upstream MCP | All tools from that connection only |
+| `/api/:org/mcp/gateway/:virtualMcpId` | Curated tool surface for an agent (a.k.a. virtual MCP) | Tools from multiple connections, composed |
+| `/api/:org/mcp/self` | Management operations | deco Studio management tools only |
 
 <Callout type="tip">
-  For most production use cases, use **Agents** (`/mcp/gateway/:agentId`) instead of direct connection proxies. Agents give you control over which tools are exposed and let you compose tools from multiple connections behind one endpoint.
+  For most production use cases, use **Agents** (`/api/:org/mcp/gateway/:virtualMcpId`) instead of direct connection proxies. Agents give you control over which tools are exposed and let you compose tools from multiple connections behind one endpoint.
 </Callout>
 
 ## Related

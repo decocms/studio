@@ -18,16 +18,32 @@ Decopilot has access to two kinds of tools:
 
 | Tool | Available in subtasks | What it does |
 |---|:---:|---|
-| `agent_search` | Yes | Find agents in your organization |
 | `subtask` | No | Start a subtask, optionally with a specific agent |
 | `user_ask` | No | Ask you a question when it needs input |
-| `sandbox` | Yes | Run JavaScript code with access to your tools |
+| `enable_tool` | Yes | Activate a scope tool so it can be called next step |
 | `read_resource` | Yes | Read documentation or guidelines from the current scope |
 | `read_prompt` | Yes | Read a reusable prompt template |
-| `read_tool_output` | Yes | Filter a large tool result to find what's relevant |
-| `propose_plan` | No | Propose a plan for your approval before acting |
+| `read_tool_output` | Yes | Re-read a large tool result that was offloaded to storage |
+| `web_search` | Yes | Run a deep web research pass and stream the result (requires a web-research model) |
+| `generate_image` | Yes | Generate an image with the configured image model |
+| `propose_plan` | No | Propose a plan for approval (only registered in plan mode) |
 
 Subtasks have restricted access — they can't start additional subtasks or ask you questions, since they're meant to run and report back without interruption.
+
+### Sandbox-backed agents get VM tools
+
+When an agent has a sandbox (a linked GitHub repo, see [Agents](/en/studio/agents)), decopilot is also given six **VM tools** that operate inside that sandbox:
+
+| Tool | What it does |
+|---|---|
+| `bash` | Runs a shell command in the sandbox |
+| `read` | Reads a file from the sandbox |
+| `write` | Writes a file in the sandbox |
+| `edit` | Applies a targeted edit to an existing file |
+| `grep` | Searches file contents with ripgrep |
+| `glob` | Lists files matching a path pattern |
+
+These tools are provisioned lazily — the sandbox only starts on the first VM-tool call.
 
 ---
 
