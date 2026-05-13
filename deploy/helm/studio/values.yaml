@@ -18,8 +18,6 @@ image:
     - run
     - deco
     - --no-local-mode
-    - --num-threads
-    - "4"
 
 service:
   type: ClusterIP
