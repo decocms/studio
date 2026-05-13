@@ -13,7 +13,8 @@ import { Edit02, MessageQuestionCircle } from "@untitledui/icons";
 import { useEffect, useRef, useState } from "react";
 import { type Control, type FieldValues, useForm } from "react-hook-form";
 import type { UserAskToolPart } from "../types";
-import { HighlightCard, Pagination } from "./card";
+import { Pagination } from "./card";
+import { CollapsibleHighlight } from "./collapsible-highlight";
 import { buildCombinedSchema } from "./user-ask-schemas";
 
 /** Inferred from UserAskToolPart so we don't import the backend module directly. */
@@ -431,17 +432,19 @@ function UserAskPrompt({ parts, onSubmit }: UserAskPromptProps) {
     return (
       <Form {...form}>
         <form onSubmit={form.handleSubmit(submitAll)} autoComplete="off">
-          <HighlightCard
+          <CollapsibleHighlight
+            icon={<MessageQuestionCircle size={14} />}
+            label="Question pending"
             title={part.input?.prompt ?? "Question"}
+            defaultExpanded={true}
             footerRight={footerButtons}
-            minimizable
           >
             <QuestionInput
               input={part.input as UserAskInput}
               control={form.control}
               name={`${part.toolCallId}.response`}
             />
-          </HighlightCard>
+          </CollapsibleHighlight>
         </form>
       </Form>
     );
@@ -451,28 +454,31 @@ function UserAskPrompt({ parts, onSubmit }: UserAskPromptProps) {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(submitAll)} autoComplete="off">
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          {parts.map((part) => (
-            <TabsContent
-              key={part.toolCallId}
-              value={part.toolCallId}
-              className="mt-0"
-            >
-              <HighlightCard
-                title={part.input?.prompt ?? "Question"}
-                footerLeft={pagination}
-                footerRight={footerButtons}
-                minimizable
+        <CollapsibleHighlight
+          icon={<MessageQuestionCircle size={14} />}
+          label="Question pending"
+          count={`${currentIndex + 1} of ${parts.length}`}
+          title={parts[currentIndex]?.input?.prompt ?? "Question"}
+          defaultExpanded={true}
+          footerLeft={pagination}
+          footerRight={footerButtons}
+        >
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            {parts.map((part) => (
+              <TabsContent
+                key={part.toolCallId}
+                value={part.toolCallId}
+                className="mt-0"
               >
                 <QuestionInput
                   input={part.input as UserAskInput}
                   control={form.control}
                   name={`${part.toolCallId}.response`}
                 />
-              </HighlightCard>
-            </TabsContent>
-          ))}
-        </Tabs>
+              </TabsContent>
+            ))}
+          </Tabs>
+        </CollapsibleHighlight>
       </form>
     </Form>
   );
