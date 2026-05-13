@@ -6,6 +6,7 @@ import { useChatStream, useChatTask } from "../context";
 import { ApprovalHighlight, extractPendingApprovals } from "./approval";
 import { ProposePlanHighlight, extractPendingPlans } from "./propose-plan";
 import { UserAskQuestionHighlight } from "./user-ask-question";
+import { TodosHighlight } from "./todos";
 import {
   CreditsExhaustedBanner,
   isCreditError,
@@ -233,80 +234,89 @@ export function ChatHighlight() {
     });
   };
 
-  // Priority: user_ask > propose_plan > approval > error > warning
+  // Priority: user_ask > propose_plan > approval > error > warning.
+  // Credit-exhausted errors are nested inside the error priority slot
+  // (they render a dedicated modal instead of the inline banner), so
+  // higher-priority interactive banners still win when concurrent.
+  // The non-credit banners collapse into a single `bannerNode` so they
+  // can share the absolutely-positioned wrapper with <TodosHighlight>.
+
+  let bannerNode: React.ReactNode = null;
+  // The wrapper sits in front of the chat scroll; error and warning
+  // banners are translucent (bg-destructive/5, bg-amber-500/5) and rely
+  // on a backdrop to read cleanly. user_ask / propose_plan / approval
+  // render fully-opaque cards and do not need the wrapper backdrop.
+  let bannerNeedsBg = false;
+
   if (isWaitingForUserInput) {
-    return (
-      <div className="absolute bottom-full left-0 right-0">
-        <UserAskQuestionHighlight
-          userAskParts={userAskParts}
-          isStreaming={isStreaming}
-          onSubmit={handleUserAskSubmit}
-        />
-      </div>
+    bannerNode = (
+      <UserAskQuestionHighlight
+        userAskParts={userAskParts}
+        isStreaming={isStreaming}
+        onSubmit={handleUserAskSubmit}
+      />
     );
-  }
-
-  if (pendingPlans.length > 0) {
-    return (
-      <div className="absolute bottom-full left-0 right-0">
-        <ProposePlanHighlight
-          plans={pendingPlans}
-          isStreaming={isStreaming}
-          onApprove={handlePlanApprove}
-          onDismiss={handlePlanDismiss}
-        />
-      </div>
+  } else if (pendingPlans.length > 0) {
+    bannerNode = (
+      <ProposePlanHighlight
+        plans={pendingPlans}
+        isStreaming={isStreaming}
+        onApprove={handlePlanApprove}
+        onDismiss={handlePlanDismiss}
+      />
     );
-  }
-
-  if (pendingApprovals.length > 0 || (isStreaming && isWaitingForApprovals)) {
-    return (
-      <div className="absolute bottom-full left-0 right-0">
-        <ApprovalHighlight
-          approvals={pendingApprovals}
-          isStreaming={isStreaming}
-          onRespond={handleApprovalRespond}
-        />
-      </div>
+  } else if (
+    pendingApprovals.length > 0 ||
+    (isStreaming && isWaitingForApprovals)
+  ) {
+    bannerNode = (
+      <ApprovalHighlight
+        approvals={pendingApprovals}
+        isStreaming={isStreaming}
+        onRespond={handleApprovalRespond}
+      />
     );
-  }
-
-  if (!isStreaming && error) {
-    // Credit/quota errors get a dedicated modal with inline top-up
+  } else if (!isStreaming && error) {
     if (isCreditError(error)) {
       return <CreditsExhaustedBanner onDismiss={clearError} />;
     }
-    return (
-      <div className="absolute bottom-full left-0 right-0 bg-background">
-        <StatusHighlight
-          variant="error"
-          error={error}
-          onDismiss={clearError}
-          onFixInChat={handleFixInChat}
-        />
-      </div>
+    bannerNode = (
+      <StatusHighlight
+        variant="error"
+        error={error}
+        onDismiss={clearError}
+        onFixInChat={handleFixInChat}
+      />
     );
-  }
-
-  if (
+    bannerNeedsBg = true;
+  } else if (
     !isStreaming &&
     finishReason &&
     finishReason !== "stop" &&
     !isWaitingForApprovals
   ) {
-    return (
-      <div className="absolute bottom-full left-0 right-0 bg-background">
-        <StatusHighlight
-          variant="warning"
-          finishReason={finishReason}
-          onDismiss={clearFinishReason}
-          onContinue={handleContinue}
-        />
-      </div>
+    bannerNode = (
+      <StatusHighlight
+        variant="warning"
+        finishReason={finishReason}
+        onDismiss={clearFinishReason}
+        onContinue={handleContinue}
+      />
     );
+    bannerNeedsBg = true;
   }
 
-  return null;
+  return (
+    <div
+      className={cn(
+        "absolute bottom-full left-0 right-0",
+        bannerNeedsBg && "bg-background",
+      )}
+    >
+      {bannerNode}
+      <TodosHighlight bannerActive={bannerNode !== null} />
+    </div>
+  );
 }
 
 ChatHighlight.Error = function ErrorHighlight(props: {
