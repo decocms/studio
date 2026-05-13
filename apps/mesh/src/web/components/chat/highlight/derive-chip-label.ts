@@ -17,7 +17,7 @@
  */
 import type { Todo } from "@/api/routes/decopilot/built-in-tools/todo-write";
 
-export type ChipIcon = "pending" | "in_progress" | "completed";
+export type ChipIcon = Todo["status"];
 
 export interface ChipLabel {
   icon: ChipIcon;
