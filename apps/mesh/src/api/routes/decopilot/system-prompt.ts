@@ -85,6 +85,7 @@ const EPHEMERAL_5M_PROVIDER_OPTIONS = {
 export function buildSystemMessages(
   parts: string[],
   now: Date,
+  todos: readonly Todo[] = [],
 ): SystemMessage[] {
   const out: SystemMessage[] = [];
   const bp2Idx = parts.length - 1;
@@ -101,5 +102,12 @@ export function buildSystemMessages(
     role: "system",
     content: buildCurrentContextPrompt(now),
   });
+  const todosBlock = buildCurrentTodosPrompt(todos);
+  if (todosBlock !== null) {
+    out.push({
+      role: "system",
+      content: todosBlock,
+    });
+  }
   return out;
 }

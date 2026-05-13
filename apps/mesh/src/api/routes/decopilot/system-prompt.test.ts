@@ -167,3 +167,50 @@ describe("buildCurrentTodosPrompt", () => {
     ]);
   });
 });
+
+describe("buildSystemMessages — current todos tail", () => {
+  const now = new Date("2026-05-12T10:00:00Z");
+
+  test("appends no extra system message when todos is empty", () => {
+    const out = buildSystemMessages(["base", "agent"], now, []);
+    // 2 parts + 1 <current-context> tail = 3 messages
+    expect(out).toHaveLength(3);
+    // The last message is <current-context>, NOT <current-todos>.
+    expect(out[2]!.content).toContain("<current-context>");
+    expect(out[2]!.content).not.toContain("<current-todos>");
+  });
+
+  test("appends <current-todos> after <current-context> when todos non-empty", () => {
+    const out = buildSystemMessages(["base", "agent"], now, [
+      { content: "x", status: "pending", activeForm: "doing x" },
+    ]);
+    // 2 parts + <current-context> + <current-todos> = 4 messages
+    expect(out).toHaveLength(4);
+    expect(out[2]!.content).toContain("<current-context>");
+    expect(out[3]!.content).toContain("<current-todos>");
+    expect(out[3]!.content).toContain("[pending] x");
+  });
+
+  test("the new <current-todos> tail message has NO cache markers", () => {
+    const out = buildSystemMessages(["base", "agent"], now, [
+      { content: "x", status: "pending", activeForm: "doing x" },
+    ]);
+    expect(out[3]!.providerOptions).toBeUndefined();
+  });
+
+  test("cache markers on BP1/BP2 are unchanged when todos non-empty", () => {
+    const out = buildSystemMessages(["base", "agent"], now, [
+      { content: "x", status: "pending", activeForm: "doing x" },
+    ]);
+    // parts.length === 2, so bp1Idx = 0, bp2Idx = 1 — both get markers.
+    expect(out[0]!.providerOptions).toEqual({
+      anthropic: { cacheControl: { type: "ephemeral", ttl: "5m" } },
+    });
+    expect(out[1]!.providerOptions).toEqual({
+      anthropic: { cacheControl: { type: "ephemeral", ttl: "5m" } },
+    });
+    // <current-context> and <current-todos> tails both unmarked.
+    expect(out[2]!.providerOptions).toBeUndefined();
+    expect(out[3]!.providerOptions).toBeUndefined();
+  });
+});
