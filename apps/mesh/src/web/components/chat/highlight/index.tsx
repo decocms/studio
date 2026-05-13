@@ -234,14 +234,25 @@ export function ChatHighlight() {
   }
 
   const showError = !isStreaming && !!error;
+  const hasApprovals =
+    pendingApprovals.length > 0 || (isStreaming && isWaitingForApprovals);
+  // `user_ask` and `propose_plan` are client-side tools (no `execute`), so
+  // the model emitting one terminates the step loop with
+  // `finishReason: "tool-calls"`. Same for tools paused on
+  // `approval-requested`. Those are expected handoffs, not stuck loops —
+  // the matching cards (UserAskQuestion / ProposePlan / Approval) already
+  // tell the user what to do, so suppress the duplicate warning. Mirrors
+  // the backend's `resolveThreadStatus` (status.ts) which maps the same
+  // shape to `requires_action`.
+  const isToolCallsWaitingOnClient =
+    finishReason === "tool-calls" &&
+    (isWaitingForUserInput || hasApprovals || pendingPlans.length > 0);
   const showWarning =
     !isStreaming &&
     !!finishReason &&
     finishReason !== "stop" &&
-    !isWaitingForApprovals &&
+    !isToolCallsWaitingOnClient &&
     !showError;
-  const hasApprovals =
-    pendingApprovals.length > 0 || (isStreaming && isWaitingForApprovals);
   const userAskKey = userAskParts?.map((p) => p.toolCallId).join("|") ?? "";
   const planKey = pendingPlans[0]?.toolCallId ?? "";
   const approvalKey = pendingApprovals.map((a) => a.approvalId).join("|");
