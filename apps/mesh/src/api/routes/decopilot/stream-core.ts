@@ -49,7 +49,6 @@ import {
   PARENT_STEP_LIMIT,
 } from "./constants";
 import { loadAndMergeMessages, processConversation } from "./conversation";
-import { getCurrentTodos } from "./current-todos";
 import { uploadFileParts, resolveStorageRefs } from "./file-materializer";
 import { toolsFromMCP } from "./helpers";
 import type { ToolApprovalLevel } from "./helpers";
@@ -757,14 +756,10 @@ async function streamCoreInner(
         // Also handles legacy data: URLs from threads predating this pipeline.
         const materializedMessages = await resolveStorageRefs(allMessages, ctx);
 
-        // Capture the current todo list from the (pre-strip) UIMessage
-        // stream. The matching strip happens inside processConversation;
-        // we read here so the state survives stripping.
-        const currentTodos = getCurrentTodos(materializedMessages);
-
         const {
           systemMessages: processedSystemMessages,
           messages: processedMessages,
+          currentTodos,
           originalMessages,
         } = await processConversation(materializedMessages, {
           windowSize,

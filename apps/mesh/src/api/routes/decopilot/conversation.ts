@@ -16,7 +16,8 @@ import {
 import type { ChatMessage } from "./types";
 import type { Memory } from "./memory";
 import { ThreadMessage } from "@/storage/types";
-import { stripTodoWriteParts } from "./strip-todo-writes";
+import { readCurrentTodos, stripTodoWriteParts } from "./todo-write-context";
+import type { Todo } from "./built-in-tools/todo-write";
 
 /**
  * Split request messages into system and the single request message.
@@ -34,6 +35,13 @@ export function splitRequestMessages(messages: ChatMessage[]): {
 export interface ProcessedConversation {
   systemMessages: SystemModelMessage[];
   messages: ReturnType<typeof pruneMessages>;
+  /**
+   * The current todo list, read from the pre-strip ModelMessage stream.
+   * Exposed so `stream-core` can inject the `<current-todos>` system
+   * tail without re-traversing the messages. Empty list if no
+   * `todo_write` call has been made yet.
+   */
+  currentTodos: Todo[];
   originalMessages: ChatMessage[];
 }
 
@@ -163,6 +171,10 @@ export async function processConversation(
     messages: nonSystemModelMessages,
   } = splitMessages(modelMessages);
 
+  // Snapshot the live todo list from the pre-strip ModelMessage stream
+  // so the caller can rebuild <current-todos> without redoing the scan.
+  const currentTodos = readCurrentTodos(nonSystemModelMessages);
+
   // Strip todo_write tool-call/result parts. The current todo list is
   // derived from the original (pre-strip) UIMessage stream upstream and
   // re-injected as a <current-todos> system tail (see stream-core +
@@ -243,6 +255,7 @@ export async function processConversation(
   return {
     systemMessages: systemModelMessages,
     messages: cleanedModelMessages,
+    currentTodos,
     originalMessages: validUIMessages,
   };
 }
