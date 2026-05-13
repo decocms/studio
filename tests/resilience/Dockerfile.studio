@@ -21,9 +21,7 @@ WORKDIR /app/apps/mesh
 RUN mkdir -p /app/data
 
 # Create entrypoint that runs migrations then starts server via CLI
-# The CLI handles --num-threads for multi-process SO_REUSEPORT support on Linux.
-# NUM_THREADS defaults to 1 (single process) unless overridden in docker-compose.
-RUN printf '#!/bin/bash\nset -e\ncd /app/apps/mesh\necho "Running migrations..."\nbun run migrate 2>&1\necho "Starting server..."\nexec bun run src/cli.ts --no-tui --num-threads ${NUM_THREADS:-1}\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+RUN printf '#!/bin/bash\nset -e\ncd /app/apps/mesh\necho "Running migrations..."\nbun run migrate 2>&1\necho "Starting server..."\nexec bun run src/cli.ts --no-tui\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
 EXPOSE 3000
 

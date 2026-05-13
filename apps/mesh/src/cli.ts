@@ -56,10 +56,6 @@ const { values, positionals } = parseArgs({
       type: "boolean",
       default: false,
     },
-    "num-threads": {
-      type: "string",
-      default: "1",
-    },
     vibe: {
       type: "boolean",
       default: false,
@@ -90,7 +86,6 @@ Server Options:
   --no-local-mode       Disable auto-login (use cloud/SSO auth)
   --skip-migrations     Skip database migrations on startup
   --no-tui              Disable Ink UI, plain stdout (CI mode)
-  --num-threads <n>     Worker threads (default: 1; Linux only for n>1)
   --vibe                Play synthwave soundtrack while running
   -h, --help            Show this help message
   -v, --version         Show version
@@ -348,10 +343,6 @@ const serveOptions = {
   home: decoHome,
   skipMigrations: values["skip-migrations"] === true,
   localMode: values["no-local-mode"] !== true,
-  numThreads: (() => {
-    const n = Number(values["num-threads"]);
-    return Number.isInteger(n) && n > 0 ? n : 1;
-  })(),
 };
 
 const noTui = values["no-tui"] === true || !process.stdout.isTTY;

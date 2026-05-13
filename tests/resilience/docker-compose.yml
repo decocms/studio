@@ -84,7 +84,6 @@ services:
       DECOCMS_LOCAL_MODE: "true"
       ENCRYPTION_KEY: test-encryption-key-32chars-long!
       DATA_DIR: /app/data
-      NUM_THREADS: "4"
     ports:
       - "127.0.0.1:13000:3000"
     depends_on:
