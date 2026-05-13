@@ -227,11 +227,11 @@ spec:
         # individual mounts get a slice. Adjust if a workload needs more.
         - name: workdir
           emptyDir:
-            sizeLimit: 5Gi
+            sizeLimit: 4Gi
         - name: tmp
           emptyDir:
             sizeLimit: 1Gi
         {{- end }}
         - name: home
           emptyDir:
-            sizeLimit: 2Gi
+            sizeLimit: 5Gi
