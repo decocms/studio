@@ -6,8 +6,8 @@ import {
   RESERVED_SLOT_INDEX,
 } from "./provision-rack";
 
-test("RACK_SLOT_COUNT is 12 (4×3 grid)", () => {
-  expect(RACK_SLOT_COUNT).toBe(12);
+test("RACK_SLOT_COUNT is 48 (8×6 grid)", () => {
+  expect(RACK_SLOT_COUNT).toBe(48);
 });
 
 test("RESERVED_SLOT_INDEX is within the grid", () => {

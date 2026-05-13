@@ -72,7 +72,7 @@ export function BootingVisual({ progress, claimPhase }: BootingVisualProps) {
   const headline = pillHeadline(progress, claimPhase);
 
   return (
-    <div className="relative flex w-full flex-col items-center justify-center gap-8 select-none [clip-path:inset(0_0_-200px_0)]">
+    <div className="relative flex w-full flex-col items-center justify-center gap-12 select-none [clip-path:inset(0_0_-200px_0)]">
       <div className="flex items-center gap-2 rounded-full border border-foreground/10 bg-background px-3.5 py-1.5 shadow-[0_4px_20px_-4px_rgb(0_0_0_/_0.12)]">
         <GridLoader />
         <span
@@ -173,22 +173,28 @@ function BrowserChrome({ showUrl = false }: { showUrl?: boolean }) {
 }
 
 /**
- * Phase 0: 4×3 capacity rack. A chart-1 scanner highlight sweeps across
- * 11 muted tiles while one persistent chart-1 tile sits at
+ * Phase 0: 8×6 capacity rack. A chart-1 scanner highlight sweeps across
+ * the muted tiles while one persistent chart-1 tile sits at
  * RESERVED_SLOT_INDEX, reading as "your sandbox slot is claimed."
+ *
+ * Padding (`px-8 py-5`) and gap (`gap-2`) match `InstallContent` so the
+ * provision and install grids share the same outer rhythm. Tiles are
+ * sized by the grid (no `aspect-square`) so 48 cells fit cleanly inside
+ * the card's 4/3 aspect — the 8/6 grid ratio matches the card's 4/3, so
+ * tiles come out close to square.
  */
 function ProvisionContent() {
   return (
     <div className="flex h-full flex-col">
       <BrowserChrome />
-      <div className="flex flex-1 items-center justify-center px-8 py-5">
-        <div className="grid w-full grid-cols-4 grid-rows-3 gap-3">
+      <div className="flex flex-1 px-8 py-5">
+        <div className="grid h-full w-full grid-cols-8 grid-rows-6 gap-2">
           {RACK_SCAN_DELAYS.map((delay, i) => {
             if (i === RESERVED_SLOT_INDEX) {
               return (
                 <div
                   key={i}
-                  className="aspect-square rounded-md bg-chart-1/[0.55]"
+                  className="rounded-md bg-chart-1/[0.55]"
                   style={{
                     animation: "vm-breathe 2.4s ease-in-out infinite",
                   }}
@@ -201,10 +207,7 @@ function ProvisionContent() {
             // (which would silently substitute 0 for a case that cannot occur).
             const scanDelay = delay as number;
             return (
-              <div
-                key={i}
-                className={cn("relative aspect-square rounded-md", MUTED_2)}
-              >
+              <div key={i} className={cn("relative rounded-md", MUTED_2)}>
                 <div
                   className="absolute inset-0 rounded-md bg-chart-1/40 opacity-0"
                   style={{

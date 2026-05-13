@@ -1,19 +1,20 @@
 /**
  * Geometry and animation choreography for the "Reserving sandbox" booting
- * card's 4×3 capacity-rack visual. Pure data — no React imports — so it can
+ * card's 8×6 capacity-rack visual. Pure data — no React imports — so it can
  * be unit-tested in isolation.
  *
  * Spec: .context/specs/2026-05-13-provision-card-rack-redesign-design.md
  */
 
-/** Total tiles in the 4 cols × 3 rows rack. */
-export const RACK_SLOT_COUNT = 12;
+/** Total tiles in the 8 cols × 6 rows rack. */
+export const RACK_SLOT_COUNT = 48;
 
 /**
- * Zero-based index of the persistently chart-1 "reserved" tile. Index 6 is
- * row 2, col 3 in a 4-column grid — centered horizontally, middle row.
+ * Zero-based index of the persistently chart-1 "reserved" tile. Index 28 is
+ * row 3, col 4 in an 8-column grid — just past the visual center, anchoring
+ * the eye slightly below and right of dead-middle.
  */
-export const RESERVED_SLOT_INDEX = 6;
+export const RESERVED_SLOT_INDEX = 28;
 
 /** Loop period of the scanner sweep, in seconds. */
 export const RACK_SCAN_PERIOD_SEC = 3;
@@ -23,7 +24,7 @@ export const RACK_SCAN_PERIOD_SEC = 3;
  * for the reserved tile (which does not participate in the sweep).
  *
  * Indexed by tile position 0..RACK_SLOT_COUNT-1. The reserved slot is
- * skipped from scan order, so the remaining 11 tiles receive delays evenly
+ * skipped from scan order, so the remaining tiles receive delays evenly
  * spaced across one RACK_SCAN_PERIOD_SEC loop, producing a chart-1
  * highlight that travels left→right, top→bottom across the rack.
  */
