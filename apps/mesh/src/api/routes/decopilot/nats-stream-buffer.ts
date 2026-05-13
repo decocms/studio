@@ -1,13 +1,17 @@
 /**
  * NATS JetStream Stream Buffer
  *
- * Publishes UIMessageStream chunks to NATS JetStream (memory storage)
- * so late-joining clients can replay the stream from any pod.
+ * The per-task JetStream subject is the source of truth for a run's UI
+ * stream. The producer (`streamCore`) calls `pump()` once; tail consumers
+ * (every HTTP response, including the initial `/stream`) call
+ * `createTailStream()`. The pump is decoupled from any consumer, so an
+ * HTTP cancel never stalls the producer or drops chunks.
  *
- * Enhancements over original jetstream-relay.ts:
- * - Per-subject message limit (20K chunks per thread) prevents one thread from starving others
- * - Per-thread publish error tracking with sampled logging
- * - Explicit purge method for run completion cleanup
+ * - Per-subject message limit (20K chunks per thread) prevents one thread
+ *   from starving others.
+ * - Per-thread publish error tracking with sampled logging.
+ * - `purge()` is called on terminal events from the run reactor to drop
+ *   completed runs early; the 5-minute `max_age` is the upper bound.
  */
 
 import {
@@ -102,19 +106,19 @@ export class NatsStreamBuffer implements StreamBuffer {
     this.jsm = jsm;
   }
 
-  relay(
+  pump(
     stream: ReadableStream,
     taskId: string,
-    abortSignal?: AbortSignal,
-  ): ReadableStream {
+    registrySignal: AbortSignal,
+  ): void {
     const js = this.js;
-    if (!js) return stream;
+    if (!js) return;
 
     const subj = streamSubject(taskId);
     const tracker = createPublishTracker(taskId);
     const encoder = this.encoder;
-    let terminated = false;
 
+    let terminated = false;
     const publishDone = () => {
       if (terminated) return;
       terminated = true;
@@ -123,27 +127,39 @@ export class NatsStreamBuffer implements StreamBuffer {
       );
     };
 
-    abortSignal?.addEventListener("abort", publishDone, { once: true });
+    // If the run is force-failed mid-stream the reader below may never
+    // observe the upstream close (e.g. tool stuck in a polling loop), so
+    // also wire `registrySignal` straight to the sentinel.
+    registrySignal.addEventListener("abort", publishDone, { once: true });
 
-    return stream.pipeThrough(
-      new TransformStream({
-        transform(chunk, controller) {
-          controller.enqueue(chunk);
+    void (async () => {
+      const reader = stream.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
           tracker.publish(
             js,
             subj,
-            encoder.encode(JSON.stringify({ p: chunk })),
+            encoder.encode(JSON.stringify({ p: value })),
           );
-        },
-        flush() {
-          abortSignal?.removeEventListener("abort", publishDone);
-          publishDone();
-        },
-      }),
-    );
+        }
+      } catch (err) {
+        console.warn(
+          `[Decopilot] stream pump error for thread ${taskId}:`,
+          (err as Error)?.message ?? err,
+        );
+      } finally {
+        reader.releaseLock();
+        publishDone();
+      }
+    })();
   }
 
-  async createReplayStream(taskId: string): Promise<ReadableStream | null> {
+  async createTailStream(
+    taskId: string,
+    signal?: AbortSignal,
+  ): Promise<ReadableStream | null> {
     const js = this.js;
     if (!js) return null;
 
@@ -160,7 +176,7 @@ export class NatsStreamBuffer implements StreamBuffer {
       });
     } catch (err) {
       console.warn(
-        "[Decopilot] JetStream replay unavailable (non-critical):",
+        "[Decopilot] JetStream tail unavailable (non-critical):",
         (err as Error)?.message ?? err,
       );
       return null;
@@ -175,10 +191,15 @@ export class NatsStreamBuffer implements StreamBuffer {
       }
     })();
 
+    let cleaned = false;
     const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
       sub.unsubscribe();
       iter.return(undefined).catch(() => {});
     };
+
+    signal?.addEventListener("abort", cleanup, { once: true });
 
     return new ReadableStream({
       async pull(controller) {

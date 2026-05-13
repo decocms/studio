@@ -245,7 +245,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           taskId: resolvedThreadId,
           windowSize,
           branch: branch ?? null,
-          httpSignal: c.req.raw.signal,
         },
         ctx,
         { runRegistry, streamBuffer, cancelBroadcast },
@@ -362,7 +361,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           taskId: resolvedThreadId,
           windowSize,
           branch: branch ?? null,
-          httpSignal: c.req.raw.signal,
         },
         ctx,
         { runRegistry, streamBuffer, cancelBroadcast },
@@ -460,16 +458,19 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
     try {
       const { taskId, thread, organization } = await validateThreadAccess(c);
 
-      // ── Fast path: run is active on this pod → replay buffer ──
+      // ── Fast path: run is active on this pod → tail JetStream ──
       if (runRegistry.isRunning(taskId)) {
-        const replayChunkStream = await streamBuffer.createReplayStream(taskId);
-        if (!replayChunkStream) {
+        const tailChunkStream = await streamBuffer.createTailStream(
+          taskId,
+          c.req.raw.signal,
+        );
+        if (!tailChunkStream) {
           return c.body(null, 204);
         }
 
-        const replayStream = createUIMessageStream({
+        const tailStream = createUIMessageStream({
           execute: async ({ writer }) => {
-            const reader = replayChunkStream.getReader();
+            const reader = tailChunkStream.getReader();
             try {
               while (true) {
                 const { done, value } = await reader.read();
@@ -484,7 +485,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
         return wrapWithSseKeepalive(
           createUIMessageStreamResponse({
-            stream: replayStream,
+            stream: tailStream,
             consumeSseStream: consumeStream,
           }),
         );
@@ -576,7 +577,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           taskId,
           windowSize: config.windowSize,
           isResume: true,
-          httpSignal: c.req.raw.signal,
         },
         ctx,
         { runRegistry, streamBuffer, cancelBroadcast },

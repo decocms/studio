@@ -734,8 +734,8 @@ export async function createApp(options: CreateAppOptions = {}) {
     };
     streamBuffer = {
       init: async () => {},
-      relay: (stream: ReadableStream) => stream,
-      createReplayStream: async () => null,
+      pump: () => {},
+      createTailStream: async () => null,
       purge: () => {},
       teardown: () => {},
     };

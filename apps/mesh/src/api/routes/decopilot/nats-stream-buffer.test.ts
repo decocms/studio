@@ -153,7 +153,7 @@ describe("NatsStreamBuffer", () => {
     expect(streamAddMock).toHaveBeenCalledTimes(1);
   });
 
-  describe("createReplayStream", () => {
+  describe("createTailStream", () => {
     function encodeMsg(payload: unknown): DeferredMsg {
       return { data: new TextEncoder().encode(JSON.stringify(payload)) };
     }
@@ -163,7 +163,7 @@ describe("NatsStreamBuffer", () => {
         getConnection: () => null,
         getJetStream: () => null,
       });
-      const result = await buffer.createReplayStream("task-1");
+      const result = await buffer.createTailStream("task-1");
       expect(result).toBeNull();
     });
 
@@ -171,7 +171,7 @@ describe("NatsStreamBuffer", () => {
       const { sub, push, end } = createControlledSubscription();
       const buffer = bufferWith(() => Promise.resolve(sub));
 
-      const stream = await buffer.createReplayStream("task-1");
+      const stream = await buffer.createTailStream("task-1");
       expect(stream).not.toBeNull();
 
       push(encodeMsg({ p: "chunk-1" }));
@@ -191,7 +191,7 @@ describe("NatsStreamBuffer", () => {
       const { sub, push, end } = createControlledSubscription();
       const buffer = bufferWith(() => Promise.resolve(sub));
 
-      const stream = await buffer.createReplayStream("task-1");
+      const stream = await buffer.createTailStream("task-1");
       const reader = stream!.getReader();
 
       push(encodeMsg({ p: "before-gap" }));
@@ -205,7 +205,7 @@ describe("NatsStreamBuffer", () => {
       let secondResolved = false;
       const secondP = reader.read().then((r) => {
         secondResolved = true;
-        return r;
+        return r as { done: boolean; value: unknown };
       });
 
       // Yield to the event loop and a short timer; nothing should resolve.
@@ -228,7 +228,7 @@ describe("NatsStreamBuffer", () => {
       const { sub, push, end } = createControlledSubscription();
       const buffer = bufferWith(() => Promise.resolve(sub));
 
-      const stream = await buffer.createReplayStream("task-1");
+      const stream = await buffer.createTailStream("task-1");
 
       // Malformed JSON between two valid chunks.
       push(encodeMsg({ p: "ok-1" }));
@@ -245,7 +245,7 @@ describe("NatsStreamBuffer", () => {
       const { sub, push } = createControlledSubscription();
       const buffer = bufferWith(() => Promise.resolve(sub));
 
-      const stream = await buffer.createReplayStream("task-1");
+      const stream = await buffer.createTailStream("task-1");
       const reader = stream!.getReader();
 
       push(encodeMsg({ p: "first" }));
@@ -259,7 +259,7 @@ describe("NatsStreamBuffer", () => {
       const buffer = bufferWith(() =>
         Promise.reject(new Error("subscribe failed")),
       );
-      const stream = await buffer.createReplayStream("task-1");
+      const stream = await buffer.createTailStream("task-1");
       expect(stream).toBeNull();
     });
   });
