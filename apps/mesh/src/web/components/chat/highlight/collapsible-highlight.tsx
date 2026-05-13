@@ -155,8 +155,15 @@ export function CollapsibleHighlight({
               <div className="border-t border-dashed border-border/60" />
             )}
 
+            {/* When a title is present, the title block's `pt-4` already
+                provides the 16px gap from the dashed divider to the first
+                body element. When no title is present (e.g. TodosHighlight),
+                the children must carry that top padding themselves so every
+                card has the same chip → body distance. */}
             {children ? (
-              <div className="overflow-clip pb-4">{children}</div>
+              <div className={cn("overflow-clip pb-4", !title && "pt-4")}>
+                {children}
+              </div>
             ) : null}
 
             {footerLeft || footerRight ? (
