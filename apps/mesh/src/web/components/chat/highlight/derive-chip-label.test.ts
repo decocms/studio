@@ -43,6 +43,29 @@ describe("deriveChipLabel", () => {
     });
   });
 
+  test("returns pending icon and partial-progress summary when some are done and nothing is in progress", () => {
+    const result = deriveChipLabel([
+      {
+        status: "completed",
+        content: "Extract types",
+        activeForm: "Extracting types",
+      },
+      {
+        status: "completed",
+        content: "Add unit tests",
+        activeForm: "Adding unit tests",
+      },
+      todo("pending", "Migrate callsites"),
+      todo("pending", "Update docs"),
+      todo("pending", "Delete old file"),
+    ]);
+    expect(result).toEqual({
+      icon: "pending",
+      activity: "3 pending",
+      progress: "2/5 done",
+    });
+  });
+
   test("returns in_progress icon and a count when more than one todo is in progress", () => {
     const result = deriveChipLabel([
       {

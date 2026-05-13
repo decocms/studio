@@ -8,9 +8,14 @@
  * State table — keep in sync with the design spec:
  *
  *   • all pending             → { pending,     "{n} todos",          "not started" }
+ *   • partial done, none active → { pending,   "{k} pending",        "{done}/{total} done" }
  *   • one in_progress         → { in_progress, "{activeForm}",       "{done}/{total} done" }
  *   • multi in_progress       → { in_progress, "{k} in progress",    "{done}/{total} done" }
  *   • all completed           → { completed,   "All done",           "{total}/{total}" }
+ *
+ * The "partial done, none active" row matters when the model finishes
+ * a task before flipping the next one to in_progress — without it the
+ * chip would read "not started" even after some todos completed.
  *
  * Empty list is tolerated for safety but the caller short-circuits on
  * `todos.length === 0` and the chip never renders.
@@ -49,6 +54,14 @@ export function deriveChipLabel(todos: Todo[]): ChipLabel {
     return {
       icon: "in_progress",
       activity: `${inProgress.length} in progress`,
+      progress: `${completed}/${total} done`,
+    };
+  }
+  if (completed > 0) {
+    // Some completed, none in progress — model paused between tasks.
+    return {
+      icon: "pending",
+      activity: `${total - completed} pending`,
       progress: `${completed}/${total} done`,
     };
   }
