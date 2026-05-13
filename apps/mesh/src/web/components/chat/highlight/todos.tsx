@@ -43,49 +43,44 @@ export function TodosHighlight({ bannerActive }: TodosHighlightProps) {
 
   return (
     <div className="px-0.5">
-      {showPanel ? <ExpandedPanel todos={todos} /> : null}
-      <button
-        type="button"
-        data-testid="todos-chip"
-        aria-expanded={showPanel}
-        onClick={() => setExpanded((prev) => !prev)}
+      <div
         className={cn(
-          "flex items-center gap-2 w-full px-3 py-2 mb-2 rounded-lg",
-          "border border-dashed bg-background text-sm shadow",
-          "text-left hover:bg-accent/50 transition-colors",
+          "mb-2 rounded-lg border border-dashed bg-background shadow",
+          "overflow-hidden",
         )}
       >
-        <StatusMark status={label.icon} />
-        <span className="flex-1 min-w-0 truncate">{label.activity}</span>
-        <span className="text-xs text-muted-foreground shrink-0">
-          {label.progress}
-        </span>
-        <span aria-hidden="true" className="text-muted-foreground shrink-0">
-          {showPanel ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-        </span>
-      </button>
-    </div>
-  );
-}
-
-function ExpandedPanel({ todos }: { todos: readonly Todo[] }) {
-  return (
-    <div
-      data-testid="todos-expanded-panel"
-      className={cn(
-        "max-h-[40vh] overflow-y-auto",
-        "px-3 py-2.5 mb-2 rounded-lg border border-dashed bg-background shadow",
-      )}
-    >
-      <header className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
-        Todos
-      </header>
-      <ul className="flex flex-col gap-1.5">
-        {/* key=i is safe: todo_write rewrites the full list atomically; no stable id exists */}
-        {todos.map((todo, i) => (
-          <TodoRow key={i} todo={todo} />
-        ))}
-      </ul>
+        <button
+          type="button"
+          data-testid="todos-chip"
+          aria-expanded={showPanel}
+          onClick={() => setExpanded((prev) => !prev)}
+          className={cn(
+            "flex items-center gap-2 w-full px-3 py-2 text-sm text-left",
+            "hover:bg-accent/50 transition-colors",
+            showPanel && "border-b border-dashed",
+          )}
+        >
+          <StatusMark status={label.icon} />
+          <span className="flex-1 min-w-0 truncate">{label.activity}</span>
+          <span className="text-xs text-muted-foreground shrink-0">
+            {label.progress}
+          </span>
+          <span aria-hidden="true" className="text-muted-foreground shrink-0">
+            {showPanel ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </span>
+        </button>
+        {showPanel ? (
+          <ul
+            data-testid="todos-expanded-panel"
+            className="flex flex-col gap-1.5 px-3 py-2.5 max-h-[40vh] overflow-y-auto"
+          >
+            {/* key=i is safe: todo_write rewrites the full list atomically; no stable id exists */}
+            {todos.map((todo, i) => (
+              <TodoRow key={i} todo={todo} />
+            ))}
+          </ul>
+        ) : null}
+      </div>
     </div>
   );
 }
