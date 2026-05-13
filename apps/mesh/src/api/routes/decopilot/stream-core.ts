@@ -172,15 +172,6 @@ export interface StreamCoreInput {
   isResume?: boolean;
   /** Persisted to the thread row on first-message creation. */
   branch?: string | null;
-  /**
-   * Fire-and-forget mode for the subscribe-model `POST /messages` endpoint.
-   * Starts the pump but does not create a tail and does not return a stream
-   * — the caller is expected to acknowledge with 202 and let downstream
-   * `/attach` subscribers consume from JetStream. Requires a `streamBuffer`
-   * in deps; falls back to draining `uiStream` internally otherwise so the
-   * lazy `createUIMessageStream.execute` still runs.
-   */
-  fireAndForget?: boolean;
 }
 
 export interface StreamCoreDeps {
@@ -191,27 +182,37 @@ export interface StreamCoreDeps {
 
 export interface StreamCoreResult {
   taskId: string;
-  /**
-   * UI message stream the caller can serve / drain. Undefined in
-   * fire-and-forget mode — the pump is already publishing to JetStream and
-   * the caller should respond with 202 + use `createTailStream` from a
-   * separate request to subscribe.
-   */
-  stream?: ReadableStream;
 }
 
 // ============================================================================
 // Core Logic
 // ============================================================================
 
+/**
+ * Fire-and-forget: claim the run, start the JetStream pump, return
+ * `{ taskId }`. Subscribers receive chunks via
+ * `streamBuffer.createTailStream` (the `/attach` endpoint). Requires
+ * `deps.streamBuffer` to be configured; routes that need an SSE response
+ * call `createTailStream` themselves after this returns.
+ *
+ * Used by every HTTP route that initiates work (`POST /messages`,
+ * `/attach` orphan-resume, the deprecated `POST /stream`).
+ */
 export async function streamCore(
   input: StreamCoreInput,
   ctx: MeshContext,
   deps: StreamCoreDeps,
 ): Promise<StreamCoreResult> {
+  if (!deps.streamBuffer) {
+    throw new Error(
+      "streamCore: deps.streamBuffer is required for HTTP-initiated runs. " +
+        "Use executeRun for automation flows that need to await completion.",
+    );
+  }
   return traced(
     "decopilot.streamCore",
-    (rootSpan) => streamCoreInner(input, ctx, deps, rootSpan),
+    (rootSpan) =>
+      streamCoreInner(input, ctx, deps, rootSpan, "fire-and-forget"),
     {
       "decopilot.agent.id": input.agent.id,
       "decopilot.model.id": input.models.thinking.id,
@@ -223,11 +224,42 @@ export async function streamCore(
   );
 }
 
+/**
+ * Drain-to-completion: claim the run, drain `uiStream` internally until
+ * the run finishes, return `{ taskId }`. The caller awaits the returned
+ * promise to know the run is done.
+ *
+ * Used by automations (DBOS workflow steps) that need to block on the
+ * agent's completion. Does not require a `streamBuffer` — automations
+ * don't have a subscriber to fan out to.
+ */
+export async function executeRun(
+  input: StreamCoreInput,
+  ctx: MeshContext,
+  deps: StreamCoreDeps,
+): Promise<StreamCoreResult> {
+  return traced(
+    "decopilot.executeRun",
+    (rootSpan) => streamCoreInner(input, ctx, deps, rootSpan, "drain"),
+    {
+      "decopilot.agent.id": input.agent.id,
+      "decopilot.model.id": input.models.thinking.id,
+      "decopilot.credential.id": input.models.credentialId,
+      "decopilot.organization.id": input.organizationId,
+      "decopilot.user.id": input.userId,
+      "decopilot.thread.id": input.taskId,
+    },
+  );
+}
+
+type StreamCoreMode = "fire-and-forget" | "drain";
+
 async function streamCoreInner(
   input: StreamCoreInput,
   ctx: MeshContext,
   deps: StreamCoreDeps,
   rootSpan: import("@opentelemetry/api").Span,
+  mode: StreamCoreMode,
 ): Promise<StreamCoreResult> {
   const { runRegistry, streamBuffer } = deps;
 
@@ -1636,54 +1668,31 @@ async function streamCoreInner(
     // the consumer side never stalls the producer or drops tool output.
     //
     // Modes:
-    //  - Fire-and-forget (POST /messages, subscribe model): pump runs;
-    //    response is 202 with `{taskId}`. Subscribers attach via /attach.
-    //  - Legacy /stream + /attach, NATS up: pump → JetStream; response tails.
-    //  - Legacy /stream, NATS down / test stub: tail null; fall back to
-    //    serving `uiStream` directly. Degraded but matches pre-refactor
-    //    behavior so dev/test without NATS still works.
-    //  - Automations (no streamBuffer in deps): `uiStream` drained by
-    //    `consumeStreamCore` (or this function's drain fallback in
-    //    fire-and-forget mode).
-    if (streamBuffer) {
+    //  - "fire-and-forget" (HTTP routes): pump publishes to JetStream;
+    //    the caller's route handler creates a tail via
+    //    `streamBuffer.createTailStream` if it needs an SSE response.
+    //  - "drain" (automations): no buffer fan-out needed; drain uiStream
+    //    here and resolve when the run finishes. Caller awaits the
+    //    returned promise to know the workflow step is complete.
+    if (mode === "fire-and-forget") {
+      if (!streamBuffer) {
+        throw new Error("streamCore: streamBuffer required in fire-and-forget");
+      }
       streamBuffer.pump(uiStream, mem.thread.id, registrySignal);
-      if (input.fireAndForget) {
-        return { taskId: mem.thread.id };
-      }
-      const tail = await streamBuffer.createTailStream(mem.thread.id);
-      if (tail) {
-        return { taskId: mem.thread.id, stream: tail };
-      }
-      // Tail unavailable (NATS down at subscribe time). The pump is already
-      // draining uiStream — we can't also serve it. Return without a stream;
-      // caller surfaces a 503 to the client.
       return { taskId: mem.thread.id };
     }
 
-    if (input.fireAndForget) {
-      // No buffer (automation or no-NATS dev). Drain locally so the lazy
-      // `createUIMessageStream.execute` runs to completion. Nothing is
-      // observable; this path exists so the run still executes server-side.
-      void (async () => {
-        const reader = uiStream.getReader();
-        try {
-          while (true) {
-            const { done } = await reader.read();
-            if (done) break;
-          }
-        } catch {
-          // swallow — the run's own error handling already records this
-        } finally {
-          reader.releaseLock();
-        }
-      })();
-      return { taskId: mem.thread.id };
+    // mode === "drain"
+    const reader = uiStream.getReader();
+    try {
+      while (true) {
+        const { done } = await reader.read();
+        if (done) break;
+      }
+    } finally {
+      reader.releaseLock();
     }
-
-    return {
-      taskId: mem.thread.id,
-      stream: uiStream,
-    };
+    return { taskId: mem.thread.id };
   } catch (err) {
     closeClients?.();
 
@@ -1780,23 +1789,4 @@ function reconstructEnabledTools(
     }
   }
   return enabled;
-}
-
-/**
- * Consume a StreamCoreResult by draining its ReadableStream.
- * Useful for automation runs where there is no SSE consumer.
- *
- * No-op if `result.stream` is undefined (fire-and-forget mode); in that
- * case the pump or the internal drain in `streamCore` is already running
- * the stream for us.
- */
-export async function consumeStreamCore(
-  result: StreamCoreResult,
-): Promise<void> {
-  if (!result.stream) return;
-  const reader = result.stream.getReader();
-  while (true) {
-    const { done } = await reader.read();
-    if (done) break;
-  }
 }

@@ -9,7 +9,7 @@ export type StreamCoreFn = (
   input: StreamCoreInput,
   ctx: MeshContext,
   deps: StreamCoreDeps,
-) => Promise<{ taskId: string; stream?: ReadableStream }>;
+) => Promise<{ taskId: string }>;
 
 export type MeshContextFactory = (
   orgId: string,

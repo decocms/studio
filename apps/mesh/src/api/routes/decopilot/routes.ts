@@ -36,7 +36,6 @@ import { PersistedRunConfigSchema, toModelsConfig } from "./run-config";
 import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage, ModelsConfig } from "./types";
 import { streamCore } from "./stream-core";
-import { RunClaimError } from "./run-reactor";
 import { wrapWithSseKeepalive } from "./sse-keepalive";
 import type { SqlThreadStorage } from "@/storage/threads";
 import { getPodId } from "@/core/pod-identity";
@@ -178,8 +177,18 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   });
 
   // ============================================================================
-  // Stream Endpoint
+  // Stream Endpoint (legacy — request-response shape)
   // ============================================================================
+  //
+  // DEPRECATED. Use `POST /:org/decopilot/threads/:threadId/messages`
+  // (fire-and-forget) + `GET /:org/decopilot/attach/:threadId?persistent=true`
+  // (long-lived subscription) instead. Kept for backwards compatibility
+  // with the existing chat hook until it migrates.
+  //
+  // Internally now identical to the subscribe model: streamCore starts the
+  // pump, then we open a one-shot tail subscription on the same JetStream
+  // subject and serve it as SSE. This means even legacy clients survive
+  // proxy/tab-close cuts cleanly (next /attach hits a hot JetStream tail).
 
   app.post("/:org/decopilot/stream", async (c) => {
     try {
@@ -263,16 +272,37 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         },
       });
 
-      if (!result.stream) {
+      // streamCore started the pump. Create a one-shot tail subscription
+      // (closes on the {done} sentinel) so this request returns SSE chunks
+      // for the just-started run, then completes when the run ends.
+      const tailChunkStream = await streamBuffer.createTailStream(
+        result.taskId,
+        c.req.raw.signal,
+      );
+      if (!tailChunkStream) {
         return c.json(
           { error: "Stream buffer unavailable — cannot serve response" },
           503,
         );
       }
+      const tailStream = createUIMessageStream({
+        execute: async ({ writer }) => {
+          const reader = tailChunkStream.getReader();
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              writer.write(value);
+            }
+          } finally {
+            reader.releaseLock();
+          }
+        },
+      });
 
       return wrapWithSseKeepalive(
         createUIMessageStreamResponse({
-          stream: result.stream,
+          stream: tailStream,
           consumeSseStream: consumeStream,
         }),
       );
@@ -293,119 +323,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       }
 
       posthog.captureException(err);
-      console.error("[decopilot:stream] Failed", {
-        error: err instanceof Error ? err.message : JSON.stringify(err),
-        stack: err instanceof Error ? err.stack : undefined,
-      });
-      return c.json(
-        { error: err instanceof Error ? err.message : JSON.stringify(err) },
-        500,
-      );
-    }
-  });
-
-  app.post("/:org/decopilot/runtime/stream", async (c) => {
-    try {
-      const ctx = c.get("meshContext");
-
-      // 1. Validate request
-      const {
-        organization,
-        tier,
-        agent,
-        systemMessages,
-        requestMessage,
-        temperature,
-        memory: memoryConfig,
-        thread_id,
-        branch,
-        toolApprovalLevel,
-        mode,
-      } = await validateRequest(c);
-
-      const userId = ctx.auth?.user?.id;
-      if (!userId) {
-        throw new HTTPException(401, { message: "User ID is required" });
-      }
-
-      // 2. Resolve the request's tier to a concrete (credentialId, modelId).
-      const models = await resolvePerRequestModels(ctx, tier);
-
-      // 3. Check model permissions
-      const allowedModels = await fetchModelPermissions(
-        ctx.db,
-        organization.id,
-        ctx.auth.user?.role,
-      );
-
-      if (
-        allowedModels !== undefined &&
-        !checkModelPermission(
-          allowedModels,
-          models.credentialId,
-          models.thinking.id,
-        )
-      ) {
-        throw new HTTPException(403, {
-          message: "Model not allowed for your role",
-        });
-      }
-
-      const windowSize = memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE;
-      const resolvedThreadId = thread_id ?? memoryConfig?.thread_id;
-
-      // 4. Delegate to streamCore
-      const result = await streamCore(
-        {
-          messages: [...systemMessages, requestMessage],
-          models,
-          agent,
-          temperature,
-          toolApprovalLevel,
-          mode,
-          organizationId: organization.id,
-          userId,
-          taskId: resolvedThreadId,
-          windowSize,
-          branch: branch ?? null,
-        },
-        ctx,
-        { runRegistry, streamBuffer, cancelBroadcast },
-      );
-
-      if (!result.stream) {
-        return c.json(
-          { error: "Stream buffer unavailable — cannot serve response" },
-          503,
-        );
-      }
-
-      return wrapWithSseKeepalive(
-        createUIMessageStreamResponse({
-          stream: result.stream,
-          consumeSseStream: consumeStream,
-        }),
-      );
-    } catch (err) {
-      console.error("[decopilot:stream] Error", err);
-
-      if (err instanceof RunClaimError) {
-        return c.json({ error: err.message }, 409);
-      }
-
-      if (err instanceof TierUnavailableError) {
-        return c.json({ error: err.message }, 400);
-      }
-
-      if (err instanceof HTTPException) {
-        return c.json({ error: err.message }, err.status);
-      }
-
-      if (err instanceof Error && err.name === "AbortError") {
-        console.warn("[decopilot:stream] Aborted", { error: err.message });
-        return c.json({ error: "Request aborted" }, 400);
-      }
-
       console.error("[decopilot:stream] Failed", {
         error: err instanceof Error ? err.message : JSON.stringify(err),
         stack: err instanceof Error ? err.stack : undefined,
@@ -506,7 +423,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           taskId: threadIdParam,
           windowSize,
           branch: branch ?? null,
-          fireAndForget: true,
         },
         ctx,
         { runRegistry, streamBuffer, cancelBroadcast },
@@ -735,7 +651,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           taskId,
           windowSize: config.windowSize,
           isResume: true,
-          fireAndForget: true,
         },
         ctx,
         { runRegistry, streamBuffer, cancelBroadcast },

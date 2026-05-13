@@ -108,7 +108,7 @@ import {
   setAutomationRuntime,
 } from "../automations";
 import { DBOS } from "@dbos-inc/dbos-sdk";
-import { streamCore, consumeStreamCore } from "./routes/decopilot/stream-core";
+import { executeRun } from "./routes/decopilot/stream-core";
 import {
   PersistedRunConfigSchema,
   toModelsConfig,
@@ -1164,7 +1164,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // it only writes a module-level pointer, no DBOS API calls.
   setAutomationRuntime({
     storage: automationsStorage,
-    streamCoreFn: streamCore,
+    streamCoreFn: executeRun,
     meshContextFactory: automationContextFactory,
     deps: { runRegistry, cancelBroadcast },
   });
@@ -1274,7 +1274,13 @@ export async function createApp(options: CreateAppOptions = {}) {
       thread.organization_id,
     );
 
-    const result = await streamCore(
+    // Pod-death recovery: a different pod's run was claimed by us. Drain
+    // synchronously to know when the run completes server-side. We
+    // deliberately don't pass a streamBuffer here — clients reconnecting
+    // via /attach trigger their own pump via the user-initiated
+    // orphan-resume path in routes.ts; this background recovery is only
+    // for the case where no client is currently attached.
+    await executeRun(
       {
         messages: [],
         models: toModelsConfig(config.models),
@@ -1291,7 +1297,6 @@ export async function createApp(options: CreateAppOptions = {}) {
       resumeCtx,
       { runRegistry, cancelBroadcast },
     );
-    await consumeStreamCore(result);
   };
 
   // Wire pod death watcher → orphan recovery

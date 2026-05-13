@@ -48,10 +48,7 @@
  */
 
 import { DBOS, SchedulerMode } from "@dbos-inc/dbos-sdk";
-import {
-  consumeStreamCore,
-  type StreamCoreDeps,
-} from "@/api/routes/decopilot/stream-core";
+import type { StreamCoreDeps } from "@/api/routes/decopilot/stream-core";
 import { resolveTier } from "@/core/resolve-tier";
 import type { AutomationsStorage } from "@/storage/automations";
 import type { Automation } from "@/storage/types";
@@ -287,12 +284,14 @@ async function executeRunStep(
     }
     request.abortSignal = abortController.signal;
 
-    const result = await rt.streamCoreFn(request, meshCtx, {
+    // executeRun drains uiStream internally and resolves when the run
+    // completes (or fails). Automations need this synchronous shape so
+    // the DBOS workflow step can record the run's terminal state.
+    await rt.streamCoreFn(request, meshCtx, {
       runRegistry: rt.deps.runRegistry,
       streamBuffer: undefined,
       cancelBroadcast: rt.deps.cancelBroadcast,
     });
-    await consumeStreamCore(result);
     return {};
   } catch (err) {
     const runError = err instanceof Error ? err.message : String(err);
