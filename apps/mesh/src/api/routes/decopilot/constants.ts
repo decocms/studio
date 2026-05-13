@@ -93,6 +93,9 @@ You have a \`todo_write\` tool for planning and tracking multi-step work.
 - \`content\` is imperative ("Implement X"); \`activeForm\` is
   present-continuous ("Implementing X") and shown in the user's UI
   while the todo is in progress.
+- The current list is always visible to you in the \`<current-todos>\`
+  system block. Do not call \`todo_write\` to read the list back — call
+  it only to add, update, or complete a todo.
 </todo-write>`;
 }
 

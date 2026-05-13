@@ -44,6 +44,12 @@ describe("todoWriteTool", () => {
     expect(TodoWriteInputSchema.safeParse({ todos: [] }).success).toBe(true);
   });
 
+  test("description tells the model not to call todo_write to read the list", () => {
+    expect(todoWriteTool.description).toMatch(
+      /current[- ]?todos|do not call.*to read|always visible/i,
+    );
+  });
+
   test("execute returns ok + count", async () => {
     const input = {
       todos: [

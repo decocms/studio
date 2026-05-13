@@ -19,4 +19,10 @@ describe("buildTodoWritePrompt", () => {
       /rewrite|replace|full list|entire list/i,
     );
   });
+
+  test("tells the model the current list is always visible", () => {
+    expect(buildTodoWritePrompt()).toMatch(
+      /current[- ]?todos|always visible|always present in the system/i,
+    );
+  });
 });

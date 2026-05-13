@@ -36,7 +36,8 @@ const description =
   "Plan and track multi-step work. Call with the FULL todo list every time — this replaces the prior list. " +
   "Use whenever a task has 3+ distinct steps. Mark exactly one todo `in_progress` at a time. " +
   "Flip a todo to `in_progress` before starting it and to `completed` the moment it finishes — do not batch completions. " +
-  "For trivial (<3 step) work, do not call this tool at all.";
+  "For trivial (<3 step) work, do not call this tool at all. " +
+  "The current list is always visible to you in the `<current-todos>` system block — do not call this tool to read the list back.";
 
 export const todoWriteTool = tool({
   description,
