@@ -1,8 +1,8 @@
 "use client";
 
 import { Button } from "@deco/ui/components/button.tsx";
-import { Check } from "@untitledui/icons";
-import { HighlightCard } from "./card";
+import { Check, ClipboardCheck } from "@untitledui/icons";
+import { CollapsibleHighlight } from "./collapsible-highlight";
 import { MessageTextPart } from "../message/parts/text-part.tsx";
 import type { ChatMessage } from "../types.ts";
 
@@ -58,10 +58,12 @@ function ProposePlanPrompt({
   );
 
   return (
-    <HighlightCard
+    <CollapsibleHighlight
+      icon={<ClipboardCheck size={14} />}
+      label="Plan ready"
       title="Implementation Plan"
+      defaultExpanded={true}
       footerRight={footerRight}
-      className="border-dashed border-purple-500"
     >
       <div className="px-4 max-h-64 overflow-y-auto">
         <div className="prose prose-sm max-w-none text-sm">
@@ -71,7 +73,7 @@ function ProposePlanPrompt({
           />
         </div>
       </div>
-    </HighlightCard>
+    </CollapsibleHighlight>
   );
 }
 
