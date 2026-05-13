@@ -18,6 +18,7 @@
  * markers propagate through OpenRouter routes too.
  */
 
+import type { Todo } from "./built-in-tools/todo-write";
 import { EPHEMERAL_5M } from "./cache-instrumentation";
 
 export interface SystemMessage {
@@ -43,6 +44,21 @@ export function buildCurrentContextPrompt(now: Date): string {
 Current date: ${iso.slice(0, 10)}
 Current time: ${iso.slice(11, 16)} UTC
 </current-context>`;
+}
+
+/**
+ * Per-request, non-cached system prompt block carrying the current
+ * todo list. Returns null when the list is empty so the caller can
+ * skip the append entirely. Lives alongside <current-context> in the
+ * non-cached system tail — never wrapped in cache markers.
+ */
+export function buildCurrentTodosPrompt(todos: readonly Todo[]): string | null {
+  if (todos.length === 0) return null;
+  const lines = todos.map((t) => {
+    const label = t.status === "in_progress" ? t.activeForm : t.content;
+    return `- [${t.status}] ${label}`;
+  });
+  return `<current-todos>\n${lines.join("\n")}\n</current-todos>`;
 }
 
 const EPHEMERAL_5M_PROVIDER_OPTIONS = {

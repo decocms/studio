@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import type { Todo } from "./built-in-tools/todo-write";
 import { buildBasePlatformPrompt } from "./constants";
 import {
   buildCurrentContextPrompt,
+  buildCurrentTodosPrompt,
   buildSystemMessages,
 } from "./system-prompt";
 
@@ -93,5 +95,75 @@ describe("buildSystemMessages", () => {
     expect(out).toHaveLength(1);
     expect(out[0]!.content).toContain("<current-context>");
     expect(out[0]!.providerOptions?.anthropic?.cacheControl).toBeFalsy();
+  });
+});
+
+describe("buildCurrentTodosPrompt", () => {
+  test("returns null for empty todo list", () => {
+    expect(buildCurrentTodosPrompt([])).toBeNull();
+  });
+
+  test("renders a single pending todo with content", () => {
+    const todos: Todo[] = [
+      {
+        content: "Implement login",
+        status: "pending",
+        activeForm: "Implementing login",
+      },
+    ];
+    const block = buildCurrentTodosPrompt(todos);
+    expect(block).toContain("<current-todos>");
+    expect(block).toContain("</current-todos>");
+    expect(block).toContain("[pending] Implement login");
+  });
+
+  test("renders an in_progress todo with activeForm (not content)", () => {
+    const todos: Todo[] = [
+      {
+        content: "Run tests",
+        status: "in_progress",
+        activeForm: "Running tests",
+      },
+    ];
+    const block = buildCurrentTodosPrompt(todos);
+    expect(block).toContain("[in_progress] Running tests");
+    expect(block).not.toContain("Run tests");
+  });
+
+  test("renders completed todos with content (not activeForm)", () => {
+    const todos: Todo[] = [
+      {
+        content: "Wrote docs",
+        status: "completed",
+        activeForm: "Writing docs",
+      },
+    ];
+    const block = buildCurrentTodosPrompt(todos);
+    expect(block).toContain("[completed] Wrote docs");
+  });
+
+  test("renders a full mixed list in order", () => {
+    const todos: Todo[] = [
+      { content: "Done item", status: "completed", activeForm: "Doing done" },
+      {
+        content: "Active item",
+        status: "in_progress",
+        activeForm: "Doing active",
+      },
+      {
+        content: "Pending item",
+        status: "pending",
+        activeForm: "Doing pending",
+      },
+    ];
+    const block = buildCurrentTodosPrompt(todos)!;
+    const lines = block.split("\n");
+    expect(lines).toEqual([
+      "<current-todos>",
+      "- [completed] Done item",
+      "- [in_progress] Doing active",
+      "- [pending] Pending item",
+      "</current-todos>",
+    ]);
   });
 });
