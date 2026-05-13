@@ -186,9 +186,16 @@ You are the web developer agent for the Acme web app.
 - Agents can navigate up and read anything across the full workspace tree.
 
 ### Writing
-- Writing anywhere in the workspace tree is allowed.
-- Changes inside a plain agent's folder land on `main` (or a PR branch if the agent creates one).
-- Changes inside a GitHub agent's worktree folder land on that branch.
+
+| Location | Plain agent | GitHub agent |
+|----------|-------------|--------------|
+| `agents/<slug>/artifacts/` | ✅ writable | ✅ writable |
+| `agents/<slug>/` (all other paths) | ❌ read-only | ✅ writable (lands on the active branch) |
+| Workspace root, `connections/`, `skills/` | ✅ writable | ✅ writable |
+
+For plain agents (no `github` property), `agents/<slug>/artifacts/` is the **only** writable location inside the agent folder. All other paths — `AGENTS.md`, `memory.json`, `skills/`, `automations/`, and any freeform files — are read-only at runtime. Changes to those must be made by humans through the UI or directly in the repository.
+
+GitHub agents have no such restriction: they work inside a git worktree and can write freely within their branch.
 
 ### Sharing
 - Sharing = committing to your branch and opening a PR to `main`.
