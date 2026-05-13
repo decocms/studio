@@ -1,5 +1,4 @@
 import { Button } from "@deco/ui/components/button.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
 import { AlertCircle, AlertTriangle, X } from "@untitledui/icons";
 import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import { useChatStream, useChatTask } from "../context";
@@ -220,87 +219,72 @@ export function ChatHighlight() {
     });
   };
 
-  // Priority: user_ask > propose_plan > approval > error > warning.
-  // Credit-exhausted errors are nested inside the error priority slot
-  // (they render a dedicated modal instead of the inline banner), so
-  // higher-priority interactive banners still win when concurrent.
-  // The non-credit banners collapse into a single `bannerNode` so they
-  // can share the absolutely-positioned wrapper with <TodosHighlight>.
+  // Each banner condition is evaluated independently; all that match
+  // render. Stack order is severity-descending — the last child sits
+  // closest to the chat input. Credit-exhausted errors are a modal,
+  // handled by an early return outside the stack.
 
-  let bannerNode: React.ReactNode = null;
-  // The wrapper sits in front of the chat scroll; error and warning
-  // banners are translucent (bg-destructive/5, bg-amber-500/5) and rely
-  // on a backdrop to read cleanly. user_ask / propose_plan / approval
-  // render fully-opaque cards and do not need the wrapper backdrop.
-  let bannerNeedsBg = false;
-
-  if (isWaitingForUserInput) {
-    bannerNode = (
-      <UserAskQuestionHighlight
-        userAskParts={userAskParts}
-        isStreaming={isStreaming}
-        onSubmit={handleUserAskSubmit}
-      />
-    );
-  } else if (pendingPlans.length > 0) {
-    bannerNode = (
-      <ProposePlanHighlight
-        plans={pendingPlans}
-        isStreaming={isStreaming}
-        onApprove={handlePlanApprove}
-        onDismiss={handlePlanDismiss}
-      />
-    );
-  } else if (
-    pendingApprovals.length > 0 ||
-    (isStreaming && isWaitingForApprovals)
-  ) {
-    bannerNode = (
-      <ApprovalHighlight
-        approvals={pendingApprovals}
-        isStreaming={isStreaming}
-        onRespond={handleApprovalRespond}
-      />
-    );
-  } else if (!isStreaming && error) {
-    if (isCreditError(error)) {
-      return <CreditsExhaustedBanner onDismiss={clearError} />;
-    }
-    bannerNode = (
-      <StatusHighlight
-        variant="error"
-        error={error}
-        onDismiss={clearError}
-        onFixInChat={handleFixInChat}
-      />
-    );
-    bannerNeedsBg = true;
-  } else if (
-    !isStreaming &&
-    finishReason &&
-    finishReason !== "stop" &&
-    !isWaitingForApprovals
-  ) {
-    bannerNode = (
-      <StatusHighlight
-        variant="warning"
-        finishReason={finishReason}
-        onDismiss={clearFinishReason}
-        onContinue={handleContinue}
-      />
-    );
-    bannerNeedsBg = true;
+  if (!isStreaming && error && isCreditError(error)) {
+    return <CreditsExhaustedBanner onDismiss={clearError} />;
   }
 
+  const showError = !isStreaming && !!error;
+  const showWarning =
+    !isStreaming &&
+    !!finishReason &&
+    finishReason !== "stop" &&
+    !isWaitingForApprovals &&
+    !showError;
+  const hasApprovals =
+    pendingApprovals.length > 0 || (isStreaming && isWaitingForApprovals);
+  const userAskKey = userAskParts?.map((p) => p.toolCallId).join("|") ?? "";
+  const planKey = pendingPlans[0]?.toolCallId ?? "";
+  const approvalKey = pendingApprovals.map((a) => a.approvalId).join("|");
+
   return (
-    <div
-      className={cn(
-        "absolute bottom-full left-0 right-0",
-        bannerNeedsBg && "bg-background",
-      )}
-    >
-      {bannerNode}
+    <div className="absolute bottom-full left-0 right-0">
       <TodosHighlight />
+      {showError && (
+        <StatusHighlight
+          variant="error"
+          error={error as Error}
+          onDismiss={clearError}
+          onFixInChat={handleFixInChat}
+        />
+      )}
+      {showWarning && (
+        <StatusHighlight
+          variant="warning"
+          finishReason={finishReason as string}
+          onDismiss={clearFinishReason}
+          onContinue={handleContinue}
+        />
+      )}
+      {hasApprovals && (
+        <ApprovalHighlight
+          key={approvalKey}
+          approvals={pendingApprovals}
+          isStreaming={isStreaming}
+          onRespond={handleApprovalRespond}
+        />
+      )}
+      {pendingPlans.length > 0 && (
+        <ProposePlanHighlight
+          key={planKey}
+          plans={pendingPlans}
+          isStreaming={isStreaming}
+          onApprove={handlePlanApprove}
+          onDismiss={handlePlanDismiss}
+        />
+      )}
+      {isWaitingForUserInput && userAskParts && (
+        <UserAskQuestionHighlight
+          key={userAskKey}
+          userAskParts={userAskParts}
+          isStreaming={isStreaming}
+          onSubmit={handleUserAskSubmit}
+        />
+      )}
     </div>
   );
 }
