@@ -10,6 +10,8 @@ import Callout from "../../../../components/ui/Callout.astro";
 
 Studio logs every tool invocation that flows through it — automatically, with no setup required. When an agent queries GitHub, sends a Slack message, or calls your database, there's a record of it.
 
+You'll find it under **Settings → Monitor**. Every agent's tool calls roll up there, organization-wide.
+
 <Callout type="tip">
 **What gets logged:** Tool calls that go through your connections and agents (GitHub queries, database operations, Shopify calls, etc.). Studio management actions — like creating a connection or updating settings — are not included in the monitoring log.
 </Callout>
@@ -22,7 +24,7 @@ For every tool call, Studio records:
 
 **Who made it**
 - The user or API key that made the request
-- Which agent or project the call came from
+- Which agent or automation the call came from
 
 **What happened**
 - The tool that was called
@@ -32,13 +34,13 @@ For every tool call, Studio records:
 
 **When and how long**
 - Timestamp
-- How long the call took in milliseconds
+- How long the call took, in milliseconds
 
 ## What you can do with it
 
 ### Debug failures fast
 
-When something breaks, you can open the monitoring tab and see exactly what happened — what inputs were sent, what error came back, when it occurred. No SSH, no log files, no guessing.
+When something breaks, open **Settings → Monitor** and see exactly what happened — what inputs were sent, what error came back, when it occurred. No SSH, no log files, no guessing.
 
 ### Track costs and performance
 

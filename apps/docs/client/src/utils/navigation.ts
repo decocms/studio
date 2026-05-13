@@ -32,42 +32,34 @@ export async function getNavigationLinks(
 
   // Define the correct order for navigation, version-aware
   const latestOrder = [
-    // 1. Quickstart & Overview
-    "studio/quickstart",
+    // 1. Welcome
     "studio/overview",
+    "studio/quickstart",
 
-    // 2. Getting Started
-    "getting-started/ai-builders",
-    "getting-started/developers",
-
-    // 4. Core Concepts
+    // 2. Core Concepts
     "studio/concepts",
 
-    // 5. Working with MCP
-    "studio/connections",
-    "studio/virtual-mcps",
-    "studio/store",
-    "studio/projects",
+    // 3. The product, page by page
     "studio/agents",
-    "studio/agent-bindings",
+    "studio/connections",
     "studio/automations",
-
-    // 6. Decopilot
-    "studio/decopilot/overview",
-    "studio/decopilot/quickstart",
-    "studio/decopilot/context",
-    "studio/decopilot/tasks-and-spawning",
-    "studio/decopilot/tools",
-    "studio/decopilot/scopes",
-    "studio/decopilot/architecture",
-
-    // 7. AI Providers
+    "studio/monitoring",
     "studio/ai-providers",
 
-    // 8. Monitoring & Observability
-    "studio/monitoring",
+    // 4. Decopilot
+    "studio/decopilot/overview",
+    "studio/decopilot/context-and-tasks",
+    "studio/decopilot/tools",
 
-    // 8. User Management
+    // 5. Solutions
+    "studio/solutions/overview",
+    "studio/solutions/agentic-cms",
+
+    // 6. Coming soon
+    "studio/projects",
+
+    // 7. Catalog & admin
+    "studio/store",
     "studio/api-keys",
     "studio/user-management",
 

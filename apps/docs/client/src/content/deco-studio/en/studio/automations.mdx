@@ -1,41 +1,50 @@
 ---
 title: Automations
-description: Agents that run on a schedule or in response to events, without a human in the loop
+description: Run an agent on a schedule or in response to an event — without a human in the loop
 icon: Zap
 ---
 
 import Callout from "../../../../components/ui/Callout.astro";
 
-## What are automations?
+## What is an automation?
 
-Automations are agent runs that happen on their own — on a schedule, or when something occurs in a connected service. No one needs to be watching. The agent runs, does its job, and the result shows up in [Monitoring](/en/studio/monitoring).
+An **automation** is an agent run that happens on its own — on a schedule, or when something occurs in a connected service. No one needs to be watching. The agent runs, does its job, and the result shows up in [Monitoring](/en/studio/monitoring).
+
+Every automation belongs to a specific [agent](/en/studio/agents). It runs *that* agent with *its* tools — the automation just decides when to fire and what prompt to start with.
 
 Each automation has:
 
 - **An agent** — the one doing the work
 - **A prompt** — what it should do each time it runs
-- **A model** — which AI and credentials to use
-- **A trigger** — when it fires (on a schedule, on an event, or manually)
+- **A model** — which AI provider and credentials to use
+- **A trigger** — when it fires (schedule, event, or manual)
 
 <Callout type="warning">
-  Automations approve all tool calls automatically — there's no human review step. Scope your agent's tools carefully so it can only do what you intend.
+  Automations approve all tool calls automatically — there's no human review step. Attach only the tools the agent actually needs so it can't do more than you intend.
 </Callout>
+
+## Where they live
+
+You manage automations in two places:
+
+- **Inside an agent** — open the agent and click the **Automations** tab in the right panel. You'll see the automations attached to this specific agent, and you can create new ones in context.
+- **Settings → Automations** — the org-wide list of every automation across every agent, useful for overview, audit, or housekeeping.
 
 ## When to use automations
 
 - **Scheduled tasks** — daily reports, data syncs, cleanup jobs
-- **Event-driven workflows** — new order → start fulfillment, new support ticket → triage, deployment → send notification
+- **Event-driven workflows** — new order → start fulfillment, new ticket → triage, deployment → send notification
 - **Anything that should run without someone triggering it manually**
 
-If you want a human in the loop — reviewing actions before they happen — use [Decopilot](/en/studio/decopilot/overview) instead. Automations are for work you've already validated and want to run hands-free.
+If you want a human in the loop — reviewing actions before they happen — open the agent and chat with it directly, or use [Decopilot](/en/studio/decopilot/overview). Automations are for work you've already validated and want hands-free.
 
 ## Creating an automation
 
-1. Go to **Automations** in the sidebar
-2. Click **New Automation**
-3. Choose an agent
-4. Write the prompt — what should it do each run?
-5. Select a model and credentials
+1. Open the agent you want to run
+2. Click the **Automations** tab in the right panel
+3. Click **New automation**
+4. Write the prompt — what should the agent do each run?
+5. Pick a model and credentials
 6. Add a trigger (schedule, event, or both)
 7. Activate it
 
@@ -52,22 +61,22 @@ Runs the automation on a recurring schedule. Times are in UTC.
 | `0 9 * * 1` | Every Monday at 9:00 AM |
 | `*/5 * * * *` | Every 5 minutes |
 
-Minimum interval is 60 seconds. If the system restarts, any missed runs are caught and fired on the next cycle.
+Minimum interval is 60 seconds. If the system restarts, missed runs are caught and fired on the next cycle.
 
 ### Event
 
-Fires when a connected service publishes a matching event. You specify the connection, the event type, and optional filters — only events that match all filters will trigger the automation.
+Fires when a connected service publishes a matching event. You specify the connection, the event type, and optional filters — only events that match all filters trigger the automation.
 
 ## Limits
 
 - Maximum 3 runs per automation at the same time
 - Maximum 10 automation runs across your organization at once
 - Each run times out after 5 minutes
-- Event chains are limited to 3 levels deep (to prevent loops)
+- Event chains are limited to 3 levels deep (prevents loops)
 - Event payloads are capped at 1 MB
 
 If the person who created an automation leaves the organization, it's automatically deactivated.
 
 ---
 
-**Next:** See [Agents](/en/studio/agents) to design what your automation will run, or [Monitoring](/en/studio/monitoring) to track results.
+**Next:** Design what your automation will run in [Agents](/en/studio/agents), or track results in [Monitoring](/en/studio/monitoring).

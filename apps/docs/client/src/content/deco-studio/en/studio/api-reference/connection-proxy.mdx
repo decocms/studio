@@ -248,7 +248,7 @@ Connect Cursor or Claude Desktop directly to a specific upstream MCP:
 
 ### Tool-Specific Clients
 
-Build custom clients that need access to a specific MCP server's tools without Virtual MCP composition:
+Build custom clients that need access to a specific MCP server's tools without going through an agent:
 
 ```typescript
 const response = await fetch('https://studio.example.com/mcp/conn_abc123', {
@@ -311,16 +311,16 @@ Connections have a `status` field that affects proxy behavior:
 | Endpoint | Use Case | Tools Available |
 |----------|----------|-----------------|
 | `/mcp/:connectionId` | Direct access to one upstream MCP | All tools from that connection only |
-| `/mcp/gateway/:agentId` | Curated tool surface (agent/virtual MCP) | Tools from multiple connections, composed |
+| `/mcp/gateway/:agentId` | Curated tool surface for an agent | Tools from multiple connections, composed |
 | `/mcp/self` | Management operations | deco Studio management tools only |
 
 <Callout type="tip">
-  For most production use cases, use **Agents** (`/mcp/gateway/:agentId`) instead of direct connection proxies. Agents provide better control over tool exposure, support context and resources, and allow multi-connection composition.
+  For most production use cases, use **Agents** (`/mcp/gateway/:agentId`) instead of direct connection proxies. Agents give you control over which tools are exposed and let you compose tools from multiple connections behind one endpoint.
 </Callout>
 
 ## Related
 
 - [**Connections**](/en/studio/connections) - Understanding the Connection abstraction
-- [**Virtual MCPs**](/en/studio/virtual-mcps) - Compose multiple connections into agents
+- [**Agents**](/en/studio/agents) - Compose tools from multiple connections into a single endpoint
 - [**API Keys**](/en/studio/api-keys) - Authentication setup
 - [**Monitoring**](/en/studio/monitoring) - Observability and metrics

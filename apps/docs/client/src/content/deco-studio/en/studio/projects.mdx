@@ -1,57 +1,32 @@
 ---
 title: Projects
-description: Shared workspaces that bring agents and tools together around a goal
+description: A second level of hierarchy, coming back to Studio soon
 icon: FolderTree
 ---
 
-import Callout from "../../../../components/ui/Callout.astro";
+import ProjectsComingSoon from "../../../../components/ui/ProjectsComingSoon.astro";
 
-<Callout type="info">
-  This page documents the **planned architecture** for projects in deco Studio. The implementation is in development.
-</Callout>
+<ProjectsComingSoon />
 
-## What are projects?
+## What Projects will be
 
-**Projects** are shared workspaces that bring agents, tools, and context together around a specific goal or team.
+Studio today has two levels of hierarchy: **Organization → Agent**. Projects are a planned third concept that will sit between the two — a shared workspace that groups agents, connections, and context around a specific goal, client, or team.
 
-Think of a project like an office for a particular initiative — it has the right tools on the desk, the right guidelines on the wall, and access only for the people who need it. Work happening in one project doesn't bleed into another.
+When Projects return, you'll get:
 
-Projects give you:
+- **Grouping** — organize agents by product line, client, team, or initiative
+- **Scoped connections and credentials** — keep work for separate brands or customers isolated
+- **Project-level instructions** — shared guidelines and context that apply to every agent in the project
+- **Project-level access control** — give a team access to one project without exposing the rest of the org
 
-- **Organization** — group capabilities by product line, client, or team
-- **Isolation** — each project has its own tools and credentials, separate from everything else
-- **Context** — project-specific instructions, documentation, and workflow templates
-- **Clear ownership** — match your technical setup to how your team actually works
+Until then, you can approximate Projects by tagging or naming agents consistently, and by using member roles at the org level for access control.
 
-## Setting up a project
+## Why we're bringing them back
 
-When you create a project, you configure:
+Multi-brand and multi-team users need a tier between "everything in the org" and "this single agent." A flat list of agents under one org works for small setups, but stops scaling once you have separate clients or initiatives that shouldn't see each other.
 
-1. **Name and description** — what this project is for, so your team knows at a glance
-2. **Instructions** — guidelines for how AI agents should behave in this project (tone, constraints, priorities)
-3. **Tools** — the actions agents can take, selected from your [connections](/en/studio/connections) or defined inline
-4. **Resources** — extra context agents should know about (documentation, brand guidelines, domain knowledge)
-5. **Prompts** — reusable workflow templates for the most common tasks in this project
-
-## Example: multi-brand storefront
-
-A storefront project might include Shopify tools for catalog management, Stripe tools for payments, and analytics tools for tracking performance. Brand-specific guidelines live in resources. Agents working in this project manage listings, process orders, and follow brand standards — all within the project's isolated scope.
-
-If you run multiple brands, each gets its own project: isolated credentials, separate configurations, no cross-contamination.
-
-## Isolation by design
-
-When an agent connects to a project, it only sees what's in that project — the tools, resources, and prompts you configured. It can't access tools or credentials from another project.
-
-This makes it safe to run separate initiatives in parallel without worrying about agents crossing boundaries.
-
-## Common use cases
-
-- **Multiple clients or brands** — one project per client, with isolated credentials and configurations
-- **Separate teams** — sales, engineering, and support each get their own workspace
-- **Seasonal campaigns** — temporary projects with the tools needed for a specific push
-- **Regulated workflows** — keep sensitive operations isolated from general-purpose work
+We removed Projects temporarily to simplify the UI while we redesigned them. The new version will integrate cleanly with the current agent-first surface — your existing agents will keep working, and Projects will become an optional way to group them.
 
 ---
 
-**Next:** Learn about [Virtual MCPs](/en/studio/virtual-mcps) to understand how projects bring tools together, or see [User management](/en/studio/user-management) for controlling who has access to what.
+**While you wait:** Read about [Agents](/en/studio/agents), [Connections](/en/studio/connections), and how to organize work at the org level under [Members](/en/studio/user-management).

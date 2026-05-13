@@ -4,42 +4,49 @@ description: How deco Studio is organized and how the pieces fit together
 icon: BookOpen
 ---
 
+import Callout from "../../../../components/ui/Callout.astro";
+import ProjectsComingSoon from "../../../../components/ui/ProjectsComingSoon.astro";
+
 ## How Studio is organized
 
-Studio uses a small set of concepts that build on each other. Once you understand them, everything else follows naturally.
+Studio uses a small set of concepts that build on each other. Once you understand them, everything else follows.
 
-- **Organization** — your top-level workspace. Everything belongs to an org: members, connections, agents, projects, and logs.
-- **Members** — the people in your organization, each with their own role and permissions.
-- **Connection** — a tool or service you've plugged in (GitHub, Slack, a database, your own API). Credentials are stored once, securely, and shared across your team. See [Connections](/en/studio/connections).
-- **Agent** — an AI configured for a specific task: a focused set of tools, clear instructions, and a narrow purpose. See [Agents](/en/studio/agents).
-- **Project** — a shared workspace that brings agents and connections together around a goal or team. See [Projects](/en/studio/projects).
-- **Virtual MCP** — a custom endpoint that composes tools from multiple connections into one. Agents and projects are both Virtual MCPs. See [Virtual MCPs](/en/studio/virtual-mcps).
-- **Automation** — an agent run that happens on a schedule or when a specific event occurs. See [Automations](/en/studio/automations).
-- **Thread** — a conversation session with an agent. Studio saves the history and tracks status so you can come back to ongoing work.
-- **Store** — the built-in marketplace for discovering and installing tools and integrations. See [Store](/en/studio/store).
-- **AI Provider** — a configured AI model (Anthropic, OpenRouter, Google, or the Deco AI Gateway) that powers your agents and chat. See [AI Providers](/en/studio/ai-providers).
+- **Organization** — your top-level workspace. Everything belongs to an org: members, agents, connections, automations, and logs.
+- **Agent** — an AI configured for a specific job: a focused set of tools, clear instructions, and a narrow purpose. Agents are the working surface of Studio. See [Agents](/en/studio/agents).
+- **Connection** — a tool or service you've plugged in (GitHub, Slack, a database, your own API). Credentials are stored once and shared securely. See [Connections](/en/studio/connections).
+- **Thread** — a conversation session inside an agent. Studio saves the history so you can come back to ongoing work.
+- **Automation** — an agent run that fires on a schedule or in response to an event. See [Automations](/en/studio/automations).
+- **AI Provider** — a configured AI model (Anthropic, Google, OpenRouter, or the Deco AI Gateway) that powers your agents and decopilot. See [AI Providers](/en/studio/ai-providers).
+- **Member** — a person in your organization with a role and permissions.
+- **Project** — a planned second level of hierarchy that will group agents, connections, and context around a shared goal or team. See [Projects](/en/studio/projects).
+
+<ProjectsComingSoon />
 
 ---
 
-## Agents vs. Projects
+## Anatomy of the Studio UI
 
-Both agents and projects are ways to work with tools in Studio. The difference is scope and purpose.
+### The agent shell
 
-**Projects** are for ongoing work with a team:
-- **Broad scope** — cover multiple workflows and capabilities within a work context
-- **Long-lived** — evolve over time as work progresses
-- **Team collaboration** — a shared workspace anyone on the team can use
-- **Example** — a "Store Migration" project with inventory sync, order management, and customer data tools
-- **When to use** — organizing work by product line, client, team, or initiative
+This is where day-to-day work happens. The persistent sidebar on the left shows your organization's agents. Click an agent and you get:
 
-**Agents** are focused tools for a specific job:
-- **Narrow scope** — a clear, focused purpose with only the tools it needs
-- **Task-specific** — designed for one type of operation or workflow
-- **Clean slate each time** — each conversation starts fresh, without leftover context
-- **Example** — a "Refund Processing" agent that only handles customer refunds and returns
-- **When to use** — repetitive tasks, specialized workflows, or operations you want to standardize
+- **Threads list (left)** — every conversation you've had with this agent.
+- **Chat (center / bottom)** — where you talk to the agent.
+- **Agent panel (right)** — the agent's configuration: its attached connections, its instructions, and tabs for **Settings**, **Automations**, and (when linked to GitHub) **Git**.
 
-Think of projects as your team's workspace and agents as the specialists you call in when you need a particular job done.
+Everything you need to use, configure, and monitor a single agent lives on this one screen.
+
+### Settings
+
+Everything that isn't tied to a single agent lives under **Settings**. Open it from the bottom-left of the sidebar. Inside you'll find:
+
+- **Organization** — General, Brand Context, AI Providers
+- **Build** — Connections, Agents (the catalog), Automations, Store
+- **Manage** — Monitor, Members, Roles, Security (SSO)
+- **Extensions** — Plugins
+- **Account** — Profile & Preferences
+
+When other pages in these docs say "go to Connections" or "open Monitor," they mean these Settings sections.
 
 ---
 
@@ -75,34 +82,10 @@ When an agent calls a tool, here's what happens:
 5. Studio logs the invocation — tool, timing, inputs, outputs, and who called it
 6. Studio returns the response to the client
 
-This means credentials never leave Studio, every action is logged, and access is consistent regardless of which client is making the request.
-
----
-
-## Team access and permissions
-
-Organizations provide the top-level boundary for everything in Studio. Connections, agents, projects, credentials, and logs are all org-scoped. This makes it easy to:
-
-- Give different team members access to different tools
-- Isolate work by client, department, or product line
-- Track exactly who used what and when
-
----
-
-## Why Studio uses composition
-
-Instead of configuring complex integrations from scratch, Studio lets you build up from simple pieces:
-
-**Connect** individual tools (GitHub, Slack, databases)
-
-**Compose** them into agents or projects with a curated set of capabilities
-
-**Share** through a single endpoint your team can use
-
-This means you can add or remove tools without touching infrastructure, and non-developers can combine capabilities that would otherwise require custom code.
+Credentials never leave Studio, every action is logged, and access is consistent regardless of which client made the request.
 
 ---
 
 ## Why monitoring is built in
 
-Without a control plane, every client manages its own logs — or doesn't log at all. Studio logs every tool call that flows through the platform, creating a single place to debug failures, track costs, and audit who accessed what. There's no extra setup required.
+Without a control plane, every client manages its own logs — or doesn't log at all. Studio logs every tool call that flows through the platform, creating a single place to debug failures, track costs, and audit who accessed what. There's no extra setup. See [Monitoring](/en/studio/monitoring).

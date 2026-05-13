@@ -1,22 +1,16 @@
 ---
 title: Tools
-description: What decopilot can do and how it uses tools to get work done
+description: What decopilot can do, and the two kinds of tools it has access to
 icon: Wrench
 ---
 
-import Callout from "../../../../../components/ui/Callout.astro";
+## Two kinds of tools
 
-<Callout type="info">
-  This page documents the **planned architecture** for decopilot tools. The implementation is in development.
-</Callout>
+Decopilot has access to two kinds of tools:
 
-## Two types of tools
+**Built-in tools** — always available, used for managing work, delegating tasks, and reading context. The same regardless of scope.
 
-Decopilot has access to two types of tools:
-
-**Built-in tools** — always available, used for managing work, delegating tasks, and reading context. These are the same regardless of which scope you're in.
-
-**Scope tools** — come from the connections in your current scope. If you're in a project with Shopify and ShipStation connected, you'll have access to tools like `GET_ORDERS`, `CREATE_SHIPPING_LABEL`, and so on.
+**Scope tools** — come from the connections attached in your current scope. At org scope, that's your org-wide built-ins. At agent scope, it's the tools attached to the open agent.
 
 ---
 
@@ -39,26 +33,27 @@ Subtasks have restricted access — they can't start additional subtasks or ask 
 
 ## Scope tools
 
-Scope tools are the domain-specific capabilities tied to your current context — Shopify tools if you're in a Shopify project, shipping tools if you have a ShipStation connection, and so on.
+Scope tools are the domain-specific capabilities tied to your current context. Open an agent and you'll get the tools attached to that agent — Shopify tools if the agent has the Shopify connection, shipping tools if it has ShipStation, and so on.
 
-**Example**: A project with Shopify and ShipStation might expose:
+**Example**: An order-fulfillment agent might expose:
+
 - `GET_ORDERS` — fetch customer orders
 - `UPDATE_INVENTORY` — update stock levels
 - `CREATE_SHIPPING_LABEL` — generate shipping labels
 - `GET_PRODUCTS` — list the product catalog
 
-Which tools are available depends on what connections are configured in the current scope's Virtual MCP.
+Which tools are available depends on the connections attached to the current agent. See [Agents](/en/studio/agents) for how to curate this.
 
 ---
 
 ## How decopilot uses tools
 
-Decopilot starts each task with only its built-in tools. It sees the scope tools listed in its instructions and uses them as needed to complete your request.
+Decopilot starts each task with only its built-in tools. It sees scope tools listed in its instructions and uses them as needed to complete your request.
 
 For complex work, it can delegate to a subtask (using `subtask`) or load additional context first (using `read_resource` or `read_prompt`) before acting.
 
 ---
 
-**Next:** See [Tasks](/en/studio/decopilot/tasks-and-spawning) to understand how decopilot manages work, or [Context](/en/studio/decopilot/context) to see how resources and prompts provide guidance.
+**Next:** See [Context and tasks](/en/studio/decopilot/context-and-tasks) to understand how decopilot manages memory.
 
 For the full technical reference, see [Built-in Tools](/en/studio/api-reference/built-in-tools).

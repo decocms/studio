@@ -8,31 +8,57 @@ import Callout from "../../../../components/ui/Callout.astro";
 
 ## What are AI providers?
 
-**AI Providers** are the AI model services that power [Decopilot](/en/studio/decopilot/overview) and your agents. You connect a provider once at the organization level, and all your agents can use it from there.
+**AI Providers** are the AI model services that power [Decopilot](/en/studio/decopilot/overview) and your agents. You connect a provider once at the organization level, and all your agents use it from there.
 
-Studio supports multiple providers at the same time, so you can use different models for different tasks.
+Studio supports multiple providers at the same time — you can mix and match.
 
-## Supported providers
+## Default models: one choice per purpose
 
-| Provider | How you connect |
+You don't pick a model every time you start a task. Instead, Studio uses five **default models**, one for each kind of work:
+
+| Default | What it's for | Typical pick |
+|---|---|---|
+| **Fast** | Quick replies, short interactions | Claude Haiku, GPT-4 mini, Gemini Flash |
+| **Smart** | Balanced speed and capability — the everyday default | Claude Sonnet, GPT-4o, Gemini Pro |
+| **Thinking** | Hardest reasoning, long planning | Claude Opus, o-series, Gemini Ultra |
+| **Image** | Image generation | GPT Image, Imagen, etc. |
+| **Web research** | Web search and deep research | Sonar, Perplexity, etc. |
+
+Configure these once under **Settings → AI Providers → Default models**. When an agent or decopilot picks a tier, it routes to the model you set. Change a default and every agent picks up the new model immediately — no per-agent reconfiguration.
+
+You can still override on a per-agent basis when needed, but the defaults cover the common case.
+
+## Deco AI Gateway
+
+The **Deco AI Gateway** is the recommended provider. New organizations get credits to start with — no API keys to juggle — and it gives you access to 100+ models from many vendors behind a single connection. Pay as you go.
+
+If you want to use your own keys later, add another provider; Studio will use whichever provider you set for each default model tier.
+
+You can check your remaining gateway credit and top up directly from **Settings → AI Providers**.
+
+## Other providers
+
+Click **Connect provider** under **Settings → AI Providers** to add any of:
+
+| Provider | Notes |
 |---|---|
-| **Deco AI Gateway** | Sign in with your browser, or use an API key. Gives you access to 100+ models through one account. |
-| **Anthropic** | Paste your API key from the Anthropic Console |
-| **Google** | Paste your API key from Google AI Studio |
-| **OpenRouter** | Sign in with your browser, or use an API key. Access to 100+ model families. |
-| **Claude Code** | Detected automatically from your local CLI — no key needed |
+| **OpenRouter** | One account, hundreds of models from many vendors |
+| **Anthropic** | Direct Anthropic key — Claude family |
+| **Google Gemini** | Direct Google AI Studio key — Gemini family |
+| **OpenAI** | Direct OpenAI key — GPT-4, GPT-5, etc. |
+| **LiteLLM** | Connect a LiteLLM gateway your team manages |
+| **Ollama** | Run open-source models on your own machine |
+| **LM Studio** | Open models running through LM Studio |
+| **vLLM** | Connect to your team's self-hosted vLLM server |
+| **Custom OpenAI-compatible** | Bring your own model server (advanced) |
 
-<Callout type="info">
-  The Deco AI Gateway is optionally enabled via the `DECO_AI_GATEWAY_ENABLED` environment variable. When enabled, it gives you access to models from multiple vendors through a single billing relationship.
-</Callout>
+## How a provider gets connected
 
-## Connecting a provider
+**API key** — the most common method. Paste the key from your provider's dashboard. It's stored encrypted and never exposed to your team.
 
-**API key** — the most common method. Paste the key from your provider's dashboard. It's stored securely and never exposed to your team.
+**Sign in with browser** — for providers that support it (Deco AI Gateway, OpenRouter). You'll be taken to the provider's login page, authorize access, and Studio handles the rest.
 
-**Sign in with browser** — for providers that support it (OpenRouter, Deco AI Gateway). You'll be taken to the provider's login page, authorize access, and Studio handles the rest.
-
-**Claude Code CLI** — for Claude Code integration only. If you have the CLI installed and authenticated, Studio detects it automatically.
+**Local endpoint** — for Ollama, LM Studio, vLLM, LiteLLM, or custom OpenAI-compatible servers: paste the base URL where Studio can reach the server.
 
 ## What models are available?
 
@@ -44,16 +70,12 @@ Once a provider is connected, you can browse its available models. Each model sh
 
 Model availability may be filtered by your organization's model permission settings. If a model you expect isn't showing up, check with your org admin.
 
-## Credits and billing
+## Fallback
 
-For the Deco AI Gateway, you can check your remaining credit balance and top up directly from Studio. Check your balance if you're seeing generation failures — running out of credits is a common cause.
-
-## How providers are used
-
-When Decopilot or an agent processes a task, it selects a model from your active providers based on the task at hand. If one provider is unavailable, Studio falls back to an alternative automatically.
+If the provider behind a default tier is unavailable, Studio falls back to another connected provider automatically — so a transient outage at one vendor doesn't break your agents.
 
 ---
 
 <Callout type="info">
-Configure at least one AI provider to use Decopilot. See [Decopilot Quickstart](/en/studio/decopilot/quickstart) to get started, or [API Keys](/en/studio/api-keys) for managing programmatic access to Studio itself.
+New organizations get Deco AI Gateway credits out of the box — you can start using Decopilot and your agents without configuring anything. See [Decopilot](/en/studio/decopilot/overview) or [API Keys](/en/studio/api-keys) for managing programmatic access to Studio itself.
 </Callout>

@@ -1,24 +1,24 @@
 ---
 title: Quickstart
-description: Get started with deco Studio in 5 minutes
+description: From zero to a working agent in 5 minutes
 icon: Rocket
 ---
 
 import Callout from "../../../../components/ui/Callout.astro";
 
-## Get started in 5 minutes
+## Get Studio running
 
-There are two ways to get started with deco Studio:
+There are two ways to start.
 
-### Option A: Managed Cloud
+### Option A — Managed cloud
 
-The fastest way. Sign up at [studio.decocms.com](https://studio.decocms.com) and you're ready to go.
+Sign up at [studio.decocms.com](https://studio.decocms.com) and you're ready to go.
 
-1. Create your account (email, GitHub, or Google OAuth)
-2. Create an organization — your top-level boundary for connections, agents, and team members
-3. You're in. Start adding connections and hiring agents.
+1. Create your account (email, GitHub, or Google)
+2. Create an organization — your top-level workspace
+3. You're in.
 
-### Option B: Run Locally
+### Option B — Run locally
 
 ```bash
 bunx decocms
@@ -35,41 +35,59 @@ bun run dev
 
 ---
 
-## Add Your First Connection
+## AI provider (already set up for you)
 
-Connections are tools and services you want your agents to use. Studio comes with a built-in store of popular integrations.
+New organizations start with credits on the **Deco AI Gateway**, so you can begin chatting with agents right away — no setup required.
 
-1. Navigate to **Connections** in the sidebar
-2. Click **Add from Store**
-3. Browse available connections (Shopify, GitHub, Slack, Stripe, OpenRouter, and more)
-4. Select a connection and click **Install**
-5. Connect it:
-   - For apps like GitHub or Slack: click through the sign-in flow
-   - For other services: paste your API key
+When you want to use your own keys (Anthropic, Google, OpenRouter, etc.) or check your remaining gateway credit, head to **Settings → AI Providers**. See [AI Providers](/en/studio/ai-providers) for the full list.
 
-Your credentials are encrypted and stored — nobody on your team sees them directly.
+---
 
-## Start Using Chat
+## Add a connection
 
-Once you've connected at least one tool, you can use the built-in chat interface:
+Connections are the tools your agents can use — GitHub, Slack, Shopify, your database, your own MCP server.
 
-1. Navigate to **Chat** in the sidebar
-2. Your connected tools are automatically available to the AI assistant
-3. Try asking questions or requesting actions:
-   - "Show me today's orders from Shopify"
-   - "Create an issue on GitHub for the checkout bug"
-   - "Send a Slack message to the team channel"
-   - "Generate a sales report for the last 30 days"
+1. Open **Settings → Connections**
+2. Search the catalog (e.g., Gmail), or click **Custom Connection** to add an unlisted MCP server
+3. Click **Connect** and follow the sign-in or paste-a-key flow
 
-The AI will automatically invoke the right tools from your connections.
+Credentials are encrypted and never exposed to your team.
+
+The catalog is populated by the registries enabled under **Settings → Store**.
+
+---
+
+## Create or open an agent
+
+The sidebar shows your agents. Click an existing one or create a new one from the **+** button.
+
+When you're inside an agent, the screen has three parts:
+
+- **Left** — the list of threads (past conversations with this agent)
+- **Center / bottom** — the chat input
+- **Right** — the agent's panel: **Settings** (instructions, connections), **Automations**, and **Git** (if linked)
+
+Open the **Settings** tab on the right, attach the connection you just added, and write a one-line instruction describing what this agent should do.
+
+---
+
+## Talk to it
+
+Just type. The agent uses the tools you attached.
+
+```
+Send an email to me@example.com with a poem about MCP.
+```
+
+Watch the chat run. Each tool call is logged in **Settings → Monitor**.
 
 <Callout type="success">
-  You're set up! From here, you can add more connections, hire specialized agents, organize work into projects, invite team members, and monitor all tool invocations in the **Monitoring** tab.
+  You're set up! From here, set up [Automations](/en/studio/automations) to run agents on a schedule or event, invite team [members](/en/studio/user-management), or build more agents.
 </Callout>
 
-## Next Steps
+## Next steps
 
-- **[Key concepts](./concepts)** — Understand how connections, agents, and projects fit together
-- **[Agents](./agents)** — Configure AI workers for specific tasks
-- **[Monitoring](./monitoring)** — Track usage, debug failures, and audit activity
+- **[Key concepts](./concepts)** — Anatomy of Studio: the agent shell vs. Settings
+- **[Agents](./agents)** — How to design and configure agents
+- **[Decopilot](./decopilot/overview)** — The AI assistant built into Studio
 - **[Self-hosting](./self-hosting/quickstart)** — Deploy on Docker Compose or Kubernetes

@@ -10,19 +10,32 @@ import Callout from "../../../../components/ui/Callout.astro";
 
 **Connections** are the tools and services you've plugged into Studio — GitHub, Slack, a database, your own API, or any other MCP-compatible service.
 
-You set up a connection once. From then on, your whole team can use it across agents and projects, without anyone touching credentials.
+You set up a connection once. From then on, anyone in your org can attach it to an agent without ever touching credentials.
+
+## Where they live
+
+Connections are managed at the organization level under **Settings → Connections**. That's where you:
+
+- Browse the catalog of available MCPs and install a new one
+- Add a **Custom Connection** for an MCP server that isn't in the catalog
+- Configure credentials for an existing connection
+- Update or revoke credentials in one place
+
+The catalog is fed by the registries you have enabled — see [Store](/en/studio/store) to add or toggle registries (Deco Store, community, private).
+
+To put a connection to work, attach it to an [agent](/en/studio/agents): inside the agent, open the right-panel **Settings** tab and pick the connection (and the specific tools from it) you want this agent to use.
 
 ## Why connections exist
 
-Without a centralized place for tools, every person and every AI client has to manage its own credentials. Rotate a password? Update it in ten places. Revoke someone's access? Hope they're not using a hardcoded key somewhere.
+Without a central place for tools, every person and every AI client manages their own credentials. Rotate a password? Update it in ten places. Revoke someone's access? Hope they're not using a hardcoded key somewhere.
 
 Connections solve this by being the single source of truth:
 
 - **Credentials stored once** — encrypted at rest, decrypted only when a tool is called
 - **Shared across your team** — anyone with access can use the tool without seeing the credentials
-- **Easy to update** — change credentials in one place, every client picks it up automatically
+- **Easy to update** — change credentials in one place; every agent picks it up automatically
 - **Easy to revoke** — remove a connection and nobody can use it, immediately
-- **Fully logged** — every tool call is recorded with who made it, when, inputs, and outputs
+- **Fully logged** — every tool call is recorded under [Settings → Monitor](/en/studio/monitoring)
 
 ## Types of connections
 
@@ -30,9 +43,9 @@ Connections solve this by being the single source of truth:
 
 **Infrastructure** — Databases, cloud APIs, internal services. You configure the endpoint and credentials, Studio handles the rest.
 
-**Custom tools** — Your own MCP server exposing domain-specific operations. Plug it in and share it with your team like any other connection.
+**Custom tools** — Your own MCP server exposing domain-specific operations. Plug it in and share it like any other connection.
 
-All connection types work the same way: configure once, use anywhere through agents and projects.
+All connection types work the same way: configure once at the org level, attach to whichever agents need them.
 
 ## How a tool call works
 
@@ -40,30 +53,26 @@ When an agent calls a tool through a connection:
 
 1. The agent authenticates to Studio
 2. Studio checks that it has permission to use that tool
-3. Studio retrieves the stored credentials for that connection
+3. Studio retrieves the stored credentials for the connection
 4. Studio sends the request to the external service
 5. Studio logs the call (tool, timing, inputs, outputs, status)
 6. Studio returns the result to the agent
 
-The external service never sees your agent directly — only Studio. Your credentials never leave Studio's secure boundary.
+The external service never sees your agent directly — only Studio. Credentials never leave Studio's secure boundary.
 
 ```
 GitHub Connection  ──┐
-Slack Connection   ──┼──▶ Project or Agent ──▶ Your team
+Slack Connection   ──┼──▶ Agent ──▶ Your team or other clients
 Database Connection──┘
 ```
 
 ## Connecting AI clients to Studio
 
-Once you've set up connections, you can point AI clients (Claude Desktop, Cursor, custom agents) at Studio to use them.
+Once your agents are wired up, point external AI clients (Claude Desktop, Cursor, custom MCP apps) at an agent's MCP endpoint to use its tools.
 
 - **For interactive clients** — use OAuth, which handles sign-in and per-user identity
-- **For automation and server-to-server** — use API keys, which are faster to set up and ideal for scripts or background agents
+- **For automation and server-to-server** — use API keys, faster to set up and ideal for scripts or unattended runs
 
 <Callout type="tip">
-  If you want a single endpoint that exposes a curated set of tools, set up an **Agent**. If you need direct access to one specific connection, use the connection proxy URL.
-</Callout>
-
-<Callout type="info">
-  Connections are the foundation for [Virtual MCPs](/en/studio/virtual-mcps), [Projects](/en/studio/projects), and [Agents](/en/studio/agents). You connect individual tools first, then compose them into higher-level workspaces.
+  Use an [Agent](/en/studio/agents) when you want a single endpoint exposing a curated set of tools. Use the [connection proxy URL](/en/studio/api-reference/connection-proxy) only if you need raw access to a single connection.
 </Callout>

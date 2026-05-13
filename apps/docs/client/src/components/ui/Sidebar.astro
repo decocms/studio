@@ -78,16 +78,16 @@ function buildTree(docs: any[]): TreeNode[] {
             version === LATEST_VERSION.id
               ? [
                   // Latest version structure
-                  "quickstart",
                   "overview",
+                  "quickstart",
                   "concepts",
-                  "connections",
-                  "virtual-mcps",
-                  "store",
-                  "projects",
                   "agents",
-                  "ai-providers",
+                  "connections",
+                  "automations",
                   "monitoring",
+                  "ai-providers",
+                  "projects",
+                  "store",
                   "api-keys",
                   "user-management",
                   "api-reference",
@@ -116,17 +116,21 @@ function buildTree(docs: any[]): TreeNode[] {
           if (bIndex !== -1) return 1;
         }
 
+        // Custom order for solutions subfolder
+        if (parentPath === "solutions") {
+          const solutionsOrder = ["overview", "agentic-cms"];
+          const aIndex = solutionsOrder.indexOf(a.name);
+          const bIndex = solutionsOrder.indexOf(b.name);
+          if (aIndex !== -1 && bIndex !== -1) {
+            return aIndex - bIndex;
+          }
+          if (aIndex !== -1) return -1;
+          if (bIndex !== -1) return 1;
+        }
+
         // Custom order for decopilot subfolder
         if (parentPath === "decopilot") {
-          const decopilotOrder = [
-            "overview",
-            "quickstart",
-            "context",
-            "tasks-and-spawning",
-            "tools",
-            "scopes",
-            "architecture",
-          ];
+          const decopilotOrder = ["overview", "context-and-tasks", "tools"];
           const aIndex = decopilotOrder.indexOf(a.name);
           const bIndex = decopilotOrder.indexOf(b.name);
           if (aIndex !== -1 && bIndex !== -1) {
@@ -234,11 +238,12 @@ function buildTree(docs: any[]): TreeNode[] {
           // Order follows improved information architecture
           studio: 0, // decocms docs (main product)
           "getting-started": 1, // Getting Started (after intro)
-          decopilot: 2, // Decopilot (elevated section within mcp-mesh)
-          "self-hosting": 3, // Self-hosting section
-          deploy: 4, // Deploy section (under self-hosting)
-          "no-code-guides": 5, // Legacy admin guides
-          "full-code-guides": 6, // Legacy admin guides
+          solutions: 2, // Pre-built agent suites (Agentic CMS, etc.)
+          decopilot: 3, // Decopilot (elevated section within mcp-mesh)
+          "self-hosting": 4, // Self-hosting section
+          deploy: 5, // Deploy section (under self-hosting)
+          "no-code-guides": 6, // Legacy admin guides
+          "full-code-guides": 7, // Legacy admin guides
         };
 
         const aOrder = folderOrder[a.name] ?? Number.POSITIVE_INFINITY;

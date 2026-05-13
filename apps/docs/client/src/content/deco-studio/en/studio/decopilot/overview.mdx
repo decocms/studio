@@ -6,77 +6,59 @@ icon: Sparkles
 
 import Callout from "../../../../../components/ui/Callout.astro";
 
-<Callout type="info">
-  This page documents the **planned architecture** for decopilot. The implementation is in development.
-</Callout>
-
 ## What is decopilot?
 
-**Decopilot** is the AI assistant built into deco Studio. It can work across all your connected tools — Shopify, databases, email, customer service platforms, and more — from a single chat interface.
+**Decopilot** is the AI assistant built into deco Studio. It can work across all your connected tools — Shopify, databases, email, customer service platforms, and more — from a single chat.
 
 You start a conversation and decopilot works in the background. When it needs your input, it asks. Otherwise it keeps going, coordinating across multiple services on your behalf.
-
-<Callout type="tip" title="New to decopilot?">
-Start with the [Quick Start](/en/studio/decopilot/quickstart) guide to see it in action.
-</Callout>
 
 ## How it works
 
 Decopilot follows a simple loop: understand the task → take action → check the result → repeat. It reads from your connected services, calls the right tools, and adapts based on what it learns.
 
-What makes it different from a regular AI chat is that it can reach into the apps where your actual work lives. It's not limited to answering questions — it can look up orders, update records, send notifications, and coordinate workflows across multiple services in one go.
+What makes it different from a regular AI chat is that it can reach into the apps where your actual work lives — it's not limited to answering questions. It can look up orders, update records, send notifications, and coordinate workflows across multiple services in one go.
+
+## Scope: where you're working determines what's available
+
+Decopilot adapts to where you are in Studio:
+
+- **Organization scope** — you're at the home screen with no agent open. Decopilot has access to org-wide built-in tools (managing connections, agents, members) and your full agent catalog.
+- **Agent scope** — you've opened a specific agent. Decopilot now uses *that agent's* tools and instructions, with the agent's thread history as context.
+
+To switch, just open or close an agent from the sidebar. There's nothing extra to configure.
+
+<Callout type="info">
+  A third level — Project scope — is planned. It will sit between org and agent and group tools/context for a team or client. See [Projects](/en/studio/projects).
+</Callout>
 
 ## Models
 
-Decopilot works with multiple AI providers — Anthropic, OpenAI, Google, and others, including self-hosted models. You choose which model to use based on the work at hand: stronger models for complex tasks, faster ones for simpler operations.
+Decopilot works with multiple AI providers — Anthropic, Google, OpenRouter, the Deco AI Gateway, and self-hosted models. Pick a stronger model for complex tasks and a faster one for simple operations. See [AI Providers](/en/studio/ai-providers).
 
-## Context
+## Agents and subtasks
 
-Every conversation has a limited amount of space for context — your instructions, tool definitions, and conversation history all count toward it. The more connections and tools you have enabled, the more context is used.
-
-Decopilot manages this automatically:
-- It only loads tools that are enabled, keeping overhead low
-- For complex or focused work, it can start a separate agent with a fresh context so your main conversation stays clean
-- You can check current context usage in the UI at any time
-
-## Agents
-
-When a task needs focused work — a customer support question, a research task, a data analysis — decopilot can hand it off to a specialist [agent](/en/studio/agents). The agent works independently with its own clean context, then reports back with a summary. This keeps your main conversation from getting cluttered with details from unrelated subtasks.
-
-## Scopes
-
-Decopilot always operates within a scope that determines which tools and context are available:
-
-- **Org scope** — the default. Org-wide connections, resources, and agents
-- **Project scope** — adds the tools and guidelines specific to a project, on top of org scope
-- **Agent scope** — adds the focused toolset and instructions for a specific agent
-
-Your current scope is set by where you are in the Studio UI. As you navigate into a project or open an agent, decopilot loads the right context for that level automatically.
+When a task needs focused work — a customer-support question, a research pass, a data analysis — decopilot can hand it off to a specialist [agent](/en/studio/agents) in a **subtask**. The subtask runs independently with its own clean context, then reports a summary back. Your main conversation stays clean.
 
 ## Built-in tools
 
-Decopilot includes built-in tools for coordinating work:
+Decopilot ships with tools for coordinating work across any scope:
 
 | Tool | What it does |
 |---|---|
 | `subtask` | Delegates work to a specialist agent |
-| `agent_search` | Finds available agents in your organization |
+| `agent_search` | Finds agents available in your organization |
 | `user_ask` | Asks you a question when it needs clarification |
 | `sandbox` | Runs JavaScript code with access to your tools |
-| `read_resource` | Reads project documentation or guidelines |
+| `read_resource` | Reads documentation or guidelines available in scope |
 | `read_prompt` | Reads a reusable prompt template |
 | `propose_plan` | Proposes a plan for your approval before acting |
+
+For the full reference, see [Tools](/en/studio/decopilot/tools).
 
 ---
 
 ## Learn more
 
-**[Quick Start](/en/studio/decopilot/quickstart)** — hands-on walkthrough with real examples
+**[Context and tasks](/en/studio/decopilot/context-and-tasks)** — how memory works, and how to use subtasks for heavy work
 
-**[Context](/en/studio/decopilot/context)** — how context works and how to keep it efficient
-
-**[Tasks](/en/studio/decopilot/tasks-and-spawning)** — how to delegate work to agents and run things in parallel
-
-**[Tools](/en/studio/decopilot/tools)** — full reference for built-in tools
-
-**[Scopes](/en/studio/decopilot/scopes)** — how org, project, and agent scopes work
+**[Tools](/en/studio/decopilot/tools)** — full reference for built-in and scope tools

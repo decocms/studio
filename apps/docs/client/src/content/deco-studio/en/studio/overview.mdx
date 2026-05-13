@@ -8,25 +8,38 @@ import Callout from "../../../../components/ui/Callout.astro";
 
 ![deco](https://assets.decocache.com/mcp/9a3facd8-1199-4635-becc-bdc3f5ee7ab1/deco-banner-capy.png)
 
-## The home for your AI agents.
+## The home for your AI agents
 
-deco Studio is where you connect tools, organize work into projects, and see exactly what your agents are doing — and what it costs. Self-host or use the cloud. Built on the [Model Context Protocol](https://modelcontextprotocol.io).
+deco Studio is where you build agents, connect them to tools, run them on schedules or events, and see exactly what they're doing — and what it costs. Self-host or use the cloud. Built on the [Model Context Protocol](https://modelcontextprotocol.io).
 
 ### Agents
 
-Browse and hire AI agents from the built-in store. Each agent comes with specific skills and tested instructions. Agents can work together — one can call another. Every action is tracked with cost attribution.
+An agent is an AI configured for one specific job: a focused set of tools, clear instructions, and its own thread history. Agents are the working surface of Studio — you spend most of your time inside one. Each agent is also its own MCP endpoint, so external clients like Cursor and Claude Desktop can use it directly.
 
 ### Connections
 
-Connect any tool or service through the web UI — one-click for most SaaS apps. Monitor usage, errors, and costs per connection. Share tools across your team without sharing credentials.
+Plug in any tool or service — GitHub, Slack, databases, your own API, anything MCP-compatible. Set up credentials once at the org level, then attach the tools you want to each agent. Credentials never leave Studio.
 
-### Projects
+### Automations
 
-Projects bring agents and connections together around a goal. The UI adapts to what's inside — add a content agent and a CMS connection, the sidebar shows content management; add an analytics agent and a database, it shows dashboards and queries.
+Run an agent unattended on a schedule or in response to an event. Attached to a specific agent, so the scope of what the run can do is whatever you've configured for that agent.
 
 ### Observability
 
-See every tool call with timing, inputs, outputs, and cost. Spot what's slow, what's failing, and what's expensive — all in one place.
+Every tool call your agents make is logged automatically — who called it, when, what came back, how long it took, what it cost. One place to debug, audit, and track costs.
+
+### Extensibility
+
+Studio is open at every layer:
+
+- **MCP apps** — bundle tools with React views in a single package, and Studio will render those views directly inside the agent. Start from the [template repo](https://github.com/decocms/mcp-app).
+- **Sandboxes** — back an agent with a GitHub repository and Studio runs it as an isolated dev environment scoped to that agent (typically the agent's own MCP server).
+- **Git-native** — code-backed agents live in a real repo with branches and PRs, surfaced in the agent's **Git** tab. Your version control stays your source of truth.
+- **MCP everywhere** — every agent is exposed as its own MCP endpoint, callable from Cursor, Claude Desktop, your own code, or another agent.
+
+### Solutions: pre-built agent suites
+
+For teams managing storefronts and content-heavy digital experiences, deco offers **packaged agent suites** built on top of Studio — the most complete one available today is the **[Agentic CMS](./solutions/agentic-cms)**, the evolution of [deco.cx](https://docs.deco.cx). See [Solutions](./solutions/overview) for the full list.
 
 ---
 
@@ -34,11 +47,12 @@ See every tool call with timing, inputs, outputs, and cost. Spot what's slow, wh
 
 | | |
 |---|---|
-| **Hire agents** | Browse the store, configure, and deploy AI agents to your team in minutes |
+| **Build agents** | Compose focused AI workers from your connected tools, instructions, and resources |
 | **Connect tools** | Add GitHub, Slack, databases, or any MCP server — credentials stay secure |
-| **Organize by project** | Keep agents and tools together around specific goals or teams |
+| **Run hands-free** | Trigger agents on schedules or events with automations |
 | **See everything** | Logs, costs, and traces for every agent action, in one dashboard |
-| **Control access** | Manage who can use which tools, with team roles and permissions |
+| **Extend with code** | Ship MCP apps (tools + UI) and back agents with Git repos in their own sandboxes |
+| **Control access** | Manage who can use which tools with team roles and permissions |
 | **Run on your terms** | Self-host on your own infrastructure or use our cloud |
 
 ### Deployment options
@@ -56,7 +70,7 @@ See every tool call with timing, inputs, outputs, and cost. Spot what's slow, wh
 
 **[Quickstart](./quickstart)** — Get running in 5 minutes (cloud or local)
 
-**[Key concepts](./concepts)** — Connections, projects, agents, and how they work together
+**[Key concepts](./concepts)** — Anatomy of the Studio UI, plus how the pieces fit together
 
 **[Self-hosting](./self-hosting/quickstart)** — Docker Compose or Kubernetes
 
