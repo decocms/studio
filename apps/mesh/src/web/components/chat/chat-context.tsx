@@ -24,7 +24,7 @@ import {
 } from "react";
 import { useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { useChat as useAIChat, type UseChatHelpers } from "@ai-sdk/react";
+import type { UseChatHelpers } from "@ai-sdk/react";
 import {
   AUTOSEND_QUERY_VALUE,
   claimStoredAutosend,
@@ -34,9 +34,9 @@ import {
 import {
   lastAssistantMessageIsCompleteWithToolCalls,
   lastAssistantMessageIsCompleteWithApprovalResponses,
-  DefaultChatTransport,
   type UIMessage,
 } from "ai";
+import { useThreadChat } from "./hooks/use-thread-chat";
 import {
   pickSimpleModeDefaults,
   useProjectContext,
@@ -74,11 +74,7 @@ import { derivePartsFromTiptapDoc } from "./derive-parts";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import type { ChatMessage, ChatMode, Metadata } from "./types";
 import type { Task } from "./task/types";
-import type {
-  FinishPayload,
-  SendMessageParams,
-  SetAppContextParams,
-} from "./store/types";
+import type { SendMessageParams, SetAppContextParams } from "./store/types";
 import { useLocalStorage } from "../../hooks/use-local-storage";
 import { chatModeForTransportRef } from "../../lib/chat-mode-sync";
 import { LOCALSTORAGE_KEYS } from "../../lib/localstorage-keys";
@@ -276,7 +272,10 @@ const BRIDGE_NOOP: ChatBridgeValue = {
 
 /** Internal-only type for cross-provider communication */
 interface TaskProviderInternals {
-  transport: DefaultChatTransport<UIMessage<Metadata>>;
+  prepareBody: (args: {
+    messages: UIMessage<Metadata>[];
+    requestMetadata: unknown;
+  }) => object;
   user: { image?: string | null; name?: string } | null;
   contextPrompt: string;
   preferences: {
@@ -520,7 +519,7 @@ export function ChatContextProvider({
   virtualMcpId,
   children,
 }: PropsWithChildren<{ virtualMcpId: string }>) {
-  const { org, locator } = useProjectContext();
+  const { locator } = useProjectContext();
   const { data: session } = authClient.useSession();
   const user = session?.user ?? null;
 
@@ -700,57 +699,50 @@ export function ChatContextProvider({
   const tiptapDocRef = useRef<Metadata["tiptapDoc"]>(tiptapDoc);
   tiptapDocRef.current = tiptapDoc;
 
-  // Transport (created once per provider mount via ref)
-  const transportRef = useRef<DefaultChatTransport<UIMessage<Metadata>> | null>(
-    null,
-  );
-  if (!transportRef.current) {
-    transportRef.current = new DefaultChatTransport<UIMessage<Metadata>>({
-      api: `/api/${org.slug}/decopilot/stream`,
-      credentials: "include",
-      prepareReconnectToStreamRequest: ({ id }) => ({
-        api: `/api/${org.slug}/decopilot/attach/${id}`,
-      }),
-      prepareSendMessagesRequest: ({ messages, requestMetadata = {} }) => {
-        const {
-          system,
-          tiptapDoc: _tiptapDoc,
-          ...metadata
-        } = requestMetadata as Metadata;
-        const systemMessage: UIMessage<Metadata> | null = system
-          ? {
-              id: crypto.randomUUID(),
-              role: "system",
-              parts: [{ type: "text", text: system }],
-            }
-          : null;
-        const userMessage = messages.slice(-1).filter(Boolean) as ChatMessage[];
-        const allMessages = systemMessage
-          ? [systemMessage, ...userMessage]
-          : userMessage;
+  // Body builder shared by useChatStream — slices to the request message
+  // (last non-system message) and folds in the configured system prompt /
+  // metadata the way the legacy transport's prepareSendMessagesRequest did.
+  const prepareBody = ({
+    messages,
+    requestMetadata = {},
+  }: {
+    messages: UIMessage<Metadata>[];
+    requestMetadata: unknown;
+  }) => {
+    const {
+      system,
+      tiptapDoc: _tiptapDoc,
+      ...metadata
+    } = requestMetadata as Metadata;
+    const systemMessage: UIMessage<Metadata> | null = system
+      ? {
+          id: crypto.randomUUID(),
+          role: "system",
+          parts: [{ type: "text", text: system }],
+        }
+      : null;
+    const userMessage = messages.slice(-1).filter(Boolean) as ChatMessage[];
+    const allMessages = systemMessage
+      ? [systemMessage, ...userMessage]
+      : userMessage;
 
-        const lastMsgMeta = (messages.at(-1)?.metadata ?? {}) as Metadata;
-        const mergedMetadata = {
-          ...metadata,
-          agent: metadata.agent ?? lastMsgMeta.agent,
-          tier: metadata.tier ?? lastMsgMeta.tier,
-          thread_id: metadata.thread_id ?? lastMsgMeta.thread_id,
-        };
+    const lastMsgMeta = (messages.at(-1)?.metadata ?? {}) as Metadata;
+    const mergedMetadata = {
+      ...metadata,
+      agent: metadata.agent ?? lastMsgMeta.agent,
+      tier: metadata.tier ?? lastMsgMeta.tier,
+      thread_id: metadata.thread_id ?? lastMsgMeta.thread_id,
+    };
 
-        return {
-          api: `/api/${org.slug}/decopilot/stream`,
-          body: {
-            messages: allMessages,
-            ...mergedMetadata,
-            toolApprovalLevel: readToolApprovalLevel(),
-            // mode comes from mergedMetadata (set in sendMessageInternal before
-            // the mode state is reset). Reading from a ref here races with the
-            // React state flush that resets chatMode to "default".
-          },
-        };
-      },
-    });
-  }
+    return {
+      messages: allMessages,
+      ...mergedMetadata,
+      toolApprovalLevel: readToolApprovalLevel(),
+      // mode comes from mergedMetadata (set in sendMessageInternal before
+      // the mode state is reset). Reading from a ref here races with the
+      // React state flush that resets chatMode to "default".
+    };
+  };
 
   // Bridge ref — ActiveTaskProvider registers sendMessage here
   const bridgeRef = useRef<ChatBridgeValue>(BRIDGE_NOOP);
@@ -897,7 +889,7 @@ export function ChatContextProvider({
   };
 
   const internals: TaskProviderInternals = {
-    transport: transportRef.current!,
+    prepareBody,
     user,
     contextPrompt,
     preferences,
@@ -957,7 +949,7 @@ export function ActiveTaskProvider({
   }
 
   const {
-    transport,
+    prepareBody,
     user,
     contextPrompt,
     preferences,
@@ -977,15 +969,16 @@ export function ActiveTaskProvider({
   const onToolCall = useInvalidateCollectionsOnToolCall();
   const queryClient = useQueryClient();
 
-  // AI SDK — useChat with taskId as id (multiplexed)
-  const chat = useAIChat<ChatMessage>({
-    id: taskId,
-    messages: serverMessages,
-    transport,
+  // Subscribe model: persistent /attach + POST /messages. No useChat.
+  const chat = useThreadChat<ChatMessage>({
+    threadId: taskId,
+    orgSlug: org.slug,
+    initialMessages: serverMessages,
+    prepareBody,
     sendAutomaticallyWhen: ({ messages }) =>
       lastAssistantMessageIsCompleteWithToolCalls({ messages }) ||
       lastAssistantMessageIsCompleteWithApprovalResponses({ messages }),
-    onFinish: (payload: FinishPayload) => {
+    onFinish: (payload) => {
       setFinishReason(payload.finishReason ?? null);
 
       // Refresh download chips for files share_with_user produced this turn.
@@ -1003,29 +996,24 @@ export function ActiveTaskProvider({
         rawNavigateToTask(serverThreadId);
       }
 
-      if (payload.isAbort || payload.isDisconnect || payload.isError) {
-        if (serverThreadId && payload.messages.length > 0) {
-          taskManager.updateMessagesCache(serverThreadId, payload.messages);
-        }
-        return;
-      }
-
-      if (serverThreadId && payload.messages.length > 0) {
-        taskManager.updateMessagesCache(serverThreadId, payload.messages);
-      } else {
-        console.warn(
-          "[chat] onFinish: no thread_id in server metadata, messages not persisted",
-        );
-      }
+      // Note: in the subscribe model the persistent /attach delivers
+      // assistant chunks to every observer on the thread, so onFinish
+      // fires on each tab — including passive ones whose local snapshot
+      // doesn't include the originating user message. Writing
+      // payload.messages straight to the cache from here would clobber
+      // the sender's full conversation with the passive tab's partial
+      // one. Skip the direct cache update and let
+      // useStreamManager.onFinish invalidate THREAD_MESSAGES instead —
+      // every tab refetches the authoritative server snapshot.
     },
     onToolCall: onToolCall as never,
     onError: (error: Error) => {
       setChatError(error);
       console.error("[chat] Error", error);
     },
-    onData: ({ data, type }) => {
-      if (type === "data-thread-title") {
-        const { title } = data;
+    onData: (chunk) => {
+      if (chunk.type === "data-thread-title") {
+        const { title } = (chunk as { data: { title?: string } }).data;
         if (!title) return;
         taskManager.updateTask(taskId, {
           title,
@@ -1035,10 +1023,11 @@ export function ActiveTaskProvider({
     },
   });
 
-  // Derived state
+  // Derived state. useThreadChat already composes server + optimistic +
+  // streaming messages internally — chat.messages is the live view.
   const isStreaming =
     chat.status === "submitted" || chat.status === "streaming";
-  const messages = chat.status !== "ready" ? chat.messages : serverMessages;
+  const messages = chat.messages;
   const isChatEmpty = messages.length === 0;
   const lastMessage = messages.at(-1);
   const isWaitingForApprovals =
@@ -1058,7 +1047,7 @@ export function ActiveTaskProvider({
   // and mid-stream connection cuts on the chat fetch itself. The
   // `onResumeSuccess` clears `chatError` so the "network error" banner
   // disappears once a silent resume picks the stream back up.
-  useStreamManager(taskId, chat, thread?.status, () => setChatError(null));
+  useStreamManager(taskId);
 
   // sendMessage — captures context at call time
   async function sendMessageInternal(params: SendMessageParams): Promise<void> {
