@@ -52,6 +52,8 @@ export interface CollapsibleHighlightProps {
   defaultExpanded: boolean;
   /** Drives translucent overlay for status banners. */
   variant?: HighlightVariant;
+  /** Called when the close (X) button is clicked, after local dismissal. */
+  onClose?: () => void;
 }
 
 const VARIANT_OVERLAY: Record<HighlightVariant, string> = {
@@ -82,9 +84,15 @@ export function CollapsibleHighlight({
   children,
   defaultExpanded,
   variant = "default",
+  onClose,
 }: CollapsibleHighlightProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [closed, setClosed] = useState(false);
+
+  const handleClose = () => {
+    setClosed(true);
+    onClose?.();
+  };
 
   if (closed) return null;
 
@@ -147,13 +155,13 @@ export function CollapsibleHighlight({
           title="Close"
           onClick={(e) => {
             e.stopPropagation();
-            setClosed(true);
+            handleClose();
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
               e.stopPropagation();
-              setClosed(true);
+              handleClose();
             }
           }}
           className="text-muted-foreground hover:text-foreground transition-colors shrink-0 flex items-center justify-center -mr-1 ml-1 p-1 rounded-md hover:bg-accent"
