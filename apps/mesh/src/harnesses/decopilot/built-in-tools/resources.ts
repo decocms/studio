@@ -7,7 +7,7 @@ import {
   createOutputPreview,
   estimateJsonTokens,
 } from "./read-tool-output";
-import { parseMeshStorageKey } from "../mesh-storage-uri";
+import { parseMeshStorageKey } from "../../../api/routes/decopilot/mesh-storage-uri";
 
 export interface ResourceToolParams {
   readonly passthroughClient: VirtualClient;

@@ -1,7 +1,7 @@
 import { Button } from "@deco/ui/components/button.tsx";
 import { AlertCircle, AlertTriangle } from "@untitledui/icons";
 import { usePreferences } from "@/web/hooks/use-preferences.ts";
-import { useChatStream, useChatTask } from "../context";
+import { useChatPrefs, useChatStream, useChatTask } from "../context";
 import { ApprovalHighlight, extractPendingApprovals } from "./approval";
 import { ProposePlanHighlight, extractPendingPlans } from "./propose-plan";
 import { UserAskQuestionHighlight } from "./user-ask-question";
@@ -104,6 +104,12 @@ export function ChatHighlight() {
   } = useChatStream();
   const [preferences, setPreferences] = usePreferences();
   const { virtualMcpId, createTaskWithMessage } = useChatTask();
+  // Read live tier/mode from prefs at render — passed below into
+  // addToolOutput / addToolApprovalResponse so the continuation request
+  // picks up whatever the user has selected at click time. Each prefs
+  // change re-renders this component, so the handler closes over the
+  // latest values.
+  const { simpleModeTier, chatMode } = useChatPrefs();
 
   const lastMessage = messages.at(-1);
 
@@ -171,6 +177,7 @@ export function ChatHighlight() {
       tool: "user_ask",
       toolCallId: part.toolCallId,
       output: { response },
+      options: { metadata: { tier: simpleModeTier, mode: chatMode } },
     });
   };
 
@@ -201,6 +208,7 @@ export function ChatHighlight() {
       id: approvalId,
       approved,
       ...(reason ? { reason } : {}),
+      options: { metadata: { tier: simpleModeTier, mode: chatMode } },
     });
   };
 

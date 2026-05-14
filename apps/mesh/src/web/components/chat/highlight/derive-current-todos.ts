@@ -18,7 +18,7 @@ import type { UIMessage } from "ai";
 import {
   type Todo,
   TodoWriteInputSchema,
-} from "@/api/routes/decopilot/built-in-tools/todo-write";
+} from "@/harnesses/decopilot/built-in-tools/todo-write";
 
 interface UnknownPart {
   type?: unknown;

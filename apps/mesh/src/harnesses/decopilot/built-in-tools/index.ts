@@ -8,7 +8,10 @@
 import type { MeshContext, OrganizationScope } from "@/core/mesh-context";
 import { posthog } from "@/posthog";
 import type { UIMessageStreamWriter } from "ai";
-import { toolNeedsApproval, type ToolApprovalLevel } from "../helpers";
+import {
+  toolNeedsApproval,
+  type ToolApprovalLevel,
+} from "../../../api/routes/decopilot/helpers";
 
 // Known destructive/read-only classifications for built-in tools. Mirrors
 // the MCP annotations used by passthrough tools so dashboards can filter
@@ -45,7 +48,7 @@ import { createWebSearchTool } from "./web-search";
 import { createTakeScreenshotTool, type PendingImage } from "./take-screenshot";
 import { createScrapeUrlTool } from "./scrape-url";
 import { createInspectPageTool } from "./inspect-page";
-import type { ModelsConfig } from "../types";
+import type { ModelsConfig } from "../../../api/routes/decopilot/types";
 import type { MeshProvider } from "@/ai-providers/types";
 
 /**

@@ -571,8 +571,15 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
     output?: unknown;
     state?: "output-available" | "output-error";
     errorText?: string;
+    options?: { metadata?: unknown };
   }) => {
-    const { toolCallId, output, state = "output-available", errorText } = args;
+    const {
+      toolCallId,
+      output,
+      state = "output-available",
+      errorText,
+      options,
+    } = args;
     patchLastAssistant((parts) =>
       parts.map((p: any) =>
         p && typeof p === "object" && p.toolCallId === toolCallId
@@ -580,13 +587,18 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
           : p,
       ),
     );
-    maybeAutoSend();
+    // Forward the caller-supplied metadata to the auto-continuation so live
+    // values read at click time (tier, mode, …) reach prepareBody. The AI
+    // SDK's ChatAddToolOutputFunction shape already includes `options` for
+    // exactly this purpose — see ai/dist/index.d.mts ChatRequestOptions.
+    maybeAutoSend(options?.metadata);
   }) as ChatAddToolOutputFunction<UI_MESSAGE>;
 
   const addToolApprovalResponse: ChatAddToolApproveResponseFunction = ({
     id,
     approved,
     reason,
+    options,
   }) => {
     patchLastAssistant((parts) =>
       parts.map((p: any) =>
@@ -602,7 +614,7 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
           : p,
       ),
     );
-    maybeAutoSend();
+    maybeAutoSend(options?.metadata);
   };
 
   const clearError = (): void => {
@@ -612,7 +624,7 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
     }
   };
 
-  function maybeAutoSend(): void {
+  function maybeAutoSend(metadata?: unknown): void {
     if (!sendAutomaticallyWhen) return;
     const s = statusStore.current.get();
     if (s === "streaming" || s === "submitted") return;
@@ -622,9 +634,15 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
     if (!last) return;
     // Continuation: the request "new message" is the patched last
     // assistant message (the same shape useChat would POST after
-    // addToolOutput / addToolApprovalResponse).
+    // addToolOutput / addToolApprovalResponse). The metadata argument is
+    // the caller's `options.metadata` — read live at the click site, never
+    // captured here, so a stale render can't drift from the user's
+    // current selection.
     statusStore.current.set("submitted");
-    const body = prepareBody({ messages: all, requestMetadata: {} });
+    const body = prepareBody({
+      messages: all,
+      requestMetadata: metadata ?? {},
+    });
     void post(body).catch((err) => {
       const e = err instanceof Error ? err : new Error(String(err));
       errorStore.current.set(e);
