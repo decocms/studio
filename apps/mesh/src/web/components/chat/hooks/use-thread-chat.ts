@@ -228,6 +228,15 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
           statusStore.current.set("error");
           cbRef.current.onError?.(err);
         },
+        onReconnect: () => {
+          // The next /attach connect uses `DeliverPolicy.All` and will
+          // replay every chunk for the current in-flight run from its
+          // start. Drop our in-flight sub-stream's partial fold and
+          // clear the streaming view so the replay re-folds cleanly
+          // without duplicating deltas into the previous state.
+          forceCloseCurrentSubStream(true);
+          streamingStore.current.set(null);
+        },
       });
       return () => abort.abort();
     };
@@ -255,16 +264,26 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
      * (`finishReason !== "stop"`) keeps working.
      */
     pendingFinishReason: string | undefined;
+    /**
+     * When true, the next sub-stream close should *not* push its partial
+     * message into `localMessages` or fire `onFinish`. Set by tear-down
+     * paths (reconnect, thread switch) where the chunks they've folded
+     * so far will be re-delivered by the upcoming new connection — so
+     * keeping the partial would duplicate the run once replay finishes.
+     */
+    discardOnClose: boolean;
     consume: () => Promise<void>;
   }>({
     subController: null,
     pendingFinishReason: undefined,
+    discardOnClose: false,
     consume: async () => {},
   });
 
-  const forceCloseCurrentSubStream = (): void => {
+  const forceCloseCurrentSubStream = (discard = false): void => {
     const ctrl = demuxRef.current.subController;
     if (!ctrl) return;
+    demuxRef.current.discardOnClose = discard;
     demuxRef.current.subController = null;
     try {
       ctrl.close();
@@ -274,11 +293,22 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
     }
   };
 
+  // SSE `decopilot.finish` is the *backstop* for the rare case where the
+  // backend purges JetStream before the AI-SDK `{type: "finish"}` chunk
+  // lands and the demux's sub-stream would otherwise hang. The watch SSE
+  // and the JetStream tail are independent transports, though — under
+  // load the SSE event commonly arrives *ahead* of the buffered finish
+  // chunk, and closing the sub then would orphan the remaining chunks
+  // (they'd open a fresh sub-stream via `ensureSubStream` and surface as
+  // a duplicate partial message). Wait ~1.5s; if the chunk actually
+  // arrives in that window the sub is already closed and the backstop
+  // is a no-op.
+  const SSE_FINISH_BACKSTOP_MS = 1500;
   useDecopilotEvents({
     orgSlug,
     taskId: threadId,
     onFinish: () => {
-      forceCloseCurrentSubStream();
+      setTimeout(() => forceCloseCurrentSubStream(), SSE_FINISH_BACKSTOP_MS);
     },
   });
 
@@ -317,17 +347,26 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
           statusStore.current.set("streaming");
         }
       }
-      // Sub-stream closed — the finish chunk landed.
+      // Sub-stream closed — either the finish chunk landed, the SSE
+      // backstop fired, or a reconnect path tore it down. The
+      // `discardOnClose` flag distinguishes the third case: the chunks
+      // we already folded will be re-delivered when the next /attach
+      // replays from JetStream's start, so we drop the partial here
+      // instead of half-committing it to localMessages.
       const finishReason = demuxRef.current.pendingFinishReason;
+      const discard = demuxRef.current.discardOnClose;
       demuxRef.current.subController = null;
       demuxRef.current.pendingFinishReason = undefined;
+      demuxRef.current.discardOnClose = false;
       const finalMsg = last;
-      if (finalMsg) {
+      if (finalMsg && !discard) {
         localMessagesStore.current.update((prev) => [...prev, finalMsg]);
         streamingStore.current.set(null);
       }
-      statusStore.current.set("ready");
-      if (finalMsg) {
+      if (!discard) {
+        statusStore.current.set("ready");
+      }
+      if (finalMsg && !discard) {
         cbRef.current.onFinish?.({
           message: finalMsg,
           messages: snapshotAll(),
@@ -623,41 +662,108 @@ function mergeWithServer<UI_MESSAGE extends UIMessage>(
   return merged;
 }
 
+/**
+ * Persistent /attach with automatic reconnect on transient failures.
+ *
+ * One open connection per (tab, thread) is the only delivery path for
+ * assistant chunks in the subscribe model. Proxies that hard-cut TCP
+ * after N minutes, network blips, and server-side stream EOFs all
+ * surface here as either a `TypeError` from `fetch` / `reader.read` or
+ * a clean `reader.done` mid-run — we treat both as transient and
+ * reconnect with exponential backoff (1s → 2s → 4s → … capped at 30s).
+ *
+ * Terminal vs transient:
+ *   - 4xx / 5xx HTTP response  → terminal (server explicitly rejected)
+ *   - Schema parse error       → terminal (wire-format mismatch)
+ *   - `signal.aborted`         → terminal (unmount / thread switch)
+ *   - everything else          → transient, reconnect
+ *
+ * The new connection uses `DeliverPolicy.All` server-side, so the
+ * in-flight run's chunks are re-delivered from JetStream's start. The
+ * caller's `onReconnect` hook should drop any partially-folded message
+ * before the replay so duplicated deltas don't accumulate.
+ */
 async function runPersistentLoop(args: {
   url: string;
   signal: AbortSignal;
   onChunk: (chunk: UIMessageChunk) => void;
   onError: (err: Error) => void;
+  /** Called once before each reconnect attempt (after the first). */
+  onReconnect?: () => void;
 }): Promise<void> {
-  const { url, signal, onChunk, onError } = args;
-  try {
-    const resp = await fetch(url, {
-      method: "GET",
-      credentials: "include",
-      headers: { accept: "text/event-stream" },
-      signal,
-    });
-    if (resp.status === 204 || !resp.body) return;
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => "");
-      throw new Error(text || `GET /attach failed (${resp.status})`);
-    }
-    const parsed = parseJsonEventStream({
-      stream: resp.body,
-      schema: uiMessageChunkSchema,
-    });
-    const reader = parsed.getReader();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) return;
-      if (!value.success) {
-        onError(value.error);
-        return;
+  const { url, signal, onChunk, onError, onReconnect } = args;
+  let attempt = 0;
+  let firstConnect = true;
+  const BASE_DELAY_MS = 1_000;
+  const MAX_DELAY_MS = 30_000;
+
+  while (!signal.aborted) {
+    if (!firstConnect) onReconnect?.();
+    firstConnect = false;
+
+    let cleanExit = false;
+    try {
+      const resp = await fetch(url, {
+        method: "GET",
+        credentials: "include",
+        headers: { accept: "text/event-stream" },
+        signal,
+      });
+      if (resp.status === 204 || !resp.body) return;
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => "");
+        onError(new Error(text || `GET /attach failed (${resp.status})`));
+        return; // terminal — server-side rejection
       }
-      onChunk(value.value as UIMessageChunk);
+      // Reset backoff once a connection is open and the headers are ok.
+      attempt = 0;
+      const parsed = parseJsonEventStream({
+        stream: resp.body,
+        schema: uiMessageChunkSchema,
+      });
+      const reader = parsed.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          // Server-side stream ended mid-run (proxy hard-cut, NATS
+          // hiccup, pod recycle). Treat as transient and reconnect.
+          cleanExit = true;
+          break;
+        }
+        if (!value.success) {
+          onError(value.error);
+          return; // terminal — schema mismatch
+        }
+        onChunk(value.value as UIMessageChunk);
+      }
+    } catch (err) {
+      if (signal.aborted) return;
+      // Transient (TypeError / network unreachable / mid-byte
+      // truncation): fall through to backoff + reconnect. The actual
+      // error is intentionally not surfaced to consumers — reconnect
+      // is the whole point of the loop.
+      void err;
     }
-  } catch (err) {
+
     if (signal.aborted) return;
-    onError(err instanceof Error ? err : new Error(String(err)));
+    // Backoff before next attempt (zero-delay on the first reconnect
+    // after a `done`-style clean exit so quick proxy cuts resume fast).
+    const delay = cleanExit
+      ? 0
+      : Math.min(BASE_DELAY_MS * 2 ** attempt, MAX_DELAY_MS);
+    attempt++;
+    if (delay > 0) {
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, delay);
+        signal.addEventListener(
+          "abort",
+          () => {
+            clearTimeout(timer);
+            resolve();
+          },
+          { once: true },
+        );
+      });
+    }
   }
 }

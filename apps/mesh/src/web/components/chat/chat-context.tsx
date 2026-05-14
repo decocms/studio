@@ -1042,11 +1042,9 @@ export function ActiveTaskProvider({
     chat.status === "ready" &&
     messages.length > 0;
 
-  // Stream manager (SSE + resume) — task-scoped.
-  // Owns every "should we resume?" decision: mount, watch-SSE step events,
-  // and mid-stream connection cuts on the chat fetch itself. The
-  // `onResumeSuccess` clears `chatError` so the "network error" banner
-  // disappears once a silent resume picks the stream back up.
+  // Watch-SSE driven cache invalidations for this thread. The subscribe
+  // stream is always open in useThreadChat — resume / reconnect logic
+  // lives there, not here.
   useStreamManager(taskId);
 
   // sendMessage — captures context at call time
