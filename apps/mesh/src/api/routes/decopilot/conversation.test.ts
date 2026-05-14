@@ -455,7 +455,15 @@ describe("processConversation — todo_write trimming", () => {
     // tool-call typed parts to count invocations.
     const allParts = result.messages.flatMap((m) =>
       Array.isArray((m as { content?: unknown }).content)
-        ? (m as { content: { type?: unknown; toolName?: unknown; toolCallId?: unknown }[] }).content
+        ? (
+            m as {
+              content: {
+                type?: unknown;
+                toolName?: unknown;
+                toolCallId?: unknown;
+              }[];
+            }
+          ).content
         : [],
     );
     const todoWriteCallParts = allParts.filter(

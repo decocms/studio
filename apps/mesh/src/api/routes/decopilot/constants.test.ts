@@ -21,8 +21,6 @@ describe("buildTodoWritePrompt", () => {
   });
 
   test("tells the model to re-read its last call for current state", () => {
-    expect(buildTodoWritePrompt()).toMatch(
-      /most recent|last call|re-read/i,
-    );
+    expect(buildTodoWritePrompt()).toMatch(/most recent|last call|re-read/i);
   });
 });
