@@ -213,7 +213,10 @@ function collapsedCounts(
       const type = parts[item.index]?.type;
       if (type === "text") {
         messages++;
-      } else if (type === "dynamic-tool" || type?.startsWith("tool-")) {
+      } else if (
+        (type === "dynamic-tool" || type?.startsWith("tool-")) &&
+        type !== "tool-todo_write"
+      ) {
         toolCalls++;
       }
     }
@@ -415,6 +418,8 @@ function MessagePart({
           toolMeta={getMeta(part.toolCallId)?._meta}
         />
       );
+    case "tool-todo_write":
+      return null;
     case "tool-user_ask":
       return (
         <UserAskPart
