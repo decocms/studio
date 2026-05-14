@@ -18,7 +18,6 @@
  * markers propagate through OpenRouter routes too.
  */
 
-import type { Todo } from "./built-in-tools/todo-write";
 import { EPHEMERAL_5M } from "./cache-instrumentation";
 
 export interface SystemMessage {
@@ -46,21 +45,6 @@ Current time: ${iso.slice(11, 16)} UTC
 </current-context>`;
 }
 
-/**
- * Per-request, non-cached system prompt block carrying the current
- * todo list. Returns null when the list is empty so the caller can
- * skip the append entirely. Lives alongside <current-context> in the
- * non-cached system tail — never wrapped in cache markers.
- */
-export function buildCurrentTodosPrompt(todos: readonly Todo[]): string | null {
-  if (todos.length === 0) return null;
-  const lines = todos.map((t) => {
-    const label = t.status === "in_progress" ? t.activeForm : t.content;
-    return `- [${t.status}] ${label}`;
-  });
-  return `<current-todos>\n${lines.join("\n")}\n</current-todos>`;
-}
-
 const EPHEMERAL_5M_PROVIDER_OPTIONS = {
   anthropic: { cacheControl: EPHEMERAL_5M },
 };
@@ -85,7 +69,6 @@ const EPHEMERAL_5M_PROVIDER_OPTIONS = {
 export function buildSystemMessages(
   parts: string[],
   now: Date,
-  todos: readonly Todo[] = [],
 ): SystemMessage[] {
   const out: SystemMessage[] = [];
   const bp2Idx = parts.length - 1;
@@ -102,12 +85,5 @@ export function buildSystemMessages(
     role: "system",
     content: buildCurrentContextPrompt(now),
   });
-  const todosBlock = buildCurrentTodosPrompt(todos);
-  if (todosBlock !== null) {
-    out.push({
-      role: "system",
-      content: todosBlock,
-    });
-  }
   return out;
 }
