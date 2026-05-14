@@ -2,29 +2,31 @@
  * CollapsibleHighlight — the shared shell for every banner in the chat
  * highlight slot (todos, question, plan, approval, error, warning).
  *
- * One always-visible chip row (icon + label + optional count + caret),
- * one expandable body containing the substantive content (form fields,
- * plan markdown, todo list, etc.), and an optional footer row.
+ * One always-visible chip row (icon + label + optional count + close
+ * button), one expandable body containing the substantive content
+ * (form fields, plan markdown, todo list, etc.), and an optional
+ * footer row.
  *
- * Open/close state is local. Each banner instance gets its own state;
- * the parent passes a stable `key` so React remounts on identity change
- * (a new question, a new approval batch, a new plan) and the new instance
- * starts at `defaultExpanded`. Stable identity = stable state across
- * re-renders.
+ * Two pieces of local state, both held per-instance:
+ *  - `expanded`: clicking anywhere on the chip row (except the X)
+ *    toggles the body open/closed. Initial value comes from
+ *    `defaultExpanded`.
+ *  - `closed`: clicking the X dismisses the whole card. When true the
+ *    component returns `null`.
  *
- * The body is rendered into the DOM unconditionally — the collapse uses
- * a grid-template-rows trick that animates height without measuring,
- * which also preserves form state, scroll position, and selected tab
- * across collapse/expand cycles.
+ * Parents pass a stable `key` so React remounts on identity change
+ * (a new question, a new approval batch, a new plan); both states
+ * reset on remount.
  *
- * Visual styling (paddings, animation curve, rotating chevron, etc.)
- * is borrowed from rafavalls' HighlightCard so we stay aligned with the
- * design system; the single-component architecture is ours.
+ * The body is rendered into the DOM unconditionally — the collapse
+ * uses a grid-template-rows trick that animates height without
+ * measuring, which also preserves form state, scroll position, and
+ * selected tab across collapse/expand cycles.
  */
 
 import { useState, type ReactNode } from "react";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { ChevronDown } from "@untitledui/icons";
+import { ChevronDown, X } from "@untitledui/icons";
 
 // ease-in-out-cubic — on-screen morph per animation guide
 const EASE = "cubic-bezier(0.645, 0.045, 0.355, 1)";
@@ -82,6 +84,9 @@ export function CollapsibleHighlight({
   variant = "default",
 }: CollapsibleHighlightProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
+  const [closed, setClosed] = useState(false);
+
+  if (closed) return null;
 
   return (
     <div
@@ -126,6 +131,34 @@ export function CollapsibleHighlight({
               transition: `transform 180ms ${EASE}`,
             }}
           />
+        </span>
+        {/*
+          Rendered as a nested <span role="button"> rather than a real
+          <button> because the outer chip is already a <button> and
+          nesting interactive elements is invalid HTML. stopPropagation
+          on click + keydown keeps the chip's expand/collapse from
+          firing when the user dismisses the card.
+        */}
+        <span
+          role="button"
+          tabIndex={0}
+          data-testid="collapsible-highlight-close"
+          aria-label="Close"
+          title="Close"
+          onClick={(e) => {
+            e.stopPropagation();
+            setClosed(true);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              e.stopPropagation();
+              setClosed(true);
+            }
+          }}
+          className="text-muted-foreground hover:text-foreground transition-colors shrink-0 flex items-center justify-center -mr-1 ml-1 p-1 rounded-md hover:bg-accent"
+        >
+          <X size={16} />
         </span>
       </button>
 
