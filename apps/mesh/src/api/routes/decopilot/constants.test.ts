@@ -6,8 +6,8 @@ describe("buildTodoWritePrompt", () => {
     expect(buildTodoWritePrompt()).toContain("todo_write");
   });
 
-  test("specifies the 3+ step threshold", () => {
-    expect(buildTodoWritePrompt()).toMatch(/3\+|three or more/i);
+  test("instructs to call it at the start of every multi-step request", () => {
+    expect(buildTodoWritePrompt()).toMatch(/multi-step|every multi-step/i);
   });
 
   test("specifies the single-in-progress constraint", () => {
@@ -20,9 +20,9 @@ describe("buildTodoWritePrompt", () => {
     );
   });
 
-  test("tells the model the current list is always visible", () => {
+  test("tells the model to re-read its last call for current state", () => {
     expect(buildTodoWritePrompt()).toMatch(
-      /current[- ]?todos|always visible|always present in the system/i,
+      /most recent|last call|re-read/i,
     );
   });
 });
