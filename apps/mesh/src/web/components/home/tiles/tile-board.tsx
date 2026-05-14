@@ -301,10 +301,10 @@ function BoardTile({
               type="button"
               {...attributes}
               {...listeners}
-              className="absolute top-2 left-2 z-10 flex size-6 items-center justify-center rounded-md bg-background/90 border border-border text-muted-foreground hover:text-foreground hover:bg-muted cursor-grab active:cursor-grabbing"
+              className="absolute top-2 left-2 z-10 flex size-8 items-center justify-center rounded-md bg-background/90 border border-border text-muted-foreground hover:text-foreground hover:bg-muted cursor-grab active:cursor-grabbing"
               aria-label="Drag tile"
             >
-              <DotsGrid size={12} />
+              <DotsGrid size={16} />
             </button>
             <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
               <TileMenu tile={tile} onResize={onResize} onRemove={onRemove} />
@@ -345,10 +345,10 @@ function TileMenu({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="flex size-6 items-center justify-center rounded-md bg-background/90 border border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+          className="flex size-8 items-center justify-center rounded-md bg-background/90 border border-border text-muted-foreground hover:text-foreground hover:bg-muted"
           aria-label="Tile options"
         >
-          <DotsHorizontal size={12} />
+          <DotsHorizontal size={16} />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">

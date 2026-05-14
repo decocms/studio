@@ -33,6 +33,10 @@ interface PresetCard {
   title: string;
   /** Path to the Figma-exported PNG used as the colored thumbnail. */
   thumb: string;
+  /** Step number (1, 2, 3) for the guided-flow presets — drawn as a
+   *  small numbered badge on the thumbnail. Null for the cards that
+   *  aren't part of the brand→site→monitoring flow. */
+  step: number | null;
   /** Onclick behavior. "new-chat" opens an empty chat; preset starts a
    *  prefilled chat and pins the matching home tile; "import-deco"
    *  opens the import dialog. */
@@ -46,13 +50,15 @@ const PRESET_CARDS: PresetCard[] = [
   {
     id: "new-chat",
     title: "New chat",
-    thumb: "/home/task-new-chat.png",
+    thumb: "/home/task-new-chat.svg",
+    step: null,
     action: "new-chat",
   },
   {
     id: "brand-context",
     title: "Extract brand context",
-    thumb: "/home/task-brand.png",
+    thumb: "/home/task-brand.svg",
+    step: 1,
     action: {
       tileType: "studio.brand-context",
       prompt:
@@ -62,7 +68,8 @@ const PRESET_CARDS: PresetCard[] = [
   {
     id: "landing-page",
     title: "Create landing page",
-    thumb: "/home/task-landing.png",
+    thumb: "/home/task-landing.svg",
+    step: 2,
     action: {
       tileType: "studio.landing-page",
       prompt:
@@ -72,7 +79,8 @@ const PRESET_CARDS: PresetCard[] = [
   {
     id: "error-monitoring",
     title: "Set up error monitoring",
-    thumb: "/home/task-monitoring.png",
+    thumb: "/home/task-monitoring.svg",
+    step: 3,
     action: {
       tileType: "studio.error-monitoring",
       prompt:
@@ -82,7 +90,8 @@ const PRESET_CARDS: PresetCard[] = [
   {
     id: "import-deco",
     title: "Import Deco site",
-    thumb: "/home/task-import-deco.png",
+    thumb: "/home/task-import-deco.svg",
+    step: null,
     action: "import-deco",
   },
 ];
@@ -126,9 +135,21 @@ export function TasksSection({
   const { addTile } = useHomeBoard(org.slug);
   const [filter, setFilter] = useState<FilterOption>("all");
   const [memberFilter, setMemberFilter] = useState<MemberFilter>("mine");
-  const [mode, setMode] = useState<SectionMode>(
-    tasks.length === 0 ? "new" : "list",
-  );
+  // Default per-route: home (no active task) opens the preset cards;
+  // inside a chat we open the task list. Manual toggle wins, but only
+  // for the current activeTaskId — navigating clears the override so
+  // each route gets its default again. Avoids a useEffect for the sync.
+  const [override, setOverride] = useState<{
+    mode: SectionMode;
+    forTask: string | null;
+  } | null>(null);
+  const defaultMode: SectionMode = activeTaskId ? "list" : "new";
+  const mode: SectionMode =
+    override && override.forTask === activeTaskId ? override.mode : defaultMode;
+  const setMode = (next: SectionMode | ((prev: SectionMode) => SectionMode)) => {
+    const resolved = typeof next === "function" ? next(mode) : next;
+    setOverride({ mode: resolved, forTask: activeTaskId });
+  };
   const [importOpen, setImportOpen] = useState(false);
 
   const memberFiltered =
@@ -259,30 +280,42 @@ export function TasksSection({
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-0.5">
         {mode === "new" ? (
-          <div className="flex flex-col gap-1 pt-1 px-1">
+          <div className="flex flex-col gap-2 pt-1 px-1">
             {PRESET_CARDS.map((card) => (
               <button
                 key={card.id}
                 type="button"
                 onClick={() => handleCardClick(card)}
                 className={cn(
-                  "group/row flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors",
-                  "hover:bg-accent/50 cursor-pointer",
+                  "group/row flex w-full items-center gap-3.5 rounded-xl border border-border bg-background px-2.5 py-2 text-left transition-colors",
+                  "hover:border-border hover:bg-accent/40 cursor-pointer",
                 )}
               >
-                <img
-                  src={card.thumb}
-                  alt=""
-                  aria-hidden
-                  className="size-10 shrink-0 rounded-md object-cover"
-                />
+                <div className="relative shrink-0">
+                  <img
+                    src={card.thumb}
+                    alt=""
+                    aria-hidden
+                    className="h-11 w-16 rounded-md object-cover"
+                  />
+                  {card.step !== null && (
+                    <span
+                      className="absolute -bottom-1 -right-1 flex size-[18px] items-center justify-center rounded-md border border-border bg-background text-[11px] font-semibold leading-none text-foreground"
+                      aria-hidden
+                    >
+                      {card.step}
+                    </span>
+                  )}
+                </div>
                 <div className="flex-1 min-w-0 text-sm font-medium text-foreground truncate">
                   {card.title}
                 </div>
-                <ArrowRight
-                  size={14}
-                  className="shrink-0 text-muted-foreground opacity-0 transition-all group-hover/row:opacity-100 group-hover/row:translate-x-0.5"
-                />
+                <span className="flex shrink-0 items-center justify-center px-1.5">
+                  <ArrowRight
+                    size={14}
+                    className="text-muted-foreground opacity-0 transition-all group-hover/row:opacity-100 group-hover/row:translate-x-0.5"
+                  />
+                </span>
               </button>
             ))}
           </div>

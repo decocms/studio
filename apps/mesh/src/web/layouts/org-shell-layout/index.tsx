@@ -118,7 +118,7 @@ export default function OrgShellLayout() {
                       </Toolbar.RightColumn>
                     </Toolbar.Header>
                     <div className="flex-1 min-h-0 flex flex-row">
-                      <TasksPanelColumn />
+                      <TasksPanelColumn wide={!hasTaskRoute} />
                       <Suspense fallback={<RouteFallback />}>
                         <Outlet />
                       </Suspense>

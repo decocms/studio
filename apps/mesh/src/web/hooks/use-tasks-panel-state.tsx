@@ -12,27 +12,32 @@ interface TasksPanelState {
 const TasksPanelStateContext = createContext<TasksPanelState | null>(null);
 
 /**
- * Provider for the tasks-panel open/closed state.
- *
- * Flow:
- *   url → state   (init only, when the provider first mounts)
- *   state → url   (on every change, via effect)
- *
- * URL model: `?tasks=0|1`. When absent on first mount the panel defaults
- * to open iff there are open tasks. The URL is always kept in sync so a
- * refresh restores the last state the user chose.
+ * Provider for the tasks-panel open/closed state — per-route. Closing the
+ * panel inside a chat shouldn't follow you to home and vice versa, so we
+ * keep one state for the home route and one for any chat route. URL
+ * `?tasks=0|1` mirrors the current route's state so a refresh restores
+ * what you saw.
  */
 export function TasksPanelStateProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { tasks?: number };
   const params = useParams({ strict: false }) as { taskId?: string };
   const { tasks } = useTasks({ owner: "all", status: "open" });
+  const onHome = !params.taskId;
 
-  // Auto-open based on task count only when on a task route; on home the
-  // panel starts closed (user opens it via the toggle button).
-  const [tasksOpen, setTasksOpen] = useState<boolean>(() =>
-    resolveTasksOpen(search.tasks, Boolean(params.taskId) && tasks.length > 0),
+  // Home defaults open (preset cards are useful from a cold start). Chat
+  // defaults open iff the user has tasks to read. URL ?tasks=0|1 wins on
+  // first mount so refresh-after-close stays closed.
+  const [homeOpen, setHomeOpen] = useState<boolean>(() =>
+    onHome ? resolveTasksOpen(search.tasks, true) : true,
   );
+  const [chatOpen, setChatOpen] = useState<boolean>(() =>
+    !onHome
+      ? resolveTasksOpen(search.tasks, tasks.length > 0)
+      : tasks.length > 0,
+  );
+
+  const tasksOpen = onHome ? homeOpen : chatOpen;
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {
@@ -46,7 +51,10 @@ export function TasksPanelStateProvider({ children }: { children: ReactNode }) {
     });
   }, [tasksOpen, navigate]);
 
-  const toggleTasks = () => setTasksOpen((prev) => !prev);
+  const toggleTasks = () => {
+    if (onHome) setHomeOpen((p) => !p);
+    else setChatOpen((p) => !p);
+  };
 
   return (
     <TasksPanelStateContext.Provider value={{ tasksOpen, toggleTasks }}>

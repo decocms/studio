@@ -6,11 +6,24 @@
  */
 
 import { useNavigate } from "@tanstack/react-router";
-import { useProjectContext } from "@decocms/mesh-sdk";
-import { Activity, Globe02, Stars01 } from "@untitledui/icons";
+import {
+  useProjectContext,
+  WELL_KNOWN_AGENT_TEMPLATES,
+} from "@decocms/mesh-sdk";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
+import { IntegrationIcon } from "@/web/components/integration-icon";
 import type { TileRenderProps } from "./types";
+
+/**
+ * Pulls the registered template icon for a preset tile. These templates
+ * are stubs today — the dev wires the actual agent behaviour later, but
+ * the tile already renders the agent's eventual visual identity.
+ */
+function templateIcon(templateId: string): { icon: string; title: string } {
+  const tpl = WELL_KNOWN_AGENT_TEMPLATES.find((t) => t.id === templateId);
+  return { icon: tpl?.icon ?? "", title: tpl?.title ?? "" };
+}
 
 type Status = "running" | "ready";
 
@@ -26,16 +39,16 @@ function readTaskId(
 }
 
 function TileFrame({
+  templateId,
   title,
   subtitle,
-  icon,
   taskId,
   isEditMode,
   children,
 }: {
+  templateId: string;
   title: string;
   subtitle: string;
-  icon: React.ReactNode;
   taskId: string | null;
   isEditMode: boolean;
   children: React.ReactNode;
@@ -43,6 +56,7 @@ function TileFrame({
   const navigate = useNavigate();
   const { org } = useProjectContext();
   const interactive = !isEditMode && taskId;
+  const { icon: iconStr, title: tplName } = templateIcon(templateId);
   return (
     <button
       type="button"
@@ -63,9 +77,7 @@ function TileFrame({
       )}
     >
       <div className="flex items-center gap-2.5">
-        <span className="flex size-6 items-center justify-center rounded-md bg-foreground/5 text-foreground/70">
-          {icon}
-        </span>
+        <IntegrationIcon icon={iconStr} name={tplName || title} size="xs" />
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium text-foreground">
             {title}
@@ -103,9 +115,9 @@ export function BrandContextTile({ instance, isEditMode }: TileRenderProps) {
     status === "running" ? "Pulling site assets…" : "Brand snapshot";
   return (
     <TileFrame
+      templateId="brand-context"
       title="Brand context"
       subtitle={subtitle}
-      icon={<Stars01 size={14} />}
       taskId={readTaskId(instance.config)}
       isEditMode={isEditMode}
     >
@@ -139,9 +151,9 @@ export function LandingPageTile({ instance, isEditMode }: TileRenderProps) {
   const subtitle = status === "running" ? "Drafting sections…" : "Page preview";
   return (
     <TileFrame
+      templateId="landing-page"
       title="Landing page"
       subtitle={subtitle}
-      icon={<Globe02 size={14} />}
       taskId={readTaskId(instance.config)}
       isEditMode={isEditMode}
     >
@@ -170,9 +182,9 @@ export function ErrorMonitoringTile({ instance, isEditMode }: TileRenderProps) {
     status === "running" ? "Connecting your stack…" : "Live errors";
   return (
     <TileFrame
+      templateId="system-health"
       title="System health"
       subtitle={subtitle}
-      icon={<Activity size={14} />}
       taskId={readTaskId(instance.config)}
       isEditMode={isEditMode}
     >

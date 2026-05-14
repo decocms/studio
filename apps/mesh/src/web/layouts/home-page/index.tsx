@@ -106,34 +106,44 @@ export function HomePage() {
           }}
         />
       </Toolbar.Right>
-      <div className="flex-1 relative flex flex-col overflow-y-auto">
+      {/* Outer wrapper hosts the fixed background; inner div is the
+          scroll container, so the corner art stays put as content scrolls. */}
+      <div className="flex-1 relative flex flex-col min-h-0">
         <HomeBackground />
-        <div className="relative flex flex-col items-center px-10 pt-32 pb-4">
-          <div className="flex flex-col items-center w-full max-w-[672px]">
-            <div className="text-center mb-10">
-              {eyebrow && <div className="mb-4">{eyebrow}</div>}
-              <p className="text-3xl font-medium text-foreground">
-                What's on your mind, {userName}?
-              </p>
-            </div>
-            <div className="relative w-full">
-              <Capybara />
-              <Chat.Input showConnectionsBanner />
+        <div className="flex-1 relative flex flex-col overflow-y-auto">
+          <div
+            className={
+              hasTiles
+                ? "relative flex flex-col items-center px-10 pt-48 pb-4"
+                : "relative flex-1 flex flex-col items-center justify-center px-10 pb-4"
+            }
+          >
+            <div className="flex flex-col items-center w-full max-w-[672px]">
+              <div className="text-center mb-10">
+                {eyebrow && <div className="mb-4">{eyebrow}</div>}
+                <p className="text-3xl font-medium text-foreground">
+                  What's on your mind, {userName}?
+                </p>
+              </div>
+              <div className="relative w-full">
+                <Capybara />
+                <Chat.Input showConnectionsBanner />
+              </div>
             </div>
           </div>
+          {hasTiles && (
+            <div className="relative w-full mt-16 mx-auto max-w-[1080px] px-6 pb-16">
+              <TileBoard
+                board={boardApi.board}
+                isEditMode={isEditMode}
+                onMove={boardApi.moveTile}
+                onResize={boardApi.resizeTile}
+                onRemove={boardApi.removeTile}
+                onUpdateConfig={boardApi.updateTileConfig}
+              />
+            </div>
+          )}
         </div>
-        {hasTiles && (
-          <div className="relative w-full mt-16 mx-auto max-w-[1080px] px-6 pb-16">
-            <TileBoard
-              board={boardApi.board}
-              isEditMode={isEditMode}
-              onMove={boardApi.moveTile}
-              onResize={boardApi.resizeTile}
-              onRemove={boardApi.removeTile}
-              onUpdateConfig={boardApi.updateTileConfig}
-            />
-          </div>
-        )}
       </div>
     </>
   );
@@ -202,12 +212,15 @@ function CustomizeToolbar({
 }
 
 function Capybara() {
+  // -top-10 lifts the body well above the chat input so only the bottom
+  // ~8px overlaps — the head reads as peeking out from behind. z-20 sits
+  // above the chat composer's stacking context.
   return (
     <img
       src="/home/capybara.png"
       alt=""
       aria-hidden
-      className="pointer-events-none absolute -top-7 right-2 h-12 w-auto select-none"
+      className="pointer-events-none absolute -top-10 right-6 z-20 h-12 w-auto select-none"
     />
   );
 }

@@ -1,9 +1,12 @@
 /**
- * Faded decorative-tile background for the home. The PNG was exported
- * from the Figma reference and we tile it once at the top and bottom of
- * the page so the motifs read as accents rather than a busy repeating
- * pattern — closer to the original design than a hard repeat.
+ * Faded decorative corners for the home. Two SVGs (top-left and
+ * bottom-right) anchored to their respective corners, rendered at their
+ * natural viewBox size — no stretching or cropping by CSS, and crisp at
+ * any zoom level since SVG. Light/dark variants swap via Tailwind.
  */
+
+const TOP_LEFT_WIDTH_PX = 420; // ~50% of viewBox (834)
+const BOTTOM_RIGHT_WIDTH_PX = 305; // ~50% of viewBox (610)
 
 export function HomeBackground() {
   return (
@@ -12,16 +15,28 @@ export function HomeBackground() {
       className="pointer-events-none absolute inset-0 overflow-hidden"
     >
       <img
-        src="/home/bg-pattern.png"
+        src="/home/bg-top-left.svg"
         alt=""
-        className="absolute top-0 left-0 w-full object-cover opacity-90"
-        style={{ maxHeight: 280 }}
+        className="absolute top-0 left-0 h-auto select-none opacity-80 dark:hidden"
+        style={{ width: TOP_LEFT_WIDTH_PX }}
       />
       <img
-        src="/home/bg-pattern.png"
+        src="/home/bg-top-left-dark.svg"
         alt=""
-        className="absolute bottom-0 left-0 w-full object-cover opacity-90 rotate-180"
-        style={{ maxHeight: 280 }}
+        className="absolute top-0 left-0 hidden h-auto select-none opacity-80 dark:block"
+        style={{ width: TOP_LEFT_WIDTH_PX }}
+      />
+      <img
+        src="/home/bg-bottom-right.svg"
+        alt=""
+        className="absolute bottom-0 right-0 h-auto select-none opacity-80 dark:hidden"
+        style={{ width: BOTTOM_RIGHT_WIDTH_PX }}
+      />
+      <img
+        src="/home/bg-bottom-right-dark.svg"
+        alt=""
+        className="absolute bottom-0 right-0 hidden h-auto select-none opacity-80 dark:block"
+        style={{ width: BOTTOM_RIGHT_WIDTH_PX }}
       />
     </div>
   );

@@ -10,17 +10,20 @@ import { Suspense } from "react";
 import { useTasksPanelState } from "@/web/hooks/use-tasks-panel-state";
 import { TasksPanel } from "@/web/layouts/tasks-panel";
 
-const TASKS_COLUMN_WIDTH_PX = 280;
+const TASKS_COLUMN_WIDTH_PX = 340;
+const TASKS_COLUMN_WIDTH_WIDE_PX = 560;
 
-function TasksPanelColumnInner() {
+function TasksPanelColumnInner({ wide }: { wide?: boolean }) {
   const { tasksOpen } = useTasksPanelState();
 
   if (!tasksOpen) return null;
 
+  const widthPx = wide ? TASKS_COLUMN_WIDTH_WIDE_PX : TASKS_COLUMN_WIDTH_PX;
+
   return (
     <aside
       className="shrink-0 h-full bg-sidebar pb-1"
-      style={{ width: `${TASKS_COLUMN_WIDTH_PX}px` }}
+      style={{ width: `${widthPx}px` }}
     >
       <div className="h-full p-0.5 pt-0.25">
         <div className="h-full bg-background rounded-[0.75rem] overflow-hidden card-shadow">
@@ -31,10 +34,10 @@ function TasksPanelColumnInner() {
   );
 }
 
-export function TasksPanelColumn() {
+export function TasksPanelColumn({ wide }: { wide?: boolean } = {}) {
   return (
     <Suspense fallback={null}>
-      <TasksPanelColumnInner />
+      <TasksPanelColumnInner wide={wide} />
     </Suspense>
   );
 }

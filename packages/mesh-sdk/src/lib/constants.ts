@@ -353,6 +353,24 @@ export const WELL_KNOWN_AGENT_TEMPLATES = [
     icon: "icon://SearchMd?color=green",
     type: "builtin-agent" as const,
   },
+  {
+    id: "brand-context",
+    title: "Brand context",
+    icon: "icon://Stars01?color=amber",
+    type: "builtin-agent" as const,
+  },
+  {
+    id: "landing-page",
+    title: "Landing page",
+    icon: "icon://Globe02?color=sky",
+    type: "builtin-agent" as const,
+  },
+  {
+    id: "system-health",
+    title: "System health",
+    icon: "icon://Activity?color=rose",
+    type: "builtin-agent" as const,
+  },
 ] as const;
 
 export type WellKnownAgentTemplate =
