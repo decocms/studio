@@ -65,10 +65,13 @@ export interface UseChatStreamOptions<UI_MESSAGE extends UIMessage> {
     isError: boolean;
   }) => void;
   onData?: (chunk: Extract<UIMessageChunk, { type: `data-${string}` }>) => void;
-  onToolCall?: (toolCall: {
-    toolCallId: string;
-    toolName: string;
-    input: unknown;
+  /**
+   * Shape matches useChat's `ChatOnToolCallCallback` — `{ toolCall: {...} }`
+   * — so existing handlers like `useInvalidateCollectionsOnToolCall`
+   * (which read `event.toolCall.toolName`) keep working unchanged.
+   */
+  onToolCall?: (event: {
+    toolCall: { toolCallId: string; toolName: string; input: unknown };
   }) => void;
   onError?: (error: Error) => void;
 }
@@ -340,9 +343,11 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
         input: unknown;
       };
       cbRef.current.onToolCall?.({
-        toolCallId: c.toolCallId,
-        toolName: c.toolName,
-        input: c.input,
+        toolCall: {
+          toolCallId: c.toolCallId,
+          toolName: c.toolName,
+          input: c.input,
+        },
       });
     }
 
