@@ -1,22 +1,22 @@
 ---
 title: subtask
-description: Criar uma subtarefa com contexto isolado
+description: Cria uma subtarefa com contexto isolado
 icon: GitBranch
 ---
 
 import Callout from "../../../../../../components/ui/Callout.astro";
 
-## Visão Geral
+## Visão geral
 
-Cria uma subtarefa com contexto isolado. Opcionalmente especifique um agente para usar na subtarefa. A subtarefa executa até a conclusão e então retorna os resultados.
+Cria uma subtarefa com contexto isolado. Opcionalmente, especifique um agente para usar na subtarefa. A subtarefa executa até a conclusão e então retorna os resultados.
 
 ## Disponibilidade
 
-- **Tarefas**: ✓ Disponível
-- **Subtarefas**: ✗ Não disponível (previne delegação infinita)
+- **Tasks**: ✓ Disponível
+- **Subtasks**: ✗ Não disponível (evita delegação infinita)
 
 <Callout type="warning">
-  **Restrição**: Esta ferramenta está disponível apenas em tarefas, não em subtarefas. Isso previne cadeias de delegação infinita e garante que subtarefas sejam concluídas de forma independente.
+  **Restrição**: Esta ferramenta está disponível apenas em tasks, não em subtasks. Isso evita cadeias infinitas de delegação e garante que subtasks sejam concluídas de forma independente.
 </Callout>
 
 ## Assinatura
@@ -29,44 +29,44 @@ subtask(prompt: string, agent_id?: string)
 
 | Parâmetro | Tipo | Obrigatório | Descrição |
 |-----------|------|----------|-------------|
-| `prompt` | `string` | Obrigatório | A descrição da tarefa para a subtarefa |
-| `agent_id` | `string` | Opcional | Agente específico para usar na subtarefa |
+| `prompt` | `string` | Obrigatório | A descrição da tarefa para a subtask |
+| `agent_id` | `string` | Opcional | Agente específico a ser usado na subtask |
 
 ## Retorno
 
-Resultados da subtarefa e status de conclusão.
+Resultados da subtask e status de conclusão.
 
 ## Comportamento
 
-- Cria uma subtarefa com contexto isolado
-- Se `agent_id` for omitido, a subtarefa usa as capacidades do escopo atual
-- Se `agent_id` for especificado, a subtarefa usa as capacidades daquele agente
-- A subtarefa executa até a conclusão e então retorna os resultados
-- Subtarefas não podem criar subtarefas adicionais (previne delegação infinita)
-- Subtarefas não podem fazer perguntas ao usuário (previne bloqueio)
+- Cria uma subtask com contexto isolado
+- Se `agent_id` for omitido, a subtask usa as capacidades do escopo atual
+- Se `agent_id` for especificado, a subtask usa as capacidades daquele agente
+- A subtask executa até a conclusão e então retorna os resultados
+- Subtasks não podem criar subtasks adicionais (evita delegação infinita)
+- Subtasks não podem fazer perguntas ao usuário (evita bloqueio)
 
-## Exemplo de Uso
+## Exemplo de uso
 
 ```typescript
-// Criar subtarefa com escopo atual
+// Spawn subtask with current scope
 subtask("Analyze the error logs and identify the root cause")
 
-// Criar subtarefa com agente específico
+// Spawn subtask with specific agent
 subtask(
   "Review the pull request for code quality issues",
   "code-review-agent"
 )
 
-// Subtarefas paralelas para trabalho independente
+// Parallel subtasks for independent work
 subtask("Deploy to staging environment")
 subtask("Run integration tests")
 ```
 
-## Casos de Uso
+## Casos de uso
 
-### Execução Paralela
+### Execução paralela
 
-Crie múltiplas subtarefas para trabalho independente que pode ser executado em paralelo:
+Crie múltiplas subtasks para trabalhos independentes que podem ser executados em paralelo:
 
 ```typescript
 subtask("Analyze inventory levels across all warehouses")
@@ -74,23 +74,23 @@ subtask("Fetch pending customer orders from Shopify")
 subtask("Check shipping carrier delivery status")
 ```
 
-### Execução Especializada
+### Execução especializada
 
-Delegue trabalho a um agente especialista passando seu id:
+Delegue o trabalho a um agente especialista específico passando seu id:
 
 ```typescript
 subtask("Review this pull request", "agent_abc123")
 ```
 
-### Contexto Isolado
+### Contexto isolado
 
-Crie contexto isolado para trabalho focado sem poluir a tarefa principal:
+Crie um contexto isolado para trabalho focado sem poluir a task principal:
 
 ```typescript
 subtask("Generate a detailed technical report on the performance bottlenecks")
 ```
 
-## Relacionados
+## Relacionado
 
-- [Visão Geral das Ferramentas Integradas](/pt-br/studio/api-reference/built-in-tools)
-- [Agentes](/pt-br/studio/agents)
+- [Visão geral das Built-in Tools](/pt-br/studio/api-reference/built-in-tools)
+- [Agents](/pt-br/studio/agents)

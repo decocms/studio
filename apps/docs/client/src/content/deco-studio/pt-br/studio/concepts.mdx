@@ -12,7 +12,7 @@ icon: BookOpen
 - **MCP Virtual**: agrega ferramentas/recursos/prompts de servidores conectados em um único MCP. Agentes e Projetos são ambos MCPs Virtuais diferenciados por um campo `subtype`. Veja [MCPs Virtuais](/pt-br/studio/virtual-mcps).
 - **Agente**: um MCP Virtual com subtype `agent` — focado em tarefas específicas com conjunto curado de ferramentas. Veja [Agentes](/pt-br/studio/agents).
 - **Projeto**: um MCP Virtual com subtype `project` — organiza ferramentas, recursos, prompts e configurações específicas de projeto. Veja [Projetos](/pt-br/studio/projects).
-- **Automação**: execuções autônomas de agentes em agendamento ou gatilho de evento. Veja [Automações](/pt-br/studio/automations).
+- **Automação**: execuções autônomas de agentes em schedule ou gatilho de evento. Veja [Automações](/pt-br/studio/automations).
 - **Thread**: uma sessão de conversa persistente com um agente. Armazena mensagens de chat e rastreia status (`in_progress`, `requires_action`, `completed`, `failed`).
 - **Event Bus**: sistema pub/sub entre conexões seguindo a spec CloudEvents v1.0. Suporta entrega agendada, eventos recorrentes via cron e garantias de entrega at-least-once.
 - **Store**: o marketplace integrado para descobrir e instalar servidores MCP a partir da Deco Store e registros da comunidade. Veja [Store](/pt-br/studio/store).
@@ -22,10 +22,10 @@ icon: BookOpen
 
 ## Entendendo Agentes vs. Projetos
 
-Tanto agentes quanto projetos são MCPs Virtuais armazenados na mesma tabela `connections`, diferenciados por um campo `subtype` (`agent` ou `project`). Eles servem propósitos diferentes no seu fluxo de trabalho:
+Tanto agentes quanto projetos são MCPs Virtuais armazenados na mesma tabela `connections`, diferenciados por um campo `subtype` (`agent` ou `project`). Eles servem propósitos diferentes no seu workflow:
 
 **Projetos** são unidades organizacionais de uso geral para trabalho contínuo:
-- **Escopo amplo** - Cobrem múltiplos fluxos de trabalho e capacidades dentro de um contexto de trabalho
+- **Escopo amplo** - Cobrem múltiplos workflows e capacidades dentro de um contexto de trabalho
 - **Longa duração** - Evoluem ao longo do tempo conforme o trabalho progride
 - **Colaboração em equipe** - Espaço de trabalho compartilhado para membros da equipe
 - **Exemplo** - Projeto "Migração de Loja Multi-Marca" com ferramentas de sincronização de estoque, gestão de pedidos e migração de dados de clientes
@@ -33,10 +33,10 @@ Tanto agentes quanto projetos são MCPs Virtuais armazenados na mesma tabela `co
 
 **Agentes** são configurações em toda a organização que podem ser iniciados em qualquer contexto:
 - **Escopo restrito** - Objetivo claro e focado com conjunto curado de ferramentas
-- **Específico para tarefas** - Projetados para operações ou fluxos de trabalho particulares
+- **Específico para tarefas** - Projetados para operações ou workflows particulares
 - **Estado de execução limpo** - Cada instância começa com contexto limpo em tarefas, subtarefas ou projetos
 - **Exemplo** - "Agente de Processamento de Reembolsos" que apenas processa reembolsos e autorizações de devolução de clientes
-- **Quando usar** - Operações focadas, gerenciamento integrado do mesh ou fluxos de trabalho especializados
+- **Quando usar** - Operações focadas, gerenciamento integrado do mesh ou workflows especializados
 
 Ambos compartilham a mesma arquitetura e modelo de armazenamento de MCP Virtual, mas seus princípios de design diferem: projetos organizam capacidades para contextos de trabalho amplos, enquanto agentes são configurações reutilizáveis que podem ser instanciadas sob demanda com estado de execução limpo.
 
@@ -46,7 +46,7 @@ O deco Studio é totalmente compatível com o [MCP](https://modelcontextprotocol
 
 - **[Ferramentas](https://modelcontextprotocol.io/docs/concepts/tools)**: Funções executáveis expostas por servidores MCP que permitem que agentes de IA executem ações (criar arquivos, consultar bancos de dados, chamar APIs, etc.).
 - **[Recursos](https://modelcontextprotocol.io/docs/concepts/resources)**: Fontes de dados somente leitura com URIs (como `org://`, `project://`, `agent://`) que fornecem contexto para agentes de IA.
-- **[Prompts](https://modelcontextprotocol.io/docs/concepts/prompts)**: Templates reutilizáveis com variáveis para fluxos de trabalho e operações comuns.
+- **[Prompts](https://modelcontextprotocol.io/docs/concepts/prompts)**: Templates reutilizáveis com variáveis para workflows e operações comuns.
 
 O deco Studio trabalha exclusivamente com clientes e servidores compatíveis com MCP, fornecendo uma camada de protocolo padrão para comunicação de agentes de IA. Para a arquitetura completa do protocolo, veja a [documentação do Model Context Protocol](https://modelcontextprotocol.io/docs/concepts/architecture).
 
@@ -142,7 +142,7 @@ Servidores MCP tradicionais expõem um conjunto fixo de ferramentas definidas em
 - **Superfícies dinâmicas de ferramentas**: Adicione ou remova ferramentas sem deploys
 - **Criação de recursos**: Gere documentação e contexto dinamicamente
 - **Evolução de prompts**: Atualize templates com base em padrões de uso
-- **Fluxos de trabalho sem código**: Não-desenvolvedores podem compor capacidades
+- **Workflows sem código**: Não-desenvolvedores podem compor capacidades
 
 Essa editabilidade é o motivo pelo qual Projetos e Agentes são MCPs Virtuais — eles precisam evoluir conforme o trabalho progride.
 

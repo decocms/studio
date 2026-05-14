@@ -1,139 +1,61 @@
 ---
-title: Monitoramento
-description: Por que a observabilidade é integrada ao control plane e como ela viabiliza operações MCP em produção
+title: Monitoring
+description: Veja todas as tool calls que seus agents fazem — quem, o quê, quando e como foi o desempenho
 icon: Activity
 ---
 
 import Callout from "../../../../components/ui/Callout.astro";
 
-## Observabilidade como Infraestrutura
+## Todas as tool calls em um só lugar
 
-O deco Studio trata o monitoramento como **infraestrutura, não como algo secundário**. Toda invocação de ferramenta que passa pelo control plane cria um log de monitoramento — não há como desabilitar isso, e é assim por design.
+O Studio registra todas as invocações de tools que passam por ele — automaticamente, sem necessidade de configuração. Quando um agent consulta o GitHub, envia uma mensagem no Slack ou chama seu banco de dados, há um registro disso.
+
+Você encontra tudo em **Settings → Monitor**. As tool calls de cada agent são consolidadas ali, em toda a organização.
 
 <Callout type="tip">
-**Chamadas de ferramentas MCP proxy são monitoradas pelo deco Studio.** Invocações de ferramentas que passam por conexões e MCPs Virtuais (ex: consultas ao GitHub, operações de banco de dados, chamadas Shopify) criam entradas de log estruturadas com detalhes completos de requisição/resposta, timing, atribuição e informações de erro. Isso acontece automaticamente — sem configuração necessária. Operações internas da API de gerenciamento (criação de conexões, gerenciamento de API keys) não são incluídas nos logs de monitoramento.
+**O que é registrado:** tool calls que passam pelas suas connections e agents (consultas ao GitHub, operações de banco de dados, chamadas ao Shopify, etc.). Ações de gerenciamento do Studio — como criar uma connection ou atualizar configurações — não são incluídas no log de monitoramento.
 </Callout>
 
-Deploys MCP tradicionais têm observabilidade fragmentada: cada cliente registra logs independentemente (ou não registra), cada servidor MCP tem sua própria estratégia de logging, e não há visão unificada do que aconteceu no sistema. O deco Studio resolve isso registrando logs **no nível do control plane**, criando uma única fonte de verdade para todo o tráfego MCP proxy.
+Sem um lugar central para isso, você teria que correlacionar logs de diferentes clients e diferentes serviços, cada um em um formato distinto — quando estivessem logando. O Studio captura tudo no ponto por onde todo o tráfego passa, então você sempre tem uma visão completa e consistente.
 
-## Por que o Monitoramento é de Primeira Classe
+## O que você pode ver
 
-### O Problema de Sistemas Distribuídos
+Para cada tool call, o Studio registra:
 
-Deploys MCP são inerentemente sistemas distribuídos:
-- **Múltiplos clientes**: Cursor, Claude Desktop, agentes personalizados
-- **Múltiplos servidores MCP**: GitHub, Slack, bancos de dados, ferramentas personalizadas
-- **Múltiplas operações**: Um único fluxo de trabalho de usuário pode invocar 10+ ferramentas em 5 servidores MCP
+**Quem fez a chamada**
+- O usuário ou API key que fez a requisição
+- De qual agent ou automação a chamada veio
 
-Quando algo quebra, você precisa reconstruir o que aconteceu neste sistema distribuído. Sem monitoramento centralizado, você está correlacionando logs de fontes diferentes com formatos, timestamps e níveis de detalhe diferentes — se esses logs sequer existem.
+**O que aconteceu**
+- A tool que foi chamada
+- Os inputs que foram enviados
+- O output retornado
+- Se teve sucesso ou falhou — e, se falhou, por quê
 
-### Logging no Control Plane Resolve Isso
+**Quando e por quanto tempo**
+- Timestamp
+- Quanto tempo a chamada levou, em milissegundos
 
-Ao registrar logs no control plane (deco Studio), o monitoramento se torna:
+## O que você pode fazer com isso
 
-**Centralizado**: Um lugar para ver todas as invocações de ferramentas em todos os clientes e servidores MCP.
+### Debugar falhas rapidamente
 
-**Consistente**: Toda entrada de log segue o mesmo schema com o mesmo nível de detalhe.
+Quando algo quebra, abra **Settings → Monitor** e veja exatamente o que aconteceu — quais inputs foram enviados, qual erro retornou, quando ocorreu. Sem SSH, sem arquivos de log, sem adivinhação.
 
-**Completo**: Nenhuma invocação proxy pode burlar o monitoramento — se passou pelo deco Studio, está registrado.
+### Acompanhar performance
 
-**Correlacionado**: O contexto da requisição conecta operações relacionadas, permitindo rastreamento distribuído entre múltiplas invocações de ferramentas.
+Veja quais tools são mais lentas (latência p50 / p95), quais são chamadas com mais frequência e onde o tempo está sendo gasto. Isso facilita identificar gargalos antes que se tornem problemas.
 
-## O que é Registrado
+### Entender como seu time usa os agents
 
-Toda invocação de ferramenta através de uma conexão cria um log de monitoramento com:
+Veja quais tools estão de fato sendo usadas versus as que estão apenas configuradas. Identifique onde os agents estão fazendo retry ou encontrando erros com frequência. Use isso para melhorar seus agents ao longo do tempo.
 
-### Identidade e Atribuição
-- **Chamador**: Qual usuário ou API key fez a requisição
-- **Organização**: A qual tenant a requisição pertence
-- **Conexão**: Qual servidor MCP upstream foi invocado
-- **Agente/Projeto**: Se acessado através de um MCP Virtual, qual
+### Auditar acessos
 
-### Detalhes da Operação
-- **Nome da ferramenta**: A ferramenta específica que foi invocada
-- **Argumentos de entrada**: Quais parâmetros foram enviados (normalizados e sanitizados)
-- **Resultados de saída**: O que a ferramenta retornou
-- **Timestamp**: Quando a invocação ocorreu
+Cada tool call está vinculada a um usuário ou API key específicos. Se você precisa saber quem acessou o quê e quando — para compliance, revisão de segurança ou resposta a incidentes — está tudo lá.
 
-### Performance e Status
-- **Duração**: Quanto tempo a operação levou (milissegundos)
-- **Status**: Sucesso ou falha
-- **Detalhes do erro**: Se falhou, o que deu errado
-- **Status HTTP**: O código de resposta HTTP subjacente (se aplicável)
+## Uma observação sobre dados sensíveis
 
-Este logging abrangente permite múltiplos casos de uso além de debugging.
+Os inputs e outputs das tools são logados por padrão. Se você trabalha com dados sensíveis (registros de clientes, dados financeiros, etc.), use API keys com escopo para limitar o que cada agent pode acessar e revise as configurações de retenção de dados da sua organização.
 
-## Casos de Uso Habilitados pelo Monitoramento
-
-### Debugging de Falhas em Produção
-
-Quando uma invocação de ferramenta falha, os logs de monitoramento fornecem:
-- **Entradas exatas**: Quais argumentos foram passados (para verificar correção)
-- **Mensagens de erro**: O que o servidor MCP retornou
-- **Contexto de timing**: Quando a falha ocorreu e quanto tempo levou
-- **Atribuição**: Qual usuário/agente fez a requisição
-
-Esta informação está disponível imediatamente na interface do deco Studio, sem necessidade de SSH em servidores ou buscar em arquivos de log.
-
-### Segurança e Conformidade
-
-O monitoramento cria uma **trilha de auditoria imutável** de toda atividade MCP proxy:
-- Quem acessou quais ferramentas, quando
-- Quais dados foram lidos ou modificados
-- Quais credenciais foram usadas
-- Tentativas de autorização que falharam
-
-Para indústrias regulamentadas (finanças, saúde), esta trilha de auditoria é essencial para conformidade. Para qualquer sistema em produção, é essencial para resposta a incidentes de segurança.
-
-### Análise de Custo e Performance
-
-Dados de monitoramento revelam:
-- **Operações caras**: Quais ferramentas são mais lentas ou consomem mais recursos
-- **Padrões de uso**: Quais ferramentas são realmente usadas (vs. quais estão apenas configuradas)
-- **Gargalos**: Onde picos de latência ocorrem
-- **Oportunidades de otimização**: Quais MCPs Virtuais poderiam se beneficiar de filtragem ou cache
-
-Esta visibilidade permite decisões baseadas em dados sobre otimização da infraestrutura MCP.
-
-### Análise de Comportamento
-
-Entendendo como as equipes realmente usam as capacidades MCP:
-- **Adoção de ferramentas**: Quais conexões são mais valiosas
-- **Padrões de fluxo de trabalho**: Sequências comuns de invocações de ferramentas
-- **Eficácia dos agentes**: Como a seleção de ferramentas dos agentes evolui ao longo do tempo
-- **Fricção do usuário**: Onde erros ou retentativas acontecem com mais frequência
-
-Isso informa decisões de produto sobre quais capacidades priorizar ou melhorar.
-
-## Monitoramento como Loop de Feedback
-
-O monitoramento do deco Studio não é apenas logging passivo — ele cria um loop de feedback que melhora a plataforma:
-
-**Padrões de erro** → Melhores políticas de autorização ou verificações de saúde de conexão
-
-**Dados de performance** → Estratégias de filtragem de MCPs Virtuais ou políticas de cache
-
-**Analytics de uso** → Recomendações de quais ferramentas adicionar ou depreciar
-
-**Eventos de segurança** → Respostas automatizadas ou controles de acesso aprimorados
-
-Este loop de feedback só é possível com monitoramento centralizado e estruturado.
-
-## Privacidade e Tratamento de Dados
-
-<Callout type="info">
-Logs de monitoramento incluem entradas e saídas de ferramentas por padrão. Para operações sensíveis (ex: consultar dados de clientes), considere:
-- Usar API keys com restrições de escopo apropriadas
-- Implementar políticas de logging no nível da conexão
-- Utilizar controles de retenção de dados no nível da organização
-
-O deco Studio fornece a infraestrutura de observabilidade; sua organização define as políticas de privacidade.
-</Callout>
-
-## Filosofia de Monitoramento
-
-Sistemas tradicionais tratam monitoramento como "bom ter" — algo que você adiciona depois de construir a funcionalidade principal. O deco Studio inverte isso:
-
-**Monitoramento não é opcional**. É como o control plane opera. Sem logs de monitoramento, você não pode debugar, auditar, otimizar ou proteger tráfego MCP em escala.
-
-Ao tornar a observabilidade infraestrutura de primeira classe, o deco Studio permite que equipes operem MCP em produção com a mesma confiança que têm em outros sistemas críticos.
+O Studio fornece a visibilidade — seu time define as políticas.

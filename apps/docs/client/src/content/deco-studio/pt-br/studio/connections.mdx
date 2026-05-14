@@ -1,143 +1,90 @@
 ---
 title: Conexões
-description: Como o deco Studio se conecta a servidores MCP upstream e como clientes se conectam ao deco Studio
+description: Conecte ferramentas e serviços ao Studio — uma única vez, com segurança, para todo o seu time
 icon: Network
 ---
 
 import Callout from "../../../../components/ui/Callout.astro";
 
-## O que são Conexões?
+## O que são conexões?
 
-**Conexões** representam a ponte entre o deco Studio e servidores MCP externos. Uma Conexão é o relacionamento registrado do deco Studio com um servidor MCP upstream — seja GitHub, Slack, um banco de dados ou sua implementação MCP personalizada.
+**Conexões** são as ferramentas e serviços que você plugou no Studio — GitHub, Slack, um banco de dados, sua própria API ou qualquer outro serviço compatível com MCP.
 
-## Conectando a Servidores MCP Upstream
+Você configura uma conexão uma vez. A partir daí, qualquer pessoa na sua organização pode anexá-la a um agente sem nunca lidar com credenciais.
 
-### Por que Conexões Existem
+## Onde elas ficam
 
-A abstração de Conexão resolve um problema crítico: **separar a configuração da conexão do uso**. Em vez de cada cliente (Cursor, Claude Desktop, agentes personalizados) gerenciar suas próprias credenciais e endpoints para cada servidor MCP, o deco Studio centraliza isso uma única vez.
+As conexões são gerenciadas no nível da organização em **Settings → Connections**. É onde você:
 
-#### O Problema Sem Conexões
+- Navega no catálogo de MCPs disponíveis e instala um novo
+- Adiciona uma **Custom Connection** para um servidor MCP que não está no catálogo
+- Configura credenciais para uma conexão existente
+- Atualiza ou revoga credenciais em um único lugar
 
-Sem uma camada centralizada de conexão:
-- Todo cliente precisa armazenar e gerenciar credenciais para cada servidor MCP que utiliza
-- Rotação de credenciais significa atualizar todos os clientes
-- Sem trilha de auditoria unificada de quais ferramentas foram acessadas e por quem
-- Políticas de autorização divergem entre diferentes clientes
-- Sem forma de revogar temporariamente o acesso a um servidor MCP sem atualizar todos os clientes
+O catálogo é alimentado pelos registries que você tem habilitados — veja [Store](/pt-br/studio/store) para adicionar ou alternar registries (Deco Store, comunidade, privado).
 
-#### Como Conexões Resolvem Isso
+Para colocar uma conexão em uso, anexe-a a um [agente](/pt-br/studio/agents): dentro do agente, abra a aba **Settings** no painel direito e escolha a conexão (e as ferramentas específicas dela) que você quer que esse agente use.
 
-Conexões fornecem:
+## Por que conexões existem
 
-**Gerenciamento centralizado de credenciais**: Armazene credenciais uma vez no vault criptografado do deco Studio. Clientes se autenticam no deco Studio, não em servidores MCP individuais.
+Sem um lugar central para ferramentas, cada pessoa e cada cliente de IA gerencia suas próprias credenciais. Trocar uma senha? Atualize em dez lugares. Revogar o acesso de alguém? Torça para que ela não esteja usando uma chave hardcoded em algum lugar.
 
-**Autorização unificada**: Defina quem pode acessar quais ferramentas através do sistema de permissões do deco Studio, em vez de gerenciar acesso por servidor MCP.
+As conexões resolvem isso sendo a fonte única da verdade:
 
-**Rotação de credenciais sem atualizar clientes**: Atualize credenciais no deco Studio; todos os clientes automaticamente usam as novas credenciais sem reconfiguração.
+- **Credenciais armazenadas uma vez** — criptografadas em repouso, descriptografadas apenas quando uma ferramenta é chamada
+- **Compartilhadas entre o time** — qualquer pessoa com acesso pode usar a ferramenta sem ver as credenciais
+- **Fáceis de atualizar** — altere as credenciais em um lugar; todo agente herda automaticamente
+- **Fáceis de revogar** — remova uma conexão e ninguém mais pode usá-la, imediatamente
+- **Totalmente registradas** — toda chamada de ferramenta é registrada em [Settings → Monitor](/pt-br/studio/monitoring)
 
-**Observabilidade completa**: Toda invocação de ferramenta passa pelo deco Studio, criando uma trilha de auditoria unificada em todos os servidores MCP.
+## Tipos de conexão
 
-**Tratamento seguro de credenciais**: Credenciais são criptografadas em repouso e só são descriptografadas no momento da requisição, nunca expostas aos clientes.
+**Apps SaaS** — GitHub, Slack, Notion, Google Drive e serviços semelhantes. A maioria conecta com OAuth de um clique, então você nunca copia um token.
 
-### Princípios de Design
+**Infraestrutura** — Bancos de dados, APIs de nuvem, serviços internos. Você configura o endpoint e as credenciais, o Studio cuida do resto.
 
-#### 1. Conexões são Somente Leitura do Ponto de Vista do Cliente
+**Ferramentas customizadas** — Seu próprio servidor MCP expondo operações específicas do seu domínio. Pluge e compartilhe como qualquer outra conexão.
 
-Clientes interagem com ferramentas expostas por Conexões, mas não podem modificar a configuração da Conexão em si. Essa separação garante:
-- Credenciais permanecem protegidas
-- Mudanças de configuração requerem autorização apropriada
-- Trilhas de auditoria permanecem confiáveis
+Todos os tipos de conexão funcionam da mesma forma: configure uma vez no nível da organização, anexe a quaisquer agentes que precisem delas.
 
-#### 2. Conexões se Compõem em MCPs Virtuais
+### Transportes
 
-Conexões são os blocos de construção para [MCPs Virtuais](/pt-br/studio/virtual-mcps). Você conecta servidores MCP individuais (GitHub, Slack, bancos de dados), e depois os compõe em MCPs Virtuais que expõem superfícies de ferramentas curadas.
+Por baixo dos panos, toda conexão usa um destes transportes. Você normalmente não precisa pensar nisso — o Studio escolhe o formato certo com base na entrada do catálogo ou no que você cola em **Custom Connection** — mas isso importa quando você está conectando um servidor MCP por conta própria:
+
+| Transporte | Quando usar |
+|---|---|
+| **HTTP** | O padrão para servidores MCP hospedados. JSON-RPC sobre HTTP. |
+| **SSE** | Server-Sent Events — para servidores HTTP que fazem streaming de resultados de ferramentas de longa duração. |
+| **WebSocket** | Streaming bidirecional para servidores MCP que precisam de um socket persistente. |
+| **STDIO** | Inicia um processo local e fala MCP via stdin/stdout. Usado por MCPs estilo CLI em self-host local. |
+| **Virtual** | O próprio endpoint do agente — um MCP composto, feito de outras conexões, servido pelo Studio. |
+
+## Como funciona uma chamada de ferramenta
+
+Quando um agente chama uma ferramenta através de uma conexão:
+
+1. O agente se autentica no Studio
+2. O Studio verifica que ele tem permissão para usar aquela ferramenta
+3. O Studio recupera as credenciais armazenadas para a conexão
+4. O Studio envia a requisição para o serviço externo
+5. O Studio registra a chamada (ferramenta, tempo, entradas, saídas, status)
+6. O Studio retorna o resultado para o agente
+
+O serviço externo nunca vê seu agente diretamente — apenas o Studio. As credenciais nunca deixam o perímetro seguro do Studio.
 
 ```
-Conexão GitHub     ──┐
-Conexão Slack      ──┼──▶ MCP Virtual (Projeto) ──▶ Clientes
-Conexão Banco de Dados──┘
+GitHub Connection  ──┐
+Slack Connection   ──┼──▶ Agent ──▶ Seu time ou outros clientes
+Database Connection──┘
 ```
 
-Este modelo de composição mantém servidores MCP externos isolados e seguros enquanto permite superfícies de ferramentas flexíveis e dinâmicas através de MCPs Virtuais.
+## Conectando clientes de IA ao Studio
 
-#### 3. Conexões são Escopadas por Organização
+Uma vez que seus agentes estejam configurados, aponte clientes de IA externos (Claude Desktop, Cursor, apps MCP customizados) para o endpoint MCP de um agente para usar suas ferramentas.
 
-Todas as Conexões pertencem a uma organização. Esse escopo garante:
-- Isolamento claro de tenants
-- Gerenciamento de credenciais em toda a organização
-- Políticas de acesso consistentes entre projetos e agentes
-
-### Como Conexões Funcionam
-
-Quando um cliente invoca uma ferramenta através do deco Studio:
-
-1. **Cliente se autentica** no deco Studio (OAuth ou API key)
-2. **Verificação de autorização**: deco Studio verifica se o cliente tem permissão para invocar a ferramenta solicitada
-3. **Carregamento de credenciais**: deco Studio descriptografa as credenciais armazenadas para a Conexão alvo
-4. **Proxy da requisição**: deco Studio encaminha a requisição MCP para o servidor upstream com as credenciais
-5. **Monitoramento**: deco Studio registra a invocação (ferramenta, duração, status, erros)
-6. **Retorno da resposta**: deco Studio retorna a resposta do servidor MCP para o cliente
-
-Este fluxo garante que credenciais nunca saiam do perímetro seguro do deco Studio enquanto permite invocação transparente de ferramentas.
-
-### Tipos de Conexão
-
-Conexões tipicamente se dividem em três categorias:
-
-**MCPs de Integração SaaS**: Serviços como GitHub, Slack, Notion, Google Drive — sistemas externos com sua própria autenticação (geralmente OAuth).
-
-**MCPs de Infraestrutura**: Conexões de banco de dados, clusters Kubernetes, APIs de provedores cloud — sistemas que requerem credenciais sensíveis.
-
-**MCPs Personalizados**: Seus próprios servidores MCP expondo ferramentas e operações específicas do domínio.
-
-Todos os tipos de conexão seguem o mesmo padrão: registre uma vez no deco Studio, use em qualquer lugar através de MCPs Virtuais e agentes.
-
-### Conexões vs. Acesso Direto
-
-**Acesso Direto** (cliente → servidor MCP):
-- Simples para cenários de cliente único e servidor único
-- Credenciais gerenciadas por cliente
-- Sem observabilidade unificada
-- Lógica de autorização duplicada
-
-**Através de Conexões** (cliente → deco Studio → servidor MCP):
-- Gerenciamento centralizado de credenciais
-- Autorização e observabilidade unificadas
-- Rotação de credenciais sem atualizar clientes
-- Base para MCPs Virtuais e composição
-
-Para uso em produção, Conexões fornecem as capacidades de control plane necessárias para operar tráfego MCP em escala.
-
----
-
-## Conectando Clientes MCP ao deco Studio
-
-Uma vez que você configurou as conexões upstream, você precisa conectar seus clientes MCP (Cursor, Claude Desktop, agentes personalizados) ao deco Studio para consumir as ferramentas.
-
-### Opções de Autenticação de Cliente
-
-Existem duas formas comuns de conectar clientes ao deco Studio:
-
-- **OAuth (recomendado para clientes interativos)**: suporta fluxos OAuth padrão, consentimento e acesso com conhecimento de organização.
-- **API Keys (recomendado para servidores/agentes)**: chaves escopadas com permissões explícitas de ferramentas.
-
-### Endpoints
-
-Dependendo do seu caso de uso, você se conectará a um destes endpoints:
-
-- **Management MCP**: `POST /mcp` - Acesso a ferramentas de gerenciamento do deco Studio (criar conexões, projetos, agentes)
-- **Proxy de conexão**: `POST /mcp/:connectionId` - Acesso direto a uma conexão upstream específica
-- **Agente (servidor virtual)**: `POST /mcp/agent/:agentId` - Acesso a uma superfície curada de ferramentas através de um agente
+- **Para clientes interativos** — use OAuth, que cuida do login e da identidade por usuário
+- **Para automação e server-to-server** — use API keys, mais rápido de configurar e ideal para scripts ou execuções não supervisionadas
 
 <Callout type="tip">
-  Se seu objetivo é uma "URL MCP única" para uma superfície curada de ferramentas, use **Agentes**. Se você quer um pipe direto para um MCP upstream, use **Proxy de conexão**.
-</Callout>
-
-### Notas Rápidas sobre Autenticação
-
-- **OAuth** é ideal quando você quer identidade por usuário e login via navegador.
-- **API keys** são ideais para automação e acesso servidor-a-servidor (menor fricção para começar).
-
-<Callout type="info">
-  Conexões são a base para [MCPs Virtuais](/pt-br/studio/virtual-mcps), [Projetos](/pt-br/studio/projects) e [Agentes](/pt-br/studio/agents) — você conecta servidores MCP individuais primeiro, e depois os compõe em abstrações de nível mais alto.
+  Use um [Agent](/pt-br/studio/agents) quando quiser um único endpoint expondo um conjunto curado de ferramentas. Use a [connection proxy URL](/pt-br/studio/api-reference/connection-proxy) apenas se precisar de acesso bruto a uma única conexão.
 </Callout>
