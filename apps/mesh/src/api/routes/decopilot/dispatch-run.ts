@@ -199,6 +199,17 @@ export interface DispatchRunResult {
 // Core Logic
 // ============================================================================
 
+function dispatchRunSpanAttrs(input: DispatchRunInput): Record<string, string> {
+  return {
+    "decopilot.agent.id": input.agent.id,
+    "decopilot.model.id": input.models.thinking.id,
+    "decopilot.credential.id": input.models.credentialId,
+    "decopilot.organization.id": input.organizationId,
+    "decopilot.user.id": input.userId,
+    "decopilot.thread.id": input.taskId ?? "",
+  };
+}
+
 /**
  * Fire-and-forget: claim the run, start the JetStream pump, return
  * `{ taskId }`. Subscribers receive chunks via
@@ -214,7 +225,8 @@ export async function dispatchRun(
   ctx: MeshContext,
   deps: DispatchRunDeps,
 ): Promise<DispatchRunResult> {
-  if (!deps.streamBuffer) {
+  const buffer = deps.streamBuffer;
+  if (!buffer) {
     throw new Error(
       "dispatchRun: deps.streamBuffer is required for HTTP-initiated runs. " +
         "Use dispatchRunAndWait for automation flows that need to await completion.",
@@ -222,16 +234,17 @@ export async function dispatchRun(
   }
   return traced(
     "decopilot.dispatchRun",
-    (rootSpan) =>
-      dispatchRunInner(input, ctx, deps, rootSpan, "fire-and-forget"),
-    {
-      "decopilot.agent.id": input.agent.id,
-      "decopilot.model.id": input.models.thinking.id,
-      "decopilot.credential.id": input.models.credentialId,
-      "decopilot.organization.id": input.organizationId,
-      "decopilot.user.id": input.userId,
-      "decopilot.thread.id": input.taskId,
+    async (rootSpan) => {
+      const { taskId, uiStream, registrySignal } = await prepareRun(
+        input,
+        ctx,
+        deps,
+        rootSpan,
+      );
+      buffer.pump(uiStream, taskId, registrySignal);
+      return { taskId };
     },
+    dispatchRunSpanAttrs(input),
   );
 }
 
@@ -251,27 +264,47 @@ export async function dispatchRunAndWait(
 ): Promise<DispatchRunResult> {
   return traced(
     "decopilot.dispatchRunAndWait",
-    (rootSpan) => dispatchRunInner(input, ctx, deps, rootSpan, "drain"),
-    {
-      "decopilot.agent.id": input.agent.id,
-      "decopilot.model.id": input.models.thinking.id,
-      "decopilot.credential.id": input.models.credentialId,
-      "decopilot.organization.id": input.organizationId,
-      "decopilot.user.id": input.userId,
-      "decopilot.thread.id": input.taskId,
+    async (rootSpan) => {
+      const { taskId, uiStream } = await prepareRun(input, ctx, deps, rootSpan);
+      const reader = uiStream.getReader();
+      try {
+        while (true) {
+          const { done } = await reader.read();
+          if (done) break;
+        }
+      } finally {
+        reader.releaseLock();
+      }
+      return { taskId };
     },
+    dispatchRunSpanAttrs(input),
   );
 }
 
-type DispatchRunMode = "fire-and-forget" | "drain";
+interface PreparedRun {
+  taskId: string;
+  uiStream: ReadableStream<unknown>;
+  registrySignal: AbortSignal;
+}
 
-async function dispatchRunInner(
+/**
+ * Setup phase shared by both dispatch variants. Claims the run, loads
+ * conversation history, builds tools / system prompts, and constructs
+ * `uiStream` from the AI SDK pipeline. Returns the stream to whoever
+ * called it; the caller decides how to consume it (pump for fan-out,
+ * drain for direct await).
+ *
+ * Setup-phase errors propagate out of here with the run already
+ * force-FINISHED to "failed" in the registry. Consumption-phase errors
+ * (pump publish failures, drain read failures) are handled by the
+ * consumer.
+ */
+async function prepareRun(
   input: DispatchRunInput,
   ctx: MeshContext,
   deps: DispatchRunDeps,
   rootSpan: import("@opentelemetry/api").Span,
-  mode: DispatchRunMode,
-): Promise<DispatchRunResult> {
+): Promise<PreparedRun> {
   const { runRegistry, streamBuffer } = deps;
 
   // Normalize: ensure every message has an id (runtime callers may omit it)
@@ -1673,39 +1706,20 @@ async function dispatchRunInner(
       },
     });
 
-    // JetStream is the source of truth for the UI stream. The pump detaches
-    // `uiStream` consumption from any HTTP response — it drains regardless of
-    // whether anyone is currently reading, so a proxy/idle/tab-close cut on
-    // the consumer side never stalls the producer or drops tool output.
-    //
-    // Modes:
-    //  - "fire-and-forget" (HTTP routes): pump publishes to JetStream;
-    //    the caller's route handler creates a tail via
-    //    `streamBuffer.createTailStream` if it needs an SSE response.
-    //  - "drain" (automations): no buffer fan-out needed; drain uiStream
-    //    here and resolve when the run finishes. Caller awaits the
-    //    returned promise to know the workflow step is complete.
-    if (mode === "fire-and-forget") {
-      if (!streamBuffer) {
-        throw new Error(
-          "dispatchRun: streamBuffer required in fire-and-forget",
-        );
-      }
-      streamBuffer.pump(uiStream, mem.thread.id, registrySignal);
-      return { taskId: mem.thread.id };
-    }
-
-    // mode === "drain"
-    const reader = uiStream.getReader();
-    try {
-      while (true) {
-        const { done } = await reader.read();
-        if (done) break;
-      }
-    } finally {
-      reader.releaseLock();
-    }
-    return { taskId: mem.thread.id };
+    // Setup complete — hand the uiStream back to the dispatch variant.
+    // The caller (`dispatchRun` or `dispatchRunAndWait`) picks the
+    // consumption strategy:
+    //   - `dispatchRun` → `streamBuffer.pump(uiStream, taskId, registrySignal)`
+    //     fans the chunks out via JetStream so /attach subscribers can tail
+    //     them across runs and across tabs.
+    //   - `dispatchRunAndWait` → drains `uiStream` directly with a reader
+    //     loop and resolves when the run finishes. Used by automations
+    //     that need to await completion.
+    return {
+      taskId: mem.thread.id,
+      uiStream,
+      registrySignal,
+    };
   } catch (err) {
     closeClients?.();
 
