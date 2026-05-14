@@ -16,8 +16,7 @@ import {
 import type { ChatMessage } from "./types";
 import type { Memory } from "./memory";
 import { ThreadMessage } from "@/storage/types";
-import { readCurrentTodos, stripTodoWriteParts } from "./todo-write-context";
-import type { Todo } from "./built-in-tools/todo-write";
+import { keepLastTodoWrite } from "./todo-write-context";
 
 /**
  * Split request messages into system and the single request message.
@@ -35,13 +34,6 @@ export function splitRequestMessages(messages: ChatMessage[]): {
 export interface ProcessedConversation {
   systemMessages: SystemModelMessage[];
   messages: ReturnType<typeof pruneMessages>;
-  /**
-   * The current todo list, read from the pre-strip ModelMessage stream.
-   * Exposed so `stream-core` can inject the `<current-todos>` system
-   * tail without re-traversing the messages. Empty list if no
-   * `todo_write` call has been made yet.
-   */
-  currentTodos: Todo[];
   originalMessages: ChatMessage[];
 }
 
@@ -171,20 +163,12 @@ export async function processConversation(
     messages: nonSystemModelMessages,
   } = splitMessages(modelMessages);
 
-  // Snapshot the live todo list from the pre-strip ModelMessage stream
-  // so the caller can rebuild <current-todos> without redoing the scan.
-  const currentTodos = readCurrentTodos(nonSystemModelMessages);
-
-  // Strip todo_write tool-call/result parts. The live todo list has
-  // already been captured a few lines above via `readCurrentTodos` and
-  // is returned to the caller as `currentTodos`; stream-core embeds it
-  // into the frozen <current-todos> system tail (see `system-prompt`)
-  // and `prepareStep` re-derives the live snapshot per agent-loop step
-  // (see `stream-core` — same strip + inject pipeline, intra-loop).
-  // Older todo_write inputs are pure redundancy — the state is encoded
-  // in the injected block, and the message-stream representation never
-  // benefited from Anthropic prompt caching (no cacheControl on messages).
-  const todoStrippedMessages = stripTodoWriteParts(nonSystemModelMessages);
+  // Keep only the most recent `todo_write` tool-call/result pair. The
+  // agent reads its current todo state directly from its own most-recent
+  // tool call in the visible stream; older calls are pure context bloat
+  // and are pruned here. The intra-loop strip+inject is gone — the agent
+  // loop sees its own todo_write calls live, with no manipulation.
+  const todoTrimmedMessages = keepLastTodoWrite(nonSystemModelMessages);
 
   // Strip reasoning from all previous assistant messages.
   // pruneMessages removes reasoning content parts, but leaves message-level
@@ -196,7 +180,7 @@ export async function processConversation(
   // We strip both reasoning parts AND all provider metadata from assistant
   // messages to prevent this.
   const prunedModelMessages = pruneMessages({
-    messages: todoStrippedMessages,
+    messages: todoTrimmedMessages,
     reasoning: "all",
     emptyMessages: "remove",
     toolCalls: "none",
@@ -257,7 +241,6 @@ export async function processConversation(
   return {
     systemMessages: systemModelMessages,
     messages: cleanedModelMessages,
-    currentTodos,
     originalMessages: validUIMessages,
   };
 }
