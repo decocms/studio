@@ -1,73 +1,94 @@
 /**
  * `todo_write` context helpers.
  *
- * Two ModelMessage-level operations used both at HTTP-request entry
- * (cross-turn, via `processConversation`) and inside the agent loop
- * (intra-loop, via `prepareStep`):
+ * One ModelMessage-level operation used at HTTP-request entry
+ * (cross-turn, via `processConversation`):
  *
- *   • `stripTodoWriteParts` — remove every `todo_write` tool-call and
- *     matching tool-result part from a `ModelMessage[]`, returning a
- *     new array. Empty messages produced by stripping are left as
+ *   • `keepLastTodoWrite` — given a `ModelMessage[]`, keep only the
+ *     most recent `todo_write` tool-call (by occurrence order) and
+ *     its matching tool-result (by `toolCallId`); remove every older
+ *     `todo_write` call/result. Non-`todo_write` parts are left
+ *     untouched. Empty messages produced by stripping are left as
  *     `content: []` and cleaned up downstream by `pruneMessages`.
  *
- *   • `readCurrentTodos` — scan a `ModelMessage[]` backwards for the
- *     most recent assistant `tool-call` with `toolName: "todo_write"`
- *     and return its parsed todo list. Malformed latest inputs fall
- *     through to older valid calls. Used to rebuild `<current-todos>`
- *     each agent-loop step from the pre-strip stream.
+ * The intra-loop strip+inject is gone: the agent sees its own
+ * `todo_write` tool calls live inside the agent loop. Across turns,
+ * historical `todo_write` calls are pruned to keep the context lean.
  *
- * Single source of truth: do not add another implementation. The
- * frontend chip's UIMessage reader lives separately in
+ * The frontend chip's UIMessage reader lives separately in
  * `web/components/chat/highlight/derive-current-todos.ts` because the
  * UI part shape (`type: "tool-todo_write"`) differs from the model
- * part shape (`type: "tool-call", toolName: "todo_write"`).
+ * part shape (`type: "tool-call", toolName: "todo_write"`). It is
+ * unaffected by this module.
  */
 
 import type { ModelMessage } from "ai";
-import { type Todo, TodoWriteInputSchema } from "./built-in-tools/todo-write";
 
 const TODO_WRITE_TOOL_NAME = "todo_write";
 
 interface PartLike {
   type?: unknown;
   toolName?: unknown;
-  input?: unknown;
+  toolCallId?: unknown;
 }
 
-export function stripTodoWriteParts(
+function isTodoWriteCallPart(part: PartLike): part is PartLike & {
+  type: "tool-call";
+  toolCallId: string;
+} {
+  return (
+    part.type === "tool-call" &&
+    part.toolName === TODO_WRITE_TOOL_NAME &&
+    typeof part.toolCallId === "string"
+  );
+}
+
+function isTodoWriteResultPart(part: PartLike): part is PartLike & {
+  type: "tool-result";
+  toolCallId: string;
+} {
+  return (
+    part.type === "tool-result" &&
+    part.toolName === TODO_WRITE_TOOL_NAME &&
+    typeof part.toolCallId === "string"
+  );
+}
+
+export function keepLastTodoWrite(
   messages: readonly ModelMessage[],
 ): ModelMessage[] {
+  // Pass 1: find the toolCallId of the latest todo_write tool-call.
+  let latestCallId: string | null = null;
+  for (let i = messages.length - 1; i >= 0 && latestCallId === null; i--) {
+    const msg = messages[i]!;
+    const content = (msg as { content?: unknown }).content;
+    if (!Array.isArray(content)) continue;
+    for (let j = content.length - 1; j >= 0; j--) {
+      const part = content[j] as PartLike;
+      if (isTodoWriteCallPart(part)) {
+        latestCallId = part.toolCallId;
+        break;
+      }
+    }
+  }
+
+  if (latestCallId === null) {
+    // Nothing to do — no todo_write calls exist.
+    return messages as ModelMessage[];
+  }
+
+  const survivorId = latestCallId;
   return messages.map((msg) => {
     const content = (msg as { content?: unknown }).content;
     if (!Array.isArray(content)) return msg;
 
     const filtered = (content as PartLike[]).filter((part) => {
-      const isTodoWriteCall =
-        part.type === "tool-call" && part.toolName === TODO_WRITE_TOOL_NAME;
-      const isTodoWriteResult =
-        part.type === "tool-result" && part.toolName === TODO_WRITE_TOOL_NAME;
-      return !isTodoWriteCall && !isTodoWriteResult;
+      if (isTodoWriteCallPart(part)) return part.toolCallId === survivorId;
+      if (isTodoWriteResultPart(part)) return part.toolCallId === survivorId;
+      return true;
     });
 
     if (filtered.length === content.length) return msg;
     return { ...msg, content: filtered } as ModelMessage;
   });
-}
-
-export function readCurrentTodos(messages: readonly ModelMessage[]): Todo[] {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i]!;
-    if (msg.role !== "assistant") continue;
-    const content = (msg as { content?: unknown }).content;
-    if (!Array.isArray(content)) continue;
-    for (let j = content.length - 1; j >= 0; j--) {
-      const part = content[j] as PartLike;
-      if (part.type !== "tool-call") continue;
-      if (part.toolName !== TODO_WRITE_TOOL_NAME) continue;
-      const parsed = TodoWriteInputSchema.safeParse(part.input);
-      if (parsed.success) return parsed.data.todos;
-      // Latest call had malformed input; fall through to older calls.
-    }
-  }
-  return [];
 }

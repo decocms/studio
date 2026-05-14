@@ -20,7 +20,6 @@ import { SpanStatusCode } from "@opentelemetry/api";
 import {
   type ToolSet,
   createUIMessageStream,
-  pruneMessages,
   stepCountIs,
   streamText,
 } from "ai";
@@ -33,8 +32,7 @@ import {
   emptyCacheAccumulator,
   OPENROUTER_CACHE_PROVIDER_OPTIONS,
 } from "./cache-instrumentation";
-import { buildCurrentTodosPrompt, buildSystemMessages } from "./system-prompt";
-import { readCurrentTodos, stripTodoWriteParts } from "./todo-write-context";
+import { buildSystemMessages } from "./system-prompt";
 import {
   buildConnectionsBlock,
   type ConnectionsBlockTool,
@@ -761,7 +759,6 @@ async function streamCoreInner(
         const {
           systemMessages: processedSystemMessages,
           messages: processedMessages,
-          currentTodos,
           originalMessages,
         } = await processConversation(materializedMessages, {
           windowSize,
@@ -949,7 +946,6 @@ async function streamCoreInner(
         const systemPromptMessages = buildSystemMessages(
           systemPrompts,
           new Date(),
-          currentTodos,
         );
 
         let result;
@@ -1027,36 +1023,11 @@ async function streamCoreInner(
                         ];
                       }
 
-                      // Intra-loop todo_write strip + inject. We read the current
-                      // todos from the PRE-strip stream so the latest write wins,
-                      // then strip every todo_write call/result, prune any empties
-                      // the strip leaves behind, and append the freshest snapshot
-                      // as a synthetic user message. The model never sees prior
-                      // todo_write tool-calls; the only signal for the live state
-                      // is this trailing <current-todos> block.
-                      //
-                      // The frozen <current-todos> in the system prefix (computed
-                      // once at request entry) becomes stale as the loop progresses
-                      // — we deliberately do not refresh it there because the
-                      // system prefix has to stay byte-stable for Anthropic prompt
-                      // caching. The trailing user message is uncached and updated
-                      // every step.
-                      const liveTodos = readCurrentTodos(withImages);
-                      const strippedMessages = pruneMessages({
-                        messages: stripTodoWriteParts(withImages),
-                        emptyMessages: "remove",
-                      });
-                      const todosBlock = buildCurrentTodosPrompt(liveTodos);
-                      const messagesForStep =
-                        todosBlock !== null
-                          ? [
-                              ...strippedMessages,
-                              {
-                                role: "user" as const,
-                                content: todosBlock,
-                              },
-                            ]
-                          : strippedMessages;
+                      // The agent sees its own todo_write tool calls live inside
+                      // the loop — no per-step manipulation. Cross-turn pruning
+                      // (keeping only the latest todo_write) happens once at
+                      // HTTP-request entry in `processConversation`.
+                      const messagesForStep = withImages;
 
                       const hasEnableTool = connectionsBlockTools.length > 0;
                       let activeToolNames = [

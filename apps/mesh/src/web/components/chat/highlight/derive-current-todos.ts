@@ -7,10 +7,11 @@
  * we only trust `input-available` and `output-available` states so we
  * never read mid-stream partial input.
  *
- * This is the UI-shape twin of the backend's
- * `readCurrentTodos(ModelMessage[])` in
- * `api/routes/decopilot/todo-write-context.ts`. They cannot share an
- * implementation because the part shapes differ.
+ * This is the UI-shape counterpart of the backend's todo_write
+ * handling in `api/routes/decopilot/todo-write-context.ts`. They cannot
+ * share an implementation because the part shapes differ — UIMessages
+ * carry todo_write as `type: "tool-todo_write"`, ModelMessages as
+ * `type: "tool-call", toolName: "todo_write"`.
  */
 
 import type { UIMessage } from "ai";

@@ -41,8 +41,11 @@ Follow this workflow for every request:
 1. **Understand intent** — ask clarifying questions (via user_ask) if
    the request is ambiguous.
 2. **Set a goal** — state what you will accomplish in one sentence.
-3. **Plan** — for multi-step tasks (3+ tool calls), outline the steps
-   and wait for user confirmation. For simple tasks, act immediately.
+3. **Plan** — before executing, call \`todo_write\` to record the steps
+   you intend to take. Keep it updated as you work: flip a todo to
+   \`in_progress\` before starting it, \`completed\` the moment it
+   finishes. Skip only for true one-shots (a single tool call or a
+   direct answer).
 4. **Execute** — use the capabilities listed in the sections below. If a
    needed capability is missing, explain that to the user and suggest
    what would unblock the request (e.g. installing a connection).
@@ -83,19 +86,18 @@ export function buildTodoWritePrompt(): string {
   return `<todo-write>
 You have a \`todo_write\` tool for planning and tracking multi-step work.
 
-- Use it whenever a task has 3+ distinct steps.
+- Call it at the start of every multi-step request (see \`<workflow>\`).
+  Skip only for true one-shots (a single tool call or a direct answer).
 - Mark exactly one todo \`in_progress\` at any time.
 - Update the list as you work: flip a todo to \`in_progress\` before
   starting it, \`completed\` the moment it finishes. Do not batch
   completions.
 - Rewrite the entire list every call — there is no incremental update.
-- For trivial (<3 step) work, do not call the tool at all.
 - \`content\` is imperative ("Implement X"); \`activeForm\` is
   present-continuous ("Implementing X") and shown in the user's UI
   while the todo is in progress.
-- The current list is always visible to you in the \`<current-todos>\`
-  system block. Do not call \`todo_write\` to read the list back — call
-  it only to add, update, or complete a todo.
+- Your most recent \`todo_write\` call is your current state — re-read
+  your last call to see where you are.
 </todo-write>`;
 }
 

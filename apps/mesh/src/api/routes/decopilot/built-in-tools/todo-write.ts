@@ -4,7 +4,8 @@
  * Claude-Code-style TodoWrite: the model rewrites the full todo list on
  * every call. There is no incremental create/update/delete. The list's
  * source of truth is the most recent todo_write tool-call message in the
- * thread; see `todo-write-context.ts` for the reader (`readCurrentTodos`).
+ * thread; only the most recent call survives the cross-turn message
+ * loader (`keepLastTodoWrite` in `todo-write-context.ts`).
  */
 
 import { tool, zodSchema } from "ai";
@@ -34,10 +35,10 @@ export type TodoWriteInput = z.infer<typeof TodoWriteInputSchema>;
 
 const description =
   "Plan and track multi-step work. Call with the FULL todo list every time — this replaces the prior list. " +
-  "Use whenever a task has 3+ distinct steps. Mark exactly one todo `in_progress` at a time. " +
+  "Call at the start of every multi-step request. Skip only for true one-shots (a single tool call or a direct answer). " +
+  "Mark exactly one todo `in_progress` at a time. " +
   "Flip a todo to `in_progress` before starting it and to `completed` the moment it finishes — do not batch completions. " +
-  "For trivial (<3 step) work, do not call this tool at all. " +
-  "The current list is always visible to you in the `<current-todos>` system block — do not call this tool to read the list back.";
+  "Your prior tool-call inputs are your current state — read your last call to see where you are.";
 
 export const todoWriteTool = tool({
   description,
