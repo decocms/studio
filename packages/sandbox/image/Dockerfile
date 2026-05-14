@@ -19,8 +19,15 @@ RUN apt-get update \
        | DENO_INSTALL=/opt/deno sh -s -- -y "${DENO_VERSION}" \
   && ln -s /opt/deno/bin/deno /usr/local/bin/deno \
   && corepack enable \
-  && corepack prepare yarn@stable --activate \
-  && corepack prepare pnpm@latest --activate
+  # Corepack fetches the tarballs from npm under the hood; if cloudflare
+  # closes the TLS socket mid-stream (UND_ERR_SOCKET in undici) the build
+  # fails. Retry each `prepare` up to 3 times with growing backoff.
+  && (corepack prepare yarn@stable --activate \
+       || (sleep 5 && corepack prepare yarn@stable --activate) \
+       || (sleep 15 && corepack prepare yarn@stable --activate)) \
+  && (corepack prepare pnpm@latest --activate \
+       || (sleep 5 && corepack prepare pnpm@latest --activate) \
+       || (sleep 15 && corepack prepare pnpm@latest --activate))
 
 # Office tooling used by /mnt/skills/public/* document skills:
 # - LibreOffice headless for pptx/xlsx/docx → PDF conversion (rasterization,

@@ -11,7 +11,7 @@ import type { LanguageModelV2 } from "@ai-sdk/provider";
 import type { InferUITool, UIMessage } from "ai";
 import type { ToolDefinition, UsageStats } from "@decocms/mesh-sdk";
 import type { Metadata } from "@/web/components/chat/types";
-import type { BuiltInToolSet } from "./built-in-tools";
+import type { BuiltInToolSet } from "../../../harnesses/decopilot/built-in-tools";
 
 // ============================================================================
 // Stream API Message Types
