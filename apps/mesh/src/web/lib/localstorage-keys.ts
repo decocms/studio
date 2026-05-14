@@ -35,10 +35,5 @@ export const LOCALSTORAGE_KEYS = {
   connectionsTab: (org: string) => `mesh:connections:tab:${org}`,
   taskLastViewed: (locator: ProjectLocator) =>
     `mesh:chat:task-last-viewed:${locator}`,
-  homeBoard: (orgSlug: string, userId: string) =>
-    `mesh:home-board:${orgSlug}:${userId}`,
-  homeNotes: (orgSlug: string, userId: string) =>
-    `mesh:home-notes:${orgSlug}:${userId}`,
-  homePinned: (orgSlug: string, userId: string) =>
-    `mesh:home-pinned:${orgSlug}:${userId}`,
+  homeTiles: (orgSlug: string) => `mesh:home-tiles:${orgSlug}`,
 } as const;
