@@ -89,7 +89,10 @@ function promptMessagesToParts(
   const parts: ChatMessage["parts"] = [];
 
   for (const message of messages) {
-    if (message.role !== "user" || !message.content) continue;
+    // MCP prompts legally return assistant/system roles for instruction-style
+    // content. Including all roles ensures the prompt body reaches the model;
+    // the parent tiptap message is always serialized as a single user turn.
+    if (!message.content) continue;
 
     const messageContents = Array.isArray(message.content)
       ? message.content

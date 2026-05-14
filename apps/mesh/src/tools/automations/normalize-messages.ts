@@ -35,6 +35,21 @@ function buildTiptapDoc(text: string) {
   };
 }
 
+function hasUsableUserMessage(messages: Message[]): boolean {
+  return messages.some(
+    (m) =>
+      m.role === "user" &&
+      m.parts.some((p) => {
+        if (p.type === "text") {
+          return (
+            typeof p.text === "string" && (p.text as string).trim().length > 0
+          );
+        }
+        return p.type === "file" || p.type === "image";
+      }),
+  );
+}
+
 function ensureTiptapDoc(messages: Message[]): Message[] {
   return messages.map((msg) => {
     const meta = msg.metadata as Record<string, unknown> | undefined;
@@ -98,5 +113,11 @@ export function normalizeMessages(messages: string | Message[]): Message[] {
     normalized = messages;
   }
 
-  return ensureTiptapDoc(normalized);
+  const result = ensureTiptapDoc(normalized);
+  if (!hasUsableUserMessage(result)) {
+    throw new Error(
+      "Automation messages must include at least one user message with non-empty content",
+    );
+  }
+  return result;
 }
