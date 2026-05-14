@@ -246,8 +246,21 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
   // and force-close the sub-stream there as a backstop.
   const demuxRef = useRef<{
     subController: ReadableStreamDefaultController<UIMessageChunk> | null;
+    /**
+     * `readUIMessageStream` folds chunks into a UIMessage but drops the
+     * top-level `finishReason` field on the `{type: "finish"}` chunk —
+     * the message snapshot it yields has `parts` / `metadata` but no
+     * finishReason. We capture it from the raw chunk here and forward it
+     * through `onFinish` so the consumer's warning-banner logic
+     * (`finishReason !== "stop"`) keeps working.
+     */
+    pendingFinishReason: string | undefined;
     consume: () => Promise<void>;
-  }>({ subController: null, consume: async () => {} });
+  }>({
+    subController: null,
+    pendingFinishReason: undefined,
+    consume: async () => {},
+  });
 
   const forceCloseCurrentSubStream = (): void => {
     const ctrl = demuxRef.current.subController;
@@ -271,6 +284,7 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
 
   function ensureSubStream(): ReadableStreamDefaultController<UIMessageChunk> {
     if (demuxRef.current.subController) return demuxRef.current.subController;
+    demuxRef.current.pendingFinishReason = undefined;
     let controllerOut: ReadableStreamDefaultController<UIMessageChunk>;
     const sub = new ReadableStream<UIMessageChunk>({
       start(c) {
@@ -304,7 +318,9 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
         }
       }
       // Sub-stream closed — the finish chunk landed.
+      const finishReason = demuxRef.current.pendingFinishReason;
       demuxRef.current.subController = null;
+      demuxRef.current.pendingFinishReason = undefined;
       const finalMsg = last;
       if (finalMsg) {
         localMessagesStore.current.update((prev) => [...prev, finalMsg]);
@@ -315,6 +331,7 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
         cbRef.current.onFinish?.({
           message: finalMsg,
           messages: snapshotAll(),
+          finishReason,
           isAbort: false,
           isDisconnect: false,
           isError: false,
@@ -354,6 +371,8 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
     const sub = ensureSubStream();
     sub.enqueue(chunk);
     if (chunk.type === "finish") {
+      const finishChunk = chunk as { type: "finish"; finishReason?: string };
+      demuxRef.current.pendingFinishReason = finishChunk.finishReason;
       sub.close();
     }
   }
