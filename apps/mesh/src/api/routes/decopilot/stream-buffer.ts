@@ -2,7 +2,7 @@
  * Stream Buffer Interface
  *
  * Abstraction for treating a NATS JetStream subject as the single source
- * of truth for a run's UI stream. The producer (`streamCore`) pumps chunks
+ * of truth for a run's UI stream. The producer (`dispatchRun`) pumps chunks
  * into JetStream via `pump()`; every HTTP response — both initial `/stream`
  * and any `/attach` — reads from JetStream via `createTailStream()`. The
  * producer's lifetime is bound to the run registry, not to any HTTP

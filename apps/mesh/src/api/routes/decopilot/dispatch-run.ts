@@ -1,9 +1,20 @@
 /**
- * Stream Core
+ * Dispatch Run
  *
- * Extracted core logic from the /stream route handler.
- * This module is HTTP-agnostic and can be invoked by both the
- * SSE endpoint and automation runners.
+ * The agent loop, decoupled from any transport. Two public entry points:
+ *
+ *   dispatchRun(input, ctx, deps)
+ *     Fire-and-forget. Claims the run, starts the JetStream pump, returns
+ *     `{ taskId }`. Subscribers receive chunks via
+ *     `streamBuffer.createTailStream(taskId)` (the `/attach` endpoint).
+ *     Requires `deps.streamBuffer`. Used by every HTTP route that
+ *     initiates work.
+ *
+ *   dispatchRunAndWait(input, ctx, deps)
+ *     Same lifecycle, but drains `uiStream` internally until the run
+ *     terminates and resolves once it's done. Used by automation paths
+ *     (DBOS workflow steps, pod-death recovery) that need to await
+ *     completion. Does not require a `streamBuffer`.
  */
 
 import type { MeshContext } from "@/core/mesh-context";
@@ -155,7 +166,7 @@ export interface AgentConfig {
   id: string;
 }
 
-export interface StreamCoreInput {
+export interface DispatchRunInput {
   messages: ChatMessage[];
   models: ModelsConfig;
   agent: AgentConfig;
@@ -174,13 +185,13 @@ export interface StreamCoreInput {
   branch?: string | null;
 }
 
-export interface StreamCoreDeps {
+export interface DispatchRunDeps {
   runRegistry: RunRegistry;
   streamBuffer?: StreamBuffer;
   cancelBroadcast: CancelBroadcast;
 }
 
-export interface StreamCoreResult {
+export interface DispatchRunResult {
   taskId: string;
 }
 
@@ -198,21 +209,21 @@ export interface StreamCoreResult {
  * Used by every HTTP route that initiates work (`POST /messages`,
  * `/attach` orphan-resume, the deprecated `POST /stream`).
  */
-export async function streamCore(
-  input: StreamCoreInput,
+export async function dispatchRun(
+  input: DispatchRunInput,
   ctx: MeshContext,
-  deps: StreamCoreDeps,
-): Promise<StreamCoreResult> {
+  deps: DispatchRunDeps,
+): Promise<DispatchRunResult> {
   if (!deps.streamBuffer) {
     throw new Error(
-      "streamCore: deps.streamBuffer is required for HTTP-initiated runs. " +
-        "Use executeRun for automation flows that need to await completion.",
+      "dispatchRun: deps.streamBuffer is required for HTTP-initiated runs. " +
+        "Use dispatchRunAndWait for automation flows that need to await completion.",
     );
   }
   return traced(
-    "decopilot.streamCore",
+    "decopilot.dispatchRun",
     (rootSpan) =>
-      streamCoreInner(input, ctx, deps, rootSpan, "fire-and-forget"),
+      dispatchRunInner(input, ctx, deps, rootSpan, "fire-and-forget"),
     {
       "decopilot.agent.id": input.agent.id,
       "decopilot.model.id": input.models.thinking.id,
@@ -233,14 +244,14 @@ export async function streamCore(
  * agent's completion. Does not require a `streamBuffer` — automations
  * don't have a subscriber to fan out to.
  */
-export async function executeRun(
-  input: StreamCoreInput,
+export async function dispatchRunAndWait(
+  input: DispatchRunInput,
   ctx: MeshContext,
-  deps: StreamCoreDeps,
-): Promise<StreamCoreResult> {
+  deps: DispatchRunDeps,
+): Promise<DispatchRunResult> {
   return traced(
-    "decopilot.executeRun",
-    (rootSpan) => streamCoreInner(input, ctx, deps, rootSpan, "drain"),
+    "decopilot.dispatchRunAndWait",
+    (rootSpan) => dispatchRunInner(input, ctx, deps, rootSpan, "drain"),
     {
       "decopilot.agent.id": input.agent.id,
       "decopilot.model.id": input.models.thinking.id,
@@ -252,15 +263,15 @@ export async function executeRun(
   );
 }
 
-type StreamCoreMode = "fire-and-forget" | "drain";
+type DispatchRunMode = "fire-and-forget" | "drain";
 
-async function streamCoreInner(
-  input: StreamCoreInput,
+async function dispatchRunInner(
+  input: DispatchRunInput,
   ctx: MeshContext,
-  deps: StreamCoreDeps,
+  deps: DispatchRunDeps,
   rootSpan: import("@opentelemetry/api").Span,
-  mode: StreamCoreMode,
-): Promise<StreamCoreResult> {
+  mode: DispatchRunMode,
+): Promise<DispatchRunResult> {
   const { runRegistry, streamBuffer } = deps;
 
   // Normalize: ensure every message has an id (runtime callers may omit it)
@@ -309,7 +320,7 @@ async function streamCoreInner(
     const windowSize = input.windowSize ?? DEFAULT_WINDOW_SIZE;
 
     if (!input.taskId) {
-      throw new Error("streamCore: taskId is required");
+      throw new Error("dispatchRun: taskId is required");
     }
 
     // 2. Load entities and create/load memory in parallel
@@ -1676,7 +1687,9 @@ async function streamCoreInner(
     //    returned promise to know the workflow step is complete.
     if (mode === "fire-and-forget") {
       if (!streamBuffer) {
-        throw new Error("streamCore: streamBuffer required in fire-and-forget");
+        throw new Error(
+          "dispatchRun: streamBuffer required in fire-and-forget",
+        );
       }
       streamBuffer.pump(uiStream, mem.thread.id, registrySignal);
       return { taskId: mem.thread.id };

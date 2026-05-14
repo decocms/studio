@@ -19,7 +19,7 @@
  *
  * Four workflows:
  * - `fireAutomationWorkflow` — runs on the global queue, split into recorded
- *   steps (prepare → createRunThread → updateTriggerTiming → executeRun).
+ *   steps (prepare → createRunThread → updateTriggerTiming → dispatchRunAndWait).
  * - `gateWorkflow` — enqueued on the per-automation gate queue with
  *   partitionKey=automationId, awaits a fire on the global queue. Holding
  *   the partition slot until the child returns is what enforces the
@@ -41,14 +41,14 @@
  * `fireAutomationNow`, which uses it as the top-level workflow ID — a
  * redelivered event collapses onto the existing workflow handle.
  *
- * Runtime dependencies (storage, stream-core, context factory) are looked up
+ * Runtime dependencies (storage, dispatch-run, context factory) are looked up
  * via a module-level registry. App boot wires them via `setAutomationRuntime`
  * BEFORE `DBOS.launch()`. The workflows are registered at import time so the
  * recovery executor can replay them after a crash.
  */
 
 import { DBOS, SchedulerMode } from "@dbos-inc/dbos-sdk";
-import type { StreamCoreDeps } from "@/api/routes/decopilot/stream-core";
+import type { DispatchRunDeps } from "@/api/routes/decopilot/dispatch-run";
 import { resolveTier } from "@/core/resolve-tier";
 import type { AutomationsStorage } from "@/storage/automations";
 import type { Automation } from "@/storage/types";
@@ -60,7 +60,7 @@ import {
 import {
   computeNextRunAt,
   type MeshContextFactory,
-  type StreamCoreFn,
+  type DispatchRunFn,
 } from "./fire";
 
 export const AUTOMATIONS_GATE_QUEUE = "automations-gate";
@@ -85,7 +85,7 @@ export const AUTOMATIONS_GATE_PARTITION_CONCURRENCY = 3;
 /**
  * Global concurrent fire cap across the entire cluster. Set conservatively to
  * keep the pg pool from being exhausted by tool fan-out inside each fire's
- * streamCore call. Bump when `databasePoolMax` is bumped.
+ * dispatchRun call. Bump when `databasePoolMax` is bumped.
  */
 export const AUTOMATIONS_GLOBAL_CONCURRENCY = 5;
 const AUTOMATIONS_RUN_TIMEOUT_MS = 5 * 60 * 1000;
@@ -107,9 +107,9 @@ export async function ensureOrgQueue(orgId: string): Promise<void> {
 
 export interface AutomationRuntime {
   storage: AutomationsStorage;
-  streamCoreFn: StreamCoreFn;
+  dispatchRunFn: DispatchRunFn;
   meshContextFactory: MeshContextFactory;
-  deps: Pick<StreamCoreDeps, "runRegistry" | "cancelBroadcast">;
+  deps: Pick<DispatchRunDeps, "runRegistry" | "cancelBroadcast">;
   runTimeoutMs?: number;
 }
 
@@ -240,7 +240,7 @@ async function updateTriggerTimingStep(triggerId: string): Promise<void> {
   }
 }
 
-async function executeRunStep(
+async function dispatchRunAndWaitStep(
   automation: Automation,
   resolvedModel: ResolvedAutomationModel,
   ctx: FireAutomationContext,
@@ -284,10 +284,10 @@ async function executeRunStep(
     }
     request.abortSignal = abortController.signal;
 
-    // executeRun drains uiStream internally and resolves when the run
+    // dispatchRunAndWait drains uiStream internally and resolves when the run
     // completes (or fails). Automations need this synchronous shape so
     // the DBOS workflow step can record the run's terminal state.
-    await rt.streamCoreFn(request, meshCtx, {
+    await rt.dispatchRunFn(request, meshCtx, {
       runRegistry: rt.deps.runRegistry,
       streamBuffer: undefined,
       cancelBroadcast: rt.deps.cancelBroadcast,
@@ -333,8 +333,9 @@ async function fireAutomationWorkflowFn(
   }
 
   const result = await DBOS.runStep(
-    () => executeRunStep(prep.automation, prep.resolvedModel, ctx, taskId),
-    { name: "executeRun" },
+    () =>
+      dispatchRunAndWaitStep(prep.automation, prep.resolvedModel, ctx, taskId),
+    { name: "dispatchRunAndWait" },
   );
 
   if (result.error) return { taskId, error: result.error };

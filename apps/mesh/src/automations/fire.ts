@@ -1,14 +1,14 @@
 import type {
-  StreamCoreInput,
-  StreamCoreDeps,
-} from "@/api/routes/decopilot/stream-core";
+  DispatchRunInput,
+  DispatchRunDeps,
+} from "@/api/routes/decopilot/dispatch-run";
 import type { MeshContext } from "@/core/mesh-context";
 import { Cron } from "croner";
 
-export type StreamCoreFn = (
-  input: StreamCoreInput,
+export type DispatchRunFn = (
+  input: DispatchRunInput,
   ctx: MeshContext,
-  deps: StreamCoreDeps,
+  deps: DispatchRunDeps,
 ) => Promise<{ taskId: string }>;
 
 export type MeshContextFactory = (

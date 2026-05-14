@@ -1,14 +1,14 @@
 /**
  * Build Stream Request
  *
- * Converts a stored Automation row into a StreamCoreInput suitable for passing
- * to streamCore(). The caller is expected to resolve the automation's tier via
+ * Converts a stored Automation row into a DispatchRunInput suitable for passing
+ * to dispatchRun(). The caller is expected to resolve the automation's tier via
  * resolveTier() first; the resolved model is passed in here. The automation's
  * stored `models` JSON is no longer read for credential or model info — after
  * migration 077 it carries only `{ tier }`.
  */
 
-import type { StreamCoreInput } from "@/api/routes/decopilot/stream-core";
+import type { DispatchRunInput } from "@/api/routes/decopilot/dispatch-run";
 import type { Automation } from "@/storage/types";
 
 type ThinkingShape = {
@@ -38,7 +38,7 @@ export function buildStreamRequest(
   triggerId: string | null,
   taskId: string,
   resolved: ResolvedAutomationModel,
-): StreamCoreInput {
+): DispatchRunInput {
   const rawMessages = JSON.parse(automation.messages);
   // Generate fresh ids for each run so concurrent automation runs don't
   // collide on the same message id (ON CONFLICT in saveMessages would
@@ -49,7 +49,7 @@ export function buildStreamRequest(
     id: crypto.randomUUID(),
   }));
 
-  const request: StreamCoreInput = {
+  const request: DispatchRunInput = {
     messages,
     models: {
       credentialId: resolved.credentialId,

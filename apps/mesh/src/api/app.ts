@@ -108,7 +108,7 @@ import {
   setAutomationRuntime,
 } from "../automations";
 import { DBOS } from "@dbos-inc/dbos-sdk";
-import { executeRun } from "./routes/decopilot/stream-core";
+import { dispatchRunAndWait } from "./routes/decopilot/dispatch-run";
 import {
   PersistedRunConfigSchema,
   toModelsConfig,
@@ -738,7 +738,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       // `execute` actually runs to completion. Nothing is buffered;
       // `createTailStream` returns null so HTTP subscribe paths surface a
       // 503 to the client. The legacy `/stream` route falls back to
-      // serving `uiStream` directly via streamCore.
+      // serving `uiStream` directly via dispatchRun.
       pump: (stream: ReadableStream) => {
         void (async () => {
           const reader = stream.getReader();
@@ -1164,7 +1164,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // it only writes a module-level pointer, no DBOS API calls.
   setAutomationRuntime({
     storage: automationsStorage,
-    streamCoreFn: executeRun,
+    dispatchRunFn: dispatchRunAndWait,
     meshContextFactory: automationContextFactory,
     deps: { runRegistry, cancelBroadcast },
   });
@@ -1280,7 +1280,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     // via /attach trigger their own pump via the user-initiated
     // orphan-resume path in routes.ts; this background recovery is only
     // for the case where no client is currently attached.
-    await executeRun(
+    await dispatchRunAndWait(
       {
         messages: [],
         models: toModelsConfig(config.models),

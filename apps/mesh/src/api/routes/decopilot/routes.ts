@@ -35,7 +35,7 @@ import {
 import { PersistedRunConfigSchema, toModelsConfig } from "./run-config";
 import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage, ModelsConfig } from "./types";
-import { streamCore } from "./stream-core";
+import { dispatchRun } from "./dispatch-run";
 import { wrapWithSseKeepalive } from "./sse-keepalive";
 import type { SqlThreadStorage } from "@/storage/threads";
 import { getPodId } from "@/core/pod-identity";
@@ -185,7 +185,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   // (long-lived subscription) instead. Kept for backwards compatibility
   // with the existing chat hook until it migrates.
   //
-  // Internally now identical to the subscribe model: streamCore starts the
+  // Internally now identical to the subscribe model: dispatchRun starts the
   // pump, then we open a one-shot tail subscription on the same JetStream
   // subject and serve it as SSE. This means even legacy clients survive
   // proxy/tab-close cuts cleanly (next /attach hits a hot JetStream tail).
@@ -240,8 +240,8 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       const windowSize = memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE;
       const resolvedThreadId = thread_id ?? memoryConfig?.thread_id;
 
-      // 4. Delegate to streamCore
-      const result = await streamCore(
+      // 4. Delegate to dispatchRun
+      const result = await dispatchRun(
         {
           messages: [...systemMessages, requestMessage],
           models,
@@ -272,7 +272,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         },
       });
 
-      // streamCore started the pump. Create a one-shot tail subscription
+      // dispatchRun started the pump. Create a one-shot tail subscription
       // (closes on the {done} sentinel) so this request returns SSE chunks
       // for the just-started run, then completes when the run ends.
       const tailChunkStream = await streamBuffer.createTailStream(
@@ -410,7 +410,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
       const windowSize = memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE;
 
-      const { taskId } = await streamCore(
+      const { taskId } = await dispatchRun(
         {
           messages: [...systemMessages, requestMessage],
           models,
@@ -638,7 +638,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // Resume the run — identity from auth context, NOT stored config.
       // Fire-and-forget: the resumed run pumps into JetStream, and the
       // tail subscription created below is what we serve to this request.
-      await streamCore(
+      await dispatchRun(
         {
           messages: [],
           models: toModelsConfig(config.models),

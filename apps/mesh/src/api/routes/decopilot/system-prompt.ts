@@ -1,7 +1,7 @@
 /**
  * System-prompt assembly helpers for decopilot.
  *
- * stream-core.ts is the canonical place where the system-prompt parts are
+ * dispatch-run.ts is the canonical place where the system-prompt parts are
  * collected (basePrompt, planModePrompt, …, agentPrompt). This module
  * takes that already-ordered, already-filtered array of strings and
  *   (a) wraps each part as an AI-SDK `SystemMessage`,
@@ -50,7 +50,7 @@ const EPHEMERAL_5M_PROVIDER_OPTIONS = {
 };
 
 /**
- * Wrap stream-core's `string[]` of stable, byte-stable system-prompt
+ * Wrap dispatch-run's `string[]` of stable, byte-stable system-prompt
  * parts into AI-SDK system messages, attaching Anthropic cache markers
  * on the two cut points and appending a non-cached current-context tail.
  *
