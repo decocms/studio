@@ -1,17 +1,17 @@
 ---
 title: resource_read
-description: Ler um recurso do escopo atual
+description: Lê um resource do escopo atual
 icon: FileText
 ---
 
-## Visão Geral
+## Visão geral
 
-Lê um recurso do escopo atual. Suporta herança de escopo (projeto herda da organização, agente herda do projeto+organização). Recursos podem ser documentação, diretrizes, trechos de código ou qualquer informação contextual.
+Lê um resource do escopo atual. Suporta herança de escopo (project herda de org, agent herda de project+org). Resources podem ser documentação, diretrizes, trechos de código ou qualquer informação contextual.
 
 ## Disponibilidade
 
-- **Tarefas**: ✓ Disponível
-- **Subtarefas**: ✓ Disponível
+- **Tasks**: ✓ Disponível
+- **Subtasks**: ✓ Disponível
 
 ## Assinatura
 
@@ -31,113 +31,113 @@ type RangeOptions = {
 
 | Parâmetro | Tipo | Obrigatório | Descrição |
 |-----------|------|----------|-------------|
-| `resource_uri` | `string` | Obrigatório | Identificador URI do recurso |
+| `resource_uri` | `string` | Obrigatório | URI identificador do resource |
 | `options` | `RangeOptions` | Opcional | Opções de intervalo de linhas |
 | `options.lineStart` | `number` | Opcional | Número da linha inicial (padrão: 0) |
 | `options.lineEnd` | `number` | Opcional | Número da linha final (padrão: 20) |
 
 ## Retorno
 
-Conteúdo e metadados do recurso:
-- **content**: Conteúdo de texto do recurso
-- **uri**: URI do recurso
-- **metadata**: Informações adicionais do recurso
+Conteúdo e metadados do resource:
+- **content**: O conteúdo de texto do resource
+- **uri**: URI do resource
+- **metadata**: Informações adicionais sobre o resource
 
 ## Comportamento
 
 - Suporta herança de escopo:
-  - Recursos do projeto herdam de recursos da organização
-  - Recursos do agente herdam de recursos do projeto + organização
-- Defina `options.lineStart` e `options.lineEnd` como 0 para ler o recurso inteiro
-- Comportamento padrão (sem opções) lê as primeiras 20 linhas (linhas 0-20)
-- Números de linha começam em zero
+  - Resources de project herdam dos resources da organization
+  - Resources de agent herdam dos resources de project + organization
+- Defina `options.lineStart` e `options.lineEnd` como 0 para ler o resource inteiro
+- O comportamento padrão (sem options) lê as primeiras 20 linhas (linhas 0-20)
+- Números de linha são indexados a partir de zero
 
-## Exemplo de Uso
+## Exemplos de uso
 
-### Ler Recurso Inteiro
+### Ler o resource inteiro
 
 ```typescript
-// Ler documento completo de diretrizes de código
+// Read entire coding guidelines document
 resource_read("coding-guidelines.md", { lineStart: 0, lineEnd: 0 })
 ```
 
-### Ler Linhas Específicas
+### Ler linhas específicas
 
 ```typescript
-// Ler linhas 10-30 da documentação da API
+// Read lines 10-30 of API documentation
 resource_read("api-docs.md", { lineStart: 10, lineEnd: 30 })
 ```
 
-### Ler Início do Recurso
+### Ler o início do resource
 
 ```typescript
-// Ler primeiras 20 linhas (padrão)
+// Read first 20 lines (default)
 resource_read("onboarding-guide.md")
 ```
 
-### Tipos de Recursos
+### Tipos de resource
 
 ```typescript
-// Ler padrões de código
+// Read coding standards
 resource_read("standards/typescript-style.md", { lineStart: 0, lineEnd: 0 })
 
-// Ler procedimentos de deploy
+// Read deployment procedures
 resource_read("procedures/deployment-checklist.md", { lineStart: 0, lineEnd: 0 })
 
-// Ler documentação de API
+// Read API documentation
 resource_read("docs/rest-api-reference.md", { lineStart: 0, lineEnd: 0 })
 ```
 
-## Casos de Uso
+## Casos de uso
 
-### Execução Baseada em Contexto
+### Execução orientada por contexto
 
-Ler diretrizes antes de executar trabalho:
+Leia diretrizes antes de executar um trabalho:
 
 ```typescript
-// Ler padrões de código
+// Read coding standards
 const standards = resource_read("coding-standards.md", { lineStart: 0, lineEnd: 0 })
 
-// Aplicar padrões ao gerar código
-// ... lógica de geração de código
+// Apply standards when generating code
+// ... code generation logic
 ```
 
-### Referência de Documentação
+### Referência de documentação
 
-Acessar documentação de referência durante a tarefa:
+Acesse documentação de referência durante uma task:
 
 ```typescript
-// Ler docs da API
+// Read API docs
 const apiDocs = resource_read("api-reference.md", { lineStart: 0, lineEnd: 0 })
 
-// Usar docs para fazer chamadas corretas à API
-// ... lógica de chamada de API
+// Use docs to make correct API calls
+// ... API call logic
 ```
 
-### Conformidade com Procedimentos
+### Conformidade com procedimentos
 
-Seguir procedimentos documentados:
+Siga procedimentos documentados:
 
 ```typescript
-// Ler checklist de deploy
+// Read deployment checklist
 const checklist = resource_read("deployment-checklist.md", { lineStart: 0, lineEnd: 0 })
 
-// Seguir cada passo do checklist
-// ... lógica de deploy
+// Follow each step in the checklist
+// ... deployment logic
 ```
 
-## Herança de Escopo
+## Herança de escopo
 
-Recursos seguem hierarquia de escopo:
+Resources seguem a hierarquia de escopo:
 
-1. **Escopo do agente**: Herda do projeto + organização
-2. **Escopo do projeto**: Herda da organização
-3. **Escopo da organização**: Nível base de recursos
+1. **Escopo de agent**: Herda de project + organization
+2. **Escopo de project**: Herda da organization
+3. **Escopo de organization**: Resources do nível base
 
-Ao ler um recurso, o sistema busca do mais específico (agente) para o menos específico (organização).
+Ao ler um resource, o sistema busca do escopo mais específico (agent) para o menos específico (organization).
 
 ## Relacionados
 
-- [**prompt_read**](/pt-br/studio/api-reference/built-in-tools/prompt-read) - Ler templates de prompt
-- [Documentação de Contexto](/pt-br/studio/decopilot/context)
-- [Visão Geral das Ferramentas Integradas](/pt-br/studio/api-reference/built-in-tools)
+- [**prompt_read**](/pt-br/studio/api-reference/built-in-tools/prompt-read) - Lê templates de prompt
+- [Documentação de Context](/pt-br/studio/decopilot/context-and-tasks)
+- [Visão geral das Built-in Tools](/pt-br/studio/api-reference/built-in-tools)

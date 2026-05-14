@@ -1,22 +1,22 @@
 ---
 title: user_ask
-description: Perguntar ao usuário para obter entrada ou esclarecimento
+description: Faz uma pergunta ao usuário para obter entrada ou esclarecimento
 icon: MessageCircle
 ---
 
 import Callout from "../../../../../../components/ui/Callout.astro";
 
-## Visão Geral
+## Visão geral
 
-Faz uma pergunta ao usuário para obter entrada ou esclarecimento. Suporta entrada de texto, múltipla escolha ou confirmação. O status da tarefa muda para "Aguardando Entrada" até o usuário responder.
+Faz uma pergunta ao usuário para obter entrada ou esclarecimento. Suporta entrada de texto, múltipla escolha ou confirmação. O status da task muda para "Needs Input" até que o usuário responda.
 
 ## Disponibilidade
 
-- **Tarefas**: ✓ Disponível
-- **Subtarefas**: ✗ Não disponível (previne bloqueio)
+- **Tasks**: ✓ Disponível
+- **Subtasks**: ✗ Não disponível (evita bloqueio)
 
 <Callout type="warning">
-  **Restrição**: Esta ferramenta está disponível apenas em tarefas, não em subtarefas. Subtarefas executam de forma autônoma sem bloquear aguardando entrada do usuário.
+  **Restrição**: Esta ferramenta está disponível apenas em tasks, não em subtasks. Subtasks executam de forma autônoma sem bloquear esperando entrada do usuário.
 </Callout>
 
 ## Assinatura
@@ -38,31 +38,31 @@ type UserAskOptions = {
 
 | Parâmetro | Tipo | Obrigatório | Descrição |
 |-----------|------|----------|-------------|
-| `question` | `string` | Obrigatório | A pergunta a fazer ao usuário |
+| `question` | `string` | Obrigatório | A pergunta a ser feita ao usuário |
 | `options` | `UserAskOptions` | Opcional | Opções para a pergunta |
 | `options.type` | `"text" \| "choice" \| "confirm"` | Opcional | Tipo de entrada esperada (padrão: "text") |
-| `options.choices` | `string[]` | Opcional | Escolhas disponíveis (obrigatório para `type: "choice"`) |
+| `options.choices` | `string[]` | Opcional | Opções disponíveis (obrigatório para `type: "choice"`) |
 | `options.default` | `string \| boolean` | Opcional | Valor padrão |
 
 ## Retorno
 
-Resposta do usuário como string ou booleano (dependendo do tipo de pergunta).
+Resposta do usuário como string ou boolean (dependendo do tipo da pergunta).
 
 ## Comportamento
 
-- O status da tarefa muda para "Aguardando Entrada" até o usuário responder
-- Bloqueia a execução da tarefa até o usuário fornecer a resposta
-- Disponível apenas em tarefas (não em subtarefas) para evitar bloqueio de trabalho autônomo
+- O status da task muda para "Needs Input" até que o usuário responda
+- Bloqueia a execução da task até que o usuário forneça uma resposta
+- Disponível apenas em tasks (não em subtasks) para evitar bloqueio de trabalho autônomo
 
-## Exemplo de Uso
+## Exemplo de uso
 
-### Entrada de Texto
+### Entrada de texto
 
 ```typescript
 const apiKey = user_ask("What is your GitHub API key?")
 ```
 
-### Múltipla Escolha
+### Múltipla escolha
 
 ```typescript
 const environment = user_ask(
@@ -87,29 +87,29 @@ const proceed = user_ask(
 )
 
 if (proceed) {
-  // Executar ação destrutiva
+  // Execute destructive action
 }
 ```
 
-### Esclarecimento Durante Execução
+### Esclarecimento durante a execução
 
 ```typescript
-// Coletar requisitos
+// Gather requirements
 const features = user_ask("Which features should I enable? (comma-separated)")
 
-// Usar a entrada
+// Use the input
 const featureList = features.split(",").map(f => f.trim())
 ```
 
-## Casos de Uso
+## Casos de uso
 
-### Coletar Informações Faltantes
+### Obter informações faltantes
 
 ```typescript
 const dbUrl = user_ask("What is the database connection string?")
 ```
 
-### Confirmar Ações Destrutivas
+### Confirmar ações destrutivas
 
 ```typescript
 const confirmed = user_ask(
@@ -118,7 +118,7 @@ const confirmed = user_ask(
 )
 ```
 
-### Obter Preferências do Usuário
+### Obter preferências do usuário
 
 ```typescript
 const style = user_ask(
@@ -131,6 +131,6 @@ const style = user_ask(
 )
 ```
 
-## Relacionados
+## Relacionado
 
-- [Visão Geral das Ferramentas Integradas](/pt-br/studio/api-reference/built-in-tools)
+- [Visão geral das Built-in Tools](/pt-br/studio/api-reference/built-in-tools)
