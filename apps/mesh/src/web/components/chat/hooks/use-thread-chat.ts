@@ -272,11 +272,21 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
      * keeping the partial would duplicate the run once replay finishes.
      */
     discardOnClose: boolean;
+    /**
+     * `(SSE decopilot.finish events) - (AI-SDK {type:"finish"} chunks
+     * observed)`. Positive means the watch SSE is ahead and the chunk
+     * still hasn't landed — the only condition under which the backstop
+     * should fire. Without this, the 1.5s timer would happily close the
+     * NEXT run's sub-stream if it had started in the meantime (via user
+     * send or `maybeAutoSend` after tool output / approval response).
+     */
+    pendingSseBackstops: number;
     consume: () => Promise<void>;
   }>({
     subController: null,
     pendingFinishReason: undefined,
     discardOnClose: false,
+    pendingSseBackstops: 0,
     consume: async () => {},
   });
 
@@ -295,20 +305,29 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
 
   // SSE `decopilot.finish` is the *backstop* for the rare case where the
   // backend purges JetStream before the AI-SDK `{type: "finish"}` chunk
-  // lands and the demux's sub-stream would otherwise hang. The watch SSE
-  // and the JetStream tail are independent transports, though — under
-  // load the SSE event commonly arrives *ahead* of the buffered finish
-  // chunk, and closing the sub then would orphan the remaining chunks
-  // (they'd open a fresh sub-stream via `ensureSubStream` and surface as
-  // a duplicate partial message). Wait ~1.5s; if the chunk actually
-  // arrives in that window the sub is already closed and the backstop
-  // is a no-op.
+  // lands and the demux's sub-stream would otherwise hang.
+  //
+  // It's a noisy signal — the watch SSE and the JetStream tail are
+  // independent transports, so the SSE event for run N can arrive after
+  // run N's chunk-finish (and after run N+1 has started!). The counter
+  // `pendingSseBackstops` deduplicates: every chunk-finish decrements,
+  // every SSE finish increments, and we only schedule / fire the timer
+  // when the counter is positive (i.e., an SSE event has no matching
+  // chunk yet). Without this, the timer would close the wrong sub when
+  // the user — or `maybeAutoSend` — kicks off a follow-up run inside the
+  // backstop window, fragmenting the new run's assistant message.
   const SSE_FINISH_BACKSTOP_MS = 1500;
   useDecopilotEvents({
     orgSlug,
     taskId: threadId,
     onFinish: () => {
-      setTimeout(() => forceCloseCurrentSubStream(), SSE_FINISH_BACKSTOP_MS);
+      demuxRef.current.pendingSseBackstops++;
+      if (demuxRef.current.pendingSseBackstops <= 0) return;
+      setTimeout(() => {
+        if (demuxRef.current.pendingSseBackstops <= 0) return;
+        demuxRef.current.pendingSseBackstops--;
+        forceCloseCurrentSubStream();
+      }, SSE_FINISH_BACKSTOP_MS);
     },
   });
 
@@ -412,6 +431,10 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
     if (chunk.type === "finish") {
       const finishChunk = chunk as { type: "finish"; finishReason?: string };
       demuxRef.current.pendingFinishReason = finishChunk.finishReason;
+      // Pair this chunk-finish with any not-yet-matched SSE finish so a
+      // pending backstop timer (or any future SSE finish for an
+      // already-completed run) won't close the wrong sub-stream.
+      demuxRef.current.pendingSseBackstops--;
       sub.close();
     }
   }
