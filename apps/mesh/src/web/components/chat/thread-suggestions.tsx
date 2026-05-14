@@ -23,16 +23,19 @@ export function ThreadSuggestions({
 
   return (
     <div className={cn("flex flex-col items-start gap-2", className)}>
-      {suggestions.map((suggestion) => (
+      {suggestions.map((suggestion, index) => (
         <button
           key={suggestion}
           type="button"
           disabled={disabled}
           onClick={() => onSelect(suggestion)}
+          style={{ animationDelay: `${index * 60}ms` }}
           className={cn(
             "flex items-center gap-2 px-4 py-2.5 rounded-full",
             "bg-muted text-muted-foreground text-sm font-medium",
             "transition-colors hover:bg-muted/70 hover:text-foreground",
+            "animate-in fade-in-0 slide-in-from-bottom-1 duration-200 ease-out",
+            "motion-reduce:animate-none",
             disabled && "opacity-50 cursor-not-allowed",
           )}
         >
