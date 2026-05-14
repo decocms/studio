@@ -1,0 +1,102 @@
+---
+title: Contexto e tarefas
+description: Como o Decopilot gerencia memória e como usar subtarefas para trabalhos pesados
+icon: Layers
+---
+
+import Callout from "../../../../../components/ui/Callout.astro";
+
+O Decopilot organiza o trabalho como **tarefas** (suas conversas) e **subtarefas** (conversas paralelas focadas que se ramificam). Entender como elas compartilham memória ajuda você a fazer mais em uma única sessão.
+
+## O que é uma tarefa?
+
+Uma **tarefa** é sua conversa com o Decopilot — onde você conversa, o Decopilot usa ferramentas e o trabalho é feito. Toda tarefa roda em um escopo (organização ou agente — veja [Visão geral](/pt-br/studio/decopilot/overview)) que determina quais instruções e ferramentas são carregadas.
+
+Toda tarefa tem um destes quatro estados:
+
+- **Em andamento** — o agente está trabalhando ou aguardando sua próxima mensagem
+- **Requer ação** — pausada, aguardando seu input (uma ferramenta precisa de aprovação ou ele fez uma pergunta)
+- **Concluída** — o trabalho terminou com sucesso
+- **Falhou** — algo deu errado ou a tarefa expirou
+
+Tarefas expiram após **30 minutos de inatividade**. Se você está trabalhando em algo mais longo, envie uma mensagem periodicamente para mantê-la ativa.
+
+---
+
+## Como a memória se enche
+
+Todo modelo de IA tem um limite de quanto pode reter em memória ao mesmo tempo — suas instruções, as ferramentas disponíveis e todo o histórico da conversa contam para esse limite. Quanto mais você discutiu, mais memória é ocupada.
+
+Quando uma tarefa começa, o Decopilot carrega:
+
+- Suas instruções e comportamentos centrais
+- Diretrizes do seu escopo atual
+- As ferramentas disponíveis nesse escopo
+- Seu histórico de conversa até o momento
+
+Conforme a conversa cresce, o histórico ocupa mais espaço. Quando fica muito cheio, o Decopilot automaticamente resume as partes mais antigas e mantém o resumo no lugar — liberando espaço sem perder o contexto importante.
+
+### A regra 40/80
+
+- **Abaixo de 40% cheio** — bastante espaço, nenhuma ação necessária
+- **40–80% cheio** — ainda funcionando bem, mas vale a pena encerrar a fase atual
+- **Acima de 80% cheio** — o Decopilot compacta automaticamente o histórico da conversa
+
+Você pode acionar isso manualmente com o comando `/compact` — útil antes de iniciar uma nova fase de trabalho complexo.
+
+<Callout type="tip">
+Use `/compact` quando estiver terminando uma grande tarefa e iniciando outra. Ele mantém a conversa enxuta sem perder o que importa.
+</Callout>
+
+---
+
+## Subtarefas
+
+Uma **subtarefa** é uma conversa separada que se ramifica da sua tarefa principal para lidar com trabalho focado. A diferença-chave: ela começa do zero — sem histórico da sua conversa principal.
+
+A subtarefa roda, faz o trabalho e retorna apenas um curto resumo para sua tarefa principal. Detalhes completos ficam salvos no histórico da tarefa, caso você precise.
+
+### Tarefa principal vs. subtarefa
+
+| | Tarefa principal | Subtarefa |
+|---|---|---|
+| Histórico da conversa | Acumula ao longo do tempo | Começa do zero |
+| Pode fazer perguntas a você | Sim | Não |
+| Pode criar subtarefas | Sim | Não |
+| Retorno à tarefa pai | N/D | Apenas resumo |
+
+Subtarefas não podem fazer perguntas a você nem criar subtarefas adicionais — elas rodam de forma autônoma e reportam de volta.
+
+### Quando subtarefas ajudam
+
+**Pesquisa e análise** — aprofundar em dados, explorar opções ou investigar um problema. Você recebe a conclusão, não cada passo.
+
+**Cálculos complexos** — qualquer coisa que gera saída verbosa pertence a uma subtarefa. Você vê o resultado, não os bastidores.
+
+**Verificações de qualidade** — auditorias, validação, revisões. Rode-as separadamente e receba um resumo de volta.
+
+**Trabalho em paralelo** — se dois pedaços de trabalho não dependem um do outro, rode-os como subtarefas separadas ao mesmo tempo.
+
+### Usando agentes especialistas em subtarefas
+
+Você pode rodar uma subtarefa com um [agente](/pt-br/studio/agents) específico — um configurado para um domínio em particular. O agente traz seu próprio conjunto focado de ferramentas e instruções sem afetar sua conversa principal.
+
+**Exemplo**: sua tarefa principal é coordenar fulfillment de pedidos. Você inicia subtarefas usando um **Inventory Agent** para checar estoque, um **Shipping Agent** para planejar logística e um **Customer Service Agent** para preparar notas de suporte. Cada um roda de forma independente; sua tarefa principal recebe os resumos e coordena o resultado.
+
+---
+
+## Dicas práticas
+
+**Fique de olho no indicador de uso** — quando estiver se aproximando de 40%, pense em encerrar a fase atual ou usar `/compact`.
+
+**Use subtarefas para trabalho pesado** — pesquisa, análise de dados, revisões de código e qualquer coisa que gere saídas longas deve acontecer em subtarefas. Mantenha os resumos na sua conversa principal.
+
+**Seja seletivo com ferramentas** — o Decopilot carrega ferramentas na memória. Não habilite ferramentas que você não precisa para a tarefa atual.
+
+**Rode coisas em paralelo** — se duas subtarefas não dependem uma da outra, inicie-as ao mesmo tempo.
+
+**Escreva prompts claros** — "Analisar tendências de demanda de vestuário no Q4" é mais útil do que "Fazer análise" quando revisar o histórico de tarefas depois.
+
+---
+
+**A seguir:** veja [Tools](/pt-br/studio/decopilot/tools) para a referência completa de ferramentas, ou [Agents](/pt-br/studio/agents) para agentes especialistas que você pode usar em subtarefas.

@@ -5,6 +5,11 @@ import type { ClaimPhase } from "../hooks/vm-events-context";
 import { CLAIM_PHASE_COPY } from "../claim-phase-copy";
 import type { PhaseKey, PhaseProgress } from "./derive-phase-progress";
 import { activePhaseIndex } from "./state-card-helpers";
+import {
+  RACK_SCAN_DELAYS,
+  RACK_SCAN_PERIOD_SEC,
+  RESERVED_SLOT_INDEX,
+} from "./provision-rack";
 
 /**
  * The starting-now booting visual: a GridLoader pill with a phase-aware
@@ -67,7 +72,7 @@ export function BootingVisual({ progress, claimPhase }: BootingVisualProps) {
   const headline = pillHeadline(progress, claimPhase);
 
   return (
-    <div className="relative flex w-full flex-col items-center justify-center gap-8 select-none [clip-path:inset(0_0_-200px_0)]">
+    <div className="relative flex w-full flex-col items-center justify-center gap-12 select-none [clip-path:inset(-24px_0_-200px_0)]">
       <div className="flex items-center gap-2 rounded-full border border-foreground/10 bg-background px-3.5 py-1.5 shadow-[0_4px_20px_-4px_rgb(0_0_0_/_0.12)]">
         <GridLoader />
         <span
@@ -101,6 +106,11 @@ export function BootingVisual({ progress, claimPhase }: BootingVisualProps) {
         @keyframes vm-breathe {
           0%, 100% { opacity: 0.5; }
           50% { opacity: 1; }
+        }
+        @keyframes vm-rack-scan {
+          0%, 100% { opacity: 0; }
+          8% { opacity: 1; }
+          22% { opacity: 0; }
         }
       `}</style>
     </div>
@@ -162,36 +172,53 @@ function BrowserChrome({ showUrl = false }: { showUrl?: boolean }) {
   );
 }
 
-/** Phase 0: pulsing central orb with a constellation of breathing dots. */
+/**
+ * Phase 0: 8×6 capacity rack. A chart-1 scanner highlight sweeps across
+ * the muted tiles while one persistent chart-1 tile sits at
+ * RESERVED_SLOT_INDEX, reading as "your sandbox slot is claimed."
+ *
+ * Padding (`px-8 py-5`) and gap (`gap-2`) match `InstallContent` so the
+ * provision and install grids share the same outer rhythm. Tiles are
+ * sized by the grid (no `aspect-square`) so 48 cells fit cleanly inside
+ * the card's 4/3 aspect — the 8/6 grid ratio matches the card's 4/3, so
+ * tiles come out close to square.
+ */
 function ProvisionContent() {
-  // Stable pseudo-random delays for the 8 outer dots.
-  const dotDelays = [0.0, 0.3, 0.6, 0.9, 1.2, 1.5, 0.4, 1.0];
   return (
     <div className="flex h-full flex-col">
       <BrowserChrome />
-      <div className="relative flex flex-1 items-center justify-center">
-        {dotDelays.map((delay, i) => {
-          const angle = (i * Math.PI * 2) / dotDelays.length;
-          const radius = 80; // px
-          const x = Math.cos(angle) * radius;
-          const y = Math.sin(angle) * radius;
-          return (
-            <div
-              key={i}
-              className={cn("absolute size-2 rounded-full", MUTED_2)}
-              style={{
-                transform: `translate(${x}px, ${y}px)`,
-                animation: `vm-breathe 3s ease-in-out ${delay}s infinite`,
-              }}
-            />
-          );
-        })}
-        <div
-          className="size-12 rounded-full bg-chart-1/[0.10]"
-          style={{
-            animation: "vm-breathe 2.4s ease-in-out infinite",
-          }}
-        />
+      <div className="flex flex-1 px-8 py-5">
+        <div className="grid h-full w-full grid-cols-8 grid-rows-6 gap-2">
+          {RACK_SCAN_DELAYS.map((delay, i) => {
+            if (i === RESERVED_SLOT_INDEX) {
+              return (
+                <div
+                  key={i}
+                  className="rounded-md bg-chart-1/[0.55]"
+                  style={{
+                    animation: "vm-breathe 2.4s ease-in-out infinite",
+                  }}
+                />
+              );
+            }
+            // `delay` is `number | null`; the `null` entry sits at RESERVED_SLOT_INDEX,
+            // which the early-return above already handled — so on this branch it's
+            // always a number. Narrow with an assertion rather than a `?? 0` fallback
+            // (which would silently substitute 0 for a case that cannot occur).
+            const scanDelay = delay as number;
+            return (
+              <div key={i} className={cn("relative rounded-md", MUTED_2)}>
+                <div
+                  className="absolute inset-0 rounded-md bg-chart-1/40 opacity-0"
+                  style={{
+                    animation: `vm-rack-scan ${RACK_SCAN_PERIOD_SEC}s ease-in-out infinite`,
+                    animationDelay: `${scanDelay}s`,
+                  }}
+                />
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

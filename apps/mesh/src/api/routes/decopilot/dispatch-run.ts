@@ -52,6 +52,7 @@ import {
   buildBasePlatformPrompt,
   buildDecopilotAgentPrompt,
   buildRepoEnvironmentPrompt,
+  buildTodoWritePrompt,
   DEFAULT_MAX_TOKENS,
   DEFAULT_THREAD_TITLE,
   DEFAULT_WINDOW_SIZE,
@@ -820,6 +821,7 @@ async function prepareRun(
           promptsBlock,
           agentsBlock,
           connectionsBlock,
+          buildTodoWritePrompt(),
           agentPrompt,
         ].filter((s): s is string => Boolean(s?.trim()));
 
@@ -1052,7 +1054,7 @@ async function prepareRun(
                       // providers (e.g. OpenRouter), so we append them as user
                       // content which is universally supported.
                       // biome-ignore lint: complex AI SDK generic types
-                      let injectedMessages: any;
+                      let withImages: any = stepMessages;
                       if (pendingImages.length > 0) {
                         const imageParts = pendingImages.splice(
                           0,
@@ -1088,11 +1090,17 @@ async function prepareRun(
                             });
                           }
                         }
-                        injectedMessages = [
+                        withImages = [
                           ...stepMessages,
                           { role: "user", content },
                         ];
                       }
+
+                      // The agent sees its own todo_write tool calls live inside
+                      // the loop — no per-step manipulation. Cross-turn pruning
+                      // (keeping only the latest todo_write) happens once at
+                      // HTTP-request entry in `processConversation`.
+                      const messagesForStep = withImages;
 
                       const hasEnableTool = connectionsBlockTools.length > 0;
                       let activeToolNames = [
@@ -1125,9 +1133,7 @@ async function prepareRun(
 
                       return {
                         activeTools: activeToolNames as (keyof typeof tools)[],
-                        ...(injectedMessages && {
-                          messages: injectedMessages,
-                        }),
+                        messages: messagesForStep,
                         ...(forcedToolName && {
                           toolChoice: {
                             type: "tool" as const,

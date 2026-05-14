@@ -1,111 +1,41 @@
 ---
 title: Store
-description: Descubra e instale servidores MCP a partir da Deco Store e registros da comunidade
+description: Escolha quais registries alimentam seu catálogo de connections
 icon: Store
 ---
 
 import Callout from "../../../../components/ui/Callout.astro";
 
-## O que e a Store?
+## O que é a Store?
 
-A **Store** e o marketplace integrado do deco Studio para descobrir e instalar servidores MCP. Ela agrega itens de multiplos registros em uma experiencia de navegacao unificada, para que voce possa encontrar e adicionar novas capacidades sem sair da plataforma.
+A **Store** é onde você escolhe quais **registries** populam seu catálogo de [Connections](/pt-br/studio/connections). Um registry é uma fonte de MCP servers; o catálogo que você vê na página de Connections é a união de todos os registries que você habilitou.
 
-Quando voce precisa de uma capacidade que ainda nao esta instalada — uma integracao com Shopify, um conector de banco de dados, um servico de email — a Store e onde voce encontra.
+Você encontra a Store em **Settings → Store**.
 
-## Fontes de Registro
+<Callout type="info">
+  A Store não é onde você instala uma connection — isso acontece na página de **Connections**. A Store apenas controla quais MCPs aparecem lá.
+</Callout>
 
-A Store puxa de multiplos **registros** — conexoes MCP que servem catalogos de outros MCPs. Tres tipos de registros existem:
+## Tipos de registry
 
 ### Deco Store
 
-O registro oficial curado. Sempre habilitado. Contem integracoes verificadas e confiaveis, testadas para compatibilidade com o deco Studio.
+O registry oficial e curado. Sempre disponível. Integrações verificadas e testadas para compatibilidade com o deco Studio. Esta é a fonte para a maioria das integrações comuns.
 
-Este e o melhor primeiro lugar para buscar ao procurar integracoes comuns.
+### Community
 
-### Registro da Comunidade
+Um catálogo mais amplo, vindo da comunidade (o MCP Registry). Útil quando a Deco Store não tem o que você precisa. Qualidade e manutenção variam.
 
-Um catalogo mais amplo com mais variedade, originado da comunidade. Util quando a Deco Store nao tem o que voce precisa. Espere mais variacao em qualidade e manutencao.
+### Private registries
 
-Resultados da comunidade carregam apos os resultados da Deco Store, entao itens curados aparecem primeiro.
+Sua organização pode conectar seu próprio MCP registry privado — útil para ferramentas proprietárias ou serviços internos que não devem ser compartilhados externamente. Clique em **Add registry** para conectar um.
 
-### Registros Privados
+## Habilitando e desabilitando registries
 
-Organizacoes podem adicionar conexoes de registro customizadas para servidores MCP internos nao publicados publicamente. Uteis para ferramentas proprietarias ou servicos internos que sua equipe precisa mas nao devem ser compartilhados externamente.
-
-Registros privados podem ser habilitados ou desabilitados por organizacao atraves das configuracoes da Store.
-
-## Como a Descoberta Funciona
-
-Quando voce navega na Store, o deco Studio consulta cada registro habilitado em paralelo:
-
-1. **Registros nao-comunitarios carregam primeiro** — Deco Store e registros privados tem prioridade
-2. **Resultados da comunidade carregam depois** — aparecem apos todos os resultados prioritarios estarem prontos
-3. **Itens sao marcados com metadados de origem** — voce pode ver de qual registro cada resultado veio
-4. **Paginacao** — resultados carregam em paginas com scroll infinito
-
-Cada item de registro contem:
-- **Metadados do servidor**: nome, descricao, icone, informacoes do publicador
-- **Endpoints de transporte**: URLs remotas (HTTP/SSE/Websocket) e/ou comandos de pacote (STDIO)
-- **Requisitos de autenticacao**: configuracao OAuth, API keys, ou sem autenticacao
-- **Listagem de ferramentas**: quais capacidades o servidor MCP expoe
-- **Status de verificacao**: se o item foi verificado pelo registro
-
-## Instalando a partir da Store
-
-Instalar um MCP da Store cria uma [Conexao](/pt-br/studio/connections). O fluxo:
-
-1. **Encontre** o item via busca ou navegacao
-2. **Inspecione** detalhes completos — ferramentas expostas, requisitos de autenticacao, opcoes de transporte
-3. **Selecione o transporte** — prefira HTTP/SSE/Websocket em vez de STDIO para producao
-4. **Crie a conexao** — o deco Studio extrai o payload da conexao do item do registro
-5. **Verifique** — teste a conexao para confirmar que esta saudavel
-
-<Callout type="warning">
-  Credenciais e segredos nunca sao adivinhados. Se um servidor MCP requer OAuth ou API key, voce sera solicitado a completar o fluxo de autenticacao apos a instalacao.
-</Callout>
-
-### Selecao de Transporte
-
-Quando um servidor MCP oferece multiplas opcoes de transporte:
-
-| Transporte | Quando Usar |
-|-----------|-------------|
-| **HTTP** | Preferido para producao — confiavel, stateless |
-| **SSE** | Bom para respostas em streaming |
-| **Websocket** | Bom para comunicacao bidirecional |
-| **STDIO** | Apenas desenvolvimento local — pode nao estar disponivel em producao |
-
-## Gerenciando Configuracoes da Store
-
-A configuracao da Store e escopada por organizacao. Voce pode:
-
-### Habilitar/Desabilitar Registros
-
-Alternar quais registros aparecem na sua Store. Cada registro pode ser habilitado ou desabilitado independentemente. Registros nao explicitamente configurados ficam habilitados por padrao.
-
-### Bloquear MCPs Especificos
-
-Adicione servidores MCP a uma lista de bloqueio para ocultá-los da Store da sua organizacao. Util para:
-- Remover MCPs que conflitam com ferramentas internas
-- Aplicar politicas organizacionais sobre quais integracoes sao permitidas
-- Reduzir ruido de itens irrelevantes
-
-## Avaliando Itens da Store
-
-Ao navegar na Store, considere:
-
-**Adequacao de capacidade**: O servidor MCP expoe as ferramentas especificas que voce precisa? Verifique a listagem de ferramentas, nao apenas a descricao.
-
-**Confianca e manutencao**: Prefira itens verificados da Deco Store quando disponiveis. Para itens da comunidade, verifique informacoes do publicador e sinais de manutencao.
-
-**Requisitos de autenticacao**: Note se o item requer OAuth, API keys, ou funciona sem autenticacao. Algumas integracoes podem precisar de aprovacao de administrador para configurar.
-
-**Opcoes de transporte**: Itens com endpoints HTTP sao mais simples de implantar do que pacotes STDIO. Verifique o que esta disponivel antes de instalar.
+Cada registry tem um switch. Desligue um e seus MCPs param de aparecer no seu catálogo de Connections. As connections existentes que você já instalou daquele registry continuam funcionando — apenas o catálogo é afetado.
 
 ---
 
-## Proximos Passos
+## Próximo
 
-<Callout type="info">
-Apos instalar um MCP da Store, ele se torna uma [Conexao](/pt-br/studio/connections). Voce pode entao adicioná-lo a [MCPs Virtuais](/pt-br/studio/virtual-mcps), [Projetos](/pt-br/studio/projects) ou [Agentes](/pt-br/studio/agents) para disponibilizar suas ferramentas nos seus fluxos de trabalho.
-</Callout>
+Depois de habilitar os registries que quiser, vá para [**Settings → Connections**](/pt-br/studio/connections) para navegar e instalar MCPs a partir deles.

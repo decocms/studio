@@ -16,7 +16,8 @@ import {
 } from "@/web/hooks/use-preferences.ts";
 import { toTitleCase } from "../message/parts/tool-call-part/utils.tsx";
 import { stripMcpServerPrefix } from "@/web/lib/tool-namespace";
-import { HighlightCard, Pagination } from "./card";
+import { Pagination } from "./pagination";
+import { CollapsibleHighlight } from "./collapsible-highlight";
 
 // ============================================================================
 // Types
@@ -149,6 +150,11 @@ function ApprovalPrompt({ approvals, onRespond }: ApprovalPromptProps) {
     if (safeIndex < approvals.length - 1) setActiveIndex(safeIndex + 1);
   };
 
+  const chipLabel =
+    approvals.length === 1
+      ? "Approval needed"
+      : `${approvals.length} approvals pending`;
+
   const footerLeft = (
     <div className="flex items-center gap-2">
       <ApprovalLevelSelect onYolo={handleAcceptAll} />
@@ -195,13 +201,16 @@ function ApprovalPrompt({ approvals, onRespond }: ApprovalPromptProps) {
   );
 
   return (
-    <HighlightCard
+    <CollapsibleHighlight
+      icon={<ShieldTick size={14} />}
+      label={chipLabel}
       title={current.friendlyName}
+      defaultExpanded={true}
       footerLeft={footerLeft}
       footerRight={footerRight}
     >
       <ApprovalDetail input={current.input} />
-    </HighlightCard>
+    </CollapsibleHighlight>
   );
 }
 
@@ -211,7 +220,7 @@ function ApprovalPrompt({ approvals, onRespond }: ApprovalPromptProps) {
 
 function ApprovalLoadingUI() {
   return (
-    <div className="flex items-center gap-2 p-4 border border-dashed rounded-lg bg-accent/50 w-[calc(100%-16px)] max-w-[584px] mx-auto mb-2">
+    <div className="flex items-center gap-2 p-4 border border-dashed rounded-lg bg-accent/50 w-[calc(100%-16px)] max-w-[640px] mx-auto mb-2">
       <ShieldTick className="size-5 text-muted-foreground shimmer" />
       <span className="text-sm text-muted-foreground shimmer">
         Preparing approval request...

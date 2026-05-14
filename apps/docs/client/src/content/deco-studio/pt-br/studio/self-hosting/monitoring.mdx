@@ -1,0 +1,79 @@
+---
+title: Monitoramento
+description: Como persistir e consultar dados de monitoramento em deployments self-hosted
+icon: Activity
+---
+
+import Callout from "../../../../../components/ui/Callout.astro";
+
+## Como o monitoramento funciona
+
+O deco Studio inclui um exporter do OpenTelemetry que grava arquivos NDJSON no diretório `DATA_DIR`. Os dados são organizados em três subdiretórios:
+
+- **`/metrics`** — métricas de sistema e da aplicação
+- **`/logs`** — entradas de log estruturadas para cada invocação de ferramenta
+- **`/traces`** — traces distribuídos das operações MCP
+
+Os arquivos são particionados por organização com a seguinte estrutura de caminho:
+
+```
+{DATA_DIR}/{type}/{org_id}/YYYY/MM/DD/HH/{uuid}.ndjson
+```
+
+Uma política de retenção de 30 dias com limpeza automática mantém o uso de disco sob controle.
+
+## Persistindo dados de monitoramento (sidecar S3)
+
+Por padrão, os dados de monitoramento ficam no sistema de arquivos local. Para sobreviver a reinicializações de container e habilitar armazenamento centralizado, configure um processo sidecar que sincronize periodicamente o `DATA_DIR` com o S3:
+
+```bash
+# Example: sync monitoring data to S3 every 5 minutes
+aws s3 sync $DATA_DIR/metrics s3://your-bucket/metrics
+aws s3 sync $DATA_DIR/logs s3://your-bucket/logs
+aws s3 sync $DATA_DIR/traces s3://your-bucket/traces
+```
+
+<Callout type="tip">
+  No Kubernetes, execute isso como um container sidecar compartilhando um volume com o container principal do deco Studio.
+</Callout>
+
+## Opção A: ClickHouse (recomendado)
+
+Para deployments em produção, o ClickHouse fornece agregações rápidas e escaláveis sobre os dados de monitoramento.
+
+1. Defina a variável de ambiente `CLICKHOUSE_URL` para o endpoint HTTP do seu ClickHouse.
+2. Crie tabelas chamadas `monitoring_logs` e `monitoring_metrics` na sua instância do ClickHouse.
+3. Quando configurado, a UI de monitoramento consulta o ClickHouse diretamente via HTTP.
+
+```bash
+CLICKHOUSE_URL=https://your-clickhouse-instance:8123
+```
+
+<Callout type="info">
+  ClickHouse é a melhor escolha para produção: lida com grandes volumes de forma eficiente, suporta agregações rápidas e possui integração nativa com S3 para carregar arquivos NDJSON.
+</Callout>
+
+## Opção B: DuckDB + S3
+
+Para deployments menores que querem evitar executar um banco de dados separado, você pode usar DuckDB com armazenamento montado via S3.
+
+1. Monte seu bucket S3 como um sistema de arquivos local usando uma ferramenta como **s3fs**, **goofys** ou **mountpoint-s3**.
+2. Defina `DATA_DIR` para o caminho montado.
+3. O deco Studio grava arquivos NDJSON diretamente no mount, e o engine DuckDB embutido lê do mesmo caminho.
+
+```bash
+# Mount S3 bucket
+mountpoint-s3 your-bucket /mnt/monitoring
+
+# Point DATA_DIR to the mount
+DATA_DIR=/mnt/monitoring
+```
+
+Não é necessário definir `CLICKHOUSE_URL` — o DuckDB consulta os arquivos NDJSON em disco.
+
+## Variáveis de ambiente
+
+| Variável | Padrão | Descrição |
+|----------|---------|-------------|
+| `DATA_DIR` | `~/deco` | Diretório base para os arquivos NDJSON de monitoramento |
+| `CLICKHOUSE_URL` | *(não definida)* | Endpoint HTTP do ClickHouse. Quando definida, a UI de monitoramento usa ClickHouse em vez de DuckDB |
