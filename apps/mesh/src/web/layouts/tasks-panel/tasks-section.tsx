@@ -146,7 +146,9 @@ export function TasksSection({
   const defaultMode: SectionMode = activeTaskId ? "list" : "new";
   const mode: SectionMode =
     override && override.forTask === activeTaskId ? override.mode : defaultMode;
-  const setMode = (next: SectionMode | ((prev: SectionMode) => SectionMode)) => {
+  const setMode = (
+    next: SectionMode | ((prev: SectionMode) => SectionMode),
+  ) => {
     const resolved = typeof next === "function" ? next(mode) : next;
     setOverride({ mode: resolved, forTask: activeTaskId });
   };

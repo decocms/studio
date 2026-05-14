@@ -25,6 +25,7 @@ import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { TileBoard } from "@/web/components/home/tiles/tile-board";
 import { useHomeBoard } from "@/web/components/home/tiles/use-home-board";
+import { cn } from "@deco/ui/lib/utils.ts";
 import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
 import { HomeBackground } from "./background";
 
@@ -112,11 +113,10 @@ export function HomePage() {
         <HomeBackground />
         <div className="flex-1 relative flex flex-col overflow-y-auto">
           <div
-            className={
-              hasTiles
-                ? "relative flex flex-col items-center px-10 pt-48 pb-4"
-                : "relative flex-1 flex flex-col items-center justify-center px-10 pb-4"
-            }
+            className={cn(
+              "relative flex flex-col items-center px-10 pb-4",
+              hasTiles ? "pt-48" : "flex-1 justify-center",
+            )}
           >
             <div className="flex flex-col items-center w-full max-w-[672px]">
               <div className="text-center mb-10">

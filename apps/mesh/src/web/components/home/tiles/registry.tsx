@@ -20,7 +20,7 @@ export type PresetTileType =
 
 export const PRESET_DEFAULT_SIZE = "L" as const;
 
-export const TILE_CATALOG: TileDefinition[] = [
+const TILE_CATALOG: TileDefinition[] = [
   {
     type: "studio.brand-context",
     source: "system",

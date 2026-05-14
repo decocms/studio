@@ -171,14 +171,3 @@ export function insertTile(
 export function removeTile(tiles: TileInstance[], id: string): TileInstance[] {
   return compactBoard(tiles.filter((t) => t.id !== id));
 }
-
-export function pixelDeltaToCellDelta(
-  pixelDelta: { x: number; y: number },
-  cellWidth: number,
-  cellHeight: number,
-): { dx: number; dy: number } {
-  return {
-    dx: Math.round(pixelDelta.x / cellWidth),
-    dy: Math.round(pixelDelta.y / cellHeight),
-  };
-}

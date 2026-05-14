@@ -45,5 +45,3 @@ export const SIZE_LABELS: Record<TileSizeKey, string> = {
 };
 
 export const ALL_SIZES: TileSizeKey[] = ["S", "M", "L", "XL", "W", "B"];
-
-export const MOBILE_BREAKPOINT_COLS = 1;

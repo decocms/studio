@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, type ReactNode } from "react";
 
 type UpdateTileConfig = (id: string, patch: Record<string, unknown>) => void;
 
@@ -16,8 +16,4 @@ export function TileConfigUpdateProvider({
       {children}
     </TileConfigUpdateContext.Provider>
   );
-}
-
-export function useTileConfigUpdate(): UpdateTileConfig | null {
-  return useContext(TileConfigUpdateContext);
 }
