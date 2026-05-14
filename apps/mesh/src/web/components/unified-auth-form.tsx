@@ -619,7 +619,7 @@ export function UnifiedAuthForm({
       )}
 
       {/* View toggle links */}
-      <div>
+      <div className="text-center">
         {isForgotPassword ? (
           <Button
             type="button"
@@ -636,19 +636,11 @@ export function UnifiedAuthForm({
             variant="link"
             onClick={() => switchView(isSignUp ? "signIn" : "signUp")}
             disabled={isLoading}
-            className="text-sm text-muted-foreground hover:text-foreground px-0"
+            className="text-sm text-muted-foreground hover:text-foreground"
           >
-            {isSignUp ? (
-              <>
-                Already have an account?{" "}
-                <span className="text-[#8CAA25]">Sign in</span>
-              </>
-            ) : (
-              <>
-                Don't have an account?{" "}
-                <span className="text-[#8CAA25]">Sign up</span>
-              </>
-            )}
+            {isSignUp
+              ? "Already have an account? Sign in"
+              : "Don't have an account? Sign up"}
           </Button>
         ) : null}
       </div>
