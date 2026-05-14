@@ -1,4 +1,5 @@
 import { existsSync, readdirSync } from "node:fs";
+import { isSyntheticBranch } from "../constants";
 import type { Config } from "../types";
 import { spawnSetupStep } from "./spawn-step";
 
@@ -90,6 +91,12 @@ async function runNetworkStep(cmd: string, deps: CloneDeps): Promise<number> {
   return 1;
 }
 
+// `git ls-remote --exit-code` returns 2 when the remote was reachable but no
+// matching ref was found. Any other non-zero exit is a real failure (auth,
+// DNS, TLS, …) that we surface to the caller instead of silently falling
+// through to a fork-from-default fallback.
+const LS_REMOTE_NO_MATCH = 2;
+
 /** Resolves to exit code (0 on success). Emits chunks via `onChunk`. */
 export async function spawnClone(deps: CloneDeps): Promise<number> {
   const { config } = deps;
@@ -105,8 +112,44 @@ export async function spawnClone(deps: CloneDeps): Promise<number> {
     return 1;
   }
 
-  const gc = `git -c safe.directory='*' -c credential.helper=`;
+  const gc = `git -c safe.directory='*' -c credential.helper= -c http.connectTimeout=10 -c http.lowSpeedLimit=1 -c http.lowSpeedTime=10`;
   const dir = config.repoDir;
+
+  const requestedBranch = config.git?.repository?.branch;
+  const branch =
+    requestedBranch && !isSyntheticBranch(requestedBranch)
+      ? requestedBranch
+      : null;
+
+  // Decide which branch to put the working tree on. `ls-remote --exit-code`
+  // gives deterministic semantics that replace the old silent "try fetch,
+  // fall through on any failure" probe:
+  //   0   → branch exists on origin → clone it directly with --branch
+  //   2   → origin reachable but branch absent → clone default, fork locally
+  //   any → real failure → surface to caller
+  let branchOnRemote: string | null = null;
+  let branchToForkLocally: string | null = null;
+  if (branch) {
+    const probe = await runNetworkStep(
+      `${gc} ls-remote --exit-code --heads ${cloneUrl} ${branch}`,
+      deps,
+    );
+    if (probe === 0) {
+      branchOnRemote = branch;
+    } else if (probe === LS_REMOTE_NO_MATCH) {
+      deps.onChunk(
+        "setup",
+        `[clone] branch '${branch}' not on remote; cloning default and forking locally\r\n`,
+      );
+      branchToForkLocally = branch;
+    } else {
+      deps.onChunk(
+        "setup",
+        `\r\n[clone] ls-remote failed (exit ${probe}); aborting clone\r\n`,
+      );
+      return probe;
+    }
+  }
 
   // When repoDir already has files (e.g. .decocms/daemon.json written before
   // the first clone) but no .git, `git clone` would fail with "already exists
@@ -121,13 +164,35 @@ export async function spawnClone(deps: CloneDeps): Promise<number> {
       const code = await runStep(step, deps);
       if (code !== 0) return code;
     }
+    const fetchRef = branchOnRemote
+      ? `+refs/heads/${branchOnRemote}:refs/remotes/origin/${branchOnRemote}`
+      : "HEAD";
     const fetchCode = await runNetworkStep(
-      `${gc} -C ${dir} fetch --depth 1 origin HEAD`,
+      `${gc} -C ${dir} fetch --depth 1 origin ${fetchRef}`,
       deps,
     );
     if (fetchCode !== 0) return fetchCode;
-    return runStep(`${gc} -C ${dir} checkout FETCH_HEAD`, deps);
+    const checkoutCmd = branchOnRemote
+      ? `${gc} -C ${dir} checkout -B ${branchOnRemote} refs/remotes/origin/${branchOnRemote}`
+      : `${gc} -C ${dir} checkout FETCH_HEAD`;
+    const checkoutCode = await runStep(checkoutCmd, deps);
+    if (checkoutCode !== 0) return checkoutCode;
+    if (branchToForkLocally) {
+      return runStep(
+        `${gc} -C ${dir} checkout -B ${branchToForkLocally}`,
+        deps,
+      );
+    }
+    return 0;
   }
 
-  return runNetworkStep(`${gc} clone --depth 1 ${cloneUrl} ${dir}`, deps);
+  const cloneCmd = branchOnRemote
+    ? `${gc} clone --depth 1 --branch ${branchOnRemote} ${cloneUrl} ${dir}`
+    : `${gc} clone --depth 1 ${cloneUrl} ${dir}`;
+  const cloneCode = await runNetworkStep(cloneCmd, deps);
+  if (cloneCode !== 0) return cloneCode;
+  if (branchToForkLocally) {
+    return runStep(`${gc} -C ${dir} checkout -B ${branchToForkLocally}`, deps);
+  }
+  return 0;
 }
