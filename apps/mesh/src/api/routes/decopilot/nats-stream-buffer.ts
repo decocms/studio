@@ -161,14 +161,12 @@ export class NatsStreamBuffer implements StreamBuffer {
     taskId: string,
     signal?: AbortSignal,
     opts?: {
-      closeOnDone?: boolean;
       deliverPolicy?: "all" | "new";
     },
   ): Promise<ReadableStream | null> {
     const js = this.js;
     if (!js) return null;
 
-    const closeOnDone = opts?.closeOnDone ?? true;
     const deliverPolicy =
       opts?.deliverPolicy === "new" ? DeliverPolicy.New : DeliverPolicy.All;
     const subj = streamSubject(taskId);
@@ -223,15 +221,10 @@ export class NatsStreamBuffer implements StreamBuffer {
           try {
             const data = JSON.parse(decoder.decode(msg.data));
             if (data.done) {
-              if (closeOnDone) {
-                cleanup();
-                controller.close();
-                return;
-              }
-              // Persistent mode: a run ended, but the subscription stays
-              // open for the next run on this thread. Clients detect run
-              // boundaries from the AI-SDK "finish" parts already in the
-              // chunk stream, not from the JetStream sentinel.
+              // A run ended, but the subscription stays open for the next
+              // run on this thread. Clients detect run boundaries from the
+              // AI-SDK `{type: "finish"}` chunk in the data stream, not
+              // from the JetStream sentinel — so we swallow it here.
               continue;
             }
             if (data.p) {

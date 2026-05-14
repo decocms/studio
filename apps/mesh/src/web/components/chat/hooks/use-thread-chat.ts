@@ -3,7 +3,7 @@
  *
  *   sendMessage  → POST /api/:org/decopilot/threads/:threadId/messages
  *                  (fire-and-forget, 202 { taskId })
- *   subscribe    → GET  /api/:org/decopilot/attach/:threadId?persistent=true
+ *   subscribe    → GET  /api/:org/decopilot/attach/:threadId
  *                  (one long-lived SSE per threadId — survives every run)
  *
  * The persistent /attach is the only source of assistant chunks. Sending
@@ -216,7 +216,7 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
       if (!threadId) return () => {};
       const abort = new AbortController();
       void runPersistentLoop({
-        url: `/api/${encodeURIComponent(orgSlug)}/decopilot/attach/${encodeURIComponent(threadId)}?persistent=true`,
+        url: `/api/${encodeURIComponent(orgSlug)}/decopilot/attach/${encodeURIComponent(threadId)}`,
         signal: abort.signal,
         onChunk: (chunk) => handleChunkFanOut(chunk),
         onError: (err) => {

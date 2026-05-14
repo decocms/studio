@@ -167,7 +167,7 @@ describe("NatsStreamBuffer", () => {
       expect(result).toBeNull();
     });
 
-    it("yields buffered chunks and closes on done marker", async () => {
+    it("yields buffered chunks and closes when the subscription ends", async () => {
       const { sub, push, end } = createControlledSubscription();
       const buffer = bufferWith(() => Promise.resolve(sub));
 
@@ -176,7 +176,6 @@ describe("NatsStreamBuffer", () => {
 
       push(encodeMsg({ p: "chunk-1" }));
       push(encodeMsg({ p: "chunk-2" }));
-      push(encodeMsg({ done: true }));
       end();
 
       const chunks = await readAll(stream!);
@@ -218,7 +217,6 @@ describe("NatsStreamBuffer", () => {
       expect(second.done).toBe(false);
       expect(second.value).toBe("after-gap");
 
-      push(encodeMsg({ done: true }));
       end();
       const tail = await reader.read();
       expect(tail.done).toBe(true);
@@ -234,7 +232,6 @@ describe("NatsStreamBuffer", () => {
       push(encodeMsg({ p: "ok-1" }));
       push({ data: new TextEncoder().encode("not-json{{{") });
       push(encodeMsg({ p: "ok-2" }));
-      push(encodeMsg({ done: true }));
       end();
 
       const chunks = await readAll(stream!);
@@ -263,15 +260,15 @@ describe("NatsStreamBuffer", () => {
       expect(stream).toBeNull();
     });
 
-    it("persistent mode keeps tailing past the done sentinel", async () => {
+    it("swallows the {done} sentinel and keeps tailing across runs", async () => {
       // Subscribe-model behavior: one connection covers multiple runs in
-      // the thread. The {done} marker between runs must not close it.
+      // the thread. The producer's {done} marker between runs must not
+      // surface to the client — clients detect run boundaries via the
+      // AI-SDK `{type: "finish"}` chunk inside the data stream.
       const { sub, push, end } = createControlledSubscription();
       const buffer = bufferWith(() => Promise.resolve(sub));
 
-      const stream = await buffer.createTailStream("task-1", undefined, {
-        closeOnDone: false,
-      });
+      const stream = await buffer.createTailStream("task-1");
       const reader = stream!.getReader();
 
       // Run 1 chunks + done.

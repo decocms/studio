@@ -736,9 +736,8 @@ export async function createApp(options: CreateAppOptions = {}) {
       init: async () => {},
       // Test/no-NATS stub: drain the stream so `createUIMessageStream`'s
       // `execute` actually runs to completion. Nothing is buffered;
-      // `createTailStream` returns null so HTTP subscribe paths surface a
-      // 503 to the client. The legacy `/stream` route falls back to
-      // serving `uiStream` directly via dispatchRun.
+      // `createTailStream` returns null so /attach surfaces a 204 / 503
+      // to the client when NATS isn't available.
       pump: (stream: ReadableStream) => {
         void (async () => {
           const reader = stream.getReader();

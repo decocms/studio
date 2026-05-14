@@ -39,11 +39,12 @@ export interface StreamBuffer {
    * Subscribe to the per-task subject and stream chunks as a ReadableStream.
    * Returns null when JetStream is unavailable.
    *
+   * The stream stays open across runs — the producer's `{done: true}`
+   * sentinel is swallowed server-side, and clients detect run boundaries
+   * from the AI-SDK `{type: "finish"}` chunk in the data stream itself.
+   * One open connection per (tab, thread) covers every subsequent run.
+   *
    * Options:
-   * - `closeOnDone` (default `true`): close the stream when the producer
-   *   emits the `{done: true}` sentinel. Set to `false` for the
-   *   subscribe-model `/attach` endpoint so the same connection stays open
-   *   across multiple runs in the same thread.
    * - `deliverPolicy` (default `"all"`): `"all"` replays from the start of
    *   the subject (catch up to in-flight runs); `"new"` only delivers
    *   chunks published after the subscription is established (use when the
@@ -54,7 +55,6 @@ export interface StreamBuffer {
     taskId: string,
     signal?: AbortSignal,
     opts?: {
-      closeOnDone?: boolean;
       deliverPolicy?: "all" | "new";
     },
   ): Promise<ReadableStream | null>;

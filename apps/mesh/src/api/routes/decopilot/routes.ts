@@ -177,183 +177,20 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   });
 
   // ============================================================================
-  // Stream Endpoint (legacy — request-response shape)
-  // ============================================================================
-  //
-  // DEPRECATED. Use `POST /:org/decopilot/threads/:threadId/messages`
-  // (fire-and-forget) + `GET /:org/decopilot/attach/:threadId?persistent=true`
-  // (long-lived subscription) instead. Kept for backwards compatibility
-  // with the existing chat hook until it migrates.
-  //
-  // Internally now identical to the subscribe model: dispatchRun starts the
-  // pump, then we open a one-shot tail subscription on the same JetStream
-  // subject and serve it as SSE. This means even legacy clients survive
-  // proxy/tab-close cuts cleanly (next /attach hits a hot JetStream tail).
-
-  app.post("/:org/decopilot/stream", async (c) => {
-    try {
-      const ctx = c.get("meshContext");
-
-      // 1. Validate request
-      const {
-        organization,
-        tier,
-        agent,
-        systemMessages,
-        requestMessage,
-        temperature,
-        memory: memoryConfig,
-        thread_id,
-        branch,
-        toolApprovalLevel,
-        mode,
-      } = await validateRequest(c);
-
-      const userId = ctx.auth?.user?.id;
-      if (!userId) {
-        throw new HTTPException(401, { message: "User ID is required" });
-      }
-
-      // 2. Resolve the request's tier to a concrete (credentialId, modelId).
-      const models = await resolvePerRequestModels(ctx, tier);
-
-      // 3. Check model permissions
-      const allowedModels = await fetchModelPermissions(
-        ctx.db,
-        organization.id,
-        ctx.auth.user?.role,
-      );
-
-      if (
-        allowedModels !== undefined &&
-        !checkModelPermission(
-          allowedModels,
-          models.credentialId,
-          models.thinking.id,
-        )
-      ) {
-        throw new HTTPException(403, {
-          message: "Model not allowed for your role",
-        });
-      }
-
-      const windowSize = memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE;
-      const resolvedThreadId = thread_id ?? memoryConfig?.thread_id;
-
-      // 4. Delegate to dispatchRun
-      const result = await dispatchRun(
-        {
-          messages: [...systemMessages, requestMessage],
-          models,
-          agent,
-          temperature,
-          toolApprovalLevel,
-          mode,
-          organizationId: organization.id,
-          userId,
-          taskId: resolvedThreadId,
-          windowSize,
-          branch: branch ?? null,
-        },
-        ctx,
-        { runRegistry, streamBuffer, cancelBroadcast },
-      );
-
-      posthog.capture({
-        distinctId: userId,
-        event: "chat_message_started",
-        groups: { organization: organization.id },
-        properties: {
-          organization_id: organization.id,
-          agent_id: agent,
-          mode,
-          thread_id: resolvedThreadId,
-          credential_id: models.credentialId,
-        },
-      });
-
-      // dispatchRun started the pump. Create a one-shot tail subscription
-      // (closes on the {done} sentinel) so this request returns SSE chunks
-      // for the just-started run, then completes when the run ends.
-      const tailChunkStream = await streamBuffer.createTailStream(
-        result.taskId,
-        c.req.raw.signal,
-      );
-      if (!tailChunkStream) {
-        return c.json(
-          { error: "Stream buffer unavailable — cannot serve response" },
-          503,
-        );
-      }
-      const tailStream = createUIMessageStream({
-        execute: async ({ writer }) => {
-          const reader = tailChunkStream.getReader();
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              writer.write(value);
-            }
-          } finally {
-            reader.releaseLock();
-          }
-        },
-      });
-
-      return wrapWithSseKeepalive(
-        createUIMessageStreamResponse({
-          stream: tailStream,
-          consumeSseStream: consumeStream,
-        }),
-      );
-    } catch (err) {
-      console.error("[decopilot:stream] Error", err);
-
-      if (err instanceof TierUnavailableError) {
-        return c.json({ error: err.message }, 400);
-      }
-
-      if (err instanceof HTTPException) {
-        return c.json({ error: err.message }, err.status);
-      }
-
-      if (err instanceof Error && err.name === "AbortError") {
-        console.warn("[decopilot:stream] Aborted", { error: err.message });
-        return c.json({ error: "Request aborted" }, 400);
-      }
-
-      posthog.captureException(err);
-      console.error("[decopilot:stream] Failed", {
-        error: err instanceof Error ? err.message : JSON.stringify(err),
-        stack: err instanceof Error ? err.stack : undefined,
-      });
-      return c.json(
-        { error: err instanceof Error ? err.message : JSON.stringify(err) },
-        500,
-      );
-    }
-  });
-
-  // ============================================================================
-  // Messages Endpoint — fire-and-forget run creation (subscribe model)
+  // Messages Endpoint — fire-and-forget run creation
   // ============================================================================
   //
   // POST /:org/decopilot/threads/:threadId/messages
   //
-  // Subscribe-model command: claims the run, starts the JetStream pump,
-  // and returns `202 { taskId }` in milliseconds. The response carries no
-  // SSE body — the client is expected to be listening on
-  // `GET /:org/decopilot/attach/:threadId?persistent=true` (or any
-  // /attach connection it opened earlier) to receive the run's chunks.
+  // Claims the run, starts the JetStream pump, and returns
+  // `202 { taskId }` in milliseconds. The response carries no SSE body —
+  // the client is expected to be listening on
+  // `GET /:org/decopilot/attach/:threadId` to receive the run's chunks.
   //
-  // This decouples message submission from the long-lived stream
-  // connection, so a slow proxy / tab close / mobile network blip on the
-  // subscribe side never affects the producer, and multiple clients can
-  // observe the same thread without coordinating.
-  //
-  // The threadId is required in the URL — unlike legacy /stream which
-  // accepted it in the body — because in the subscribe model the thread
-  // is the addressable resource.
+  // Decouples message submission from the long-lived stream connection,
+  // so a slow proxy / tab close / mobile network blip on the subscribe
+  // side never affects the producer, and multiple clients can observe
+  // the same thread without coordinating.
 
   app.post("/:org/decopilot/threads/:threadId/messages", async (c) => {
     try {
@@ -514,18 +351,17 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
     try {
       const { taskId, thread, organization } = await validateThreadAccess(c);
 
-      // Subscribe model: `?persistent=true` keeps the connection open across
-      // runs in this thread. The default (no query param) closes when the
-      // current run emits its `{done}` sentinel — matches legacy /attach
-      // reconnect semantics for clients that haven't migrated yet.
-      const persistent = c.req.query("persistent") === "true";
       const activeRun = runRegistry.isRunning(taskId);
 
+      // The persistent connection stays open across runs — JetStream-level
+      // `{done}` sentinels are skipped on the server, and clients detect
+      // run boundaries from the AI-SDK `{type: "finish"}` chunk in the
+      // stream. One open /attach per (tab, thread) covers every run.
       const serveTail = async (deliverPolicy: "all" | "new") => {
         const tailChunkStream = await streamBuffer.createTailStream(
           taskId,
           c.req.raw.signal,
-          { closeOnDone: !persistent, deliverPolicy },
+          { deliverPolicy },
         );
         if (!tailChunkStream) {
           return c.body(null, 204);
@@ -563,13 +399,11 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       const ctx = c.get("meshContext");
       const userId = ctx.auth?.user?.id;
 
-      // Not in_progress → no run to resume. In persistent mode, attach
-      // anyway and wait for a future POST /messages on this thread.
+      // Not in_progress → no run to resume. Attach anyway from "new" so
+      // the client picks up the next POST /messages on this thread
+      // without having to reconnect.
       if (thread.status !== "in_progress") {
-        if (persistent) {
-          return await serveTail("new");
-        }
-        return c.body(null, 204);
+        return await serveTail("new");
       }
 
       // Only the thread owner can trigger orphan resume
