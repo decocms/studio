@@ -1,9 +1,20 @@
 /**
- * Stream Core
+ * Dispatch Run
  *
- * Extracted core logic from the /stream route handler.
- * This module is HTTP-agnostic and can be invoked by both the
- * SSE endpoint and automation runners.
+ * The agent loop, decoupled from any transport. Two public entry points:
+ *
+ *   dispatchRun(input, ctx, deps)
+ *     Fire-and-forget. Claims the run, starts the JetStream pump, returns
+ *     `{ taskId }`. Subscribers receive chunks via
+ *     `streamBuffer.createTailStream(taskId)` (the `/attach` endpoint).
+ *     Requires `deps.streamBuffer`. Used by every HTTP route that
+ *     initiates work.
+ *
+ *   dispatchRunAndWait(input, ctx, deps)
+ *     Same lifecycle, but drains `uiStream` internally until the run
+ *     terminates and resolves once it's done. Used by automation paths
+ *     (DBOS workflow steps, pod-death recovery) that need to await
+ *     completion. Does not require a `streamBuffer`.
  */
 
 import type { MeshContext } from "@/core/mesh-context";
@@ -156,7 +167,7 @@ export interface AgentConfig {
   id: string;
 }
 
-export interface StreamCoreInput {
+export interface DispatchRunInput {
   messages: ChatMessage[];
   models: ModelsConfig;
   agent: AgentConfig;
@@ -170,61 +181,131 @@ export interface StreamCoreInput {
   triggerId?: string;
   windowSize?: number;
   abortSignal?: AbortSignal;
-  /**
-   * HTTP request signal from the route handler (Hono's `c.req.raw.signal`).
-   * Fires when the response consumer disconnects (proxy idle cut, hard
-   * duration cap, browser tab close). Read in `onFinish` to distinguish
-   * "the consumer went away" from "the run actually finished" — in the
-   * former case we skip the registry FINISH so the run continues
-   * server-side and the next `/attach` can hit the JetStream live-replay
-   * path instead of triggering a fresh orphan resume.
-   */
-  httpSignal?: AbortSignal | null;
   isResume?: boolean;
   /** Persisted to the thread row on first-message creation. */
   branch?: string | null;
 }
 
-export interface StreamCoreDeps {
+export interface DispatchRunDeps {
   runRegistry: RunRegistry;
   streamBuffer?: StreamBuffer;
   cancelBroadcast: CancelBroadcast;
 }
 
-export interface StreamCoreResult {
+export interface DispatchRunResult {
   taskId: string;
-  stream: ReadableStream;
 }
 
 // ============================================================================
 // Core Logic
 // ============================================================================
 
-export async function streamCore(
-  input: StreamCoreInput,
+function dispatchRunSpanAttrs(input: DispatchRunInput): Record<string, string> {
+  return {
+    "decopilot.agent.id": input.agent.id,
+    "decopilot.model.id": input.models.thinking.id,
+    "decopilot.credential.id": input.models.credentialId,
+    "decopilot.organization.id": input.organizationId,
+    "decopilot.user.id": input.userId,
+    "decopilot.thread.id": input.taskId ?? "",
+  };
+}
+
+/**
+ * Fire-and-forget: claim the run, start the JetStream pump, return
+ * `{ taskId }`. Subscribers receive chunks via
+ * `streamBuffer.createTailStream` (the `/attach` endpoint). Requires
+ * `deps.streamBuffer` to be configured; routes that need an SSE response
+ * call `createTailStream` themselves after this returns.
+ *
+ * Used by every HTTP route that initiates work (`POST /messages`,
+ * `/attach` orphan-resume, the deprecated `POST /stream`).
+ */
+export async function dispatchRun(
+  input: DispatchRunInput,
   ctx: MeshContext,
-  deps: StreamCoreDeps,
-): Promise<StreamCoreResult> {
+  deps: DispatchRunDeps,
+): Promise<DispatchRunResult> {
+  const buffer = deps.streamBuffer;
+  if (!buffer) {
+    throw new Error(
+      "dispatchRun: deps.streamBuffer is required for HTTP-initiated runs. " +
+        "Use dispatchRunAndWait for automation flows that need to await completion.",
+    );
+  }
   return traced(
-    "decopilot.streamCore",
-    (rootSpan) => streamCoreInner(input, ctx, deps, rootSpan),
-    {
-      "decopilot.agent.id": input.agent.id,
-      "decopilot.model.id": input.models.thinking.id,
-      "decopilot.credential.id": input.models.credentialId,
-      "decopilot.organization.id": input.organizationId,
-      "decopilot.user.id": input.userId,
-      "decopilot.thread.id": input.taskId,
+    "decopilot.dispatchRun",
+    async (rootSpan) => {
+      const { taskId, uiStream, registrySignal } = await prepareRun(
+        input,
+        ctx,
+        deps,
+        rootSpan,
+      );
+      buffer.pump(uiStream, taskId, registrySignal);
+      return { taskId };
     },
+    dispatchRunSpanAttrs(input),
   );
 }
 
-async function streamCoreInner(
-  input: StreamCoreInput,
+/**
+ * Drain-to-completion: claim the run, drain `uiStream` internally until
+ * the run finishes, return `{ taskId }`. The caller awaits the returned
+ * promise to know the run is done.
+ *
+ * Used by automations (DBOS workflow steps) that need to block on the
+ * agent's completion. Does not require a `streamBuffer` — automations
+ * don't have a subscriber to fan out to.
+ */
+export async function dispatchRunAndWait(
+  input: DispatchRunInput,
   ctx: MeshContext,
-  deps: StreamCoreDeps,
+  deps: DispatchRunDeps,
+): Promise<DispatchRunResult> {
+  return traced(
+    "decopilot.dispatchRunAndWait",
+    async (rootSpan) => {
+      const { taskId, uiStream } = await prepareRun(input, ctx, deps, rootSpan);
+      const reader = uiStream.getReader();
+      try {
+        while (true) {
+          const { done } = await reader.read();
+          if (done) break;
+        }
+      } finally {
+        reader.releaseLock();
+      }
+      return { taskId };
+    },
+    dispatchRunSpanAttrs(input),
+  );
+}
+
+interface PreparedRun {
+  taskId: string;
+  uiStream: ReadableStream<unknown>;
+  registrySignal: AbortSignal;
+}
+
+/**
+ * Setup phase shared by both dispatch variants. Claims the run, loads
+ * conversation history, builds tools / system prompts, and constructs
+ * `uiStream` from the AI SDK pipeline. Returns the stream to whoever
+ * called it; the caller decides how to consume it (pump for fan-out,
+ * drain for direct await).
+ *
+ * Setup-phase errors propagate out of here with the run already
+ * force-FINISHED to "failed" in the registry. Consumption-phase errors
+ * (pump publish failures, drain read failures) are handled by the
+ * consumer.
+ */
+async function prepareRun(
+  input: DispatchRunInput,
+  ctx: MeshContext,
+  deps: DispatchRunDeps,
   rootSpan: import("@opentelemetry/api").Span,
-): Promise<StreamCoreResult> {
+): Promise<PreparedRun> {
   const { runRegistry, streamBuffer } = deps;
 
   // Normalize: ensure every message has an id (runtime callers may omit it)
@@ -273,7 +354,7 @@ async function streamCoreInner(
     const windowSize = input.windowSize ?? DEFAULT_WINDOW_SIZE;
 
     if (!input.taskId) {
-      throw new Error("streamCore: taskId is required");
+      throw new Error("dispatchRun: taskId is required");
     }
 
     // 2. Load entities and create/load memory in parallel
@@ -462,14 +543,6 @@ async function streamCoreInner(
 
     let streamFinished = false;
     const pendingOps: Promise<void>[] = [];
-
-    // Set when the UI-stream-level onFinish was triggered by HTTP consumer
-    // disconnect (proxy cut, tab close) rather than a real model finish.
-    // In that case we skip the registry FINISH there and let streamText's
-    // own onFinish dispatch it later — when the model actually completes
-    // server-side. The run survives the HTTP cut, JetStream keeps buffering,
-    // and the next `/attach` hits the live-replay fast path.
-    let deferRegistryFinish = false;
 
     // Pre-load conversation (no system messages — those are built separately)
     // When resuming, requestMessage is undefined — conversation loads entirely
@@ -1081,7 +1154,6 @@ async function streamCoreInner(
               finishReason,
               request,
               response,
-              content,
             }) => {
               llmSpan.setAttribute(
                 "decopilot.llm.inputTokens",
@@ -1160,38 +1232,6 @@ async function streamCoreInner(
               });
 
               if (registrySignal.aborted) return;
-
-              // Recovery path for HTTP-cut-during-stream: the UI-stream-level
-              // onFinish ran earlier when the response was cancelled and
-              // skipped the registry FINISH. streamText kept polling until
-              // the model actually finished, and we're now seeing that real
-              // completion. Dispatch FINISH with the run's final state so
-              // the thread settles cleanly instead of leaking the registry
-              // entry until the 30-minute reaper fires.
-              if (deferRegistryFinish) {
-                deferRegistryFinish = false;
-                const finalParts = (content ?? []) as {
-                  type: string;
-                  state?: string;
-                  text?: string;
-                }[];
-                const threadStatus = resolveThreadStatus(
-                  finishReason,
-                  finalParts,
-                );
-                await runRegistry
-                  .execute({
-                    type: "FINISH",
-                    taskId: mem.thread.id,
-                    threadStatus,
-                  })
-                  .catch((e) => {
-                    console.error(
-                      "[decopilot:stream] deferred FINISH failed",
-                      e,
-                    );
-                  });
-              }
             },
             onError: async (error) => {
               const err =
@@ -1536,13 +1576,7 @@ async function streamCoreInner(
           },
         });
 
-        if (streamBuffer) {
-          writer.merge(
-            streamBuffer.relay(uiMessageStream, mem.thread.id, registrySignal),
-          );
-        } else {
-          writer.merge(uiMessageStream);
-        }
+        writer.merge(uiMessageStream);
       },
       onFinish: async ({ responseMessage, finishReason }) => {
         console.log(
@@ -1560,22 +1594,6 @@ async function streamCoreInner(
         await saveMessagesToThread(responseMessage);
 
         if (registrySignal.aborted) return;
-
-        // HTTP consumer disconnected (proxy cut, tab close): the UI-stream
-        // TransformStream fires onFinish via cancel() with whatever partial
-        // state was buffered — but the underlying streamText is still alive
-        // (registrySignal is independent from httpSignal). Defer the
-        // registry FINISH to streamText.onFinish so it dispatches with the
-        // run's actual final state instead of failing/completing
-        // prematurely. Without this defer, the registry clears immediately,
-        // the next `/attach` falls to orphan-resume, the model re-decides
-        // the tool call with a (possibly) different query, and we end up
-        // running two Gemini deep-research jobs in parallel for the same
-        // user message.
-        if (input.httpSignal?.aborted) {
-          deferRegistryFinish = true;
-          return;
-        }
 
         const threadStatus = resolveThreadStatus(
           finishReason,
@@ -1694,9 +1712,19 @@ async function streamCoreInner(
       },
     });
 
+    // Setup complete — hand the uiStream back to the dispatch variant.
+    // The caller (`dispatchRun` or `dispatchRunAndWait`) picks the
+    // consumption strategy:
+    //   - `dispatchRun` → `streamBuffer.pump(uiStream, taskId, registrySignal)`
+    //     fans the chunks out via JetStream so /attach subscribers can tail
+    //     them across runs and across tabs.
+    //   - `dispatchRunAndWait` → drains `uiStream` directly with a reader
+    //     loop and resolves when the run finishes. Used by automations
+    //     that need to await completion.
     return {
       taskId: mem.thread.id,
-      stream: uiStream,
+      uiStream,
+      registrySignal,
     };
   } catch (err) {
     closeClients?.();
@@ -1794,18 +1822,4 @@ function reconstructEnabledTools(
     }
   }
   return enabled;
-}
-
-/**
- * Consume a StreamCoreResult by draining its ReadableStream.
- * Useful for automation runs where there is no SSE consumer.
- */
-export async function consumeStreamCore(
-  result: StreamCoreResult,
-): Promise<void> {
-  const reader = result.stream.getReader();
-  while (true) {
-    const { done } = await reader.read();
-    if (done) break;
-  }
 }

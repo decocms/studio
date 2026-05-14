@@ -108,7 +108,7 @@ import {
   setAutomationRuntime,
 } from "../automations";
 import { DBOS } from "@dbos-inc/dbos-sdk";
-import { streamCore, consumeStreamCore } from "./routes/decopilot/stream-core";
+import { dispatchRunAndWait } from "./routes/decopilot/dispatch-run";
 import {
   PersistedRunConfigSchema,
   toModelsConfig,
@@ -734,8 +734,26 @@ export async function createApp(options: CreateAppOptions = {}) {
     };
     streamBuffer = {
       init: async () => {},
-      relay: (stream: ReadableStream) => stream,
-      createReplayStream: async () => null,
+      // Test/no-NATS stub: drain the stream so `createUIMessageStream`'s
+      // `execute` actually runs to completion. Nothing is buffered;
+      // `createTailStream` returns null so /attach surfaces a 204 / 503
+      // to the client when NATS isn't available.
+      pump: (stream: ReadableStream) => {
+        void (async () => {
+          const reader = stream.getReader();
+          try {
+            while (true) {
+              const { done } = await reader.read();
+              if (done) break;
+            }
+          } catch {
+            // swallow; the run's own onError handles state transitions
+          } finally {
+            reader.releaseLock();
+          }
+        })();
+      },
+      createTailStream: async () => null,
       purge: () => {},
       teardown: () => {},
     };
@@ -1145,7 +1163,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // it only writes a module-level pointer, no DBOS API calls.
   setAutomationRuntime({
     storage: automationsStorage,
-    streamCoreFn: streamCore,
+    dispatchRunFn: dispatchRunAndWait,
     meshContextFactory: automationContextFactory,
     deps: { runRegistry, cancelBroadcast },
   });
@@ -1255,7 +1273,13 @@ export async function createApp(options: CreateAppOptions = {}) {
       thread.organization_id,
     );
 
-    const result = await streamCore(
+    // Pod-death recovery: a different pod's run was claimed by us. Drain
+    // synchronously to know when the run completes server-side. We
+    // deliberately don't pass a streamBuffer here — clients reconnecting
+    // via /attach trigger their own pump via the user-initiated
+    // orphan-resume path in routes.ts; this background recovery is only
+    // for the case where no client is currently attached.
+    await dispatchRunAndWait(
       {
         messages: [],
         models: toModelsConfig(config.models),
@@ -1272,7 +1296,6 @@ export async function createApp(options: CreateAppOptions = {}) {
       resumeCtx,
       { runRegistry, cancelBroadcast },
     );
-    await consumeStreamCore(result);
   };
 
   // Wire pod death watcher → orphan recovery

@@ -29,7 +29,7 @@ import {
   OPENROUTER_CACHE_PROVIDER_OPTIONS,
   withCachedToolPrefix,
 } from "../cache-instrumentation";
-import { createLanguageModel } from "../stream-core";
+import { createLanguageModel } from "../dispatch-run";
 import { buildSystemMessages } from "../system-prompt";
 
 export const SubtaskInputSchema = z.object({

@@ -153,7 +153,7 @@ describe("NatsStreamBuffer", () => {
     expect(streamAddMock).toHaveBeenCalledTimes(1);
   });
 
-  describe("createReplayStream", () => {
+  describe("createTailStream", () => {
     function encodeMsg(payload: unknown): DeferredMsg {
       return { data: new TextEncoder().encode(JSON.stringify(payload)) };
     }
@@ -163,20 +163,19 @@ describe("NatsStreamBuffer", () => {
         getConnection: () => null,
         getJetStream: () => null,
       });
-      const result = await buffer.createReplayStream("task-1");
+      const result = await buffer.createTailStream("task-1");
       expect(result).toBeNull();
     });
 
-    it("yields buffered chunks and closes on done marker", async () => {
+    it("yields buffered chunks and closes when the subscription ends", async () => {
       const { sub, push, end } = createControlledSubscription();
       const buffer = bufferWith(() => Promise.resolve(sub));
 
-      const stream = await buffer.createReplayStream("task-1");
+      const stream = await buffer.createTailStream("task-1");
       expect(stream).not.toBeNull();
 
       push(encodeMsg({ p: "chunk-1" }));
       push(encodeMsg({ p: "chunk-2" }));
-      push(encodeMsg({ done: true }));
       end();
 
       const chunks = await readAll(stream!);
@@ -191,7 +190,7 @@ describe("NatsStreamBuffer", () => {
       const { sub, push, end } = createControlledSubscription();
       const buffer = bufferWith(() => Promise.resolve(sub));
 
-      const stream = await buffer.createReplayStream("task-1");
+      const stream = await buffer.createTailStream("task-1");
       const reader = stream!.getReader();
 
       push(encodeMsg({ p: "before-gap" }));
@@ -205,7 +204,7 @@ describe("NatsStreamBuffer", () => {
       let secondResolved = false;
       const secondP = reader.read().then((r) => {
         secondResolved = true;
-        return r;
+        return r as { done: boolean; value: unknown };
       });
 
       // Yield to the event loop and a short timer; nothing should resolve.
@@ -218,7 +217,6 @@ describe("NatsStreamBuffer", () => {
       expect(second.done).toBe(false);
       expect(second.value).toBe("after-gap");
 
-      push(encodeMsg({ done: true }));
       end();
       const tail = await reader.read();
       expect(tail.done).toBe(true);
@@ -228,13 +226,12 @@ describe("NatsStreamBuffer", () => {
       const { sub, push, end } = createControlledSubscription();
       const buffer = bufferWith(() => Promise.resolve(sub));
 
-      const stream = await buffer.createReplayStream("task-1");
+      const stream = await buffer.createTailStream("task-1");
 
       // Malformed JSON between two valid chunks.
       push(encodeMsg({ p: "ok-1" }));
       push({ data: new TextEncoder().encode("not-json{{{") });
       push(encodeMsg({ p: "ok-2" }));
-      push(encodeMsg({ done: true }));
       end();
 
       const chunks = await readAll(stream!);
@@ -245,7 +242,7 @@ describe("NatsStreamBuffer", () => {
       const { sub, push } = createControlledSubscription();
       const buffer = bufferWith(() => Promise.resolve(sub));
 
-      const stream = await buffer.createReplayStream("task-1");
+      const stream = await buffer.createTailStream("task-1");
       const reader = stream!.getReader();
 
       push(encodeMsg({ p: "first" }));
@@ -259,8 +256,41 @@ describe("NatsStreamBuffer", () => {
       const buffer = bufferWith(() =>
         Promise.reject(new Error("subscribe failed")),
       );
-      const stream = await buffer.createReplayStream("task-1");
+      const stream = await buffer.createTailStream("task-1");
       expect(stream).toBeNull();
+    });
+
+    it("swallows the {done} sentinel and keeps tailing across runs", async () => {
+      // Subscribe-model behavior: one connection covers multiple runs in
+      // the thread. The producer's {done} marker between runs must not
+      // surface to the client — clients detect run boundaries via the
+      // AI-SDK `{type: "finish"}` chunk inside the data stream.
+      const { sub, push, end } = createControlledSubscription();
+      const buffer = bufferWith(() => Promise.resolve(sub));
+
+      const stream = await buffer.createTailStream("task-1");
+      const reader = stream!.getReader();
+
+      // Run 1 chunks + done.
+      push(encodeMsg({ p: "run1-a" }));
+      push(encodeMsg({ p: "run1-b" }));
+      push(encodeMsg({ done: true }));
+      // Run 2 chunks — subscriber should keep receiving.
+      push(encodeMsg({ p: "run2-a" }));
+
+      const a = await reader.read();
+      expect(a.value).toBe("run1-a");
+      const b = await reader.read();
+      expect(b.value).toBe("run1-b");
+      // {done} from run 1 is skipped — next read yields run 2's first chunk.
+      const c = await reader.read();
+      expect(c.done).toBe(false);
+      expect(c.value).toBe("run2-a");
+
+      // Closing the upstream subscription does terminate the reader.
+      end();
+      const tail = await reader.read();
+      expect(tail.done).toBe(true);
     });
   });
 });

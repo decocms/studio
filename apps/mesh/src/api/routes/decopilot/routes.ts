@@ -35,8 +35,7 @@ import {
 import { PersistedRunConfigSchema, toModelsConfig } from "./run-config";
 import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage, ModelsConfig } from "./types";
-import { streamCore } from "./stream-core";
-import { RunClaimError } from "./run-reactor";
+import { dispatchRun, type DispatchRunInput } from "./dispatch-run";
 import { wrapWithSseKeepalive } from "./sse-keepalive";
 import type { SqlThreadStorage } from "@/storage/threads";
 import { getPodId } from "@/core/pod-identity";
@@ -138,6 +137,130 @@ async function resolvePerRequestModels(
 }
 
 // ============================================================================
+// Shared dispatch path: validate → dispatchAndTrack
+// ============================================================================
+
+interface DispatchDeps {
+  runRegistry: RunRegistry;
+  streamBuffer: StreamBuffer;
+  cancelBroadcast: CancelBroadcast;
+}
+
+/**
+ * Parse + permission-check an HTTP request into a `DispatchRunInput`
+ * ready to hand to `dispatchAndTrack` (or directly to `dispatchRun`).
+ *
+ * Pure-ish: reads `c` for the request body and auth context, but no
+ * downstream side effects. Throws `HTTPException` / `TierUnavailableError`
+ * for caller-visible problems.
+ *
+ * When `threadIdParam` is provided (e.g. from a URL path like
+ * `/threads/:threadId/...`) the body's `thread_id` must match — rejecting
+ * a body that disagrees rather than silently overriding either side.
+ * Legacy callers that supply the id in the body alone are unaffected.
+ */
+async function validate(
+  c: Context<{ Variables: { meshContext: MeshContext } }>,
+  threadIdParam: string | undefined,
+): Promise<DispatchRunInput> {
+  const ctx = c.get("meshContext");
+
+  const {
+    organization,
+    tier,
+    agent,
+    systemMessages,
+    requestMessage,
+    temperature,
+    memory: memoryConfig,
+    thread_id,
+    branch,
+    toolApprovalLevel,
+    mode,
+  } = await validateRequest(c);
+
+  const bodyThreadId = thread_id ?? memoryConfig?.thread_id;
+  if (threadIdParam && bodyThreadId && bodyThreadId !== threadIdParam) {
+    throw new HTTPException(400, {
+      message: "threadId in URL does not match thread_id in body",
+    });
+  }
+  const taskIdInput = threadIdParam ?? bodyThreadId;
+
+  const userId = ctx.auth?.user?.id;
+  if (!userId) {
+    throw new HTTPException(401, { message: "User ID is required" });
+  }
+
+  const models = await resolvePerRequestModels(ctx, tier);
+
+  const allowedModels = await fetchModelPermissions(
+    ctx.db,
+    organization.id,
+    ctx.auth.user?.role,
+  );
+  if (
+    allowedModels !== undefined &&
+    !checkModelPermission(
+      allowedModels,
+      models.credentialId,
+      models.thinking.id,
+    )
+  ) {
+    throw new HTTPException(403, {
+      message: "Model not allowed for your role",
+    });
+  }
+
+  return {
+    messages: [...systemMessages, requestMessage],
+    models,
+    agent,
+    temperature,
+    toolApprovalLevel,
+    mode,
+    organizationId: organization.id,
+    userId,
+    taskId: taskIdInput,
+    windowSize: memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE,
+    branch: branch ?? null,
+  };
+}
+
+/**
+ * Run an HTTP-initiated dispatch and emit the `chat_message_started`
+ * posthog event for it. Pairs with `validate` for the standard
+ * route-handler flow:
+ *
+ *   const input = await validate(c, c.req.param("threadId"));
+ *   const { taskId } = await dispatchAndTrack(input, ctx, deps);
+ *
+ * Telemetry lives here (not inside `dispatchRun`) so orphan-resume and
+ * automation paths — which call `dispatchRun` directly without a fresh
+ * user message — don't double-count `chat_message_started`.
+ */
+async function dispatchAndTrack(
+  input: DispatchRunInput,
+  ctx: MeshContext,
+  deps: DispatchDeps,
+): Promise<{ taskId: string }> {
+  const { taskId } = await dispatchRun(input, ctx, deps);
+  posthog.capture({
+    distinctId: input.userId,
+    event: "chat_message_started",
+    groups: { organization: input.organizationId },
+    properties: {
+      organization_id: input.organizationId,
+      agent_id: input.agent,
+      mode: input.mode,
+      thread_id: taskId,
+      credential_id: input.models.credentialId,
+    },
+  });
+  return { taskId };
+}
+
+// ============================================================================
 // Route Handler
 // ============================================================================
 
@@ -178,226 +301,39 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   });
 
   // ============================================================================
-  // Stream Endpoint
+  // Messages Endpoint — fire-and-forget run creation
   // ============================================================================
+  //
+  // POST /:org/decopilot/threads/:threadId/messages
+  //
+  // Claims the run, starts the JetStream pump, and returns
+  // `202 { taskId }` in milliseconds. The response carries no SSE body —
+  // the client is expected to be listening on
+  // `GET /:org/decopilot/attach/:threadId` to receive the run's chunks.
+  //
+  // Decouples message submission from the long-lived stream connection,
+  // so a slow proxy / tab close / mobile network blip on the subscribe
+  // side never affects the producer, and multiple clients can observe
+  // the same thread without coordinating.
 
-  app.post("/:org/decopilot/stream", async (c) => {
+  app.post("/:org/decopilot/threads/:threadId/messages", async (c) => {
     try {
-      const ctx = c.get("meshContext");
-
-      // 1. Validate request
-      const {
-        organization,
-        tier,
-        agent,
-        systemMessages,
-        requestMessage,
-        temperature,
-        memory: memoryConfig,
-        thread_id,
-        branch,
-        toolApprovalLevel,
-        mode,
-      } = await validateRequest(c);
-
-      const userId = ctx.auth?.user?.id;
-      if (!userId) {
-        throw new HTTPException(401, { message: "User ID is required" });
-      }
-
-      // 2. Resolve the request's tier to a concrete (credentialId, modelId).
-      const models = await resolvePerRequestModels(ctx, tier);
-
-      // 3. Check model permissions
-      const allowedModels = await fetchModelPermissions(
-        ctx.db,
-        organization.id,
-        ctx.auth.user?.role,
-      );
-
-      if (
-        allowedModels !== undefined &&
-        !checkModelPermission(
-          allowedModels,
-          models.credentialId,
-          models.thinking.id,
-        )
-      ) {
-        throw new HTTPException(403, {
-          message: "Model not allowed for your role",
-        });
-      }
-
-      const windowSize = memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE;
-      const resolvedThreadId = thread_id ?? memoryConfig?.thread_id;
-
-      // 4. Delegate to streamCore
-      const result = await streamCore(
-        {
-          messages: [...systemMessages, requestMessage],
-          models,
-          agent,
-          temperature,
-          toolApprovalLevel,
-          mode,
-          organizationId: organization.id,
-          userId,
-          taskId: resolvedThreadId,
-          windowSize,
-          branch: branch ?? null,
-          httpSignal: c.req.raw.signal,
-        },
-        ctx,
-        { runRegistry, streamBuffer, cancelBroadcast },
-      );
-
-      posthog.capture({
-        distinctId: userId,
-        event: "chat_message_started",
-        groups: { organization: organization.id },
-        properties: {
-          organization_id: organization.id,
-          agent_id: agent,
-          mode,
-          thread_id: resolvedThreadId,
-          credential_id: models.credentialId,
-        },
+      const input = await validate(c, c.req.param("threadId"));
+      const { taskId } = await dispatchAndTrack(input, c.get("meshContext"), {
+        runRegistry,
+        streamBuffer,
+        cancelBroadcast,
       });
-
-      return wrapWithSseKeepalive(
-        createUIMessageStreamResponse({
-          stream: result.stream,
-          consumeSseStream: consumeStream,
-        }),
-      );
+      return c.json({ taskId }, 202);
     } catch (err) {
-      console.error("[decopilot:stream] Error", err);
-
+      console.error("[decopilot:messages] Error", err);
       if (err instanceof TierUnavailableError) {
         return c.json({ error: err.message }, 400);
       }
-
       if (err instanceof HTTPException) {
         return c.json({ error: err.message }, err.status);
       }
-
-      if (err instanceof Error && err.name === "AbortError") {
-        console.warn("[decopilot:stream] Aborted", { error: err.message });
-        return c.json({ error: "Request aborted" }, 400);
-      }
-
       posthog.captureException(err);
-      console.error("[decopilot:stream] Failed", {
-        error: err instanceof Error ? err.message : JSON.stringify(err),
-        stack: err instanceof Error ? err.stack : undefined,
-      });
-      return c.json(
-        { error: err instanceof Error ? err.message : JSON.stringify(err) },
-        500,
-      );
-    }
-  });
-
-  app.post("/:org/decopilot/runtime/stream", async (c) => {
-    try {
-      const ctx = c.get("meshContext");
-
-      // 1. Validate request
-      const {
-        organization,
-        tier,
-        agent,
-        systemMessages,
-        requestMessage,
-        temperature,
-        memory: memoryConfig,
-        thread_id,
-        branch,
-        toolApprovalLevel,
-        mode,
-      } = await validateRequest(c);
-
-      const userId = ctx.auth?.user?.id;
-      if (!userId) {
-        throw new HTTPException(401, { message: "User ID is required" });
-      }
-
-      // 2. Resolve the request's tier to a concrete (credentialId, modelId).
-      const models = await resolvePerRequestModels(ctx, tier);
-
-      // 3. Check model permissions
-      const allowedModels = await fetchModelPermissions(
-        ctx.db,
-        organization.id,
-        ctx.auth.user?.role,
-      );
-
-      if (
-        allowedModels !== undefined &&
-        !checkModelPermission(
-          allowedModels,
-          models.credentialId,
-          models.thinking.id,
-        )
-      ) {
-        throw new HTTPException(403, {
-          message: "Model not allowed for your role",
-        });
-      }
-
-      const windowSize = memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE;
-      const resolvedThreadId = thread_id ?? memoryConfig?.thread_id;
-
-      // 4. Delegate to streamCore
-      const result = await streamCore(
-        {
-          messages: [...systemMessages, requestMessage],
-          models,
-          agent,
-          temperature,
-          toolApprovalLevel,
-          mode,
-          organizationId: organization.id,
-          userId,
-          taskId: resolvedThreadId,
-          windowSize,
-          branch: branch ?? null,
-          httpSignal: c.req.raw.signal,
-        },
-        ctx,
-        { runRegistry, streamBuffer, cancelBroadcast },
-      );
-
-      return wrapWithSseKeepalive(
-        createUIMessageStreamResponse({
-          stream: result.stream,
-          consumeSseStream: consumeStream,
-        }),
-      );
-    } catch (err) {
-      console.error("[decopilot:stream] Error", err);
-
-      if (err instanceof RunClaimError) {
-        return c.json({ error: err.message }, 409);
-      }
-
-      if (err instanceof TierUnavailableError) {
-        return c.json({ error: err.message }, 400);
-      }
-
-      if (err instanceof HTTPException) {
-        return c.json({ error: err.message }, err.status);
-      }
-
-      if (err instanceof Error && err.name === "AbortError") {
-        console.warn("[decopilot:stream] Aborted", { error: err.message });
-        return c.json({ error: "Request aborted" }, 400);
-      }
-
-      console.error("[decopilot:stream] Failed", {
-        error: err instanceof Error ? err.message : JSON.stringify(err),
-        stack: err instanceof Error ? err.stack : undefined,
-      });
       return c.json(
         { error: err instanceof Error ? err.message : JSON.stringify(err) },
         500,
@@ -460,16 +396,25 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
     try {
       const { taskId, thread, organization } = await validateThreadAccess(c);
 
-      // ── Fast path: run is active on this pod → replay buffer ──
-      if (runRegistry.isRunning(taskId)) {
-        const replayChunkStream = await streamBuffer.createReplayStream(taskId);
-        if (!replayChunkStream) {
+      const activeRun = runRegistry.isRunning(taskId);
+
+      // The persistent connection stays open across runs — JetStream-level
+      // `{done}` sentinels are skipped on the server, and clients detect
+      // run boundaries from the AI-SDK `{type: "finish"}` chunk in the
+      // stream. One open /attach per (tab, thread) covers every run.
+      const serveTail = async (deliverPolicy: "all" | "new") => {
+        const tailChunkStream = await streamBuffer.createTailStream(
+          taskId,
+          c.req.raw.signal,
+          { deliverPolicy },
+        );
+        if (!tailChunkStream) {
           return c.body(null, 204);
         }
 
-        const replayStream = createUIMessageStream({
+        const tailStream = createUIMessageStream({
           execute: async ({ writer }) => {
-            const reader = replayChunkStream.getReader();
+            const reader = tailChunkStream.getReader();
             try {
               while (true) {
                 const { done, value } = await reader.read();
@@ -484,19 +429,26 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
         return wrapWithSseKeepalive(
           createUIMessageStreamResponse({
-            stream: replayStream,
+            stream: tailStream,
             consumeSseStream: consumeStream,
           }),
         );
+      };
+
+      // ── Fast path: run is active on this pod → tail JetStream ──
+      if (activeRun) {
+        return await serveTail("all");
       }
 
       // ── Orphan resume path ──
       const ctx = c.get("meshContext");
       const userId = ctx.auth?.user?.id;
 
-      // Not in_progress → nothing to resume
+      // Not in_progress → no run to resume. Attach anyway from "new" so
+      // the client picks up the next POST /messages on this thread
+      // without having to reconnect.
       if (thread.status !== "in_progress") {
-        return c.body(null, 204);
+        return await serveTail("new");
       }
 
       // Only the thread owner can trigger orphan resume
@@ -562,8 +514,10 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         return c.body(null, 204);
       }
 
-      // Resume the run — identity from auth context, NOT stored config
-      const result = await streamCore(
+      // Resume the run — identity from auth context, NOT stored config.
+      // Fire-and-forget: the resumed run pumps into JetStream, and the
+      // tail subscription created below is what we serve to this request.
+      await dispatchRun(
         {
           messages: [],
           models: toModelsConfig(config.models),
@@ -576,18 +530,12 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           taskId,
           windowSize: config.windowSize,
           isResume: true,
-          httpSignal: c.req.raw.signal,
         },
         ctx,
         { runRegistry, streamBuffer, cancelBroadcast },
       );
 
-      return wrapWithSseKeepalive(
-        createUIMessageStreamResponse({
-          stream: result.stream,
-          consumeSseStream: consumeStream,
-        }),
-      );
+      return await serveTail("all");
     } catch (err) {
       if (err instanceof HTTPException) throw err;
       console.error("[decopilot:attach] Error", err);

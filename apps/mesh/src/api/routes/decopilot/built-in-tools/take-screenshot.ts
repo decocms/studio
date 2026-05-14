@@ -40,7 +40,7 @@ export type TakeScreenshotInput = z.infer<typeof TakeScreenshotInputSchema>;
 
 /**
  * Pending image entry. Stored by `execute`, consumed by `prepareStep`
- * in stream-core.ts which injects it as a user message content part.
+ * in dispatch-run.ts which injects it as a user message content part.
  *
  * One of `pageUrl` or `label` should be set; `label` takes precedence
  * when present. Screenshots use `pageUrl` (preserving the legacy
@@ -168,7 +168,7 @@ export function createTakeScreenshotTool(
       }
     },
     // Return text-only result for the tool message. The actual image
-    // is injected as a user message by prepareStep in stream-core.ts,
+    // is injected as a user message by prepareStep in dispatch-run.ts,
     // which is universally supported by all providers (including OpenRouter).
     toModelOutput({ output }) {
       if (!output.success) {

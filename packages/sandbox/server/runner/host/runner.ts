@@ -356,7 +356,7 @@ export class HostSandboxRunner implements SandboxRunner {
   }
 
   /**
-   * Host-side absolute path of the per-branch clone. Used by stream-core to
+   * Host-side absolute path of the per-branch clone. Used by dispatch-run to
    * set `cwd` on the Claude Code adapter so it edits the right files. Null
    * for unknown handles — caller falls back to `process.cwd()`.
    */

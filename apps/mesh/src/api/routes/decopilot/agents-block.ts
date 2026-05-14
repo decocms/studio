@@ -1,7 +1,7 @@
 /**
  * Builds the <available-agents> + <agents-usage> system-prompt block.
  *
- * Each /decopilot/stream request runs inside a single Virtual MCP. This
+ * Each decopilot run executes inside a single Virtual MCP. This
  * block advertises the *other* active Virtual MCPs in the organization
  * so the model can delegate cross-agent work via the subtask tool.
  *

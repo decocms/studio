@@ -78,7 +78,7 @@ export interface BuiltinToolParams {
   passthroughClient: VirtualClient;
   /**
    * Images captured by take_screenshot, queued for injection as user
-   * messages by prepareStep in stream-core.ts. This approach works
+   * messages by prepareStep in dispatch-run.ts. This approach works
    * across all providers (including OpenRouter) since images in tool
    * result messages aren't universally supported.
    */

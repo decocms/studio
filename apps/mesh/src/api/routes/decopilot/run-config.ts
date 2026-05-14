@@ -91,7 +91,7 @@ function toModelInfo(m: PersistedModelInfo) {
 
 /**
  * Convert a persisted models config into the full `ModelsConfig` shape
- * expected by `StreamCoreInput`, filling in required fields that may
+ * expected by `DispatchRunInput`, filling in required fields that may
  * have been omitted at persistence time.
  */
 export function toModelsConfig(models: PersistedRunConfig["models"]) {

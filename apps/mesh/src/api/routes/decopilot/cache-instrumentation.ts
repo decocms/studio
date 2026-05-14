@@ -1,6 +1,6 @@
 /**
  * Shared cache-instrumentation primitives used by both the parent
- * decopilot loop (stream-core.ts) and the subtask path
+ * decopilot loop (dispatch-run.ts) and the subtask path
  * (built-in-tools/subtask.ts):
  *
  *   - OPENROUTER_CACHE_PROVIDER_OPTIONS : the providerOptions value to
@@ -10,7 +10,7 @@
  *     definitions become a cached prefix.
  *   - CacheAccumulator + addCacheStep   : turn-scoped state holder for
  *     cumulative cache_read / cache_write / input token counts. Read
- *     by OTel-attr emission in stream-core.
+ *     by OTel-attr emission in dispatch-run.
  *
  * Cost is intentionally NOT tracked here: we trust whatever the upstream
  * provider authoritatively reports (OpenRouter exposes a `cost` field;

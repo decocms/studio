@@ -122,38 +122,6 @@ describe("resolveThreadStatus", () => {
     expect(resolveThreadStatus("tool-calls", parts)).toBe("completed");
   });
 
-  // AI SDK ContentPart shape (from `streamText.onFinish`'s `content`),
-  // used by the deferred-FINISH recovery path on HTTP cut. Diverges from
-  // the UI parts shape for tool-call / approval parts.
-
-  test("AI SDK content: tool-calls with user_ask -> requires_action", () => {
-    const content = [{ type: "tool-call", toolName: "user_ask" }];
-    expect(resolveThreadStatus("tool-calls", content)).toBe("requires_action");
-  });
-
-  test("AI SDK content: tool-calls with other tool only -> completed", () => {
-    const content = [{ type: "tool-call", toolName: "web_search" }];
-    expect(resolveThreadStatus("tool-calls", content)).toBe("completed");
-  });
-
-  test("AI SDK content: tool-approval-request -> requires_action", () => {
-    const content = [
-      { type: "tool-call", toolName: "delete_file" },
-      { type: "tool-approval-request" },
-    ];
-    expect(resolveThreadStatus("tool-calls", content)).toBe("requires_action");
-  });
-
-  test("AI SDK content: stop with text -> completed", () => {
-    const content = [{ type: "text", text: "Here's the answer." }];
-    expect(resolveThreadStatus("stop", content)).toBe("completed");
-  });
-
-  test("AI SDK content: stop with question -> requires_action", () => {
-    const content = [{ type: "text", text: "Does this help?" }];
-    expect(resolveThreadStatus("stop", content)).toBe("requires_action");
-  });
-
   test("length -> failed", () => {
     expect(resolveThreadStatus("length", [])).toBe("failed");
   });

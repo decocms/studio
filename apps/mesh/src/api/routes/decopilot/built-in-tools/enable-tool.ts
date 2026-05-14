@@ -8,7 +8,7 @@
  * call returns an `ambiguous` row so the model can retry with the full id.
  *
  * Tools enabled in step N become callable in step N+1 via the
- * prepareStep callback in stream-core.
+ * prepareStep callback in dispatch-run.
  */
 
 import { tool } from "ai";

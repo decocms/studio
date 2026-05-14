@@ -14,7 +14,7 @@ export interface VmToolsParams {
   /**
    * Shared queue for vision inputs that should be injected into the next
    * model turn. The `read` tool pushes here when it loads an image; the
-   * queue is flushed by `prepareStep` in stream-core.ts.
+   * queue is flushed by `prepareStep` in dispatch-run.ts.
    */
   readonly pendingImages: PendingImage[];
   /**

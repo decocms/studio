@@ -26,7 +26,7 @@ export { DockerSandboxRunner } from "./docker";
 export type { DockerExec, DockerRunnerOptions, ExecResult } from "./docker";
 export { HostSandboxRunner } from "./host";
 export type { HostRunnerOptions } from "./host";
-// Needed by mesh callers (decopilot stream-core) that compute handles
+// Needed by mesh callers (decopilot dispatch-run) that compute handles
 // directly. Re-exported here so consumers don't dig into shared/.
 export { computeHandle } from "./shared";
 export { ensureSandboxImage } from "../image-build";
