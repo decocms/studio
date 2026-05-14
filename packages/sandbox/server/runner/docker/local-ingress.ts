@@ -8,6 +8,55 @@
 
 import * as net from "node:net";
 
+/**
+ * Probe a single host:port to see if it can be bound. Resolves to true when
+ * the listen succeeds; false on EADDRINUSE; rejects on other errors so we
+ * surface unexpected failure (permission denied, invalid host) early.
+ */
+function isPortFree(host: string, port: number): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    const tester = net.createServer();
+    tester.once("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "EADDRINUSE") {
+        resolve(false);
+        return;
+      }
+      reject(err);
+    });
+    tester.once("listening", () => {
+      tester.close(() => resolve(true));
+    });
+    tester.listen(port, host);
+  });
+}
+
+/**
+ * Scan a port range and return the first port that is free on BOTH IPv4
+ * loopback (127.0.0.1) and IPv6 loopback (::1). Required because the ingress
+ * binds both families for Chrome Happy-Eyeballs, and binding only one would
+ * leave races on dual-stack hosts.
+ *
+ * Used by mesh's boot wiring to pick an ingress port that doesn't collide
+ * with other studio dev servers (e.g. Conductor running parallel workspaces).
+ */
+export async function findFreeIngressPort(
+  start: number,
+  count = 20,
+): Promise<number> {
+  for (let i = 0; i < count; i++) {
+    const port = start + i;
+    if (
+      (await isPortFree("127.0.0.1", port)) &&
+      (await isPortFree("::1", port))
+    ) {
+      return port;
+    }
+  }
+  throw new Error(
+    `[studio-sandbox-ingress] no free port in range ${start}-${start + count - 1}`,
+  );
+}
+
 const HOST_RE = /^([^.]+)\.localhost(?::\d+)?$/i;
 const MAX_HEADER_BYTES = 16 * 1024;
 const HEADERS_TERMINATOR = Buffer.from("\r\n\r\n");

@@ -35,7 +35,9 @@ function parseGitHubOwnerRepo(
 ): { owner: string; repo: string } | null {
   try {
     const u = new URL(url);
-    if (!u.hostname.includes("github.com")) return null;
+    if (u.hostname !== "github.com" && u.hostname !== "www.github.com") {
+      return null;
+    }
     const parts = u.pathname
       .replace(/\.git$/, "")
       .split("/")
@@ -93,6 +95,11 @@ function extractDevPort(content: string | null): string | null {
  * Detect package manager and dev port from any public GitHub repo URL.
  * Returns null when the URL is not a GitHub URL, the repo is private/missing,
  * or no recognizable lockfile is found.
+ *
+ * Probes lockfiles sequentially in LOCKFILES order and short-circuits on the
+ * first hit. Unauthenticated GitHub API has a 60 req/hr/IP rate limit, so
+ * fanning out 8 parallel calls per detection would burn the quota in ~7
+ * detections per shared egress IP.
  */
 export async function detectRuntimeFromPublicUrl(
   repoUrl: string,
@@ -101,26 +108,29 @@ export async function detectRuntimeFromPublicUrl(
   if (!parsed) return null;
 
   const { owner, repo } = parsed;
-
-  const relevantPaths = new Set(LOCKFILES.map((f) => f.path));
-  for (const sources of Object.values(PORT_SOURCES)) {
-    for (const p of sources ?? []) relevantPaths.add(p);
-  }
-
   const cache = new Map<string, string | null>();
-  await Promise.all(
-    Array.from(relevantPaths).map(async (path) => {
-      cache.set(path, await fetchPublicGitHubFile(owner, repo, path));
-    }),
-  );
 
-  const hit = LOCKFILES.find(({ path }) => cache.get(path) !== null);
+  const getFile = async (path: string): Promise<string | null> => {
+    if (cache.has(path)) return cache.get(path) ?? null;
+    const content = await fetchPublicGitHubFile(owner, repo, path);
+    cache.set(path, content);
+    return content;
+  };
+
+  let hit: { path: string; pm: PackageManager } | null = null;
+  for (const lockfile of LOCKFILES) {
+    const content = await getFile(lockfile.path);
+    if (content !== null) {
+      hit = lockfile;
+      break;
+    }
+  }
   if (!hit) return null;
 
   const portSources = PORT_SOURCES[hit.pm] ?? [];
   let devPort: string | null = null;
   for (const path of portSources) {
-    devPort = extractDevPort(cache.get(path) ?? null);
+    devPort = extractDevPort(await getFile(path));
     if (devPort) break;
   }
 

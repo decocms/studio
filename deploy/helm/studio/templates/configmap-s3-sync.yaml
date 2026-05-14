@@ -20,13 +20,12 @@ data:
     export HOME="/tmp"
 
     S3_HOST="${BUCKET}.s3.${REGION}.amazonaws.com"
+    CREDS_FILE="/tmp/s3-sync-creds.$$"
 
     # ── AWS IRSA credentials ──────────────────────────────────────────
-    AWS_ACCESS_KEY_ID=""
-    AWS_SECRET_ACCESS_KEY=""
-    AWS_SESSION_TOKEN=""
-    CRED_EXPIRY=0
-
+    # Creds are written to a file by a single background refresher so all
+    # subshells (find|while, inotify|while) share them. Ash runs pipe stages
+    # in subshells, so updating shell vars in upload_file wouldn't propagate.
     refresh_credentials() {
       TOKEN=$(cat "$AWS_WEB_IDENTITY_TOKEN_FILE")
       RESP=$(curl -sf "https://sts.${REGION}.amazonaws.com/" \
@@ -37,25 +36,25 @@ data:
         --data-urlencode "Version=2011-06-15" \
         --data-urlencode "DurationSeconds=3600")
 
-      AWS_ACCESS_KEY_ID=$(echo "$RESP" | sed -n 's/.*<AccessKeyId>\(.*\)<\/AccessKeyId>.*/\1/p')
-      AWS_SECRET_ACCESS_KEY=$(echo "$RESP" | sed -n 's/.*<SecretAccessKey>\(.*\)<\/SecretAccessKey>.*/\1/p')
-      AWS_SESSION_TOKEN=$(echo "$RESP" | sed -n 's/.*<SessionToken>\(.*\)<\/SessionToken>.*/\1/p')
+      AK=$(echo "$RESP" | sed -n 's/.*<AccessKeyId>\(.*\)<\/AccessKeyId>.*/\1/p')
+      SK=$(echo "$RESP" | sed -n 's/.*<SecretAccessKey>\(.*\)<\/SecretAccessKey>.*/\1/p')
+      ST=$(echo "$RESP" | sed -n 's/.*<SessionToken>\(.*\)<\/SessionToken>.*/\1/p')
 
-      if [ -z "$AWS_ACCESS_KEY_ID" ]; then
+      if [ -z "$AK" ]; then
         echo "s3-sync: ERROR failed to get credentials from STS"
         return 1
       fi
 
-      # Refresh 5 min before the 1h expiry
-      CRED_EXPIRY=$(( $(date +%s) + 3300 ))
-      echo "s3-sync: credentials refreshed, next refresh in ~55min"
+      umask 077
+      printf '%s\n%s\n%s\n' "$AK" "$SK" "$ST" > "${CREDS_FILE}.tmp"
+      mv "${CREDS_FILE}.tmp" "$CREDS_FILE"
+      echo "s3-sync: credentials refreshed"
     }
 
-    ensure_credentials() {
-      NOW=$(date +%s)
-      if [ "$NOW" -ge "$CRED_EXPIRY" ]; then
-        refresh_credentials
-      fi
+    load_credentials() {
+      AWS_ACCESS_KEY_ID=$(sed -n '1p' "$CREDS_FILE")
+      AWS_SECRET_ACCESS_KEY=$(sed -n '2p' "$CREDS_FILE")
+      AWS_SESSION_TOKEN=$(sed -n '3p' "$CREDS_FILE")
     }
 
     # ── Upload a single file to S3 ───────────────────────────────────
@@ -70,7 +69,7 @@ data:
         S3_KEY="$RELATIVE"
       fi
 
-      ensure_credentials
+      load_credentials
 
       HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
         --aws-sigv4 "aws:amz:${REGION}:s3" \
@@ -106,13 +105,16 @@ data:
 
     # ── Shutdown handler ──────────────────────────────────────────────
     INOTIFY_PID=""
+    REFRESHER_PID=""
     SLEEP_PID=""
 
     cleanup() {
       echo "s3-sync: shutting down, final upload..."
       [ -n "$INOTIFY_PID" ] && kill "$INOTIFY_PID" 2>/dev/null || true
+      [ -n "$REFRESHER_PID" ] && kill "$REFRESHER_PID" 2>/dev/null || true
       [ -n "$SLEEP_PID" ] && kill "$SLEEP_PID" 2>/dev/null || true
       scan_and_upload
+      rm -f "$CREDS_FILE" "${CREDS_FILE}.tmp"
       echo "s3-sync: done"
       exit 0
     }
@@ -122,6 +124,15 @@ data:
     echo "s3-sync: starting (inotify + curl) to s3://${BUCKET}${PREFIX:+/${PREFIX}}"
 
     refresh_credentials
+
+    # Single background refresher (~50min, well under 1h STS expiry)
+    (
+      while true; do
+        sleep 3000
+        refresh_credentials || true
+      done
+    ) &
+    REFRESHER_PID=$!
 
     # Upload any files that already exist
     scan_and_upload

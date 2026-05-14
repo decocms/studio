@@ -3,14 +3,15 @@
  *
  * Create a new thread for a virtual MCP.
  *
- * Branch resolution (only meaningful when the vMCP has a githubRepo):
+ * Branch resolution (meaningful when the vMCP has any repo source — a
+ * `githubRepo` OAuth link OR a plain `cloneUrl`):
  *   1. Honor `data.branch` when provided.
  *   2. Otherwise pick the most-recently-touched branch from the user's
  *      `vmMap[userId]` so a new task lands on a warm sandbox.
  *   3. Fall back to a freshly generated `deco/<adj>-<noun>` name when the
  *      user has no vmMap entries for this vMCP.
  *
- * Threads created on a vMCP without a githubRepo always get `branch = null`.
+ * Threads created on a vMCP without any repo source get `branch = null`.
  *
  * Idempotent on `id` collisions (storage uses INSERT … ON CONFLICT DO NOTHING).
  */
@@ -39,12 +40,13 @@ const CreateOutputSchema = z.object({
   item: ThreadEntitySchema.describe("The created thread entity"),
 });
 
-type GithubRepoMeta = {
+type RepoMeta = {
   githubRepo?: {
     owner: string;
     name: string;
     connectionId?: string;
   } | null;
+  cloneUrl?: string | null;
 };
 
 type VmMapMeta = {
@@ -101,13 +103,12 @@ export const COLLECTION_THREADS_CREATE = defineTool({
       throw new Error(`Virtual MCP not found: ${data.virtual_mcp_id}`);
     }
 
-    const metadata = vmcp.metadata as
-      | (GithubRepoMeta & VmMapMeta)
-      | null
-      | undefined;
-    const githubRepo = metadata?.githubRepo;
+    const metadata = vmcp.metadata as (RepoMeta & VmMapMeta) | null | undefined;
+    const hasRepoSource =
+      !!metadata?.githubRepo ||
+      (typeof metadata?.cloneUrl === "string" && metadata.cloneUrl.length > 0);
     let branch: string | null = null;
-    if (githubRepo) {
+    if (hasRepoSource) {
       branch =
         data.branch ??
         pickWarmBranchFromVmMap(metadata?.vmMap, userId) ??

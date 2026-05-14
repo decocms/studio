@@ -297,12 +297,26 @@ async function provisionSandbox(
   } else if (plainCloneUrl) {
     // Plain git URL — no OAuth token required. Detect runtime via unauthenticated
     // GitHub API for public repos, then fall back to clone-only if detection fails.
+    // Strip embedded userinfo (e.g. `https://user:token@host/...`) from the display
+    // name so credentials the user pasted to reach a private repo don't leak into
+    // the UI or logs. The original URL is still passed to the runner via cloneUrl.
+    let safeDisplayName = plainCloneUrl;
+    try {
+      const u = new URL(plainCloneUrl);
+      if (u.username || u.password) {
+        u.username = "";
+        u.password = "";
+        safeDisplayName = u.toString();
+      }
+    } catch {
+      // Non-URL clone strings (e.g. `git@github.com:owner/repo.git`) — keep as-is.
+    }
     repoOpts = {
       cloneUrl: plainCloneUrl,
       userName: "Deco Studio",
       userEmail: "studio@deco.cx",
       branch,
-      displayName: plainCloneUrl,
+      displayName: safeDisplayName,
     };
 
     if (!packageManager) {

@@ -4,7 +4,10 @@ export type {
   DockerRunnerOptions,
   ExecResult,
 } from "./runner";
-export { startLocalSandboxIngress } from "./local-ingress";
+export {
+  findFreeIngressPort,
+  startLocalSandboxIngress,
+} from "./local-ingress";
 export {
   sweepDockerOrphansOnBoot,
   sweepDockerOrphansOnShutdown,

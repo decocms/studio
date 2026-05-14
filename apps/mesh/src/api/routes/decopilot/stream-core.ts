@@ -556,20 +556,24 @@ async function streamCoreInner(
         // provisioned lazily on the first tool call inside getBuiltInTools.
         //
         // Two keying regimes:
-        // - GitHub-linked agents (githubRepo set) need per-branch isolation
-        //   so PR/branch workflows don't trample each other. Falls back to a
-        //   `thread:<taskId>` synthetic branch when no explicit branch is
+        // - Repo-backed agents (githubRepo OR plain cloneUrl) need per-branch
+        //   isolation so PR/branch workflows — and the live preview the user
+        //   sees — point at the same sandbox the agent is editing. Falls back
+        //   to a `thread:<taskId>` synthetic branch when no branch is
         //   supplied yet.
-        // - Ephemeral agents (no githubRepo) share one VM per (user, agent)
-        //   across threads. The skills work is mostly read-heavy and
-        //   sharing a sandbox cuts the VM count linearly with thread count.
-        //   Tradeoff: concurrent threads share /app, /home/sandbox, /tmp —
-        //   parallel writes to overlapping filenames can race. Fine for
-        //   reads and scoped outputs; revisit if it bites.
+        // - Ephemeral agents (no repo source at all) share one VM per
+        //   (user, agent) across threads. Skills work is mostly read-heavy
+        //   and sharing a sandbox cuts the VM count linearly with thread
+        //   count. Tradeoff: concurrent threads share /app, /home/sandbox,
+        //   /tmp — parallel writes to overlapping filenames can race. Fine
+        //   for reads and scoped outputs; revisit if it bites.
         const vmMetadata = virtualMcp.metadata as {
           githubRepo?: GithubRepo | null;
+          cloneUrl?: string | null;
         };
-        const isEphemeralAgent = !vmMetadata.githubRepo;
+        const isEphemeralAgent =
+          !vmMetadata.githubRepo &&
+          !(typeof vmMetadata.cloneUrl === "string" && vmMetadata.cloneUrl);
         const vmContext = input.userId
           ? {
               virtualMcpId: input.agent.id,
@@ -979,7 +983,7 @@ async function streamCoreInner(
                       // providers (e.g. OpenRouter), so we append them as user
                       // content which is universally supported.
                       // biome-ignore lint: complex AI SDK generic types
-                      let injectedMessages: any;
+                      let messagesForStep: any = stepMessages;
                       if (pendingImages.length > 0) {
                         const imageParts = pendingImages.splice(
                           0,
@@ -1015,7 +1019,7 @@ async function streamCoreInner(
                             });
                           }
                         }
-                        injectedMessages = [
+                        messagesForStep = [
                           ...stepMessages,
                           { role: "user", content },
                         ];
@@ -1052,9 +1056,7 @@ async function streamCoreInner(
 
                       return {
                         activeTools: activeToolNames as (keyof typeof tools)[],
-                        ...(injectedMessages && {
-                          messages: injectedMessages,
-                        }),
+                        messages: messagesForStep,
                         ...(forcedToolName && {
                           toolChoice: {
                             type: "tool" as const,

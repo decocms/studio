@@ -34,8 +34,13 @@ export function spawnInstall(deps: InstallDeps): Promise<number> | null {
     );
     return null;
   }
+  // Redirect both stdout and stderr — corepack prints "Internal Error" to
+  // stderr on EACCES (no write access to /usr/local/bin) and some envs spam
+  // their own progress to stdout. `|| true` keeps the install going even if
+  // the global symlink fails; the project's local node_modules/.bin still
+  // works regardless.
   const corepack =
-    "export COREPACK_ENABLE_DOWNLOAD_PROMPT=0 && (corepack enable 2>/dev/null || true) && ";
+    "export COREPACK_ENABLE_DOWNLOAD_PROMPT=0 && (corepack enable >/dev/null 2>&1 || true) && ";
   const cmd = `${config.runtimePathPrefix}cd ${installRoot} && ${corepack}${pmConfig.install}`;
   deps.onChunk("setup", `\r\n$ ${cmd}\r\n`);
   return spawnSetupStep(cmd, deps.onChunk, deps.dropPrivileges);

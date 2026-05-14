@@ -31,7 +31,7 @@ export type { HostRunnerOptions } from "./host";
 export { computeHandle } from "./shared";
 export { ensureSandboxImage } from "../image-build";
 export type { EnsureImageOptions } from "../image-build";
-export { startLocalSandboxIngress } from "./docker";
+export { findFreeIngressPort, startLocalSandboxIngress } from "./docker";
 export {
   sweepDockerOrphansOnBoot,
   sweepDockerOrphansOnShutdown,

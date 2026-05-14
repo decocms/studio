@@ -146,10 +146,36 @@ if (ingressEligible) {
   // Port 7070 default: macOS AirPlay Receiver owns `*:7000` on v4+v6, so a
   // Chrome Happy-Eyeballs race would hit Apple. The ingress is part of the
   // host/docker runner contract — those runners only expose user dev servers
-  // through `<handle>.localhost:7070`, so the gate is the runner kind, not
+  // through `<handle>.localhost:<port>`, so the gate is the runner kind, not
   // NODE_ENV. Set `SANDBOX_INGRESS_PORT=0` to skip binding entirely.
-  const ingressPort = Number(process.env.SANDBOX_INGRESS_PORT ?? 7070);
-  if (ingressPort > 0) {
+  //
+  // If 7070 is already taken (e.g. parallel Conductor workspaces, leftover
+  // studio processes), scan upward for the first free port and update the
+  // env var so `composePreviewUrl` builds URLs against the bound port.
+  const requestedIngressPort = Number(process.env.SANDBOX_INGRESS_PORT ?? 7070);
+  if (requestedIngressPort > 0) {
+    const { findFreeIngressPort } = await import("@decocms/sandbox/runner");
+    let ingressPort = requestedIngressPort;
+    try {
+      ingressPort = await findFreeIngressPort(requestedIngressPort, 20);
+    } catch (err) {
+      console.warn(
+        `[studio-sandbox-ingress] no free port found near ${requestedIngressPort}: ${
+          (err as Error).message
+        }`,
+      );
+    }
+    if (ingressPort !== requestedIngressPort) {
+      console.log(
+        `[studio-sandbox-ingress] port ${requestedIngressPort} busy — using ${ingressPort} instead`,
+      );
+    }
+    // Set the env var BEFORE the runner is initialized so composePreviewUrl
+    // reads the actual bound port (it reads SANDBOX_INGRESS_PORT on every
+    // call, but caching the value on the runner side is still possible —
+    // setting it up-front is the safe path).
+    process.env.SANDBOX_INGRESS_PORT = String(ingressPort);
+
     ingressServers = startLocalSandboxIngress(() => {
       const r = getSharedRunnerIfInit();
       if (!r) return null;
