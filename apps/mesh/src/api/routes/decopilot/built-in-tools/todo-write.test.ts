@@ -44,9 +44,9 @@ describe("todoWriteTool", () => {
     expect(TodoWriteInputSchema.safeParse({ todos: [] }).success).toBe(true);
   });
 
-  test("description tells the model not to call todo_write to read the list", () => {
+  test("description tells the model how to read its current state", () => {
     expect(todoWriteTool.description).toMatch(
-      /current[- ]?todos|do not call.*to read|always visible/i,
+      /your last call|prior tool-call|true one-shots/i,
     );
   });
 
