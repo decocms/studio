@@ -14,6 +14,7 @@ import {
 import { Input } from "@deco/ui/components/input.tsx";
 import { Moon01, Monitor01, Play, Sun } from "@untitledui/icons";
 import { Controller, useForm } from "react-hook-form";
+import { useRef, useState } from "react";
 import { authClient } from "@/web/lib/auth-client";
 import {
   usePreferences,
@@ -36,10 +37,61 @@ interface ProfileFormValues {
   name: string;
 }
 
+function ProfileAvatarUpload({
+  value,
+  name,
+  isUpdating,
+  onUpload,
+}: {
+  value?: string;
+  name?: string;
+  isUpdating: boolean;
+  onUpload: (dataUrl: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Image must be smaller than 2MB");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => toast.error("Failed to read image");
+    reader.onloadend = () => {
+      if (reader.result) onUpload(reader.result as string);
+      if (inputRef.current) inputRef.current.value = "";
+    };
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={() => inputRef.current?.click()}
+      disabled={isUpdating}
+      className="rounded-full overflow-hidden hover:ring-2 hover:ring-border transition-all disabled:opacity-50"
+      aria-label="Upload profile picture"
+    >
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFile}
+        className="hidden"
+        disabled={isUpdating}
+      />
+      <Avatar url={value} fallback={name ?? "U"} shape="circle" size="base" />
+    </button>
+  );
+}
+
 function ProfileSection() {
   const { data: session, isPending } = authClient.useSession();
   const user = session?.user;
   const userImage = (user as { image?: string } | undefined)?.image;
+  const [isUpdatingImage, setIsUpdatingImage] = useState(false);
 
   const form = useForm<ProfileFormValues>({
     values: { name: user?.name ?? "" },
@@ -75,6 +127,19 @@ function ProfileSection() {
     },
   });
 
+  const handleImageUpload = async (dataUrl: string) => {
+    setIsUpdatingImage(true);
+    try {
+      await authClient.updateUser({ image: dataUrl });
+      track("profile_updated", { fields: ["image"] });
+      toast.success("Profile picture updated");
+    } catch {
+      toast.error("Failed to update profile picture");
+    } finally {
+      setIsUpdatingImage(false);
+    }
+  };
+
   if (isPending) return null;
 
   return (
@@ -82,12 +147,13 @@ function ProfileSection() {
       <SettingsCard>
         <SettingsCardItem
           title="Avatar"
+          description="Click to upload a new picture"
           action={
-            <Avatar
-              url={userImage}
-              fallback={user?.name ?? "U"}
-              shape="circle"
-              size="base"
+            <ProfileAvatarUpload
+              value={userImage}
+              name={user?.name}
+              isUpdating={isUpdatingImage}
+              onUpload={handleImageUpload}
             />
           }
         />
