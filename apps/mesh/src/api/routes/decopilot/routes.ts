@@ -35,8 +35,9 @@ import {
 import { PersistedRunConfigSchema, toModelsConfig } from "./run-config";
 import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage, ModelsConfig } from "./types";
-import { streamCore } from "./stream-core";
+import { streamCore, createLanguageModel } from "./stream-core";
 import { RunClaimError } from "./run-reactor";
+import { genSuggestions } from "./suggestions-generator";
 import { wrapWithSseKeepalive } from "./sse-keepalive";
 import type { SqlThreadStorage } from "@/storage/threads";
 import { getPodId } from "@/core/pod-identity";
@@ -592,6 +593,65 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       if (err instanceof HTTPException) throw err;
       console.error("[decopilot:attach] Error", err);
       return c.body(null, 500);
+    }
+  });
+
+  // ============================================================================
+  // Agent Suggestions Endpoint — generates 3 starter questions for an agent
+  // ============================================================================
+
+  app.post("/:org/decopilot/agent-suggestions", async (c) => {
+    try {
+      const ctx = c.get("meshContext");
+      const organization = ensureOrganization(c);
+
+      const { virtualMcpId } = await c.req.json();
+      if (typeof virtualMcpId !== "string") {
+        return c.json({ error: "virtualMcpId required" }, 400);
+      }
+
+      const [virtualMcp, models] = await Promise.all([
+        ctx.storage.virtualMcps.findById(virtualMcpId, organization.id),
+        resolvePerRequestModels(ctx, undefined).catch(() => null),
+      ]);
+
+      if (!virtualMcp || virtualMcp.organization_id !== organization.id) {
+        return c.json({ error: "Agent not found" }, 404);
+      }
+
+      const agentDescription = [
+        virtualMcp.metadata?.instructions,
+        virtualMcp.description,
+        virtualMcp.title,
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+
+      if (!models) {
+        return c.json({ suggestions: [] });
+      }
+
+      const provider = await ctx.aiProviders
+        .activate(models.credentialId, organization.id)
+        .catch(() => null);
+
+      if (!provider) {
+        return c.json({ suggestions: [] });
+      }
+
+      const suggestions = await genSuggestions({
+        abortSignal: c.req.raw.signal,
+        model: createLanguageModel(provider, models.fast ?? models.thinking),
+        agentDescription,
+      });
+
+      return c.json({ suggestions: suggestions ?? [] });
+    } catch (err) {
+      if (err instanceof HTTPException) {
+        return c.json({ error: err.message }, err.status);
+      }
+      console.error("[decopilot:agent-suggestions] Error", err);
+      return c.json({ suggestions: [] });
     }
   });
 

@@ -300,6 +300,10 @@ export const KEYS = {
   aiProviderCredits: (orgId: string, keyId: string) =>
     ["ai-provider-credits", orgId, keyId] as const,
 
+  // Agent starter suggestions (scoped by org + virtualMcpId)
+  agentSuggestions: (orgId: string, virtualMcpId: string | null) =>
+    ["agent-suggestions", orgId, virtualMcpId ?? "default"] as const,
+
   // Organization SSO
   orgSsoConfig: (organizationId: string) =>
     ["org-sso-config", organizationId] as const,

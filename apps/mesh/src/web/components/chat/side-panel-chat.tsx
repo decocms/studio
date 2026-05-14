@@ -18,12 +18,16 @@ import { BranchPicker } from "../thread/github/branch-picker.tsx";
 
 import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
 import { useDecoCredits } from "@/web/hooks/use-deco-credits";
+import { ThreadSuggestions } from "./thread-suggestions";
+import { useAgentSuggestions } from "@/web/hooks/use-agent-suggestions";
+import type { TiptapDoc } from "./types";
 
 // ---------- Default sidebar empty state ----------
 
 function SidebarEmptyState() {
   const { org } = useProjectContext();
   const { selectedVirtualMcp } = useChatPrefs();
+  const { sendMessage } = useChatStream();
   const { data: session } = authClient.useSession();
   const { currentBranch, setCurrentTaskBranch } = useChatTask();
 
@@ -35,41 +39,59 @@ function SidebarEmptyState() {
   const githubRepo = fullVm?.metadata?.githubRepo ?? null;
   const showBranchPicker = !!githubRepo?.connectionId && !!userId;
 
+  const suggestions = useAgentSuggestions(displayAgent.id);
+
+  const handleSuggestionSelect = async (text: string) => {
+    const doc: TiptapDoc = {
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+    };
+    await sendMessage(doc);
+  };
+
   return (
-    <div className="h-full w-full flex flex-col items-center justify-center gap-6 px-4">
-      <div className="flex flex-col items-center justify-center gap-2 md:gap-4 text-center">
-        <IntegrationIcon
-          icon={displayAgent.icon}
-          name={displayAgent.title}
-          size="lg"
-          fallbackIcon={<Users03 size={32} />}
-          className="size-10 min-w-10 md:size-[60px]! md:min-w-[60px] rounded-xl md:rounded-[18px]!"
-        />
-        <h3 className="text-base md:text-xl font-medium text-foreground">
-          {displayAgent.title}
-        </h3>
-        <div className="text-muted-foreground text-center text-base max-w-md line-clamp-2">
-          {displayAgent.description ??
-            "Ask anything about configuring model providers or using MCP Mesh."}
-        </div>
-        {showBranchPicker && (
-          <div className="mt-2">
-            <BranchPicker
-              orgId={org.id}
-              orgSlug={org.slug}
-              userId={userId}
-              connectionId={githubRepo.connectionId!}
-              owner={githubRepo.owner}
-              repo={githubRepo.name}
-              vmMap={fullVm?.metadata?.vmMap}
-              value={currentBranch ?? undefined}
-              onChange={setCurrentTaskBranch}
-            />
+    <div className="h-full w-full flex flex-col px-4 max-w-2xl mx-auto">
+      <div className="flex-1 flex flex-col items-center justify-center gap-6">
+        <div className="flex flex-col items-center justify-center gap-2 md:gap-4 text-center">
+          <IntegrationIcon
+            icon={displayAgent.icon}
+            name={displayAgent.title}
+            size="lg"
+            fallbackIcon={<Users03 size={32} />}
+            className="size-10 min-w-10 md:size-[60px]! md:min-w-[60px] rounded-xl md:rounded-[18px]!"
+          />
+          <h3 className="text-base md:text-xl font-medium text-foreground">
+            {displayAgent.title}
+          </h3>
+          <div className="text-muted-foreground text-center text-base max-w-md line-clamp-2">
+            {displayAgent.description ??
+              "Ask anything about configuring model providers or using MCP Mesh."}
           </div>
-        )}
+          {showBranchPicker && (
+            <div className="mt-2">
+              <BranchPicker
+                orgId={org.id}
+                orgSlug={org.slug}
+                userId={userId}
+                connectionId={githubRepo.connectionId!}
+                owner={githubRepo.owner}
+                repo={githubRepo.name}
+                vmMap={fullVm?.metadata?.vmMap}
+                value={currentBranch ?? undefined}
+                onChange={setCurrentTaskBranch}
+              />
+            </div>
+          )}
+        </div>
+        <div className="w-full">
+          <Chat.IceBreakers />
+        </div>
       </div>
-      <div className="w-full max-w-3xl mx-auto">
-        <Chat.IceBreakers />
+      <div className="w-full pb-4">
+        <ThreadSuggestions
+          suggestions={suggestions}
+          onSelect={handleSuggestionSelect}
+        />
       </div>
     </div>
   );

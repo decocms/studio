@@ -7,6 +7,7 @@ import { IceBreakers } from "./ice-breakers";
 import { ChatInput } from "./input";
 import { MessagePair, useMessagePairs } from "./message/pair.tsx";
 import { NoAiProviderEmptyState } from "./no-ai-provider-empty-state";
+import { AfterMessageSuggestions } from "./thread-suggestions";
 import { CreditsEmptyState } from "./credits-empty-state";
 import { CreditsExhaustedBanner } from "./credits-exhausted-banner";
 import { CreditsEyebrow, NoCreditsEyebrow } from "./credits-eyebrow";
@@ -69,6 +70,12 @@ function ChatMessages() {
       (p) => "state" in p && p.state === "approval-requested",
     );
 
+  const showSuggestions =
+    !isStreaming &&
+    !hasActiveUserAsk &&
+    !hasActivePendingApprovals &&
+    lastMessagePair?.assistant != null;
+
   return (
     <div className="w-full min-w-0 max-w-full overflow-y-auto h-full overflow-x-hidden">
       <div className="flex flex-col min-w-0 max-w-2xl mx-auto w-full">
@@ -94,6 +101,9 @@ function ChatMessages() {
             isLastPair={true}
             status={status}
           />
+          {showSuggestions && (
+            <AfterMessageSuggestions className="px-4 pb-6 pt-2" />
+          )}
         </div>
       )}
     </div>
