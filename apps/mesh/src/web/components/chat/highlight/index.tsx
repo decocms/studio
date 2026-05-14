@@ -1,5 +1,5 @@
 import { Button } from "@deco/ui/components/button.tsx";
-import { AlertCircle, AlertTriangle, X } from "@untitledui/icons";
+import { AlertCircle, AlertTriangle } from "@untitledui/icons";
 import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import { useChatStream, useChatTask } from "../context";
 import { ApprovalHighlight, extractPendingApprovals } from "./approval";
@@ -57,47 +57,27 @@ function StatusHighlight(props: StatusHighlightProps) {
       title={message}
       defaultExpanded={true}
       variant={variant}
+      onClose={onDismiss}
       footerRight={
-        <>
-          {isError ? (
-            <>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={props.onFixInChat}
-                className="h-7 text-xs"
-              >
-                Fix in chat
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled
-                className="h-7 text-xs"
-              >
-                Report
-              </Button>
-            </>
-          ) : (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={props.onContinue}
-              className="h-7 text-xs"
-            >
-              Continue
-            </Button>
-          )}
-          <button
-            type="button"
-            onClick={onDismiss}
-            className="text-muted-foreground hover:text-foreground transition-colors shrink-0 ml-1"
-            title="Dismiss"
-            aria-label="Dismiss"
+        isError ? (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={props.onFixInChat}
+            className="h-7 text-xs"
           >
-            <X size={14} />
-          </button>
-        </>
+            Fix in chat
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={props.onContinue}
+            className="h-7 text-xs"
+          >
+            Continue
+          </Button>
+        )
       }
     >
       {null}
