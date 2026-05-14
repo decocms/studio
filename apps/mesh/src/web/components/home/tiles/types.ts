@@ -1,32 +1,76 @@
 /**
  * Home tiles — type contract.
  *
- * Each tile maps 1:1 to a preset task in the side panel. When the user
- * starts that task, the tile is "activated" and renders below the chat.
+ * A `TileDefinition` is declarative: it knows how to render content
+ * for a tile of a given `type`. A `TileInstance` is a concrete tile
+ * placed on a user's board (knows position, size, optional config).
+ *
+ * Today every definition ships with the app; the `source` discriminator
+ * is here so we can later attribute tiles to specific agents or MCP
+ * connections in the catalog UI.
  */
 
-import type { ComponentType } from "react";
+import type { ReactNode } from "react";
 
-export type TileId = "brand-context" | "landing-page" | "error-monitoring";
+export type TileSizeKey = "S" | "M" | "L" | "XL" | "W" | "B";
 
-export type TileStatus = "running" | "ready";
+export interface TileSize {
+  w: number;
+  h: number;
+}
 
-export interface TileState {
-  id: TileId;
-  /** Task/thread that last activated this tile, used to link back to chat. */
-  taskId: string;
-  status: TileStatus;
-  /** ISO timestamp of the most recent activation. */
-  updatedAt: string;
+export type TileSource = "system" | "agent" | "mcp";
+
+export type TileCategory =
+  | "essentials"
+  | "studio"
+  | "agents"
+  | "activity"
+  | "stats"
+  | "shortcuts"
+  | "data"
+  | "workflow";
+
+export interface TileRenderProps {
+  instance: TileInstance;
+  isEditMode: boolean;
 }
 
 export interface TileDefinition {
-  id: TileId;
+  type: string;
+  source: TileSource;
+  sourceId?: string;
   title: string;
-  /** Lead sentence rendered as the tile's eyebrow / running copy. */
-  runningLabel: string;
-  readyLabel: string;
-  /** Tailwind class for the colored image badge background. */
-  badgeClass: string;
-  Render: ComponentType<{ state: TileState }>;
+  description: string;
+  icon: ReactNode;
+  category: TileCategory;
+  supportedSizes: TileSizeKey[];
+  defaultSize: TileSizeKey;
+  /**
+   * Initial config baked into a TileInstance when it's added from the
+   * catalog. Used by tile types that need per-instance metadata
+   * (e.g., agent.card carries the agent's templateId, title, icon).
+   */
+  defaultConfig?: Record<string, unknown>;
+  render: (props: TileRenderProps) => ReactNode;
+}
+
+export interface TileInstance {
+  id: string;
+  type: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  config?: Record<string, unknown>;
+}
+
+/**
+ * The user's home is a single page: chat + agents on top, then this tile
+ * board below. The board is empty by default — tiles appear when the user
+ * pins them. There is no "mode" to switch between.
+ */
+export interface HomeBoard {
+  version: 3;
+  tiles: TileInstance[];
 }

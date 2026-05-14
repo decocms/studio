@@ -19,9 +19,9 @@ import { cn } from "@deco/ui/lib/utils.js";
 import type { Task } from "@/web/components/chat/task/types";
 import { TaskRow } from "./task-row";
 import { track } from "@/web/lib/posthog-client";
-import { useHomeTiles } from "@/web/components/home/tiles/use-home-tiles";
+import { useHomeBoard } from "@/web/components/home/tiles/use-home-board";
 import { startPresetTask } from "@/web/components/home/tiles/start-preset-task";
-import type { TileId } from "@/web/components/home/tiles/types";
+import type { PresetTileType } from "@/web/components/home/tiles/registry";
 import { ImportFromDecoDialog } from "@/web/components/import-from-deco-dialog.tsx";
 
 type FilterOption = "all" | "manual" | "automation";
@@ -31,117 +31,30 @@ type SectionMode = "list" | "new";
 interface PresetCard {
   id: string;
   title: string;
-  description: string;
-  /** Renders the colored badge on the left of the card. */
-  badge: React.ReactNode;
+  /** Path to the Figma-exported PNG used as the colored thumbnail. */
+  thumb: string;
   /** Onclick behavior. "new-chat" opens an empty chat; preset starts a
-   *  prefilled chat and activates the matching home tile; "import-deco"
+   *  prefilled chat and pins the matching home tile; "import-deco"
    *  opens the import dialog. */
-  action: "new-chat" | "import-deco" | { tileId?: TileId; prompt: string };
-}
-
-function Badge({
-  className,
-  children,
-}: {
-  className: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <span
-      className={cn(
-        "relative flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border/40 shadow-sm",
-        className,
-      )}
-      aria-hidden
-    >
-      {children}
-    </span>
-  );
-}
-
-function NewChatBadge() {
-  return (
-    <Badge className="bg-[#E8E5FF]">
-      <span className="absolute inset-1.5 rounded-md bg-white shadow-sm" />
-      <span className="absolute left-2.5 right-3 top-3 h-[3px] rounded-full bg-[#C9C2FF]" />
-      <span className="absolute left-2.5 right-5 top-[18px] h-[3px] rounded-full bg-[#C9C2FF]" />
-      <span className="absolute left-2.5 right-4 top-[24px] h-[3px] rounded-full bg-[#C9C2FF]" />
-    </Badge>
-  );
-}
-
-function BrandBadge() {
-  return (
-    <Badge className="bg-[#E2F66B]">
-      <span className="absolute left-2 top-3.5 size-1.5 rounded-full bg-[#FF7676]" />
-      <span className="absolute left-[14px] top-3.5 size-1.5 rounded-full bg-[#7D7D7D]" />
-      <span className="absolute left-[20px] top-3.5 size-1.5 rounded-full bg-[#FFFFFF] border border-[#C4D75E]" />
-      <span className="absolute right-2 bottom-2 text-[11px] font-semibold leading-none text-[#1F2937]">
-        Aa
-      </span>
-    </Badge>
-  );
-}
-
-function LandingBadge() {
-  return (
-    <Badge className="bg-[#CDEEFA]">
-      <span className="absolute left-1.5 top-1.5 bottom-1.5 right-1.5 rounded-md bg-white" />
-      <span className="absolute left-3 right-3 top-3 h-1 rounded-full bg-[#9FD2E4]" />
-      <span className="absolute left-3 right-5 top-[18px] h-1 rounded-full bg-[#D2E8F0]" />
-      <span className="absolute left-3 right-6 top-[24px] h-1 rounded-full bg-[#D2E8F0]" />
-    </Badge>
-  );
-}
-
-function MonitoringBadge() {
-  return (
-    <Badge className="bg-[#FAD2A2]">
-      <svg viewBox="0 0 28 16" className="h-3.5 w-7 text-[#C2473F]" aria-hidden>
-        <polyline
-          points="0,12 5,8 10,11 14,4 18,9 23,6 28,10"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-      <span className="absolute right-1 top-1 flex size-3 items-center justify-center rounded-full bg-white text-[8px] font-bold leading-none text-[#C2473F]">
-        !
-      </span>
-    </Badge>
-  );
-}
-
-function DecoBadge() {
-  return (
-    <Badge className="bg-[#D6F26B]">
-      <img
-        src="/logos/deco%20logo.svg"
-        alt=""
-        className="size-6 object-contain"
-      />
-    </Badge>
-  );
+  action:
+    | "new-chat"
+    | "import-deco"
+    | { tileType: PresetTileType; prompt: string };
 }
 
 const PRESET_CARDS: PresetCard[] = [
   {
     id: "new-chat",
     title: "New chat",
-    description: "Start a fresh conversation.",
-    badge: <NewChatBadge />,
+    thumb: "/home/task-new-chat.png",
     action: "new-chat",
   },
   {
     id: "brand-context",
     title: "Extract brand context",
-    description: "Pull colors, fonts, and tone from your site.",
-    badge: <BrandBadge />,
+    thumb: "/home/task-brand.png",
     action: {
-      tileId: "brand-context",
+      tileType: "studio.brand-context",
       prompt:
         "Extract my brand context — pull the colors, typography, and tone of voice from my site so we can reuse them across new work.",
     },
@@ -149,10 +62,9 @@ const PRESET_CARDS: PresetCard[] = [
   {
     id: "landing-page",
     title: "Create landing page",
-    description: "Generate a page from your brand and a prompt.",
-    badge: <LandingBadge />,
+    thumb: "/home/task-landing.png",
     action: {
-      tileId: "landing-page",
+      tileType: "studio.landing-page",
       prompt:
         "Draft a landing page for my product using my existing brand. Start with a hero, three feature sections, social proof, and a CTA.",
     },
@@ -160,10 +72,9 @@ const PRESET_CARDS: PresetCard[] = [
   {
     id: "error-monitoring",
     title: "Set up error monitoring",
-    description: "Connect your stack and start capturing errors.",
-    badge: <MonitoringBadge />,
+    thumb: "/home/task-monitoring.png",
     action: {
-      tileId: "error-monitoring",
+      tileType: "studio.error-monitoring",
       prompt:
         "Help me set up error monitoring for my app. Walk me through connecting the stack and start capturing errors.",
     },
@@ -171,8 +82,7 @@ const PRESET_CARDS: PresetCard[] = [
   {
     id: "import-deco",
     title: "Import Deco site",
-    description: "Bring a deco.cx site into Studio.",
-    badge: <DecoBadge />,
+    thumb: "/home/task-import-deco.png",
     action: "import-deco",
   },
 ];
@@ -213,7 +123,7 @@ export function TasksSection({
 }) {
   const navigate = useNavigate();
   const { org, locator } = useProjectContext();
-  const { activate } = useHomeTiles(org.slug);
+  const { addTile } = useHomeBoard(org.slug);
   const [filter, setFilter] = useState<FilterOption>("all");
   const [memberFilter, setMemberFilter] = useState<MemberFilter>("mine");
   const [mode, setMode] = useState<SectionMode>(
@@ -249,8 +159,8 @@ export function TasksSection({
       orgSlug: org.slug,
       locator,
       navigate,
-      activate,
-      tileId: card.action.tileId,
+      tileType: card.action.tileType,
+      addTile,
     });
   };
 
@@ -349,29 +259,29 @@ export function TasksSection({
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-0.5">
         {mode === "new" ? (
-          <div className="flex flex-col gap-2 pt-1 px-1">
+          <div className="flex flex-col gap-1 pt-1 px-1">
             {PRESET_CARDS.map((card) => (
               <button
                 key={card.id}
                 type="button"
                 onClick={() => handleCardClick(card)}
                 className={cn(
-                  "group/row flex w-full items-center gap-3.5 rounded-2xl border border-border/60 bg-background px-3 py-3 text-left transition-all",
-                  "hover:border-border hover:bg-accent/40 hover:shadow-sm cursor-pointer",
+                  "group/row flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors",
+                  "hover:bg-accent/50 cursor-pointer",
                 )}
               >
-                {card.badge}
-                <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-                  <div className="text-[14px] font-medium text-foreground leading-tight">
-                    {card.title}
-                  </div>
-                  <div className="text-[12px] text-muted-foreground leading-snug truncate">
-                    {card.description}
-                  </div>
+                <img
+                  src={card.thumb}
+                  alt=""
+                  aria-hidden
+                  className="size-10 shrink-0 rounded-md object-cover"
+                />
+                <div className="flex-1 min-w-0 text-sm font-medium text-foreground truncate">
+                  {card.title}
                 </div>
                 <ArrowRight
-                  size={16}
-                  className="shrink-0 text-muted-foreground opacity-0 transition-all group-hover/row:opacity-100 group-hover/row:translate-x-0.5 group-hover/row:text-foreground"
+                  size={14}
+                  className="shrink-0 text-muted-foreground opacity-0 transition-all group-hover/row:opacity-100 group-hover/row:translate-x-0.5"
                 />
               </button>
             ))}

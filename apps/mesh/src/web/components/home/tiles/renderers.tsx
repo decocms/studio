@@ -1,7 +1,8 @@
 /**
- * Tile renderers. One per preset task. Mock content for now — the agents
- * that drive these don't produce real outputs yet, so each tile shows a
- * representative preview while the work is "running" or "ready".
+ * Tile renderers. One per preset task. Until each preset agent produces
+ * real output, the tiles render a representative preview based on the
+ * tile's lifecycle status (running while the chat is being worked on,
+ * "ready" otherwise).
  */
 
 import { useNavigate } from "@tanstack/react-router";
@@ -9,42 +10,56 @@ import { useProjectContext } from "@decocms/mesh-sdk";
 import { Activity, Globe02, Stars01 } from "@untitledui/icons";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import type { TileState } from "./types";
+import type { TileRenderProps } from "./types";
 
-const BRAND_PALETTE = [
-  { hex: "#0F172A", label: "Primary" },
-  { hex: "#22D3EE", label: "Accent" },
-  { hex: "#F4F4F5", label: "Surface" },
-  { hex: "#A1A1AA", label: "Muted" },
-];
+type Status = "running" | "ready";
 
-function TileShell({
+function readStatus(config: Record<string, unknown> | undefined): Status {
+  return config?.status === "ready" ? "ready" : "running";
+}
+
+function readTaskId(
+  config: Record<string, unknown> | undefined,
+): string | null {
+  const v = config?.taskId;
+  return typeof v === "string" && v.length > 0 ? v : null;
+}
+
+function TileFrame({
   title,
   subtitle,
   icon,
   taskId,
+  isEditMode,
   children,
 }: {
   title: string;
   subtitle: string;
   icon: React.ReactNode;
-  taskId: string;
+  taskId: string | null;
+  isEditMode: boolean;
   children: React.ReactNode;
 }) {
   const navigate = useNavigate();
   const { org } = useProjectContext();
+  const interactive = !isEditMode && taskId;
   return (
     <button
       type="button"
-      onClick={() =>
-        navigate({
-          to: "/$org/$taskId",
-          params: { org: org.slug, taskId },
-        })
+      disabled={!interactive}
+      onClick={
+        interactive
+          ? () =>
+              navigate({
+                to: "/$org/$taskId",
+                params: { org: org.slug, taskId },
+              })
+          : undefined
       }
       className={cn(
-        "group/tile relative flex h-full w-full flex-col gap-4 rounded-2xl border border-border bg-background p-5 text-left",
-        "transition-all hover:border-border hover:shadow-sm",
+        "group/tile flex h-full w-full flex-col gap-3 p-5 text-left bg-card",
+        interactive && "cursor-pointer hover:bg-card/80 transition-colors",
+        !interactive && "cursor-default",
       )}
     >
       <div className="flex items-center gap-2.5">
@@ -67,7 +82,7 @@ function TileShell({
 
 function RunningBody() {
   return (
-    <div className="flex h-full flex-col gap-2">
+    <div className="flex h-full flex-col gap-2 pt-1">
       <Skeleton className="h-3 w-3/4" />
       <Skeleton className="h-3 w-1/2" />
       <Skeleton className="h-3 w-2/3" />
@@ -75,24 +90,33 @@ function RunningBody() {
   );
 }
 
-export function BrandContextTile({ state }: { state: TileState }) {
+const BRAND_PALETTE = [
+  { hex: "#0F172A" },
+  { hex: "#22D3EE" },
+  { hex: "#F4F4F5" },
+  { hex: "#A1A1AA" },
+];
+
+export function BrandContextTile({ instance, isEditMode }: TileRenderProps) {
+  const status = readStatus(instance.config);
   const subtitle =
-    state.status === "running" ? "Pulling site assets…" : "Brand snapshot";
+    status === "running" ? "Pulling site assets…" : "Brand snapshot";
   return (
-    <TileShell
+    <TileFrame
       title="Brand context"
       subtitle={subtitle}
       icon={<Stars01 size={14} />}
-      taskId={state.taskId}
+      taskId={readTaskId(instance.config)}
+      isEditMode={isEditMode}
     >
-      {state.status === "running" ? (
+      {status === "running" ? (
         <RunningBody />
       ) : (
         <div className="flex flex-wrap gap-2">
           {BRAND_PALETTE.map((swatch) => (
             <div
               key={swatch.hex}
-              className="flex items-center gap-2 rounded-md border border-border bg-card px-2 py-1.5"
+              className="flex items-center gap-2 rounded-md border border-border bg-background px-2 py-1.5"
             >
               <span
                 className="size-3.5 rounded-sm border border-border/60"
@@ -106,21 +130,22 @@ export function BrandContextTile({ state }: { state: TileState }) {
           ))}
         </div>
       )}
-    </TileShell>
+    </TileFrame>
   );
 }
 
-export function LandingPageTile({ state }: { state: TileState }) {
-  const subtitle =
-    state.status === "running" ? "Drafting sections…" : "Page preview";
+export function LandingPageTile({ instance, isEditMode }: TileRenderProps) {
+  const status = readStatus(instance.config);
+  const subtitle = status === "running" ? "Drafting sections…" : "Page preview";
   return (
-    <TileShell
+    <TileFrame
       title="Landing page"
       subtitle={subtitle}
       icon={<Globe02 size={14} />}
-      taskId={state.taskId}
+      taskId={readTaskId(instance.config)}
+      isEditMode={isEditMode}
     >
-      {state.status === "running" ? (
+      {status === "running" ? (
         <RunningBody />
       ) : (
         <div className="flex h-full flex-col justify-between gap-3 rounded-lg border border-border bg-muted/30 p-3">
@@ -135,21 +160,23 @@ export function LandingPageTile({ state }: { state: TileState }) {
           </div>
         </div>
       )}
-    </TileShell>
+    </TileFrame>
   );
 }
 
-export function ErrorMonitoringTile({ state }: { state: TileState }) {
+export function ErrorMonitoringTile({ instance, isEditMode }: TileRenderProps) {
+  const status = readStatus(instance.config);
   const subtitle =
-    state.status === "running" ? "Connecting your stack…" : "Live errors";
+    status === "running" ? "Connecting your stack…" : "Live errors";
   return (
-    <TileShell
-      title="Error monitoring"
+    <TileFrame
+      title="System health"
       subtitle={subtitle}
       icon={<Activity size={14} />}
-      taskId={state.taskId}
+      taskId={readTaskId(instance.config)}
+      isEditMode={isEditMode}
     >
-      {state.status === "running" ? (
+      {status === "running" ? (
         <RunningBody />
       ) : (
         <div className="flex h-full flex-col gap-3">
@@ -173,6 +200,24 @@ export function ErrorMonitoringTile({ state }: { state: TileState }) {
           </svg>
         </div>
       )}
-    </TileShell>
+    </TileFrame>
+  );
+}
+
+export function UnknownTile({ instance }: TileRenderProps) {
+  return (
+    <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+      Unknown tile type: {instance.type}
+    </div>
+  );
+}
+
+export function TileSkeleton() {
+  return (
+    <div className="flex h-full flex-col gap-2 p-5">
+      <Skeleton className="h-3 w-1/3" />
+      <Skeleton className="h-3 w-2/3" />
+      <Skeleton className="h-3 w-1/2" />
+    </div>
   );
 }
