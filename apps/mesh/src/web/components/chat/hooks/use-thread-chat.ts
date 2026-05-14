@@ -32,6 +32,7 @@ import {
   type UIMessageChunk,
 } from "ai";
 import { useRef, useSyncExternalStore } from "react";
+import { useDecopilotEvents } from "../../../hooks/use-decopilot-events";
 
 export type ChatStreamStatus = "ready" | "submitted" | "streaming" | "error";
 
@@ -188,47 +189,82 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
   );
 
   // ── Persistent /attach connection ─────────────────────────────────────
-  // Created once per (orgSlug, threadId) pair. Stays open for the lifetime
-  // of this hook instance; the next thread switch tears it down via the
-  // subscribe key in useSyncExternalStore below.
-  const connRef = useRef<{
-    key: string;
-    abort: AbortController;
-  } | null>(null);
-
+  // Lifecycle is driven by useSyncExternalStore: React calls `subscribe`
+  // on mount (opens the fetch) and the returned cleanup on unmount
+  // (aborts the fetch). This means StrictMode's double-mount and any
+  // future cleanup-on-route-change automatically tear the connection
+  // down — without it the dev server's connection pool fills up with
+  // orphaned SSEs and starts hanging requests after a few HMR cycles.
+  //
+  // `subscribeRef` is rebuilt only when threadId / orgSlug change, so
+  // re-renders don't churn the SSE.
   const connKey = `${orgSlug}::${threadId}`;
-  if (connRef.current && connRef.current.key !== connKey) {
-    connRef.current.abort.abort();
-    connRef.current = null;
-    // Stale local state from the previous thread would render alongside
-    // the new thread's server snapshot until the user starts interacting
-    // — clear everything when switching threads.
-    localMessagesStore.current.set([]);
-    streamingStore.current.set(null);
-    statusStore.current.set("ready");
-    errorStore.current.set(null);
+  const prevKeyRef = useRef(connKey);
+  const subscribeRef = useRef<((notify: () => void) => () => void) | null>(
+    null,
+  );
+  if (!subscribeRef.current || prevKeyRef.current !== connKey) {
+    if (prevKeyRef.current !== connKey) {
+      // Thread switched — discard any stale local snapshot.
+      localMessagesStore.current.set([]);
+      streamingStore.current.set(null);
+      statusStore.current.set("ready");
+      errorStore.current.set(null);
+    }
+    prevKeyRef.current = connKey;
+    subscribeRef.current = (_notify: () => void) => {
+      if (!threadId) return () => {};
+      const abort = new AbortController();
+      void runPersistentLoop({
+        url: `/api/${encodeURIComponent(orgSlug)}/decopilot/attach/${encodeURIComponent(threadId)}?persistent=true`,
+        signal: abort.signal,
+        onChunk: (chunk) => handleChunkFanOut(chunk),
+        onError: (err) => {
+          if (abort.signal.aborted) return;
+          errorStore.current.set(err);
+          statusStore.current.set("error");
+          cbRef.current.onError?.(err);
+        },
+      });
+      return () => abort.abort();
+    };
   }
-  if (!connRef.current && threadId) {
-    const abort = new AbortController();
-    connRef.current = { key: connKey, abort };
-    void runPersistentLoop({
-      url: `/api/${encodeURIComponent(orgSlug)}/decopilot/attach/${encodeURIComponent(threadId)}?persistent=true`,
-      signal: abort.signal,
-      onChunk: (chunk) => handleChunkFanOut(chunk),
-      onError: (err) => {
-        errorStore.current.set(err);
-        statusStore.current.set("error");
-        cbRef.current.onError?.(err);
-      },
-    });
-  }
+  useSyncExternalStore(
+    subscribeRef.current,
+    () => connKey,
+    () => connKey,
+  );
 
   // Demuxer: feeds incoming chunks into the *current* readUIMessageStream
-  // sub-stream. Boundaries are `{type: "finish"}` chunks.
+  // sub-stream. Boundaries are `{type: "finish"}` chunks — except when the
+  // backend purges JetStream before the publish lands (requires_action +
+  // tool-calls finishReason race), in which case the finish chunk never
+  // reaches the client. We also listen to the `decopilot.finish` SSE event
+  // and force-close the sub-stream there as a backstop.
   const demuxRef = useRef<{
     subController: ReadableStreamDefaultController<UIMessageChunk> | null;
     consume: () => Promise<void>;
   }>({ subController: null, consume: async () => {} });
+
+  const forceCloseCurrentSubStream = (): void => {
+    const ctrl = demuxRef.current.subController;
+    if (!ctrl) return;
+    demuxRef.current.subController = null;
+    try {
+      ctrl.close();
+    } catch {
+      // Already closed — readUIMessageStream's own finally will handle the
+      // promotion to localMessages.
+    }
+  };
+
+  useDecopilotEvents({
+    orgSlug,
+    taskId: threadId,
+    onFinish: () => {
+      forceCloseCurrentSubStream();
+    },
+  });
 
   function ensureSubStream(): ReadableStreamDefaultController<UIMessageChunk> {
     if (demuxRef.current.subController) return demuxRef.current.subController;
@@ -411,18 +447,37 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
       });
       return;
     }
-    localMessagesStore.current.update((prev) => {
-      const lastIdx = prev.length - 1;
-      if (lastIdx < 0) return prev;
-      const last = prev[lastIdx];
-      if (!last || last.role !== "assistant") return prev;
-      const next = [...prev];
+    // The assistant we need to patch can live in either store:
+    //   - localMessages: if it was produced by this tab's stream
+    //   - initialMessages (server snapshot): if the user opened/refreshed
+    //     the thread while a `requires_action` was already pending, or
+    //     navigated back to it after the persistent attach replayed the
+    //     state into the DB but not yet into our local store
+    // For the second case, promote a patched copy into localMessages so
+    // mergeWithServer (local wins) renders the patched version and the
+    // continuation POST body carries the user's tool output.
+    const localPrev = localMessagesStore.current.get();
+    const lastIdx = localPrev.length - 1;
+    const localLast = lastIdx >= 0 ? localPrev[lastIdx] : undefined;
+    if (localLast && localLast.role === "assistant") {
+      const next = [...localPrev];
       next[lastIdx] = {
-        ...last,
-        parts: update(last.parts),
+        ...localLast,
+        parts: update(localLast.parts),
       } as Tagged<UI_MESSAGE>;
-      return next;
-    });
+      localMessagesStore.current.set(next);
+      return;
+    }
+    const serverLastIdx = initialMessages.length - 1;
+    const serverLast =
+      serverLastIdx >= 0 ? initialMessages[serverLastIdx] : undefined;
+    if (serverLast && serverLast.role === "assistant") {
+      const patched = {
+        ...serverLast,
+        parts: update(serverLast.parts),
+      } as Tagged<UI_MESSAGE>;
+      localMessagesStore.current.set([...localPrev, patched]);
+    }
   };
 
   const addToolOutput = ((args: {
@@ -518,19 +573,30 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
 // ──────────────────────────────────────────────────────────────────────────
 
 /**
- * Compose a "current view" of messages from the server snapshot plus local
- * extras (optimistic user messages, completed assistant messages whose DB
- * persistence hasn't propagated yet). De-dupe by id, server wins.
+ * Compose a "current view" of messages from the server snapshot plus
+ * local extras (optimistic user messages, completed assistant messages,
+ * and any in-place patches from addToolOutput / addToolApprovalResponse
+ * that haven't round-tripped through the backend yet).
+ *
+ * When local and server share an id, *local wins* — local is always the
+ * more-recent version because we patch it eagerly on tool output /
+ * approval response, and we'd otherwise show the stale server copy until
+ * the next refetch (and worse: feed the stale copy back into the
+ * continuation POST body, so the backend would never see the user's
+ * approval and the run would never continue).
  */
 function mergeWithServer<UI_MESSAGE extends UIMessage>(
   server: UI_MESSAGE[],
   local: Tagged<UI_MESSAGE>[],
 ): UI_MESSAGE[] {
   if (local.length === 0) return server.slice();
+  const localById = new Map(local.map((m) => [m.id, m]));
   const serverIds = new Set(server.map((m) => m.id));
-  const extras = local.filter((m) => !serverIds.has(m.id));
-  if (extras.length === 0) return server.slice();
-  return [...server, ...extras];
+  const merged = server.map((m) => localById.get(m.id) ?? m);
+  for (const m of local) {
+    if (!serverIds.has(m.id)) merged.push(m);
+  }
+  return merged;
 }
 
 async function runPersistentLoop(args: {
