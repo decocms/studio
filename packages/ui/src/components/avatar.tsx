@@ -6,7 +6,7 @@ import * as AvatarPrimitive from "@radix-ui/react-avatar";
 import { cn } from "../lib/utils.ts";
 import { User01 } from "@untitledui/icons";
 import { cva, type VariantProps } from "class-variance-authority";
-import { type HTMLAttributes, type ReactNode, useMemo, useState } from "react";
+import { type HTMLAttributes, type ReactNode, useMemo } from "react";
 
 // Export basic primitives for backward compatibility
 function AvatarRoot({
@@ -201,7 +201,6 @@ function UnifiedAvatar({
   muted = false,
   ...props
 }: BaseAvatarProps) {
-  const [isError, setIsError] = useState(false);
   const fallbackContent = useMemo(() => {
     if (typeof fallback === "string") {
       const trimmed = fallback.trim();
@@ -239,20 +238,20 @@ function UnifiedAvatar({
         </div>
       ) : (
         <>
-          {url && !isError && (
+          {url && (
             <AvatarImage
               src={url}
               loading="lazy"
               alt="Avatar"
               className={cn(avatarImageVariants({ objectFit }))}
-              onError={() => setIsError(true)}
             />
           )}
-          {(!url || isError) && (
-            <AvatarFallback className={cn(fallbackColor, "rounded-none")}>
-              {fallbackContent}
-            </AvatarFallback>
-          )}
+          <AvatarFallback
+            className={cn(fallbackColor, "rounded-none")}
+            delayMs={url ? 600 : 0}
+          >
+            {fallbackContent}
+          </AvatarFallback>
         </>
       )}
     </AvatarRoot>
