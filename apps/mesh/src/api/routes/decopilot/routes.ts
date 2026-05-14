@@ -35,7 +35,7 @@ import {
 import { PersistedRunConfigSchema, toModelsConfig } from "./run-config";
 import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage, ModelsConfig } from "./types";
-import { dispatchRun } from "./dispatch-run";
+import { dispatchRun, type DispatchRunInput } from "./dispatch-run";
 import { wrapWithSseKeepalive } from "./sse-keepalive";
 import type { SqlThreadStorage } from "@/storage/threads";
 import { getPodId } from "@/core/pod-identity";
@@ -137,6 +137,130 @@ async function resolvePerRequestModels(
 }
 
 // ============================================================================
+// Shared dispatch path: validate → dispatchAndTrack
+// ============================================================================
+
+interface DispatchDeps {
+  runRegistry: RunRegistry;
+  streamBuffer: StreamBuffer;
+  cancelBroadcast: CancelBroadcast;
+}
+
+/**
+ * Parse + permission-check an HTTP request into a `DispatchRunInput`
+ * ready to hand to `dispatchAndTrack` (or directly to `dispatchRun`).
+ *
+ * Pure-ish: reads `c` for the request body and auth context, but no
+ * downstream side effects. Throws `HTTPException` / `TierUnavailableError`
+ * for caller-visible problems.
+ *
+ * When `threadIdParam` is provided (e.g. from a URL path like
+ * `/threads/:threadId/...`) the body's `thread_id` must match — rejecting
+ * a body that disagrees rather than silently overriding either side.
+ * Legacy callers that supply the id in the body alone are unaffected.
+ */
+async function validate(
+  c: Context<{ Variables: { meshContext: MeshContext } }>,
+  threadIdParam: string | undefined,
+): Promise<DispatchRunInput> {
+  const ctx = c.get("meshContext");
+
+  const {
+    organization,
+    tier,
+    agent,
+    systemMessages,
+    requestMessage,
+    temperature,
+    memory: memoryConfig,
+    thread_id,
+    branch,
+    toolApprovalLevel,
+    mode,
+  } = await validateRequest(c);
+
+  const bodyThreadId = thread_id ?? memoryConfig?.thread_id;
+  if (threadIdParam && bodyThreadId && bodyThreadId !== threadIdParam) {
+    throw new HTTPException(400, {
+      message: "threadId in URL does not match thread_id in body",
+    });
+  }
+  const taskIdInput = threadIdParam ?? bodyThreadId;
+
+  const userId = ctx.auth?.user?.id;
+  if (!userId) {
+    throw new HTTPException(401, { message: "User ID is required" });
+  }
+
+  const models = await resolvePerRequestModels(ctx, tier);
+
+  const allowedModels = await fetchModelPermissions(
+    ctx.db,
+    organization.id,
+    ctx.auth.user?.role,
+  );
+  if (
+    allowedModels !== undefined &&
+    !checkModelPermission(
+      allowedModels,
+      models.credentialId,
+      models.thinking.id,
+    )
+  ) {
+    throw new HTTPException(403, {
+      message: "Model not allowed for your role",
+    });
+  }
+
+  return {
+    messages: [...systemMessages, requestMessage],
+    models,
+    agent,
+    temperature,
+    toolApprovalLevel,
+    mode,
+    organizationId: organization.id,
+    userId,
+    taskId: taskIdInput,
+    windowSize: memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE,
+    branch: branch ?? null,
+  };
+}
+
+/**
+ * Run an HTTP-initiated dispatch and emit the `chat_message_started`
+ * posthog event for it. Pairs with `validate` for the standard
+ * route-handler flow:
+ *
+ *   const input = await validate(c, c.req.param("threadId"));
+ *   const { taskId } = await dispatchAndTrack(input, ctx, deps);
+ *
+ * Telemetry lives here (not inside `dispatchRun`) so orphan-resume and
+ * automation paths — which call `dispatchRun` directly without a fresh
+ * user message — don't double-count `chat_message_started`.
+ */
+async function dispatchAndTrack(
+  input: DispatchRunInput,
+  ctx: MeshContext,
+  deps: DispatchDeps,
+): Promise<{ taskId: string }> {
+  const { taskId } = await dispatchRun(input, ctx, deps);
+  posthog.capture({
+    distinctId: input.userId,
+    event: "chat_message_started",
+    groups: { organization: input.organizationId },
+    properties: {
+      organization_id: input.organizationId,
+      agent_id: input.agent,
+      mode: input.mode,
+      thread_id: taskId,
+      credential_id: input.models.credentialId,
+    },
+  });
+  return { taskId };
+}
+
+// ============================================================================
 // Route Handler
 // ============================================================================
 
@@ -194,94 +318,15 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
   app.post("/:org/decopilot/threads/:threadId/messages", async (c) => {
     try {
-      const ctx = c.get("meshContext");
-      const threadIdParam = c.req.param("threadId");
-
-      const {
-        organization,
-        tier,
-        agent,
-        systemMessages,
-        requestMessage,
-        temperature,
-        memory: memoryConfig,
-        thread_id,
-        branch,
-        toolApprovalLevel,
-        mode,
-      } = await validateRequest(c);
-
-      // URL path is the source of truth for threadId in this endpoint.
-      // Reject mismatches rather than silently overriding either side.
-      const bodyThreadId = thread_id ?? memoryConfig?.thread_id;
-      if (bodyThreadId && bodyThreadId !== threadIdParam) {
-        throw new HTTPException(400, {
-          message: "threadId in URL does not match thread_id in body",
-        });
-      }
-
-      const userId = ctx.auth?.user?.id;
-      if (!userId) {
-        throw new HTTPException(401, { message: "User ID is required" });
-      }
-
-      const models = await resolvePerRequestModels(ctx, tier);
-
-      const allowedModels = await fetchModelPermissions(
-        ctx.db,
-        organization.id,
-        ctx.auth.user?.role,
-      );
-      if (
-        allowedModels !== undefined &&
-        !checkModelPermission(
-          allowedModels,
-          models.credentialId,
-          models.thinking.id,
-        )
-      ) {
-        throw new HTTPException(403, {
-          message: "Model not allowed for your role",
-        });
-      }
-
-      const windowSize = memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE;
-
-      const { taskId } = await dispatchRun(
-        {
-          messages: [...systemMessages, requestMessage],
-          models,
-          agent,
-          temperature,
-          toolApprovalLevel,
-          mode,
-          organizationId: organization.id,
-          userId,
-          taskId: threadIdParam,
-          windowSize,
-          branch: branch ?? null,
-        },
-        ctx,
-        { runRegistry, streamBuffer, cancelBroadcast },
-      );
-
-      posthog.capture({
-        distinctId: userId,
-        event: "chat_message_started",
-        groups: { organization: organization.id },
-        properties: {
-          organization_id: organization.id,
-          agent_id: agent,
-          mode,
-          thread_id: taskId,
-          credential_id: models.credentialId,
-        },
+      const input = await validate(c, c.req.param("threadId"));
+      const { taskId } = await dispatchAndTrack(input, c.get("meshContext"), {
+        runRegistry,
+        streamBuffer,
+        cancelBroadcast,
       });
-
       return c.json({ taskId }, 202);
     } catch (err) {
       console.error("[decopilot:messages] Error", err);
-
       if (err instanceof TierUnavailableError) {
         return c.json({ error: err.message }, 400);
       }
