@@ -208,10 +208,11 @@ export function ToolsPopover({
             variant="ghost"
             size="default"
             disabled={disabled}
+            title="Tools"
             className="text-muted-foreground hover:text-foreground"
           >
             <Settings04 size={14} />
-            <span className="hidden sm:inline">Tools</span>
+            <span className="hidden @[480px]/chat-bottom:inline">Tools</span>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-52 p-1.5">

@@ -48,10 +48,13 @@ export function SimpleModeTierDropdown({
           type="button"
           variant="ghost"
           size="default"
+          title={current.label}
           className="text-muted-foreground hover:text-foreground"
         >
           <Icon size={14} />
-          <span className="hidden sm:inline">{current.label}</span>
+          <span className="hidden @[480px]/chat-bottom:inline">
+            {current.label}
+          </span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-52 p-1.5">

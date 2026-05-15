@@ -440,7 +440,7 @@ export function ChatInput({
               </div>
 
               {/* Bottom Actions Row */}
-              <div className="flex items-center justify-between p-2.5 gap-1">
+              <div className="@container/chat-bottom flex items-center justify-between p-2.5 gap-1">
                 {voice.status === "recording" ? (
                   <>
                     {/* Spacer */}
@@ -500,10 +500,13 @@ export function ChatInput({
                             });
                             setChatMode("default");
                           }}
+                          title="Plan mode"
                           className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 group whitespace-nowrap animate-in fade-in duration-200"
                         >
                           <BookOpen01 size={14} className="shrink-0" />
-                          Plan mode
+                          <span className="hidden @[480px]/chat-bottom:inline">
+                            Plan mode
+                          </span>
                           <X
                             size={14}
                             className="shrink-0 hidden group-hover:block group-disabled:hidden"
@@ -523,10 +526,11 @@ export function ChatInput({
                             });
                             setChatMode("default");
                           }}
+                          title="Create image"
                           className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-pink-600 dark:text-pink-400 hover:bg-pink-500/10 group whitespace-nowrap animate-in fade-in duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                         >
                           <Image01 size={14} className="shrink-0" />
-                          <span className="max-w-[120px] truncate">
+                          <span className="hidden @[480px]/chat-bottom:inline max-w-[120px] truncate">
                             Create image
                           </span>
                           <X
@@ -548,10 +552,11 @@ export function ChatInput({
                             });
                             setChatMode("default");
                           }}
+                          title="Web search"
                           className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 group whitespace-nowrap animate-in fade-in duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                         >
                           <Globe02 size={14} className="shrink-0" />
-                          <span className="max-w-[120px] truncate">
+                          <span className="hidden @[480px]/chat-bottom:inline max-w-[120px] truncate">
                             Web search
                           </span>
                           <X
