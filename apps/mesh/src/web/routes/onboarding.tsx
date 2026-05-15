@@ -207,8 +207,9 @@ function OnboardingContent({
         isCorporateEmail={isCorporateEmail}
         emailDomain={emailDomain}
         domainLabel={domainLabel}
-        defaultName={defaultName}
+        defaultName={userName?.split(" ")[0] ?? ""}
         allowDomainClaim={false}
+        onBack={() => setCreatingNewOrg(false)}
       />
     );
   }
@@ -238,7 +239,7 @@ function OnboardingContent({
               </p>
             </div>
             <Button
-              size="sm"
+              size="default"
               onClick={() => joinOrgMutation.mutate()}
               disabled={joinOrgMutation.isPending}
             >
@@ -278,15 +279,33 @@ function OnboardingContent({
         <div className="grid gap-10">
           <OnboardingHeader
             title={`${org.name} is already set up`}
-            description="Auto-join isn't enabled for this organization. Ask an admin for an invitation."
+            description="This organization doesn't have auto-join enabled."
           />
-          <button
-            type="button"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors text-center"
+          <div className="rounded-xl card-shadow bg-background dark:bg-input/30 p-4 flex items-center gap-4">
+            <Avatar
+              url={`https://www.google.com/s2/favicons?domain=${emailDomain}&sz=128`}
+              fallback={org.name.charAt(0).toUpperCase()}
+              shape="square"
+              size="base"
+              className="h-10 w-10 shrink-0"
+            />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{org.name}</p>
+              <p className="text-xs text-muted-foreground truncate">
+                @{emailDomain}
+              </p>
+            </div>
+            <span className="text-xs text-muted-foreground shrink-0">
+              Ask admin for invitation
+            </span>
+          </div>
+          <Button
+            size="xl"
+            className="w-full"
             onClick={() => setCreatingNewOrg(true)}
           >
-            Create a new organization instead
-          </button>
+            Create a new organization
+          </Button>
         </div>
       </AuthSplitLayout>
     );
@@ -309,16 +328,19 @@ function SetupForm({
   domainLabel,
   defaultName,
   allowDomainClaim = true,
+  onBack,
 }: {
   isCorporateEmail: boolean;
   emailDomain: string;
   domainLabel: string;
   defaultName: string;
   allowDomainClaim?: boolean;
+  onBack?: () => void;
 }) {
-  const defaultLogo = isCorporateEmail
-    ? `https://www.google.com/s2/favicons?domain=${emailDomain}&sz=128`
-    : null;
+  const defaultLogo =
+    isCorporateEmail && allowDomainClaim
+      ? `https://www.google.com/s2/favicons?domain=${emailDomain}&sz=128`
+      : null;
   const [orgName, setOrgName] = useState(defaultName);
   const [logo, setLogo] = useState<string | null>(defaultLogo);
   const [claimDomain, setClaimDomain] = useState(true);
@@ -473,6 +495,7 @@ function SetupForm({
 
         <Button
           type="submit"
+          size="xl"
           className="w-full"
           disabled={!canSubmit || isSubmitting || domainSetupMutation.isPending}
         >
@@ -484,6 +507,16 @@ function SetupForm({
             "Continue"
           )}
         </Button>
+
+        {onBack && (
+          <button
+            type="button"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors text-center"
+            onClick={onBack}
+          >
+            See available organizations
+          </button>
+        )}
       </form>
     </AuthSplitLayout>
   );

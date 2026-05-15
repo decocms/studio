@@ -416,7 +416,7 @@ export function UnifiedAuthForm({
               <button
                 type="submit"
                 disabled={isLoading || !canSubmit}
-                className="flex h-10 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80 disabled:opacity-50 disabled:pointer-events-none"
+                className="flex h-12 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80 disabled:opacity-50 disabled:pointer-events-none"
               >
                 {isLoading ? "Sending..." : "Send code"}
               </button>
@@ -444,7 +444,7 @@ export function UnifiedAuthForm({
               <button
                 type="submit"
                 disabled={isLoading || !canSubmit}
-                className="flex h-10 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80 disabled:opacity-50 disabled:pointer-events-none"
+                className="flex h-12 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80 disabled:opacity-50 disabled:pointer-events-none"
               >
                 {isLoading ? "Verifying..." : "Verify"}
               </button>
@@ -494,7 +494,7 @@ export function UnifiedAuthForm({
             type="submit"
             disabled={isLoading || !canSubmit}
             className="w-full font-semibold"
-            size="lg"
+            size="xl"
           >
             {isLoading ? "Sending..." : "Send reset link"}
           </Button>
@@ -578,7 +578,7 @@ export function UnifiedAuthForm({
                 type="submit"
                 disabled={isLoading || !canSubmit}
                 className={cn("w-full font-semibold")}
-                size="lg"
+                size="xl"
                 aria-hidden={!canSubmit}
               >
                 {isLoading
