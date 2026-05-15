@@ -5,18 +5,18 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
-    "check": "astro sync > /dev/null 2>&1 && tsc --noEmit",
+    "check": "astro sync && tsc --noEmit",
     "deploy": "bun run build && wrangler pages deploy dist/client --project-name=decocms-docs",
     "astro": "astro"
   },
   "dependencies": {
-    "@astrojs/mdx": "^4.3.1",
-    "@astrojs/react": "^4.3.0",
+    "@astrojs/mdx": "^5.0.6",
+    "@astrojs/react": "^5.0.5",
     "@tailwindcss/vite": "^4.0.7",
-    "astro": "^5.6.1",
+    "astro": "^6.3.3",
     "lucide-react": "^0.525.0",
-    "react": "^19.2.0",
-    "react-dom": "^19.1.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
     "tailwindcss": "^4.0.7",
     "typescript": "^5.9.3"
   },
