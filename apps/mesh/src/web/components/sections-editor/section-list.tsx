@@ -223,7 +223,7 @@ function SortableSectionItem({
         if (e.key === "Enter" || e.key === " ") onSelect();
       }}
       className={cn(
-        "group flex cursor-pointer select-none items-center gap-2 rounded-md px-2 py-2.5 transition-colors",
+        "group flex cursor-pointer select-none items-center gap-2 rounded-md px-2 py-2.5 touch-none transition-colors active:cursor-grabbing",
         selected
           ? "bg-accent text-accent-foreground"
           : saved
@@ -232,17 +232,10 @@ function SortableSectionItem({
               ? "text-[oklch(0.45_0.15_160)] hover:bg-[oklch(0.65_0.15_160/0.12)] dark:text-[oklch(0.78_0.15_160)] dark:hover:bg-[oklch(0.65_0.15_160/0.15)]"
               : "text-foreground/80 hover:bg-accent hover:text-accent-foreground",
       )}
+      {...attributes}
+      {...listeners}
     >
-      {/* Drag handle */}
-      <button
-        type="button"
-        className="shrink-0 cursor-grab touch-none text-muted-foreground/40 hover:text-muted-foreground active:cursor-grabbing"
-        {...attributes}
-        {...listeners}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <DotsGrid className="h-4 w-4" />
-      </button>
+      <DotsGrid className="h-4 w-4 shrink-0 text-muted-foreground/40" />
 
       <LayoutAlt01
         className="h-4 w-4 shrink-0"
