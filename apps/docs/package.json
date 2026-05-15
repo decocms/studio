@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
-    "check": "astro sync > /dev/null 2>&1 && tsc --noEmit",
+    "check": "astro sync && tsc --noEmit",
     "deploy": "bun run build && wrangler pages deploy dist/client --project-name=decocms-docs",
     "astro": "astro"
   },
