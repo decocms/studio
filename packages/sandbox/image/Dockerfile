@@ -69,7 +69,7 @@ WORKDIR /app
 # keep the layer lean. The `find … chmod +x` step ensures the spawn-helper
 # binary is executable (relevant on macOS-targeted prebuilds; no-op on Linux).
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends --fix-missing build-essential \
+  && apt-get install -y --no-install-recommends build-essential \
   && rm -rf /var/lib/apt/lists/* \
   && cd /opt/sandbox-daemon \
   && bun init -y \
