@@ -317,3 +317,98 @@ describe("ThreadChatStore — continuation seeding", () => {
     expect(store.getSnapshot().local).toEqual([]);
   });
 });
+
+describe("ThreadChatStore — tool output + auto-send", () => {
+  test("addToolOutput patches the last assistant in local and fires auto-send", async () => {
+    const fetchImpl = mock(() =>
+      Promise.resolve(new Response("", { status: 202 })),
+    );
+    const sendAutomaticallyWhen = mock(() => true);
+    const prepareBody = mock(({ messages }) => ({ messages }));
+    const store = new ThreadChatStore<UIMessage>({
+      handlersRef: {
+        current: { prepareBody, sendAutomaticallyWhen },
+      },
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      persistentLoop: () => new Promise(() => {}),
+    });
+    store.connect({ orgSlug: "a", threadId: "t" });
+    // Seed a local assistant with a pending tool call.
+    store.setMessages(
+      [],
+      [
+        {
+          id: "asst-1",
+          role: "assistant",
+          parts: [
+            // biome-ignore lint/suspicious/noExplicitAny: test fixture
+            {
+              type: "tool-foo",
+              toolCallId: "c1",
+              state: "input-available",
+            } as any,
+          ],
+        },
+      ],
+    );
+    store.addToolOutput({
+      tool: "foo",
+      toolCallId: "c1",
+      output: { ok: true },
+      state: "output-available",
+    });
+    // Allow microtask for the post fire-and-forget.
+    await new Promise<void>((r) => setTimeout(r, 0));
+    // biome-ignore lint/suspicious/noExplicitAny: test fixture
+    const patched = store.getSnapshot().local[0]!.parts[0] as any;
+    expect(patched.state).toBe("output-available");
+    expect(patched.output).toEqual({ ok: true });
+    expect(sendAutomaticallyWhen).toHaveBeenCalled();
+    expect(fetchImpl).toHaveBeenCalled();
+  });
+
+  test("addToolApprovalResponse patches approval state and auto-sends", async () => {
+    const fetchImpl = mock(() =>
+      Promise.resolve(new Response("", { status: 202 })),
+    );
+    const store = new ThreadChatStore<UIMessage>({
+      handlersRef: {
+        current: {
+          prepareBody: ({ messages }) => ({ messages }),
+          sendAutomaticallyWhen: () => true,
+        },
+      },
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      persistentLoop: () => new Promise(() => {}),
+    });
+    store.connect({ orgSlug: "a", threadId: "t" });
+    store.setMessages(
+      [],
+      [
+        {
+          id: "asst-1",
+          role: "assistant",
+          parts: [
+            // biome-ignore lint/suspicious/noExplicitAny: test fixture
+            {
+              type: "tool-foo",
+              state: "approval-requested",
+              approval: { id: "ap-1" },
+            } as any,
+          ],
+        },
+      ],
+    );
+    store.addToolApprovalResponse({ id: "ap-1", approved: true });
+    await new Promise<void>((r) => setTimeout(r, 0));
+    // biome-ignore lint/suspicious/noExplicitAny: test fixture
+    const patched = store.getSnapshot().local[0]!.parts[0] as any;
+    expect(patched.state).toBe("approval-responded");
+    expect(patched.approval).toEqual({
+      id: "ap-1",
+      approved: true,
+      reason: undefined,
+    });
+    expect(fetchImpl).toHaveBeenCalled();
+  });
+});

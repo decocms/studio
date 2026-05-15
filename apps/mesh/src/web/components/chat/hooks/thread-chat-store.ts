@@ -210,8 +210,47 @@ export class ThreadChatStore<M extends UIMessage> {
     }
   }
 
-  /** Auto-continuation placeholder — filled in Task 8. */
-  private maybeAutoSend(_metadata?: unknown): void {}
+  /** Patch the last assistant message (local or streaming). */
+  private patchLastAssistant(update: (parts: M["parts"]) => M["parts"]): void {
+    const { streaming, local } = this.snapshot;
+    if (streaming) {
+      this.update({
+        streaming: { ...streaming, parts: update(streaming.parts) },
+      });
+      return;
+    }
+    const lastIdx = local.length - 1;
+    const last = lastIdx >= 0 ? local[lastIdx] : undefined;
+    if (last && last.role === "assistant") {
+      const next = [...local];
+      next[lastIdx] = { ...last, parts: update(last.parts) } as Tagged<M>;
+      this.update({ local: next });
+    }
+    // NOTE: hook handles patching a server-snapshot assistant message
+    // when the thread is opened mid-`requires_action`; the store stays
+    // prop-agnostic.
+  }
+
+  /** Auto-send if sendAutomaticallyWhen condition is met. */
+  private maybeAutoSend(metadata?: unknown): void {
+    const handlers = this.handlersRef.current;
+    if (!handlers.sendAutomaticallyWhen) return;
+    const s = this.snapshot.status;
+    if (s === "streaming" || s === "submitted") return;
+    const all = this.snapshotAll();
+    if (!handlers.sendAutomaticallyWhen({ messages: all })) return;
+    if (all.length === 0) return;
+    this.update({ status: "submitted" });
+    const body = handlers.prepareBody({
+      messages: all,
+      requestMetadata: metadata ?? {},
+    });
+    void this.post(body).catch((err) => {
+      const e = err instanceof Error ? err : new Error(String(err));
+      this.update({ error: e, status: "error" });
+      handlers.onError?.(e);
+    });
+  }
 
   // @ts-ignore TS6133 — wired by runPersistentLoop in Task 9; called directly by tests.
   private handleChunk(chunk: UIMessageChunk): void {
@@ -348,12 +387,56 @@ export class ThreadChatStore<M extends UIMessage> {
     this.update({ local: localOnly });
   }
 
-  addToolOutput: ChatAddToolOutputFunction<M> = (() => {
-    throw new Error("not implemented");
+  addToolOutput: ChatAddToolOutputFunction<M> = ((args: {
+    toolCallId: string;
+    output?: unknown;
+    state?: "output-available" | "output-error";
+    errorText?: string;
+    options?: { metadata?: unknown };
+  }) => {
+    const {
+      toolCallId,
+      output,
+      state = "output-available",
+      errorText,
+      options,
+    } = args;
+    this.patchLastAssistant(
+      (parts) =>
+        parts.map((p: unknown) =>
+          p &&
+          typeof p === "object" &&
+          (p as { toolCallId?: string }).toolCallId === toolCallId
+            ? { ...(p as object), state, output, errorText }
+            : p,
+        ) as M["parts"],
+    );
+    this.maybeAutoSend(options?.metadata);
   }) as ChatAddToolOutputFunction<M>;
 
-  addToolApprovalResponse: ChatAddToolApproveResponseFunction = () => {
-    throw new Error("not implemented");
+  addToolApprovalResponse: ChatAddToolApproveResponseFunction = ({
+    id,
+    approved,
+    reason,
+    options,
+  }) => {
+    this.patchLastAssistant(
+      (parts) =>
+        parts.map((p: unknown) => {
+          const part = p as { state?: string; approval?: { id?: string } };
+          return part &&
+            typeof p === "object" &&
+            part.state === "approval-requested" &&
+            part.approval?.id === id
+            ? {
+                ...(p as object),
+                state: "approval-responded",
+                approval: { id, approved, reason },
+              }
+            : p;
+        }) as M["parts"],
+    );
+    this.maybeAutoSend(options?.metadata);
   };
 
   clearError(): void {
