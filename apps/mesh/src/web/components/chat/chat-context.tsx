@@ -67,8 +67,7 @@ const openedChats = new Set<string>();
 
 import { useChatNavigation } from "./hooks/use-chat-navigation";
 import { useStreamManager } from "./hooks/use-stream-manager";
-import { useTaskActions } from "../../hooks/use-tasks";
-import { useTaskManager, type TaskOwnerFilter } from "./task";
+import { useThreadActions, useTaskManager, type TaskOwnerFilter } from "./task";
 import { useTaskMessages } from "./task/use-task-manager";
 import { derivePartsFromTiptapDoc } from "./derive-parts";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
@@ -772,7 +771,7 @@ export function ChatContextProvider({
   // task's branch so the new thread lands on the same warm sandbox. The
   // route loader's useEnsureTask will see the row already exists on its
   // GET and skip the create-on-404 fallback.
-  const taskActions = useTaskActions();
+  const taskActions = useThreadActions();
   const createTask = (): string => {
     const newId = crypto.randomUUID();
     void taskActions.create
