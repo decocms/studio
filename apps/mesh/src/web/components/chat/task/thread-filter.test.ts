@@ -27,6 +27,16 @@ describe("filterThreads", () => {
     ]);
   });
 
+  test("excludes threads with undefined created_by when ownerUserId is set", () => {
+    const threads = [
+      t("a", { created_by: "user-1" }),
+      t("b"), // no created_by
+    ];
+    expect(filterThreads(threads, { ownerUserId: "user-1" })).toEqual([
+      threads[0],
+    ]);
+  });
+
   test("filters by hasTrigger=true (automation only)", () => {
     const threads = [
       t("a", { fromAutomation: true }),

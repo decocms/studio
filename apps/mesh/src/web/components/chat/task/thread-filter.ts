@@ -14,14 +14,20 @@ export function filterThreads(
   filter: ThreadFilter,
 ): Task[] {
   return threads.filter((thread) => {
-    if (filter.ownerUserId && thread.created_by !== filter.ownerUserId)
+    if (
+      filter.ownerUserId !== undefined &&
+      thread.created_by !== filter.ownerUserId
+    )
       return false;
     if (
       filter.hasTrigger !== undefined &&
       Boolean(thread.fromAutomation) !== filter.hasTrigger
     )
       return false;
-    if (filter.virtualMcpId && thread.virtual_mcp_id !== filter.virtualMcpId)
+    if (
+      filter.virtualMcpId !== undefined &&
+      thread.virtual_mcp_id !== filter.virtualMcpId
+    )
       return false;
     return true;
   });
