@@ -48,7 +48,10 @@
  */
 
 import { DBOS, SchedulerMode } from "@dbos-inc/dbos-sdk";
-import type { DispatchRunDeps } from "@/api/routes/decopilot/dispatch-run";
+import {
+  awaitThreadRun,
+  type SerializableDispatchRunInput,
+} from "@/dispatch-queue";
 import { resolveTier } from "@/core/resolve-tier";
 import type { AutomationsStorage } from "@/storage/automations";
 import type { Automation } from "@/storage/types";
@@ -57,11 +60,7 @@ import {
   buildStreamRequest,
   type ResolvedAutomationModel,
 } from "./build-stream-request";
-import {
-  computeNextRunAt,
-  type MeshContextFactory,
-  type DispatchRunFn,
-} from "./fire";
+import { computeNextRunAt, type MeshContextFactory } from "./fire";
 
 export const AUTOMATIONS_GATE_QUEUE = "automations-gate";
 export const AUTOMATIONS_GLOBAL_QUEUE = "automations-global";
@@ -107,12 +106,7 @@ export async function ensureOrgQueue(orgId: string): Promise<void> {
 
 export interface AutomationRuntime {
   storage: AutomationsStorage;
-  dispatchRunFn: DispatchRunFn;
   meshContextFactory: MeshContextFactory;
-  deps: Pick<
-    DispatchRunDeps,
-    "runRegistry" | "cancelBroadcast" | "streamBuffer"
-  >;
   runTimeoutMs?: number;
 }
 
@@ -243,12 +237,29 @@ async function updateTriggerTimingStep(triggerId: string): Promise<void> {
   }
 }
 
-async function dispatchRunAndWaitStep(
+type BuildDispatchRequestOutcome =
+  | { ok: true; request: SerializableDispatchRunInput }
+  | { ok: false; reason: string };
+
+/**
+ * Pre-flight for the dispatch: membership pre-check + `buildStreamRequest`.
+ *
+ * Runs as a step so the request payload — including `crypto.randomUUID()`
+ * message ids — is recorded in the workflow journal and replay returns the
+ * same payload. `awaitThreadRun` is invoked from the workflow body (not
+ * here) because DBOS forbids workflow-to-workflow calls from inside a
+ * step.
+ *
+ * The membership check is intentionally repeated by the thread-gate
+ * workflow on dispatch; doing it here as well lets us early-exit before
+ * the thread-gate queue takes a slot.
+ */
+async function buildDispatchRequestStep(
   automation: Automation,
   resolvedModel: ResolvedAutomationModel,
   ctx: FireAutomationContext,
   taskId: string,
-): Promise<{ error?: string }> {
+): Promise<BuildDispatchRequestOutcome> {
   const rt = requireRuntime();
 
   const meshCtx = await rt.meshContextFactory(
@@ -256,62 +267,38 @@ async function dispatchRunAndWaitStep(
     automation.created_by,
   );
   if (!meshCtx) {
-    try {
-      await rt.storage.markRunFailed(taskId);
-    } catch {
-      // best-effort
-    }
-    return { error: "creator membership lost mid-fire" };
+    return { ok: false, reason: "creator membership lost mid-fire" };
   }
 
-  const timeoutMs = rt.runTimeoutMs ?? AUTOMATIONS_RUN_TIMEOUT_MS;
-  const abortController = new AbortController();
-  const timeout = setTimeout(() => abortController.abort(), timeoutMs);
+  const request = buildStreamRequest(
+    automation,
+    ctx.triggerId,
+    taskId,
+    resolvedModel,
+  );
+  if (ctx.contextMessages) {
+    request.messages = [
+      ...request.messages,
+      ...ctx.contextMessages.map((m) => ({
+        id: crypto.randomUUID(),
+        role: m.role as "user" | "assistant" | "system",
+        parts: [{ type: "text" as const, text: m.content }],
+      })),
+    ];
+  }
 
+  // Strip the (non-serializable, locally-built) abort signal — the
+  // thread-gate workflow constructs its own from `timeoutMs`.
+  const { abortSignal: _ignored, ...serializableRequest } = request;
+  return { ok: true, request: serializableRequest };
+}
+
+async function markRunFailedStep(taskId: string): Promise<void> {
+  const rt = requireRuntime();
   try {
-    const request = buildStreamRequest(
-      automation,
-      ctx.triggerId,
-      taskId,
-      resolvedModel,
-    );
-    if (ctx.contextMessages) {
-      request.messages = [
-        ...request.messages,
-        ...ctx.contextMessages.map((m) => ({
-          id: crypto.randomUUID(),
-          role: m.role as "user" | "assistant" | "system",
-          parts: [{ type: "text" as const, text: m.content }],
-        })),
-      ];
-    }
-    request.abortSignal = abortController.signal;
-
-    // dispatchRunAndWait resolves when the run completes (or fails).
-    // Automations need this synchronous shape so the DBOS workflow step can
-    // record the run's terminal state. With streamBuffer wired through,
-    // automation chunks publish to the per-thread JetStream subject like
-    // user-message runs, so any UI tailing the thread sees them too.
-    await rt.dispatchRunFn(request, meshCtx, {
-      runRegistry: rt.deps.runRegistry,
-      streamBuffer: rt.deps.streamBuffer,
-      cancelBroadcast: rt.deps.cancelBroadcast,
-    });
-    return {};
-  } catch (err) {
-    const runError = err instanceof Error ? err.message : String(err);
-    console.error(
-      `[fireAutomationWorkflow] ERROR "${automation.name}" taskId=${taskId}:`,
-      runError,
-    );
-    try {
-      await rt.storage.markRunFailed(taskId);
-    } catch {
-      // best-effort
-    }
-    return { error: runError };
-  } finally {
-    clearTimeout(timeout);
+    await rt.storage.markRunFailed(taskId);
+  } catch {
+    // best-effort
   }
 }
 
@@ -337,13 +324,52 @@ async function fireAutomationWorkflowFn(
     });
   }
 
-  const result = await DBOS.runStep(
+  // Two-phase dispatch:
+  //   1. `buildDispatchRequest` step — membership pre-check + assemble the
+  //      serializable request. Recorded in the journal so replays reuse the
+  //      same message ids.
+  //   2. `awaitThreadRun` from the workflow body — calls
+  //      `DBOS.startWorkflow(threadGateWorkflow, ...)`, which is illegal
+  //      from inside a step. Errors are caught here to preserve the
+  //      `FireAutomationOutcome` API (callers expect a resolved
+  //      `{taskId, error}` outcome, not a thrown promise).
+  const built = await DBOS.runStep(
     () =>
-      dispatchRunAndWaitStep(prep.automation, prep.resolvedModel, ctx, taskId),
-    { name: "dispatchRunAndWait" },
+      buildDispatchRequestStep(
+        prep.automation,
+        prep.resolvedModel,
+        ctx,
+        taskId,
+      ),
+    { name: "buildDispatchRequest" },
   );
+  if (!built.ok) {
+    await DBOS.runStep(() => markRunFailedStep(taskId), {
+      name: "markRunFailed",
+    });
+    return { taskId, error: built.reason };
+  }
 
-  if (result.error) return { taskId, error: result.error };
+  const rt = requireRuntime();
+  try {
+    await awaitThreadRun({
+      threadId: taskId,
+      request: built.request,
+      timeoutMs: rt.runTimeoutMs ?? AUTOMATIONS_RUN_TIMEOUT_MS,
+      source: "automation",
+    });
+  } catch (err) {
+    const runError = err instanceof Error ? err.message : String(err);
+    console.error(
+      `[fireAutomationWorkflow] ERROR "${prep.automation.name}" taskId=${taskId}:`,
+      runError,
+    );
+    await DBOS.runStep(() => markRunFailedStep(taskId), {
+      name: "markRunFailed",
+    });
+    return { taskId, error: runError };
+  }
+
   return { taskId };
 }
 

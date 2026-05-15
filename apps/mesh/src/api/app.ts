@@ -107,6 +107,11 @@ import {
   reconcileAutomationSchedules,
   setAutomationRuntime,
 } from "../automations";
+import {
+  setThreadGateRuntime,
+  THREAD_GATE_PARTITION_CONCURRENCY,
+  THREAD_GATE_QUEUE,
+} from "../dispatch-queue";
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { dispatchRunAndWait } from "./routes/decopilot/dispatch-run";
 import {
@@ -1161,8 +1166,17 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Stash deps for the DBOS workflow body. Safe to call before DBOS.launch():
   // it only writes a module-level pointer, no DBOS API calls.
+  // The actual dispatch (and its dispatch-run deps) lives on the thread-gate
+  // runtime now — automations hand off via `awaitThreadRun`.
   setAutomationRuntime({
     storage: automationsStorage,
+    meshContextFactory: automationContextFactory,
+  });
+
+  // Same deps shape as automations — the per-thread gate calls
+  // `dispatchRunAndWait` once the queue lets a message through. Wiring
+  // happens before `DBOS.launch()` for the same reasons.
+  setThreadGateRuntime({
     dispatchRunFn: dispatchRunAndWait,
     meshContextFactory: automationContextFactory,
     deps: { runRegistry, cancelBroadcast, streamBuffer },
@@ -1823,6 +1837,14 @@ export async function createApp(options: CreateAppOptions = {}) {
     });
     await DBOS.registerQueue(AUTOMATIONS_GLOBAL_QUEUE, {
       concurrency: AUTOMATIONS_GLOBAL_CONCURRENCY,
+    });
+    // Per-thread agent-run gate. Partition key = threadId, concurrency=1,
+    // so messages on the same thread serialize behind the active run while
+    // different threads progress in parallel. Used by user-message POSTs
+    // (Phase 3) and automation fires (Phase 5).
+    await DBOS.registerQueue(THREAD_GATE_QUEUE, {
+      partitionQueue: true,
+      concurrency: THREAD_GATE_PARTITION_CONCURRENCY,
     });
     await reconcileAutomationSchedules(automationsStorage);
   };
