@@ -161,9 +161,7 @@ const homeRoute = createRoute({
 const onboardingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/onboarding",
-  validateSearch: z.object({ preview: z.boolean().optional() }),
-  beforeLoad: async ({ search }) => {
-    if (search.preview) return;
+  beforeLoad: async () => {
     const { data: orgs } = await authClient.organization.list();
     type OrgWithMeta = NonNullable<typeof orgs>[number] & {
       metadata?: { archived?: boolean } | null;

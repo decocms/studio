@@ -15,7 +15,7 @@ export function AuthSplitLayout({ children, visual }: AuthSplitLayoutProps) {
       <section className="flex flex-1 items-center justify-center bg-sidebar p-6 md:p-10">
         <div className="w-full max-w-[440px]">{children}</div>
       </section>
-      <aside className="relative flex-1 overflow-hidden bg-white">
+      <aside className="relative hidden md:flex flex-1 overflow-hidden bg-white">
         {visual ?? (
           <img
             src="/onboarding-placeholder.png"

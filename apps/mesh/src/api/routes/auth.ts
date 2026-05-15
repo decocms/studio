@@ -198,6 +198,9 @@ app.get("/domain-lookup", async (c) => {
   if (!session?.user) {
     return c.json({ success: false, error: "Authentication required" }, 401);
   }
+  if (!session.user.emailVerified) {
+    return c.json({ found: false });
+  }
   const domain = session.user.email?.split("@")[1]?.toLowerCase();
   if (!domain || GENERIC_EMAIL_DOMAINS.has(domain)) {
     return c.json({ found: false });
@@ -245,6 +248,12 @@ app.post("/domain-join", async (c) => {
   } | null;
   if (!session?.user) {
     return c.json({ success: false, error: "Authentication required" }, 401);
+  }
+  if (!session.user.emailVerified) {
+    return c.json(
+      { success: false, error: "Email must be verified to join" },
+      403,
+    );
   }
   const emailDomain = session.user.email?.split("@")[1]?.toLowerCase();
   if (!emailDomain || GENERIC_EMAIL_DOMAINS.has(emailDomain)) {
@@ -343,6 +352,9 @@ app.post("/domain-setup", async (c) => {
   } | null;
   if (!session?.user) {
     return c.json({ success: false, error: "Authentication required" }, 401);
+  }
+  if (!session.user.emailVerified) {
+    return c.json({ success: false, error: "Email must be verified" }, 403);
   }
   const emailDomain = session.user.email?.split("@")[1]?.toLowerCase();
   if (!emailDomain || GENERIC_EMAIL_DOMAINS.has(emailDomain)) {
