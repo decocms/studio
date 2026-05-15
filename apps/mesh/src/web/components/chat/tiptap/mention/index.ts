@@ -1,3 +1,11 @@
 export type { BaseItem, OnSelectProps } from "./hooks.ts";
-export { insertMention, MentionNode } from "./node.tsx";
+export {
+  createMentionDoc,
+  getMentionStorage,
+  insertMention,
+  MentionNode,
+  type EditMentionRequest,
+  type MentionAttrs,
+  type MentionStorage,
+} from "./node.tsx";
 export { Suggestion } from "./suggestion.tsx";

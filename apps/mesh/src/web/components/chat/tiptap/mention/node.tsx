@@ -22,6 +22,31 @@ export interface MentionAttrs<T = unknown> {
   metadata: T;
   /** Character that triggered the mention ("/" prompts+resources, "@" agents) */
   char?: "/" | "@";
+  /** Discriminator for "/" mentions; "@" mentions are always agents. */
+  kind?: "prompt" | "resource";
+  /** Argument values the user typed in PromptArgsDialog. Only meaningful for prompt mentions. */
+  args?: Record<string, string>;
+}
+
+// ============================================================================
+// Edit Bridge (chip click → SlashMention dialog)
+// ============================================================================
+
+export interface EditMentionRequest {
+  promptId: string;
+  promptName: string;
+  args: Record<string, string>;
+  pos: number;
+}
+
+export interface MentionStorage {
+  onEditChip: ((req: EditMentionRequest) => void) | null;
+}
+
+export function getMentionStorage(editor: Editor): MentionStorage | undefined {
+  return (editor.storage as unknown as Record<string, unknown>).mention as
+    | MentionStorage
+    | undefined;
 }
 
 // ============================================================================
@@ -61,23 +86,47 @@ export function createMentionDoc<T>(attrs: MentionAttrs<T>): JSONContent {
 // ============================================================================
 
 function MentionNodeView(props: NodeViewProps) {
-  const { node, selected, view } = props;
-  const { name, char } = node.attrs as MentionAttrs;
+  const { node, selected, view, editor, getPos } = props;
+  const { name, char, kind, id, args } = node.attrs as MentionAttrs;
 
   const isSelected = selected && view.editable;
   const isAgent = char === "@";
+  // Clickable when editable AND it's a "/" mention that's either a known
+  // prompt or a legacy chip without `kind` (we'll re-verify in the handler).
+  const isClickable = view.editable && char === "/" && kind !== "resource";
+
+  const handleClick = (e: React.MouseEvent) => {
+    if (!isClickable) return;
+    const storage = getMentionStorage(editor);
+    const onEdit = storage?.onEditChip;
+    if (!onEdit) return;
+    if (typeof getPos !== "function") return;
+    const pos = getPos();
+    if (typeof pos !== "number") return;
+    e.preventDefault();
+    e.stopPropagation();
+    onEdit({
+      promptId: id,
+      promptName: name,
+      args: args ?? {},
+      pos,
+    });
+  };
 
   return (
     <NodeViewWrapper
+      onClick={handleClick}
       className={cn(
         "px-1 py-1 rounded",
         "inline-flex items-center gap-1",
-        "cursor-default select-none",
+        isClickable ? "cursor-pointer" : "cursor-default",
+        "select-none",
         "text-xs font-light",
         isAgent
           ? "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400"
           : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
         isSelected && "outline-2 outline-blue-300 outline-offset-0",
+        isClickable && "hover:brightness-95",
         "capitalize",
       )}
     >
@@ -97,6 +146,12 @@ export const MentionNode = Node.create({
   group: "inline",
   inline: true,
   atom: true,
+
+  addStorage(): MentionStorage {
+    return {
+      onEditChip: null,
+    };
+  },
 
   addAttributes() {
     return {
@@ -138,6 +193,28 @@ export const MentionNode = Node.create({
           return { "data-metadata": JSON.stringify(attributes.metadata) };
         },
       },
+      kind: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-kind") || null,
+        renderHTML: (attributes) => {
+          if (!attributes.kind) return {};
+          return { "data-kind": attributes.kind };
+        },
+      },
+      args: {
+        default: null,
+        parseHTML: (element) => {
+          try {
+            return JSON.parse(element.getAttribute("data-args") || "null");
+          } catch {
+            return null;
+          }
+        },
+        renderHTML: (attributes) => {
+          if (!attributes.args) return {};
+          return { "data-args": JSON.stringify(attributes.args) };
+        },
+      },
     };
   },
 
@@ -167,6 +244,12 @@ export const MentionNode = Node.create({
     }
     if (node.attrs.metadata) {
       attrs["data-metadata"] = JSON.stringify(node.attrs.metadata);
+    }
+    if (node.attrs.kind) {
+      attrs["data-kind"] = node.attrs.kind;
+    }
+    if (node.attrs.args) {
+      attrs["data-args"] = JSON.stringify(node.attrs.args);
     }
 
     return ["span", { ...HTMLAttributes, ...attrs }];

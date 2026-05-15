@@ -396,6 +396,8 @@ function IceBreakersContent({ connectionId }: { connectionId: string | null }) {
             ),
             metadata: result.messages,
             char: "/",
+            kind: "prompt",
+            args,
           }),
         ],
       });
