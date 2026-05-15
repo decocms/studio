@@ -235,7 +235,27 @@ export class ThreadChatStore<M extends UIMessage> {
         },
       });
     }
-    // Continuation seeding is added in Task 7.
+
+    // Continuation seeding: promote local last-assistant into streaming
+    // when the new sub-stream's start chunk carries its messageId.
+    if (
+      chunk.type === "start" &&
+      !this.demux.subController &&
+      this.snapshot.streaming === null
+    ) {
+      const startMessageId = (chunk as { messageId?: string }).messageId;
+      if (startMessageId) {
+        const { local } = this.snapshot;
+        const last = local[local.length - 1];
+        if (last && last.role === "assistant" && last.id === startMessageId) {
+          this.update({
+            streaming: last,
+            local: local.slice(0, -1),
+          });
+        }
+      }
+    }
+
     const sub = this.ensureSubStream();
     sub.enqueue(chunk);
     if (chunk.type === "finish") {

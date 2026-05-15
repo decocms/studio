@@ -288,3 +288,32 @@ describe("ThreadChatStore — SSE finish backstop", () => {
     expect(store.getSnapshot().status).toBe("streaming");
   });
 });
+
+describe("ThreadChatStore — continuation seeding", () => {
+  test("promotes matching local assistant into streaming on start", async () => {
+    const store = new ThreadChatStore<UIMessage>({
+      handlersRef: { current: { prepareBody: () => ({}) } },
+      fetchImpl: mock(() =>
+        Promise.resolve(new Response("", { status: 202 })),
+      ) as unknown as typeof fetch,
+      persistentLoop: () => new Promise(() => {}),
+    });
+    store.connect({ orgSlug: "a", threadId: "t" });
+    // First run leaves an assistant in local.
+    await runChunks(store, [
+      { type: "start", messageId: "m-1" },
+      { type: "text-start", id: "t-1" },
+      { type: "text-delta", id: "t-1", delta: "ask" },
+      { type: "text-end", id: "t-1" },
+      { type: "finish", finishReason: "tool-calls" },
+    ] as UIMessageChunk[]);
+    expect(store.getSnapshot().local.map((m) => m.id)).toEqual(["m-1"]);
+
+    // Continuation run starts with the same messageId — must promote.
+    await runChunks(store, [
+      { type: "start", messageId: "m-1" },
+    ] as UIMessageChunk[]);
+    expect(store.getSnapshot().streaming?.id).toBe("m-1");
+    expect(store.getSnapshot().local).toEqual([]);
+  });
+});
