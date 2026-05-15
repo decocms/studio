@@ -559,7 +559,8 @@ export function MessageAssistant({
   className,
   isLast = false,
 }: MessageAssistantProps) {
-  const { isRunInProgress = false } = useOptionalChatStream() ?? {};
+  const { isRunInProgress = false, finishReason = null } =
+    useOptionalChatStream() ?? {};
   const taskId = useOptionalChatTask()?.taskId ?? null;
   const isStreaming = status === "streaming";
   const isSubmitted = status === "submitted";
@@ -608,9 +609,17 @@ export function MessageAssistant({
 
   // Determine whether to collapse intermediate parts.
   // Only collapse when not streaming and there are enough tool calls.
+  // For the last message, also require the run to have terminated cleanly
+  // (`finishReason === "stop"`). When a run pauses on `finishReason:
+  // "tool-calls"` (awaiting approval / user_ask / propose_plan), status
+  // drops to "ready" so `isLoading` is false — but the message is still
+  // mid-turn and will resume after the user responds, so collapsing the
+  // intermediate parts now would hide work that's about to grow further.
+  const isTerminallyDone = !isLast || finishReason === "stop";
   const shouldCollapse =
     !isLoading &&
     hasContent &&
+    isTerminallyDone &&
     (() => {
       let toolCallCount = 0;
       for (const item of renderOrder) {
