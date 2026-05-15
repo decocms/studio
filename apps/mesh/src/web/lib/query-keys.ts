@@ -37,6 +37,18 @@ export const KEYS = {
     ] as const,
   // Prefix for broad invalidation of all task queries for a locator
   tasksPrefix: (locator: string) => ["tasks", locator] as const,
+  // Thread list queries — replaces the legacy `tasks` keys.
+  // Scope: "org" for the global tasks panel, ("agent", virtualMcpId) for
+  // agent-scoped chat sidebars. Filter dimensions (owner, hasTrigger,
+  // userId) are NEVER part of the key — they are derived client-side.
+  threads: (
+    locator: string,
+    scope: "org" | { kind: "agent"; virtualMcpId: string },
+  ) =>
+    scope === "org"
+      ? (["threads", locator, "org"] as const)
+      : (["threads", locator, "agent", scope.virtualMcpId] as const),
+  threadsPrefix: (locator: string) => ["threads", locator] as const,
   messages: (locator: string) => ["messages", locator] as const,
 
   // Organizations list
