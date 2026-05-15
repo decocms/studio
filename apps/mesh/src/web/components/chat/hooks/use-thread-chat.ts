@@ -53,7 +53,15 @@ export function useThreadChat<M extends UIMessage>(
   const handlersRef = useRef<ThreadChatHandlers<M>>(handlers);
   handlersRef.current = handlers;
 
-  const [store] = useState(() => new ThreadChatStore<M>({ handlersRef }));
+  // Live read of the server snapshot — the store uses this as a fallback
+  // in patchLastAssistant when the thread is opened mid-`requires_action`
+  // (assistant exists only in the server snapshot, not yet in local).
+  const initialMessagesRef = useRef<UIMessage[]>(initialMessages);
+  initialMessagesRef.current = initialMessages;
+
+  const [store] = useState(
+    () => new ThreadChatStore<M>({ handlersRef, initialMessagesRef }),
+  );
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {
@@ -72,7 +80,22 @@ export function useThreadChat<M extends UIMessage>(
   // Merge with `initialMessages` happens in React because it's a prop
   // (typically driven by React Query); the store stays prop-agnostic.
   const composed = mergeWithServer(initialMessages, snap.local);
-  const messages = snap.streaming ? [...composed, snap.streaming] : composed;
+  // Streaming can share an id with an entry in `composed` — this happens
+  // during continuation runs, where the backend resumes the same assistant
+  // message id after a tool output / approval response. Replace the
+  // matching entry in place so React keys stay unique; only append when
+  // there's no match (the normal "new assistant" case).
+  let messages: M[];
+  if (snap.streaming) {
+    const streamingId = snap.streaming.id;
+    const idx = composed.findIndex((m) => m.id === streamingId);
+    messages =
+      idx >= 0
+        ? [...composed.slice(0, idx), snap.streaming, ...composed.slice(idx + 1)]
+        : [...composed, snap.streaming];
+  } else {
+    messages = composed;
+  }
 
   return {
     messages,

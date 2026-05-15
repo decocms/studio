@@ -50,6 +50,13 @@ export interface PersistentLoopFn {
 
 export interface ThreadChatStoreOptions<M extends UIMessage> {
   handlersRef: { current: ThreadChatHandlers<M> };
+  /**
+   * Live read of the server-persisted message snapshot. Used by
+   * `patchLastAssistant` as a fallback when the thread is opened
+   * mid-`requires_action` and the assistant we need to patch lives only
+   * in the server snapshot (not in local or streaming yet).
+   */
+  initialMessagesRef?: { current: UIMessage[] };
   persistentLoop?: PersistentLoopFn;
   fetchImpl?: typeof fetch;
   sseFinishBackstopMs?: number;
@@ -64,6 +71,7 @@ export class ThreadChatStore<M extends UIMessage> {
   };
   private listeners = new Set<() => void>();
   private readonly handlersRef: { current: ThreadChatHandlers<M> };
+  private readonly initialMessagesRef: { current: UIMessage[] } | undefined;
   private readonly persistentLoop: PersistentLoopFn;
   private readonly fetchImpl: typeof fetch;
   private readonly sseFinishBackstopMs: number;
@@ -84,12 +92,10 @@ export class ThreadChatStore<M extends UIMessage> {
 
   constructor(options: ThreadChatStoreOptions<M>) {
     this.handlersRef = options.handlersRef;
+    this.initialMessagesRef = options.initialMessagesRef;
     this.persistentLoop = options.persistentLoop ?? runPersistentLoop;
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
     this.sseFinishBackstopMs = options.sseFinishBackstopMs ?? 1500;
-    // Touch each field so TS doesn't flag them as unused in this scaffold —
-    // real readers land in Tasks 2-9.
-    void this.persistentLoop;
   }
 
   subscribe = (listener: () => void): (() => void) => {
@@ -227,10 +233,21 @@ export class ThreadChatStore<M extends UIMessage> {
       const next = [...local];
       next[lastIdx] = { ...last, parts: update(last.parts) } as Tagged<M>;
       this.update({ local: next });
+      return;
     }
-    // NOTE: hook handles patching a server-snapshot assistant message
-    // when the thread is opened mid-`requires_action`; the store stays
-    // prop-agnostic.
+    // Mid-`requires_action` open: the assistant we need to patch lives only
+    // in the server snapshot (no streaming, no local additions yet). Promote
+    // a patched copy to local; mergeWithServer at the hook layer will let it
+    // win on shared id so the continuation POST body carries the patch.
+    const server = this.initialMessagesRef?.current;
+    const serverLast = server && server.length > 0 ? server[server.length - 1] : undefined;
+    if (serverLast && serverLast.role === "assistant") {
+      const patched = {
+        ...serverLast,
+        parts: update(serverLast.parts as M["parts"]),
+      } as Tagged<M>;
+      this.update({ local: [...local, patched] });
+    }
   }
 
   /** Auto-send if sendAutomaticallyWhen condition is met. */
