@@ -43,7 +43,7 @@ function ChatMain({
 
 function ChatEmptyState({ children }: PropsWithChildren) {
   return (
-    <div className="h-full w-full flex items-center justify-center max-w-2xl mx-auto">
+    <div className="min-h-full shrink-0 w-full flex items-center justify-center max-w-2xl mx-auto py-10">
       {children}
     </div>
   );
