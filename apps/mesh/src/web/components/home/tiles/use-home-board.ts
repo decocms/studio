@@ -12,7 +12,6 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/web/lib/query-keys";
-import { PRESET_TILE_TYPE } from "./registry";
 import type { HomeBoard, TileInstance } from "./types";
 
 const EMPTY_BOARD: HomeBoard = { version: 3, tiles: [] };
@@ -35,7 +34,6 @@ interface BackendHomeBoard {
 function toTileInstance(t: BackendHomeBoardTile): TileInstance {
   return {
     id: t.id,
-    type: PRESET_TILE_TYPE,
     x: t.x,
     y: t.y,
     w: t.w,

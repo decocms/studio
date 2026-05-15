@@ -20,16 +20,17 @@ import {
   BRAND_CONTEXT_PRESET_ID,
   BRAND_EXTRACTED_TOPIC,
 } from "@/preset-tasks/brand-context-workflow";
+import {
+  brandSnapshot,
+  requireFirecrawlKey,
+  requireOrgId,
+} from "./brand-context-helpers";
 
 const BrandContextSetupInputSchema = z.object({
   domain: z
     .string()
     .describe("Website URL to extract brand from (e.g. example.com)"),
 });
-
-export type BrandContextSetupInput = z.infer<
-  typeof BrandContextSetupInputSchema
->;
 
 /**
  * Constructed by the preset-tasks `/start` route and passed in via
@@ -46,24 +47,14 @@ export function createBrandContextSetupTool(ctx: MeshContext) {
       "context becomes the organization's default after this completes.",
     inputSchema: zodSchema(BrandContextSetupInputSchema),
     execute: async (input) => {
-      const organizationId = ctx.organization?.id;
-      if (!organizationId) {
-        return {
-          success: false,
-          error: "Organization required (no active organization in context)",
-        };
-      }
-      const apiKey = ctx.firecrawlApiKey;
-      if (!apiKey) {
-        return {
-          success: false,
-          error: "FIRECRAWL_API_KEY is not configured.",
-        };
-      }
+      const orgRes = requireOrgId(ctx);
+      if (typeof orgRes !== "string") return orgRes;
+      const keyRes = requireFirecrawlKey(ctx);
+      if (typeof keyRes !== "string") return keyRes;
 
       const extracted = await extractBrandFromDomain(
         input.domain,
-        apiKey,
+        keyRes,
         input.domain,
       );
       if (!extracted) {
@@ -73,25 +64,17 @@ export function createBrandContextSetupTool(ctx: MeshContext) {
         };
       }
 
-      const created = await ctx.storage.brandContext.create(organizationId, {
-        name: extracted.name,
-        domain: extracted.domain,
-        overview: extracted.overview,
-        logo: extracted.logo,
-        favicon: extracted.favicon,
-        ogImage: extracted.ogImage,
-        fonts: extracted.fonts,
-        colors: extracted.colors,
-        images: extracted.images,
-        metadata: extracted.metadata,
-      });
+      const created = await ctx.storage.brandContext.create(
+        orgRes,
+        brandSnapshot(extracted),
+      );
 
       // Best-effort: signal the wrapping DBOS preset workflow. Brand is
       // already persisted, so a failed send isn't user-visible — the
       // preset card just won't auto-dismiss until the next refresh (the
       // isApplicable check skips orgs with any brand_context row).
       const presetState = await ctx.storage.presetTasks.get(
-        organizationId,
+        orgRes,
         BRAND_CONTEXT_PRESET_ID,
       );
       if (presetState?.dbosWorkflowId) {

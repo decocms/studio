@@ -29,16 +29,16 @@ export const BRAND_EXTRACTED_TOPIC = "brand-extracted";
 /** 30 min. Long enough for an unhurried first-time setup conversation. */
 const BRAND_CONTEXT_RECV_TIMEOUT_SEC = 30 * 60;
 
-export interface BrandExtractedSignal {
+interface BrandExtractedSignal {
   brandId: string;
 }
 
-export interface BrandContextWorkflowInput {
+interface BrandContextWorkflowInput {
   organizationId: string;
   taskId: string;
 }
 
-export type BrandContextWorkflowOutcome =
+type BrandContextWorkflowOutcome =
   | { ok: true; brandId: string }
   | { ok: false; reason: "timeout" };
 

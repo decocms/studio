@@ -14,7 +14,7 @@
  * acceptable for the manual move/resize/remove flow.
  */
 
-import type { KVStorage } from "./kv";
+import { kvGet, kvSet, type KVStorage } from "./kv";
 
 const kvKey = (userId: string) => `home-board:${userId}`;
 
@@ -41,21 +41,12 @@ const EMPTY_BOARD: HomeBoard = { tiles: [] };
 export class HomeBoardStore {
   constructor(private kv: KVStorage) {}
 
-  async get(organizationId: string, userId: string): Promise<HomeBoard> {
-    const value = await this.kv.get(organizationId, kvKey(userId));
-    return (value as HomeBoard | null) ?? EMPTY_BOARD;
+  get(organizationId: string, userId: string): Promise<HomeBoard> {
+    return kvGet(this.kv, organizationId, kvKey(userId), EMPTY_BOARD);
   }
 
-  async set(
-    organizationId: string,
-    userId: string,
-    board: HomeBoard,
-  ): Promise<void> {
-    await this.kv.set(
-      organizationId,
-      kvKey(userId),
-      board as unknown as Record<string, unknown>,
-    );
+  set(organizationId: string, userId: string, board: HomeBoard): Promise<void> {
+    return kvSet(this.kv, organizationId, kvKey(userId), board);
   }
 
   async addTile(

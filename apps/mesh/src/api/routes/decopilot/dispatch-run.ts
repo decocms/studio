@@ -31,8 +31,11 @@ import {
 import { createBrandContextSetupTool } from "./built-in-tools/brand-context-setup";
 import { createBrandContextConfirmTools } from "./built-in-tools/brand-context-confirm";
 import { createWebDeveloperTools } from "./built-in-tools/web-developer";
-import { dynamicInstructions } from "@/agents/dynamic-instructions";
-import { getBrandContextAgentMode } from "@/agents/brand-context";
+import {
+  getBrandContextAgentMode,
+  resolveBrandContextPrompt,
+} from "@/agents/brand-context";
+import { resolveWebDeveloperPrompt } from "@/agents/web-developer";
 import { SpanStatusCode } from "@opentelemetry/api";
 import {
   type ToolSet,
@@ -821,14 +824,13 @@ async function prepareRun(
 
         // Agent prompt: decopilot-specific, dynamic (state-driven), or
         // the agent's static `metadata.instructions` from the vmcp row.
-        // The dynamic registry wins when a resolver matches — that's how
-        // e.g. the brand-context agent flips into "confirm" mode when a
-        // brand_context row already exists for the org.
+        // A dynamic resolver wins when it matches — that's how e.g. the
+        // brand-context agent flips into "confirm" mode when a brand_context
+        // row already exists for the org.
         const serverInstructions = passthroughClient.getInstructions();
-        const dynamicPrompt = await dynamicInstructions.resolve(
-          input.agent.id,
-          ctx,
-        );
+        const dynamicPrompt =
+          (await resolveBrandContextPrompt(input.agent.id, ctx)) ??
+          (await resolveWebDeveloperPrompt(input.agent.id, ctx));
         const agentPrompt = isDecopilot(input.agent.id)
           ? buildDecopilotAgentPrompt()
           : (dynamicPrompt ?? serverInstructions);

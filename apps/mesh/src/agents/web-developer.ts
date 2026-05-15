@@ -16,7 +16,6 @@
 import { isWebDeveloper } from "@decocms/mesh-sdk";
 import type { MeshContext } from "@/core/mesh-context";
 import { getOrgPrimaryBrand } from "./brand-context";
-import { dynamicInstructions } from "./dynamic-instructions";
 
 function formatBrandSection(
   brand: Awaited<ReturnType<typeof getOrgPrimaryBrand>>,
@@ -101,15 +100,21 @@ have.
 ${brandSection ? `\n${brandSection}\n` : ""}`.trim();
 }
 
-export function registerWebDeveloperDynamicInstructions(): void {
-  dynamicInstructions.register(async (agentId, ctx) => {
-    const orgId = isWebDeveloper(agentId);
-    if (!orgId) return null;
-    const threadId = ctx.metadata?.threadId;
-    if (!threadId) return null;
-    const brand = await getOrgPrimaryBrand(orgId, ctx).catch(() => null);
-    return buildPrompt(threadId, formatBrandSection(brand));
-  });
+/**
+ * Returns the web-developer system prompt for this thread, or null when
+ * the agent id doesn't match or no thread is bound. Called by dispatch-run
+ * when `isWebDeveloper(agentId)` matches.
+ */
+export async function resolveWebDeveloperPrompt(
+  agentId: string,
+  ctx: MeshContext,
+): Promise<string | null> {
+  const orgId = isWebDeveloper(agentId);
+  if (!orgId) return null;
+  const threadId = ctx.metadata?.threadId;
+  if (!threadId) return null;
+  const brand = await getOrgPrimaryBrand(orgId, ctx).catch(() => null);
+  return buildPrompt(threadId, formatBrandSection(brand));
 }
 
 /**

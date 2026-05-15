@@ -48,8 +48,7 @@ import {
   SIZE_LABELS,
   SIZE_PRESETS,
 } from "./constants";
-import { getTileDefinition } from "./registry";
-import { TileSkeleton } from "./renderers";
+import { PresetTile, TileSkeleton } from "./renderers";
 import { TileErrorBoundary } from "./tile-error-boundary";
 import type { HomeBoard, TileInstance, TileSizeKey } from "./types";
 
@@ -68,11 +67,10 @@ function TileSlot({
   tile: TileInstance;
   isEditMode: boolean;
 }) {
-  const Renderer = getTileDefinition(tile.type)?.render;
   return (
     <TileErrorBoundary>
       <Suspense fallback={<TileSkeleton />}>
-        {Renderer && <Renderer instance={tile} isEditMode={isEditMode} />}
+        <PresetTile instance={tile} isEditMode={isEditMode} />
       </Suspense>
     </TileErrorBoundary>
   );
@@ -337,8 +335,7 @@ function TileMenu({
   onResize: (id: string, size: { w: number; h: number }) => void;
   onRemove: (id: string) => void;
 }) {
-  const def = getTileDefinition(tile.type);
-  const supported = def?.supportedSizes ?? ALL_SIZES;
+  const supported = ALL_SIZES;
 
   const matchSizeKey = (): TileSizeKey | null => {
     for (const key of ALL_SIZES) {

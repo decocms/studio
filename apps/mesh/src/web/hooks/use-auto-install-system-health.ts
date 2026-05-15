@@ -12,17 +12,11 @@
 import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@decocms/mesh-sdk";
-import { authenticateMcp, isConnectionAuthenticated } from "@decocms/mesh-sdk";
 import { authClient } from "@/web/lib/auth-client";
 import { invalidateVirtualMcpQueries, KEYS } from "@/web/lib/query-keys";
+import { runOAuthHandshake } from "@/web/hooks/use-oauth-handshake";
 
-type Status =
-  | "idle"
-  | "installing"
-  | "authenticating"
-  | "ready"
-  | "error"
-  | "cancelled";
+type Status = "idle" | "installing" | "authenticating" | "ready" | "error";
 
 interface UseAutoInstallSystemHealthOptions {
   enabled: boolean;
@@ -86,59 +80,11 @@ export function useAutoInstallSystemHealth(
         (await installRes.json()) as InstallResponse;
 
       setStatus("authenticating");
-      const mcpProxyUrl = new URL(
-        `/api/${org.slug}/mcp/${connectionId}`,
-        window.location.origin,
-      );
-      const authStatus = await isConnectionAuthenticated({
-        url: mcpProxyUrl.href,
-        token: null,
-        orgId: org.id,
+      const result = await runOAuthHandshake({
+        connectionId,
+        org: { id: org.id, slug: org.slug },
       });
-
-      if (authStatus.supportsOAuth && !authStatus.isAuthenticated) {
-        const {
-          token,
-          tokenInfo,
-          error: oauthError,
-        } = await authenticateMcp({
-          connectionId,
-          orgSlug: org.slug,
-          scope: "offline_access",
-        });
-
-        if (oauthError || !token) {
-          throw new Error(oauthError ?? "No token received from system health");
-        }
-
-        if (tokenInfo) {
-          const response = await fetch(
-            `/api/${org.slug}/connections/${connectionId}/oauth-token`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              credentials: "include",
-              body: JSON.stringify({
-                accessToken: tokenInfo.accessToken,
-                refreshToken: tokenInfo.refreshToken,
-                expiresIn: tokenInfo.expiresIn,
-                scope: tokenInfo.scope,
-                clientId: tokenInfo.clientId,
-                clientSecret: tokenInfo.clientSecret,
-                tokenEndpoint: tokenInfo.tokenEndpoint,
-              }),
-            },
-          );
-          if (!response.ok) {
-            const body = (await response.json().catch(() => ({}))) as {
-              error?: string;
-            };
-            throw new Error(
-              body.error ?? "Failed to persist system health token",
-            );
-          }
-        }
-      }
+      if (!result.ok) throw new Error(result.error);
 
       invalidateVirtualMcpQueries(queryClient, org.id);
       queryClient.invalidateQueries({ queryKey: KEYS.presetTasks(org.slug) });

@@ -16,28 +16,25 @@
  * without touching call sites.
  */
 
+import type {
+  PresetTaskAction,
+  PresetTaskDisplay,
+  PresetTaskState,
+  VisiblePresetTask,
+} from "@decocms/mesh-sdk";
 import type { MeshContext } from "@/core/mesh-context";
 import type { ChatMessage } from "@/api/routes/decopilot/types";
-import type { PresetTaskState, PresetTaskStore } from "@/storage/preset-tasks";
+import type { PresetTaskStore } from "@/storage/preset-tasks";
+
+export type {
+  PresetTaskAction,
+  PresetTaskDisplay,
+  VisiblePresetTask,
+} from "@decocms/mesh-sdk";
 
 export interface PresetTaskContext {
   organizationId: string;
 }
-
-export interface PresetTaskDisplay {
-  title: string;
-  /** Public-asset path under `apps/mesh/public/` (e.g. `/home/task-brand.svg`). */
-  thumb: string;
-  /** 1/2/3 for the brand → site → monitoring guided flow; null otherwise. */
-  step: number | null;
-}
-
-export type PresetTaskAction =
-  | { kind: "new-chat" }
-  | { kind: "import-deco" }
-  | { kind: "install-github" }
-  | { kind: "install-system-health" }
-  | { kind: "preset" };
 
 export interface PresetTaskStartResult {
   /** Seed messages for the new thread. Usually one user message. */
@@ -130,14 +127,6 @@ export class PresetTaskRegistry {
   list(): PresetTaskDefinition[] {
     return Array.from(this.definitions.values());
   }
-}
-
-export interface VisiblePresetTask {
-  id: string;
-  display: PresetTaskDisplay;
-  action: PresetTaskAction;
-  state: PresetTaskState | undefined;
-  dismissible: boolean;
 }
 
 /**

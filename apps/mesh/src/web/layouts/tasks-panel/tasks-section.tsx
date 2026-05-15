@@ -22,8 +22,9 @@ import type { Task } from "@/web/components/chat/task/types";
 import { TaskRow } from "./task-row";
 import { track } from "@/web/lib/posthog-client";
 import { ImportFromDecoDialog } from "@/web/components/import-from-deco-dialog.tsx";
-import { InstallGithubDialog } from "@/web/components/install-github-dialog.tsx";
-import { InstallSystemHealthDialog } from "@/web/components/install-system-health-dialog.tsx";
+import { InstallFlowDialog } from "@/web/components/install-flow-dialog.tsx";
+import { useAutoInstallGitHub } from "@/web/hooks/use-auto-install-github";
+import { useAutoInstallSystemHealth } from "@/web/hooks/use-auto-install-system-health";
 import { KEYS } from "@/web/lib/query-keys";
 import { usePresetTasks, type VisiblePresetTask } from "./use-preset-tasks";
 
@@ -103,6 +104,34 @@ export function TasksSection({
   const [installGithubOpen, setInstallGithubOpen] = useState(false);
   const [installSystemHealthOpen, setInstallSystemHealthOpen] = useState(false);
   const [startingPresetId, setStartingPresetId] = useState<string | null>(null);
+  const githubInstall = useAutoInstallGitHub({ enabled: installGithubOpen });
+  const systemHealthInstall = useAutoInstallSystemHealth({
+    enabled: installSystemHealthOpen,
+    onReady: async () => {
+      // OAuth handshake complete — close the dialog and immediately
+      // start the error-monitoring thread, matching the one-click UX
+      // the design called for. If start fails the dialog is already
+      // closed so we surface the error as a toast.
+      setInstallSystemHealthOpen(false);
+      try {
+        setStartingPresetId("error-monitoring");
+        const { taskId, virtualMcpId } = await startPreset("error-monitoring");
+        queryClient.invalidateQueries({
+          queryKey: KEYS.homeBoard(org.slug),
+        });
+        navigate({
+          to: "/$org/$taskId",
+          params: { org: org.slug, taskId },
+          search: { virtualmcpid: virtualMcpId },
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to start";
+        toast.error(`Couldn't start error monitoring: ${message}`);
+      } finally {
+        setStartingPresetId(null);
+      }
+    },
+  });
 
   const memberFiltered =
     memberFilter === "mine" && currentUserId
@@ -385,39 +414,29 @@ export function TasksSection({
         )}
       </div>
       <ImportFromDecoDialog open={importOpen} onOpenChange={setImportOpen} />
-      <InstallGithubDialog
+      <InstallFlowDialog
         open={installGithubOpen}
         onOpenChange={setInstallGithubOpen}
+        title="Install GitHub"
+        errorPrefix="Couldn't install GitHub"
+        statusLabel={{
+          installing: "Installing GitHub…",
+          authenticating: "Authorizing with GitHub…",
+          ready: "GitHub installed.",
+        }}
+        flow={githubInstall}
       />
-      <InstallSystemHealthDialog
+      <InstallFlowDialog
         open={installSystemHealthOpen}
         onOpenChange={setInstallSystemHealthOpen}
-        onReady={async () => {
-          // OAuth handshake complete — close the dialog and immediately
-          // start the error-monitoring thread, matching the one-click UX
-          // the design called for. If start fails the dialog is already
-          // closed so we surface the error as a toast.
-          setInstallSystemHealthOpen(false);
-          try {
-            setStartingPresetId("error-monitoring");
-            const { taskId, virtualMcpId } =
-              await startPreset("error-monitoring");
-            queryClient.invalidateQueries({
-              queryKey: KEYS.homeBoard(org.slug),
-            });
-            navigate({
-              to: "/$org/$taskId",
-              params: { org: org.slug, taskId },
-              search: { virtualmcpid: virtualMcpId },
-            });
-          } catch (err) {
-            const message =
-              err instanceof Error ? err.message : "Failed to start";
-            toast.error(`Couldn't start error monitoring: ${message}`);
-          } finally {
-            setStartingPresetId(null);
-          }
+        title="Set up system health"
+        errorPrefix="Couldn't set up system health"
+        statusLabel={{
+          installing: "Installing system health…",
+          authenticating: "Authorizing system health…",
+          ready: "System health connected.",
         }}
+        flow={systemHealthInstall}
       />
     </div>
   );

@@ -117,8 +117,6 @@ import { getPodId } from "../core/pod-identity";
 import { NatsPodHeartbeat } from "../nats/pod-heartbeat";
 import { PresetTaskRegistry } from "../preset-tasks";
 import { setBrandContextWorkflowDeps } from "../preset-tasks/brand-context-workflow";
-import { registerBrandContextDynamicInstructions } from "../agents/brand-context";
-import { registerWebDeveloperDynamicInstructions } from "../agents/web-developer";
 import { PRESET_TASK_DEFINITIONS } from "../preset-tasks/definitions";
 import { createAutomationsStorage } from "../storage/automations";
 import { KyselyKVStorage } from "../storage/kv";
@@ -1624,16 +1622,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   // DBOS.launch() — just stashes a module-level pointer. The workflow body
   // is registered at import time so recovery replay works after a crash.
   setBrandContextWorkflowDeps({ presetTaskStore });
-
-  // Brand-context agent has two modes (setup vs confirm) — register the
-  // dynamic system-prompt resolver that flips between them based on
-  // whether a brand_context row exists for the org.
-  registerBrandContextDynamicInstructions();
-
-  // Web-developer agent: thread-scoped prompt that names the storage
-  // prefix and inlines the brand context, so the model has stable
-  // grounding for each chat without an explicit setup turn.
-  registerWebDeveloperDynamicInstructions();
 
   // Public Events endpoint — legacy mount with deprecation log. New mount
   // lives at `POST /api/:org/events/:type` (registered via createOrgScopedApi).

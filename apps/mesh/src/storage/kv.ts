@@ -21,6 +21,38 @@ export interface KVStorage {
   delete(organizationId: string, key: string): Promise<void>;
 }
 
+/**
+ * Typed `get` over `KVStorage` — returns the parsed value or `fallback`
+ * if the row is missing. Trades the `Record<string, unknown>` ceremony for
+ * a tiny call-site at the cost of a single unchecked cast.
+ */
+export async function kvGet<T>(
+  kv: KVStorage,
+  organizationId: string,
+  key: string,
+  fallback: T,
+): Promise<T> {
+  const value = await kv.get(organizationId, key);
+  return (value as T | null) ?? fallback;
+}
+
+/**
+ * Typed `set` over `KVStorage`. Lets callers pass strongly-typed values
+ * without sprinkling `as Record<string, unknown>` at every write.
+ */
+export async function kvSet<T extends object>(
+  kv: KVStorage,
+  organizationId: string,
+  key: string,
+  value: T,
+): Promise<void> {
+  await kv.set(
+    organizationId,
+    key,
+    value as unknown as Record<string, unknown>,
+  );
+}
+
 export class KyselyKVStorage implements KVStorage {
   constructor(private db: Kysely<Database>) {}
 

@@ -17,7 +17,6 @@
 import { isBrandContextSetup } from "@decocms/mesh-sdk";
 import type { MeshContext } from "@/core/mesh-context";
 import type { BrandContext } from "@/storage/types";
-import { dynamicInstructions } from "./dynamic-instructions";
 
 /**
  * Resolve the org's "primary" brand for the brand-context agent.
@@ -85,14 +84,21 @@ When the user explicitly says the brand looks correct, call \`confirm_brand\` ex
 `.trim();
 }
 
-export function registerBrandContextDynamicInstructions(): void {
-  dynamicInstructions.register(async (agentId, ctx) => {
-    const orgId = isBrandContextSetup(agentId);
-    if (!orgId) return null;
-    const brand = await getOrgPrimaryBrand(orgId, ctx);
-    if (!brand) return null;
-    return formatConfirmModePrompt(brand);
-  });
+/**
+ * Returns the confirm-mode system prompt when the org already has a brand,
+ * or null to fall through to the setup-mode prompt baked into the
+ * well-known agent's `metadata.instructions`. Called by dispatch-run when
+ * `isBrandContextSetup(agentId)` matches.
+ */
+export async function resolveBrandContextPrompt(
+  agentId: string,
+  ctx: MeshContext,
+): Promise<string | null> {
+  const orgId = isBrandContextSetup(agentId);
+  if (!orgId) return null;
+  const brand = await getOrgPrimaryBrand(orgId, ctx);
+  if (!brand) return null;
+  return formatConfirmModePrompt(brand);
 }
 
 /**

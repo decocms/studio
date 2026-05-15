@@ -10,52 +10,16 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type {
+  StartPresetTaskResult,
+  VisiblePresetTask,
+} from "@decocms/mesh-sdk";
 import { KEYS } from "@/web/lib/query-keys";
 
-interface PresetTaskDisplay {
-  title: string;
-  thumb: string;
-  step: number | null;
-}
-
-export type PresetTaskAction =
-  | { kind: "new-chat" }
-  | { kind: "import-deco" }
-  | { kind: "install-github" }
-  | { kind: "install-system-health" }
-  | { kind: "preset" };
-
-export type PresetTaskStatus =
-  | "started"
-  | "running"
-  | "completed"
-  | "dismissed"
-  | "error";
-
-export interface PresetTaskState {
-  status: PresetTaskStatus;
-  startedAt?: string;
-  completedAt?: string;
-  dismissedAt?: string;
-  workflowRunId?: string;
-  error?: string;
-}
-
-export interface VisiblePresetTask {
-  id: string;
-  display: PresetTaskDisplay;
-  action: PresetTaskAction;
-  state: PresetTaskState | undefined;
-  dismissible: boolean;
-}
+export type { VisiblePresetTask } from "@decocms/mesh-sdk";
 
 interface PresetTasksResponse {
   tasks: VisiblePresetTask[];
-}
-
-export interface StartPresetTaskResult {
-  taskId: string;
-  virtualMcpId: string;
 }
 
 export function usePresetTasks(orgSlug: string) {

@@ -17,8 +17,12 @@ import { tool, zodSchema } from "ai";
 import { z } from "zod";
 import type { MeshContext } from "@/core/mesh-context";
 import { extractBrandFromDomain } from "@/auth/extract-brand";
-import { getOrgPrimaryBrand } from "@/agents/brand-context";
 import { BRAND_CONTEXT_PRESET_ID } from "@/preset-tasks/brand-context-workflow";
+import {
+  brandSnapshot,
+  requireFirecrawlKey,
+  requireOrgBrand,
+} from "./brand-context-helpers";
 
 const FontsSchema = z
   .object({
@@ -60,20 +64,9 @@ function createUpdateBrandContextTool(ctx: MeshContext) {
       "context. Only include the fields the user wants to change.",
     inputSchema: zodSchema(UpdateBrandInputSchema),
     execute: async (input) => {
-      const organizationId = ctx.organization?.id;
-      if (!organizationId) {
-        return {
-          success: false,
-          error: "Organization required (no active organization in context)",
-        };
-      }
-      const brand = await getOrgPrimaryBrand(organizationId, ctx);
-      if (!brand) {
-        return {
-          success: false,
-          error: "No brand context exists for this organization yet.",
-        };
-      }
+      const res = await requireOrgBrand(ctx);
+      if ("error" in res) return res;
+      const { organizationId, brand } = res;
 
       const updated = await ctx.storage.brandContext.update(
         brand.id,
@@ -115,33 +108,17 @@ function createReextractBrandContextTool(ctx: MeshContext) {
       "Use when the user wants to refresh the brand from a different URL.",
     inputSchema: zodSchema(ReextractBrandInputSchema),
     execute: async (input) => {
-      const organizationId = ctx.organization?.id;
-      if (!organizationId) {
-        return {
-          success: false,
-          error: "Organization required (no active organization in context)",
-        };
-      }
-      const apiKey = ctx.firecrawlApiKey;
-      if (!apiKey) {
-        return {
-          success: false,
-          error: "FIRECRAWL_API_KEY is not configured.",
-        };
-      }
-      const brand = await getOrgPrimaryBrand(organizationId, ctx);
-      if (!brand) {
-        return {
-          success: false,
-          error: "No brand context exists for this organization yet.",
-        };
-      }
+      const keyRes = requireFirecrawlKey(ctx);
+      if (typeof keyRes !== "string") return keyRes;
+      const res = await requireOrgBrand(ctx);
+      if ("error" in res) return res;
+      const { organizationId, brand } = res;
 
       let extracted;
       try {
         extracted = await extractBrandFromDomain(
           input.domain,
-          apiKey,
+          keyRes,
           input.domain,
         );
       } catch (err) {
@@ -163,18 +140,7 @@ function createReextractBrandContextTool(ctx: MeshContext) {
       const updated = await ctx.storage.brandContext.update(
         brand.id,
         organizationId,
-        {
-          name: extracted.name,
-          domain: extracted.domain,
-          overview: extracted.overview,
-          logo: extracted.logo,
-          favicon: extracted.favicon,
-          ogImage: extracted.ogImage,
-          fonts: extracted.fonts,
-          colors: extracted.colors,
-          images: extracted.images,
-          metadata: extracted.metadata,
-        },
+        brandSnapshot(extracted),
       );
       return {
         success: true,
@@ -196,20 +162,10 @@ function createConfirmBrandTool(ctx: MeshContext) {
       "correct. After this call the brand-context preset task is done.",
     inputSchema: zodSchema(ConfirmBrandInputSchema),
     execute: async () => {
-      const organizationId = ctx.organization?.id;
-      if (!organizationId) {
-        return {
-          success: false,
-          error: "Organization required (no active organization in context)",
-        };
-      }
-      const brand = await getOrgPrimaryBrand(organizationId, ctx);
-      if (!brand) {
-        return {
-          success: false,
-          error: "No brand context exists for this organization yet.",
-        };
-      }
+      const res = await requireOrgBrand(ctx);
+      if ("error" in res) return res;
+      const { organizationId } = res;
+
       const prev = await ctx.storage.presetTasks.get(
         organizationId,
         BRAND_CONTEXT_PRESET_ID,

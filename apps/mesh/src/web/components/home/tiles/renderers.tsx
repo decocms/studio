@@ -17,10 +17,8 @@ import { Check } from "@untitledui/icons";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { IntegrationIcon } from "@/web/components/integration-icon";
-import {
-  type PresetTaskStatus,
-  usePresetTasks,
-} from "@/web/layouts/tasks-panel/use-preset-tasks";
+import type { PresetTaskStatus } from "@decocms/mesh-sdk";
+import { usePresetTasks } from "@/web/layouts/tasks-panel/use-preset-tasks";
 import { getPresetBody, RunningBody } from "./preset-bodies";
 import type { TileRenderProps } from "./types";
 

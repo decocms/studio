@@ -14,17 +14,14 @@
  */
 
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
-import type {
-  PresetTaskState,
-  PresetTaskStatus,
-} from "@/web/layouts/tasks-panel/use-preset-tasks";
+import type { PresetTaskState, PresetTaskStatus } from "@decocms/mesh-sdk";
 
-export interface PresetBodyProps {
+interface PresetBodyProps {
   status: PresetTaskStatus | undefined;
   state: PresetTaskState | undefined;
 }
 
-export type PresetBody = (props: PresetBodyProps) => React.ReactNode;
+type PresetBody = (props: PresetBodyProps) => React.ReactNode;
 
 export function RunningBody() {
   return (

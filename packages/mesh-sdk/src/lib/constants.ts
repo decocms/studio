@@ -197,98 +197,88 @@ export function getWellKnownMcpStudioConnection(): ConnectionCreateData {
 }
 
 /**
- * Get well-known Decopilot Virtual MCP entity.
- * This is the default agent that aggregates ALL org connections.
+ * Build a paired `{ is, get }` helper for an org-scoped well-known agent id
+ * of shape `${prefix}${orgId}`. Centralizes the trivial check/slice/format
+ * logic that every well-known agent used to hand-roll.
  *
- * @param organizationId - Organization ID
- * @returns VirtualMCPEntity representing the Decopilot agent
+ * `is(id)` returns the orgId when `id` matches the prefix; `null` otherwise.
+ * `get(orgId)` mints the well-known id.
  */
-export function getWellKnownDecopilotVirtualMCP(
-  organizationId: string,
-): VirtualMCPEntity {
+function createWellKnownAgentPrefix(prefix: string): {
+  is: (id: string | null | undefined) => string | null;
+  get: (organizationId: string) => string;
+} {
   return {
-    id: getDecopilotId(organizationId),
-    organization_id: organizationId,
-    title: "Decopilot",
-    description: "Default agent that aggregates all organization connections",
-    icon: "https://assets.decocache.com/decocms/fd07a578-6b1c-40f1-bc05-88a3b981695d/f7fc4ffa81aec04e37ae670c3cd4936643a7b269.png",
+    is(id) {
+      if (!id) return null;
+      if (!id.startsWith(prefix)) return null;
+      return id.slice(prefix.length) || null;
+    },
+    get(organizationId) {
+      return `${prefix}${organizationId}`;
+    },
+  };
+}
+
+/**
+ * Build a well-known agent VirtualMCPEntity with sensible defaults
+ * (status active, system creator, empty connections, etc.). Only the
+ * id/title/description/icon and optional instructions vary across agents.
+ */
+function defineWellKnownAgentVMCP(opts: {
+  id: string;
+  organizationId: string;
+  title: string;
+  description: string;
+  icon: string;
+  instructions?: string | null;
+}): VirtualMCPEntity {
+  return {
+    id: opts.id,
+    organization_id: opts.organizationId,
+    title: opts.title,
+    description: opts.description,
+    icon: opts.icon,
     status: "active",
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     created_by: "system",
     updated_by: undefined,
-    metadata: { instructions: null },
+    metadata: { instructions: opts.instructions ?? null },
     pinned: false,
-    connections: [], // Empty connections array - gateway.ts will populate with all org connections
+    connections: [],
   };
 }
 
-/**
- * Decopilot ID prefix constant
- */
-const DECOPILOT_PREFIX = "decopilot_";
+// ---- Decopilot ----
+// Default agent that aggregates ALL org connections. Gateway populates
+// the connections array at lookup time.
+const decopilotPrefix = createWellKnownAgentPrefix("decopilot_");
+export const isDecopilot = decopilotPrefix.is;
+export const getDecopilotId = decopilotPrefix.get;
 
-/**
- * Check if a connection or virtual MCP ID is the Decopilot agent.
- *
- * @param id - Connection or virtual MCP ID to check
- * @returns The organization ID if the ID matches the Decopilot pattern (decopilot_{orgId}), null otherwise
- */
-export function isDecopilot(id: string | null | undefined): string | null {
-  if (!id) return null;
-  if (!id.startsWith(DECOPILOT_PREFIX)) return null;
-  return id.slice(DECOPILOT_PREFIX.length) || null;
+export function getWellKnownDecopilotVirtualMCP(
+  organizationId: string,
+): VirtualMCPEntity {
+  return defineWellKnownAgentVMCP({
+    id: getDecopilotId(organizationId),
+    organizationId,
+    title: "Decopilot",
+    description: "Default agent that aggregates all organization connections",
+    icon: "https://assets.decocache.com/decocms/fd07a578-6b1c-40f1-bc05-88a3b981695d/f7fc4ffa81aec04e37ae670c3cd4936643a7b269.png",
+  });
 }
 
-/**
- * Get the Decopilot ID for a given organization.
- *
- * @param organizationId - Organization ID
- * @returns The Decopilot ID in the format `decopilot_{organizationId}`
- */
-export function getDecopilotId(organizationId: string): string {
-  return `${DECOPILOT_PREFIX}${organizationId}`;
-}
+// ---- Brand-Context Setup ----
+// Guided-onboarding agent for the brand-context preset task. The
+// `brand_context_setup` built-in is injected by `dispatchRun` when this
+// id is seen; the system prompt lives in `metadata.instructions`.
+const brandContextSetupPrefix = createWellKnownAgentPrefix(
+  "brand-context-setup_",
+);
+export const isBrandContextSetup = brandContextSetupPrefix.is;
+export const getBrandContextSetupId = brandContextSetupPrefix.get;
 
-/**
- * Brand-Context Setup agent ID prefix.
- *
- * Well-known guided-onboarding agent for the brand-context preset task.
- * Mirrors the Decopilot/Site-Diagnostics pattern: no DB row, resolved
- * in-memory via the prefix check. The agent carries a curated system
- * prompt as its `metadata.instructions`; the matching AI-SDK built-in
- * tool (`brand_context_setup`) is injected by `dispatchRun` when it
- * sees this agent id.
- */
-const BRAND_CONTEXT_SETUP_PREFIX = "brand-context-setup_";
-
-/**
- * Check if a connection or virtual MCP ID is the Brand-Context Setup agent.
- *
- * @param id - Connection or virtual MCP ID to check
- * @returns The organization ID if the ID matches the pattern, null otherwise
- */
-export function isBrandContextSetup(
-  id: string | null | undefined,
-): string | null {
-  if (!id) return null;
-  if (!id.startsWith(BRAND_CONTEXT_SETUP_PREFIX)) return null;
-  return id.slice(BRAND_CONTEXT_SETUP_PREFIX.length) || null;
-}
-
-/**
- * Get the Brand-Context Setup agent ID for a given organization.
- */
-export function getBrandContextSetupId(organizationId: string): string {
-  return `${BRAND_CONTEXT_SETUP_PREFIX}${organizationId}`;
-}
-
-/**
- * System prompt for the Brand-Context Setup agent. Lives on the agent
- * (not on the thread or in the preset route) so it survives every turn
- * — `dispatchRun` reads it through `passthroughClient.getInstructions()`
- * the same way it reads the Decopilot agent's prompt.
- */
 const BRAND_CONTEXT_SETUP_INSTRUCTIONS = `
 You are running the brand-context onboarding for the user's organization. Your only job in this thread is to set up the organization's brand context:
 
@@ -300,101 +290,45 @@ You are running the brand-context onboarding for the user's organization. Your o
 If the tool returns an error, surface the error message to the user and ask whether they want to try a different URL.
 `.trim();
 
-/**
- * Get the well-known Brand-Context Setup Virtual MCP entity.
- *
- * Connections is `[]` (no aggregated tools) — this is a guided flow that
- * relies entirely on the `brand_context_setup` built-in injected by
- * `dispatchRun`. The system prompt lives in `metadata.instructions`.
- */
 export function getWellKnownBrandContextSetupVirtualMCP(
   organizationId: string,
 ): VirtualMCPEntity {
-  return {
+  return defineWellKnownAgentVMCP({
     id: getBrandContextSetupId(organizationId),
-    organization_id: organizationId,
+    organizationId,
     title: "Brand context setup",
     description:
       "Guided onboarding agent that extracts brand context from a website URL.",
     icon: "https://assets.decocache.com/decocms/fd07a578-6b1c-40f1-bc05-88a3b981695d/f7fc4ffa81aec04e37ae670c3cd4936643a7b269.png",
-    status: "active",
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    created_by: "system",
-    updated_by: undefined,
-    metadata: { instructions: BRAND_CONTEXT_SETUP_INSTRUCTIONS },
-    pinned: false,
-    connections: [],
-  };
+    instructions: BRAND_CONTEXT_SETUP_INSTRUCTIONS,
+  });
 }
 
-/**
- * Web-Developer agent ID prefix.
- *
- * Well-known agent that authors static HTML pages and writes them to the
- * org's object storage. Same in-memory resolution pattern as the
- * brand-context setup agent — no DB row, no install step. The agent's
- * built-in tools (write_html_page, read_html_page, list_html_pages,
- * delete_html_page) are injected by `dispatchRun` when it sees this id.
- */
-const WEB_DEVELOPER_PREFIX = "web-developer_";
-
-export function isWebDeveloper(id: string | null | undefined): string | null {
-  if (!id) return null;
-  if (!id.startsWith(WEB_DEVELOPER_PREFIX)) return null;
-  return id.slice(WEB_DEVELOPER_PREFIX.length) || null;
-}
-
-export function getWebDeveloperId(organizationId: string): string {
-  return `${WEB_DEVELOPER_PREFIX}${organizationId}`;
-}
+// ---- Web-Developer ----
+// Authors static HTML pages and writes them to org object storage. Tools
+// (write_html_page, read_html_page, list_html_pages, delete_html_page)
+// are injected by `dispatchRun`.
+const webDeveloperPrefix = createWellKnownAgentPrefix("web-developer_");
+export const isWebDeveloper = webDeveloperPrefix.is;
+export const getWebDeveloperId = webDeveloperPrefix.get;
 
 export function getWellKnownWebDeveloperVirtualMCP(
   organizationId: string,
 ): VirtualMCPEntity {
-  return {
+  return defineWellKnownAgentVMCP({
     id: getWebDeveloperId(organizationId),
-    organization_id: organizationId,
+    organizationId,
     title: "Web developer",
     description:
       "Builds static HTML pages and previews them inline via object storage.",
     icon: "icon://Globe02?color=sky",
-    status: "active",
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    created_by: "system",
-    updated_by: undefined,
-    metadata: { instructions: null },
-    pinned: false,
-    connections: [],
-  };
+  });
 }
 
-/**
- * Site Diagnostics agent ID prefix
- */
-const SITE_DIAGNOSTICS_PREFIX = "site-diagnostics_";
-
-/**
- * Check if a connection or virtual MCP ID is the Site Diagnostics agent.
- *
- * @param id - Connection or virtual MCP ID to check
- * @returns The organization ID if the ID matches the Site Diagnostics pattern, null otherwise
- */
-export function isSiteDiagnostics(
-  id: string | null | undefined,
-): string | null {
-  if (!id) return null;
-  if (!id.startsWith(SITE_DIAGNOSTICS_PREFIX)) return null;
-  return id.slice(SITE_DIAGNOSTICS_PREFIX.length) || null;
-}
-
-/**
- * Get the Site Diagnostics agent ID for a given organization.
- */
-export function getSiteDiagnosticsId(organizationId: string): string {
-  return `${SITE_DIAGNOSTICS_PREFIX}${organizationId}`;
-}
+// ---- Site Diagnostics ----
+const siteDiagnosticsPrefix = createWellKnownAgentPrefix("site-diagnostics_");
+export const isSiteDiagnostics = siteDiagnosticsPrefix.is;
+export const getSiteDiagnosticsId = siteDiagnosticsPrefix.get;
 
 /**
  * Studio Pack agent ID generators (org-scoped)

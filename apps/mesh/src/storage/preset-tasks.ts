@@ -7,59 +7,33 @@
  * task are last-write-wins — acceptable for dismiss/progress updates.
  */
 
-import type { KVStorage } from "./kv";
+import type { PresetTaskState } from "@decocms/mesh-sdk";
+import { kvGet, kvSet, type KVStorage } from "./kv";
+
+export type { PresetTaskState, PresetTaskStatus } from "@decocms/mesh-sdk";
 
 const kvKey = (taskId: string) => `preset-tasks:${taskId}`;
-
-export type PresetTaskStatus =
-  | "started"
-  | "running"
-  | "completed"
-  | "dismissed"
-  | "error";
-
-export type PresetTaskStepStatus = "pending" | "running" | "done" | "error";
-
-export type PresetTaskStep = {
-  name: string;
-  status: PresetTaskStepStatus;
-  startedAt?: string;
-  completedAt?: string;
-  error?: string;
-};
-
-export type PresetTaskState = {
-  status: PresetTaskStatus;
-  workflowRunId?: string;
-  /**
-   * DBOS workflow handle for presets whose lifecycle is owned by a DBOS
-   * workflow (currently `brand-context`). Tools called from the preset's
-   * thread look this up to signal completion back to the workflow.
-   */
-  dbosWorkflowId?: string;
-  startedAt?: string;
-  completedAt?: string;
-  dismissedAt?: string;
-  error?: string;
-  steps?: PresetTaskStep[];
-};
 
 export class PresetTaskStore {
   constructor(private kv: KVStorage) {}
 
-  async get(
+  get(
     organizationId: string,
     taskId: string,
   ): Promise<PresetTaskState | undefined> {
-    const value = await this.kv.get(organizationId, kvKey(taskId));
-    return (value ?? undefined) as PresetTaskState | undefined;
+    return kvGet<PresetTaskState | undefined>(
+      this.kv,
+      organizationId,
+      kvKey(taskId),
+      undefined,
+    );
   }
 
-  async set(
+  set(
     organizationId: string,
     taskId: string,
     state: PresetTaskState,
   ): Promise<void> {
-    await this.kv.set(organizationId, kvKey(taskId), state);
+    return kvSet(this.kv, organizationId, kvKey(taskId), state);
   }
 }
