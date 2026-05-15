@@ -137,11 +137,22 @@ function createReextractBrandContextTool(ctx: MeshContext) {
         };
       }
 
-      const extracted = await extractBrandFromDomain(
-        input.domain,
-        apiKey,
-        input.domain,
-      );
+      let extracted;
+      try {
+        extracted = await extractBrandFromDomain(
+          input.domain,
+          apiKey,
+          input.domain,
+        );
+      } catch (err) {
+        return {
+          success: false,
+          error:
+            err instanceof Error
+              ? `Brand extraction failed: ${err.message}`
+              : "Brand extraction failed.",
+        };
+      }
       if (!extracted) {
         return {
           success: false,
@@ -190,6 +201,13 @@ function createConfirmBrandTool(ctx: MeshContext) {
         return {
           success: false,
           error: "Organization required (no active organization in context)",
+        };
+      }
+      const brand = await getOrgPrimaryBrand(organizationId, ctx);
+      if (!brand) {
+        return {
+          success: false,
+          error: "No brand context exists for this organization yet.",
         };
       }
       const prev = await ctx.storage.presetTasks.get(

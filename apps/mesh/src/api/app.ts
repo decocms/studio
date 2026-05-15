@@ -430,6 +430,27 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
       endpoint === "token" &&
       contentType?.includes("application/x-www-form-urlencoded")
     ) {
+      // Per RFC 6749 §2.3.1, confidential clients may send credentials via
+      // HTTP Basic auth instead of the form body. Capture from the header
+      // first so the body parse below can still override when a client sends
+      // both — without this fallback, Basic-auth clients persist with a
+      // null clientId and become non-refreshable.
+      if (authorization?.toLowerCase().startsWith("basic ")) {
+        try {
+          const decoded = atob(authorization.slice(6).trim());
+          const colonIdx = decoded.indexOf(":");
+          if (colonIdx !== -1) {
+            // RFC 6749 §2.3.1: the credentials are form-urlencoded before
+            // being base64'd as the Basic value.
+            const id = decodeURIComponent(decoded.slice(0, colonIdx));
+            const secret = decodeURIComponent(decoded.slice(colonIdx + 1));
+            capturedClientId = id || null;
+            capturedClientSecret = secret || null;
+          }
+        } catch {
+          // Malformed Basic header — let origin reject the request.
+        }
+      }
       // Parse form body and rewrite resource if present
       const formData = await c.req.formData();
       if (formData.has("resource")) {

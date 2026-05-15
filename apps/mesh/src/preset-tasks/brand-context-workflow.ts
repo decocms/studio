@@ -71,6 +71,14 @@ async function markCompletedStep(
     organizationId,
     BRAND_CONTEXT_PRESET_ID,
   );
+  // Stale-run guard: if the user kicked off a newer run, its `/start` already
+  // bumped workflowRunId. Older workflows finishing late must not clobber it.
+  if (prev?.workflowRunId !== taskId) {
+    console.warn(
+      `[brand-context-workflow] skipping completed write — stale run (prev.workflowRunId=${prev?.workflowRunId}, taskId=${taskId})`,
+    );
+    return;
+  }
   const next: PresetTaskState = {
     ...prev,
     status: "completed",
@@ -102,6 +110,12 @@ async function markErrorStep(
     organizationId,
     BRAND_CONTEXT_PRESET_ID,
   );
+  if (prev?.workflowRunId !== taskId) {
+    console.warn(
+      `[brand-context-workflow] skipping error write — stale run (prev.workflowRunId=${prev?.workflowRunId}, taskId=${taskId}, error=${error})`,
+    );
+    return;
+  }
   const next: PresetTaskState = {
     ...prev,
     status: "error",

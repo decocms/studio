@@ -58,6 +58,7 @@ export function useAutoInstallSystemHealth(
     opts.enabled &&
     !startedRef.current &&
     session?.user?.id &&
+    org &&
     status === "idle"
   ) {
     startedRef.current = true;

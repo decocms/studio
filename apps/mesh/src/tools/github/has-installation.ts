@@ -46,18 +46,29 @@ export async function hasGithubInstallationOn(
       accessToken = refreshed;
     }
 
-    // 100 per page is the GitHub max; one page is enough for a
-    // "does any installation match" check — no one has 100+ installs.
-    const res = await fetch(`${GITHUB_API}/user/installations?per_page=100`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-    });
-    if (!res.ok) return false;
-    const data = (await res.json()) as InstallationsResponse;
-    return data.installations.some((i) => i.account.login === login);
+    // Paginate with early termination: stop as soon as we find a match,
+    // or when GitHub returns a short page (no more installations).
+    const perPage = 100;
+    let page = 1;
+    while (true) {
+      const res = await fetch(
+        `${GITHUB_API}/user/installations?per_page=${perPage}&page=${page}`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+          },
+        },
+      );
+      if (!res.ok) return false;
+      const data = (await res.json()) as InstallationsResponse;
+      if (data.installations.some((i) => i.account.login === login)) {
+        return true;
+      }
+      if (data.installations.length < perPage) return false;
+      page++;
+    }
   } catch (err) {
     console.warn(
       `[has-installation] probe failed for conn ${connectionId} / login ${login}:`,
