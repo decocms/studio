@@ -56,6 +56,12 @@ export interface ThreadGateContext {
   request: SerializableDispatchRunInput;
   /** Optional per-call timeout override (otherwise uses runtime default). */
   timeoutMs?: number;
+  /**
+   * Where the enqueue came from. Drives whether `chat_message_started`
+   * fires: only user-initiated POSTs count as messages — automation fires
+   * use the same gate but shouldn't pollute message-send analytics.
+   */
+  source: "user-message" | "automation";
 }
 
 export type ThreadGateOutcome = { taskId: string };
@@ -137,8 +143,12 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
  * existing workflowID re-enters the workflow via DBOS replay; the step
  * output is recorded in the workflow journal and the body doesn't
  * re-execute. Without this, retries would double-count in PostHog.
+ *
+ * Suppressed for automation fires — they reuse this gate but don't
+ * represent a user-initiated message.
  */
 async function trackMessageStartedStep(ctx: ThreadGateContext): Promise<void> {
+  if (ctx.source !== "user-message") return;
   const { request } = ctx;
   posthog.capture({
     distinctId: request.userId,
@@ -178,6 +188,10 @@ const threadGateWorkflow = DBOS.registerWorkflow(threadGateWorkflowFn, {
  * Callers can pass `workflowID` for idempotency (e.g. a client-supplied
  * ULID on POST /messages) — a redelivered request collapses onto the
  * existing workflow handle instead of duplicating the run.
+ *
+ * Fire-and-forget: returns the workflowID without awaiting completion.
+ * Use `awaitThreadRun` when the caller needs to block on the dispatch
+ * outcome (e.g. parent workflows that hold their own queue slot).
  */
 export async function enqueueThreadRun(
   ctx: ThreadGateContext,
@@ -189,4 +203,23 @@ export async function enqueueThreadRun(
     workflowID: opts?.workflowID,
   })(ctx);
   return { workflowID: handle.workflowID };
+}
+
+/**
+ * Enqueue and await completion. Used by callers that hold an outer
+ * workflow slot and need the dispatch outcome to advance — chiefly the
+ * automation fire path, which layers its own per-automation and global
+ * gates above this per-thread one. Failures from the inner workflow
+ * propagate so the caller's step is recorded as failed by DBOS.
+ */
+export async function awaitThreadRun(
+  ctx: ThreadGateContext,
+  opts?: { workflowID?: string },
+): Promise<ThreadGateOutcome> {
+  const handle = await DBOS.startWorkflow(threadGateWorkflow, {
+    queueName: THREAD_GATE_QUEUE,
+    enqueueOptions: { queuePartitionKey: ctx.threadId },
+    workflowID: opts?.workflowID,
+  })(ctx);
+  return await handle.getResult();
 }

@@ -48,7 +48,7 @@
  */
 
 import { DBOS, SchedulerMode } from "@dbos-inc/dbos-sdk";
-import type { DispatchRunDeps } from "@/api/routes/decopilot/dispatch-run";
+import { awaitThreadRun } from "@/dispatch-queue";
 import { resolveTier } from "@/core/resolve-tier";
 import type { AutomationsStorage } from "@/storage/automations";
 import type { Automation } from "@/storage/types";
@@ -57,11 +57,7 @@ import {
   buildStreamRequest,
   type ResolvedAutomationModel,
 } from "./build-stream-request";
-import {
-  computeNextRunAt,
-  type MeshContextFactory,
-  type DispatchRunFn,
-} from "./fire";
+import { computeNextRunAt, type MeshContextFactory } from "./fire";
 
 export const AUTOMATIONS_GATE_QUEUE = "automations-gate";
 export const AUTOMATIONS_GLOBAL_QUEUE = "automations-global";
@@ -107,12 +103,7 @@ export async function ensureOrgQueue(orgId: string): Promise<void> {
 
 export interface AutomationRuntime {
   storage: AutomationsStorage;
-  dispatchRunFn: DispatchRunFn;
   meshContextFactory: MeshContextFactory;
-  deps: Pick<
-    DispatchRunDeps,
-    "runRegistry" | "cancelBroadcast" | "streamBuffer"
-  >;
   runTimeoutMs?: number;
 }
 
@@ -248,9 +239,12 @@ async function dispatchRunAndWaitStep(
   resolvedModel: ResolvedAutomationModel,
   ctx: FireAutomationContext,
   taskId: string,
-): Promise<{ error?: string }> {
+): Promise<void> {
   const rt = requireRuntime();
 
+  // Membership pre-check stays here so we can early-exit + record failure
+  // before the thread-gate queue takes a slot. `awaitThreadRun` validates
+  // membership again internally on dispatch.
   const meshCtx = await rt.meshContextFactory(
     automation.organization_id,
     automation.created_by,
@@ -261,43 +255,42 @@ async function dispatchRunAndWaitStep(
     } catch {
       // best-effort
     }
-    return { error: "creator membership lost mid-fire" };
+    throw new Error("creator membership lost mid-fire");
   }
 
-  const timeoutMs = rt.runTimeoutMs ?? AUTOMATIONS_RUN_TIMEOUT_MS;
-  const abortController = new AbortController();
-  const timeout = setTimeout(() => abortController.abort(), timeoutMs);
+  const request = buildStreamRequest(
+    automation,
+    ctx.triggerId,
+    taskId,
+    resolvedModel,
+  );
+  if (ctx.contextMessages) {
+    request.messages = [
+      ...request.messages,
+      ...ctx.contextMessages.map((m) => ({
+        id: crypto.randomUUID(),
+        role: m.role as "user" | "assistant" | "system",
+        parts: [{ type: "text" as const, text: m.content }],
+      })),
+    ];
+  }
+
+  // Strip the (non-serializable, locally-built) abort signal — the
+  // thread-gate workflow constructs its own from `timeoutMs`.
+  const { abortSignal: _ignored, ...serializableRequest } = request;
 
   try {
-    const request = buildStreamRequest(
-      automation,
-      ctx.triggerId,
-      taskId,
-      resolvedModel,
-    );
-    if (ctx.contextMessages) {
-      request.messages = [
-        ...request.messages,
-        ...ctx.contextMessages.map((m) => ({
-          id: crypto.randomUUID(),
-          role: m.role as "user" | "assistant" | "system",
-          parts: [{ type: "text" as const, text: m.content }],
-        })),
-      ];
-    }
-    request.abortSignal = abortController.signal;
-
-    // dispatchRunAndWait resolves when the run completes (or fails).
-    // Automations need this synchronous shape so the DBOS workflow step can
-    // record the run's terminal state. With streamBuffer wired through,
-    // automation chunks publish to the per-thread JetStream subject like
-    // user-message runs, so any UI tailing the thread sees them too.
-    await rt.dispatchRunFn(request, meshCtx, {
-      runRegistry: rt.deps.runRegistry,
-      streamBuffer: rt.deps.streamBuffer,
-      cancelBroadcast: rt.deps.cancelBroadcast,
+    // Layered queueing: this step runs under the per-automation gate
+    // (concurrency=3) and global gate (concurrency=5); awaiting the
+    // per-thread gate (concurrency=1 keyed by taskId) adds the third
+    // layer. Automation runs and user messages on the same thread now
+    // serialize through the same gate.
+    await awaitThreadRun({
+      threadId: taskId,
+      request: serializableRequest,
+      timeoutMs: rt.runTimeoutMs ?? AUTOMATIONS_RUN_TIMEOUT_MS,
+      source: "automation",
     });
-    return {};
   } catch (err) {
     const runError = err instanceof Error ? err.message : String(err);
     console.error(
@@ -309,9 +302,7 @@ async function dispatchRunAndWaitStep(
     } catch {
       // best-effort
     }
-    return { error: runError };
-  } finally {
-    clearTimeout(timeout);
+    throw err;
   }
 }
 
@@ -337,13 +328,25 @@ async function fireAutomationWorkflowFn(
     });
   }
 
-  const result = await DBOS.runStep(
-    () =>
-      dispatchRunAndWaitStep(prep.automation, prep.resolvedModel, ctx, taskId),
-    { name: "dispatchRunAndWait" },
-  );
+  // The step itself throws on dispatch failure so DBOS records the step
+  // as ERROR (good for observability). We catch at the workflow level to
+  // preserve the existing `FireAutomationOutcome` API: callers expect a
+  // resolved `{taskId, error}` outcome, not a thrown promise.
+  try {
+    await DBOS.runStep(
+      () =>
+        dispatchRunAndWaitStep(
+          prep.automation,
+          prep.resolvedModel,
+          ctx,
+          taskId,
+        ),
+      { name: "dispatchRunAndWait" },
+    );
+  } catch (err) {
+    return { taskId, error: err instanceof Error ? err.message : String(err) };
+  }
 
-  if (result.error) return { taskId, error: result.error };
   return { taskId };
 }
 

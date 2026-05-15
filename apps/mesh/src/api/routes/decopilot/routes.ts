@@ -304,7 +304,11 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // so idempotent retries that collapse onto an existing workflowID
       // don't double-count in PostHog. Don't add a duplicate emit here.
       await enqueueThreadRun(
-        { threadId: taskId, request: serializableRequest },
+        {
+          threadId: taskId,
+          request: serializableRequest,
+          source: "user-message",
+        },
         { workflowID },
       );
       return c.json({ taskId }, 202);

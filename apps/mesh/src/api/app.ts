@@ -1166,11 +1166,11 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Stash deps for the DBOS workflow body. Safe to call before DBOS.launch():
   // it only writes a module-level pointer, no DBOS API calls.
+  // The actual dispatch (and its dispatch-run deps) lives on the thread-gate
+  // runtime now — automations hand off via `awaitThreadRun`.
   setAutomationRuntime({
     storage: automationsStorage,
-    dispatchRunFn: dispatchRunAndWait,
     meshContextFactory: automationContextFactory,
-    deps: { runRegistry, cancelBroadcast, streamBuffer },
   });
 
   // Same deps shape as automations — the per-thread gate calls

@@ -1,4 +1,5 @@
 export {
+  awaitThreadRun,
   enqueueThreadRun,
   setThreadGateRuntime,
   THREAD_GATE_PARTITION_CONCURRENCY,
