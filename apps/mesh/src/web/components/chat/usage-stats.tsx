@@ -215,7 +215,7 @@ export function SessionStats({
               )}
             />
           </svg>
-          <span className="inline-block overflow-hidden whitespace-nowrap max-w-0 opacity-0 transition-[max-width,opacity] duration-200 ease-out @[480px]/chat-bottom:max-w-32 @[480px]/chat-bottom:opacity-100 text-[11px] font-mono tabular-nums">
+          <span className="inline-block overflow-hidden whitespace-nowrap max-w-0 opacity-0 transition-[max-width,opacity] duration-200 ease-out @[484px]/chat-bottom:max-w-32 @[484px]/chat-bottom:opacity-100 text-[11px] font-mono tabular-nums">
             {pct.toFixed(0)}%{cost > 0 ? ` · $${cost.toFixed(2)}` : ""}
           </span>
         </button>
