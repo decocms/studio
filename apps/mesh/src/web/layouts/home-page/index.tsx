@@ -91,8 +91,10 @@ export function HomePage() {
 
   if (allKeys.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center px-4 py-10">
-        <NoAiProviderEmptyState />
+      <div className="flex-1 overflow-y-auto">
+        <div className="min-h-full flex items-center justify-center px-4 py-10">
+          <NoAiProviderEmptyState />
+        </div>
       </div>
     );
   }
