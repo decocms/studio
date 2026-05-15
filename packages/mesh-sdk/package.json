@@ -17,7 +17,7 @@
   "dependencies": {
     "@decocms/bindings": "^1.1.1",
     "@decocms/mcp-utils": "workspace:*",
-    "@modelcontextprotocol/sdk": "1.27.1",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "zod": "^4.0.0"
   },
   "peerDependencies": {
