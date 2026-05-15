@@ -213,7 +213,7 @@ export function ToolsPopover({
             className="text-muted-foreground hover:text-foreground"
           >
             <Settings04 size={14} />
-            <span className="inline-block overflow-hidden whitespace-nowrap max-w-0 opacity-0 transition-[max-width,opacity] duration-200 ease-out @[488px]/chat-bottom:max-w-24 @[488px]/chat-bottom:opacity-100">
+            <span className="inline-block overflow-hidden whitespace-nowrap max-w-0 opacity-0 transition-[max-width,opacity] duration-200 ease-out @[496px]/chat-bottom:max-w-24 @[496px]/chat-bottom:opacity-100">
               Tools
             </span>
           </Button>
