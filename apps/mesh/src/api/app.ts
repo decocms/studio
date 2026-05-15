@@ -91,6 +91,7 @@ import type { StreamBuffer } from "./routes/decopilot/stream-buffer";
 import { NatsStreamBuffer } from "./routes/decopilot/nats-stream-buffer";
 import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
+import { SqlQueuedMessagesStorage } from "../storage/queued-messages";
 import { SqlThreadStorage } from "../storage/threads";
 import type { Thread } from "../storage/types";
 import { registerMonitoringRetentionWorkflow } from "../monitoring/dbos-retention-workflow";
@@ -759,6 +760,7 @@ export async function createApp(options: CreateAppOptions = {}) {
         })();
       },
       createTailStream: async () => null,
+      publish: () => {},
       purge: () => {},
       teardown: () => {},
     };
@@ -1176,9 +1178,11 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Same deps shape as automations — the per-thread gate calls
   // `dispatchRunAndWait` once the queue lets a message through. Wiring
   // happens before `DBOS.launch()` for the same reasons.
+  const queuedMessagesStorage = new SqlQueuedMessagesStorage(database.db);
   setThreadGateRuntime({
     dispatchRunFn: dispatchRunAndWait,
     meshContextFactory: automationContextFactory,
+    queuedMessagesStorage,
     deps: { runRegistry, cancelBroadcast, streamBuffer },
   });
 
@@ -1557,6 +1561,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     streamBuffer,
     runRegistry,
     threadStorage,
+    queuedMessagesStorage,
   });
   app.route("/api", decopilotRoutes);
 

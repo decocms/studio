@@ -107,6 +107,18 @@ export class NatsStreamBuffer implements StreamBuffer {
     this.jsm = jsm;
   }
 
+  publish(taskId: string, chunk: unknown): void {
+    const js = this.js;
+    if (!js) return;
+    const subj = streamSubject(taskId);
+    const tracker = createPublishTracker(taskId);
+    tracker.publish(
+      js,
+      subj,
+      this.encoder.encode(JSON.stringify({ p: chunk })),
+    );
+  }
+
   pump(
     stream: ReadableStream,
     taskId: string,

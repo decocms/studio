@@ -39,6 +39,7 @@ import { dispatchRun, type DispatchRunInput } from "./dispatch-run";
 import { enqueueThreadRun } from "@/dispatch-queue";
 import { wrapWithSseKeepalive } from "./sse-keepalive";
 import type { SqlThreadStorage } from "@/storage/threads";
+import type { QueuedMessagesStorage } from "@/storage/queued-messages";
 import { getPodId } from "@/core/pod-identity";
 
 // ============================================================================
@@ -224,6 +225,28 @@ async function validate(
 }
 
 /**
+ * Pull the user-visible text out of a ChatMessage for inbox rendering. The
+ * AI-SDK UI parts have many types; we only render the text payload(s) here
+ * — file attachments, tool calls, etc. don't apply to a pending message.
+ */
+function extractMessageText(message: ChatMessage): string {
+  const texts: string[] = [];
+  for (const part of message.parts) {
+    if (
+      typeof part === "object" &&
+      part !== null &&
+      "type" in part &&
+      part.type === "text" &&
+      "text" in part &&
+      typeof (part as { text: unknown }).text === "string"
+    ) {
+      texts.push((part as { text: string }).text);
+    }
+  }
+  return texts.join("\n");
+}
+
+/**
  * Emit the `chat_message_started` posthog event for an enqueued run.
  * Telemetry lives here (not inside `dispatchRun`) so orphan-resume and
  * automation paths — which don't represent a fresh user message — don't
@@ -253,10 +276,17 @@ export interface DecopilotDeps {
   streamBuffer: StreamBuffer;
   runRegistry: RunRegistry;
   threadStorage: SqlThreadStorage;
+  queuedMessagesStorage: QueuedMessagesStorage;
 }
 
 export function createDecopilotRoutes(deps: DecopilotDeps) {
-  const { cancelBroadcast, streamBuffer, runRegistry, threadStorage } = deps;
+  const {
+    cancelBroadcast,
+    streamBuffer,
+    runRegistry,
+    threadStorage,
+    queuedMessagesStorage,
+  } = deps;
   const app = new Hono<{ Variables: { meshContext: MeshContext } }>();
 
   // ============================================================================
@@ -297,7 +327,9 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   // workflow dequeues and dispatches.
   //
   // If another run on this thread is already executing, the new message
-  // queues behind it and dispatches only after that run completes.
+  // queues behind it and dispatches only after that run completes. Clients
+  // see queued messages via the inbox endpoint and can cancel them by
+  // taskId before they dequeue.
   //
   // Idempotency: when the client supplies an id on the request message,
   // the workflow ID is derived from `<threadId>:<messageId>`, so a retry
@@ -315,18 +347,51 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       }
 
       const { abortSignal: _ignored, ...serializableRequest } = input;
-      const messageId =
-        input.messages[input.messages.length - 1]?.id ?? undefined;
-      const workflowID = messageId
-        ? `thread-run:${taskId}:${messageId}`
-        : undefined;
+      const userMessage = input.messages[input.messages.length - 1];
+      const queuedMessageId = userMessage?.id ?? crypto.randomUUID();
+      const workflowID = `thread-run:${taskId}:${queuedMessageId}`;
+
+      // Insert the inbox row BEFORE enqueueing. If two clients race the
+      // same `(threadId, messageId)` (retry), the second insert fails on
+      // PK conflict and we treat that as idempotent — the workflow
+      // workflowID dedupes the run on the DBOS side too.
+      try {
+        await queuedMessagesStorage.insert({
+          id: queuedMessageId,
+          threadId: taskId,
+          organizationId: input.organizationId,
+          userId: input.userId,
+          content: userMessage ? extractMessageText(userMessage) : "",
+          workflowId: workflowID,
+        });
+        streamBuffer.publish(taskId, {
+          type: "data-queue-enqueued",
+          data: {
+            type: "queue-enqueued",
+            taskId: queuedMessageId,
+            content: userMessage ? extractMessageText(userMessage) : "",
+            createdAt: new Date().toISOString(),
+          },
+        });
+      } catch (insertErr) {
+        // Likely a PK conflict on retry; we still enqueue (DBOS will
+        // collapse the duplicate workflow handle by workflowID).
+        console.warn(
+          "[decopilot:messages] queued_messages insert failed, continuing",
+          insertErr,
+        );
+      }
 
       await enqueueThreadRun(
-        { threadId: taskId, request: serializableRequest },
+        {
+          threadId: taskId,
+          queuedMessageId,
+          request: serializableRequest,
+        },
         { workflowID },
       );
       trackMessageStarted(input, taskId);
-      return c.json({ taskId }, 202);
+      return c.json({ taskId, queuedMessageId }, 202);
     } catch (err) {
       console.error("[decopilot:messages] Error", err);
       if (err instanceof TierUnavailableError) {
@@ -342,6 +407,74 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       );
     }
   });
+
+  // ============================================================================
+  // Inbox Endpoints — list / cancel pending messages on the thread-gate queue
+  // ============================================================================
+  //
+  // GET /:org/decopilot/threads/:threadId/queue
+  //   Returns messages that were submitted on this thread and haven't yet
+  //   been picked up by the dispatcher. Used by the chat UI to render
+  //   pending bubbles above the input on tab open (initial snapshot);
+  //   subsequent state changes flow as `data-queue-*` events on /attach.
+  //
+  // DELETE /:org/decopilot/threads/:threadId/queue/:messageId
+  //   Cancels a queued message. Atomic CAS queued→cancelled, so a message
+  //   that has already started dispatching can't be cancelled this way —
+  //   use the existing `POST /cancel/:threadId` to stop an in-flight run.
+
+  app.get("/:org/decopilot/threads/:threadId/queue", async (c) => {
+    try {
+      const { thread, organization } = await validateThreadAccess(c);
+      const rows = await queuedMessagesStorage.listByThread(
+        thread.id,
+        organization.id,
+      );
+      return c.json({
+        items: rows.map((r) => ({
+          id: r.id,
+          threadId: r.threadId,
+          content: r.content,
+          createdAt: r.createdAt.toISOString(),
+        })),
+      });
+    } catch (err) {
+      console.error("[decopilot:queue:list] Error", err);
+      if (err instanceof HTTPException) {
+        return c.json({ error: err.message }, err.status);
+      }
+      return c.json({ error: "Internal error" }, 500);
+    }
+  });
+
+  app.delete(
+    "/:org/decopilot/threads/:threadId/queue/:messageId",
+    async (c) => {
+      try {
+        const { thread, organization } = await validateThreadOwnership(c);
+        const messageId = c.req.param("messageId");
+        const cancelled = await queuedMessagesStorage.cancel(
+          messageId,
+          organization.id,
+        );
+        if (!cancelled) {
+          // Either already dispatched (claim won the race) or unknown id.
+          return c.json({ cancelled: false }, 404);
+        }
+        streamBuffer.publish(thread.id, {
+          type: "data-queue-cancelled",
+          data: { type: "queue-cancelled", taskId: messageId },
+        });
+        return c.json({ cancelled: true });
+      } catch (err) {
+        console.error("[decopilot:queue:cancel] Error", err);
+        if (err instanceof HTTPException) {
+          return c.json({ error: err.message }, err.status);
+        }
+        return c.json({ error: "Internal error" }, 500);
+      }
+    },
+  );
 
   // ============================================================================
   // Cancel Endpoint — cancel ongoing run (local or via NATS to owning pod)

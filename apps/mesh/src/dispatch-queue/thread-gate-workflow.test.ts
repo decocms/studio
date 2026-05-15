@@ -18,6 +18,12 @@ describe("threadGateWorkflow plumbing", () => {
     const rt: ThreadGateRuntime = {
       dispatchRunFn: async () => ({ taskId: "t" }),
       meshContextFactory: async () => null,
+      queuedMessagesStorage: {
+        insert: async () => ({}) as never,
+        listByThread: async () => [],
+        cancel: async () => null,
+        claim: async () => "missing",
+      },
       deps: {
         runRegistry: {} as ThreadGateRuntime["deps"]["runRegistry"],
         cancelBroadcast: {} as ThreadGateRuntime["deps"]["cancelBroadcast"],

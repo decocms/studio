@@ -1017,6 +1017,34 @@ export interface SandboxRunnerStateTable {
 }
 
 // ============================================================================
+// Queued Messages Table Definition
+// ============================================================================
+
+export type QueuedMessageStatus = "queued" | "cancelled";
+
+export interface QueuedMessageTable {
+  id: string;
+  thread_id: string;
+  organization_id: string;
+  user_id: string;
+  content: string;
+  status: QueuedMessageStatus;
+  workflow_id: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
+export interface QueuedMessage {
+  id: string;
+  threadId: string;
+  organizationId: string;
+  userId: string;
+  content: string;
+  status: QueuedMessageStatus;
+  workflowId: string;
+  createdAt: Date;
+}
+
+// ============================================================================
 // Organization Domain Table Definition
 // ============================================================================
 
@@ -1163,4 +1191,7 @@ export interface Database {
   organization_domains: OrganizationDomainTable;
 
   sandbox_runner_state: SandboxRunnerStateTable;
+
+  // Pending agent runs awaiting dispatch on the per-thread gate queue
+  queued_messages: QueuedMessageTable;
 }

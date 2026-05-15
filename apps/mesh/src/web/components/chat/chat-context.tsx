@@ -67,6 +67,11 @@ const openedChats = new Set<string>();
 
 import { useChatNavigation } from "./hooks/use-chat-navigation";
 import { useStreamManager } from "./hooks/use-stream-manager";
+import {
+  decodeQueueChunk,
+  useThreadQueue,
+  type QueuedItem,
+} from "./hooks/use-thread-queue";
 import { useTaskActions } from "../../hooks/use-tasks";
 import { useTaskManager, type TaskOwnerFilter } from "./task";
 import { useTaskMessages } from "./task/use-task-manager";
@@ -103,6 +108,10 @@ export interface ChatStreamContextValue {
   isChatEmpty: boolean;
   isWaitingForApprovals: boolean;
   isRunInProgress: boolean;
+  /** Messages on this thread that are queued behind the active run. */
+  queuedMessages: QueuedItem[];
+  /** Cancel a queued message before the dispatcher picks it up. */
+  cancelQueuedMessage: (id: string) => Promise<void>;
 }
 
 export interface ChatTaskContextValue {
@@ -969,6 +978,11 @@ export function ActiveTaskProvider({
   const onToolCall = useInvalidateCollectionsOnToolCall();
   const queryClient = useQueryClient();
 
+  // Inbox of pending messages on this thread. `apply` is called from the
+  // chat's `onData` below for every `data-queue-*` chunk that arrives on
+  // /attach, so the bubble list stays in sync with the dispatcher.
+  const queue = useThreadQueue(org.slug, taskId);
+
   // Subscribe model: persistent /attach + POST /messages. No useChat.
   const chat = useThreadChat<ChatMessage>({
     threadId: taskId,
@@ -1019,7 +1033,10 @@ export function ActiveTaskProvider({
           title,
           updated_at: new Date().toISOString(),
         });
+        return;
       }
+      const queueEvent = decodeQueueChunk(chunk);
+      if (queueEvent) queue.apply(queueEvent);
     },
   });
 
@@ -1195,6 +1212,8 @@ export function ActiveTaskProvider({
     isChatEmpty,
     isWaitingForApprovals: isWaitingForApprovals ?? false,
     isRunInProgress,
+    queuedMessages: queue.items,
+    cancelQueuedMessage: queue.cancel,
   };
 
   return (

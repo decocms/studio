@@ -36,6 +36,16 @@ export interface StreamBuffer {
   ): void;
 
   /**
+   * Publish a single chunk onto the per-task subject. Used for out-of-band
+   * events (e.g. queue state transitions) that need to interleave with the
+   * run's UI stream without going through the pump.
+   *
+   * Fire-and-forget: publish errors are logged and dropped, same as `pump`.
+   * No-op when JetStream isn't configured.
+   */
+  publish(taskId: string, chunk: unknown): void;
+
+  /**
    * Subscribe to the per-task subject and stream chunks as a ReadableStream.
    * Returns null when JetStream is unavailable.
    *

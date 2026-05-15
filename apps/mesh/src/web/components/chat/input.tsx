@@ -58,6 +58,7 @@ import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dial
 import { ConnectionsBanner } from "./connections-banner";
 import { useVoiceInput } from "@/web/hooks/use-voice-input.ts";
 import { VoiceWaveform } from "./voice-input";
+import { QueuedMessages } from "./queued-messages";
 
 // ============================================================================
 // useWindowFileDrop - Reusable hook for window-level file drag & drop
@@ -352,20 +353,25 @@ export function ChatInput({
 
   const playClickSound = useSound(question004Sound);
 
-  const canSubmit =
-    !isStreaming && !isModelsLoading && !isTiptapDocEmpty(tiptapDoc);
+  // `canSubmit` no longer requires `!isStreaming`: typing while a run is
+  // active enqueues onto the thread-gate queue. The submit button stays
+  // visible as a send button when there's text, even mid-stream — only
+  // when the composer is empty does it morph into a stop button.
+  const canSubmit = !isModelsLoading && !isTiptapDocEmpty(tiptapDoc);
 
-  const showStopOrCancel = isStreaming || isRunInProgress;
+  const hasInput = !isTiptapDocEmpty(tiptapDoc);
+  const showStopOrCancel = (isStreaming || isRunInProgress) && !hasInput;
 
   const handleSubmit = (e?: FormEvent) => {
     e?.preventDefault();
-    if (isStreaming) {
+    // Empty composer + a run in progress → the button is in stop mode,
+    // so trigger cancel of the active run.
+    if (!canSubmit && (isStreaming || isRunInProgress)) {
       track("chat_message_stopped", { thread_id: taskId });
       stop();
-    } else if (isRunInProgress) {
-      track("chat_message_stopped", { thread_id: taskId });
-      stop();
-    } else if (canSubmit && tiptapDoc) {
+      return;
+    }
+    if (canSubmit && tiptapDoc) {
       track("chat_message_sent", {
         thread_id: taskId || null,
         mode: chatMode,
@@ -398,6 +404,17 @@ export function ChatInput({
   return (
     <>
       <div className="flex flex-col w-full justify-end">
+        {/* Pending messages bubbles — only shown on threads that have a stream
+            context (i.e. not on the home composer). Cancellation goes through
+            the chat stream context's cancelQueuedMessage. */}
+        {stream && stream.queuedMessages.length > 0 && (
+          <QueuedMessages
+            items={stream.queuedMessages}
+            onCancel={(id: string) => void stream.cancelQueuedMessage(id)}
+            className="mb-2"
+          />
+        )}
+
         <div className="relative rounded-2xl w-full flex flex-col">
           {/* Muted background for connections banner - peeks through form's bottom radius */}
           {showConnectionsBanner && (
@@ -413,7 +430,11 @@ export function ChatInput({
             key={taskId}
             tiptapDoc={tiptapDoc}
             setTiptapDoc={setTiptapDoc}
-            disabled={isStreaming}
+            // Editor stays enabled while a run is in flight so messages
+            // can be typed and submitted to the thread-gate queue. The
+            // submit button itself still morphs to "stop" when the
+            // composer is empty, so the active run can be cancelled.
+            disabled={false}
             enterToSubmit={true}
             onSubmit={handleSubmit}
           >
@@ -431,7 +452,7 @@ export function ChatInput({
               <div className="group/input relative flex flex-col gap-2 flex-1">
                 <TiptapInput
                   ref={tiptapRef}
-                  disabled={isStreaming || voice.status === "recording"}
+                  disabled={voice.status === "recording"}
                   virtualMcpId={selectedVirtualMcp?.id ?? decopilotId}
                   showFileUploader={true}
                   selectedModel={selectedModel}
