@@ -53,7 +53,7 @@ export function SimpleModeTierDropdown({
           className="text-muted-foreground hover:text-foreground"
         >
           <Icon size={14} />
-          <span className="hidden @[480px]/chat-bottom:inline">
+          <span className="inline-block overflow-hidden whitespace-nowrap max-w-0 opacity-0 transition-[max-width,opacity] duration-200 ease-out @[480px]/chat-bottom:max-w-24 @[480px]/chat-bottom:opacity-100">
             {current.label}
           </span>
         </Button>
