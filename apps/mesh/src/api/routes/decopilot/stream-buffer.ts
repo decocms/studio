@@ -50,12 +50,17 @@ export interface StreamBuffer {
    *   chunks published after the subscription is established (use when the
    *   thread is idle and we don't want to replay any stale tail of a
    *   recently-completed run).
+   * - `closeOnDone` (default `false`): when true, close the stream as soon
+   *   as a `{done: true}` sentinel arrives. Use for callers that want to
+   *   block on a single run (e.g. `dispatchRunAndWait`). Default `false`
+   *   preserves the cross-run continuation needed by `/attach`.
    */
   createTailStream(
     taskId: string,
     signal?: AbortSignal,
     opts?: {
       deliverPolicy?: "all" | "new";
+      closeOnDone?: boolean;
     },
   ): Promise<ReadableStream | null>;
 

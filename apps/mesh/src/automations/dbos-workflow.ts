@@ -109,7 +109,10 @@ export interface AutomationRuntime {
   storage: AutomationsStorage;
   dispatchRunFn: DispatchRunFn;
   meshContextFactory: MeshContextFactory;
-  deps: Pick<DispatchRunDeps, "runRegistry" | "cancelBroadcast">;
+  deps: Pick<
+    DispatchRunDeps,
+    "runRegistry" | "cancelBroadcast" | "streamBuffer"
+  >;
   runTimeoutMs?: number;
 }
 
@@ -284,12 +287,14 @@ async function dispatchRunAndWaitStep(
     }
     request.abortSignal = abortController.signal;
 
-    // dispatchRunAndWait drains uiStream internally and resolves when the run
-    // completes (or fails). Automations need this synchronous shape so
-    // the DBOS workflow step can record the run's terminal state.
+    // dispatchRunAndWait resolves when the run completes (or fails).
+    // Automations need this synchronous shape so the DBOS workflow step can
+    // record the run's terminal state. With streamBuffer wired through,
+    // automation chunks publish to the per-thread JetStream subject like
+    // user-message runs, so any UI tailing the thread sees them too.
     await rt.dispatchRunFn(request, meshCtx, {
       runRegistry: rt.deps.runRegistry,
-      streamBuffer: undefined,
+      streamBuffer: rt.deps.streamBuffer,
       cancelBroadcast: rt.deps.cancelBroadcast,
     });
     return {};

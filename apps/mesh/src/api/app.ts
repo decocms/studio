@@ -1165,7 +1165,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     storage: automationsStorage,
     dispatchRunFn: dispatchRunAndWait,
     meshContextFactory: automationContextFactory,
-    deps: { runRegistry, cancelBroadcast },
+    deps: { runRegistry, cancelBroadcast, streamBuffer },
   });
 
   // Must run before DBOS.launch() (which fires in index.ts after createApp).

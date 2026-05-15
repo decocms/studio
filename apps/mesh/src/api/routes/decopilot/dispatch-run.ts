@@ -250,13 +250,21 @@ export async function dispatchRun(
 }
 
 /**
- * Drain-to-completion: claim the run, drain `uiStream` internally until
- * the run finishes, return `{ taskId }`. The caller awaits the returned
- * promise to know the run is done.
+ * Drain-to-completion: claim the run, await the run's chunks until the
+ * `{done: true}` sentinel arrives, return `{ taskId }`. Used by callers
+ * that need to block on the agent's completion (DBOS workflow steps).
  *
- * Used by automations (DBOS workflow steps) that need to block on the
- * agent's completion. Does not require a `streamBuffer` — automations
- * don't have a subscriber to fan out to.
+ * When `deps.streamBuffer` is configured and the JetStream tail is
+ * available, the run pumps into JetStream like a normal HTTP run and this
+ * function drains the tail with `closeOnDone: true`. That gives the
+ * unification benefit: a queued user message and an automation share the
+ * same wire-level path, and any UI tailing the per-thread subject sees
+ * automation chunks too.
+ *
+ * If streamBuffer is unavailable (test mode, NATS down), falls back to
+ * reading `uiStream` directly so the function remains usable. The
+ * fallback drops chunks (no subscriber sees them) but the run still
+ * completes.
  */
 export async function dispatchRunAndWait(
   input: DispatchRunInput,
@@ -266,16 +274,48 @@ export async function dispatchRunAndWait(
   return traced(
     "decopilot.dispatchRunAndWait",
     async (rootSpan) => {
-      const { taskId, uiStream } = await prepareRun(input, ctx, deps, rootSpan);
-      const reader = uiStream.getReader();
-      try {
-        while (true) {
-          const { done } = await reader.read();
-          if (done) break;
+      const { taskId, uiStream, registrySignal } = await prepareRun(
+        input,
+        ctx,
+        deps,
+        rootSpan,
+      );
+
+      const buffer = deps.streamBuffer;
+      const tail = buffer
+        ? await buffer.createTailStream(taskId, input.abortSignal, {
+            deliverPolicy: "all",
+            closeOnDone: true,
+          })
+        : null;
+
+      if (buffer && tail) {
+        buffer.pump(uiStream, taskId, registrySignal);
+        const reader = tail.getReader();
+        try {
+          while (true) {
+            const { done } = await reader.read();
+            if (done) break;
+          }
+        } finally {
+          reader.releaseLock();
         }
-      } finally {
-        reader.releaseLock();
+      } else {
+        // Fallback: no JetStream tail available — drain uiStream directly.
+        // Preserves the previous behavior for test environments and any
+        // deployment without NATS. No chunks are observable to tailers in
+        // this mode.
+        const reader = uiStream.getReader();
+        try {
+          while (true) {
+            const { done } = await reader.read();
+            if (done) break;
+          }
+        } finally {
+          reader.releaseLock();
+        }
       }
+
       return { taskId };
     },
     dispatchRunSpanAttrs(input),
