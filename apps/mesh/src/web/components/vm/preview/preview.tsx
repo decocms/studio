@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, Suspense, lazy } from "react";
 import { useInsetContext } from "@/web/layouts/agent-shell-layout";
 import { authClient } from "@/web/lib/auth-client";
 import { useChatTask } from "@/web/components/chat/context";
@@ -11,9 +11,12 @@ import {
 import {
   ArrowLeft,
   ArrowRight,
+  ChevronDown,
   CursorClick01,
   DotsHorizontal,
+  LayersTwo01,
   LinkExternal01,
+  Loading01,
   Monitor04,
   RefreshCw01,
   Server01,
@@ -34,6 +37,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
+import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
+import { useDecofile } from "@/web/components/sections-editor/use-decofile";
+import { extractPages } from "@/web/components/sections-editor/page-list";
 import {
   VISUAL_EDITOR_SCRIPT,
   VisualEditorPayloadSchema,
@@ -59,6 +65,12 @@ import type { DrawerStatus } from "./drawer/toolbar";
 import { invalidateVirtualMcpQueries } from "@/web/lib/query-keys";
 import { useQueryClient } from "@tanstack/react-query";
 import { track } from "@/web/lib/posthog-client";
+
+const SectionsEditor = lazy(() =>
+  import("@/web/components/sections-editor/sections-editor").then((m) => ({
+    default: m.SectionsEditor,
+  })),
+);
 
 function drawerStatusFromPreview(
   state: PreviewState,
@@ -101,12 +113,23 @@ export function PreviewContent() {
     useState<VisualEditorPayload | null>(null);
   const previewIframeRef = useRef<HTMLIFrameElement>(null);
 
+  // Sections editor panel
+  const [sectionsOpen, setSectionsOpen] = useState(false);
+
+  // Pages dropdown in URL bar
+  const [pagesOpen, setPagesOpen] = useState(false);
+  const pagesContainerRef = useRef<HTMLDivElement>(null);
+
   // vmMap[userId][branch] -> { vmId, previewUrl, runnerKind? }
   const userId = session?.user?.id;
   const metadata = inset?.entity?.metadata;
   const vmEntry =
     userId && branch ? metadata?.vmMap?.[userId]?.[branch] : undefined;
   const previewUrl = vmEntry?.previewUrl ?? null;
+
+  // Decofile pages for the URL bar dropdown
+  const { data: decofile } = useDecofile(previewUrl);
+  const pages = decofile ? extractPages(decofile) : [];
 
   // "reload" fires on config edits framework HMR won't catch (.ts/.tsx use HMR).
   const vmEvents = useVmEvents();
@@ -354,6 +377,18 @@ export function PreviewContent() {
     return () => window.removeEventListener("message", handler);
   }, [previewUrl]);
 
+  // Close pages dropdown on outside click
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect — DOM event subscription for outside-click dismiss
+  useEffect(() => {
+    if (!pagesOpen) return;
+    const handler = (e: PointerEvent) => {
+      if (!pagesContainerRef.current?.contains(e.target as Node))
+        setPagesOpen(false);
+    };
+    document.addEventListener("pointerdown", handler);
+    return () => document.removeEventListener("pointerdown", handler);
+  }, [pagesOpen]);
+
   const injectVisualEditor = () => {
     const win = previewIframeRef.current?.contentWindow;
     if (!win) return;
@@ -413,16 +448,30 @@ export function PreviewContent() {
     <div className="flex flex-col w-full h-full">
       {previewState.kind === "iframe" && (
         <div className="flex h-12 shrink-0 items-center gap-4 border-b border-border/60 px-3 md:px-4">
-          {/* Group 1: view mode toggle */}
-          {hasHtmlPreview && (
-            <ViewModeToggle
-              value={viewMode}
-              onValueChange={handleViewModeChange}
-              options={VIEW_MODE_OPTIONS}
-              size="sm"
-              className="shrink-0 bg-foreground/4.5"
-            />
-          )}
+          {/* Group 1: view mode toggle + sections */}
+          <div className="flex shrink-0 items-center gap-1">
+            {hasHtmlPreview && (
+              <ViewModeToggle
+                value={viewMode}
+                onValueChange={handleViewModeChange}
+                options={VIEW_MODE_OPTIONS}
+                size="sm"
+                className="shrink-0 bg-foreground/4.5"
+              />
+            )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={sectionsOpen ? "secondary" : "ghost"}
+                  size="icon"
+                  onClick={() => setSectionsOpen((prev) => !prev)}
+                >
+                  <LayersTwo01 size={14} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Sections Editor</TooltipContent>
+            </Tooltip>
+          </div>
 
           {/* Group 2: nav + url */}
           <div className="flex min-w-0 flex-1 items-center gap-0.5">
@@ -465,10 +514,54 @@ export function PreviewContent() {
               <TooltipContent side="bottom">Refresh</TooltipContent>
             </Tooltip>
 
-            <div className="flex h-8 min-w-0 flex-1 items-center rounded-md bg-background px-2 transition-colors duration-200 hover:bg-accent">
-              <span className="min-w-0 flex-1 truncate text-[12px] text-foreground/88">
-                {previewLabel}
-              </span>
+            <div ref={pagesContainerRef} className="relative min-w-0 flex-1">
+              <button
+                type="button"
+                className="flex h-8 w-full min-w-0 items-center gap-1 rounded-md bg-background px-2 transition-colors duration-200 hover:bg-accent"
+                onClick={() => setPagesOpen((prev) => !prev)}
+              >
+                <span className="min-w-0 flex-1 truncate text-left text-[12px] text-foreground/88">
+                  {previewLabel}
+                </span>
+                {pages.length > 0 && (
+                  <ChevronDown
+                    size={12}
+                    className={`shrink-0 text-muted-foreground transition-transform ${pagesOpen ? "rotate-180" : ""}`}
+                  />
+                )}
+              </button>
+
+              {pagesOpen && pages.length > 0 && (
+                <div className="absolute left-0 right-0 top-full z-50 mt-1.5 overflow-hidden rounded-lg border bg-popover shadow-lg">
+                  <ScrollArea className="max-h-80">
+                    <div className="p-1.5">
+                      {pages.map((page) => (
+                        <button
+                          key={page.key}
+                          type="button"
+                          className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setPagesOpen(false);
+                            // Navigate the iframe
+                            const iframe = previewIframeRef.current;
+                            if (iframe && previewUrl) {
+                              iframe.src = new URL(page.path, previewUrl).href;
+                            }
+                          }}
+                        >
+                          <span className="min-w-0 flex-1 truncate font-medium">
+                            {page.name}
+                          </span>
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            {page.path}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </div>
+              )}
             </div>
           </div>
 
@@ -508,107 +601,140 @@ export function PreviewContent() {
         </div>
       )}
 
-      <div className="flex-1 relative overflow-hidden">
-        {previewState.kind === "never-started" && (
-          <div className="absolute inset-0 z-30">
-            <VmStateCard
-              kind="never-started"
-              onStart={() => {
-                // Force the drawer closed so transitioning out of
-                // never-started doesn't unmask a persisted "open" preference
-                // and visually toggle the setup tab button.
-                handleDrawerOpenChange(false);
-                triggerStart("auto-start");
+      <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 relative overflow-hidden">
+          {previewState.kind === "never-started" && (
+            <div className="absolute inset-0 z-30">
+              <VmStateCard
+                kind="never-started"
+                onStart={() => {
+                  // Force the drawer closed so transitioning out of
+                  // never-started doesn't unmask a persisted "open" preference
+                  // and visually toggle the setup tab button.
+                  handleDrawerOpenChange(false);
+                  triggerStart("auto-start");
+                }}
+              />
+            </div>
+          )}
+
+          {previewState.kind === "starting-now" && (
+            <div className="absolute inset-0 z-30">
+              <VmStateCard
+                kind="starting-now"
+                progress={progress}
+                claimPhase={claimPhase}
+              />
+            </div>
+          )}
+
+          {previewState.kind === "errored" && (
+            <div className="absolute inset-0 z-40">
+              <VmStateCard
+                kind="errored"
+                progress={progress}
+                logSource="setup"
+                errorLine={
+                  previewState.error.split("\n")[0] ?? "Failed to start"
+                }
+                onRetry={retryAutoStart}
+                drawerOpen={drawerOpenEffective}
+              />
+            </div>
+          )}
+
+          {previewState.kind === "suspended" && (
+            <div className="absolute inset-0 z-30">
+              <VmStateCard kind="suspended" onResume={retryAutoStart} />
+            </div>
+          )}
+
+          {previewState.kind === "crashed" && (
+            <div className="absolute inset-0 z-30">
+              <VmStateCard kind="crashed" onOpenTerminal={openDrawer} />
+            </div>
+          )}
+
+          {previewState.kind === "no-html" && (
+            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-background">
+              <Server01 size={48} className="text-muted-foreground/40" />
+              <h3 className="text-lg font-medium">No web page at this URL</h3>
+              <p className="text-sm text-muted-foreground text-center max-w-sm">
+                The server is running, but doesn't serve a web page at /. This
+                preview only renders web pages.
+              </p>
+              <Button onClick={openDrawer}>
+                <Server01 size={14} />
+                View Logs
+              </Button>
+            </div>
+          )}
+
+          {viewMode === "visual" && !visualElement && (
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full border border-violet-400/40 bg-violet-500/90 px-3 py-1 text-xs font-medium text-white shadow-md backdrop-blur-sm pointer-events-none select-none">
+              <CursorClick01 size={12} />
+              Click any element to ask the AI
+            </div>
+          )}
+          {viewMode === "visual" && visualElement && (
+            <VisualEditorPrompt
+              element={visualElement}
+              onDismiss={() => setVisualElement(null)}
+            />
+          )}
+          {previewState.kind === "iframe" && (
+            <iframe
+              // Key on previewUrl: `src` mutations don't reliably refetch in all
+              // browsers and leak in-frame state across branches.
+              key={previewState.previewUrl}
+              ref={previewIframeRef}
+              src={previewState.previewUrl}
+              className="w-full h-full border-0"
+              title="Dev Server Preview"
+              onLoad={() => {
+                // This is the VM dev-server preview (sandboxed running app),
+                // NOT an MCP app. MCP apps render via <MCPAppRenderer/>.
+                track("vm_preview_loaded", {
+                  view_mode: viewMode,
+                  vm_id: vmEntry?.vmId ?? null,
+                  // Intentionally excluding the full previewUrl — it can contain
+                  // ephemeral tokens / user data in the query string.
+                });
+                if (viewMode === "visual") {
+                  injectVisualEditor();
+                }
               }}
             />
-          </div>
-        )}
+          )}
+        </div>
 
-        {previewState.kind === "starting-now" && (
-          <div className="absolute inset-0 z-30">
-            <VmStateCard
-              kind="starting-now"
-              progress={progress}
-              claimPhase={claimPhase}
-            />
-          </div>
-        )}
-
-        {previewState.kind === "errored" && (
-          <div className="absolute inset-0 z-40">
-            <VmStateCard
-              kind="errored"
-              progress={progress}
-              logSource="setup"
-              errorLine={previewState.error.split("\n")[0] ?? "Failed to start"}
-              onRetry={retryAutoStart}
-              drawerOpen={drawerOpenEffective}
-            />
-          </div>
-        )}
-
-        {previewState.kind === "suspended" && (
-          <div className="absolute inset-0 z-30">
-            <VmStateCard kind="suspended" onResume={retryAutoStart} />
-          </div>
-        )}
-
-        {previewState.kind === "crashed" && (
-          <div className="absolute inset-0 z-30">
-            <VmStateCard kind="crashed" onOpenTerminal={openDrawer} />
-          </div>
-        )}
-
-        {previewState.kind === "no-html" && (
-          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-background">
-            <Server01 size={48} className="text-muted-foreground/40" />
-            <h3 className="text-lg font-medium">No web page at this URL</h3>
-            <p className="text-sm text-muted-foreground text-center max-w-sm">
-              The server is running, but doesn't serve a web page at /. This
-              preview only renders web pages.
-            </p>
-            <Button onClick={openDrawer}>
-              <Server01 size={14} />
-              View Logs
-            </Button>
-          </div>
-        )}
-
-        {viewMode === "visual" && !visualElement && (
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full border border-violet-400/40 bg-violet-500/90 px-3 py-1 text-xs font-medium text-white shadow-md backdrop-blur-sm pointer-events-none select-none">
-            <CursorClick01 size={12} />
-            Click any element to ask the AI
-          </div>
-        )}
-        {viewMode === "visual" && visualElement && (
-          <VisualEditorPrompt
-            element={visualElement}
-            onDismiss={() => setVisualElement(null)}
-          />
-        )}
-        {previewState.kind === "iframe" && (
-          <iframe
-            // Key on previewUrl: `src` mutations don't reliably refetch in all
-            // browsers and leak in-frame state across branches.
-            key={previewState.previewUrl}
-            ref={previewIframeRef}
-            src={previewState.previewUrl}
-            className="w-full h-full border-0"
-            title="Dev Server Preview"
-            onLoad={() => {
-              // This is the VM dev-server preview (sandboxed running app),
-              // NOT an MCP app. MCP apps render via <MCPAppRenderer/>.
-              track("vm_preview_loaded", {
-                view_mode: viewMode,
-                vm_id: vmEntry?.vmId ?? null,
-                // Intentionally excluding the full previewUrl — it can contain
-                // ephemeral tokens / user data in the query string.
-              });
-              if (viewMode === "visual") {
-                injectVisualEditor();
+        {/* Sections editor side panel */}
+        {sectionsOpen && previewUrl && branch && virtualMcpId && (
+          <div className="w-96 shrink-0 border-l overflow-hidden">
+            <Suspense
+              fallback={
+                <div className="h-full flex items-center justify-center">
+                  <Loading01
+                    size={20}
+                    className="animate-spin text-muted-foreground"
+                  />
+                </div>
               }
-            }}
-          />
+            >
+              <SectionsEditor
+                previewUrl={previewUrl}
+                orgSlug={org.slug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                onNavigate={(path) => {
+                  const iframe = previewIframeRef.current;
+                  if (!iframe || !previewUrl) return;
+                  const url = new URL(path, previewUrl);
+                  iframe.src = url.href;
+                }}
+              />
+            </Suspense>
+          </div>
         )}
       </div>
       <PreviewDrawer
