@@ -94,3 +94,41 @@ describe("ThreadChatStore.sendMessage", () => {
     expect(onError).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("ThreadChatStore.setMessages", () => {
+  test("drops server-id entries, retags the rest as local", () => {
+    const store = new ThreadChatStore<UIMessage>({
+      handlersRef: { current: { prepareBody: () => ({}) } },
+      fetchImpl: mock(() =>
+        Promise.resolve(new Response("", { status: 202 })),
+      ) as unknown as typeof fetch,
+      persistentLoop: () => new Promise(() => {}),
+    });
+    store.connect({ orgSlug: "a", threadId: "t" });
+    const server: UIMessage[] = [{ id: "s-1", role: "user", parts: [] }];
+    const next: UIMessage[] = [
+      { id: "s-1", role: "user", parts: [] }, // from server, should be dropped from local
+      { id: "u-2", role: "user", parts: [] }, // new local entry
+    ];
+    store.setMessages(server, next);
+    const local = store.getSnapshot().local;
+    expect(local.map((m) => m.id)).toEqual(["u-2"]);
+  });
+
+  test("accepts a function updater receiving the composed view", () => {
+    const store = new ThreadChatStore<UIMessage>({
+      handlersRef: { current: { prepareBody: () => ({}) } },
+      fetchImpl: mock(() =>
+        Promise.resolve(new Response("", { status: 202 })),
+      ) as unknown as typeof fetch,
+      persistentLoop: () => new Promise(() => {}),
+    });
+    store.connect({ orgSlug: "a", threadId: "t" });
+    const server: UIMessage[] = [{ id: "s-1", role: "user", parts: [] }];
+    store.setMessages(server, (prev) => {
+      expect(prev).toEqual(server); // local is empty, no streaming
+      return [...prev, { id: "u-2", role: "user", parts: [] }];
+    });
+    expect(store.getSnapshot().local.map((m) => m.id)).toEqual(["u-2"]);
+  });
+});

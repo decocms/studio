@@ -187,8 +187,20 @@ export class ThreadChatStore<M extends UIMessage> {
     throw new Error("not implemented");
   }
 
-  setMessages(_server: M[], _updater: M[] | ((prev: M[]) => M[])): void {
-    throw new Error("not implemented");
+  setMessages(serverSnapshot: M[], updater: M[] | ((prev: M[]) => M[])): void {
+    const composed = mergeWithServer(serverSnapshot, this.snapshot.local);
+    const withStreaming = this.snapshot.streaming
+      ? [...composed, this.snapshot.streaming]
+      : composed;
+    const next =
+      typeof updater === "function"
+        ? (updater as (p: M[]) => M[])(withStreaming)
+        : updater;
+    const serverIds = new Set(serverSnapshot.map((m) => m.id));
+    const localOnly = next
+      .filter((m) => !serverIds.has(m.id))
+      .map((m): Tagged<M> => ({ ...m, [LOCAL_MARKER]: true }));
+    this.update({ local: localOnly });
   }
 
   addToolOutput: ChatAddToolOutputFunction<M> = (() => {
@@ -204,6 +216,18 @@ export class ThreadChatStore<M extends UIMessage> {
       this.update({ error: null, status: "ready" });
     }
   }
+}
+
+export function mergeWithServer<M extends UIMessage>(
+  server: M[],
+  local: M[],
+): M[] {
+  if (local.length === 0) return server.slice();
+  const localById = new Map(local.map((m) => [m.id, m]));
+  const serverIds = new Set(server.map((m) => m.id));
+  const merged = server.map((m) => localById.get(m.id) ?? m);
+  for (const m of local) if (!serverIds.has(m.id)) merged.push(m);
+  return merged;
 }
 
 // Placeholder — full impl in Task 9.
