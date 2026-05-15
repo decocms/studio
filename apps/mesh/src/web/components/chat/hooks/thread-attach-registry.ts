@@ -115,7 +115,7 @@ export interface ThreadObserver {
  * component remounts because the registry holds a reference. Disposed
  * only when a different (orgSlug, threadId) is requested.
  */
-export class ThreadConnection {
+class ThreadConnection {
   readonly key: string;
   readonly localMessages = new Store<Tagged<UIMessage>[]>([]);
   readonly streaming = new Store<UIMessage | null>(null);

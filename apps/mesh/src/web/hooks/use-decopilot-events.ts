@@ -25,7 +25,7 @@ import { createSSESubscription } from "./create-sse-subscription";
 // Shared connection pool
 // ============================================================================
 
-export const decopilotSSE = createSSESubscription({
+const decopilotSSE = createSSESubscription({
   buildUrl: (orgSlug) => {
     const typesParam = ALL_DECOPILOT_EVENT_TYPES.join(",");
     return `/api/${encodeURIComponent(orgSlug)}/watch?types=${typesParam}`;
