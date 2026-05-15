@@ -23,7 +23,7 @@ describe("filterThreads", () => {
       t("c"), // no created_by
     ];
     expect(filterThreads(threads, { ownerUserId: "user-1" })).toEqual([
-      threads[0],
+      threads[0]!,
     ]);
   });
 
@@ -33,7 +33,7 @@ describe("filterThreads", () => {
       t("b"), // no created_by
     ];
     expect(filterThreads(threads, { ownerUserId: "user-1" })).toEqual([
-      threads[0],
+      threads[0]!,
     ]);
   });
 
@@ -43,7 +43,7 @@ describe("filterThreads", () => {
       t("b", { fromAutomation: false }),
       t("c"),
     ];
-    expect(filterThreads(threads, { hasTrigger: true })).toEqual([threads[0]]);
+    expect(filterThreads(threads, { hasTrigger: true })).toEqual([threads[0]!]);
   });
 
   test("filters by hasTrigger=false (excludes automations)", () => {
@@ -53,8 +53,8 @@ describe("filterThreads", () => {
       t("c"),
     ];
     expect(filterThreads(threads, { hasTrigger: false })).toEqual([
-      threads[1],
-      threads[2],
+      threads[1]!,
+      threads[2]!,
     ]);
   });
 
@@ -64,7 +64,7 @@ describe("filterThreads", () => {
       t("b", { virtual_mcp_id: "agent-2" }),
     ];
     expect(filterThreads(threads, { virtualMcpId: "agent-1" })).toEqual([
-      threads[0],
+      threads[0]!,
     ]);
   });
 
@@ -76,6 +76,6 @@ describe("filterThreads", () => {
     ];
     expect(
       filterThreads(threads, { ownerUserId: "u1", hasTrigger: false }),
-    ).toEqual([threads[0]]);
+    ).toEqual([threads[0]!]);
   });
 });
