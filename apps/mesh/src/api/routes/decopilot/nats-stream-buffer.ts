@@ -162,6 +162,7 @@ export class NatsStreamBuffer implements StreamBuffer {
     signal?: AbortSignal,
     opts?: {
       deliverPolicy?: "all" | "new";
+      closeOnDone?: boolean;
     },
   ): Promise<ReadableStream | null> {
     const js = this.js;
@@ -169,6 +170,7 @@ export class NatsStreamBuffer implements StreamBuffer {
 
     const deliverPolicy =
       opts?.deliverPolicy === "new" ? DeliverPolicy.New : DeliverPolicy.All;
+    const closeOnDone = opts?.closeOnDone ?? false;
     const subj = streamSubject(taskId);
 
     let sub;
@@ -221,6 +223,11 @@ export class NatsStreamBuffer implements StreamBuffer {
           try {
             const data = JSON.parse(decoder.decode(msg.data));
             if (data.done) {
+              if (closeOnDone) {
+                cleanup();
+                controller.close();
+                return;
+              }
               // A run ended, but the subscription stays open for the next
               // run on this thread. Clients detect run boundaries from the
               // AI-SDK `{type: "finish"}` chunk in the data stream, not
