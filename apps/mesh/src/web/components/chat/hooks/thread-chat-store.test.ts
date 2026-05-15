@@ -231,3 +231,60 @@ describe("ThreadChatStore — sub-stream demuxer", () => {
     expect(finishCall[0]).toMatchObject({ finishReason: "stop" });
   });
 });
+
+describe("ThreadChatStore — SSE finish backstop", () => {
+  test("notifySseFinish before chunk-finish: timer closes the sub-stream", async () => {
+    const onFinish = mock(() => {});
+    const store = new ThreadChatStore<UIMessage>({
+      handlersRef: { current: { prepareBody: () => ({}), onFinish } },
+      fetchImpl: mock(() =>
+        Promise.resolve(new Response("", { status: 202 })),
+      ) as unknown as typeof fetch,
+      persistentLoop: () => new Promise(() => {}),
+      sseFinishBackstopMs: 10, // fast timer for tests
+    });
+    store.connect({ orgSlug: "a", threadId: "t" });
+    await runChunks(store, [
+      { type: "start", messageId: "m-1" },
+      { type: "text-start", id: "t-1" },
+      { type: "text-delta", id: "t-1", delta: "hi" },
+      { type: "text-end", id: "t-1" },
+    ] as UIMessageChunk[]);
+    store.notifySseFinish();
+    await new Promise<void>((r) => setTimeout(r, 50));
+    expect(store.getSnapshot().streaming).toBeNull();
+    expect(store.getSnapshot().local.map((m) => m.id)).toEqual(["m-1"]);
+  });
+
+  test("chunk-finish before SSE-finish: SSE event is absorbed, next run unaffected", async () => {
+    const store = new ThreadChatStore<UIMessage>({
+      handlersRef: { current: { prepareBody: () => ({}) } },
+      fetchImpl: mock(() =>
+        Promise.resolve(new Response("", { status: 202 })),
+      ) as unknown as typeof fetch,
+      persistentLoop: () => new Promise(() => {}),
+      sseFinishBackstopMs: 10,
+    });
+    store.connect({ orgSlug: "a", threadId: "t" });
+    await runChunks(store, [
+      { type: "start", messageId: "m-1" },
+      { type: "text-start", id: "t-1" },
+      { type: "text-delta", id: "t-1", delta: "hi" },
+      { type: "text-end", id: "t-1" },
+      { type: "finish", finishReason: "stop" },
+    ] as UIMessageChunk[]);
+    // Late SSE finish arrives now — pendingSseBackstops was already
+    // decremented to -1 by chunk-finish, so notifySseFinish brings it
+    // back to 0 (no timer scheduled).
+    store.notifySseFinish();
+    await runChunks(store, [
+      { type: "start", messageId: "m-2" },
+      { type: "text-start", id: "t-2" },
+      { type: "text-delta", id: "t-2", delta: "hi 2" },
+    ] as UIMessageChunk[]);
+    // m-2's sub must still be open; backstop must NOT close it.
+    await new Promise<void>((r) => setTimeout(r, 50));
+    expect(store.getSnapshot().streaming?.id).toBe("m-2");
+    expect(store.getSnapshot().status).toBe("streaming");
+  });
+});

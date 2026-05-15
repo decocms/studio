@@ -88,7 +88,6 @@ export class ThreadChatStore<M extends UIMessage> {
     // Touch each field so TS doesn't flag them as unused in this scaffold —
     // real readers land in Tasks 2-9.
     void this.persistentLoop;
-    void this.sseFinishBackstopMs;
   }
 
   subscribe = (listener: () => void): (() => void) => {
@@ -274,7 +273,13 @@ export class ThreadChatStore<M extends UIMessage> {
   }
 
   notifySseFinish(): void {
-    throw new Error("not implemented");
+    this.demux.pendingSseBackstops++;
+    if (this.demux.pendingSseBackstops <= 0) return;
+    setTimeout(() => {
+      if (this.demux.pendingSseBackstops <= 0) return;
+      this.demux.pendingSseBackstops--;
+      this.forceCloseSubStream();
+    }, this.sseFinishBackstopMs);
   }
 
   async sendMessage(message: M, opts?: { metadata?: unknown }): Promise<void> {
