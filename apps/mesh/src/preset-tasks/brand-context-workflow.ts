@@ -134,10 +134,9 @@ async function brandContextWorkflowFn(
   return { ok: true, brandId: signal.brandId };
 }
 
-export const brandContextWorkflow = DBOS.registerWorkflow(
-  brandContextWorkflowFn,
-  { name: "brandContextWorkflow" },
-);
+const brandContextWorkflow = DBOS.registerWorkflow(brandContextWorkflowFn, {
+  name: "brandContextWorkflow",
+});
 
 /**
  * Start the workflow and return its handle. Caller is expected to persist

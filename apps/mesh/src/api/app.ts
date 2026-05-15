@@ -123,6 +123,7 @@ import { NatsPodHeartbeat } from "../nats/pod-heartbeat";
 import { PresetTaskRegistry } from "../preset-tasks";
 import { setBrandContextWorkflowDeps } from "../preset-tasks/brand-context-workflow";
 import { registerBrandContextDynamicInstructions } from "../agents/brand-context";
+import { registerWebDeveloperDynamicInstructions } from "../agents/web-developer";
 import { PRESET_TASK_DEFINITIONS } from "../preset-tasks/definitions";
 import { createAutomationsStorage } from "../storage/automations";
 import { KyselyKVStorage } from "../storage/kv";
@@ -1002,6 +1003,11 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   app.use("*", async (c, next) => {
     await next();
+    // Org-scoped /files/* serves user content (HTML pages written by the
+    // web-developer agent, uploaded images, etc.) that we deliberately
+    // iframe back into the app. Same-origin only — auth middleware still
+    // gates access — and consumers are expected to sandbox the iframe.
+    if (c.req.path.includes("/files/")) return;
     c.header("X-Frame-Options", "DENY");
     c.header("Content-Security-Policy", "frame-ancestors 'none'");
   });
@@ -1694,6 +1700,11 @@ export async function createApp(options: CreateAppOptions = {}) {
   // dynamic system-prompt resolver that flips between them based on
   // whether a brand_context row exists for the org.
   registerBrandContextDynamicInstructions();
+
+  // Web-developer agent: thread-scoped prompt that names the storage
+  // prefix and inlines the brand context, so the model has stable
+  // grounding for each chat without an explicit setup turn.
+  registerWebDeveloperDynamicInstructions();
 
   // Public Events endpoint — legacy mount with deprecation log. New mount
   // lives at `POST /api/:org/events/:type` (registered via createOrgScopedApi).

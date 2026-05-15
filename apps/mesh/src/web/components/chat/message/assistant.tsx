@@ -20,6 +20,7 @@ import {
   SubtaskPart,
   SubtaskPartFallback,
   UserAskPart,
+  WriteHtmlPagePart,
 } from "./parts/tool-call-part/index.ts";
 import { SmartAutoScroll } from "./smart-auto-scroll.tsx";
 import { ThreadOutputs } from "./thread-outputs.tsx";
@@ -481,6 +482,17 @@ function MessagePart({
       return null;
     default: {
       const fallback = part as ToolUIPart;
+      // Agent-profile built-ins (web-developer, brand-context, etc.) aren't
+      // in the BuiltInToolSet union but still need bespoke renderers. Match
+      // by string before falling through to the generic shell.
+      if (fallback.type === "tool-write_html_page") {
+        return (
+          <WriteHtmlPagePart
+            part={fallback}
+            latency={getMeta(fallback.toolCallId)?.latencySeconds}
+          />
+        );
+      }
       if (fallback.type.startsWith("tool-")) {
         const toolCallId = (fallback as ToolUIPart).toolCallId;
         const meta = dataParts.toolMetadata.get(toolCallId);

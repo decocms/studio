@@ -53,7 +53,7 @@ const UpdateBrandInputSchema = z
     "Fields to update on the organization's default brand. Omit fields you don't want to change.",
   );
 
-export function createUpdateBrandContextTool(ctx: MeshContext) {
+function createUpdateBrandContextTool(ctx: MeshContext) {
   return tool({
     description:
       "Update one or more fields on the organization's current brand " +
@@ -107,7 +107,7 @@ const ReextractBrandInputSchema = z.object({
     ),
 });
 
-export function createReextractBrandContextTool(ctx: MeshContext) {
+function createReextractBrandContextTool(ctx: MeshContext) {
   return tool({
     description:
       "Re-run brand extraction (Firecrawl) against a website URL and " +
@@ -177,7 +177,7 @@ export function createReextractBrandContextTool(ctx: MeshContext) {
 
 const ConfirmBrandInputSchema = z.object({});
 
-export function createConfirmBrandTool(ctx: MeshContext) {
+function createConfirmBrandTool(ctx: MeshContext) {
   return tool({
     description:
       "Mark the user's brand context as confirmed. Call this exactly " +

@@ -11,10 +11,7 @@
  * users coming from a Deco-managed source.
  */
 
-import {
-  getBrandContextSetupId,
-  getWellKnownDecopilotVirtualMCP,
-} from "@decocms/mesh-sdk";
+import { getBrandContextSetupId, getWebDeveloperId } from "@decocms/mesh-sdk";
 import { getOrgPrimaryBrand } from "@/agents/brand-context";
 import {
   ensureSystemHealthAgent,
@@ -153,7 +150,7 @@ export const PRESET_TASK_DEFINITIONS: PresetTaskDefinition[] = [
         "with a hero, three feature sections, social proof, and a CTA.";
       return {
         messages: [userMessage(text)],
-        virtualMcpId: getWellKnownDecopilotVirtualMCP(ctx.organizationId).id,
+        virtualMcpId: getWebDeveloperId(ctx.organizationId),
       };
     },
   },

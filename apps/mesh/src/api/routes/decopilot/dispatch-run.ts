@@ -25,10 +25,12 @@ import { recordLlmCallMetrics } from "@/monitoring/record-llm-call-metrics";
 import {
   type GithubRepo,
   isDecopilot,
+  isWebDeveloper,
   sanitizeProviderMetadata,
 } from "@decocms/mesh-sdk";
 import { createBrandContextSetupTool } from "./built-in-tools/brand-context-setup";
 import { createBrandContextConfirmTools } from "./built-in-tools/brand-context-confirm";
+import { createWebDeveloperTools } from "./built-in-tools/web-developer";
 import { dynamicInstructions } from "@/agents/dynamic-instructions";
 import { getBrandContextAgentMode } from "@/agents/brand-context";
 import { SpanStatusCode } from "@opentelemetry/api";
@@ -709,12 +711,15 @@ async function prepareRun(
         // derived from whether the org already has a default brand row;
         // the same predicate gates the dynamic system prompt below.
         const brandMode = await getBrandContextAgentMode(input.agent.id, ctx);
-        const agentProfileTools: ToolSet =
-          brandMode?.mode === "setup"
+        const isWebDevAgent = isWebDeveloper(input.agent.id) !== null;
+        const agentProfileTools: ToolSet = {
+          ...(brandMode?.mode === "setup"
             ? { brand_context_setup: createBrandContextSetupTool(ctx) }
             : brandMode?.mode === "confirm"
               ? createBrandContextConfirmTools(ctx)
-              : {};
+              : {}),
+          ...(isWebDevAgent ? createWebDeveloperTools(ctx) : {}),
+        };
         const agentProfileToolNames = Object.keys(agentProfileTools);
 
         // Progressive tool disclosure: enable_tool + prepareStep

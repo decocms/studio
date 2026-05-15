@@ -329,6 +329,48 @@ export function getWellKnownBrandContextSetupVirtualMCP(
 }
 
 /**
+ * Web-Developer agent ID prefix.
+ *
+ * Well-known agent that authors static HTML pages and writes them to the
+ * org's object storage. Same in-memory resolution pattern as the
+ * brand-context setup agent — no DB row, no install step. The agent's
+ * built-in tools (write_html_page, read_html_page, list_html_pages,
+ * delete_html_page) are injected by `dispatchRun` when it sees this id.
+ */
+const WEB_DEVELOPER_PREFIX = "web-developer_";
+
+export function isWebDeveloper(id: string | null | undefined): string | null {
+  if (!id) return null;
+  if (!id.startsWith(WEB_DEVELOPER_PREFIX)) return null;
+  return id.slice(WEB_DEVELOPER_PREFIX.length) || null;
+}
+
+export function getWebDeveloperId(organizationId: string): string {
+  return `${WEB_DEVELOPER_PREFIX}${organizationId}`;
+}
+
+export function getWellKnownWebDeveloperVirtualMCP(
+  organizationId: string,
+): VirtualMCPEntity {
+  return {
+    id: getWebDeveloperId(organizationId),
+    organization_id: organizationId,
+    title: "Web developer",
+    description:
+      "Builds static HTML pages and previews them inline via object storage.",
+    icon: "icon://Globe02?color=sky",
+    status: "active",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    created_by: "system",
+    updated_by: undefined,
+    metadata: { instructions: null },
+    pinned: false,
+    connections: [],
+  };
+}
+
+/**
  * Site Diagnostics agent ID prefix
  */
 const SITE_DIAGNOSTICS_PREFIX = "site-diagnostics_";
