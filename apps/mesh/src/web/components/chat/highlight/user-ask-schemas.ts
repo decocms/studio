@@ -8,14 +8,9 @@ const textResponseSchema = z.object({
   response: z.string().min(1, "Response is required"),
 });
 
-const choiceResponseSchema = z
-  .object({
-    option: z.string().nullable(),
-    draft: z.string(),
-  })
-  .refine((v) => (v.option ?? v.draft).length > 0, {
-    message: "Please select or enter an option",
-  });
+const choiceResponseSchema = z.object({
+  response: z.string().min(1, "Please select or enter an option"),
+});
 
 const confirmResponseSchema = z.object({
   response: z.enum(["yes", "no"]),

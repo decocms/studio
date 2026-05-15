@@ -11,17 +11,8 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Edit02, MessageQuestionCircle } from "@untitledui/icons";
 import { useEffect, useRef, useState } from "react";
-import {
-  type Control,
-  type FieldValues,
-  useController,
-  useForm,
-} from "react-hook-form";
+import { type Control, type FieldValues, useForm } from "react-hook-form";
 import type { UserAskToolPart } from "../types";
-import {
-  getUserAskResponse,
-  type UserAskQuestionValue,
-} from "./get-user-ask-response";
 import { Pagination } from "./pagination";
 import { CollapsibleHighlight } from "./collapsible-highlight";
 import { buildCombinedSchema } from "./user-ask-schemas";
@@ -29,13 +20,8 @@ import { buildCombinedSchema } from "./user-ask-schemas";
 /** Inferred from UserAskToolPart so we don't import the backend module directly. */
 type UserAskInput = NonNullable<UserAskToolPart["input"]>;
 
-// A loose shape — each question's value is one of the UserAskQuestionValue
-// variants. We use a loose record type here because react-hook-form's generic
-// inference doesn't play well with discriminated unions at nested paths.
-type CombinedFormValues = Record<
-  string,
-  { response?: string; option?: string | null; draft?: string }
->;
+// Type for the combined form values: { [toolCallId]: { response: string } }
+type CombinedFormValues = Record<string, { response: string }>;
 
 // Shared props for all question input field components
 interface FieldInputProps {
@@ -117,97 +103,112 @@ function ChoiceInput({
   name,
   options,
 }: FieldInputProps & { options: string[] }) {
-  const { field: optionField } = useController({
-    control,
-    name: `${name}.option`,
-    defaultValue: null,
-  });
-  const { field: draftField } = useController({
-    control,
-    name: `${name}.draft`,
-    defaultValue: "",
-  });
-
-  const optionValue = optionField.value as string | null;
-  const draftValue = (draftField.value as string | undefined) ?? "";
+  const [isCustom, setIsCustom] = useState(false);
+  const customInputRef = useRef<HTMLInputElement>(null);
+  const fieldRef = useRef<{ onChange: (v: string) => void } | null>(null);
 
   useNumberKeyShortcut(options.length, (index) => {
-    const option = options[index];
-    if (option != null) optionField.onChange(option);
+    fieldRef.current?.onChange(options[index] ?? "");
+    setIsCustom(false);
   });
 
   if (options.length === 0) return null;
 
-  const isCustomActive = optionValue === null;
-
   return (
-    <FormItem>
-      <FormControl>
-        <div
-          className="flex flex-col px-2"
-          role="group"
-          aria-label="Choice options"
-        >
-          {options.map((option, index) => {
-            const isSelected = optionValue === option;
-            return (
-              <button
-                key={`${index}-${option}`}
-                type="button"
-                onClick={() => optionField.onChange(option)}
-                className={cn(
-                  "flex items-center gap-3 px-2 py-3 rounded-lg text-left transition-colors w-full",
-                  isSelected && "bg-accent/50",
-                  !isSelected && "hover:bg-accent/30",
-                )}
-                aria-label={`Select ${option}`}
-              >
-                <span
-                  className={cn(
-                    "flex items-center justify-center size-6 rounded-md text-sm shrink-0",
-                    isSelected
-                      ? "bg-chart-1 text-white"
-                      : "bg-muted text-foreground",
-                  )}
-                >
-                  {index + 1}
-                </span>
-                <span className="text-sm text-foreground truncate">
-                  {option}
-                </span>
-              </button>
-            );
-          })}
+    <FormField
+      control={control}
+      name={name}
+      render={({ field }) => {
+        fieldRef.current = field;
+        const isCustomValue =
+          isCustom || (!!field.value && !options.includes(field.value));
 
-          <label
-            className={cn(
-              "flex items-center gap-3 px-2 py-3 rounded-lg transition-colors w-full cursor-text",
-              isCustomActive && "bg-accent/50",
-              !isCustomActive && "hover:bg-accent/30",
-            )}
-          >
-            <span className="flex items-center justify-center size-6 rounded-md bg-muted shrink-0">
-              <Edit02 size={16} className="text-muted-foreground" />
-            </span>
-            <input
-              type="text"
-              value={isCustomActive ? draftValue : ""}
-              onChange={(e) => {
-                draftField.onChange(e.target.value);
-                if (optionValue !== null) optionField.onChange(null);
-              }}
-              onFocus={() => {
-                if (optionValue !== null) optionField.onChange(null);
-              }}
-              placeholder="Something else..."
-              aria-label="Custom choice input"
-              className="flex-1 text-sm bg-transparent outline-none placeholder:text-foreground/25 text-foreground min-w-0"
-            />
-          </label>
-        </div>
-      </FormControl>
-      <FormMessage />
-    </FormItem>
+        return (
+          <FormItem>
+            <FormControl>
+              <div
+                className="flex flex-col px-2"
+                role="group"
+                aria-label="Choice options"
+              >
+                {options.map((option, index) => {
+                  const isSelected = field.value === option;
+                  return (
+                    <button
+                      key={`${index}-${option}`}
+                      type="button"
+                      onClick={() => {
+                        field.onChange(option ?? "");
+                        setIsCustom(false);
+                      }}
+                      className={cn(
+                        "flex items-center gap-3 px-2 py-3 rounded-lg text-left transition-colors w-full",
+                        isSelected && "bg-accent/50",
+                        !isSelected && "hover:bg-accent/30",
+                      )}
+                      aria-label={`Select ${option}`}
+                    >
+                      <span
+                        className={cn(
+                          "flex items-center justify-center size-6 rounded-md text-sm shrink-0",
+                          isSelected
+                            ? "bg-chart-1 text-white"
+                            : "bg-muted text-foreground",
+                        )}
+                      >
+                        {index + 1}
+                      </span>
+                      <span className="text-sm text-foreground truncate">
+                        {option}
+                      </span>
+                    </button>
+                  );
+                })}
+
+                {/* "Something else..." — this IS the input */}
+                <div
+                  className={cn(
+                    "flex items-center gap-3 px-2 py-3 rounded-lg transition-colors w-full cursor-text",
+                    isCustomValue && "bg-accent/50",
+                    !isCustomValue && "hover:bg-accent/30",
+                  )}
+                  onClick={() => {
+                    setIsCustom(true);
+                    // Clear value if it was a predefined option
+                    if (options.includes(field.value)) {
+                      field.onChange("");
+                    }
+                    // Focus the hidden input
+                    setTimeout(() => customInputRef.current?.focus(), 0);
+                  }}
+                >
+                  <span className="flex items-center justify-center size-6 rounded-md bg-muted shrink-0">
+                    <Edit02 size={16} className="text-muted-foreground" />
+                  </span>
+                  {isCustomValue ? (
+                    <input
+                      ref={customInputRef}
+                      type="text"
+                      value={field.value}
+                      onChange={(e) => field.onChange(e.target.value)}
+                      placeholder="Something else..."
+                      autoFocus
+                      aria-label="Custom choice input"
+                      className="flex-1 text-sm bg-transparent outline-none placeholder:text-foreground/25 text-foreground min-w-0"
+                    />
+                  ) : (
+                    <span className="text-sm text-foreground/25">
+                      Something else...
+                    </span>
+                  )}
+                </div>
+              </div>
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        );
+      }}
+    />
   );
 }
 
@@ -285,29 +286,25 @@ function ConfirmInput({ control, name }: FieldInputProps) {
 interface QuestionInputProps {
   input: UserAskInput;
   control: Control<FieldValues>;
-  toolCallId: string;
+  name: string;
 }
 
-function QuestionInput({ input, control, toolCallId }: QuestionInputProps) {
+function QuestionInput({ input, control, name }: QuestionInputProps) {
   switch (input.type) {
     case "text":
       return (
-        <TextInput
-          control={control}
-          name={`${toolCallId}.response`}
-          placeholder={input.default}
-        />
+        <TextInput control={control} name={name} placeholder={input.default} />
       );
     case "choice":
       return (
         <ChoiceInput
           control={control}
-          name={toolCallId}
+          name={name}
           options={(input.options?.filter(Boolean) ?? []) as string[]}
         />
       );
     case "confirm":
-      return <ConfirmInput control={control} name={`${toolCallId}.response`} />;
+      return <ConfirmInput control={control} name={name} />;
     default:
       return null;
   }
@@ -335,55 +332,37 @@ function UserAskPrompt({ parts, onSubmit }: UserAskPromptProps) {
   const form = useForm<CombinedFormValues>({
     resolver: zodResolver(schema) as never,
     defaultValues: Object.fromEntries(
-      parts.map((p) => {
-        const input = p.input as UserAskInput | undefined;
-        if (input?.type === "choice") {
-          return [p.toolCallId, { option: null, draft: "" }];
-        }
-        return [p.toolCallId, { response: "" }];
-      }),
+      parts.map((p) => [p.toolCallId, { response: "" }]),
     ),
   });
 
   const values = form.watch();
   const currentIndex = parts.findIndex((p) => p.toolCallId === activeTab);
-  const currentAnswered = !!getUserAskResponse(
-    values[activeTab] as UserAskQuestionValue | undefined,
-  );
-  const allAnswered = parts.every(
-    (p) =>
-      !!getUserAskResponse(
-        values[p.toolCallId] as UserAskQuestionValue | undefined,
-      ),
-  );
+  const currentAnswered = !!values[activeTab]?.response;
+  const allAnswered = parts.every((p) => !!values[p.toolCallId]?.response);
 
   const submitAll = (data: CombinedFormValues) => {
     for (const part of parts) {
-      const response = getUserAskResponse(
-        data[part.toolCallId] as UserAskQuestionValue | undefined,
-      );
+      const response = data[part.toolCallId]?.response;
       if (response) {
         onSubmit(part, response);
       }
     }
   };
 
+  /** Find the first unanswered part (excluding current), or null if all filled. */
   const findNextUnanswered = (formValues: CombinedFormValues) =>
     parts.find(
-      (p) =>
-        !getUserAskResponse(
-          formValues[p.toolCallId] as UserAskQuestionValue | undefined,
-        ) && p.toolCallId !== activeTab,
+      (p) => !formValues[p.toolCallId]?.response && p.toolCallId !== activeTab,
     ) ?? null;
 
+  /**
+   * Shared logic for both Skip and the primary button:
+   * if all questions are answered → submit the form, otherwise go to next unanswered tab.
+   */
   const advanceOrSubmit = () => {
     const latest = form.getValues();
-    const everyAnswered = parts.every(
-      (p) =>
-        !!getUserAskResponse(
-          latest[p.toolCallId] as UserAskQuestionValue | undefined,
-        ),
-    );
+    const everyAnswered = parts.every((p) => !!latest[p.toolCallId]?.response);
     if (everyAnswered) {
       form.handleSubmit(submitAll)();
     } else {
@@ -393,14 +372,9 @@ function UserAskPrompt({ parts, onSubmit }: UserAskPromptProps) {
   };
 
   const handleSkip = () => {
-    const activePart = parts.find((p) => p.toolCallId === activeTab);
-    const skipText = "user has skip this question";
-    if (activePart?.input?.type === "choice") {
-      form.setValue(`${activeTab}.option` as never, null as never);
-      form.setValue(`${activeTab}.draft` as never, skipText as never);
-    } else {
-      form.setValue(`${activeTab}.response` as never, skipText as never);
-    }
+    // Fill the current question with the skip sentence
+    form.setValue(`${activeTab}.response`, "user has skip this question");
+    // Then advance or submit
     advanceOrSubmit();
   };
 
@@ -468,7 +442,7 @@ function UserAskPrompt({ parts, onSubmit }: UserAskPromptProps) {
             <QuestionInput
               input={part.input as UserAskInput}
               control={form.control}
-              toolCallId={part.toolCallId}
+              name={`${part.toolCallId}.response`}
             />
           </CollapsibleHighlight>
         </form>
@@ -499,7 +473,7 @@ function UserAskPrompt({ parts, onSubmit }: UserAskPromptProps) {
                 <QuestionInput
                   input={part.input as UserAskInput}
                   control={form.control}
-                  toolCallId={part.toolCallId}
+                  name={`${part.toolCallId}.response`}
                 />
               </TabsContent>
             ))}

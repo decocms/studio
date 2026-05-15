@@ -359,43 +359,13 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
           cbRef.current.onError?.(err);
         },
       });
-      // Coalesce store updates: bursts of chunks (large HTML buffers,
-      // many tool-arg deltas) would otherwise fan out as one full
-      // message-tree re-render per chunk via `useSyncExternalStore`.
-      // We hold the latest message in `pending` and commit at most
-      // once per animation frame. Final sync flush after the loop
-      // guarantees the last yield reaches subscribers even if the
-      // rAF hasn't fired yet.
-      let pending: UI_MESSAGE | null = null;
-      let scheduled = false;
-      const flushPending = () => {
-        scheduled = false;
-        const msg = pending;
-        if (!msg) return;
-        pending = null;
+      for await (const msg of iter) {
+        last = msg;
         streamingStore.current.set(msg);
         if (statusStore.current.get() !== "streaming") {
           statusStore.current.set("streaming");
         }
-      };
-      const hasRaf = typeof requestAnimationFrame !== "undefined";
-      for await (const msg of iter) {
-        last = msg;
-        pending = msg;
-        if (!hasRaf) {
-          flushPending();
-          continue;
-        }
-        if (!scheduled) {
-          scheduled = true;
-          requestAnimationFrame(flushPending);
-        }
       }
-      // Force-commit the final yield. If `flushPending` already ran
-      // (rAF fired before the loop ended), `pending` is null and this
-      // is a no-op; if it hasn't, this flushes synchronously and any
-      // queued rAF becomes a no-op too.
-      flushPending();
       // Sub-stream closed — either the finish chunk landed, the SSE
       // backstop fired, or a reconnect path tore it down. The
       // `discardOnClose` flag distinguishes the third case: the chunks
@@ -473,15 +443,7 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
     const streaming = streamingStore.current.get();
     const local = localMessagesStore.current.get();
     const out = mergeWithServer(initialMessages, local);
-    // The finish handoff updates two external stores in sequence
-    // (`localMessagesStore.update(... finalMsg)` then
-    // `streamingStore.set(null)`). Between those two writes, a
-    // subscriber re-reading both stores would see `finalMsg` in
-    // `local` AND in `streaming` — same id twice. Dedupe defensively
-    // so the duplicate frame doesn't leak React key warnings.
-    if (streaming && !out.some((m) => m.id === streaming.id)) {
-      out.push(streaming);
-    }
+    if (streaming) out.push(streaming);
     return out as UI_MESSAGE[];
   }
 
