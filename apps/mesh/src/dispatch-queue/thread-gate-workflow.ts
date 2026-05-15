@@ -37,12 +37,10 @@ export const THREAD_GATE_QUEUE = "thread-gate";
  */
 export const THREAD_GATE_PARTITION_CONCURRENCY = 1;
 
-const DEFAULT_RUN_TIMEOUT_MS = 5 * 60 * 1000;
-
 /**
  * Serializable subset of `DispatchRunInput`. The abort signal is the only
  * non-serializable field; the workflow step constructs its own from a
- * timeout.
+ * timeout when one is provided.
  */
 export type SerializableDispatchRunInput = Omit<
   DispatchRunInput,
@@ -54,7 +52,13 @@ export interface ThreadGateContext {
   threadId: string;
   /** Dispatch input minus the non-serializable abort signal. */
   request: SerializableDispatchRunInput;
-  /** Optional per-call timeout override (otherwise uses runtime default). */
+  /**
+   * Optional per-call timeout (ms). When set, the workflow aborts dispatch
+   * after this duration. Automations pass an explicit value; user messages
+   * leave this unset because tool-using agent loops (Claude Code, deep
+   * research, multi-step assistants) routinely run longer than any fixed
+   * cap, and were not bounded by the legacy fire-and-forget HTTP path.
+   */
   timeoutMs?: number;
   /**
    * Where the enqueue came from. Drives whether `chat_message_started`
@@ -84,7 +88,11 @@ export interface ThreadGateRuntime {
     DispatchRunDeps,
     "runRegistry" | "cancelBroadcast" | "streamBuffer"
   >;
-  /** Default per-run timeout; overridable per-enqueue via `ThreadGateContext.timeoutMs`. */
+  /**
+   * Default per-run timeout (ms). Overridable per-enqueue via
+   * `ThreadGateContext.timeoutMs`. When neither is set, no abort timer is
+   * installed.
+   */
   runTimeoutMs?: number;
 }
 
@@ -118,9 +126,17 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
     throw new Error("user membership lost mid-dispatch");
   }
 
-  const timeoutMs = ctx.timeoutMs ?? rt.runTimeoutMs ?? DEFAULT_RUN_TIMEOUT_MS;
+  // Abort timer is opt-in. Automations supply a 5-min cap so a runaway
+  // cron can't pin a thread slot forever; user messages leave it unset
+  // because tool-using agent loops (Claude Code, deep research,
+  // multi-step assistants) routinely outlast any fixed cap, and were not
+  // bounded by the legacy fire-and-forget HTTP path.
+  const timeoutMs = ctx.timeoutMs ?? rt.runTimeoutMs;
   const abortController = new AbortController();
-  const timeout = setTimeout(() => abortController.abort(), timeoutMs);
+  const timeoutHandle =
+    timeoutMs != null
+      ? setTimeout(() => abortController.abort(), timeoutMs)
+      : null;
 
   try {
     // Dispatch errors propagate. `dispatchRun` guarantees the run is
@@ -133,7 +149,7 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
       rt.deps,
     );
   } finally {
-    clearTimeout(timeout);
+    if (timeoutHandle !== null) clearTimeout(timeoutHandle);
   }
 }
 
@@ -164,15 +180,60 @@ async function trackMessageStartedStep(ctx: ThreadGateContext): Promise<void> {
   });
 }
 
+/**
+ * Balances `chat_message_started` when the dispatch step throws *before*
+ * `streamText` is set up (model-permission failure, agent not found,
+ * thread-ownership check, etc. — see `prepareRun`). In-flight stream
+ * errors are already emitted by `streamText.onError` inside `dispatchRun`,
+ * so this only covers the pre-stream gap.
+ *
+ * `error_category: "setup"` keeps these distinguishable from stream-time
+ * failures (which use `classifyStreamError`).
+ */
+async function trackMessageFailedStep(
+  ctx: ThreadGateContext,
+  errorMessage: string,
+): Promise<void> {
+  if (ctx.source !== "user-message") return;
+  const { request } = ctx;
+  posthog.capture({
+    distinctId: request.userId,
+    event: "chat_message_failed",
+    groups: { organization: request.organizationId },
+    properties: {
+      organization_id: request.organizationId,
+      thread_id: request.taskId ?? ctx.threadId,
+      agent_id: request.agent,
+      model_id: request.models.thinking.id,
+      mode: request.mode,
+      error_category: "setup",
+      error_message: errorMessage,
+    },
+  });
+}
+
 async function threadGateWorkflowFn(
   ctx: ThreadGateContext,
 ): Promise<ThreadGateOutcome> {
   await DBOS.runStep(() => trackMessageStartedStep(ctx), {
     name: "trackMessageStarted",
   });
-  await DBOS.runStep(() => dispatchRunAndWaitStep(ctx), {
-    name: "dispatchRunAndWait",
-  });
+  try {
+    await DBOS.runStep(() => dispatchRunAndWaitStep(ctx), {
+      name: "dispatchRunAndWait",
+    });
+  } catch (err) {
+    // Setup errors (prepareRun) propagate out of `dispatchRun`; in-flight
+    // stream errors are handled inside `streamText.onError` and don't
+    // reach here. So a thrown step at this point means setup failed —
+    // emit the balancing failed event for analytics integrity. Wrapped
+    // in its own DBOS step so replay doesn't double-emit.
+    const msg = err instanceof Error ? err.message : String(err);
+    await DBOS.runStep(() => trackMessageFailedStep(ctx, msg), {
+      name: "trackMessageFailed",
+    });
+    throw err;
+  }
   return { taskId: ctx.request.taskId ?? ctx.threadId };
 }
 

@@ -278,10 +278,16 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   // If another run on this thread is already executing, the new message
   // queues behind it and dispatches only after that run completes.
   //
-  // Idempotency: when the client supplies an id on the request message,
-  // the workflow ID is derived from `<threadId>:<messageId>`, so a retry
-  // of the same POST collapses onto the existing workflow handle instead
-  // of double-firing.
+  // Idempotency: a retried POST collapses onto the existing workflow
+  // handle when an idempotency signal is provided. In order of
+  // preference:
+  //   1. `X-Idempotency-Key` request header (explicit; recommended for
+  //      clients that retry).
+  //   2. Request message id (the last message's `id`, when the client
+  //      sent one).
+  // If neither is supplied, retries get a fresh workflowID and dispatch
+  // again — at-least-once semantics. Clients that care about exactly-once
+  // must send one of the two.
 
   app.post("/:org/decopilot/threads/:threadId/messages", async (c) => {
     try {
@@ -294,10 +300,11 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       }
 
       const { abortSignal: _ignored, ...serializableRequest } = input;
-      const messageId =
-        input.messages[input.messages.length - 1]?.id ?? undefined;
-      const workflowID = messageId
-        ? `thread-run:${taskId}:${messageId}`
+      const idempotencyKey =
+        c.req.header("X-Idempotency-Key") ??
+        input.messages[input.messages.length - 1]?.id;
+      const workflowID = idempotencyKey
+        ? `thread-run:${taskId}:${idempotencyKey}`
         : undefined;
 
       // The workflow body emits `chat_message_started` inside a DBOS step,
