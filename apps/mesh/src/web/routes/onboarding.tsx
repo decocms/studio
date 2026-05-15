@@ -183,6 +183,8 @@ function OnboardingContent({
     },
   });
 
+  const [creatingNewOrg, setCreatingNewOrg] = useState(false);
+
   if (domainLoading) {
     return (
       <AuthSplitLayout>
@@ -198,8 +200,6 @@ function OnboardingContent({
 
   const hasMatchingOrg = domainLookup?.found && domainLookup?.organization;
   const canAutoJoin = hasMatchingOrg && domainLookup?.autoJoinEnabled;
-
-  const [creatingNewOrg, setCreatingNewOrg] = useState(false);
 
   if (creatingNewOrg) {
     return (
