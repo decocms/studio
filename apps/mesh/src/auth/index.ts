@@ -27,7 +27,7 @@ import { emailOTP } from "better-auth/plugins/email-otp";
 import {
   adminAc,
   defaultStatements,
-} from "better-auth/plugins/organization/access";
+} from "@decocms/better-auth/plugins/organization/access";
 
 import { getConfig } from "@/core/config";
 import { posthog } from "@/posthog";

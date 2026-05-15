@@ -10,10 +10,10 @@
     "astro": "astro"
   },
   "dependencies": {
-    "@astrojs/mdx": "^4.3.1",
-    "@astrojs/react": "^4.3.0",
+    "@astrojs/mdx": "^5.0.6",
+    "@astrojs/react": "^5.0.5",
     "@tailwindcss/vite": "^4.0.7",
-    "astro": "^5.6.1",
+    "astro": "^6.3.3",
     "lucide-react": "^0.525.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
