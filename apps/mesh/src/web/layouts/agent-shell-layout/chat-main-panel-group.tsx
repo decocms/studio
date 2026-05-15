@@ -51,7 +51,7 @@ function PersistentChatPanel({
       collapsedSize={0}
       className={cn(
         "overflow-hidden bg-sidebar",
-        chatOpen ? "min-w-[328px]" : "min-w-0",
+        chatOpen ? "min-w-[348px]" : "min-w-0",
       )}
       onResize={handleResize}
       order={1}
