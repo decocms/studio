@@ -155,10 +155,15 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
   const requestEditRef = useRef<(req: EditMentionRequest) => void>(() => {});
   requestEditRef.current = async (req: EditMentionRequest) => {
     if (!client) return;
-    const prompts = await fetchPrompts(queryClient, promptsQueryKey, client);
-    const prompt = prompts.find((p) => p.name === req.promptId);
-    if (!prompt?.arguments || prompt.arguments.length === 0) return;
-    setEditingMention({ ...req, prompt });
+    try {
+      const prompts = await fetchPrompts(queryClient, promptsQueryKey, client);
+      const prompt = prompts.find((p) => p.name === req.promptId);
+      if (!prompt?.arguments || prompt.arguments.length === 0) return;
+      setEditingMention({ ...req, prompt });
+    } catch (error) {
+      console.error("[slash] Failed to load prompt for editing:", error);
+      toast.error("Failed to load prompt. Please try again.");
+    }
   };
   // Reassign the storage dispatcher on every render so that if SlashMention
   // remounts (Suspense, route change), the new instance's ref is used instead
