@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Todo } from "@/harnesses/decopilot/built-in-tools/todo-write";
+import type { Todo } from "@/api/routes/decopilot/built-in-tools/todo-write";
 import { deriveChipLabel } from "./derive-chip-label";
 
 const todo = (

@@ -12,8 +12,8 @@
 import { tool, zodSchema, type UIMessageStreamWriter } from "ai";
 import { z } from "zod";
 import type { MeshContext } from "@/core/mesh-context";
-import { toMeshStorageUri } from "../../../api/routes/decopilot/mesh-storage-uri";
-import { generatePresignedGetUrl } from "../../../api/routes/decopilot/file-materializer";
+import { toMeshStorageUri } from "../mesh-storage-uri";
+import { generatePresignedGetUrl } from "../file-materializer";
 import { BROWSERLESS_BASE_URL } from "./constants";
 
 /**

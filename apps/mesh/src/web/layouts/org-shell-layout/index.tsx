@@ -20,7 +20,6 @@ import { Loading01, Menu01 } from "@untitledui/icons";
 import { Outlet, useParams } from "@tanstack/react-router";
 import { StudioSidebar, StudioSidebarMobile } from "@/web/components/sidebar";
 import { ChatPrefsProvider } from "@/web/components/chat/context";
-import { ThreadEventsBridge } from "@/web/components/chat/task";
 import { TasksPanelStateProvider } from "@/web/hooks/use-tasks-panel-state";
 import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
 import { TasksPanelColumn } from "@/web/layouts/agent-shell-layout/tasks-panel-column";
@@ -98,7 +97,6 @@ export default function OrgShellLayout() {
           >
             <ChatPrefsProvider>
               <TasksPanelStateProvider>
-                <ThreadEventsBridge />
                 {isMobile ? (
                   <>
                     {!hasTaskRoute && <MobileHomeToolbar />}

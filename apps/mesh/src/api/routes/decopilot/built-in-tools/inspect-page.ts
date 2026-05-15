@@ -17,7 +17,7 @@ import { tool, zodSchema, type UIMessageStreamWriter } from "ai";
 import { z } from "zod";
 import type { MeshContext } from "@/core/mesh-context";
 import { createOutputPreview, estimateJsonTokens } from "./read-tool-output";
-import { toMeshStorageUri } from "../../../api/routes/decopilot/mesh-storage-uri";
+import { toMeshStorageUri } from "../mesh-storage-uri";
 import {
   BROWSERLESS_BASE_URL,
   LARGE_RESULT_TOKEN_THRESHOLD,

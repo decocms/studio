@@ -79,7 +79,7 @@ import { MainPanelTabsBar } from "@/web/layouts/main-panel-tabs/main-panel-tabs-
 import { VirtualMcpHeaderInfo } from "../../views/virtual-mcp/header-info.tsx";
 import { VmEventsProvider } from "@/web/components/vm/hooks/vm-events-context.tsx";
 import type { VmMapEntry } from "@decocms/mesh-sdk";
-import { useEnsureTask } from "@/web/hooks/use-ensure-task";
+import { useEnsureTask } from "@/web/hooks/use-tasks";
 
 // ---------------------------------------------------------------------------
 // Types & Context

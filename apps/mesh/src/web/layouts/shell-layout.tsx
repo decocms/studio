@@ -17,7 +17,7 @@ import {
 } from "@tanstack/react-router";
 import { KEYS } from "../lib/query-keys";
 import { readCachedTaskBranch } from "../lib/read-cached-task-branch";
-import { useThreadActions } from "@/web/components/chat/task";
+import { useTaskActions } from "../hooks/use-tasks";
 import { useOrganizationSettingsSuspense } from "../hooks/use-organization-settings";
 import { useOrgSsoStatus } from "../hooks/use-org-sso";
 import { SsoRequiredScreen } from "../components/sso-required-screen";
@@ -67,7 +67,7 @@ function ShellProjectProvider({
 export function usePanelActions() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const taskActions = useThreadActions();
+  const taskActions = useTaskActions();
   const { locator } = useProjectContext();
 
   const params = useParams({ strict: false }) as {

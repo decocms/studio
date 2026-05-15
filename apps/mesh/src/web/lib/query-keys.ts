@@ -14,18 +14,29 @@ export const KEYS = {
   // Auth-related queries
   session: () => ["session"] as const,
 
-  // Thread list queries — replaces the legacy `tasks` keys.
-  // Scope: "org" for the global tasks panel, ("agent", virtualMcpId) for
-  // agent-scoped chat sidebars. Filter dimensions (owner, hasTrigger,
-  // userId) are NEVER part of the key — they are derived client-side.
-  threads: (
+  // Task queries (filters scope the cache entry)
+  // userId is included when owner is "me" to prevent cross-user cache pollution
+  tasks: (
     locator: string,
-    scope: "org" | { kind: "agent"; virtualMcpId: string },
+    filters: {
+      owner: "me" | "automation" | "all";
+      status: "open" | "archived";
+      virtualMcpId?: string;
+      userId?: string | null;
+      hasTrigger?: boolean | null;
+    },
   ) =>
-    scope === "org"
-      ? (["threads", locator, "org"] as const)
-      : (["threads", locator, "agent", scope.virtualMcpId] as const),
-  threadsPrefix: (locator: string) => ["threads", locator] as const,
+    [
+      "tasks",
+      locator,
+      filters.owner,
+      filters.status,
+      filters.virtualMcpId ?? null,
+      filters.userId ?? null,
+      filters.hasTrigger ?? null,
+    ] as const,
+  // Prefix for broad invalidation of all task queries for a locator
+  tasksPrefix: (locator: string) => ["tasks", locator] as const,
   messages: (locator: string) => ["messages", locator] as const,
 
   // Organizations list

@@ -22,7 +22,7 @@ function task(overrides: Partial<Task>): Task {
 
 function seed(qc: QueryClient, filterTag: string, items: Task[]) {
   const data: TasksQueryData = { items, hasMore: false };
-  qc.setQueryData(["threads", LOCATOR, filterTag], data);
+  qc.setQueryData(["tasks", LOCATOR, filterTag], data);
 }
 
 describe("readCachedLastThread", () => {
@@ -83,7 +83,7 @@ describe("readCachedLastThread", () => {
 
   test("does not match cache entries for a different locator", () => {
     const qc = new QueryClient();
-    qc.setQueryData(["threads", "other-locator", "list-a"], {
+    qc.setQueryData(["tasks", "other-locator", "list-a"], {
       items: [task({ id: "elsewhere" })],
       hasMore: false,
     } satisfies TasksQueryData);
@@ -92,18 +92,24 @@ describe("readCachedLastThread", () => {
 
   test("ignores entries with empty/missing items", () => {
     const qc = new QueryClient();
-    qc.setQueryData(["threads", LOCATOR, "empty"], {
+    qc.setQueryData(["tasks", LOCATOR, "empty"], {
       items: [],
       hasMore: false,
     } satisfies TasksQueryData);
-    qc.setQueryData(["threads", LOCATOR, "undef"], undefined);
+    qc.setQueryData(["tasks", LOCATOR, "undef"], undefined);
     expect(readCachedLastThread(qc, LOCATOR, AGENT_ID, USER_ID)).toBeNull();
   });
 
-  test("verifies KEYS.threadsPrefix is used as the matching prefix", () => {
+  test("verifies KEYS.tasksPrefix is used as the matching prefix", () => {
     const qc = new QueryClient();
-    const exactKey = KEYS.threadsPrefix(LOCATOR);
-    qc.setQueryData([...exactKey, "list-a"], {
+    const exactKey = KEYS.tasks(LOCATOR, {
+      owner: "me",
+      status: "open",
+      virtualMcpId: AGENT_ID,
+      userId: USER_ID,
+      hasTrigger: null,
+    });
+    qc.setQueryData(exactKey, {
       items: [task({ id: "from-real-key" })],
       hasMore: false,
     } satisfies TasksQueryData);

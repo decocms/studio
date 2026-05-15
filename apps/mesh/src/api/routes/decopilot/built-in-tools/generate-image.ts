@@ -19,11 +19,8 @@ import { z } from "zod";
 import type { MeshProvider } from "@/ai-providers/types";
 import type { MeshContext } from "@/core/mesh-context";
 import { getSettings } from "@/settings";
-import type { ModelInfo } from "../../../api/routes/decopilot/types";
-import {
-  toMeshStorageUri,
-  parseMeshStorageKey,
-} from "../../../api/routes/decopilot/mesh-storage-uri";
+import type { ModelInfo } from "../types";
+import { toMeshStorageUri, parseMeshStorageKey } from "../mesh-storage-uri";
 
 const GenerateImageInputSchema = z.object({
   prompt: z

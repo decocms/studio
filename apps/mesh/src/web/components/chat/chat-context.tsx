@@ -67,7 +67,8 @@ const openedChats = new Set<string>();
 
 import { useChatNavigation } from "./hooks/use-chat-navigation";
 import { useStreamManager } from "./hooks/use-stream-manager";
-import { useThreadActions, useTaskManager, type TaskOwnerFilter } from "./task";
+import { useTaskActions } from "../../hooks/use-tasks";
+import { useTaskManager, type TaskOwnerFilter } from "./task";
 import { useTaskMessages } from "./task/use-task-manager";
 import { derivePartsFromTiptapDoc } from "./derive-parts";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
@@ -736,13 +737,7 @@ export function ChatContextProvider({
     return {
       messages: allMessages,
       ...mergedMetadata,
-      // When a caller supplies `toolApprovalLevel` via requestMetadata
-      // (initial send or addToolOutput / addToolApprovalResponse with
-      // explicit metadata), trust it — that's the value the user had
-      // selected at click time. Fall back to localStorage only for
-      // callers that don't supply it (legacy paths).
-      toolApprovalLevel:
-        mergedMetadata.toolApprovalLevel ?? readToolApprovalLevel(),
+      toolApprovalLevel: readToolApprovalLevel(),
       // mode comes from mergedMetadata (set in sendMessageInternal before
       // the mode state is reset). Reading from a ref here races with the
       // React state flush that resets chatMode to "default".
@@ -771,7 +766,7 @@ export function ChatContextProvider({
   // task's branch so the new thread lands on the same warm sandbox. The
   // route loader's useEnsureTask will see the row already exists on its
   // GET and skip the create-on-404 fallback.
-  const taskActions = useThreadActions();
+  const taskActions = useTaskActions();
   const createTask = (): string => {
     const newId = crypto.randomUUID();
     void taskActions.create

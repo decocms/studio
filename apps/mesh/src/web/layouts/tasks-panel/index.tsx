@@ -6,34 +6,49 @@
 
 import { Suspense } from "react";
 import { useParams } from "@tanstack/react-router";
+import {
+  useMCPClient,
+  useProjectContext,
+  SELF_MCP_ALIAS_ID,
+} from "@decocms/mesh-sdk";
+import { useQueryClient } from "@tanstack/react-query";
 import { ClipboardCheck } from "@untitledui/icons";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { Chat } from "@/web/components/chat";
 import { EmptyState } from "@/web/components/empty-state";
-import {
-  useThreads,
-  filterThreads,
-  useThreadActions,
-} from "@/web/components/chat/task";
+import { useTasks } from "@/web/components/chat/task/use-task-manager";
+import { callUpdateTaskTool } from "@/web/components/chat/task/helpers";
 import type { Task } from "@/web/components/chat/task/types";
+import { useTasksAutoRefresh } from "@/web/hooks/use-tasks-auto-refresh";
 import { usePanelActions } from "@/web/layouts/shell-layout";
+import { KEYS } from "@/web/lib/query-keys";
+import { toast } from "sonner";
 import { authClient } from "@/web/lib/auth-client";
 import { TasksSection } from "./tasks-section";
 
 function TasksPanelContent() {
+  useTasksAutoRefresh();
   const { data: session } = authClient.useSession();
   const currentUserId = session?.user?.id;
-  const { threads } = useThreads("org", "open");
-  const { hideThread } = useThreadActions();
-
-  const myTasks = filterThreads(threads, {
-    ownerUserId: currentUserId,
+  const { tasks: myTasks } = useTasks({
+    owner: "me",
+    status: "open",
     hasTrigger: false,
   });
-  const automationTasks = filterThreads(threads, { hasTrigger: true });
-
+  const { tasks: automationTasks } = useTasks({
+    owner: "all",
+    status: "open",
+    hasTrigger: true,
+  });
   const { setTaskId, createNewTask } = usePanelActions();
   const params = useParams({ strict: false }) as { taskId?: string };
+  const { locator, org } = useProjectContext();
+  const queryClient = useQueryClient();
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
 
   const activeTaskId = params.taskId ?? null;
 
@@ -42,8 +57,16 @@ function TasksPanelContent() {
     ...automationTasks.map((t) => ({ ...t, fromAutomation: true as const })),
   ].sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""));
 
-  const handleArchive = (task: Task) => {
-    hideThread(task.id);
+  const handleArchive = async (task: Task) => {
+    try {
+      await callUpdateTaskTool(client, task.id, { hidden: true });
+      queryClient.invalidateQueries({
+        queryKey: KEYS.tasksPrefix(locator),
+      });
+    } catch (error) {
+      const err = error as Error;
+      toast.error(`Failed to archive task: ${err.message}`);
+    }
   };
 
   if (allTasks.length === 0) {

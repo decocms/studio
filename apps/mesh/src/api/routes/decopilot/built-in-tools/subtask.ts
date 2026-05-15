@@ -21,15 +21,15 @@ import {
   DEFAULT_MAX_TOKENS,
   SUBAGENT_EXCLUDED_TOOLS,
   SUBAGENT_STEP_LIMIT,
-} from "../../../api/routes/decopilot/constants";
-import { toolsFromMCP } from "../../../api/routes/decopilot/helpers";
-import type { ModelsConfig } from "../../../api/routes/decopilot/types";
+} from "../constants";
+import { toolsFromMCP } from "../helpers";
+import type { ModelsConfig } from "../types";
 import { MeshProvider } from "@/ai-providers/types";
 import {
   OPENROUTER_CACHE_PROVIDER_OPTIONS,
   withCachedToolPrefix,
-} from "../../../api/routes/decopilot/cache-instrumentation";
-import { createLanguageModel } from "../../../ai-providers/language-model";
+} from "../cache-instrumentation";
+import { createLanguageModel } from "../dispatch-run";
 import { buildSystemMessages } from "../system-prompt";
 
 export const SubtaskInputSchema = z.object({
