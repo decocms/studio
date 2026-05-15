@@ -31,12 +31,8 @@ import {
   clearStoredAutosend,
   writeStoredAutosend,
 } from "@/web/lib/autosend";
-import {
-  lastAssistantMessageIsCompleteWithToolCalls,
-  lastAssistantMessageIsCompleteWithApprovalResponses,
-  type UIMessage,
-} from "ai";
 import { useThreadChat } from "./hooks/use-thread-chat";
+import type { RequestOptions } from "./hooks/thread-attach-registry";
 import {
   pickSimpleModeDefaults,
   useProjectContext,
@@ -67,8 +63,7 @@ const openedChats = new Set<string>();
 
 import { useChatNavigation } from "./hooks/use-chat-navigation";
 import { useStreamManager } from "./hooks/use-stream-manager";
-import { useTaskActions } from "../../hooks/use-tasks";
-import { useTaskManager, type TaskOwnerFilter } from "./task";
+import { useThreadActions, useTaskManager, type TaskOwnerFilter } from "./task";
 import { useTaskMessages } from "./task/use-task-manager";
 import { derivePartsFromTiptapDoc } from "./derive-parts";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
@@ -93,8 +88,19 @@ export interface ChatStreamContextValue {
   ) => Promise<void>;
   stop: () => void;
   setMessages: UseChatHelpers<ChatMessage>["setMessages"];
-  addToolOutput: UseChatHelpers<ChatMessage>["addToolOutput"];
-  addToolApprovalResponse: UseChatHelpers<ChatMessage>["addToolApprovalResponse"];
+  addToolOutput: (
+    args: {
+      toolCallId: string;
+      output?: unknown;
+      state?: "output-available" | "output-error";
+      errorText?: string;
+    },
+    opts: RequestOptions,
+  ) => void;
+  addToolApprovalResponse: (
+    args: { id: string; approved: boolean; reason?: string },
+    opts: RequestOptions,
+  ) => void;
   error: Error | null;
   clearError: () => void;
   finishReason: string | null;
@@ -272,10 +278,6 @@ const BRIDGE_NOOP: ChatBridgeValue = {
 
 /** Internal-only type for cross-provider communication */
 interface TaskProviderInternals {
-  prepareBody: (args: {
-    messages: UIMessage<Metadata>[];
-    requestMetadata: unknown;
-  }) => object;
   user: { image?: string | null; name?: string } | null;
   contextPrompt: string;
   preferences: {
@@ -703,51 +705,6 @@ export function ChatContextProvider({
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   tiptapDocRef.current = tiptapDoc;
 
-  // Body builder shared by useChatStream — slices to the request message
-  // (last non-system message) and folds in the configured system prompt /
-  // metadata the way the legacy transport's prepareSendMessagesRequest did.
-  const prepareBody = ({
-    messages,
-    requestMetadata = {},
-  }: {
-    messages: UIMessage<Metadata>[];
-    requestMetadata: unknown;
-  }) => {
-    const {
-      system,
-      tiptapDoc: _tiptapDoc,
-      ...metadata
-    } = requestMetadata as Metadata;
-    const systemMessage: UIMessage<Metadata> | null = system
-      ? {
-          id: crypto.randomUUID(),
-          role: "system",
-          parts: [{ type: "text", text: system }],
-        }
-      : null;
-    const userMessage = messages.slice(-1).filter(Boolean) as ChatMessage[];
-    const allMessages = systemMessage
-      ? [systemMessage, ...userMessage]
-      : userMessage;
-
-    const lastMsgMeta = (messages.at(-1)?.metadata ?? {}) as Metadata;
-    const mergedMetadata = {
-      ...metadata,
-      agent: metadata.agent ?? lastMsgMeta.agent,
-      tier: metadata.tier ?? lastMsgMeta.tier,
-      thread_id: metadata.thread_id ?? lastMsgMeta.thread_id,
-    };
-
-    return {
-      messages: allMessages,
-      ...mergedMetadata,
-      toolApprovalLevel: readToolApprovalLevel(),
-      // mode comes from mergedMetadata (set in sendMessageInternal before
-      // the mode state is reset). Reading from a ref here races with the
-      // React state flush that resets chatMode to "default".
-    };
-  };
-
   // Bridge ref — ActiveTaskProvider registers sendMessage here
   const bridgeRef = useRef<ChatBridgeValue>(BRIDGE_NOOP);
 
@@ -770,7 +727,7 @@ export function ChatContextProvider({
   // task's branch so the new thread lands on the same warm sandbox. The
   // route loader's useEnsureTask will see the row already exists on its
   // GET and skip the create-on-404 fallback.
-  const taskActions = useTaskActions();
+  const taskActions = useThreadActions();
   const createTask = (): string => {
     const newId = crypto.randomUUID();
     void taskActions.create
@@ -893,7 +850,6 @@ export function ChatContextProvider({
   };
 
   const internals: TaskProviderInternals = {
-    prepareBody,
     user,
     contextPrompt,
     preferences,
@@ -953,7 +909,6 @@ export function ActiveTaskProvider({
   }
 
   const {
-    prepareBody,
     user,
     contextPrompt,
     preferences,
@@ -978,10 +933,6 @@ export function ActiveTaskProvider({
     threadId: taskId,
     orgSlug: org.slug,
     initialMessages: serverMessages,
-    prepareBody,
-    sendAutomaticallyWhen: ({ messages }) =>
-      lastAssistantMessageIsCompleteWithToolCalls({ messages }) ||
-      lastAssistantMessageIsCompleteWithApprovalResponses({ messages }),
     onFinish: (payload) => {
       setFinishReason(payload.finishReason ?? null);
 
@@ -1106,13 +1057,6 @@ export function ActiveTaskProvider({
       setChatMode("default");
     }
 
-    const metadata: Metadata = {
-      ...messageMetadata,
-      system,
-      tier: activeTier,
-      mode: modeToSend,
-    };
-
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
@@ -1120,7 +1064,16 @@ export function ActiveTaskProvider({
       metadata: messageMetadata,
     };
 
-    await chat.sendMessage(userMessage, { metadata });
+    await chat.sendMessage(userMessage, {
+      tier: activeTier,
+      mode: modeToSend,
+      toolApprovalLevel:
+        preferences.toolApprovalLevel ?? readToolApprovalLevel(),
+      system: system || undefined,
+      agent: { id: capturedVirtualMcpId },
+      thread_id: capturedTaskId,
+      branch: currentBranch,
+    });
   }
 
   // Cancel run

@@ -22,8 +22,12 @@ export interface Task {
   status?: ThreadDisplayStatus;
   /** Virtual MCP (agent) this task was initiated with */
   virtual_mcp_id?: string;
-  /** True when this task was triggered by an automation */
-  fromAutomation?: boolean;
+  /**
+   * Automation trigger that created this thread, when applicable.
+   * `null` (or absent) ⇒ human-initiated. Use `Boolean(task.trigger_id)`
+   * to ask "is this an automation?".
+   */
+  trigger_id?: string | null;
   /** Git branch associated with this thread, when the vMCP is GitHub-linked. */
   branch?: string | null;
 }

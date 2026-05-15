@@ -1,7 +1,12 @@
 import { Button } from "@deco/ui/components/button.tsx";
 import { AlertCircle, AlertTriangle } from "@untitledui/icons";
-import { usePreferences } from "@/web/hooks/use-preferences.ts";
-import { useChatStream, useChatTask } from "../context";
+import {
+  readToolApprovalLevel,
+  usePreferences,
+  type ToolApprovalLevel,
+} from "@/web/hooks/use-preferences.ts";
+import { useChatPrefs, useChatStream, useChatTask } from "../context";
+import type { RequestOptions } from "../hooks/thread-attach-registry";
 import { ApprovalHighlight, extractPendingApprovals } from "./approval";
 import { ProposePlanHighlight, extractPendingPlans } from "./propose-plan";
 import { UserAskQuestionHighlight } from "./user-ask-question";
@@ -104,6 +109,24 @@ export function ChatHighlight() {
   } = useChatStream();
   const [preferences, setPreferences] = usePreferences();
   const { virtualMcpId, createTaskWithMessage } = useChatTask();
+  const { chatMode, simpleModeTier } = useChatPrefs();
+
+  // Build a fresh RequestOptions at call time so tier/mode reflect the
+  // user's current selection. `toolApprovalLevel` is passed in explicitly:
+  // the approval dropdown flips it to "auto" and triggers Accept-All in
+  // the same handler, so reading React state here would see the stale
+  // pre-change value.
+  const buildRequestOptions = (
+    toolApprovalLevel: ToolApprovalLevel,
+  ): RequestOptions => ({
+    tier: simpleModeTier,
+    mode: chatMode,
+    toolApprovalLevel,
+    agent: virtualMcpId ? { id: virtualMcpId } : undefined,
+  });
+
+  const currentApprovalLevel: ToolApprovalLevel =
+    preferences.toolApprovalLevel ?? readToolApprovalLevel();
 
   const lastMessage = messages.at(-1);
 
@@ -167,11 +190,13 @@ export function ChatHighlight() {
   };
 
   const handleUserAskSubmit = (part: UserAskToolPart, response: string) => {
-    addToolOutput({
-      tool: "user_ask",
-      toolCallId: part.toolCallId,
-      output: { response },
-    });
+    addToolOutput(
+      {
+        toolCallId: part.toolCallId,
+        output: { response },
+      },
+      buildRequestOptions(currentApprovalLevel),
+    );
   };
 
   const handlePlanApprove = (planText: string) => {
@@ -195,13 +220,17 @@ export function ChatHighlight() {
   const handleApprovalRespond = (
     approvalId: string,
     approved: boolean,
-    reason?: string,
+    reason: string | undefined,
+    toolApprovalLevel: ToolApprovalLevel,
   ) => {
-    addToolApprovalResponse({
-      id: approvalId,
-      approved,
-      ...(reason ? { reason } : {}),
-    });
+    addToolApprovalResponse(
+      {
+        id: approvalId,
+        approved,
+        ...(reason ? { reason } : {}),
+      },
+      buildRequestOptions(toolApprovalLevel),
+    );
   };
 
   // Each banner condition is evaluated independently; all that match

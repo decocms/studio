@@ -43,14 +43,21 @@ const DEFAULT_DENY_REASON =
 // ApprovalLevelSelect
 // ============================================================================
 
-function ApprovalLevelSelect({ onYolo }: { onYolo: () => void }) {
+function ApprovalLevelSelect({
+  onYolo,
+}: {
+  onYolo: (level: ToolApprovalLevel) => void;
+}) {
   const [preferences, setPreferences] = usePreferences();
 
   const handleLevelChange = (value: string) => {
     const newLevel = value as ToolApprovalLevel;
     setPreferences({ ...preferences, toolApprovalLevel: newLevel });
     if (newLevel === "auto") {
-      onYolo();
+      // Pass the new level explicitly — setPreferences won't have flushed
+      // by the time handleAcceptAll runs in this same handler, so the
+      // closure value of preferences.toolApprovalLevel is still stale.
+      onYolo(newLevel);
     }
   };
 
@@ -108,11 +115,17 @@ function ApprovalDetail({ input }: { input: unknown }) {
 
 interface ApprovalPromptProps {
   approvals: PendingApproval[];
-  onRespond: (approvalId: string, approved: boolean, reason?: string) => void;
+  onRespond: (
+    approvalId: string,
+    approved: boolean,
+    reason: string | undefined,
+    toolApprovalLevel: ToolApprovalLevel,
+  ) => void;
 }
 
 function ApprovalPrompt({ approvals, onRespond }: ApprovalPromptProps) {
   const [activeIndex, setActiveIndex] = useState(0);
+  const [preferences] = usePreferences();
 
   // Clamp index if list shrinks
   const safeIndex = Math.min(activeIndex, approvals.length - 1);
@@ -120,18 +133,18 @@ function ApprovalPrompt({ approvals, onRespond }: ApprovalPromptProps) {
 
   if (!current) return null;
 
-  const handleDeny = () => {
-    onRespond(current.approvalId, false, DEFAULT_DENY_REASON);
+  const handleDeny = (level: ToolApprovalLevel) => {
+    onRespond(current.approvalId, false, DEFAULT_DENY_REASON, level);
     // Keep index; list shrinks on re-render, clamp handles it
   };
 
-  const handleAccept = () => {
-    onRespond(current.approvalId, true);
+  const handleAccept = (level: ToolApprovalLevel) => {
+    onRespond(current.approvalId, true, undefined, level);
   };
 
-  const handleAcceptAll = () => {
+  const handleAcceptAll = (level: ToolApprovalLevel) => {
     for (const approval of approvals) {
-      onRespond(approval.approvalId, true);
+      onRespond(approval.approvalId, true, undefined, level);
     }
   };
 
@@ -147,6 +160,9 @@ function ApprovalPrompt({ approvals, onRespond }: ApprovalPromptProps) {
     approvals.length === 1
       ? "Approval needed"
       : `${approvals.length} approvals pending`;
+
+  const currentLevel: ToolApprovalLevel =
+    preferences.toolApprovalLevel ?? "readonly";
 
   const footerLeft = (
     <div className="flex items-center gap-2">
@@ -167,7 +183,7 @@ function ApprovalPrompt({ approvals, onRespond }: ApprovalPromptProps) {
         variant="ghost"
         size="sm"
         className="h-7 px-2.5 text-xs text-muted-foreground [@media(hover:hover)]:hover:text-foreground active:scale-[0.97] transition-transform"
-        onClick={handleDeny}
+        onClick={() => handleDeny(currentLevel)}
       >
         Deny
       </Button>
@@ -177,7 +193,7 @@ function ApprovalPrompt({ approvals, onRespond }: ApprovalPromptProps) {
           variant="outline"
           size="sm"
           className="h-7 px-2.5 text-xs active:scale-[0.97] transition-transform"
-          onClick={handleAcceptAll}
+          onClick={() => handleAcceptAll(currentLevel)}
         >
           Accept All
         </Button>
@@ -186,7 +202,7 @@ function ApprovalPrompt({ approvals, onRespond }: ApprovalPromptProps) {
         type="button"
         size="sm"
         className="h-7 px-2.5 text-xs active:scale-[0.97] transition-transform"
-        onClick={handleAccept}
+        onClick={() => handleAccept(currentLevel)}
       >
         Accept
       </Button>
@@ -233,7 +249,12 @@ export function ApprovalHighlight({
 }: {
   approvals: PendingApproval[];
   isStreaming: boolean;
-  onRespond: (approvalId: string, approved: boolean, reason?: string) => void;
+  onRespond: (
+    approvalId: string,
+    approved: boolean,
+    reason: string | undefined,
+    toolApprovalLevel: ToolApprovalLevel,
+  ) => void;
 }) {
   if (isStreaming && approvals.length === 0) {
     return <ApprovalLoadingUI />;
