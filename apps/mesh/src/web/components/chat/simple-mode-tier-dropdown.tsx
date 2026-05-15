@@ -49,6 +49,7 @@ export function SimpleModeTierDropdown({
           variant="ghost"
           size="default"
           title={current.label}
+          aria-label={current.label}
           className="text-muted-foreground hover:text-foreground"
         >
           <Icon size={14} />

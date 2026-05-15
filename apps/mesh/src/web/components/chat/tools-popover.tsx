@@ -209,6 +209,7 @@ export function ToolsPopover({
             size="default"
             disabled={disabled}
             title="Tools"
+            aria-label="Tools"
             className="text-muted-foreground hover:text-foreground"
           >
             <Settings04 size={14} />

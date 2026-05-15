@@ -501,6 +501,7 @@ export function ChatInput({
                             setChatMode("default");
                           }}
                           title="Plan mode"
+                          aria-label="Plan mode"
                           className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 group whitespace-nowrap animate-in fade-in duration-200"
                         >
                           <BookOpen01 size={14} className="shrink-0" />
@@ -527,6 +528,7 @@ export function ChatInput({
                             setChatMode("default");
                           }}
                           title="Create image"
+                          aria-label="Create image"
                           className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-pink-600 dark:text-pink-400 hover:bg-pink-500/10 group whitespace-nowrap animate-in fade-in duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                         >
                           <Image01 size={14} className="shrink-0" />
@@ -553,6 +555,7 @@ export function ChatInput({
                             setChatMode("default");
                           }}
                           title="Web search"
+                          aria-label="Web search"
                           className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 group whitespace-nowrap animate-in fade-in duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                         >
                           <Globe02 size={14} className="shrink-0" />
