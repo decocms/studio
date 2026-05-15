@@ -198,10 +198,6 @@ app.get("/domain-lookup", async (c) => {
   if (!session?.user) {
     return c.json({ success: false, error: "Authentication required" }, 401);
   }
-  if (!session.user.emailVerified) {
-    return c.json({ found: false });
-  }
-
   const domain = session.user.email?.split("@")[1]?.toLowerCase();
   if (!domain || GENERIC_EMAIL_DOMAINS.has(domain)) {
     return c.json({ found: false });
@@ -250,13 +246,6 @@ app.post("/domain-join", async (c) => {
   if (!session?.user) {
     return c.json({ success: false, error: "Authentication required" }, 401);
   }
-  if (!session.user.emailVerified) {
-    return c.json(
-      { success: false, error: "Email must be verified to join" },
-      403,
-    );
-  }
-
   const emailDomain = session.user.email?.split("@")[1]?.toLowerCase();
   if (!emailDomain || GENERIC_EMAIL_DOMAINS.has(emailDomain)) {
     return c.json(
@@ -334,10 +323,15 @@ app.post("/domain-join", async (c) => {
 /**
  * Domain Setup Endpoint (authenticated, verified email required)
  *
- * For first-time corporate email users: creates an org named after their
- * email domain, claims the domain with auto-join enabled, and triggers
- * brand extraction via Firecrawl (best-effort — org is created even if
- * extraction fails).
+ * For first-time corporate email users: creates an org (using a custom name
+ * and logo if provided, otherwise derived from the domain), optionally claims
+ * the domain with auto-join enabled, and triggers brand extraction via
+ * Firecrawl (best-effort — org is created even if extraction fails).
+ *
+ * Body (all optional):
+ *   - name: custom org name (else derived from domain)
+ *   - logo: custom logo data URL or URL (else uses extracted favicon)
+ *   - claimDomain: defaults to true; set false to skip the domain claim
  *
  * Route: POST /api/auth/custom/domain-setup
  */
@@ -350,21 +344,37 @@ app.post("/domain-setup", async (c) => {
   if (!session?.user) {
     return c.json({ success: false, error: "Authentication required" }, 401);
   }
-  if (!session.user.emailVerified) {
-    return c.json({ success: false, error: "Email must be verified" }, 403);
-  }
-
   const emailDomain = session.user.email?.split("@")[1]?.toLowerCase();
   if (!emailDomain || GENERIC_EMAIL_DOMAINS.has(emailDomain)) {
     return c.json({ success: false, error: "Corporate email required" }, 403);
   }
 
+  // Parse optional customization fields from the body. Body is optional —
+  // missing/invalid JSON is treated as empty so callers can keep the
+  // existing parameterless flow.
+  const body = (await c.req.json().catch(() => ({}))) as {
+    name?: unknown;
+    logo?: unknown;
+    claimDomain?: unknown;
+  };
+  const customName =
+    typeof body.name === "string" && body.name.trim().length > 0
+      ? body.name.trim()
+      : null;
+  const customLogo =
+    typeof body.logo === "string" && body.logo.length > 0 ? body.logo : null;
+  const shouldClaimDomain = body.claimDomain !== false;
+
   try {
     const db = getDb().db;
     const domainStorage = new OrganizationDomainStorage(db);
 
-    // Check if domain is already claimed
-    const existing = await domainStorage.getByDomain(emailDomain);
+    // Only block on existing claim if the caller actually wants to claim
+    // the domain. If they're opting out, another org owning the domain
+    // doesn't conflict with creating a new (unclaimed) org.
+    const existing = shouldClaimDomain
+      ? await domainStorage.getByDomain(emailDomain)
+      : null;
     if (existing) {
       // Verify the user is actually a member of this org
       const membership = await db
@@ -394,11 +404,19 @@ app.post("/domain-setup", async (c) => {
       );
     }
 
-    // Derive org name/slug from domain (e.g. "acme.com" → "Acme" / "acme")
+    // Org name/slug: prefer caller-supplied name, else derive from domain
+    // (e.g. "acme.com" → "Acme" / "acme")
     const domainName = emailDomain.split(".")[0] ?? emailDomain;
     const baseOrgName =
-      domainName.charAt(0).toUpperCase() + domainName.slice(1);
-    const baseSlug = domainName.toLowerCase().replace(/[^a-z0-9-]/g, "");
+      customName ?? domainName.charAt(0).toUpperCase() + domainName.slice(1);
+    const baseSlug =
+      (customName ?? domainName)
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9\s_-]+/g, "")
+        .replace(/[\s_-]+/g, "-")
+        .replace(/^-+|-+$/g, "") ||
+      domainName.toLowerCase().replace(/[^a-z0-9-]/g, "");
 
     // Create the org. Retry with random suffix on slug collision.
     let orgResult: { id: string; slug: string } | null = null;
@@ -437,42 +455,48 @@ app.post("/domain-setup", async (c) => {
     }
     const orgId = orgResult.id;
 
-    // Claim the domain. Only clean up the org on a domain race (specific
-    // "already claimed" error from the storage layer). Transient DB errors
-    // should not delete the org — it can be reclaimed later.
-    try {
-      await domainStorage.setDomain(orgId, emailDomain, true);
-    } catch (claimError) {
-      const isDomainRace =
-        claimError instanceof Error &&
-        claimError.message.includes("already claimed");
-      if (isDomainRace) {
-        try {
-          await auth.api.deleteOrganization({
-            headers: c.req.raw.headers,
-            body: { organizationId: orgId },
-          });
-        } catch {
-          console.error(
-            "[Auth] Failed to clean up orphaned org after domain race:",
-            orgId,
+    // Claim the domain (optional). Only clean up the org on a domain race
+    // (specific "already claimed" error from the storage layer). Transient
+    // DB errors should not delete the org — it can be reclaimed later.
+    if (shouldClaimDomain) {
+      try {
+        await domainStorage.setDomain(orgId, emailDomain, true);
+      } catch (claimError) {
+        const isDomainRace =
+          claimError instanceof Error &&
+          claimError.message.includes("already claimed");
+        if (isDomainRace) {
+          try {
+            await auth.api.deleteOrganization({
+              headers: c.req.raw.headers,
+              body: { organizationId: orgId },
+            });
+          } catch {
+            console.error(
+              "[Auth] Failed to clean up orphaned org after domain race:",
+              orgId,
+            );
+          }
+          return c.json(
+            {
+              success: false,
+              error:
+                "This domain was just claimed by another user. Please refresh and try again.",
+            },
+            409,
           );
         }
-        return c.json(
-          {
-            success: false,
-            error:
-              "This domain was just claimed by another user. Please refresh and try again.",
-          },
-          409,
-        );
+        // Transient error — org exists but domain claim failed. Don't delete.
+        throw claimError;
       }
-      // Transient error — org exists but domain claim failed. Don't delete.
-      throw claimError;
     }
 
-    // Brand extraction (best-effort — don't fail the setup if this errors)
+    // Brand extraction (best-effort — don't fail the setup if this errors).
+    // Captures values to apply after the try/catch so user-provided
+    // customizations still take effect even if extraction fails.
     let brandExtracted = false;
+    let extractedName: string | null = null;
+    let extractedLogo: string | null = null;
     try {
       const firecrawlApiKey = getSettings().firecrawlApiKey;
 
@@ -488,26 +512,33 @@ app.post("/domain-setup", async (c) => {
           const brand = await brandStorage.create(orgId, extracted);
           await brandStorage.setDefault(brand.id, orgId);
           brandExtracted = true;
-
-          // Update org: name from brand, favicon as org logo
-          // (favicons are small/reliable; full logos often hit size limits)
-          const orgLogo = extracted.favicon ?? extracted.logo ?? null;
-          const orgUpdate: Record<string, unknown> = {};
-          if (extracted.name !== baseOrgName) orgUpdate.name = extracted.name;
-          if (orgLogo) orgUpdate.logo = orgLogo;
-          if (Object.keys(orgUpdate).length > 0) {
-            await auth.api.updateOrganization({
-              headers: c.req.raw.headers,
-              body: {
-                organizationId: orgId,
-                data: orgUpdate,
-              },
-            });
+          if (extracted.name && extracted.name !== baseOrgName) {
+            extractedName = extracted.name;
           }
+          extractedLogo = extracted.favicon ?? extracted.logo ?? null;
         }
       }
     } catch (brandError) {
       console.error("[Auth] Brand extraction failed (non-fatal):", brandError);
+    }
+
+    // Apply org name/logo. User-provided values always win over extraction.
+    const orgUpdate: Record<string, unknown> = {};
+    if (!customName && extractedName) orgUpdate.name = extractedName;
+    if (customLogo) orgUpdate.logo = customLogo;
+    else if (extractedLogo) orgUpdate.logo = extractedLogo;
+    if (Object.keys(orgUpdate).length > 0) {
+      try {
+        await auth.api.updateOrganization({
+          headers: c.req.raw.headers,
+          body: {
+            organizationId: orgId,
+            data: orgUpdate,
+          },
+        });
+      } catch (updateError) {
+        console.error("[Auth] Org update failed (non-fatal):", updateError);
+      }
     }
 
     posthog.identify({

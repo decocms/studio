@@ -459,14 +459,16 @@ export const auth = betterAuth({
             },
           });
 
-          // Domain-based handling for verified corporate emails.
-          // 1. If an org claimed the domain with auto-join → add as member
-          // 2. If corporate but unclaimed → skip default org creation so
-          //    the user hits /onboarding to set up their company org
-          if (user.emailVerified) {
-            const emailDomain = user.email?.split("@")[1]?.toLowerCase();
-            if (emailDomain && !GENERIC_EMAIL_DOMAINS.has(emailDomain)) {
-              let domainHandled = false;
+          // Domain-based handling for corporate emails.
+          // 1. If verified and org claimed the domain with auto-join → add as member
+          // 2. If corporate (verified or not, unclaimed) → skip default org creation
+          //    so the user hits /onboarding to set up their company org.
+          //    Note: emailVerified is false for email/password signups at hook time,
+          //    so the auto-join check is gated on verification but the org-creation
+          //    skip applies regardless.
+          const emailDomain = user.email?.split("@")[1]?.toLowerCase();
+          if (emailDomain && !GENERIC_EMAIL_DOMAINS.has(emailDomain)) {
+            if (user.emailVerified) {
               try {
                 const domainStorage = new OrganizationDomainStorage(getDb().db);
                 const domainRecord =
@@ -480,17 +482,13 @@ export const auth = betterAuth({
                       organizationId: domainRecord.organizationId,
                     },
                   } as any);
-                  return;
                 }
-                // Corporate email, no auto-join → let /onboarding handle it
-                domainHandled = true;
               } catch (error) {
                 console.error("[Auth] Domain auto-join check failed:", error);
-                // domainHandled stays false → fall through to default org creation
               }
-
-              if (domainHandled) return;
             }
+            // Skip default org creation for all corporate emails — verified or not.
+            return;
           }
 
           // Check if auto-creation is enabled (default: true)
