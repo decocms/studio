@@ -1,6 +1,7 @@
 import { describe, expect, test, mock } from "bun:test";
 import type { UIMessage, UIMessageChunk } from "ai";
 import { ThreadChatStore } from "./thread-chat-store";
+import type { PersistentLoopFn } from "./thread-chat-store";
 
 const runChunks = async (
   store: ThreadChatStore<UIMessage>,
@@ -410,5 +411,111 @@ describe("ThreadChatStore — tool output + auto-send", () => {
       reason: undefined,
     });
     expect(fetchImpl).toHaveBeenCalled();
+  });
+});
+
+describe("ThreadChatStore — stop()", () => {
+  test("aborts in-flight POST and flips status back to ready", async () => {
+    let abortHit = false;
+    const fetchImpl = mock(
+      (_url: string, init: RequestInit | undefined) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            abortHit = true;
+            reject(new DOMException("aborted", "AbortError"));
+          });
+        }),
+    );
+    const store = new ThreadChatStore<UIMessage>({
+      handlersRef: { current: { prepareBody: () => ({}) } },
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      persistentLoop: () => new Promise(() => {}),
+    });
+    store.connect({ orgSlug: "a", threadId: "t" });
+    const sendPromise = store.sendMessage({
+      id: "u-1",
+      role: "user",
+      parts: [],
+    });
+    expect(store.getSnapshot().status).toBe("submitted");
+    store.stop();
+    await sendPromise;
+    expect(abortHit).toBe(true);
+    expect(store.getSnapshot().status).toBe("ready");
+  });
+});
+
+describe("ThreadChatStore — connect lifecycle", () => {
+  test("connect drives the persistent loop with the right URL", () => {
+    const loop = mock<PersistentLoopFn>(() => new Promise(() => {}));
+    const store = new ThreadChatStore<UIMessage>({
+      handlersRef: { current: { prepareBody: () => ({}) } },
+      fetchImpl: mock(() =>
+        Promise.resolve(new Response("", { status: 202 })),
+      ) as unknown as typeof fetch,
+      persistentLoop: loop,
+    });
+    store.connect({ orgSlug: "ac me", threadId: "t/1" });
+    expect(loop).toHaveBeenCalledTimes(1);
+    expect(loop.mock.calls[0]![0].url).toBe(
+      "/api/ac%20me/decopilot/attach/t%2F1",
+    );
+  });
+
+  test("onReconnect discards partial sub-stream", async () => {
+    let resolveLoop: () => void = () => {};
+    let onReconnect: () => void = () => {};
+    let onChunk: (c: UIMessageChunk) => void = () => {};
+    const loop = mock<PersistentLoopFn>((args) => {
+      onReconnect = args.onReconnect ?? (() => {});
+      onChunk = args.onChunk;
+      return new Promise<void>((r) => {
+        resolveLoop = r;
+      });
+    });
+    const store = new ThreadChatStore<UIMessage>({
+      handlersRef: { current: { prepareBody: () => ({}) } },
+      fetchImpl: mock(() =>
+        Promise.resolve(new Response("", { status: 202 })),
+      ) as unknown as typeof fetch,
+      persistentLoop: loop,
+    });
+    store.connect({ orgSlug: "a", threadId: "t" });
+    onChunk({ type: "start", messageId: "m-1" } as UIMessageChunk);
+    onChunk({ type: "text-start", id: "t-1" } as UIMessageChunk);
+    onChunk({
+      type: "text-delta",
+      id: "t-1",
+      delta: "partial",
+    } as UIMessageChunk);
+    await new Promise<void>((r) => setTimeout(r, 0));
+    expect(store.getSnapshot().streaming?.id).toBe("m-1");
+    onReconnect();
+    await new Promise<void>((r) => setTimeout(r, 0));
+    // The partial must be dropped — NOT promoted into local.
+    expect(store.getSnapshot().streaming).toBeNull();
+    expect(store.getSnapshot().local).toEqual([]);
+    resolveLoop();
+  });
+
+  test("thread switch resets snapshot and force-closes sub-stream with discard", () => {
+    const loop = mock<PersistentLoopFn>(() => new Promise(() => {}));
+    const store = new ThreadChatStore<UIMessage>({
+      handlersRef: { current: { prepareBody: () => ({}) } },
+      fetchImpl: mock(() =>
+        Promise.resolve(new Response("", { status: 202 })),
+      ) as unknown as typeof fetch,
+      persistentLoop: loop,
+    });
+    store.connect({ orgSlug: "a", threadId: "t-1" });
+    // @ts-expect-error — internal
+    store.handleChunk({ type: "start", messageId: "m-1" });
+    store.connect({ orgSlug: "a", threadId: "t-2" });
+    expect(store.getSnapshot()).toEqual({
+      local: [],
+      streaming: null,
+      status: "ready",
+      error: null,
+    });
   });
 });
