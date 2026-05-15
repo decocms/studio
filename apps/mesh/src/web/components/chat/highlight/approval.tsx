@@ -50,14 +50,23 @@ const APPROVAL_LEVEL_OPTIONS: {
 // ApprovalLevelSelect
 // ============================================================================
 
-function ApprovalLevelSelect({ onYolo }: { onYolo: () => void }) {
+function ApprovalLevelSelect({
+  onYolo,
+}: {
+  onYolo: (newLevel: ToolApprovalLevel) => void;
+}) {
   const [preferences, setPreferences] = usePreferences();
 
   const handleLevelChange = (value: string) => {
     const newLevel = value as ToolApprovalLevel;
     setPreferences({ ...preferences, toolApprovalLevel: newLevel });
     if (newLevel === "auto") {
-      onYolo();
+      // Pass newLevel explicitly: setPreferences won't have propagated to
+      // React state (or, in tanstack-mutation timing edge cases, to
+      // localStorage) by the time onYolo fires this same tick. The yolo
+      // cascade reads from the explicit argument so the continuation
+      // request carries the level the user just selected.
+      onYolo(newLevel);
     }
   };
 
@@ -115,7 +124,12 @@ function ApprovalDetail({ input }: { input: unknown }) {
 
 interface ApprovalPromptProps {
   approvals: PendingApproval[];
-  onRespond: (approvalId: string, approved: boolean, reason?: string) => void;
+  onRespond: (
+    approvalId: string,
+    approved: boolean,
+    reason?: string,
+    extras?: { toolApprovalLevel?: ToolApprovalLevel },
+  ) => void;
 }
 
 function ApprovalPrompt({ approvals, onRespond }: ApprovalPromptProps) {
@@ -136,9 +150,13 @@ function ApprovalPrompt({ approvals, onRespond }: ApprovalPromptProps) {
     onRespond(current.approvalId, true);
   };
 
-  const handleAcceptAll = () => {
+  // `toolApprovalLevel` is optional: callers from the yolo dropdown pass
+  // the newly-selected level explicitly (state hasn't propagated yet);
+  // callers from the regular "Accept All" button leave it undefined and
+  // the cascade falls back to live preferences.
+  const handleAcceptAll = (toolApprovalLevel?: ToolApprovalLevel) => {
     for (const approval of approvals) {
-      onRespond(approval.approvalId, true);
+      onRespond(approval.approvalId, true, undefined, { toolApprovalLevel });
     }
   };
 
@@ -184,7 +202,7 @@ function ApprovalPrompt({ approvals, onRespond }: ApprovalPromptProps) {
           variant="outline"
           size="sm"
           className="h-7 px-2.5 text-xs active:scale-[0.97] transition-transform"
-          onClick={handleAcceptAll}
+          onClick={() => handleAcceptAll()}
         >
           Accept All
         </Button>
@@ -240,7 +258,12 @@ export function ApprovalHighlight({
 }: {
   approvals: PendingApproval[];
   isStreaming: boolean;
-  onRespond: (approvalId: string, approved: boolean, reason?: string) => void;
+  onRespond: (
+    approvalId: string,
+    approved: boolean,
+    reason?: string,
+    extras?: { toolApprovalLevel?: ToolApprovalLevel },
+  ) => void;
 }) {
   if (isStreaming && approvals.length === 0) {
     return <ApprovalLoadingUI />;

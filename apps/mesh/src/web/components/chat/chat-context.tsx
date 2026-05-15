@@ -737,7 +737,13 @@ export function ChatContextProvider({
     return {
       messages: allMessages,
       ...mergedMetadata,
-      toolApprovalLevel: readToolApprovalLevel(),
+      // When a caller supplies `toolApprovalLevel` via requestMetadata
+      // (initial send or addToolOutput / addToolApprovalResponse with
+      // explicit metadata), trust it — that's the value the user had
+      // selected at click time. Fall back to localStorage only for
+      // callers that don't supply it (legacy paths).
+      toolApprovalLevel:
+        mergedMetadata.toolApprovalLevel ?? readToolApprovalLevel(),
       // mode comes from mergedMetadata (set in sendMessageInternal before
       // the mode state is reset). Reading from a ref here races with the
       // React state flush that resets chatMode to "default".

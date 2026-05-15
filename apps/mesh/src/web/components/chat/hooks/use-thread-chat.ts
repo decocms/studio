@@ -426,6 +426,38 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
       });
     }
 
+    // Continuation seeding. When the backend resumes the same assistant
+    // message (after addToolOutput / addToolApprovalResponse), it emits
+    // `result.toUIMessageStream({ originalMessages })` with `start.messageId`
+    // = the existing assistant id, and `tool-output-available` chunks that
+    // reference toolCallIds whose `tool-input-available` was emitted in the
+    // *prior* sub-stream. readUIMessageStream's state starts empty
+    // otherwise, so getToolInvocation throws "No tool invocation found".
+    // If the next sub-stream is about to open and the start chunk's
+    // messageId matches our last local assistant, promote that message
+    // into streamingStore so readUIMessageStream seeds from it. (Removed
+    // from local to avoid duplication in snapshotAll.)
+    if (
+      chunk.type === "start" &&
+      !demuxRef.current.subController &&
+      streamingStore.current.get() === null
+    ) {
+      const startMessageId = (chunk as { messageId?: string }).messageId;
+      if (startMessageId) {
+        const localPrev = localMessagesStore.current.get();
+        const lastIdx = localPrev.length - 1;
+        const localLast = lastIdx >= 0 ? localPrev[lastIdx] : undefined;
+        if (
+          localLast &&
+          localLast.role === "assistant" &&
+          localLast.id === startMessageId
+        ) {
+          streamingStore.current.set(localLast as UI_MESSAGE);
+          localMessagesStore.current.set(localPrev.slice(0, -1));
+        }
+      }
+    }
+
     const sub = ensureSubStream();
     sub.enqueue(chunk);
     if (chunk.type === "finish") {

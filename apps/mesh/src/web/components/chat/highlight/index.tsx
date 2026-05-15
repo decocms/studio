@@ -1,6 +1,9 @@
 import { Button } from "@deco/ui/components/button.tsx";
 import { AlertCircle, AlertTriangle } from "@untitledui/icons";
-import { usePreferences } from "@/web/hooks/use-preferences.ts";
+import {
+  usePreferences,
+  type ToolApprovalLevel,
+} from "@/web/hooks/use-preferences.ts";
 import { useChatPrefs, useChatStream, useChatTask } from "../context";
 import { ApprovalHighlight, extractPendingApprovals } from "./approval";
 import { ProposePlanHighlight, extractPendingPlans } from "./propose-plan";
@@ -177,7 +180,13 @@ export function ChatHighlight() {
       tool: "user_ask",
       toolCallId: part.toolCallId,
       output: { response },
-      options: { metadata: { tier: simpleModeTier, mode: chatMode } },
+      options: {
+        metadata: {
+          tier: simpleModeTier,
+          mode: chatMode,
+          toolApprovalLevel: preferences.toolApprovalLevel,
+        },
+      },
     });
   };
 
@@ -203,12 +212,27 @@ export function ChatHighlight() {
     approvalId: string,
     approved: boolean,
     reason?: string,
+    extras?: { toolApprovalLevel?: ToolApprovalLevel },
   ) => {
+    // `extras.toolApprovalLevel` wins when the yolo-dropdown drove this
+    // call: the dropdown's selection is fresh, but neither React state
+    // nor localStorage has caught up in the same synchronous cascade.
+    // Every other Accept/Deny path leaves `extras` undefined and we
+    // read live preferences (re-rendered between the user's prefs
+    // change and their click).
+    const toolApprovalLevel =
+      extras?.toolApprovalLevel ?? preferences.toolApprovalLevel;
     addToolApprovalResponse({
       id: approvalId,
       approved,
       ...(reason ? { reason } : {}),
-      options: { metadata: { tier: simpleModeTier, mode: chatMode } },
+      options: {
+        metadata: {
+          tier: simpleModeTier,
+          mode: chatMode,
+          toolApprovalLevel,
+        },
+      },
     });
   };
 
