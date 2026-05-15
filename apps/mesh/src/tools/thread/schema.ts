@@ -74,6 +74,13 @@ export const ThreadEntitySchema = z.object({
     .string()
     .optional()
     .describe("Virtual MCP (agent) this thread was initiated with"),
+  automation_id: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "ID of the automation that triggered this thread, derived from automation_triggers via trigger_id. Null for manual threads.",
+    ),
   branch: z
     .string()
     .nullable()

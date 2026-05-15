@@ -24,6 +24,8 @@ export interface Task {
   virtual_mcp_id?: string;
   /** True when this task was triggered by an automation */
   fromAutomation?: boolean;
+  /** ID of the automation that triggered this task, when triggered by an automation. */
+  automation_id?: string | null;
   /** Git branch associated with this thread, when the vMCP is GitHub-linked. */
   branch?: string | null;
 }
