@@ -92,7 +92,9 @@ export function TriggerCard({
 
   const handleCountSave = async (newCount: number) => {
     if (!interval) return;
-    const clamped = Math.max(1, newCount);
+    const minCount = interval.unit === "minutes" ? 5 : 1;
+    const clamped = Math.max(minCount, newCount);
+    if (clamped !== newCount) setCount(clamped);
     const newCron = buildCronFromInterval(clamped, interval.unit);
     if (newCron === trigger.cron_expression) return;
     try {
@@ -125,7 +127,7 @@ export function TriggerCard({
             <span className="text-sm text-muted-foreground">Every</span>
             <input
               type="number"
-              min={1}
+              min={interval.unit === "minutes" ? 5 : 1}
               value={count}
               onChange={(e) => setCount(parseInt(e.target.value) || 1)}
               onBlur={() => handleCountSave(count)}
