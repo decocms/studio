@@ -180,6 +180,7 @@ export function SessionStats({
         <button
           type="button"
           onClick={onOpenContextPanel}
+          aria-label={`Context usage: ${pct.toFixed(0)}%${cost > 0 ? `, $${cost.toFixed(2)}` : ""}`}
           className={cn(
             "flex items-center gap-1.5 text-muted-foreground hover:text-foreground h-6 px-1 shrink-0",
             onOpenContextPanel ? "cursor-pointer" : "cursor-default",
@@ -214,7 +215,7 @@ export function SessionStats({
               )}
             />
           </svg>
-          <span className="text-[11px] font-mono tabular-nums">
+          <span className="hidden @[480px]/chat-bottom:inline text-[11px] font-mono tabular-nums">
             {pct.toFixed(0)}%{cost > 0 ? ` · $${cost.toFixed(2)}` : ""}
           </span>
         </button>
