@@ -1,5 +1,5 @@
 import { cn } from "@deco/ui/lib/utils.ts";
-import type { Todo } from "@/api/routes/decopilot/built-in-tools/todo-write";
+import type { Todo } from "@/harnesses/decopilot/built-in-tools/todo-write";
 import { useChatStream } from "../context";
 import { CollapsibleHighlight } from "./collapsible-highlight";
 import { deriveCurrentTodos } from "./derive-current-todos";

@@ -26,7 +26,7 @@ import {
   MAX_RESULT_TOKENS,
   createOutputPreview,
   estimateJsonTokens,
-} from "./built-in-tools/read-tool-output";
+} from "../../../harnesses/decopilot/built-in-tools/read-tool-output";
 
 /**
  * Tool approval levels determine which tools require user approval before executing

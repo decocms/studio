@@ -31,6 +31,12 @@ export const DEFAULT_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> =
       "claude-code:opus",
       "claude-code:haiku",
     ],
+    codex: [
+      "codex:gpt-5.5",
+      "codex:gpt-5.4",
+      "codex:gpt-5.3-codex",
+      "codex:gpt-5.2",
+    ],
   };
 
 /**
@@ -48,6 +54,7 @@ export const FAST_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> = {
   deco: ["qwen/qwen3.5-flash", "anthropic/claude-haiku"],
   google: ["gemini-2.5-flash", "gemini-3-flash"],
   "claude-code": ["claude-code:haiku", "claude-code:sonnet"],
+  codex: ["codex:gpt-5.4-mini", "codex:gpt-5.4"],
 };
 
 /**
@@ -78,6 +85,7 @@ export const SMART_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> = {
   ],
   google: ["gemini-3-pro", "gemini-3-flash"],
   "claude-code": ["claude-code:sonnet"],
+  codex: ["codex:gpt-5.4", "codex:gpt-5.3-codex", "codex:gpt-5.5"],
 };
 
 /**
@@ -100,6 +108,7 @@ export const THINKING_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> =
     ],
     google: ["gemini-3-pro"],
     "claude-code": ["claude-code:opus", "claude-code:sonnet"],
+    codex: ["codex:gpt-5.5", "codex:gpt-5.4", "codex:gpt-5.3-codex"],
   };
 
 /**

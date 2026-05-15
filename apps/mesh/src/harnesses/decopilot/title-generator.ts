@@ -7,7 +7,7 @@
 import type { LanguageModelV3 } from "@ai-sdk/provider";
 import { generateText } from "ai";
 
-import { TITLE_GENERATOR_PROMPT } from "./constants";
+import { TITLE_GENERATOR_PROMPT } from "../../api/routes/decopilot/constants";
 
 /**
  * Generate a short title for the conversation in the background.

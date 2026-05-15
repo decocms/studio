@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { createContext, useContext, useEffect, useState } from "react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { useTasks } from "@/web/components/chat/task/use-task-manager";
+import { useThreads } from "@/web/components/chat/task";
 import { resolveTasksOpen } from "@/web/hooks/use-layout-state";
 
 interface TasksPanelState {
@@ -26,12 +26,15 @@ export function TasksPanelStateProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { tasks?: number };
   const params = useParams({ strict: false }) as { taskId?: string };
-  const { tasks } = useTasks({ owner: "all", status: "open" });
+  const { threads } = useThreads("org", "open");
 
   // Auto-open based on task count only when on a task route; on home the
   // panel starts closed (user opens it via the toggle button).
   const [tasksOpen, setTasksOpen] = useState<boolean>(() =>
-    resolveTasksOpen(search.tasks, Boolean(params.taskId) && tasks.length > 0),
+    resolveTasksOpen(
+      search.tasks,
+      Boolean(params.taskId) && threads.length > 0,
+    ),
   );
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect

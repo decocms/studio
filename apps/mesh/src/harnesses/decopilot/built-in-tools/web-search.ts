@@ -23,9 +23,9 @@ import {
 } from "@/ai-providers/types";
 import type { MeshContext } from "@/core/mesh-context";
 import { sanitizeProviderMetadata } from "@decocms/mesh-sdk";
-import type { ModelInfo } from "../types";
+import type { ModelInfo } from "../../../api/routes/decopilot/types";
 import { createOutputPreview } from "./read-tool-output";
-import { toMeshStorageUri } from "../mesh-storage-uri";
+import { toMeshStorageUri } from "../../../api/routes/decopilot/mesh-storage-uri";
 import { LARGE_RESULT_TOKEN_THRESHOLD } from "./constants";
 
 const WebSearchInputSchema = z.object({
