@@ -2,11 +2,11 @@ import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import {
-  ArrowRight,
   Edit05,
   FilterLines,
   User02,
   Users03,
+  XClose,
 } from "@untitledui/icons";
 import {
   DropdownMenu,
@@ -16,85 +16,22 @@ import {
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
+import { toast } from "sonner";
 import type { Task } from "@/web/components/chat/task/types";
 import { TaskRow } from "./task-row";
 import { track } from "@/web/lib/posthog-client";
 import { useHomeBoard } from "@/web/components/home/tiles/use-home-board";
-import { startPresetTask } from "@/web/components/home/tiles/start-preset-task";
-import type { PresetTileType } from "@/web/components/home/tiles/registry";
+import {
+  PRESET_DEFAULT_SIZE,
+  type PresetTileType,
+} from "@/web/components/home/tiles/registry";
+import { SIZE_PRESETS } from "@/web/components/home/tiles/constants";
 import { ImportFromDecoDialog } from "@/web/components/import-from-deco-dialog.tsx";
+import { usePresetTasks, type VisiblePresetTask } from "./use-preset-tasks";
 
 type FilterOption = "all" | "manual" | "automation";
 type MemberFilter = "all" | "mine";
 type SectionMode = "list" | "new";
-
-interface PresetCard {
-  id: string;
-  title: string;
-  /** Path to the Figma-exported PNG used as the colored thumbnail. */
-  thumb: string;
-  /** Step number (1, 2, 3) for the guided-flow presets — drawn as a
-   *  small numbered badge on the thumbnail. Null for the cards that
-   *  aren't part of the brand→site→monitoring flow. */
-  step: number | null;
-  /** Onclick behavior. "new-chat" opens an empty chat; preset starts a
-   *  prefilled chat and pins the matching home tile; "import-deco"
-   *  opens the import dialog. */
-  action:
-    | "new-chat"
-    | "import-deco"
-    | { tileType: PresetTileType; prompt: string };
-}
-
-const PRESET_CARDS: PresetCard[] = [
-  {
-    id: "new-chat",
-    title: "New chat",
-    thumb: "/home/task-new-chat.svg",
-    step: null,
-    action: "new-chat",
-  },
-  {
-    id: "brand-context",
-    title: "Extract brand context",
-    thumb: "/home/task-brand.svg",
-    step: 1,
-    action: {
-      tileType: "studio.brand-context",
-      prompt:
-        "Extract my brand context — pull the colors, typography, and tone of voice from my site so we can reuse them across new work.",
-    },
-  },
-  {
-    id: "landing-page",
-    title: "Create landing page",
-    thumb: "/home/task-landing.svg",
-    step: 2,
-    action: {
-      tileType: "studio.landing-page",
-      prompt:
-        "Draft a landing page for my product using my existing brand. Start with a hero, three feature sections, social proof, and a CTA.",
-    },
-  },
-  {
-    id: "error-monitoring",
-    title: "Set up error monitoring",
-    thumb: "/home/task-monitoring.svg",
-    step: 3,
-    action: {
-      tileType: "studio.error-monitoring",
-      prompt:
-        "Help me set up error monitoring for my app. Walk me through connecting the stack and start capturing errors.",
-    },
-  },
-  {
-    id: "import-deco",
-    title: "Import Deco site",
-    thumb: "/home/task-import-deco.svg",
-    step: null,
-    action: "import-deco",
-  },
-];
 
 const FILTER_LABELS: Record<FilterOption, string> = {
   all: "All tasks",
@@ -106,6 +43,10 @@ const MEMBER_FILTER_LABELS: Record<MemberFilter, string> = {
   all: "All members",
   mine: "Mine only",
 };
+
+function newTileId(): string {
+  return `tile_${Math.random().toString(36).slice(2, 10)}`;
+}
 
 export function TasksSection({
   title,
@@ -131,8 +72,20 @@ export function TasksSection({
   currentUserId?: string;
 }) {
   const navigate = useNavigate();
-  const { org, locator } = useProjectContext();
+  const { org } = useProjectContext();
   const { addTile } = useHomeBoard(org.slug);
+  const {
+    isLoading: isLoadingPresetTasks,
+    tasks: visiblePresetTasks,
+    dismiss: dismissPresetTask,
+    startPreset,
+  } = usePresetTasks(org.slug);
+  // The BE returns every applicable card; dismissed cards stay in the list
+  // with status: "dismissed" until the next refetch — drop them here so
+  // the row disappears immediately on the optimistic dismiss.
+  const visibleCards = visiblePresetTasks.filter(
+    (t) => t.state?.status !== "dismissed",
+  );
   const [filter, setFilter] = useState<FilterOption>("all");
   const [memberFilter, setMemberFilter] = useState<MemberFilter>("mine");
   // Default per-route: home (no active task) opens the preset cards;
@@ -153,6 +106,7 @@ export function TasksSection({
     setOverride({ mode: resolved, forTask: activeTaskId });
   };
   const [importOpen, setImportOpen] = useState(false);
+  const [startingPresetId, setStartingPresetId] = useState<string | null>(null);
 
   const memberFiltered =
     memberFilter === "mine" && currentUserId
@@ -166,26 +120,51 @@ export function TasksSection({
         ? memberFiltered.filter((t) => !t.fromAutomation)
         : memberFiltered;
 
-  const handleCardClick = (card: PresetCard) => {
+  function pinPresetTile(
+    tileType: PresetTileType,
+    taskId: string,
+    virtualMcpId: string,
+  ) {
+    const size = SIZE_PRESETS[PRESET_DEFAULT_SIZE];
+    addTile({
+      id: newTileId(),
+      type: tileType,
+      w: size.w,
+      h: size.h,
+      config: { taskId, virtualMcpId, status: "running" },
+    });
+  }
+
+  async function handleCardClick(card: VisiblePresetTask) {
     track("tasks_panel_preset_clicked", { preset_id: card.id });
-    if (card.action === "new-chat") {
-      if (onNew) onNew();
+    if (card.action.kind === "new-chat") {
+      onNew?.();
       return;
     }
-    if (card.action === "import-deco") {
+    if (card.action.kind === "import-deco") {
       setImportOpen(true);
       return;
     }
-    startPresetTask({
-      prompt: card.action.prompt,
-      orgId: org.id,
-      orgSlug: org.slug,
-      locator,
-      navigate,
-      tileType: card.action.tileType,
-      addTile,
-    });
-  };
+    // kind === "preset": BE creates the task + seeds the first message +
+    // starts the agent stream. FE just pins the tile and navigates; the
+    // chat page attaches to the running stream via SSE on mount.
+    if (startingPresetId) return;
+    setStartingPresetId(card.id);
+    try {
+      const { taskId, tileType, virtualMcpId } = await startPreset(card.id);
+      if (tileType) pinPresetTile(tileType, taskId, virtualMcpId);
+      navigate({
+        to: "/$org/$taskId",
+        params: { org: org.slug, taskId },
+        search: { virtualmcpid: virtualMcpId },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to start";
+      toast.error(`Couldn't start "${card.display.title}": ${message}`);
+    } finally {
+      setStartingPresetId(null);
+    }
+  }
 
   return (
     <div className="flex flex-col h-full min-h-0 mt-1">
@@ -283,43 +262,91 @@ export function TasksSection({
       <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-0.5">
         {mode === "new" ? (
           <div className="flex flex-col gap-2 pt-1 px-1">
-            {PRESET_CARDS.map((card) => (
-              <button
-                key={card.id}
-                type="button"
-                onClick={() => handleCardClick(card)}
-                className={cn(
-                  "group/row flex w-full items-center gap-3.5 rounded-xl border border-border bg-background px-2.5 py-2 text-left transition-colors",
-                  "hover:border-border hover:bg-accent/40 cursor-pointer",
-                )}
-              >
-                <div className="relative shrink-0">
-                  <img
-                    src={card.thumb}
-                    alt=""
-                    aria-hidden
-                    className="h-11 w-16 rounded-md object-cover"
-                  />
-                  {card.step !== null && (
-                    <span
-                      className="absolute -bottom-1 -right-1 flex size-[18px] items-center justify-center rounded-md border border-border bg-background text-[11px] font-semibold leading-none text-foreground"
-                      aria-hidden
+            {isLoadingPresetTasks
+              ? Array.from({ length: 5 }, (_, i) => (
+                  <div
+                    key={`preset-skeleton-${i}`}
+                    className="flex w-full items-center gap-3.5 rounded-xl border border-border bg-background px-2.5 py-2"
+                  >
+                    <div className="h-11 w-16 shrink-0 animate-pulse rounded-md bg-muted" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-3 w-2/3 animate-pulse rounded bg-muted" />
+                    </div>
+                  </div>
+                ))
+              : visibleCards.map((card) => {
+                  const isStarting = startingPresetId === card.id;
+                  return (
+                    // Outer is a div, not a button, so the dismiss `<button>`
+                    // can sit inside (no nested-button HTML). Card click +
+                    // keyboard activation are wired manually.
+                    <div
+                      key={card.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-busy={isStarting}
+                      aria-disabled={isStarting}
+                      onClick={() => {
+                        if (isStarting) return;
+                        handleCardClick(card);
+                      }}
+                      onKeyDown={(e) => {
+                        if (isStarting) return;
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          handleCardClick(card);
+                        }
+                      }}
+                      className={cn(
+                        "group/row flex w-full cursor-pointer items-center gap-3.5 rounded-xl border border-border bg-background px-2.5 py-2 text-left transition-colors",
+                        "hover:border-border hover:bg-accent/40",
+                        "outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        isStarting && "opacity-60 cursor-progress",
+                      )}
                     >
-                      {card.step}
-                    </span>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0 text-sm font-medium text-foreground truncate">
-                  {card.title}
-                </div>
-                <span className="flex shrink-0 items-center justify-center px-1.5">
-                  <ArrowRight
-                    size={14}
-                    className="text-muted-foreground opacity-0 transition-all group-hover/row:opacity-100 group-hover/row:translate-x-0.5"
-                  />
-                </span>
-              </button>
-            ))}
+                      <div className="relative shrink-0">
+                        <img
+                          src={card.display.thumb}
+                          alt=""
+                          aria-hidden
+                          className="h-11 w-16 rounded-md object-cover"
+                        />
+                        {card.display.step !== null && (
+                          <span
+                            className="absolute -bottom-1 -right-1 flex size-[18px] items-center justify-center rounded-md border border-border bg-background text-[11px] font-semibold leading-none text-foreground"
+                            aria-hidden
+                          >
+                            {card.display.step}
+                          </span>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+                        {card.display.title}
+                      </div>
+                      {card.dismissible && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            track("tasks_panel_preset_dismissed", {
+                              preset_id: card.id,
+                            });
+                            dismissPresetTask(card.id);
+                          }}
+                          aria-label={`Dismiss ${card.display.title}`}
+                          className={cn(
+                            "flex size-6 shrink-0 items-center justify-center rounded-md",
+                            "text-muted-foreground/70 opacity-0 transition-opacity duration-150",
+                            "group-hover/row:opacity-100",
+                            "hover:bg-muted hover:text-foreground",
+                          )}
+                        >
+                          <XClose size={14} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
           </div>
         ) : visibleTasks.length === 0 && emptyLabel ? (
           <div className="px-2 py-1.5 text-xs text-muted-foreground/70">

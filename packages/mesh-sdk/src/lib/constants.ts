@@ -251,6 +251,84 @@ export function getDecopilotId(organizationId: string): string {
 }
 
 /**
+ * Brand-Context Setup agent ID prefix.
+ *
+ * Well-known guided-onboarding agent for the brand-context preset task.
+ * Mirrors the Decopilot/Site-Diagnostics pattern: no DB row, resolved
+ * in-memory via the prefix check. The agent carries a curated system
+ * prompt as its `metadata.instructions`; the matching AI-SDK built-in
+ * tool (`brand_context_setup`) is injected by `dispatchRun` when it
+ * sees this agent id.
+ */
+const BRAND_CONTEXT_SETUP_PREFIX = "brand-context-setup_";
+
+/**
+ * Check if a connection or virtual MCP ID is the Brand-Context Setup agent.
+ *
+ * @param id - Connection or virtual MCP ID to check
+ * @returns The organization ID if the ID matches the pattern, null otherwise
+ */
+export function isBrandContextSetup(
+  id: string | null | undefined,
+): string | null {
+  if (!id) return null;
+  if (!id.startsWith(BRAND_CONTEXT_SETUP_PREFIX)) return null;
+  return id.slice(BRAND_CONTEXT_SETUP_PREFIX.length) || null;
+}
+
+/**
+ * Get the Brand-Context Setup agent ID for a given organization.
+ */
+export function getBrandContextSetupId(organizationId: string): string {
+  return `${BRAND_CONTEXT_SETUP_PREFIX}${organizationId}`;
+}
+
+/**
+ * System prompt for the Brand-Context Setup agent. Lives on the agent
+ * (not on the thread or in the preset route) so it survives every turn
+ * — `dispatchRun` reads it through `passthroughClient.getInstructions()`
+ * the same way it reads the Decopilot agent's prompt.
+ */
+const BRAND_CONTEXT_SETUP_INSTRUCTIONS = `
+You are running the brand-context onboarding for the user's organization. Your only job in this thread is to set up the organization's brand context:
+
+1. If the user hasn't already given you a website URL, ask for it in one short message. Accept whatever URL they give — don't quibble about format.
+2. As soon as you have a URL, call the \`brand_context_setup\` tool exactly once with that URL.
+3. After the tool returns success, briefly confirm to the user what was captured (brand name + domain) in one or two sentences. Do not list every color or font.
+4. Do NOT call any other tools in this thread. Do NOT call \`brand_context_setup\` more than once.
+
+If the tool returns an error, surface the error message to the user and ask whether they want to try a different URL.
+`.trim();
+
+/**
+ * Get the well-known Brand-Context Setup Virtual MCP entity.
+ *
+ * Connections is `[]` (no aggregated tools) — this is a guided flow that
+ * relies entirely on the `brand_context_setup` built-in injected by
+ * `dispatchRun`. The system prompt lives in `metadata.instructions`.
+ */
+export function getWellKnownBrandContextSetupVirtualMCP(
+  organizationId: string,
+): VirtualMCPEntity {
+  return {
+    id: getBrandContextSetupId(organizationId),
+    organization_id: organizationId,
+    title: "Brand context setup",
+    description:
+      "Guided onboarding agent that extracts brand context from a website URL.",
+    icon: "https://assets.decocache.com/decocms/fd07a578-6b1c-40f1-bc05-88a3b981695d/f7fc4ffa81aec04e37ae670c3cd4936643a7b269.png",
+    status: "active",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    created_by: "system",
+    updated_by: undefined,
+    metadata: { instructions: BRAND_CONTEXT_SETUP_INSTRUCTIONS },
+    pinned: false,
+    connections: [],
+  };
+}
+
+/**
  * Site Diagnostics agent ID prefix
  */
 const SITE_DIAGNOSTICS_PREFIX = "site-diagnostics_";

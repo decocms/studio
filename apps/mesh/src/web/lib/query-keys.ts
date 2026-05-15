@@ -82,6 +82,9 @@ export const KEYS = {
   // Models list (scoped by organization)
   modelsList: (orgId: string) => ["models-list", orgId] as const,
 
+  // Preset task panel (visible cards + per-card state, scoped by org)
+  presetTasks: (orgSlug: string) => ["preset-tasks", orgSlug] as const,
+
   // Allowed models for current user (scoped by organization)
   allowedModels: (locator: ProjectLocator) =>
     [locator, "allowed-models"] as const,

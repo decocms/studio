@@ -202,6 +202,7 @@ const createMockContext = (
       registry: null as never,
       brandContext: null as never,
       organizationDomains: null as never,
+      presetTasks: null as never,
     },
     vault: null as never,
     authInstance: authInstance as unknown as BetterAuthInstance,

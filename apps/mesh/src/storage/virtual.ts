@@ -13,7 +13,9 @@
 import type { Kysely } from "kysely";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import {
+  getWellKnownBrandContextSetupVirtualMCP,
   getWellKnownDecopilotVirtualMCP,
+  isBrandContextSetup,
   isDecopilot,
 } from "@decocms/mesh-sdk";
 import type {
@@ -139,6 +141,19 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       const resolvedOrgId = organizationId ?? decopilotOrgId;
       return {
         ...getWellKnownDecopilotVirtualMCP(resolvedOrgId),
+        pinned: false,
+        connections: [],
+      };
+    }
+
+    // Well-known guided-onboarding agent for the brand-context preset.
+    // System prompt lives in `metadata.instructions`; the matching
+    // built-in tool is injected by dispatchRun based on this id.
+    const bcsOrgId = isBrandContextSetup(id);
+    if (bcsOrgId) {
+      const resolvedOrgId = organizationId ?? bcsOrgId;
+      return {
+        ...getWellKnownBrandContextSetupVirtualMCP(resolvedOrgId),
         pinned: false,
         connections: [],
       };

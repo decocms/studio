@@ -1,7 +1,12 @@
 import { Hono } from "hono";
 import type { MiddlewareHandler } from "hono";
 import type { AutomationEventDispatcher } from "@/automations/automation-event-dispatcher";
+import type { CancelBroadcast } from "@/api/routes/decopilot/cancel-broadcast";
+import type { RunRegistry } from "@/api/routes/decopilot/run-registry";
+import type { StreamBuffer } from "@/api/routes/decopilot/stream-buffer";
+import type { PresetTaskRegistry } from "@/preset-tasks";
 import type { KVStorage } from "@/storage/kv";
+import type { PresetTaskStore } from "@/storage/preset-tasks";
 import type { TriggerCallbackTokenStorage } from "@/storage/trigger-callback-tokens";
 import { resolveOrgFromPath } from "../middleware/resolve-org-from-path";
 import type { Env } from "../hono-env";
@@ -12,6 +17,7 @@ import { createDownstreamTokenRoutes } from "./downstream-token";
 import { createKVRoutes } from "./kv";
 import { createOrgScopedWellKnownProtectedResourceRoutes } from "./oauth-proxy";
 import { createSsoRoutes } from "./org-sso";
+import { createPresetTaskRoutes } from "./preset-tasks";
 import { createProxyRoutes } from "./proxy";
 import { createSelfRoutes } from "./self";
 import { createThreadOutputsRoutes } from "./thread-outputs";
@@ -23,6 +29,19 @@ import { createVmSetupRoutes } from "./vm-setup";
 
 interface OrgScopedDeps {
   kvStorage: KVStorage;
+  presetTaskStore: PresetTaskStore;
+  presetTaskRegistry: PresetTaskRegistry;
+  /**
+   * Decopilot dispatch primitives — required by the preset-task `/start`
+   * route, which kicks an agent run server-side and returns the taskId
+   * for the FE to navigate to. The same trio is wired into
+   * `createDecopilotRoutes` in app.ts; threading them through here lets
+   * server-initiated runs share the JetStream pump + cancel reactor +
+   * run registry the chat path uses.
+   */
+  runRegistry: RunRegistry;
+  streamBuffer: StreamBuffer;
+  cancelBroadcast: CancelBroadcast;
   tokenStorage: TriggerCallbackTokenStorage;
   automationEventDispatcher: AutomationEventDispatcher;
   /** Whether dev-only routes should be mounted (no S3 → DevObjectStorage). */
@@ -64,6 +83,16 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.route("/", createDownstreamTokenRoutes()); // /api/:org/connections/:connectionId/oauth-token
   app.route("/", createThreadOutputsRoutes()); // /api/:org/threads/:threadId/outputs
   app.route("/", createKVRoutes({ kvStorage: deps.kvStorage }));
+  app.route(
+    "/",
+    createPresetTaskRoutes({
+      store: deps.presetTaskStore,
+      registry: deps.presetTaskRegistry,
+      runRegistry: deps.runRegistry,
+      streamBuffer: deps.streamBuffer,
+      cancelBroadcast: deps.cancelBroadcast,
+    }),
+  );
   app.route("/vm-events", createVmEventsRoutes()); // /api/:org/vm-events
   app.route("/vm-exec", createVmExecRoutes()); // /api/:org/vm-exec/{exec,kill}/:script
   app.route("/vm-setup", createVmSetupRoutes()); // /api/:org/vm-setup/:step

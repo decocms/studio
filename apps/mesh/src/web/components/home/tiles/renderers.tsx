@@ -38,11 +38,19 @@ function readTaskId(
   return typeof v === "string" && v.length > 0 ? v : null;
 }
 
+function readVirtualMcpId(
+  config: Record<string, unknown> | undefined,
+): string | null {
+  const v = config?.virtualMcpId;
+  return typeof v === "string" && v.length > 0 ? v : null;
+}
+
 function TileFrame({
   templateId,
   title,
   subtitle,
   taskId,
+  virtualMcpId,
   isEditMode,
   children,
 }: {
@@ -50,6 +58,14 @@ function TileFrame({
   title: string;
   subtitle: string;
   taskId: string | null;
+  /**
+   * Pinned agent for this tile's thread. Forwarded as `?virtualmcpid=` on
+   * click so the chat-context picks up the right agent instead of falling
+   * back to Decopilot — the BE also re-resolves the agent from
+   * `thread.virtual_mcp_id` as a safety net, but passing it keeps the URL
+   * honest and avoids one round-trip of "wrong-agent" UI rendering.
+   */
+  virtualMcpId: string | null;
   isEditMode: boolean;
   children: React.ReactNode;
 }) {
@@ -67,6 +83,7 @@ function TileFrame({
               navigate({
                 to: "/$org/$taskId",
                 params: { org: org.slug, taskId },
+                search: virtualMcpId ? { virtualmcpid: virtualMcpId } : {},
               })
           : undefined
       }
@@ -119,6 +136,7 @@ export function BrandContextTile({ instance, isEditMode }: TileRenderProps) {
       title="Brand context"
       subtitle={subtitle}
       taskId={readTaskId(instance.config)}
+      virtualMcpId={readVirtualMcpId(instance.config)}
       isEditMode={isEditMode}
     >
       {status === "running" ? (
@@ -155,6 +173,7 @@ export function LandingPageTile({ instance, isEditMode }: TileRenderProps) {
       title="Landing page"
       subtitle={subtitle}
       taskId={readTaskId(instance.config)}
+      virtualMcpId={readVirtualMcpId(instance.config)}
       isEditMode={isEditMode}
     >
       {status === "running" ? (
@@ -186,6 +205,7 @@ export function ErrorMonitoringTile({ instance, isEditMode }: TileRenderProps) {
       title="System health"
       subtitle={subtitle}
       taskId={readTaskId(instance.config)}
+      virtualMcpId={readVirtualMcpId(instance.config)}
       isEditMode={isEditMode}
     >
       {status === "running" ? (

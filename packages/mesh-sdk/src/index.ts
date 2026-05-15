@@ -221,6 +221,10 @@ export {
   // Site Diagnostics utilities
   isSiteDiagnostics,
   getSiteDiagnosticsId,
+  // Brand-Context Setup utilities
+  isBrandContextSetup,
+  getBrandContextSetupId,
+  getWellKnownBrandContextSetupVirtualMCP,
   // Studio Pack utilities
   StudioPackAgentId,
   isStudioPackAgent,

@@ -24,9 +24,11 @@ import { monitorLlmCall } from "@/monitoring/emit-llm-call";
 import { recordLlmCallMetrics } from "@/monitoring/record-llm-call-metrics";
 import {
   type GithubRepo,
+  isBrandContextSetup,
   isDecopilot,
   sanitizeProviderMetadata,
 } from "@decocms/mesh-sdk";
+import { createBrandContextSetupTool } from "./built-in-tools/brand-context-setup";
 import { SpanStatusCode } from "@opentelemetry/api";
 import {
   type ToolSet,
@@ -358,7 +360,7 @@ async function prepareRun(
     }
 
     // 2. Load entities and create/load memory in parallel
-    const [virtualMcp, provider, mem] = await Promise.all([
+    let [virtualMcp, provider, mem] = await Promise.all([
       ctx.storage.virtualMcps.findById(input.agent.id, input.organizationId),
       isCliAgent
         ? Promise.resolve(null)
@@ -373,6 +375,26 @@ async function prepareRun(
         defaultWindowSize: windowSize,
       }),
     ]);
+
+    // Thread's pinned virtual_mcp_id is authoritative — overrides whatever
+    // the FE supplied as `agent.id`. The FE param can drift from the
+    // thread (e.g. URL search param gets stripped on a tile-click nav and
+    // falls back to Decopilot); without this guard, a follow-up message
+    // on a pinned thread would route through the wrong agent + miss its
+    // built-in tools. Re-load `virtualMcp` if the pinned id differs.
+    if (
+      mem.thread.virtual_mcp_id &&
+      mem.thread.virtual_mcp_id !== input.agent.id
+    ) {
+      console.warn(
+        `[dispatchRun] agent.id "${input.agent.id}" differs from thread.virtual_mcp_id "${mem.thread.virtual_mcp_id}" — using thread's pinned agent (thread=${mem.thread.id})`,
+      );
+      input.agent = { ...input.agent, id: mem.thread.virtual_mcp_id };
+      virtualMcp = await ctx.storage.virtualMcps.findById(
+        mem.thread.virtual_mcp_id,
+        input.organizationId,
+      );
+    }
 
     // Diagnostic (resume only): record whether the provider activated and
     // whether the optional model slots are present. Paired with the log in
@@ -677,6 +699,18 @@ async function prepareRun(
               ctx,
             );
 
+        // Agent-id-driven built-in injection. Keyed off `input.agent.id`
+        // (i.e. the virtual MCP id) so it survives across turns: every
+        // dispatchRun for a thread pinned to the brand-context-setup
+        // agent re-injects the tool, regardless of which route fired it.
+        // Built here so its keys can be added to `activeToolNames` for
+        // every step — the progressive-disclosure path filters out tools
+        // not in the active list, even when they're in the `tools` record.
+        const agentProfileTools: ToolSet = isBrandContextSetup(input.agent.id)
+          ? { brand_context_setup: createBrandContextSetupTool(ctx) }
+          : {};
+        const agentProfileToolNames = Object.keys(agentProfileTools);
+
         // Progressive tool disclosure: enable_tool + prepareStep
         const passthroughToolNames = new Set(Object.keys(passthroughTools));
         const builtInToolNames = Object.keys(builtInTools);
@@ -750,6 +784,7 @@ async function prepareRun(
                     ),
                   }
                 : {}),
+              ...agentProfileTools,
             };
 
         // Build composable system prompt array
@@ -1105,6 +1140,7 @@ async function prepareRun(
                       const hasEnableTool = connectionsBlockTools.length > 0;
                       let activeToolNames = [
                         ...builtInToolNames,
+                        ...agentProfileToolNames,
                         ...(hasEnableTool ? ["enable_tool"] : []),
                         ...enabledTools,
                       ];
@@ -1113,9 +1149,11 @@ async function prepareRun(
                       // somehow got enabled (safety net for Layer 1 in enable_tool)
                       if (modeConfig.isPlanMode) {
                         activeToolNames = activeToolNames.filter((name) => {
-                          // Built-in tools and enable_tool are always allowed
+                          // Built-in tools, agent-profile tools, and enable_tool are
+                          // always allowed
                           if (
                             builtInToolNames.includes(name) ||
+                            agentProfileToolNames.includes(name) ||
                             (hasEnableTool && name === "enable_tool")
                           ) {
                             return true;

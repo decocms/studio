@@ -118,8 +118,12 @@ async function tryResolveTier(ctx: MeshContext, tier: SimpleModeTier) {
  * the org's tier slot is unset. Also resolves the "image" and "web_research"
  * tiers — when present they enable the generate_image and web_search
  * built-in tools (registration is conditional in built-in-tools/index.ts).
+ *
+ * Exported so server-initiated dispatch paths (e.g. preset-task /start)
+ * can compose a ModelsConfig the same way HTTP chat does, instead of
+ * duplicating the tier-resolution + tryResolve fallback logic.
  */
-async function resolvePerRequestModels(
+export async function resolvePerRequestModels(
   ctx: MeshContext,
   tier: SimpleModeTier | undefined,
 ): Promise<ModelsConfig> {

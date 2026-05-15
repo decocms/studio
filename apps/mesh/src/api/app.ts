@@ -115,8 +115,12 @@ import {
 } from "./routes/decopilot/run-config";
 import { getPodId } from "../core/pod-identity";
 import { NatsPodHeartbeat } from "../nats/pod-heartbeat";
+import { PresetTaskRegistry } from "../preset-tasks";
+import { setBrandContextWorkflowDeps } from "../preset-tasks/brand-context-workflow";
+import { PRESET_TASK_DEFINITIONS } from "../preset-tasks/definitions";
 import { createAutomationsStorage } from "../storage/automations";
 import { KyselyKVStorage } from "../storage/kv";
+import { PresetTaskStore } from "../storage/preset-tasks";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
 import { createAutomationContextFactory } from "./routes/decopilot/automation-context";
 
@@ -1595,6 +1599,20 @@ export async function createApp(options: CreateAppOptions = {}) {
   legacyKVRoutes.route("/", createKVRoutes({ kvStorage }));
   app.route("/api", legacyKVRoutes);
 
+  // Preset Tasks — typed wrapper over kvStorage + registry of definitions
+  // (visibility predicates, ids). Routes mounted under `/api/:org/preset-tasks`
+  // by createOrgScopedApi.
+  const presetTaskStore = new PresetTaskStore(kvStorage);
+  const presetTaskRegistry = new PresetTaskRegistry();
+  for (const def of PRESET_TASK_DEFINITIONS) {
+    presetTaskRegistry.register(def);
+  }
+
+  // Wire deps for the brand-context DBOS workflow. Safe to call before
+  // DBOS.launch() — just stashes a module-level pointer. The workflow body
+  // is registered at import time so recovery replay works after a crash.
+  setBrandContextWorkflowDeps({ presetTaskStore });
+
   // Public Events endpoint — legacy mount with deprecation log. New mount
   // lives at `POST /api/:org/events/:type` (registered via createOrgScopedApi).
   app.use("/org/:organizationId/events/:type", logDeprecatedRoute);
@@ -1693,6 +1711,11 @@ export async function createApp(options: CreateAppOptions = {}) {
   // PR removes them after the deprecation window.
   const orgScopedApi = createOrgScopedApi({
     kvStorage,
+    presetTaskStore,
+    presetTaskRegistry,
+    runRegistry,
+    streamBuffer,
+    cancelBroadcast,
     tokenStorage: triggerCallbackTokenStorage,
     automationEventDispatcher,
     mountDevAssets: usesLocalObjectStorage(),
