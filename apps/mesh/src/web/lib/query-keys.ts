@@ -14,29 +14,6 @@ export const KEYS = {
   // Auth-related queries
   session: () => ["session"] as const,
 
-  // Task queries (filters scope the cache entry)
-  // userId is included when owner is "me" to prevent cross-user cache pollution
-  tasks: (
-    locator: string,
-    filters: {
-      owner: "me" | "automation" | "all";
-      status: "open" | "archived";
-      virtualMcpId?: string;
-      userId?: string | null;
-      hasTrigger?: boolean | null;
-    },
-  ) =>
-    [
-      "tasks",
-      locator,
-      filters.owner,
-      filters.status,
-      filters.virtualMcpId ?? null,
-      filters.userId ?? null,
-      filters.hasTrigger ?? null,
-    ] as const,
-  // Prefix for broad invalidation of all task queries for a locator
-  tasksPrefix: (locator: string) => ["tasks", locator] as const,
   // Thread list queries — replaces the legacy `tasks` keys.
   // Scope: "org" for the global tasks panel, ("agent", virtualMcpId) for
   // agent-scoped chat sidebars. Filter dimensions (owner, hasTrigger,

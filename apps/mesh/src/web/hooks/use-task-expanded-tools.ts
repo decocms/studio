@@ -24,7 +24,7 @@ type ThreadGetItem = {
 type ThreadGetOutput = { item: ThreadGetItem };
 
 export function useTaskExpandedTools(taskId: string) {
-  const { org, locator } = useProjectContext();
+  const { org } = useProjectContext();
   const queryClient = useQueryClient();
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -80,7 +80,7 @@ export function useTaskExpandedTools(taskId: string) {
       return { previous };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: KEYS.tasksPrefix(locator) });
+      // Thread update will materialize from the next SSE event via ThreadEventsBridge
       queryClient.invalidateQueries({
         queryKey: KEYS.threadMetadata(taskId),
       });
