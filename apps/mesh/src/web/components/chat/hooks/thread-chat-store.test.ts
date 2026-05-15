@@ -1,6 +1,18 @@
 import { describe, expect, test, mock } from "bun:test";
-import type { UIMessage } from "ai";
+import type { UIMessage, UIMessageChunk } from "ai";
 import { ThreadChatStore } from "./thread-chat-store";
+
+const runChunks = async (
+  store: ThreadChatStore<UIMessage>,
+  chunks: UIMessageChunk[],
+) => {
+  for (const c of chunks) {
+    // @ts-expect-error — internal
+    store.handleChunk(c);
+  }
+  // Let readUIMessageStream's async iteration tick.
+  await new Promise<void>((r) => setTimeout(r, 0));
+};
 
 const makeStore = () =>
   new ThreadChatStore<UIMessage>({
@@ -170,5 +182,52 @@ describe("ThreadChatStore — chunk fan-out", () => {
     expect(onToolCall).toHaveBeenCalledWith({
       toolCall: { toolCallId: "c1", toolName: "myTool", input: { a: 1 } },
     });
+  });
+});
+
+describe("ThreadChatStore — sub-stream demuxer", () => {
+  test("opens sub-stream on first chunk, status becomes streaming", async () => {
+    const store = new ThreadChatStore<UIMessage>({
+      handlersRef: { current: { prepareBody: () => ({}) } },
+      fetchImpl: mock(() =>
+        Promise.resolve(new Response("", { status: 202 })),
+      ) as unknown as typeof fetch,
+      persistentLoop: () => new Promise(() => {}),
+    });
+    store.connect({ orgSlug: "a", threadId: "t" });
+    await runChunks(store, [
+      { type: "start", messageId: "m-1" },
+      { type: "text-start", id: "t-1" },
+      { type: "text-delta", id: "t-1", delta: "hello" },
+    ] as UIMessageChunk[]);
+    expect(store.getSnapshot().status).toBe("streaming");
+    expect(store.getSnapshot().streaming?.id).toBe("m-1");
+  });
+
+  test("promotes streaming message to local on finish chunk", async () => {
+    const onFinish = mock(() => {});
+    const store = new ThreadChatStore<UIMessage>({
+      handlersRef: { current: { prepareBody: () => ({}), onFinish } },
+      fetchImpl: mock(() =>
+        Promise.resolve(new Response("", { status: 202 })),
+      ) as unknown as typeof fetch,
+      persistentLoop: () => new Promise(() => {}),
+    });
+    store.connect({ orgSlug: "a", threadId: "t" });
+    await runChunks(store, [
+      { type: "start", messageId: "m-1" },
+      { type: "text-start", id: "t-1" },
+      { type: "text-delta", id: "t-1", delta: "hi" },
+      { type: "text-end", id: "t-1" },
+      { type: "finish", finishReason: "stop" },
+    ] as UIMessageChunk[]);
+    expect(store.getSnapshot().streaming).toBeNull();
+    expect(store.getSnapshot().status).toBe("ready");
+    expect(store.getSnapshot().local.map((m) => m.id)).toEqual(["m-1"]);
+    expect(onFinish).toHaveBeenCalledTimes(1);
+    const finishCall = (
+      onFinish.mock.calls as unknown as Array<[{ finishReason?: string }]>
+    )[0]!;
+    expect(finishCall[0]).toMatchObject({ finishReason: "stop" });
   });
 });

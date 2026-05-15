@@ -1,8 +1,9 @@
-import type {
-  ChatAddToolApproveResponseFunction,
-  ChatAddToolOutputFunction,
-  UIMessage,
-  UIMessageChunk,
+import {
+  type ChatAddToolApproveResponseFunction,
+  type ChatAddToolOutputFunction,
+  readUIMessageStream,
+  type UIMessage,
+  type UIMessageChunk,
 } from "ai";
 
 export type ChatStreamStatus = "ready" | "submitted" | "streaming" | "error";
@@ -67,6 +68,17 @@ export class ThreadChatStore<M extends UIMessage> {
   private connArgs: { orgSlug: string; threadId: string } | null = null;
   private abortCtl: AbortController | null = null;
   private inflightPostAbort: AbortController | null = null;
+  private demux: {
+    subController: ReadableStreamDefaultController<UIMessageChunk> | null;
+    pendingFinishReason: string | undefined;
+    discardOnClose: boolean;
+    pendingSseBackstops: number;
+  } = {
+    subController: null,
+    pendingFinishReason: undefined,
+    discardOnClose: false,
+    pendingSseBackstops: 0,
+  };
 
   constructor(options: ThreadChatStoreOptions<M>) {
     this.handlersRef = options.handlersRef;
@@ -127,7 +139,82 @@ export class ThreadChatStore<M extends UIMessage> {
     return streaming ? [...local, streaming] : local.slice();
   }
 
-  // @ts-ignore TS6133 — will be called in Task 9
+  private ensureSubStream(): ReadableStreamDefaultController<UIMessageChunk> {
+    if (this.demux.subController) return this.demux.subController;
+    this.demux.pendingFinishReason = undefined;
+    let controllerOut!: ReadableStreamDefaultController<UIMessageChunk>;
+    const sub = new ReadableStream<UIMessageChunk>({
+      start: (c) => {
+        controllerOut = c;
+      },
+    });
+    this.demux.subController = controllerOut;
+
+    void (async () => {
+      let last: M | null = null;
+      const seed = this.snapshot.streaming;
+      const iter = readUIMessageStream<M>({
+        message: seed ?? undefined,
+        stream: sub,
+        onError: (e) => {
+          const err = e instanceof Error ? e : new Error(String(e));
+          this.update({ error: err, status: "error" });
+          this.handlersRef.current.onError?.(err);
+        },
+      });
+      for await (const msg of iter) {
+        last = msg;
+        if (this.snapshot.status !== "streaming") {
+          this.update({ streaming: msg, status: "streaming" });
+        } else {
+          this.update({ streaming: msg });
+        }
+      }
+      const finishReason = this.demux.pendingFinishReason;
+      const discard = this.demux.discardOnClose;
+      this.demux.subController = null;
+      this.demux.pendingFinishReason = undefined;
+      this.demux.discardOnClose = false;
+
+      if (last && !discard) {
+        this.update({
+          local: [...this.snapshot.local, last],
+          streaming: null,
+          status: "ready",
+        });
+        this.handlersRef.current.onFinish?.({
+          message: last,
+          messages: this.snapshotAll(),
+          finishReason,
+          isAbort: false,
+          isDisconnect: false,
+          isError: false,
+        });
+      } else if (!discard) {
+        this.update({ status: "ready" });
+      }
+      this.maybeAutoSend();
+    })();
+    return controllerOut;
+  }
+
+  // @ts-ignore TS6133 — used by Tasks 6/9 (SSE backstop + reconnect/thread-switch discard).
+  private forceCloseSubStream(discard = false): void {
+    const ctrl = this.demux.subController;
+    if (!ctrl) return;
+    this.demux.discardOnClose = discard;
+    this.demux.subController = null;
+    try {
+      ctrl.close();
+    } catch {
+      /* readUIMessageStream finally handles promotion */
+    }
+  }
+
+  /** Auto-continuation placeholder — filled in Task 8. */
+  private maybeAutoSend(_metadata?: unknown): void {}
+
+  // @ts-ignore TS6133 — wired by runPersistentLoop in Task 9; called directly by tests.
   private handleChunk(chunk: UIMessageChunk): void {
     // Fan out side-effect callbacks before folding.
     if (chunk.type.startsWith("data-")) {
@@ -149,7 +236,15 @@ export class ThreadChatStore<M extends UIMessage> {
         },
       });
     }
-    // Folding into sub-stream is added in Task 5.
+    // Continuation seeding is added in Task 7.
+    const sub = this.ensureSubStream();
+    sub.enqueue(chunk);
+    if (chunk.type === "finish") {
+      const finishChunk = chunk as { finishReason?: string };
+      this.demux.pendingFinishReason = finishChunk.finishReason;
+      this.demux.pendingSseBackstops--;
+      sub.close();
+    }
   }
 
   // ── Public methods (stubs filled in later tasks) ────────────────────
