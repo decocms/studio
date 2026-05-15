@@ -64,6 +64,9 @@ export class ThreadChatStore<M extends UIMessage> {
   private readonly persistentLoop: PersistentLoopFn;
   private readonly fetchImpl: typeof fetch;
   private readonly sseFinishBackstopMs: number;
+  private connArgs: { orgSlug: string; threadId: string } | null = null;
+  private abortCtl: AbortController | null = null;
+  private inflightPostAbort: AbortController | null = null;
 
   constructor(options: ThreadChatStoreOptions<M>) {
     this.handlersRef = options.handlersRef;
@@ -72,9 +75,7 @@ export class ThreadChatStore<M extends UIMessage> {
     this.sseFinishBackstopMs = options.sseFinishBackstopMs ?? 1500;
     // Touch each field so TS doesn't flag them as unused in this scaffold —
     // real readers land in Tasks 2-9.
-    void this.handlersRef;
     void this.persistentLoop;
-    void this.fetchImpl;
     void this.sseFinishBackstopMs;
   }
 
@@ -100,31 +101,104 @@ export class ThreadChatStore<M extends UIMessage> {
     this.listeners.forEach((l) => l());
   }
 
+  private get apiBase(): string {
+    if (!this.connArgs) throw new Error("ThreadChatStore: not connected");
+    const { orgSlug, threadId } = this.connArgs;
+    return `/api/${encodeURIComponent(orgSlug)}/decopilot/threads/${encodeURIComponent(threadId)}`;
+  }
+
+  private async post(body: object, signal?: AbortSignal): Promise<void> {
+    const resp = await this.fetchImpl(`${this.apiBase}/messages`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      signal,
+    });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => "");
+      throw new Error(text || `POST /messages failed (${resp.status})`);
+    }
+  }
+
+  /** Composed view: local + streaming (used by handlers + auto-send). */
+  private snapshotAll(): M[] {
+    const { local, streaming } = this.snapshot;
+    return streaming ? [...local, streaming] : local.slice();
+  }
+
   // ── Public methods (stubs filled in later tasks) ────────────────────
-  connect(_args: { orgSlug: string; threadId: string }): void {
-    throw new Error("not implemented");
+  connect(args: { orgSlug: string; threadId: string }): void {
+    if (
+      this.connArgs &&
+      (this.connArgs.orgSlug !== args.orgSlug ||
+        this.connArgs.threadId !== args.threadId)
+    ) {
+      // Thread switch — reset state. Filled in Task 9 with sub-stream teardown.
+      this.snapshot = {
+        local: [],
+        streaming: null,
+        status: "ready",
+        error: null,
+      };
+      this.listeners.forEach((l) => l());
+    }
+    this.connArgs = args;
+    // SSE connection is opened in Task 9.
   }
+
   disconnect(): void {
-    throw new Error("not implemented");
+    this.abortCtl?.abort();
+    this.abortCtl = null;
+    this.connArgs = null;
   }
+
   notifySseFinish(): void {
     throw new Error("not implemented");
   }
-  async sendMessage(_m: M, _o?: { metadata?: unknown }): Promise<void> {
-    throw new Error("not implemented");
+
+  async sendMessage(message: M, opts?: { metadata?: unknown }): Promise<void> {
+    const tagged: Tagged<M> = { ...message, [LOCAL_MARKER]: true };
+    this.update({
+      local: [...this.snapshot.local, tagged],
+      status: "submitted",
+      error: null,
+    });
+
+    const body = this.handlersRef.current.prepareBody({
+      messages: this.snapshotAll(),
+      requestMetadata: opts?.metadata,
+    });
+
+    const abort = new AbortController();
+    this.inflightPostAbort = abort;
+    try {
+      await this.post(body, abort.signal);
+    } catch (err) {
+      const e = err instanceof Error ? err : new Error(String(err));
+      this.update({ error: e, status: "error" });
+      this.handlersRef.current.onError?.(e);
+    } finally {
+      if (this.inflightPostAbort === abort) this.inflightPostAbort = null;
+    }
   }
+
   stop(): void {
     throw new Error("not implemented");
   }
+
   setMessages(_server: M[], _updater: M[] | ((prev: M[]) => M[])): void {
     throw new Error("not implemented");
   }
+
   addToolOutput: ChatAddToolOutputFunction<M> = (() => {
     throw new Error("not implemented");
   }) as ChatAddToolOutputFunction<M>;
+
   addToolApprovalResponse: ChatAddToolApproveResponseFunction = () => {
     throw new Error("not implemented");
   };
+
   clearError(): void {
     if (this.snapshot.status === "error") {
       this.update({ error: null, status: "ready" });
