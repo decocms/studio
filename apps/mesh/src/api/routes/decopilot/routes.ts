@@ -300,9 +300,14 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       }
 
       const { abortSignal: _ignored, ...serializableRequest } = input;
+      // Coalesce empty/whitespace-only header values to undefined so the
+      // fallback to the message id still applies. Without this, a client
+      // that sets `X-Idempotency-Key:` with an empty value would be kept
+      // as `""` by `??`, fail the truthy check below, and silently get
+      // at-least-once semantics.
+      const headerKey = c.req.header("X-Idempotency-Key")?.trim() || undefined;
       const idempotencyKey =
-        c.req.header("X-Idempotency-Key") ??
-        input.messages[input.messages.length - 1]?.id;
+        headerKey ?? input.messages[input.messages.length - 1]?.id;
       const workflowID = idempotencyKey
         ? `thread-run:${taskId}:${idempotencyKey}`
         : undefined;
