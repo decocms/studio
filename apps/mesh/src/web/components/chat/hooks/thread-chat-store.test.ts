@@ -5,7 +5,9 @@ import { ThreadChatStore } from "./thread-chat-store";
 const makeStore = () =>
   new ThreadChatStore<UIMessage>({
     handlersRef: { current: { prepareBody: () => ({}) } },
-    fetchImpl: mock(() => Promise.resolve(new Response("", { status: 202 }))),
+    fetchImpl: mock(() =>
+      Promise.resolve(new Response("", { status: 202 })),
+    ) as unknown as typeof fetch,
     persistentLoop: () => new Promise<void>(() => {}), // never resolves
   });
 
@@ -25,7 +27,7 @@ describe("ThreadChatStore — snapshot/subscribe", () => {
     expect(store.getSnapshot()).toBe(store.getSnapshot());
   });
 
-  test("subscribe receives notification when state changes", () => {
+  test("subscribe is NOT notified when clearError is a no-op", () => {
     const store = makeStore();
     const listener = mock(() => {});
     const unsubscribe = store.subscribe(listener);

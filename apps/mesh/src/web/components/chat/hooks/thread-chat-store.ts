@@ -70,6 +70,12 @@ export class ThreadChatStore<M extends UIMessage> {
     this.persistentLoop = options.persistentLoop ?? runPersistentLoop;
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
     this.sseFinishBackstopMs = options.sseFinishBackstopMs ?? 1500;
+    // Touch each field so TS doesn't flag them as unused in this scaffold —
+    // real readers land in Tasks 2-9.
+    void this.handlersRef;
+    void this.persistentLoop;
+    void this.fetchImpl;
+    void this.sseFinishBackstopMs;
   }
 
   subscribe = (listener: () => void): (() => void) => {
@@ -110,7 +116,7 @@ export class ThreadChatStore<M extends UIMessage> {
   stop(): void {
     throw new Error("not implemented");
   }
-  setMessages(_s: M[], _u: M[] | ((prev: M[]) => M[])): void {
+  setMessages(_server: M[], _updater: M[] | ((prev: M[]) => M[])): void {
     throw new Error("not implemented");
   }
   addToolOutput: ChatAddToolOutputFunction<M> = (() => {
@@ -127,7 +133,9 @@ export class ThreadChatStore<M extends UIMessage> {
 }
 
 // Placeholder — full impl in Task 9.
-const runPersistentLoop: PersistentLoopFn = async () => {};
+const runPersistentLoop: PersistentLoopFn = () => {
+  throw new Error("runPersistentLoop: not implemented (Task 9)");
+};
 
 export type { Tagged };
 export { LOCAL_MARKER };
