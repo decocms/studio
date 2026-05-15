@@ -1289,10 +1289,11 @@ export async function createApp(options: CreateAppOptions = {}) {
 
     // Pod-death recovery: a different pod's run was claimed by us. Drain
     // synchronously to know when the run completes server-side. We
-    // deliberately don't pass a streamBuffer here — clients reconnecting
-    // via /attach trigger their own pump via the user-initiated
-    // orphan-resume path in routes.ts; this background recovery is only
-    // for the case where no client is currently attached.
+    // deliberately don't pass a streamBuffer here — this background
+    // recovery is the safety net for threads no DBOS replay or attached
+    // client picks up; clients reconnecting via /attach see the run via
+    // the workflow's own JetStream pump on the pod that DBOS replayed it
+    // onto.
     await dispatchRunAndWait(
       {
         messages: [],
@@ -1556,7 +1557,6 @@ export async function createApp(options: CreateAppOptions = {}) {
     cancelBroadcast,
     streamBuffer,
     runRegistry,
-    threadStorage,
   });
   app.route("/api", decopilotRoutes);
 

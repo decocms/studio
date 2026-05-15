@@ -1,20 +1,16 @@
 /**
  * Dispatch Run
  *
- * The agent loop, decoupled from any transport. Two public entry points:
- *
- *   dispatchRun(input, ctx, deps)
- *     Fire-and-forget. Claims the run, starts the JetStream pump, returns
- *     `{ taskId }`. Subscribers receive chunks via
- *     `streamBuffer.createTailStream(taskId)` (the `/attach` endpoint).
- *     Requires `deps.streamBuffer`. Used by every HTTP route that
- *     initiates work.
+ * The agent loop, decoupled from any transport.
  *
  *   dispatchRunAndWait(input, ctx, deps)
- *     Same lifecycle, but drains `uiStream` internally until the run
- *     terminates and resolves once it's done. Used by automation paths
- *     (DBOS workflow steps, pod-death recovery) that need to await
- *     completion. Does not require a `streamBuffer`.
+ *     Claims the run, drains `uiStream` internally until the run
+ *     terminates, and resolves once it's done. Used by every entry point
+ *     that initiates work (the per-thread DBOS workflow step that backs
+ *     POST /messages, automation fires, pod-death recovery). When a
+ *     `streamBuffer` is configured the run also pumps into JetStream so
+ *     `/attach` tails see chunks live; without one the run still
+ *     completes but its chunks are dropped.
  */
 
 import type { MeshContext } from "@/core/mesh-context";
@@ -209,44 +205,6 @@ function dispatchRunSpanAttrs(input: DispatchRunInput): Record<string, string> {
     "decopilot.user.id": input.userId,
     "decopilot.thread.id": input.taskId ?? "",
   };
-}
-
-/**
- * Fire-and-forget: claim the run, start the JetStream pump, return
- * `{ taskId }`. Subscribers receive chunks via
- * `streamBuffer.createTailStream` (the `/attach` endpoint). Requires
- * `deps.streamBuffer` to be configured; routes that need an SSE response
- * call `createTailStream` themselves after this returns.
- *
- * Used by every HTTP route that initiates work (`POST /messages`,
- * `/attach` orphan-resume, the deprecated `POST /stream`).
- */
-export async function dispatchRun(
-  input: DispatchRunInput,
-  ctx: MeshContext,
-  deps: DispatchRunDeps,
-): Promise<DispatchRunResult> {
-  const buffer = deps.streamBuffer;
-  if (!buffer) {
-    throw new Error(
-      "dispatchRun: deps.streamBuffer is required for HTTP-initiated runs. " +
-        "Use dispatchRunAndWait for automation flows that need to await completion.",
-    );
-  }
-  return traced(
-    "decopilot.dispatchRun",
-    async (rootSpan) => {
-      const { taskId, uiStream, registrySignal } = await prepareRun(
-        input,
-        ctx,
-        deps,
-        rootSpan,
-      );
-      buffer.pump(uiStream, taskId, registrySignal);
-      return { taskId };
-    },
-    dispatchRunSpanAttrs(input),
-  );
 }
 
 /**
@@ -1759,15 +1717,10 @@ async function prepareRun(
       },
     });
 
-    // Setup complete — hand the uiStream back to the dispatch variant.
-    // The caller (`dispatchRun` or `dispatchRunAndWait`) picks the
-    // consumption strategy:
-    //   - `dispatchRun` → `streamBuffer.pump(uiStream, taskId, registrySignal)`
-    //     fans the chunks out via JetStream so /attach subscribers can tail
-    //     them across runs and across tabs.
-    //   - `dispatchRunAndWait` → drains `uiStream` directly with a reader
-    //     loop and resolves when the run finishes. Used by automations
-    //     that need to await completion.
+    // Setup complete — hand the uiStream back to dispatchRunAndWait,
+    // which drains it with a reader loop and (when a streamBuffer is
+    // configured) also pumps the chunks into JetStream so /attach
+    // subscribers can tail them across runs and across tabs.
     return {
       taskId: mem.thread.id,
       uiStream,

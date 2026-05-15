@@ -2,10 +2,10 @@
  * NATS JetStream Stream Buffer
  *
  * The per-task JetStream subject is the source of truth for a run's UI
- * stream. The producer (`dispatchRun`) calls `pump()` once; tail consumers
- * (every HTTP response, including the initial `/stream`) call
- * `createTailStream()`. The pump is decoupled from any consumer, so an
- * HTTP cancel never stalls the producer or drops chunks.
+ * stream. The producer (`dispatchRunAndWait`) calls `pump()` once; tail
+ * consumers (every `/attach` HTTP response) call `createTailStream()`. The
+ * pump is decoupled from any consumer, so an HTTP cancel never stalls the
+ * producer or drops chunks.
  *
  * - Per-subject message limit (20K chunks per thread) prevents one thread
  *   from starving others.
