@@ -35,7 +35,7 @@ export function UnifiedAuthForm({
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [view, setView] = useState<FormView>(() => {
-    if (!emailAndPassword.enabled && emailOtp.enabled) {
+    if (emailOtp.enabled) {
       return "emailOtp";
     }
     const hasLoggedIn = globalThis.localStorage?.getItem("hasLoggedIn");
@@ -290,26 +290,40 @@ export function UnifiedAuthForm({
 
   const displayError = error || forgotPasswordError || otpError;
 
-  const headerText = isForgotPassword
+  const headerTitle = isForgotPassword
     ? "Reset your password"
-    : isEmailOtp
-      ? otpSent
-        ? "Enter verification code"
-        : "Sign in with email code"
-      : isSignUp
-        ? "Create your account"
-        : "Login or signup below";
+    : isEmailOtp && otpSent
+      ? "Enter verification code"
+      : "Welcome to deco";
+
+  const headerSubtitle = isForgotPassword
+    ? "We'll send you a reset link"
+    : isEmailOtp && otpSent
+      ? `Code sent to ${email}`
+      : "Sign in or create a new account";
 
   return (
-    <div className="mx-auto w-full min-h-full md:min-h-0 md:min-w-[400px] max-w-md grid gap-6 content-center bg-card p-6 md:p-10 border border-primary-foreground/20">
+    <div className="w-full grid gap-10">
       {/* Logo */}
-      <div className="flex justify-center">
-        <img src="/logos/deco logo.svg" alt="Deco" className="h-12 w-12" />
+      <div>
+        <img
+          src="/logos/deco logo.svg"
+          alt="Deco"
+          className="h-12 w-12 dark:hidden"
+        />
+        <img
+          src="/logos/deco logo negative.svg"
+          alt="Deco"
+          className="h-12 w-12 hidden dark:block"
+        />
       </div>
 
       {/* Header */}
-      <div className="text-center space-y-1">
-        <p className="text-sm text-foreground/70">{headerText}</p>
+      <div className="space-y-2">
+        <h1 className="text-2xl font-medium leading-8">{headerTitle}</h1>
+        <p className="text-base text-muted-foreground leading-6">
+          {headerSubtitle}
+        </p>
       </div>
 
       {/* Error message */}
@@ -327,45 +341,49 @@ export function UnifiedAuthForm({
       )}
 
       {/* Social Provider Buttons */}
-      {!isForgotPassword && socialProviders.enabled && (
-        <div className="grid gap-3">
-          {socialProviders.providers.map((provider) => (
-            <Button
-              key={provider.name}
-              type="button"
-              variant="outline"
-              size="lg"
-              className="w-full font-medium"
-              disabled={isLoading}
-              onClick={() => {
-                authClient.signIn.social({
-                  provider: provider.name,
-                  callbackURL: redirectUrl ?? callbackUrl,
-                });
-              }}
-            >
-              {provider.icon && (
-                <img
-                  src={provider.icon}
-                  alt=""
-                  className="h-5 w-5"
-                  aria-hidden="true"
-                />
-              )}
-              Continue with{" "}
-              {provider.name.charAt(0).toUpperCase() + provider.name.slice(1)}
-            </Button>
-          ))}
-        </div>
-      )}
+      {!isForgotPassword &&
+        !(isEmailOtp && otpSent) &&
+        socialProviders.enabled && (
+          <div className="grid gap-2">
+            {socialProviders.providers.map((provider) => (
+              <button
+                key={provider.name}
+                type="button"
+                disabled={isLoading}
+                onClick={() => {
+                  authClient.signIn.social({
+                    provider: provider.name,
+                    callbackURL: redirectUrl ?? callbackUrl,
+                  });
+                }}
+                className="flex h-12 w-full items-center justify-center gap-3 rounded-xl bg-background dark:bg-input/30 px-3 text-sm font-medium text-foreground card-shadow transition-colors hover:bg-accent hover:text-accent-foreground dark:hover:bg-input/50 disabled:opacity-50 disabled:pointer-events-none"
+              >
+                {provider.icon && (
+                  <img
+                    src={provider.icon}
+                    alt=""
+                    className={cn(
+                      "h-5 w-5",
+                      provider.name === "github" && "dark:invert",
+                    )}
+                    aria-hidden="true"
+                  />
+                )}
+                Continue with{" "}
+                {provider.name.charAt(0).toUpperCase() + provider.name.slice(1)}
+              </button>
+            ))}
+          </div>
+        )}
 
       {/* Divider between social and email-based auth */}
       {!isForgotPassword &&
+        !(isEmailOtp && otpSent) &&
         socialProviders.enabled &&
         (emailAndPassword.enabled || emailOtp.enabled) && (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5 -my-4">
             <div className="h-px flex-1 bg-border" />
-            <span className="text-xs text-muted-foreground">or</span>
+            <span className="text-base text-muted-foreground">or</span>
             <div className="h-px flex-1 bg-border" />
           </div>
         )}
@@ -374,45 +392,39 @@ export function UnifiedAuthForm({
       {isEmailOtp && emailOtp.enabled && (
         <>
           {!otpSent ? (
-            <form onSubmit={handleSendOtp} className="grid gap-4">
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
+            <form onSubmit={handleSendOtp} className="grid gap-2">
+              <div className="grid gap-2">
+                <label className="text-sm font-medium text-foreground">
                   Email
                 </label>
                 <Input
                   type="email"
-                  placeholder="you@example.com"
+                  placeholder="Email address"
                   value={email}
                   onChange={handleInputChange(setEmail)}
                   onBlur={handleEmailBlur}
                   required
                   disabled={isLoading}
                   aria-invalid={!!emailError}
+                  className="h-11 rounded-lg"
                 />
                 {emailError && (
-                  <p className="text-xs text-destructive mt-1.5">
-                    {emailError}
-                  </p>
+                  <p className="text-xs text-destructive">{emailError}</p>
                 )}
               </div>
 
-              <Button
+              <button
                 type="submit"
                 disabled={isLoading || !canSubmit}
-                className="w-full font-semibold"
-                size="lg"
+                className="flex h-12 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80 disabled:opacity-50 disabled:pointer-events-none"
               >
                 {isLoading ? "Sending..." : "Send code"}
-              </Button>
+              </button>
             </form>
           ) : (
-            <form onSubmit={handleVerifyOtp} className="grid gap-4">
-              <div className="rounded-xl bg-muted/50 p-3 text-sm text-muted-foreground text-center">
-                Code sent to {email}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
+            <form onSubmit={handleVerifyOtp} className="grid gap-2">
+              <div className="grid gap-2">
+                <label className="text-sm font-medium text-foreground">
                   Verification code
                 </label>
                 <Input
@@ -425,21 +437,20 @@ export function UnifiedAuthForm({
                   autoFocus
                   inputMode="numeric"
                   autoComplete="one-time-code"
+                  className="h-11 rounded-lg"
                 />
               </div>
 
-              <Button
+              <button
                 type="submit"
                 disabled={isLoading || !canSubmit}
-                className="w-full font-semibold"
-                size="lg"
+                className="flex h-12 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80 disabled:opacity-50 disabled:pointer-events-none"
               >
                 {isLoading ? "Verifying..." : "Verify"}
-              </Button>
+              </button>
 
-              <Button
+              <button
                 type="button"
-                variant="ghost"
                 onClick={() => {
                   setOtpSent(false);
                   setOtp("");
@@ -447,10 +458,10 @@ export function UnifiedAuthForm({
                   verifyOtpMutation.reset();
                 }}
                 disabled={isLoading}
-                className="text-sm text-muted-foreground hover:text-foreground"
+                className="mt-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
                 Use a different email
-              </Button>
+              </button>
             </form>
           )}
         </>
@@ -472,6 +483,7 @@ export function UnifiedAuthForm({
               required
               disabled={isLoading}
               aria-invalid={!!emailError}
+              className="h-11 rounded-lg"
             />
             {emailError && (
               <p className="text-xs text-destructive mt-1.5">{emailError}</p>
@@ -482,7 +494,7 @@ export function UnifiedAuthForm({
             type="submit"
             disabled={isLoading || !canSubmit}
             className="w-full font-semibold"
-            size="lg"
+            size="xl"
           >
             {isLoading ? "Sending..." : "Send reset link"}
           </Button>
@@ -491,16 +503,9 @@ export function UnifiedAuthForm({
 
       {/* Email & Password Form */}
       {!isForgotPassword && !isEmailOtp && emailAndPassword.enabled && (
-        <form onSubmit={handleEmailPassword} className="grid gap-4">
-          <div
-            className={cn(
-              "overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.075,0.82,0.165,1)]",
-              isSignUp
-                ? "max-h-[200px] opacity-100 translate-y-0"
-                : "max-h-0 opacity-0 -translate-y-2",
-            )}
-          >
-            <div className={cn("p-1", !isSignUp && "pointer-events-none")}>
+        <form onSubmit={handleEmailPassword} className="grid gap-5">
+          {isSignUp && (
+            <div>
               <label className="block text-sm font-medium text-foreground mb-2">
                 Name
               </label>
@@ -510,11 +515,11 @@ export function UnifiedAuthForm({
                 value={name}
                 onChange={handleInputChange(setName)}
                 required
-                disabled={isLoading || !isSignUp}
-                aria-hidden={!isSignUp}
+                disabled={isLoading}
+                className="h-11 rounded-lg"
               />
             </div>
-          </div>
+          )}
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">
               Email
@@ -528,6 +533,7 @@ export function UnifiedAuthForm({
               required
               disabled={isLoading}
               aria-invalid={!!emailError}
+              className="h-11 rounded-lg"
             />
             {emailError && (
               <p className="text-xs text-destructive mt-1.5">{emailError}</p>
@@ -555,6 +561,7 @@ export function UnifiedAuthForm({
               onChange={handleInputChange(setPassword)}
               required
               disabled={isLoading}
+              className="h-11 rounded-lg"
             />
           </div>
 
@@ -571,7 +578,7 @@ export function UnifiedAuthForm({
                 type="submit"
                 disabled={isLoading || !canSubmit}
                 className={cn("w-full font-semibold")}
-                size="lg"
+                size="xl"
                 aria-hidden={!canSubmit}
               >
                 {isLoading
@@ -585,84 +592,52 @@ export function UnifiedAuthForm({
         </form>
       )}
 
-      {/* Email OTP toggle - show when both email/password and OTP are available */}
-      {!isForgotPassword &&
-        emailOtp.enabled &&
-        emailAndPassword.enabled &&
-        !isEmailOtp && (
-          <div className="text-center">
-            <Button
-              type="button"
-              variant="link"
-              onClick={() => switchView("emailOtp")}
-              disabled={isLoading}
-              className="text-sm text-muted-foreground hover:text-foreground"
-            >
-              Sign in with email code instead
-            </Button>
-          </div>
-        )}
-
-      {/* Back to password sign-in from OTP view */}
-      {isEmailOtp && emailAndPassword.enabled && (
-        <div className="text-center">
-          <Button
-            type="button"
-            variant="link"
-            onClick={() => switchView("signIn")}
-            disabled={isLoading}
-            className="text-sm text-muted-foreground hover:text-foreground"
-          >
-            Sign in with password instead
-          </Button>
-        </div>
-      )}
-
       {/* View toggle links */}
-      <div className="text-center">
+      <div className="text-sm text-muted-foreground">
         {isForgotPassword ? (
-          <Button
+          <button
             type="button"
-            variant="link"
             onClick={() => switchView("signIn")}
             disabled={isLoading}
-            className="text-sm text-muted-foreground hover:text-foreground"
+            className="font-medium text-[#8CAA25] hover:underline disabled:opacity-50"
           >
             Back to sign in
-          </Button>
-        ) : !isEmailOtp && emailAndPassword.enabled ? (
-          <Button
+          </button>
+        ) : isEmailOtp && emailAndPassword.enabled ? (
+          <button
             type="button"
-            variant="link"
-            onClick={() => switchView(isSignUp ? "signIn" : "signUp")}
+            onClick={() => switchView("signIn")}
             disabled={isLoading}
-            className="text-sm text-muted-foreground hover:text-foreground"
+            className="font-medium text-[#8CAA25] hover:underline disabled:opacity-50"
           >
-            {isSignUp
-              ? "Already have an account? Sign in"
-              : "Don't have an account? Sign up"}
-          </Button>
+            Sign in with password instead
+          </button>
+        ) : !isEmailOtp && emailAndPassword.enabled ? (
+          <>
+            {isSignUp ? "Already have an account? " : "Don't have an account? "}
+            <button
+              type="button"
+              onClick={() => switchView(isSignUp ? "signIn" : "signUp")}
+              disabled={isLoading}
+              className="font-medium text-[#8CAA25] hover:underline disabled:opacity-50"
+            >
+              {isSignUp ? "Sign in" : "Sign up"}
+            </button>
+            {emailOtp.enabled && (
+              <>
+                <span className="mx-2">·</span>
+                <button
+                  type="button"
+                  onClick={() => switchView("emailOtp")}
+                  disabled={isLoading}
+                  className="font-medium text-[#8CAA25] hover:underline disabled:opacity-50"
+                >
+                  Sign in with email code
+                </button>
+              </>
+            )}
+          </>
         ) : null}
-      </div>
-
-      {/* Terms */}
-      <div className="flex justify-between text-xs text-muted-foreground pt-4">
-        <a
-          href="https://www.decocms.com/terms-of-use"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="hover:text-foreground transition-colors"
-        >
-          Terms of Service
-        </a>
-        <a
-          href="https://www.decocms.com/privacy-policy"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="hover:text-foreground transition-colors"
-        >
-          Privacy Policy
-        </a>
       </div>
     </div>
   );
