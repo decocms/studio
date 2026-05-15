@@ -36,6 +36,7 @@ import { PersistedRunConfigSchema, toModelsConfig } from "./run-config";
 import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage, ModelsConfig } from "./types";
 import { dispatchRun, type DispatchRunInput } from "./dispatch-run";
+import { enqueueThreadRun } from "@/dispatch-queue";
 import { wrapWithSseKeepalive } from "./sse-keepalive";
 import type { SqlThreadStorage } from "@/storage/threads";
 import { getPodId } from "@/core/pod-identity";
@@ -137,18 +138,13 @@ async function resolvePerRequestModels(
 }
 
 // ============================================================================
-// Shared dispatch path: validate → dispatchAndTrack
+// Shared validate path
 // ============================================================================
-
-interface DispatchDeps {
-  runRegistry: RunRegistry;
-  streamBuffer: StreamBuffer;
-  cancelBroadcast: CancelBroadcast;
-}
 
 /**
  * Parse + permission-check an HTTP request into a `DispatchRunInput`
- * ready to hand to `dispatchAndTrack` (or directly to `dispatchRun`).
+ * ready to hand to `enqueueThreadRun` (POST /messages) or `dispatchRun`
+ * (orphan-resume).
  *
  * Pure-ish: reads `c` for the request body and auth context, but no
  * downstream side effects. Throws `HTTPException` / `TierUnavailableError`
@@ -228,23 +224,12 @@ async function validate(
 }
 
 /**
- * Run an HTTP-initiated dispatch and emit the `chat_message_started`
- * posthog event for it. Pairs with `validate` for the standard
- * route-handler flow:
- *
- *   const input = await validate(c, c.req.param("threadId"));
- *   const { taskId } = await dispatchAndTrack(input, ctx, deps);
- *
+ * Emit the `chat_message_started` posthog event for an enqueued run.
  * Telemetry lives here (not inside `dispatchRun`) so orphan-resume and
- * automation paths — which call `dispatchRun` directly without a fresh
- * user message — don't double-count `chat_message_started`.
+ * automation paths — which don't represent a fresh user message — don't
+ * double-count `chat_message_started`.
  */
-async function dispatchAndTrack(
-  input: DispatchRunInput,
-  ctx: MeshContext,
-  deps: DispatchDeps,
-): Promise<{ taskId: string }> {
-  const { taskId } = await dispatchRun(input, ctx, deps);
+function trackMessageStarted(input: DispatchRunInput, taskId: string): void {
   posthog.capture({
     distinctId: input.userId,
     event: "chat_message_started",
@@ -257,7 +242,6 @@ async function dispatchAndTrack(
       credential_id: input.models.credentialId,
     },
   });
-  return { taskId };
 }
 
 // ============================================================================
@@ -301,29 +285,47 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   });
 
   // ============================================================================
-  // Messages Endpoint — fire-and-forget run creation
+  // Messages Endpoint — enqueue a run on the per-thread gate queue
   // ============================================================================
   //
   // POST /:org/decopilot/threads/:threadId/messages
   //
-  // Claims the run, starts the JetStream pump, and returns
-  // `202 { taskId }` in milliseconds. The response carries no SSE body —
-  // the client is expected to be listening on
-  // `GET /:org/decopilot/attach/:threadId` to receive the run's chunks.
+  // Enqueues the run on `threadGateWorkflow` (partition=threadId,
+  // concurrency=1) and returns `202 { taskId }` in milliseconds. The
+  // response carries no SSE body — the client is expected to be listening
+  // on `GET /:org/decopilot/attach/:threadId` to receive chunks once the
+  // workflow dequeues and dispatches.
   //
-  // Decouples message submission from the long-lived stream connection,
-  // so a slow proxy / tab close / mobile network blip on the subscribe
-  // side never affects the producer, and multiple clients can observe
-  // the same thread without coordinating.
+  // If another run on this thread is already executing, the new message
+  // queues behind it and dispatches only after that run completes.
+  //
+  // Idempotency: when the client supplies an id on the request message,
+  // the workflow ID is derived from `<threadId>:<messageId>`, so a retry
+  // of the same POST collapses onto the existing workflow handle instead
+  // of double-firing.
 
   app.post("/:org/decopilot/threads/:threadId/messages", async (c) => {
     try {
       const input = await validate(c, c.req.param("threadId"));
-      const { taskId } = await dispatchAndTrack(input, c.get("meshContext"), {
-        runRegistry,
-        streamBuffer,
-        cancelBroadcast,
-      });
+      const taskId = input.taskId;
+      if (!taskId) {
+        // validate() always sets taskId from the URL param, so this is
+        // a structural invariant rather than a user-facing error.
+        throw new HTTPException(400, { message: "threadId is required" });
+      }
+
+      const { abortSignal: _ignored, ...serializableRequest } = input;
+      const messageId =
+        input.messages[input.messages.length - 1]?.id ?? undefined;
+      const workflowID = messageId
+        ? `thread-run:${taskId}:${messageId}`
+        : undefined;
+
+      await enqueueThreadRun(
+        { threadId: taskId, request: serializableRequest },
+        { workflowID },
+      );
+      trackMessageStarted(input, taskId);
       return c.json({ taskId }, 202);
     } catch (err) {
       console.error("[decopilot:messages] Error", err);
