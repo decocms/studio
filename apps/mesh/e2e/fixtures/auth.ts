@@ -8,7 +8,7 @@ function generateTestUser() {
   const suffix = Date.now();
   return {
     name: `Test User ${suffix}`,
-    email: `test-${suffix}@protonmail.com`,
+    email: `test-${suffix}@playwright.local`,
     password: "Playwright123!",
   };
 }
