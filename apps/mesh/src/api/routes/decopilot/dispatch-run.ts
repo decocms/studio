@@ -359,7 +359,7 @@ async function prepareRun(
     const windowSize = input.windowSize ?? DEFAULT_WINDOW_SIZE;
 
     if (!input.taskId) {
-      throw new Error("dispatchRun: taskId is required");
+      throw new Error("dispatchRunAndWait: taskId is required");
     }
 
     // 2. Load entities and create/load memory in parallel
