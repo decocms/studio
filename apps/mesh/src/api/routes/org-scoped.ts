@@ -5,6 +5,7 @@ import type { CancelBroadcast } from "@/api/routes/decopilot/cancel-broadcast";
 import type { RunRegistry } from "@/api/routes/decopilot/run-registry";
 import type { StreamBuffer } from "@/api/routes/decopilot/stream-buffer";
 import type { PresetTaskRegistry } from "@/preset-tasks";
+import type { HomeBoardStore } from "@/storage/home-board";
 import type { KVStorage } from "@/storage/kv";
 import type { PresetTaskStore } from "@/storage/preset-tasks";
 import type { TriggerCallbackTokenStorage } from "@/storage/trigger-callback-tokens";
@@ -14,6 +15,7 @@ import type { Env } from "../hono-env";
 import { createDecoSitesOrgRoutes } from "./deco-sites";
 import { createDevAssetsRoutes } from "./dev-assets";
 import { createDownstreamTokenRoutes } from "./downstream-token";
+import { createHomeBoardRoutes } from "./home-board";
 import { createKVRoutes } from "./kv";
 import { createOrgScopedWellKnownProtectedResourceRoutes } from "./oauth-proxy";
 import { createSsoRoutes } from "./org-sso";
@@ -29,6 +31,7 @@ import { createVmSetupRoutes } from "./vm-setup";
 
 interface OrgScopedDeps {
   kvStorage: KVStorage;
+  homeBoardStore: HomeBoardStore;
   presetTaskStore: PresetTaskStore;
   presetTaskRegistry: PresetTaskRegistry;
   /**
@@ -88,11 +91,13 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
     createPresetTaskRoutes({
       store: deps.presetTaskStore,
       registry: deps.presetTaskRegistry,
+      homeBoardStore: deps.homeBoardStore,
       runRegistry: deps.runRegistry,
       streamBuffer: deps.streamBuffer,
       cancelBroadcast: deps.cancelBroadcast,
     }),
   );
+  app.route("/", createHomeBoardRoutes({ store: deps.homeBoardStore }));
   app.route("/vm-events", createVmEventsRoutes()); // /api/:org/vm-events
   app.route("/vm-exec", createVmExecRoutes()); // /api/:org/vm-exec/{exec,kill}/:script
   app.route("/vm-setup", createVmSetupRoutes()); // /api/:org/vm-setup/:step

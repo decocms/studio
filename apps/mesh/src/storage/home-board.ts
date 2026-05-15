@@ -1,0 +1,128 @@
+/**
+ * Home Board Store
+ *
+ * Typed wrapper over `KVStorage` for the per-user home tile layout. The
+ * KV key embeds the user id so two members of the same org can have
+ * different boards while staying inside the org-scoped KV partition.
+ *
+ * The board is the BE source of truth for tile placement. Auto-pin
+ * fires from `POST /preset-tasks/:id/start` (a tile per started preset);
+ * the FE reads via `GET /home-board` and mutates via PATCH/DELETE on
+ * individual tiles. There is no FE-side persistence anymore.
+ *
+ * Concurrent writes to the same user's board are last-write-wins —
+ * acceptable for the manual move/resize/remove flow.
+ */
+
+import type { KVStorage } from "./kv";
+
+const kvKey = (userId: string) => `home-board:${userId}`;
+
+export interface HomeBoardTile {
+  id: string;
+  /** Preset definition id this tile is bound to (e.g. "brand-context"). */
+  presetId: string;
+  /** Chat thread minted when the preset started — click target. */
+  taskId: string;
+  /** Pinned agent for the thread (forwarded as ?virtualmcpid=). */
+  virtualMcpId: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface HomeBoard {
+  tiles: HomeBoardTile[];
+}
+
+const EMPTY_BOARD: HomeBoard = { tiles: [] };
+
+export class HomeBoardStore {
+  constructor(private kv: KVStorage) {}
+
+  async get(organizationId: string, userId: string): Promise<HomeBoard> {
+    const value = await this.kv.get(organizationId, kvKey(userId));
+    return (value as HomeBoard | null) ?? EMPTY_BOARD;
+  }
+
+  async set(
+    organizationId: string,
+    userId: string,
+    board: HomeBoard,
+  ): Promise<void> {
+    await this.kv.set(
+      organizationId,
+      kvKey(userId),
+      board as unknown as Record<string, unknown>,
+    );
+  }
+
+  async addTile(
+    organizationId: string,
+    userId: string,
+    tile: HomeBoardTile,
+  ): Promise<void> {
+    const board = await this.get(organizationId, userId);
+    const next: HomeBoard = {
+      tiles: [...board.tiles.filter((t) => t.id !== tile.id), tile],
+    };
+    await this.set(organizationId, userId, next);
+  }
+
+  async updateTile(
+    organizationId: string,
+    userId: string,
+    tileId: string,
+    patch: Partial<Pick<HomeBoardTile, "x" | "y" | "w" | "h">>,
+  ): Promise<HomeBoardTile | null> {
+    const board = await this.get(organizationId, userId);
+    const current = board.tiles.find((t) => t.id === tileId);
+    if (!current) return null;
+    const updated: HomeBoardTile = { ...current, ...patch };
+    const next: HomeBoard = {
+      tiles: board.tiles.map((t) => (t.id === tileId ? updated : t)),
+    };
+    await this.set(organizationId, userId, next);
+    return updated;
+  }
+
+  async removeTile(
+    organizationId: string,
+    userId: string,
+    tileId: string,
+  ): Promise<boolean> {
+    const board = await this.get(organizationId, userId);
+    const next: HomeBoard = {
+      tiles: board.tiles.filter((t) => t.id !== tileId),
+    };
+    if (next.tiles.length === board.tiles.length) return false;
+    await this.set(organizationId, userId, next);
+    return true;
+  }
+}
+
+/**
+ * Computes the (x, y) for an auto-pinned tile of size (w, h). Picks the
+ * topmost row at column 0 where the tile fits without overlapping an
+ * existing one — matches the FE `findFirstFreeSlot` semantics so the
+ * board looks the same after a server pin as it would after a client
+ * add.
+ */
+export function pickAutoPinSlot(
+  tiles: HomeBoardTile[],
+  size: { w: number; h: number },
+  gridCols: number,
+): { x: number; y: number } {
+  const w = Math.min(size.w, gridCols);
+  const occupied = (x: number, y: number) =>
+    tiles.some(
+      (t) => x < t.x + t.w && x + w > t.x && y < t.y + t.h && y + size.h > t.y,
+    );
+  let y = 0;
+  while (y < 1024) {
+    if (!occupied(0, y)) return { x: 0, y };
+    y += 1;
+  }
+  return { x: 0, y };
+}

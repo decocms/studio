@@ -14,7 +14,7 @@ import { authenticateMcp, isConnectionAuthenticated } from "@decocms/mesh-sdk";
 import { authClient } from "@/web/lib/auth-client";
 import { useRegistryApp } from "@/web/hooks/use-registry-app";
 import { extractConnectionData } from "@/web/utils/extract-connection-data";
-import { invalidateVirtualMcpQueries } from "@/web/lib/query-keys";
+import { invalidateVirtualMcpQueries, KEYS } from "@/web/lib/query-keys";
 
 type Status = "idle" | "installing" | "authenticating" | "ready" | "error";
 
@@ -155,8 +155,13 @@ export function useAutoInstallGitHub(opts: {
         }
       }
 
-      // Step 5: Invalidate connection queries so picker re-renders
+      // Step 5: Invalidate connection queries so picker re-renders.
+      // Also nudge the preset-tasks query — the "Install GitHub" card
+      // resolves off the existence of an mcp-github connection, so the
+      // home panel needs to flip to the next phase regardless of which
+      // surface triggered the install.
       invalidateVirtualMcpQueries(queryClient, org.id);
+      queryClient.invalidateQueries({ queryKey: KEYS.presetTasks(org.slug) });
 
       setConnection(connectionData as ConnectionEntity);
       setStatus("ready");

@@ -1,43 +1,23 @@
 /**
- * Tile catalog — three preset tiles, one per task in the side panel.
- * A tile lands on the user's board when the user starts its matching
- * task; dnd / resize / remove come from the shared TileBoard chrome.
+ * Tile catalog — one generic "preset" tile. Identity (which preset)
+ * lives in `config.presetId`; the renderer looks up the preset's
+ * display + state via `usePresetTasks` and delegates the body to a
+ * per-preset module keyed by `presetId`.
  */
 
-import {
-  BrandContextTile,
-  ErrorMonitoringTile,
-  LandingPageTile,
-} from "./renderers";
+import { PresetTile } from "./renderers";
 import type { TileDefinition } from "./types";
-
-export type PresetTileType =
-  | "studio.brand-context"
-  | "studio.landing-page"
-  | "studio.error-monitoring";
-
-export const PRESET_DEFAULT_SIZE = "L" as const;
 
 const SUPPORTED_SIZES = ["S", "M", "L", "XL", "W"] as const;
 
+export const PRESET_TILE_TYPE = "preset";
+
 const TILE_CATALOG: TileDefinition[] = [
   {
-    type: "studio.brand-context",
-    title: "Brand context",
+    type: PRESET_TILE_TYPE,
+    title: "Preset",
     supportedSizes: [...SUPPORTED_SIZES],
-    render: BrandContextTile,
-  },
-  {
-    type: "studio.landing-page",
-    title: "Landing page",
-    supportedSizes: [...SUPPORTED_SIZES],
-    render: LandingPageTile,
-  },
-  {
-    type: "studio.error-monitoring",
-    title: "System health",
-    supportedSizes: [...SUPPORTED_SIZES],
-    render: ErrorMonitoringTile,
+    render: PresetTile,
   },
 ];
 

@@ -5,16 +5,12 @@
  * action, and per-card state. `dismiss` flips a card's state to "dismissed"
  * (optimistic). `startPreset` kicks the backend's decopilot run for a
  * preset and returns the freshly-minted taskId + the tile to pin; callers
- * own the navigate + addTile side-effects.
+ * owns the navigate side-effect; the BE auto-pins the matching tile on
+ * the user's home board.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/web/lib/query-keys";
-
-type PresetTileType =
-  | "studio.brand-context"
-  | "studio.landing-page"
-  | "studio.error-monitoring";
 
 interface PresetTaskDisplay {
   title: string;
@@ -25,10 +21,19 @@ interface PresetTaskDisplay {
 export type PresetTaskAction =
   | { kind: "new-chat" }
   | { kind: "import-deco" }
-  | { kind: "preset"; tileType: PresetTileType };
+  | { kind: "install-github" }
+  | { kind: "install-system-health" }
+  | { kind: "preset" };
 
-interface PresetTaskState {
-  status: "started" | "running" | "completed" | "dismissed" | "error";
+export type PresetTaskStatus =
+  | "started"
+  | "running"
+  | "completed"
+  | "dismissed"
+  | "error";
+
+export interface PresetTaskState {
+  status: PresetTaskStatus;
   startedAt?: string;
   completedAt?: string;
   dismissedAt?: string;
@@ -50,7 +55,6 @@ interface PresetTasksResponse {
 
 export interface StartPresetTaskResult {
   taskId: string;
-  tileType?: PresetTileType;
   virtualMcpId: string;
 }
 
@@ -66,6 +70,12 @@ export function usePresetTasks(orgSlug: string) {
       const body = (await res.json()) as PresetTasksResponse;
       return body.tasks;
     },
+    // Card visibility depends on world state outside the FE's control
+    // (brand row created from Settings, GitHub installed via the picker,
+    // etc.). Bypass the global 1-min staleTime so window focus always
+    // re-fetches and the cards update without a hard reload.
+    staleTime: 0,
+    refetchOnWindowFocus: "always",
   });
 
   const dismiss = useMutation({

@@ -24,16 +24,6 @@ export interface PresetTaskContext {
   organizationId: string;
 }
 
-/**
- * Closed union of tile types the FE knows how to render. Mirrors
- * `PresetTileType` in `apps/mesh/src/web/components/home/tiles/registry.tsx`.
- * The BE returns these strings; the FE pins the matching tile.
- */
-export type PresetTileType =
-  | "studio.brand-context"
-  | "studio.landing-page"
-  | "studio.error-monitoring";
-
 export interface PresetTaskDisplay {
   title: string;
   /** Public-asset path under `apps/mesh/public/` (e.g. `/home/task-brand.svg`). */
@@ -45,7 +35,9 @@ export interface PresetTaskDisplay {
 export type PresetTaskAction =
   | { kind: "new-chat" }
   | { kind: "import-deco" }
-  | { kind: "preset"; tileType: PresetTileType };
+  | { kind: "install-github" }
+  | { kind: "install-system-health" }
+  | { kind: "preset" };
 
 export interface PresetTaskStartResult {
   /** Seed messages for the new thread. Usually one user message. */
@@ -59,10 +51,12 @@ export interface PresetTaskDefinition {
   display: PresetTaskDisplay;
   action: PresetTaskAction;
   /**
-   * Returns true when this task makes sense for the given org. Async so
-   * predicates can fan out to other storage (e.g. "show error-monitoring
-   * once any error has been captured for this org", or "hide brand-context
-   * once the org has any brand_context row").
+   * Returns true when this task makes sense for the given org. For tasks
+   * that morph between faces based on world state (e.g. brand-context
+   * becoming "Confirm your brand") leave this `true` and use `resolve()`
+   * to swap presentation — `isApplicable` answers "should this card
+   * exist at all", `resolve()` answers "what does this card look like
+   * right now".
    */
   isApplicable: (
     ctx: PresetTaskContext,
@@ -84,6 +78,42 @@ export interface PresetTaskDefinition {
     ctx: PresetTaskContext,
     mesh: MeshContext,
   ) => Promise<PresetTaskStartResult>;
+  /**
+   * Optional. Returns overrides for `display` / `action` / `start` based
+   * on current state + world. Use when one logical task has multiple
+   * presentations — e.g. brand-context showing "Set up your brand" with
+   * the setup seed when no brand exists, and "Confirm your brand" with a
+   * confirm seed once one does. The agent id usually stays the same
+   * across faces; the agent derives its own mode from the same state.
+   */
+  resolve?: (
+    ctx: PresetTaskContext,
+    state: PresetTaskState | undefined,
+    mesh: MeshContext,
+  ) => Promise<
+    Partial<Pick<PresetTaskDefinition, "display" | "action" | "start">>
+  >;
+}
+
+/**
+ * Apply a definition's `resolve()` (if any) and return the effective
+ * shape callers should use. `getVisiblePresetTasks` and the `/start`
+ * route both go through this so they project the same face.
+ */
+export async function resolveDefinition(
+  def: PresetTaskDefinition,
+  ctx: PresetTaskContext,
+  state: PresetTaskState | undefined,
+  mesh: MeshContext,
+): Promise<PresetTaskDefinition> {
+  if (!def.resolve) return def;
+  const overrides = await def.resolve(ctx, state, mesh);
+  return {
+    ...def,
+    display: overrides.display ?? def.display,
+    action: overrides.action ?? def.action,
+    start: overrides.start ?? def.start,
+  };
 }
 
 export class PresetTaskRegistry {
@@ -131,13 +161,18 @@ export async function getVisiblePresetTasks(
   );
   const visible: VisiblePresetTask[] = [];
   for (const { def, state } of entries) {
-    if (await def.isApplicable(ctx, state, mesh)) {
+    // Completed tasks stay in the list so the FE can render the
+    // "Done" treatment on both the preset card and any pinned tile.
+    // Per-preset `isApplicable` only gates the *new* / unfinished state.
+    const isCompleted = state?.status === "completed";
+    if (isCompleted || (await def.isApplicable(ctx, state, mesh))) {
+      const resolved = await resolveDefinition(def, ctx, state, mesh);
       visible.push({
-        id: def.id,
-        display: def.display,
-        action: def.action,
+        id: resolved.id,
+        display: resolved.display,
+        action: resolved.action,
         state,
-        dismissible: def.dismissible !== false,
+        dismissible: resolved.dismissible !== false,
       });
     }
   }

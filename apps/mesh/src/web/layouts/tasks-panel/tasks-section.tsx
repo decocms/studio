@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import {
   Edit05,
@@ -20,13 +21,10 @@ import { toast } from "sonner";
 import type { Task } from "@/web/components/chat/task/types";
 import { TaskRow } from "./task-row";
 import { track } from "@/web/lib/posthog-client";
-import { useHomeBoard } from "@/web/components/home/tiles/use-home-board";
-import {
-  PRESET_DEFAULT_SIZE,
-  type PresetTileType,
-} from "@/web/components/home/tiles/registry";
-import { SIZE_PRESETS } from "@/web/components/home/tiles/constants";
 import { ImportFromDecoDialog } from "@/web/components/import-from-deco-dialog.tsx";
+import { InstallGithubDialog } from "@/web/components/install-github-dialog.tsx";
+import { InstallSystemHealthDialog } from "@/web/components/install-system-health-dialog.tsx";
+import { KEYS } from "@/web/lib/query-keys";
 import { usePresetTasks, type VisiblePresetTask } from "./use-preset-tasks";
 
 type FilterOption = "all" | "manual" | "automation";
@@ -43,10 +41,6 @@ const MEMBER_FILTER_LABELS: Record<MemberFilter, string> = {
   all: "All members",
   mine: "Mine only",
 };
-
-function newTileId(): string {
-  return `tile_${Math.random().toString(36).slice(2, 10)}`;
-}
 
 export function TasksSection({
   title,
@@ -72,8 +66,8 @@ export function TasksSection({
   currentUserId?: string;
 }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { org } = useProjectContext();
-  const { addTile } = useHomeBoard(org.slug);
   const {
     isLoading: isLoadingPresetTasks,
     tasks: visiblePresetTasks,
@@ -106,6 +100,8 @@ export function TasksSection({
     setOverride({ mode: resolved, forTask: activeTaskId });
   };
   const [importOpen, setImportOpen] = useState(false);
+  const [installGithubOpen, setInstallGithubOpen] = useState(false);
+  const [installSystemHealthOpen, setInstallSystemHealthOpen] = useState(false);
   const [startingPresetId, setStartingPresetId] = useState<string | null>(null);
 
   const memberFiltered =
@@ -120,21 +116,6 @@ export function TasksSection({
         ? memberFiltered.filter((t) => !t.fromAutomation)
         : memberFiltered;
 
-  function pinPresetTile(
-    tileType: PresetTileType,
-    taskId: string,
-    virtualMcpId: string,
-  ) {
-    const size = SIZE_PRESETS[PRESET_DEFAULT_SIZE];
-    addTile({
-      id: newTileId(),
-      type: tileType,
-      w: size.w,
-      h: size.h,
-      config: { taskId, virtualMcpId, status: "running" },
-    });
-  }
-
   async function handleCardClick(card: VisiblePresetTask) {
     track("tasks_panel_preset_clicked", { preset_id: card.id });
     if (card.action.kind === "new-chat") {
@@ -145,14 +126,24 @@ export function TasksSection({
       setImportOpen(true);
       return;
     }
+    if (card.action.kind === "install-github") {
+      setInstallGithubOpen(true);
+      return;
+    }
+    if (card.action.kind === "install-system-health") {
+      setInstallSystemHealthOpen(true);
+      return;
+    }
     // kind === "preset": BE creates the task + seeds the first message +
-    // starts the agent stream. FE just pins the tile and navigates; the
-    // chat page attaches to the running stream via SSE on mount.
+    // starts the agent stream, and auto-pins a tile on the user's home
+    // board. FE just navigates; the chat page attaches to the running
+    // stream via SSE on mount, and the home-board cache is invalidated
+    // so the new tile shows up next time the user lands there.
     if (startingPresetId) return;
     setStartingPresetId(card.id);
     try {
-      const { taskId, tileType, virtualMcpId } = await startPreset(card.id);
-      if (tileType) pinPresetTile(tileType, taskId, virtualMcpId);
+      const { taskId, virtualMcpId } = await startPreset(card.id);
+      queryClient.invalidateQueries({ queryKey: KEYS.homeBoard(org.slug) });
       navigate({
         to: "/$org/$taskId",
         params: { org: org.slug, taskId },
@@ -274,77 +265,90 @@ export function TasksSection({
                     </div>
                   </div>
                 ))
-              : visibleCards.map((card) => {
+              : visibleCards.map((card, i) => {
                   const isStarting = startingPresetId === card.id;
+                  // Visual divider on every flip between enumerated cards
+                  // (the numbered brand → landing → monitoring flow) and
+                  // unenumerated ones (new-chat above, import-deco /
+                  // install-github below). BE order drives where the
+                  // dividers land.
+                  const prev = visibleCards[i - 1];
+                  const showDivider =
+                    prev &&
+                    (prev.display.step === null) !==
+                      (card.display.step === null);
                   return (
-                    // Outer is a div, not a button, so the dismiss `<button>`
-                    // can sit inside (no nested-button HTML). Card click +
-                    // keyboard activation are wired manually.
-                    <div
-                      key={card.id}
-                      role="button"
-                      tabIndex={0}
-                      aria-busy={isStarting}
-                      aria-disabled={isStarting}
-                      onClick={() => {
-                        if (isStarting) return;
-                        handleCardClick(card);
-                      }}
-                      onKeyDown={(e) => {
-                        if (isStarting) return;
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          handleCardClick(card);
-                        }
-                      }}
-                      className={cn(
-                        "group/row flex w-full cursor-pointer items-center gap-3.5 rounded-xl border border-border bg-background px-2.5 py-2 text-left transition-colors",
-                        "hover:border-border hover:bg-accent/40",
-                        "outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        isStarting && "opacity-60 cursor-progress",
+                    <Fragment key={card.id}>
+                      {showDivider && (
+                        <div className="my-1 h-px bg-border/60" aria-hidden />
                       )}
-                    >
-                      <div className="relative shrink-0">
-                        <img
-                          src={card.display.thumb}
-                          alt=""
-                          aria-hidden
-                          className="h-11 w-16 rounded-md object-cover"
-                        />
-                        {card.display.step !== null && (
-                          <span
-                            className="absolute -bottom-1 -right-1 flex size-[18px] items-center justify-center rounded-md border border-border bg-background text-[11px] font-semibold leading-none text-foreground"
+                      {/* Outer is a div, not a button, so the dismiss
+                          `<button>` can sit inside (no nested-button HTML).
+                          Card click + keyboard activation are wired
+                          manually. */}
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        aria-busy={isStarting}
+                        aria-disabled={isStarting}
+                        onClick={() => {
+                          if (isStarting) return;
+                          handleCardClick(card);
+                        }}
+                        onKeyDown={(e) => {
+                          if (isStarting) return;
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            handleCardClick(card);
+                          }
+                        }}
+                        className={cn(
+                          "group/row flex w-full cursor-pointer items-center gap-3.5 rounded-xl border border-border bg-background px-2.5 py-2 text-left outline-none transition-colors hover:border-border hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring",
+                          isStarting && "opacity-60 cursor-progress",
+                        )}
+                      >
+                        <div className="relative shrink-0">
+                          <img
+                            src={card.display.thumb}
+                            alt=""
                             aria-hidden
+                            className="h-11 w-16 rounded-md object-cover"
+                          />
+                          {card.display.step !== null && (
+                            <span
+                              className="absolute -bottom-1 -right-1 flex size-[18px] items-center justify-center rounded-md border border-border bg-background text-[11px] font-semibold leading-none text-foreground"
+                              aria-hidden
+                            >
+                              {card.display.step}
+                            </span>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+                          {card.display.title}
+                        </div>
+                        {card.dismissible && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              track("tasks_panel_preset_dismissed", {
+                                preset_id: card.id,
+                              });
+                              dismissPresetTask(card.id);
+                            }}
+                            aria-label={`Dismiss ${card.display.title}`}
+                            className={cn(
+                              "flex size-6 shrink-0 items-center justify-center rounded-md",
+                              "text-muted-foreground/70 opacity-0 transition-opacity duration-150",
+                              "group-hover/row:opacity-100",
+                              "hover:bg-muted hover:text-foreground",
+                            )}
                           >
-                            {card.display.step}
-                          </span>
+                            <XClose size={14} />
+                          </button>
                         )}
                       </div>
-                      <div className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-                        {card.display.title}
-                      </div>
-                      {card.dismissible && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            track("tasks_panel_preset_dismissed", {
-                              preset_id: card.id,
-                            });
-                            dismissPresetTask(card.id);
-                          }}
-                          aria-label={`Dismiss ${card.display.title}`}
-                          className={cn(
-                            "flex size-6 shrink-0 items-center justify-center rounded-md",
-                            "text-muted-foreground/70 opacity-0 transition-opacity duration-150",
-                            "group-hover/row:opacity-100",
-                            "hover:bg-muted hover:text-foreground",
-                          )}
-                        >
-                          <XClose size={14} />
-                        </button>
-                      )}
-                    </div>
+                    </Fragment>
                   );
                 })}
           </div>
@@ -381,6 +385,40 @@ export function TasksSection({
         )}
       </div>
       <ImportFromDecoDialog open={importOpen} onOpenChange={setImportOpen} />
+      <InstallGithubDialog
+        open={installGithubOpen}
+        onOpenChange={setInstallGithubOpen}
+      />
+      <InstallSystemHealthDialog
+        open={installSystemHealthOpen}
+        onOpenChange={setInstallSystemHealthOpen}
+        onReady={async () => {
+          // OAuth handshake complete — close the dialog and immediately
+          // start the error-monitoring thread, matching the one-click UX
+          // the design called for. If start fails the dialog is already
+          // closed so we surface the error as a toast.
+          setInstallSystemHealthOpen(false);
+          try {
+            setStartingPresetId("error-monitoring");
+            const { taskId, virtualMcpId } =
+              await startPreset("error-monitoring");
+            queryClient.invalidateQueries({
+              queryKey: KEYS.homeBoard(org.slug),
+            });
+            navigate({
+              to: "/$org/$taskId",
+              params: { org: org.slug, taskId },
+              search: { virtualmcpid: virtualMcpId },
+            });
+          } catch (err) {
+            const message =
+              err instanceof Error ? err.message : "Failed to start";
+            toast.error(`Couldn't start error monitoring: ${message}`);
+          } finally {
+            setStartingPresetId(null);
+          }
+        }}
+      />
     </div>
   );
 }

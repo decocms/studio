@@ -24,11 +24,13 @@ import { monitorLlmCall } from "@/monitoring/emit-llm-call";
 import { recordLlmCallMetrics } from "@/monitoring/record-llm-call-metrics";
 import {
   type GithubRepo,
-  isBrandContextSetup,
   isDecopilot,
   sanitizeProviderMetadata,
 } from "@decocms/mesh-sdk";
 import { createBrandContextSetupTool } from "./built-in-tools/brand-context-setup";
+import { createBrandContextConfirmTools } from "./built-in-tools/brand-context-confirm";
+import { dynamicInstructions } from "@/agents/dynamic-instructions";
+import { getBrandContextAgentMode } from "@/agents/brand-context";
 import { SpanStatusCode } from "@opentelemetry/api";
 import {
   type ToolSet,
@@ -701,14 +703,18 @@ async function prepareRun(
 
         // Agent-id-driven built-in injection. Keyed off `input.agent.id`
         // (i.e. the virtual MCP id) so it survives across turns: every
-        // dispatchRun for a thread pinned to the brand-context-setup
-        // agent re-injects the tool, regardless of which route fired it.
-        // Built here so its keys can be added to `activeToolNames` for
-        // every step — the progressive-disclosure path filters out tools
-        // not in the active list, even when they're in the `tools` record.
-        const agentProfileTools: ToolSet = isBrandContextSetup(input.agent.id)
-          ? { brand_context_setup: createBrandContextSetupTool(ctx) }
-          : {};
+        // dispatchRun for a thread pinned to the brand-context agent
+        // re-injects the right tools, regardless of which route fired
+        // it. The brand-context agent has two modes (setup vs confirm)
+        // derived from whether the org already has a default brand row;
+        // the same predicate gates the dynamic system prompt below.
+        const brandMode = await getBrandContextAgentMode(input.agent.id, ctx);
+        const agentProfileTools: ToolSet =
+          brandMode?.mode === "setup"
+            ? { brand_context_setup: createBrandContextSetupTool(ctx) }
+            : brandMode?.mode === "confirm"
+              ? createBrandContextConfirmTools(ctx)
+              : {};
         const agentProfileToolNames = Object.keys(agentProfileTools);
 
         // Progressive tool disclosure: enable_tool + prepareStep
@@ -828,11 +834,19 @@ async function prepareRun(
           ? null
           : buildConnectionsBlock(connectionsBlockTools, connectionTitleMap);
 
-        // Agent prompt: decopilot-specific or custom agent instructions
+        // Agent prompt: decopilot-specific, dynamic (state-driven), or
+        // the agent's static `metadata.instructions` from the vmcp row.
+        // The dynamic registry wins when a resolver matches — that's how
+        // e.g. the brand-context agent flips into "confirm" mode when a
+        // brand_context row already exists for the org.
         const serverInstructions = passthroughClient.getInstructions();
+        const dynamicPrompt = await dynamicInstructions.resolve(
+          input.agent.id,
+          ctx,
+        );
         const agentPrompt = isDecopilot(input.agent.id)
           ? buildDecopilotAgentPrompt()
-          : serverInstructions;
+          : (dynamicPrompt ?? serverInstructions);
 
         const planModePrompt = modeConfig.planPrompt;
 

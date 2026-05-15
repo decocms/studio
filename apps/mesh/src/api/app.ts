@@ -39,6 +39,11 @@ import { createSsoRoutes } from "./routes/org-sso";
 import { createDecopilotRoutes } from "./routes/decopilot";
 import { createDownstreamTokenRoutes } from "./routes/downstream-token";
 import {
+  DownstreamTokenStorage,
+  type DownstreamTokenData,
+} from "../storage/downstream-token";
+import { resolveOriginTokenEndpoint } from "../oauth/resolve-token-endpoint";
+import {
   createLogDeprecatedRoute,
   logDeprecatedRoute,
 } from "./middleware/log-deprecated-route";
@@ -117,9 +122,11 @@ import { getPodId } from "../core/pod-identity";
 import { NatsPodHeartbeat } from "../nats/pod-heartbeat";
 import { PresetTaskRegistry } from "../preset-tasks";
 import { setBrandContextWorkflowDeps } from "../preset-tasks/brand-context-workflow";
+import { registerBrandContextDynamicInstructions } from "../agents/brand-context";
 import { PRESET_TASK_DEFINITIONS } from "../preset-tasks/definitions";
 import { createAutomationsStorage } from "../storage/automations";
 import { KyselyKVStorage } from "../storage/kv";
+import { HomeBoardStore } from "../storage/home-board";
 import { PresetTaskStore } from "../storage/preset-tasks";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
 import { createAutomationContextFactory } from "./routes/decopilot/automation-context";
@@ -411,6 +418,12 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
   // For token endpoint, we may need to rewrite the 'resource' parameter in the body
   // (same reason as authorize: auth servers validate it's their actual endpoint)
   let requestBody: BodyInit | undefined;
+  // Capture client_id/client_secret from the token request so we can persist
+  // them server-side alongside the resulting access/refresh tokens. The DCR
+  // registration that minted these credentials happened in a prior request,
+  // so the body of /token is the only place we can read them on the proxy.
+  let capturedClientId: string | null = null;
+  let capturedClientSecret: string | null = null;
   if (c.req.method !== "GET" && c.req.method !== "HEAD") {
     if (
       endpoint === "token" &&
@@ -421,6 +434,10 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
       if (formData.has("resource")) {
         formData.set("resource", connection.connection_url);
       }
+      const cidRaw = formData.get("client_id");
+      const csRaw = formData.get("client_secret");
+      if (typeof cidRaw === "string" && cidRaw) capturedClientId = cidRaw;
+      if (typeof csRaw === "string" && csRaw) capturedClientSecret = csRaw;
       // Convert back to URLSearchParams for form-urlencoded
       const params = new URLSearchParams();
       for (const [key, value] of formData.entries()) {
@@ -511,6 +528,62 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
     if (!excludedHeaders.includes(key.toLowerCase())) {
       responseHeaders.set(key, value);
     }
+  }
+
+  // For successful token exchanges (initial code-for-token and refresh_token
+  // grants), persist the token server-side immediately. This decouples the
+  // OAuth flow from the browser's session cookie state — the client used to
+  // POST the token back to /api/:org/connections/:id/oauth-token with
+  // cookie auth, which 401s when the popup's redirect chain leaves the
+  // parent's session in an inconsistent state.
+  if (endpoint === "token" && response.ok) {
+    const bodyText = await response.text();
+    try {
+      const parsed = JSON.parse(bodyText) as {
+        access_token?: unknown;
+        refresh_token?: unknown;
+        expires_in?: unknown;
+        scope?: unknown;
+      };
+      if (typeof parsed.access_token === "string" && parsed.access_token) {
+        const expiresAt =
+          typeof parsed.expires_in === "number"
+            ? new Date(Date.now() + parsed.expires_in * 1000)
+            : null;
+        // Prefer the origin's real token endpoint so future refreshes don't
+        // self-loop through the proxy.
+        let tokenEndpoint: string | null = null;
+        try {
+          tokenEndpoint =
+            (await resolveOriginTokenEndpoint(connection.connection_url)) ??
+            originEndpointUrl;
+        } catch {
+          tokenEndpoint = originEndpointUrl;
+        }
+        const tokenData: DownstreamTokenData = {
+          connectionId,
+          accessToken: parsed.access_token,
+          refreshToken:
+            typeof parsed.refresh_token === "string"
+              ? parsed.refresh_token
+              : null,
+          scope: typeof parsed.scope === "string" ? parsed.scope : null,
+          expiresAt,
+          clientId: capturedClientId,
+          clientSecret: capturedClientSecret,
+          tokenEndpoint,
+        };
+        const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);
+        await tokenStorage.upsert(tokenData);
+      }
+    } catch (err) {
+      console.error("[oauth-proxy] failed to persist downstream token:", err);
+    }
+    return new Response(bodyText, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: responseHeaders,
+    });
   }
 
   return new Response(response.body, {
@@ -1608,10 +1681,19 @@ export async function createApp(options: CreateAppOptions = {}) {
     presetTaskRegistry.register(def);
   }
 
+  // Home board — per-user tile layout, BE-owned. Auto-pinned by the
+  // preset-task `/start` route; FE reads/mutates via /api/:org/home-board.
+  const homeBoardStore = new HomeBoardStore(kvStorage);
+
   // Wire deps for the brand-context DBOS workflow. Safe to call before
   // DBOS.launch() — just stashes a module-level pointer. The workflow body
   // is registered at import time so recovery replay works after a crash.
   setBrandContextWorkflowDeps({ presetTaskStore });
+
+  // Brand-context agent has two modes (setup vs confirm) — register the
+  // dynamic system-prompt resolver that flips between them based on
+  // whether a brand_context row exists for the org.
+  registerBrandContextDynamicInstructions();
 
   // Public Events endpoint — legacy mount with deprecation log. New mount
   // lives at `POST /api/:org/events/:type` (registered via createOrgScopedApi).
@@ -1711,6 +1793,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // PR removes them after the deprecation window.
   const orgScopedApi = createOrgScopedApi({
     kvStorage,
+    homeBoardStore,
     presetTaskStore,
     presetTaskRegistry,
     runRegistry,

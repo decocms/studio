@@ -1,8 +1,11 @@
 /**
- * Tile renderers. One per preset task. Until each preset agent produces
- * real output, the tiles render a representative preview based on the
- * tile's lifecycle status (running while the chat is being worked on,
- * "ready" otherwise).
+ * Tile renderer — one generic `PresetTile` that frames whatever preset
+ * the tile is bound to. The frame (icon, title, subtitle, Done pill,
+ * click→thread) is fully data-driven from the preset's `usePresetTasks`
+ * entry. The body inside the frame is delegated to a per-preset module
+ * in `preset-bodies.tsx` keyed by `presetId`. A new preset only needs a
+ * BE definition + (optionally) a body module — no registry entry, no
+ * tile-type enum bump.
  */
 
 import { useNavigate } from "@tanstack/react-router";
@@ -10,25 +13,31 @@ import {
   useProjectContext,
   WELL_KNOWN_AGENT_TEMPLATES,
 } from "@decocms/mesh-sdk";
+import { Check } from "@untitledui/icons";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { IntegrationIcon } from "@/web/components/integration-icon";
+import {
+  type PresetTaskStatus,
+  usePresetTasks,
+} from "@/web/layouts/tasks-panel/use-preset-tasks";
+import { getPresetBody, RunningBody } from "./preset-bodies";
 import type { TileRenderProps } from "./types";
 
 /**
- * Pulls the registered template icon for a preset tile. These templates
- * are stubs today — the dev wires the actual agent behaviour later, but
- * the tile already renders the agent's eventual visual identity.
+ * Pulls the registered template icon for a preset tile. The mapping is
+ * by preset id today — the well-known templates were named to match.
  */
 function templateIcon(templateId: string): { icon: string; title: string } {
   const tpl = WELL_KNOWN_AGENT_TEMPLATES.find((t) => t.id === templateId);
   return { icon: tpl?.icon ?? "", title: tpl?.title ?? "" };
 }
 
-type Status = "running" | "ready";
-
-function readStatus(config: Record<string, unknown> | undefined): Status {
-  return config?.status === "ready" ? "ready" : "running";
+function readPresetId(
+  config: Record<string, unknown> | undefined,
+): string | null {
+  const stored = config?.presetId;
+  return typeof stored === "string" && stored.length > 0 ? stored : null;
 }
 
 function readTaskId(
@@ -45,40 +54,47 @@ function readVirtualMcpId(
   return typeof v === "string" && v.length > 0 ? v : null;
 }
 
-function TileFrame({
-  templateId,
-  title,
-  subtitle,
-  taskId,
-  virtualMcpId,
-  isEditMode,
-  children,
-}: {
-  templateId: string;
-  title: string;
-  subtitle: string;
-  taskId: string | null;
-  /**
-   * Pinned agent for this tile's thread. Forwarded as `?virtualmcpid=` on
-   * click so the chat-context picks up the right agent instead of falling
-   * back to Decopilot — the BE also re-resolves the agent from
-   * `thread.virtual_mcp_id` as a safety net, but passing it keeps the URL
-   * honest and avoids one round-trip of "wrong-agent" UI rendering.
-   */
-  virtualMcpId: string | null;
-  isEditMode: boolean;
-  children: React.ReactNode;
-}) {
+function statusSubtitle(status: PresetTaskStatus | undefined): string {
+  switch (status) {
+    case "started":
+    case "running":
+      return "Working…";
+    case "completed":
+      return "Done";
+    case "error":
+      return "Errored";
+    default:
+      return "Ready";
+  }
+}
+
+export function PresetTile({ instance, isEditMode }: TileRenderProps) {
   const navigate = useNavigate();
   const { org } = useProjectContext();
-  const interactive = !isEditMode && taskId;
-  const { icon: iconStr, title: tplName } = templateIcon(templateId);
+  const { tasks: presetTasks } = usePresetTasks(org.slug);
+
+  const presetId = readPresetId(instance.config);
+  const taskId = readTaskId(instance.config);
+  const virtualMcpId = readVirtualMcpId(instance.config);
+  const preset = presetId
+    ? presetTasks.find((t) => t.id === presetId)
+    : undefined;
+  const status = preset?.state?.status;
+  const isCompleted = status === "completed";
+  const title = preset?.display.title ?? "Preset";
+  const subtitle = statusSubtitle(status);
+
+  const { icon: iconStr, title: tplName } = templateIcon(presetId ?? "");
+  const interactive = !isEditMode && Boolean(taskId);
+
+  const Body = presetId ? getPresetBody(presetId) : null;
+
   return (
     <button
       type="button"
       disabled={!interactive}
       onClick={
-        interactive
+        interactive && taskId
           ? () =>
               navigate({
                 to: "/$org/$taskId",
@@ -96,143 +112,33 @@ function TileFrame({
       <div className="flex items-center gap-2.5">
         <IntegrationIcon icon={iconStr} name={tplName || title} size="xs" />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium text-foreground">
-            {title}
+          <div className="flex items-center gap-1.5">
+            <div className="truncate text-sm font-medium text-foreground">
+              {title}
+            </div>
+            {isCompleted && (
+              <span
+                className="flex shrink-0 items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground"
+                aria-label="Completed"
+              >
+                <Check size={12} />
+                Done
+              </span>
+            )}
           </div>
           <div className="truncate text-xs text-muted-foreground">
             {subtitle}
           </div>
         </div>
       </div>
-      <div className="flex-1 min-h-0">{children}</div>
+      <div className="flex-1 min-h-0">
+        {Body ? (
+          <Body status={status} state={preset?.state} />
+        ) : (
+          <RunningBody />
+        )}
+      </div>
     </button>
-  );
-}
-
-function RunningBody() {
-  return (
-    <div className="flex h-full flex-col gap-2 pt-1">
-      <Skeleton className="h-3 w-3/4" />
-      <Skeleton className="h-3 w-1/2" />
-      <Skeleton className="h-3 w-2/3" />
-    </div>
-  );
-}
-
-const BRAND_PALETTE = [
-  { hex: "#0F172A" },
-  { hex: "#22D3EE" },
-  { hex: "#F4F4F5" },
-  { hex: "#A1A1AA" },
-];
-
-export function BrandContextTile({ instance, isEditMode }: TileRenderProps) {
-  const status = readStatus(instance.config);
-  const subtitle =
-    status === "running" ? "Pulling site assets…" : "Brand snapshot";
-  return (
-    <TileFrame
-      templateId="brand-context"
-      title="Brand context"
-      subtitle={subtitle}
-      taskId={readTaskId(instance.config)}
-      virtualMcpId={readVirtualMcpId(instance.config)}
-      isEditMode={isEditMode}
-    >
-      {status === "running" ? (
-        <RunningBody />
-      ) : (
-        <div className="flex flex-wrap gap-2">
-          {BRAND_PALETTE.map((swatch) => (
-            <div
-              key={swatch.hex}
-              className="flex items-center gap-2 rounded-md border border-border bg-background px-2 py-1.5"
-            >
-              <span
-                className="size-3.5 rounded-sm border border-border/60"
-                style={{ backgroundColor: swatch.hex }}
-                aria-hidden
-              />
-              <span className="text-[11px] font-medium text-muted-foreground">
-                {swatch.hex}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </TileFrame>
-  );
-}
-
-export function LandingPageTile({ instance, isEditMode }: TileRenderProps) {
-  const status = readStatus(instance.config);
-  const subtitle = status === "running" ? "Drafting sections…" : "Page preview";
-  return (
-    <TileFrame
-      templateId="landing-page"
-      title="Landing page"
-      subtitle={subtitle}
-      taskId={readTaskId(instance.config)}
-      virtualMcpId={readVirtualMcpId(instance.config)}
-      isEditMode={isEditMode}
-    >
-      {status === "running" ? (
-        <RunningBody />
-      ) : (
-        <div className="flex h-full flex-col justify-between gap-3 rounded-lg border border-border bg-muted/30 p-3">
-          <div className="space-y-1.5">
-            <div className="h-2 w-1/2 rounded-sm bg-foreground/20" />
-            <div className="h-2 w-3/4 rounded-sm bg-foreground/10" />
-            <div className="h-2 w-2/3 rounded-sm bg-foreground/10" />
-          </div>
-          <div className="flex gap-1.5">
-            <div className="h-6 w-16 rounded-md bg-primary/80" />
-            <div className="h-6 w-12 rounded-md border border-border" />
-          </div>
-        </div>
-      )}
-    </TileFrame>
-  );
-}
-
-export function ErrorMonitoringTile({ instance, isEditMode }: TileRenderProps) {
-  const status = readStatus(instance.config);
-  const subtitle =
-    status === "running" ? "Connecting your stack…" : "Live errors";
-  return (
-    <TileFrame
-      templateId="system-health"
-      title="System health"
-      subtitle={subtitle}
-      taskId={readTaskId(instance.config)}
-      virtualMcpId={readVirtualMcpId(instance.config)}
-      isEditMode={isEditMode}
-    >
-      {status === "running" ? (
-        <RunningBody />
-      ) : (
-        <div className="flex h-full flex-col gap-3">
-          <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-semibold tabular-nums text-foreground">
-              0
-            </span>
-            <span className="text-[11px] text-muted-foreground">last 24h</span>
-          </div>
-          <svg
-            viewBox="0 0 120 32"
-            className="h-8 w-full text-emerald-500"
-            aria-hidden
-          >
-            <polyline
-              points="0,24 16,18 32,22 48,12 64,16 80,8 96,14 120,10"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            />
-          </svg>
-        </div>
-      )}
-    </TileFrame>
   );
 }
 
