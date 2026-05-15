@@ -34,7 +34,6 @@ import { posthog } from "@/posthog";
 import { getBaseUrl } from "@/core/server-constants";
 import { createAccessControl, Role } from "@decocms/better-auth/plugins/access";
 import { getDb, getDatabaseUrl, getDbDialect } from "../database";
-import { OrganizationDomainStorage } from "../storage/organization-domains";
 import { createEmailOtpConfig } from "./email-otp";
 import { createEmailSender, findEmailProvider } from "./email-providers";
 import { emailButton, emailParagraph, emailTemplate } from "./email-template";
@@ -462,31 +461,11 @@ export const auth = betterAuth({
           // Domain-based handling for verified corporate emails (OAuth, magic link, OTP).
           // Email/password signups have emailVerified=false at hook time and fall through
           // to default org creation — there's no verification path to gate on.
-          // 1. If an org claimed the domain with auto-join → add as member
-          // 2. If corporate but unclaimed → skip default org creation so
-          //    the user hits /onboarding to set up their company org
+          // All verified corporate users go to /onboarding regardless of auto-join status
+          // so the user can explicitly choose to join an existing org or create a new one.
           if (user.emailVerified) {
             const emailDomain = user.email?.split("@")[1]?.toLowerCase();
             if (emailDomain && !GENERIC_EMAIL_DOMAINS.has(emailDomain)) {
-              try {
-                const domainStorage = new OrganizationDomainStorage(getDb().db);
-                const domainRecord =
-                  await domainStorage.getByDomain(emailDomain);
-
-                if (domainRecord?.autoJoinEnabled) {
-                  await auth.api.addMember({
-                    body: {
-                      userId: user.id,
-                      role: "user",
-                      organizationId: domainRecord.organizationId,
-                    },
-                  } as any);
-                  return;
-                }
-                // Corporate email, no auto-join → let /onboarding handle it
-              } catch (error) {
-                console.error("[Auth] Domain auto-join check failed:", error);
-              }
               return;
             }
           }
