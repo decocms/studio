@@ -30,7 +30,7 @@ function clampX(tile: TileInstance): TileInstance {
  * Resolves overlaps by pushing the conflicting tile straight down until
  * the slot is clear. Stable order: caller passes `pinned` first.
  */
-export function resolveCollisions(
+function resolveCollisions(
   pinned: TileInstance,
   others: TileInstance[],
 ): TileInstance[] {
@@ -54,7 +54,7 @@ export function resolveCollisions(
  * or the top of the board. Iterates row-major top-to-bottom so order is
  * deterministic.
  */
-export function compactBoard(tiles: TileInstance[]): TileInstance[] {
+function compactBoard(tiles: TileInstance[]): TileInstance[] {
   const sorted = [...tiles].sort((a, b) => a.y - b.y || a.x - b.x);
   const placed: TileInstance[] = [];
   for (const tile of sorted) {
@@ -74,7 +74,7 @@ export function compactBoard(tiles: TileInstance[]): TileInstance[] {
  * Finds the topmost row at column 0 where a tile of size {w,h} fits
  * without colliding with any existing tile. Used by "Add tile".
  */
-export function findFirstFreeSlot(
+function findFirstFreeSlot(
   tiles: TileInstance[],
   w: number,
   h: number,

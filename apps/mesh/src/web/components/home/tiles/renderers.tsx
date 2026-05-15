@@ -216,14 +216,6 @@ export function ErrorMonitoringTile({ instance, isEditMode }: TileRenderProps) {
   );
 }
 
-export function UnknownTile({ instance }: TileRenderProps) {
-  return (
-    <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-      Unknown tile type: {instance.type}
-    </div>
-  );
-}
-
 export function TileSkeleton() {
   return (
     <div className="flex h-full flex-col gap-2 p-5">

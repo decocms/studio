@@ -85,7 +85,6 @@ export function HomePage() {
               onMove={boardApi.moveTile}
               onResize={boardApi.resizeTile}
               onRemove={boardApi.removeTile}
-              onUpdateConfig={boardApi.updateTileConfig}
             />
           </div>
         )}
@@ -139,7 +138,6 @@ export function HomePage() {
                 onMove={boardApi.moveTile}
                 onResize={boardApi.resizeTile}
                 onRemove={boardApi.removeTile}
-                onUpdateConfig={boardApi.updateTileConfig}
               />
             </div>
           )}
