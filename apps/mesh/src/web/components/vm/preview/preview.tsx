@@ -14,7 +14,7 @@ import {
   ChevronDown,
   CursorClick01,
   DotsHorizontal,
-  LayersTwo01,
+  TextInput,
   LinkExternal01,
   Loading01,
   Monitor04,
@@ -119,6 +119,9 @@ export function PreviewContent() {
   // Pages dropdown in URL bar
   const [pagesOpen, setPagesOpen] = useState(false);
   const pagesContainerRef = useRef<HTMLDivElement>(null);
+
+  // Current iframe path (for sections editor)
+  const [currentPath, setCurrentPath] = useState("/");
 
   // vmMap[userId][branch] -> { vmId, previewUrl, runnerKind? }
   const userId = session?.user?.id;
@@ -466,7 +469,7 @@ export function PreviewContent() {
                   size="icon"
                   onClick={() => setSectionsOpen((prev) => !prev)}
                 >
-                  <LayersTwo01 size={14} />
+                  <TextInput size={14} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">Sections Editor</TooltipContent>
@@ -543,6 +546,7 @@ export function PreviewContent() {
                           onMouseDown={(e) => {
                             e.preventDefault();
                             setPagesOpen(false);
+                            setCurrentPath(page.path);
                             // Navigate the iframe
                             const iframe = previewIframeRef.current;
                             if (iframe && previewUrl) {
@@ -602,6 +606,60 @@ export function PreviewContent() {
       )}
 
       <div className="flex-1 flex overflow-hidden">
+        {/* Sections editor side panel (left) */}
+        {sectionsOpen && previewUrl && branch && virtualMcpId && (
+          <div className="w-96 shrink-0 border-r overflow-hidden">
+            <Suspense
+              fallback={
+                <div className="h-full flex items-center justify-center">
+                  <Loading01
+                    size={20}
+                    className="animate-spin text-muted-foreground"
+                  />
+                </div>
+              }
+            >
+              <SectionsEditor
+                previewUrl={previewUrl}
+                orgSlug={org.slug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                currentPath={currentPath}
+                onSaved={() => {
+                  // Wait for the dev server to pick up the file change before reloading
+                  setTimeout(() => {
+                    const iframe = previewIframeRef.current;
+                    if (!iframe) return;
+                    // Prevent iframe from stealing focus during reload
+                    const focused =
+                      document.activeElement as HTMLElement | null;
+                    const prevTabIndex = iframe.tabIndex;
+                    iframe.tabIndex = -1;
+                    iframe.style.pointerEvents = "none";
+                    iframe.blur();
+                    try {
+                      iframe.contentWindow?.location.reload();
+                    } catch {
+                      // Cross-origin fallback
+                      // biome-ignore lint/correctness/noSelfAssign: reloads the iframe
+                      // oxlint-disable-next-line no-self-assign
+                      iframe.src = iframe.src;
+                    }
+                    const restore = () => {
+                      iframe.tabIndex = prevTabIndex;
+                      iframe.style.pointerEvents = "";
+                      focused?.focus();
+                      iframe.removeEventListener("load", restore);
+                    };
+                    iframe.addEventListener("load", restore);
+                    setTimeout(restore, 3000);
+                  }, 500);
+                }}
+              />
+            </Suspense>
+          </div>
+        )}
+
         <div className="flex-1 relative overflow-hidden">
           {previewState.kind === "never-started" && (
             <div className="absolute inset-0 z-30">
@@ -707,35 +765,6 @@ export function PreviewContent() {
             />
           )}
         </div>
-
-        {/* Sections editor side panel */}
-        {sectionsOpen && previewUrl && branch && virtualMcpId && (
-          <div className="w-96 shrink-0 border-l overflow-hidden">
-            <Suspense
-              fallback={
-                <div className="h-full flex items-center justify-center">
-                  <Loading01
-                    size={20}
-                    className="animate-spin text-muted-foreground"
-                  />
-                </div>
-              }
-            >
-              <SectionsEditor
-                previewUrl={previewUrl}
-                orgSlug={org.slug}
-                virtualMcpId={virtualMcpId}
-                branch={branch}
-                onNavigate={(path) => {
-                  const iframe = previewIframeRef.current;
-                  if (!iframe || !previewUrl) return;
-                  const url = new URL(path, previewUrl);
-                  iframe.src = url.href;
-                }}
-              />
-            </Suspense>
-          </div>
-        )}
       </div>
       <PreviewDrawer
         // key forces a fresh drawer on each new VM so per-tab state

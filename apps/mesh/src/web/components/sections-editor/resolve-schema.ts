@@ -1,11 +1,10 @@
 /**
- * Pure schema resolution for /live/_meta JSON Schemas.
+ * Schema resolution for /live/_meta JSON Schemas.
  *
- * Resolves $ref, allOf, anyOf into a flat SchemaProperty tree
- * that the form renderer can iterate over.
+ * Mirrors the admin-mcp `buildProperty` / `collectProps` pattern:
+ * resolves $ref, merges allOf/anyOf/oneOf, detects enum-from-const
+ * patterns, and identifies block-ref (loader selector) fields.
  */
-
-const MAX_DEPTH = 15;
 
 export interface SchemaProperty {
   type: string;
@@ -13,186 +12,352 @@ export interface SchemaProperty {
   description?: string;
   format?: string;
   enum?: unknown[];
-  enumNames?: string[];
   default?: unknown;
-  const?: unknown;
   properties?: Record<string, SchemaProperty>;
   items?: SchemaProperty;
-  anyOf?: SchemaProperty[];
-  required?: string[];
+  titleBy?: string;
+  /**
+   * Present on "block-ref" fields — a union of compatible block types
+   * (loaders, sections, etc.). The UI renders a selector instead of
+   * a flat form.
+   */
+  anyOfRefs?: Array<{
+    resolveType: string;
+    title: string;
+    description?: string;
+  }>;
 }
 
 export interface LiveMeta {
   manifest: {
-    blocks: {
-      sections: Record<string, { $ref: string; namespace: string }>;
-    };
+    blocks: Record<
+      string,
+      Record<string, { $ref?: string; namespace?: string }>
+    >;
   };
-  schema: {
-    definitions: Record<string, unknown>;
-  };
+  schema: Record<string, unknown>;
 }
 
 type RawSchema = Record<string, unknown>;
 
-function isObj(v: unknown): v is RawSchema {
-  return v !== null && typeof v === "object" && !Array.isArray(v);
-}
-
 /**
- * Resolve a $ref pointer like "#/definitions/abc" into the actual schema.
- */
-function resolveRef(
-  ref: string,
-  definitions: Record<string, unknown>,
-): RawSchema | null {
-  const prefix = "#/definitions/";
-  if (!ref.startsWith(prefix)) return null;
-  const key = ref.slice(prefix.length);
-  const resolved = definitions[key];
-  return isObj(resolved) ? resolved : null;
-}
-
-/**
- * Recursively dereference a schema, resolving $ref, merging allOf,
- * and flattening into a SchemaProperty.
- */
-function flatten(
-  raw: unknown,
-  definitions: Record<string, unknown>,
-  depth: number,
-): SchemaProperty | null {
-  if (depth > MAX_DEPTH || !isObj(raw)) return null;
-
-  let schema = raw;
-
-  // Resolve $ref
-  if (typeof schema.$ref === "string") {
-    const resolved = resolveRef(schema.$ref, definitions);
-    if (!resolved) return null;
-    // Merge sibling properties (title, description) with resolved
-    const { $ref: _, ...siblings } = schema;
-    schema = { ...resolved, ...siblings };
-  }
-
-  // Merge allOf
-  if (Array.isArray(schema.allOf)) {
-    let merged: RawSchema = {};
-    for (const entry of schema.allOf) {
-      const flat = flatten(entry, definitions, depth + 1);
-      if (flat?.properties) {
-        merged = {
-          ...merged,
-          properties: {
-            ...(merged.properties as Record<string, unknown> | undefined),
-            ...flat.properties,
-          },
-        };
-      }
-    }
-    const { allOf: _, ...rest } = schema;
-    schema = { ...rest, ...merged };
-    if (rest.properties && merged.properties) {
-      schema.properties = {
-        ...(merged.properties as Record<string, unknown>),
-        ...(rest.properties as Record<string, unknown>),
-      };
-    }
-  }
-
-  // Determine type
-  let type = "string";
-  const rawType = schema.type;
-  if (typeof rawType === "string") {
-    type = rawType;
-  } else if (Array.isArray(rawType)) {
-    // ["string", "null"] -> "string"
-    type = (rawType.find((t: unknown) => t !== "null") as string) ?? "string";
-  }
-
-  const result: SchemaProperty = { type };
-
-  if (typeof schema.title === "string") result.title = schema.title;
-  if (typeof schema.description === "string")
-    result.description = schema.description;
-  if (typeof schema.format === "string") result.format = schema.format;
-  if (Array.isArray(schema.enum)) result.enum = schema.enum;
-  if (Array.isArray(schema.enumNames))
-    result.enumNames = schema.enumNames as string[];
-  if (schema.default !== undefined) result.default = schema.default;
-  if (schema.const !== undefined) result.const = schema.const;
-
-  // anyOf
-  if (Array.isArray(schema.anyOf)) {
-    const variants: SchemaProperty[] = [];
-    for (const variant of schema.anyOf) {
-      const flat = flatten(variant, definitions, depth + 1);
-      if (flat) variants.push(flat);
-    }
-    if (variants.length > 0) {
-      result.anyOf = variants;
-      result.type = "anyOf";
-    }
-  }
-
-  // Properties (object)
-  if (isObj(schema.properties)) {
-    const props: Record<string, SchemaProperty> = {};
-    const required = Array.isArray(schema.required)
-      ? (schema.required as string[])
-      : [];
-    for (const [key, val] of Object.entries(
-      schema.properties as Record<string, unknown>,
-    )) {
-      const flat = flatten(val, definitions, depth + 1);
-      if (flat) props[key] = flat;
-    }
-    if (Object.keys(props).length > 0) {
-      result.properties = props;
-      result.type = "object";
-    }
-    if (required.length > 0) result.required = required;
-  }
-
-  // Items (array)
-  if (type === "array" && isObj(schema.items)) {
-    const flat = flatten(schema.items, definitions, depth + 1);
-    if (flat) result.items = flat;
-  }
-
-  return result;
-}
-
-/**
- * Get the list of available sections from /live/_meta.
- */
-export function getSectionTypes(meta: LiveMeta): string[] {
-  return Object.keys(meta.manifest.blocks.sections);
-}
-
-/**
- * Resolve the schema for a given __resolveType.
- * Returns null if the type is not found or is a named block reference.
+ * Resolve the schema for a given __resolveType by searching across ALL
+ * block types in the manifest (sections, loaders, matchers, etc.).
  */
 export function resolveSchema(
   resolveType: string,
   meta: LiveMeta,
 ): SchemaProperty | null {
-  const definitions = meta.schema.definitions;
+  const globalSchema = meta.schema ?? {};
+  const allBlockTypes = meta.manifest?.blocks ?? {};
 
-  // Look up the section in manifest
-  const sectionEntry = meta.manifest.blocks.sections[resolveType];
-  if (!sectionEntry) {
-    // Not a known section type — could be a named block reference
-    return null;
+  // Find the per-block schema for this resolveType across all block types
+  let blockSchema: RawSchema = {};
+  for (const blockTypeMap of Object.values(allBlockTypes)) {
+    if (blockTypeMap[resolveType]) {
+      blockSchema = blockTypeMap[resolveType] as RawSchema;
+      break;
+    }
   }
 
-  // Resolve the $ref from the manifest entry
-  const refKey = sectionEntry.$ref?.replace("#/definitions/", "");
-  if (!refKey) return null;
+  // Merge exactly as admin-mcp does: { ...schema, ...blockSchema }
+  const merged: RawSchema = { ...globalSchema, ...blockSchema };
+  const defs = (merged.$defs ?? merged.definitions ?? {}) as Record<
+    string,
+    unknown
+  >;
 
-  const sectionSchema = definitions[refKey];
-  if (!isObj(sectionSchema)) return null;
+  const resolveRef = (ref: string): RawSchema => {
+    const key = ref.split("/").pop() ?? "";
+    return (defs[key] as RawSchema | undefined) ?? {};
+  };
 
-  return flatten(sectionSchema, definitions, 0);
+  /**
+   * Recursively follow $ref / allOf / anyOf / oneOf and merge all
+   * `properties` objects found. seenRefs guards against cycles.
+   */
+  const collectProps = (
+    s: RawSchema,
+    seenRefs: Set<string> = new Set(),
+    depth = 0,
+  ): RawSchema => {
+    if (depth > 5) return {};
+
+    if (typeof s.$ref === "string") {
+      const key = s.$ref.split("/").pop() ?? "";
+      if (seenRefs.has(key)) return {};
+      return collectProps(
+        resolveRef(s.$ref),
+        new Set([...seenRefs, key]),
+        depth + 1,
+      );
+    }
+
+    let props: RawSchema = {};
+
+    if (s.properties && typeof s.properties === "object") {
+      props = { ...props, ...(s.properties as RawSchema) };
+    }
+
+    for (const k of ["allOf", "anyOf", "oneOf"] as const) {
+      const arr = (s as Record<string, unknown>)[k];
+      if (!Array.isArray(arr)) continue;
+      for (const part of arr as RawSchema[]) {
+        props = { ...props, ...collectProps(part, seenRefs, depth + 1) };
+      }
+    }
+
+    return props;
+  };
+
+  /**
+   * Converts a raw schema entry into a typed SchemaProperty, resolving
+   * nested properties for object types (up to depth 3).
+   */
+  const buildProperty = (v: RawSchema, depth = 0): SchemaProperty => {
+    let resolved = v;
+    if (typeof v.$ref === "string") {
+      resolved = resolveRef(v.$ref);
+    }
+
+    // Extract enum values from anyOf/oneOf const/enum branches
+    let enumFromConsts: unknown[] | undefined;
+    {
+      const unionArr = (resolved.anyOf ?? resolved.oneOf) as
+        | RawSchema[]
+        | undefined;
+      if (Array.isArray(unionArr)) {
+        const nonNullUnion = unionArr.filter(
+          (a) => !(a.type === "null" || a.type === null),
+        );
+        const getScalar = (a: RawSchema): unknown => {
+          if (typeof a.const === "string" || typeof a.const === "number")
+            return a.const;
+          if (
+            Array.isArray(a.enum) &&
+            a.enum.length === 1 &&
+            (typeof a.enum[0] === "string" || typeof a.enum[0] === "number")
+          )
+            return a.enum[0];
+          return undefined;
+        };
+        if (
+          nonNullUnion.length > 0 &&
+          nonNullUnion.every((a) => getScalar(a) !== undefined)
+        ) {
+          enumFromConsts = nonNullUnion.map((a) => getScalar(a));
+        }
+      }
+    }
+
+    // Determine type
+    let type: string | undefined;
+    if (resolved.type) {
+      type = Array.isArray(resolved.type)
+        ? String(resolved.type[0])
+        : String(resolved.type);
+    } else if (typeof v.$ref === "string") {
+      type = "object";
+    } else if (resolved.anyOf || resolved.allOf || resolved.oneOf) {
+      const arr = (resolved.anyOf ??
+        resolved.allOf ??
+        resolved.oneOf) as RawSchema[];
+      const nonNull = arr.filter(
+        (a) => !(a.type === "null" || a.type === null),
+      );
+
+      if (nonNull.length === 0) {
+        type = "null";
+      } else if (nonNull.length === 1) {
+        const first = nonNull[0]!;
+        type = first.type
+          ? Array.isArray(first.type)
+            ? String(first.type[0])
+            : String(first.type)
+          : typeof first.$ref === "string"
+            ? "object"
+            : "string";
+      } else {
+        // const-only branches: TypeScript string/number enum
+        if (enumFromConsts) {
+          return {
+            type: "string",
+            title:
+              typeof resolved.title === "string" ? resolved.title : undefined,
+            description:
+              typeof resolved.description === "string"
+                ? resolved.description
+                : undefined,
+            enum: enumFromConsts,
+          };
+        }
+
+        // deco.cx inline loader branches
+        const loaderBranches = nonNull.filter((a) => {
+          const rtEnum = (
+            (a.properties as RawSchema | undefined)?.__resolveType as
+              | RawSchema
+              | undefined
+          )?.enum;
+          return Array.isArray(rtEnum) && typeof rtEnum[0] === "string";
+        });
+        if (loaderBranches.length > 0) {
+          const anyOfRefs = loaderBranches.map((branch) => {
+            const rtEnum = (
+              (branch.properties as RawSchema)?.__resolveType as RawSchema
+            ).enum as unknown[];
+            const rt = String(rtEnum[0]);
+            return {
+              resolveType: rt,
+              title:
+                typeof branch.title === "string"
+                  ? branch.title
+                  : (rt
+                      .split("/")
+                      .pop()
+                      ?.replace(/\.tsx?$/, "")
+                      .replace(/[-_]/g, " ") ?? rt),
+              description:
+                typeof branch.description === "string"
+                  ? branch.description
+                  : undefined,
+            };
+          });
+          return {
+            type: "block-ref",
+            title:
+              typeof resolved.title === "string" ? resolved.title : undefined,
+            description:
+              typeof resolved.description === "string"
+                ? resolved.description
+                : undefined,
+            anyOfRefs,
+          };
+        }
+
+        // All branches are $refs to block/loader defs
+        const allRefs = nonNull.every((a) => typeof a.$ref === "string");
+        if (allRefs) {
+          const anyOfRefs: Array<{
+            resolveType: string;
+            title: string;
+            description?: string;
+          }> = [];
+          for (const branch of nonNull) {
+            const def = resolveRef(branch.$ref as string);
+            let rt: string | undefined;
+            if (Array.isArray(def.allOf)) {
+              for (const part of def.allOf as RawSchema[]) {
+                const props = (part.properties ?? {}) as RawSchema;
+                const rtProp = (props.__resolveType ?? {}) as RawSchema;
+                const e = rtProp.enum;
+                if (Array.isArray(e) && typeof e[0] === "string") {
+                  rt = e[0];
+                  break;
+                }
+              }
+            }
+            if (!rt) {
+              rt = (branch.$ref as string).split("/").pop() ?? "";
+            }
+            anyOfRefs.push({
+              resolveType: rt,
+              title:
+                typeof def.title === "string"
+                  ? def.title
+                  : (rt
+                      .split("/")
+                      .pop()
+                      ?.replace(/\.tsx?$/, "")
+                      .replace(/[-_]/g, " ") ?? rt),
+              description:
+                typeof def.description === "string"
+                  ? def.description
+                  : undefined,
+            });
+          }
+          return {
+            type: "block-ref",
+            title:
+              typeof resolved.title === "string" ? resolved.title : undefined,
+            description:
+              typeof resolved.description === "string"
+                ? resolved.description
+                : undefined,
+            anyOfRefs,
+          };
+        }
+
+        type = "object";
+      }
+    }
+
+    // Nested properties for object types (depth < 3)
+    let nestedProperties: Record<string, SchemaProperty> | undefined;
+    if (depth < 3) {
+      const nestedRaw = collectProps(resolved);
+      const nestedEntries = Object.entries(nestedRaw).filter(
+        ([k]) => !k.startsWith("__") && k !== "@type",
+      );
+      if (nestedEntries.length > 0) {
+        nestedProperties = {};
+        for (const [k, raw] of nestedEntries) {
+          nestedProperties[k] = buildProperty(raw as RawSchema, depth + 1);
+        }
+      }
+    }
+
+    // Array items
+    let itemsSchema: SchemaProperty | undefined;
+    if ((type === "array" || resolved.type === "array") && depth < 3) {
+      let rawItems = resolved.items as RawSchema | undefined;
+      if (rawItems) {
+        if (typeof rawItems.$ref === "string") {
+          rawItems = resolveRef(rawItems.$ref);
+        }
+        itemsSchema = buildProperty(rawItems, depth + 1);
+      }
+    }
+
+    return {
+      type: type ?? "string",
+      title:
+        typeof v.title === "string"
+          ? v.title
+          : typeof resolved.title === "string"
+            ? resolved.title
+            : undefined,
+      description:
+        typeof v.description === "string"
+          ? v.description
+          : typeof resolved.description === "string"
+            ? resolved.description
+            : undefined,
+      default: v.default ?? resolved.default,
+      enum: Array.isArray(resolved.enum)
+        ? resolved.enum
+        : (enumFromConsts ?? undefined),
+      format: typeof resolved.format === "string" ? resolved.format : undefined,
+      properties: nestedProperties,
+      items: itemsSchema,
+      titleBy:
+        typeof resolved.titleBy === "string" ? resolved.titleBy : undefined,
+    };
+  };
+
+  // Collect top-level properties and build typed map
+  const topRaw = collectProps(merged);
+  const properties: Record<string, SchemaProperty> = {};
+  for (const [key, raw] of Object.entries(topRaw)) {
+    if (key.startsWith("__") || key === "@type") continue;
+    properties[key] = buildProperty(raw as RawSchema, 0);
+  }
+
+  if (Object.keys(properties).length === 0) return null;
+
+  return {
+    type: "object",
+    title: typeof merged.title === "string" ? merged.title : undefined,
+    properties,
+  };
 }

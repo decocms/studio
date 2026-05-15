@@ -16,7 +16,7 @@ export function EnumField({
   label,
 }: FieldProps) {
   const options = schema.enum ?? [];
-  const names = schema.enumNames ?? [];
+  const names: string[] = [];
   const strValue = value != null ? String(value) : "";
 
   return (
