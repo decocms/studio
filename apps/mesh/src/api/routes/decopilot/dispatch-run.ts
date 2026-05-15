@@ -282,9 +282,16 @@ export async function dispatchRunAndWait(
       );
 
       const buffer = deps.streamBuffer;
+      // `deliverPolicy: "new"` here, not "all". The subscription is set
+      // up before `pump()` runs, so every chunk for *this* run lands in
+      // the "new" window. Replaying "all" could surface a stale
+      // `{done:true}` left on the subject by an earlier run that shared
+      // the same `taskId` (DBOS crash-recovery replay; later, user
+      // messages reusing the per-thread subject) and close the tail
+      // before this run produces any output.
       const tail = buffer
         ? await buffer.createTailStream(taskId, input.abortSignal, {
-            deliverPolicy: "all",
+            deliverPolicy: "new",
             closeOnDone: true,
           })
         : null;
