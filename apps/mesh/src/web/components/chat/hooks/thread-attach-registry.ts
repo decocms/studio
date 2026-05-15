@@ -311,21 +311,45 @@ class ThreadConnection {
     signal?: AbortSignal,
   ): Promise<void> {
     const { system, ...rest } = opts;
-    const systemMessage: UIMessage | null = system
-      ? {
-          id: crypto.randomUUID(),
-          role: "system",
-          parts: [{ type: "text", text: system }],
-        }
-      : null;
+    // Only attach the system prompt on a user turn. Tool-approval / output
+    // continuations re-POST the assistant message; the server already has
+    // the system context for the run, and including it would inject a
+    // fresh `crypto.randomUUID()` system-message id into the body — making
+    // the SHA-1 below effectively random per POST and defeating retry
+    // collapsing.
+    const systemMessage: UIMessage | null =
+      system && message.role === "user"
+        ? {
+            id: crypto.randomUUID(),
+            role: "system",
+            parts: [{ type: "text", text: system }],
+          }
+        : null;
     const messages = systemMessage ? [systemMessage, message] : [message];
     const body = { messages, ...rest };
+    const bodyJson = JSON.stringify(body);
+    // SHA-1 of the serialized body so byte-identical retries collapse onto
+    // the same DBOS workflow, but the second POST in a multi-turn approval
+    // (same assistant message id, different tool states) hashes differently
+    // and dispatches a fresh run. Without this the server's idempotency
+    // fallback keys on the last message id, which is stable across approvals
+    // and silently drops the second-approval run.
+    const digest = await crypto.subtle.digest(
+      "SHA-1",
+      new TextEncoder().encode(bodyJson),
+    );
+    const idempotencyKey = [...new Uint8Array(digest)]
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
     const url = `/api/${encodeURIComponent(this.orgSlug)}/decopilot/threads/${encodeURIComponent(this.threadId)}/messages`;
     const resp = await fetch(url, {
       method: "POST",
       credentials: "include",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
+      headers: {
+        "content-type": "application/json",
+        "x-idempotency-key": idempotencyKey,
+      },
+      body: bodyJson,
       signal,
     });
     if (!resp.ok) {
