@@ -132,3 +132,43 @@ describe("ThreadChatStore.setMessages", () => {
     expect(store.getSnapshot().local.map((m) => m.id)).toEqual(["u-2"]);
   });
 });
+
+describe("ThreadChatStore — chunk fan-out", () => {
+  test("fires onData for data-* chunks before folding", () => {
+    const onData = mock(() => {});
+    const store = new ThreadChatStore<UIMessage>({
+      handlersRef: { current: { prepareBody: () => ({}), onData } },
+      fetchImpl: mock(() =>
+        Promise.resolve(new Response("", { status: 202 })),
+      ) as unknown as typeof fetch,
+      persistentLoop: () => new Promise(() => {}),
+    });
+    store.connect({ orgSlug: "a", threadId: "t" });
+    const chunk = { type: "data-thread-title", data: { title: "hi" } } as never;
+    // @ts-expect-error — calling internal for unit test
+    store.handleChunk(chunk);
+    expect(onData).toHaveBeenCalledWith(chunk);
+  });
+
+  test("fires onToolCall for tool-input-available chunks", () => {
+    const onToolCall = mock(() => {});
+    const store = new ThreadChatStore<UIMessage>({
+      handlersRef: { current: { prepareBody: () => ({}), onToolCall } },
+      fetchImpl: mock(() =>
+        Promise.resolve(new Response("", { status: 202 })),
+      ) as unknown as typeof fetch,
+      persistentLoop: () => new Promise(() => {}),
+    });
+    store.connect({ orgSlug: "a", threadId: "t" });
+    // @ts-expect-error — calling internal for unit test
+    store.handleChunk({
+      type: "tool-input-available",
+      toolCallId: "c1",
+      toolName: "myTool",
+      input: { a: 1 },
+    });
+    expect(onToolCall).toHaveBeenCalledWith({
+      toolCall: { toolCallId: "c1", toolName: "myTool", input: { a: 1 } },
+    });
+  });
+});

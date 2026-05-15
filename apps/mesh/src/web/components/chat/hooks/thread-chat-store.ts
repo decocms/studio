@@ -127,6 +127,31 @@ export class ThreadChatStore<M extends UIMessage> {
     return streaming ? [...local, streaming] : local.slice();
   }
 
+  // @ts-ignore TS6133 — will be called in Task 9
+  private handleChunk(chunk: UIMessageChunk): void {
+    // Fan out side-effect callbacks before folding.
+    if (chunk.type.startsWith("data-")) {
+      this.handlersRef.current.onData?.(
+        chunk as Extract<UIMessageChunk, { type: `data-${string}` }>,
+      );
+    }
+    if (chunk.type === "tool-input-available") {
+      const c = chunk as {
+        toolCallId: string;
+        toolName: string;
+        input: unknown;
+      };
+      this.handlersRef.current.onToolCall?.({
+        toolCall: {
+          toolCallId: c.toolCallId,
+          toolName: c.toolName,
+          input: c.input,
+        },
+      });
+    }
+    // Folding into sub-stream is added in Task 5.
+  }
+
   // ── Public methods (stubs filled in later tasks) ────────────────────
   connect(args: { orgSlug: string; threadId: string }): void {
     if (
