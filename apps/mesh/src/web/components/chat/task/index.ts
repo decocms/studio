@@ -9,3 +9,4 @@ export type {
 } from "./thread-store";
 export { filterThreads } from "./thread-filter";
 export type { ThreadFilter } from "./thread-filter";
+export { ThreadEventsBridge } from "./thread-events";
