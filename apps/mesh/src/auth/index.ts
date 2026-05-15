@@ -25,6 +25,10 @@ import {
 } from "better-auth/plugins";
 import { emailOTP } from "better-auth/plugins/email-otp";
 import {
+  adminAc as systemAdminAc,
+  defaultRoles as systemDefaultRoles,
+} from "better-auth/plugins/admin/access";
+import {
   adminAc,
   defaultStatements,
 } from "@decocms/better-auth/plugins/organization/access";
@@ -290,6 +294,10 @@ const plugins = [
   adminPlugin({
     defaultRole: "user",
     adminRoles: ["admin", "owner"],
+    roles: {
+      ...systemDefaultRoles,
+      owner: systemAdminAc,
+    },
   }),
 
   // OpenAPI plugin for API documentation
