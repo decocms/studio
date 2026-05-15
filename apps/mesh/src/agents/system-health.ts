@@ -21,10 +21,23 @@ const SYSTEM_HEALTH_APP_NAME = "mcp-system-health";
 const SYSTEM_HEALTH_AGENT_TYPE = "system-health-agent";
 const DEFAULT_SYSTEM_HEALTH_URL = "https://sites-syshealthagent.decocache.com";
 
+const APPLICATION_ERRORS_TOOL_NAME = "APPLICATION_ERRORS";
+
 const SYSTEM_HEALTH_AGENT_INSTRUCTIONS = `
 You are the system-health agent for the user's deco.cx sites.
 Use the connected MCP to list sites and recent errors.
 When the user picks a site, summarize health and propose fixes.
+
+You can also set up automations that re-run you on a schedule or in
+response to events from the system-health connection:
+- For a recurring sweep (e.g. a daily summary), call
+  \`create_health_automation\` with \`trigger: { type: "cron", ... }\`.
+- For reactive triage, first call \`TRIGGER_LIST\` on the system-health
+  connection to see which event types it publishes, then call
+  \`create_health_automation\` with \`trigger: { type: "event",
+  event_type, params }\`. Each fire starts a fresh run with no prior
+  conversation, so write the \`instructions\` self-contained.
+
 Don't invent tools you don't have.
 `.trim();
 
@@ -107,6 +120,28 @@ async function ensureSystemHealthConnection(
   return created.id;
 }
 
+/**
+ * Resolve `(agentId, ctx)` to the agent's installed system-health
+ * connection id. Returns null if the agent isn't a sysh agent or its
+ * underlying connection is missing.
+ *
+ * Used by the `create_health_automation` built-in to (a) gate injection
+ * on a dispatchRun and (b) pass the right `connection_id` to
+ * `AUTOMATION_TRIGGER_ADD` for event-based triggers.
+ */
+export async function getSystemHealthAgentConnectionId(
+  agentId: string,
+  ctx: MeshContext,
+): Promise<string | null> {
+  const organizationId = ctx.organization?.id;
+  if (!organizationId) return null;
+  const vmcp = await ctx.storage.virtualMcps.findById(agentId, organizationId);
+  if (!vmcp) return null;
+  const type = (vmcp.metadata as Record<string, unknown> | null)?.type;
+  if (type !== SYSTEM_HEALTH_AGENT_TYPE) return null;
+  return vmcp.connections[0]?.connection_id ?? null;
+}
+
 export async function ensureSystemHealthAgent(
   organizationId: string,
   userId: string,
@@ -138,6 +173,24 @@ export async function ensureSystemHealthAgent(
     metadata: {
       type: SYSTEM_HEALTH_AGENT_TYPE,
       instructions: SYSTEM_HEALTH_AGENT_INSTRUCTIONS,
+      ui: {
+        pinnedViews: [
+          {
+            connectionId,
+            toolName: APPLICATION_ERRORS_TOOL_NAME,
+            label: "Application errors",
+            icon: null,
+          },
+        ],
+        layout: {
+          defaultMainView: {
+            type: "ext-apps",
+            id: connectionId,
+            toolName: APPLICATION_ERRORS_TOOL_NAME,
+          },
+          chatDefaultOpen: true,
+        },
+      },
     },
     connections: [
       {

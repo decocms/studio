@@ -25,6 +25,7 @@ import { ImportFromDecoDialog } from "@/web/components/import-from-deco-dialog.t
 import { InstallFlowDialog } from "@/web/components/install-flow-dialog.tsx";
 import { useAutoInstallGitHub } from "@/web/hooks/use-auto-install-github";
 import { useAutoInstallSystemHealth } from "@/web/hooks/use-auto-install-system-health";
+import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
 import { KEYS } from "@/web/lib/query-keys";
 import { usePresetTasks, type VisiblePresetTask } from "./use-preset-tasks";
 
@@ -67,6 +68,7 @@ export function TasksSection({
   currentUserId?: string;
 }) {
   const navigate = useNavigate();
+  const navigateToAgent = useNavigateToAgent();
   const queryClient = useQueryClient();
   const { org } = useProjectContext();
   const {
@@ -107,29 +109,17 @@ export function TasksSection({
   const githubInstall = useAutoInstallGitHub({ enabled: installGithubOpen });
   const systemHealthInstall = useAutoInstallSystemHealth({
     enabled: installSystemHealthOpen,
-    onReady: async () => {
-      // OAuth handshake complete — close the dialog and immediately
-      // start the error-monitoring thread, matching the one-click UX
-      // the design called for. If start fails the dialog is already
-      // closed so we surface the error as a toast.
+    onReady: (_connectionId, virtualMcpId) => {
+      // First-time install path: land the user on the sysh agent's
+      // own page (fresh chat + APPLICATION_ERRORS pinned as the main
+      // view, both wired in `ensureSystemHealthAgent`). The seeded
+      // preset thread is now redundant — the pinned view already
+      // surfaces what the seed message used to ask for. Subsequent
+      // clicks of the (already-installed) error-monitoring card still
+      // go through `startPreset` below and get a seeded thread.
       setInstallSystemHealthOpen(false);
-      try {
-        setStartingPresetId("error-monitoring");
-        const { taskId, virtualMcpId } = await startPreset("error-monitoring");
-        queryClient.invalidateQueries({
-          queryKey: KEYS.homeBoard(org.slug),
-        });
-        navigate({
-          to: "/$org/$taskId",
-          params: { org: org.slug, taskId },
-          search: { virtualmcpid: virtualMcpId },
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to start";
-        toast.error(`Couldn't start error monitoring: ${message}`);
-      } finally {
-        setStartingPresetId(null);
-      }
+      queryClient.invalidateQueries({ queryKey: KEYS.homeBoard(org.slug) });
+      navigateToAgent(virtualMcpId);
     },
   });
 
