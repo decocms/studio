@@ -107,10 +107,9 @@ export function ToolsPopover({
   const { editor } = useCurrentEditor();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const supportsFiles = modelSupportsFiles(selectedModel);
-  const addFileDisabled = isStreaming || !supportsFiles;
 
   const handleAddFileClick = () => {
-    if (addFileDisabled) return;
+    if (!supportsFiles || isStreaming) return;
     setOpen(false);
     fileInputRef.current?.click();
   };
@@ -122,18 +121,20 @@ export function ToolsPopover({
     const fileArray = Array.from(files);
     const { from } = editor.state.selection;
 
-    for (const file of fileArray) {
-      await processFile(
-        editor,
-        selectedModel ?? null,
-        file,
-        from,
-        onUnsupportedFile,
-      );
-    }
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
+    try {
+      for (const file of fileArray) {
+        await processFile(
+          editor,
+          selectedModel ?? null,
+          file,
+          from,
+          onUnsupportedFile,
+        );
+      }
+    } finally {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     }
   };
   const client = useMCPClient({
@@ -159,7 +160,7 @@ export function ToolsPopover({
     APPROVAL_LEVEL_OPTIONS.find(
       (opt) => opt.value === preferences.toolApprovalLevel,
     ) ?? APPROVAL_LEVEL_OPTIONS[0]!;
-  const currentApprovalLabel = currentApprovalOption.label;
+  const currentApprovalShort = currentApprovalOption.short;
 
   const handleApprovalLevelChange = (next: string) => {
     const matched = APPROVAL_LEVEL_OPTIONS.find((opt) => opt.value === next);
@@ -310,7 +311,7 @@ export function ToolsPopover({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-52 p-1.5">
-          {addFileDisabled && !isStreaming ? (
+          {!supportsFiles ? (
             <Tooltip>
               <TooltipTrigger asChild>
                 <DropdownMenuItem
@@ -387,7 +388,7 @@ export function ToolsPopover({
               <ShieldTick size={16} />
               <span className="flex-1">Approvals</span>
               <span className="text-xs text-muted-foreground">
-                {currentApprovalLabel}
+                {currentApprovalShort}
               </span>
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent className="w-48 p-1.5">
