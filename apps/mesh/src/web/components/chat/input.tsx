@@ -16,7 +16,6 @@ import {
   Image01,
   Lock01,
   Microphone01,
-  Plus,
   Stop,
   Upload01,
   X,
@@ -35,7 +34,6 @@ import { getSupportedFileTypesLabel, modelSupportsFiles } from "./select-model";
 import { SimpleModeTierDropdown } from "./simple-mode-tier-dropdown";
 import type { AiProviderModel } from "@/web/hooks/collections/use-ai-providers";
 import {
-  FileUploadButton,
   UnsupportedFileDialog,
   useUnsupportedFileDialog,
   processFile,
@@ -471,12 +469,6 @@ export function ChatInput({
                   <>
                     {/* Left Actions (+, Tools, active tool pills, stats) */}
                     <div className="flex items-center gap-1.5 min-w-0 shrink-0">
-                      <FileUploadButton
-                        selectedModel={selectedModel}
-                        isStreaming={isStreaming}
-                        icon={<Plus size={16} />}
-                        onUnsupportedFile={onUnsupportedFile}
-                      />
                       <ToolsPopover
                         disabled={isStreaming}
                         onOpenConnections={() => {
@@ -487,6 +479,9 @@ export function ChatInput({
                           setConnectionsOpen(true);
                         }}
                         virtualMcpId={selectedVirtualMcp?.id ?? decopilotId}
+                        selectedModel={selectedModel}
+                        isStreaming={isStreaming}
+                        onUnsupportedFile={onUnsupportedFile}
                       />
                       {isPlanMode && (
                         <button

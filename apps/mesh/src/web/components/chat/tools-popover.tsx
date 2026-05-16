@@ -11,9 +11,16 @@ import {
 } from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -29,9 +36,11 @@ import {
   Image01,
   Link01,
   Loading01,
+  Plus,
   Settings04,
+  ShieldTick,
 } from "@untitledui/icons";
-import { Suspense, useState } from "react";
+import { Suspense, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 import { track } from "@/web/lib/posthog-client";
 import {
@@ -43,6 +52,21 @@ import { KEYS } from "@/web/lib/query-keys";
 import { useSound } from "@/web/hooks/use-sound.ts";
 import { switch005Sound } from "@deco/ui/lib/switch-005.ts";
 import { useChatPrefs } from "./context";
+import {
+  APPROVAL_LEVEL_OPTIONS,
+  usePreferences,
+} from "@/web/hooks/use-preferences.ts";
+import { processFile, type UnsupportedFileInfo } from "./tiptap/file";
+import {
+  getAcceptedMimeTypesForModel,
+  modelSupportsFiles,
+} from "./select-model";
+import type { AiProviderModel } from "@/web/hooks/collections/use-ai-providers";
+import { KEYBOARD_SHORTCUTS } from "@/web/lib/keyboard-shortcuts";
+
+const PLAN_MODE_SHORTCUT = KEYBOARD_SHORTCUTS.togglePlanMode.keys
+  .map((k) => (k === "Shift" ? "⇧" : k))
+  .join("");
 
 const FEATURED_CONNECTION_ICONS = [
   { src: "/connections/gmail.png", name: "Gmail" },
@@ -69,17 +93,55 @@ interface ToolsPopoverProps {
   disabled?: boolean;
   onOpenConnections: () => void;
   virtualMcpId: string | null;
+  selectedModel: AiProviderModel | null | undefined;
+  isStreaming: boolean;
+  onUnsupportedFile?: (info: UnsupportedFileInfo) => void;
 }
 
 export function ToolsPopover({
   disabled,
   onOpenConnections,
   virtualMcpId,
+  selectedModel,
+  isStreaming,
+  onUnsupportedFile,
 }: ToolsPopoverProps) {
   const [open, setOpen] = useState(false);
   const playSwitchSound = useSound(switch005Sound);
   const { org } = useProjectContext();
   const { editor } = useCurrentEditor();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const supportsFiles = modelSupportsFiles(selectedModel);
+
+  const handleAddFileClick = () => {
+    if (!supportsFiles || isStreaming) return;
+    setOpen(false);
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0 || !editor) return;
+
+    const fileArray = Array.from(files);
+    const { from } = editor.state.selection;
+
+    try {
+      for (const file of fileArray) {
+        await processFile(
+          editor,
+          selectedModel ?? null,
+          file,
+          from,
+          onUnsupportedFile,
+        );
+      }
+    } finally {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
   const client = useMCPClient({
     connectionId: virtualMcpId,
     orgId: org.id,
@@ -98,6 +160,31 @@ export function ToolsPopover({
   const [activePrompt, setActivePrompt] = useState<Prompt | null>(null);
 
   const { chatMode, setChatMode } = useChatPrefs();
+  const [preferences, setPreferences] = usePreferences();
+  const currentApprovalOption =
+    APPROVAL_LEVEL_OPTIONS.find(
+      (opt) => opt.value === preferences.toolApprovalLevel,
+    ) ?? APPROVAL_LEVEL_OPTIONS[0]!;
+  const currentApprovalShort = currentApprovalOption.short;
+
+  const handleApprovalLevelChange = (next: string) => {
+    const matched = APPROVAL_LEVEL_OPTIONS.find((opt) => opt.value === next);
+    if (!matched) return;
+    if (matched.value === preferences.toolApprovalLevel) {
+      // No-op: same level re-selected, just close the popover.
+      setOpen(false);
+      return;
+    }
+    playSwitchSound();
+    track("chat_approval_level_changed", {
+      from_level: preferences.toolApprovalLevel,
+      to_level: matched.value,
+      source: "tools_popover",
+    });
+    setPreferences({ ...preferences, toolApprovalLevel: matched.value });
+    setOpen(false);
+  };
+
   const isPlanMode = chatMode === "plan";
 
   const handleTogglePlanMode = () => {
@@ -191,6 +278,16 @@ export function ToolsPopover({
 
   return (
     <>
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept={getAcceptedMimeTypesForModel(selectedModel ?? null)}
+        className="hidden"
+        onChange={handleFileSelect}
+        disabled={isStreaming}
+      />
+
       <DropdownMenu
         open={open}
         onOpenChange={(next) => {
@@ -218,7 +315,33 @@ export function ToolsPopover({
             </span>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-52 p-1.5">
+        <DropdownMenuContent align="start" className="w-52 p-1.5 space-y-1">
+          {!supportsFiles ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuItem
+                  aria-disabled="true"
+                  className="opacity-50 cursor-not-allowed"
+                  onSelect={(e) => e.preventDefault()}
+                >
+                  <Plus size={16} />
+                  <span className="flex-1">Add file</span>
+                </DropdownMenuItem>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                The selected model does not support reading files or images.
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <DropdownMenuItem
+              onClick={handleAddFileClick}
+              disabled={isStreaming}
+            >
+              <Plus size={16} />
+              <span className="flex-1">Add file</span>
+            </DropdownMenuItem>
+          )}
+
           <DropdownMenuItem
             onClick={handleTogglePlanMode}
             className={cn(isPlanMode && "text-violet-600 dark:text-violet-400")}
@@ -228,9 +351,14 @@ export function ToolsPopover({
               className={cn(isPlanMode && "text-violet-500")}
             />
             <span className="flex-1">Plan mode</span>
-            {isPlanMode && (
-              <span className="text-xs text-violet-500 font-medium">On</span>
-            )}
+            <span
+              className={cn(
+                "text-xs text-muted-foreground",
+                isPlanMode && "text-violet-500 font-medium",
+              )}
+            >
+              {PLAN_MODE_SHORTCUT}
+            </span>
           </DropdownMenuItem>
 
           {/* Create image */}
@@ -304,6 +432,28 @@ export function ToolsPopover({
                   </DropdownMenuItem>
                 ))
               )}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger className="gap-2">
+              <ShieldTick size={16} />
+              <span className="flex-1">Approval</span>
+              <span className="text-xs text-muted-foreground">
+                {currentApprovalShort}
+              </span>
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-48 p-1.5">
+              <DropdownMenuRadioGroup
+                value={preferences.toolApprovalLevel}
+                onValueChange={handleApprovalLevelChange}
+              >
+                {APPROVAL_LEVEL_OPTIONS.map((opt) => (
+                  <DropdownMenuRadioItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
             </DropdownMenuSubContent>
           </DropdownMenuSub>
 

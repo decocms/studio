@@ -6,18 +6,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@deco/ui/components/dialog.tsx";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
-import { useCurrentEditor, type Editor } from "@tiptap/react";
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import type { Editor } from "@tiptap/react";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Attachment01 } from "@untitledui/icons";
 import { toast } from "sonner";
 import {
-  getAcceptedMimeTypesForModel,
   getSupportedFileTypesLabel,
   isFileTypeSupportedByModel,
   modelSupportsFiles,
@@ -223,88 +217,6 @@ export function FileUploader({
 
   // This component doesn't render anything
   return null;
-}
-
-/**
- * FileUploadButton component that renders a button with a hidden file input.
- * Uses EditorContext to access the editor instance and processFile to handle file uploads.
- */
-interface FileUploadButtonProps {
-  selectedModel: AiProviderModel | null;
-  isStreaming: boolean;
-  icon?: React.ReactNode;
-  onUnsupportedFile?: (info: UnsupportedFileInfo) => void;
-}
-
-export function FileUploadButton({
-  selectedModel,
-  isStreaming,
-  icon,
-  onUnsupportedFile,
-}: FileUploadButtonProps) {
-  const { editor } = useCurrentEditor();
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const modelSupportsFilesValue = modelSupportsFiles(selectedModel);
-
-  const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0 || !editor) return;
-
-    const fileArray = Array.from(files);
-
-    // Get current cursor position
-    const { from } = editor.state.selection;
-    const currentPos = from;
-
-    // Process files sequentially using the shared processFile function
-    for (const file of fileArray) {
-      await processFile(
-        editor,
-        selectedModel,
-        file,
-        currentPos,
-        onUnsupportedFile,
-      );
-    }
-
-    // Reset input so same file can be selected again
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  };
-
-  if (!editor || !modelSupportsFilesValue) {
-    return null;
-  }
-
-  return (
-    <>
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept={getAcceptedMimeTypesForModel(selectedModel)}
-        className="hidden"
-        onChange={handleFileSelect}
-        disabled={isStreaming}
-      />
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="text-muted-foreground/75"
-            disabled={isStreaming || !modelSupportsFilesValue}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            {icon ?? <Attachment01 size={16} />}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top">Add file</TooltipContent>
-      </Tooltip>
-    </>
-  );
 }
 
 /**
