@@ -14,6 +14,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -30,6 +32,7 @@ import {
   Link01,
   Loading01,
   Settings04,
+  ShieldTick,
 } from "@untitledui/icons";
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
@@ -43,6 +46,11 @@ import { KEYS } from "@/web/lib/query-keys";
 import { useSound } from "@/web/hooks/use-sound.ts";
 import { switch005Sound } from "@deco/ui/lib/switch-005.ts";
 import { useChatPrefs } from "./context";
+import {
+  APPROVAL_LEVEL_OPTIONS,
+  usePreferences,
+  type ToolApprovalLevel,
+} from "@/web/hooks/use-preferences.ts";
 
 const FEATURED_CONNECTION_ICONS = [
   { src: "/connections/gmail.png", name: "Gmail" },
@@ -98,6 +106,28 @@ export function ToolsPopover({
   const [activePrompt, setActivePrompt] = useState<Prompt | null>(null);
 
   const { chatMode, setChatMode } = useChatPrefs();
+  const [preferences, setPreferences] = usePreferences();
+  const currentApprovalLabel =
+    APPROVAL_LEVEL_OPTIONS.find(
+      (opt) => opt.value === preferences.toolApprovalLevel,
+    )?.label ?? "Auto approve";
+
+  const handleApprovalLevelChange = (next: string) => {
+    const value = next as ToolApprovalLevel;
+    if (value === preferences.toolApprovalLevel) {
+      setOpen(false);
+      return;
+    }
+    playSwitchSound();
+    track("chat_approval_level_changed", {
+      from_level: preferences.toolApprovalLevel,
+      to_level: value,
+      source: "tools_popover",
+    });
+    setPreferences({ ...preferences, toolApprovalLevel: value });
+    setOpen(false);
+  };
+
   const isPlanMode = chatMode === "plan";
 
   const handleTogglePlanMode = () => {
@@ -264,6 +294,28 @@ export function ToolsPopover({
               <span className="text-xs text-blue-500 font-medium">On</span>
             )}
           </DropdownMenuItem>
+
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger className="gap-2">
+              <ShieldTick size={16} />
+              <span className="flex-1">Approvals</span>
+              <span className="text-xs text-muted-foreground">
+                {currentApprovalLabel}
+              </span>
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-48 p-1.5">
+              <DropdownMenuRadioGroup
+                value={preferences.toolApprovalLevel}
+                onValueChange={handleApprovalLevelChange}
+              >
+                {APPROVAL_LEVEL_OPTIONS.map((opt) => (
+                  <DropdownMenuRadioItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
 
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className="gap-2">
