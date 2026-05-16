@@ -487,6 +487,9 @@ export function ChatInput({
                           setConnectionsOpen(true);
                         }}
                         virtualMcpId={selectedVirtualMcp?.id ?? decopilotId}
+                        selectedModel={selectedModel}
+                        isStreaming={isStreaming}
+                        onUnsupportedFile={onUnsupportedFile}
                       />
                       {isPlanMode && (
                         <button

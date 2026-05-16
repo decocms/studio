@@ -11,6 +11,11 @@ import {
 } from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -31,10 +36,11 @@ import {
   Image01,
   Link01,
   Loading01,
+  Plus,
   Settings04,
   ShieldTick,
 } from "@untitledui/icons";
-import { Suspense, useState } from "react";
+import { Suspense, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 import { track } from "@/web/lib/posthog-client";
 import {
@@ -50,6 +56,12 @@ import {
   APPROVAL_LEVEL_OPTIONS,
   usePreferences,
 } from "@/web/hooks/use-preferences.ts";
+import { processFile, type UnsupportedFileInfo } from "./tiptap/file";
+import {
+  getAcceptedMimeTypesForModel,
+  modelSupportsFiles,
+} from "./select-model";
+import type { AiProviderModel } from "@/web/hooks/collections/use-ai-providers";
 
 const FEATURED_CONNECTION_ICONS = [
   { src: "/connections/gmail.png", name: "Gmail" },
@@ -76,17 +88,54 @@ interface ToolsPopoverProps {
   disabled?: boolean;
   onOpenConnections: () => void;
   virtualMcpId: string | null;
+  selectedModel: AiProviderModel | null | undefined;
+  isStreaming: boolean;
+  onUnsupportedFile?: (info: UnsupportedFileInfo) => void;
 }
 
 export function ToolsPopover({
   disabled,
   onOpenConnections,
   virtualMcpId,
+  selectedModel,
+  isStreaming,
+  onUnsupportedFile,
 }: ToolsPopoverProps) {
   const [open, setOpen] = useState(false);
   const playSwitchSound = useSound(switch005Sound);
   const { org } = useProjectContext();
   const { editor } = useCurrentEditor();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const supportsFiles = modelSupportsFiles(selectedModel);
+  const addFileDisabled = isStreaming || !supportsFiles;
+
+  const handleAddFileClick = () => {
+    if (addFileDisabled) return;
+    setOpen(false);
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0 || !editor) return;
+
+    const fileArray = Array.from(files);
+    const { from } = editor.state.selection;
+
+    for (const file of fileArray) {
+      await processFile(
+        editor,
+        selectedModel ?? null,
+        file,
+        from,
+        onUnsupportedFile,
+      );
+    }
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
   const client = useMCPClient({
     connectionId: virtualMcpId,
     orgId: org.id,
@@ -223,6 +272,16 @@ export function ToolsPopover({
 
   return (
     <>
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept={getAcceptedMimeTypesForModel(selectedModel ?? null)}
+        className="hidden"
+        onChange={handleFileSelect}
+        disabled={isStreaming}
+      />
+
       <DropdownMenu
         open={open}
         onOpenChange={(next) => {
@@ -251,6 +310,32 @@ export function ToolsPopover({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-52 p-1.5">
+          {addFileDisabled && !isStreaming ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuItem
+                  aria-disabled="true"
+                  className="opacity-50 cursor-not-allowed"
+                  onSelect={(e) => e.preventDefault()}
+                >
+                  <Plus size={16} />
+                  <span className="flex-1">Add file</span>
+                </DropdownMenuItem>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                Switch to a vision-capable model to attach files
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <DropdownMenuItem
+              onClick={handleAddFileClick}
+              disabled={isStreaming}
+            >
+              <Plus size={16} />
+              <span className="flex-1">Add file</span>
+            </DropdownMenuItem>
+          )}
+
           <DropdownMenuItem
             onClick={handleTogglePlanMode}
             className={cn(isPlanMode && "text-violet-600 dark:text-violet-400")}
