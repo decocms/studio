@@ -11,6 +11,7 @@ import {
 import { ShieldTick } from "@untitledui/icons";
 import { useState } from "react";
 import {
+  APPROVAL_LEVEL_OPTIONS,
   usePreferences,
   type ToolApprovalLevel,
 } from "@/web/hooks/use-preferences.ts";
@@ -37,14 +38,6 @@ export interface PendingApproval {
 
 const DEFAULT_DENY_REASON =
   "User denied this tool call, give other alternatives.";
-
-const APPROVAL_LEVEL_OPTIONS: {
-  value: ToolApprovalLevel;
-  label: string;
-}[] = [
-  { value: "readonly", label: "Ask before edit" },
-  { value: "auto", label: "Auto approve" },
-];
 
 // ============================================================================
 // ApprovalLevelSelect
