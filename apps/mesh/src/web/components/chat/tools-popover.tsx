@@ -49,7 +49,6 @@ import { useChatPrefs } from "./context";
 import {
   APPROVAL_LEVEL_OPTIONS,
   usePreferences,
-  type ToolApprovalLevel,
 } from "@/web/hooks/use-preferences.ts";
 
 const FEATURED_CONNECTION_ICONS = [
@@ -107,24 +106,27 @@ export function ToolsPopover({
 
   const { chatMode, setChatMode } = useChatPrefs();
   const [preferences, setPreferences] = usePreferences();
-  const currentApprovalLabel =
+  const currentApprovalOption =
     APPROVAL_LEVEL_OPTIONS.find(
       (opt) => opt.value === preferences.toolApprovalLevel,
-    )?.label ?? "Auto approve";
+    ) ?? APPROVAL_LEVEL_OPTIONS[0]!;
+  const currentApprovalLabel = currentApprovalOption.label;
 
   const handleApprovalLevelChange = (next: string) => {
-    const value = next as ToolApprovalLevel;
-    if (value === preferences.toolApprovalLevel) {
+    const matched = APPROVAL_LEVEL_OPTIONS.find((opt) => opt.value === next);
+    if (!matched) return;
+    if (matched.value === preferences.toolApprovalLevel) {
+      // No-op: same level re-selected, just close the popover.
       setOpen(false);
       return;
     }
     playSwitchSound();
     track("chat_approval_level_changed", {
       from_level: preferences.toolApprovalLevel,
-      to_level: value,
+      to_level: matched.value,
       source: "tools_popover",
     });
-    setPreferences({ ...preferences, toolApprovalLevel: value });
+    setPreferences({ ...preferences, toolApprovalLevel: matched.value });
     setOpen(false);
   };
 
