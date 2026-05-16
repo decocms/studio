@@ -60,12 +60,16 @@ export interface CollapsibleHighlightProps {
 // it layers over `bg-background` rather than colliding with it under twMerge
 // (which would otherwise strip the solid background and leave the card
 // translucent).
+// `isolate` on the card creates a stacking context so `after:-z-10` keeps the
+// tint behind every child (including buttons with their own backgrounds).
+// Without it, the absolutely-positioned ::after layers on top of static
+// siblings and bleeds red/amber through `bg-background` buttons.
 const VARIANT_OVERLAY: Record<HighlightVariant, string> = {
   default: "",
   error:
-    "after:content-[''] after:absolute after:inset-0 after:rounded-xl after:bg-destructive/5 after:pointer-events-none",
+    "isolate after:content-[''] after:absolute after:inset-0 after:rounded-xl after:bg-destructive/5 after:pointer-events-none after:-z-10",
   warning:
-    "after:content-[''] after:absolute after:inset-0 after:rounded-xl after:bg-amber-500/5 after:pointer-events-none",
+    "isolate after:content-[''] after:absolute after:inset-0 after:rounded-xl after:bg-amber-500/5 after:pointer-events-none after:-z-10",
 };
 
 const VARIANT_BORDER: Record<HighlightVariant, string> = {
