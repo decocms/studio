@@ -385,28 +385,6 @@ export function ToolsPopover({
 
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className="gap-2">
-              <ShieldTick size={16} />
-              <span className="flex-1">Approvals</span>
-              <span className="text-xs text-muted-foreground">
-                {currentApprovalShort}
-              </span>
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="w-48 p-1.5">
-              <DropdownMenuRadioGroup
-                value={preferences.toolApprovalLevel}
-                onValueChange={handleApprovalLevelChange}
-              >
-                {APPROVAL_LEVEL_OPTIONS.map((opt) => (
-                  <DropdownMenuRadioItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger className="gap-2">
               <span className="flex size-4 items-center justify-center text-base font-medium text-muted-foreground">
                 /
               </span>
@@ -444,6 +422,28 @@ export function ToolsPopover({
                   </DropdownMenuItem>
                 ))
               )}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger className="gap-2">
+              <ShieldTick size={16} />
+              <span className="flex-1">Approvals</span>
+              <span className="text-xs text-muted-foreground">
+                {currentApprovalShort}
+              </span>
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-48 p-1.5">
+              <DropdownMenuRadioGroup
+                value={preferences.toolApprovalLevel}
+                onValueChange={handleApprovalLevelChange}
+              >
+                {APPROVAL_LEVEL_OPTIONS.map((opt) => (
+                  <DropdownMenuRadioItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
             </DropdownMenuSubContent>
           </DropdownMenuSub>
 
