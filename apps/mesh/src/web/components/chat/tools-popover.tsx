@@ -62,6 +62,11 @@ import {
   modelSupportsFiles,
 } from "./select-model";
 import type { AiProviderModel } from "@/web/hooks/collections/use-ai-providers";
+import { KEYBOARD_SHORTCUTS } from "@/web/lib/keyboard-shortcuts";
+
+const PLAN_MODE_SHORTCUT = KEYBOARD_SHORTCUTS.togglePlanMode.keys
+  .map((k) => (k === "Shift" ? "⇧" : k))
+  .join("");
 
 const FEATURED_CONNECTION_ICONS = [
   { src: "/connections/gmail.png", name: "Gmail" },
@@ -310,7 +315,7 @@ export function ToolsPopover({
             </span>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-52 p-1.5">
+        <DropdownMenuContent align="start" className="w-52 p-1.5 space-y-1">
           {!supportsFiles ? (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -324,7 +329,7 @@ export function ToolsPopover({
                 </DropdownMenuItem>
               </TooltipTrigger>
               <TooltipContent side="right">
-                Switch to a vision-capable model to attach files
+                The selected model does not support reading files or images.
               </TooltipContent>
             </Tooltip>
           ) : (
@@ -346,9 +351,14 @@ export function ToolsPopover({
               className={cn(isPlanMode && "text-violet-500")}
             />
             <span className="flex-1">Plan mode</span>
-            {isPlanMode && (
-              <span className="text-xs text-violet-500 font-medium">On</span>
-            )}
+            <span
+              className={cn(
+                "text-xs text-muted-foreground",
+                isPlanMode && "text-violet-500 font-medium",
+              )}
+            >
+              {PLAN_MODE_SHORTCUT}
+            </span>
           </DropdownMenuItem>
 
           {/* Create image */}
@@ -428,7 +438,7 @@ export function ToolsPopover({
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className="gap-2">
               <ShieldTick size={16} />
-              <span className="flex-1">Approvals</span>
+              <span className="flex-1">Approval</span>
               <span className="text-xs text-muted-foreground">
                 {currentApprovalShort}
               </span>
