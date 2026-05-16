@@ -615,7 +615,8 @@ export function MessageAssistant({
   // `finishReason`, so server-loaded threads collapse too.
   const isTerminallyDone =
     !isLast ||
-    !message!.parts.some((part) => {
+    !message ||
+    !message.parts.some((part) => {
       const type = part.type;
       if (type !== "dynamic-tool" && !type?.startsWith("tool-")) return false;
       const state = (part as { state?: string }).state;
