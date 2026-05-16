@@ -101,15 +101,7 @@ export function useTaskManager(virtualMcpId: string) {
     ownerFilter,
     setOwnerFilter,
     isFilterChangePending,
-    updateTask: (taskId: string, _updates: Partial<Task>) => {
-      // Optimistic patching now lives inside useThreadActions; this helper
-      // exists for callers that still want to push UI-only edits before a
-      // network round-trip. Use the typed setters below for new code.
-      console.warn(
-        "[threads] updateTask is deprecated; use renameThread/hideThread/setStatus/setBranch",
-        { taskId },
-      );
-    },
+    patchTask: actions.patchThread,
     renameTask: actions.renameThread,
     hideTask: actions.hideThread,
     setTaskStatus: (taskId: string, status: string) =>

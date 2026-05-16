@@ -21,6 +21,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { KEYS } from "../../../lib/query-keys";
 import { callUpdateTaskTool } from "./helpers";
+import { applyPatch, type RowPatch } from "./thread-events";
 import type { ChatMessage, Task, TasksQueryData } from "./types";
 import { updateMessagesCache } from "./cache-operations";
 
@@ -188,5 +189,15 @@ export function useThreadActions() {
       ),
     updateMessages: (id: string, messages: ChatMessage[]): void =>
       updateMessagesCache(queryClient, client, org.id, id, messages),
+
+    // Cache-only patch (no server call). Use when the server has already
+    // persisted the change and is informing the client via SSE — mirrors
+    // the path ThreadEventsBridge uses for decopilot.thread.status events.
+    patchThread: (patch: RowPatch): void => {
+      queryClient.setQueriesData<TasksQueryData>(
+        { queryKey: KEYS.threadsPrefix(locator) },
+        (data) => applyPatch(data, patch),
+      );
+    },
   };
 }

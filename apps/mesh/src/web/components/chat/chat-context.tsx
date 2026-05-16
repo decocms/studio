@@ -63,7 +63,12 @@ const openedChats = new Set<string>();
 
 import { useChatNavigation } from "./hooks/use-chat-navigation";
 import { useStreamManager } from "./hooks/use-stream-manager";
-import { useThreadActions, useTaskManager, type TaskOwnerFilter } from "./task";
+import {
+  useThreadActions,
+  useTaskManager,
+  type RowPatch,
+  type TaskOwnerFilter,
+} from "./task";
 import { useTaskMessages } from "./task/use-task-manager";
 import { derivePartsFromTiptapDoc } from "./derive-parts";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
@@ -285,7 +290,7 @@ interface TaskProviderInternals {
   };
   taskManager: {
     updateMessagesCache: (taskId: string, messages: ChatMessage[]) => void;
-    updateTask: (taskId: string, updates: Partial<Task>) => void;
+    patchTask: (patch: RowPatch) => void;
   };
   rawNavigateToTask: (taskId: string) => void;
   bridgeRef: React.RefObject<ChatBridgeValue>;
@@ -855,7 +860,7 @@ export function ChatContextProvider({
     preferences,
     taskManager: {
       updateMessagesCache: taskManager.updateMessagesCache,
-      updateTask: taskManager.updateTask,
+      patchTask: taskManager.patchTask,
     },
     rawNavigateToTask,
     bridgeRef,
@@ -936,8 +941,21 @@ export function ActiveTaskProvider({
     onFinish: (payload) => {
       setFinishReason(payload.finishReason ?? null);
 
-      // Refresh download chips for files share_with_user produced this turn.
-      if (taskId) {
+      // Refresh download chips only when this turn actually produced a
+      // shared file. AI SDK v5 surfaces tool invocations as `tool-<name>`
+      // parts; filter on `output-available` to skip denied/cancelled calls.
+      // (Cast: VM tools — including share_with_user — are added to the
+      // built-in tool set at runtime but aren't reflected in the
+      // BuiltInToolSet return-type cast, so the part union lacks this
+      // member at compile time.)
+      const sharedFile = payload.message.parts?.some((p) => {
+        const part = p as { type: string; state?: string };
+        return (
+          part.type === "tool-share_with_user" &&
+          part.state === "output-available"
+        );
+      });
+      if (taskId && sharedFile) {
         queryClient.invalidateQueries({
           queryKey: KEYS.threadOutputs(taskId),
         });
@@ -970,7 +988,11 @@ export function ActiveTaskProvider({
       if (chunk.type === "data-thread-title") {
         const { title } = (chunk as { data: { title?: string } }).data;
         if (!title) return;
-        taskManager.updateTask(taskId, {
+        // Server has already persisted the title (see dispatch-run.ts) —
+        // patch the cache directly instead of issuing a redundant
+        // COLLECTION_THREADS_UPDATE round-trip via renameTask.
+        taskManager.patchTask({
+          id: taskId,
           title,
           updated_at: new Date().toISOString(),
         });

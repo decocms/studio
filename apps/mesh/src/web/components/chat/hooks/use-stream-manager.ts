@@ -1,13 +1,13 @@
 /**
- * useStreamManager — task-scoped SSE cache invalidations for messages
- * and outputs ONLY.
+ * useStreamManager — task-scoped SSE cache invalidations for messages.
  *
  * Thread-list cache patching now lives in <ThreadEventsBridge>.
+ * Thread-outputs invalidation runs in useThreadChat.onFinish (chat-context),
+ * gated on whether the turn called `share_with_user`.
  */
 import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useDecopilotEvents } from "../../../hooks/use-decopilot-events";
-import { KEYS } from "../../../lib/query-keys";
 
 export function useStreamManager(threadId: string): void {
   const { org } = useProjectContext();
@@ -26,18 +26,10 @@ export function useStreamManager(threadId: string): void {
     });
   };
 
-  const invalidateThreadOutputs = () => {
-    if (!threadId) return;
-    queryClient.invalidateQueries({
-      queryKey: KEYS.threadOutputs(threadId),
-    });
-  };
-
   useDecopilotEvents({
     orgSlug: org.slug,
     taskId: threadId,
     onFinish: () => {
-      invalidateThreadOutputs();
       invalidateMessages();
     },
     onTaskStatus: (event) => {

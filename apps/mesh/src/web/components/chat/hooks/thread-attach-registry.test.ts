@@ -425,4 +425,42 @@ describe("tool approval resume", () => {
     expect(all.length).toBe(1);
     expect(all[0]?.role).toBe("assistant");
   });
+
+  test("snapshotAll dedupes streaming against initialMessages (server-wins)", async () => {
+    const conn = getOrOpenAttach("acme", "thread-dedup");
+    conn.context = { initialMessages: [] };
+    await new Promise((r) => setTimeout(r, 0));
+
+    // Resumable run leaves the assistant message in `streaming`.
+    ctrl.enqueue({ type: "start", messageId: "msg-dup" });
+    ctrl.enqueue({
+      type: "tool-input-available",
+      toolCallId: "toolu_D",
+      toolName: "fs_read",
+      input: { path: "/a" },
+    });
+    ctrl.enqueue({
+      type: "tool-approval-request",
+      toolCallId: "toolu_D",
+      approvalId: "appr_D",
+    });
+    ctrl.enqueue({ type: "finish", finishReason: "tool-calls" });
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(conn.streaming.get()?.id).toBe("msg-dup");
+
+    // Simulate THREAD_MESSAGES refetch landing while `streaming` still holds
+    // the paused assistant message — initialMessages now also contains it.
+    const serverEcho = conn.streaming.get();
+    if (!serverEcho) throw new Error("expected streaming to be set");
+    conn.context = {
+      initialMessages: [
+        { ...serverEcho, parts: [...serverEcho.parts] } as never,
+      ],
+    };
+
+    const all = conn.snapshotAll();
+    const ids = all.map((m) => m.id);
+    expect(ids).toEqual(["msg-dup"]);
+  });
 });

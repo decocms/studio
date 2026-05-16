@@ -245,12 +245,18 @@ class ThreadConnection {
 
   /** Compose initialMessages + folded local + streaming. Public so the
    *  hook can use it for render-time `messages` without duplicating the
-   *  merge logic. */
+   *  merge logic.
+   *
+   *  Streaming is dropped if its id already appears in the merged list —
+   *  this happens when a turn pauses with finishReason="tool-calls" (the
+   *  message stays in `streaming` so subsequent tool-output chunks can fold
+   *  in by toolCallId) and THREAD_MESSAGES then refetches, putting the same
+   *  id into `initialMessages`. Server wins to avoid duplicate React keys. */
   snapshotAll(): UIMessage[] {
     const initialMessages = this.context?.initialMessages ?? [];
     const out = mergeWithServer(initialMessages, this.localMessages.get());
     const s = this.streaming.get();
-    if (s) out.push(s);
+    if (s && !out.some((m) => m.id === s.id)) out.push(s);
     return out;
   }
 
