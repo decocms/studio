@@ -4,7 +4,6 @@ export {
 } from "./node.tsx";
 export {
   FileUploader,
-  FileUploadButton,
   UnsupportedFileDialog,
   useUnsupportedFileDialog,
   processFile,
