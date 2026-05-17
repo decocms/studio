@@ -515,8 +515,17 @@ async function prepareRun(
       }
     }
 
-    // Purge stale buffered chunks from any previous run on this thread
-    streamBuffer?.purge(mem.thread.id);
+    // Purge stale buffered chunks from any previous run on this thread.
+    // Skip on resume: this dispatch is a continuation of a still-active
+    // run (typically pod-death recovery via runRegistry.handlePodDeath),
+    // and any /attach clients tailing the per-thread subject would lose
+    // their place — including the prefix chunks pumped by the previous
+    // owner pod before it died. The about-to-start pump will publish
+    // fresh chunks alongside whatever's already buffered, and the
+    // consumer's deduplication of `done` sentinels handles the overlap.
+    if (!input.isResume) {
+      streamBuffer?.purge(mem.thread.id);
+    }
 
     // Split system messages from user message
     const systemMessages = input.messages.filter((m) => m.role === "system");

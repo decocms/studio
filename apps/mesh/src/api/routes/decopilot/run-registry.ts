@@ -211,7 +211,15 @@ export class RunRegistry {
     cancelBroadcast?: { broadcast(taskId: string): void },
   ): Promise<void> {
     const orphans = await this.deps.storage.listOrphanedRunsByPod(deadPodId);
-    if (orphans.length === 0) return;
+    if (orphans.length === 0) {
+      console.log(
+        `[RunRegistry] handlePodDeath(${deadPodId}): no orphans to recover`,
+      );
+      return;
+    }
+    console.log(
+      `[RunRegistry] handlePodDeath(${deadPodId}): recovering ${orphans.length} orphan(s) on pod ${this.podId}`,
+    );
 
     // Cancel running threads on the dead pod (in case it's alive but partitioned)
     for (const thread of orphans) {

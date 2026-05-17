@@ -59,7 +59,14 @@ services:
       postgres:
         condition: service_healthy
 
+  # mesh-1 is the build target. mesh-2 and mesh-3 reference the same
+  # `image:` tag so all three pods share one studio image and one build
+  # — Compose 1.x would otherwise build the same context three times,
+  # producing identical-but-separately-tagged images and confusing
+  # `docker compose build mesh-1` (the others would still point at
+  # their stale per-service images).
   mesh-1: &mesh
+    image: multi-pod-studio:latest
     build:
       context: ../../
       dockerfile: tests/resilience/Dockerfile.studio

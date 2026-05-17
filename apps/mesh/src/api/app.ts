@@ -858,20 +858,33 @@ export async function createApp(options: CreateAppOptions = {}) {
       getJetStream: () => natsProvider!.getJetStream(),
     });
 
-    // Attempt immediate init (may no-op if NATS not ready)
+    // Attempt immediate init (may no-op if NATS not ready). Surface
+    // any real error — silent swallow here historically hid bucket-
+    // creation races and turned pod-death recovery into "mostly works".
     podHeartbeat
       .init()
       .then(() => {
-        podHeartbeat!.start(POD_ID);
+        if (podHeartbeat!.isReady()) {
+          podHeartbeat!.start(POD_ID);
+          console.log(`[PodHeartbeat] Started (pod=${POD_ID})`);
+        }
       })
-      .catch(() => {});
+      .catch((err: unknown) => {
+        console.error("[PodHeartbeat] Initial init failed:", err);
+      });
 
-    // Re-init when NATS connects
+    // Re-init when NATS connects (or reconnects). Idempotent — start()
+    // is a no-op if the heartbeat is already running.
     natsProvider.onReady(() => {
       podHeartbeat!
         .init()
         .then(() => {
-          podHeartbeat!.start(POD_ID);
+          if (podHeartbeat!.isReady()) {
+            podHeartbeat!.start(POD_ID);
+            console.log(
+              `[PodHeartbeat] Started after NATS ready (pod=${POD_ID})`,
+            );
+          }
         })
         .catch((err: unknown) => {
           console.error("[PodHeartbeat] Deferred init failed:", err);
@@ -1287,13 +1300,14 @@ export async function createApp(options: CreateAppOptions = {}) {
       thread.organization_id,
     );
 
-    // Pod-death recovery: a different pod's run was claimed by us. Drain
-    // synchronously to know when the run completes server-side. We
-    // deliberately don't pass a streamBuffer here — this background
-    // recovery is the safety net for threads no DBOS replay or attached
-    // client picks up; clients reconnecting via /attach see the run via
-    // the workflow's own JetStream pump on the pod that DBOS replayed it
-    // onto.
+    // Pod-death recovery: a different pod's run was claimed by us.
+    // Drain synchronously to know when the run completes server-side
+    // AND pump chunks into JetStream via `streamBuffer` so any /attach
+    // tails on survivor pods continue to receive data — that's the
+    // entire user-visible win of taking over a dead pod's work. The
+    // previous omission of `streamBuffer` here meant the resumed run
+    // ran but its chunks went nowhere visible, defeating the point of
+    // the recovery path.
     await dispatchRunAndWait(
       {
         messages: [],
@@ -1309,7 +1323,7 @@ export async function createApp(options: CreateAppOptions = {}) {
         isResume: true,
       },
       resumeCtx,
-      { runRegistry, cancelBroadcast },
+      { runRegistry, cancelBroadcast, streamBuffer },
     );
   };
 

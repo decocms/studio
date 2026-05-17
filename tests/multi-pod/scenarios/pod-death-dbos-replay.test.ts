@@ -144,7 +144,7 @@ function openAttachWatcher(
 }
 
 describe("pod-death + DBOS replay", () => {
-  test.skip("killing the owning pod mid-stream still delivers the final chunk via a survivor", async () => {
+  test("killing the owning pod mid-stream still delivers the final chunk via a survivor", async () => {
     const session = await bootstrapSession(PODS.MESH_1);
     await wireMockProvider(PODS.MESH_1, session);
     const { virtualMcpId } = await createTestAgent(PODS.MESH_1, session);
@@ -217,14 +217,11 @@ describe("pod-death + DBOS replay", () => {
       await pollUntil(
         async () => survivors.some((w) => w.joined.includes("chunk-20")),
         {
-          // Generous window: DBOS workflow replay fires fast but its
-          // first claim attempt fails (the dead pod still owns the
-          // `run_owner_pod` row, claimRunStart rejects). Actual
-          // recovery comes via the heartbeat watcher's
-          // claimOrphanedRun + dispatchRunAndWait(isResume:true)
-          // backstop, which depends on the pod-death-detection
-          // interval.
-          timeoutMs: 120_000,
+          // Window has to cover: heartbeat KV TTL (45s) + NATS purge
+          // sweep + handlePodDeath claim + dispatchRunAndWait resume +
+          // ~2.5s of mock chunks ≈ 55s worst case. 90s leaves comfortable
+          // margin for cold-boot variance without dragging green runs.
+          timeoutMs: 90_000,
           intervalMs: 500,
           label: "final-chunk-after-replay",
         },
@@ -235,5 +232,8 @@ describe("pod-death + DBOS replay", () => {
       for (const w of watchers) w.abort.abort();
       await Promise.allSettled(watchers.map((w) => w.done));
     }
-  }, 120_000);
+    // Test budget exceeds pollUntil by a safety margin so the finally
+    // above always runs (cleanly aborts SSE consumers) instead of
+    // racing the bun-test-level timeout.
+  }, 150_000);
 });

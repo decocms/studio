@@ -2,10 +2,22 @@
  * Per-Pod Heartbeat via NATS KV
  *
  * A single KV key per pod, refreshed on a timer, with bucket-level TTL.
- * When a pod dies (hard kill) or shuts down (graceful), its key expires/deletes
- * and watchers on other pods are notified immediately.
+ * Survivor pods learn of dead peers via two complementary mechanisms:
  *
- * O(1) writes per pod regardless of thread count.
+ *   - **Watch** (`kv.watch()`) — fires synchronously on explicit
+ *     `kv.delete()` from a graceful shutdown. Near-instant for clean
+ *     stops but doesn't fire on TTL-based expiry (NATS' background
+ *     cleanup removes expired KV entries server-side without emitting
+ *     any consumer-visible operation).
+ *
+ *   - **Poll** (`kv.keys()` on a timer) — closes the gap for hard
+ *     kills (SIGKILL, OOM, network partition) where the dying pod
+ *     never gets to send the DEL. Diffs successive scans; anything
+ *     in the previous snapshot but not the current one is treated as
+ *     dead.
+ *
+ * O(1) writes per pod regardless of thread count; O(pods) per poll
+ * tick.
  */
 
 import type { JetStreamClient, NatsConnection, KV } from "nats";
@@ -14,9 +26,12 @@ import { StorageType } from "nats";
 const BUCKET_NAME = "POD_HEARTBEATS";
 const BUCKET_TTL_MS = 45_000; // Key expires 45s after last refresh
 const REFRESH_INTERVAL_MS = 10_000; // Refresh every 10s
+const POLL_INTERVAL_MS = 10_000; // Scan for vanished keys every 10s
 
 export interface PodHeartbeat {
   init(): Promise<void>;
+  /** True once `init()` has successfully created/opened the KV bucket. */
+  isReady(): boolean;
   start(podId: string): void;
   /** Watch for pod deaths. Callback receives the dead podId. */
   onPodDeath(callback: (deadPodId: string) => void): void;
@@ -32,9 +47,12 @@ export class NatsPodHeartbeat implements PodHeartbeat {
   private kv: KV | null = null;
   private podId: string | null = null;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private knownPods: Set<string> = new Set();
   private watchAbortController: AbortController | null = null;
   private initPromise: Promise<void> | null = null;
   private pendingDeathCallback: ((deadPodId: string) => void) | null = null;
+  private deathCallback: ((deadPodId: string) => void) | null = null;
 
   constructor(private readonly deps: NatsPodHeartbeatDeps) {}
 
@@ -48,6 +66,11 @@ export class NatsPodHeartbeat implements PodHeartbeat {
       clearInterval(this.refreshTimer);
       this.refreshTimer = null;
     }
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
+    this.knownPods = new Set();
     this.kv = null;
     this.initPromise = null;
 
@@ -66,6 +89,10 @@ export class NatsPodHeartbeat implements PodHeartbeat {
         throw err;
       });
     return this.initPromise;
+  }
+
+  isReady(): boolean {
+    return this.kv !== null;
   }
 
   start(podId: string): void {
@@ -88,17 +115,65 @@ export class NatsPodHeartbeat implements PodHeartbeat {
     // Activate deferred death watcher if registered before init
     if (this.pendingDeathCallback) {
       this.startDeathWatcher(this.pendingDeathCallback);
+      this.startDeathPoller();
       this.pendingDeathCallback = null;
     }
   }
 
   onPodDeath(callback: (deadPodId: string) => void): void {
+    this.deathCallback = callback;
     if (!this.kv) {
       // Store callback — will activate when start() runs after init()
       this.pendingDeathCallback = callback;
       return;
     }
     this.startDeathWatcher(callback);
+    this.startDeathPoller();
+  }
+
+  /**
+   * Periodic scan that catches deaths the watcher misses. NATS KV
+   * TTL-based key expiry happens server-side without emitting any
+   * notification on the consumer — so a SIGKILL'd pod's key just
+   * vanishes from the bucket silently. We list keys on a timer,
+   * diff against the previous snapshot, and treat absences as
+   * deaths.
+   */
+  private startDeathPoller(): void {
+    if (this.pollTimer) return;
+    if (!this.kv) return;
+    const kv = this.kv;
+
+    const tick = async () => {
+      try {
+        const live = new Set<string>();
+        const iter = await kv.keys();
+        for await (const key of iter) {
+          live.add(key);
+        }
+        // First tick: just record the baseline. Don't fire deaths for
+        // pods we never knew about — the watcher's initial sync
+        // covered those.
+        if (this.knownPods.size === 0) {
+          this.knownPods = live;
+          return;
+        }
+        for (const prev of this.knownPods) {
+          if (!live.has(prev) && prev !== this.podId && this.deathCallback) {
+            console.log(`[PodHeartbeat:poll] detected vanished key: ${prev}`);
+            this.deathCallback(prev);
+          }
+        }
+        // Update snapshot — additions (new pods joining) become
+        // tracked, vanished pods drop out.
+        this.knownPods = live;
+      } catch (err) {
+        console.error("[PodHeartbeat:poll] scan failed:", err);
+      }
+    };
+    // Fire one immediate tick to seed the baseline, then on interval.
+    tick();
+    this.pollTimer = setInterval(tick, POLL_INTERVAL_MS);
   }
 
   private startDeathWatcher(callback: (deadPodId: string) => void): void {
@@ -112,17 +187,14 @@ export class NatsPodHeartbeat implements PodHeartbeat {
     const startWatcher = async () => {
       while (!signal.aborted) {
         try {
-          const watcher = await kv.watch({
-            // Watch all keys
-            initializedFn: () => {
-              // Initial values loaded, now watching for changes
-            },
-          });
+          const watcher = await kv.watch();
 
           for await (const entry of watcher) {
             if (signal.aborted) break;
 
-            // DEL = explicit delete, PURGE = TTL expiry
+            // DEL fires on explicit graceful kv.delete(); PURGE on
+            // explicit kv.purge(). TTL-based expiry doesn't fire
+            // either — the poller covers that case.
             if (entry.operation === "DEL" || entry.operation === "PURGE") {
               const deadPodId = entry.key;
               // Don't notify about own pod death
@@ -150,10 +222,14 @@ export class NatsPodHeartbeat implements PodHeartbeat {
   }
 
   async stop(): Promise<void> {
-    // 1. Stop refresh timer
+    // 1. Stop refresh + poll timers
     if (this.refreshTimer) {
       clearInterval(this.refreshTimer);
       this.refreshTimer = null;
+    }
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
     }
 
     // 2. Delete own key (triggers watcher on other pods immediately)
