@@ -1,0 +1,89 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  nats:
+    image: nats:2.10.22
+    command: -js -m 8222
+    healthcheck:
+      test: ["CMD", "nats-server", "--help"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  # Migrations run once before any mesh pod starts. Pods themselves skip the
+  # migration step (we override the entrypoint with a direct start command) to
+  # avoid races on parallel boot.
+  migrate:
+    build:
+      context: ../../
+      dockerfile: tests/resilience/Dockerfile.studio
+    working_dir: /app/apps/mesh
+    command: ["bun", "run", "migrate"]
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  mesh-1: &mesh
+    build:
+      context: ../../
+      dockerfile: tests/resilience/Dockerfile.studio
+    restart: unless-stopped
+    working_dir: /app/apps/mesh
+    # Bypass the Dockerfile entrypoint (which runs migrations again) and start
+    # the server directly. Migrations are guaranteed done by the `migrate`
+    # dependency below.
+    command: ["bun", "run", "src/cli.ts", "--no-tui"]
+    environment: &mesh-env
+      NODE_ENV: production
+      PORT: "3000"
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
+      NATS_URL: nats://nats:4222
+      BETTER_AUTH_SECRET: test-secret-for-multi-pod-tests
+      BETTER_AUTH_URL: http://localhost:3000
+      BASE_URL: http://localhost:3000
+      DECOCMS_LOCAL_MODE: "true"
+      ENCRYPTION_KEY: test-encryption-key-32chars-long!
+      DATA_DIR: /app/data
+    ports:
+      - "127.0.0.1:13001:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "bun -e \"const r = await fetch('http://localhost:3000/health/live'); if(!r.ok) process.exit(1)\""]
+      interval: 5s
+      timeout: 5s
+      start_period: 60s
+      retries: 20
+
+  mesh-2:
+    <<: *mesh
+    environment:
+      <<: *mesh-env
+    ports:
+      - "127.0.0.1:13002:3000"
+
+  mesh-3:
+    <<: *mesh
+    environment:
+      <<: *mesh-env
+    ports:
+      - "127.0.0.1:13003:3000"
