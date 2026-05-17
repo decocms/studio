@@ -4,6 +4,26 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    # Multi-pod tests are slow (~7-10 min cold image build + serialized
+    # boot + scenarios). Only run on PRs that change code the framework
+    # actually exercises — server-side mesh, dispatch/automations, storage
+    # schema, or the test infra itself. UI/docs/plugin PRs skip.
+    paths:
+      - "apps/mesh/src/api/**"
+      - "apps/mesh/src/auth/**"
+      - "apps/mesh/src/core/**"
+      - "apps/mesh/src/storage/**"
+      - "apps/mesh/src/dispatch-queue/**"
+      - "apps/mesh/src/event-bus/**"
+      - "apps/mesh/src/automations/**"
+      - "apps/mesh/src/database/**"
+      - "apps/mesh/src/index.ts"
+      - "apps/mesh/migrations/**"
+      - "packages/runtime/**"
+      - "packages/bindings/**"
+      - "tests/multi-pod/**"
+      - ".github/workflows/multi-pod.yml"
   workflow_dispatch:
 
 jobs:
