@@ -1,0 +1,127 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  nats:
+    # Alpine variant so the healthcheck can shell out to wget; the scratch-
+    # based `nats:2.10.22` ships only the nats-server binary, which is why
+    # the resilience suite settled for `nats-server --help` (which passes
+    # even when the server isn't serving). The monitoring port `-m 8222`
+    # exposes `/healthz` for a real readiness check.
+    image: nats:2.10.22-alpine
+    command: -js -m 8222
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:8222/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  # Migrations run once before any mesh pod starts. Pods themselves skip the
+  # migration step (we override the entrypoint with a direct start command) to
+  # avoid races on parallel boot.
+  migrate:
+    build:
+      context: ../../
+      dockerfile: tests/resilience/Dockerfile.studio
+    working_dir: /app/apps/mesh
+    command: ["bun", "run", "migrate"]
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  mesh-1: &mesh
+    build:
+      context: ../../
+      dockerfile: tests/resilience/Dockerfile.studio
+    # No restart policy — tests need explicit start/stop control. With
+    # `unless-stopped`, `docker kill` is auto-restarted within seconds,
+    # which would defeat any pod-death scenario (the SIGKILL'd pod would
+    # come back before the assertion fires). A genuine boot crash is
+    # surfaced via the healthcheck, not papered over by a restart.
+    restart: "no"
+    working_dir: /app/apps/mesh
+    # Bypass the Dockerfile entrypoint (which runs `bun run migrate` before
+    # exec'ing the CLI) AND pass `--skip-migrations` so the CLI's own boot
+    # migration is suppressed too. Without the flag each of the three pods
+    # would race on the migration step independently of the `migrate`
+    # service. The `migrate` service is the single source of truth for
+    # schema state; pods read-only at boot.
+    command: ["bun", "run", "src/cli.ts", "--no-tui", "--skip-migrations"]
+    environment: &mesh-env
+      NODE_ENV: production
+      PORT: "3000"
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
+      NATS_URL: nats://nats:4222
+      BETTER_AUTH_SECRET: test-secret-for-multi-pod-tests
+      BETTER_AUTH_URL: http://localhost:3000
+      BASE_URL: http://localhost:3000
+      DECOCMS_LOCAL_MODE: "true"
+      ENCRYPTION_KEY: test-encryption-key-32chars-long!
+      DATA_DIR: /app/data
+    ports:
+      - "127.0.0.1:13001:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "bun -e \"const r = await fetch('http://localhost:3000/health/live'); if(!r.ok) process.exit(1)\""]
+      interval: 5s
+      timeout: 5s
+      start_period: 60s
+      retries: 20
+
+  # mesh-2 and mesh-3 wait for the previous pod to be healthy before
+  # starting. This serializes *first-boot* DBOS migrations: even with
+  # mesh's own --skip-migrations, DBOS still runs its system-schema
+  # migrations on `DBOS.launch()` and three parallel boots race on
+  # inserts into `dbos.dbos_migrations` (unique-constraint violations
+  # crash pods 2/3). Once the schema exists, subsequent boots are
+  # idempotent — restarting a single pod mid-test stays fast.
+  mesh-2:
+    <<: *mesh
+    environment:
+      <<: *mesh-env
+    ports:
+      - "127.0.0.1:13002:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      mesh-1:
+        condition: service_healthy
+
+  mesh-3:
+    <<: *mesh
+    environment:
+      <<: *mesh-env
+    ports:
+      - "127.0.0.1:13003:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      mesh-2:
+        condition: service_healthy
