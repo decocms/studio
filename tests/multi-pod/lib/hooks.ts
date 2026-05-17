@@ -29,8 +29,20 @@ async function restoreStoppedPods(): Promise<void> {
     ],
     { stdout: "pipe", stderr: "pipe" },
   );
-  const out = await new Response(proc.stdout).text();
-  await proc.exited;
+  const [out, err] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  const code = await proc.exited;
+  // Fail loudly: if compose can't even list services (daemon down,
+  // compose file moved, etc.), silently treating it as "no pods to
+  // restore" turns the real failure into a 2-minute waitReady timeout
+  // with a misleading "mesh-1 not healthy" message.
+  if (code !== 0) {
+    throw new Error(
+      `docker compose ps failed (exit ${code}): ${err.trim() || out.trim() || "<no output>"}`,
+    );
+  }
 
   const services = new Set(ALL_PODS.map((p) => p.service as string));
   const lines = out.split("\n").filter(Boolean);
