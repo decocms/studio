@@ -139,10 +139,10 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
       : null;
 
   try {
-    // Dispatch errors propagate. `dispatchRun` guarantees the run is
-    // already force-finished to "failed" in the registry before throwing
-    // (see `prepareRun`), so application state stays consistent — DBOS
-    // just gets to see the failure too.
+    // Dispatch errors propagate. `dispatchRunAndWait` guarantees the run
+    // is already force-finished to "failed" in the registry before
+    // throwing (see `prepareRun`), so application state stays consistent
+    // — DBOS just gets to see the failure too.
     await rt.dispatchRunFn(
       { ...request, abortSignal: abortController.signal },
       meshCtx,
@@ -184,7 +184,7 @@ async function trackMessageStartedStep(ctx: ThreadGateContext): Promise<void> {
  * Balances `chat_message_started` when the dispatch step throws *before*
  * `streamText` is set up (model-permission failure, agent not found,
  * thread-ownership check, etc. — see `prepareRun`). In-flight stream
- * errors are already emitted by `streamText.onError` inside `dispatchRun`,
+ * errors are already emitted by `streamText.onError` inside `dispatchRunAndWait`,
  * so this only covers the pre-stream gap.
  *
  * `error_category: "setup"` keeps these distinguishable from stream-time
@@ -223,7 +223,7 @@ async function threadGateWorkflowFn(
       name: "dispatchRunAndWait",
     });
   } catch (err) {
-    // Setup errors (prepareRun) propagate out of `dispatchRun`; in-flight
+    // Setup errors (prepareRun) propagate out of `dispatchRunAndWait`; in-flight
     // stream errors are handled inside `streamText.onError` and don't
     // reach here. So a thrown step at this point means setup failed —
     // emit the balancing failed event for analytics integrity. Wrapped

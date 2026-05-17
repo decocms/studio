@@ -2,12 +2,11 @@
  * Stream Buffer Interface
  *
  * Abstraction for treating a NATS JetStream subject as the single source
- * of truth for a run's UI stream. The producer (`dispatchRun`) pumps chunks
- * into JetStream via `pump()`; every HTTP response — both initial `/stream`
- * and any `/attach` — reads from JetStream via `createTailStream()`. The
- * producer's lifetime is bound to the run registry, not to any HTTP
- * consumer, so a proxy/idle/tab-close on the consumer side never stalls or
- * drops chunks.
+ * of truth for a run's UI stream. The producer (`dispatchRunAndWait`) pumps
+ * chunks into JetStream via `pump()`; every `/attach` HTTP response reads
+ * from JetStream via `createTailStream()`. The producer's lifetime is bound
+ * to the run registry, not to any HTTP consumer, so a proxy/idle/tab-close
+ * on the consumer side never stalls or drops chunks.
  */
 
 /**
