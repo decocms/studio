@@ -7,6 +7,12 @@
  * recognize it — that property is exactly what makes cross-pod tests
  * possible at all.
  *
+ * `wireMockProvider(pod, session)` is an opt-in second step for scenarios
+ * that drive the decopilot dispatch pipeline. It registers an
+ * `openai-compatible` credential pointing at the in-cluster mock-ai
+ * service and pins the org's "smart" tier to it. Scenarios that don't
+ * dispatch (smoke, session-rehoming, api-key-cross-pod) skip this.
+ *
  * Each invocation creates a fresh user/org with timestamped names to
  * keep scenarios isolated; we don't reset the DB between tests.
  */
@@ -24,6 +30,17 @@ export interface Session {
   /** The unique slug used when creating the org (URL-safe). */
   orgSlug: string;
 }
+
+export interface MockProvider {
+  /** ai_provider_keys.id created for the mock-ai credential. */
+  keyId: string;
+  /** Model id the mock advertises (matches mock-ai/server.ts MODEL_ID). */
+  modelId: string;
+}
+
+/** The internal URL mesh pods use to reach the mock-ai container. */
+const MOCK_AI_INTERNAL_URL = "http://mock-ai:9000/v1";
+const MOCK_AI_MODEL_ID = "mock-model";
 
 /**
  * Sign up, create org, set active, mint API key. Everything goes through
@@ -96,16 +113,158 @@ export async function bootstrapSession(pod: PodInfo): Promise<Session> {
 
   // 4. Mint an API key via the built-in API_KEY_CREATE MCP tool. The
   // `{orgId}_self` endpoint is mesh's internal MCP namespace.
-  const apiKey = await mintApiKey(pod, cookie, orgId);
+  const apiKeyRes = await mcpCall<{ key?: string }>(pod, orgId, cookie, {
+    name: "API_KEY_CREATE",
+    arguments: {
+      name: `multi-pod-${Date.now()}`,
+      permissions: { "*": ["*"] },
+    },
+  });
+  if (!apiKeyRes.key) {
+    throw new Error(
+      `API_KEY_CREATE returned no key: ${JSON.stringify(apiKeyRes)}`,
+    );
+  }
 
-  return { cookie, apiKey, orgId, orgSlug };
+  return { cookie, apiKey: apiKeyRes.key, orgId, orgSlug };
 }
 
-async function mintApiKey(
+/**
+ * Register a credential pointing at the in-cluster mock-ai service and
+ * pin the org's "smart" tier to it. After this returns, any decopilot
+ * dispatch on this org will route through mock-ai instead of a real
+ * provider.
+ *
+ * Idempotent at the scenario level: each scenario gets a fresh org via
+ * bootstrapSession, so this always inserts a new credential.
+ */
+export async function wireMockProvider(
   pod: PodInfo,
-  cookie: string,
+  session: Session,
+): Promise<MockProvider> {
+  // 1. Create the credential. `openai-compatible` provider takes the
+  // baseUrl + apiKey as a JSON string in the `apiKey` field — that JSON
+  // is what the adapter parses at activate time (see
+  // apps/mesh/src/ai-providers/adapters/openai-compatible.ts).
+  const created = await mcpCall<{ id?: string }>(
+    pod,
+    session.orgId,
+    session.cookie,
+    {
+      name: "AI_PROVIDER_KEY_CREATE",
+      arguments: {
+        providerId: "openai-compatible",
+        label: "multi-pod-mock-ai",
+        apiKey: JSON.stringify({
+          baseUrl: MOCK_AI_INTERNAL_URL,
+          apiKey: "test-key",
+        }),
+      },
+    },
+  );
+  if (!created.id) {
+    throw new Error(
+      `AI_PROVIDER_KEY_CREATE returned no id: ${JSON.stringify(created)}`,
+    );
+  }
+
+  // 2. Pin the "smart" tier to this credential + the mock model. Other
+  // tiers stay null so any decopilot call that defaults to "smart"
+  // (which most do) routes here.
+  await mcpCall(pod, session.orgId, session.cookie, {
+    name: "ORGANIZATION_SETTINGS_UPDATE",
+    arguments: {
+      organizationId: session.orgId,
+      simple_mode: {
+        tiers: {
+          fast: null,
+          smart: { keyId: created.id, modelId: MOCK_AI_MODEL_ID },
+          thinking: null,
+          image: null,
+          web_research: null,
+        },
+      },
+    },
+  });
+
+  return { keyId: created.id, modelId: MOCK_AI_MODEL_ID };
+}
+
+/**
+ * Create a virtual MCP (agent) for the session's org. Required because
+ * COLLECTION_THREADS_CREATE rejects a thread without a real virtual MCP
+ * id — the UI creates one on the way in too. The agent has no
+ * connections; it just satisfies the FK so thread creation can succeed.
+ */
+export async function createTestAgent(
+  pod: PodInfo,
+  session: Session,
+): Promise<{ virtualMcpId: string }> {
+  const created = await mcpCall<{ item?: { id?: string }; id?: string }>(
+    pod,
+    session.orgId,
+    session.cookie,
+    {
+      name: "COLLECTION_VIRTUAL_MCP_CREATE",
+      arguments: {
+        data: {
+          title: `multi-pod-agent-${Date.now()}`,
+          connections: [],
+        },
+      },
+    },
+  );
+  const id = created.item?.id ?? created.id;
+  if (!id) {
+    throw new Error(
+      `COLLECTION_VIRTUAL_MCP_CREATE: no id in ${JSON.stringify(created)}`,
+    );
+  }
+  return { virtualMcpId: id };
+}
+
+/**
+ * Pre-create a thread row so /attach has something to look up the
+ * instant after POST /messages returns 202. Without this, /attach
+ * races against the workflow's first `prepareRun` (which is what
+ * normally inserts the thread row) and 404s.
+ */
+export async function createTestThread(
+  pod: PodInfo,
+  session: Session,
+  virtualMcpId: string,
+  threadId?: string,
+): Promise<{ threadId: string }> {
+  const id =
+    threadId ?? `thrd_test_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
+  await mcpCall(pod, session.orgId, session.cookie, {
+    name: "COLLECTION_THREADS_CREATE",
+    arguments: {
+      data: { id, virtual_mcp_id: virtualMcpId },
+    },
+  });
+  return { threadId: id };
+}
+
+interface McpEnvelope<T> {
+  result?: {
+    structuredContent?: T;
+    content?: Array<{ text?: string }>;
+  };
+  error?: { message?: string };
+}
+
+/**
+ * Generic MCP tool-call helper for the built-in `{orgId}_self` namespace.
+ * Returns the parsed structured content (or text fallback for older
+ * tools). Throws on JSON-RPC errors so tests fail loudly.
+ */
+async function mcpCall<T = unknown>(
+  pod: PodInfo,
   orgId: string,
-): Promise<string> {
+  cookie: string,
+  params: { name: string; arguments: Record<string, unknown> },
+): Promise<T> {
   const res = await postJson(
     pod,
     `/mcp/${orgId}_self`,
@@ -113,41 +272,28 @@ async function mintApiKey(
       jsonrpc: "2.0",
       id: 1,
       method: "tools/call",
-      params: {
-        name: "API_KEY_CREATE",
-        arguments: {
-          name: `multi-pod-${Date.now()}`,
-          permissions: { "*": ["*"] },
-        },
-      },
+      params,
     },
     {
       auth: { cookie },
       headers: { Accept: "application/json, text/event-stream" },
     },
   );
-  const json = (await res.json()) as {
-    result?: {
-      structuredContent?: { key?: string };
-      content?: Array<{ text?: string }>;
-    };
-    error?: unknown;
-  };
+  const json = (await res.json()) as McpEnvelope<T>;
   if (json.error) {
-    throw new Error(`API_KEY_CREATE failed: ${JSON.stringify(json.error)}`);
+    throw new Error(
+      `${params.name} JSON-RPC error: ${json.error.message ?? JSON.stringify(json.error)}`,
+    );
   }
-  const structuredKey = json.result?.structuredContent?.key;
-  if (structuredKey) return structuredKey;
+  if (json.result?.structuredContent) return json.result.structuredContent;
 
-  // Older MCP responses surface the payload as a text content part.
   const text = json.result?.content?.[0]?.text;
   if (text) {
     try {
-      const parsed = JSON.parse(text);
-      if (typeof parsed.key === "string") return parsed.key;
+      return JSON.parse(text) as T;
     } catch {
       /* fall through */
     }
   }
-  throw new Error(`API_KEY_CREATE: no key in ${JSON.stringify(json.result)}`);
+  return {} as T;
 }
