@@ -22,9 +22,17 @@ async function compose(...args: string[]): Promise<void> {
   }
 }
 
-/** Bring the cluster up and wait until all mesh pods report /health/live. */
+/**
+ * Bring the cluster up and wait until all mesh pods report /health/live.
+ *
+ * We don't pass `--wait` to docker compose because the one-shot `migrate`
+ * service (`Exited 0` once schemas are created) is mis-classified as a
+ * failure by `--wait` and exits non-zero. The `waitReady()` poll below
+ * is the source of truth for readiness instead — same approach as
+ * `run.sh`.
+ */
 export async function up(): Promise<void> {
-  await compose("up", "-d", "--build", "--wait");
+  await compose("up", "-d", "--build");
   await waitReady();
 }
 

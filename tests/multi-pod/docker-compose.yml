@@ -45,7 +45,12 @@ services:
     build:
       context: ../../
       dockerfile: tests/resilience/Dockerfile.studio
-    restart: unless-stopped
+    # No restart policy — tests need explicit start/stop control. With
+    # `unless-stopped`, `docker kill` is auto-restarted within seconds,
+    # which would defeat any pod-death scenario (the SIGKILL'd pod would
+    # come back before the assertion fires). A genuine boot crash is
+    # surfaced via the healthcheck, not papered over by a restart.
+    restart: "no"
     working_dir: /app/apps/mesh
     # Bypass the Dockerfile entrypoint (which runs `bun run migrate` before
     # exec'ing the CLI) AND pass `--skip-migrations` so the CLI's own boot
@@ -82,12 +87,28 @@ services:
       start_period: 60s
       retries: 20
 
+  # mesh-2 and mesh-3 wait for the previous pod to be healthy before
+  # starting. This serializes *first-boot* DBOS migrations: even with
+  # mesh's own --skip-migrations, DBOS still runs its system-schema
+  # migrations on `DBOS.launch()` and three parallel boots race on
+  # inserts into `dbos.dbos_migrations` (unique-constraint violations
+  # crash pods 2/3). Once the schema exists, subsequent boots are
+  # idempotent — restarting a single pod mid-test stays fast.
   mesh-2:
     <<: *mesh
     environment:
       <<: *mesh-env
     ports:
       - "127.0.0.1:13002:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      mesh-1:
+        condition: service_healthy
 
   mesh-3:
     <<: *mesh
@@ -95,3 +116,12 @@ services:
       <<: *mesh-env
     ports:
       - "127.0.0.1:13003:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      mesh-2:
+        condition: service_healthy
