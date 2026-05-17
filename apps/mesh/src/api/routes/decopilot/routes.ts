@@ -400,9 +400,15 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
   app.get("/:org/decopilot/attach/:threadId", async (c) => {
     try {
-      const { taskId } = await validateThreadAccess(c);
+      const { taskId, thread } = await validateThreadAccess(c);
 
-      const deliverPolicy = runRegistry.isRunning(taskId) ? "all" : "new";
+      // Use the DB's view, not pod-local registry state. A client attached
+      // to a non-owner pod (any multi-pod deployment, including mid-deploy
+      // and after a DBOS replay rehome) needs `"all"` to catch chunks the
+      // owning pod has already pumped to the shared JetStream subject.
+      // The buffer is purged on terminal events (run-reactor), so `"all"`
+      // only ever replays the current in-flight run.
+      const deliverPolicy = thread.status === "in_progress" ? "all" : "new";
       const tailChunkStream = await streamBuffer.createTailStream(
         taskId,
         c.req.raw.signal,
