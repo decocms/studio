@@ -12,10 +12,15 @@ services:
       retries: 10
 
   nats:
-    image: nats:2.10.22
+    # Alpine variant so the healthcheck can shell out to wget; the scratch-
+    # based `nats:2.10.22` ships only the nats-server binary, which is why
+    # the resilience suite settled for `nats-server --help` (which passes
+    # even when the server isn't serving). The monitoring port `-m 8222`
+    # exposes `/healthz` for a real readiness check.
+    image: nats:2.10.22-alpine
     command: -js -m 8222
     healthcheck:
-      test: ["CMD", "nats-server", "--help"]
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:8222/healthz || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -42,10 +47,13 @@ services:
       dockerfile: tests/resilience/Dockerfile.studio
     restart: unless-stopped
     working_dir: /app/apps/mesh
-    # Bypass the Dockerfile entrypoint (which runs migrations again) and start
-    # the server directly. Migrations are guaranteed done by the `migrate`
-    # dependency below.
-    command: ["bun", "run", "src/cli.ts", "--no-tui"]
+    # Bypass the Dockerfile entrypoint (which runs `bun run migrate` before
+    # exec'ing the CLI) AND pass `--skip-migrations` so the CLI's own boot
+    # migration is suppressed too. Without the flag each of the three pods
+    # would race on the migration step independently of the `migrate`
+    # service. The `migrate` service is the single source of truth for
+    # schema state; pods read-only at boot.
+    command: ["bun", "run", "src/cli.ts", "--no-tui", "--skip-migrations"]
     environment: &mesh-env
       NODE_ENV: production
       PORT: "3000"
