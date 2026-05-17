@@ -13,9 +13,11 @@ const COMPOSE_FILE = new URL("../docker-compose.yml", import.meta.url).pathname;
 
 /**
  * Run a SQL query against the cluster's postgres and return rows as an
- * array of objects keyed by column name. Uses tuples-only output with
- * pipe separators, so don't `SELECT` columns whose values can contain
- * a literal "|" character.
+ * array of objects keyed by column name. Output is RFC-4180 CSV (psql's
+ * `--csv` mode quotes fields containing commas/quotes/newlines), but our
+ * parser is intentionally naive: it splits on raw commas. So don't
+ * `SELECT` columns whose values can contain a literal "," character
+ * unless you tighten the parser too.
  */
 export async function dbQuery<T extends Record<string, string | null>>(
   sql: string,
@@ -34,9 +36,6 @@ export async function dbQuery<T extends Record<string, string | null>>(
       "postgres",
       "-d",
       "postgres",
-      "-A", // unaligned output (no padding)
-      "-F",
-      "|", // field separator
       "--csv",
       "-c",
       sql,

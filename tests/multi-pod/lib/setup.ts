@@ -285,7 +285,14 @@ async function mcpCall<T = unknown>(
       `${params.name} JSON-RPC error: ${json.error.message ?? JSON.stringify(json.error)}`,
     );
   }
-  if (json.result?.structuredContent) return json.result.structuredContent;
+  // Prefer structuredContent when present and non-empty. Some MCP tools
+  // ship `structuredContent: {}` alongside a populated text part — a
+  // bare truthy check would short-circuit on `{}` and the caller would
+  // see an empty object instead of the real payload.
+  const structured = json.result?.structuredContent as
+    | Record<string, unknown>
+    | undefined;
+  if (structured && Object.keys(structured).length > 0) return structured as T;
 
   const text = json.result?.content?.[0]?.text;
   if (text) {
@@ -295,5 +302,8 @@ async function mcpCall<T = unknown>(
       /* fall through */
     }
   }
-  return {} as T;
+  // Last resort: surface whatever structured payload existed (even if
+  // empty) rather than fabricating one, so callers get a faithful echo
+  // and can decide how to react.
+  return (structured ?? {}) as T;
 }

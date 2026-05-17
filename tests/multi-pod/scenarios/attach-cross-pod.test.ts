@@ -10,7 +10,9 @@
  * Setup keeps the bug catchable regardless of which pod DBOS happens
  * to dispatch the workflow on:
  *
- *   1. Mock is configured to drip slowly (300ms × 5 chunks ≈ 1.5s).
+ *   1. Mock is configured to drip slowly (500ms × 5 chunks ≈ 2.5s) — see
+ *      MOCK_HINT below; this gives the test time to attach after some
+ *      chunks have already buffered in JetStream.
  *   2. POST goes to pod-1. DBOS picks an arbitrary pod to run the
  *      threadGateWorkflow step; we don't try to pin it.
  *   3. We wait ~500ms so a couple of chunks are already in JetStream.

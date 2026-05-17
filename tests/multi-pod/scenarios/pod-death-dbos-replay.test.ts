@@ -18,40 +18,51 @@
  *      name, so the value maps directly to a `pod.kill()` target).
  *   5. Assert one surviving /attach receives "chunk-20".
  *
- * ── Architectural finding (2026-05-17) ────────────────────────────────
+ * ── Architectural finding (2026-05-17, revised) ──────────────────────
  *
- * Running this test against the framework cluster timed out at 120s.
- * Two compounding gaps:
+ * Running this test against the framework cluster surfaces three
+ * separate, compounding gaps in the current cross-pod recovery story:
  *
- *   1. DBOS workflow replay alone can't recover the run. The recovery
- *      executor on a survivor pod re-executes `dispatchRunAndWaitStep`,
- *      which calls `dispatchRunAndWait` *without* `isResume: true`. That
- *      hits `claimRunStart` (run-reactor.ts:84) — a strict CAS that
- *      rejects re-claim from any pod other than the existing
- *      `run_owner_pod`. The dead pod still owns the row, so every
- *      replay attempt fails with `RunClaimError: ... already running on
- *      another pod`. Confirmed in mesh-1/mesh-2 logs after SIGKILL.
+ *   1. **No cross-pod DBOS recovery.** All pods boot DBOS with
+ *      `executor_id = "local"` (default; env `DBOS__VMID` is unset).
+ *      DBOS's `recoverPendingWorkflows` is filtered by executor_id, and
+ *      it only fires on `DBOS.launch()` — i.e., when a pod restarts.
+ *      The OSS SDK has no built-in scan for workflows whose executor is
+ *      dead. Surviving peers never replay a dead pod's workflows.
  *
- *   2. The heartbeat-based pod-death watcher (NatsPodHeartbeat +
- *      runRegistry.handlePodDeath, which DOES use the orphan-claim
- *      path with `isResume: true`) never fires in this cluster: the
- *      `KV_POD_HEARTBEATS` JetStream bucket is missing from NATS even
- *      though all other JS resources initialize cleanly. NATS' /jsz
- *      shows DECOPILOT_STREAMS, KV_DECOCMS_MCP_LISTS, KV_MESH_MODEL_LISTS
- *      — but no heartbeat bucket. Bucket creation appears to fail
- *      silently (app.ts:867 swallows the init error).
+ *   2. **`prepareRun` purges JetStream unconditionally** at
+ *      dispatch-run.ts:519, including on resume. Even if the heartbeat
+ *      watcher (NatsPodHeartbeat + runRegistry.handlePodDeath) does
+ *      kick in and trigger `dispatchRunAndWait(isResume: true)` on a
+ *      survivor pod, the first thing that runs nukes any chunks the
+ *      survivor watchers were mid-consumption of.
+ *
+ *   3. **NatsPodHeartbeat bucket creation is fragile**. On cold boot
+ *      `KV_POD_HEARTBEATS` sometimes isn't in NATS' jsz output even
+ *      though every other JS resource is — bucket init silently
+ *      swallows errors at app.ts:867. Re-runs eventually create it,
+ *      but it's flaky enough that you can't rely on the heartbeat
+ *      firing in the first 45s window.
  *
  * Net: permanent pod death is currently only recovered when the dead
- * pod *itself* restarts (DBOS replay on the same POD_NAME succeeds the
- * claim CAS). Same-pod-restart is a separate scenario worth adding;
- * permanent-death recovery needs either (a) the heartbeat bucket
- * initialized + watcher firing or (b) `claimRunStart` widened to allow
- * re-claim from a different pod when an external recovery executor
- * (DBOS) is the caller.
+ * pod *itself* restarts (DBOS recovery on the same POD_NAME succeeds
+ * because `claimRunStart`'s strict CAS matches). Cross-pod recovery
+ * needs:
  *
- * Un-skip this test once one of those is fixed. The test body is left
- * intact so the fix can be verified by removing the `.skip` and
- * re-running.
+ *   - per-pod `DBOS__VMID` so DBOS knows which executor owns what
+ *   - a death-detection mechanism (the existing NATS heartbeat, or
+ *     Postgres advisory locks — sub-second detection, no NATS bucket
+ *     reliability issue) that triggers recovery on a survivor
+ *   - skip `streamBuffer.purge()` when `isResume` is true
+ *
+ * The recovery itself can stay in `runRegistry.handlePodDeath`
+ * (storage-level claim + `dispatchRunAndWait(isResume: true)`) — going
+ * through DBOS's internal recoverPendingWorkflows API is possible but
+ * not exposed publicly, so it'd require importing internals.
+ *
+ * Un-skip this test once the three gaps above are addressed. The test
+ * body is left intact so the fix can be verified by removing the
+ * `.skip` and re-running.
  */
 
 import { describe, expect, test } from "bun:test";
