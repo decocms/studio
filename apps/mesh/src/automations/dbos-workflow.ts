@@ -84,7 +84,7 @@ export const AUTOMATIONS_GATE_PARTITION_CONCURRENCY = 3;
 /**
  * Global concurrent fire cap across the entire cluster. Set conservatively to
  * keep the pg pool from being exhausted by tool fan-out inside each fire's
- * dispatchRun call. Bump when `databasePoolMax` is bumped.
+ * dispatchRunAndWait call. Bump when `databasePoolMax` is bumped.
  */
 export const AUTOMATIONS_GLOBAL_CONCURRENCY = 5;
 const AUTOMATIONS_RUN_TIMEOUT_MS = 5 * 60 * 1000;
