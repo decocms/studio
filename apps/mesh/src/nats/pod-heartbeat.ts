@@ -112,9 +112,18 @@ export class NatsPodHeartbeat implements PodHeartbeat {
         });
     }, REFRESH_INTERVAL_MS);
 
-    // Activate deferred death watcher if registered before init
-    if (this.pendingDeathCallback) {
-      this.startDeathWatcher(this.pendingDeathCallback);
+    // Re-arm death detection. Two cases land here:
+    //   - First start after onPodDeath() was called pre-init:
+    //     `pendingDeathCallback` holds the callback.
+    //   - NATS reconnect: `init()` tore down the watcher and poller,
+    //     `pendingDeathCallback` is null (it was consumed on the first
+    //     start), but `deathCallback` is still cached on the instance.
+    // Without this fallback, heartbeats keep refreshing after a
+    // reconnect but death detection silently stops firing — every
+    // peer death goes unnoticed until the next pod restart.
+    const callback = this.pendingDeathCallback ?? this.deathCallback;
+    if (callback) {
+      this.startDeathWatcher(callback);
       this.startDeathPoller();
       this.pendingDeathCallback = null;
     }

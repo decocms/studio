@@ -269,5 +269,5 @@ describe("pod-death + DBOS replay", () => {
     // Test budget exceeds pollUntil by a safety margin so the finally
     // above always runs (cleanly aborts SSE consumers) instead of
     // racing the bun-test-level timeout.
-  }, 180_000);
+  }, 220_000);
 });

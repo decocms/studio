@@ -518,17 +518,20 @@ async function prepareRun(
     // Purge stale buffered chunks from any previous run on this thread.
     // Always purges — including on resume — because the resumed run
     // re-invokes the LLM from scratch and produces chunk-1..chunk-N
-    // again. If we kept the dead pod's prefix in JetStream, any
-    // /attach that opens after recovery starts would see the
-    // assistant's reply twice (deliverPolicy:"all" replays the
-    // dead-pod prefix and then the resumed run's full body).
-    // Existing in-flight consumers are unaffected: their NATS consumer
-    // local buffers aren't reachable by server-side purges — chunks
-    // already delivered to them stay delivered, and the resumed run's
-    // new chunks land at higher sequence numbers and arrive normally.
-    // The duplicate-detection assertion in
-    // tests/multi-pod/scenarios/pod-death-dbos-replay.test.ts is the
-    // regression guard for this.
+    // again. Without this, any /attach opened after recovery starts
+    // would see the assistant's reply twice (deliverPolicy:"all"
+    // replays the dead-pod prefix and then the resumed run's full
+    // body). Regression guard:
+    // tests/multi-pod/scenarios/pod-death-dbos-replay.test.ts.
+    //
+    // ⚠️ Known UX gap, not addressed here: an /attach that was already
+    // streaming when the owner pod died will still receive the dead
+    // pod's prefix from its local consumer buffer (the purge is
+    // server-side and doesn't reach into already-delivered messages)
+    // AND the resumed run's full body afterwards — so it sees the
+    // reply rendered twice. A proper fix would publish a "reset"
+    // sentinel to the subject before the resume pump starts so all
+    // consumers flush their UI buffer; left as a follow-up.
     streamBuffer?.purge(mem.thread.id);
 
     // Split system messages from user message
