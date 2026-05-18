@@ -13,6 +13,7 @@ import {
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { ThreadExpandedTool, ThreadMetadata } from "../../storage/types";
+import type { Task } from "../components/chat/task/types";
 import { KEYS } from "../lib/query-keys";
 
 export type { ThreadExpandedTool };
@@ -64,35 +65,44 @@ export function useTaskExpandedTools(taskId: string) {
     },
     onMutate: async (tool) => {
       // Optimistic: put the new tool into the cache so the header tab
-      // renders before the server round-trip completes.
-      const key = KEYS.threadMetadata(taskId);
+      // renders before the server round-trip completes. The cache stores
+      // the full Task row (shared with useEnsureTask + useTaskMetadata);
+      // patch task.metadata.expanded_tools in place so reads via `select`
+      // see the new entry.
+      const key = KEYS.ensureTask(org.id, taskId);
       await queryClient.cancelQueries({ queryKey: key });
-      const previous = queryClient.getQueryData<ThreadMetadata | null>(key);
-      const currentTools: ThreadExpandedTool[] = previous?.expanded_tools ?? [];
+      const previous = queryClient.getQueryData<Task | null>(key);
+      const currentTools: ThreadExpandedTool[] =
+        previous?.metadata?.expanded_tools ?? [];
       const nextTools = currentTools.filter(
         (t) => t.toolName !== tool.toolName,
       );
       nextTools.push({ ...tool, expandedAt: new Date().toISOString() });
-      queryClient.setQueryData<ThreadMetadata | null>(key, {
-        ...(previous ?? {}),
-        expanded_tools: nextTools,
-      });
+      queryClient.setQueryData<Task | null>(key, (prev) =>
+        prev
+          ? {
+              ...prev,
+              metadata: {
+                ...(prev.metadata ?? {}),
+                expanded_tools: nextTools,
+              },
+            }
+          : prev,
+      );
       return { previous };
     },
     onSuccess: () => {
       // Thread update will materialize from the next SSE event via ThreadEventsBridge
       queryClient.invalidateQueries({
-        queryKey: KEYS.threadMetadata(taskId),
+        queryKey: KEYS.ensureTask(org.id, taskId),
       });
     },
     onError: (error, _tool, context) => {
+      const key = KEYS.ensureTask(org.id, taskId);
       if (context?.previous === undefined) {
-        queryClient.removeQueries({
-          queryKey: KEYS.threadMetadata(taskId),
-          exact: true,
-        });
+        queryClient.removeQueries({ queryKey: key, exact: true });
       } else {
-        queryClient.setQueryData(KEYS.threadMetadata(taskId), context.previous);
+        queryClient.setQueryData(key, context.previous);
       }
       toast.error(
         error instanceof Error ? error.message : "Failed to expand tool",

@@ -163,8 +163,6 @@ export const KEYS = {
     ["threads", "messages", locator, threadId] as const,
   threadModelLogs: (locator: string, dateKey: string) =>
     ["threads", "model-logs", locator, dateKey] as const,
-  threadMetadata: (threadId: string) =>
-    ["threads", "metadata", threadId] as const,
   threadSandbox: (orgKey: string, taskId: string | undefined) =>
     ["thread-sandbox", "v2", orgKey, taskId] as const,
   threadOutputs: (threadId: string) => ["thread-outputs", threadId] as const,

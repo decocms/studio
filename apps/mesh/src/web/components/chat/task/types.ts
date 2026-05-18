@@ -1,4 +1,5 @@
 import type { ThreadDisplayStatus } from "@decocms/mesh-sdk";
+import type { ThreadMetadata } from "@/storage/types";
 
 // Constants
 export const TASK_CONSTANTS = {
@@ -30,6 +31,8 @@ export interface Task {
   trigger_id?: string | null;
   /** Git branch associated with this thread, when the vMCP is GitHub-linked. */
   branch?: string | null;
+  /** Per-thread metadata — layout tabs, expanded tools, etc. Loaded by COLLECTION_THREADS_GET. */
+  metadata?: ThreadMetadata;
 }
 
 export type { ChatMessage } from "../types.ts";
