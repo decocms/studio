@@ -110,5 +110,3 @@ export function useTaskManager(virtualMcpId: string) {
     updateMessagesCache: actions.updateMessages,
   };
 }
-
-export { useTaskMessages } from "./use-task-messages";

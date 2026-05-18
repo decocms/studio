@@ -546,8 +546,7 @@ const eventsHandler: MiddlewareHandler<Env> = async (c) => {
 /**
  * SSE events endpoint — streams events for an organization in real time.
  * Resolves the org from `ctx.organization.id` (set by `resolveOrgFromPath`
- * on the `/api/:org/events` mount) or from the legacy `:organizationId`
- * path param. Auth is required either way.
+ * on the `/api/:org/events` mount). Auth is required.
  */
 const watchHandler: MiddlewareHandler<Env> = async (c) => {
   const meshContext = c.var.meshContext;
@@ -558,19 +557,9 @@ const watchHandler: MiddlewareHandler<Env> = async (c) => {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  // Prefer org resolved from path (new mount); fall back to legacy param.
-  const orgId =
-    meshContext.organization?.id ?? c.req.param("organizationId") ?? null;
+  const orgId = meshContext.organization?.id;
   if (!orgId) {
     return c.json({ error: "organization id missing" }, 400);
-  }
-
-  // On the legacy path the middleware doesn't enforce membership; check that
-  // the authenticated user has access to the requested organization. (On the
-  // new path `resolveOrgFromPath` already enforced this and `orgId` came from
-  // `ctx.organization.id`, so the comparison is trivially true.)
-  if (orgId !== meshContext.organization?.id) {
-    return c.json({ error: "Forbidden access to organization" }, 403);
   }
 
   // Optional type filter: ?types=workflow.*,public.* (comma-separated patterns)

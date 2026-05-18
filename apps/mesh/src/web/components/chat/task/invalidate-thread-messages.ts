@@ -17,8 +17,7 @@ export function invalidateThreadMessages(
   queryClient.invalidateQueries({
     predicate: (query) => {
       const key = query.queryKey;
-      if (key[3] !== "collection" || key[4] !== "THREAD_MESSAGES")
-        return false;
+      if (key[3] !== "collection" || key[4] !== "THREAD_MESSAGES") return false;
       const serialized = typeof key[6] === "string" ? key[6] : "";
       return serialized.includes(taskId);
     },

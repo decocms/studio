@@ -13,7 +13,11 @@
  *
  * The fix: ThreadEventsBridge — mounted once at app root, regardless of
  * active thread — calls invalidateThreadMessages on decopilot.finish for
- * every thread. This test verifies that wiring directly.
+ * every thread. These tests document the bug scenario and exercise the
+ * helper that the bridge dispatches to. The bridge → helper wire itself
+ * is a single direct call (see thread-events.tsx); it relies on the
+ * helper's correctness, which is covered here and in
+ * invalidate-thread-messages.test.ts.
  */
 import { describe, expect, test } from "bun:test";
 import { QueryClient } from "@tanstack/react-query";
