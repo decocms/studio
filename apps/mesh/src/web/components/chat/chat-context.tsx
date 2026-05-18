@@ -32,7 +32,7 @@ import {
   writeStoredAutosend,
 } from "@/web/lib/autosend";
 import { useThreadChat } from "./hooks/use-thread-chat";
-import type { RequestOptions } from "./hooks/thread-attach-registry";
+import type { RequestOptions } from "./hooks/thread-stream-registry";
 import {
   pickSimpleModeDefaults,
   useProjectContext,

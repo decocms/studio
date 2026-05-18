@@ -1,10 +1,10 @@
 /**
- * useThreadChat — thin React selector over the thread-attach registry.
+ * useThreadChat — thin React selector over the thread stream registry.
  *
  * The persistent /stream SSE, folded message stores, demuxer, and mutators
  * all live on a single ThreadConnection instance owned by the registry.
  * This hook just:
- *   - resolves the connection via getOrOpenAttach (idempotent for same key)
+ *   - resolves the connection via getOrOpenStream (idempotent for same key)
  *   - mirrors per-render context onto the connection
  *   - registers itself as the connection's single observer
  *   - reads the connection's stores via useSyncExternalStore
@@ -16,12 +16,12 @@
 import { type UIMessage, type UIMessageChunk } from "ai";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import {
-  getOrOpenAttach,
+  getOrOpenStream,
   type ChatStreamStatus,
   type RequestOptions,
   type Store,
   type ThreadObserver,
-} from "./thread-attach-registry";
+} from "./thread-stream-registry";
 
 export type { ChatStreamStatus, RequestOptions };
 
@@ -81,7 +81,7 @@ function useStore<T>(s: Store<T>): T {
 export function useThreadChat<UI_MESSAGE extends UIMessage>(
   opts: UseChatStreamOptions<UI_MESSAGE>,
 ): UseChatStreamResult<UI_MESSAGE> {
-  const conn = getOrOpenAttach(opts.orgSlug, opts.threadId);
+  const conn = getOrOpenStream(opts.orgSlug, opts.threadId);
 
   // Mirror per-render context onto the connection so mutators (which
   // run later, on user events) read the latest props at call time.

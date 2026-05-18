@@ -567,7 +567,7 @@ class ThreadConnection {
 let current: ThreadConnection | null = null;
 
 /** Idempotent: same key → same instance. Different key → dispose + reopen. */
-export function getOrOpenAttach(
+export function getOrOpenStream(
   orgSlug: string,
   threadId: string,
 ): ThreadConnection {

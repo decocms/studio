@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   __resetRegistry,
-  getOrOpenAttach,
+  getOrOpenStream,
   type ThreadObserver,
-} from "./thread-attach-registry";
+} from "./thread-stream-registry";
 
 // Minimal EventSource stub — the registry wires up the SSE backstop but the
 // tests don't exercise the SSE path, so a no-op implementation is enough.
@@ -59,21 +59,21 @@ function makeStreamingFetchMock(textDelta = "hi"): ReturnType<typeof mock> {
 
 /** Build a fetch mock that opens a controllable stream SSE and ACKs
  *  POSTs to /messages. Returns helpers to enqueue chunks at test time. */
-function makeControlledAttachMock(): {
+function makeControlledStreamMock(): {
   fetchMock: ReturnType<typeof mock>;
   enqueue: (chunk: unknown) => void;
-  closeAttach: () => void;
+  closeStream: () => void;
 } {
-  let attachController: ReadableStreamDefaultController<Uint8Array> | null =
+  let streamController: ReadableStreamDefaultController<Uint8Array> | null =
     null;
   const enc = new TextEncoder();
   const enqueue = (chunk: unknown) => {
-    if (!attachController) throw new Error("stream SSE not open");
-    attachController.enqueue(enc.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+    if (!streamController) throw new Error("stream SSE not open");
+    streamController.enqueue(enc.encode(`data: ${JSON.stringify(chunk)}\n\n`));
   };
-  const closeAttach = () => {
-    attachController?.close();
-    attachController = null;
+  const closeStream = () => {
+    streamController?.close();
+    streamController = null;
   };
   const fetchMock = mock((input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
@@ -82,7 +82,7 @@ function makeControlledAttachMock(): {
         new Response(
           new ReadableStream<Uint8Array>({
             start(c) {
-              attachController = c;
+              streamController = c;
             },
           }),
           { status: 200, headers: { "content-type": "text/event-stream" } },
@@ -98,7 +98,7 @@ function makeControlledAttachMock(): {
       );
     });
   });
-  return { fetchMock, enqueue, closeAttach };
+  return { fetchMock, enqueue, closeStream };
 }
 
 /** Build a fetch mock where every call hangs until aborted. */
@@ -113,7 +113,7 @@ function makeHangingFetchMock(): ReturnType<typeof mock> {
   );
 }
 
-describe("getOrOpenAttach", () => {
+describe("getOrOpenStream", () => {
   let originalFetch: typeof globalThis.fetch;
   let originalEventSource: typeof globalThis.EventSource;
   let fetchMock: ReturnType<typeof mock>;
@@ -134,18 +134,18 @@ describe("getOrOpenAttach", () => {
   });
 
   test("returns the same instance for the same key", () => {
-    const a = getOrOpenAttach("acme", "thread-1");
-    const b = getOrOpenAttach("acme", "thread-1");
+    const a = getOrOpenStream("acme", "thread-1");
+    const b = getOrOpenStream("acme", "thread-1");
     expect(a).toBe(b);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   test("disposes the prior connection when key changes", () => {
-    const a = getOrOpenAttach("acme", "thread-1");
+    const a = getOrOpenStream("acme", "thread-1");
     const aAbortSpy = mock(() => {});
     a.abort.signal.addEventListener("abort", aAbortSpy);
 
-    const b = getOrOpenAttach("acme", "thread-2");
+    const b = getOrOpenStream("acme", "thread-2");
 
     expect(a).not.toBe(b);
     expect(aAbortSpy).toHaveBeenCalledTimes(1);
@@ -154,9 +154,9 @@ describe("getOrOpenAttach", () => {
   });
 
   test("returning to a previous key opens a fresh connection", () => {
-    const a = getOrOpenAttach("acme", "thread-1");
-    getOrOpenAttach("acme", "thread-2");
-    const a2 = getOrOpenAttach("acme", "thread-1");
+    const a = getOrOpenStream("acme", "thread-1");
+    getOrOpenStream("acme", "thread-2");
+    const a2 = getOrOpenStream("acme", "thread-1");
 
     expect(a2).not.toBe(a);
     expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -183,7 +183,7 @@ describe("chunk handling", () => {
   });
 
   test("folds a complete run into localMessages and resets streaming", async () => {
-    const conn = getOrOpenAttach("acme", "thread-x");
+    const conn = getOrOpenStream("acme", "thread-x");
     await new Promise((r) => setTimeout(r, 500));
     expect(conn.streaming.get()).toBe(null);
     const msgs = conn.localMessages.get();
@@ -193,7 +193,7 @@ describe("chunk handling", () => {
   });
 
   test("the assigned observer receives onFinish; reassignment replaces", async () => {
-    const conn = getOrOpenAttach("acme", "thread-y");
+    const conn = getOrOpenStream("acme", "thread-y");
     const finishA = mock(() => {});
     const observerA: ThreadObserver = { onFinish: finishA };
     conn.observer = observerA;
@@ -213,14 +213,14 @@ describe("chunk handling", () => {
 describe("tool approval resume", () => {
   let originalFetch: typeof globalThis.fetch;
   let originalEventSource: typeof globalThis.EventSource;
-  let ctrl: ReturnType<typeof makeControlledAttachMock>;
+  let ctrl: ReturnType<typeof makeControlledStreamMock>;
 
   beforeEach(() => {
     __resetRegistry();
     originalFetch = globalThis.fetch;
     originalEventSource = globalThis.EventSource;
     globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
-    ctrl = makeControlledAttachMock();
+    ctrl = makeControlledStreamMock();
     globalThis.fetch = ctrl.fetchMock as unknown as typeof globalThis.fetch;
   });
 
@@ -231,7 +231,7 @@ describe("tool approval resume", () => {
   });
 
   test("resume run after approval can resolve tool output without No-tool-invocation error", async () => {
-    const conn = getOrOpenAttach("acme", "thread-resume");
+    const conn = getOrOpenStream("acme", "thread-resume");
     conn.context = { initialMessages: [] };
 
     const errors: Error[] = [];
@@ -351,7 +351,7 @@ describe("tool approval resume", () => {
     });
     globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
 
-    const conn = getOrOpenAttach("acme", "thread-replay");
+    const conn = getOrOpenStream("acme", "thread-replay");
     conn.context = { initialMessages: [] };
 
     await new Promise((r) => setTimeout(r, 0));
@@ -408,7 +408,7 @@ describe("tool approval resume", () => {
   });
 
   test("plain text turn with finishReason=stop flushes to localMessages and clears streaming", async () => {
-    const conn = getOrOpenAttach("acme", "thread-plain");
+    const conn = getOrOpenStream("acme", "thread-plain");
     conn.context = { initialMessages: [] };
     await new Promise((r) => setTimeout(r, 0));
 
@@ -427,7 +427,7 @@ describe("tool approval resume", () => {
   });
 
   test("snapshotAll dedupes streaming against initialMessages (server-wins)", async () => {
-    const conn = getOrOpenAttach("acme", "thread-dedup");
+    const conn = getOrOpenStream("acme", "thread-dedup");
     conn.context = { initialMessages: [] };
     await new Promise((r) => setTimeout(r, 0));
 
