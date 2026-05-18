@@ -3,9 +3,13 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
-import { Atom01, Lightning01, Stars01 } from "@untitledui/icons";
+import { Atom01, Lightning01, Settings02, Stars01 } from "@untitledui/icons";
+import { useNavigate } from "@tanstack/react-router";
+import { useProjectContext } from "@decocms/mesh-sdk";
+import { useCanManageAiProviders } from "@/web/hooks/use-can-manage-ai-providers";
 
 export type SimpleModeTier = "fast" | "smart" | "thinking";
 
@@ -41,6 +45,10 @@ export function SimpleModeTierDropdown({
     SIMPLE_MODE_TIER_OPTIONS.find((o) => o.value === tier) ??
     SIMPLE_MODE_TIER_OPTIONS[1]!;
   const Icon = current.Icon;
+  const navigate = useNavigate();
+  const { org } = useProjectContext();
+  const canManageAiProviders = useCanManageAiProviders();
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -72,6 +80,22 @@ export function SimpleModeTierDropdown({
               )}
             </DropdownMenuItem>
           ),
+        )}
+        {canManageAiProviders && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onSelect={() =>
+                navigate({
+                  to: "/$org/settings/ai-providers",
+                  params: { org: org.slug },
+                })
+              }
+            >
+              <Settings02 size={16} className="text-muted-foreground" />
+              <span>Edit default models</span>
+            </DropdownMenuItem>
+          </>
         )}
       </DropdownMenuContent>
     </DropdownMenu>
