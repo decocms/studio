@@ -325,6 +325,249 @@ describe("submit", () => {
   });
 });
 
+// ─── submit() — defer POST while client-side resolutions are pending ─────────
+
+describe("submit defers POST", () => {
+  /** Stage one or more pending approval parts and one optional pending
+   *  user_ask part on a single assistant turn. */
+  async function stageTurn(
+    stream: ReturnType<typeof controllableStream>,
+    spec: {
+      approvalIds: string[];
+      userAskToolCallId?: string;
+    },
+  ): Promise<void> {
+    stream.enqueue({ type: "start", messageId: "m-1" });
+    stream.enqueue({ type: "start-step" });
+    for (const id of spec.approvalIds) {
+      stream.enqueue({
+        type: "tool-input-available",
+        toolCallId: `tc-${id}`,
+        toolName: "dangerous_thing",
+        input: { x: id },
+      });
+      stream.enqueue({
+        type: "tool-approval-request",
+        toolCallId: `tc-${id}`,
+        approvalId: id,
+      });
+    }
+    if (spec.userAskToolCallId) {
+      stream.enqueue({
+        type: "tool-input-available",
+        toolCallId: spec.userAskToolCallId,
+        toolName: "user_ask",
+        input: { prompt: "?" },
+      });
+    }
+    stream.enqueue({ type: "finish", finishReason: "tool-calls" });
+    await new Promise((r) => setTimeout(r, 10));
+  }
+
+  function makeMock(stream: ReturnType<typeof controllableStream>): {
+    fetchMock: ReturnType<typeof mock>;
+    messagesCalls: () => number;
+    lastMessagesBody: () => unknown;
+  } {
+    let messagesCalls = 0;
+    let lastBody: unknown = null;
+    const fetchMock = mock((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("/mcp/self")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: 1,
+              result: { structuredContent: { items: [] } },
+            }),
+            { status: 200 },
+          ),
+        );
+      }
+      if (url.includes("/stream")) return Promise.resolve(stream.response);
+      if (url.includes("/messages")) {
+        messagesCalls++;
+        lastBody = init?.body ? JSON.parse(String(init.body)) : null;
+        return Promise.resolve(new Response("ok", { status: 200 }));
+      }
+      return new Promise<Response>((_, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(new DOMException("aborted", "AbortError")),
+        );
+      });
+    });
+    return {
+      fetchMock,
+      messagesCalls: () => messagesCalls,
+      lastMessagesBody: () => lastBody,
+    };
+  }
+
+  test("single approval, accept → POSTs once", async () => {
+    const stream = controllableStream();
+    const m = makeMock(stream);
+    globalThis.fetch = m.fetchMock as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-single-appr");
+    await new Promise((r) => setTimeout(r, 20));
+    await stageTurn(stream, { approvalIds: ["a1"] });
+
+    await conn.submit(
+      { kind: "approval", approvalId: "a1", approved: true },
+      baseOpts,
+    );
+
+    expect(m.messagesCalls()).toBe(1);
+  });
+
+  test("3 approvals, accept first only → no POST, local state updated", async () => {
+    const stream = controllableStream();
+    const m = makeMock(stream);
+    globalThis.fetch = m.fetchMock as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-3-appr-one");
+    await new Promise((r) => setTimeout(r, 20));
+    await stageTurn(stream, { approvalIds: ["a1", "a2", "a3"] });
+
+    await conn.submit(
+      { kind: "approval", approvalId: "a1", approved: true },
+      baseOpts,
+    );
+
+    expect(m.messagesCalls()).toBe(0);
+    // Local patch applied.
+    const last = conn.messages.get().at(-1);
+    const states = (last?.parts ?? [])
+      .filter((p) => (p as { approval?: unknown }).approval !== undefined)
+      .map((p) => (p as { state: string }).state);
+    expect(states).toEqual([
+      "approval-responded",
+      "approval-requested",
+      "approval-requested",
+    ]);
+    // Status must not be stuck on "submitted" since no POST is in flight.
+    expect(conn.status.get().kind).not.toBe("submitted");
+  });
+
+  test("3 approvals, accept all sequentially → one POST on the last", async () => {
+    const stream = controllableStream();
+    const m = makeMock(stream);
+    globalThis.fetch = m.fetchMock as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-3-appr-all");
+    await new Promise((r) => setTimeout(r, 20));
+    await stageTurn(stream, { approvalIds: ["a1", "a2", "a3"] });
+
+    for (const id of ["a1", "a2", "a3"]) {
+      await conn.submit(
+        { kind: "approval", approvalId: id, approved: true },
+        baseOpts,
+      );
+    }
+
+    expect(m.messagesCalls()).toBe(1);
+    const body = m.lastMessagesBody() as {
+      messages: Array<{ parts: Array<{ state?: string }> }>;
+    };
+    const lastMsg = body.messages.at(-1);
+    const respondedCount = (lastMsg?.parts ?? []).filter(
+      (p) => p.state === "approval-responded",
+    ).length;
+    expect(respondedCount).toBe(3);
+  });
+
+  test("user_ask + approval, answer user_ask only → no POST", async () => {
+    const stream = controllableStream();
+    const m = makeMock(stream);
+    globalThis.fetch = m.fetchMock as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-mixed-ask-only");
+    await new Promise((r) => setTimeout(r, 20));
+    await stageTurn(stream, {
+      approvalIds: ["a1"],
+      userAskToolCallId: "tc-ua",
+    });
+
+    await conn.submit(
+      { kind: "toolOutput", toolCallId: "tc-ua", output: { response: "yes" } },
+      baseOpts,
+    );
+
+    expect(m.messagesCalls()).toBe(0);
+  });
+
+  test("user_ask + approval, answer both → one POST after the second", async () => {
+    const stream = controllableStream();
+    const m = makeMock(stream);
+    globalThis.fetch = m.fetchMock as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-mixed-both");
+    await new Promise((r) => setTimeout(r, 20));
+    await stageTurn(stream, {
+      approvalIds: ["a1"],
+      userAskToolCallId: "tc-ua",
+    });
+
+    await conn.submit(
+      { kind: "toolOutput", toolCallId: "tc-ua", output: { response: "yes" } },
+      baseOpts,
+    );
+    expect(m.messagesCalls()).toBe(0);
+
+    await conn.submit(
+      { kind: "approval", approvalId: "a1", approved: true },
+      baseOpts,
+    );
+    expect(m.messagesCalls()).toBe(1);
+  });
+
+  test("no x-idempotency-key header on POST", async () => {
+    const stream = controllableStream();
+    let observedHeaders: Headers | null = null;
+    const fetchMock = mock((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("/mcp/self")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: 1,
+              result: { structuredContent: { items: [] } },
+            }),
+            { status: 200 },
+          ),
+        );
+      }
+      if (url.includes("/stream")) return Promise.resolve(stream.response);
+      if (url.includes("/messages")) {
+        observedHeaders = new Headers(init?.headers);
+        return Promise.resolve(new Response("ok", { status: 200 }));
+      }
+      return new Promise<Response>((_, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(new DOMException("aborted", "AbortError")),
+        );
+      });
+    });
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-no-idem");
+    await new Promise((r) => setTimeout(r, 20));
+    await stageTurn(stream, { approvalIds: ["a1"] });
+
+    await conn.submit(
+      { kind: "approval", approvalId: "a1", approved: true },
+      baseOpts,
+    );
+
+    expect(observedHeaders).not.toBeNull();
+    expect(
+      (observedHeaders as unknown as Headers).get("x-idempotency-key"),
+    ).toBeNull();
+  });
+});
+
 // ─── refresh() ───────────────────────────────────────────────────────────────
 
 describe("refresh", () => {
