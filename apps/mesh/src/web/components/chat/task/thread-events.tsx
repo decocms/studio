@@ -4,7 +4,7 @@
  *
  * Mount once near the app root (inside ProjectContext + QueryClientProvider).
  * Replaces useTasksAutoRefresh, useStreamManager, and the thread-list
- * invalidation logic that used to live in useTaskManager.
+ * invalidation logic that used to live in the legacy task-manager facade.
  *
  * Contract:
  *   • thread-list rows are surgically patched via setQueriesData

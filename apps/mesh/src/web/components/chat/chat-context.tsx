@@ -62,12 +62,7 @@ import { track } from "../../lib/posthog-client";
 const openedChats = new Set<string>();
 
 import { useChatNavigation } from "./hooks/use-chat-navigation";
-import {
-  useThreadActions,
-  useTaskManager,
-  type RowPatch,
-  type TaskOwnerFilter,
-} from "./task";
+import { useThreadActions, useThreads, type RowPatch } from "./task";
 import { derivePartsFromTiptapDoc } from "./derive-parts";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import type { ChatMessage, ChatMode, Metadata } from "./types";
@@ -124,9 +119,6 @@ export interface ChatTaskContextValue {
     virtualMcpId?: string;
   }) => void;
   tasks: Task[];
-  hideTask: (taskId: string) => Promise<void>;
-  renameTask: (taskId: string, title: string) => Promise<void>;
-  setTaskStatus: (taskId: string, status: string) => Promise<void>;
   /** thread.branch — the only source of truth. Null until the user picks one or the server generates one on first send. */
   currentBranch: string | null;
   /**
@@ -136,9 +128,6 @@ export interface ChatTaskContextValue {
   isBranchLocked: boolean;
   /** Persist pinned branch onto the thread (cache + server). */
   setCurrentTaskBranch: (branch: string | null) => void;
-  ownerFilter: TaskOwnerFilter;
-  setOwnerFilter: (filter: TaskOwnerFilter) => void;
-  isFilterChangePending: boolean;
 }
 
 export interface ChatPrefsContextValue {
@@ -620,9 +609,13 @@ export function ChatContextProvider({
     validatedStoredDeepResearch ??
     defaultDeepResearchModel;
 
-  // Task management (scoped by URL virtualMcpId — task list doesn't change on override)
-  const taskManager = useTaskManager(virtualMcpId);
-  const { tasks } = taskManager;
+  // Thread list — agent-scoped, open status. Consumers of `useChatTask().tasks`
+  // only look up the active thread by id, so no client-side filtering is needed.
+  const { threads: tasks } = useThreads(
+    { kind: "agent", virtualMcpId },
+    "open",
+  );
+  const threadActions = useThreadActions();
 
   // taskId always comes from the URL (seeded by router's validateSearch)
   const effectiveTaskId = urlTaskId;
@@ -699,10 +692,9 @@ export function ChatContextProvider({
   // task's branch so the new thread lands on the same warm sandbox. The
   // route loader's useEnsureTask will see the row already exists on its
   // GET and skip the create-on-404 fallback.
-  const taskActions = useThreadActions();
   const createTask = (): string => {
     const newId = crypto.randomUUID();
-    void taskActions.create
+    void threadActions.create
       .mutateAsync({
         id: newId,
         virtual_mcp_id: virtualMcpId,
@@ -731,7 +723,7 @@ export function ChatContextProvider({
     const targetVmcp = params.virtualMcpId ?? virtualMcpId;
     const carryBranch = targetVmcp === virtualMcpId ? currentBranch : null;
     writeStoredAutosend(sessionStorage, locator, newId, params.message);
-    void taskActions.create
+    void threadActions.create
       .mutateAsync({
         id: newId,
         virtual_mcp_id: targetVmcp,
@@ -751,19 +743,6 @@ export function ChatContextProvider({
       });
   };
 
-  // Hide task (switch to next after hiding)
-  const hideTask = async (taskId: string) => {
-    await taskManager.hideTask(taskId);
-    if (taskId === effectiveTaskId) {
-      const next = tasks.find((t) => t.id !== taskId && !t.hidden);
-      if (next) {
-        navigateToTask(next.id);
-      } else {
-        createTask();
-      }
-    }
-  };
-
   // ---- Build context values ----
 
   const taskValue: ChatTaskContextValue = {
@@ -773,19 +752,13 @@ export function ChatContextProvider({
     createTask,
     createTaskWithMessage,
     tasks,
-    hideTask,
-    renameTask: taskManager.renameTask,
-    setTaskStatus: taskManager.setTaskStatus,
     currentBranch,
     isBranchLocked,
     setCurrentTaskBranch: (branch: string | null) => {
       if (effectiveTaskId) {
-        taskManager.setTaskBranch(effectiveTaskId, branch);
+        threadActions.setBranch(effectiveTaskId, branch);
       }
     },
-    ownerFilter: taskManager.ownerFilter,
-    setOwnerFilter: taskManager.setOwnerFilter,
-    isFilterChangePending: taskManager.isFilterChangePending ?? false,
   };
 
   const prefsValue: ChatPrefsContextValue = {
@@ -826,8 +799,8 @@ export function ChatContextProvider({
     contextPrompt,
     preferences,
     taskManager: {
-      updateMessagesCache: taskManager.updateMessagesCache,
-      patchTask: taskManager.patchTask,
+      updateMessagesCache: threadActions.updateMessages,
+      patchTask: threadActions.patchThread,
     },
     rawNavigateToTask,
   };
