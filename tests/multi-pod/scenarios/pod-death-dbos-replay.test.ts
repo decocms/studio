@@ -1,68 +1,51 @@
 /**
- * Pod-death + DBOS workflow replay.
+ * Pod-death recovery scenario.
  *
- * ⚠️ Currently `.skip`ped — see "Architectural finding" below.
+ * When the pod owning a run dies mid-stream, a survivor pod must take
+ * over the run via the heartbeat watcher and the resumed run's chunks
+ * must reach /attach tails on the survivor side — that's the whole
+ * point of the recovery path.
  *
- * Intended scenario: when the pod owning a run dies mid-stream, recovery
- * should resume the run on a survivor pod so /attach tails continue to
- * receive chunks without the client reconnecting.
+ * ── What the test exercises ──────────────────────────────────────────
  *
- * Test shape:
+ *   1. POST a SLOW message (20 chunks × 500ms ≈ 10s) so we have a
+ *      window to kill the owner mid-stream.
+ *   2. Open /attach on all three pods. Whichever pod ends up owning
+ *      the run, the other two stay alive and observe the recovery.
+ *   3. Wait for chunk-2 on any watcher — proof the run is flowing.
+ *   4. Read `threads.run_owner_pod` (POD_NAME maps 1:1 to the compose
+ *      service name) and SIGKILL that pod.
+ *   5. The heartbeat poller on a survivor pod (kv.keys() diff every
+ *      10s) detects the vanished heartbeat key and fires
+ *      `runRegistry.handlePodDeath`, which claims the orphan and
+ *      re-dispatches with `isResume: true`.
+ *   6. Wait until a survivor sees chunk-3 (which can only come from the
+ *      resumed run, since the dead pod only got past chunk-2). Then
+ *      open a fresh /attach against a survivor.
+ *   7. Assert: the late /attach sees chunks 1..20 EXACTLY ONCE — i.e.,
+ *      `chunk-1 ` appears once in its joined stream. If the resumed
+ *      run had pumped on top of the dead pod's leftover prefix in
+ *      JetStream (i.e., if prepareRun's purge ever regressed), a late
+ *      /attach would see the assistant's reply duplicated end-to-end
+ *      and the count would be 2.
  *
- *   1. Send a SLOW message (20 chunks × 500ms ≈ 10s window for kill).
- *   2. Open /attach on all three pods so at least two survive the kill
- *      no matter which pod owns the run.
- *   3. Wait for "chunk-2" on any watcher (proof the run started).
- *   4. Read the actual owner from `threads.run_owner_pod` and SIGKILL
- *      that pod (POD_NAME on each compose service matches the service
- *      name, so the value maps directly to a `pod.kill()` target).
- *   5. Assert one surviving /attach receives "chunk-20".
+ * ── What had to be fixed for this to pass ────────────────────────────
  *
- * ── Architectural finding (2026-05-17, revised) ──────────────────────
+ *   - **Heartbeat polling fallback**: NATS KV TTL expiry doesn't fire
+ *     watcher events. Without a poll, SIGKILL'd pods are never
+ *     detected. (`apps/mesh/src/nats/pod-heartbeat.ts`)
  *
- * Running this test against the framework cluster surfaces three
- * separate, compounding gaps in the current cross-pod recovery story:
+ *   - **streamBuffer in recovery dispatch**: `resumeOrphanedThread`
+ *     was deliberately dropping streamBuffer when calling
+ *     dispatchRunAndWait, so the resumed run streamed to /dev/null.
+ *     (`apps/mesh/src/api/app.ts`)
  *
- *   1. **No cross-pod DBOS recovery.** All pods boot DBOS with
- *      `executor_id = "local"` (default; env `DBOS__VMID` is unset).
- *      DBOS's `recoverPendingWorkflows` is filtered by executor_id, and
- *      it only fires on `DBOS.launch()` — i.e., when a pod restarts.
- *      The OSS SDK has no built-in scan for workflows whose executor is
- *      dead. Surviving peers never replay a dead pod's workflows.
- *
- *   2. **`prepareRun` purges JetStream unconditionally** at
- *      dispatch-run.ts:519, including on resume. Even if the heartbeat
- *      watcher (NatsPodHeartbeat + runRegistry.handlePodDeath) does
- *      kick in and trigger `dispatchRunAndWait(isResume: true)` on a
- *      survivor pod, the first thing that runs nukes any chunks the
- *      survivor watchers were mid-consumption of.
- *
- *   3. **NatsPodHeartbeat bucket creation is fragile**. On cold boot
- *      `KV_POD_HEARTBEATS` sometimes isn't in NATS' jsz output even
- *      though every other JS resource is — bucket init silently
- *      swallows errors at app.ts:867. Re-runs eventually create it,
- *      but it's flaky enough that you can't rely on the heartbeat
- *      firing in the first 45s window.
- *
- * Net: permanent pod death is currently only recovered when the dead
- * pod *itself* restarts (DBOS recovery on the same POD_NAME succeeds
- * because `claimRunStart`'s strict CAS matches). Cross-pod recovery
- * needs:
- *
- *   - per-pod `DBOS__VMID` so DBOS knows which executor owns what
- *   - a death-detection mechanism (the existing NATS heartbeat, or
- *     Postgres advisory locks — sub-second detection, no NATS bucket
- *     reliability issue) that triggers recovery on a survivor
- *   - skip `streamBuffer.purge()` when `isResume` is true
- *
- * The recovery itself can stay in `runRegistry.handlePodDeath`
- * (storage-level claim + `dispatchRunAndWait(isResume: true)`) — going
- * through DBOS's internal recoverPendingWorkflows API is possible but
- * not exposed publicly, so it'd require importing internals.
- *
- * Un-skip this test once the three gaps above are addressed. The test
- * body is left intact so the fix can be verified by removing the
- * `.skip` and re-running.
+ *   - **Keep the unconditional purge**: an early version of this PR
+ *     skipped `streamBuffer.purge()` on resume, but that left the
+ *     dead pod's prefix in JetStream and any /attach opened after
+ *     recovery would see the response duplicated. The chunk-1 count
+ *     assertion below is the regression guard for this.
+ *     (`apps/mesh/src/api/routes/decopilot/dispatch-run.ts`)
  */
 
 import { describe, expect, test } from "bun:test";
@@ -213,27 +196,78 @@ describe("pod-death + DBOS replay", () => {
     // single survivor receiving "chunk-20" proves the pump resumed
     // on a replay-target pod and JetStream caught it back up.
     const survivors = watchers.filter((w) => w.pod.service !== ownerRaw);
+    let lateWatcher: Watcher | null = null;
     try {
+      // First: wait until a survivor sees a chunk that *must* be from
+      // the resumed run (the dead pod only ever got past chunk-2 before
+      // we SIGKILL'd it). chunk-3 is the earliest signal that the
+      // resumed pump has run, and — critically — that prepareRun has
+      // already purged the per-thread subject. This means a /attach
+      // opened from this moment forward sees only the resumed run's
+      // chunks, not the dead pod's prefix.
+      await pollUntil(
+        async () => survivors.some((w) => w.joined.includes("chunk-3")),
+        {
+          timeoutMs: 75_000,
+          intervalMs: 500,
+          label: "resumed-pump-flowing",
+        },
+      );
+
+      // Open a late /attach AFTER the resumed pump is flowing. With
+      // the unconditional purge in prepareRun, this watcher sees ONE
+      // copy of the response (chunks from the resumed run only). If
+      // purge ever regresses (e.g. someone gates it on isResume), the
+      // late watcher would see chunks from BOTH the dead pod's pre-kill
+      // prefix AND the resumed pod's full body — the assistant reply
+      // duplicated end-to-end.
+      lateWatcher = openAttachWatcher(
+        survivors[0]!.pod,
+        session.orgSlug,
+        threadId,
+        session.apiKey,
+      );
+
+      // Now wait for chunk-20 on the original survivor (proves the
+      // resumed run completed end-to-end), THEN on the late watcher
+      // (proves it received the tail too).
       await pollUntil(
         async () => survivors.some((w) => w.joined.includes("chunk-20")),
         {
-          // Window has to cover: heartbeat KV TTL (45s) + NATS purge
-          // sweep + handlePodDeath claim + dispatchRunAndWait resume +
-          // ~2.5s of mock chunks ≈ 55s worst case. 90s leaves comfortable
-          // margin for cold-boot variance without dragging green runs.
+          // Window has to cover: heartbeat KV TTL (45s) + poller tick +
+          // handlePodDeath claim + dispatchRunAndWait resume + ~10s of
+          // mock chunks ≈ 70s worst case. 90s leaves comfortable margin
+          // for cold-boot variance without dragging green runs.
           timeoutMs: 90_000,
           intervalMs: 500,
           label: "final-chunk-after-replay",
         },
       );
+      await pollUntil(async () => lateWatcher!.joined.includes("chunk-20"), {
+        timeoutMs: 20_000,
+        intervalMs: 200,
+        label: "late-watcher-saw-final-chunk",
+      });
+
+      // The load-bearing duplicate-detection assertion. `chunk-1 `
+      // (with trailing space) is what the mock emits as its first
+      // text-delta; counting its occurrences in the SSE payload tells
+      // us how many copies of the response landed on the wire.
+      // Exactly one ⇒ purge worked. Two ⇒ the resumed run's chunks
+      // were appended to the dead pod's prefix, and any user-facing
+      // late /attach would render the reply twice.
+      const chunk1Count = (lateWatcher.joined.match(/chunk-1 /g) ?? []).length;
+      expect(chunk1Count).toBe(1);
     } finally {
       // Always close out the SSE consumers so the test process exits
       // cleanly even on assertion failure.
       for (const w of watchers) w.abort.abort();
+      lateWatcher?.abort.abort();
       await Promise.allSettled(watchers.map((w) => w.done));
+      if (lateWatcher) await lateWatcher.done.catch(() => {});
     }
     // Test budget exceeds pollUntil by a safety margin so the finally
     // above always runs (cleanly aborts SSE consumers) instead of
     // racing the bun-test-level timeout.
-  }, 150_000);
+  }, 180_000);
 });

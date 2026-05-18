@@ -516,16 +516,20 @@ async function prepareRun(
     }
 
     // Purge stale buffered chunks from any previous run on this thread.
-    // Skip on resume: this dispatch is a continuation of a still-active
-    // run (typically pod-death recovery via runRegistry.handlePodDeath),
-    // and any /attach clients tailing the per-thread subject would lose
-    // their place — including the prefix chunks pumped by the previous
-    // owner pod before it died. The about-to-start pump will publish
-    // fresh chunks alongside whatever's already buffered, and the
-    // consumer's deduplication of `done` sentinels handles the overlap.
-    if (!input.isResume) {
-      streamBuffer?.purge(mem.thread.id);
-    }
+    // Always purges — including on resume — because the resumed run
+    // re-invokes the LLM from scratch and produces chunk-1..chunk-N
+    // again. If we kept the dead pod's prefix in JetStream, any
+    // /attach that opens after recovery starts would see the
+    // assistant's reply twice (deliverPolicy:"all" replays the
+    // dead-pod prefix and then the resumed run's full body).
+    // Existing in-flight consumers are unaffected: their NATS consumer
+    // local buffers aren't reachable by server-side purges — chunks
+    // already delivered to them stay delivered, and the resumed run's
+    // new chunks land at higher sequence numbers and arrive normally.
+    // The duplicate-detection assertion in
+    // tests/multi-pod/scenarios/pod-death-dbos-replay.test.ts is the
+    // regression guard for this.
+    streamBuffer?.purge(mem.thread.id);
 
     // Split system messages from user message
     const systemMessages = input.messages.filter((m) => m.role === "system");
