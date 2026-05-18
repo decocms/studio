@@ -124,10 +124,12 @@ export function useThreadActions() {
     patch: RowPatcher,
     fn: () => Promise<Task | null>,
     onErrorMsg: string,
+    onSuccessMsg: string,
   ): Promise<void> => {
     const snapshots = snapshotAndPatch(queryClient, locator, id, patch);
     try {
       await fn();
+      toast.success(onSuccessMsg);
     } catch (error) {
       rollback(queryClient, snapshots);
       const err = error as Error;
@@ -152,6 +154,7 @@ export function useThreadActions() {
         }),
         () => callUpdateTaskTool(client, id, { title }),
         "Failed to rename task",
+        "Task renamed",
       ),
     hideThread: (id: string) =>
       withOptimistic(
@@ -161,6 +164,7 @@ export function useThreadActions() {
         () => null,
         () => callUpdateTaskTool(client, id, { hidden: true }),
         "Failed to archive task",
+        "Task archived",
       ),
     setStatus: (id: string, status: Task["status"]) =>
       withOptimistic(
@@ -179,6 +183,7 @@ export function useThreadActions() {
               | "completed",
           }),
         "Failed to update task status",
+        "Task status updated",
       ),
     setBranch: (id: string, branch: string | null) =>
       withOptimistic(
@@ -186,6 +191,7 @@ export function useThreadActions() {
         (row) => ({ ...row, branch }),
         () => callUpdateTaskTool(client, id, { branch }),
         "Failed to update branch",
+        "Task branch updated",
       ),
     updateMessages: (id: string, messages: ChatMessage[]): void =>
       updateMessagesCache(queryClient, client, org.id, id, messages),
