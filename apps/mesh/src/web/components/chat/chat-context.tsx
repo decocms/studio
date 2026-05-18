@@ -68,7 +68,6 @@ import {
   type RowPatch,
   type TaskOwnerFilter,
 } from "./task";
-import { useTaskMessages } from "./task/use-task-manager";
 import { derivePartsFromTiptapDoc } from "./derive-parts";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import type { ChatMessage, ChatMode, Metadata } from "./types";
@@ -923,9 +922,6 @@ export function ActiveTaskProvider({
 
   const { org, locator } = useProjectContext();
 
-  // Messages for current task (from React Query / server) — this is what suspends
-  const serverMessages = useTaskMessages(taskId || null);
-
   const [finishReason, setFinishReason] = useState<string | null>(null);
   const [chatError, setChatError] = useState<Error | null>(null);
 
@@ -936,7 +932,6 @@ export function ActiveTaskProvider({
   const chat = useChatThread<ChatMessage>({
     threadId: taskId,
     orgSlug: org.slug,
-    initialMessages: serverMessages,
     onFinish: (payload) => {
       setFinishReason(payload.finishReason ?? null);
 

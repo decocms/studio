@@ -22,13 +22,13 @@ import {
   type Store,
   type ThreadObserver,
 } from "./thread-stream-registry";
+import { useTaskMessages } from "../task/use-task-messages";
 
 export type { ChatStreamStatus, RequestOptions };
 
 export interface UseChatStreamOptions<UI_MESSAGE extends UIMessage> {
   threadId: string;
   orgSlug: string;
-  initialMessages: UI_MESSAGE[];
   onFinish?: (args: {
     message: UI_MESSAGE;
     messages: UI_MESSAGE[];
@@ -83,10 +83,16 @@ export function useChatThread<UI_MESSAGE extends UIMessage>(
 ): UseChatStreamResult<UI_MESSAGE> {
   const conn = getOrOpenStream(opts.orgSlug, opts.threadId);
 
+  // Pull the server snapshot from the DB-backed THREAD_MESSAGES cache.
+  // Previously the consumer (chat-context) did this and passed the
+  // result as `initialMessages`; now it lives inside the hook so the
+  // public API is just `{ threadId, orgSlug, ...callbacks }`.
+  const initialMessages = useTaskMessages(opts.threadId);
+
   // Mirror per-render context onto the connection so mutators (which
   // run later, on user events) read the latest props at call time.
   conn.context = {
-    initialMessages: opts.initialMessages as UIMessage[],
+    initialMessages: initialMessages as UIMessage[],
   };
 
   // Stable callback ref so the observer wrapper sees the latest consumer
