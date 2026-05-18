@@ -16,7 +16,10 @@ export interface UseBranchesResult {
   hasMore: boolean;
   isFetchingMore: boolean;
   fetchMore: () => void;
-  fetchUntilMatch: (search: string) => Promise<void>;
+  fetchUntilMatch: (
+    search: string,
+    shouldContinue?: () => boolean,
+  ) => Promise<void>;
 }
 
 interface UseBranchesArgs {
@@ -69,6 +72,18 @@ function pageHasBranchMatch(
         !excludedNames.has(branch.name) &&
         branch.name.toLowerCase().includes(normalizedSearch),
     ),
+  );
+}
+
+function branchNamesHaveMatch(
+  branchNames: Set<string>,
+  search: string,
+): boolean {
+  const normalizedSearch = search.trim().toLowerCase();
+  if (!normalizedSearch) return true;
+
+  return [...branchNames].some((branchName) =>
+    branchName.toLowerCase().includes(normalizedSearch),
   );
 }
 
@@ -195,17 +210,28 @@ export function useBranches({
 
   const defaultBase =
     data?.pages.find((page) => page.default_branch)?.default_branch ?? null;
-  const fetchUntilMatch = async (search: string) => {
-    if (yourBranchNames.has(search) || isFetchingNextPage) {
+  const fetchUntilMatch = async (
+    search: string,
+    shouldContinue = () => true,
+  ) => {
+    if (
+      !shouldContinue() ||
+      branchNamesHaveMatch(yourBranchNames, search) ||
+      isFetchingNextPage
+    ) {
       return;
     }
 
     let pages = data?.pages ?? [];
     while (
+      shouldContinue() &&
       !pageHasBranchMatch(pages, search, yourBranchNames) &&
       (pages.at(-1)?.branches.length ?? BRANCHES_PER_PAGE) >= BRANCHES_PER_PAGE
     ) {
       const result = await fetchNextPage();
+      if (!shouldContinue()) {
+        break;
+      }
       const nextPages = result.data?.pages ?? pages;
       if (nextPages.length === pages.length) {
         break;

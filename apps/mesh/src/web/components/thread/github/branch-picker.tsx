@@ -89,7 +89,10 @@ export function BranchPicker({
     }
 
     setIsSearchingRemote(true);
-    void fetchUntilMatch(trimmedSearch).finally(() => {
+    void fetchUntilMatch(
+      trimmedSearch,
+      () => requestId === searchRequestId.current,
+    ).finally(() => {
       if (requestId === searchRequestId.current) {
         setIsSearchingRemote(false);
       }
