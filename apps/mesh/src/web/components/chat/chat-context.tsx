@@ -31,7 +31,7 @@ import {
   clearStoredAutosend,
   writeStoredAutosend,
 } from "@/web/lib/autosend";
-import { useThreadChat } from "./hooks/use-thread-chat";
+import { useChatThread } from "./hooks/use-chat-thread";
 import type { RequestOptions } from "./hooks/thread-stream-registry";
 import {
   pickSimpleModeDefaults,
@@ -934,7 +934,7 @@ export function ActiveTaskProvider({
   const queryClient = useQueryClient();
 
   // Subscribe model: persistent /stream + POST /messages. No useChat.
-  const chat = useThreadChat<ChatMessage>({
+  const chat = useChatThread<ChatMessage>({
     threadId: taskId,
     orgSlug: org.slug,
     initialMessages: serverMessages,
@@ -1000,7 +1000,7 @@ export function ActiveTaskProvider({
     },
   });
 
-  // Derived state. useThreadChat already composes server + optimistic +
+  // Derived state. useChatThread already composes server + optimistic +
   // streaming messages internally — chat.messages is the live view.
   const isStreaming =
     chat.status === "submitted" || chat.status === "streaming";
@@ -1020,7 +1020,7 @@ export function ActiveTaskProvider({
     messages.length > 0;
 
   // Watch-SSE driven cache invalidations for this thread. The subscribe
-  // stream is always open in useThreadChat — resume / reconnect logic
+  // stream is always open in useChatThread — resume / reconnect logic
   // lives there, not here.
   useStreamManager(taskId);
 

@@ -1,5 +1,5 @@
 /**
- * useThreadChat — thin React selector over the thread stream registry.
+ * useChatThread — thin React selector over the thread stream registry.
  *
  * The persistent /stream SSE, folded message stores, demuxer, and mutators
  * all live on a single ThreadConnection instance owned by the registry.
@@ -78,7 +78,7 @@ function useStore<T>(s: Store<T>): T {
   return useSyncExternalStore(s.subscribe, s.get, s.get);
 }
 
-export function useThreadChat<UI_MESSAGE extends UIMessage>(
+export function useChatThread<UI_MESSAGE extends UIMessage>(
   opts: UseChatStreamOptions<UI_MESSAGE>,
 ): UseChatStreamResult<UI_MESSAGE> {
   const conn = getOrOpenStream(opts.orgSlug, opts.threadId);

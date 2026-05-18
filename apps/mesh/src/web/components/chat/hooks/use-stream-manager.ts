@@ -2,7 +2,7 @@
  * useStreamManager — task-scoped SSE cache invalidations for messages.
  *
  * Thread-list cache patching now lives in <ThreadEventsBridge>.
- * Thread-outputs invalidation runs in useThreadChat.onFinish (chat-context),
+ * Thread-outputs invalidation runs in useChatThread.onFinish (chat-context),
  * gated on whether the turn called `share_with_user`.
  */
 import { useQueryClient } from "@tanstack/react-query";
