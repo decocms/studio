@@ -32,6 +32,8 @@
  */
 
 import {
+  lastAssistantMessageIsCompleteWithApprovalResponses,
+  lastAssistantMessageIsCompleteWithToolCalls,
   parseJsonEventStream,
   readUIMessageStream,
   uiMessageChunkSchema,
@@ -290,6 +292,18 @@ class ThreadConnection {
       throw new Error(`submit: target not found for ${describe(action)}`);
     }
     this.messages.set(next);
+
+    // A new user turn always POSTs. For approval / toolOutput actions, only
+    // POST once the assistant turn has no remaining client-side resolutions
+    // (other pending approvals or unresolved local tool inputs). The two
+    // AI SDK predicates together cover both shapes.
+    const shouldPost =
+      action.kind === "message" ||
+      lastAssistantMessageIsCompleteWithApprovalResponses({ messages: next }) ||
+      lastAssistantMessageIsCompleteWithToolCalls({ messages: next });
+
+    if (!shouldPost) return;
+
     this.status.set({ kind: "submitted" });
 
     const last = next.at(-1);
