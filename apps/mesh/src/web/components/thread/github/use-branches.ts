@@ -1,4 +1,4 @@
-import { type VmMap, useMCPClient } from "@decocms/mesh-sdk";
+import { KEYS, type VmMap, useMCPClient } from "@decocms/mesh-sdk";
 import { useInfiniteQuery } from "@tanstack/react-query";
 
 export interface Branch {
@@ -143,7 +143,7 @@ export function useBranches({
     isFetchingNextPage,
     fetchNextPage,
   } = useInfiniteQuery<BranchesPage>({
-    queryKey: ["github-branches", orgId, orgSlug, connectionId, owner, repo],
+    queryKey: KEYS.githubBranches(orgId, orgSlug, connectionId, owner, repo),
     enabled: enabled && !!connectionId && !!owner && !!repo,
     staleTime: 30_000,
     retry: false,
