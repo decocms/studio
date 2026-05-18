@@ -82,7 +82,11 @@ describe("waitForPort", () => {
     const port = await ephemeralPort();
     const promise = waitForPort(port, { intervalMs: 20 });
     setTimeout(() => {
-      void listenOn("127.0.0.1", port);
+      // If something else grabbed the port in the TOCTOU window, waitForPort
+      // will still detect the listener — suppress EADDRINUSE so the test passes.
+      listenOn("127.0.0.1", port).catch((err: NodeJS.ErrnoException) => {
+        if (err.code !== "EADDRINUSE") throw err;
+      });
     }, 60);
     expect(await promise).toBe("127.0.0.1");
   });
