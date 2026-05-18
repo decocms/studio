@@ -544,9 +544,9 @@ const eventsHandler: MiddlewareHandler<Env> = async (c) => {
 };
 
 /**
- * SSE watch endpoint — streams events for an organization in real time.
+ * SSE events endpoint — streams events for an organization in real time.
  * Resolves the org from `ctx.organization.id` (set by `resolveOrgFromPath`
- * on the `/api/:org/watch` mount) or from the legacy `:organizationId`
+ * on the `/api/:org/events` mount) or from the legacy `:organizationId`
  * path param. Auth is required either way.
  */
 const watchHandler: MiddlewareHandler<Env> = async (c) => {
@@ -1613,15 +1613,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   // lives at `POST /api/:org/events/:type` (registered via createOrgScopedApi).
   app.use("/org/:organizationId/events/:type", logDeprecatedRoute);
   app.post("/org/:organizationId/events/:type", eventsHandler);
-
-  // ============================================================================
-  // SSE Watch Endpoint — stream events for an organization in real time
-  // (Legacy mount with deprecation log. New mount lives at
-  // `GET /api/:org/watch` via createOrgScopedApi.)
-  // ============================================================================
-
-  app.use("/org/:organizationId/watch", logDeprecatedRoute);
-  app.get("/org/:organizationId/watch", watchHandler);
 
   // Downstream token management routes
   // Legacy mount at /api/* with deprecation log; the new /api/:org/* mount
