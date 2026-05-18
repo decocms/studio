@@ -3,7 +3,7 @@
  * to the user via the `share_with_user` tool. Files live under
  * `model-outputs/<thread_id>/` and are listed by
  * `GET /api/:org/threads/:threadId/outputs`. The query is invalidated on
- * assistant-turn completion (see useStreamManager + chat onFinish).
+ * assistant-turn completion (see ThreadEventsBridge + chat onFinish).
  *
  * Attribution caveat: outputs are aggregated under the *last* assistant
  * message of the thread rather than per-producing-message. Future

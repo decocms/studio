@@ -62,7 +62,6 @@ import { track } from "../../lib/posthog-client";
 const openedChats = new Set<string>();
 
 import { useChatNavigation } from "./hooks/use-chat-navigation";
-import { useStreamManager } from "./hooks/use-stream-manager";
 import {
   useThreadActions,
   useTaskManager,
@@ -975,9 +974,9 @@ export function ActiveTaskProvider({
       // doesn't include the originating user message. Writing
       // payload.messages straight to the cache from here would clobber
       // the sender's full conversation with the passive tab's partial
-      // one. Skip the direct cache update and let
-      // useStreamManager.onFinish invalidate THREAD_MESSAGES instead —
-      // every tab refetches the authoritative server snapshot.
+      // one. Skip the direct cache update and let ThreadEventsBridge.onFinish
+      // invalidate THREAD_MESSAGES instead — every tab refetches the
+      // authoritative server snapshot.
     },
     onToolCall: onToolCall as never,
     onError: (error: Error) => {
@@ -1018,11 +1017,6 @@ export function ActiveTaskProvider({
     (thread?.status === "in_progress" || thread?.status === "expired") &&
     chat.status === "ready" &&
     messages.length > 0;
-
-  // Watch-SSE driven cache invalidations for this thread. The subscribe
-  // stream is always open in useChatThread — resume / reconnect logic
-  // lives there, not here.
-  useStreamManager(taskId);
 
   // sendMessage — captures context at call time
   async function sendMessageInternal(params: SendMessageParams): Promise<void> {
