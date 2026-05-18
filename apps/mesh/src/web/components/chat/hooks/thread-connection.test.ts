@@ -15,7 +15,7 @@ function makeFetchMock(
   opts: {
     snapshot?: () => Response;
     stream?: () => Response | Promise<Response>;
-    messages?: () => Response;
+    messages?: (init?: RequestInit) => Response;
     fallback?: (init?: RequestInit) => Promise<Response>;
   } = {},
 ) {
@@ -45,7 +45,7 @@ function makeFetchMock(
       return Promise.resolve(opts.stream?.() ?? defaultStream(init));
     }
     if (url.includes("/messages")) {
-      return Promise.resolve(opts.messages?.() ?? defaultMessages());
+      return Promise.resolve(opts.messages?.(init) ?? defaultMessages());
     }
     return opts.fallback?.(init) ?? defaultStream(init);
   });
@@ -364,50 +364,16 @@ describe("submit defers POST", () => {
     await new Promise((r) => setTimeout(r, 10));
   }
 
-  function makeMock(stream: ReturnType<typeof controllableStream>): {
-    fetchMock: ReturnType<typeof mock>;
-    messagesCalls: () => number;
-    lastMessagesBody: () => unknown;
-  } {
-    let messagesCalls = 0;
-    let lastBody: unknown = null;
-    const fetchMock = mock((input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input.toString();
-      if (url.includes("/mcp/self")) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              jsonrpc: "2.0",
-              id: 1,
-              result: { structuredContent: { items: [] } },
-            }),
-            { status: 200 },
-          ),
-        );
-      }
-      if (url.includes("/stream")) return Promise.resolve(stream.response);
-      if (url.includes("/messages")) {
-        messagesCalls++;
-        lastBody = init?.body ? JSON.parse(String(init.body)) : null;
-        return Promise.resolve(new Response("ok", { status: 200 }));
-      }
-      return new Promise<Response>((_, reject) => {
-        init?.signal?.addEventListener("abort", () =>
-          reject(new DOMException("aborted", "AbortError")),
-        );
-      });
-    });
-    return {
-      fetchMock,
-      messagesCalls: () => messagesCalls,
-      lastMessagesBody: () => lastBody,
-    };
-  }
-
   test("single approval, accept → POSTs once", async () => {
+    let messagesCalls = 0;
     const stream = controllableStream();
-    const m = makeMock(stream);
-    globalThis.fetch = m.fetchMock as unknown as typeof globalThis.fetch;
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+      messages: () => {
+        messagesCalls++;
+        return new Response("ok", { status: 200 });
+      },
+    }) as unknown as typeof globalThis.fetch;
 
     const conn = getOrOpenStream("acme", "thread-single-appr");
     await new Promise((r) => setTimeout(r, 20));
@@ -418,13 +384,19 @@ describe("submit defers POST", () => {
       baseOpts,
     );
 
-    expect(m.messagesCalls()).toBe(1);
+    expect(messagesCalls).toBe(1);
   });
 
   test("3 approvals, accept first only → no POST, local state updated", async () => {
+    let messagesCalls = 0;
     const stream = controllableStream();
-    const m = makeMock(stream);
-    globalThis.fetch = m.fetchMock as unknown as typeof globalThis.fetch;
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+      messages: () => {
+        messagesCalls++;
+        return new Response("ok", { status: 200 });
+      },
+    }) as unknown as typeof globalThis.fetch;
 
     const conn = getOrOpenStream("acme", "thread-3-appr-one");
     await new Promise((r) => setTimeout(r, 20));
@@ -435,7 +407,7 @@ describe("submit defers POST", () => {
       baseOpts,
     );
 
-    expect(m.messagesCalls()).toBe(0);
+    expect(messagesCalls).toBe(0);
     // Local patch applied.
     const last = conn.messages.get().at(-1);
     const states = (last?.parts ?? [])
@@ -451,9 +423,17 @@ describe("submit defers POST", () => {
   });
 
   test("3 approvals, accept all sequentially → one POST on the last", async () => {
+    let messagesCalls = 0;
+    let lastBody: unknown = null;
     const stream = controllableStream();
-    const m = makeMock(stream);
-    globalThis.fetch = m.fetchMock as unknown as typeof globalThis.fetch;
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+      messages: (init) => {
+        messagesCalls++;
+        lastBody = init?.body ? JSON.parse(String(init.body)) : null;
+        return new Response("ok", { status: 200 });
+      },
+    }) as unknown as typeof globalThis.fetch;
 
     const conn = getOrOpenStream("acme", "thread-3-appr-all");
     await new Promise((r) => setTimeout(r, 20));
@@ -466,8 +446,8 @@ describe("submit defers POST", () => {
       );
     }
 
-    expect(m.messagesCalls()).toBe(1);
-    const body = m.lastMessagesBody() as {
+    expect(messagesCalls).toBe(1);
+    const body = lastBody as {
       messages: Array<{ parts: Array<{ state?: string }> }>;
     };
     const lastMsg = body.messages.at(-1);
@@ -478,9 +458,15 @@ describe("submit defers POST", () => {
   });
 
   test("user_ask + approval, answer user_ask only → no POST", async () => {
+    let messagesCalls = 0;
     const stream = controllableStream();
-    const m = makeMock(stream);
-    globalThis.fetch = m.fetchMock as unknown as typeof globalThis.fetch;
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+      messages: () => {
+        messagesCalls++;
+        return new Response("ok", { status: 200 });
+      },
+    }) as unknown as typeof globalThis.fetch;
 
     const conn = getOrOpenStream("acme", "thread-mixed-ask-only");
     await new Promise((r) => setTimeout(r, 20));
@@ -494,13 +480,19 @@ describe("submit defers POST", () => {
       baseOpts,
     );
 
-    expect(m.messagesCalls()).toBe(0);
+    expect(messagesCalls).toBe(0);
   });
 
   test("user_ask + approval, answer both → one POST after the second", async () => {
+    let messagesCalls = 0;
     const stream = controllableStream();
-    const m = makeMock(stream);
-    globalThis.fetch = m.fetchMock as unknown as typeof globalThis.fetch;
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+      messages: () => {
+        messagesCalls++;
+        return new Response("ok", { status: 200 });
+      },
+    }) as unknown as typeof globalThis.fetch;
 
     const conn = getOrOpenStream("acme", "thread-mixed-both");
     await new Promise((r) => setTimeout(r, 20));
@@ -513,44 +505,25 @@ describe("submit defers POST", () => {
       { kind: "toolOutput", toolCallId: "tc-ua", output: { response: "yes" } },
       baseOpts,
     );
-    expect(m.messagesCalls()).toBe(0);
+    expect(messagesCalls).toBe(0);
 
     await conn.submit(
       { kind: "approval", approvalId: "a1", approved: true },
       baseOpts,
     );
-    expect(m.messagesCalls()).toBe(1);
+    expect(messagesCalls).toBe(1);
   });
 
   test("no x-idempotency-key header on POST", async () => {
-    const stream = controllableStream();
     let observedHeaders: Headers | null = null;
-    const fetchMock = mock((input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input.toString();
-      if (url.includes("/mcp/self")) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              jsonrpc: "2.0",
-              id: 1,
-              result: { structuredContent: { items: [] } },
-            }),
-            { status: 200 },
-          ),
-        );
-      }
-      if (url.includes("/stream")) return Promise.resolve(stream.response);
-      if (url.includes("/messages")) {
+    const stream = controllableStream();
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+      messages: (init) => {
         observedHeaders = new Headers(init?.headers);
-        return Promise.resolve(new Response("ok", { status: 200 }));
-      }
-      return new Promise<Response>((_, reject) => {
-        init?.signal?.addEventListener("abort", () =>
-          reject(new DOMException("aborted", "AbortError")),
-        );
-      });
-    });
-    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+        return new Response("ok", { status: 200 });
+      },
+    }) as unknown as typeof globalThis.fetch;
 
     const conn = getOrOpenStream("acme", "thread-no-idem");
     await new Promise((r) => setTimeout(r, 20));
@@ -562,9 +535,7 @@ describe("submit defers POST", () => {
     );
 
     expect(observedHeaders).not.toBeNull();
-    expect(
-      (observedHeaders as unknown as Headers).get("x-idempotency-key"),
-    ).toBeNull();
+    expect(observedHeaders!.get("x-idempotency-key")).toBeNull();
   });
 });
 
