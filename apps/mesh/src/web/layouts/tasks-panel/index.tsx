@@ -5,7 +5,7 @@
  */
 
 import { Suspense } from "react";
-import { useParams } from "@tanstack/react-router";
+import { useNavigate, useParams } from "@tanstack/react-router";
 import { ClipboardCheck } from "@untitledui/icons";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { Chat } from "@/web/components/chat";
@@ -33,7 +33,11 @@ function TasksPanelContent() {
   const automationTasks = filterThreads(threads, { hasTrigger: true });
 
   const { setTaskId, createNewTask } = usePanelActions();
-  const params = useParams({ strict: false }) as { taskId?: string };
+  const navigate = useNavigate();
+  const params = useParams({ strict: false }) as {
+    org?: string;
+    taskId?: string;
+  };
 
   const activeTaskId = params.taskId ?? null;
 
@@ -42,7 +46,23 @@ function TasksPanelContent() {
   );
 
   const handleArchive = (task: Task) => {
+    const wasActive = task.id === activeTaskId;
     hideThread(task.id);
+
+    if (!wasActive) return;
+
+    // Active thread archived — redirect to the next open thread, or fall
+    // back to the org home when no threads remain.
+    const next = allTasks.find((t) => t.id !== task.id);
+    if (next) {
+      setTaskId(next.id, next.virtual_mcp_id);
+    } else if (params.org) {
+      navigate({
+        to: "/$org",
+        params: { org: params.org },
+        search: { tasks: 0 },
+      });
+    }
   };
 
   if (allTasks.length === 0) {
