@@ -421,8 +421,7 @@ class ThreadConnection {
     const { system, ...rest } = opts;
     // Attach the system prompt only on a user turn. Tool-output / approval
     // continuations re-POST the assistant message; the server already has
-    // the system context for the run, and including a fresh system message
-    // (with a randomUUID id) here would defeat the idempotency hash below.
+    // the system context for the run.
     const systemMessage: UIMessage | null =
       system && message.role === "user"
         ? {
@@ -433,27 +432,14 @@ class ThreadConnection {
         : null;
     const messages = systemMessage ? [systemMessage, message] : [message];
     const body = { messages, ...rest };
-    const bodyJson = JSON.stringify(body);
-    // SHA-1 over the serialized body so byte-identical retries collapse onto
-    // the same DBOS workflow, but successive submits in a multi-turn flow
-    // (same assistant message id, different tool states) hash differently
-    // and dispatch fresh runs.
-    const digest = await crypto.subtle.digest(
-      "SHA-1",
-      new TextEncoder().encode(bodyJson),
-    );
-    const idempotencyKey = [...new Uint8Array(digest)]
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
     const url = `/api/${encodeURIComponent(this.orgSlug)}/decopilot/threads/${encodeURIComponent(this.threadId)}/messages`;
     const resp = await fetch(url, {
       method: "POST",
       credentials: "include",
       headers: {
         "content-type": "application/json",
-        "x-idempotency-key": idempotencyKey,
       },
-      body: bodyJson,
+      body: JSON.stringify(body),
       signal,
     });
     if (!resp.ok) {
