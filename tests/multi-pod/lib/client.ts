@@ -94,7 +94,7 @@ export function extractSessionCookie(res: Response): string {
 
 /**
  * Open an SSE stream and yield each `data:` payload until the response
- * ends or the abort signal fires. The /attach endpoint emits AI-SDK UI
+ * ends or the abort signal fires. The /stream endpoint emits AI-SDK UI
  * message chunks as SSE; the consumer typically only cares about
  * specific `type` values (e.g. "text-delta") and aborts once it's
  * collected enough.

@@ -741,7 +741,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       init: async () => {},
       // Test/no-NATS stub: drain the stream so `createUIMessageStream`'s
       // `execute` actually runs to completion. Nothing is buffered;
-      // `createTailStream` returns null so /attach surfaces a 204 / 503
+      // `createTailStream` returns null so /stream surfaces a 204 / 503
       // to the client when NATS isn't available.
       pump: (stream: ReadableStream) => {
         void (async () => {
@@ -1291,7 +1291,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     // synchronously to know when the run completes server-side. We
     // deliberately don't pass a streamBuffer here — this background
     // recovery is the safety net for threads no DBOS replay or attached
-    // client picks up; clients reconnecting via /attach see the run via
+    // client picks up; clients reconnecting via /stream see the run via
     // the workflow's own JetStream pump on the pod that DBOS replayed it
     // onto.
     await dispatchRunAndWait(

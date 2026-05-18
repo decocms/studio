@@ -57,7 +57,7 @@ function makeStreamingFetchMock(textDelta = "hi"): ReturnType<typeof mock> {
   });
 }
 
-/** Build a fetch mock that opens a controllable /attach SSE stream and ACKs
+/** Build a fetch mock that opens a controllable stream SSE and ACKs
  *  POSTs to /messages. Returns helpers to enqueue chunks at test time. */
 function makeControlledAttachMock(): {
   fetchMock: ReturnType<typeof mock>;
@@ -68,7 +68,7 @@ function makeControlledAttachMock(): {
     null;
   const enc = new TextEncoder();
   const enqueue = (chunk: unknown) => {
-    if (!attachController) throw new Error("attach SSE not open");
+    if (!attachController) throw new Error("stream SSE not open");
     attachController.enqueue(enc.encode(`data: ${JSON.stringify(chunk)}\n\n`));
   };
   const closeAttach = () => {
@@ -77,7 +77,7 @@ function makeControlledAttachMock(): {
   };
   const fetchMock = mock((input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
-    if (url.includes("/attach/")) {
+    if (url.includes("/stream")) {
       return Promise.resolve(
         new Response(
           new ReadableStream<Uint8Array>({
@@ -240,7 +240,7 @@ describe("tool approval resume", () => {
     };
     conn.observer = observer;
 
-    // Wait for the /attach fetch to be issued + body wired up.
+    // Wait for the /stream fetch to be issued + body wired up.
     await new Promise((r) => setTimeout(r, 0));
 
     // Run #1: assistant emits a tool call that needs approval, then pauses.
@@ -280,7 +280,7 @@ describe("tool approval resume", () => {
 
     await new Promise((r) => setTimeout(r, 10));
 
-    // Run #2: server resumes the tool and emits output on the SAME /attach SSE.
+    // Run #2: server resumes the tool and emits output on the SAME stream SSE.
     ctrl.enqueue({ type: "start", messageId: "msg-1" });
     ctrl.enqueue({ type: "start-step" });
     ctrl.enqueue({
@@ -310,15 +310,15 @@ describe("tool approval resume", () => {
   });
 
   test("server replay on reconnect does not duplicate tool parts", async () => {
-    // Two-shot fetch: first /attach closes after finish(tool-calls); the
-    // reconnect attempt opens a second controllable /attach that replays the
+    // Two-shot fetch: first stream closes after finish(tool-calls); the
+    // reconnect attempt opens a second controllable stream that replays the
     // same run, then hangs.
     let openCount = 0;
     let liveController: ReadableStreamDefaultController<Uint8Array> | null =
       null;
     const enc = new TextEncoder();
     const enqueue = (chunk: unknown) => {
-      if (!liveController) throw new Error("no attach open");
+      if (!liveController) throw new Error("no stream open");
       liveController.enqueue(enc.encode(`data: ${JSON.stringify(chunk)}\n\n`));
     };
     const closeLive = () => {
@@ -327,7 +327,7 @@ describe("tool approval resume", () => {
     };
     const fetchMock = mock((input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
-      if (url.includes("/attach/")) {
+      if (url.includes("/stream")) {
         openCount++;
         return Promise.resolve(
           new Response(
@@ -372,9 +372,9 @@ describe("tool approval resume", () => {
     enqueue({ type: "finish", finishReason: "tool-calls" });
     await new Promise((r) => setTimeout(r, 10));
 
-    // Close the /attach to simulate the SSE clean-exit -> reconnect path.
+    // Close the stream to simulate the SSE clean-exit -> reconnect path.
     closeLive();
-    // Wait for the reconnect loop to issue the second /attach fetch.
+    // Wait for the reconnect loop to issue the second stream fetch.
     await new Promise((r) => setTimeout(r, 30));
     expect(openCount).toBe(2);
 

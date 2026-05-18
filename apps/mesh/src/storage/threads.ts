@@ -669,7 +669,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
     // Filtering out same-pod owners (the previous behavior) was a bug for
     // K8s StatefulSet rolling restarts, where the new pod re-uses the
     // previous incarnation's POD_NAME. Those runs were silently skipped
-    // until something else (a user revisit hitting /attach) recovered them.
+    // until something else (a user revisit hitting /stream) recovered them.
     //
     // The `_currentPodId` parameter is retained for interface compatibility.
     const rows = await this.db

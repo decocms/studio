@@ -933,7 +933,7 @@ export function ActiveTaskProvider({
   const onToolCall = useInvalidateCollectionsOnToolCall();
   const queryClient = useQueryClient();
 
-  // Subscribe model: persistent /attach + POST /messages. No useChat.
+  // Subscribe model: persistent /stream + POST /messages. No useChat.
   const chat = useThreadChat<ChatMessage>({
     threadId: taskId,
     orgSlug: org.slug,
@@ -969,7 +969,7 @@ export function ActiveTaskProvider({
         rawNavigateToTask(serverThreadId);
       }
 
-      // Note: in the subscribe model the persistent /attach delivers
+      // Note: in the subscribe model the persistent /stream delivers
       // assistant chunks to every observer on the thread, so onFinish
       // fires on each tab — including passive ones whose local snapshot
       // doesn't include the originating user message. Writing

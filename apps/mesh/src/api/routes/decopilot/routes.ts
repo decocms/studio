@@ -267,7 +267,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   // Enqueues the run on `threadGateWorkflow` (partition=threadId,
   // concurrency=1) and returns `202 { taskId }` in milliseconds. The
   // response carries no SSE body — the client is expected to be listening
-  // on `GET /:org/decopilot/attach/:threadId` to receive chunks once the
+  // on `GET /:org/decopilot/threads/:threadId/stream` to receive chunks once the
   // workflow dequeues and dispatches.
   //
   // If another run on this thread is already executing, the new message
@@ -383,22 +383,22 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   });
 
   // ============================================================================
-  // Attach Endpoint — tail the per-thread JetStream subject
+  // Stream Endpoint — tail the per-thread JetStream subject
   // ============================================================================
   //
   // Pure watch endpoint. The persistent connection stays open across runs —
   // JetStream-level `{done}` sentinels are skipped on the server, and
   // clients detect run boundaries from the AI-SDK `{type: "finish"}` chunk
-  // in the stream. One open /attach per (tab, thread) covers every run.
+  // in the stream. One open stream per (tab, thread) covers every run.
   //
   // Recovery for in-flight runs whose owning pod died is handled out of
   // band: the thread-gate workflow step is restarted by the DBOS recovery
   // executor on a healthy pod, and the heartbeat watcher in `app.ts`
   // resurrects orphaned runs explicitly. Either way, chunks land back on
-  // this thread's JetStream subject and the existing /attach tail picks
+  // this thread's JetStream subject and the existing stream tail picks
   // them up — no client-triggered resume is needed here.
 
-  app.get("/:org/decopilot/attach/:threadId", async (c) => {
+  app.get("/:org/decopilot/threads/:threadId/stream", async (c) => {
     try {
       const { taskId, thread } = await validateThreadAccess(c);
 
@@ -441,7 +441,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       );
     } catch (err) {
       if (err instanceof HTTPException) throw err;
-      console.error("[decopilot:attach] Error", err);
+      console.error("[decopilot:stream] Error", err);
       return c.body(null, 500);
     }
   });

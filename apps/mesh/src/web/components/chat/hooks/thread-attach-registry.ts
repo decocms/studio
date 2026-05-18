@@ -111,7 +111,7 @@ export interface ThreadObserver {
 }
 
 /**
- * Owns one persistent /attach SSE plus all per-thread state. Survives
+ * Owns one persistent stream SSE plus all per-thread state. Survives
  * component remounts because the registry holds a reference. Disposed
  * only when a different (orgSlug, threadId) is requested.
  */
@@ -365,14 +365,14 @@ class ThreadConnection {
   }
 
   /**
-   * Persistent /attach loop with reconnect/backoff. Terminal on HTTP
+   * Persistent stream loop with reconnect/backoff. Terminal on HTTP
    * error, schema mismatch, or signal abort. Transient on TypeError /
    * mid-byte truncation / clean reader done — backoff and retry. The
    * server replays the in-flight run from JetStream's start on
    * reconnect, so we drop any partial in-flight fold first.
    */
   private async run(): Promise<void> {
-    const url = `/api/${encodeURIComponent(this.orgSlug)}/decopilot/attach/${encodeURIComponent(this.threadId)}`;
+    const url = `/api/${encodeURIComponent(this.orgSlug)}/decopilot/threads/${encodeURIComponent(this.threadId)}/stream`;
     let attempt = 0;
     let firstConnect = true;
 
@@ -397,7 +397,7 @@ class ThreadConnection {
         if (!resp.ok) {
           const text = await resp.text().catch(() => "");
           this.handleStreamError(
-            new Error(text || `GET /attach failed (${resp.status})`),
+            new Error(text || `GET /stream failed (${resp.status})`),
           );
           return;
         }

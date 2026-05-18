@@ -1,7 +1,7 @@
 /**
  * useThreadChat — thin React selector over the thread-attach registry.
  *
- * The persistent /attach SSE, folded message stores, demuxer, and mutators
+ * The persistent /stream SSE, folded message stores, demuxer, and mutators
  * all live on a single ThreadConnection instance owned by the registry.
  * This hook just:
  *   - resolves the connection via getOrOpenAttach (idempotent for same key)
